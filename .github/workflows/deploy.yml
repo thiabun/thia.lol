@@ -19,11 +19,9 @@ jobs:
           node-version: 22
 
       - name: Install frontend dependencies
-        working-directory: frontend
         run: npm ci
 
       - name: Build frontend
-        working-directory: frontend
         run: npm run build
 
       - name: Deploy frontend
@@ -32,7 +30,7 @@ jobs:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: frontend/dist/
+          local-dir: dist/
           server-dir: public_html/
 
       - name: Deploy backend
