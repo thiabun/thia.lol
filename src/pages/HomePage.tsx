@@ -1,4 +1,4 @@
-import { Activity, ArrowRight, Radio, Sparkles, UsersRound } from "lucide-react";
+import { Activity, ArrowRight, Compass, Radio, UsersRound } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { PageMeta } from "../components/PageMeta";
@@ -10,7 +10,10 @@ import { Panel } from "../components/ui/Panel";
 import { Composer } from "../components/social/Composer";
 import { PostCard } from "../components/social/PostCard";
 import { RoomCard } from "../components/social/RoomCard";
-import { posts as fallbackPosts, rooms as fallbackRooms } from "../data/mockData";
+import {
+  posts as fallbackPosts,
+  rooms as fallbackRooms,
+} from "../data/mockData";
 import { deletePost, getFeed, getRooms, updatePost } from "../lib/api";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
 import type { Post } from "../lib/types";
@@ -22,20 +25,21 @@ export function HomePage() {
   const feedState = useAsyncData(getFeed, fallbackPosts);
   const roomsState = useAsyncData(getRooms, fallbackRooms);
   const [createdPosts, setCreatedPosts] = useState<Post[]>([]);
-  const [removedPostIds, setRemovedPostIds] = useState<Set<number>>(() => new Set());
+  const [removedPostIds, setRemovedPostIds] = useState<Set<number>>(
+    () => new Set(),
+  );
   const [pendingPostId, setPendingPostId] = useState<number | undefined>();
   const [postActionError, setPostActionError] = useState<string | undefined>();
   const feedPosts = feedState.data ?? fallbackPosts;
   const posts = useMemo(
     () =>
-      [...createdPosts, ...feedPosts]
-        .filter((post, index, allPosts) => {
-          if (removedPostIds.has(post.id)) {
-            return false;
-          }
+      [...createdPosts, ...feedPosts].filter((post, index, allPosts) => {
+        if (removedPostIds.has(post.id)) {
+          return false;
+        }
 
-          return allPosts.findIndex((item) => item.id === post.id) === index;
-        }),
+        return allPosts.findIndex((item) => item.id === post.id) === index;
+      }),
     [createdPosts, feedPosts, removedPostIds],
   );
   const rooms = roomsState.data ?? fallbackRooms;
@@ -62,7 +66,9 @@ export function HomePage() {
       await deletePost(post.id, csrfToken);
       markPostRemoved(post.id);
     } catch (caught) {
-      setPostActionError(caught instanceof Error ? caught.message : "Post could not be deleted.");
+      setPostActionError(
+        caught instanceof Error ? caught.message : "Post could not be deleted.",
+      );
     } finally {
       setPendingPostId(undefined);
     }
@@ -81,7 +87,9 @@ export function HomePage() {
       await updatePost(post.id, { status: "hidden" }, csrfToken);
       markPostRemoved(post.id);
     } catch (caught) {
-      setPostActionError(caught instanceof Error ? caught.message : "Post could not be hidden.");
+      setPostActionError(
+        caught instanceof Error ? caught.message : "Post could not be hidden.",
+      );
     } finally {
       setPendingPostId(undefined);
     }
@@ -96,7 +104,7 @@ export function HomePage() {
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_370px]">
       <PageMeta
         title="thia.lol"
-        description="A soft social platform for rooms, signals, profiles, and slow return."
+        description="An experimental social platform  by thiabun, built around freedom and fun, plus her personal portfolio!"
         path="/"
       />
       <section className="space-y-5" aria-label="Home feed">
@@ -108,18 +116,19 @@ export function HomePage() {
           <Panel className="overflow-hidden">
             <div className="grid gap-0 md:grid-cols-[minmax(0,1fr)_290px]">
               <div className="p-5 sm:p-6">
-                <Badge tone="warm">platform pulse</Badge>
+                <Badge tone="warm">info</Badge>
                 <h1 className="mt-4 max-w-2xl text-3xl font-semibold tracking-normal text-text sm:text-4xl">
-                  A soft social surface for rooms, signals, and slow return.
+                  An experimental social platform by thiabun, built around
+                  freedom and fun, plus her personal portfolio!
                 </h1>
                 <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
-                  thia.lol opens on the living platform: live rooms, recent posts,
-                  and a studio-ready stream with room-first presence.
+                  Welcome! Feel free to explore the different pages and
+                  features. ♡
                 </p>
                 <div className="mt-5 flex flex-wrap gap-3">
                   <ButtonLink
                     to="/discover"
-                    icon={<Sparkles aria-hidden="true" size={17} />}
+                    icon={<Compass aria-hidden="true" size={17} />}
                   >
                     Discover
                   </ButtonLink>
@@ -141,10 +150,10 @@ export function HomePage() {
                 />
                 <div className="absolute inset-x-4 bottom-4 rounded-card border border-white/35 bg-surface/72 p-4 shadow-soft backdrop-blur-veil">
                   <p className="text-xs font-medium uppercase text-muted">
-                    Current atmosphere
+                    Notice
                   </p>
                   <p className="mt-2 text-lg font-semibold text-text">
-                    Sunveil active · Frostveil ready
+                    This site is under development · Brace for bugs!
                   </p>
                 </div>
               </div>
@@ -157,16 +166,16 @@ export function HomePage() {
         {feedState.loading ? (
           <ApiStateNotice
             kind="loading"
-            title="Loading platform pulse"
-            text="Recent public posts are loading from the read-only API."
+            title="Loading..."
+            text="Recent public posts are loading."
           />
         ) : null}
 
         {feedState.usingFallback ? (
           <ApiStateNotice
             kind="fallback"
-            title="Showing local pulse"
-            text="The PHP API did not answer, so recent signals are using bundled mock data."
+            title="Showing fallback"
+            text="The PHP API did not answer, so recent posts are using bundled mock data."
           />
         ) : null}
 
@@ -178,8 +187,8 @@ export function HomePage() {
 
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-semibold text-text">Recent signals</h2>
-            <p className="mt-1 text-sm text-muted">Room-first posts from the platform.</p>
+            <h2 className="text-xl font-semibold text-text">Recent posts</h2>
+            <p className="mt-1 text-sm text-muted">The freshest, trust!</p>
           </div>
           <ButtonLink
             to="/discover"
@@ -211,13 +220,17 @@ export function HomePage() {
               <Activity aria-hidden="true" size={20} />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-text">Live texture</h2>
-              <p className="text-sm text-muted">soft, active, moderated</p>
+              <h2 className="text-base font-semibold text-text">
+                Current stats
+              </h2>
+              <p className="text-sm text-muted">
+                Petite, skinny, slightly lacking
+              </p>
             </div>
           </div>
           <div className="mt-5 grid grid-cols-2 gap-3">
             <Metric label="Rooms" value={rooms.length || 4} icon={Radio} />
-            <Metric label="Members" value="1.1k" icon={UsersRound} />
+            <Metric label="Members" value="1" icon={UsersRound} />
           </div>
         </Panel>
 
