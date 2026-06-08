@@ -3,23 +3,33 @@ import { useMemo } from "react";
 import { useSearchParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { AmbientImage } from "../components/ui/AmbientImage";
+import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Badge } from "../components/ui/Badge";
+import { EmptyState } from "../components/ui/EmptyState";
 import { SearchField } from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
 import { RoomCard } from "../components/social/RoomCard";
+import { rooms as fallbackRooms } from "../data/mockData";
 import { getRoom, getRooms } from "../lib/api";
 import { useAsyncData } from "../lib/useAsyncData";
 
 export function RoomsPage() {
   const [searchParams] = useSearchParams();
   const selectedSlug = searchParams.get("room") ?? "soft-launch";
-  const { data } = useAsyncData(getRooms);
+  const roomsState = useAsyncData(getRooms, fallbackRooms);
+  const selectedFallback = useMemo(
+    () =>
+      fallbackRooms.find(
+        (room) => room.slug === selectedSlug || String(room.id) === selectedSlug,
+      ),
+    [selectedSlug],
+  );
   const selectedLoader = useMemo(
     () => () => getRoom(selectedSlug),
     [selectedSlug],
   );
-  const selectedState = useAsyncData(selectedLoader);
-  const rooms = data ?? [];
+  const selectedState = useAsyncData(selectedLoader, selectedFallback);
+  const rooms = roomsState.data ?? fallbackRooms;
   const selectedRoom = selectedState.data ?? rooms[0];
 
   return (
@@ -76,10 +86,35 @@ export function RoomsPage() {
         ) : null}
       </section>
 
+      {roomsState.loading || selectedState.loading ? (
+        <ApiStateNotice
+          kind="loading"
+          title="Opening rooms"
+          text="Public rooms are loading from the read-only API."
+        />
+      ) : null}
+
+      {roomsState.usingFallback || selectedState.usingFallback ? (
+        <ApiStateNotice
+          kind="fallback"
+          title="Showing local rooms"
+          text="The PHP API did not answer, so this page is using the bundled room data."
+        />
+      ) : null}
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="Rooms">
-        {rooms.map((room) => (
-          <RoomCard key={room.id} room={room} />
-        ))}
+        {rooms.length > 0 ? (
+          rooms.map((room) => (
+            <RoomCard key={room.id} room={room} />
+          ))
+        ) : (
+          <EmptyState
+            icon={Radio}
+            title="No public rooms yet"
+            text="Rooms will appear here once the API has public data to return."
+            className="md:col-span-2 xl:col-span-4"
+          />
+        )}
       </section>
     </div>
   );

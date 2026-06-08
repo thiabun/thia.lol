@@ -4,3 +4,4 @@ dist/
 *.tsbuildinfo
 
 backend/config/config.php
+config/config.php

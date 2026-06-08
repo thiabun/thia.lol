@@ -1,21 +1,96 @@
 import { Activity, ArrowRight, Radio, Sparkles, UsersRound } from "lucide-react";
 import { motion } from "motion/react";
+import { useMemo, useState } from "react";
 import { PageMeta } from "../components/PageMeta";
 import { ButtonLink } from "../components/ui/Button";
 import { AmbientImage } from "../components/ui/AmbientImage";
+import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Badge } from "../components/ui/Badge";
 import { Panel } from "../components/ui/Panel";
 import { Composer } from "../components/social/Composer";
 import { PostCard } from "../components/social/PostCard";
 import { RoomCard } from "../components/social/RoomCard";
-import { getFeed, getRooms } from "../lib/api";
+import { posts as fallbackPosts, rooms as fallbackRooms } from "../data/mockData";
+import { deletePost, getFeed, getRooms, updatePost } from "../lib/api";
+import { canDeletePost, canHidePost } from "../lib/postPermissions";
+import type { Post } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
+import { useAuth } from "../lib/useAuth";
 
 export function HomePage() {
-  const feedState = useAsyncData(getFeed);
-  const roomsState = useAsyncData(getRooms);
-  const posts = feedState.data ?? [];
-  const rooms = roomsState.data ?? [];
+  const { csrfToken, user } = useAuth();
+  const feedState = useAsyncData(getFeed, fallbackPosts);
+  const roomsState = useAsyncData(getRooms, fallbackRooms);
+  const [createdPosts, setCreatedPosts] = useState<Post[]>([]);
+  const [removedPostIds, setRemovedPostIds] = useState<Set<number>>(() => new Set());
+  const [pendingPostId, setPendingPostId] = useState<number | undefined>();
+  const [postActionError, setPostActionError] = useState<string | undefined>();
+  const feedPosts = feedState.data ?? fallbackPosts;
+  const posts = useMemo(
+    () =>
+      [...createdPosts, ...feedPosts]
+        .filter((post, index, allPosts) => {
+          if (removedPostIds.has(post.id)) {
+            return false;
+          }
+
+          return allPosts.findIndex((item) => item.id === post.id) === index;
+        }),
+    [createdPosts, feedPosts, removedPostIds],
+  );
+  const rooms = roomsState.data ?? fallbackRooms;
+
+  function handlePostCreated(post: Post) {
+    setCreatedPosts((current) => [post, ...current]);
+    setRemovedPostIds((current) => {
+      const next = new Set(current);
+      next.delete(post.id);
+      return next;
+    });
+  }
+
+  async function handleDeletePost(post: Post) {
+    if (!csrfToken) {
+      setPostActionError("Your session needs to refresh before deleting.");
+      return;
+    }
+
+    setPendingPostId(post.id);
+    setPostActionError(undefined);
+
+    try {
+      await deletePost(post.id, csrfToken);
+      markPostRemoved(post.id);
+    } catch (caught) {
+      setPostActionError(caught instanceof Error ? caught.message : "Post could not be deleted.");
+    } finally {
+      setPendingPostId(undefined);
+    }
+  }
+
+  async function handleHidePost(post: Post) {
+    if (!csrfToken) {
+      setPostActionError("Your session needs to refresh before hiding.");
+      return;
+    }
+
+    setPendingPostId(post.id);
+    setPostActionError(undefined);
+
+    try {
+      await updatePost(post.id, { status: "hidden" }, csrfToken);
+      markPostRemoved(post.id);
+    } catch (caught) {
+      setPostActionError(caught instanceof Error ? caught.message : "Post could not be hidden.");
+    } finally {
+      setPendingPostId(undefined);
+    }
+  }
+
+  function markPostRemoved(postId: number) {
+    setRemovedPostIds((current) => new Set(current).add(postId));
+    setCreatedPosts((current) => current.filter((post) => post.id !== postId));
+  }
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_370px]">
@@ -77,7 +152,29 @@ export function HomePage() {
           </Panel>
         </motion.div>
 
-        <Composer />
+        <Composer rooms={rooms} onCreated={handlePostCreated} />
+
+        {feedState.loading ? (
+          <ApiStateNotice
+            kind="loading"
+            title="Loading platform pulse"
+            text="Recent public posts are loading from the read-only API."
+          />
+        ) : null}
+
+        {feedState.usingFallback ? (
+          <ApiStateNotice
+            kind="fallback"
+            title="Showing local pulse"
+            text="The PHP API did not answer, so recent signals are using bundled mock data."
+          />
+        ) : null}
+
+        {postActionError ? (
+          <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
+            {postActionError}
+          </p>
+        ) : null}
 
         <div className="flex items-center justify-between gap-4">
           <div>
@@ -94,7 +191,16 @@ export function HomePage() {
         </div>
 
         {posts.map((post, index) => (
-          <PostCard key={post.id} post={post} index={index} />
+          <PostCard
+            key={post.id}
+            post={post}
+            index={index}
+            canDelete={canDeletePost(user, post)}
+            canHide={canHidePost(user)}
+            actionPending={pendingPostId === post.id}
+            onDelete={(targetPost) => void handleDeletePost(targetPost)}
+            onHide={(targetPost) => void handleHidePost(targetPost)}
+          />
         ))}
       </section>
 
@@ -125,6 +231,15 @@ export function HomePage() {
               <RoomCard key={room.id} room={room} />
             ))}
           </div>
+          {roomsState.usingFallback ? (
+            <div className="mt-3">
+              <ApiStateNotice
+                kind="fallback"
+                title="Showing local rooms"
+                text="Room cards are using bundled data until the API responds."
+              />
+            </div>
+          ) : null}
         </div>
       </aside>
     </div>

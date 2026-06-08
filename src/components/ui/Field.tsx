@@ -95,7 +95,7 @@ type SelectFieldProps = SelectHTMLAttributes<HTMLSelectElement> & {
   id: string;
   label: string;
   icon?: LucideIcon | undefined;
-  options: string[];
+  options: Array<string | { value: string; label: string }>;
 };
 
 export function SelectField({
@@ -109,9 +109,16 @@ export function SelectField({
   return (
     <FieldShell id={id} label={label} icon={icon}>
       <select id={id} className={cn(controlClass, className)} {...props}>
-        {options.map((option) => (
-          <option key={option}>{option}</option>
-        ))}
+        {options.map((option) => {
+          const value = typeof option === "string" ? option : option.value;
+          const label = typeof option === "string" ? option : option.label;
+
+          return (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          );
+        })}
       </select>
     </FieldShell>
   );

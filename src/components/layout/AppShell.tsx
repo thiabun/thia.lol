@@ -2,15 +2,18 @@ import {
   Compass,
   Home,
   LogIn,
+  LogOut,
   PenLine,
   Radio,
   Shield,
+  UserRound,
   UserPlus,
 } from "lucide-react";
 import { NavLink, Outlet } from "react-router";
 import { ThemeToggle } from "../ThemeToggle";
-import { ButtonLink } from "../ui/Button";
+import { Button, ButtonLink } from "../ui/Button";
 import { cn } from "../../lib/classNames";
+import { useAuth } from "../../lib/useAuth";
 
 const navItems = [
   { to: "/", label: "Home", icon: Home },
@@ -34,6 +37,8 @@ export function AppShell() {
 }
 
 function SiteHeader() {
+  const { logout, status, user } = useAuth();
+
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-canvas/78 backdrop-blur-veil">
       <div className="mx-auto flex min-h-16 w-full max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-8">
@@ -66,38 +71,75 @@ function SiteHeader() {
           <div className="hidden sm:block">
             <ThemeToggle />
           </div>
-          <ButtonLink
-            to="/login"
-            variant="secondary"
-            size="icon"
-            className="sm:hidden"
-            aria-label="Login"
-            title="Login"
-            icon={<LogIn aria-hidden="true" size={17} />}
-          />
-          <ButtonLink
-            to="/register"
-            size="icon"
-            className="sm:hidden"
-            aria-label="Register"
-            title="Register"
-            icon={<UserPlus aria-hidden="true" size={17} />}
-          />
-          <ButtonLink
-            to="/login"
-            variant="ghost"
-            className="hidden sm:inline-flex"
-            icon={<LogIn aria-hidden="true" size={17} />}
-          >
-            Login
-          </ButtonLink>
-          <ButtonLink
-            to="/register"
-            className="hidden sm:inline-flex"
-            icon={<UserPlus aria-hidden="true" size={17} />}
-          >
-            Register
-          </ButtonLink>
+          {status === "authenticated" && user ? (
+            <>
+              <NavLink
+                to={`/@${user.handle}`}
+                className="hidden min-h-10 items-center gap-2 rounded-full border border-line bg-surface px-3 text-sm font-medium text-text shadow-soft transition duration-fluid ease-fluid hover:border-line-strong sm:inline-flex"
+              >
+                <UserRound aria-hidden="true" size={16} />
+                <span className="max-w-32 truncate">@{user.handle}</span>
+              </NavLink>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="sm:hidden"
+                aria-label="Logout"
+                title="Logout"
+                icon={<LogOut aria-hidden="true" size={17} />}
+                onClick={() => void logout()}
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                className="hidden sm:inline-flex"
+                icon={<LogOut aria-hidden="true" size={17} />}
+                onClick={() => void logout()}
+              >
+                Logout
+              </Button>
+            </>
+          ) : status === "loading" ? (
+            <span className="hidden min-h-10 items-center rounded-full border border-line bg-surface px-3 text-sm text-muted sm:inline-flex">
+              Checking session
+            </span>
+          ) : (
+            <>
+              <ButtonLink
+                to="/login"
+                variant="secondary"
+                size="icon"
+                className="sm:hidden"
+                aria-label="Login"
+                title="Login"
+                icon={<LogIn aria-hidden="true" size={17} />}
+              />
+              <ButtonLink
+                to="/register"
+                size="icon"
+                className="sm:hidden"
+                aria-label="Register"
+                title="Register"
+                icon={<UserPlus aria-hidden="true" size={17} />}
+              />
+              <ButtonLink
+                to="/login"
+                variant="ghost"
+                className="hidden sm:inline-flex"
+                icon={<LogIn aria-hidden="true" size={17} />}
+              >
+                Login
+              </ButtonLink>
+              <ButtonLink
+                to="/register"
+                className="hidden sm:inline-flex"
+                icon={<UserPlus aria-hidden="true" size={17} />}
+              >
+                Register
+              </ButtonLink>
+            </>
+          )}
         </div>
       </div>
     </header>

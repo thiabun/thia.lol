@@ -1,0 +1,559 @@
+<?php
+
+declare(strict_types=1);
+
+require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read.php';
+
+function posts_dispatch(array $segments, string $method): void
+{
+    if (count($segments) === 1 && $method === 'POST') {
+        posts_create();
+    }
+
+    if (count($segments) === 3 && preg_match('/^\d+$/', $segments[1]) === 1 && $segments[2] === 'reactions') {
+        if ($method === 'POST') {
+            posts_reaction_create((int) $segments[1]);
+        }
+
+        json_error('Method not allowed.', 405);
+    }
+
+    if (count($segments) === 4 && preg_match('/^\d+$/', $segments[1]) === 1 && $segments[2] === 'reactions') {
+        if ($method === 'DELETE') {
+            posts_reaction_delete((int) $segments[1], $segments[3]);
+        }
+
+        json_error('Method not allowed.', 405);
+    }
+
+    if (count($segments) === 2 && preg_match('/^\d+$/', $segments[1]) === 1) {
+        $postId = (int) $segments[1];
+
+        if ($method === 'PATCH') {
+            posts_update($postId);
+        }
+
+        if ($method === 'DELETE') {
+            posts_delete($postId);
+        }
+    }
+
+    if (
+        (count($segments) === 1 && in_array($method, ['POST', 'PATCH', 'DELETE'], true)) ||
+        (count($segments) === 2 && in_array($method, ['POST', 'PATCH', 'DELETE'], true))
+    ) {
+        json_error('Method not allowed.', 405);
+    }
+}
+
+function posts_create(): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+
+    $body = request_json_body();
+    $postBody = validate_post_body($body['body'] ?? null);
+    $roomId = resolve_room_id($body);
+    $parentId = resolve_parent_id($body['parentId'] ?? $body['parent_id'] ?? null);
+    $mood = validate_optional_text($body['mood'] ?? null, 80, 'Mood');
+
+    db_query(
+        'INSERT INTO posts (author_id, room_id, parent_id, body, mood, visibility, status)
+         VALUES (:author_id, :room_id, :parent_id, :body, :mood, :visibility, :status)',
+        [
+            'author_id' => (int) $session['user_id'],
+            'room_id' => $roomId,
+            'parent_id' => $parentId,
+            'body' => $postBody,
+            'mood' => $mood ?? 'sunveil',
+            'visibility' => 'public',
+            'status' => 'published',
+        ]
+    );
+
+    json_success(fetch_post_payload_by_id((int) db()->lastInsertId()), 201);
+}
+
+function posts_update(int $postId): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+
+    $post = fetch_post_record($postId);
+
+    if ($post === null) {
+        json_error('Post not found.', 404);
+    }
+
+    $body = request_json_body();
+    $updates = [];
+    $params = ['id' => $postId];
+    $isModerator = is_moderator_session($session);
+    $isAuthor = (int) $post['author_id'] === (int) $session['user_id'];
+
+    if (array_key_exists('body', $body)) {
+        if (!$isAuthor) {
+            json_error('Only the author can edit this post.', 403);
+        }
+
+        if ((string) $post['status'] === 'removed') {
+            json_error('Removed posts cannot be edited.', 409);
+        }
+
+        $updates[] = 'body = :body';
+        $params['body'] = validate_post_body($body['body']);
+    }
+
+    if (array_key_exists('roomSlug', $body) || array_key_exists('roomId', $body) || array_key_exists('room_id', $body)) {
+        if (!$isAuthor) {
+            json_error('Only the author can move this post.', 403);
+        }
+
+        $updates[] = 'room_id = :room_id';
+        $params['room_id'] = resolve_room_id($body);
+    }
+
+    if (array_key_exists('parentId', $body) || array_key_exists('parent_id', $body)) {
+        if (!$isAuthor) {
+            json_error('Only the author can update the parent post.', 403);
+        }
+
+        $parentId = resolve_parent_id($body['parentId'] ?? $body['parent_id']);
+
+        if ($parentId === $postId) {
+            json_error('A post cannot be its own parent.', 422);
+        }
+
+        $updates[] = 'parent_id = :parent_id';
+        $params['parent_id'] = $parentId;
+    }
+
+    if (array_key_exists('status', $body)) {
+        if (!$isModerator) {
+            json_error('Only moderators can change post status.', 403);
+        }
+
+        $status = validate_post_status($body['status']);
+
+        if ($status === 'removed') {
+            $updates[] = 'deleted_at = CURRENT_TIMESTAMP()';
+        } elseif ((string) $post['status'] === 'removed') {
+            $updates[] = 'deleted_at = NULL';
+        }
+
+        $updates[] = 'status = :status';
+        $params['status'] = $status;
+    }
+
+    if ($updates === []) {
+        json_error('No supported post updates were provided.', 422);
+    }
+
+    if (!$isAuthor && !$isModerator) {
+        json_error('You cannot update this post.', 403);
+    }
+
+    $sql = sprintf(
+        'UPDATE posts SET %s, updated_at = CURRENT_TIMESTAMP() WHERE id = :id',
+        implode(', ', $updates)
+    );
+    db_query($sql, $params);
+
+    json_success(fetch_post_payload_by_id($postId));
+}
+
+function posts_delete(int $postId): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+
+    $post = fetch_post_record($postId);
+
+    if ($post === null) {
+        json_error('Post not found.', 404);
+    }
+
+    $isAuthor = (int) $post['author_id'] === (int) $session['user_id'];
+
+    if (!$isAuthor && !is_moderator_session($session)) {
+        json_error('You cannot delete this post.', 403);
+    }
+
+    db_query(
+        "UPDATE posts
+         SET status = 'removed',
+             deleted_at = CURRENT_TIMESTAMP(),
+             updated_at = CURRENT_TIMESTAMP()
+         WHERE id = :id",
+        ['id' => $postId]
+    );
+    $statement = db_query(
+        'SELECT deleted_at
+         FROM posts
+         WHERE id = :id
+         LIMIT 1',
+        ['id' => $postId]
+    );
+    $deletedPost = $statement->fetch();
+
+    json_success([
+        'id' => $postId,
+        'status' => 'removed',
+        'deletedAt' => is_array($deletedPost) ? $deletedPost['deleted_at'] : null,
+    ]);
+}
+
+function posts_reaction_create(int $postId): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+    require_reactable_post($postId);
+
+    $body = request_json_body();
+    $type = validate_reaction_type($body['type'] ?? null);
+
+    db_query(
+        'INSERT IGNORE INTO post_reactions (post_id, user_id, type)
+         VALUES (:post_id, :user_id, :type)',
+        [
+            'post_id' => $postId,
+            'user_id' => (int) $session['user_id'],
+            'type' => $type,
+        ]
+    );
+
+    json_success([
+        'postId' => $postId,
+        'reactions' => reaction_counts_for_post($postId),
+    ]);
+}
+
+function posts_reaction_delete(int $postId, string $rawType): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+    require_reactable_post($postId);
+
+    $type = validate_reaction_type(rawurldecode($rawType));
+
+    db_query(
+        'DELETE FROM post_reactions
+         WHERE post_id = :post_id
+           AND user_id = :user_id
+           AND type = :type',
+        [
+            'post_id' => $postId,
+            'user_id' => (int) $session['user_id'],
+            'type' => $type,
+        ]
+    );
+
+    json_success([
+        'postId' => $postId,
+        'reactions' => reaction_counts_for_post($postId),
+    ]);
+}
+
+function validate_post_body(mixed $value): string
+{
+    if (!is_string($value)) {
+        json_error('Post body is required.', 422);
+    }
+
+    $body = trim($value);
+    $length = text_length($body);
+
+    if ($length < 1 || $length > 2000) {
+        json_error('Post body must be between 1 and 2000 characters.', 422);
+    }
+
+    return $body;
+}
+
+function validate_optional_text(mixed $value, int $maxLength, string $label): ?string
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    if (!is_string($value)) {
+        json_error($label . ' must be text.', 422);
+    }
+
+    $text = trim($value);
+
+    if ($text === '') {
+        return null;
+    }
+
+    if (text_length($text) > $maxLength) {
+        json_error($label . ' is too long.', 422);
+    }
+
+    return $text;
+}
+
+function validate_post_status(mixed $value): string
+{
+    if (!is_string($value) || !in_array($value, ['published', 'hidden', 'removed'], true)) {
+        json_error('Post status must be published, hidden, or removed.', 422);
+    }
+
+    return $value;
+}
+
+function validate_reaction_type(mixed $value): string
+{
+    $allowedTypes = ['glow', 'echo', 'hush'];
+
+    if (!is_string($value) || !in_array($value, $allowedTypes, true)) {
+        json_error('Reaction type must be glow, echo, or hush.', 422);
+    }
+
+    return $value;
+}
+
+function resolve_room_id(array $body): ?int
+{
+    if (array_key_exists('roomId', $body) || array_key_exists('room_id', $body)) {
+        $roomId = $body['roomId'] ?? $body['room_id'];
+
+        if (!is_int($roomId) && !(is_string($roomId) && preg_match('/^\d+$/', $roomId) === 1)) {
+            json_error('Room id must be numeric.', 422);
+        }
+
+        return require_room_id((int) $roomId);
+    }
+
+    if (array_key_exists('roomSlug', $body) || array_key_exists('room_slug', $body)) {
+        $roomSlug = $body['roomSlug'] ?? $body['room_slug'];
+
+        if (!is_string($roomSlug)) {
+            json_error('Room slug must be text.', 422);
+        }
+
+        return require_room_slug($roomSlug);
+    }
+
+    return null;
+}
+
+function require_room_id(int $roomId): int
+{
+    $statement = db_query(
+        "SELECT id
+         FROM rooms
+         WHERE id = :id
+           AND visibility = 'public'
+         LIMIT 1",
+        ['id' => $roomId]
+    );
+
+    if (!$statement->fetch()) {
+        json_error('Room not found.', 422);
+    }
+
+    return $roomId;
+}
+
+function require_room_slug(string $roomSlug): int
+{
+    $slug = normalize_slug($roomSlug);
+    $statement = db_query(
+        "SELECT id
+         FROM rooms
+         WHERE slug = :slug
+           AND visibility = 'public'
+         LIMIT 1",
+        ['slug' => $slug]
+    );
+    $room = $statement->fetch();
+
+    if (!is_array($room)) {
+        json_error('Room not found.', 422);
+    }
+
+    return (int) $room['id'];
+}
+
+function resolve_parent_id(mixed $value): ?int
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    if (!is_int($value) && !(is_string($value) && preg_match('/^\d+$/', $value) === 1)) {
+        json_error('Parent id must be numeric.', 422);
+    }
+
+    $parentId = (int) $value;
+    $statement = db_query(
+        "SELECT id
+         FROM posts
+         WHERE id = :id
+           AND visibility = 'public'
+           AND status = 'published'
+           AND deleted_at IS NULL
+         LIMIT 1",
+        ['id' => $parentId]
+    );
+
+    if (!$statement->fetch()) {
+        json_error('Parent post not found.', 422);
+    }
+
+    return $parentId;
+}
+
+function fetch_post_record(int $postId): ?array
+{
+    $statement = db_query(
+        'SELECT id, author_id, room_id, parent_id, status
+         FROM posts
+         WHERE id = :id
+         LIMIT 1',
+        ['id' => $postId]
+    );
+    $post = $statement->fetch();
+
+    return is_array($post) ? $post : null;
+}
+
+function require_reactable_post(int $postId): void
+{
+    $statement = db_query(
+        "SELECT p.id
+         FROM posts p
+         LEFT JOIN rooms r ON r.id = p.room_id
+         WHERE p.id = :id
+           AND p.visibility = 'public'
+           AND p.status = 'published'
+           AND p.deleted_at IS NULL
+           AND (p.room_id IS NULL OR r.visibility = 'public')
+         LIMIT 1",
+        ['id' => $postId]
+    );
+
+    if (!$statement->fetch()) {
+        json_error('Post not found.', 404);
+    }
+}
+
+function reaction_counts_for_post(int $postId): array
+{
+    $statement = db_query(
+        "SELECT
+            COALESCE(SUM(type = 'glow'), 0) AS glow_count,
+            COALESCE(SUM(type = 'echo'), 0) AS echo_count,
+            COALESCE(SUM(type = 'hush'), 0) AS hush_count
+         FROM post_reactions
+         WHERE post_id = :post_id",
+        ['post_id' => $postId]
+    );
+    $counts = $statement->fetch();
+
+    return [
+        'glow' => is_array($counts) ? (int) $counts['glow_count'] : 0,
+        'echo' => is_array($counts) ? (int) $counts['echo_count'] : 0,
+        'hush' => is_array($counts) ? (int) $counts['hush_count'] : 0,
+    ];
+}
+
+function fetch_post_payload_by_id(int $postId): array
+{
+    $statement = db_query(post_payload_select_sql('p.id = :id'), ['id' => $postId]);
+    $row = $statement->fetch();
+
+    if (!is_array($row)) {
+        json_error('Post not found.', 404);
+    }
+
+    return post_payload($row);
+}
+
+function post_payload_select_sql(string $whereClause): string
+{
+    return "SELECT
+        p.id AS post_id,
+        p.parent_id AS post_parent_id,
+        p.body AS post_body,
+        p.mood AS post_mood,
+        p.media_url AS post_media_url,
+        p.visibility AS post_visibility,
+        p.status AS post_status,
+        p.deleted_at AS post_deleted_at,
+        p.created_at AS post_created_at,
+        p.updated_at AS post_updated_at,
+        u.id AS user_id,
+        u.handle,
+        pr.display_name,
+        pr.bio,
+        pr.location,
+        pr.avatar_url,
+        pr.links,
+        pr.traits,
+        pr.created_at AS profile_created_at,
+        pr.updated_at AS profile_updated_at,
+        COALESCE(profile_posts.post_count, 0) AS post_count,
+        COALESCE(profile_rooms.room_count, 0) AS room_count,
+        COALESCE(profile_echoes.echo_count, 0) AS profile_echo_count,
+        r.id AS room_id,
+        r.slug AS room_slug,
+        r.name AS room_name,
+        r.summary AS room_summary,
+        r.mood AS room_mood,
+        r.member_count AS room_member_count,
+        r.is_live AS room_is_live,
+        r.accent AS room_accent,
+        r.visibility AS room_visibility,
+        r.created_at AS room_created_at,
+        r.updated_at AS room_updated_at,
+        COALESCE(reactions.glow_count, 0) AS reaction_glow_count,
+        COALESCE(reactions.echo_count, 0) AS reaction_echo_count,
+        COALESCE(reactions.hush_count, 0) AS reaction_hush_count
+    FROM posts p
+    INNER JOIN users u ON u.id = p.author_id
+    INNER JOIN profiles pr ON pr.user_id = u.id
+    LEFT JOIN rooms r ON r.id = p.room_id
+    LEFT JOIN (
+        SELECT author_id, COUNT(*) AS post_count
+        FROM posts
+        WHERE visibility = 'public'
+          AND status = 'published'
+          AND deleted_at IS NULL
+        GROUP BY author_id
+    ) profile_posts ON profile_posts.author_id = u.id
+    LEFT JOIN (
+        SELECT created_by, COUNT(*) AS room_count
+        FROM rooms
+        WHERE visibility = 'public'
+        GROUP BY created_by
+    ) profile_rooms ON profile_rooms.created_by = u.id
+    LEFT JOIN (
+        SELECT echo_posts.author_id, COUNT(*) AS echo_count
+        FROM post_reactions echoes
+        INNER JOIN posts echo_posts ON echo_posts.id = echoes.post_id
+        WHERE echoes.type = 'echo'
+          AND echo_posts.visibility = 'public'
+          AND echo_posts.status = 'published'
+          AND echo_posts.deleted_at IS NULL
+        GROUP BY echo_posts.author_id
+    ) profile_echoes ON profile_echoes.author_id = u.id
+    LEFT JOIN (
+        SELECT
+            post_id,
+            SUM(type = 'glow') AS glow_count,
+            SUM(type = 'echo') AS echo_count,
+            SUM(type = 'hush') AS hush_count
+        FROM post_reactions
+        GROUP BY post_id
+    ) reactions ON reactions.post_id = p.id
+    WHERE {$whereClause}
+    LIMIT 1";
+}
+
+function is_moderator_session(array $session): bool
+{
+    return in_array((string) $session['role'], ['moderator', 'admin'], true);
+}

@@ -1,14 +1,19 @@
-import { Compass, Hash, Radio, Sparkles, UserRound } from "lucide-react";
+import { Hash, Radio, Sparkles, UserRound } from "lucide-react";
+import { useMemo, useState } from "react";
 import { PageMeta } from "../components/PageMeta";
+import { PostCard } from "../components/social/PostCard";
+import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Badge } from "../components/ui/Badge";
-import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
 import { Avatar } from "../components/ui/Avatar";
 import { AmbientImage } from "../components/ui/AmbientImage";
 import { SearchField } from "../components/ui/Field";
-import { getDiscover } from "../lib/api";
+import { deletePost, getFeed, updatePost } from "../lib/api";
+import { canDeletePost, canHidePost } from "../lib/postPermissions";
+import type { Post } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
-import { users } from "../data/mockData";
+import { useAuth } from "../lib/useAuth";
+import { discoverItems, posts as fallbackPosts, users } from "../data/mockData";
 
 const icons = {
   thread: Hash,
@@ -17,8 +22,58 @@ const icons = {
 };
 
 export function DiscoverPage() {
-  const { data, loading } = useAsyncData(getDiscover);
-  const items = data ?? [];
+  const { csrfToken, user } = useAuth();
+  const postsState = useAsyncData(getFeed, fallbackPosts);
+  const [removedPostIds, setRemovedPostIds] = useState<Set<number>>(() => new Set());
+  const [pendingPostId, setPendingPostId] = useState<number | undefined>();
+  const [postActionError, setPostActionError] = useState<string | undefined>();
+  const feedPosts = postsState.data ?? fallbackPosts;
+  const signalPosts = useMemo(
+    () => feedPosts.filter((post) => !removedPostIds.has(post.id)),
+    [feedPosts, removedPostIds],
+  );
+
+  async function handleDeletePost(post: Post) {
+    if (!csrfToken) {
+      setPostActionError("Your session needs to refresh before deleting.");
+      return;
+    }
+
+    setPendingPostId(post.id);
+    setPostActionError(undefined);
+
+    try {
+      await deletePost(post.id, csrfToken);
+      markPostRemoved(post.id);
+    } catch (caught) {
+      setPostActionError(caught instanceof Error ? caught.message : "Post could not be deleted.");
+    } finally {
+      setPendingPostId(undefined);
+    }
+  }
+
+  async function handleHidePost(post: Post) {
+    if (!csrfToken) {
+      setPostActionError("Your session needs to refresh before hiding.");
+      return;
+    }
+
+    setPendingPostId(post.id);
+    setPostActionError(undefined);
+
+    try {
+      await updatePost(post.id, { status: "hidden" }, csrfToken);
+      markPostRemoved(post.id);
+    } catch (caught) {
+      setPostActionError(caught instanceof Error ? caught.message : "Post could not be hidden.");
+    } finally {
+      setPendingPostId(undefined);
+    }
+  }
+
+  function markPostRemoved(postId: number) {
+    setRemovedPostIds((current) => new Set(current).add(postId));
+  }
 
   return (
     <div className="space-y-6">
@@ -52,16 +107,51 @@ export function DiscoverPage() {
         </Panel>
       </section>
 
-      {loading ? (
-        <EmptyState
-          icon={Compass}
-          title="Gathering signals"
-          text="The static fallback will appear as soon as the route settles."
+      {postsState.loading ? (
+        <ApiStateNotice
+          kind="loading"
+          title="Gathering public signals"
+          text="Fresh posts are arriving from the read-only API."
         />
       ) : null}
 
+      {postsState.usingFallback ? (
+        <ApiStateNotice
+          kind="fallback"
+          title="Showing local signals"
+          text="The PHP API did not answer, so the discover feed is using the bundled mock posts."
+        />
+      ) : null}
+
+      {postActionError ? (
+        <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
+          {postActionError}
+        </p>
+      ) : null}
+
+      <section aria-label="Recent public posts">
+        <div className="mb-3 flex items-center justify-between gap-4">
+          <h2 className="text-xl font-semibold text-text">Recent signals</h2>
+          <Badge tone="warm">public</Badge>
+        </div>
+        <div className="space-y-4">
+          {signalPosts.map((post, index) => (
+            <PostCard
+              key={post.id}
+              post={post}
+              index={index}
+              canDelete={canDeletePost(user, post)}
+              canHide={canHidePost(user)}
+              actionPending={pendingPostId === post.id}
+              onDelete={(targetPost) => void handleDeletePost(targetPost)}
+              onHide={(targetPost) => void handleHidePost(targetPost)}
+            />
+          ))}
+        </div>
+      </section>
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="Discovery">
-        {items.map((item) => {
+        {discoverItems.map((item) => {
           const Icon = icons[item.kind];
           return (
             <Panel key={item.id} interactive className="p-5">

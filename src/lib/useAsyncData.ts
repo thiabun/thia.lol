@@ -4,32 +4,47 @@ type AsyncState<T> = {
   data: T | undefined;
   loading: boolean;
   error: Error | undefined;
+  usingFallback: boolean;
 };
 
 export function useAsyncData<T>(
   load: () => Promise<T>,
+  fallback?: T,
 ): AsyncState<T> {
   const [state, setState] = useState<AsyncState<T>>({
-    data: undefined,
+    data: fallback,
     loading: true,
     error: undefined,
+    usingFallback: false,
   });
 
   useEffect(() => {
     let active = true;
 
+    queueMicrotask(() => {
+      if (active) {
+        setState({
+          data: fallback,
+          loading: true,
+          error: undefined,
+          usingFallback: false,
+        });
+      }
+    });
+
     load()
       .then((data) => {
         if (active) {
-          setState({ data, loading: false, error: undefined });
+          setState({ data, loading: false, error: undefined, usingFallback: false });
         }
       })
       .catch((error: unknown) => {
         if (active) {
           setState({
-            data: undefined,
+            data: fallback,
             loading: false,
             error: error instanceof Error ? error : new Error("Unknown error"),
+            usingFallback: fallback !== undefined,
           });
         }
       });
@@ -37,7 +52,7 @@ export function useAsyncData<T>(
     return () => {
       active = false;
     };
-  }, [load]);
+  }, [fallback, load]);
 
   return state;
 }
