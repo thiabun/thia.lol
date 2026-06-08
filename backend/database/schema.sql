@@ -1,0 +1,71 @@
+CREATE TABLE users (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  handle VARCHAR(40) NOT NULL UNIQUE,
+  email VARCHAR(191) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  role ENUM('member', 'moderator', 'admin') NOT NULL DEFAULT 'member',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE profiles (
+  user_id BIGINT UNSIGNED PRIMARY KEY,
+  display_name VARCHAR(120) NOT NULL,
+  bio TEXT NULL,
+  location VARCHAR(120) NULL,
+  avatar_url VARCHAR(255) NULL,
+  links JSON NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT profiles_user_fk
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE rooms (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  slug VARCHAR(80) NOT NULL UNIQUE,
+  name VARCHAR(140) NOT NULL,
+  summary TEXT NULL,
+  visibility ENUM('public', 'members', 'private') NOT NULL DEFAULT 'public',
+  created_by BIGINT UNSIGNED NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT rooms_created_by_fk
+    FOREIGN KEY (created_by) REFERENCES users(id)
+    ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE posts (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  author_id BIGINT UNSIGNED NOT NULL,
+  room_id BIGINT UNSIGNED NULL,
+  body TEXT NOT NULL,
+  media_url VARCHAR(255) NULL,
+  visibility ENUM('public', 'members', 'private') NOT NULL DEFAULT 'public',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT posts_author_fk
+    FOREIGN KEY (author_id) REFERENCES users(id)
+    ON DELETE CASCADE,
+  CONSTRAINT posts_room_fk
+    FOREIGN KEY (room_id) REFERENCES rooms(id)
+    ON DELETE SET NULL,
+  INDEX posts_created_at_idx (created_at),
+  INDEX posts_room_created_idx (room_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE reactions (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  post_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  type ENUM('glow', 'echo', 'hush') NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT reactions_post_fk
+    FOREIGN KEY (post_id) REFERENCES posts(id)
+    ON DELETE CASCADE,
+  CONSTRAINT reactions_user_fk
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE CASCADE,
+  UNIQUE KEY reactions_unique_user_post_type (post_id, user_id, type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

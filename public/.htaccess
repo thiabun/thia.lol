@@ -1,0 +1,15 @@
+Options -MultiViews
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Keep future PHP/MySQL API routes outside the React SPA rewrite.
+  RewriteCond %{REQUEST_URI} ^/api(?:/|$) [NC]
+  RewriteRule ^ - [L]
+
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [END]
+
+  RewriteRule ^ index.html [L]
+</IfModule>
