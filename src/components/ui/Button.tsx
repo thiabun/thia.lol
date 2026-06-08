@@ -10,9 +10,9 @@ const base =
 
 const variants: Record<ButtonVariant, string> = {
   primary:
-    "bg-accent text-accent-ink shadow-soft hover:-translate-y-0.5 hover:shadow-lift",
+    "bg-accent text-accent-ink shadow-soft hover:-translate-y-0.5 hover:shadow-lift motion-reduce:hover:translate-y-0",
   secondary:
-    "border border-line bg-surface text-text shadow-soft hover:-translate-y-0.5 hover:border-line-strong",
+    "border border-line bg-surface text-text shadow-soft hover:-translate-y-0.5 hover:border-line-strong motion-reduce:hover:translate-y-0",
   ghost:
     "text-muted hover:bg-surface-strong hover:text-text",
   quiet: "text-text underline-offset-4 hover:text-accent-strong hover:underline",

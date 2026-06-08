@@ -42,6 +42,7 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
         <button
           key={value}
           type="button"
+          aria-label={label}
           aria-pressed={theme === value}
           title={label}
           onClick={() => setTheme(value)}

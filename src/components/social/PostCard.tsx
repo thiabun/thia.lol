@@ -1,5 +1,6 @@
 import { MessageCircle, Repeat2, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
+import { AmbientImage } from "../ui/AmbientImage";
 import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
 import { Panel } from "../ui/Panel";
@@ -42,12 +43,17 @@ export function PostCard({ post, index = 0 }: PostCardProps) {
 
         {post.mediaUrl ? (
           <div className="mt-4 overflow-hidden rounded-card border border-line bg-canvas">
-            <img
-              src={post.mediaUrl}
-              alt=""
-              className="aspect-[16/9] w-full object-cover"
-              loading="lazy"
-            />
+            {post.mediaUrl === "/ambient-veil.webp" ? (
+              <AmbientImage className="aspect-[16/9] w-full" />
+            ) : (
+              <img
+                src={post.mediaUrl}
+                alt=""
+                className="aspect-[16/9] w-full object-cover"
+                loading="lazy"
+                decoding="async"
+              />
+            )}
           </div>
         ) : null}
 

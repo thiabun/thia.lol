@@ -1,6 +1,8 @@
 import { Activity, ArrowRight, Radio, Sparkles, UsersRound } from "lucide-react";
 import { motion } from "motion/react";
+import { PageMeta } from "../components/PageMeta";
 import { ButtonLink } from "../components/ui/Button";
+import { AmbientImage } from "../components/ui/AmbientImage";
 import { Badge } from "../components/ui/Badge";
 import { Panel } from "../components/ui/Panel";
 import { Composer } from "../components/social/Composer";
@@ -17,6 +19,11 @@ export function HomePage() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_370px]">
+      <PageMeta
+        title="thia.lol"
+        description="A soft social platform for rooms, signals, profiles, and slow return."
+        path="/"
+      />
       <section className="space-y-5" aria-label="Home feed">
         <motion.div
           initial={{ opacity: 0, y: 18 }}
@@ -51,12 +58,12 @@ export function HomePage() {
                 </div>
               </div>
               <div className="relative min-h-64 overflow-hidden border-t border-line md:border-l md:border-t-0">
-                <img
-                  src="/ambient-veil.png"
-                  alt=""
-                  className="absolute inset-0 size-full object-cover"
+                <AmbientImage
+                  className="absolute inset-0"
+                  loading="eager"
+                  priority
+                  overlay
                 />
-                <div className="absolute inset-0 bg-media-scrim" />
                 <div className="absolute inset-x-4 bottom-4 rounded-card border border-white/35 bg-surface/72 p-4 shadow-soft backdrop-blur-veil">
                   <p className="text-xs font-medium uppercase text-muted">
                     Current atmosphere

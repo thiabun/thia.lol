@@ -1,7 +1,10 @@
-import { Radio, Search, UsersRound } from "lucide-react";
+import { Radio, UsersRound } from "lucide-react";
 import { useMemo } from "react";
 import { useSearchParams } from "react-router";
+import { PageMeta } from "../components/PageMeta";
+import { AmbientImage } from "../components/ui/AmbientImage";
 import { Badge } from "../components/ui/Badge";
+import { SearchField } from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
 import { RoomCard } from "../components/social/RoomCard";
 import { getRoom, getRooms } from "../lib/api";
@@ -21,6 +24,11 @@ export function RoomsPage() {
 
   return (
     <div className="space-y-6">
+      <PageMeta
+        title="Rooms"
+        description="Browse live and slow rooms shaping the thia.lol platform."
+        path="/rooms"
+      />
       <section className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
         <Panel className="p-5 sm:p-6">
           <Badge tone="leaf">rooms</Badge>
@@ -30,18 +38,12 @@ export function RoomsPage() {
           <p className="mt-3 text-base leading-7 text-muted">
             Join places with a mood, a pace, and a little bit of memory.
           </p>
-          <div className="mt-5 flex min-h-12 items-center gap-3 rounded-full border border-line bg-canvas/55 px-4 shadow-inner-soft">
-            <Search aria-hidden="true" size={18} className="text-muted" />
-            <label className="sr-only" htmlFor="room-search">
-              Search rooms
-            </label>
-            <input
-              id="room-search"
-              className="w-full bg-transparent text-sm text-text outline-none placeholder:text-muted/75"
-              placeholder="Search rooms"
-              type="search"
-            />
-          </div>
+          <SearchField
+            id="room-search"
+            label="Search rooms"
+            placeholder="Search rooms"
+            className="mt-5"
+          />
         </Panel>
 
         {selectedRoom ? (
@@ -68,12 +70,7 @@ export function RoomsPage() {
                   </span>
                 </div>
               </div>
-              <img
-                src="/ambient-veil.png"
-                alt=""
-                className="h-56 w-full object-cover md:h-full"
-                loading="lazy"
-              />
+              <AmbientImage className="h-56 w-full md:h-full" />
             </div>
           </Panel>
         ) : null}

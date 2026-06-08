@@ -1,8 +1,11 @@
 import { LockKeyhole, Mail, UserPlus } from "lucide-react";
 import type { FormEvent } from "react";
 import { Link } from "react-router";
+import { PageMeta } from "../components/PageMeta";
+import { AmbientImage } from "../components/ui/AmbientImage";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
+import { TextField } from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
 
 type AuthPageProps = {
@@ -18,6 +21,15 @@ export function AuthPage({ mode }: AuthPageProps) {
 
   return (
     <div className="mx-auto grid min-h-[calc(100dvh-9rem)] max-w-5xl place-items-center">
+      <PageMeta
+        title={isRegister ? "Register" : "Login"}
+        description={
+          isRegister
+            ? "Create a thia.lol profile and prepare for the future API account flow."
+            : "Return to thia.lol with the future API account flow."
+        }
+        path={isRegister ? "/register" : "/login"}
+      />
       <Panel className="grid w-full overflow-hidden lg:grid-cols-[minmax(0,1fr)_360px]">
         <form className="p-5 sm:p-8" onSubmit={handleSubmit}>
           <Badge tone={isRegister ? "warm" : "cool"}>
@@ -34,26 +46,29 @@ export function AuthPage({ mode }: AuthPageProps) {
 
           <div className="mt-6 space-y-4">
             {isRegister ? (
-              <AuthField
+              <TextField
                 id="handle"
                 label="Handle"
                 type="text"
                 placeholder="@handle"
+                autoComplete="username"
                 icon={UserPlus}
               />
             ) : null}
-            <AuthField
+            <TextField
               id="email"
               label="Email"
               type="email"
               placeholder="you@example.com"
+              autoComplete="email"
               icon={Mail}
             />
-            <AuthField
+            <TextField
               id="password"
               label="Password"
               type="password"
               placeholder="••••••••"
+              autoComplete={isRegister ? "new-password" : "current-password"}
               icon={LockKeyhole}
             />
           </div>
@@ -74,12 +89,7 @@ export function AuthPage({ mode }: AuthPageProps) {
         </form>
 
         <div className="relative min-h-72 overflow-hidden border-t border-line lg:border-l lg:border-t-0">
-          <img
-            src="/ambient-veil.png"
-            alt=""
-            className="absolute inset-0 size-full object-cover"
-          />
-          <div className="absolute inset-0 bg-media-scrim" />
+          <AmbientImage className="absolute inset-0" overlay />
           <div className="absolute inset-x-5 bottom-5 rounded-card border border-white/35 bg-surface/72 p-4 shadow-soft backdrop-blur-veil">
             <p className="text-sm font-semibold text-text">Sunveil / Frostveil</p>
             <p className="mt-2 text-sm leading-6 text-muted">
@@ -89,36 +99,5 @@ export function AuthPage({ mode }: AuthPageProps) {
         </div>
       </Panel>
     </div>
-  );
-}
-
-type AuthFieldProps = {
-  id: string;
-  label: string;
-  type: string;
-  placeholder: string;
-  icon: typeof Mail;
-};
-
-function AuthField({
-  id,
-  label,
-  type,
-  placeholder,
-  icon: Icon,
-}: AuthFieldProps) {
-  return (
-    <label className="block" htmlFor={id}>
-      <span className="mb-2 flex items-center gap-2 text-sm font-medium text-text">
-        <Icon aria-hidden="true" size={16} />
-        {label}
-      </span>
-      <input
-        id={id}
-        type={type}
-        placeholder={placeholder}
-        className="min-h-12 w-full rounded-card border border-line bg-canvas/55 px-4 text-sm text-text shadow-inner-soft outline-none transition duration-fluid placeholder:text-muted/70 focus:border-line-strong focus:bg-surface"
-      />
-    </label>
   );
 }

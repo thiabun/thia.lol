@@ -128,7 +128,7 @@ export const posts: Post[] = [
     createdAt: "18m",
     mood: "sunveil",
     reactions: { glow: 42, echo: 12, hush: 8 },
-    mediaUrl: "/ambient-veil.png",
+    mediaUrl: "/ambient-veil.webp",
   },
   {
     id: 2,

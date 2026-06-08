@@ -1,8 +1,11 @@
-import { Compass, Hash, Radio, Search, Sparkles, UserRound } from "lucide-react";
+import { Compass, Hash, Radio, Sparkles, UserRound } from "lucide-react";
+import { PageMeta } from "../components/PageMeta";
 import { Badge } from "../components/ui/Badge";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
 import { Avatar } from "../components/ui/Avatar";
+import { AmbientImage } from "../components/ui/AmbientImage";
+import { SearchField } from "../components/ui/Field";
 import { getDiscover } from "../lib/api";
 import { useAsyncData } from "../lib/useAsyncData";
 import { users } from "../data/mockData";
@@ -19,33 +22,27 @@ export function DiscoverPage() {
 
   return (
     <div className="space-y-6">
+      <PageMeta
+        title="Discover"
+        description="Find rooms, people, and platform signals across thia.lol."
+        path="/discover"
+      />
       <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <Panel className="p-5 sm:p-6">
           <Badge tone="cool">discover</Badge>
           <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">
             Find the rooms and signals with a living edge.
           </h1>
-          <div className="mt-5 flex min-h-12 items-center gap-3 rounded-full border border-line bg-canvas/55 px-4 shadow-inner-soft">
-            <Search aria-hidden="true" size={18} className="text-muted" />
-            <label className="sr-only" htmlFor="discover-search">
-              Search
-            </label>
-            <input
-              id="discover-search"
-              className="w-full bg-transparent text-sm text-text outline-none placeholder:text-muted/75"
-              placeholder="Search people, rooms, fragments"
-              type="search"
-            />
-          </div>
+          <SearchField
+            id="discover-search"
+            label="Search"
+            placeholder="Search people, rooms, fragments"
+            className="mt-5"
+          />
         </Panel>
 
         <Panel className="overflow-hidden">
-          <img
-            src="/ambient-veil.png"
-            alt=""
-            className="aspect-[16/10] w-full object-cover"
-            loading="lazy"
-          />
+          <AmbientImage className="aspect-[16/10] w-full" />
           <div className="p-5">
             <p className="text-sm font-semibold text-text">Platform field</p>
             <p className="mt-2 text-sm leading-6 text-muted">

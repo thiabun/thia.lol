@@ -7,13 +7,21 @@ import {
   Radio,
   Send,
 } from "lucide-react";
+import { PageMeta } from "../components/PageMeta";
+import { AmbientImage } from "../components/ui/AmbientImage";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
+import { SelectField, TextareaField } from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
 
 export function StudioPage() {
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <PageMeta
+        title="Studio"
+        description="Draft room-aware signals for thia.lol."
+        path="/studio"
+      />
       <section className="space-y-5">
         <Panel className="p-5 sm:p-6">
           <Badge tone="warm">studio</Badge>
@@ -21,40 +29,26 @@ export function StudioPage() {
             Draft a signal with room-aware texture.
           </h1>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <label className="block">
-              <span className="mb-2 flex items-center gap-2 text-sm font-medium text-text">
-                <Radio aria-hidden="true" size={16} />
-                Room
-              </span>
-              <select className="min-h-12 w-full rounded-card border border-line bg-canvas/55 px-4 text-sm text-text outline-none focus:border-line-strong">
-                <option>Soft Launch</option>
-                <option>Moon Table</option>
-                <option>Garden Protocol</option>
-                <option>Afterglow</option>
-              </select>
-            </label>
-            <label className="block">
-              <span className="mb-2 flex items-center gap-2 text-sm font-medium text-text">
-                <LockKeyhole aria-hidden="true" size={16} />
-                Visibility
-              </span>
-              <select className="min-h-12 w-full rounded-card border border-line bg-canvas/55 px-4 text-sm text-text outline-none focus:border-line-strong">
-                <option>Public room</option>
-                <option>Room members</option>
-                <option>Private draft</option>
-              </select>
-            </label>
-          </div>
-          <label className="mt-4 block">
-            <span className="mb-2 flex items-center gap-2 text-sm font-medium text-text">
-              <PenLine aria-hidden="true" size={16} />
-              Signal
-            </span>
-            <textarea
-              className="min-h-64 w-full resize-none rounded-card border border-line bg-canvas/55 px-4 py-3 text-sm leading-6 text-text shadow-inner-soft outline-none transition duration-fluid placeholder:text-muted/70 focus:border-line-strong focus:bg-surface"
-              placeholder="Write from the room outward."
+            <SelectField
+              id="studio-room"
+              label="Room"
+              icon={Radio}
+              options={["Soft Launch", "Moon Table", "Garden Protocol", "Afterglow"]}
             />
-          </label>
+            <SelectField
+              id="studio-visibility"
+              label="Visibility"
+              icon={LockKeyhole}
+              options={["Public room", "Room members", "Private draft"]}
+            />
+          </div>
+          <TextareaField
+            id="studio-signal"
+            label="Signal"
+            icon={PenLine}
+            className="mt-4 min-h-64"
+            placeholder="Write from the room outward."
+          />
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <div className="flex gap-2">
               <Button
@@ -81,12 +75,7 @@ export function StudioPage() {
 
       <aside className="space-y-5">
         <Panel className="overflow-hidden">
-          <img
-            src="/ambient-veil.png"
-            alt=""
-            className="aspect-[16/10] w-full object-cover"
-            loading="lazy"
-          />
+          <AmbientImage className="aspect-[16/10] w-full" />
           <div className="p-5">
             <Badge tone="cool">
               <Eye aria-hidden="true" size={13} />

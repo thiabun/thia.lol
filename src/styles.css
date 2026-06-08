@@ -157,7 +157,7 @@ textarea {
       color-mix(in oklab, var(--app-surface) 26%, transparent),
       color-mix(in oklab, var(--app-canvas) 22%, transparent)
     ),
-    url("/ambient-veil.png");
+    url("/ambient-veil.webp");
   background-position: center;
   background-size: cover;
 }

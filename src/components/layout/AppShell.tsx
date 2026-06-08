@@ -60,7 +60,29 @@ function SiteHeader() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
-          <ThemeToggle />
+          <div className="sm:hidden">
+            <ThemeToggle compact />
+          </div>
+          <div className="hidden sm:block">
+            <ThemeToggle />
+          </div>
+          <ButtonLink
+            to="/login"
+            variant="secondary"
+            size="icon"
+            className="sm:hidden"
+            aria-label="Login"
+            title="Login"
+            icon={<LogIn aria-hidden="true" size={17} />}
+          />
+          <ButtonLink
+            to="/register"
+            size="icon"
+            className="sm:hidden"
+            aria-label="Register"
+            title="Register"
+            icon={<UserPlus aria-hidden="true" size={17} />}
+          />
           <ButtonLink
             to="/login"
             variant="ghost"

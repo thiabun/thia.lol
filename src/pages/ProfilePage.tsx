@@ -1,6 +1,7 @@
 import { MessageCircle } from "lucide-react";
 import { useMemo } from "react";
 import { useParams } from "react-router";
+import { PageMeta } from "../components/PageMeta";
 import { EmptyState } from "../components/ui/EmptyState";
 import { PostCard } from "../components/social/PostCard";
 import { ProfileHeader } from "../components/social/ProfileHeader";
@@ -10,24 +11,37 @@ import { useAsyncData } from "../lib/useAsyncData";
 
 export function ProfilePage() {
   const { handle = "thia" } = useParams();
-  const profileLoader = useMemo(() => () => getProfile(handle), [handle]);
+  const normalizedHandle = handle.replace(/^@/, "").toLowerCase();
+  const profileLoader = useMemo(() => () => getProfile(normalizedHandle), [normalizedHandle]);
   const { data: profile } = useAsyncData(profileLoader);
   const profilePosts = posts.filter(
-    (post) => post.author.handle === handle.replace(/^@/, "").toLowerCase(),
+    (post) => post.author.handle === normalizedHandle,
   );
 
   if (!profile) {
     return (
-      <EmptyState
-        icon={MessageCircle}
-        title="Profile warming up"
-        text="The profile route is settling into its fallback data."
-      />
+      <>
+        <PageMeta
+          title={`@${normalizedHandle}`}
+          description={`Profile for @${normalizedHandle} on thia.lol.`}
+          path={`/@${normalizedHandle}`}
+        />
+        <EmptyState
+          icon={MessageCircle}
+          title="Profile warming up"
+          text="The profile route is settling into its fallback data."
+        />
+      </>
     );
   }
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
+      <PageMeta
+        title={`${profile.user.displayName} (@${profile.user.handle})`}
+        description={profile.bio}
+        path={`/@${profile.user.handle}`}
+      />
       <ProfileHeader profile={profile} />
       <div>
         <h2 className="mb-3 text-xl font-semibold text-text">Signals</h2>

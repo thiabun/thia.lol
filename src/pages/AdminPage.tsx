@@ -1,10 +1,16 @@
 import { Activity, Database, Shield, UsersRound } from "lucide-react";
+import { PageMeta } from "../components/PageMeta";
 import { Badge } from "../components/ui/Badge";
 import { Panel } from "../components/ui/Panel";
 
 export function AdminPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
+      <PageMeta
+        title="Admin"
+        description="Admin placeholder for future thia.lol platform operations."
+        path="/admin"
+      />
       <Panel className="p-5 sm:p-6">
         <Badge tone="rose">admin placeholder</Badge>
         <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">

@@ -24,6 +24,7 @@ export function Avatar({ user, size = "md", className }: AvatarProps) {
   return (
     <div
       aria-label={user.displayName}
+      role="img"
       className={cn(
         "grid shrink-0 place-items-center rounded-full border border-white/35 bg-gradient-to-br text-text shadow-soft",
         sizes[size],
