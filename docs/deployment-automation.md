@@ -18,6 +18,18 @@ A good deploy should:
 - Keep `index.html` uncached or revalidated so new builds are picked up quickly.
 - Run verification before uploading.
 
+## Codex git workflow
+
+Codex should sync before deploy-related work and push after committing:
+
+```bash
+git pull --rebase
+# make changes, verify, commit
+git push
+```
+
+A pushed commit to `main` is expected to trigger GitHub Actions deployment. If push fails, the change is not deployed and Codex must report the failure.
+
 ## Important cPanel constraints
 
 Pebblehost/cPanel may not provide SSH access. Assume deploys must work over FTP/SFTP or cPanel File Manager.
@@ -200,6 +212,7 @@ The frontend can optionally expose this in `/studio` or `/admin` so you can conf
 
 ```text
 Read AGENTS.md and docs/deployment-automation.md.
+Pull latest changes with git pull --rebase before editing.
 
 Task:
 Audit and refresh the cPanel FTP deployment workflow.
@@ -215,6 +228,7 @@ Requirements:
 8. Generate a `deploy-meta.json` file in `dist/` containing commit SHA and build time.
 9. Do not require SSH.
 10. Do not change frontend design.
+11. Commit verified changes and push with git push so GitHub Actions deploys.
 
 Output:
 - Files changed.
@@ -222,12 +236,14 @@ Output:
 - Required GitHub Secrets.
 - Exact server directories used.
 - Verification commands run.
+- Commit SHA and push result.
 ```
 
 ## Suggested Codex task: live deploy indicator
 
 ```text
 Read AGENTS.md and docs/deployment-automation.md.
+Pull latest changes with git pull --rebase before editing.
 
 Task:
 Add a lightweight live deploy indicator for admin/studio debugging.
@@ -239,6 +255,7 @@ Requirements:
 4. If the file is missing, show a quiet fallback state.
 5. Do not expose secrets or server paths.
 6. Do not change public marketing copy.
+7. Commit verified changes and push with git push.
 
 Verification:
 - npm run typecheck
