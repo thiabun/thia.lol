@@ -11,8 +11,10 @@ import { getFallbackProfile, getProfile } from "../lib/api";
 import { useAsyncData } from "../lib/useAsyncData";
 
 export function ProfilePage() {
-  const { handle = "thia" } = useParams();
-  const normalizedHandle = handle.replace(/^@/, "").toLowerCase();
+  const { handle, profileHandle } = useParams();
+  const normalizedHandle = (handle ?? profileHandle ?? "thia")
+    .replace(/^@/, "")
+    .toLowerCase();
   const fallbackProfile = useMemo(
     () => getFallbackProfile(normalizedHandle),
     [normalizedHandle],

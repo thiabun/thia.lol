@@ -1,5 +1,5 @@
 import { MotionConfig } from "motion/react";
-import { Navigate, Route, Routes, useLocation } from "react-router";
+import { Navigate, Route, Routes, useLocation, useParams } from "react-router";
 import { useEffect } from "react";
 import { AppShell } from "./components/layout/AppShell";
 import { AdminPage } from "./pages/AdminPage";
@@ -19,17 +19,27 @@ export default function App() {
           <Route index element={<HomePage />} />
           <Route path="discover" element={<DiscoverPage />} />
           <Route path="rooms" element={<RoomsPage />} />
-          <Route path="@:handle" element={<ProfilePage />} />
           <Route path="@/:handle" element={<ProfilePage />} />
           <Route path="studio" element={<StudioPage />} />
           <Route path="admin" element={<AdminPage />} />
           <Route path="login" element={<AuthPage mode="login" />} />
           <Route path="register" element={<AuthPage mode="register" />} />
+          <Route path=":profileHandle" element={<ProfileHandleRoute />} />
           <Route path="*" element={<Navigate to="/discover" replace />} />
         </Route>
       </Routes>
     </MotionConfig>
   );
+}
+
+function ProfileHandleRoute() {
+  const { profileHandle = "" } = useParams();
+
+  if (profileHandle.startsWith("@")) {
+    return <ProfilePage />;
+  }
+
+  return <Navigate to="/discover" replace />;
 }
 
 function ScrollToTop() {
