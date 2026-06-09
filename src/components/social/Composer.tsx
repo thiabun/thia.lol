@@ -30,7 +30,7 @@ export function Composer({ rooms, onCreated }: ComposerProps) {
     event.preventDefault();
 
     if (!signedIn) {
-      setError("Login to publish a signal.");
+      setError("Login to publish a post.");
       return;
     }
 
@@ -49,7 +49,7 @@ export function Composer({ rooms, onCreated }: ComposerProps) {
       setBody("");
       onCreated(post);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The signal could not post.");
+      setError(caught instanceof Error ? caught.message : "The post could not be published.");
     } finally {
       setSubmitting(false);
     }
@@ -59,7 +59,7 @@ export function Composer({ rooms, onCreated }: ComposerProps) {
     <Panel className="p-4 sm:p-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-text">New signal</p>
+          <p className="text-sm font-semibold text-text">New post</p>
           <p className="mt-1 text-xs text-muted">{activeRoomName} · public room</p>
         </div>
         <Badge tone="warm">

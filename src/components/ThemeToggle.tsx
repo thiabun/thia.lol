@@ -9,8 +9,8 @@ const themes: Array<{
   label: string;
   icon: typeof Sun;
 }> = [
-  { value: "sunveil", label: "Sunveil", icon: Sun },
-  { value: "frostveil", label: "Frostveil", icon: Moon },
+  { value: "sunveil", label: "Light mode", icon: Sun },
+  { value: "frostveil", label: "Dark mode", icon: Moon },
 ];
 
 export function ThemeToggle({ compact = false }: { compact?: boolean }) {
@@ -18,7 +18,7 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
 
   if (compact) {
     const Icon = theme === "sunveil" ? Moon : Sun;
-    const next = theme === "sunveil" ? "Frostveil" : "Sunveil";
+    const next = theme === "sunveil" ? "Dark mode" : "Light mode";
 
     return (
       <Button
@@ -47,14 +47,13 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
           title={label}
           onClick={() => setTheme(value)}
           className={cn(
-            "inline-flex min-h-9 items-center justify-center gap-2 rounded-full px-3 text-xs font-medium transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+            "inline-flex min-h-9 min-w-9 items-center justify-center rounded-full px-2 text-xs font-medium transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
             theme === value
               ? "bg-accent text-accent-ink shadow-soft"
               : "text-muted hover:bg-surface-strong hover:text-text",
           )}
         >
           <Icon aria-hidden="true" size={15} />
-          <span className="hidden sm:inline">{label}</span>
         </button>
       ))}
     </div>

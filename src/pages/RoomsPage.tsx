@@ -36,17 +36,17 @@ export function RoomsPage() {
     <div className="space-y-6">
       <PageMeta
         title="Rooms"
-        description="Browse live and slow rooms shaping the thia.lol platform."
+        description="Browse rooms on thia.lol."
         path="/rooms"
       />
       <section className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
         <Panel className="p-5 sm:p-6">
           <Badge tone="leaf">rooms</Badge>
           <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">
-            Rooms shape the platform.
+            Pick a room and settle in.
           </h1>
           <p className="mt-3 text-base leading-7 text-muted">
-            Join places with a mood, a pace, and a little bit of memory.
+            Each room has its own pace, topic, and little crowd.
           </p>
           <SearchField
             id="room-search"
@@ -90,15 +90,15 @@ export function RoomsPage() {
         <ApiStateNotice
           kind="loading"
           title="Opening rooms"
-          text="Public rooms are loading from the read-only API."
+          text="Rooms are loading."
         />
       ) : null}
 
       {roomsState.usingFallback || selectedState.usingFallback ? (
         <ApiStateNotice
           kind="fallback"
-          title="Showing local rooms"
-          text="The PHP API did not answer, so this page is using the bundled room data."
+          title="Showing a saved view"
+          text="Rooms are taking a moment to refresh."
         />
       ) : null}
 
@@ -111,7 +111,7 @@ export function RoomsPage() {
           <EmptyState
             icon={Radio}
             title="No public rooms yet"
-            text="Rooms will appear here once the API has public data to return."
+            text="Rooms will appear here once there is something to show."
             className="md:col-span-2 xl:col-span-4"
           />
         )}

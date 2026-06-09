@@ -104,7 +104,7 @@ export function HomePage() {
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_370px]">
       <PageMeta
         title="thia.lol"
-        description="An experimental social platform  by thiabun, built around freedom and fun, plus her personal portfolio!"
+        description="A small social place for posts, rooms, and profiles."
         path="/"
       />
       <section className="space-y-5" aria-label="Home feed">
@@ -118,12 +118,11 @@ export function HomePage() {
               <div className="p-5 sm:p-6">
                 <Badge tone="warm">info</Badge>
                 <h1 className="mt-4 max-w-2xl text-3xl font-semibold tracking-normal text-text sm:text-4xl">
-                  An experimental social platform by thiabun, built around
-                  freedom and fun, plus her personal portfolio!
+                  A softer place to post, wander, and find your people.
                 </h1>
                 <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
-                  Welcome! Feel free to explore the different pages and
-                  features. ♡
+                  Drop into rooms, read what people are sharing, or make a
+                  profile when you are ready.
                 </p>
                 <div className="mt-5 flex flex-wrap gap-3">
                   <ButtonLink
@@ -153,7 +152,7 @@ export function HomePage() {
                     Notice
                   </p>
                   <p className="mt-2 text-lg font-semibold text-text">
-                    This site is under development · Brace for bugs!
+                    thia.lol is new. Things may still shift a little.
                   </p>
                 </div>
               </div>
@@ -174,8 +173,8 @@ export function HomePage() {
         {feedState.usingFallback ? (
           <ApiStateNotice
             kind="fallback"
-            title="Showing fallback"
-            text="The PHP API did not answer, so recent posts are using bundled mock data."
+            title="Showing a saved view"
+            text="Recent posts are taking a moment to refresh."
           />
         ) : null}
 
@@ -188,7 +187,7 @@ export function HomePage() {
         <div className="flex items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold text-text">Recent posts</h2>
-            <p className="mt-1 text-sm text-muted">The freshest, trust!</p>
+            <p className="mt-1 text-sm text-muted">Fresh notes from around the site.</p>
           </div>
           <ButtonLink
             to="/discover"
@@ -223,9 +222,7 @@ export function HomePage() {
               <h2 className="text-base font-semibold text-text">
                 Current stats
               </h2>
-              <p className="text-sm text-muted">
-                Petite, skinny, slightly lacking
-              </p>
+              <p className="text-sm text-muted">Small for now, easy to follow.</p>
             </div>
           </div>
           <div className="mt-5 grid grid-cols-2 gap-3">
@@ -249,7 +246,7 @@ export function HomePage() {
               <ApiStateNotice
                 kind="fallback"
                 title="Showing local rooms"
-                text="Room cards are using bundled data until the API responds."
+                text="Rooms are taking a moment to refresh."
               />
             </div>
           ) : null}

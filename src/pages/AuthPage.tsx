@@ -58,8 +58,8 @@ export function AuthPage({ mode }: AuthPageProps) {
         title={isRegister ? "Register" : "Login"}
         description={
           isRegister
-            ? "Create a thia.lol profile through the PHP API account flow."
-            : "Return to thia.lol through the PHP API account flow."
+            ? "Create a thia.lol profile."
+            : "Return to thia.lol."
         }
         path={isRegister ? "/register" : "/login"}
       />
@@ -69,12 +69,12 @@ export function AuthPage({ mode }: AuthPageProps) {
             {isRegister ? "register" : "login"}
           </Badge>
           <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">
-            {isRegister ? "Create your place in the platform." : "Return to the room."}
+            {isRegister ? "Create your profile." : "Welcome back."}
           </h1>
           <p className="mt-3 text-base leading-7 text-muted">
             {isRegister
-              ? "Set up a profile, choose a handle, and start with quiet defaults."
-              : "Use your account to return with the same soft defaults."}
+              ? "Choose a handle and start posting when you are ready."
+              : "Sign in to post, react, and keep your place."}
           </p>
 
           {status === "authenticated" && user ? (
@@ -175,9 +175,9 @@ export function AuthPage({ mode }: AuthPageProps) {
         <div className="relative min-h-72 overflow-hidden border-t border-line lg:border-l lg:border-t-0">
           <AmbientImage className="absolute inset-0" overlay />
           <div className="absolute inset-x-5 bottom-5 rounded-card border border-white/35 bg-surface/72 p-4 shadow-soft backdrop-blur-veil">
-            <p className="text-sm font-semibold text-text">Sunveil / Frostveil</p>
+            <p className="text-sm font-semibold text-text">Your corner of thia.lol</p>
             <p className="mt-2 text-sm leading-6 text-muted">
-              Theme, room, and identity state now move through the PHP API.
+              Keep your profile, rooms, and posts close at hand.
             </p>
           </div>
         </div>

@@ -62,7 +62,7 @@ export const rooms: Room[] = [
     slug: "garden-protocol",
     name: "Garden Protocol",
     summary: "Designing care into tools, communities, defaults, and daily interfaces.",
-    mood: "green signal",
+    mood: "green room",
     members: 402,
     live: false,
     accent: "var(--accent-leaf)",
@@ -162,15 +162,15 @@ export const posts: Post[] = [
 export const discoverItems: DiscoverItem[] = [
   {
     id: 1,
-    label: "Ambient communities",
-    description: "Rooms that stay legible when everyone is moving at different speeds.",
+    label: "Easygoing rooms",
+    description: "Spaces for slower conversations and small updates.",
     count: "24 threads",
     kind: "thread",
   },
   {
     id: 2,
-    label: "Studio rituals",
-    description: "Draft flows, soft publishing, and ways to make unfinished work visible.",
+    label: "Post ideas",
+    description: "Prompts, drafts, and rooms where unfinished thoughts can land.",
     count: "18 rooms",
     kind: "room",
   },

@@ -36,8 +36,8 @@ export function ProfilePage() {
         />
         <EmptyState
           icon={MessageCircle}
-          title="Profile warming up"
-          text="The profile route is settling into its fallback data."
+          title="Profile not ready yet"
+          text="This profile is not available right now."
         />
       </>
     );
@@ -55,18 +55,18 @@ export function ProfilePage() {
         <ApiStateNotice
           kind="loading"
           title={`Loading @${normalizedHandle}`}
-          text="Profile details are loading from the read-only API."
+          text="Profile details are loading."
         />
       ) : null}
       {profileState.usingFallback ? (
         <ApiStateNotice
           kind="fallback"
           title={`Showing local @${normalizedHandle}`}
-          text="The PHP API did not answer, so this profile is using bundled mock data."
+          text="This profile is taking a moment to refresh."
         />
       ) : null}
       <div>
-        <h2 className="mb-3 text-xl font-semibold text-text">Signals</h2>
+        <h2 className="mb-3 text-xl font-semibold text-text">Posts</h2>
         {profilePosts.length > 0 ? (
           <div className="space-y-4">
             {profilePosts.map((post, index) => (
@@ -76,8 +76,8 @@ export function ProfilePage() {
         ) : (
           <EmptyState
             icon={MessageCircle}
-            title="No public signals yet"
-            text="This profile has room to become more visible over time."
+            title="No public posts yet"
+            text="Posts from this profile will appear here."
           />
         )}
       </div>

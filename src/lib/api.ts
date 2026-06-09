@@ -264,7 +264,7 @@ function makeFallbackProfile(handle: string): Profile {
       initials: (displayName || cleanHandle).slice(0, 2).toUpperCase(),
       aura: "tide",
     },
-    bio: "A profile waiting for its first signal.",
+    bio: "A profile waiting for its first post.",
     location: "thia.lol",
     links: [],
     traits: ["new", "quiet", "unclaimed"],

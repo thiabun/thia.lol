@@ -18,15 +18,15 @@ export function StudioPage() {
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
       <PageMeta
-        title="Studio"
-        description="Draft room-aware signals for thia.lol."
+        title="Post"
+        description="Draft a post for thia.lol."
         path="/studio"
       />
       <section className="space-y-5">
         <Panel className="p-5 sm:p-6">
-          <Badge tone="warm">studio</Badge>
+          <Badge tone="warm">post</Badge>
           <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">
-            Draft a signal with room-aware texture.
+            Draft a post for a room.
           </h1>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <SelectField
@@ -43,11 +43,11 @@ export function StudioPage() {
             />
           </div>
           <TextareaField
-            id="studio-signal"
-            label="Signal"
+            id="studio-post"
+            label="Post"
             icon={PenLine}
             className="mt-4 min-h-64"
-            placeholder="Write from the room outward."
+            placeholder="Write what you want to share."
           />
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <div className="flex gap-2">
@@ -81,9 +81,9 @@ export function StudioPage() {
               <Eye aria-hidden="true" size={13} />
               preview
             </Badge>
-            <h2 className="mt-4 text-lg font-semibold text-text">Signal preview</h2>
+            <h2 className="mt-4 text-lg font-semibold text-text">Post preview</h2>
             <p className="mt-2 text-sm leading-6 text-muted">
-              Draft previews will inherit room mood, theme tokens, and reaction affordances.
+              Draft previews will use the selected room and visibility.
             </p>
           </div>
         </Panel>
@@ -92,7 +92,7 @@ export function StudioPage() {
           <div className="mt-4 space-y-3">
             <ChecklistItem label="Room selected" active />
             <ChecklistItem label="Draft saved locally" active />
-            <ChecklistItem label="API connection" />
+            <ChecklistItem label="Ready to publish" />
           </div>
         </Panel>
       </aside>

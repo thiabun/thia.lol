@@ -28,7 +28,7 @@ export function DiscoverPage() {
   const [pendingPostId, setPendingPostId] = useState<number | undefined>();
   const [postActionError, setPostActionError] = useState<string | undefined>();
   const feedPosts = postsState.data ?? fallbackPosts;
-  const signalPosts = useMemo(
+  const visiblePosts = useMemo(
     () => feedPosts.filter((post) => !removedPostIds.has(post.id)),
     [feedPosts, removedPostIds],
   );
@@ -79,19 +79,19 @@ export function DiscoverPage() {
     <div className="space-y-6">
       <PageMeta
         title="Discover"
-        description="Find rooms, people, and platform signals across thia.lol."
+        description="Find rooms, people, and recent posts across thia.lol."
         path="/discover"
       />
       <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <Panel className="p-5 sm:p-6">
           <Badge tone="cool">discover</Badge>
           <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">
-            Find the rooms and signals with a living edge.
+            Find rooms, people, and recent posts.
           </h1>
           <SearchField
             id="discover-search"
             label="Search"
-            placeholder="Search people, rooms, fragments"
+            placeholder="Search people, rooms, posts"
             className="mt-5"
           />
         </Panel>
@@ -99,9 +99,9 @@ export function DiscoverPage() {
         <Panel className="overflow-hidden">
           <AmbientImage className="aspect-[16/10] w-full" />
           <div className="p-5">
-            <p className="text-sm font-semibold text-text">Platform field</p>
+            <p className="text-sm font-semibold text-text">Browse around</p>
             <p className="mt-2 text-sm leading-6 text-muted">
-              Warm discovery in Sunveil, cooler signal reading in Frostveil.
+              A few good places to start, from active rooms to friendly profiles.
             </p>
           </div>
         </Panel>
@@ -110,16 +110,16 @@ export function DiscoverPage() {
       {postsState.loading ? (
         <ApiStateNotice
           kind="loading"
-          title="Gathering public signals"
-          text="Fresh posts are arriving from the read-only API."
+          title="Loading recent posts"
+          text="Fresh posts are on the way."
         />
       ) : null}
 
       {postsState.usingFallback ? (
         <ApiStateNotice
           kind="fallback"
-          title="Showing local signals"
-          text="The PHP API did not answer, so the discover feed is using the bundled mock posts."
+          title="Showing a saved view"
+          text="Recent posts are taking a moment to refresh."
         />
       ) : null}
 
@@ -131,11 +131,11 @@ export function DiscoverPage() {
 
       <section aria-label="Recent public posts">
         <div className="mb-3 flex items-center justify-between gap-4">
-          <h2 className="text-xl font-semibold text-text">Recent signals</h2>
+          <h2 className="text-xl font-semibold text-text">Recent posts</h2>
           <Badge tone="warm">public</Badge>
         </div>
         <div className="space-y-4">
-          {signalPosts.map((post, index) => (
+          {visiblePosts.map((post, index) => (
             <PostCard
               key={post.id}
               post={post}

@@ -3,40 +3,46 @@ import {
   Home,
   LogIn,
   LogOut,
-  PenLine,
   Radio,
   Shield,
   UserRound,
   UserPlus,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { NavLink, Outlet } from "react-router";
 import { ThemeToggle } from "../ThemeToggle";
 import { Button, ButtonLink } from "../ui/Button";
 import { cn } from "../../lib/classNames";
 import { useAuth } from "../../lib/useAuth";
 
-const navItems = [
+const publicNavItems = [
   { to: "/", label: "Home", icon: Home },
   { to: "/discover", label: "Discover", icon: Compass },
   { to: "/rooms", label: "Rooms", icon: Radio },
-  { to: "/studio", label: "Studio", icon: PenLine },
-  { to: "/admin", label: "Admin", icon: Shield },
 ];
 
+const adminNavItem = { to: "/admin", label: "Admin", icon: Shield };
+
 export function AppShell() {
+  const { status, user } = useAuth();
+  const navItems =
+    status === "authenticated" && user?.role === "admin"
+      ? [...publicNavItems, adminNavItem]
+      : publicNavItems;
+
   return (
     <div className="min-h-dvh bg-canvas text-text">
       <div className="fixed inset-0 -z-10 bg-page-wash" />
-      <SiteHeader />
+      <SiteHeader navItems={navItems} />
       <main className="mx-auto w-full max-w-7xl px-4 pb-28 pt-5 sm:px-6 lg:px-8">
         <Outlet />
       </main>
-      <MobileDock />
+      <MobileDock navItems={navItems} />
     </div>
   );
 }
 
-function SiteHeader() {
+function SiteHeader({ navItems }: { navItems: NavItemProps[] }) {
   const { logout, status, user } = useAuth();
 
   return (
@@ -75,10 +81,12 @@ function SiteHeader() {
             <>
               <NavLink
                 to={`/@${user.handle}`}
-                className="hidden min-h-10 items-center gap-2 rounded-full border border-line bg-surface px-3 text-sm font-medium text-text shadow-soft transition duration-fluid ease-fluid hover:border-line-strong sm:inline-flex"
+                className="inline-flex min-h-10 items-center gap-2 rounded-full border border-line bg-surface px-3 text-sm font-medium text-text shadow-soft transition duration-fluid ease-fluid hover:border-line-strong"
+                aria-label={`Open @${user.handle}`}
+                title={`@${user.handle}`}
               >
                 <UserRound aria-hidden="true" size={16} />
-                <span className="max-w-32 truncate">@{user.handle}</span>
+                <span className="hidden max-w-32 truncate sm:inline">@{user.handle}</span>
               </NavLink>
               <Button
                 type="button"
@@ -149,7 +157,7 @@ function SiteHeader() {
 type NavItemProps = {
   to: string;
   label: string;
-  icon: typeof Home;
+  icon: LucideIcon;
 };
 
 function DesktopNavItem({ to, label, icon: Icon }: NavItemProps) {
@@ -172,10 +180,13 @@ function DesktopNavItem({ to, label, icon: Icon }: NavItemProps) {
   );
 }
 
-function MobileDock() {
+function MobileDock({ navItems }: { navItems: NavItemProps[] }) {
   return (
     <nav
-      className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 gap-1 rounded-panel border border-line bg-surface/88 p-2 shadow-lift backdrop-blur-veil lg:hidden"
+      className={cn(
+        "fixed inset-x-3 bottom-3 z-40 grid gap-1 rounded-panel border border-line bg-surface/88 p-2 shadow-lift backdrop-blur-veil lg:hidden",
+        navItems.length === 4 ? "grid-cols-4" : "grid-cols-3",
+      )}
       aria-label="Primary"
     >
       {navItems.map(({ to, label, icon: Icon }) => (
