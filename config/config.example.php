@@ -11,6 +11,7 @@ return [
     'security' => [
         'cookie_name' => 'thia_session',
         'csrf_secret' => 'replace-with-a-long-random-secret',
+        'account_setup_token' => '',
         'session_lifetime_seconds' => 2592000,
         'login_rate_limit_attempts' => 8,
         'login_rate_limit_window_seconds' => 900,
