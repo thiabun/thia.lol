@@ -2,6 +2,8 @@
 
 Use these browser checks when production appears logged in but authenticated API calls return `401`.
 
+Admin diagnostics are intentionally retained behind the server-only migration token. Login and register responses only include cookie diagnostics when `app.debug` is explicitly `true`.
+
 Production should be used consistently at:
 
 ```text
@@ -75,6 +77,8 @@ The diagnostics response reports the request host, HTTPS detection, configured c
 
 Do not paste real migration tokens into committed files, tickets, docs, or chat.
 
+Secrets used while diagnosing production auth were rotated manually. Keep future rotation records outside the repo.
+
 ## Session trace sequence
 
 Use this trace when `/api/auth/me` succeeds once and then returns `401` while the browser still appears to send the same cookie.
@@ -119,11 +123,40 @@ ALTER TABLE sessions
   MODIFY last_seen_at DATETIME NULL DEFAULT NULL;
 ```
 
+`sessions.expires_at` must remain `DATETIME NOT NULL` and must not have `DEFAULT CURRENT_TIMESTAMP` or `ON UPDATE CURRENT_TIMESTAMP`. It is set explicitly by application code when a session is created. `sessions.last_seen_at` may be updated by `/api/auth/me` through `current_session()`.
+
 After deploying and running the migration, delete damaged production sessions and log in again:
 
 ```sql
 DELETE FROM sessions;
 ```
+
+Migration status and run verification:
+
+1. While logged in as an admin, check status with the server-only token:
+
+```js
+await fetch("/api/admin/migrations/status", {
+  credentials: "include",
+  headers: {
+    "X-Migration-Token": "replace-with-token-from-server-config",
+  },
+}).then((response) => response.json());
+```
+
+2. Run pending migrations with the same admin session and token:
+
+```js
+await fetch("/api/admin/migrations/run", {
+  method: "POST",
+  credentials: "include",
+  headers: {
+    "X-Migration-Token": "replace-with-token-from-server-config",
+  },
+}).then((response) => response.json());
+```
+
+3. Check status again and confirm `20260609_0003_fix_session_expiry_datetime.sql` is applied with the expected checksum and `applied_at`.
 
 Verification:
 

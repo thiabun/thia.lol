@@ -51,6 +51,11 @@ function api_is_production(): bool
     return $environment === 'production' && !$debug;
 }
 
+function api_debug_enabled(): bool
+{
+    return (bool) (api_config()['app']['debug'] ?? false);
+}
+
 function json_response(array $payload, int $status = 200): void
 {
     http_response_code($status);

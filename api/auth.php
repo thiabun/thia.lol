@@ -160,7 +160,7 @@ function auth_session_response_payload(array $session): array
         'csrfToken' => csrf_token_for_session($session),
     ];
 
-    if (!api_is_production()) {
+    if (api_debug_enabled()) {
         $payload['cookieDiagnostics'] = session_cookie_debug_payload();
     }
 
