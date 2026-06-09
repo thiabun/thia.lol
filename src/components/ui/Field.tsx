@@ -4,6 +4,7 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
+import { forwardRef } from "react";
 import { Search, type LucideIcon } from "lucide-react";
 import { cn } from "../../lib/classNames";
 
@@ -72,24 +73,23 @@ type TextareaFieldProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
   hideLabel?: boolean | undefined;
 };
 
-export function TextareaField({
-  id,
-  label,
-  icon,
-  hideLabel,
-  className,
-  ...props
-}: TextareaFieldProps) {
-  return (
-    <FieldShell id={id} label={label} icon={icon} hideLabel={hideLabel}>
-      <textarea
-        id={id}
-        className={cn(controlClass, "resize-none py-3 leading-6", className)}
-        {...props}
-      />
-    </FieldShell>
-  );
-}
+export const TextareaField = forwardRef<HTMLTextAreaElement, TextareaFieldProps>(
+  function TextareaField(
+    { id, label, icon, hideLabel, className, ...props },
+    ref,
+  ) {
+    return (
+      <FieldShell id={id} label={label} icon={icon} hideLabel={hideLabel}>
+        <textarea
+          ref={ref}
+          id={id}
+          className={cn(controlClass, "resize-none py-3 leading-6", className)}
+          {...props}
+        />
+      </FieldShell>
+    );
+  },
+);
 
 type SelectFieldProps = SelectHTMLAttributes<HTMLSelectElement> & {
   id: string;

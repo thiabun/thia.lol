@@ -8,14 +8,13 @@ import {
   UsersRound,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageMeta } from "../components/PageMeta";
 import { ButtonLink } from "../components/ui/Button";
 import { AmbientImage } from "../components/ui/AmbientImage";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Badge } from "../components/ui/Badge";
 import { Panel } from "../components/ui/Panel";
-import { Composer } from "../components/social/Composer";
 import { PostCard } from "../components/social/PostCard";
 import { RoomCard } from "../components/social/RoomCard";
 import {
@@ -25,6 +24,7 @@ import {
 } from "../data/mockData";
 import { deletePost, getFeed, getRooms, getStats, updatePost } from "../lib/api";
 import { pluralize } from "../lib/pluralize";
+import { postCreatedEventName } from "../lib/postEvents";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
 import type { Post, PublicStats } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
@@ -67,14 +67,28 @@ export function HomePage() {
   const rooms = roomsState.data ?? fallbackRooms;
   const stats = statsState.data ?? fallbackStats;
 
-  function handlePostCreated(post: Post) {
+  const handlePostCreated = useCallback((post: Post) => {
     setCreatedPosts((current) => [post, ...current]);
     setRemovedPostIds((current) => {
       const next = new Set(current);
       next.delete(post.id);
       return next;
     });
-  }
+  }, []);
+
+  useEffect(() => {
+    function handleCreated(event: Event) {
+      const post = (event as CustomEvent<Post>).detail;
+
+      if (post) {
+        handlePostCreated(post);
+      }
+    }
+
+    window.addEventListener(postCreatedEventName, handleCreated);
+
+    return () => window.removeEventListener(postCreatedEventName, handleCreated);
+  }, [handlePostCreated]);
 
   async function handleDeletePost(post: Post) {
     if (!csrfToken) {
@@ -182,8 +196,6 @@ export function HomePage() {
             </div>
           </Panel>
         </motion.div>
-
-        <Composer rooms={rooms} onCreated={handlePostCreated} />
 
         {feedState.loading ? (
           <ApiStateNotice

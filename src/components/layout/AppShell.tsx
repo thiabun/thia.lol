@@ -3,6 +3,7 @@ import {
   Home,
   LogIn,
   LogOut,
+  PenLine,
   Radio,
   Shield,
   UserRound,
@@ -12,10 +13,15 @@ import type { LucideIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { NavLink, Outlet } from "react-router";
+import { NavLink, Outlet, useNavigate } from "react-router";
+import { PostComposerModal } from "../social/PostComposerModal";
 import { ThemeToggle } from "../ThemeToggle";
 import { Button } from "../ui/Button";
+import { rooms as fallbackRooms } from "../../data/mockData";
+import { getRooms } from "../../lib/api";
 import { cn } from "../../lib/classNames";
+import { emitPostCreated } from "../../lib/postEvents";
+import { useAsyncData } from "../../lib/useAsyncData";
 import { useAuth } from "../../lib/useAuth";
 
 const publicNavItems = [
@@ -27,11 +33,25 @@ const publicNavItems = [
 const adminNavItem = { to: "/admin", label: "Admin", icon: Shield };
 
 export function AppShell() {
-  const { status, user } = useAuth();
+  const { csrfToken, status, user } = useAuth();
+  const navigate = useNavigate();
+  const roomsState = useAsyncData(getRooms, fallbackRooms);
+  const [composerOpen, setComposerOpen] = useState(false);
   const navItems =
     status === "authenticated" && user?.role === "admin"
       ? [...publicNavItems, adminNavItem]
       : publicNavItems;
+  const postingDisabled = status === "loading";
+  const rooms = roomsState.data ?? fallbackRooms;
+
+  function handlePostClick() {
+    if (status === "authenticated" && user && csrfToken) {
+      setComposerOpen(true);
+      return;
+    }
+
+    navigate("/login");
+  }
 
   return (
     <div className="min-h-dvh bg-canvas text-text">
@@ -40,7 +60,27 @@ export function AppShell() {
       <main className="mx-auto w-full max-w-7xl px-4 pb-28 pt-5 sm:px-6 lg:px-8">
         <Outlet />
       </main>
-      <MobileDock navItems={navItems} />
+      <Button
+        type="button"
+        className="fixed bottom-6 right-6 z-40 hidden rounded-full px-5 shadow-lift lg:inline-flex"
+        disabled={postingDisabled}
+        icon={<PenLine aria-hidden="true" size={18} />}
+        onClick={handlePostClick}
+      >
+        Post
+      </Button>
+      <MobileDock
+        navItems={navItems}
+        onPostClick={handlePostClick}
+        postDisabled={postingDisabled}
+      />
+      <PostComposerModal
+        csrfToken={csrfToken}
+        onClose={() => setComposerOpen(false)}
+        onCreated={emitPostCreated}
+        open={composerOpen}
+        rooms={rooms}
+      />
     </div>
   );
 }
@@ -239,16 +279,26 @@ function DesktopNavItem({ to, label, icon: Icon }: NavItemProps) {
   );
 }
 
-function MobileDock({ navItems }: { navItems: NavItemProps[] }) {
+function MobileDock({
+  navItems,
+  onPostClick,
+  postDisabled,
+}: {
+  navItems: NavItemProps[];
+  onPostClick: () => void;
+  postDisabled: boolean;
+}) {
+  const mobilePositions =
+    navItems.length === 4
+      ? ["col-start-1", "col-start-2", "col-start-4", "col-start-5"]
+      : ["col-start-1", "col-start-2", "col-start-4"];
+
   return (
     <nav
-      className={cn(
-        "fixed inset-x-3 bottom-3 z-40 grid gap-1 rounded-panel border border-line bg-surface/88 p-2 shadow-lift backdrop-blur-veil lg:hidden",
-        navItems.length === 4 ? "grid-cols-4" : "grid-cols-3",
-      )}
+      className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 gap-1 rounded-panel border border-line bg-surface/88 p-2 shadow-lift backdrop-blur-veil lg:hidden"
       aria-label="Primary"
     >
-      {navItems.map(({ to, label, icon: Icon }) => (
+      {navItems.map(({ to, label, icon: Icon }, index) => (
         <NavLink
           key={to}
           to={to}
@@ -256,6 +306,7 @@ function MobileDock({ navItems }: { navItems: NavItemProps[] }) {
           className={({ isActive }) =>
             cn(
               "grid min-h-12 place-items-center rounded-card text-xs font-medium transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+              mobilePositions[index],
               isActive
                 ? "bg-accent text-accent-ink shadow-soft"
                 : "text-muted hover:bg-surface-strong hover:text-text",
@@ -266,6 +317,15 @@ function MobileDock({ navItems }: { navItems: NavItemProps[] }) {
           <span className="mt-1">{label}</span>
         </NavLink>
       ))}
+      <Button
+        type="button"
+        className="absolute left-1/2 top-0 size-14 -translate-x-1/2 -translate-y-5 rounded-full shadow-lift"
+        disabled={postDisabled}
+        aria-label="Create post"
+        title="Post"
+        icon={<PenLine aria-hidden="true" size={21} />}
+        onClick={onPostClick}
+      />
     </nav>
   );
 }

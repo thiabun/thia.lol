@@ -8,7 +8,6 @@ import { DiscoverPage } from "./pages/DiscoverPage";
 import { HomePage } from "./pages/HomePage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { RoomsPage } from "./pages/RoomsPage";
-import { StudioPage } from "./pages/StudioPage";
 
 export default function App() {
   return (
@@ -20,7 +19,7 @@ export default function App() {
           <Route path="discover" element={<DiscoverPage />} />
           <Route path="rooms" element={<RoomsPage />} />
           <Route path="@/:handle" element={<ProfilePage />} />
-          <Route path="studio" element={<StudioPage />} />
+          <Route path="studio" element={<Navigate to="/discover" replace />} />
           <Route path="admin" element={<AdminPage />} />
           <Route path="login" element={<AuthPage mode="login" />} />
           <Route path="register" element={<AuthPage mode="register" />} />
