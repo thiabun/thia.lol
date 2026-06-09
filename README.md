@@ -40,6 +40,59 @@ npm run build
 
 The production build is written to `dist/`.
 
+## Browser Smoke Tests
+
+Playwright smoke tests cover the browser-only flows that are easy to miss in static checks: session persistence, account menu state, composer layout, reply modal behavior, and mobile header/dock layout.
+
+Install Chromium before running tests:
+
+```bash
+npx playwright install chromium
+```
+
+On Linux environments that need system packages, use:
+
+```bash
+npx playwright install --with-deps chromium
+```
+
+Run the local e2e suite against a Vite dev server started by Playwright:
+
+```bash
+npm run test:e2e
+```
+
+Open the Playwright UI runner:
+
+```bash
+npm run test:e2e:ui
+```
+
+Run smoke tests against an already-running local server or production:
+
+```bash
+npm run test:smoke
+THIA_BASE_URL=https://thia.lol npm run test:smoke
+```
+
+Authenticated production smoke tests require credentials from environment variables. Do not put these in git:
+
+```bash
+THIA_BASE_URL=https://thia.lol \
+THIA_TEST_EMAIL="admin@example.com" \
+THIA_TEST_PASSWORD="..." \
+npm run test:smoke
+```
+
+Optional environment variables:
+
+- `THIA_BASE_URL`: target origin, defaulting to `http://localhost:5173`.
+- `THIA_TEST_EMAIL`: test account email for login smoke tests.
+- `THIA_TEST_PASSWORD`: test account password for login smoke tests.
+- `THIA_MIGRATION_TOKEN`: reserved for protected migration checks if those are added later.
+
+If credentials are not set, authenticated smoke tests are skipped and anonymous layout/thread checks still run. Playwright output is ignored via `playwright-report/` and `test-results/`; browser binaries should not be committed.
+
 ## Deploying to cPanel
 
 This app is configured for the domain root with Vite `base: "/"`, so deploy it directly to `public_html` for `https://thia.lol/`.

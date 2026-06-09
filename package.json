@@ -8,6 +8,9 @@
     "build": "npm run optimize:assets && tsc -b && vite build",
     "optimize:assets": "node scripts/optimize-assets.mjs",
     "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:smoke": "PLAYWRIGHT_NO_WEBSERVER=1 playwright test tests/smoke",
     "typecheck": "tsc -b --pretty",
     "lint": "eslint ."
   },
@@ -23,6 +26,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@playwright/test": "^1.60.0",
     "@types/node": "25.9.2",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
