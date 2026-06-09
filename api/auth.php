@@ -105,11 +105,7 @@ function auth_register(): void
 
     $session = create_session_for_user($userId);
 
-    json_success([
-        'user' => auth_user_payload($session),
-        'profile' => auth_profile_payload($session),
-        'csrfToken' => csrf_token_for_session($session),
-    ], 201);
+    json_success(auth_session_response_payload($session), 201);
 }
 
 function auth_login(): void
@@ -145,11 +141,22 @@ function auth_login(): void
 
     $session = create_session_for_user((int) $user['id']);
 
-    json_success([
+    json_success(auth_session_response_payload($session));
+}
+
+function auth_session_response_payload(array $session): array
+{
+    $payload = [
         'user' => auth_user_payload($session),
         'profile' => auth_profile_payload($session),
         'csrfToken' => csrf_token_for_session($session),
-    ]);
+    ];
+
+    if (!api_is_production()) {
+        $payload['cookieDiagnostics'] = session_cookie_debug_payload();
+    }
+
+    return $payload;
 }
 
 function auth_logout(): void
@@ -198,17 +205,25 @@ function auth_diagnostics(): void
     json_success([
         'cookieName' => $cookieName,
         'phpCookieHasName' => array_key_exists($cookieName, $_COOKIE),
+        'rawCookieHeaderPresent' => is_string($_SERVER['HTTP_COOKIE'] ?? null) && (string) $_SERVER['HTTP_COOKIE'] !== '',
         'rawCookieCandidateCount' => count($tokens),
         'validSessionCandidateCount' => $validSessionCount,
         'configuredCookieDomain' => session_cookie_domain(),
         'requestHost' => request_host_name(),
+        'https' => [
+            'detected' => request_is_https(),
+            'httpsServerValue' => $_SERVER['HTTPS'] ?? null,
+            'forwardedProto' => $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? null,
+        ],
         'canonicalCookie' => [
             'path' => '/',
-            'secure' => true,
+            'secure' => session_cookie_secure(),
             'httpOnly' => true,
             'sameSite' => 'Lax',
+            'expiresAt' => gmdate('c', time() + security_config_int('session_lifetime_seconds', 2592000)),
             'hostOnlyByDefault' => session_cookie_domain() === null,
         ],
+        'configuredCookieOptions' => session_cookie_debug_payload(),
         'clearVariants' => session_cookie_clear_variant_summary(),
         'cookies' => $cookieRows,
     ]);
@@ -508,8 +523,14 @@ function session_cookie_tokens(): array
 
 function set_session_cookie(string $token, int $expiresAt): void
 {
-    clear_session_cookie();
-    setcookie(session_cookie_name(), $token, session_cookie_options($expiresAt));
+    $headersSentBeforeSetCookie = headers_sent();
+    $result = setcookie(session_cookie_name(), $token, session_cookie_options($expiresAt));
+
+    session_cookie_set_debug([
+        'headersSentBeforeSetCookie' => $headersSentBeforeSetCookie,
+        'setCookieResult' => $result,
+        'options' => session_cookie_options($expiresAt),
+    ]);
 }
 
 function clear_session_cookie(): void
@@ -531,7 +552,7 @@ function session_cookie_options_for(int $expiresAt, string $path, ?string $domai
     $options = [
         'expires' => $expiresAt,
         'path' => $path,
-        'secure' => true,
+        'secure' => session_cookie_secure(),
         'httponly' => true,
         'samesite' => 'Lax',
     ];
@@ -609,6 +630,68 @@ function request_host_name(): string
     $host = preg_replace('/:\d+$/', '', $host) ?? $host;
 
     return $host;
+}
+
+function request_is_https(): bool
+{
+    $https = strtolower((string) ($_SERVER['HTTPS'] ?? ''));
+
+    if ($https === 'on' || $https === '1') {
+        return true;
+    }
+
+    if ((string) ($_SERVER['SERVER_PORT'] ?? '') === '443') {
+        return true;
+    }
+
+    if (strtolower((string) ($_SERVER['REQUEST_SCHEME'] ?? '')) === 'https') {
+        return true;
+    }
+
+    if (strtolower((string) ($_SERVER['HTTP_X_FORWARDED_SSL'] ?? '')) === 'on') {
+        return true;
+    }
+
+    $forwardedProto = strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
+
+    return $forwardedProto === 'https';
+}
+
+function session_cookie_secure(): bool
+{
+    return request_is_https();
+}
+
+function session_cookie_set_debug(?array $debug = null): array
+{
+    static $lastDebug = [];
+
+    if ($debug !== null) {
+        $lastDebug = $debug;
+    }
+
+    return $lastDebug;
+}
+
+function session_cookie_debug_payload(): array
+{
+    $debug = session_cookie_set_debug();
+    $options = is_array($debug['options'] ?? null)
+        ? $debug['options']
+        : session_cookie_options(time() + security_config_int('session_lifetime_seconds', 2592000));
+
+    return [
+        'headersSentBeforeSetCookie' => $debug['headersSentBeforeSetCookie'] ?? null,
+        'headersSentNow' => headers_sent(),
+        'setCookieResult' => $debug['setCookieResult'] ?? null,
+        'cookieName' => session_cookie_name(),
+        'path' => $options['path'],
+        'domain' => $options['domain'] ?? null,
+        'secure' => (bool) $options['secure'],
+        'httpOnly' => (bool) $options['httponly'],
+        'sameSite' => (string) $options['samesite'],
+        'expiresAt' => gmdate('c', (int) $options['expires']),
+    ];
 }
 
 function session_diagnostic_row_for_token(string $token): ?array
