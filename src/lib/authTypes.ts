@@ -43,4 +43,10 @@ export type AuthContextValue = {
   login: (input: LoginInput) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
+  refreshSession: () => Promise<AuthSession>;
+  clearSession: () => void;
+  runWithAuth: <T>(
+    task: (csrfToken: string) => Promise<T>,
+    options?: { retryOnCsrf?: boolean },
+  ) => Promise<T>;
 };

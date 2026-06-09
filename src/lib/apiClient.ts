@@ -1,4 +1,5 @@
 const apiBase = "/api";
+export const authSessionExpiredEventName = "thia:auth-session-expired";
 
 type ApiEnvelope<T> = {
   ok: boolean;
@@ -88,6 +89,10 @@ async function unwrapResponse<T>(response: Response): Promise<T> {
     | undefined;
 
   if (!response.ok) {
+    if (response.status === 401) {
+      dispatchAuthSessionExpired();
+    }
+
     throw new ApiClientError(getErrorMessage(json, response.status), response.status);
   }
 
@@ -104,6 +109,14 @@ async function unwrapResponse<T>(response: Response): Promise<T> {
   }
 
   return json;
+}
+
+function dispatchAuthSessionExpired() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(new CustomEvent(authSessionExpiredEventName));
 }
 
 function isApiEnvelope<T>(value: T | ApiEnvelope<T> | undefined): value is ApiEnvelope<T> {

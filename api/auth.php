@@ -420,24 +420,30 @@ function session_cookie_token(): ?string
 
 function set_session_cookie(string $token, int $expiresAt): void
 {
-    setcookie(session_cookie_name(), $token, [
+    setcookie(session_cookie_name(), $token, session_cookie_options($expiresAt));
+}
+
+function clear_session_cookie(): void
+{
+    setcookie(session_cookie_name(), '', session_cookie_options(time() - 3600));
+}
+
+function session_cookie_options(int $expiresAt): array
+{
+    $options = [
         'expires' => $expiresAt,
         'path' => '/',
         'secure' => true,
         'httponly' => true,
         'samesite' => 'Lax',
-    ]);
-}
+    ];
+    $domain = session_cookie_domain();
 
-function clear_session_cookie(): void
-{
-    setcookie(session_cookie_name(), '', [
-        'expires' => time() - 3600,
-        'path' => '/',
-        'secure' => true,
-        'httponly' => true,
-        'samesite' => 'Lax',
-    ]);
+    if ($domain !== null) {
+        $options['domain'] = $domain;
+    }
+
+    return $options;
 }
 
 function session_cookie_name(): string
@@ -445,6 +451,17 @@ function session_cookie_name(): string
     $name = (string) (api_config()['security']['cookie_name'] ?? 'thia_session');
 
     return preg_match('/^[A-Za-z0-9_-]+$/', $name) ? $name : 'thia_session';
+}
+
+function session_cookie_domain(): ?string
+{
+    $domain = trim((string) (api_config()['security']['cookie_domain'] ?? ''));
+
+    if ($domain === '') {
+        return null;
+    }
+
+    return preg_match('/^\.?[A-Za-z0-9.-]+$/', $domain) ? $domain : null;
 }
 
 function csrf_token_for_session(array $session): string

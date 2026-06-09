@@ -146,7 +146,7 @@ function ReactionControls({
   initiallyLiked,
   actions,
 }: ReactionControlsProps) {
-  const { csrfToken, user } = useAuth();
+  const { csrfToken, runWithAuth, user } = useAuth();
   const [likeCount, setLikeCount] = useState(initialLikeCount);
   const [liked, setLiked] = useState(initiallyLiked);
   const [commentCount, setCommentCount] = useState(post.commentCount);
@@ -167,11 +167,6 @@ function ReactionControls({
       return;
     }
 
-    if (!csrfToken) {
-      setLikeError("Log in to like posts.");
-      return;
-    }
-
     const wasLiked = liked;
     const previousCount = likeCount;
 
@@ -185,9 +180,13 @@ function ReactionControls({
     }
 
     try {
-      const result = wasLiked
-        ? await unlikePost(post.id, csrfToken)
-        : await likePost(post.id, csrfToken);
+      const result = await runWithAuth(
+        (freshCsrfToken) =>
+          wasLiked
+            ? unlikePost(post.id, freshCsrfToken)
+            : likePost(post.id, freshCsrfToken),
+        { retryOnCsrf: true },
+      );
 
       setLikeCount(result.likeCount);
       setLiked(result.likedByCurrentUser);
@@ -205,25 +204,22 @@ function ReactionControls({
   async function handleReportSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!csrfToken) {
-      setReportError("Sign in to report.");
-      return;
-    }
-
     const details = reportDetails.trim();
     setReportPending(true);
     setReportError(undefined);
     setReportMessage(undefined);
 
     try {
-      await createReport(
-        {
-          postId: post.id,
-          reportedUserId: post.author.id,
-          reason: reportReason,
-          ...(details ? { details } : {}),
-        },
-        csrfToken,
+      await runWithAuth((freshCsrfToken) =>
+        createReport(
+          {
+            postId: post.id,
+            reportedUserId: post.author.id,
+            reason: reportReason,
+            ...(details ? { details } : {}),
+          },
+          freshCsrfToken,
+        ),
       );
       setReportMessage("Report sent.");
       setReportDetails("");
@@ -323,6 +319,7 @@ function ReactionControls({
         open={threadOpen}
         post={post}
         csrfToken={csrfToken}
+        runWithAuth={runWithAuth}
         onClose={() => setThreadOpen(false)}
         onReplyCreated={() => setCommentCount((current) => current + 1)}
       />
@@ -365,6 +362,10 @@ type ThreadModalProps = {
   open: boolean;
   post: Post;
   csrfToken: string | undefined;
+  runWithAuth: <T>(
+    task: (csrfToken: string) => Promise<T>,
+    options?: { retryOnCsrf?: boolean },
+  ) => Promise<T>;
   onClose: () => void;
   onReplyCreated: (post: Post) => void;
 };
@@ -373,6 +374,7 @@ function ThreadModal({
   open,
   post,
   csrfToken,
+  runWithAuth,
   onClose,
   onReplyCreated,
 }: ThreadModalProps) {
@@ -464,7 +466,9 @@ function ThreadModal({
     setMessage(undefined);
 
     try {
-      const reply = await createPostReply(post.id, { body: trimmedBody }, csrfToken);
+      const reply = await runWithAuth((freshCsrfToken) =>
+        createPostReply(post.id, { body: trimmedBody }, freshCsrfToken),
+      );
       setReplies((current) => [...current, reply]);
       setBody("");
       onReplyCreated(reply);

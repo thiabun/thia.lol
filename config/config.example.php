@@ -10,6 +10,7 @@ return [
     ],
     'security' => [
         'cookie_name' => 'thia_session',
+        'cookie_domain' => '',
         'csrf_secret' => 'replace-with-a-long-random-secret',
         'account_setup_token' => '',
         'migration_token' => '',
