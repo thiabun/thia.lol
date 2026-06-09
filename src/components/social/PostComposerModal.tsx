@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Radio, Send, X } from "lucide-react";
+import { ImagePlus, Radio, Send, UserRound, X } from "lucide-react";
 import { Button } from "../ui/Button";
 import { SelectField, TextareaField } from "../ui/Field";
 import { createPost } from "../../lib/api";
@@ -29,8 +29,12 @@ export function PostComposerModal({
   const [roomSlug, setRoomSlug] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | undefined>();
-  const selectedRoomSlug = roomSlug || rooms[0]?.slug || "";
+  const selectedRoom = rooms.find((room) => room.slug === roomSlug);
   const canSubmit = Boolean(csrfToken) && body.trim().length > 0 && !submitting;
+  const destinationLabel = selectedRoom ? selectedRoom.name : "Profile feed";
+  const destinationSummary = selectedRoom
+    ? selectedRoom.summary
+    : "Post without choosing a room.";
 
   const closeComposer = useCallback(() => {
     setBody("");
@@ -47,7 +51,6 @@ export function PostComposerModal({
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    window.setTimeout(() => textareaRef.current?.focus(), 80);
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
@@ -77,8 +80,8 @@ export function PostComposerModal({
     try {
       const input: CreatePostInput = { body: body.trim() };
 
-      if (selectedRoomSlug) {
-        input.roomSlug = selectedRoomSlug;
+      if (roomSlug) {
+        input.roomSlug = roomSlug;
       }
 
       const post = await createPost(input, csrfToken);
@@ -111,7 +114,7 @@ export function PostComposerModal({
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            className="w-full max-w-xl rounded-panel border border-line bg-surface p-4 shadow-lift sm:p-5"
+            className="max-h-[calc(100dvh-3rem)] w-full max-w-xl overflow-y-auto rounded-panel border border-line bg-surface p-4 shadow-lift sm:p-5"
             initial={{ opacity: 0, y: 14, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.97 }}
@@ -123,7 +126,7 @@ export function PostComposerModal({
                   New post
                 </h2>
                 <p className="mt-1 text-sm leading-6 text-muted">
-                  Share something with the room.
+                  Choose where it belongs, then write what you want to share.
                 </p>
               </div>
               <Button
@@ -138,14 +141,75 @@ export function PostComposerModal({
             </div>
 
             <form className="mt-4 space-y-4" onSubmit={handleSubmit}>
+              <div className="space-y-3">
+                <SelectField
+                  id="post-composer-room"
+                  name="roomSlug"
+                  label="Post to"
+                  icon={Radio}
+                  options={[
+                    { value: "", label: "Profile feed" },
+                    ...rooms.map((room) => ({
+                      value: room.slug,
+                      label: room.name,
+                    })),
+                  ]}
+                  value={roomSlug}
+                  disabled={submitting}
+                  onChange={(event) => setRoomSlug(event.currentTarget.value)}
+                />
+
+                <div className="flex items-start gap-3 rounded-card border border-line bg-canvas/55 p-3 shadow-inner-soft">
+                  <div className="grid size-9 shrink-0 place-items-center rounded-full bg-surface-strong text-accent-strong">
+                    {selectedRoom ? (
+                      <Radio aria-hidden="true" size={16} />
+                    ) : (
+                      <UserRound aria-hidden="true" size={16} />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-text">
+                      {destinationLabel}
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">
+                      {destinationSummary}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-card border border-dashed border-line bg-canvas/45 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="grid size-9 shrink-0 place-items-center rounded-full bg-surface-strong text-muted">
+                      <ImagePlus aria-hidden="true" size={17} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-text">Add image or video</p>
+                      <p className="mt-1 text-xs leading-5 text-muted">
+                        Uploads are not open yet. Add links in your post for now.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled
+                    className="hidden shrink-0 sm:inline-flex"
+                  >
+                    Attach
+                  </Button>
+                </div>
+              </div>
+
               <TextareaField
                 ref={textareaRef}
                 id="post-composer-body"
                 name="body"
                 label="Post"
-                hideLabel
-                className="min-h-36 bg-canvas/55"
-                placeholder="What do you want to share?"
+                className="min-h-32 bg-canvas/55 sm:min-h-36"
+                placeholder={`Share something with ${destinationLabel.toLowerCase()}.`}
                 value={body}
                 maxLength={2000}
                 disabled={submitting}
@@ -153,34 +217,21 @@ export function PostComposerModal({
                 onChange={(event) => setBody(event.currentTarget.value)}
               />
 
-              {rooms.length > 0 ? (
-                <SelectField
-                  id="post-composer-room"
-                  name="roomSlug"
-                  label="Room"
-                  icon={Radio}
-                  options={rooms.map((room) => ({
-                    value: room.slug,
-                    label: room.name,
-                  }))}
-                  value={selectedRoomSlug}
-                  disabled={submitting}
-                  onChange={(event) => setRoomSlug(event.currentTarget.value)}
-                />
-              ) : null}
-
               {message ? (
                 <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
                   {message}
                 </p>
               ) : null}
 
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-xs text-muted">{body.length}/2000</span>
-                <div className="flex items-center gap-2">
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <span className="text-xs text-muted" aria-live="polite">
+                  {body.length}/2000
+                </span>
+                <div className="flex items-center justify-end gap-2">
                   <Button
                     type="button"
                     variant="secondary"
+                    className="flex-1 sm:flex-none"
                     disabled={submitting}
                     onClick={closeComposer}
                   >
@@ -188,6 +239,7 @@ export function PostComposerModal({
                   </Button>
                   <Button
                     type="submit"
+                    className="flex-1 sm:flex-none"
                     disabled={!canSubmit}
                     icon={<Send aria-hidden="true" size={17} />}
                   >
