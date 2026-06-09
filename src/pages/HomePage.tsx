@@ -294,7 +294,7 @@ export function HomePage() {
             <div className="mt-3">
               <ApiStateNotice
                 kind="fallback"
-                title="Showing local rooms"
+                title="Showing saved rooms"
                 text="Rooms are taking a moment to refresh."
               />
             </div>

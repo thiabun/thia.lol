@@ -61,7 +61,7 @@ export function ProfilePage() {
       {profileState.usingFallback ? (
         <ApiStateNotice
           kind="fallback"
-          title={`Showing local @${normalizedHandle}`}
+          title={`Showing saved @${normalizedHandle}`}
           text="This profile is taking a moment to refresh."
         />
       ) : null}
