@@ -7,11 +7,12 @@ import {
   type ReactNode,
 } from "react";
 import { EyeOff, Flag, Heart, MessageCircle, Send, Trash2, X } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { createPortal } from "react-dom";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { AmbientImage } from "../ui/AmbientImage";
 import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
-import { Button } from "../ui/Button";
+import { Button, ButtonLink } from "../ui/Button";
 import { SelectField, TextareaField } from "../ui/Field";
 import { Panel } from "../ui/Panel";
 import {
@@ -23,6 +24,7 @@ import {
   type ReportReason,
 } from "../../lib/api";
 import { cn } from "../../lib/classNames";
+import type { AuthStatus } from "../../lib/authTypes";
 import type { Post } from "../../lib/types";
 import { useAuth } from "../../lib/useAuth";
 
@@ -146,7 +148,7 @@ function ReactionControls({
   initiallyLiked,
   actions,
 }: ReactionControlsProps) {
-  const { csrfToken, runWithAuth, user } = useAuth();
+  const { csrfToken, runWithAuth, status, user } = useAuth();
   const [likeCount, setLikeCount] = useState(initialLikeCount);
   const [liked, setLiked] = useState(initiallyLiked);
   const [commentCount, setCommentCount] = useState(post.commentCount);
@@ -318,6 +320,7 @@ function ReactionControls({
       <ThreadModal
         open={threadOpen}
         post={post}
+        authStatus={status}
         csrfToken={csrfToken}
         runWithAuth={runWithAuth}
         onClose={() => setThreadOpen(false)}
@@ -361,6 +364,7 @@ function CommentButton({ count, onClick }: CommentButtonProps) {
 type ThreadModalProps = {
   open: boolean;
   post: Post;
+  authStatus: AuthStatus;
   csrfToken: string | undefined;
   runWithAuth: <T>(
     task: (csrfToken: string) => Promise<T>,
@@ -373,6 +377,7 @@ type ThreadModalProps = {
 function ThreadModal({
   open,
   post,
+  authStatus,
   csrfToken,
   runWithAuth,
   onClose,
@@ -380,12 +385,16 @@ function ThreadModal({
 }: ThreadModalProps) {
   const titleId = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const shouldReduceMotion = useReducedMotion();
   const [replies, setReplies] = useState<Post[]>([]);
   const [body, setBody] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState<string>();
+  const [loadError, setLoadError] = useState<string>();
+  const [submitError, setSubmitError] = useState<string>();
   const canSubmit = Boolean(csrfToken) && body.trim().length > 0 && !submitting;
+  const isCheckingAuth = authStatus === "loading";
+  const isAuthenticated = authStatus === "authenticated" && Boolean(csrfToken);
 
   useEffect(() => {
     if (!open) {
@@ -394,7 +403,6 @@ function ThreadModal({
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    window.setTimeout(() => textareaRef.current?.focus(), 120);
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
@@ -423,7 +431,8 @@ function ThreadModal({
       }
 
       setLoading(true);
-      setMessage(undefined);
+      setLoadError(undefined);
+      setSubmitError(undefined);
 
       getPostReplies(post.id)
         .then((items) => {
@@ -433,7 +442,8 @@ function ThreadModal({
         })
         .catch(() => {
           if (active) {
-            setMessage("Replies could not load right now.");
+            setReplies([]);
+            setLoadError("Replies could not load right now.");
           }
         })
         .finally(() => {
@@ -452,7 +462,7 @@ function ThreadModal({
     event.preventDefault();
 
     if (!csrfToken) {
-      setMessage("Log in to reply.");
+      setSubmitError("Log in to reply.");
       return;
     }
 
@@ -463,32 +473,33 @@ function ThreadModal({
     }
 
     setSubmitting(true);
-    setMessage(undefined);
+    setSubmitError(undefined);
 
     try {
       const reply = await runWithAuth((freshCsrfToken) =>
         createPostReply(post.id, { body: trimmedBody }, freshCsrfToken),
+        { retryOnCsrf: true },
       );
       setReplies((current) => [...current, reply]);
       setBody("");
       onReplyCreated(reply);
       window.setTimeout(() => textareaRef.current?.focus(), 60);
     } catch {
-      setMessage("Reply could not be posted right now.");
+      setSubmitError("Reply could not be posted right now.");
     } finally {
       setSubmitting(false);
     }
   }
 
-  return (
+  const modal = (
     <AnimatePresence>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-50 grid place-items-center bg-text/28 px-4 py-6 backdrop-blur-veil"
+          className="fixed inset-0 z-50 grid place-items-center bg-text/28 px-3 py-4 backdrop-blur-veil sm:px-4 sm:py-6"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: shouldReduceMotion ? 0 : 0.18, ease: [0.22, 1, 0.36, 1] }}
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               onClose();
@@ -499,13 +510,17 @@ function ThreadModal({
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            className="flex max-h-[min(760px,calc(100vh-2rem))] w-full max-w-2xl flex-col overflow-hidden rounded-panel border border-line bg-surface shadow-lift"
-            initial={{ opacity: 0, y: 16, scale: 0.96 }}
+            className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-panel border border-line bg-surface shadow-lift sm:max-h-[min(760px,calc(100dvh-3rem))]"
+            initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 16, scale: shouldReduceMotion ? 1 : 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.97 }}
-            transition={{ type: "spring", stiffness: 260, damping: 28 }}
+            exit={{ opacity: 0, y: shouldReduceMotion ? 0 : 10, scale: shouldReduceMotion ? 1 : 0.97 }}
+            transition={
+              shouldReduceMotion
+                ? { duration: 0 }
+                : { type: "spring", stiffness: 260, damping: 28 }
+            }
           >
-            <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-5">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-line bg-surface/95 px-4 py-3 backdrop-blur-veil sm:px-5">
               <h2 id={titleId} className="text-base font-semibold text-text">
                 Thread
               </h2>
@@ -523,44 +538,67 @@ function ThreadModal({
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
               <ParentPostPreview post={post} />
 
-              <form className="mt-4 border-b border-line pb-4" onSubmit={handleSubmit}>
-                <TextareaField
-                  ref={textareaRef}
-                  id={`reply-composer-${post.id}`}
-                  label="Reply"
-                  hideLabel
-                  rows={4}
-                  maxLength={2000}
-                  className="min-h-28 bg-canvas/55"
-                  placeholder="Write your reply"
-                  value={body}
-                  disabled={submitting}
-                  onChange={(event) => setBody(event.currentTarget.value)}
-                />
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  <span className="text-xs text-muted">{body.length}/2000</span>
-                  <Button
-                    type="submit"
-                    size="sm"
-                    disabled={!canSubmit}
-                    icon={<Send aria-hidden="true" size={15} />}
-                  >
-                    {submitting ? "Replying..." : "Reply"}
-                  </Button>
+              {isAuthenticated ? (
+                <form className="mt-4 border-b border-line pb-4" onSubmit={handleSubmit}>
+                  <TextareaField
+                    ref={textareaRef}
+                    id={`reply-composer-${post.id}`}
+                    label="Reply"
+                    rows={4}
+                    maxLength={2000}
+                    className="min-h-28 bg-canvas/55"
+                    placeholder="Write a reply"
+                    value={body}
+                    disabled={submitting}
+                    onChange={(event) => setBody(event.currentTarget.value)}
+                  />
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <span className="text-xs text-muted" aria-live="polite">
+                      {body.length}/2000
+                    </span>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={!canSubmit}
+                      icon={<Send aria-hidden="true" size={15} />}
+                    >
+                      {submitting ? "Replying..." : "Reply"}
+                    </Button>
+                  </div>
+                </form>
+              ) : isCheckingAuth ? (
+                <div className="mt-4 border-b border-line pb-4">
+                  <p className="rounded-card border border-line bg-canvas/45 p-4 text-sm text-muted">
+                    Checking session...
+                  </p>
                 </div>
-              </form>
+              ) : (
+                <div className="mt-4 flex flex-col gap-3 border-b border-line pb-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-muted">Log in to reply.</p>
+                  <ButtonLink to="/login" size="sm" onClick={onClose}>
+                    Log in
+                  </ButtonLink>
+                </div>
+              )}
 
-              {message ? (
+              {submitError ? (
                 <p className="mt-3 rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
-                  {message}
+                  {submitError}
                 </p>
               ) : null}
 
               <div className="mt-4 space-y-3">
                 {loading ? (
-                  <p className="text-sm text-muted">Loading replies...</p>
+                  <p className="rounded-card border border-line bg-canvas/45 p-4 text-sm text-muted">
+                    Loading replies...
+                  </p>
                 ) : null}
-                {!loading && replies.length === 0 ? (
+                {loadError ? (
+                  <p className="rounded-card border border-rose/30 bg-rose/15 p-4 text-sm text-rose-ink">
+                    {loadError}
+                  </p>
+                ) : null}
+                {!loading && !loadError && replies.length === 0 ? (
                   <p className="rounded-card border border-line bg-canvas/45 p-4 text-sm text-muted">
                     No replies yet.
                   </p>
@@ -577,6 +615,12 @@ function ThreadModal({
       ) : null}
     </AnimatePresence>
   );
+
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  return createPortal(modal, document.body);
 }
 
 function ParentPostPreview({ post }: { post: Post }) {
@@ -593,7 +637,28 @@ function ParentPostPreview({ post }: { post: Post }) {
             <span className="text-muted/50">·</span>
             <span className="text-sm text-muted">{post.createdAt}</span>
           </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Badge tone={post.mood === "frostveil" ? "cool" : "warm"}>
+              {post.room.name}
+            </Badge>
+            <Badge>{post.mood}</Badge>
+          </div>
           <p className="mt-2 text-pretty text-sm leading-6 text-text">{post.body}</p>
+          {post.mediaUrl ? (
+            <div className="mt-3 overflow-hidden rounded-card border border-line bg-canvas">
+              {post.mediaUrl === "/ambient-veil.webp" ? (
+                <AmbientImage className="aspect-[16/9] w-full" />
+              ) : (
+                <img
+                  src={post.mediaUrl}
+                  alt=""
+                  className="aspect-[16/9] w-full object-cover"
+                  loading="lazy"
+                  decoding="async"
+                />
+              )}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
