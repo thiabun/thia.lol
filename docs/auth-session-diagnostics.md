@@ -74,3 +74,33 @@ await fetch("/api/admin/auth/diagnostics", {
 The diagnostics response reports the request host, HTTPS detection, configured cookie options, whether a raw `Cookie` header was present, whether the configured cookie name appears in `$_COOKIE`, how many same-name cookie candidates were found in the raw `Cookie` header, whether each candidate maps to a row in `sessions`, whether that row is expired, and which cookie variants the backend attempts to clear. It does not reveal raw session tokens or token hashes.
 
 Do not paste real migration tokens into committed files, tickets, docs, or chat.
+
+## Session trace sequence
+
+Use this trace when `/api/auth/me` succeeds once and then returns `401` while the browser still appears to send the same cookie.
+
+1. Log in at `https://thia.lol/login`.
+2. Call the read-only trace endpoint:
+
+```js
+await fetch("/api/admin/auth/session-trace", {
+  credentials: "include",
+  headers: {
+    "X-Migration-Token": "replace-with-token-from-server-config",
+  },
+}).then((response) => response.json());
+```
+
+3. Call `/api/auth/me`:
+
+```js
+await fetch("/api/auth/me", { credentials: "include" }).then((response) =>
+  response.json(),
+);
+```
+
+4. Call `/api/admin/auth/session-trace` again.
+5. Call `/api/auth/me` again.
+6. If the second `/api/auth/me` returns `401`, call `/api/admin/auth/session-trace` once more without refreshing the page.
+
+The trace endpoint does not clear cookies and does not delete sessions. It reports request host, whether a raw `Cookie` header was present, how many `thia_session` candidates were parsed from the raw `Cookie` header, whether `$_COOKIE` contains `thia_session`, per-candidate token length and token-hash prefix, whether the underlying `sessions` row exists, expiry timing, user status, profile presence, whether the normal session query would accept it, and the newest five sessions for the inferred user. It never returns raw tokens or full token hashes.

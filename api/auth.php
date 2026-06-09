@@ -33,6 +33,14 @@ function auth_dispatch(string $action, string $method): void
 
 function auth_admin_dispatch(array $segments, string $method): void
 {
+    if (count($segments) === 3 && $segments[1] === 'auth' && $segments[2] === 'session-trace') {
+        if ($method === 'GET' || $method === 'HEAD') {
+            auth_session_trace();
+        }
+
+        json_error('Method not allowed.', 405);
+    }
+
     if (count($segments) === 3 && $segments[1] === 'auth' && $segments[2] === 'diagnostics') {
         if ($method === 'GET' || $method === 'HEAD') {
             auth_diagnostics();
@@ -226,6 +234,53 @@ function auth_diagnostics(): void
         'configuredCookieOptions' => session_cookie_debug_payload(),
         'clearVariants' => session_cookie_clear_variant_summary(),
         'cookies' => $cookieRows,
+    ]);
+}
+
+function auth_session_trace(): void
+{
+    require_auth_diagnostics_access();
+
+    $cookieName = session_cookie_name();
+    $rawTokens = raw_session_cookie_tokens();
+    $candidates = [];
+    $inferredUserId = null;
+
+    foreach ($rawTokens as $index => $token) {
+        $tokenHash = hash_session_token($token);
+        $row = session_trace_row_for_token_hash($tokenHash);
+        $normalSession = session_by_token_hash($tokenHash);
+
+        if ($inferredUserId === null && is_array($row) && $row['user_id'] !== null) {
+            $inferredUserId = (int) $row['user_id'];
+        }
+
+        $candidates[] = [
+            'index' => $index,
+            'tokenLength' => strlen($token),
+            'tokenHashPrefix' => substr($tokenHash, 0, 12),
+            'sessionRowExists' => is_array($row),
+            'sessionId' => is_array($row) ? (int) $row['session_id'] : null,
+            'userId' => is_array($row) && $row['user_id'] !== null ? (int) $row['user_id'] : null,
+            'expiresAt' => is_array($row) ? $row['expires_at'] : null,
+            'secondsUntilExpiry' => is_array($row) ? (int) $row['seconds_until_expiry'] : null,
+            'userStatus' => is_array($row) ? $row['user_status'] : null,
+            'profileRowExists' => is_array($row) ? (bool) $row['profile_exists'] : null,
+            'normalSessionAccepted' => is_array($normalSession),
+        ];
+    }
+
+    json_success([
+        'requestHost' => request_host_name(),
+        'rawCookieHeaderPresent' => is_string($_SERVER['HTTP_COOKIE'] ?? null) && (string) $_SERVER['HTTP_COOKIE'] !== '',
+        'rawSessionCandidateCount' => count($rawTokens),
+        'phpCookieHasSession' => array_key_exists($cookieName, $_COOKIE),
+        'cookieName' => $cookieName,
+        'candidates' => $candidates,
+        'inferredUserId' => $inferredUserId,
+        'newestSessionsForInferredUser' => $inferredUserId === null
+            ? []
+            : newest_session_trace_rows_for_user($inferredUserId),
     ]);
 }
 
@@ -493,29 +548,39 @@ function session_cookie_token(): ?string
 function session_cookie_tokens(): array
 {
     $name = session_cookie_name();
-    $tokens = [];
-    $rawCookie = $_SERVER['HTTP_COOKIE'] ?? '';
-
-    if (is_string($rawCookie) && $rawCookie !== '') {
-        foreach (explode(';', $rawCookie) as $part) {
-            $pair = explode('=', trim($part), 2);
-
-            if (count($pair) !== 2 || rawurldecode($pair[0]) !== $name) {
-                continue;
-            }
-
-            $value = rawurldecode($pair[1]);
-
-            if ($value !== '') {
-                $tokens[] = $value;
-            }
-        }
-    }
+    $tokens = raw_session_cookie_tokens();
 
     $phpCookie = $_COOKIE[$name] ?? null;
 
     if (is_string($phpCookie) && $phpCookie !== '') {
         $tokens[] = $phpCookie;
+    }
+
+    return array_values(array_unique($tokens));
+}
+
+function raw_session_cookie_tokens(): array
+{
+    $name = session_cookie_name();
+    $tokens = [];
+    $rawCookie = $_SERVER['HTTP_COOKIE'] ?? '';
+
+    if (!is_string($rawCookie) || $rawCookie === '') {
+        return [];
+    }
+
+    foreach (explode(';', $rawCookie) as $part) {
+        $pair = explode('=', trim($part), 2);
+
+        if (count($pair) !== 2 || rawurldecode($pair[0]) !== $name) {
+            continue;
+        }
+
+        $value = rawurldecode($pair[1]);
+
+        if ($value !== '') {
+            $tokens[] = $value;
+        }
     }
 
     return array_values(array_unique($tokens));
@@ -711,6 +776,57 @@ function session_diagnostic_row_for_token(string $token): ?array
     $row = $statement->fetch();
 
     return is_array($row) ? $row : null;
+}
+
+function session_trace_row_for_token_hash(string $tokenHash): ?array
+{
+    $statement = db_query(
+        "SELECT
+            s.id AS session_id,
+            s.user_id,
+            s.expires_at,
+            TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), s.expires_at) AS seconds_until_expiry,
+            u.status AS user_status,
+            EXISTS (
+                SELECT 1
+                FROM profiles p
+                WHERE p.user_id = s.user_id
+                LIMIT 1
+            ) AS profile_exists
+         FROM sessions s
+         LEFT JOIN users u ON u.id = s.user_id
+         WHERE s.token_hash = :token_hash
+         LIMIT 1",
+        ['token_hash' => $tokenHash]
+    );
+    $row = $statement->fetch();
+
+    return is_array($row) ? $row : null;
+}
+
+function newest_session_trace_rows_for_user(int $userId): array
+{
+    $statement = db_query(
+        'SELECT
+            id,
+            expires_at,
+            TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), expires_at) AS seconds_until_expiry,
+            last_seen_at
+         FROM sessions
+         WHERE user_id = :user_id
+         ORDER BY id DESC
+         LIMIT 5',
+        ['user_id' => $userId]
+    );
+
+    return array_map(static function (array $row): array {
+        return [
+            'id' => (int) $row['id'],
+            'expiresAt' => $row['expires_at'],
+            'secondsUntilExpiry' => (int) $row['seconds_until_expiry'],
+            'lastSeenAt' => $row['last_seen_at'],
+        ];
+    }, $statement->fetchAll());
 }
 
 function require_auth_diagnostics_access(): void
