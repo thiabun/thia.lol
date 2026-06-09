@@ -52,6 +52,8 @@ export type Post = {
   body: string;
   createdAt: string;
   mood: string;
+  parentId?: number | null;
+  commentCount: number;
   reactions: ReactionCounts;
   likeCount: number;
   likedByCurrentUser: boolean;

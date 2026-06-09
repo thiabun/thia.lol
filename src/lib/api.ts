@@ -157,6 +157,22 @@ export function createPost(
   return apiPost<ApiPost>("/posts", input, csrfToken).then(normalizePost);
 }
 
+export function getPostReplies(postId: number): Promise<Post[]> {
+  return apiGet<ApiPost[]>(`/posts/${postId}/replies`).then((items) =>
+    items.map(normalizePost),
+  );
+}
+
+export function createPostReply(
+  postId: number,
+  input: Pick<CreatePostInput, "body">,
+  csrfToken: string,
+): Promise<Post> {
+  return apiPost<ApiPost>(`/posts/${postId}/replies`, input, csrfToken).then(
+    normalizePost,
+  );
+}
+
 export function updatePost(
   id: number,
   input: UpdatePostInput,
@@ -335,6 +351,8 @@ function normalizePost(post: ApiPost): Post {
     body: post.body,
     createdAt: formatRelativeTime(post.createdAt),
     mood: post.mood,
+    parentId: post.parentId ?? null,
+    commentCount: post.commentCount ?? 0,
     reactions: post.reactions,
     likeCount: post.likeCount ?? post.reactions.glow,
     likedByCurrentUser: post.likedByCurrentUser ?? false,

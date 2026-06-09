@@ -52,7 +52,7 @@ try {
         auth_dispatch($segments[1], $method);
     }
 
-    if (($segments[0] ?? null) === 'posts' && in_array($method, ['POST', 'PATCH', 'DELETE'], true)) {
+    if (($segments[0] ?? null) === 'posts' && in_array($method, ['GET', 'POST', 'PATCH', 'DELETE'], true)) {
         posts_dispatch($segments, $method);
     }
 

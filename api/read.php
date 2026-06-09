@@ -141,6 +141,7 @@ function post_payload(array $row): array
         'author' => $profile['user'],
         'profile' => $profile,
         'room' => nullable_room_payload($row),
+        'commentCount' => (int) ($row['reply_count'] ?? 0),
         'reactions' => [
             'glow' => $likeCount,
             'echo' => (int) ($row['reaction_echo_count'] ?? 0),
@@ -310,6 +311,7 @@ function post_select_sql(string $whereClause): string
         COALESCE(reactions.glow_count, 0) AS reaction_glow_count,
         COALESCE(reactions.echo_count, 0) AS reaction_echo_count,
         COALESCE(reactions.hush_count, 0) AS reaction_hush_count,
+        COALESCE(replies.reply_count, 0) AS reply_count,
         current_like.user_id AS current_like_user_id
     FROM posts p
     INNER JOIN users u ON u.id = p.author_id
@@ -348,6 +350,17 @@ function post_select_sql(string $whereClause): string
         FROM post_reactions
         GROUP BY post_id
     ) reactions ON reactions.post_id = p.id
+    LEFT JOIN (
+        SELECT reply_posts.parent_id, COUNT(*) AS reply_count
+        FROM posts reply_posts
+        LEFT JOIN rooms reply_rooms ON reply_rooms.id = reply_posts.room_id
+        WHERE reply_posts.parent_id IS NOT NULL
+          AND reply_posts.visibility = 'public'
+          AND reply_posts.status = 'published'
+          AND reply_posts.deleted_at IS NULL
+          AND (reply_posts.room_id IS NULL OR reply_rooms.visibility = 'public')
+        GROUP BY reply_posts.parent_id
+    ) replies ON replies.parent_id = p.id
     LEFT JOIN post_reactions current_like
         ON current_like.post_id = p.id
        AND current_like.user_id = :current_user_id
@@ -364,7 +377,7 @@ function post_select_sql(string $whereClause): string
 function fetch_public_posts(): array
 {
     $statement = db_query(
-        post_select_sql(''),
+        post_select_sql('AND p.parent_id IS NULL'),
         ['current_user_id' => current_request_user_id()]
     );
 
@@ -374,7 +387,7 @@ function fetch_public_posts(): array
 function fetch_public_room_posts(string $slug): array
 {
     $statement = db_query(
-        post_select_sql('AND r.slug = :slug'),
+        post_select_sql('AND r.slug = :slug AND p.parent_id IS NULL'),
         [
             'slug' => $slug,
             'current_user_id' => current_request_user_id(),

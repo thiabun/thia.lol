@@ -11,6 +11,18 @@ function posts_dispatch(array $segments, string $method): void
         posts_create();
     }
 
+    if (count($segments) === 3 && preg_match('/^\d+$/', $segments[1]) === 1 && $segments[2] === 'replies') {
+        if ($method === 'GET') {
+            posts_replies_index((int) $segments[1]);
+        }
+
+        if ($method === 'POST') {
+            posts_reply_create((int) $segments[1]);
+        }
+
+        json_error('Method not allowed.', 405);
+    }
+
     if (count($segments) === 3 && preg_match('/^\d+$/', $segments[1]) === 1 && $segments[2] === 'like') {
         if ($method === 'POST') {
             posts_like_create((int) $segments[1]);
@@ -76,6 +88,59 @@ function posts_create(): void
             'parent_id' => $parentId,
             'body' => $postBody,
             'mood' => $mood ?? 'sunveil',
+            'visibility' => 'public',
+            'status' => 'published',
+        ]
+    );
+
+    json_success(fetch_post_payload_by_id((int) db()->lastInsertId(), (int) $session['user_id']), 201);
+}
+
+function posts_replies_index(int $postId): void
+{
+    require_reactable_post($postId);
+
+    $statement = db_query(
+        post_payload_select_sql(
+            "p.parent_id = :parent_id
+             AND p.visibility = 'public'
+             AND p.status = 'published'
+             AND p.deleted_at IS NULL
+             AND (p.room_id IS NULL OR r.visibility = 'public')",
+            'ORDER BY p.created_at ASC, p.id ASC LIMIT 100'
+        ),
+        [
+            'parent_id' => $postId,
+            'current_user_id' => current_request_user_id(),
+        ]
+    );
+
+    json_success(array_map('post_payload', $statement->fetchAll()));
+}
+
+function posts_reply_create(int $postId): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+
+    $parent = fetch_replyable_post_record($postId);
+
+    if ($parent === null) {
+        json_error('Post not found.', 404);
+    }
+
+    $body = request_json_body();
+    $postBody = validate_post_body($body['body'] ?? null);
+
+    db_query(
+        'INSERT INTO posts (author_id, room_id, parent_id, body, mood, visibility, status)
+         VALUES (:author_id, :room_id, :parent_id, :body, :mood, :visibility, :status)',
+        [
+            'author_id' => (int) $session['user_id'],
+            'room_id' => $parent['room_id'] === null ? null : (int) $parent['room_id'],
+            'parent_id' => $postId,
+            'body' => $postBody,
+            'mood' => $parent['mood'] ?? 'sunveil',
             'visibility' => 'public',
             'status' => 'published',
         ]
@@ -489,6 +554,25 @@ function require_reactable_post(int $postId): void
     }
 }
 
+function fetch_replyable_post_record(int $postId): ?array
+{
+    $statement = db_query(
+        "SELECT p.id, p.room_id, p.mood
+         FROM posts p
+         LEFT JOIN rooms r ON r.id = p.room_id
+         WHERE p.id = :id
+           AND p.visibility = 'public'
+           AND p.status = 'published'
+           AND p.deleted_at IS NULL
+           AND (p.room_id IS NULL OR r.visibility = 'public')
+         LIMIT 1",
+        ['id' => $postId]
+    );
+    $post = $statement->fetch();
+
+    return is_array($post) ? $post : null;
+}
+
 function reaction_counts_for_post(int $postId): array
 {
     $statement = db_query(
@@ -556,7 +640,7 @@ function fetch_post_payload_by_id(int $postId, ?int $currentUserId = null): arra
     return post_payload($row);
 }
 
-function post_payload_select_sql(string $whereClause): string
+function post_payload_select_sql(string $whereClause, string $tailClause = 'LIMIT 1'): string
 {
     return "SELECT
         p.id AS post_id,
@@ -596,6 +680,7 @@ function post_payload_select_sql(string $whereClause): string
         COALESCE(reactions.glow_count, 0) AS reaction_glow_count,
         COALESCE(reactions.echo_count, 0) AS reaction_echo_count,
         COALESCE(reactions.hush_count, 0) AS reaction_hush_count,
+        COALESCE(replies.reply_count, 0) AS reply_count,
         current_like.user_id AS current_like_user_id
     FROM posts p
     INNER JOIN users u ON u.id = p.author_id
@@ -634,12 +719,23 @@ function post_payload_select_sql(string $whereClause): string
         FROM post_reactions
         GROUP BY post_id
     ) reactions ON reactions.post_id = p.id
+    LEFT JOIN (
+        SELECT reply_posts.parent_id, COUNT(*) AS reply_count
+        FROM posts reply_posts
+        LEFT JOIN rooms reply_rooms ON reply_rooms.id = reply_posts.room_id
+        WHERE reply_posts.parent_id IS NOT NULL
+          AND reply_posts.visibility = 'public'
+          AND reply_posts.status = 'published'
+          AND reply_posts.deleted_at IS NULL
+          AND (reply_posts.room_id IS NULL OR reply_rooms.visibility = 'public')
+        GROUP BY reply_posts.parent_id
+    ) replies ON replies.parent_id = p.id
     LEFT JOIN post_reactions current_like
         ON current_like.post_id = p.id
        AND current_like.user_id = :current_user_id
        AND current_like.type = 'glow'
     WHERE {$whereClause}
-    LIMIT 1";
+    {$tailClause}";
 }
 
 function is_moderator_session(array $session): bool
