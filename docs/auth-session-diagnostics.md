@@ -31,8 +31,9 @@ Expected result:
 ```
 
 6. Run the same Console command again. The second call should still return the same authenticated user.
-7. Like two different posts. If the first succeeds and the second fails with `401`, inspect whether the session cookie is still present under DevTools Application > Cookies > `https://thia.lol`.
-8. While still logged in as an admin, check migration status with a server-only token:
+7. Run it a third time. All three calls should remain authenticated.
+8. Like two different posts. If the first succeeds and the second fails with `401`, inspect whether duplicate session cookies are present under DevTools Application > Cookies > `https://thia.lol`.
+9. While still logged in as an admin, check migration status with a server-only token:
 
 ```js
 await fetch("/api/admin/migrations/status", {
@@ -42,5 +43,18 @@ await fetch("/api/admin/migrations/status", {
   },
 }).then((response) => response.json());
 ```
+
+10. If auth still looks unstable, call the token-protected diagnostics endpoint:
+
+```js
+await fetch("/api/admin/auth/diagnostics", {
+  credentials: "include",
+  headers: {
+    "X-Migration-Token": "replace-with-token-from-server-config",
+  },
+}).then((response) => response.json());
+```
+
+The diagnostics response reports whether the configured cookie name appears in `$_COOKIE`, how many same-name cookie candidates were found in the raw `Cookie` header, whether each candidate maps to a row in `sessions`, whether that row is expired, and which cookie variants the backend attempts to clear. It does not reveal raw session tokens or token hashes.
 
 Do not paste real migration tokens into committed files, tickets, docs, or chat.

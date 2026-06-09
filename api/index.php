@@ -61,6 +61,10 @@ try {
         reports_dispatch($segments, $method);
     }
 
+    if (($segments[0] ?? null) === 'admin' && ($segments[1] ?? null) === 'auth') {
+        auth_admin_dispatch($segments, $method);
+    }
+
     if (($segments[0] ?? null) === 'admin' && ($segments[1] ?? null) === 'migrations') {
         migrations_dispatch($segments, $method);
     }

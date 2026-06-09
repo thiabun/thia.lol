@@ -130,7 +130,7 @@ The initial MySQL setup lives in `backend/database/`. Import these files with cP
 
 Committed migrations live in `backend/database/migrations/` and deploy to `public_html/api/migrations/`. They are applied through the protected `/api/admin/migrations/status` and `/api/admin/migrations/run` endpoints, which require an admin session and the `X-Migration-Token` header. Leave `security.migration_token` empty to disable the runner.
 
-Auth session browser checks live in `docs/auth-session-diagnostics.md`. Use `https://thia.lol` consistently while testing; same-origin `/api` calls and host-only session cookies should not be mixed across `www` and non-`www` hostnames.
+Auth session browser checks live in `docs/auth-session-diagnostics.md`. Use `https://thia.lol` consistently while testing; same-origin `/api` calls and host-only session cookies should not be mixed across `www` and non-`www` hostnames. The token-protected `/api/admin/auth/diagnostics` endpoint can confirm duplicate cookie candidates without exposing raw session tokens or token hashes.
 
 ## Post-Deploy Checklist
 

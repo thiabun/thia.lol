@@ -31,6 +31,19 @@ function auth_dispatch(string $action, string $method): void
     json_error('Not found.', 404);
 }
 
+function auth_admin_dispatch(array $segments, string $method): void
+{
+    if (count($segments) === 3 && $segments[1] === 'auth' && $segments[2] === 'diagnostics') {
+        if ($method === 'GET' || $method === 'HEAD') {
+            auth_diagnostics();
+        }
+
+        json_error('Method not allowed.', 405);
+    }
+
+    json_error('Not found.', 404);
+}
+
 function auth_register(): void
 {
     $body = auth_json_body();
@@ -141,18 +154,64 @@ function auth_login(): void
 
 function auth_logout(): void
 {
-    $token = session_cookie_token();
+    $tokens = session_cookie_tokens();
 
-    if ($token !== null) {
-        db_query(
-            'DELETE FROM sessions
-             WHERE token_hash = :token_hash',
-            ['token_hash' => hash_session_token($token)]
-        );
+    foreach ($tokens as $token) {
+        db_query('DELETE FROM sessions WHERE token_hash = :token_hash', [
+            'token_hash' => hash_session_token($token),
+        ]);
     }
 
     clear_session_cookie();
     json_success(['loggedOut' => true]);
+}
+
+function auth_diagnostics(): void
+{
+    require_auth_diagnostics_access();
+
+    $tokens = session_cookie_tokens();
+    $cookieName = session_cookie_name();
+    $cookieRows = [];
+    $validSessionCount = 0;
+
+    foreach ($tokens as $index => $token) {
+        $row = session_diagnostic_row_for_token($token);
+        $exists = is_array($row);
+        $expired = $exists ? (bool) $row['is_expired'] : null;
+
+        if ($exists && $expired === false && (string) $row['status'] === 'active') {
+            $validSessionCount++;
+        }
+
+        $cookieRows[] = [
+            'index' => $index,
+            'tokenLength' => strlen($token),
+            'existsInSessions' => $exists,
+            'expired' => $expired,
+            'activeUser' => $exists ? (string) $row['status'] === 'active' : null,
+            'role' => $exists ? (string) $row['role'] : null,
+            'expiresAt' => $exists ? $row['expires_at'] : null,
+        ];
+    }
+
+    json_success([
+        'cookieName' => $cookieName,
+        'phpCookieHasName' => array_key_exists($cookieName, $_COOKIE),
+        'rawCookieCandidateCount' => count($tokens),
+        'validSessionCandidateCount' => $validSessionCount,
+        'configuredCookieDomain' => session_cookie_domain(),
+        'requestHost' => request_host_name(),
+        'canonicalCookie' => [
+            'path' => '/',
+            'secure' => true,
+            'httpOnly' => true,
+            'sameSite' => 'Lax',
+            'hostOnlyByDefault' => session_cookie_domain() === null,
+        ],
+        'clearVariants' => session_cookie_clear_variant_summary(),
+        'cookies' => $cookieRows,
+    ]);
 }
 
 function auth_me(): void
@@ -346,27 +405,29 @@ function create_session_for_user(int $userId): array
 
 function current_session(): ?array
 {
-    $token = session_cookie_token();
+    $tokens = session_cookie_tokens();
 
-    if ($token === null) {
+    if ($tokens === []) {
         return null;
     }
 
-    $session = session_by_token_hash(hash_session_token($token));
+    foreach ($tokens as $token) {
+        $session = session_by_token_hash(hash_session_token($token));
 
-    if ($session === null) {
-        clear_session_cookie();
-        return null;
+        if ($session !== null) {
+            db_query(
+                'UPDATE sessions
+                 SET last_seen_at = UTC_TIMESTAMP()
+                 WHERE id = :id',
+                ['id' => (int) $session['session_id']]
+            );
+
+            return $session;
+        }
     }
 
-    db_query(
-        'UPDATE sessions
-         SET last_seen_at = UTC_TIMESTAMP()
-         WHERE id = :id',
-        ['id' => (int) $session['session_id']]
-    );
-
-    return $session;
+    clear_session_cookie();
+    return null;
 }
 
 function session_by_token_hash(string $tokenHash): ?array
@@ -409,35 +470,71 @@ function cleanup_expired_sessions(): void
 
 function session_cookie_token(): ?string
 {
-    $cookie = $_COOKIE[session_cookie_name()] ?? null;
+    $tokens = session_cookie_tokens();
 
-    if (!is_string($cookie) || $cookie === '') {
-        return null;
+    return $tokens[0] ?? null;
+}
+
+function session_cookie_tokens(): array
+{
+    $name = session_cookie_name();
+    $tokens = [];
+    $rawCookie = $_SERVER['HTTP_COOKIE'] ?? '';
+
+    if (is_string($rawCookie) && $rawCookie !== '') {
+        foreach (explode(';', $rawCookie) as $part) {
+            $pair = explode('=', trim($part), 2);
+
+            if (count($pair) !== 2 || rawurldecode($pair[0]) !== $name) {
+                continue;
+            }
+
+            $value = rawurldecode($pair[1]);
+
+            if ($value !== '') {
+                $tokens[] = $value;
+            }
+        }
     }
 
-    return $cookie;
+    $phpCookie = $_COOKIE[$name] ?? null;
+
+    if (is_string($phpCookie) && $phpCookie !== '') {
+        $tokens[] = $phpCookie;
+    }
+
+    return array_values(array_unique($tokens));
 }
 
 function set_session_cookie(string $token, int $expiresAt): void
 {
+    clear_session_cookie();
     setcookie(session_cookie_name(), $token, session_cookie_options($expiresAt));
 }
 
 function clear_session_cookie(): void
 {
-    setcookie(session_cookie_name(), '', session_cookie_options(time() - 3600));
+    $expiresAt = time() - 3600;
+
+    foreach (session_cookie_clear_variants($expiresAt) as $options) {
+        setcookie(session_cookie_name(), '', $options);
+    }
 }
 
 function session_cookie_options(int $expiresAt): array
 {
+    return session_cookie_options_for($expiresAt, '/', session_cookie_domain());
+}
+
+function session_cookie_options_for(int $expiresAt, string $path, ?string $domain): array
+{
     $options = [
         'expires' => $expiresAt,
-        'path' => '/',
+        'path' => $path,
         'secure' => true,
         'httponly' => true,
         'samesite' => 'Lax',
     ];
-    $domain = session_cookie_domain();
 
     if ($domain !== null) {
         $options['domain'] = $domain;
@@ -462,6 +559,90 @@ function session_cookie_domain(): ?string
     }
 
     return preg_match('/^\.?[A-Za-z0-9.-]+$/', $domain) ? $domain : null;
+}
+
+function session_cookie_clear_variants(int $expiresAt): array
+{
+    $domains = [session_cookie_domain(), null];
+    $host = request_host_name();
+
+    if (in_array($host, ['thia.lol', 'www.thia.lol'], true)) {
+        $domains[] = 'thia.lol';
+        $domains[] = '.thia.lol';
+    }
+
+    $configuredDomain = session_cookie_domain();
+
+    if ($configuredDomain !== null) {
+        $domains[] = ltrim($configuredDomain, '.');
+        $domains[] = '.' . ltrim($configuredDomain, '.');
+    }
+
+    $variants = [];
+
+    foreach (['/', '/api'] as $path) {
+        foreach (array_unique($domains) as $domain) {
+            $key = $path . '|' . ($domain ?? 'host-only');
+            $variants[$key] = session_cookie_options_for($expiresAt, $path, $domain);
+        }
+    }
+
+    return array_values($variants);
+}
+
+function session_cookie_clear_variant_summary(): array
+{
+    return array_map(static function (array $options): array {
+        return [
+            'path' => $options['path'],
+            'domain' => $options['domain'] ?? null,
+            'secure' => (bool) $options['secure'],
+            'httpOnly' => (bool) $options['httponly'],
+            'sameSite' => (string) $options['samesite'],
+        ];
+    }, session_cookie_clear_variants(time() - 3600));
+}
+
+function request_host_name(): string
+{
+    $host = strtolower((string) ($_SERVER['HTTP_HOST'] ?? ''));
+    $host = preg_replace('/:\d+$/', '', $host) ?? $host;
+
+    return $host;
+}
+
+function session_diagnostic_row_for_token(string $token): ?array
+{
+    $statement = db_query(
+        "SELECT
+            s.expires_at,
+            s.expires_at <= UTC_TIMESTAMP() AS is_expired,
+            u.role,
+            u.status
+         FROM sessions s
+         INNER JOIN users u ON u.id = s.user_id
+         WHERE s.token_hash = :token_hash
+         LIMIT 1",
+        ['token_hash' => hash_session_token($token)]
+    );
+    $row = $statement->fetch();
+
+    return is_array($row) ? $row : null;
+}
+
+function require_auth_diagnostics_access(): void
+{
+    $expected = api_config()['security']['migration_token'] ?? '';
+
+    if (!is_string($expected) || $expected === '') {
+        json_error('Not found.', 404);
+    }
+
+    $provided = $_SERVER['HTTP_X_MIGRATION_TOKEN'] ?? '';
+
+    if (!is_string($provided) || $provided === '' || !hash_equals($expected, $provided)) {
+        json_error('Diagnostics access denied.', 403);
+    }
 }
 
 function csrf_token_for_session(array $session): string
