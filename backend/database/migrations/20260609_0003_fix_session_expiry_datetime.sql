@@ -1,0 +1,5 @@
+ALTER TABLE sessions
+  MODIFY expires_at DATETIME NOT NULL;
+
+ALTER TABLE sessions
+  MODIFY last_seen_at DATETIME NULL DEFAULT NULL;

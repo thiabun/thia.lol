@@ -104,3 +104,33 @@ await fetch("/api/auth/me", { credentials: "include" }).then((response) =>
 6. If the second `/api/auth/me` returns `401`, call `/api/admin/auth/session-trace` once more without refreshing the page.
 
 The trace endpoint does not clear cookies and does not delete sessions. It reports request host, whether a raw `Cookie` header was present, how many `thia_session` candidates were parsed from the raw `Cookie` header, whether `$_COOKIE` contains `thia_session`, per-candidate token length and token-hash prefix, whether the underlying `sessions` row exists, expiry timing, user status, profile presence, whether the normal session query would accept it, and the newest five sessions for the inferred user. It never returns raw tokens or full token hashes.
+
+## Expiry Column Fix
+
+Root cause found on production: `sessions.expires_at` was created as `TIMESTAMP NOT NULL`. On the deployed MySQL/MariaDB configuration, updating `last_seen_at` also auto-updated `expires_at` to the current timestamp. That made a fresh session expire immediately after the first successful `/api/auth/me`.
+
+Migration `20260609_0003_fix_session_expiry_datetime.sql` changes:
+
+```sql
+ALTER TABLE sessions
+  MODIFY expires_at DATETIME NOT NULL;
+
+ALTER TABLE sessions
+  MODIFY last_seen_at DATETIME NULL DEFAULT NULL;
+```
+
+After deploying and running the migration, delete damaged production sessions and log in again:
+
+```sql
+DELETE FROM sessions;
+```
+
+Verification:
+
+1. Run the migration.
+2. Delete old sessions.
+3. Log in fresh.
+4. Confirm session trace before `/api/auth/me`: `secondsUntilExpiry` is near `2592000` and `normalSessionAccepted` is `true`.
+5. Run `/api/auth/me`.
+6. Confirm session trace after `/api/auth/me`: same `sessionId`, unchanged `expiresAt`, updated `lastSeenAt`, `secondsUntilExpiry` still near `2592000`, and `normalSessionAccepted` is `true`.
+7. Run `/api/auth/me` three times over several minutes. All calls should return `ok: true`.
