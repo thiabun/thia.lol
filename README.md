@@ -76,14 +76,15 @@ If the ambient artwork changes, replace `source-assets/ambient-veil.png` and run
 
 ## API Setup on cPanel
 
-The PHP API is deployed under `public_html/api` and currently exposes health checks, public content reads, auth endpoints, and authenticated post mutations.
+The PHP API is deployed under `public_html/api` and currently exposes health checks, public content reads, auth endpoints, authenticated post mutations, and protected database migration endpoints.
 
 1. In cPanel, create a MySQL database, create a database user, and grant that user access to the database.
 2. Upload the repository `api/` directory to `public_html/api`.
-3. Upload the repository `config/` directory to `public_html/config`, or place a private config directory outside `public_html` if your host allows it.
-4. Copy `config/config.example.php` to `config/config.php` on the server.
-5. Edit `config/config.php` with the cPanel MySQL host, database name, username, password, and a long random `security.csrf_secret`.
-6. Keep `config/config.php` private. It is gitignored and should not be committed.
+3. Upload `backend/database/migrations/` to `public_html/api/migrations/`.
+4. Upload the repository `config/` directory to `public_html/config`, or place a private config directory outside `public_html` if your host allows it.
+5. Copy `config/config.example.php` to `config/config.php` on the server.
+6. Edit `config/config.php` with the cPanel MySQL host, database name, username, password, a long random `security.csrf_secret`, and a server-only `security.migration_token` when migrations should be enabled.
+7. Keep `config/config.php` private. It is gitignored and should not be committed.
 
 If the config is outside the web root, set the `THIA_CONFIG_PATH` environment variable to the absolute path of `config.php`. On Apache/cPanel, that can be set in `api/.htaccess` with a line like:
 
@@ -127,6 +128,8 @@ The initial MySQL setup lives in `backend/database/`. Import these files with cP
 
 `schema.sql` is for initial empty-database setup only; it is not a migration system for existing production data. `seed.sql` creates starter public content but does not create login credentials or hardcode real passwords.
 
+Committed migrations live in `backend/database/migrations/` and deploy to `public_html/api/migrations/`. They are applied through the protected `/api/admin/migrations/status` and `/api/admin/migrations/run` endpoints, which require an admin session and the `X-Migration-Token` header. Leave `security.migration_token` empty to disable the runner.
+
 ## Post-Deploy Checklist
 
 - Direct-refresh `/`, `/discover`, `/rooms`, `/@thia`, `/studio`, `/admin`, `/login`, and `/register`.
@@ -148,7 +151,9 @@ The root-level API files are not required for the frontend build, but they shoul
 - `api/index.php`
 - `api/bootstrap.php`
 - `api/db.php`
+- `api/migrations.php`
 - `api/.htaccess`
+- `backend/database/migrations/` to `public_html/api/migrations/`
 - `config/config.example.php`
 - `config/.htaccess`
 - `backend/database/schema.sql`

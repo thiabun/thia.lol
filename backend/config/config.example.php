@@ -14,4 +14,7 @@ return [
         'name' => 'thia.lol API',
         'environment' => 'development',
     ],
+    'security' => [
+        'migration_token' => '',
+    ],
 ];

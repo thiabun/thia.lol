@@ -62,6 +62,8 @@ public_html/api/
   read.php
   posts.php
   moderation.php
+  migrations.php
+  migrations/
   .htaccess
 ```
 

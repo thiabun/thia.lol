@@ -11,6 +11,7 @@ A good deploy should:
 - Build the Vite frontend.
 - Upload the contents of `dist/` directly into `public_html/`.
 - Upload API files into `public_html/api/`.
+- Upload database migration SQL from `backend/database/migrations/` into `public_html/api/migrations/`.
 - Never upload secrets.
 - Never overwrite `public_html/config/config.php`.
 - Keep `public_html/.htaccess` and `public_html/api/.htaccess` in place.
@@ -60,7 +61,11 @@ public_html/
     read.php
     posts.php
     moderation.php
+    migrations.php
     .htaccess
+    migrations/
+      .htaccess
+      20260609_0001_add_post_replies.sql
   config/
     config.php
     .htaccess
@@ -184,7 +189,24 @@ Safer approach:
 
 - Deploy frontend from `dist/` to `public_html/` without clean-slate.
 - Deploy API from `api/` to `public_html/api/` without clean-slate.
+- Deploy migration SQL from `backend/database/migrations/` to `public_html/api/migrations/` without clean-slate.
 - Periodically clean old `public_html/assets/index-*` files manually or with a controlled cleanup task if needed.
+
+## Database migrations
+
+Committed migrations live in:
+
+```text
+backend/database/migrations/
+```
+
+GitHub Actions deploys that folder to:
+
+```text
+public_html/api/migrations/
+```
+
+The PHP runner reads from the deployed API path and tracks applied files in `schema_migrations`. Keep migrations forward-only, never commit real migration tokens, and do not deploy the entire `backend/` directory to `public_html/`.
 
 ## Version stamping
 

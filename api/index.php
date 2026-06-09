@@ -7,6 +7,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read.php';
 require_once __DIR__ . '/posts.php';
 require_once __DIR__ . '/moderation.php';
+require_once __DIR__ . '/migrations.php';
 require_once __DIR__ . '/setup.php';
 
 function health_response(): void
@@ -58,6 +59,10 @@ try {
 
     if (($segments[0] ?? null) === 'reports') {
         reports_dispatch($segments, $method);
+    }
+
+    if (($segments[0] ?? null) === 'admin' && ($segments[1] ?? null) === 'migrations') {
+        migrations_dispatch($segments, $method);
     }
 
     if (($segments[0] ?? null) === 'admin') {

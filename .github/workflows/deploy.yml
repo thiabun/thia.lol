@@ -75,6 +75,19 @@ jobs:
             **/.git*/**
             **/config.php
 
+      - name: Deploy database migrations to public_html/api/migrations
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: backend/database/migrations/
+          server-dir: public_html/api/migrations/
+          dangerous-clean-slate: false
+          exclude: |
+            **/.git*
+            **/.git*/**
+
       - name: Wait for deployed files to settle
         run: sleep 15
 
