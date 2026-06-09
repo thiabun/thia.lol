@@ -11,6 +11,18 @@ function posts_dispatch(array $segments, string $method): void
         posts_create();
     }
 
+    if (count($segments) === 3 && preg_match('/^\d+$/', $segments[1]) === 1 && $segments[2] === 'like') {
+        if ($method === 'POST') {
+            posts_like_create((int) $segments[1]);
+        }
+
+        if ($method === 'DELETE') {
+            posts_like_delete((int) $segments[1]);
+        }
+
+        json_error('Method not allowed.', 405);
+    }
+
     if (count($segments) === 3 && preg_match('/^\d+$/', $segments[1]) === 1 && $segments[2] === 'reactions') {
         if ($method === 'POST') {
             posts_reaction_create((int) $segments[1]);
@@ -39,10 +51,7 @@ function posts_dispatch(array $segments, string $method): void
         }
     }
 
-    if (
-        (count($segments) === 1 && in_array($method, ['POST', 'PATCH', 'DELETE'], true)) ||
-        (count($segments) === 2 && in_array($method, ['POST', 'PATCH', 'DELETE'], true))
-    ) {
+    if (in_array($method, ['POST', 'PATCH', 'DELETE'], true)) {
         json_error('Method not allowed.', 405);
     }
 }
@@ -72,7 +81,7 @@ function posts_create(): void
         ]
     );
 
-    json_success(fetch_post_payload_by_id((int) db()->lastInsertId()), 201);
+    json_success(fetch_post_payload_by_id((int) db()->lastInsertId(), (int) $session['user_id']), 201);
 }
 
 function posts_update(int $postId): void
@@ -160,7 +169,7 @@ function posts_update(int $postId): void
     );
     db_query($sql, $params);
 
-    json_success(fetch_post_payload_by_id($postId));
+    json_success(fetch_post_payload_by_id($postId, (int) $session['user_id']));
 }
 
 function posts_delete(int $postId): void
@@ -229,6 +238,25 @@ function posts_reaction_create(int $postId): void
     ]);
 }
 
+function posts_like_create(int $postId): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+    require_reactable_post($postId);
+
+    db_query(
+        'INSERT IGNORE INTO post_reactions (post_id, user_id, type)
+         VALUES (:post_id, :user_id, :type)',
+        [
+            'post_id' => $postId,
+            'user_id' => (int) $session['user_id'],
+            'type' => like_reaction_type(),
+        ]
+    );
+
+    json_success(like_payload_for_post($postId, (int) $session['user_id']));
+}
+
 function posts_reaction_delete(int $postId, string $rawType): void
 {
     $session = require_authenticated_session();
@@ -253,6 +281,27 @@ function posts_reaction_delete(int $postId, string $rawType): void
         'postId' => $postId,
         'reactions' => reaction_counts_for_post($postId),
     ]);
+}
+
+function posts_like_delete(int $postId): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+    require_reactable_post($postId);
+
+    db_query(
+        'DELETE FROM post_reactions
+         WHERE post_id = :post_id
+           AND user_id = :user_id
+           AND type = :type',
+        [
+            'post_id' => $postId,
+            'user_id' => (int) $session['user_id'],
+            'type' => like_reaction_type(),
+        ]
+    );
+
+    json_success(like_payload_for_post($postId, (int) $session['user_id']));
 }
 
 function validate_post_body(mixed $value): string
@@ -460,9 +509,44 @@ function reaction_counts_for_post(int $postId): array
     ];
 }
 
-function fetch_post_payload_by_id(int $postId): array
+function like_reaction_type(): string
 {
-    $statement = db_query(post_payload_select_sql('p.id = :id'), ['id' => $postId]);
+    return 'glow';
+}
+
+function like_payload_for_post(int $postId, int $userId): array
+{
+    $statement = db_query(
+        "SELECT
+            COUNT(*) AS like_count,
+            COALESCE(SUM(user_id = :liked_user_id), 0) AS liked_by_current_user
+         FROM post_reactions
+         WHERE post_id = :post_id
+           AND type = :type",
+        [
+            'liked_user_id' => $userId,
+            'post_id' => $postId,
+            'type' => like_reaction_type(),
+        ]
+    );
+    $row = $statement->fetch();
+
+    return [
+        'postId' => $postId,
+        'likeCount' => is_array($row) ? (int) $row['like_count'] : 0,
+        'likedByCurrentUser' => is_array($row) && (int) $row['liked_by_current_user'] > 0,
+    ];
+}
+
+function fetch_post_payload_by_id(int $postId, ?int $currentUserId = null): array
+{
+    $statement = db_query(
+        post_payload_select_sql('p.id = :id'),
+        [
+            'id' => $postId,
+            'current_user_id' => $currentUserId,
+        ]
+    );
     $row = $statement->fetch();
 
     if (!is_array($row)) {
@@ -511,7 +595,8 @@ function post_payload_select_sql(string $whereClause): string
         r.updated_at AS room_updated_at,
         COALESCE(reactions.glow_count, 0) AS reaction_glow_count,
         COALESCE(reactions.echo_count, 0) AS reaction_echo_count,
-        COALESCE(reactions.hush_count, 0) AS reaction_hush_count
+        COALESCE(reactions.hush_count, 0) AS reaction_hush_count,
+        current_like.user_id AS current_like_user_id
     FROM posts p
     INNER JOIN users u ON u.id = p.author_id
     INNER JOIN profiles pr ON pr.user_id = u.id
@@ -549,6 +634,10 @@ function post_payload_select_sql(string $whereClause): string
         FROM post_reactions
         GROUP BY post_id
     ) reactions ON reactions.post_id = p.id
+    LEFT JOIN post_reactions current_like
+        ON current_like.post_id = p.id
+       AND current_like.user_id = :current_user_id
+       AND current_like.type = 'glow'
     WHERE {$whereClause}
     LIMIT 1";
 }

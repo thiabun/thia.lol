@@ -58,6 +58,12 @@ export type ReactionResult = {
   reactions: ReactionCounts;
 };
 
+export type LikeResult = {
+  postId: number;
+  likeCount: number;
+  likedByCurrentUser: boolean;
+};
+
 export type ReportReason =
   | "spam"
   | "harassment"
@@ -189,6 +195,20 @@ export function removeReaction(
   ).then((result) => result.reactions);
 }
 
+export function likePost(
+  postId: number,
+  csrfToken: string,
+): Promise<LikeResult> {
+  return apiPost<LikeResult>(`/posts/${postId}/like`, {}, csrfToken);
+}
+
+export function unlikePost(
+  postId: number,
+  csrfToken: string,
+): Promise<LikeResult> {
+  return apiDelete<LikeResult>(`/posts/${postId}/like`, csrfToken);
+}
+
 export function createReport(
   input: CreateReportInput,
   csrfToken: string,
@@ -316,6 +336,8 @@ function normalizePost(post: ApiPost): Post {
     createdAt: formatRelativeTime(post.createdAt),
     mood: post.mood,
     reactions: post.reactions,
+    likeCount: post.likeCount ?? post.reactions.glow,
+    likedByCurrentUser: post.likedByCurrentUser ?? false,
   };
 
   if (post.mediaUrl) {

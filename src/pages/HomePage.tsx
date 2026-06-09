@@ -2,9 +2,9 @@ import {
   Activity,
   ArrowRight,
   Compass,
+  Heart,
   MessageCircle,
   Radio,
-  Sparkles,
   UsersRound,
 } from "lucide-react";
 import { motion } from "motion/react";
@@ -34,11 +34,7 @@ const fallbackStats: PublicStats = {
   publicRooms: fallbackRooms.length,
   publicPosts: fallbackPosts.length,
   activeUsers: fallbackUsers.length,
-  totalReactions: fallbackPosts.reduce(
-    (total, post) =>
-      total + post.reactions.glow + post.reactions.echo + post.reactions.hush,
-    0,
-  ),
+  totalReactions: fallbackPosts.reduce((total, post) => total + post.likeCount, 0),
 };
 
 export function HomePage() {
@@ -277,9 +273,9 @@ export function HomePage() {
               icon={UsersRound}
             />
             <Metric
-              label="Reactions"
+              label="Likes"
               value={stats.totalReactions}
-              icon={Sparkles}
+              icon={Heart}
             />
           </div>
         </Panel>

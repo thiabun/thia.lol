@@ -125,6 +125,7 @@ function nullable_room_payload(array $row): ?array
 function post_payload(array $row): array
 {
     $profile = profile_payload($row);
+    $likeCount = (int) ($row['reaction_glow_count'] ?? 0);
 
     return [
         'id' => (int) $row['post_id'],
@@ -141,11 +142,32 @@ function post_payload(array $row): array
         'profile' => $profile,
         'room' => nullable_room_payload($row),
         'reactions' => [
-            'glow' => (int) ($row['reaction_glow_count'] ?? 0),
+            'glow' => $likeCount,
             'echo' => (int) ($row['reaction_echo_count'] ?? 0),
             'hush' => (int) ($row['reaction_hush_count'] ?? 0),
         ],
+        'likeCount' => $likeCount,
+        'likedByCurrentUser' => isset($row['current_like_user_id']) && $row['current_like_user_id'] !== null,
     ];
+}
+
+function current_request_user_id(): ?int
+{
+    static $userId = false;
+
+    if ($userId !== false) {
+        return $userId;
+    }
+
+    if (!function_exists('current_session')) {
+        $userId = null;
+        return null;
+    }
+
+    $session = current_session();
+    $userId = $session === null ? null : (int) $session['user_id'];
+
+    return $userId;
 }
 
 function fetch_profile_by_handle(string $handle): ?array
@@ -287,7 +309,8 @@ function post_select_sql(string $whereClause): string
         r.updated_at AS room_updated_at,
         COALESCE(reactions.glow_count, 0) AS reaction_glow_count,
         COALESCE(reactions.echo_count, 0) AS reaction_echo_count,
-        COALESCE(reactions.hush_count, 0) AS reaction_hush_count
+        COALESCE(reactions.hush_count, 0) AS reaction_hush_count,
+        current_like.user_id AS current_like_user_id
     FROM posts p
     INNER JOIN users u ON u.id = p.author_id
     INNER JOIN profiles pr ON pr.user_id = u.id
@@ -325,6 +348,10 @@ function post_select_sql(string $whereClause): string
         FROM post_reactions
         GROUP BY post_id
     ) reactions ON reactions.post_id = p.id
+    LEFT JOIN post_reactions current_like
+        ON current_like.post_id = p.id
+       AND current_like.user_id = :current_user_id
+       AND current_like.type = 'glow'
     WHERE p.visibility = 'public'
       AND p.status = 'published'
       AND p.deleted_at IS NULL
@@ -336,7 +363,10 @@ function post_select_sql(string $whereClause): string
 
 function fetch_public_posts(): array
 {
-    $statement = db_query(post_select_sql(''));
+    $statement = db_query(
+        post_select_sql(''),
+        ['current_user_id' => current_request_user_id()]
+    );
 
     return array_map('post_payload', $statement->fetchAll());
 }
@@ -345,7 +375,10 @@ function fetch_public_room_posts(string $slug): array
 {
     $statement = db_query(
         post_select_sql('AND r.slug = :slug'),
-        ['slug' => $slug]
+        [
+            'slug' => $slug,
+            'current_user_id' => current_request_user_id(),
+        ]
     );
 
     return array_map('post_payload', $statement->fetchAll());
@@ -382,7 +415,8 @@ function fetch_public_stats(): array
                 FROM post_reactions reactions
                 INNER JOIN posts reaction_posts ON reaction_posts.id = reactions.post_id
                 LEFT JOIN rooms reaction_rooms ON reaction_rooms.id = reaction_posts.room_id
-                WHERE reaction_posts.visibility = :reaction_post_visibility
+                WHERE reactions.type = :reaction_type
+                  AND reaction_posts.visibility = :reaction_post_visibility
                   AND reaction_posts.status = :reaction_post_status
                   AND reaction_posts.deleted_at IS NULL
                   AND (
@@ -396,6 +430,7 @@ function fetch_public_stats(): array
             'post_status' => 'published',
             'room_visibility' => 'public',
             'user_status' => 'active',
+            'reaction_type' => 'glow',
             'reaction_post_visibility' => 'public',
             'reaction_post_status' => 'published',
             'reaction_room_visibility' => 'public',

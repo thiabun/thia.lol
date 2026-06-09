@@ -106,9 +106,13 @@ Authenticated post endpoints:
 POST /api/posts
 PATCH /api/posts/{id}
 DELETE /api/posts/{id}
+POST /api/posts/{id}/like
+DELETE /api/posts/{id}/like
 ```
 
 Post mutation requests require a valid session cookie and the in-memory CSRF token from `/api/auth/me` in the `X-CSRF-Token` header. Deleted posts are soft-deleted with `status='removed'` and `deleted_at` set.
+
+Likes use `POST /api/posts/{id}/like` and `DELETE /api/posts/{id}/like` because the route maps directly to the UI action. The current `post_reactions` table stores legacy reaction rows with `type ENUM('glow','echo','hush')`; likes are stored as `type='glow'` for compatibility with deployed cPanel databases. Like responses keep the standard envelope and return `postId`, `likeCount`, and `likedByCurrentUser`.
 
 ## Database Setup on cPanel
 

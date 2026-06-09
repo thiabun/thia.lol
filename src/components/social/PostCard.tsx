@@ -1,6 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from "react";
-import { EyeOff, Flag, MessageCircle, Repeat2, Sparkles, Trash2 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { EyeOff, Flag, Heart, Trash2 } from "lucide-react";
 import { motion } from "motion/react";
 import { AmbientImage } from "../ui/AmbientImage";
 import { Avatar } from "../ui/Avatar";
@@ -9,14 +8,13 @@ import { Button } from "../ui/Button";
 import { SelectField, TextareaField } from "../ui/Field";
 import { Panel } from "../ui/Panel";
 import {
-  addReaction,
   createReport,
-  removeReaction,
-  type ReactionType,
+  likePost,
+  unlikePost,
   type ReportReason,
 } from "../../lib/api";
 import { cn } from "../../lib/classNames";
-import type { Post, ReactionCounts } from "../../lib/types";
+import type { Post } from "../../lib/types";
 import { useAuth } from "../../lib/useAuth";
 
 type PostCardProps = {
@@ -86,10 +84,11 @@ export function PostCard({
         ) : null}
 
         <ReactionControls
-          key={`${post.id}:${post.reactions.glow}:${post.reactions.echo}:${post.reactions.hush}`}
+          key={`${post.id}:${post.likeCount}:${post.likedByCurrentUser}`}
           postId={post.id}
           reportedUserId={post.author.id}
-          initialCounts={post.reactions}
+          initialLikeCount={post.likeCount}
+          initiallyLiked={post.likedByCurrentUser}
           actions={
             showActions ? (
               <>
@@ -129,27 +128,24 @@ export function PostCard({
 type ReactionControlsProps = {
   postId: number;
   reportedUserId: number;
-  initialCounts: ReactionCounts;
+  initialLikeCount: number;
+  initiallyLiked: boolean;
   actions: ReactNode;
 };
 
 function ReactionControls({
   postId,
   reportedUserId,
-  initialCounts,
+  initialLikeCount,
+  initiallyLiked,
   actions,
 }: ReactionControlsProps) {
   const { csrfToken, user } = useAuth();
-  const [reactionCounts, setReactionCounts] = useState<ReactionCounts>(
-    initialCounts,
-  );
-  const [activeReactions, setActiveReactions] = useState<Set<ReactionType>>(
-    () => new Set(),
-  );
-  const [pendingReactions, setPendingReactions] = useState<Set<ReactionType>>(
-    () => new Set(),
-  );
-  const [reactionError, setReactionError] = useState<string>();
+  const [likeCount, setLikeCount] = useState(initialLikeCount);
+  const [liked, setLiked] = useState(initiallyLiked);
+  const [likePending, setLikePending] = useState(false);
+  const [likePulse, setLikePulse] = useState(0);
+  const [likeError, setLikeError] = useState<string>();
   const [reportOpen, setReportOpen] = useState(false);
   const [reportReason, setReportReason] = useState<ReportReason>("spam");
   const [reportDetails, setReportDetails] = useState("");
@@ -158,41 +154,43 @@ function ReactionControls({
   const [reportError, setReportError] = useState<string>();
   const canReport = Boolean(csrfToken) && user?.id !== reportedUserId;
 
-  async function handleReaction(type: ReactionType) {
-    if (pendingReactions.has(type)) {
+  async function handleLike() {
+    if (likePending) {
       return;
     }
 
     if (!csrfToken) {
-      setReactionError("Sign in to react.");
+      setLikeError("Log in to like posts.");
       return;
     }
 
-    const wasActive = activeReactions.has(type);
-    const previousCounts = reactionCounts;
-    const previousActive = new Set(activeReactions);
+    const wasLiked = liked;
+    const previousCount = likeCount;
 
-    setReactionError(undefined);
-    setPendingReactions((current) => addToSet(current, type));
-    setActiveReactions((current) => toggleInSet(current, type, !wasActive));
-    setReactionCounts((current) =>
-      adjustReactionCount(current, type, wasActive ? -1 : 1),
-    );
+    setLikeError(undefined);
+    setLikePending(true);
+    setLiked(!wasLiked);
+    setLikeCount((current) => Math.max(0, current + (wasLiked ? -1 : 1)));
+
+    if (!wasLiked) {
+      setLikePulse((current) => current + 1);
+    }
 
     try {
-      const nextCounts = wasActive
-        ? await removeReaction(postId, type, csrfToken)
-        : await addReaction(postId, type, csrfToken);
+      const result = wasLiked
+        ? await unlikePost(postId, csrfToken)
+        : await likePost(postId, csrfToken);
 
-      setReactionCounts(nextCounts);
+      setLikeCount(result.likeCount);
+      setLiked(result.likedByCurrentUser);
     } catch (error) {
-      setReactionCounts(previousCounts);
-      setActiveReactions(previousActive);
-      setReactionError(
-        error instanceof Error ? error.message : "Could not update reaction.",
+      setLikeCount(previousCount);
+      setLiked(wasLiked);
+      setLikeError(
+        error instanceof Error ? error.message : "Could not update like.",
       );
     } finally {
-      setPendingReactions((current) => removeFromSet(current, type));
+      setLikePending(false);
     }
   }
 
@@ -234,32 +232,12 @@ function ReactionControls({
   return (
     <>
       <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted">
-        <Reaction
-          type="glow"
-          icon={Sparkles}
-          label="Glow"
-          count={reactionCounts.glow}
-          active={activeReactions.has("glow")}
-          pending={pendingReactions.has("glow")}
-          onClick={() => void handleReaction("glow")}
-        />
-        <Reaction
-          type="echo"
-          icon={Repeat2}
-          label="Echo"
-          count={reactionCounts.echo}
-          active={activeReactions.has("echo")}
-          pending={pendingReactions.has("echo")}
-          onClick={() => void handleReaction("echo")}
-        />
-        <Reaction
-          type="hush"
-          icon={MessageCircle}
-          label="Hush"
-          count={reactionCounts.hush}
-          active={activeReactions.has("hush")}
-          pending={pendingReactions.has("hush")}
-          onClick={() => void handleReaction("hush")}
+        <LikeButton
+          count={likeCount}
+          liked={liked}
+          pending={likePending}
+          pulseKey={likePulse}
+          onClick={() => void handleLike()}
         />
         {canReport || actions ? (
           <span className="ml-auto inline-flex items-center gap-2">
@@ -283,8 +261,8 @@ function ReactionControls({
           </span>
         ) : null}
       </div>
-      {reactionError ? (
-        <p className="mt-2 text-xs font-medium text-rose-ink">{reactionError}</p>
+      {likeError ? (
+        <p className="mt-2 text-xs font-medium text-rose-ink">{likeError}</p>
       ) : null}
       {reportMessage ? (
         <p className="mt-2 text-xs font-medium text-leaf-ink">{reportMessage}</p>
@@ -342,71 +320,49 @@ const reportReasonOptions: Array<{ value: ReportReason; label: string }> = [
   { value: "other", label: "Other" },
 ];
 
-type ReactionProps = {
-  type: ReactionType;
-  icon: LucideIcon;
-  label: string;
+type LikeButtonProps = {
   count: number;
-  active: boolean;
+  liked: boolean;
   pending: boolean;
+  pulseKey: number;
   onClick: () => void;
 };
 
-function Reaction({
-  type,
-  icon: Icon,
-  label,
+function LikeButton({
   count,
-  active,
+  liked,
   pending,
+  pulseKey,
   onClick,
-}: ReactionProps) {
+}: LikeButtonProps) {
   return (
-    <button
+    <motion.button
       type="button"
       className={cn(
         "inline-flex min-h-9 items-center gap-2 rounded-full px-3 transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-wait",
-        active
-          ? "bg-surface-strong text-text shadow-inner-soft"
+        liked
+          ? "bg-rose/20 text-rose-ink shadow-inner-soft"
           : "hover:bg-surface-strong hover:text-text",
         pending && "opacity-70",
       )}
-      aria-label={`${active ? "Remove" : "Add"} ${label}. ${count} total.`}
-      aria-pressed={active}
+      aria-label={`${liked ? "Unlike" : "Like"} this post. ${count} ${count === 1 ? "like" : "likes"}.`}
+      aria-pressed={liked}
       disabled={pending}
-      title={label}
+      title={liked ? "Liked" : "Like"}
       onClick={onClick}
-      data-reaction-type={type}
+      whileTap={{ scale: 0.94 }}
     >
-      <Icon aria-hidden="true" size={15} />
-      <span>{count}</span>
-    </button>
+      <motion.span
+        key={pulseKey}
+        aria-hidden="true"
+        animate={liked ? { scale: [1, 1.28, 1] } : { scale: 1 }}
+        transition={{ type: "spring", stiffness: 420, damping: 18 }}
+        className="grid place-items-center"
+      >
+        <Heart size={15} fill={liked ? "currentColor" : "none"} />
+      </motion.span>
+      <span>{liked ? "Liked" : "Like"}</span>
+      <span className="tabular-nums">{count}</span>
+    </motion.button>
   );
-}
-
-function adjustReactionCount(
-  counts: ReactionCounts,
-  type: ReactionType,
-  delta: number,
-): ReactionCounts {
-  return {
-    ...counts,
-    [type]: Math.max(0, counts[type] + delta),
-  };
-}
-
-function addToSet<T>(set: Set<T>, value: T): Set<T> {
-  const next = new Set(set);
-  next.add(value);
-  return next;
-}
-
-function removeFromSet<T>(set: Set<T>, value: T): Set<T> {
-  const next = new Set(set);
-  next.delete(value);
-  return next;
-}
-
-function toggleInSet<T>(set: Set<T>, value: T, enabled: boolean): Set<T> {
-  return enabled ? addToSet(set, value) : removeFromSet(set, value);
 }

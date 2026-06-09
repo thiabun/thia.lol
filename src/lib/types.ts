@@ -53,6 +53,8 @@ export type Post = {
   createdAt: string;
   mood: string;
   reactions: ReactionCounts;
+  likeCount: number;
+  likedByCurrentUser: boolean;
   mediaUrl?: string;
 };
 

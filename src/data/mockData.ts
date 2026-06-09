@@ -128,6 +128,8 @@ export const posts: Post[] = [
     createdAt: "18m",
     mood: "sunveil",
     reactions: { glow: 42, echo: 12, hush: 8 },
+    likeCount: 0,
+    likedByCurrentUser: false,
     mediaUrl: "/ambient-veil.webp",
   },
   {
@@ -138,6 +140,8 @@ export const posts: Post[] = [
     createdAt: "44m",
     mood: "garden",
     reactions: { glow: 81, echo: 19, hush: 22 },
+    likeCount: 0,
+    likedByCurrentUser: false,
   },
   {
     id: 3,
@@ -147,6 +151,8 @@ export const posts: Post[] = [
     createdAt: "1h",
     mood: "frostveil",
     reactions: { glow: 64, echo: 16, hush: 31 },
+    likeCount: 0,
+    likedByCurrentUser: false,
   },
   {
     id: 4,
@@ -156,6 +162,8 @@ export const posts: Post[] = [
     createdAt: "2h",
     mood: "afterglow",
     reactions: { glow: 117, echo: 34, hush: 12 },
+    likeCount: 0,
+    likedByCurrentUser: false,
   },
 ];
 
