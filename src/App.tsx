@@ -19,7 +19,7 @@ export default function App() {
           <Route index element={<HomePage />} />
           <Route path="discover" element={<DiscoverPage />} />
           <Route path="rooms" element={<RoomsPage />} />
-          <Route path="@handle" element={<ProfilePage />} />
+          <Route path="@/:handle" element={<ProfilePage />} />
           <Route path="studio" element={<StudioPage />} />
           <Route path="admin" element={<AdminPage />} />
           <Route path="login" element={<AuthPage mode="login" />} />
