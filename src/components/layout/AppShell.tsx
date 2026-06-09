@@ -9,9 +9,12 @@ import {
   UserPlus,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { NavLink, Outlet } from "react-router";
 import { ThemeToggle } from "../ThemeToggle";
-import { Button, ButtonLink } from "../ui/Button";
+import { Button } from "../ui/Button";
 import { cn } from "../../lib/classNames";
 import { useAuth } from "../../lib/useAuth";
 
@@ -43,24 +46,22 @@ export function AppShell() {
 }
 
 function SiteHeader({ navItems }: { navItems: NavItemProps[] }) {
-  const { logout, status, user } = useAuth();
-
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-canvas/78 backdrop-blur-veil">
-      <div className="mx-auto flex min-h-16 w-full max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex min-h-16 w-full max-w-7xl items-center gap-2 px-4 sm:gap-3 sm:px-6 lg:px-8">
         <NavLink
           to="/"
-          className="group flex shrink-0 items-center gap-3 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          className="group flex min-w-0 shrink items-center gap-2 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus sm:gap-3"
           aria-label="thia.lol home"
         >
-          <span className="grid size-10 place-items-center rounded-full border border-line bg-surface shadow-soft">
+          <span className="grid size-9 shrink-0 place-items-center rounded-full border border-line bg-surface shadow-soft sm:size-10">
             <span className="size-3 rounded-full bg-accent shadow-glow transition duration-fluid group-hover:scale-110" />
           </span>
-          <span>
-            <span className="block text-sm font-semibold tracking-normal text-text">
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-semibold tracking-normal text-text">
               thia.lol
             </span>
-            <span className="block text-xs text-muted">soft social</span>
+            <span className="block truncate text-xs text-muted">sexy social</span>
           </span>
         </NavLink>
 
@@ -71,86 +72,144 @@ function SiteHeader({ navItems }: { navItems: NavItemProps[] }) {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
-          <div className="sm:hidden">
-            <ThemeToggle compact />
-          </div>
-          <div className="hidden sm:block">
-            <ThemeToggle />
-          </div>
-          {status === "authenticated" && user ? (
-            <>
-              <NavLink
-                to={`/@${user.handle}`}
-                className="inline-flex min-h-10 items-center gap-2 rounded-full border border-line bg-surface px-3 text-sm font-medium text-text shadow-soft transition duration-fluid ease-fluid hover:border-line-strong"
-                aria-label={`Open @${user.handle}`}
-                title={`@${user.handle}`}
-              >
-                <UserRound aria-hidden="true" size={16} />
-                <span className="hidden max-w-32 truncate sm:inline">@{user.handle}</span>
-              </NavLink>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="sm:hidden"
-                aria-label="Logout"
-                title="Logout"
-                icon={<LogOut aria-hidden="true" size={17} />}
-                onClick={() => void logout()}
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                className="hidden sm:inline-flex"
-                icon={<LogOut aria-hidden="true" size={17} />}
-                onClick={() => void logout()}
-              >
-                Logout
-              </Button>
-            </>
-          ) : status === "loading" ? (
-            <span className="hidden min-h-10 items-center rounded-full border border-line bg-surface px-3 text-sm text-muted sm:inline-flex">
-              Checking session
-            </span>
-          ) : (
-            <>
-              <ButtonLink
-                to="/login"
-                variant="secondary"
-                size="icon"
-                className="sm:hidden"
-                aria-label="Login"
-                title="Login"
-                icon={<LogIn aria-hidden="true" size={17} />}
-              />
-              <ButtonLink
-                to="/register"
-                size="icon"
-                className="sm:hidden"
-                aria-label="Register"
-                title="Register"
-                icon={<UserPlus aria-hidden="true" size={17} />}
-              />
-              <ButtonLink
-                to="/login"
-                variant="ghost"
-                className="hidden sm:inline-flex"
-                icon={<LogIn aria-hidden="true" size={17} />}
-              >
-                Login
-              </ButtonLink>
-              <ButtonLink
-                to="/register"
-                className="hidden sm:inline-flex"
-                icon={<UserPlus aria-hidden="true" size={17} />}
-              >
-                Register
-              </ButtonLink>
-            </>
-          )}
+          <ThemeToggle compact />
+          <AccountMenu />
         </div>
       </div>
     </header>
+  );
+}
+
+function AccountMenu() {
+  const { logout, status, user } = useAuth();
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const isAuthenticated = status === "authenticated" && Boolean(user);
+  const isLoading = status === "loading";
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  const label = isAuthenticated
+    ? `Account menu for @${user?.handle}`
+    : "Account menu";
+
+  return (
+    <div ref={menuRef} className="relative shrink-0">
+      <Button
+        type="button"
+        variant="secondary"
+        size="icon"
+        aria-label={label}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        disabled={isLoading}
+        title={label}
+        icon={
+          isAuthenticated ? (
+            <UserRound aria-hidden="true" size={18} />
+          ) : (
+            <LogIn aria-hidden="true" size={18} />
+          )
+        }
+        onClick={() => setOpen((current) => !current)}
+      />
+
+      <AnimatePresence>
+        {open ? (
+          <motion.div
+            initial={{ opacity: 0, y: -4, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.97 }}
+            transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+            className="absolute right-0 mt-2 w-44 origin-top-right rounded-panel border border-line bg-surface/96 p-1 shadow-lift backdrop-blur-veil"
+            role="menu"
+          >
+            {isAuthenticated && user ? (
+              <>
+                <AccountMenuLink to={`/@${user.handle}`} onSelect={() => setOpen(false)}>
+                  <UserRound aria-hidden="true" size={16} />
+                  View profile
+                </AccountMenuLink>
+                {user.role === "admin" ? (
+                  <AccountMenuLink to="/admin" onSelect={() => setOpen(false)}>
+                    <Shield aria-hidden="true" size={16} />
+                    Admin
+                  </AccountMenuLink>
+                ) : null}
+                <button
+                  type="button"
+                  className="flex min-h-10 w-full items-center gap-2 rounded-card px-3 text-left text-sm font-medium text-muted transition duration-fluid ease-fluid hover:bg-surface-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                  role="menuitem"
+                  onClick={() => {
+                    setOpen(false);
+                    void logout();
+                  }}
+                >
+                  <LogOut aria-hidden="true" size={16} />
+                  Log out
+                </button>
+              </>
+            ) : (
+              <>
+                <AccountMenuLink to="/login" onSelect={() => setOpen(false)}>
+                  <LogIn aria-hidden="true" size={16} />
+                  Log in
+                </AccountMenuLink>
+                <AccountMenuLink to="/register" onSelect={() => setOpen(false)}>
+                  <UserPlus aria-hidden="true" size={16} />
+                  Sign up
+                </AccountMenuLink>
+              </>
+            )}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function AccountMenuLink({
+  children,
+  onSelect,
+  to,
+}: {
+  children: ReactNode;
+  onSelect: () => void;
+  to: string;
+}) {
+  return (
+    <NavLink
+      to={to}
+      className="flex min-h-10 w-full items-center gap-2 rounded-card px-3 text-sm font-medium text-muted transition duration-fluid ease-fluid hover:bg-surface-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      role="menuitem"
+      onClick={onSelect}
+    >
+      {children}
+    </NavLink>
   );
 }
 
