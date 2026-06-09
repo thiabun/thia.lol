@@ -15,6 +15,22 @@ Read this file before making changes. The project is intentionally shaped around
 - Domain root: `https://thia.lol/`.
 - Vite base path: `/`.
 
+## Git sync rule
+
+Before starting implementation, sync with the remote branch:
+
+```bash
+git pull --rebase
+```
+
+After verification passes and the commit is created, push the commit so GitHub Actions can deploy it:
+
+```bash
+git push
+```
+
+If `git pull --rebase` or `git push` fails, stop and report the error instead of continuing with hidden local-only changes.
+
 ## Deployment invariant
 
 The contents of `dist/` go directly into `public_html/`.
@@ -80,8 +96,9 @@ Every implementation summary should include:
    - `npm run lint`
    - `npm run optimize:assets`
    - `npm run build`
-5. Exact files or folders to upload to cPanel.
-6. Exact URLs to test after deployment.
+5. Commit SHA and whether `git push` succeeded.
+6. Exact files or folders to upload to cPanel if manual upload is needed.
+7. Exact URLs to test after deployment.
 
 ## Backend rule
 
