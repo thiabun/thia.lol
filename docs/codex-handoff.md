@@ -10,9 +10,14 @@ For each task, Codex should:
 
 1. Read `AGENTS.md` first.
 2. Read this handoff document if the task involves backend, deployment, or architecture.
-3. Make the smallest safe change that satisfies the task.
-4. Run verification commands.
-5. Return a clear implementation summary.
+3. Run `git pull --rebase` before editing so the local branch is current.
+4. Make the smallest safe change that satisfies the task.
+5. Run verification commands.
+6. Commit the verified change.
+7. Run `git push` after committing so GitHub Actions can deploy.
+8. Return a clear implementation summary with the commit SHA and push result.
+
+If pull, commit, or push fails, Codex should stop and report the exact error instead of leaving unpushed local changes.
 
 ## Standard task packet
 
@@ -25,6 +30,7 @@ Context:
 - PHP API is deployed to public_html/api/.
 - Config is created manually on the server at public_html/config/config.php.
 - Read AGENTS.md before changing files.
+- Pull latest changes with git pull --rebase before editing.
 
 Problem:
 <what is wrong or what needs to be built>
@@ -45,10 +51,17 @@ Run:
 - npm run optimize:assets
 - npm run build
 
+Git:
+- Commit the verified changes.
+- Push the commit with git push so GitHub Actions deploys it.
+- If pull or push fails, report the error.
+
 Output:
 - Files changed.
 - Commands run and results.
-- Exact files/folders to upload to cPanel.
+- Commit SHA.
+- Whether git push succeeded.
+- Exact files/folders to upload to cPanel if manual upload is needed.
 - Exact URLs to test.
 ```
 
@@ -64,6 +77,7 @@ Context:
 - Config is intended at public_html/config/config.php.
 - The deployed API currently returns a generic 500 Internal Server Error.
 - Read AGENTS.md first.
+- Pull latest changes with git pull --rebase before editing.
 
 Problem:
 The API needs safer cPanel diagnostics and should not depend on SetEnv/THIA_CONFIG_PATH for basic deployment.
@@ -95,6 +109,11 @@ Run available checks locally:
 - npm run optimize:assets
 - npm run build
 If PHP is available, run PHP syntax checks on api/*.php and config/*.php. If PHP is not available, say that clearly.
+
+Git:
+- Commit verified changes.
+- Push with git push.
+- Report commit SHA and push result.
 
 Output:
 - Files changed.
@@ -159,8 +178,13 @@ Verification:
 - npm run build: pass/fail
 - PHP syntax checks: pass/fail/not available
 
+Git:
+- git pull --rebase: pass/fail
+- commit: <sha>
+- git push: pass/fail
+
 Deploy:
-- Upload ... to ...
+- Upload ... to ... if manual upload is needed
 
 Test:
 - URL 1
