@@ -351,6 +351,67 @@ function fetch_public_room_posts(string $slug): array
     return array_map('post_payload', $statement->fetchAll());
 }
 
+function fetch_public_stats(): array
+{
+    $statement = db_query(
+        "SELECT
+            (
+                SELECT COUNT(*)
+                FROM rooms
+                WHERE visibility = :public_visibility
+            ) AS public_rooms,
+            (
+                SELECT COUNT(*)
+                FROM posts stat_posts
+                LEFT JOIN rooms stat_rooms ON stat_rooms.id = stat_posts.room_id
+                WHERE stat_posts.visibility = :post_visibility
+                  AND stat_posts.status = :post_status
+                  AND stat_posts.deleted_at IS NULL
+                  AND (
+                    stat_posts.room_id IS NULL
+                    OR stat_rooms.visibility = :room_visibility
+                  )
+            ) AS public_posts,
+            (
+                SELECT COUNT(*)
+                FROM users
+                WHERE status = :user_status
+            ) AS active_users,
+            (
+                SELECT COUNT(*)
+                FROM post_reactions reactions
+                INNER JOIN posts reaction_posts ON reaction_posts.id = reactions.post_id
+                LEFT JOIN rooms reaction_rooms ON reaction_rooms.id = reaction_posts.room_id
+                WHERE reaction_posts.visibility = :reaction_post_visibility
+                  AND reaction_posts.status = :reaction_post_status
+                  AND reaction_posts.deleted_at IS NULL
+                  AND (
+                    reaction_posts.room_id IS NULL
+                    OR reaction_rooms.visibility = :reaction_room_visibility
+                  )
+            ) AS total_reactions",
+        [
+            'public_visibility' => 'public',
+            'post_visibility' => 'public',
+            'post_status' => 'published',
+            'room_visibility' => 'public',
+            'user_status' => 'active',
+            'reaction_post_visibility' => 'public',
+            'reaction_post_status' => 'published',
+            'reaction_room_visibility' => 'public',
+        ]
+    );
+
+    $row = $statement->fetch();
+
+    return [
+        'publicRooms' => (int) ($row['public_rooms'] ?? 0),
+        'publicPosts' => (int) ($row['public_posts'] ?? 0),
+        'activeUsers' => (int) ($row['active_users'] ?? 0),
+        'totalReactions' => (int) ($row['total_reactions'] ?? 0),
+    ];
+}
+
 function profiles_show(string $handle): void
 {
     $profile = fetch_profile_by_handle(normalize_handle($handle));
@@ -381,6 +442,11 @@ function rooms_show(string $slug): void
 function posts_index(): void
 {
     json_success(fetch_public_posts());
+}
+
+function stats_index(): void
+{
+    json_success(fetch_public_stats());
 }
 
 function room_posts_index(string $slug): void

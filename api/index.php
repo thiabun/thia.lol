@@ -91,6 +91,10 @@ try {
         posts_index();
     }
 
+    if (($segments[0] ?? null) === 'stats' && count($segments) === 1) {
+        stats_index();
+    }
+
     json_error('Not found.', 404);
 } catch (Throwable $exception) {
     json_error('Internal server error.', 500, $exception);

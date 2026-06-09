@@ -38,6 +38,13 @@ export type ReactionCounts = {
   hush: number;
 };
 
+export type PublicStats = {
+  publicRooms: number;
+  publicPosts: number;
+  activeUsers: number;
+  totalReactions: number;
+};
+
 export type Post = {
   id: number;
   author: User;

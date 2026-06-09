@@ -11,6 +11,7 @@ import { Panel } from "../components/ui/Panel";
 import { RoomCard } from "../components/social/RoomCard";
 import { rooms as fallbackRooms } from "../data/mockData";
 import { getRoom, getRooms } from "../lib/api";
+import { formatCountWithUnit } from "../lib/pluralize";
 import { useAsyncData } from "../lib/useAsyncData";
 
 export function RoomsPage() {
@@ -72,7 +73,7 @@ export function RoomsPage() {
                 <div className="mt-5 flex flex-wrap gap-3 text-sm text-muted">
                   <span className="inline-flex items-center gap-2">
                     <UsersRound aria-hidden="true" size={16} />
-                    {selectedRoom.members.toLocaleString()} members
+                    {formatCountWithUnit(selectedRoom.members, "member")}
                   </span>
                   <span className="inline-flex items-center gap-2">
                     <Radio aria-hidden="true" size={16} />

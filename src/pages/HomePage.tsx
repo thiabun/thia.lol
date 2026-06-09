@@ -1,4 +1,12 @@
-import { Activity, ArrowRight, Compass, Radio, UsersRound } from "lucide-react";
+import {
+  Activity,
+  ArrowRight,
+  Compass,
+  MessageCircle,
+  Radio,
+  Sparkles,
+  UsersRound,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { PageMeta } from "../components/PageMeta";
@@ -13,17 +21,31 @@ import { RoomCard } from "../components/social/RoomCard";
 import {
   posts as fallbackPosts,
   rooms as fallbackRooms,
+  users as fallbackUsers,
 } from "../data/mockData";
-import { deletePost, getFeed, getRooms, updatePost } from "../lib/api";
+import { deletePost, getFeed, getRooms, getStats, updatePost } from "../lib/api";
+import { pluralize } from "../lib/pluralize";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
-import type { Post } from "../lib/types";
+import type { Post, PublicStats } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
+
+const fallbackStats: PublicStats = {
+  publicRooms: fallbackRooms.length,
+  publicPosts: fallbackPosts.length,
+  activeUsers: fallbackUsers.length,
+  totalReactions: fallbackPosts.reduce(
+    (total, post) =>
+      total + post.reactions.glow + post.reactions.echo + post.reactions.hush,
+    0,
+  ),
+};
 
 export function HomePage() {
   const { csrfToken, user } = useAuth();
   const feedState = useAsyncData(getFeed, fallbackPosts);
   const roomsState = useAsyncData(getRooms, fallbackRooms);
+  const statsState = useAsyncData(getStats, fallbackStats);
   const [createdPosts, setCreatedPosts] = useState<Post[]>([]);
   const [removedPostIds, setRemovedPostIds] = useState<Set<number>>(
     () => new Set(),
@@ -43,6 +65,7 @@ export function HomePage() {
     [createdPosts, feedPosts, removedPostIds],
   );
   const rooms = roomsState.data ?? fallbackRooms;
+  const stats = statsState.data ?? fallbackStats;
 
   function handlePostCreated(post: Post) {
     setCreatedPosts((current) => [post, ...current]);
@@ -226,8 +249,26 @@ export function HomePage() {
             </div>
           </div>
           <div className="mt-5 grid grid-cols-2 gap-3">
-            <Metric label="Rooms" value={rooms.length || 4} icon={Radio} />
-            <Metric label="Members" value="1" icon={UsersRound} />
+            <Metric
+              label={pluralize(stats.publicRooms, "room")}
+              value={stats.publicRooms}
+              icon={Radio}
+            />
+            <Metric
+              label={pluralize(stats.publicPosts, "post")}
+              value={stats.publicPosts}
+              icon={MessageCircle}
+            />
+            <Metric
+              label={pluralize(stats.activeUsers, "member")}
+              value={stats.activeUsers}
+              icon={UsersRound}
+            />
+            <Metric
+              label="Reactions"
+              value={stats.totalReactions}
+              icon={Sparkles}
+            />
           </div>
         </Panel>
 
@@ -269,7 +310,9 @@ function Metric({ label, value, icon: Icon }: MetricProps) {
         <Icon aria-hidden="true" size={14} />
         {label}
       </div>
-      <p className="mt-2 text-xl font-semibold text-text">{value}</p>
+      <p className="mt-2 text-xl font-semibold text-text">
+        {typeof value === "number" ? value.toLocaleString() : value}
+      </p>
     </div>
   );
 }

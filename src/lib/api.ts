@@ -1,5 +1,12 @@
 import { discoverItems, profiles } from "../data/mockData";
-import type { DiscoverItem, Post, Profile, ReactionCounts, Room } from "./types";
+import type {
+  DiscoverItem,
+  Post,
+  Profile,
+  PublicStats,
+  ReactionCounts,
+  Room,
+} from "./types";
 import { apiDelete, apiGet, apiPatch, apiPost } from "./apiClient";
 
 type ApiRoom = Room & {
@@ -119,6 +126,10 @@ export function getDiscover(): Promise<DiscoverItem[]> {
 
 export function getRooms(): Promise<Room[]> {
   return apiGet<ApiRoom[]>("/rooms").then((items) => items.map(normalizeRoom));
+}
+
+export function getStats(): Promise<PublicStats> {
+  return apiGet<PublicStats>("/stats");
 }
 
 export function getRoom(idOrSlug: string): Promise<Room | undefined> {

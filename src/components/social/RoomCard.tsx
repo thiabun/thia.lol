@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { Badge } from "../ui/Badge";
 import { Panel } from "../ui/Panel";
 import type { Room } from "../../lib/types";
+import { formatCountWithUnit } from "../../lib/pluralize";
 
 type RoomCardProps = {
   room: Room;
@@ -33,7 +34,7 @@ export function RoomCard({ room }: RoomCardProps) {
         <div className="mt-5 flex items-center justify-between gap-3 text-sm text-muted">
           <span className="inline-flex items-center gap-2">
             <UsersRound aria-hidden="true" size={16} />
-            {room.members.toLocaleString()} members
+            {formatCountWithUnit(room.members, "member")}
           </span>
           <ArrowRight
             aria-hidden="true"
