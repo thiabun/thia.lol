@@ -126,6 +126,21 @@ test("chat page is honest about placeholder status", async ({ page }) => {
   await expect(page.getByText("Direct messages are not available yet.")).toBeVisible();
 });
 
+test("public profile route loads profile tabs", async ({ page }) => {
+  await page.goto("/@thia");
+
+  await expect(page.getByRole("heading", { name: "Thia" })).toBeVisible();
+  await expect(page.getByText("@thia")).toBeVisible();
+  await expect(page.getByText("Joined")).toBeVisible();
+
+  const tabs = page.getByRole("tablist", { name: "Profile sections" });
+  await expect(tabs.getByRole("tab", { name: /Posts/ })).toBeVisible();
+  await expect(tabs.getByRole("tab", { name: /Replies/ })).toBeVisible();
+  await expect(tabs.getByRole("tab", { name: /Reblogs/ })).toBeDisabled();
+  await expect(tabs.getByRole("tab", { name: /Rooms/ })).toBeVisible();
+  await expect(tabs.getByRole("tab", { name: "Badges" })).toBeVisible();
+});
+
 test("authenticated post button opens the composer modal", async ({ page }) => {
   skipWithoutCredentials();
 

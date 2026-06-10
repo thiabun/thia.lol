@@ -164,6 +164,22 @@ export function getProfilePosts(handle: string): Promise<Post[]> {
   ).then((items) => items.filter(isVisiblePost).map(normalizePost));
 }
 
+export function getProfileReplies(handle: string): Promise<Post[]> {
+  const normalized = handle.replace(/^@/, "").toLowerCase();
+
+  return apiGet<ApiPost[]>(
+    `/profiles/${encodeURIComponent(normalized)}/replies`,
+  ).then((items) => items.filter(isVisiblePost).map(normalizePost));
+}
+
+export function getProfileRooms(handle: string): Promise<Room[]> {
+  const normalized = handle.replace(/^@/, "").toLowerCase();
+
+  return apiGet<ApiRoom[]>(
+    `/profiles/${encodeURIComponent(normalized)}/rooms`,
+  ).then((items) => items.map(normalizeRoom));
+}
+
 export function createPost(
   input: CreatePostInput,
   csrfToken: string,
@@ -341,7 +357,14 @@ function normalizeProfile(profile: ApiProfile): Profile {
     traits: isRetiredThiaProfile
       ? ["founder", "frontend", "moderation"]
       : profile.traits,
-    stats: profile.stats,
+    stats: {
+      posts: profile.stats.posts,
+      replies: profile.stats.replies ?? 0,
+      rooms: profile.stats.rooms,
+      echoes: profile.stats.echoes,
+    },
+    createdAt: profile.createdAt ?? null,
+    updatedAt: profile.updatedAt ?? null,
   };
 }
 

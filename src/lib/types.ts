@@ -17,9 +17,12 @@ export type Profile = {
   traits: string[];
   stats: {
     posts: number;
+    replies: number;
     rooms: number;
     echoes: number;
   };
+  createdAt?: string | null;
+  updatedAt?: string | null;
 };
 
 export type Room = {

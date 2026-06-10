@@ -88,6 +88,7 @@ function profile_payload(array $row, ?array $stats = null): array
         'traits' => json_array_value($row['traits'] ?? null),
         'stats' => $stats ?? [
             'posts' => (int) ($row['post_count'] ?? 0),
+            'replies' => (int) ($row['profile_reply_count'] ?? 0),
             'rooms' => (int) ($row['room_count'] ?? 0),
             'echoes' => (int) ($row['profile_echo_count'] ?? $row['echo_count'] ?? 0),
         ],
@@ -207,11 +208,31 @@ function fetch_profile_by_handle(string $handle): ?array
             (
                 SELECT COUNT(*)
                 FROM posts profile_posts
+                LEFT JOIN rooms profile_post_rooms ON profile_post_rooms.id = profile_posts.room_id
                 WHERE profile_posts.author_id = u.id
+                  AND profile_posts.parent_id IS NULL
                   AND profile_posts.visibility = 'public'
                   AND profile_posts.status = 'published'
                   AND profile_posts.deleted_at IS NULL
+                  AND (
+                    profile_posts.room_id IS NULL
+                    OR profile_post_rooms.visibility = 'public'
+                  )
             ) AS post_count,
+            (
+                SELECT COUNT(*)
+                FROM posts profile_replies
+                LEFT JOIN rooms profile_reply_rooms ON profile_reply_rooms.id = profile_replies.room_id
+                WHERE profile_replies.author_id = u.id
+                  AND profile_replies.parent_id IS NOT NULL
+                  AND profile_replies.visibility = 'public'
+                  AND profile_replies.status = 'published'
+                  AND profile_replies.deleted_at IS NULL
+                  AND (
+                    profile_replies.room_id IS NULL
+                    OR profile_reply_rooms.visibility = 'public'
+                  )
+            ) AS profile_reply_count,
             (
                 SELECT COUNT(*)
                 FROM rooms profile_rooms
@@ -356,6 +377,7 @@ function post_select_sql(string $whereClause): string
         pr.created_at AS profile_created_at,
         pr.updated_at AS profile_updated_at,
         COALESCE(profile_posts.post_count, 0) AS post_count,
+        COALESCE(profile_replies.reply_count, 0) AS profile_reply_count,
         COALESCE(profile_rooms.room_count, 0) AS room_count,
         COALESCE(profile_echoes.echo_count, 0) AS profile_echo_count,
         r.id AS room_id,
@@ -401,12 +423,32 @@ function post_select_sql(string $whereClause): string
     ) room_posts ON room_posts.room_id = r.id
     LEFT JOIN (
         SELECT author_id, COUNT(*) AS post_count
-        FROM posts
-        WHERE visibility = 'public'
-          AND status = 'published'
-          AND deleted_at IS NULL
+        FROM posts profile_posts
+        LEFT JOIN rooms profile_post_rooms ON profile_post_rooms.id = profile_posts.room_id
+        WHERE profile_posts.visibility = 'public'
+          AND profile_posts.parent_id IS NULL
+          AND profile_posts.status = 'published'
+          AND profile_posts.deleted_at IS NULL
+          AND (
+            profile_posts.room_id IS NULL
+            OR profile_post_rooms.visibility = 'public'
+          )
         GROUP BY author_id
     ) profile_posts ON profile_posts.author_id = u.id
+    LEFT JOIN (
+        SELECT author_id, COUNT(*) AS reply_count
+        FROM posts profile_replies
+        LEFT JOIN rooms profile_reply_rooms ON profile_reply_rooms.id = profile_replies.room_id
+        WHERE profile_replies.visibility = 'public'
+          AND profile_replies.parent_id IS NOT NULL
+          AND profile_replies.status = 'published'
+          AND profile_replies.deleted_at IS NULL
+          AND (
+            profile_replies.room_id IS NULL
+            OR profile_reply_rooms.visibility = 'public'
+          )
+        GROUP BY author_id
+    ) profile_replies ON profile_replies.author_id = u.id
     LEFT JOIN (
         SELECT created_by, COUNT(*) AS room_count
         FROM rooms
@@ -492,6 +534,65 @@ function fetch_public_profile_posts(string $handle): array
     return array_map('post_payload', $statement->fetchAll());
 }
 
+function fetch_public_profile_replies(string $handle): array
+{
+    $statement = db_query(
+        post_select_sql('AND u.handle = :handle AND p.parent_id IS NOT NULL'),
+        [
+            'handle' => $handle,
+            'current_user_id' => current_request_user_id(),
+        ]
+    );
+
+    return array_map('post_payload', $statement->fetchAll());
+}
+
+function fetch_public_profile_rooms(string $handle): array
+{
+    $statement = db_query(
+        "SELECT
+            rooms.id AS room_id,
+            rooms.slug AS room_slug,
+            rooms.name AS room_name,
+            rooms.summary AS room_summary,
+            rooms.mood AS room_mood,
+            rooms.member_count AS room_member_count,
+            rooms.is_live AS room_is_live,
+            rooms.accent AS room_accent,
+            rooms.visibility AS room_visibility,
+            rooms.created_by AS room_created_by,
+            owner.id AS owner_user_id,
+            owner.handle AS owner_handle,
+            owner_profile.display_name AS owner_display_name,
+            owner_profile.avatar_url AS owner_avatar_url,
+            COALESCE(room_posts.post_count, 0) AS room_post_count,
+            room_posts.latest_activity_at AS room_latest_activity_at,
+            rooms.created_at AS room_created_at,
+            rooms.updated_at AS room_updated_at
+        FROM rooms
+        INNER JOIN users owner ON owner.id = rooms.created_by
+        LEFT JOIN profiles owner_profile ON owner_profile.user_id = owner.id
+        LEFT JOIN (
+            SELECT
+                room_id,
+                SUM(parent_id IS NULL) AS post_count,
+                MAX(created_at) AS latest_activity_at
+            FROM posts
+            WHERE room_id IS NOT NULL
+              AND visibility = 'public'
+              AND status = 'published'
+              AND deleted_at IS NULL
+            GROUP BY room_id
+        ) room_posts ON room_posts.room_id = rooms.id
+        WHERE owner.handle = :handle
+          AND rooms.visibility = 'public'
+        ORDER BY rooms.created_at DESC, rooms.name ASC",
+        ['handle' => $handle]
+    );
+
+    return array_map('room_payload', $statement->fetchAll());
+}
+
 function fetch_public_stats(): array
 {
     $statement = db_query(
@@ -575,6 +676,28 @@ function profile_posts_index(string $handle): void
     }
 
     json_success(fetch_public_profile_posts($normalizedHandle));
+}
+
+function profile_replies_index(string $handle): void
+{
+    $normalizedHandle = normalize_handle($handle);
+
+    if (fetch_profile_by_handle($normalizedHandle) === null) {
+        json_error('Profile not found.', 404);
+    }
+
+    json_success(fetch_public_profile_replies($normalizedHandle));
+}
+
+function profile_rooms_index(string $handle): void
+{
+    $normalizedHandle = normalize_handle($handle);
+
+    if (fetch_profile_by_handle($normalizedHandle) === null) {
+        json_error('Profile not found.', 404);
+    }
+
+    json_success(fetch_public_profile_rooms($normalizedHandle));
 }
 
 function rooms_index(): void

@@ -2,7 +2,7 @@ import { cn } from "../../lib/classNames";
 import type { User } from "../../lib/types";
 
 type AvatarProps = {
-  user: Pick<User, "displayName" | "initials" | "aura">;
+  user: Pick<User, "displayName" | "initials" | "aura" | "avatarUrl">;
   size?: "sm" | "md" | "lg";
   className?: string;
 };
@@ -21,6 +21,20 @@ const auras: Record<string, string> = {
 };
 
 export function Avatar({ user, size = "md", className }: AvatarProps) {
+  if (user.avatarUrl) {
+    return (
+      <img
+        alt={user.displayName}
+        className={cn(
+          "shrink-0 rounded-full border border-white/35 bg-surface object-cover shadow-soft",
+          sizes[size],
+          className,
+        )}
+        src={user.avatarUrl}
+      />
+    );
+  }
+
   return (
     <div
       aria-label={user.displayName}

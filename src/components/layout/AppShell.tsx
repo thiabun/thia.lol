@@ -212,7 +212,7 @@ function AccountMenu() {
               <>
                 <AccountMenuLink to={`/@${user.handle}`} onSelect={() => setOpen(false)}>
                   <UserRound aria-hidden="true" size={16} />
-                  View profile
+                  Profile
                 </AccountMenuLink>
                 {user.role === "admin" ? (
                   <AccountMenuLink to="/admin" onSelect={() => setOpen(false)}>
