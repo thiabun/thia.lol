@@ -75,7 +75,11 @@ public_html/
 
 ## Local Web Disk deployment
 
-GitHub Actions FTP deploy remains the normal automated path, but Web Disk can be used as a faster manual fallback when the cPanel `public_html/` folder is mounted locally.
+GitHub Actions FTP deploy remains the normal automated path, but Web Disk can be used as a faster manual fallback when the cPanel `public_html/` folder is mounted locally. The local Web Disk destination is expected at:
+
+```text
+/Volumes/thia.lol/public_html
+```
 
 Use Web Disk only after the change is verified locally and committed. It deploys built files directly from this checkout; it does not replace git history, review, or GitHub Actions.
 
@@ -88,26 +92,27 @@ npm run optimize:assets
 npm run build
 ```
 
-Dry-run with an explicit destination:
+Dry-run with the default mounted volume:
+
+```bash
+npm run deploy:webdisk:dry
+```
+
+Deploy with the default mounted volume:
+
+```bash
+npm run deploy:webdisk
+```
+
+You can still override the destination explicitly when needed:
 
 ```bash
 npm run deploy:webdisk:dry -- "/Volumes/example/public_html"
-```
-
-Deploy with an explicit destination:
-
-```bash
 npm run deploy:webdisk -- "/Volumes/example/public_html"
-```
-
-Or use an environment variable:
-
-```bash
 THIA_WEB_DISK_PATH="/Volumes/example/public_html" npm run deploy:webdisk:dry
-THIA_WEB_DISK_PATH="/Volumes/example/public_html" npm run deploy:webdisk
 ```
 
-The destination must be the mounted `public_html` folder. The script refuses to run when the final path segment is not `public_html`, and write mode also requires the destination to already exist and be writable.
+The destination must be either the known Web Disk path `/Volumes/thia.lol/public_html` or a folder named `public_html`. Write mode also requires the destination to already exist and be writable.
 
 What the script copies:
 

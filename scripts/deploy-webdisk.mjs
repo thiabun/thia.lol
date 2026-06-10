@@ -9,20 +9,15 @@ const root = process.cwd();
 const distDir = path.join(root, "dist");
 const apiDir = path.join(root, "api");
 const migrationsDir = path.join(root, "backend", "database", "migrations");
+const defaultWebDiskPath = "/Volumes/thia.lol/public_html";
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run") || process.env.THIA_DEPLOY_DRY_RUN === "1";
 const destinationArg = args.find((arg) => !arg.startsWith("--"));
-const destinationInput = destinationArg ?? process.env.THIA_WEB_DISK_PATH;
+const destinationInput = destinationArg ?? process.env.THIA_WEB_DISK_PATH ?? defaultWebDiskPath;
 
 const skipped = [];
 const copied = [];
 const removed = [];
-
-if (!destinationInput) {
-  fail(
-    "Missing destination. Pass public_html as an argument or set THIA_WEB_DISK_PATH.",
-  );
-}
 
 const destinationRoot = path.resolve(destinationInput);
 
@@ -41,8 +36,13 @@ await copyMigrations();
 printSummary();
 
 async function assertLooksLikePublicHtml(destination) {
-  if (path.basename(destination) !== "public_html") {
-    fail(`Destination must be the mounted public_html folder: ${destination}`);
+  const isNamedPublicHtml = path.basename(destination) === "public_html";
+  const isKnownWebDiskVolume = destination === path.resolve(defaultWebDiskPath);
+
+  if (!isNamedPublicHtml && !isKnownWebDiskVolume) {
+    fail(
+      `Destination must be public_html or the known Web Disk volume ${defaultWebDiskPath}: ${destination}`,
+    );
   }
 }
 
