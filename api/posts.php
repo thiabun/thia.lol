@@ -91,16 +91,18 @@ function posts_create(): void
     $roomId = resolve_room_id($body);
     $parentId = resolve_parent_id($body['parentId'] ?? $body['parent_id'] ?? null);
     $mood = validate_optional_text($body['mood'] ?? null, 80, 'Mood');
+    $mediaUrl = validate_post_media_url($body['mediaUrl'] ?? $body['media_url'] ?? null);
 
     db_query(
-        'INSERT INTO posts (author_id, room_id, parent_id, body, mood, visibility, status)
-         VALUES (:author_id, :room_id, :parent_id, :body, :mood, :visibility, :status)',
+        'INSERT INTO posts (author_id, room_id, parent_id, body, mood, media_url, visibility, status)
+         VALUES (:author_id, :room_id, :parent_id, :body, :mood, :media_url, :visibility, :status)',
         [
             'author_id' => (int) $session['user_id'],
             'room_id' => $roomId,
             'parent_id' => $parentId,
             'body' => $postBody,
             'mood' => $mood ?? 'sunveil',
+            'media_url' => $mediaUrl,
             'visibility' => 'public',
             'status' => 'published',
         ]
@@ -230,6 +232,15 @@ function posts_update(int $postId): void
 
         $updates[] = 'parent_id = :parent_id';
         $params['parent_id'] = $parentId;
+    }
+
+    if (array_key_exists('mediaUrl', $body) || array_key_exists('media_url', $body)) {
+        if (!$isAuthor) {
+            json_error('Only the author can update this post image.', 403);
+        }
+
+        $updates[] = 'media_url = :media_url';
+        $params['media_url'] = validate_post_media_url($body['mediaUrl'] ?? $body['media_url']);
     }
 
     if (array_key_exists('status', $body)) {
@@ -492,6 +503,33 @@ function posts_like_delete(int $postId): void
     );
 
     json_success(like_payload_for_post($postId, (int) $session['user_id']));
+}
+
+function validate_post_media_url(mixed $value): ?string
+{
+    if ($value === null) {
+        return null;
+    }
+
+    if (!is_string($value)) {
+        json_error('Post image is invalid.', 422);
+    }
+
+    $trimmed = trim($value);
+
+    if ($trimmed === '') {
+        return null;
+    }
+
+    if (strlen($trimmed) > 255) {
+        json_error('Post image URL is too long.', 422);
+    }
+
+    if (preg_match('#^/uploads/media/[0-9]{4}/[0-9]{2}/[a-z0-9_-]+\.webp$#', $trimmed) !== 1) {
+        json_error('Use Upload image to attach an image.', 422);
+    }
+
+    return $trimmed;
 }
 
 function reblog_payload_for_post(int $postId, int $userId): array

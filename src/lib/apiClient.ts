@@ -49,6 +49,29 @@ export async function apiDelete<T>(
   return apiMutate<T>("DELETE", path, undefined, csrfToken);
 }
 
+export async function apiUpload<T>(
+  path: string,
+  body: FormData,
+  csrfToken?: string | undefined,
+): Promise<T> {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+  };
+
+  if (csrfToken) {
+    headers["X-CSRF-Token"] = csrfToken;
+  }
+
+  const response = await fetch(`${apiBase}${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body,
+  });
+
+  return unwrapResponse<T>(response);
+}
+
 async function apiMutate<T>(
   method: "POST" | "PATCH" | "DELETE",
   path: string,

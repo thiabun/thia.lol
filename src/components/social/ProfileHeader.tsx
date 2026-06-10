@@ -29,6 +29,7 @@ type ProfileHeaderProps = {
   isOwnProfile?: boolean;
   messageToHandle?: string | undefined;
   onFollowToggle?: () => void;
+  onEditProfile?: (() => void) | undefined;
   showChatHint?: boolean;
 };
 
@@ -37,6 +38,7 @@ export function ProfileHeader({
   followPosting = false,
   isOwnProfile = false,
   messageToHandle,
+  onEditProfile,
   onFollowToggle,
   profile,
   showChatHint = false,
@@ -46,10 +48,28 @@ export function ProfileHeader({
 
   return (
     <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
-      <Panel className="overflow-hidden">
-        <div className="h-32 bg-ambient-texture sm:h-40" />
+      <Panel className="relative overflow-hidden">
+        {safeImageUrl(profile.profileBackground) ? (
+          <img
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 size-full object-cover opacity-15"
+            src={profile.profileBackground ?? undefined}
+          />
+        ) : null}
+        <div className="relative">
+          {safeImageUrl(profile.bannerUrl) ? (
+            <img
+              alt=""
+              className="h-32 w-full bg-ambient-texture object-cover sm:h-40"
+              src={profile.bannerUrl ?? undefined}
+            />
+          ) : (
+            <div className="h-32 bg-ambient-texture sm:h-40" />
+          )}
+        </div>
         <motion.div
-          className="p-5 sm:p-6"
+          className="relative p-5 sm:p-6"
           variants={staggerChildren}
           initial="hidden"
           animate="show"
@@ -63,7 +83,11 @@ export function ProfileHeader({
             <div className="flex flex-wrap items-center gap-2">
               {!isOwnProfile && profile.isMoot ? <Badge>Moot</Badge> : null}
               {isOwnProfile ? (
-                <Button type="button" variant="secondary" disabled>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={onEditProfile}
+                >
                   Edit profile
                 </Button>
               ) : (
@@ -228,6 +252,23 @@ function normalizeExternalLink(value: string): ProfileLink | null {
 
 function isProfileLink(link: ProfileLink | null): link is ProfileLink {
   return link !== null;
+}
+
+function safeImageUrl(value: string | null | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+
+  if (/^\/uploads\/media\/[0-9]{4}\/[0-9]{2}\/[a-z0-9_-]+\.webp$/.test(value)) {
+    return true;
+  }
+
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
 }
 
 function formatJoinedDate(value: string): string {

@@ -1,10 +1,10 @@
 import { AnimatePresence, motion } from "motion/react";
-import type { FormEvent } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Radio, Send, UserRound, X } from "lucide-react";
+import { ImagePlus, Radio, Send, Trash2, UserRound, X } from "lucide-react";
 import { Button } from "../ui/Button";
 import { SelectField, TextareaField } from "../ui/Field";
-import { createPost } from "../../lib/api";
+import { createPost, uploadImage } from "../../lib/api";
 import { modalOverlay, modalPanel } from "../../lib/motionPresets";
 import type { CreatePostInput } from "../../lib/api";
 import type { Post, Room } from "../../lib/types";
@@ -18,6 +18,9 @@ type PostComposerModalProps = {
   rooms: Room[];
 };
 
+const maxUploadBytes = 10 * 1024 * 1024;
+const acceptedImageTypes = ["image/jpeg", "image/png", "image/webp"];
+
 export function PostComposerModal({
   csrfToken,
   initialRoomSlug,
@@ -30,10 +33,13 @@ export function PostComposerModal({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [body, setBody] = useState("");
   const [roomSlug, setRoomSlug] = useState(initialRoomSlug ?? "");
+  const [mediaUrl, setMediaUrl] = useState<string | undefined>();
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | undefined>();
   const selectedRoom = rooms.find((room) => room.slug === roomSlug);
-  const canSubmit = Boolean(csrfToken) && body.trim().length > 0 && !submitting;
+  const canSubmit =
+    Boolean(csrfToken) && body.trim().length > 0 && !submitting && !uploadingImage;
   const destinationLabel = selectedRoom
     ? `/${selectedRoom.slug}`
     : roomSlug
@@ -58,6 +64,8 @@ export function PostComposerModal({
   const closeComposer = useCallback(() => {
     setBody("");
     setRoomSlug("");
+    setMediaUrl(undefined);
+    setUploadingImage(false);
     setMessage(undefined);
     setSubmitting(false);
     onClose();
@@ -103,6 +111,10 @@ export function PostComposerModal({
         input.roomSlug = roomSlug;
       }
 
+      if (mediaUrl) {
+        input.mediaUrl = mediaUrl;
+      }
+
       const post = await createPost(input, csrfToken);
 
       onCreated?.(post);
@@ -111,6 +123,43 @@ export function PostComposerModal({
       setMessage("Post could not be shared right now. Please try again.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    if (!csrfToken) {
+      setMessage("Please log in again before uploading.");
+      return;
+    }
+
+    if (file.size > maxUploadBytes) {
+      setMessage("Image must be 10 MB or smaller");
+      return;
+    }
+
+    if (!acceptedImageTypes.includes(file.type)) {
+      setMessage("Unsupported image type. Use JPEG, PNG, or WebP.");
+      return;
+    }
+
+    setUploadingImage(true);
+    setMessage(undefined);
+
+    try {
+      const uploaded = await uploadImage(file, "post_media", csrfToken);
+      setMediaUrl(uploaded.url);
+      setMessage("Images are converted to WebP");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Image could not be uploaded.");
+    } finally {
+      setUploadingImage(false);
     }
   }
 
@@ -191,6 +240,56 @@ export function PostComposerModal({
                     </p>
                   </div>
                 </div>
+              </div>
+
+              <div className="rounded-card border border-line bg-canvas/55 p-3 shadow-inner-soft">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="flex items-center gap-2 text-sm font-medium text-text">
+                      <ImagePlus aria-hidden="true" size={16} />
+                      Upload image
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-muted">
+                      Image must be 10 MB or smaller. Images are converted to WebP.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {mediaUrl ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={submitting || uploadingImage}
+                        icon={<Trash2 aria-hidden="true" size={16} />}
+                        onClick={() => setMediaUrl(undefined)}
+                      >
+                        Remove
+                      </Button>
+                    ) : null}
+                    <label className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-surface px-3 text-sm font-medium text-text shadow-soft transition duration-fluid hover:border-line-strong focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus">
+                      <ImagePlus aria-hidden="true" size={16} />
+                      {uploadingImage
+                        ? "Uploading"
+                        : mediaUrl
+                          ? "Replace image"
+                          : "Upload image"}
+                      <input
+                        className="sr-only"
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        disabled={submitting || uploadingImage}
+                        onChange={handleImageChange}
+                      />
+                    </label>
+                  </div>
+                </div>
+                {mediaUrl ? (
+                  <img
+                    alt=""
+                    className="mt-3 max-h-72 w-full rounded-card object-cover"
+                    src={mediaUrl}
+                  />
+                ) : null}
               </div>
 
               <TextareaField

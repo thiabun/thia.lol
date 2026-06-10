@@ -137,7 +137,7 @@ test("public profile route loads profile tabs", async ({ page }) => {
   const tabs = page.getByRole("tablist", { name: "Profile sections" });
   await expect(tabs.getByRole("tab", { name: /Posts/ })).toBeVisible();
   await expect(tabs.getByRole("tab", { name: /Replies/ })).toBeVisible();
-  await expect(tabs.getByRole("tab", { name: /Reblogs/ })).toBeDisabled();
+  await expect(tabs.getByRole("tab", { name: /Reblogs/ })).toBeVisible();
   await expect(tabs.getByRole("tab", { name: /Rooms/ })).toBeVisible();
   await expect(tabs.getByRole("tab", { name: "Badges" })).toBeVisible();
 });

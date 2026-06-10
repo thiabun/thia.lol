@@ -102,6 +102,10 @@ function profile_payload(array $row, ?array $stats = null, ?array $social = null
         'bio' => (string) ($row['bio'] ?? ''),
         'location' => (string) ($row['location'] ?? ''),
         'avatarUrl' => $row['avatar_url'] ?? null,
+        'bannerUrl' => $row['banner_url'] ?? null,
+        'profileAccent' => $row['profile_accent'] ?? null,
+        'profileBackground' => $row['profile_background'] ?? null,
+        'profileTheme' => $row['profile_theme'] ?? null,
         'links' => json_array_value($row['links'] ?? null),
         'traits' => json_array_value($row['traits'] ?? null),
         'stats' => $stats,
@@ -281,6 +285,60 @@ function post_reblogs_table_exists(): bool
     return database_table_exists('post_reblogs');
 }
 
+function database_column_exists(string $tableName, string $columnName): bool
+{
+    static $cache = [];
+
+    if (!preg_match('/^[a-zA-Z0-9_]+$/', $tableName) || !preg_match('/^[a-zA-Z0-9_]+$/', $columnName)) {
+        return false;
+    }
+
+    $cacheKey = "{$tableName}.{$columnName}";
+
+    if (array_key_exists($cacheKey, $cache)) {
+        return (bool) $cache[$cacheKey];
+    }
+
+    $statement = db_query(
+        "SELECT COUNT(*) AS column_count
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = :table_name
+           AND COLUMN_NAME = :column_name",
+        [
+            'table_name' => $tableName,
+            'column_name' => $columnName,
+        ]
+    );
+    $row = $statement->fetch();
+    $cache[$cacheKey] = is_array($row) && (int) ($row['column_count'] ?? 0) > 0;
+
+    return (bool) $cache[$cacheKey];
+}
+
+function profile_customization_columns_exist(): bool
+{
+    return database_column_exists('profiles', 'banner_url')
+        && database_column_exists('profiles', 'profile_accent')
+        && database_column_exists('profiles', 'profile_background')
+        && database_column_exists('profiles', 'profile_theme');
+}
+
+function profile_customization_select_sql(string $alias): string
+{
+    if (profile_customization_columns_exist()) {
+        return "{$alias}.banner_url,
+            {$alias}.profile_accent,
+            {$alias}.profile_background,
+            {$alias}.profile_theme,";
+    }
+
+    return "NULL AS banner_url,
+            NULL AS profile_accent,
+            NULL AS profile_background,
+            NULL AS profile_theme,";
+}
+
 function profile_social_context(int $profileUserId, ?int $viewerUserId = null): array
 {
     $context = [
@@ -373,6 +431,7 @@ function profile_social_context(int $profileUserId, ?int $viewerUserId = null): 
 
 function fetch_profile_by_handle(string $handle): ?array
 {
+    $customizationSelect = profile_customization_select_sql('p');
     $statement = db_query(
         "SELECT
             u.id AS user_id,
@@ -382,6 +441,7 @@ function fetch_profile_by_handle(string $handle): ?array
             p.bio,
             p.location,
             p.avatar_url,
+            {$customizationSelect}
             p.links,
             p.traits,
             p.created_at AS profile_created_at,
@@ -585,6 +645,7 @@ function post_select_sql(
        AND current_reblog.user_id = {$viewerSql}"
         : "";
     $resolvedExtraSelect = trim($extraSelect) === '' ? '' : ",\n        {$extraSelect}";
+    $profileCustomizationSelect = profile_customization_select_sql('pr');
 
     return "SELECT
         p.id AS post_id,
@@ -603,6 +664,7 @@ function post_select_sql(
         pr.bio,
         pr.location,
         pr.avatar_url,
+        {$profileCustomizationSelect}
         pr.links,
         pr.traits,
         pr.created_at AS profile_created_at,

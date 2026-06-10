@@ -13,6 +13,10 @@ export type AuthProfile = {
   bio: string;
   location: string;
   avatarUrl: string | null;
+  bannerUrl?: string | null;
+  profileAccent?: string | null;
+  profileBackground?: string | null;
+  profileTheme?: string | null;
   links: string[];
   traits: string[];
 };

@@ -4,6 +4,7 @@ dist/
 *.tsbuildinfo
 playwright-report/
 test-results/
+uploads/
 
 backend/config/config.php
 config/config.php

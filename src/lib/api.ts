@@ -14,7 +14,7 @@ import type {
   ReactionCounts,
   Room,
 } from "./types";
-import { apiDelete, apiGet, apiPatch, apiPost } from "./apiClient";
+import { apiDelete, apiGet, apiPatch, apiPost, apiUpload } from "./apiClient";
 
 type ApiRoom = Room & {
   description?: string;
@@ -58,13 +58,44 @@ export type CreatePostInput = {
   body: string;
   roomSlug?: string;
   parentId?: number;
+  mediaUrl?: string | null;
 };
 
 export type UpdatePostInput = {
   body?: string;
   roomSlug?: string;
   parentId?: number | null;
+  mediaUrl?: string | null;
   status?: "published" | "hidden" | "removed";
+};
+
+export type ImageUploadPurpose =
+  | "avatar"
+  | "banner"
+  | "profile_background"
+  | "post_media";
+
+export type UploadedImage = {
+  url: string;
+  width: number;
+  height: number;
+  mime: "image/webp";
+  type: "image/webp";
+  size: number;
+  purpose: ImageUploadPurpose;
+};
+
+export type UpdateProfileInput = {
+  displayName?: string;
+  bio?: string | null;
+  location?: string | null;
+  avatarUrl?: string | null;
+  bannerUrl?: string | null;
+  profileBackground?: string | null;
+  profileAccent?: string | null;
+  profileTheme?: string | null;
+  links?: string[];
+  traits?: string[];
 };
 
 export type DeletePostResult = {
@@ -291,6 +322,25 @@ export function unfollowProfile(
     `/profiles/${encodeURIComponent(normalized)}/follow`,
     csrfToken,
   );
+}
+
+export function uploadImage(
+  file: File,
+  purpose: ImageUploadPurpose,
+  csrfToken: string,
+): Promise<UploadedImage> {
+  const formData = new FormData();
+  formData.set("file", file);
+  formData.set("purpose", purpose);
+
+  return apiUpload<UploadedImage>("/uploads/image", formData, csrfToken);
+}
+
+export function updateMyProfile(
+  input: UpdateProfileInput,
+  csrfToken: string,
+): Promise<Profile> {
+  return apiPatch<ApiProfile>("/me/profile", input, csrfToken).then(normalizeProfile);
 }
 
 export function createPost(
@@ -567,6 +617,10 @@ function normalizeProfile(profile: ApiProfile): Profile {
     user: profile.user,
     bio: isRetiredThiaProfile ? "Founder profile for thia.lol." : profile.bio,
     location: profile.location,
+    bannerUrl: profile.bannerUrl ?? null,
+    profileAccent: profile.profileAccent ?? null,
+    profileBackground: profile.profileBackground ?? null,
+    profileTheme: profile.profileTheme ?? null,
     links: profile.links,
     traits: isRetiredThiaProfile
       ? ["founder", "frontend", "moderation"]

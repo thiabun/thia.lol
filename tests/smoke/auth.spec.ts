@@ -60,43 +60,66 @@ test.describe("authenticated smoke", () => {
     await expect(page).toHaveURL(new RegExp(`/@${handle}$`));
 
     await expect(
-      page.getByRole("heading", { name: session.data?.user?.displayName ?? "" }),
+      page.getByRole("heading", {
+        level: 1,
+        name: session.data?.user?.displayName ?? "",
+      }),
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit profile" })).toBeVisible();
 
     const tabs = page.getByRole("tablist", { name: "Profile sections" });
     await expect(tabs.getByRole("tab", { name: /Posts/ })).toBeVisible();
     await expect(tabs.getByRole("tab", { name: /Replies/ })).toBeVisible();
-    await expect(tabs.getByRole("tab", { name: /Reblogs/ })).toBeDisabled();
+    await expect(tabs.getByRole("tab", { name: /Reblogs/ })).toBeVisible();
     await expect(tabs.getByRole("tab", { name: /Rooms/ })).toBeVisible();
     await expect(tabs.getByRole("tab", { name: "Badges" })).toBeVisible();
   });
 
-  test("composer shows destination, media, and text controls in order", async ({
+  test("composer shows destination, image upload, and text controls in order", async ({
     page,
   }) => {
     await loginWithEnv(page);
 
-    await page.getByRole("button", { name: "Post" }).click();
+    await page.getByRole("button", { name: "Post", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "New post" });
     await expect(dialog).toBeVisible();
 
     const destination = dialog.getByLabel("Post to");
-    const media = dialog.getByText("Add image or video");
-    const body = dialog.getByLabel("Post");
+    const imageUpload = dialog.getByText("Upload image").first();
+    const body = dialog.getByRole("textbox", { name: "Post" });
 
     await expect(destination).toBeVisible();
-    await expect(media).toBeVisible();
+    await expect(imageUpload).toBeVisible();
     await expect(body).toBeVisible();
+    await expect(dialog.getByText(/video/i)).toHaveCount(0);
 
     const destinationBox = await destination.boundingBox();
-    const mediaBox = await media.boundingBox();
+    const imageUploadBox = await imageUpload.boundingBox();
     const bodyBox = await body.boundingBox();
 
     expect(destinationBox).not.toBeNull();
-    expect(mediaBox).not.toBeNull();
+    expect(imageUploadBox).not.toBeNull();
     expect(bodyBox).not.toBeNull();
-    expect(destinationBox!.y).toBeLessThan(mediaBox!.y);
-    expect(mediaBox!.y).toBeLessThan(bodyBox!.y);
+    expect(destinationBox!.y).toBeLessThan(imageUploadBox!.y);
+    expect(imageUploadBox!.y).toBeLessThan(bodyBox!.y);
+  });
+
+  test("profile edit opens with real image upload controls", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const session = await loginWithEnv(page);
+    const handle = session.data?.user?.handle;
+
+    expect(handle).toEqual(expect.any(String));
+
+    await page.goto(`/@${handle}`);
+    await page.getByRole("button", { name: "Edit profile" }).click();
+
+    const dialog = page.getByRole("dialog", { name: "Edit profile" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByLabel("Display name")).toBeVisible();
+    await expect(dialog.getByText("Change avatar").first()).toBeVisible();
+    await expect(dialog.getByText("Change banner").first()).toBeVisible();
+    await expect(dialog.getByText("Image must be 10 MB or smaller")).toHaveCount(3);
+    await expect(dialog.getByText(/video/i)).toHaveCount(0);
   });
 });

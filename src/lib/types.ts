@@ -13,6 +13,10 @@ export type Profile = {
   user: User;
   bio: string;
   location: string;
+  bannerUrl?: string | null;
+  profileAccent?: string | null;
+  profileBackground?: string | null;
+  profileTheme?: string | null;
   links: string[];
   traits: string[];
   stats: {

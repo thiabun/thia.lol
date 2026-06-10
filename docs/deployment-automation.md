@@ -69,6 +69,11 @@ public_html/
   config/
     config.php
     .htaccess
+  uploads/
+    media/
+      2026/
+        06/
+          generated-image.webp
 ```
 
 `public_html/config/config.php` is manually created on the server and must not be overwritten by automation.
@@ -130,6 +135,7 @@ What the script skips or preserves:
 - It skips `.env`, `.env.*`, `.DS_Store`, `config.php`, and any `config/` path.
 - It never copies `config/config.php` from the repo.
 - It does not remove `public_html/config/`, `public_html/uploads/`, or `public_html/storage/`.
+- It must preserve uploaded images in `public_html/uploads/media/`.
 - It preserves `public_html/.htaccess` unless `dist/.htaccess` exists, which is the intended frontend `.htaccess`.
 - It copies `api/.htaccess` because that file belongs to the committed API deployment.
 
@@ -261,6 +267,7 @@ Safer approach:
 - Deploy frontend from `dist/` to `public_html/` without clean-slate.
 - Deploy API from `api/` to `public_html/api/` without clean-slate.
 - Deploy migration SQL from `backend/database/migrations/` to `public_html/api/migrations/` without clean-slate.
+- Preserve `public_html/uploads/`; it contains user-uploaded WebP images and is not represented in git.
 - Periodically clean old `public_html/assets/index-*` files manually or with a controlled cleanup task if needed.
 
 ## Database migrations

@@ -11,6 +11,7 @@ import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
+import { ProfileEditModal } from "../components/social/ProfileEditModal";
 import { PostCard } from "../components/social/PostCard";
 import { ProfileHeader } from "../components/social/ProfileHeader";
 import { RoomCard } from "../components/social/RoomCard";
@@ -28,7 +29,12 @@ import {
   getProfileReplies,
   getProfileRooms,
   unfollowProfile,
+  updateMyProfile,
+  uploadImage,
   type FollowRelationship,
+  type ImageUploadPurpose,
+  type UpdateProfileInput,
+  type UploadedImage,
 } from "../lib/api";
 import { ApiClientError } from "../lib/apiClient";
 import { cn } from "../lib/classNames";
@@ -49,8 +55,10 @@ type ProfileTab =
 export function ProfilePage() {
   const { handle, profileHandle } = useParams();
   const navigate = useNavigate();
-  const { runWithAuth, status, user } = useAuth();
+  const { refreshSession, runWithAuth, status, user } = useAuth();
   const [activeTab, setActiveTab] = useState<ProfileTab>("posts");
+  const [editingProfileHandle, setEditingProfileHandle] = useState<string | undefined>();
+  const [profileOverride, setProfileOverride] = useState<Profile | undefined>();
   const [followState, setFollowState] = useState<
     { handle: string; relationship: FollowRelationship } | undefined
   >();
@@ -100,7 +108,11 @@ export function ProfilePage() {
     followState?.handle === normalizedHandle ? followState.relationship : undefined;
   const activeFollowError =
     followError?.handle === normalizedHandle ? followError.message : undefined;
-  const profile = mergeFollowState(profileState.data, activeFollowState);
+  const sourceProfile =
+    profileOverride?.user.handle.toLowerCase() === normalizedHandle
+      ? profileOverride
+      : profileState.data;
+  const profile = mergeFollowState(sourceProfile, activeFollowState);
   const profilePosts = postsState.data ?? [];
   const profileReplies = repliesState.data ?? [];
   const profileReblogs = reblogsState.data ?? [];
@@ -113,6 +125,7 @@ export function ProfilePage() {
     status === "authenticated" &&
     Boolean(user) &&
     user?.handle.toLowerCase() === normalizedHandle;
+  const editingProfile = editingProfileHandle === normalizedHandle;
 
   async function handleFollowToggle() {
     if (!profile || isOwnProfile || followPosting) {
@@ -149,6 +162,32 @@ export function ProfilePage() {
     } finally {
       setFollowPosting(false);
     }
+  }
+
+  async function handleProfileSave(input: UpdateProfileInput): Promise<Profile> {
+    const updated = await runWithAuth(
+      (csrfToken) => updateMyProfile(input, csrfToken),
+      { retryOnCsrf: true },
+    );
+
+    setProfileOverride(updated);
+
+    try {
+      await refreshSession();
+    } catch {
+      // The visible profile is already refreshed; auth profile data can retry later.
+    }
+
+    return updated;
+  }
+
+  async function handleProfileImageUpload(
+    file: File,
+    purpose: ImageUploadPurpose,
+  ): Promise<UploadedImage> {
+    return runWithAuth((csrfToken) => uploadImage(file, purpose, csrfToken), {
+      retryOnCsrf: true,
+    });
   }
 
   if (profileMissing) {
@@ -226,10 +265,23 @@ export function ProfilePage() {
             : undefined
         }
         onFollowToggle={handleFollowToggle}
+        onEditProfile={
+          isOwnProfile ? () => setEditingProfileHandle(normalizedHandle) : undefined
+        }
         showChatHint={
           status === "authenticated" && !isOwnProfile && !profile.isMoot
         }
       />
+      {isOwnProfile && editingProfile ? (
+        <ProfileEditModal
+          key={`${profile.user.handle}-${profile.updatedAt ?? ""}`}
+          open={editingProfile}
+          profile={profile}
+          onClose={() => setEditingProfileHandle(undefined)}
+          onSave={handleProfileSave}
+          onUpload={handleProfileImageUpload}
+        />
+      ) : null}
       <motion.div variants={cardEntrance} custom={1} initial="hidden" animate="show">
         <div
           aria-label="Profile sections"
