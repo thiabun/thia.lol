@@ -4,6 +4,7 @@ import {
   CheckCheck,
   Heart,
   MessageCircle,
+  Repeat2,
   UserPlus,
   UsersRound,
 } from "lucide-react";
@@ -146,7 +147,7 @@ export function NotificationsPage() {
         <EmptyState
           icon={Bell}
           title="Notifications"
-          text="Sign in to see who followed, liked, or replied to you."
+          text="Sign in to see who followed, liked, replied to, or reblogged you."
         />
         <div className="mt-4 flex justify-center">
           <ButtonLink to="/login" icon={<Bell aria-hidden="true" size={17} />}>
@@ -224,7 +225,7 @@ export function NotificationsPage() {
         <EmptyState
           icon={Bell}
           title="No notifications yet"
-          text="Follows, likes, and replies will show up here."
+          text="Follows, likes, replies, and reblogs will show up here."
         />
       ) : null}
 
@@ -350,6 +351,10 @@ function notificationCopy(notification: NotificationItem): string {
     return `${handle} liked your post`;
   }
 
+  if (notification.type === "reblog") {
+    return `${handle} reblogged your post`;
+  }
+
   return `${handle} replied to your post`;
 }
 
@@ -364,6 +369,10 @@ function NotificationIcon({ type }: { type: NotificationItem["type"] }) {
 
   if (type === "like") {
     return <Heart aria-hidden="true" size={20} />;
+  }
+
+  if (type === "reblog") {
+    return <Repeat2 aria-hidden="true" size={20} />;
   }
 
   return <MessageCircle aria-hidden="true" size={20} />;

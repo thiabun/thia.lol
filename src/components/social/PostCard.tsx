@@ -6,7 +6,16 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import { EyeOff, Flag, Heart, MessageCircle, Send, Trash2, X } from "lucide-react";
+import {
+  EyeOff,
+  Flag,
+  Heart,
+  MessageCircle,
+  Repeat2,
+  Send,
+  Trash2,
+  X,
+} from "lucide-react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { AmbientImage } from "../ui/AmbientImage";
@@ -20,6 +29,8 @@ import {
   createPostReply,
   getPostReplies,
   likePost,
+  reblogPost,
+  unreblogPost,
   unlikePost,
   type ReportReason,
 } from "../../lib/api";
@@ -72,6 +83,12 @@ export function PostCard({
       whileTap={cardTap}
     >
       <Panel className="overflow-hidden p-4 transition duration-fluid ease-fluid group-hover:border-line-strong group-hover:shadow-lift sm:p-5">
+        {post.rebloggedBy ? (
+          <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-muted">
+            <Repeat2 aria-hidden="true" size={14} />
+            <span>@{post.rebloggedBy.handle} reblogged</span>
+          </div>
+        ) : null}
         <div className="flex items-start gap-3">
           <Avatar user={post.author} />
           <div className="min-w-0 flex-1">
@@ -112,7 +129,7 @@ export function PostCard({
         ) : null}
 
         <ReactionControls
-          key={`${post.id}:${post.likeCount}:${post.likedByCurrentUser}:${post.commentCount}`}
+          key={`${post.id}:${post.likeCount}:${post.likedByCurrentUser}:${post.reblogCount}:${post.rebloggedByMe}:${post.rebloggedByCurrentUser}:${post.commentCount}`}
           post={post}
           initialLikeCount={post.likeCount}
           initiallyLiked={post.likedByCurrentUser}
@@ -186,11 +203,18 @@ function ReactionControls({
   const { csrfToken, runWithAuth, status, user } = useAuth();
   const [likeCount, setLikeCount] = useState(initialLikeCount);
   const [liked, setLiked] = useState(initiallyLiked);
+  const [reblogCount, setReblogCount] = useState(post.reblogCount ?? 0);
+  const [reblogged, setReblogged] = useState(
+    post.rebloggedByMe ?? post.rebloggedByCurrentUser ?? false,
+  );
   const [commentCount, setCommentCount] = useState(post.commentCount);
   const [threadOpen, setThreadOpen] = useState(false);
   const [likePending, setLikePending] = useState(false);
   const [likePulse, setLikePulse] = useState(0);
   const [likeError, setLikeError] = useState<string>();
+  const [reblogPending, setReblogPending] = useState(false);
+  const [reblogPulse, setReblogPulse] = useState(0);
+  const [reblogError, setReblogError] = useState<string>();
   const [reportOpen, setReportOpen] = useState(false);
   const [reportReason, setReportReason] = useState<ReportReason>("spam");
   const [reportDetails, setReportDetails] = useState("");
@@ -198,6 +222,8 @@ function ReactionControls({
   const [reportMessage, setReportMessage] = useState<string>();
   const [reportError, setReportError] = useState<string>();
   const canReport = Boolean(csrfToken) && user?.id !== post.author.id;
+  const canReblog =
+    status === "authenticated" && Boolean(csrfToken) && user?.id !== post.author.id;
 
   async function handleLike() {
     if (likePending) {
@@ -235,6 +261,45 @@ function ReactionControls({
       );
     } finally {
       setLikePending(false);
+    }
+  }
+
+  async function handleReblog() {
+    if (reblogPending || !canReblog) {
+      return;
+    }
+
+    const wasReblogged = reblogged;
+    const previousCount = reblogCount;
+
+    setReblogError(undefined);
+    setReblogPending(true);
+    setReblogged(!wasReblogged);
+    setReblogCount((current) => Math.max(0, current + (wasReblogged ? -1 : 1)));
+
+    if (!wasReblogged) {
+      setReblogPulse((current) => current + 1);
+    }
+
+    try {
+      const result = await runWithAuth(
+        (freshCsrfToken) =>
+          wasReblogged
+            ? unreblogPost(post.id, freshCsrfToken)
+            : reblogPost(post.id, freshCsrfToken),
+        { retryOnCsrf: true },
+      );
+
+      setReblogCount(result.reblogCount);
+      setReblogged(result.rebloggedByMe ?? result.rebloggedByCurrentUser ?? false);
+    } catch (error) {
+      setReblogCount(previousCount);
+      setReblogged(wasReblogged);
+      setReblogError(
+        error instanceof Error ? error.message : "Could not update reblog.",
+      );
+    } finally {
+      setReblogPending(false);
     }
   }
 
@@ -284,6 +349,17 @@ function ReactionControls({
           pulseKey={likePulse}
           onClick={() => void handleLike()}
         />
+        <ReblogButton
+          count={reblogCount}
+          disabled={!canReblog}
+          disabledTitle={
+            status === "authenticated" ? "You cannot reblog your own post" : "Log in to reblog"
+          }
+          pending={reblogPending}
+          pulseKey={reblogPulse}
+          reblogged={reblogged}
+          onClick={() => void handleReblog()}
+        />
         {canReport || actions ? (
           <span className="ml-auto inline-flex items-center gap-2">
             {canReport ? (
@@ -308,6 +384,9 @@ function ReactionControls({
       </div>
       {likeError ? (
         <p className="mt-2 text-xs font-medium text-rose-ink">{likeError}</p>
+      ) : null}
+      {reblogError ? (
+        <p className="mt-2 text-xs font-medium text-rose-ink">{reblogError}</p>
       ) : null}
       {reportMessage ? (
         <p className="mt-2 text-xs font-medium text-leaf-ink">{reportMessage}</p>
@@ -764,6 +843,61 @@ function LikeButton({
         <Heart size={15} fill={liked ? "currentColor" : "none"} />
       </motion.span>
       <span>{liked ? "Liked" : "Like"}</span>
+      <span className="tabular-nums">{count}</span>
+    </motion.button>
+  );
+}
+
+type ReblogButtonProps = {
+  count: number;
+  disabled: boolean;
+  disabledTitle: string;
+  pending: boolean;
+  pulseKey: number;
+  reblogged: boolean;
+  onClick: () => void;
+};
+
+function ReblogButton({
+  count,
+  disabled,
+  disabledTitle,
+  pending,
+  pulseKey,
+  reblogged,
+  onClick,
+}: ReblogButtonProps) {
+  return (
+    <motion.button
+      type="button"
+      className={cn(
+        "inline-flex min-h-9 items-center gap-2 rounded-full px-3 transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55",
+        reblogged
+          ? "bg-leaf/20 text-leaf-ink shadow-inner-soft"
+          : "hover:bg-surface-strong hover:text-text",
+        pending && "cursor-wait opacity-70",
+      )}
+      aria-label={`${reblogged ? "Undo reblog" : "Reblog"} this post. ${count} ${count === 1 ? "reblog" : "reblogs"}.`}
+      aria-pressed={reblogged}
+      disabled={disabled || pending}
+      title={disabled ? disabledTitle : reblogged ? "Reblogged" : "Reblog"}
+      onClick={onClick}
+      whileHover={buttonHover}
+      whileTap={buttonTap}
+    >
+      <motion.span
+        key={pulseKey}
+        aria-hidden="true"
+        animate={
+          reblogged
+            ? { rotate: [0, -14, 10, 0], scale: [1, 1.2, 1], transition: softSpring }
+            : { rotate: 0, scale: 1, transition: softSpring }
+        }
+        className="grid place-items-center"
+      >
+        <Repeat2 size={15} />
+      </motion.span>
+      <span>{reblogged ? "Reblogged" : "Reblog"}</span>
       <span className="tabular-nums">{count}</span>
     </motion.button>
   );

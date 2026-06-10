@@ -202,12 +202,29 @@ function post_payload(array $row): array
         'likeCount' => $likeCount,
         'likedByCurrentUser' => isset($row['current_like_user_id']) && $row['current_like_user_id'] !== null,
         'reblogCount' => (int) ($row['reblog_count'] ?? 0),
+        'rebloggedByMe' => isset($row['current_reblog_user_id']) && $row['current_reblog_user_id'] !== null,
         'rebloggedByCurrentUser' => isset($row['current_reblog_user_id']) && $row['current_reblog_user_id'] !== null,
+        'rebloggedBy' => reblog_context_user_payload($row),
+        'rebloggedAt' => $row['reblogged_at'] ?? null,
         'socialContext' => [
             'authorRelationship' => $authorRelationship,
             'likedByFollowedCount' => (int) ($row['followed_like_count'] ?? 0),
         ],
     ];
+}
+
+function reblog_context_user_payload(array $row): ?array
+{
+    if (($row['reblogged_by_user_id'] ?? null) === null || ($row['reblogged_by_handle'] ?? null) === null) {
+        return null;
+    }
+
+    return user_payload([
+        'user_id' => $row['reblogged_by_user_id'],
+        'handle' => $row['reblogged_by_handle'],
+        'display_name' => $row['reblogged_by_display_name'] ?? $row['reblogged_by_handle'],
+        'avatar_url' => $row['reblogged_by_avatar_url'] ?? null,
+    ]);
 }
 
 function current_request_user_id(): ?int
@@ -521,7 +538,8 @@ function post_select_sql(
     string $whereClause,
     string $orderClause = 'p.created_at DESC, p.id DESC',
     string $extraSelect = '',
-    ?int $viewerUserId = null
+    ?int $viewerUserId = null,
+    string $extraJoins = ''
 ): string
 {
     $viewerSql = $viewerUserId === null ? 'NULL' : (string) $viewerUserId;
@@ -708,6 +726,7 @@ function post_select_sql(
        AND current_like.type = 'glow'
     {$followJoins}
     {$reblogJoins}
+    {$extraJoins}
     WHERE p.visibility = 'public'
       AND p.status = 'published'
       AND p.deleted_at IS NULL
@@ -769,11 +788,22 @@ function home_rank_score_sql(?int $viewerUserId): string
     $viewerSql = (string) $viewerUserId;
     $relationshipScore = relationship_score_sql(80, 120);
     $reblogScore = reblog_score_sql();
+    $followedReblogScore = post_reblogs_table_exists() && user_follows_table_exists()
+        ? "CASE WHEN EXISTS (
+            SELECT 1
+            FROM post_reblogs home_reblogs
+            INNER JOIN user_follows home_reblog_follows
+                ON home_reblog_follows.following_id = home_reblogs.user_id
+               AND home_reblog_follows.follower_id = {$viewerSql}
+            WHERE home_reblogs.post_id = p.id
+        ) THEN 70 ELSE 0 END"
+        : '0';
 
     // Home favors chosen social context first, then recent conversation.
     // A small own-post penalty keeps one member's posts from overwhelming Home.
     return "(
         {$relationshipScore}
+        + {$followedReblogScore}
         + CASE WHEN u.id = {$viewerSql} THEN -45 ELSE 0 END
         + COALESCE(reactions.glow_count, 0) * 3
         + COALESCE(replies.reply_count, 0) * 4
@@ -787,6 +817,72 @@ function home_rank_score_sql(?int $viewerUserId): string
           END
         - LEAST(35, TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) / 8)
     )";
+}
+
+function followed_reblog_context_select_sql(?int $viewerUserId): string
+{
+    if ($viewerUserId === null || !post_reblogs_table_exists() || !user_follows_table_exists()) {
+        return "NULL AS reblogged_by_user_id,
+        NULL AS reblogged_by_handle,
+        NULL AS reblogged_by_display_name,
+        NULL AS reblogged_by_avatar_url,
+        NULL AS reblogged_at";
+    }
+
+    $viewerSql = (string) $viewerUserId;
+
+    return "(SELECT reblog_user.id
+            FROM post_reblogs feed_reblogs
+            INNER JOIN user_follows feed_reblog_follows
+                ON feed_reblog_follows.following_id = feed_reblogs.user_id
+               AND feed_reblog_follows.follower_id = {$viewerSql}
+            INNER JOIN users reblog_user ON reblog_user.id = feed_reblogs.user_id
+            WHERE feed_reblogs.post_id = p.id
+              AND reblog_user.status = 'active'
+            ORDER BY feed_reblogs.created_at DESC, feed_reblogs.id DESC
+            LIMIT 1) AS reblogged_by_user_id,
+        (SELECT reblog_user.handle
+            FROM post_reblogs feed_reblogs
+            INNER JOIN user_follows feed_reblog_follows
+                ON feed_reblog_follows.following_id = feed_reblogs.user_id
+               AND feed_reblog_follows.follower_id = {$viewerSql}
+            INNER JOIN users reblog_user ON reblog_user.id = feed_reblogs.user_id
+            WHERE feed_reblogs.post_id = p.id
+              AND reblog_user.status = 'active'
+            ORDER BY feed_reblogs.created_at DESC, feed_reblogs.id DESC
+            LIMIT 1) AS reblogged_by_handle,
+        (SELECT reblogger_profile.display_name
+            FROM post_reblogs feed_reblogs
+            INNER JOIN user_follows feed_reblog_follows
+                ON feed_reblog_follows.following_id = feed_reblogs.user_id
+               AND feed_reblog_follows.follower_id = {$viewerSql}
+            INNER JOIN users reblog_user ON reblog_user.id = feed_reblogs.user_id
+            INNER JOIN profiles reblogger_profile ON reblogger_profile.user_id = reblog_user.id
+            WHERE feed_reblogs.post_id = p.id
+              AND reblog_user.status = 'active'
+            ORDER BY feed_reblogs.created_at DESC, feed_reblogs.id DESC
+            LIMIT 1) AS reblogged_by_display_name,
+        (SELECT reblogger_profile.avatar_url
+            FROM post_reblogs feed_reblogs
+            INNER JOIN user_follows feed_reblog_follows
+                ON feed_reblog_follows.following_id = feed_reblogs.user_id
+               AND feed_reblog_follows.follower_id = {$viewerSql}
+            INNER JOIN users reblog_user ON reblog_user.id = feed_reblogs.user_id
+            INNER JOIN profiles reblogger_profile ON reblogger_profile.user_id = reblog_user.id
+            WHERE feed_reblogs.post_id = p.id
+              AND reblog_user.status = 'active'
+            ORDER BY feed_reblogs.created_at DESC, feed_reblogs.id DESC
+            LIMIT 1) AS reblogged_by_avatar_url,
+        (SELECT feed_reblogs.created_at
+            FROM post_reblogs feed_reblogs
+            INNER JOIN user_follows feed_reblog_follows
+                ON feed_reblog_follows.following_id = feed_reblogs.user_id
+               AND feed_reblog_follows.follower_id = {$viewerSql}
+            INNER JOIN users reblog_user ON reblog_user.id = feed_reblogs.user_id
+            WHERE feed_reblogs.post_id = p.id
+              AND reblog_user.status = 'active'
+            ORDER BY feed_reblogs.created_at DESC, feed_reblogs.id DESC
+            LIMIT 1) AS reblogged_at";
 }
 
 function fetch_public_posts(): array
@@ -807,7 +903,8 @@ function fetch_home_feed(): array
         post_select_sql(
             'AND p.parent_id IS NULL',
             'feed_rank_score DESC, p.created_at DESC, p.id DESC',
-            "{$scoreSql} AS feed_rank_score",
+            "{$scoreSql} AS feed_rank_score,
+            " . followed_reblog_context_select_sql($viewerUserId),
             $viewerUserId
         )
     );
@@ -876,6 +973,37 @@ function fetch_public_profile_replies(string $handle): array
             'p.created_at DESC, p.id DESC',
             '',
             $viewerUserId
+        ),
+        [
+            'handle' => $handle,
+        ]
+    );
+
+    return array_map('post_payload', $statement->fetchAll());
+}
+
+function fetch_public_profile_reblogs(string $handle): array
+{
+    if (!post_reblogs_table_exists()) {
+        json_error('Reblog storage is not ready. Run pending migrations.', 503);
+    }
+
+    $viewerUserId = current_request_user_id();
+    $statement = db_query(
+        post_select_sql(
+            "AND profile_reblogger.handle = :handle
+             AND profile_reblogger.status = 'active'
+             AND p.parent_id IS NULL",
+            'profile_reblogs.created_at DESC, profile_reblogs.id DESC',
+            "profile_reblogger.id AS reblogged_by_user_id,
+            profile_reblogger.handle AS reblogged_by_handle,
+            profile_reblogger_profile.display_name AS reblogged_by_display_name,
+            profile_reblogger_profile.avatar_url AS reblogged_by_avatar_url,
+            profile_reblogs.created_at AS reblogged_at",
+            $viewerUserId,
+            'INNER JOIN post_reblogs profile_reblogs ON profile_reblogs.post_id = p.id
+            INNER JOIN users profile_reblogger ON profile_reblogger.id = profile_reblogs.user_id
+            INNER JOIN profiles profile_reblogger_profile ON profile_reblogger_profile.user_id = profile_reblogger.id'
         ),
         [
             'handle' => $handle,
@@ -1148,6 +1276,17 @@ function profile_replies_index(string $handle): void
     }
 
     json_success(fetch_public_profile_replies($normalizedHandle));
+}
+
+function profile_reblogs_index(string $handle): void
+{
+    $normalizedHandle = normalize_handle($handle);
+
+    if (fetch_profile_by_handle($normalizedHandle) === null) {
+        json_error('Profile not found.', 404);
+    }
+
+    json_success(fetch_public_profile_reblogs($normalizedHandle));
 }
 
 function profile_rooms_index(string $handle): void

@@ -5,7 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read.php';
 
-const NOTIFICATION_TYPES = ['follow', 'moot', 'like', 'reply'];
+const NOTIFICATION_TYPES = ['follow', 'moot', 'like', 'reply', 'reblog'];
 
 function notifications_dispatch(array $segments, string $method): void
 {

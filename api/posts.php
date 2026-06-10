@@ -36,6 +36,18 @@ function posts_dispatch(array $segments, string $method): void
         json_error('Method not allowed.', 405);
     }
 
+    if (count($segments) === 3 && preg_match('/^\d+$/', $segments[1]) === 1 && $segments[2] === 'reblog') {
+        if ($method === 'POST') {
+            posts_reblog_create((int) $segments[1]);
+        }
+
+        if ($method === 'DELETE') {
+            posts_reblog_delete((int) $segments[1]);
+        }
+
+        json_error('Method not allowed.', 405);
+    }
+
     if (count($segments) === 3 && preg_match('/^\d+$/', $segments[1]) === 1 && $segments[2] === 'reactions') {
         if ($method === 'POST') {
             posts_reaction_create((int) $segments[1]);
@@ -371,6 +383,70 @@ function posts_like_create(int $postId): void
     json_success(like_payload_for_post($postId, (int) $session['user_id']));
 }
 
+function posts_reblog_create(int $postId): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+    require_reblogs_table();
+    $post = fetch_reactable_post_record($postId);
+
+    if ($post === null) {
+        json_error('Post not found.', 404);
+    }
+
+    $actorId = (int) $session['user_id'];
+    $postAuthorId = (int) $post['author_id'];
+
+    if ($postAuthorId === $actorId) {
+        json_error('You cannot reblog your own post.', 409);
+    }
+
+    $insert = db_query(
+        'INSERT IGNORE INTO post_reblogs (post_id, user_id)
+         VALUES (:post_id, :user_id)',
+        [
+            'post_id' => $postId,
+            'user_id' => $actorId,
+        ]
+    );
+
+    if ($insert->rowCount() > 0) {
+        notification_create(
+            $postAuthorId,
+            $actorId,
+            'reblog',
+            $postId,
+            $post['room_id'] === null ? null : (int) $post['room_id'],
+            null,
+            true
+        );
+    }
+
+    json_success(reblog_payload_for_post($postId, $actorId));
+}
+
+function posts_reblog_delete(int $postId): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+    require_reblogs_table();
+    require_reactable_post($postId);
+
+    $actorId = (int) $session['user_id'];
+
+    db_query(
+        'DELETE FROM post_reblogs
+         WHERE post_id = :post_id
+           AND user_id = :user_id',
+        [
+            'post_id' => $postId,
+            'user_id' => $actorId,
+        ]
+    );
+
+    json_success(reblog_payload_for_post($postId, $actorId));
+}
+
 function posts_reaction_delete(int $postId, string $rawType): void
 {
     $session = require_authenticated_session();
@@ -416,6 +492,43 @@ function posts_like_delete(int $postId): void
     );
 
     json_success(like_payload_for_post($postId, (int) $session['user_id']));
+}
+
+function reblog_payload_for_post(int $postId, int $userId): array
+{
+    $row = db_query(
+        'SELECT
+            COUNT(*) AS reblog_count,
+            EXISTS (
+                SELECT 1
+                FROM post_reblogs current_reblog
+                WHERE current_reblog.post_id = :current_post_id
+                  AND current_reblog.user_id = :current_user_id
+            ) AS reblogged_by_me
+         FROM post_reblogs
+         WHERE post_id = :post_id',
+        [
+            'current_post_id' => $postId,
+            'current_user_id' => $userId,
+            'post_id' => $postId,
+        ]
+    )->fetch();
+    $reblogCount = is_array($row) ? (int) $row['reblog_count'] : 0;
+    $rebloggedByMe = is_array($row) && (bool) $row['reblogged_by_me'];
+
+    return [
+        'postId' => $postId,
+        'reblogCount' => $reblogCount,
+        'rebloggedByMe' => $rebloggedByMe,
+        'rebloggedByCurrentUser' => $rebloggedByMe,
+    ];
+}
+
+function require_reblogs_table(): void
+{
+    if (!post_reblogs_table_exists()) {
+        json_error('Reblog storage is not ready. Run pending migrations.', 503);
+    }
 }
 
 function validate_post_body(mixed $value): string

@@ -83,6 +83,13 @@ export type LikeResult = {
   likedByCurrentUser: boolean;
 };
 
+export type ReblogResult = {
+  postId: number;
+  reblogCount: number;
+  rebloggedByMe: boolean;
+  rebloggedByCurrentUser?: boolean;
+};
+
 export type NotificationsReadResult = {
   ids?: number[];
   readAt: string;
@@ -221,6 +228,14 @@ export function getProfileReplies(handle: string): Promise<Post[]> {
   ).then((items) => items.filter(isVisiblePost).map(normalizePost));
 }
 
+export function getProfileReblogs(handle: string): Promise<Post[]> {
+  const normalized = handle.replace(/^@/, "").toLowerCase();
+
+  return apiGet<ApiPost[]>(
+    `/profiles/${encodeURIComponent(normalized)}/reblogs`,
+  ).then((items) => items.filter(isVisiblePost).map(normalizePost));
+}
+
 export function getProfileRooms(handle: string): Promise<Room[]> {
   const normalized = handle.replace(/^@/, "").toLowerCase();
 
@@ -343,6 +358,20 @@ export function unlikePost(
   csrfToken: string,
 ): Promise<LikeResult> {
   return apiDelete<LikeResult>(`/posts/${postId}/like`, csrfToken);
+}
+
+export function reblogPost(
+  postId: number,
+  csrfToken: string,
+): Promise<ReblogResult> {
+  return apiPost<ReblogResult>(`/posts/${postId}/reblog`, {}, csrfToken);
+}
+
+export function unreblogPost(
+  postId: number,
+  csrfToken: string,
+): Promise<ReblogResult> {
+  return apiDelete<ReblogResult>(`/posts/${postId}/reblog`, csrfToken);
 }
 
 export function getNotifications(): Promise<NotificationsResult> {
@@ -534,7 +563,10 @@ function normalizePost(post: ApiPost): Post {
     likeCount: post.likeCount ?? post.reactions.glow,
     likedByCurrentUser: post.likedByCurrentUser ?? false,
     reblogCount: post.reblogCount ?? 0,
-    rebloggedByCurrentUser: post.rebloggedByCurrentUser ?? false,
+    rebloggedByMe: post.rebloggedByMe ?? post.rebloggedByCurrentUser ?? false,
+    rebloggedByCurrentUser: post.rebloggedByCurrentUser ?? post.rebloggedByMe ?? false,
+    rebloggedBy: post.rebloggedBy ?? null,
+    rebloggedAt: post.rebloggedAt ?? null,
     socialContext: post.socialContext ?? {
       authorRelationship: null,
       likedByFollowedCount: 0,

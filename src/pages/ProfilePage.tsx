@@ -24,6 +24,7 @@ import {
   getProfileFollowers,
   getProfileFollowing,
   getProfilePosts,
+  getProfileReblogs,
   getProfileReplies,
   getProfileRooms,
   unfollowProfile,
@@ -72,6 +73,10 @@ export function ProfilePage() {
     () => () => getProfileReplies(normalizedHandle),
     [normalizedHandle],
   );
+  const reblogsLoader = useMemo(
+    () => () => getProfileReblogs(normalizedHandle),
+    [normalizedHandle],
+  );
   const roomsLoader = useMemo(
     () => () => getProfileRooms(normalizedHandle),
     [normalizedHandle],
@@ -87,6 +92,7 @@ export function ProfilePage() {
   const profileState = useAsyncData(profileLoader);
   const postsState = useAsyncData(postsLoader);
   const repliesState = useAsyncData(repliesLoader);
+  const reblogsState = useAsyncData(reblogsLoader);
   const roomsState = useAsyncData(roomsLoader);
   const followersState = useAsyncData(followersLoader);
   const followingState = useAsyncData(followingLoader);
@@ -97,6 +103,7 @@ export function ProfilePage() {
   const profile = mergeFollowState(profileState.data, activeFollowState);
   const profilePosts = postsState.data ?? [];
   const profileReplies = repliesState.data ?? [];
+  const profileReblogs = reblogsState.data ?? [];
   const profileRooms = roomsState.data ?? [];
   const profileFollowers = followersState.data ?? [];
   const profileFollowing = followingState.data ?? [];
@@ -235,8 +242,7 @@ export function ProfilePage() {
           />
           <ProfileTabButton
             active={activeTab === "reblogs"}
-            comingLater
-            disabled
+            count={profileReblogs.length}
             label="Reblogs"
             onClick={() => setActiveTab("reblogs")}
           />
@@ -286,10 +292,13 @@ export function ProfilePage() {
           />
         ) : null}
         {activeTab === "reblogs" ? (
-          <EmptyState
-            icon={Repeat2}
-            title="Reblogs are coming later"
-            text="Reblogs are not available yet."
+          <ProfilePostList
+            emptyIcon={Repeat2}
+            emptyText="No reblogs yet"
+            error={reblogsState.error}
+            items={profileReblogs}
+            loading={reblogsState.loading}
+            loadingText="Reblogs are loading."
           />
         ) : null}
         {activeTab === "rooms" ? (

@@ -111,6 +111,10 @@ try {
         profile_replies_index($segments[1]);
     }
 
+    if (($segments[0] ?? null) === 'profiles' && count($segments) === 3 && $segments[2] === 'reblogs') {
+        profile_reblogs_index($segments[1]);
+    }
+
     if (($segments[0] ?? null) === 'profiles' && count($segments) === 3 && $segments[2] === 'rooms') {
         profile_rooms_index($segments[1]);
     }

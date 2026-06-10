@@ -89,7 +89,10 @@ export type Post = {
   likeCount: number;
   likedByCurrentUser: boolean;
   reblogCount?: number;
+  rebloggedByMe?: boolean;
   rebloggedByCurrentUser?: boolean;
+  rebloggedBy?: User | null;
+  rebloggedAt?: string | null;
   socialContext?: {
     authorRelationship?: "self" | "following" | "moot" | null;
     likedByFollowedCount: number;
@@ -113,7 +116,7 @@ export type DiscoverFeed = {
   peopleToWatch: DiscoverPerson[];
 };
 
-export type NotificationType = "follow" | "moot" | "like" | "reply";
+export type NotificationType = "follow" | "moot" | "like" | "reply" | "reblog";
 
 export type NotificationPostSummary = {
   id: number;

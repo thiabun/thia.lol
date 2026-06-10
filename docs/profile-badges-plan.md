@@ -71,9 +71,9 @@ Current surfaced fields:
 - external links
 - joined date
 - stats
-- profile tabs for Posts, Replies, Reblogs, Rooms when present, and Badges
+- profile tabs for Posts, Replies, API-backed Reblogs, Rooms when present, and Badges
 
-Reblogs are disabled because no reblog product/API flow is wired. Badges show an honest coming-later state because no badge schema exists.
+Reblogs now use the post reblog API and show only real shared posts. Badges show an honest coming-later state because no badge schema exists.
 
 ### Mock/Test Data
 
