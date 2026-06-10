@@ -59,6 +59,11 @@ export function RoomCard({ index = 0, room }: RoomCardProps) {
           <h2 className="mt-5 text-lg font-semibold text-text">{room.name}</h2>
           <p className="mt-1 text-sm text-muted">/{room.slug}</p>
           <p className="mt-2 flex-1 text-sm leading-6 text-muted">{room.summary}</p>
+          {room.owner ? (
+            <p className="mt-3 text-xs font-medium text-muted">
+              Owner: @{room.owner.handle}
+            </p>
+          ) : null}
           <div className="mt-4 flex flex-wrap gap-2">
             {room.mood ? <Badge>{room.mood}</Badge> : null}
             {room.visibility ? <Badge tone="cool">{room.visibility}</Badge> : null}

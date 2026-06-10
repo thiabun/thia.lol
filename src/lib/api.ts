@@ -10,10 +10,11 @@ import { apiDelete, apiGet, apiPatch, apiPost } from "./apiClient";
 type ApiRoom = Room & {
   description?: string;
   visibility?: string;
+  createdBy?: number | null;
   postCount?: number;
   latestActivityAt?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 };
 
 type ApiProfile = Profile & {
@@ -263,6 +264,10 @@ export function getAdminReports(): Promise<ModerationReport[]> {
   return apiGet<ModerationReport[]>("/admin/reports");
 }
 
+export function getAdminRooms(): Promise<Room[]> {
+  return apiGet<ApiRoom[]>("/admin/rooms").then((items) => items.map(normalizeRoom));
+}
+
 export function hideAdminPost(
   postId: number,
   input: AdminActionInput,
@@ -300,21 +305,23 @@ export function resolveAdminReport(
 }
 
 function normalizeRoom(room: ApiRoom): Room {
-  const retiredSeedRoom = retiredSeedRooms[room.slug];
-
   return {
     id: room.id,
     slug: room.slug,
-    name: retiredSeedRoom?.name ?? room.name,
-    summary: retiredSeedRoom?.summary ?? room.summary ?? room.description ?? "",
-    description: retiredSeedRoom?.summary ?? room.description ?? room.summary ?? "",
-    mood: retiredSeedRoom?.mood ?? room.mood,
-    members: retiredSeedRoom?.members ?? room.members,
-    live: retiredSeedRoom?.live ?? room.live,
+    name: room.name,
+    summary: room.summary ?? room.description ?? "",
+    description: room.description ?? room.summary ?? "",
+    mood: room.mood,
+    members: room.members,
+    live: room.live,
     accent: room.accent,
     visibility: room.visibility ?? "public",
+    createdBy: room.createdBy ?? null,
+    owner: room.owner ?? null,
     postCount: room.postCount ?? 0,
     latestActivityAt: room.latestActivityAt ?? null,
+    createdAt: room.createdAt ?? null,
+    updatedAt: room.updatedAt ?? null,
   };
 }
 
@@ -374,40 +381,6 @@ const retiredStarterPostBodies = new Set([
   "Tonight's note: make the interface feel like it notices pressure without demanding speed.",
   "Pinned a small loop for anyone writing after midnight. It does not solve the work. It makes the work kinder.",
 ]);
-
-const retiredSeedRooms: Record<
-  string,
-  Pick<Room, "name" | "summary" | "mood" | "members" | "live">
-> = {
-  "soft-launch": {
-    name: "General",
-    summary: "A public room for everyday posts.",
-    mood: "open",
-    members: 0,
-    live: true,
-  },
-  "moon-table": {
-    name: "Updates",
-    summary: "News and changes from thia.lol.",
-    mood: "updates",
-    members: 0,
-    live: true,
-  },
-  "garden-protocol": {
-    name: "Questions",
-    summary: "Ask questions and help other members.",
-    mood: "help",
-    members: 0,
-    live: false,
-  },
-  afterglow: {
-    name: "Media",
-    summary: "Share links, images, and videos when media uploads are available.",
-    mood: "media",
-    members: 0,
-    live: false,
-  },
-};
 
 function isVisiblePost(post: ApiPost): boolean {
   return !retiredStarterPostBodies.has(post.body);

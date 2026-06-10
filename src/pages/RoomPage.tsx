@@ -1,4 +1,4 @@
-import { Clock3, MessageCircle, PenLine, Radio } from "lucide-react";
+import { Clock3, MessageCircle, PenLine, Radio, UserRound } from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useOutletContext, useParams } from "react-router";
@@ -217,8 +217,8 @@ export function RoomPage() {
       {!postsState.loading && !postsState.error && room && posts.length === 0 ? (
         <EmptyState
           icon={MessageCircle}
-          title="This room has no posts yet"
-          text="Start with the first post."
+          title="No posts yet"
+          text="This room is quiet."
         />
       ) : null}
 
@@ -289,7 +289,7 @@ function RoomHeader({
             </Button>
           </div>
 
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:max-w-xl">
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:max-w-3xl">
             <RoomMetric
               icon={MessageCircle}
               label="Posts"
@@ -303,6 +303,11 @@ function RoomHeader({
                   ? formatActivityTime(room.latestActivityAt)
                   : "No activity yet"
               }
+            />
+            <RoomMetric
+              icon={UserRound}
+              label="Owner"
+              value={room.owner ? `@${room.owner.handle}` : "Unassigned"}
             />
           </div>
         </div>

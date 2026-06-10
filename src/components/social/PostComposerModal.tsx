@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { ImagePlus, Radio, Send, UserRound, X } from "lucide-react";
+import { Radio, Send, UserRound, X } from "lucide-react";
 import { Button } from "../ui/Button";
 import { SelectField, TextareaField } from "../ui/Field";
 import { createPost } from "../../lib/api";
@@ -143,7 +143,7 @@ export function PostComposerModal({
                   New post
                 </h2>
                 <p className="mt-1 text-sm leading-6 text-muted">
-                  Choose a room, then write something.
+                  Pick where this post belongs.
                 </p>
               </div>
               <Button
@@ -181,7 +181,7 @@ export function PostComposerModal({
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs font-medium uppercase text-muted">
-                      Posting to
+                      Post to
                     </p>
                     <p className="mt-1 truncate text-sm font-semibold text-text">
                       {destinationLabel}
@@ -190,31 +190,6 @@ export function PostComposerModal({
                       {destinationSummary}
                     </p>
                   </div>
-                </div>
-              </div>
-
-              <div className="rounded-card border border-dashed border-line bg-canvas/45 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="grid size-9 shrink-0 place-items-center rounded-full bg-surface-strong text-muted">
-                      <ImagePlus aria-hidden="true" size={17} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-text">Add image or video</p>
-                      <p className="mt-1 text-xs leading-5 text-muted">
-                        Uploads are not open yet. Add links in your post for now.
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    disabled
-                    className="hidden shrink-0 sm:inline-flex"
-                  >
-                    Attach
-                  </Button>
                 </div>
               </div>
 

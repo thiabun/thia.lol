@@ -6,6 +6,7 @@ export type User = {
   displayName: string;
   initials: string;
   aura: string;
+  avatarUrl?: string | null;
 };
 
 export type Profile = {
@@ -32,8 +33,12 @@ export type Room = {
   live: boolean;
   accent: string;
   visibility?: string;
+  createdBy?: number | null;
+  owner?: User | null;
   postCount: number;
   latestActivityAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 };
 
 export type ReactionCounts = {

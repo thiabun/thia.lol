@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read.php';
 
 function reports_dispatch(array $segments, string $method): void
 {
@@ -19,6 +20,10 @@ function reports_dispatch(array $segments, string $method): void
 
 function admin_dispatch(array $segments, string $method): void
 {
+    if (count($segments) === 2 && $segments[1] === 'rooms' && ($method === 'GET' || $method === 'HEAD')) {
+        admin_rooms_index();
+    }
+
     if (count($segments) === 2 && $segments[1] === 'reports' && ($method === 'GET' || $method === 'HEAD')) {
         admin_reports_index();
     }
@@ -106,6 +111,52 @@ function admin_reports_index(): void
     );
 
     json_success(array_map('moderation_report_payload', $statement->fetchAll()));
+}
+
+function admin_rooms_index(): void
+{
+    require_moderator_session();
+
+    $statement = db_query(
+        "SELECT
+            rooms.id AS room_id,
+            rooms.slug AS room_slug,
+            rooms.name AS room_name,
+            rooms.summary AS room_summary,
+            rooms.mood AS room_mood,
+            rooms.member_count AS room_member_count,
+            rooms.is_live AS room_is_live,
+            rooms.accent AS room_accent,
+            rooms.visibility AS room_visibility,
+            rooms.created_by AS room_created_by,
+            owner.id AS owner_user_id,
+            owner.handle AS owner_handle,
+            owner_profile.display_name AS owner_display_name,
+            owner_profile.avatar_url AS owner_avatar_url,
+            COALESCE(room_posts.post_count, 0) AS room_post_count,
+            room_posts.latest_activity_at AS room_latest_activity_at,
+            rooms.created_at AS room_created_at,
+            rooms.updated_at AS room_updated_at
+        FROM rooms
+        LEFT JOIN users owner ON owner.id = rooms.created_by
+        LEFT JOIN profiles owner_profile ON owner_profile.user_id = owner.id
+        LEFT JOIN (
+            SELECT
+                room_id,
+                SUM(parent_id IS NULL) AS post_count,
+                MAX(created_at) AS latest_activity_at
+            FROM posts
+            WHERE room_id IS NOT NULL
+              AND visibility = 'public'
+              AND status = 'published'
+              AND deleted_at IS NULL
+            GROUP BY room_id
+        ) room_posts ON room_posts.room_id = rooms.id
+        ORDER BY rooms.visibility ASC, room_posts.latest_activity_at DESC, rooms.name ASC
+        LIMIT 200"
+    );
+
+    json_success(array_map('room_payload', $statement->fetchAll()));
 }
 
 function admin_posts_hide(int $postId): void

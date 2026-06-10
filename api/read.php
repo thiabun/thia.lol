@@ -99,6 +99,16 @@ function profile_payload(array $row, ?array $stats = null): array
 function room_payload(array $row): array
 {
     $summary = (string) ($row['room_summary'] ?? '');
+    $owner = null;
+
+    if (($row['owner_user_id'] ?? null) !== null) {
+        $owner = user_payload([
+            'user_id' => $row['owner_user_id'],
+            'handle' => $row['owner_handle'],
+            'display_name' => $row['owner_display_name'],
+            'avatar_url' => $row['owner_avatar_url'] ?? null,
+        ]);
+    }
 
     return [
         'id' => (int) $row['room_id'],
@@ -111,6 +121,10 @@ function room_payload(array $row): array
         'live' => (bool) ($row['room_is_live'] ?? false),
         'accent' => (string) ($row['room_accent'] ?? ''),
         'visibility' => (string) ($row['room_visibility'] ?? 'public'),
+        'createdBy' => ($row['room_created_by'] ?? null) === null
+            ? null
+            : (int) $row['room_created_by'],
+        'owner' => $owner,
         'postCount' => (int) ($row['room_post_count'] ?? 0),
         'latestActivityAt' => $row['room_latest_activity_at'] ?? null,
         'createdAt' => $row['room_created_at'] ?? null,
@@ -230,20 +244,27 @@ function fetch_public_rooms(): array
 {
     $statement = db_query(
         "SELECT
-            id AS room_id,
-            slug AS room_slug,
-            name AS room_name,
-            summary AS room_summary,
-            mood AS room_mood,
-            member_count AS room_member_count,
-            is_live AS room_is_live,
-            accent AS room_accent,
-            visibility AS room_visibility,
+            rooms.id AS room_id,
+            rooms.slug AS room_slug,
+            rooms.name AS room_name,
+            rooms.summary AS room_summary,
+            rooms.mood AS room_mood,
+            rooms.member_count AS room_member_count,
+            rooms.is_live AS room_is_live,
+            rooms.accent AS room_accent,
+            rooms.visibility AS room_visibility,
+            rooms.created_by AS room_created_by,
+            owner.id AS owner_user_id,
+            owner.handle AS owner_handle,
+            owner_profile.display_name AS owner_display_name,
+            owner_profile.avatar_url AS owner_avatar_url,
             COALESCE(room_posts.post_count, 0) AS room_post_count,
             room_posts.latest_activity_at AS room_latest_activity_at,
-            created_at AS room_created_at,
-            updated_at AS room_updated_at
+            rooms.created_at AS room_created_at,
+            rooms.updated_at AS room_updated_at
         FROM rooms
+        LEFT JOIN users owner ON owner.id = rooms.created_by
+        LEFT JOIN profiles owner_profile ON owner_profile.user_id = owner.id
         LEFT JOIN (
             SELECT
                 room_id,
@@ -256,8 +277,8 @@ function fetch_public_rooms(): array
               AND deleted_at IS NULL
             GROUP BY room_id
         ) room_posts ON room_posts.room_id = rooms.id
-        WHERE visibility = 'public'
-        ORDER BY room_posts.latest_activity_at DESC, is_live DESC, name ASC"
+        WHERE rooms.visibility = 'public'
+        ORDER BY room_posts.latest_activity_at DESC, rooms.is_live DESC, rooms.name ASC"
     );
 
     return array_map('room_payload', $statement->fetchAll());
@@ -267,20 +288,27 @@ function fetch_public_room_by_slug(string $slug): ?array
 {
     $statement = db_query(
         "SELECT
-            id AS room_id,
-            slug AS room_slug,
-            name AS room_name,
-            summary AS room_summary,
-            mood AS room_mood,
-            member_count AS room_member_count,
-            is_live AS room_is_live,
-            accent AS room_accent,
-            visibility AS room_visibility,
+            rooms.id AS room_id,
+            rooms.slug AS room_slug,
+            rooms.name AS room_name,
+            rooms.summary AS room_summary,
+            rooms.mood AS room_mood,
+            rooms.member_count AS room_member_count,
+            rooms.is_live AS room_is_live,
+            rooms.accent AS room_accent,
+            rooms.visibility AS room_visibility,
+            rooms.created_by AS room_created_by,
+            owner.id AS owner_user_id,
+            owner.handle AS owner_handle,
+            owner_profile.display_name AS owner_display_name,
+            owner_profile.avatar_url AS owner_avatar_url,
             COALESCE(room_posts.post_count, 0) AS room_post_count,
             room_posts.latest_activity_at AS room_latest_activity_at,
-            created_at AS room_created_at,
-            updated_at AS room_updated_at
+            rooms.created_at AS room_created_at,
+            rooms.updated_at AS room_updated_at
         FROM rooms
+        LEFT JOIN users owner ON owner.id = rooms.created_by
+        LEFT JOIN profiles owner_profile ON owner_profile.user_id = owner.id
         LEFT JOIN (
             SELECT
                 room_id,
@@ -293,8 +321,8 @@ function fetch_public_room_by_slug(string $slug): ?array
               AND deleted_at IS NULL
             GROUP BY room_id
         ) room_posts ON room_posts.room_id = rooms.id
-        WHERE slug = :slug
-          AND visibility = 'public'
+        WHERE rooms.slug = :slug
+          AND rooms.visibility = 'public'
         LIMIT 1",
         ['slug' => $slug]
     );
@@ -339,6 +367,11 @@ function post_select_sql(string $whereClause): string
         r.is_live AS room_is_live,
         r.accent AS room_accent,
         r.visibility AS room_visibility,
+        r.created_by AS room_created_by,
+        owner.id AS owner_user_id,
+        owner.handle AS owner_handle,
+        owner_profile.display_name AS owner_display_name,
+        owner_profile.avatar_url AS owner_avatar_url,
         COALESCE(room_posts.post_count, 0) AS room_post_count,
         room_posts.latest_activity_at AS room_latest_activity_at,
         r.created_at AS room_created_at,
@@ -352,6 +385,8 @@ function post_select_sql(string $whereClause): string
     INNER JOIN users u ON u.id = p.author_id
     INNER JOIN profiles pr ON pr.user_id = u.id
     LEFT JOIN rooms r ON r.id = p.room_id
+    LEFT JOIN users owner ON owner.id = r.created_by
+    LEFT JOIN profiles owner_profile ON owner_profile.user_id = owner.id
     LEFT JOIN (
         SELECT
             room_id,

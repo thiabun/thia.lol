@@ -5,6 +5,8 @@ import {
   Ban,
   CheckCircle2,
   EyeOff,
+  MessageCircle,
+  Radio,
   RefreshCw,
   Shield,
   XCircle,
@@ -17,6 +19,7 @@ import { Button, ButtonLink } from "../components/ui/Button";
 import { TextareaField } from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
 import {
+  getAdminRooms,
   getAdminReports,
   hideAdminPost,
   resolveAdminReport,
@@ -27,6 +30,8 @@ import {
   type ReportReason,
 } from "../lib/api";
 import { pageEntrance } from "../lib/motionPresets";
+import { formatCountWithUnit } from "../lib/pluralize";
+import type { Room } from "../lib/types";
 import { useAuth } from "../lib/useAuth";
 
 type ActionName = "hide" | "suspend" | "resolve" | "dismiss";
@@ -35,8 +40,11 @@ type BadgeTone = "default" | "warm" | "cool" | "leaf" | "rose";
 export function AdminPage() {
   const { status, user, csrfToken } = useAuth();
   const [reports, setReports] = useState<ModerationReport[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingRooms, setLoadingRooms] = useState(false);
   const [error, setError] = useState<string>();
+  const [roomsError, setRoomsError] = useState<string>();
   const [pendingAction, setPendingAction] = useState<string>();
   const [notesByReport, setNotesByReport] = useState<Record<number, string>>({});
   const isModerator = user?.role === "moderator" || user?.role === "admin";
@@ -56,6 +64,21 @@ export function AdminPage() {
     }
   }, []);
 
+  const loadRooms = useCallback(async () => {
+    setLoadingRooms(true);
+    setRoomsError(undefined);
+
+    try {
+      setRooms(await getAdminRooms());
+    } catch (loadError) {
+      setRoomsError(
+        loadError instanceof Error ? loadError.message : "Could not load rooms.",
+      );
+    } finally {
+      setLoadingRooms(false);
+    }
+  }, []);
+
   useEffect(() => {
     let active = true;
 
@@ -63,6 +86,7 @@ export function AdminPage() {
       queueMicrotask(() => {
         if (active) {
           void loadReports();
+          void loadRooms();
         }
       });
     }
@@ -70,7 +94,7 @@ export function AdminPage() {
     return () => {
       active = false;
     };
-  }, [isModerator, loadReports]);
+  }, [isModerator, loadReports, loadRooms]);
 
   const metrics = useMemo(() => {
     const open = reports.filter((report) => report.status === "open").length;
@@ -185,9 +209,12 @@ export function AdminPage() {
             type="button"
             variant="secondary"
             size="sm"
-            disabled={loading}
+            disabled={loading || loadingRooms}
             icon={<RefreshCw aria-hidden="true" size={15} />}
-            onClick={() => void loadReports()}
+            onClick={() => {
+              void loadReports();
+              void loadRooms();
+            }}
           >
             Refresh
           </Button>
@@ -212,6 +239,40 @@ export function AdminPage() {
           value={String(metrics.suspendedUsers)}
         />
       </section>
+
+      <Panel className="p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <Badge tone="cool">rooms</Badge>
+            <h2 className="mt-3 text-xl font-semibold text-text">Room metadata</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+              Read-only room status for moderation planning.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-muted">
+            <Radio aria-hidden="true" size={16} />
+            {formatCountWithUnit(rooms.length, "room")}
+          </div>
+        </div>
+
+        {loadingRooms ? (
+          <p className="mt-4 text-sm text-muted">Loading rooms</p>
+        ) : null}
+
+        {roomsError ? (
+          <p className="mt-4 rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
+            {roomsError}
+          </p>
+        ) : null}
+
+        {rooms.length > 0 ? (
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {rooms.map((room) => (
+              <AdminRoomRow key={room.id} room={room} />
+            ))}
+          </div>
+        ) : null}
+      </Panel>
 
       {loading ? (
         <ApiStateNotice
@@ -483,6 +544,40 @@ function AdminMetric({ icon: Icon, label, value }: AdminMetricProps) {
       <p className="mt-4 text-sm text-muted">{label}</p>
       <p className="mt-1 text-xl font-semibold text-text">{value}</p>
     </Panel>
+  );
+}
+
+function AdminRoomRow({ room }: { room: Room }) {
+  return (
+    <div className="rounded-card border border-line bg-canvas/45 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="cool">{room.visibility ?? "public"}</Badge>
+            {room.mood ? <Badge>{room.mood}</Badge> : null}
+            <span className="text-xs text-muted">#{room.id}</span>
+          </div>
+          <h3 className="mt-3 text-sm font-semibold text-text">{room.name}</h3>
+          <p className="mt-1 truncate text-xs text-muted">/{room.slug}</p>
+        </div>
+        <div
+          className="size-7 shrink-0 rounded-full border border-line"
+          style={{ backgroundColor: room.accent }}
+          aria-hidden="true"
+        />
+      </div>
+      <p className="mt-3 line-clamp-2 text-sm leading-6 text-muted">
+        {room.summary || "No description"}
+      </p>
+      <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted">
+        <span>Owner: {room.owner ? `@${room.owner.handle}` : "unassigned"}</span>
+        <span className="inline-flex items-center gap-1">
+          <MessageCircle aria-hidden="true" size={13} />
+          {formatCountWithUnit(room.postCount, "post")}
+        </span>
+        <span>Created: {room.createdAt ? formatDate(room.createdAt) : "unknown"}</span>
+      </div>
+    </div>
   );
 }
 
