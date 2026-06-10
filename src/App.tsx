@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { AppShell } from "./components/layout/AppShell";
 import { AdminPage } from "./pages/AdminPage";
 import { AuthPage } from "./pages/AuthPage";
+import { ChatPage } from "./pages/ChatPage";
 import { DiscoverPage } from "./pages/DiscoverPage";
 import { HomePage } from "./pages/HomePage";
 import { ProfilePage } from "./pages/ProfilePage";
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="discover" element={<DiscoverPage />} />
           <Route path="rooms" element={<RoomsPage />} />
           <Route path="rooms/:slug" element={<RoomPage />} />
+          <Route path="chat" element={<ChatPage />} />
           <Route path="@/:handle" element={<ProfilePage />} />
           <Route path="studio" element={<Navigate to="/discover" replace />} />
           <Route path="admin" element={<AdminPage />} />

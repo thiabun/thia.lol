@@ -23,6 +23,7 @@ test.describe("authenticated smoke", () => {
   });
 
   test("account menu shows authenticated actions for admin user", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
     const session = await loginWithEnv(page);
 
     test.skip(
@@ -30,12 +31,21 @@ test.describe("authenticated smoke", () => {
       "THIA_TEST_EMAIL must be an admin user for this account-menu smoke test.",
     );
 
+    const desktopNav = page.getByTestId("desktop-nav");
+    await expect(desktopNav).toBeVisible();
+    await expect(desktopNav.getByRole("link", { name: "Admin" })).toHaveCount(0);
+
     await page.getByRole("button", { name: /account menu/i }).click();
     const menu = page.getByRole("menu");
 
     await expect(menu.getByRole("menuitem", { name: "View profile" })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: "Admin" })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: "Log out" })).toBeVisible();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const mobileNav = page.getByTestId("mobile-nav");
+    await expect(mobileNav).toBeVisible();
+    await expect(mobileNav.getByRole("link", { name: "Admin" })).toHaveCount(0);
   });
 
   test("composer shows destination, media, and text controls in order", async ({

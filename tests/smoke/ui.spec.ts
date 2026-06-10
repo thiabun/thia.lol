@@ -27,7 +27,26 @@ const retiredMockCopy = [
   "low blue",
   "green signal",
   "honey static",
+  "backend",
+  "dev",
+  "API",
+  "fallback",
+  "mock",
 ];
+
+test("desktop primary nav shows platform sections without Admin", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+
+  const nav = page.getByTestId("desktop-nav");
+  await expect(nav).toBeVisible();
+
+  for (const label of ["Home", "Discover", "Rooms", "Chat"]) {
+    await expect(nav.getByRole("link", { name: label })).toBeVisible();
+  }
+
+  await expect(nav.getByRole("link", { name: "Admin" })).toHaveCount(0);
+});
 
 test("reply button opens an unclipped thread modal", async ({ page }) => {
   await page.goto("/");
@@ -80,8 +99,31 @@ test("mobile header, account menu, and bottom nav fit the viewport", async ({
   await page.getByRole("button", { name: /account menu/i }).click();
   await expect(page.getByTestId("account-menu")).toBeVisible();
 
-  await expect(page.getByTestId("mobile-nav")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Create post" })).toBeVisible();
+  const nav = page.getByTestId("mobile-nav");
+  await expect(nav).toBeVisible();
+  await expect(nav.getByRole("button", { name: "Post" })).toBeVisible();
+});
+
+test("mobile primary nav shows platform sections without Admin", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  const nav = page.getByTestId("mobile-nav");
+  await expect(nav).toBeVisible();
+
+  for (const label of ["Home", "Discover", "Rooms", "Chat"]) {
+    await expect(nav.getByRole("link", { name: label })).toBeVisible();
+  }
+
+  await expect(nav.getByRole("button", { name: "Post" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Admin" })).toHaveCount(0);
+});
+
+test("chat page is honest about placeholder status", async ({ page }) => {
+  await page.goto("/chat");
+
+  await expect(page.getByRole("heading", { name: "Chat is coming soon" })).toBeVisible();
+  await expect(page.getByText("Direct messages are not available yet.")).toBeVisible();
 });
 
 test("authenticated post button opens the composer modal", async ({ page }) => {
@@ -99,7 +141,7 @@ test("authenticated post button opens the composer modal", async ({ page }) => {
 });
 
 test("public pages do not render retired mock social data", async ({ page }) => {
-  for (const path of ["/", "/discover", "/rooms", "/@thia"]) {
+  for (const path of ["/", "/discover", "/rooms", "/chat", "/@thia"]) {
     await page.goto(path);
     await expect(page.locator("body")).toBeVisible();
 

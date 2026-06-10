@@ -3,6 +3,7 @@ import {
   Home,
   LogIn,
   LogOut,
+  MessageCircle,
   PenLine,
   Radio,
   Shield,
@@ -33,9 +34,8 @@ const publicNavItems = [
   { to: "/", label: "Home", icon: Home },
   { to: "/discover", label: "Discover", icon: Compass },
   { to: "/rooms", label: "Rooms", icon: Radio },
+  { to: "/chat", label: "Chat", icon: MessageCircle },
 ];
-
-const adminNavItem = { to: "/admin", label: "Admin", icon: Shield };
 
 export type AppShellOutletContext = {
   openPostComposer: (roomSlug?: string) => void;
@@ -48,10 +48,6 @@ export function AppShell() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerRoomSlug, setComposerRoomSlug] = useState<string | undefined>();
   const [composerKey, setComposerKey] = useState(0);
-  const navItems =
-    status === "authenticated" && user?.role === "admin"
-      ? [...publicNavItems, adminNavItem]
-      : publicNavItems;
   const postingDisabled = status === "loading";
   const rooms = roomsState.data ?? [];
 
@@ -73,7 +69,7 @@ export function AppShell() {
   return (
     <div className="min-h-dvh bg-canvas text-text">
       <div className="fixed inset-0 -z-10 bg-page-wash" />
-      <SiteHeader navItems={navItems} />
+      <SiteHeader navItems={publicNavItems} />
       <main className="mx-auto w-full max-w-7xl px-4 pb-28 pt-5 sm:px-6 lg:px-8">
         <Outlet context={{ openPostComposer } satisfies AppShellOutletContext} />
       </main>
@@ -87,7 +83,7 @@ export function AppShell() {
         Post
       </Button>
       <MobileDock
-        navItems={navItems}
+        navItems={publicNavItems}
         onPostClick={handlePostClick}
         postDisabled={postingDisabled}
       />
@@ -124,7 +120,11 @@ function SiteHeader({ navItems }: { navItems: NavItemProps[] }) {
           </span>
         </NavLink>
 
-        <nav className="ml-4 hidden items-center gap-1 lg:flex" aria-label="Primary">
+        <nav
+          className="ml-4 hidden items-center gap-1 lg:flex"
+          aria-label="Primary"
+          data-testid="desktop-nav"
+        >
           {navItems.map((item) => (
             <DesktopNavItem key={item.to} {...item} />
           ))}
@@ -358,7 +358,7 @@ function MobileDock({
         type="button"
         className="absolute left-1/2 top-0 size-14 -translate-x-1/2 -translate-y-5 rounded-full shadow-lift"
         disabled={postDisabled}
-        aria-label="Create post"
+        aria-label="Post"
         title="Post"
         icon={<PenLine aria-hidden="true" size={21} />}
         onClick={onPostClick}

@@ -11,7 +11,7 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
 ### Frontend
 
 - Vite, React, TypeScript, Tailwind CSS, Motion for React, React Router.
-- App routes currently include `/`, `/discover`, `/rooms`, `/rooms/:slug`, `/@/:handle`, `/admin`, `/login`, and `/register`.
+- App routes currently include `/`, `/discover`, `/rooms`, `/rooms/:slug`, `/chat`, `/@/:handle`, `/admin`, `/login`, and `/register`.
 - Main shell includes desktop navigation, mobile bottom dock, account menu, theme toggle, and post composer modal.
 - API access is centralized through `src/lib/apiClient.ts` and `src/lib/api.ts`.
 - Frontend user content rendering uses React text nodes in inspected surfaces; no `dangerouslySetInnerHTML` use was found.
@@ -91,7 +91,7 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
 | Likes | Working, partial | Like/unlike maps to `post_reactions.type = glow`; UI shows like count and liked state. | Reaction naming is internally broader than UI. Needs transparent counts, optional hiding/muting decisions, anti-spam/rate-limit review, and adult-focused non-manipulative loop design. |
 | Admin/moderation | Working, partial | Reports can be created from posts; admins/moderators can view report queue, hide posts, suspend users, resolve/dismiss reports, and log moderation actions. | Admin still appears in desktop nav for admins and should move only into account popover. Needs appeal flow, policy pages, moderation transparency, audit views, and better user-facing report status decisions. |
 | Discover/Home | Partial, needs design/product decision | Home shows recent posts, rooms, stats, and platform copy. Discover shows recent posts, rooms, search field UI, and stats cards. | Not algorithmic yet. Search is local/surface-level or placeholder depending surface. Needs feed strategy, ranking inputs, user controls, transparency, and separation between following/home and discovery. |
-| Chat/DMs | Missing, needs design/product decision | No conversation/message tables, API, routes, or nav item were found. | Define moots-first DMs, request/inbox behavior, blocking/reporting, safety defaults, retention, notifications, and abuse controls before implementation. |
+| Chat/DMs | Placeholder, needs design/product decision | `/chat` exists as a coming-soon page and primary nav item. No conversation/message tables, API, or working messaging UI exist. | Define moots-first DMs, request/inbox behavior, blocking/reporting, safety defaults, retention, notifications, and abuse controls before implementation. |
 | Legal/cookies/copyright pages | Missing, needs design/product decision | Auth cookie implementation exists, but no public Terms, Privacy, Cookie Policy, Community Guidelines, Copyright/Takedown Policy, or consent preference pages were found. | Need legal copy, consent model, user content license terms, reporting/appeal explanations, and transparency basics. |
 
 ## 3. Product Direction
@@ -185,7 +185,7 @@ Notes:
 
 - Post should remain a primary creation action.
 - Admin should not occupy primary navigation.
-- Chat should not be added until the product has a moots/social graph and safety model.
+- Chat currently links to an honest coming-soon placeholder. Do not add working messaging until the product has a moots/social graph and safety model.
 
 ## 5. Suggested Database Areas to Audit Later
 
@@ -241,7 +241,7 @@ Specific audit questions:
 Goal: make the current platform shell coherent before deeper features.
 
 - Remove Admin from primary desktop nav; keep Admin inside account popover for admins only.
-- Add Chat nav placeholder only if it clearly communicates unavailable/coming-soon state, or wait until Phase 6.
+- Add Chat nav placeholder only if it clearly communicates unavailable/coming-soon state.
 - Clarify Home vs Discover copy.
 - Decide whether Home is logged-in-first or public-first.
 - Clean up any remaining labels that imply missing features are complete.
