@@ -40,7 +40,7 @@ const fallbackStats: PublicStats = {
 export function HomePage() {
   const { csrfToken, user } = useAuth();
   const feedState = useAsyncData(getFeed, fallbackPosts);
-  const roomsState = useAsyncData(getRooms, fallbackRooms);
+  const roomsState = useAsyncData(getRooms);
   const statsState = useAsyncData(getStats, fallbackStats);
   const [createdPosts, setCreatedPosts] = useState<Post[]>([]);
   const [removedPostIds, setRemovedPostIds] = useState<Set<number>>(
@@ -60,7 +60,7 @@ export function HomePage() {
       }),
     [createdPosts, feedPosts, removedPostIds],
   );
-  const rooms = roomsState.data ?? fallbackRooms;
+  const rooms = roomsState.data ?? [];
   const stats = statsState.data ?? fallbackStats;
 
   const handlePostCreated = useCallback((post: Post) => {
@@ -290,12 +290,12 @@ export function HomePage() {
               <RoomCard key={room.id} room={room} />
             ))}
           </div>
-          {roomsState.usingFallback ? (
+          {roomsState.error ? (
             <div className="mt-3">
               <ApiStateNotice
                 kind="fallback"
-                title="Showing saved rooms"
-                text="Rooms are taking a moment to refresh."
+                title="Rooms are not available"
+                text="Try refreshing in a moment."
               />
             </div>
           ) : null}

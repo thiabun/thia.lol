@@ -98,16 +98,21 @@ function profile_payload(array $row, ?array $stats = null): array
 
 function room_payload(array $row): array
 {
+    $summary = (string) ($row['room_summary'] ?? '');
+
     return [
         'id' => (int) $row['room_id'],
         'slug' => (string) $row['room_slug'],
         'name' => (string) $row['room_name'],
-        'summary' => (string) ($row['room_summary'] ?? ''),
+        'summary' => $summary,
+        'description' => $summary,
         'mood' => (string) ($row['room_mood'] ?? ''),
         'members' => (int) ($row['room_member_count'] ?? 0),
         'live' => (bool) ($row['room_is_live'] ?? false),
         'accent' => (string) ($row['room_accent'] ?? ''),
         'visibility' => (string) ($row['room_visibility'] ?? 'public'),
+        'postCount' => (int) ($row['room_post_count'] ?? 0),
+        'latestActivityAt' => $row['room_latest_activity_at'] ?? null,
         'createdAt' => $row['room_created_at'] ?? null,
         'updatedAt' => $row['room_updated_at'] ?? null,
     ];
@@ -234,11 +239,25 @@ function fetch_public_rooms(): array
             is_live AS room_is_live,
             accent AS room_accent,
             visibility AS room_visibility,
+            COALESCE(room_posts.post_count, 0) AS room_post_count,
+            room_posts.latest_activity_at AS room_latest_activity_at,
             created_at AS room_created_at,
             updated_at AS room_updated_at
         FROM rooms
+        LEFT JOIN (
+            SELECT
+                room_id,
+                SUM(parent_id IS NULL) AS post_count,
+                MAX(created_at) AS latest_activity_at
+            FROM posts
+            WHERE room_id IS NOT NULL
+              AND visibility = 'public'
+              AND status = 'published'
+              AND deleted_at IS NULL
+            GROUP BY room_id
+        ) room_posts ON room_posts.room_id = rooms.id
         WHERE visibility = 'public'
-        ORDER BY is_live DESC, name ASC"
+        ORDER BY room_posts.latest_activity_at DESC, is_live DESC, name ASC"
     );
 
     return array_map('room_payload', $statement->fetchAll());
@@ -257,9 +276,23 @@ function fetch_public_room_by_slug(string $slug): ?array
             is_live AS room_is_live,
             accent AS room_accent,
             visibility AS room_visibility,
+            COALESCE(room_posts.post_count, 0) AS room_post_count,
+            room_posts.latest_activity_at AS room_latest_activity_at,
             created_at AS room_created_at,
             updated_at AS room_updated_at
         FROM rooms
+        LEFT JOIN (
+            SELECT
+                room_id,
+                SUM(parent_id IS NULL) AS post_count,
+                MAX(created_at) AS latest_activity_at
+            FROM posts
+            WHERE room_id IS NOT NULL
+              AND visibility = 'public'
+              AND status = 'published'
+              AND deleted_at IS NULL
+            GROUP BY room_id
+        ) room_posts ON room_posts.room_id = rooms.id
         WHERE slug = :slug
           AND visibility = 'public'
         LIMIT 1",
@@ -306,6 +339,8 @@ function post_select_sql(string $whereClause): string
         r.is_live AS room_is_live,
         r.accent AS room_accent,
         r.visibility AS room_visibility,
+        COALESCE(room_posts.post_count, 0) AS room_post_count,
+        room_posts.latest_activity_at AS room_latest_activity_at,
         r.created_at AS room_created_at,
         r.updated_at AS room_updated_at,
         COALESCE(reactions.glow_count, 0) AS reaction_glow_count,
@@ -317,6 +352,18 @@ function post_select_sql(string $whereClause): string
     INNER JOIN users u ON u.id = p.author_id
     INNER JOIN profiles pr ON pr.user_id = u.id
     LEFT JOIN rooms r ON r.id = p.room_id
+    LEFT JOIN (
+        SELECT
+            room_id,
+            SUM(parent_id IS NULL) AS post_count,
+            MAX(created_at) AS latest_activity_at
+        FROM posts
+        WHERE room_id IS NOT NULL
+          AND visibility = 'public'
+          AND status = 'published'
+          AND deleted_at IS NULL
+        GROUP BY room_id
+    ) room_posts ON room_posts.room_id = r.id
     LEFT JOIN (
         SELECT author_id, COUNT(*) AS post_count
         FROM posts

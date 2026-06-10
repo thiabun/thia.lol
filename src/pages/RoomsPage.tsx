@@ -1,122 +1,117 @@
-import { Radio, UsersRound } from "lucide-react";
-import { useMemo } from "react";
-import { useSearchParams } from "react-router";
+import { Radio, SearchX } from "lucide-react";
+import { useMemo, useState } from "react";
 import { PageMeta } from "../components/PageMeta";
-import { AmbientImage } from "../components/ui/AmbientImage";
-import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Badge } from "../components/ui/Badge";
 import { EmptyState } from "../components/ui/EmptyState";
 import { SearchField } from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
 import { RoomCard } from "../components/social/RoomCard";
-import { rooms as fallbackRooms } from "../data/mockData";
-import { getRoom, getRooms } from "../lib/api";
-import { formatCountWithUnit } from "../lib/pluralize";
+import { getRooms } from "../lib/api";
 import { useAsyncData } from "../lib/useAsyncData";
 
 export function RoomsPage() {
-  const [searchParams] = useSearchParams();
-  const selectedSlug = searchParams.get("room") ?? "soft-launch";
-  const roomsState = useAsyncData(getRooms, fallbackRooms);
-  const selectedFallback = useMemo(
-    () =>
-      fallbackRooms.find(
-        (room) => room.slug === selectedSlug || String(room.id) === selectedSlug,
-      ),
-    [selectedSlug],
-  );
-  const selectedLoader = useMemo(
-    () => () => getRoom(selectedSlug),
-    [selectedSlug],
-  );
-  const selectedState = useAsyncData(selectedLoader, selectedFallback);
-  const rooms = roomsState.data ?? fallbackRooms;
-  const selectedRoom = selectedState.data ?? rooms[0];
+  const [query, setQuery] = useState("");
+  const roomsState = useAsyncData(getRooms);
+  const rooms = useMemo(() => roomsState.data ?? [], [roomsState.data]);
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredRooms = useMemo(() => {
+    if (!normalizedQuery) {
+      return rooms;
+    }
+
+    return rooms.filter((room) =>
+      [room.name, room.slug, room.summary, room.mood]
+        .filter(Boolean)
+        .some((value) => value.toLowerCase().includes(normalizedQuery)),
+    );
+  }, [normalizedQuery, rooms]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="rooms-page">
       <PageMeta
         title="Rooms"
-        description="Browse rooms on thia.lol."
+        description="Browse public rooms on thia.lol."
         path="/rooms"
       />
-      <section className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <Panel className="p-5 sm:p-6">
-          <Badge tone="leaf">rooms</Badge>
-          <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">
-            Pick a room and settle in.
-          </h1>
-          <p className="mt-3 text-base leading-7 text-muted">
-            Each room has its own pace, topic, and little crowd.
-          </p>
+
+      <Panel className="p-5 sm:p-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <Badge tone="leaf">rooms</Badge>
+            <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">
+              Find a place to post.
+            </h1>
+            <p className="mt-3 text-base leading-7 text-muted">
+              Public communities for shared topics, moods, and conversations.
+            </p>
+          </div>
           <SearchField
             id="room-search"
             label="Search rooms"
             placeholder="Search rooms"
-            className="mt-5"
+            className="w-full lg:max-w-sm"
+            value={query}
+            onChange={(event) => setQuery(event.currentTarget.value)}
           />
-        </Panel>
+        </div>
+      </Panel>
 
-        {selectedRoom ? (
-          <Panel className="overflow-hidden">
-            <div className="grid gap-0 md:grid-cols-[minmax(0,1fr)_260px]">
-              <div className="p-5 sm:p-6">
-                <Badge tone={selectedRoom.live ? "leaf" : "default"}>
-                  {selectedRoom.live ? "live now" : "slow room"}
-                </Badge>
-                <h2 className="mt-4 text-2xl font-semibold text-text">
-                  {selectedRoom.name}
-                </h2>
-                <p className="mt-3 max-w-2xl text-base leading-7 text-muted">
-                  {selectedRoom.summary}
-                </p>
-                <div className="mt-5 flex flex-wrap gap-3 text-sm text-muted">
-                  <span className="inline-flex items-center gap-2">
-                    <UsersRound aria-hidden="true" size={16} />
-                    {formatCountWithUnit(selectedRoom.members, "member")}
-                  </span>
-                  <span className="inline-flex items-center gap-2">
-                    <Radio aria-hidden="true" size={16} />
-                    {selectedRoom.mood}
-                  </span>
-                </div>
-              </div>
-              <AmbientImage className="h-56 w-full md:h-full" />
-            </div>
-          </Panel>
-        ) : null}
-      </section>
+      {roomsState.loading ? (
+        <RoomNotice title="Opening rooms" text="The room list is loading." />
+      ) : null}
 
-      {roomsState.loading || selectedState.loading ? (
-        <ApiStateNotice
-          kind="loading"
-          title="Opening rooms"
-          text="Rooms are loading."
+      {roomsState.error ? (
+        <RoomNotice
+          title="Rooms are not available"
+          text="Try refreshing in a moment."
+          tone="rose"
         />
       ) : null}
 
-      {roomsState.usingFallback || selectedState.usingFallback ? (
-        <ApiStateNotice
-          kind="fallback"
-          title="Showing a saved view"
-          text="Rooms are taking a moment to refresh."
+      {!roomsState.loading && !roomsState.error && rooms.length === 0 ? (
+        <EmptyState
+          icon={Radio}
+          title="No public rooms yet"
+          text="Rooms will appear here when the first public community opens."
         />
       ) : null}
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="Rooms">
-        {rooms.length > 0 ? (
-          rooms.map((room) => (
+      {!roomsState.loading &&
+      !roomsState.error &&
+      rooms.length > 0 &&
+      filteredRooms.length === 0 ? (
+        <EmptyState
+          icon={SearchX}
+          title="No rooms found"
+          text="Try a shorter search."
+        />
+      ) : null}
+
+      {filteredRooms.length > 0 ? (
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-label="Rooms">
+          {filteredRooms.map((room) => (
             <RoomCard key={room.id} room={room} />
-          ))
-        ) : (
-          <EmptyState
-            icon={Radio}
-            title="No public rooms yet"
-            text="Rooms will appear here once there is something to show."
-            className="md:col-span-2 xl:col-span-4"
-          />
-        )}
-      </section>
+          ))}
+        </section>
+      ) : null}
     </div>
+  );
+}
+
+function RoomNotice({
+  text,
+  title,
+  tone = "cool",
+}: {
+  text: string;
+  title: string;
+  tone?: "cool" | "rose";
+}) {
+  return (
+    <Panel className="p-4">
+      <Badge tone={tone}>{tone === "rose" ? "notice" : "loading"}</Badge>
+      <h2 className="mt-3 text-sm font-semibold text-text">{title}</h2>
+      <p className="mt-1 text-sm leading-6 text-muted">{text}</p>
+    </Panel>
   );
 }

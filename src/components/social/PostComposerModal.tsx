@@ -10,6 +10,7 @@ import type { Post, Room } from "../../lib/types";
 
 type PostComposerModalProps = {
   csrfToken: string | undefined;
+  initialRoomSlug?: string | undefined;
   onClose: () => void;
   onCreated?: (post: Post) => void;
   open: boolean;
@@ -18,6 +19,7 @@ type PostComposerModalProps = {
 
 export function PostComposerModal({
   csrfToken,
+  initialRoomSlug,
   onClose,
   onCreated,
   open,
@@ -26,15 +28,31 @@ export function PostComposerModal({
   const titleId = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [body, setBody] = useState("");
-  const [roomSlug, setRoomSlug] = useState("");
+  const [roomSlug, setRoomSlug] = useState(initialRoomSlug ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | undefined>();
   const selectedRoom = rooms.find((room) => room.slug === roomSlug);
   const canSubmit = Boolean(csrfToken) && body.trim().length > 0 && !submitting;
-  const destinationLabel = selectedRoom ? selectedRoom.name : "Profile feed";
+  const destinationLabel = selectedRoom
+    ? `/${selectedRoom.slug}`
+    : roomSlug
+      ? `/${roomSlug}`
+      : "Profile feed";
   const destinationSummary = selectedRoom
-    ? selectedRoom.summary
+    ? `${selectedRoom.name}${selectedRoom.summary ? ` · ${selectedRoom.summary}` : ""}`
+    : roomSlug
+      ? "Room destination selected."
     : "Post without choosing a room.";
+  const roomOptions = [
+    { value: "", label: "Profile feed" },
+    ...(roomSlug && !selectedRoom
+      ? [{ value: roomSlug, label: `/${roomSlug}` }]
+      : []),
+    ...rooms.map((room) => ({
+      value: room.slug,
+      label: `/${room.slug} - ${room.name}`,
+    })),
+  ];
 
   const closeComposer = useCallback(() => {
     setBody("");
@@ -147,13 +165,8 @@ export function PostComposerModal({
                   name="roomSlug"
                   label="Post to"
                   icon={Radio}
-                  options={[
-                    { value: "", label: "Profile feed" },
-                    ...rooms.map((room) => ({
-                      value: room.slug,
-                      label: room.name,
-                    })),
-                  ]}
+                  data-testid="composer-room-selector"
+                  options={roomOptions}
                   value={roomSlug}
                   disabled={submitting}
                   onChange={(event) => setRoomSlug(event.currentTarget.value)}
@@ -168,7 +181,10 @@ export function PostComposerModal({
                     )}
                   </div>
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-text">
+                    <p className="text-xs font-medium uppercase text-muted">
+                      Posting to
+                    </p>
+                    <p className="mt-1 truncate text-sm font-semibold text-text">
                       {destinationLabel}
                     </p>
                     <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">

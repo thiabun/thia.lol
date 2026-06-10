@@ -46,6 +46,9 @@ export const rooms: Room[] = [
     members: 284,
     live: true,
     accent: "var(--accent-sun)",
+    visibility: "public",
+    postCount: 1,
+    latestActivityAt: null,
   },
   {
     id: 2,
@@ -56,6 +59,9 @@ export const rooms: Room[] = [
     members: 138,
     live: true,
     accent: "var(--accent-frost)",
+    visibility: "public",
+    postCount: 1,
+    latestActivityAt: null,
   },
   {
     id: 3,
@@ -66,6 +72,9 @@ export const rooms: Room[] = [
     members: 402,
     live: false,
     accent: "var(--accent-leaf)",
+    visibility: "public",
+    postCount: 1,
+    latestActivityAt: null,
   },
   {
     id: 4,
@@ -76,6 +85,9 @@ export const rooms: Room[] = [
     members: 319,
     live: false,
     accent: "var(--accent-rose)",
+    visibility: "public",
+    postCount: 1,
+    latestActivityAt: null,
   },
 ];
 

@@ -10,7 +10,10 @@ import type {
 import { apiDelete, apiGet, apiPatch, apiPost } from "./apiClient";
 
 type ApiRoom = Room & {
+  description?: string;
   visibility?: string;
+  postCount?: number;
+  latestActivityAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -140,6 +143,12 @@ export function getStats(): Promise<PublicStats> {
 
 export function getRoom(idOrSlug: string): Promise<Room | undefined> {
   return apiGet<ApiRoom>(`/rooms/${encodeURIComponent(idOrSlug)}`).then(normalizeRoom);
+}
+
+export function getRoomPosts(slug: string): Promise<Post[]> {
+  return apiGet<ApiPost[]>(`/rooms/${encodeURIComponent(slug)}/posts`).then((items) =>
+    items.map(normalizePost),
+  );
 }
 
 export function getProfile(handle: string): Promise<Profile> {
@@ -324,11 +333,15 @@ function normalizeRoom(room: ApiRoom): Room {
     id: room.id,
     slug: room.slug,
     name: room.name,
-    summary: room.summary,
+    summary: room.summary || room.description || "",
+    description: room.description || room.summary || "",
     mood: room.mood,
     members: room.members,
     live: room.live,
     accent: room.accent,
+    visibility: room.visibility ?? "public",
+    postCount: room.postCount ?? 0,
+    latestActivityAt: room.latestActivityAt ?? null,
   };
 }
 

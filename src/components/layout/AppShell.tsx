@@ -17,7 +17,6 @@ import { NavLink, Outlet, useNavigate } from "react-router";
 import { PostComposerModal } from "../social/PostComposerModal";
 import { ThemeToggle } from "../ThemeToggle";
 import { Button } from "../ui/Button";
-import { rooms as fallbackRooms } from "../../data/mockData";
 import { getRooms } from "../../lib/api";
 import { cn } from "../../lib/classNames";
 import { emitPostCreated } from "../../lib/postEvents";
@@ -32,20 +31,28 @@ const publicNavItems = [
 
 const adminNavItem = { to: "/admin", label: "Admin", icon: Shield };
 
+export type AppShellOutletContext = {
+  openPostComposer: (roomSlug?: string) => void;
+};
+
 export function AppShell() {
   const { csrfToken, status, user } = useAuth();
   const navigate = useNavigate();
-  const roomsState = useAsyncData(getRooms, fallbackRooms);
+  const roomsState = useAsyncData(getRooms);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [composerRoomSlug, setComposerRoomSlug] = useState<string | undefined>();
+  const [composerKey, setComposerKey] = useState(0);
   const navItems =
     status === "authenticated" && user?.role === "admin"
       ? [...publicNavItems, adminNavItem]
       : publicNavItems;
   const postingDisabled = status === "loading";
-  const rooms = roomsState.data ?? fallbackRooms;
+  const rooms = roomsState.data ?? [];
 
-  function handlePostClick() {
+  function openPostComposer(roomSlug?: string) {
     if (status === "authenticated" && user && csrfToken) {
+      setComposerRoomSlug(roomSlug);
+      setComposerKey((current) => current + 1);
       setComposerOpen(true);
       return;
     }
@@ -53,12 +60,16 @@ export function AppShell() {
     navigate("/login");
   }
 
+  function handlePostClick() {
+    openPostComposer();
+  }
+
   return (
     <div className="min-h-dvh bg-canvas text-text">
       <div className="fixed inset-0 -z-10 bg-page-wash" />
       <SiteHeader navItems={navItems} />
       <main className="mx-auto w-full max-w-7xl px-4 pb-28 pt-5 sm:px-6 lg:px-8">
-        <Outlet />
+        <Outlet context={{ openPostComposer } satisfies AppShellOutletContext} />
       </main>
       <Button
         type="button"
@@ -75,7 +86,9 @@ export function AppShell() {
         postDisabled={postingDisabled}
       />
       <PostComposerModal
+        key={composerKey}
         csrfToken={csrfToken}
+        initialRoomSlug={composerRoomSlug}
         onClose={() => setComposerOpen(false)}
         onCreated={emitPostCreated}
         open={composerOpen}

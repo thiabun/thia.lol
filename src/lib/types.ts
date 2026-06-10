@@ -26,10 +26,14 @@ export type Room = {
   slug: string;
   name: string;
   summary: string;
+  description?: string;
   mood: string;
   members: number;
   live: boolean;
   accent: string;
+  visibility?: string;
+  postCount: number;
+  latestActivityAt?: string | null;
 };
 
 export type ReactionCounts = {
