@@ -444,6 +444,19 @@ function fetch_public_room_posts(string $slug): array
     return array_map('post_payload', $statement->fetchAll());
 }
 
+function fetch_public_profile_posts(string $handle): array
+{
+    $statement = db_query(
+        post_select_sql('AND u.handle = :handle AND p.parent_id IS NULL'),
+        [
+            'handle' => $handle,
+            'current_user_id' => current_request_user_id(),
+        ]
+    );
+
+    return array_map('post_payload', $statement->fetchAll());
+}
+
 function fetch_public_stats(): array
 {
     $statement = db_query(
@@ -516,6 +529,17 @@ function profiles_show(string $handle): void
     }
 
     json_success(profile_payload($profile));
+}
+
+function profile_posts_index(string $handle): void
+{
+    $normalizedHandle = normalize_handle($handle);
+
+    if (fetch_profile_by_handle($normalizedHandle) === null) {
+        json_error('Profile not found.', 404);
+    }
+
+    json_success(fetch_public_profile_posts($normalizedHandle));
 }
 
 function rooms_index(): void

@@ -1,19 +1,20 @@
-import { Hash, Radio, Sparkles, UserRound } from "lucide-react";
+import { Hash, Radio, UserRound } from "lucide-react";
 import { useMemo, useState } from "react";
 import { PageMeta } from "../components/PageMeta";
 import { PostCard } from "../components/social/PostCard";
+import { RoomCard } from "../components/social/RoomCard";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Badge } from "../components/ui/Badge";
+import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
-import { Avatar } from "../components/ui/Avatar";
 import { AmbientImage } from "../components/ui/AmbientImage";
 import { SearchField } from "../components/ui/Field";
-import { deletePost, getFeed, updatePost } from "../lib/api";
+import { deletePost, getFeed, getRooms, getStats, updatePost } from "../lib/api";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
-import type { Post } from "../lib/types";
+import { pluralize } from "../lib/pluralize";
+import type { Post, PublicStats } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
-import { discoverItems, posts as fallbackPosts, users } from "../data/mockData";
 
 const icons = {
   thread: Hash,
@@ -23,14 +24,21 @@ const icons = {
 
 export function DiscoverPage() {
   const { csrfToken, user } = useAuth();
-  const postsState = useAsyncData(getFeed, fallbackPosts);
+  const postsState = useAsyncData(getFeed);
+  const roomsState = useAsyncData(getRooms);
+  const statsState = useAsyncData(getStats);
   const [removedPostIds, setRemovedPostIds] = useState<Set<number>>(() => new Set());
   const [pendingPostId, setPendingPostId] = useState<number | undefined>();
   const [postActionError, setPostActionError] = useState<string | undefined>();
-  const feedPosts = postsState.data ?? fallbackPosts;
+  const rooms = roomsState.data ?? [];
+  const stats = statsState.data;
+  const discoverItems = useMemo(
+    () => makeDiscoverItems(stats, Boolean(statsState.error)),
+    [stats, statsState.error],
+  );
   const visiblePosts = useMemo(
-    () => feedPosts.filter((post) => !removedPostIds.has(post.id)),
-    [feedPosts, removedPostIds],
+    () => (postsState.data ?? []).filter((post) => !removedPostIds.has(post.id)),
+    [postsState.data, removedPostIds],
   );
 
   async function handleDeletePost(post: Post) {
@@ -115,11 +123,11 @@ export function DiscoverPage() {
         />
       ) : null}
 
-      {postsState.usingFallback ? (
+      {postsState.error ? (
         <ApiStateNotice
-          kind="fallback"
-          title="Showing a saved view"
-          text="Recent posts are taking a moment to refresh."
+          kind="error"
+          title="Posts are not available"
+          text="Try refreshing in a moment."
         />
       ) : null}
 
@@ -135,6 +143,14 @@ export function DiscoverPage() {
           <Badge tone="warm">public</Badge>
         </div>
         <div className="space-y-4">
+          {!postsState.loading && !postsState.error && visiblePosts.length === 0 ? (
+            <EmptyState
+              icon={Hash}
+              title="No posts yet"
+              text="Public posts will appear here."
+            />
+          ) : null}
+
           {visiblePosts.map((post, index) => (
             <PostCard
               key={post.id}
@@ -170,28 +186,79 @@ export function DiscoverPage() {
 
       <section>
         <div className="mb-3 flex items-center justify-between gap-4">
-          <h2 className="text-xl font-semibold text-text">Quiet operators</h2>
-          <Badge tone="rose">
-            <Sparkles aria-hidden="true" size={13} />
-            curated
-          </Badge>
+          <h2 className="text-xl font-semibold text-text">Rooms to visit</h2>
+          <Badge tone="leaf">public</Badge>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {users.map((user) => (
-            <Panel key={user.id} interactive className="p-4">
-              <div className="flex items-center gap-3">
-                <Avatar user={user} />
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-text">
-                    {user.displayName}
-                  </p>
-                  <p className="truncate text-sm text-muted">@{user.handle}</p>
-                </div>
-              </div>
-            </Panel>
-          ))}
-        </div>
+        {roomsState.loading ? (
+          <ApiStateNotice
+            kind="loading"
+            title="Loading rooms"
+            text="Public rooms are loading."
+          />
+        ) : null}
+        {roomsState.error ? (
+          <ApiStateNotice
+            kind="error"
+            title="Rooms are not available"
+            text="Try refreshing in a moment."
+          />
+        ) : null}
+        {!roomsState.loading && !roomsState.error && rooms.length === 0 ? (
+          <EmptyState
+            icon={Radio}
+            title="No rooms yet"
+            text="Public rooms will appear here."
+          />
+        ) : null}
+        {rooms.length > 0 ? (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {rooms.slice(0, 6).map((room) => (
+              <RoomCard key={room.id} room={room} />
+            ))}
+          </div>
+        ) : null}
       </section>
     </div>
   );
+}
+
+function makeDiscoverItems(stats: PublicStats | undefined, unavailable: boolean) {
+  const countText = (value: number | undefined, noun: string) => {
+    if (value !== undefined) {
+      return pluralize(value, noun);
+    }
+
+    return unavailable ? "Unavailable" : "Loading";
+  };
+
+  return [
+    {
+      id: 1,
+      label: "Public rooms",
+      description: "Open places for shared topics and conversations.",
+      count: countText(stats?.publicRooms, "room"),
+      kind: "room" as const,
+    },
+    {
+      id: 2,
+      label: "Recent posts",
+      description: "Fresh public notes from across the site.",
+      count: countText(stats?.publicPosts, "post"),
+      kind: "thread" as const,
+    },
+    {
+      id: 3,
+      label: "Active members",
+      description: "Profiles that can read, post, and join the conversation.",
+      count: countText(stats?.activeUsers, "member"),
+      kind: "person" as const,
+    },
+    {
+      id: 4,
+      label: "Likes",
+      description: "Signals from public posts people have appreciated.",
+      count: countText(stats?.totalReactions, "like"),
+      kind: "thread" as const,
+    },
+  ];
 }

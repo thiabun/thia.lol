@@ -89,6 +89,10 @@ try {
         profiles_show($segments[1]);
     }
 
+    if (($segments[0] ?? null) === 'profiles' && count($segments) === 3 && $segments[2] === 'posts') {
+        profile_posts_index($segments[1]);
+    }
+
     if (($segments[0] ?? null) === 'rooms' && count($segments) === 1) {
         rooms_index();
     }

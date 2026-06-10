@@ -1,6 +1,4 @@
-import { discoverItems, profiles } from "../data/mockData";
 import type {
-  DiscoverItem,
   Post,
   Profile,
   PublicStats,
@@ -129,10 +127,6 @@ export function getFeed(): Promise<Post[]> {
   return apiGet<ApiPost[]>("/posts").then((items) => items.map(normalizePost));
 }
 
-export function getDiscover(): Promise<DiscoverItem[]> {
-  return Promise.resolve(discoverItems);
-}
-
 export function getRooms(): Promise<Room[]> {
   return apiGet<ApiRoom[]>("/rooms").then((items) => items.map(normalizeRoom));
 }
@@ -157,6 +151,14 @@ export function getProfile(handle: string): Promise<Profile> {
   return apiGet<ApiProfile>(`/profiles/${encodeURIComponent(normalized)}`).then(
     normalizeProfile,
   );
+}
+
+export function getProfilePosts(handle: string): Promise<Post[]> {
+  const normalized = handle.replace(/^@/, "").toLowerCase();
+
+  return apiGet<ApiPost[]>(
+    `/profiles/${encodeURIComponent(normalized)}/posts`,
+  ).then((items) => items.map(normalizePost));
 }
 
 export function createPost(
@@ -295,39 +297,6 @@ export function resolveAdminReport(
   );
 }
 
-export function getFallbackProfile(handle: string): Profile {
-  const normalized = handle.replace(/^@/, "").toLowerCase();
-
-  return (
-    profiles.find((profile) => profile.user.handle === normalized) ??
-    makeFallbackProfile(normalized)
-  );
-}
-
-function makeFallbackProfile(handle: string): Profile {
-  const cleanHandle = handle || "guest";
-  const displayName = cleanHandle
-    .split(/[-_]/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-
-  return {
-    user: {
-      id: 999,
-      handle: cleanHandle,
-      displayName: displayName || "Guest Profile",
-      initials: (displayName || cleanHandle).slice(0, 2).toUpperCase(),
-      aura: "tide",
-    },
-    bio: "A profile waiting for its first post.",
-    location: "thia.lol",
-    links: [],
-    traits: ["new", "quiet", "unclaimed"],
-    stats: { posts: 0, rooms: 0, echoes: 0 },
-  };
-}
-
 function normalizeRoom(room: ApiRoom): Room {
   return {
     id: room.id,
@@ -380,8 +349,8 @@ function normalizePost(post: ApiPost): Post {
 
 function makeFallbackRoom(): Pick<Room, "slug" | "name" | "accent"> {
   return {
-    slug: "platform",
-    name: "Platform",
+    slug: "profile",
+    name: "Profile feed",
     accent: "var(--accent-frost)",
   };
 }

@@ -1,5 +1,17 @@
 import { expect, test } from "@playwright/test";
 
+const retiredMockCopy = [
+  "Mira Vale",
+  "Sol Anka",
+  "Ior Rune",
+  "Easygoing rooms",
+  "Quiet operators",
+  "Solarized socials",
+  "The nicest launch state might be one where the platform feels awake",
+  "A secondary profile on the platform",
+  "Showing a saved view",
+];
+
 test("reply button opens an unclipped thread modal", async ({ page }) => {
   await page.goto("/");
 
@@ -53,4 +65,17 @@ test("mobile header, account menu, and bottom nav fit the viewport", async ({
 
   await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Create post" })).toBeVisible();
+});
+
+test("public pages do not render retired mock social data", async ({ page }) => {
+  for (const path of ["/", "/discover", "/rooms", "/@thia"]) {
+    await page.goto(path);
+    await expect(page.locator("body")).toBeVisible();
+
+    const bodyText = await page.locator("body").innerText();
+
+    for (const copy of retiredMockCopy) {
+      expect(bodyText).not.toContain(copy);
+    }
+  }
 });

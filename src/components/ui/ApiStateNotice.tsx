@@ -3,7 +3,7 @@ import { Badge } from "./Badge";
 import { Panel } from "./Panel";
 
 type ApiStateNoticeProps = {
-  kind: "loading" | "fallback";
+  kind: "loading" | "error";
   title: string;
   text: string;
 };
@@ -23,7 +23,7 @@ export function ApiStateNotice({ kind, title, text }: ApiStateNoticeProps) {
         </div>
         <div className="min-w-0">
           <Badge tone={kind === "loading" ? "cool" : "rose"}>
-            {kind === "loading" ? "loading" : "saved view"}
+            {kind === "loading" ? "loading" : "notice"}
           </Badge>
           <h2 className="mt-2 text-sm font-semibold text-text">{title}</h2>
           <p className="mt-1 text-sm leading-6 text-muted">{text}</p>

@@ -14,54 +14,45 @@ import { ButtonLink } from "../components/ui/Button";
 import { AmbientImage } from "../components/ui/AmbientImage";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Badge } from "../components/ui/Badge";
+import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
 import { PostCard } from "../components/social/PostCard";
 import { RoomCard } from "../components/social/RoomCard";
-import {
-  posts as fallbackPosts,
-  rooms as fallbackRooms,
-  users as fallbackUsers,
-} from "../data/mockData";
 import { deletePost, getFeed, getRooms, getStats, updatePost } from "../lib/api";
 import { pluralize } from "../lib/pluralize";
 import { postCreatedEventName } from "../lib/postEvents";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
-import type { Post, PublicStats } from "../lib/types";
+import type { Post } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
 
-const fallbackStats: PublicStats = {
-  publicRooms: fallbackRooms.length,
-  publicPosts: fallbackPosts.length,
-  activeUsers: fallbackUsers.length,
-  totalReactions: fallbackPosts.reduce((total, post) => total + post.likeCount, 0),
-};
-
 export function HomePage() {
   const { csrfToken, user } = useAuth();
-  const feedState = useAsyncData(getFeed, fallbackPosts);
+  const feedState = useAsyncData(getFeed);
   const roomsState = useAsyncData(getRooms);
-  const statsState = useAsyncData(getStats, fallbackStats);
+  const statsState = useAsyncData(getStats);
   const [createdPosts, setCreatedPosts] = useState<Post[]>([]);
   const [removedPostIds, setRemovedPostIds] = useState<Set<number>>(
     () => new Set(),
   );
   const [pendingPostId, setPendingPostId] = useState<number | undefined>();
   const [postActionError, setPostActionError] = useState<string | undefined>();
-  const feedPosts = feedState.data ?? fallbackPosts;
   const posts = useMemo(
-    () =>
-      [...createdPosts, ...feedPosts].filter((post, index, allPosts) => {
+    () => {
+      const feedPosts = feedState.data ?? [];
+
+      return [...createdPosts, ...feedPosts].filter((post, index, allPosts) => {
         if (removedPostIds.has(post.id)) {
           return false;
         }
 
         return allPosts.findIndex((item) => item.id === post.id) === index;
-      }),
-    [createdPosts, feedPosts, removedPostIds],
+      });
+    },
+    [createdPosts, feedState.data, removedPostIds],
   );
   const rooms = roomsState.data ?? [];
-  const stats = statsState.data ?? fallbackStats;
+  const stats = statsState.data;
 
   const handlePostCreated = useCallback((post: Post) => {
     setCreatedPosts((current) => [post, ...current]);
@@ -201,11 +192,11 @@ export function HomePage() {
           />
         ) : null}
 
-        {feedState.usingFallback ? (
+        {feedState.error ? (
           <ApiStateNotice
-            kind="fallback"
-            title="Showing a saved view"
-            text="Recent posts are taking a moment to refresh."
+            kind="error"
+            title="Posts are not available"
+            text="Try refreshing in a moment."
           />
         ) : null}
 
@@ -229,18 +220,28 @@ export function HomePage() {
           </ButtonLink>
         </div>
 
-        {posts.map((post, index) => (
-          <PostCard
-            key={post.id}
-            post={post}
-            index={index}
-            canDelete={canDeletePost(user, post)}
-            canHide={canHidePost(user)}
-            actionPending={pendingPostId === post.id}
-            onDelete={(targetPost) => void handleDeletePost(targetPost)}
-            onHide={(targetPost) => void handleHidePost(targetPost)}
+        {!feedState.loading && !feedState.error && posts.length === 0 ? (
+          <EmptyState
+            icon={MessageCircle}
+            title="No posts yet"
+            text="Public posts will appear here."
           />
-        ))}
+        ) : null}
+
+        {posts.length > 0
+          ? posts.map((post, index) => (
+              <PostCard
+                key={post.id}
+                post={post}
+                index={index}
+                canDelete={canDeletePost(user, post)}
+                canHide={canHidePost(user)}
+                actionPending={pendingPostId === post.id}
+                onDelete={(targetPost) => void handleDeletePost(targetPost)}
+                onHide={(targetPost) => void handleHidePost(targetPost)}
+              />
+            ))
+          : null}
       </section>
 
       <aside className="space-y-5" aria-label="Platform sidebar">
@@ -258,23 +259,23 @@ export function HomePage() {
           </div>
           <div className="mt-5 grid grid-cols-2 gap-3">
             <Metric
-              label={pluralize(stats.publicRooms, "room")}
-              value={stats.publicRooms}
+              label={stats ? pluralize(stats.publicRooms, "room") : "Rooms"}
+              value={stats?.publicRooms ?? (statsState.error ? "Unavailable" : "Loading")}
               icon={Radio}
             />
             <Metric
-              label={pluralize(stats.publicPosts, "post")}
-              value={stats.publicPosts}
+              label={stats ? pluralize(stats.publicPosts, "post") : "Posts"}
+              value={stats?.publicPosts ?? (statsState.error ? "Unavailable" : "Loading")}
               icon={MessageCircle}
             />
             <Metric
-              label={pluralize(stats.activeUsers, "member")}
-              value={stats.activeUsers}
+              label={stats ? pluralize(stats.activeUsers, "member") : "Members"}
+              value={stats?.activeUsers ?? (statsState.error ? "Unavailable" : "Loading")}
               icon={UsersRound}
             />
             <Metric
               label="Likes"
-              value={stats.totalReactions}
+              value={stats?.totalReactions ?? (statsState.error ? "Unavailable" : "Loading")}
               icon={Heart}
             />
           </div>
@@ -290,10 +291,17 @@ export function HomePage() {
               <RoomCard key={room.id} room={room} />
             ))}
           </div>
+          {!roomsState.loading && !roomsState.error && rooms.length === 0 ? (
+            <EmptyState
+              icon={Radio}
+              title="No rooms yet"
+              text="Public rooms will appear here."
+            />
+          ) : null}
           {roomsState.error ? (
             <div className="mt-3">
               <ApiStateNotice
-                kind="fallback"
+                kind="error"
                 title="Rooms are not available"
                 text="Try refreshing in a moment."
               />
