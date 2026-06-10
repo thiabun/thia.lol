@@ -32,6 +32,7 @@ const retiredMockCopy = [
   "API",
   "fallback",
   "mock",
+  "demo",
 ];
 
 test("desktop primary nav shows platform sections without Admin", async ({ page }) => {

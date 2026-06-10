@@ -18,7 +18,7 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
 import { PostCard } from "../components/social/PostCard";
 import { RoomCard } from "../components/social/RoomCard";
-import { deletePost, getFeed, getRooms, getStats, updatePost } from "../lib/api";
+import { deletePost, getHomeFeed, getRooms, getStats, updatePost } from "../lib/api";
 import { pluralize } from "../lib/pluralize";
 import { postCreatedEventName } from "../lib/postEvents";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
@@ -28,8 +28,8 @@ import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
 
 export function HomePage() {
-  const { csrfToken, user } = useAuth();
-  const feedState = useAsyncData(getFeed);
+  const { csrfToken, status, user } = useAuth();
+  const feedState = useAsyncData(getHomeFeed);
   const roomsState = useAsyncData(getRooms);
   const statsState = useAsyncData(getStats);
   const [createdPosts, setCreatedPosts] = useState<Post[]>([]);
@@ -40,7 +40,7 @@ export function HomePage() {
   const [postActionError, setPostActionError] = useState<string | undefined>();
   const posts = useMemo(
     () => {
-      const feedPosts = feedState.data ?? [];
+      const feedPosts = feedState.data?.posts ?? [];
 
       return [...createdPosts, ...feedPosts].filter((post, index, allPosts) => {
         if (removedPostIds.has(post.id)) {
@@ -54,6 +54,7 @@ export function HomePage() {
   );
   const rooms = roomsState.data ?? [];
   const stats = statsState.data;
+  const isAnonymous = status === "anonymous";
 
   const handlePostCreated = useCallback((post: Post) => {
     setCreatedPosts((current) => [post, ...current]);
@@ -149,15 +150,25 @@ export function HomePage() {
               <div className="p-5 sm:p-6">
                 <Badge tone="warm">info</Badge>
                 <h1 className="mt-4 max-w-2xl text-3xl font-semibold tracking-normal text-text sm:text-4xl">
-                  Post, reply, and find your people.
+                  Home
                 </h1>
                 <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
-                  Join a room, read recent posts, or create a profile when you
-                  are ready.
+                  {isAnonymous
+                    ? "Recent and active posts from across thia.lol."
+                    : "Posts from people you follow, moots, rooms, and recent conversations."}
                 </p>
                 <div className="mt-5 flex flex-wrap gap-3">
+                  {isAnonymous ? (
+                    <ButtonLink
+                      to="/login"
+                      icon={<UsersRound aria-hidden="true" size={17} />}
+                    >
+                      Sign in
+                    </ButtonLink>
+                  ) : null}
                   <ButtonLink
                     to="/discover"
+                    variant={isAnonymous ? "secondary" : "primary"}
                     icon={<Compass aria-hidden="true" size={17} />}
                   >
                     Discover
@@ -194,15 +205,15 @@ export function HomePage() {
         {feedState.loading ? (
           <ApiStateNotice
             kind="loading"
-            title="Loading..."
-            text="Recent public posts are loading."
+            title="Loading feed"
+            text="Posts are loading."
           />
         ) : null}
 
         {feedState.error ? (
           <ApiStateNotice
             kind="error"
-            title="Posts are not available"
+            title="Could not load feed"
             text="Try refreshing in a moment."
           />
         ) : null}
@@ -216,7 +227,11 @@ export function HomePage() {
         <div className="flex items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold text-text">Recent posts</h2>
-            <p className="mt-1 text-sm text-muted">Latest posts from around the site.</p>
+            <p className="mt-1 text-sm text-muted">
+              {feedState.data?.personalized
+                ? "Ranked by follows, moots, replies, likes, and freshness."
+                : "Recent and active posts from across thia.lol."}
+            </p>
           </div>
           <ButtonLink
             to="/discover"

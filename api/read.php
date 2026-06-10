@@ -165,6 +165,19 @@ function post_payload(array $row): array
 {
     $profile = profile_payload($row);
     $likeCount = (int) ($row['reaction_glow_count'] ?? 0);
+    $isCurrentUser = (int) ($row['user_id'] ?? 0) > 0
+        && (int) ($row['user_id'] ?? 0) === (int) ($row['current_viewer_user_id'] ?? -1);
+    $isFollowingAuthor = (bool) ($row['current_user_follows_author'] ?? false);
+    $isFollowedByAuthor = (bool) ($row['author_follows_current_user'] ?? false);
+    $authorRelationship = null;
+
+    if ($isCurrentUser) {
+        $authorRelationship = 'self';
+    } elseif ($isFollowingAuthor && $isFollowedByAuthor) {
+        $authorRelationship = 'moot';
+    } elseif ($isFollowingAuthor) {
+        $authorRelationship = 'following';
+    }
 
     return [
         'id' => (int) $row['post_id'],
@@ -188,6 +201,12 @@ function post_payload(array $row): array
         ],
         'likeCount' => $likeCount,
         'likedByCurrentUser' => isset($row['current_like_user_id']) && $row['current_like_user_id'] !== null,
+        'reblogCount' => (int) ($row['reblog_count'] ?? 0),
+        'rebloggedByCurrentUser' => isset($row['current_reblog_user_id']) && $row['current_reblog_user_id'] !== null,
+        'socialContext' => [
+            'authorRelationship' => $authorRelationship,
+            'likedByFollowedCount' => (int) ($row['followed_like_count'] ?? 0),
+        ],
     ];
 }
 
@@ -210,24 +229,39 @@ function current_request_user_id(): ?int
     return $userId;
 }
 
-function user_follows_table_exists(): bool
+function database_table_exists(string $tableName): bool
 {
-    static $exists = null;
+    static $cache = [];
 
-    if (is_bool($exists)) {
-        return $exists;
+    if (!preg_match('/^[a-zA-Z0-9_]+$/', $tableName)) {
+        return false;
+    }
+
+    if (array_key_exists($tableName, $cache)) {
+        return (bool) $cache[$tableName];
     }
 
     $statement = db_query(
         "SELECT COUNT(*) AS table_count
          FROM INFORMATION_SCHEMA.TABLES
          WHERE TABLE_SCHEMA = DATABASE()
-           AND TABLE_NAME = 'user_follows'"
+           AND TABLE_NAME = :table_name",
+        ['table_name' => $tableName]
     );
     $row = $statement->fetch();
-    $exists = is_array($row) && (int) ($row['table_count'] ?? 0) > 0;
+    $cache[$tableName] = is_array($row) && (int) ($row['table_count'] ?? 0) > 0;
 
-    return $exists;
+    return (bool) $cache[$tableName];
+}
+
+function user_follows_table_exists(): bool
+{
+    return database_table_exists('user_follows');
+}
+
+function post_reblogs_table_exists(): bool
+{
+    return database_table_exists('post_reblogs');
 }
 
 function profile_social_context(int $profileUserId, ?int $viewerUserId = null): array
@@ -483,8 +517,57 @@ function fetch_public_room_by_slug(string $slug): ?array
     return is_array($row) ? room_payload($row) : null;
 }
 
-function post_select_sql(string $whereClause): string
+function post_select_sql(
+    string $whereClause,
+    string $orderClause = 'p.created_at DESC, p.id DESC',
+    string $extraSelect = '',
+    ?int $viewerUserId = null
+): string
 {
+    $viewerSql = $viewerUserId === null ? 'NULL' : (string) $viewerUserId;
+    $hasFollows = user_follows_table_exists();
+    $hasReblogs = post_reblogs_table_exists();
+    $followSelect = $hasFollows
+        ? "IF(viewer_follows_author.following_id IS NULL, 0, 1) AS current_user_follows_author,
+        IF(author_follows_viewer.follower_id IS NULL, 0, 1) AS author_follows_current_user,
+        COALESCE(followed_likes.followed_like_count, 0) AS followed_like_count,"
+        : "0 AS current_user_follows_author,
+        0 AS author_follows_current_user,
+        0 AS followed_like_count,";
+    $followJoins = $hasFollows
+        ? "LEFT JOIN user_follows viewer_follows_author
+        ON viewer_follows_author.follower_id = {$viewerSql}
+       AND viewer_follows_author.following_id = u.id
+    LEFT JOIN user_follows author_follows_viewer
+        ON author_follows_viewer.follower_id = u.id
+       AND author_follows_viewer.following_id = {$viewerSql}
+    LEFT JOIN (
+        SELECT reactions.post_id, COUNT(*) AS followed_like_count
+        FROM post_reactions reactions
+        INNER JOIN user_follows followed_reactors
+            ON followed_reactors.following_id = reactions.user_id
+           AND followed_reactors.follower_id = {$viewerSql}
+        WHERE reactions.type = 'glow'
+        GROUP BY reactions.post_id
+    ) followed_likes ON followed_likes.post_id = p.id"
+        : "";
+    $reblogSelect = $hasReblogs
+        ? "COALESCE(reblogs.reblog_count, 0) AS reblog_count,
+        current_reblog.user_id AS current_reblog_user_id,"
+        : "0 AS reblog_count,
+        NULL AS current_reblog_user_id,";
+    $reblogJoins = $hasReblogs
+        ? "LEFT JOIN (
+        SELECT post_id, COUNT(*) AS reblog_count
+        FROM post_reblogs
+        GROUP BY post_id
+    ) reblogs ON reblogs.post_id = p.id
+    LEFT JOIN post_reblogs current_reblog
+        ON current_reblog.post_id = p.id
+       AND current_reblog.user_id = {$viewerSql}"
+        : "";
+    $resolvedExtraSelect = trim($extraSelect) === '' ? '' : ",\n        {$extraSelect}";
+
     return "SELECT
         p.id AS post_id,
         p.parent_id AS post_parent_id,
@@ -532,7 +615,11 @@ function post_select_sql(string $whereClause): string
         COALESCE(reactions.echo_count, 0) AS reaction_echo_count,
         COALESCE(reactions.hush_count, 0) AS reaction_hush_count,
         COALESCE(replies.reply_count, 0) AS reply_count,
-        current_like.user_id AS current_like_user_id
+        current_like.user_id AS current_like_user_id,
+        {$viewerSql} AS current_viewer_user_id,
+        {$followSelect}
+        {$reblogSelect}
+        1 AS feed_row_marker{$resolvedExtraSelect}
     FROM posts p
     INNER JOIN users u ON u.id = p.author_id
     INNER JOIN profiles pr ON pr.user_id = u.id
@@ -617,22 +704,128 @@ function post_select_sql(string $whereClause): string
     ) replies ON replies.parent_id = p.id
     LEFT JOIN post_reactions current_like
         ON current_like.post_id = p.id
-       AND current_like.user_id = :current_user_id
+       AND current_like.user_id = {$viewerSql}
        AND current_like.type = 'glow'
+    {$followJoins}
+    {$reblogJoins}
     WHERE p.visibility = 'public'
       AND p.status = 'published'
       AND p.deleted_at IS NULL
+      AND u.status = 'active'
       AND (p.room_id IS NULL OR r.visibility = 'public')
       {$whereClause}
-    ORDER BY p.created_at DESC, p.id DESC
+    ORDER BY {$orderClause}
     LIMIT 50";
+}
+
+function reblog_score_sql(): string
+{
+    return post_reblogs_table_exists() ? 'COALESCE(reblogs.reblog_count, 0)' : '0';
+}
+
+function relationship_score_sql(int $followBonus, int $mootBonus): string
+{
+    if (!user_follows_table_exists()) {
+        return '0';
+    }
+
+    return "CASE
+        WHEN viewer_follows_author.following_id IS NOT NULL
+         AND author_follows_viewer.follower_id IS NOT NULL THEN {$mootBonus}
+        WHEN viewer_follows_author.following_id IS NOT NULL THEN {$followBonus}
+        ELSE 0
+    END";
+}
+
+function discover_rank_score_sql(): string
+{
+    $relationshipScore = relationship_score_sql(8, 12);
+    $reblogScore = reblog_score_sql();
+
+    // Discover is broad public ranking: engagement + recent activity + freshness,
+    // with gentle age decay and only small current-viewer social bonuses.
+    return "(
+        COALESCE(reactions.glow_count, 0) * 3
+        + COALESCE(replies.reply_count, 0) * 4
+        + {$reblogScore} * 5
+        + LEAST(COALESCE(room_posts.post_count, 0), 10)
+        + {$relationshipScore}
+        + CASE
+            WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 6 THEN 30
+            WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 24 THEN 18
+            WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 72 THEN 8
+            ELSE 0
+          END
+        - LEAST(40, TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) / 6)
+    )";
+}
+
+function home_rank_score_sql(?int $viewerUserId): string
+{
+    if ($viewerUserId === null) {
+        return discover_rank_score_sql();
+    }
+
+    $viewerSql = (string) $viewerUserId;
+    $relationshipScore = relationship_score_sql(80, 120);
+    $reblogScore = reblog_score_sql();
+
+    // Home favors chosen social context first, then recent conversation.
+    // A small own-post penalty keeps one member's posts from overwhelming Home.
+    return "(
+        {$relationshipScore}
+        + CASE WHEN u.id = {$viewerSql} THEN -45 ELSE 0 END
+        + COALESCE(reactions.glow_count, 0) * 3
+        + COALESCE(replies.reply_count, 0) * 4
+        + {$reblogScore} * 5
+        + LEAST(COALESCE(room_posts.post_count, 0), 12)
+        + CASE
+            WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 24 THEN 24
+            WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 72 THEN 12
+            WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 168 THEN 6
+            ELSE 0
+          END
+        - LEAST(35, TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) / 8)
+    )";
 }
 
 function fetch_public_posts(): array
 {
+    $viewerUserId = current_request_user_id();
     $statement = db_query(
-        post_select_sql('AND p.parent_id IS NULL'),
-        ['current_user_id' => current_request_user_id()]
+        post_select_sql('AND p.parent_id IS NULL', 'p.created_at DESC, p.id DESC', '', $viewerUserId)
+    );
+
+    return array_map('post_payload', $statement->fetchAll());
+}
+
+function fetch_home_feed(): array
+{
+    $viewerUserId = current_request_user_id();
+    $scoreSql = home_rank_score_sql($viewerUserId);
+    $statement = db_query(
+        post_select_sql(
+            'AND p.parent_id IS NULL',
+            'feed_rank_score DESC, p.created_at DESC, p.id DESC',
+            "{$scoreSql} AS feed_rank_score",
+            $viewerUserId
+        )
+    );
+
+    return array_map('post_payload', $statement->fetchAll());
+}
+
+function fetch_discover_posts(): array
+{
+    $scoreSql = discover_rank_score_sql();
+    $viewerUserId = current_request_user_id();
+    $statement = db_query(
+        post_select_sql(
+            'AND p.parent_id IS NULL',
+            'feed_rank_score DESC, p.created_at DESC, p.id DESC',
+            "{$scoreSql} AS feed_rank_score",
+            $viewerUserId
+        )
     );
 
     return array_map('post_payload', $statement->fetchAll());
@@ -640,11 +833,16 @@ function fetch_public_posts(): array
 
 function fetch_public_room_posts(string $slug): array
 {
+    $viewerUserId = current_request_user_id();
     $statement = db_query(
-        post_select_sql('AND r.slug = :slug AND p.parent_id IS NULL'),
+        post_select_sql(
+            'AND r.slug = :slug AND p.parent_id IS NULL',
+            'p.created_at DESC, p.id DESC',
+            '',
+            $viewerUserId
+        ),
         [
             'slug' => $slug,
-            'current_user_id' => current_request_user_id(),
         ]
     );
 
@@ -653,11 +851,16 @@ function fetch_public_room_posts(string $slug): array
 
 function fetch_public_profile_posts(string $handle): array
 {
+    $viewerUserId = current_request_user_id();
     $statement = db_query(
-        post_select_sql('AND u.handle = :handle AND p.parent_id IS NULL'),
+        post_select_sql(
+            'AND u.handle = :handle AND p.parent_id IS NULL',
+            'p.created_at DESC, p.id DESC',
+            '',
+            $viewerUserId
+        ),
         [
             'handle' => $handle,
-            'current_user_id' => current_request_user_id(),
         ]
     );
 
@@ -666,11 +869,16 @@ function fetch_public_profile_posts(string $handle): array
 
 function fetch_public_profile_replies(string $handle): array
 {
+    $viewerUserId = current_request_user_id();
     $statement = db_query(
-        post_select_sql('AND u.handle = :handle AND p.parent_id IS NOT NULL'),
+        post_select_sql(
+            'AND u.handle = :handle AND p.parent_id IS NOT NULL',
+            'p.created_at DESC, p.id DESC',
+            '',
+            $viewerUserId
+        ),
         [
             'handle' => $handle,
-            'current_user_id' => current_request_user_id(),
         ]
     );
 
@@ -786,6 +994,125 @@ function fetch_public_stats(): array
     ];
 }
 
+function discover_person_payload(array $row): array
+{
+    $displayName = (string) ($row['display_name'] ?? $row['handle']);
+    $isFollowing = (bool) ($row['is_following'] ?? false);
+    $isFollowedBy = (bool) ($row['is_followed_by'] ?? false);
+
+    return [
+        'handle' => (string) $row['handle'],
+        'displayName' => $displayName,
+        'initials' => initials_from_name($displayName),
+        'avatarUrl' => $row['avatar_url'] ?? null,
+        'bioSnippet' => profile_bio_snippet($row['bio'] ?? null),
+        'isFollowing' => $isFollowing,
+        'isMoot' => $isFollowing && $isFollowedBy,
+        'postCount' => (int) ($row['post_count'] ?? 0),
+        'followerCount' => (int) ($row['follower_count'] ?? 0),
+    ];
+}
+
+function profile_bio_snippet(mixed $bio): string
+{
+    if (!is_string($bio)) {
+        return '';
+    }
+
+    $trimmed = trim(preg_replace('/\s+/', ' ', $bio) ?? $bio);
+
+    if (strlen($trimmed) <= 140) {
+        return $trimmed;
+    }
+
+    return rtrim(substr($trimmed, 0, 137)) . '...';
+}
+
+function fetch_people_to_watch(): array
+{
+    $viewerUserId = current_request_user_id();
+    $viewerSql = $viewerUserId === null ? 'NULL' : (string) $viewerUserId;
+    $hasFollows = user_follows_table_exists();
+    $followSelect = $hasFollows
+        ? "IF(viewer_follows.following_id IS NULL, 0, 1) AS is_following,
+        IF(viewer_followed_by.follower_id IS NULL, 0, 1) AS is_followed_by,
+        COALESCE(followers.follower_count, 0) AS follower_count,"
+        : "0 AS is_following,
+        0 AS is_followed_by,
+        0 AS follower_count,";
+    $followJoins = $hasFollows
+        ? "LEFT JOIN (
+            SELECT following_id, COUNT(*) AS follower_count
+            FROM user_follows
+            GROUP BY following_id
+        ) followers ON followers.following_id = u.id
+        LEFT JOIN user_follows viewer_follows
+            ON viewer_follows.follower_id = {$viewerSql}
+           AND viewer_follows.following_id = u.id
+        LEFT JOIN user_follows viewer_followed_by
+            ON viewer_followed_by.follower_id = u.id
+           AND viewer_followed_by.following_id = {$viewerSql}"
+        : "";
+    $excludeFollowed = $hasFollows
+        ? "AND viewer_follows.following_id IS NULL"
+        : "";
+
+    $statement = db_query(
+        "SELECT
+            u.id AS user_id,
+            u.handle,
+            p.display_name,
+            p.avatar_url,
+            p.bio,
+            {$followSelect}
+            COALESCE(profile_posts.post_count, 0) AS post_count,
+            profile_posts.latest_post_at
+         FROM users u
+         INNER JOIN profiles p ON p.user_id = u.id
+         LEFT JOIN (
+            SELECT
+                posts.author_id,
+                COUNT(*) AS post_count,
+                MAX(posts.created_at) AS latest_post_at,
+                COALESCE(SUM(reaction_counts.glow_count), 0) AS like_count
+            FROM posts
+            LEFT JOIN rooms post_rooms ON post_rooms.id = posts.room_id
+            LEFT JOIN (
+                SELECT post_id, SUM(type = 'glow') AS glow_count
+                FROM post_reactions
+                GROUP BY post_id
+            ) reaction_counts ON reaction_counts.post_id = posts.id
+            WHERE posts.parent_id IS NULL
+              AND posts.visibility = 'public'
+              AND posts.status = 'published'
+              AND posts.deleted_at IS NULL
+              AND (posts.room_id IS NULL OR post_rooms.visibility = 'public')
+            GROUP BY posts.author_id
+         ) profile_posts ON profile_posts.author_id = u.id
+         {$followJoins}
+         WHERE u.status = 'active'
+           AND ({$viewerSql} IS NULL OR u.id <> {$viewerSql})
+           {$excludeFollowed}
+           AND COALESCE(profile_posts.post_count, 0) > 0
+         ORDER BY
+            profile_posts.latest_post_at DESC,
+            profile_posts.like_count DESC,
+            u.created_at DESC
+         LIMIT 6"
+    );
+
+    return array_map('discover_person_payload', $statement->fetchAll());
+}
+
+function fetch_discover_feed(): array
+{
+    return [
+        'posts' => fetch_discover_posts(),
+        'activeRooms' => array_slice(fetch_public_rooms(), 0, 6),
+        'peopleToWatch' => fetch_people_to_watch(),
+    ];
+}
+
 function profiles_show(string $handle): void
 {
     $profile = fetch_profile_by_handle(normalize_handle($handle));
@@ -853,6 +1180,19 @@ function rooms_show(string $slug): void
 function posts_index(): void
 {
     json_success(fetch_public_posts());
+}
+
+function home_feed_index(): void
+{
+    json_success([
+        'posts' => fetch_home_feed(),
+        'personalized' => current_request_user_id() !== null,
+    ]);
+}
+
+function discover_feed_index(): void
+{
+    json_success(fetch_discover_feed());
 }
 
 function stats_index(): void

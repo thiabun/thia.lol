@@ -122,6 +122,14 @@ try {
         room_posts_index($segments[1]);
     }
 
+    if (($segments[0] ?? null) === 'feed' && count($segments) === 2 && $segments[1] === 'home') {
+        home_feed_index();
+    }
+
+    if (($segments[0] ?? null) === 'feed' && count($segments) === 2 && $segments[1] === 'discover') {
+        discover_feed_index();
+    }
+
     if (($segments[0] ?? null) === 'posts' && count($segments) === 1) {
         posts_index();
     }

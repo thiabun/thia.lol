@@ -1,46 +1,36 @@
-import { Hash, Radio, UserRound } from "lucide-react";
+import { ArrowRight, Hash, MessageCircle, UsersRound } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
+import { Link } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { PostCard } from "../components/social/PostCard";
 import { RoomCard } from "../components/social/RoomCard";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
+import { Avatar } from "../components/ui/Avatar";
 import { Badge } from "../components/ui/Badge";
+import { ButtonLink } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
-import { AmbientImage } from "../components/ui/AmbientImage";
-import { SearchField } from "../components/ui/Field";
-import { deletePost, getFeed, getRooms, getStats, updatePost } from "../lib/api";
+import { deletePost, getDiscoverFeed, updatePost } from "../lib/api";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
-import { pluralize } from "../lib/pluralize";
-import type { Post, PublicStats } from "../lib/types";
+import { formatCountWithUnit } from "../lib/pluralize";
+import type { DiscoverPerson, Post } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
 
-const icons = {
-  thread: Hash,
-  person: UserRound,
-  room: Radio,
-};
-
 export function DiscoverPage() {
   const { csrfToken, user } = useAuth();
-  const postsState = useAsyncData(getFeed);
-  const roomsState = useAsyncData(getRooms);
-  const statsState = useAsyncData(getStats);
+  const discoverState = useAsyncData(getDiscoverFeed);
   const [removedPostIds, setRemovedPostIds] = useState<Set<number>>(() => new Set());
   const [pendingPostId, setPendingPostId] = useState<number | undefined>();
   const [postActionError, setPostActionError] = useState<string | undefined>();
-  const rooms = roomsState.data ?? [];
-  const stats = statsState.data;
-  const discoverItems = useMemo(
-    () => makeDiscoverItems(stats, Boolean(statsState.error)),
-    [stats, statsState.error],
-  );
+  const rooms = discoverState.data?.activeRooms ?? [];
+  const people = discoverState.data?.peopleToWatch ?? [];
   const visiblePosts = useMemo(
-    () => (postsState.data ?? []).filter((post) => !removedPostIds.has(post.id)),
-    [postsState.data, removedPostIds],
+    () =>
+      (discoverState.data?.posts ?? []).filter((post) => !removedPostIds.has(post.id)),
+    [discoverState.data?.posts, removedPostIds],
   );
 
   async function handleDeletePost(post: Post) {
@@ -94,50 +84,51 @@ export function DiscoverPage() {
     >
       <PageMeta
         title="Discover"
-        description="Find rooms, people, and recent posts across thia.lol."
+        description="Discover rising posts, active rooms, and people to watch on thia.lol."
         path="/discover"
       />
       <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
           <Panel className="p-5 sm:p-6">
-            <Badge tone="cool">discover</Badge>
+            <Badge tone="cool">Discover</Badge>
             <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">
-              Find rooms, people, and recent posts.
+              Discover
             </h1>
-            <SearchField
-              id="discover-search"
-              label="Search"
-              placeholder="Search people, rooms, posts"
-              className="mt-5"
-            />
+            <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
+              Rising posts, active rooms, and people to watch from public activity.
+            </p>
           </Panel>
         </motion.div>
 
         <motion.div variants={cardEntrance} custom={1} initial="hidden" animate="show">
-          <Panel className="overflow-hidden">
-            <AmbientImage className="aspect-[16/10] w-full" />
-            <div className="p-5">
-              <p className="text-sm font-semibold text-text">Browse around</p>
-              <p className="mt-2 text-sm leading-6 text-muted">
-                Start with active rooms and recent posts.
-              </p>
+          <Panel className="p-5">
+            <div className="flex items-center gap-3">
+              <div className="grid size-11 place-items-center rounded-full bg-surface-strong text-accent-strong">
+                <Hash aria-hidden="true" size={19} />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-text">Rising</p>
+                <p className="mt-1 text-sm leading-6 text-muted">
+                  Ranked by likes, replies, room activity, and freshness.
+                </p>
+              </div>
             </div>
           </Panel>
         </motion.div>
       </section>
 
-      {postsState.loading ? (
+      {discoverState.loading ? (
         <ApiStateNotice
           kind="loading"
-          title="Loading recent posts"
-          text="Fresh posts are on the way."
+          title="Loading feed"
+          text="Posts are loading."
         />
       ) : null}
 
-      {postsState.error ? (
+      {discoverState.error ? (
         <ApiStateNotice
           kind="error"
-          title="Posts are not available"
+          title="Could not load feed"
           text="Try refreshing in a moment."
         />
       ) : null}
@@ -148,13 +139,13 @@ export function DiscoverPage() {
         </p>
       ) : null}
 
-      <section aria-label="Recent public posts">
+      <section aria-label="Rising posts">
         <div className="mb-3 flex items-center justify-between gap-4">
-          <h2 className="text-xl font-semibold text-text">Recent posts</h2>
-          <Badge tone="warm">public</Badge>
+          <h2 className="text-xl font-semibold text-text">Rising</h2>
+          <Badge tone="warm">Posts</Badge>
         </div>
         <div className="space-y-4">
-          {!postsState.loading && !postsState.error && visiblePosts.length === 0 ? (
+          {!discoverState.loading && !discoverState.error && visiblePosts.length === 0 ? (
             <EmptyState
               icon={Hash}
               title="No posts yet"
@@ -177,107 +168,106 @@ export function DiscoverPage() {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="Discovery">
-        {discoverItems.map((item, index) => {
-          const Icon = icons[item.kind];
-          return (
-            <motion.div
-              key={item.id}
-              variants={cardEntrance}
-              custom={index}
-              initial="hidden"
-              animate="show"
+      {rooms.length > 0 ? (
+        <section aria-label="Active rooms">
+          <div className="mb-3 flex items-center justify-between gap-4">
+            <h2 className="text-xl font-semibold text-text">Active rooms</h2>
+            <ButtonLink
+              to="/rooms"
+              variant="ghost"
+              icon={<ArrowRight aria-hidden="true" size={16} />}
             >
-              <Panel interactive className="p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="grid size-11 place-items-center rounded-card bg-surface-strong text-accent-strong">
-                    <Icon aria-hidden="true" size={19} />
-                  </div>
-                  <Badge>{item.count}</Badge>
-                </div>
-                <h2 className="mt-5 text-lg font-semibold text-text">{item.label}</h2>
-                <p className="mt-2 text-sm leading-6 text-muted">{item.description}</p>
-              </Panel>
-            </motion.div>
-          );
-        })}
-      </section>
-
-      <section>
-        <div className="mb-3 flex items-center justify-between gap-4">
-          <h2 className="text-xl font-semibold text-text">Rooms to visit</h2>
-          <Badge tone="leaf">public</Badge>
-        </div>
-        {roomsState.loading ? (
-          <ApiStateNotice
-            kind="loading"
-            title="Loading rooms"
-            text="Public rooms are loading."
-          />
-        ) : null}
-        {roomsState.error ? (
-          <ApiStateNotice
-            kind="error"
-            title="Rooms are not available"
-            text="Try refreshing in a moment."
-          />
-        ) : null}
-        {!roomsState.loading && !roomsState.error && rooms.length === 0 ? (
-          <EmptyState
-            icon={Radio}
-            title="No rooms yet"
-            text="Public rooms will appear here."
-          />
-        ) : null}
-        {rooms.length > 0 ? (
+              Rooms
+            </ButtonLink>
+          </div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {rooms.slice(0, 6).map((room, index) => (
+            {rooms.map((room, index) => (
               <RoomCard key={room.id} room={room} index={index} />
             ))}
           </div>
-        ) : null}
-      </section>
+        </section>
+      ) : null}
+
+      {people.length > 0 ? (
+        <section aria-label="People to watch">
+          <div className="mb-3 flex items-center justify-between gap-4">
+            <h2 className="text-xl font-semibold text-text">People to watch</h2>
+            <Badge tone="cool">Profiles</Badge>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {people.map((person, index) => (
+              <PersonCard key={person.handle} person={person} index={index} />
+            ))}
+          </div>
+        </section>
+      ) : null}
     </motion.div>
   );
 }
 
-function makeDiscoverItems(stats: PublicStats | undefined, unavailable: boolean) {
-  const countText = (value: number | undefined, noun: string) => {
-    if (value !== undefined) {
-      return pluralize(value, noun);
-    }
-
-    return unavailable ? "Unavailable" : "Loading";
-  };
-
-  return [
-    {
-      id: 1,
-      label: "Public rooms",
-      description: "Open places for shared topics and conversations.",
-      count: countText(stats?.publicRooms, "room"),
-      kind: "room" as const,
-    },
-    {
-      id: 2,
-      label: "Recent posts",
-      description: "Recent public posts from across the site.",
-      count: countText(stats?.publicPosts, "post"),
-      kind: "thread" as const,
-    },
-    {
-      id: 3,
-      label: "Active members",
-      description: "Profiles that can read, post, and join the conversation.",
-      count: countText(stats?.activeUsers, "member"),
-      kind: "person" as const,
-    },
-    {
-      id: 4,
-      label: "Likes",
-      description: "Likes on public posts.",
-      count: countText(stats?.totalReactions, "like"),
-      kind: "thread" as const,
-    },
-  ];
+function PersonCard({
+  index,
+  person,
+}: {
+  index: number;
+  person: DiscoverPerson;
+}) {
+  return (
+    <motion.article
+      variants={cardEntrance}
+      custom={index}
+      initial="hidden"
+      animate="show"
+    >
+      <Panel interactive className="h-full p-5">
+        <Link
+          to={`/@${person.handle}`}
+          className="flex h-full flex-col focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <Avatar
+                user={{
+                  displayName: person.displayName,
+                  initials: person.initials,
+                  aura: "frost",
+                  avatarUrl: person.avatarUrl ?? null,
+                }}
+              />
+              <div className="min-w-0">
+                <h3 className="truncate text-sm font-semibold text-text">
+                  {person.displayName}
+                </h3>
+                <p className="truncate text-sm text-muted">@{person.handle}</p>
+              </div>
+            </div>
+            {person.isMoot ? (
+              <Badge tone="leaf">Moot</Badge>
+            ) : person.isFollowing ? (
+              <Badge tone="cool">Following</Badge>
+            ) : null}
+          </div>
+          {person.bioSnippet ? (
+            <p className="mt-4 flex-1 text-sm leading-6 text-muted">
+              {person.bioSnippet}
+            </p>
+          ) : (
+            <p className="mt-4 flex-1 text-sm leading-6 text-muted">
+              Public profile
+            </p>
+          )}
+          <div className="mt-5 flex flex-wrap gap-2 text-sm text-muted">
+            <span className="inline-flex items-center gap-2 rounded-full border border-line bg-canvas/45 px-3 py-1">
+              <MessageCircle aria-hidden="true" size={14} />
+              {formatCountWithUnit(person.postCount, "post")}
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-line bg-canvas/45 px-3 py-1">
+              <UsersRound aria-hidden="true" size={14} />
+              {formatCountWithUnit(person.followerCount, "follower")}
+            </span>
+          </div>
+        </Link>
+      </Panel>
+    </motion.article>
+  );
 }

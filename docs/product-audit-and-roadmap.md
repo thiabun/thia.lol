@@ -23,6 +23,7 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
   - `/api/health` and `/api/health?db=1`.
   - `/api/auth/register`, `/api/auth/login`, `/api/auth/logout`, `/api/auth/me`.
   - `/api/posts`, `/api/posts/:id`, `/api/posts/:id/replies`, `/api/posts/:id/like`, `/api/posts/:id/reactions`.
+  - `/api/feed/home` and `/api/feed/discover`.
   - `/api/profiles/:handle`, `/api/profiles/:handle/posts`, `/api/profiles/:handle/follow`, `/api/profiles/:handle/followers`, `/api/profiles/:handle/following`.
   - `/api/rooms`, `/api/rooms/:slug`, `/api/rooms/:slug/posts`.
   - `/api/stats`.
@@ -92,7 +93,7 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
 | Badges | Planned, no persistence yet | No badge/user badge tables exist. Profile UI has an honest Badges coming-later state, and the proposed badge/user-badge model is documented in `docs/profile-badges-plan.md`. | Add small schema, admin grant/revoke path, featured ordering, visibility controls, and transparent criteria only after the model is approved. |
 | Likes | Working, partial | Like/unlike maps to `post_reactions.type = glow`; UI shows like count and liked state. | Reaction naming is internally broader than UI. Needs transparent counts, optional hiding/muting decisions, anti-spam/rate-limit review, and adult-focused non-manipulative loop design. |
 | Admin/moderation | Working, partial | Reports can be created from posts; admins/moderators can view report queue, hide posts, suspend users, resolve/dismiss reports, and log moderation actions. | Admin still appears in desktop nav for admins and should move only into account popover. Needs appeal flow, policy pages, moderation transparency, audit views, and better user-facing report status decisions. |
-| Discover/Home | Partial, needs design/product decision | Home shows recent posts, rooms, stats, and platform copy. Discover shows recent posts, rooms, search field UI, and stats cards. | Not algorithmic yet. Search is local/surface-level or placeholder depending surface. Needs feed strategy, ranking inputs, user controls, transparency, and separation between following/home and discovery. |
+| Discover/Home | Working, foundation | Home uses `/api/feed/home` for a personalized ranked feed when logged in and a general ranked feed when logged out. Discover uses `/api/feed/discover` for ranked public posts plus active rooms and people to watch only when backed by real data. | Needs user feed controls, chronological mode, hide/mute/block controls, joined-room weighting after memberships exist, and better transparency surfaces. |
 | Chat/DMs | Placeholder, needs design/product decision | `/chat` exists as a coming-soon page and primary nav item. No conversation/message tables, API, or working messaging UI exist. | Define moots-first DMs, request/inbox behavior, blocking/reporting, safety defaults, retention, notifications, and abuse controls before implementation. |
 | Legal/cookies/copyright pages | Missing, needs design/product decision | Auth cookie implementation exists, but no public Terms, Privacy, Cookie Policy, Community Guidelines, Copyright/Takedown Policy, or consent preference pages were found. | Need legal copy, consent model, user content license terms, reporting/appeal explanations, and transparency basics. |
 
@@ -287,11 +288,35 @@ Goal: create the graph that powers feeds, identity, and chat.
 
 Goal: separate chosen social context from public discovery.
 
-- Home feed: followed users, joined rooms, and user-selected controls.
-- Discover feed: public exploration, trending rooms/posts, and newcomer-friendly browsing.
-- Add simple explainability labels such as followed author, joined room, recent in active room, or popular today.
-- Add feed controls: chronological option, hide/mute later, room/user weighting later.
-- Avoid engagement-maximizing dark patterns.
+- Foundation implemented:
+  - `GET /api/feed/home` returns public top-level posts ranked for the current viewer when logged in, or a general ranked feed when logged out.
+  - `GET /api/feed/discover` returns ranked public top-level posts, active public rooms, and people to watch.
+  - Feed post payloads include author, room, body, media URL when present, reply/like counts, current-user liked state, optional reblog count/state if the table exists, created time, and lightweight social context for UI labels.
+  - Home and Discover no longer share the same recent-only `/api/posts` ordering.
+- Current Home score:
+  - moot author bonus: `120`
+  - followed author bonus: `80`
+  - current user's own author penalty: `-45`
+  - likes: `likes * 3`
+  - replies: `replies * 4`
+  - reblogs when available: `reblogs * 5`
+  - room activity: up to `12`
+  - freshness bonus: `24` within 24 hours, `12` within 72 hours, `6` within 7 days
+  - age decay: up to `35`
+- Current Discover score:
+  - likes: `likes * 3`
+  - replies: `replies * 4`
+  - reblogs when available: `reblogs * 5`
+  - small current-viewer author bonus: `12` for moots, `8` for follows
+  - room activity: up to `10`
+  - freshness bonus: `30` within 6 hours, `18` within 24 hours, `8` within 72 hours
+  - age decay: up to `40`
+- Deferred:
+  - joined-room weighting after room memberships exist.
+  - chronological/feed-control option.
+  - hide, mute, block, and preference controls.
+  - richer explanation labels beyond relationship and followed-like social proof.
+  - production tuning after real usage data, without engagement-maximizing dark patterns.
 
 ### Phase 6: Chat/DMs
 

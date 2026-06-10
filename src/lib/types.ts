@@ -88,13 +88,27 @@ export type Post = {
   reactions: ReactionCounts;
   likeCount: number;
   likedByCurrentUser: boolean;
+  reblogCount?: number;
+  rebloggedByCurrentUser?: boolean;
+  socialContext?: {
+    authorRelationship?: "self" | "following" | "moot" | null;
+    likedByFollowedCount: number;
+  };
   mediaUrl?: string;
 };
 
-export type DiscoverItem = {
-  id: number;
-  label: string;
-  description: string;
-  count: string;
-  kind: "thread" | "person" | "room";
+export type DiscoverPerson = ProfileConnection & {
+  postCount: number;
+  followerCount: number;
+};
+
+export type HomeFeed = {
+  posts: Post[];
+  personalized: boolean;
+};
+
+export type DiscoverFeed = {
+  posts: Post[];
+  activeRooms: Room[];
+  peopleToWatch: DiscoverPerson[];
 };

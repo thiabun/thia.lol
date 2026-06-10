@@ -1,4 +1,7 @@
 import type {
+  DiscoverFeed,
+  DiscoverPerson,
+  HomeFeed,
   Post,
   Profile,
   ProfileConnection,
@@ -33,6 +36,17 @@ type ApiPost = Omit<Post, "room" | "createdAt"> & {
   deletedAt?: string | null;
   visibility?: string;
   status?: string;
+};
+
+type ApiHomeFeed = {
+  posts: ApiPost[];
+  personalized: boolean;
+};
+
+type ApiDiscoverFeed = {
+  posts: ApiPost[];
+  activeRooms: ApiRoom[];
+  peopleToWatch: DiscoverPerson[];
 };
 
 export type CreatePostInput = {
@@ -140,8 +154,25 @@ export function getFeed(): Promise<Post[]> {
   );
 }
 
+export function getHomeFeed(): Promise<HomeFeed> {
+  return apiGet<ApiHomeFeed>("/feed/home").then((feed) => ({
+    posts: feed.posts.filter(isVisiblePost).map(normalizePost),
+    personalized: feed.personalized,
+  }));
+}
+
+export function getDiscoverFeed(): Promise<DiscoverFeed> {
+  return apiGet<ApiDiscoverFeed>("/feed/discover").then((feed) => ({
+    posts: feed.posts.filter(isVisiblePost).map(normalizePost),
+    activeRooms: feed.activeRooms.filter(isVisibleRoom).map(normalizeRoom),
+    peopleToWatch: feed.peopleToWatch.map(normalizeDiscoverPerson),
+  }));
+}
+
 export function getRooms(): Promise<Room[]> {
-  return apiGet<ApiRoom[]>("/rooms").then((items) => items.map(normalizeRoom));
+  return apiGet<ApiRoom[]>("/rooms").then((items) =>
+    items.filter(isVisibleRoom).map(normalizeRoom),
+  );
 }
 
 export function getStats(): Promise<PublicStats> {
@@ -432,6 +463,20 @@ function normalizeHandle(handle: string): string {
   return handle.replace(/^@/, "").toLowerCase();
 }
 
+function normalizeDiscoverPerson(person: DiscoverPerson): DiscoverPerson {
+  const isRetiredThiaProfile =
+    person.handle === "thia" &&
+    person.bioSnippet ===
+      "A secondary profile on the platform, present without making the whole room about her.";
+
+  return {
+    ...person,
+    bioSnippet: isRetiredThiaProfile
+      ? "Founder profile for thia.lol."
+      : person.bioSnippet,
+  };
+}
+
 function normalizePost(post: ApiPost): Post {
   const normalized: Post = {
     id: post.id,
@@ -445,6 +490,12 @@ function normalizePost(post: ApiPost): Post {
     reactions: post.reactions,
     likeCount: post.likeCount ?? post.reactions.glow,
     likedByCurrentUser: post.likedByCurrentUser ?? false,
+    reblogCount: post.reblogCount ?? 0,
+    rebloggedByCurrentUser: post.rebloggedByCurrentUser ?? false,
+    socialContext: post.socialContext ?? {
+      authorRelationship: null,
+      likedByFollowedCount: 0,
+    },
   };
 
   if (post.mediaUrl) {
@@ -471,6 +522,17 @@ const retiredStarterPostBodies = new Set([
 
 function isVisiblePost(post: ApiPost): boolean {
   return !retiredStarterPostBodies.has(post.body);
+}
+
+const retiredStarterRoomSlugs = new Set([
+  "soft-launch",
+  "moon-table",
+  "garden-protocol",
+  "afterglow",
+]);
+
+function isVisibleRoom(room: ApiRoom): boolean {
+  return !retiredStarterRoomSlugs.has(room.slug);
 }
 
 function formatRelativeTime(value: string): string {

@@ -87,6 +87,7 @@ export function PostCard({
                 {post.room.name}
               </Badge>
               <Badge>{post.mood}</Badge>
+              <PostSocialProof post={post} />
             </div>
           </div>
         </div>
@@ -147,6 +148,24 @@ export function PostCard({
         />
       </Panel>
     </motion.article>
+  );
+}
+
+function PostSocialProof({ post }: { post: Post }) {
+  const relationship = post.socialContext?.authorRelationship;
+  const followedLikeCount = post.socialContext?.likedByFollowedCount ?? 0;
+
+  return (
+    <>
+      {relationship === "moot" ? <Badge tone="leaf">Moot</Badge> : null}
+      {relationship === "following" ? <Badge tone="cool">Following</Badge> : null}
+      {relationship === "self" ? <Badge>You</Badge> : null}
+      {followedLikeCount > 0 ? (
+        <Badge tone="warm">
+          Liked by {followedLikeCount === 1 ? "someone you follow" : "people you follow"}
+        </Badge>
+      ) : null}
+    </>
   );
 }
 
