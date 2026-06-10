@@ -7,6 +7,7 @@ import { AuthPage } from "./pages/AuthPage";
 import { ChatPage } from "./pages/ChatPage";
 import { DiscoverPage } from "./pages/DiscoverPage";
 import { HomePage } from "./pages/HomePage";
+import { NotificationsPage } from "./pages/NotificationsPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { RoomPage } from "./pages/RoomPage";
 import { RoomsPage } from "./pages/RoomsPage";
@@ -22,6 +23,7 @@ export default function App() {
           <Route path="rooms" element={<RoomsPage />} />
           <Route path="rooms/:slug" element={<RoomPage />} />
           <Route path="chat" element={<ChatPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
           <Route path="@/:handle" element={<ProfilePage />} />
           <Route path="studio" element={<Navigate to="/discover" replace />} />
           <Route path="admin" element={<AdminPage />} />

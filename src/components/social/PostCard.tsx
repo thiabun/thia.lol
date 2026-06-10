@@ -62,6 +62,7 @@ export function PostCard({
 
   return (
     <motion.article
+      id={`post-${post.id}`}
       className="group"
       variants={cardEntrance}
       custom={index}

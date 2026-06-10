@@ -85,13 +85,14 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
 | --- | --- | --- | --- |
 | Auth | Working, partial | Register, login, logout, session persistence, CSRF, cookie diagnostics, rate limiting, admin setup support. | Needs broader account settings, password reset/email verification decisions, consent/legal integration, production hardening review. |
 | Posts | Working, partial | Public top-level posts can be created, listed, deleted by author, hidden by moderators/admins, and shown in home/discover/profile/room feeds. | No media uploads, drafts, editing UI, visibility controls, audience controls, advanced moderation states, or feed ranking. |
-| Replies | Working, partial | Replies exist through `parent_id`, thread modal, reply creation, reply counts, and ordered reply loading. | No deep permalink/thread page, nested reply product decision, notification hooks, or moderation/visibility UX beyond inherited post systems. |
+| Replies | Working, partial | Replies exist through `parent_id`, thread modal, reply creation, reply counts, ordered reply loading, and reply notifications. | No deep permalink/thread page, nested reply product decision, or moderation/visibility UX beyond inherited post systems. |
 | Reblogs | Partial, missing product | Migration exists for `post_reblogs`, but no visible UI or API dispatch for reblog actions was found in the current inventory. | Decide whether reblogs belong in the product, what they are called, where they appear, and how they differ from quotes/replies. |
 | Rooms | Partial, needs design/product decision | Public room list/detail pages, room search, room post feeds, room destination in composer, and room metadata exist. | No room creation UI, memberships, roles, moderators, rules, join/leave, private/member rooms, room moderation surface, or subreddit/community-style governance model. |
 | Profiles | Partial, foundation improved | Public profile pages show avatar, display name, handle, bio, location, links, joined date, public stats, posts, replies, rooms, follower/following/moot context, and honest disabled/coming-later surfaces for unsupported areas. Registration creates a basic profile. See `docs/profile-badges-plan.md`. | No profile editing UI/API, banner/theme/background customization, privacy controls, pinned posts, badge persistence, or rich identity controls. |
-| Follows/Moots | Working, foundation | Users can follow/unfollow active profiles, profile payloads expose follower/following/moot counts and current-user relationship state, and basic followers/following lists exist. | Needs remove-follower controls, block/mute, notifications, feed integration, and chat permission enforcement. |
+| Follows/Moots | Working, foundation | Users can follow/unfollow active profiles, profile payloads expose follower/following/moot counts and current-user relationship state, basic followers/following lists exist, and follow/moot notifications are created. | Needs remove-follower controls, block/mute, deeper feed integration, and chat permission enforcement. |
 | Badges | Planned, no persistence yet | No badge/user badge tables exist. Profile UI has an honest Badges coming-later state, and the proposed badge/user-badge model is documented in `docs/profile-badges-plan.md`. | Add small schema, admin grant/revoke path, featured ordering, visibility controls, and transparent criteria only after the model is approved. |
 | Likes | Working, partial | Like/unlike maps to `post_reactions.type = glow`; UI shows like count and liked state. | Reaction naming is internally broader than UI. Needs transparent counts, optional hiding/muting decisions, anti-spam/rate-limit review, and adult-focused non-manipulative loop design. |
+| Notifications | Working, foundation | Private notifications exist for follows, moots, likes, and replies. Authenticated users can view notifications, see unread count, mark one read, and mark all read. Reblog notifications are deferred because reblogs are not an active product flow. | Needs push/email decisions, notification preferences, richer grouping, pagination, read-on-open behavior decisions, reblog notifications if reblogs ship, and safety controls around high-volume activity. |
 | Admin/moderation | Working, partial | Reports can be created from posts; admins/moderators can view report queue, hide posts, suspend users, resolve/dismiss reports, and log moderation actions. | Admin still appears in desktop nav for admins and should move only into account popover. Needs appeal flow, policy pages, moderation transparency, audit views, and better user-facing report status decisions. |
 | Discover/Home | Working, foundation | Home uses `/api/feed/home` for a personalized ranked feed when logged in and a general ranked feed when logged out. Discover uses `/api/feed/discover` for ranked public posts plus active rooms and people to watch only when backed by real data. | Needs user feed controls, chronological mode, hide/mute/block controls, joined-room weighting after memberships exist, and better transparency surfaces. |
 | Chat/DMs | Placeholder, needs design/product decision | `/chat` exists as a coming-soon page and primary nav item. No conversation/message tables, API, or working messaging UI exist. | Define moots-first DMs, request/inbox behavior, blocking/reporting, safety defaults, retention, notifications, and abuse controls before implementation. |
@@ -148,6 +149,15 @@ Home and Discover should be distinct:
 
 Algorithmic behavior should be simple and explainable at first: recency, followed people, joined rooms, room activity, replies, likes, and moderation-safe popularity windows. Avoid opaque engagement maximization.
 
+### Notifications as Private Feedback
+
+Notifications should tell a member when someone directly interacts with them without becoming a pressure loop.
+
+- Implemented notification types: follow, moot, like, and reply.
+- Reblog notifications are deferred until reblogs become an active product/API/UI flow.
+- Push notifications, email notifications, preferences, grouping, and high-volume controls are deferred.
+- Notifications should stay short, private, and action-oriented.
+
 ### Chat as Moots-First DMs
 
 Chat should start as moots-first direct messages:
@@ -199,7 +209,7 @@ Notes:
 - `user_badges`
 - Profile customization
 - `conversations` / `messages`
-- `notifications`
+- notification preferences and delivery settings
 - `reports` / moderation actions
 - Consent and cookie preferences
 
@@ -318,17 +328,37 @@ Goal: separate chosen social context from public discovery.
   - richer explanation labels beyond relationship and followed-like social proof.
   - production tuning after real usage data, without engagement-maximizing dark patterns.
 
-### Phase 6: Chat/DMs
+### Phase 6: Notifications
+
+Goal: give members private feedback when people interact with them.
+
+- Foundation implemented:
+  - `notifications` table with recipient, actor, type, optional post/room targets, JSON data, read state, and timestamps.
+  - `GET /api/notifications` returns recent private notifications plus unread count.
+  - `POST /api/notifications/read`, `POST /api/notifications/:id/read`, and `POST /api/notifications/read-all` mark notifications read.
+  - Follow notifications are created when a new follow is inserted.
+  - Moot notifications are created for both members when a new follow creates a mutual connection.
+  - Like notifications are created when a new `glow` reaction is inserted on another member's post.
+  - Reply notifications are created when someone replies to another member's post.
+  - The UI exposes notifications through a header bell and `/notifications` page with empty, loading, error, unread, mark-one-read, and mark-all-read states.
+- Deferred:
+  - Reblog notifications until reblogs are active.
+  - Push notifications and email notifications.
+  - Notification preferences.
+  - Notification grouping, pagination, and high-volume controls.
+  - Read-on-open behavior and richer per-type settings.
+
+### Phase 7: Chat/DMs
 
 Goal: ship safe, moots-first direct messages.
 
 - Add conversations/messages schema.
 - Limit DMs to moots by default.
 - Add message report/block flows before or with launch.
-- Decide read receipts, typing indicators, deletion, retention, and notifications.
+- Decide read receipts, typing indicators, deletion, retention, and message notifications.
 - Keep Chat in nav only when the feature has a working safety baseline.
 
-### Phase 7: Legal, Trust, and Compliance Polish
+### Phase 8: Legal, Trust, and Compliance Polish
 
 Goal: make the public trust layer match the product.
 

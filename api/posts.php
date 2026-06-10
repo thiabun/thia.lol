@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/notifications.php';
 require_once __DIR__ . '/read.php';
 
 function posts_dispatch(array $segments, string $method): void
@@ -146,7 +147,23 @@ function posts_reply_create(int $postId): void
         ]
     );
 
-    json_success(fetch_post_payload_by_id((int) db()->lastInsertId(), (int) $session['user_id']), 201);
+    $replyId = (int) db()->lastInsertId();
+    $parentAuthorId = (int) $parent['author_id'];
+    $actorId = (int) $session['user_id'];
+
+    if ($parentAuthorId !== $actorId) {
+        notification_create(
+            $parentAuthorId,
+            $actorId,
+            'reply',
+            $postId,
+            $parent['room_id'] === null ? null : (int) $parent['room_id'],
+            ['replyId' => $replyId],
+            false
+        );
+    }
+
+    json_success(fetch_post_payload_by_id($replyId, (int) $session['user_id']), 201);
 }
 
 function posts_update(int $postId): void
@@ -282,12 +299,16 @@ function posts_reaction_create(int $postId): void
 {
     $session = require_authenticated_session();
     require_csrf_token($session);
-    require_reactable_post($postId);
+    $post = fetch_reactable_post_record($postId);
+
+    if ($post === null) {
+        json_error('Post not found.', 404);
+    }
 
     $body = request_json_body();
     $type = validate_reaction_type($body['type'] ?? null);
 
-    db_query(
+    $insert = db_query(
         'INSERT IGNORE INTO post_reactions (post_id, user_id, type)
          VALUES (:post_id, :user_id, :type)',
         [
@@ -296,6 +317,18 @@ function posts_reaction_create(int $postId): void
             'type' => $type,
         ]
     );
+
+    if ($type === like_reaction_type() && $insert->rowCount() > 0) {
+        notification_create(
+            (int) $post['author_id'],
+            (int) $session['user_id'],
+            'like',
+            $postId,
+            $post['room_id'] === null ? null : (int) $post['room_id'],
+            null,
+            true
+        );
+    }
 
     json_success([
         'postId' => $postId,
@@ -307,9 +340,13 @@ function posts_like_create(int $postId): void
 {
     $session = require_authenticated_session();
     require_csrf_token($session);
-    require_reactable_post($postId);
+    $post = fetch_reactable_post_record($postId);
 
-    db_query(
+    if ($post === null) {
+        json_error('Post not found.', 404);
+    }
+
+    $insert = db_query(
         'INSERT IGNORE INTO post_reactions (post_id, user_id, type)
          VALUES (:post_id, :user_id, :type)',
         [
@@ -318,6 +355,18 @@ function posts_like_create(int $postId): void
             'type' => like_reaction_type(),
         ]
     );
+
+    if ($insert->rowCount() > 0) {
+        notification_create(
+            (int) $post['author_id'],
+            (int) $session['user_id'],
+            'like',
+            $postId,
+            $post['room_id'] === null ? null : (int) $post['room_id'],
+            null,
+            true
+        );
+    }
 
     json_success(like_payload_for_post($postId, (int) $session['user_id']));
 }
@@ -536,8 +585,17 @@ function fetch_post_record(int $postId): ?array
 
 function require_reactable_post(int $postId): void
 {
+    if (fetch_reactable_post_record($postId) === null) {
+        json_error('Post not found.', 404);
+    }
+}
+
+function fetch_reactable_post_record(int $postId): ?array
+{
     $statement = db_query(
-        "SELECT p.id
+        "SELECT p.id,
+            p.author_id,
+            p.room_id
          FROM posts p
          LEFT JOIN rooms r ON r.id = p.room_id
          WHERE p.id = :id
@@ -548,16 +606,15 @@ function require_reactable_post(int $postId): void
          LIMIT 1",
         ['id' => $postId]
     );
+    $post = $statement->fetch();
 
-    if (!$statement->fetch()) {
-        json_error('Post not found.', 404);
-    }
+    return is_array($post) ? $post : null;
 }
 
 function fetch_replyable_post_record(int $postId): ?array
 {
     $statement = db_query(
-        "SELECT p.id, p.room_id, p.mood
+        "SELECT p.id, p.author_id, p.room_id, p.mood
          FROM posts p
          LEFT JOIN rooms r ON r.id = p.room_id
          WHERE p.id = :id

@@ -1,4 +1,5 @@
 import {
+  Bell,
   Compass,
   Home,
   LogIn,
@@ -17,8 +18,8 @@ import type { ReactNode } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router";
 import { PostComposerModal } from "../social/PostComposerModal";
 import { ThemeToggle } from "../ThemeToggle";
-import { Button } from "../ui/Button";
-import { getRooms } from "../../lib/api";
+import { Button, ButtonLink } from "../ui/Button";
+import { getNotifications, getRooms } from "../../lib/api";
 import { cn } from "../../lib/classNames";
 import {
   buttonTap,
@@ -27,6 +28,7 @@ import {
   snappySpring,
 } from "../../lib/motionPresets";
 import { emitPostCreated } from "../../lib/postEvents";
+import { notificationsUpdatedEventName } from "../../lib/notificationEvents";
 import { useAsyncData } from "../../lib/useAsyncData";
 import { useAuth } from "../../lib/useAuth";
 
@@ -48,8 +50,65 @@ export function AppShell() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerRoomSlug, setComposerRoomSlug] = useState<string | undefined>();
   const [composerKey, setComposerKey] = useState(0);
+  const [notificationUnreadCount, setNotificationUnreadCount] = useState<
+    number | undefined
+  >();
   const postingDisabled = status === "loading";
   const rooms = roomsState.data ?? [];
+
+  useEffect(() => {
+    let active = true;
+
+    if (status !== "authenticated") {
+      queueMicrotask(() => {
+        if (active) {
+          setNotificationUnreadCount(undefined);
+        }
+      });
+
+      return () => {
+        active = false;
+      };
+    }
+
+    getNotifications()
+      .then((result) => {
+        if (active) {
+          setNotificationUnreadCount(result.unreadCount);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setNotificationUnreadCount(undefined);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [status, user?.id]);
+
+  useEffect(() => {
+    function handleNotificationsUpdated(event: Event) {
+      const detail = (event as CustomEvent<{ unreadCount?: number }>).detail;
+
+      if (typeof detail?.unreadCount === "number") {
+        setNotificationUnreadCount(detail.unreadCount);
+      }
+    }
+
+    window.addEventListener(
+      notificationsUpdatedEventName,
+      handleNotificationsUpdated,
+    );
+
+    return () => {
+      window.removeEventListener(
+        notificationsUpdatedEventName,
+        handleNotificationsUpdated,
+      );
+    };
+  }, []);
 
   function openPostComposer(roomSlug?: string) {
     if (status === "authenticated" && user && csrfToken) {
@@ -69,7 +128,11 @@ export function AppShell() {
   return (
     <div className="min-h-dvh bg-canvas text-text">
       <div className="fixed inset-0 -z-10 bg-page-wash" />
-      <SiteHeader navItems={publicNavItems} />
+      <SiteHeader
+        navItems={publicNavItems}
+        notificationUnreadCount={notificationUnreadCount}
+        showNotifications={status === "authenticated"}
+      />
       <main className="mx-auto w-full max-w-7xl px-4 pb-28 pt-5 sm:px-6 lg:px-8">
         <Outlet context={{ openPostComposer } satisfies AppShellOutletContext} />
       </main>
@@ -100,7 +163,15 @@ export function AppShell() {
   );
 }
 
-function SiteHeader({ navItems }: { navItems: NavItemProps[] }) {
+function SiteHeader({
+  navItems,
+  notificationUnreadCount,
+  showNotifications,
+}: {
+  navItems: NavItemProps[];
+  notificationUnreadCount: number | undefined;
+  showNotifications: boolean;
+}) {
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-canvas/78 backdrop-blur-veil">
       <div className="mx-auto flex min-h-16 w-full max-w-7xl items-center gap-2 px-4 sm:gap-3 sm:px-6 lg:px-8">
@@ -131,11 +202,39 @@ function SiteHeader({ navItems }: { navItems: NavItemProps[] }) {
         </nav>
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
+          {showNotifications ? (
+            <NotificationBell unreadCount={notificationUnreadCount} />
+          ) : null}
           <ThemeToggle compact />
           <AccountMenu />
         </div>
       </div>
     </header>
+  );
+}
+
+function NotificationBell({ unreadCount }: { unreadCount: number | undefined }) {
+  const label =
+    unreadCount && unreadCount > 0
+      ? `Notifications, ${unreadCount} unread`
+      : "Notifications";
+
+  return (
+    <ButtonLink
+      to="/notifications"
+      variant="secondary"
+      size="icon"
+      aria-label={label}
+      title={label}
+      className="relative"
+      icon={<Bell aria-hidden="true" size={18} />}
+    >
+      {unreadCount && unreadCount > 0 ? (
+        <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-accent px-1.5 py-0.5 text-center text-[0.65rem] font-semibold leading-none text-accent-ink shadow-soft">
+          {unreadCount > 99 ? "99+" : unreadCount}
+        </span>
+      ) : null}
+    </ButtonLink>
   );
 }
 

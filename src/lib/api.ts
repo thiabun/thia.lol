@@ -2,6 +2,8 @@ import type {
   DiscoverFeed,
   DiscoverPerson,
   HomeFeed,
+  NotificationItem,
+  NotificationsResult,
   Post,
   Profile,
   ProfileConnection,
@@ -79,6 +81,12 @@ export type LikeResult = {
   postId: number;
   likeCount: number;
   likedByCurrentUser: boolean;
+};
+
+export type NotificationsReadResult = {
+  ids?: number[];
+  readAt: string;
+  unreadCount: number;
 };
 
 export type FollowRelationship = {
@@ -337,6 +345,41 @@ export function unlikePost(
   return apiDelete<LikeResult>(`/posts/${postId}/like`, csrfToken);
 }
 
+export function getNotifications(): Promise<NotificationsResult> {
+  return apiGet<NotificationsResult>("/notifications").then((result) => ({
+    notifications: result.notifications.map(normalizeNotification),
+    unreadCount: result.unreadCount,
+  }));
+}
+
+export function markNotificationRead(
+  notificationId: number,
+  csrfToken: string,
+): Promise<NotificationsReadResult> {
+  return apiPost<NotificationsReadResult>(
+    `/notifications/${notificationId}/read`,
+    {},
+    csrfToken,
+  );
+}
+
+export function markNotificationsRead(
+  notificationIds: number[],
+  csrfToken: string,
+): Promise<NotificationsReadResult> {
+  return apiPost<NotificationsReadResult>(
+    "/notifications/read",
+    { ids: notificationIds },
+    csrfToken,
+  );
+}
+
+export function markAllNotificationsRead(
+  csrfToken: string,
+): Promise<NotificationsReadResult> {
+  return apiPost<NotificationsReadResult>("/notifications/read-all", {}, csrfToken);
+}
+
 export function createReport(
   input: CreateReportInput,
   csrfToken: string,
@@ -503,6 +546,13 @@ function normalizePost(post: ApiPost): Post {
   }
 
   return normalized;
+}
+
+function normalizeNotification(notification: NotificationItem): NotificationItem {
+  return {
+    ...notification,
+    room: notification.room ? normalizeRoom(notification.room) : null,
+  };
 }
 
 function makeFallbackRoom(): Pick<Room, "slug" | "name" | "accent"> {

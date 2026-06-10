@@ -112,3 +112,28 @@ export type DiscoverFeed = {
   activeRooms: Room[];
   peopleToWatch: DiscoverPerson[];
 };
+
+export type NotificationType = "follow" | "moot" | "like" | "reply";
+
+export type NotificationPostSummary = {
+  id: number;
+  bodySnippet: string;
+  author: User | null;
+  createdAt?: string | null;
+};
+
+export type NotificationItem = {
+  id: number;
+  type: NotificationType;
+  createdAt: string;
+  readAt: string | null;
+  actor: User | null;
+  post: NotificationPostSummary | null;
+  room: Room | null;
+  targetUrl: string;
+};
+
+export type NotificationsResult = {
+  notifications: NotificationItem[];
+  unreadCount: number;
+};

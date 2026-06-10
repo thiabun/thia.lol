@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/notifications.php';
 require_once __DIR__ . '/read.php';
 
 function follows_dispatch(array $segments, string $method): void
@@ -59,7 +60,7 @@ function profile_follow_create(string $handle): void
         json_error('You cannot follow yourself.', 422);
     }
 
-    db_query(
+    $insert = db_query(
         'INSERT IGNORE INTO user_follows (follower_id, following_id)
          VALUES (:follower_id, :following_id)',
         [
@@ -67,6 +68,15 @@ function profile_follow_create(string $handle): void
             'following_id' => $targetUserId,
         ]
     );
+
+    if ($insert->rowCount() > 0) {
+        notification_create($targetUserId, $viewerUserId, 'follow', null, null, null, true);
+
+        if (is_mutual_follow($viewerUserId, $targetUserId)) {
+            notification_create($viewerUserId, $targetUserId, 'moot', null, null, null, true);
+            notification_create($targetUserId, $viewerUserId, 'moot', null, null, null, true);
+        }
+    }
 
     json_success(follow_relationship_response($targetUserId, $viewerUserId));
 }
@@ -144,6 +154,23 @@ function follow_relationship_response(int $targetUserId, int $viewerUserId): arr
         'followingCount' => (int) $context['followingCount'],
         'mootCount' => (int) $context['mootCount'],
     ];
+}
+
+function is_mutual_follow(int $followerId, int $followingId): bool
+{
+    $statement = db_query(
+        'SELECT 1
+         FROM user_follows
+         WHERE follower_id = :following_id
+           AND following_id = :follower_id
+         LIMIT 1',
+        [
+            'follower_id' => $followerId,
+            'following_id' => $followingId,
+        ]
+    );
+
+    return (bool) $statement->fetch();
 }
 
 function profile_follow_list(int $targetUserId, string $kind, ?int $viewerUserId): array

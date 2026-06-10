@@ -7,6 +7,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read.php';
 require_once __DIR__ . '/posts.php';
 require_once __DIR__ . '/follows.php';
+require_once __DIR__ . '/notifications.php';
 require_once __DIR__ . '/moderation.php';
 require_once __DIR__ . '/migrations.php';
 require_once __DIR__ . '/setup.php';
@@ -64,6 +65,10 @@ try {
         in_array($segments[2], ['follow', 'followers', 'following'], true)
     ) {
         follows_dispatch($segments, $method);
+    }
+
+    if (($segments[0] ?? null) === 'notifications') {
+        notifications_dispatch($segments, $method);
     }
 
     if (($segments[0] ?? null) === 'reports') {
