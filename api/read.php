@@ -883,14 +883,14 @@ function post_select_sql(
         GROUP BY author_id
     ) profile_posts ON profile_posts.author_id = u.id
     LEFT JOIN (
-        SELECT author_id, COUNT(*) AS reply_count
+        SELECT profile_replies.author_id AS author_id, COUNT(*) AS reply_count
         FROM posts profile_replies
         LEFT JOIN rooms profile_reply_rooms ON profile_reply_rooms.id = profile_replies.room_id
         " . post_ancestor_visibility_joins_sql('profile_replies') . "
         WHERE profile_replies.parent_id IS NOT NULL
           AND " . public_post_visible_sql('profile_replies', 'profile_reply_rooms') . "
           AND " . post_ancestor_visibility_sql('profile_replies') . "
-        GROUP BY author_id
+        GROUP BY profile_replies.author_id
     ) profile_replies ON profile_replies.author_id = u.id
     LEFT JOIN (
         SELECT created_by, COUNT(*) AS room_count

@@ -24,6 +24,9 @@ test("API reply queries require visible ancestors by inspection", async () => {
   expect(readApi).toContain("function post_ancestor_visibility_sql");
   expect(readApi).toContain("post_ancestor_visibility_sql('p')");
   expect(readApi).toContain("post_ancestor_visibility_sql('profile_replies')");
+  expect(readApi).toContain("SELECT profile_replies.author_id AS author_id, COUNT(*) AS reply_count");
+  expect(readApi).toContain("GROUP BY profile_replies.author_id");
+  expect(readApi).not.toContain("SELECT author_id, COUNT(*) AS reply_count");
   expect(readApi).toContain("stat_posts.parent_id IS NULL");
   expect(postsApi).toContain("validate_post_media_url($body['mediaUrl']");
   expect(postsApi).toContain("post_ancestor_visibility_sql('p')");
