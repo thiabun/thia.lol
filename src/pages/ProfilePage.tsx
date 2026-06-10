@@ -1,9 +1,14 @@
 import {
   Award,
+  Bug,
+  CalendarDays,
   MessageCircle,
   Radio,
   Repeat2,
   Reply,
+  Shield,
+  Sparkles,
+  Star,
   UserCheck,
   Users,
 } from "lucide-react";
@@ -18,10 +23,12 @@ import { RoomCard } from "../components/social/RoomCard";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Avatar } from "../components/ui/Avatar";
 import { Badge } from "../components/ui/Badge";
+import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import {
   followProfile,
   getProfile,
+  getProfileBadges,
   getProfileFollowers,
   getProfileFollowing,
   getProfilePosts,
@@ -29,6 +36,7 @@ import {
   getProfileReplies,
   getProfileRooms,
   unfollowProfile,
+  updateFeaturedBadges,
   updateMyProfile,
   uploadImage,
   type FollowRelationship,
@@ -39,7 +47,13 @@ import {
 import { ApiClientError } from "../lib/apiClient";
 import { cn } from "../lib/classNames";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
-import type { Post, Profile, ProfileConnection } from "../lib/types";
+import type {
+  BadgeDefinition,
+  Post,
+  Profile,
+  ProfileConnection,
+  UserBadge,
+} from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
 
@@ -59,6 +73,9 @@ export function ProfilePage() {
   const [activeTab, setActiveTab] = useState<ProfileTab>("posts");
   const [editingProfileHandle, setEditingProfileHandle] = useState<string | undefined>();
   const [profileOverride, setProfileOverride] = useState<Profile | undefined>();
+  const [badgesOverride, setBadgesOverride] = useState<
+    { handle: string; result: Awaited<ReturnType<typeof getProfileBadges>> } | undefined
+  >();
   const [followState, setFollowState] = useState<
     { handle: string; relationship: FollowRelationship } | undefined
   >();
@@ -97,6 +114,10 @@ export function ProfilePage() {
     () => () => getProfileFollowing(normalizedHandle),
     [normalizedHandle],
   );
+  const badgesLoader = useMemo(
+    () => () => getProfileBadges(normalizedHandle),
+    [normalizedHandle],
+  );
   const profileState = useAsyncData(profileLoader);
   const postsState = useAsyncData(postsLoader);
   const repliesState = useAsyncData(repliesLoader);
@@ -104,6 +125,7 @@ export function ProfilePage() {
   const roomsState = useAsyncData(roomsLoader);
   const followersState = useAsyncData(followersLoader);
   const followingState = useAsyncData(followingLoader);
+  const badgesState = useAsyncData(badgesLoader);
   const activeFollowState =
     followState?.handle === normalizedHandle ? followState.relationship : undefined;
   const activeFollowError =
@@ -119,6 +141,10 @@ export function ProfilePage() {
   const profileRooms = roomsState.data ?? [];
   const profileFollowers = followersState.data ?? [];
   const profileFollowing = followingState.data ?? [];
+  const profileBadgesResult =
+    badgesOverride?.handle === normalizedHandle ? badgesOverride.result : badgesState.data;
+  const profileBadges = profileBadgesResult?.badges ?? [];
+  const featuredBadges = profileBadgesResult?.featuredBadges ?? [];
   const profileMissing =
     profileState.error instanceof ApiClientError && profileState.error.status === 404;
   const isOwnProfile =
@@ -190,6 +216,15 @@ export function ProfilePage() {
     });
   }
 
+  async function handleFeaturedBadgesChange(featuredBadgeIds: number[]) {
+    const updated = await runWithAuth(
+      (csrfToken) => updateFeaturedBadges({ featuredBadgeIds }, csrfToken),
+      { retryOnCsrf: true },
+    );
+
+    setBadgesOverride({ handle: normalizedHandle, result: updated });
+  }
+
   if (profileMissing) {
     return (
       <motion.div
@@ -256,6 +291,7 @@ export function ProfilePage() {
       />
       <ProfileHeader
         profile={profile}
+        featuredBadges={featuredBadges}
         followError={activeFollowError}
         followPosting={followPosting}
         isOwnProfile={isOwnProfile}
@@ -326,6 +362,7 @@ export function ProfilePage() {
           />
           <ProfileTabButton
             active={activeTab === "badges"}
+            count={profileBadges.length}
             label="Badges"
             onClick={() => setActiveTab("badges")}
           />
@@ -389,10 +426,13 @@ export function ProfilePage() {
           />
         ) : null}
         {activeTab === "badges" ? (
-          <EmptyState
-            icon={Award}
-            title="Badges"
-            text="Badges are coming later."
+          <ProfileBadgeList
+            badges={profileBadges}
+            error={badgesState.error}
+            featuredBadges={featuredBadges}
+            isOwnProfile={isOwnProfile}
+            loading={badgesState.loading}
+            onFeaturedChange={handleFeaturedBadgesChange}
           />
         ) : null}
       </motion.div>
@@ -517,6 +557,182 @@ function ProfilePostList({
   );
 }
 
+type ProfileBadgeListProps = {
+  badges: UserBadge[];
+  error: unknown;
+  featuredBadges: UserBadge[];
+  isOwnProfile: boolean;
+  loading: boolean;
+  onFeaturedChange: (featuredBadgeIds: number[]) => Promise<void>;
+};
+
+function ProfileBadgeList({
+  badges,
+  error,
+  featuredBadges,
+  isOwnProfile,
+  loading,
+  onFeaturedChange,
+}: ProfileBadgeListProps) {
+  const [pendingBadgeId, setPendingBadgeId] = useState<number | undefined>();
+  const [errorMessage, setErrorMessage] = useState<string | undefined>();
+  const featuredIds = featuredBadges.map((userBadge) => userBadge.badge.id);
+  const featuredIdSet = new Set(featuredIds);
+
+  async function handleFeatureToggle(userBadge: UserBadge) {
+    const badgeId = userBadge.badge.id;
+    const nextIds = featuredIdSet.has(badgeId)
+      ? featuredIds.filter((id) => id !== badgeId)
+      : [...featuredIds, badgeId];
+
+    setPendingBadgeId(userBadge.id);
+    setErrorMessage(undefined);
+
+    try {
+      await onFeaturedChange(nextIds);
+    } catch (caught) {
+      setErrorMessage(
+        caught instanceof Error ? caught.message : "Featured badges could not be saved.",
+      );
+    } finally {
+      setPendingBadgeId(undefined);
+    }
+  }
+
+  if (loading) {
+    return (
+      <ApiStateNotice
+        kind="loading"
+        title="Loading badges"
+        text="Badges are loading."
+      />
+    );
+  }
+
+  if (error) {
+    return (
+      <ApiStateNotice
+        kind="error"
+        title="Badges are not available"
+        text="Try refreshing in a moment."
+      />
+    );
+  }
+
+  if (badges.length === 0) {
+    return <EmptyState icon={Award} title="No badges yet" text="No badges yet" />;
+  }
+
+  return (
+    <div className="space-y-4">
+      {errorMessage ? (
+        <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
+          {errorMessage}
+        </p>
+      ) : null}
+      <div className="grid gap-3 md:grid-cols-2">
+        {badges.map((userBadge) => {
+          const isFeatured = featuredIdSet.has(userBadge.badge.id);
+          const featureLimitReached = featuredIds.length >= 3 && !isFeatured;
+
+          return (
+            <ProfileBadgeCard
+              key={userBadge.id}
+              userBadge={userBadge}
+              featured={isFeatured}
+              featureDisabled={featureLimitReached || pendingBadgeId !== undefined}
+              isOwnProfile={isOwnProfile}
+              pending={pendingBadgeId === userBadge.id}
+              onFeatureToggle={() => void handleFeatureToggle(userBadge)}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+type ProfileBadgeCardProps = {
+  userBadge: UserBadge;
+  featured: boolean;
+  featureDisabled: boolean;
+  isOwnProfile: boolean;
+  pending: boolean;
+  onFeatureToggle: () => void;
+};
+
+function ProfileBadgeCard({
+  featureDisabled,
+  featured,
+  isOwnProfile,
+  onFeatureToggle,
+  pending,
+  userBadge,
+}: ProfileBadgeCardProps) {
+  const badge = userBadge.badge;
+
+  return (
+    <div
+      className={cn(
+        "relative overflow-hidden rounded-card border bg-surface p-4 shadow-soft",
+        rarityBorderClass(badge.rarity),
+      )}
+    >
+      <div
+        className={cn(
+          "absolute inset-x-0 top-0 h-1",
+          rarityStripeClass(badge.rarity),
+        )}
+      />
+      <div className="flex items-start gap-3">
+        <div
+          className={cn(
+            "grid size-12 shrink-0 place-items-center rounded-card border",
+            rarityIconClass(badge.rarity),
+          )}
+        >
+          {badgeIconElement(badge)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold text-text">{badge.name}</h3>
+            <Badge tone={badgeTone(badge.rarity)}>{rarityLabel(badge.rarity)}</Badge>
+            {featured ? <Badge tone="warm">Featured</Badge> : null}
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            Earned {formatBadgeDate(userBadge.earnedAt)}
+          </p>
+        </div>
+      </div>
+      {badge.description ? (
+        <p className="mt-4 text-sm leading-6 text-muted">{badge.description}</p>
+      ) : null}
+      {userBadge.reason ? (
+        <p className="mt-3 rounded-card border border-line bg-canvas/45 p-3 text-sm leading-6 text-text">
+          <span className="font-semibold">Reason</span>: {userBadge.reason}
+        </p>
+      ) : null}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <span className="text-xs font-medium uppercase text-muted">
+          {sourceLabel(badge.source)}
+        </span>
+        {isOwnProfile ? (
+          <Button
+            type="button"
+            variant={featured ? "secondary" : "ghost"}
+            size="sm"
+            disabled={featureDisabled}
+            icon={<Star aria-hidden="true" size={15} />}
+            onClick={onFeatureToggle}
+          >
+            {pending ? "Saving" : featured ? "Unfeature" : "Feature"}
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 type ProfileRoomListProps = {
   error: unknown;
   loading: boolean;
@@ -627,4 +843,120 @@ function ProfileConnectionList({
       ))}
     </div>
   );
+}
+
+type BadgeTone = "default" | "warm" | "cool" | "leaf" | "rose";
+
+function badgeIconElement(badge: BadgeDefinition) {
+  if (badge.icon === "bug") {
+    return <Bug aria-hidden="true" size={22} />;
+  }
+
+  if (badge.icon === "calendar-days") {
+    return <CalendarDays aria-hidden="true" size={22} />;
+  }
+
+  if (badge.icon === "radio") {
+    return <Radio aria-hidden="true" size={22} />;
+  }
+
+  if (badge.icon === "shield") {
+    return <Shield aria-hidden="true" size={22} />;
+  }
+
+  if (badge.icon === "sparkles") {
+    return <Sparkles aria-hidden="true" size={22} />;
+  }
+
+  if (badge.icon === "users") {
+    return <Users aria-hidden="true" size={22} />;
+  }
+
+  return <Award aria-hidden="true" size={22} />;
+}
+
+function badgeTone(rarity: BadgeDefinition["rarity"]): BadgeTone {
+  const tones: Record<BadgeDefinition["rarity"], BadgeTone> = {
+    common: "default",
+    rare: "cool",
+    epic: "rose",
+    legendary: "warm",
+    founder: "leaf",
+  };
+
+  return tones[rarity];
+}
+
+function rarityLabel(rarity: BadgeDefinition["rarity"]): string {
+  const labels: Record<BadgeDefinition["rarity"], string> = {
+    common: "Common",
+    rare: "Rare",
+    epic: "Epic",
+    legendary: "Legendary",
+    founder: "Founder",
+  };
+
+  return labels[rarity];
+}
+
+function rarityBorderClass(rarity: BadgeDefinition["rarity"]): string {
+  const classes: Record<BadgeDefinition["rarity"], string> = {
+    common: "border-line",
+    rare: "border-cool/30",
+    epic: "border-rose/30",
+    legendary: "border-warm/35",
+    founder: "border-accent/40",
+  };
+
+  return classes[rarity];
+}
+
+function rarityStripeClass(rarity: BadgeDefinition["rarity"]): string {
+  const classes: Record<BadgeDefinition["rarity"], string> = {
+    common: "bg-line-strong",
+    rare: "bg-cool",
+    epic: "bg-rose",
+    legendary: "bg-warm",
+    founder: "bg-accent",
+  };
+
+  return classes[rarity];
+}
+
+function rarityIconClass(rarity: BadgeDefinition["rarity"]): string {
+  const classes: Record<BadgeDefinition["rarity"], string> = {
+    common: "border-line bg-canvas/60 text-muted",
+    rare: "border-cool/30 bg-cool/15 text-cool-ink",
+    epic: "border-rose/30 bg-rose/15 text-rose-ink",
+    legendary: "border-warm/35 bg-warm/20 text-warm-ink",
+    founder: "border-accent/40 bg-accent/15 text-accent-strong",
+  };
+
+  return classes[rarity];
+}
+
+function sourceLabel(source: string): string {
+  const labels: Record<string, string> = {
+    "admin-granted": "Admin granted",
+    system: "System",
+    "room-earned": "Room earned",
+    event: "Event",
+    social: "Social",
+  };
+
+  return labels[source] ?? source;
+}
+
+function formatBadgeDate(value: string): string {
+  const parsed = new Date(value.includes("T") ? value : value.replace(" ", "T"));
+
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(parsed);
 }

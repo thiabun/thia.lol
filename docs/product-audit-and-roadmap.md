@@ -92,11 +92,11 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
 | Replies | Working, partial | Replies exist through `parent_id`, thread modal, reply creation, reply counts, ordered reply loading, and reply notifications. | No deep permalink/thread page, nested reply product decision, or moderation/visibility UX beyond inherited post systems. |
 | Reblogs | Working, foundation | `post_reblogs` stores one reblog per post/user. API routes support reblog/undo, post payloads expose counts/state/context, Home can label followed-user reblogs, profile Reblogs is API-backed, PostCard has a Reblog action, and reblog notifications are created. | Quote-posts are deferred. Needs production tuning for duplicate feed rows, richer notification grouping, and longer-term safety controls around high-volume resharing. |
 | Rooms | Partial, needs design/product decision | Public room list/detail pages, room search, room post feeds, room destination in composer, and room metadata exist. | No room creation UI, memberships, roles, moderators, rules, join/leave, private/member rooms, room moderation surface, or subreddit/community-style governance model. |
-| Profiles | Partial, foundation improved | Public profile pages show avatar, display name, handle, bio, location, links, joined date, public stats, posts, replies, rooms, follower/following/moot context, and honest disabled/coming-later surfaces for unsupported areas. Registration creates a basic profile. See `docs/profile-badges-plan.md`. | No profile editing UI/API, banner/theme/background customization, privacy controls, pinned posts, badge persistence, or rich identity controls. |
+| Profiles | Partial, foundation improved | Public profile pages show avatar, display name, handle, bio, location, links, joined date, public stats, posts, replies, rooms, follower/following/moot context, and real badge display. Registration creates a basic profile. See `docs/profile-badges-plan.md`. | Needs privacy controls, pinned posts, hidden-badge management UI, and richer identity controls. |
 | Follows/Moots | Working, foundation | Users can follow/unfollow active profiles, profile payloads expose follower/following/moot counts and current-user relationship state, basic followers/following lists exist, and follow/moot notifications are created. | Needs remove-follower controls, block/mute, deeper feed integration, and chat permission enforcement. |
-| Badges | Planned, no persistence yet | No badge/user badge tables exist. Profile UI has an honest Badges coming-later state, and the proposed badge/user-badge model is documented in `docs/profile-badges-plan.md`. | Add small schema, admin grant/revoke path, featured ordering, visibility controls, and transparent criteria only after the model is approved. |
+| Badges | Working, v1 foundation | `badges` and `user_badges` persist real badge definitions and earned grants. Starter definitions are seeded without fake user grants. Public endpoints expose definitions and profile badges, users can feature badges, admins/moderators can grant/revoke badges, profile headers show featured badges, the Badges tab shows earned badges, and badge grants create notifications when notification storage is available. | Automatic earning rules, full hidden-badge management UI, definition editor UI, room-earned/social criteria, and abuse-resistant criteria/progress models are deferred. |
 | Likes | Working, partial | Like/unlike maps to `post_reactions.type = glow`; UI shows like count and liked state. | Reaction naming is internally broader than UI. Needs transparent counts, optional hiding/muting decisions, anti-spam/rate-limit review, and adult-focused non-manipulative loop design. |
-| Notifications | Working, foundation | Private notifications exist for follows, moots, likes, replies, and reblogs. Authenticated users can view notifications, see unread count, mark one read, and mark all read. | Needs push/email decisions, notification preferences, richer grouping, pagination, read-on-open behavior decisions, and safety controls around high-volume activity. |
+| Notifications | Working, foundation | Private notifications exist for follows, moots, likes, replies, reblogs, messages, and badge grants. Authenticated users can view notifications, see unread count, mark one read, and mark all read. | Needs push/email decisions, notification preferences, richer grouping, pagination, read-on-open behavior decisions, and safety controls around high-volume activity. |
 | Admin/moderation | Working, partial | Reports can be created from posts; admins/moderators can view report queue, hide posts, suspend users, resolve/dismiss reports, and log moderation actions. | Admin still appears in desktop nav for admins and should move only into account popover. Needs appeal flow, policy pages, moderation transparency, audit views, and better user-facing report status decisions. |
 | Discover/Home | Working, foundation | Home uses `/api/feed/home` for a personalized ranked feed when logged in and a general ranked feed when logged out. Discover uses `/api/feed/discover` for ranked public posts plus active rooms and people to watch only when backed by real data. | Needs user feed controls, chronological mode, hide/mute/block controls, joined-room weighting after memberships exist, and better transparency surfaces. |
 | Chat/DMs | Working, v1 foundation | `/chat` is a real private 1:1 direct-message surface for moots only. Conversation/message tables exist, API endpoints enforce authentication and membership, and profiles show Message only for moot relationships. | Attachments, post/room sharing, group chats, push/email notifications, realtime polling/WebSockets, message reporting, blocking, deletion, retention controls, and broader request/inbox behavior are deferred. |
@@ -281,13 +281,22 @@ Goal: turn rooms into real community spaces.
 Goal: make identity feel owned and expressive without becoming chaotic.
 
 - Foundation document added in `docs/profile-badges-plan.md`.
-- Public profile pages now use real API data for posts, replies, reblogs, and rooms, with badge surfaces kept honest until backend support exists.
+- Public profile pages now use real API data for posts, replies, reblogs, rooms, and badges.
 - Add profile editing.
 - Add customization fields with strict design constraints.
-- Add badge and user badge schema.
-- Add badge display on profile and compact author surfaces.
-- Add admin or rules-based badge awarding.
-- Add privacy/user-control decisions for badges and profile fields.
+- Badge v1 implemented:
+  - `badges` and `user_badges` schema.
+  - Seeded definitions for `founder`, `early_user`, `bug_hunter`, `moderator`, `room_owner`, and `mutual_magnet`.
+  - Public badge definitions and profile badge endpoints.
+  - Admin/moderator grant and revoke flow.
+  - Profile header featured badges and Badges tab display.
+  - Current-user featured badge ordering.
+- Deferred:
+  - automatic badge earning rules.
+  - badge definition editor UI.
+  - full hidden-badge management UI.
+  - compact author-surface badge display.
+  - privacy/user-control decisions beyond v1 visibility and featuring.
 
 ### Phase 4: Follows, Moots, and Social Graph
 
@@ -344,6 +353,7 @@ Goal: give members private feedback when people interact with them.
   - Like notifications are created when a new `glow` reaction is inserted on another member's post.
   - Reply notifications are created when someone replies to another member's post.
   - Message notifications are created for the other direct conversation member without exposing message content in notification payloads.
+  - Badge grant notifications are created when a moderator/admin grants a badge.
   - The UI exposes notifications through a header bell and `/notifications` page with empty, loading, error, unread, mark-one-read, and mark-all-read states.
 - Deferred:
   - Reblog notifications are active through Phase 7.

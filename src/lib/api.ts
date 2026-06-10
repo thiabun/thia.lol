@@ -1,4 +1,5 @@
 import type {
+  BadgeDefinition,
   DiscoverFeed,
   DiscoverPerson,
   ChatConversation,
@@ -9,10 +10,12 @@ import type {
   NotificationsResult,
   Post,
   Profile,
+  ProfileBadgesResult,
   ProfileConnection,
   PublicStats,
   ReactionCounts,
   Room,
+  UserBadge,
 } from "./types";
 import { apiDelete, apiGet, apiPatch, apiPost, apiUpload } from "./apiClient";
 
@@ -30,6 +33,17 @@ type ApiProfile = Profile & {
   avatarUrl?: string | null;
   createdAt?: string;
   updatedAt?: string;
+};
+
+type ApiBadgeDefinition = BadgeDefinition;
+
+type ApiUserBadge = UserBadge;
+
+type ApiProfileBadgesResult = ProfileBadgesResult;
+
+type ApiAdminBadgesResult = {
+  badges: ApiBadgeDefinition[];
+  recentGrants: ApiUserBadge[];
 };
 
 type ApiPost = Omit<Post, "room" | "createdAt"> & {
@@ -96,6 +110,21 @@ export type UpdateProfileInput = {
   profileTheme?: string | null;
   links?: string[];
   traits?: string[];
+};
+
+export type UpdateFeaturedBadgesInput = {
+  featuredBadgeIds: number[];
+};
+
+export type AdminBadgesResult = {
+  badges: BadgeDefinition[];
+  recentGrants: UserBadge[];
+};
+
+export type GrantBadgeInput = {
+  handle: string;
+  badgeKey: string;
+  reason?: string;
 };
 
 export type DeletePostResult = {
@@ -297,6 +326,31 @@ export function getProfileFollowing(handle: string): Promise<ProfileConnection[]
   return apiGet<ProfileConnection[]>(
     `/profiles/${encodeURIComponent(normalized)}/following`,
   );
+}
+
+export function getBadgeDefinitions(): Promise<BadgeDefinition[]> {
+  return apiGet<ApiBadgeDefinition[]>("/badges").then((items) =>
+    items.map(normalizeBadgeDefinition),
+  );
+}
+
+export function getProfileBadges(handle: string): Promise<ProfileBadgesResult> {
+  const normalized = normalizeHandle(handle);
+
+  return apiGet<ApiProfileBadgesResult>(
+    `/profiles/${encodeURIComponent(normalized)}/badges`,
+  ).then(normalizeProfileBadgesResult);
+}
+
+export function updateFeaturedBadges(
+  input: UpdateFeaturedBadgesInput,
+  csrfToken: string,
+): Promise<ProfileBadgesResult> {
+  return apiPatch<ApiProfileBadgesResult>(
+    "/me/badges/featured",
+    input,
+    csrfToken,
+  ).then(normalizeProfileBadgesResult);
 }
 
 export function followProfile(
@@ -548,6 +602,45 @@ export function getAdminRooms(): Promise<Room[]> {
   return apiGet<ApiRoom[]>("/admin/rooms").then((items) => items.map(normalizeRoom));
 }
 
+export function getAdminBadges(): Promise<AdminBadgesResult> {
+  return apiGet<ApiAdminBadgesResult>("/admin/badges").then((result) => ({
+    badges: result.badges.map(normalizeBadgeDefinition),
+    recentGrants: result.recentGrants.map(normalizeUserBadge),
+  }));
+}
+
+export function grantAdminBadge(
+  input: GrantBadgeInput,
+  csrfToken: string,
+): Promise<UserBadge> {
+  return apiPost<ApiUserBadge>(
+    "/admin/badges/grant",
+    {
+      handle: normalizeHandle(input.handle),
+      badgeKey: input.badgeKey,
+      reason: input.reason?.trim() || undefined,
+    },
+    csrfToken,
+  ).then(normalizeUserBadge);
+}
+
+export function revokeAdminBadge(
+  input: Pick<GrantBadgeInput, "handle" | "badgeKey">,
+  csrfToken: string,
+): Promise<{ revoked: boolean; handle: string; badge: BadgeDefinition }> {
+  return apiPost<{ revoked: boolean; handle: string; badge: ApiBadgeDefinition }>(
+    "/admin/badges/revoke",
+    {
+      handle: normalizeHandle(input.handle),
+      badgeKey: input.badgeKey,
+    },
+    csrfToken,
+  ).then((result) => ({
+    ...result,
+    badge: normalizeBadgeDefinition(result.badge),
+  }));
+}
+
 export function hideAdminPost(
   postId: number,
   input: AdminActionInput,
@@ -642,6 +735,37 @@ function normalizeProfile(profile: ApiProfile): Profile {
     isMoot: profile.isMoot ?? false,
     createdAt: profile.createdAt ?? null,
     updatedAt: profile.updatedAt ?? null,
+  };
+}
+
+function normalizeProfileBadgesResult(
+  result: ApiProfileBadgesResult,
+): ProfileBadgesResult {
+  return {
+    badges: result.badges.map(normalizeUserBadge),
+    featuredBadges: result.featuredBadges.map(normalizeUserBadge),
+  };
+}
+
+function normalizeUserBadge(userBadge: ApiUserBadge): UserBadge {
+  return {
+    ...userBadge,
+    badge: normalizeBadgeDefinition(userBadge.badge),
+    reason: userBadge.reason ?? null,
+    featuredOrder: userBadge.featuredOrder ?? null,
+    isVisible: userBadge.isVisible ?? true,
+    grantedBy: userBadge.grantedBy ?? null,
+  };
+}
+
+function normalizeBadgeDefinition(badge: ApiBadgeDefinition): BadgeDefinition {
+  return {
+    ...badge,
+    description: badge.description ?? null,
+    icon: badge.icon ?? null,
+    accent: badge.accent ?? null,
+    isActive: badge.isActive ?? true,
+    createdAt: badge.createdAt ?? null,
   };
 }
 

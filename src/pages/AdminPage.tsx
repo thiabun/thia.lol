@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { motion } from "motion/react";
 import {
   Activity,
+  Award,
   Ban,
   CheckCircle2,
   EyeOff,
@@ -9,6 +10,7 @@ import {
   Radio,
   RefreshCw,
   Shield,
+  Trash2,
   XCircle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -16,14 +18,18 @@ import { PageMeta } from "../components/PageMeta";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Badge } from "../components/ui/Badge";
 import { Button, ButtonLink } from "../components/ui/Button";
-import { TextareaField } from "../components/ui/Field";
+import { SelectField, TextareaField, TextField } from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
 import {
+  getAdminBadges,
   getAdminRooms,
   getAdminReports,
+  grantAdminBadge,
   hideAdminPost,
+  revokeAdminBadge,
   resolveAdminReport,
   suspendAdminUser,
+  type AdminBadgesResult,
   type ModerationReport,
   type ModerationReportStatus,
   type ModerationUser,
@@ -31,7 +37,7 @@ import {
 } from "../lib/api";
 import { pageEntrance } from "../lib/motionPresets";
 import { formatCountWithUnit } from "../lib/pluralize";
-import type { Room } from "../lib/types";
+import type { BadgeDefinition, Room, UserBadge } from "../lib/types";
 import { useAuth } from "../lib/useAuth";
 
 type ActionName = "hide" | "suspend" | "resolve" | "dismiss";
@@ -41,11 +47,22 @@ export function AdminPage() {
   const { status, user, csrfToken } = useAuth();
   const [reports, setReports] = useState<ModerationReport[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [badges, setBadges] = useState<AdminBadgesResult>({
+    badges: [],
+    recentGrants: [],
+  });
   const [loading, setLoading] = useState(false);
   const [loadingRooms, setLoadingRooms] = useState(false);
+  const [loadingBadges, setLoadingBadges] = useState(false);
   const [error, setError] = useState<string>();
   const [roomsError, setRoomsError] = useState<string>();
+  const [badgesError, setBadgesError] = useState<string>();
   const [pendingAction, setPendingAction] = useState<string>();
+  const [pendingBadgeAction, setPendingBadgeAction] = useState<string>();
+  const [badgeHandle, setBadgeHandle] = useState("");
+  const [badgeKey, setBadgeKey] = useState("");
+  const [badgeReason, setBadgeReason] = useState("");
+  const [badgeMessage, setBadgeMessage] = useState<string>();
   const [notesByReport, setNotesByReport] = useState<Record<number, string>>({});
   const isModerator = user?.role === "moderator" || user?.role === "admin";
 
@@ -79,6 +96,21 @@ export function AdminPage() {
     }
   }, []);
 
+  const loadBadges = useCallback(async () => {
+    setLoadingBadges(true);
+    setBadgesError(undefined);
+
+    try {
+      setBadges(await getAdminBadges());
+    } catch (loadError) {
+      setBadgesError(
+        loadError instanceof Error ? loadError.message : "Could not load badges.",
+      );
+    } finally {
+      setLoadingBadges(false);
+    }
+  }, []);
+
   useEffect(() => {
     let active = true;
 
@@ -87,6 +119,7 @@ export function AdminPage() {
         if (active) {
           void loadReports();
           void loadRooms();
+          void loadBadges();
         }
       });
     }
@@ -94,7 +127,7 @@ export function AdminPage() {
     return () => {
       active = false;
     };
-  }, [isModerator, loadReports, loadRooms]);
+  }, [isModerator, loadBadges, loadReports, loadRooms]);
 
   const metrics = useMemo(() => {
     const open = reports.filter((report) => report.status === "open").length;
@@ -108,8 +141,8 @@ export function AdminPage() {
       (report) => report.reportedUser?.status === "suspended",
     ).length;
 
-    return { open, resolved, hiddenPosts, suspendedUsers };
-  }, [reports]);
+    return { open, resolved, hiddenPosts, suspendedUsers, badges: badges.badges.length };
+  }, [badges.badges.length, reports]);
 
   async function runAction(
     report: ModerationReport,
@@ -135,6 +168,71 @@ export function AdminPage() {
       );
     } finally {
       setPendingAction(undefined);
+    }
+  }
+
+  async function handleGrantBadge() {
+    if (!csrfToken) {
+      setBadgesError("CSRF token is missing. Sign in again.");
+      return;
+    }
+
+    if (!badgeHandle.trim() || !badgeKey) {
+      setBadgesError("Handle and badge are required.");
+      return;
+    }
+
+    setPendingBadgeAction("grant");
+    setBadgesError(undefined);
+    setBadgeMessage(undefined);
+
+    try {
+      await grantAdminBadge(
+        {
+          handle: badgeHandle,
+          badgeKey,
+          reason: badgeReason,
+        },
+        csrfToken,
+      );
+      setBadgeMessage("Badge granted");
+      setBadgeReason("");
+      await loadBadges();
+    } catch (actionError) {
+      setBadgesError(
+        actionError instanceof Error ? actionError.message : "Badge could not be granted.",
+      );
+    } finally {
+      setPendingBadgeAction(undefined);
+    }
+  }
+
+  async function handleRevokeBadge(grant: UserBadge) {
+    if (!csrfToken || !grant.user) {
+      setBadgesError("CSRF token is missing. Sign in again.");
+      return;
+    }
+
+    setPendingBadgeAction(`revoke:${grant.id}`);
+    setBadgesError(undefined);
+    setBadgeMessage(undefined);
+
+    try {
+      await revokeAdminBadge(
+        {
+          handle: grant.user.handle,
+          badgeKey: grant.badge.badgeKey,
+        },
+        csrfToken,
+      );
+      setBadgeMessage("Badge revoked");
+      await loadBadges();
+    } catch (actionError) {
+      setBadgesError(
+        actionError instanceof Error ? actionError.message : "Badge could not be revoked.",
+      );
+    } finally {
+      setPendingBadgeAction(undefined);
     }
   }
 
@@ -209,11 +307,12 @@ export function AdminPage() {
             type="button"
             variant="secondary"
             size="sm"
-            disabled={loading || loadingRooms}
+            disabled={loading || loadingRooms || loadingBadges}
             icon={<RefreshCw aria-hidden="true" size={15} />}
             onClick={() => {
               void loadReports();
               void loadRooms();
+              void loadBadges();
             }}
           >
             Refresh
@@ -221,7 +320,7 @@ export function AdminPage() {
         </div>
       </Panel>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <AdminMetric icon={Activity} label="Open reports" value={String(metrics.open)} />
         <AdminMetric
           icon={CheckCircle2}
@@ -238,7 +337,29 @@ export function AdminPage() {
           label="Suspended users"
           value={String(metrics.suspendedUsers)}
         />
+        <AdminMetric
+          icon={Award}
+          label="Badges"
+          value={String(metrics.badges)}
+        />
       </section>
+
+      <BadgeAdminPanel
+        badgeKey={badgeKey}
+        badges={badges.badges}
+        error={badgesError}
+        handle={badgeHandle}
+        loading={loadingBadges}
+        message={badgeMessage}
+        pendingAction={pendingBadgeAction}
+        reason={badgeReason}
+        recentGrants={badges.recentGrants}
+        onBadgeKeyChange={setBadgeKey}
+        onGrant={() => void handleGrantBadge()}
+        onHandleChange={setBadgeHandle}
+        onReasonChange={setBadgeReason}
+        onRevoke={(grant) => void handleRevokeBadge(grant)}
+      />
 
       <Panel className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -378,6 +499,176 @@ function AdminShell({ children }: { children: ReactNode }) {
       />
       {children}
     </motion.div>
+  );
+}
+
+type BadgeAdminPanelProps = {
+  badgeKey: string;
+  badges: BadgeDefinition[];
+  error: string | undefined;
+  handle: string;
+  loading: boolean;
+  message: string | undefined;
+  pendingAction: string | undefined;
+  reason: string;
+  recentGrants: UserBadge[];
+  onBadgeKeyChange: (value: string) => void;
+  onGrant: () => void;
+  onHandleChange: (value: string) => void;
+  onReasonChange: (value: string) => void;
+  onRevoke: (grant: UserBadge) => void;
+};
+
+function BadgeAdminPanel({
+  badgeKey,
+  badges,
+  error,
+  handle,
+  loading,
+  message,
+  onBadgeKeyChange,
+  onGrant,
+  onHandleChange,
+  onReasonChange,
+  onRevoke,
+  pendingAction,
+  reason,
+  recentGrants,
+}: BadgeAdminPanelProps) {
+  const activeBadges = badges.filter((badge) => badge.isActive);
+  const badgeOptions = [
+    { value: "", label: "Select badge" },
+    ...activeBadges.map((badge) => ({
+      value: badge.badgeKey,
+      label: `${badge.name} · ${rarityLabel(badge.rarity)}`,
+    })),
+  ];
+
+  return (
+    <Panel className="p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <Badge tone="warm">badges</Badge>
+          <h2 className="mt-3 text-xl font-semibold text-text">Badge management</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+            Grant visible status badges to members with traceable reasons.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-muted">
+          <Award aria-hidden="true" size={16} />
+          {formatCountWithUnit(activeBadges.length, "definition")}
+        </div>
+      </div>
+
+      {loading ? <p className="mt-4 text-sm text-muted">Loading badges</p> : null}
+
+      {error ? (
+        <p className="mt-4 rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
+          {error}
+        </p>
+      ) : null}
+
+      {message ? (
+        <p className="mt-4 rounded-card border border-line bg-canvas/55 p-3 text-sm text-text">
+          {message}
+        </p>
+      ) : null}
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr_1.4fr_auto] lg:items-end">
+        <TextField
+          id="badge-grant-handle"
+          label="Handle"
+          value={handle}
+          placeholder="member"
+          disabled={pendingAction === "grant"}
+          onChange={(event) => onHandleChange(event.currentTarget.value)}
+        />
+        <SelectField
+          id="badge-grant-definition"
+          label="Badge"
+          value={badgeKey}
+          disabled={pendingAction === "grant"}
+          options={badgeOptions}
+          onChange={(event) => onBadgeKeyChange(event.currentTarget.value)}
+        />
+        <TextField
+          id="badge-grant-reason"
+          label="Reason"
+          value={reason}
+          maxLength={255}
+          disabled={pendingAction === "grant"}
+          onChange={(event) => onReasonChange(event.currentTarget.value)}
+        />
+        <Button
+          type="button"
+          disabled={pendingAction === "grant" || !handle.trim() || !badgeKey}
+          icon={<Award aria-hidden="true" size={16} />}
+          onClick={onGrant}
+        >
+          {pendingAction === "grant" ? "Granting" : "Grant badge"}
+        </Button>
+      </div>
+
+      {activeBadges.length > 0 ? (
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {activeBadges.map((badge) => (
+            <div
+              key={badge.badgeKey}
+              className="rounded-card border border-line bg-canvas/45 p-3"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={rarityTone(badge.rarity)}>{rarityLabel(badge.rarity)}</Badge>
+                <span className="text-xs text-muted">{badge.source}</span>
+              </div>
+              <h3 className="mt-3 text-sm font-semibold text-text">{badge.name}</h3>
+              <p className="mt-1 text-xs text-muted">{badge.badgeKey}</p>
+              {badge.description ? (
+                <p className="mt-3 line-clamp-3 text-sm leading-6 text-muted">
+                  {badge.description}
+                </p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {recentGrants.length > 0 ? (
+        <div className="mt-6">
+          <h3 className="text-sm font-semibold text-text">Recent grants</h3>
+          <div className="mt-3 space-y-2">
+            {recentGrants.map((grant) => (
+              <div
+                key={grant.id}
+                className="flex flex-col gap-3 rounded-card border border-line bg-canvas/45 p-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-text">
+                    {grant.badge.name} to{" "}
+                    {grant.user ? `@${grant.user.handle}` : "unknown user"}
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    Earned {formatDate(grant.earnedAt)}
+                    {grant.reason ? ` · ${grant.reason}` : ""}
+                  </p>
+                </div>
+                {grant.user ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={pendingAction === `revoke:${grant.id}`}
+                    icon={<Trash2 aria-hidden="true" size={15} />}
+                    onClick={() => onRevoke(grant)}
+                  >
+                    {pendingAction === `revoke:${grant.id}` ? "Revoking" : "Revoke"}
+                  </Button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </Panel>
   );
 }
 
@@ -643,6 +934,30 @@ function statusTone(status: ModerationReportStatus): BadgeTone {
   }
 
   return "rose";
+}
+
+function rarityLabel(rarity: BadgeDefinition["rarity"]): string {
+  const labels: Record<BadgeDefinition["rarity"], string> = {
+    common: "Common",
+    rare: "Rare",
+    epic: "Epic",
+    legendary: "Legendary",
+    founder: "Founder",
+  };
+
+  return labels[rarity];
+}
+
+function rarityTone(rarity: BadgeDefinition["rarity"]): BadgeTone {
+  const tones: Record<BadgeDefinition["rarity"], BadgeTone> = {
+    common: "default",
+    rare: "cool",
+    epic: "rose",
+    legendary: "warm",
+    founder: "leaf",
+  };
+
+  return tones[rarity];
 }
 
 function formatDate(value: string): string {

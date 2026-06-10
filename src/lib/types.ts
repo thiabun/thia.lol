@@ -48,6 +48,37 @@ export type ProfileConnection = {
   isMoot: boolean;
 };
 
+export type BadgeRarity = "common" | "rare" | "epic" | "legendary" | "founder";
+
+export type BadgeDefinition = {
+  id: number;
+  badgeKey: string;
+  name: string;
+  description: string | null;
+  rarity: BadgeRarity;
+  source: string;
+  icon: string | null;
+  accent: string | null;
+  isActive: boolean;
+  createdAt?: string | null;
+};
+
+export type UserBadge = {
+  id: number;
+  badge: BadgeDefinition;
+  reason: string | null;
+  earnedAt: string;
+  featuredOrder: number | null;
+  isVisible: boolean;
+  grantedBy: User | null;
+  user?: User;
+};
+
+export type ProfileBadgesResult = {
+  badges: UserBadge[];
+  featuredBadges: UserBadge[];
+};
+
 export type Room = {
   id: number;
   slug: string;
@@ -156,7 +187,8 @@ export type NotificationType =
   | "like"
   | "reply"
   | "reblog"
-  | "message";
+  | "message"
+  | "badge_granted";
 
 export type NotificationPostSummary = {
   id: number;
@@ -174,6 +206,7 @@ export type NotificationItem = {
   post: NotificationPostSummary | null;
   room: Room | null;
   targetUrl: string;
+  data?: Record<string, unknown> | null;
 };
 
 export type NotificationsResult = {

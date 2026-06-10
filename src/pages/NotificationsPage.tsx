@@ -1,4 +1,5 @@
 import {
+  Award,
   Bell,
   Check,
   CheckCheck,
@@ -359,6 +360,15 @@ function notificationCopy(notification: NotificationItem): string {
     return `${handle} sent you a message`;
   }
 
+  if (notification.type === "badge_granted") {
+    const badgeName =
+      typeof notification.data?.badgeName === "string"
+        ? notification.data.badgeName
+        : "a badge";
+
+    return `${handle} granted you ${badgeName}`;
+  }
+
   return `${handle} replied to your post`;
 }
 
@@ -377,6 +387,10 @@ function NotificationIcon({ type }: { type: NotificationItem["type"] }) {
 
   if (type === "reblog") {
     return <Repeat2 aria-hidden="true" size={20} />;
+  }
+
+  if (type === "badge_granted") {
+    return <Award aria-hidden="true" size={20} />;
   }
 
   return <MessageCircle aria-hidden="true" size={20} />;

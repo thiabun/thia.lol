@@ -2,7 +2,7 @@
 
 Date: 2026-06-10
 
-This document captures the Phase 3 foundation for profile identity pages and badges. It is planning plus lightweight implementation guidance; it does not introduce a badge economy or profile-editing workflow yet.
+This document captures the Phase 3 foundation for profile identity pages and badges. Badges v1 is now implemented as real persisted profile status objects with admin grant/revoke controls and featured profile display. It does not introduce an automatic badge-awarding engine yet.
 
 ## Current Profile Implementation
 
@@ -27,14 +27,16 @@ Related profile-facing data:
 - `rooms.created_by` for public rooms owned by a profile.
 - `post_reactions` for current reaction counts.
 
-Not currently present:
+Badge storage now exists:
 
-- banner URL
-- profile theme/accent
-- profile background
+- `badges` stores active badge definitions with stable keys, names, descriptions, rarity, source, icon, accent, and creation time.
+- `user_badges` stores earned grants with `user_id`, `badge_id`, `granted_by`, reason, earned date, featured order, and visibility.
+
+Still not present:
+
 - structured social link objects
 - pinned posts
-- badge/user badge tables
+- automatic badge criteria/progress tables
 
 ### API
 
@@ -44,6 +46,8 @@ Implemented public profile read routes:
 - `GET /api/profiles/:handle/posts`
 - `GET /api/profiles/:handle/replies`
 - `GET /api/profiles/:handle/rooms`
+- `GET /api/profiles/:handle/badges`
+- `GET /api/badges`
 
 Profile payload currently exposes:
 
@@ -54,6 +58,18 @@ Profile payload currently exposes:
 - traits as a string array
 - joined/updated timestamps
 - public stats for posts, replies, rooms, and reactions
+
+Badge payloads expose:
+
+- badge definition: id, key, name, description, rarity, source, icon, accent, active state, created date
+- user badge grant: earned date, reason, granting user when available, visibility, and featured order
+
+Implemented authenticated/admin routes:
+
+- `PATCH /api/me/badges/featured` updates the current user's featured badge order, up to three badges.
+- `GET /api/admin/badges` lists badge definitions and recent grants for moderators/admins.
+- `POST /api/admin/badges/grant` grants a badge to a user by handle and supports an optional reason.
+- `POST /api/admin/badges/revoke` revokes a badge grant by handle and badge key.
 
 No profile edit API is currently implemented. Do not create working edit controls until validation, CSRF-protected update routes, and persistence are added.
 
@@ -71,9 +87,13 @@ Current surfaced fields:
 - external links
 - joined date
 - stats
-- profile tabs for Posts, Replies, API-backed Reblogs, Rooms when present, and Badges
+- profile tabs for Posts, Replies, API-backed Reblogs, Rooms, social graph lists, and Badges
+- featured badges in the profile header when a profile has visible earned badges
+- all visible earned badges in the Badges tab with name, rarity, source, description, reason, and earned date
+- own-profile feature/unfeature controls in the Badges tab
+- admin badge management panel for definitions, grant, recent grants, and revoke
 
-Reblogs now use the post reblog API and show only real shared posts. Badges show an honest coming-later state because no badge schema exists.
+Reblogs now use the post reblog API and show only real shared posts. Badges now use real API data only; no mock or placeholder badge grants are rendered.
 
 ### Mock/Test Data
 
@@ -113,53 +133,57 @@ Do not add uploads until storage, scanning/moderation, file limits, and deletion
 
 Badges should be meaningful earned/status markers, not decorative filler or engagement pressure. Avoid streaks, scarcity pressure, and hidden criteria.
 
-Proposed badge fields:
+Implemented badge fields:
 
 - `id`: stable numeric database id.
-- `key`: unique stable string such as `founding_member`.
+- `badge_key`: unique stable string such as `founder`.
 - `name`: short public label.
 - `description`: public explanation of what the badge means.
-- `rarity`: controlled value such as `common`, `uncommon`, `rare`, `special`, or `staff`.
-- `source`: controlled value:
-  - `system`
-  - `admin-granted`
-  - `room-earned`
-  - `event`
-  - `social`
-- `visual_style`: constrained style token for color/material treatment.
-- `icon`: constrained icon key, not arbitrary HTML.
-- `criteria`: nullable JSON for transparent criteria.
+- `rarity`: `common`, `rare`, `epic`, `legendary`, or `founder`.
+- `source`: source label such as `admin-granted`, `system`, `room-earned`, `event`, or `social`.
+- `icon`: constrained icon key for UI mapping.
+- `accent`: constrained style token.
+- `is_active`
 - `created_at`
-- `updated_at`
 
-Proposed user badge fields:
+Implemented user badge fields:
 
 - `id`
 - `user_id`
 - `badge_id`
+- `granted_by`
+- `reason`
 - `earned_at`
-- `source_context`: nullable JSON for room/event/source detail.
-- `featured_order`: nullable integer for profile ordering.
-- `visibility`: `public`, `hidden`, or `revoked`.
-- `progress`: nullable JSON for transparent progress where applicable.
-- `created_at`
-- `updated_at`
+- `featured_order`
+- `is_visible`
 
-Recommended display rules:
+Implemented display rules:
 
-- Profiles show featured public badges first.
-- The Badges tab shows public earned badges grouped or sorted by featured order then earned date.
-- Hidden badges remain visible only to the owning user after profile privacy decisions are added.
-- Revoked badges should not render publicly.
-- Criteria/progress should be understandable and non-manipulative.
+- Profiles show featured visible badges first in the header.
+- If a user has visible badges but no explicit featured ordering, the first three earned badges are used as the default featured set.
+- The Badges tab shows visible earned badges sorted by featured order, then earned date.
+- Users can feature or unfeature up to three badges from their own public badge list.
+- Hidden badge API support exists for the featured endpoint, but full hidden-badge management UI is deferred.
+- Revoked badges are deleted from `user_badges` and do not render publicly.
 
-Recommended first badge sources:
+Implemented starter definitions:
 
-- `admin-granted` for trusted/manual status.
-- `system` for verified platform milestones that can be computed safely.
-- `room-earned` only after room membership/roles are implemented.
-- `event` only for time-limited community events with clear public criteria.
-- `social` only after follows/moots exist and abuse controls are in place.
+- `founder`
+- `early_user`
+- `bug_hunter`
+- `moderator`
+- `room_owner`
+- `mutual_magnet`
+
+These are seeded as badge definitions only. No user receives any of them unless a moderator/admin grants them.
+
+## Admin Grant Flow
+
+Moderators and admins can open `/admin`, use the Badge management panel, choose a badge definition, enter a handle, add an optional reason, and grant the badge. The grant records the granting account, reason, earned date, and visibility. Regranting an existing badge updates the grant metadata and makes it visible without creating duplicate user badge rows.
+
+Recent grants are shown in the same panel and can be revoked. Revoke removes the `user_badges` row.
+
+When notification storage is available, a first-time grant creates a private `badge_granted` notification for the recipient. Seed creation does not notify anyone.
 
 ## Follow and Moot Badge Ideas
 
@@ -173,10 +197,10 @@ Future candidates:
 
 ## Deferred Work
 
-- Badge schema and migrations.
-- Badge admin award/revoke flow.
 - Automatic criteria workers.
-- Profile badge featuring controls.
-- Profile editing UI and API.
-- Banner/theme/background customization.
+- Full hidden-badge management UI.
+- Badge editor UI for creating/updating definitions.
+- Criteria/progress JSON for transparent automatic badges.
+- Room-earned badge rules after room membership and roles exist.
+- Social badge rules after abuse controls and visibility rules are stronger.
 - Badge awarding from followers, following, moots, or rooms.

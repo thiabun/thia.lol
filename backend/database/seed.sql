@@ -49,6 +49,77 @@ ON DUPLICATE KEY UPDATE
   traits = VALUES(traits),
   updated_at = CURRENT_TIMESTAMP;
 
+INSERT INTO badges (badge_key, name, description, rarity, source, icon, accent, is_active)
+VALUES
+  (
+    'founder',
+    'Founder',
+    'Granted to people who helped establish thia.lol as a real community space.',
+    'founder',
+    'admin-granted',
+    'sparkles',
+    'founder',
+    1
+  ),
+  (
+    'early_user',
+    'Early User',
+    'Recognizes members who joined during the early platform era.',
+    'rare',
+    'admin-granted',
+    'calendar-days',
+    'sunveil',
+    1
+  ),
+  (
+    'bug_hunter',
+    'Bug Hunter',
+    'Granted for useful bug reports that improved the platform.',
+    'epic',
+    'admin-granted',
+    'bug',
+    'leaf',
+    1
+  ),
+  (
+    'moderator',
+    'Moderator',
+    'Identifies trusted members who help keep the platform safe and coherent.',
+    'legendary',
+    'admin-granted',
+    'shield',
+    'frostveil',
+    1
+  ),
+  (
+    'room_owner',
+    'Room Owner',
+    'Reserved for members who steward a public room with clear purpose.',
+    'rare',
+    'admin-granted',
+    'radio',
+    'cool',
+    1
+  ),
+  (
+    'mutual_magnet',
+    'Mutual Magnet',
+    'Recognizes members who build meaningful mutual connections without pressure loops.',
+    'epic',
+    'admin-granted',
+    'users',
+    'rose',
+    1
+  )
+ON DUPLICATE KEY UPDATE
+  name = VALUES(name),
+  description = VALUES(description),
+  rarity = VALUES(rarity),
+  source = VALUES(source),
+  icon = VALUES(icon),
+  accent = VALUES(accent),
+  is_active = VALUES(is_active);
+
 INSERT INTO rooms (
   slug,
   name,

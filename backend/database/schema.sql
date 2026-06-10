@@ -57,6 +57,46 @@ CREATE TABLE IF NOT EXISTS user_follows (
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS badges (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  badge_key VARCHAR(80) NOT NULL,
+  name VARCHAR(120) NOT NULL,
+  description TEXT NULL,
+  rarity VARCHAR(30) NOT NULL DEFAULT 'common',
+  source VARCHAR(40) NOT NULL DEFAULT 'system',
+  icon VARCHAR(80) NULL,
+  accent VARCHAR(50) NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY badges_badge_key_unique (badge_key),
+  KEY badges_active_rarity_idx (is_active, rarity),
+  KEY badges_source_idx (source)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_badges (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT UNSIGNED NOT NULL,
+  badge_id BIGINT UNSIGNED NOT NULL,
+  granted_by BIGINT UNSIGNED NULL,
+  reason VARCHAR(255) NULL,
+  earned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  featured_order INT NULL,
+  is_visible TINYINT(1) NOT NULL DEFAULT 1,
+  UNIQUE KEY user_badges_unique (user_id, badge_id),
+  KEY user_badges_user_id_idx (user_id),
+  KEY user_badges_badge_id_idx (badge_id),
+  KEY user_badges_featured_order_idx (featured_order),
+  CONSTRAINT user_badges_user_id_fk
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE CASCADE,
+  CONSTRAINT user_badges_badge_id_fk
+    FOREIGN KEY (badge_id) REFERENCES badges(id)
+    ON DELETE CASCADE,
+  CONSTRAINT user_badges_granted_by_fk
+    FOREIGN KEY (granted_by) REFERENCES users(id)
+    ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS rooms (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   slug VARCHAR(80) NOT NULL,

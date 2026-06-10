@@ -1,4 +1,5 @@
 import {
+  Award,
   CalendarDays,
   Link as LinkIcon,
   MapPin,
@@ -15,12 +16,13 @@ import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
 import { Button, ButtonLink } from "../ui/Button";
 import { Panel } from "../ui/Panel";
+import { cn } from "../../lib/classNames";
 import {
   cardEntrance,
   sectionItem,
   staggerChildren,
 } from "../../lib/motionPresets";
-import type { Profile } from "../../lib/types";
+import type { Profile, UserBadge } from "../../lib/types";
 
 type ProfileHeaderProps = {
   profile: Profile;
@@ -30,6 +32,7 @@ type ProfileHeaderProps = {
   messageToHandle?: string | undefined;
   onFollowToggle?: () => void;
   onEditProfile?: (() => void) | undefined;
+  featuredBadges?: UserBadge[] | undefined;
   showChatHint?: boolean;
 };
 
@@ -37,6 +40,7 @@ export function ProfileHeader({
   followError,
   followPosting = false,
   isOwnProfile = false,
+  featuredBadges = [],
   messageToHandle,
   onEditProfile,
   onFollowToggle,
@@ -184,6 +188,26 @@ export function ProfileHeader({
               ))}
             </motion.div>
           ) : null}
+          {featuredBadges.length > 0 ? (
+            <motion.div className="mt-5" variants={sectionItem}>
+              <h2 className="text-sm font-semibold text-text">Featured badges</h2>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {featuredBadges.map((userBadge) => (
+                  <span
+                    key={userBadge.id}
+                    className={cn(
+                      "inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-sm font-semibold shadow-soft",
+                      rarityClass(userBadge.badge.rarity),
+                    )}
+                    title={userBadge.badge.description ?? userBadge.badge.name}
+                  >
+                    <Award aria-hidden="true" size={16} />
+                    {userBadge.badge.name}
+                  </span>
+                ))}
+              </div>
+            </motion.div>
+          ) : null}
           <motion.div
             className="mt-6 grid grid-cols-2 gap-2 sm:max-w-2xl sm:grid-cols-4"
             variants={sectionItem}
@@ -282,4 +306,16 @@ function formatJoinedDate(value: string): string {
     month: "short",
     year: "numeric",
   }).format(parsed);
+}
+
+function rarityClass(rarity: UserBadge["badge"]["rarity"]): string {
+  const classes: Record<UserBadge["badge"]["rarity"], string> = {
+    common: "border-line bg-surface text-text",
+    rare: "border-cool/35 bg-cool/15 text-cool-ink",
+    epic: "border-rose/35 bg-rose/15 text-rose-ink",
+    legendary: "border-warm/40 bg-warm/20 text-warm-ink",
+    founder: "border-accent/45 bg-accent/15 text-accent-strong",
+  };
+
+  return classes[rarity];
 }

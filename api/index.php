@@ -12,6 +12,7 @@ require_once __DIR__ . '/follows.php';
 require_once __DIR__ . '/notifications.php';
 require_once __DIR__ . '/chat.php';
 require_once __DIR__ . '/moderation.php';
+require_once __DIR__ . '/badges.php';
 require_once __DIR__ . '/migrations.php';
 require_once __DIR__ . '/setup.php';
 
@@ -66,6 +67,14 @@ try {
         uploads_dispatch($segments, $method);
     }
 
+    if (($segments[0] ?? null) === 'badges') {
+        badges_dispatch($segments, $method);
+    }
+
+    if (($segments[0] ?? null) === 'me' && ($segments[1] ?? null) === 'badges') {
+        badges_dispatch($segments, $method);
+    }
+
     if (($segments[0] ?? null) === 'me') {
         me_dispatch($segments, $method);
     }
@@ -96,6 +105,10 @@ try {
 
     if (($segments[0] ?? null) === 'admin' && ($segments[1] ?? null) === 'migrations') {
         migrations_dispatch($segments, $method);
+    }
+
+    if (($segments[0] ?? null) === 'admin' && ($segments[1] ?? null) === 'badges') {
+        badges_dispatch($segments, $method);
     }
 
     if (($segments[0] ?? null) === 'admin') {
@@ -132,6 +145,10 @@ try {
 
     if (($segments[0] ?? null) === 'profiles' && count($segments) === 3 && $segments[2] === 'rooms') {
         profile_rooms_index($segments[1]);
+    }
+
+    if (($segments[0] ?? null) === 'profiles' && count($segments) === 3 && $segments[2] === 'badges') {
+        badges_dispatch($segments, $method);
     }
 
     if (($segments[0] ?? null) === 'rooms' && count($segments) === 1) {

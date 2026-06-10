@@ -5,7 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read.php';
 
-const NOTIFICATION_TYPES = ['follow', 'moot', 'like', 'reply', 'reblog', 'message'];
+const NOTIFICATION_TYPES = ['follow', 'moot', 'like', 'reply', 'reblog', 'message', 'badge_granted'];
 
 function notifications_dispatch(array $segments, string $method): void
 {
@@ -254,6 +254,8 @@ function notification_payload(array $row): array
     $post = notification_post_payload($row);
     $room = notification_room_payload($row);
 
+    $data = notification_data_payload($row['data'] ?? null);
+
     return [
         'id' => (int) $row['id'],
         'type' => $type,
@@ -262,8 +264,8 @@ function notification_payload(array $row): array
         'actor' => $actor,
         'post' => $post,
         'room' => $room,
-        'targetUrl' => notification_target_url($type, $actor, $post, $room),
-        'data' => notification_data_payload($row['data'] ?? null),
+        'targetUrl' => notification_target_url($type, $actor, $post, $room, $data),
+        'data' => $data,
     ];
 }
 
@@ -349,10 +351,14 @@ function notification_data_payload(mixed $value): ?array
     return is_array($decoded) ? $decoded : null;
 }
 
-function notification_target_url(string $type, ?array $actor, ?array $post, ?array $room): string
+function notification_target_url(string $type, ?array $actor, ?array $post, ?array $room, ?array $data): string
 {
     if ($type === 'message') {
         return '/chat';
+    }
+
+    if ($type === 'badge_granted' && is_string($data['profileHandle'] ?? null)) {
+        return '/@' . rawurlencode((string) $data['profileHandle']);
     }
 
     if (in_array($type, ['follow', 'moot'], true) && $actor !== null) {
