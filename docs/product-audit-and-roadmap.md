@@ -23,7 +23,7 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
   - `/api/health` and `/api/health?db=1`.
   - `/api/auth/register`, `/api/auth/login`, `/api/auth/logout`, `/api/auth/me`.
   - `/api/posts`, `/api/posts/:id`, `/api/posts/:id/replies`, `/api/posts/:id/like`, `/api/posts/:id/reactions`.
-  - `/api/profiles/:handle`, `/api/profiles/:handle/posts`.
+  - `/api/profiles/:handle`, `/api/profiles/:handle/posts`, `/api/profiles/:handle/follow`, `/api/profiles/:handle/followers`, `/api/profiles/:handle/following`.
   - `/api/rooms`, `/api/rooms/:slug`, `/api/rooms/:slug/posts`.
   - `/api/stats`.
   - `/api/reports`.
@@ -41,6 +41,7 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
   - `rooms`
   - `posts`
   - `post_reactions`
+  - `user_follows`
   - `sessions`
   - `auth_rate_limits`
   - `reports`
@@ -86,7 +87,8 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
 | Replies | Working, partial | Replies exist through `parent_id`, thread modal, reply creation, reply counts, and ordered reply loading. | No deep permalink/thread page, nested reply product decision, notification hooks, or moderation/visibility UX beyond inherited post systems. |
 | Reblogs | Partial, missing product | Migration exists for `post_reblogs`, but no visible UI or API dispatch for reblog actions was found in the current inventory. | Decide whether reblogs belong in the product, what they are called, where they appear, and how they differ from quotes/replies. |
 | Rooms | Partial, needs design/product decision | Public room list/detail pages, room search, room post feeds, room destination in composer, and room metadata exist. | No room creation UI, memberships, roles, moderators, rules, join/leave, private/member rooms, room moderation surface, or subreddit/community-style governance model. |
-| Profiles | Partial, foundation improved | Public profile pages show avatar, display name, handle, bio, location, links, joined date, public stats, posts, replies, rooms where present, and honest disabled/coming-later surfaces for unsupported areas. Registration creates a basic profile. See `docs/profile-badges-plan.md`. | No profile editing UI/API, banner/theme/background customization, privacy controls, pinned posts, badge persistence, follow/moot context, or rich identity controls. |
+| Profiles | Partial, foundation improved | Public profile pages show avatar, display name, handle, bio, location, links, joined date, public stats, posts, replies, rooms, follower/following/moot context, and honest disabled/coming-later surfaces for unsupported areas. Registration creates a basic profile. See `docs/profile-badges-plan.md`. | No profile editing UI/API, banner/theme/background customization, privacy controls, pinned posts, badge persistence, or rich identity controls. |
+| Follows/Moots | Working, foundation | Users can follow/unfollow active profiles, profile payloads expose follower/following/moot counts and current-user relationship state, and basic followers/following lists exist. | Needs remove-follower controls, block/mute, notifications, feed integration, and chat permission enforcement. |
 | Badges | Planned, no persistence yet | No badge/user badge tables exist. Profile UI has an honest Badges coming-later state, and the proposed badge/user-badge model is documented in `docs/profile-badges-plan.md`. | Add small schema, admin grant/revoke path, featured ordering, visibility controls, and transparent criteria only after the model is approved. |
 | Likes | Working, partial | Like/unlike maps to `post_reactions.type = glow`; UI shows like count and liked state. | Reaction naming is internally broader than UI. Needs transparent counts, optional hiding/muting decisions, anti-spam/rate-limit review, and adult-focused non-manipulative loop design. |
 | Admin/moderation | Working, partial | Reports can be created from posts; admins/moderators can view report queue, hide posts, suspend users, resolve/dismiss reports, and log moderation actions. | Admin still appears in desktop nav for admins and should move only into account popover. Needs appeal flow, policy pages, moderation transparency, audit views, and better user-facing report status decisions. |
@@ -277,11 +279,9 @@ Goal: make identity feel owned and expressive without becoming chaotic.
 
 Goal: create the graph that powers feeds, identity, and chat.
 
-- Add follow/unfollow.
-- Define and expose moots.
-- Add follower/following counts and profile context.
+- Follow/unfollow, mutual moot detection, profile counts, relationship context, and basic followers/following lists now exist.
 - Add remove follower/moot and safety controls as needed.
-- Prepare graph data for Home ranking and Chat permissions.
+- Use graph data later for Home ranking, Discover context, notifications, and Chat permissions.
 
 ### Phase 5: Discover/Home Algorithms
 

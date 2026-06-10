@@ -20,9 +20,28 @@ export type Profile = {
     replies: number;
     rooms: number;
     echoes: number;
+    followers: number;
+    following: number;
+    moots: number;
   };
+  followerCount: number;
+  followingCount: number;
+  mootCount: number;
+  isFollowing: boolean;
+  isFollowedBy: boolean;
+  isMoot: boolean;
   createdAt?: string | null;
   updatedAt?: string | null;
+};
+
+export type ProfileConnection = {
+  handle: string;
+  displayName: string;
+  initials: string;
+  avatarUrl?: string | null;
+  bioSnippet: string;
+  isFollowing: boolean;
+  isMoot: boolean;
 };
 
 export type Room = {

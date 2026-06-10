@@ -34,7 +34,6 @@ Not currently present:
 - profile background
 - structured social link objects
 - pinned posts
-- follow/follower tables
 - badge/user badge tables
 
 ### API
@@ -162,6 +161,16 @@ Recommended first badge sources:
 - `event` only for time-limited community events with clear public criteria.
 - `social` only after follows/moots exist and abuse controls are in place.
 
+## Follow and Moot Badge Ideas
+
+Follows and moots now provide enough graph data for future social badges, but badge awarding is still deferred until abuse controls, visibility rules, and transparent criteria are implemented.
+
+Future candidates:
+
+- `Early Follower`: followed a profile, room owner, or platform account during an early launch window with criteria shown publicly.
+- `Mutual Magnet`: has a meaningful number of mutual follows without relying on hidden ranking or pressure loops.
+- `Room Connector`: forms mutual connections through room participation after room membership and room roles exist.
+
 ## Deferred Work
 
 - Badge schema and migrations.
@@ -170,4 +179,4 @@ Recommended first badge sources:
 - Profile badge featuring controls.
 - Profile editing UI and API.
 - Banner/theme/background customization.
-- Followers/following stats.
+- Badge awarding from followers, following, moots, or rooms.

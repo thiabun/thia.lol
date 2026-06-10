@@ -6,6 +6,7 @@ require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read.php';
 require_once __DIR__ . '/posts.php';
+require_once __DIR__ . '/follows.php';
 require_once __DIR__ . '/moderation.php';
 require_once __DIR__ . '/migrations.php';
 require_once __DIR__ . '/setup.php';
@@ -55,6 +56,14 @@ try {
 
     if (($segments[0] ?? null) === 'posts' && in_array($method, ['GET', 'POST', 'PATCH', 'DELETE'], true)) {
         posts_dispatch($segments, $method);
+    }
+
+    if (
+        ($segments[0] ?? null) === 'profiles' &&
+        count($segments) === 3 &&
+        in_array($segments[2], ['follow', 'followers', 'following'], true)
+    ) {
+        follows_dispatch($segments, $method);
     }
 
     if (($segments[0] ?? null) === 'reports') {

@@ -1,6 +1,7 @@
 import type {
   Post,
   Profile,
+  ProfileConnection,
   PublicStats,
   ReactionCounts,
   Room,
@@ -64,6 +65,15 @@ export type LikeResult = {
   postId: number;
   likeCount: number;
   likedByCurrentUser: boolean;
+};
+
+export type FollowRelationship = {
+  isFollowing: boolean;
+  isFollowedBy: boolean;
+  isMoot: boolean;
+  followerCount: number;
+  followingCount: number;
+  mootCount?: number;
 };
 
 export type ReportReason =
@@ -178,6 +188,47 @@ export function getProfileRooms(handle: string): Promise<Room[]> {
   return apiGet<ApiRoom[]>(
     `/profiles/${encodeURIComponent(normalized)}/rooms`,
   ).then((items) => items.map(normalizeRoom));
+}
+
+export function getProfileFollowers(handle: string): Promise<ProfileConnection[]> {
+  const normalized = normalizeHandle(handle);
+
+  return apiGet<ProfileConnection[]>(
+    `/profiles/${encodeURIComponent(normalized)}/followers`,
+  );
+}
+
+export function getProfileFollowing(handle: string): Promise<ProfileConnection[]> {
+  const normalized = normalizeHandle(handle);
+
+  return apiGet<ProfileConnection[]>(
+    `/profiles/${encodeURIComponent(normalized)}/following`,
+  );
+}
+
+export function followProfile(
+  handle: string,
+  csrfToken: string,
+): Promise<FollowRelationship> {
+  const normalized = normalizeHandle(handle);
+
+  return apiPost<FollowRelationship>(
+    `/profiles/${encodeURIComponent(normalized)}/follow`,
+    {},
+    csrfToken,
+  );
+}
+
+export function unfollowProfile(
+  handle: string,
+  csrfToken: string,
+): Promise<FollowRelationship> {
+  const normalized = normalizeHandle(handle);
+
+  return apiDelete<FollowRelationship>(
+    `/profiles/${encodeURIComponent(normalized)}/follow`,
+    csrfToken,
+  );
 }
 
 export function createPost(
@@ -362,10 +413,23 @@ function normalizeProfile(profile: ApiProfile): Profile {
       replies: profile.stats.replies ?? 0,
       rooms: profile.stats.rooms,
       echoes: profile.stats.echoes,
+      followers: profile.stats.followers ?? profile.followerCount ?? 0,
+      following: profile.stats.following ?? profile.followingCount ?? 0,
+      moots: profile.stats.moots ?? profile.mootCount ?? 0,
     },
+    followerCount: profile.followerCount ?? profile.stats.followers ?? 0,
+    followingCount: profile.followingCount ?? profile.stats.following ?? 0,
+    mootCount: profile.mootCount ?? profile.stats.moots ?? 0,
+    isFollowing: profile.isFollowing ?? false,
+    isFollowedBy: profile.isFollowedBy ?? false,
+    isMoot: profile.isMoot ?? false,
     createdAt: profile.createdAt ?? null,
     updatedAt: profile.updatedAt ?? null,
   };
+}
+
+function normalizeHandle(handle: string): string {
+  return handle.replace(/^@/, "").toLowerCase();
 }
 
 function normalizePost(post: ApiPost): Post {

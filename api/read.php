@@ -77,8 +77,26 @@ function user_payload(array $row): array
     ];
 }
 
-function profile_payload(array $row, ?array $stats = null): array
+function profile_payload(array $row, ?array $stats = null, ?array $social = null): array
 {
+    $social = $social ?? [
+        'followerCount' => (int) ($row['follower_count'] ?? 0),
+        'followingCount' => (int) ($row['following_count'] ?? 0),
+        'mootCount' => (int) ($row['moot_count'] ?? 0),
+        'isFollowing' => (bool) ($row['is_following'] ?? false),
+        'isFollowedBy' => (bool) ($row['is_followed_by'] ?? false),
+        'isMoot' => (bool) ($row['is_moot'] ?? false),
+    ];
+    $stats = $stats ?? [
+        'posts' => (int) ($row['post_count'] ?? 0),
+        'replies' => (int) ($row['profile_reply_count'] ?? 0),
+        'rooms' => (int) ($row['room_count'] ?? 0),
+        'echoes' => (int) ($row['profile_echo_count'] ?? $row['echo_count'] ?? 0),
+    ];
+    $stats['followers'] = (int) $social['followerCount'];
+    $stats['following'] = (int) $social['followingCount'];
+    $stats['moots'] = (int) $social['mootCount'];
+
     return [
         'user' => user_payload($row),
         'bio' => (string) ($row['bio'] ?? ''),
@@ -86,12 +104,13 @@ function profile_payload(array $row, ?array $stats = null): array
         'avatarUrl' => $row['avatar_url'] ?? null,
         'links' => json_array_value($row['links'] ?? null),
         'traits' => json_array_value($row['traits'] ?? null),
-        'stats' => $stats ?? [
-            'posts' => (int) ($row['post_count'] ?? 0),
-            'replies' => (int) ($row['profile_reply_count'] ?? 0),
-            'rooms' => (int) ($row['room_count'] ?? 0),
-            'echoes' => (int) ($row['profile_echo_count'] ?? $row['echo_count'] ?? 0),
-        ],
+        'stats' => $stats,
+        'followerCount' => (int) $social['followerCount'],
+        'followingCount' => (int) $social['followingCount'],
+        'mootCount' => (int) $social['mootCount'],
+        'isFollowing' => (bool) $social['isFollowing'],
+        'isFollowedBy' => (bool) $social['isFollowedBy'],
+        'isMoot' => (bool) $social['isMoot'],
         'createdAt' => $row['profile_created_at'] ?? null,
         'updatedAt' => $row['profile_updated_at'] ?? null,
     ];
@@ -191,12 +210,123 @@ function current_request_user_id(): ?int
     return $userId;
 }
 
+function user_follows_table_exists(): bool
+{
+    static $exists = null;
+
+    if (is_bool($exists)) {
+        return $exists;
+    }
+
+    $statement = db_query(
+        "SELECT COUNT(*) AS table_count
+         FROM INFORMATION_SCHEMA.TABLES
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'user_follows'"
+    );
+    $row = $statement->fetch();
+    $exists = is_array($row) && (int) ($row['table_count'] ?? 0) > 0;
+
+    return $exists;
+}
+
+function profile_social_context(int $profileUserId, ?int $viewerUserId = null): array
+{
+    $context = [
+        'followerCount' => 0,
+        'followingCount' => 0,
+        'mootCount' => 0,
+        'isFollowing' => false,
+        'isFollowedBy' => false,
+        'isMoot' => false,
+    ];
+
+    if (!user_follows_table_exists()) {
+        return $context;
+    }
+
+    $statement = db_query(
+        "SELECT
+            (
+                SELECT COUNT(*)
+                FROM user_follows followers
+                INNER JOIN users follower_users ON follower_users.id = followers.follower_id
+                WHERE followers.following_id = :profile_user_id_followers
+                  AND follower_users.status = 'active'
+            ) AS follower_count,
+            (
+                SELECT COUNT(*)
+                FROM user_follows following
+                INNER JOIN users following_users ON following_users.id = following.following_id
+                WHERE following.follower_id = :profile_user_id_following
+                  AND following_users.status = 'active'
+            ) AS following_count,
+            (
+                SELECT COUNT(*)
+                FROM user_follows moots
+                INNER JOIN user_follows reciprocal
+                  ON reciprocal.follower_id = moots.following_id
+                 AND reciprocal.following_id = moots.follower_id
+                INNER JOIN users moot_users ON moot_users.id = moots.following_id
+                WHERE moots.follower_id = :profile_user_id_moots
+                  AND moot_users.status = 'active'
+            ) AS moot_count",
+        [
+            'profile_user_id_followers' => $profileUserId,
+            'profile_user_id_following' => $profileUserId,
+            'profile_user_id_moots' => $profileUserId,
+        ]
+    );
+    $row = $statement->fetch();
+
+    if (is_array($row)) {
+        $context['followerCount'] = (int) ($row['follower_count'] ?? 0);
+        $context['followingCount'] = (int) ($row['following_count'] ?? 0);
+        $context['mootCount'] = (int) ($row['moot_count'] ?? 0);
+    }
+
+    if ($viewerUserId === null || $viewerUserId === $profileUserId) {
+        return $context;
+    }
+
+    $relationship = db_query(
+        "SELECT
+            EXISTS (
+                SELECT 1
+                FROM user_follows
+                WHERE follower_id = :viewer_user_id_following
+                  AND following_id = :profile_user_id_following
+            ) AS is_following,
+            EXISTS (
+                SELECT 1
+                FROM user_follows
+                WHERE follower_id = :profile_user_id_followed_by
+                  AND following_id = :viewer_user_id_followed_by
+            ) AS is_followed_by",
+        [
+            'profile_user_id_following' => $profileUserId,
+            'viewer_user_id_following' => $viewerUserId,
+            'profile_user_id_followed_by' => $profileUserId,
+            'viewer_user_id_followed_by' => $viewerUserId,
+        ]
+    )->fetch();
+
+    if (is_array($relationship)) {
+        $context['isFollowing'] = (bool) ($relationship['is_following'] ?? false);
+        $context['isFollowedBy'] = (bool) ($relationship['is_followed_by'] ?? false);
+        $context['isMoot'] = $context['isFollowing'] && $context['isFollowedBy'];
+    }
+
+    return $context;
+}
+
 function fetch_profile_by_handle(string $handle): ?array
 {
     $statement = db_query(
         "SELECT
             u.id AS user_id,
             u.handle,
+            u.status AS user_status,
             p.display_name,
             p.bio,
             p.location,
@@ -664,7 +794,11 @@ function profiles_show(string $handle): void
         json_error('Profile not found.', 404);
     }
 
-    json_success(profile_payload($profile));
+    json_success(profile_payload(
+        $profile,
+        null,
+        profile_social_context((int) $profile['user_id'], current_request_user_id())
+    ));
 }
 
 function profile_posts_index(string $handle): void

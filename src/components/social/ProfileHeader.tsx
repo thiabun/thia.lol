@@ -6,6 +6,9 @@ import {
   Radio,
   Reply,
   Sparkles,
+  UserCheck,
+  UserPlus,
+  Users,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { Avatar } from "../ui/Avatar";
@@ -21,11 +24,21 @@ import type { Profile } from "../../lib/types";
 
 type ProfileHeaderProps = {
   profile: Profile;
+  followError?: string | undefined;
+  followPosting?: boolean;
   isOwnProfile?: boolean;
+  onFollowToggle?: () => void;
 };
 
-export function ProfileHeader({ isOwnProfile = false, profile }: ProfileHeaderProps) {
+export function ProfileHeader({
+  followError,
+  followPosting = false,
+  isOwnProfile = false,
+  onFollowToggle,
+  profile,
+}: ProfileHeaderProps) {
   const links = profile.links.map(normalizeExternalLink).filter(isProfileLink);
+  const followLabel = profile.isFollowing ? "Following" : "Follow";
 
   return (
     <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
@@ -43,12 +56,37 @@ export function ProfileHeader({ isOwnProfile = false, profile }: ProfileHeaderPr
               size="lg"
               className="size-24 border-4 border-surface text-2xl"
             />
-            {isOwnProfile ? (
-              <Button type="button" variant="secondary" disabled>
-                Edit profile
-              </Button>
-            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              {!isOwnProfile && profile.isMoot ? <Badge>Moot</Badge> : null}
+              {isOwnProfile ? (
+                <Button type="button" variant="secondary" disabled>
+                  Edit profile
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant={profile.isFollowing ? "secondary" : "primary"}
+                  disabled={followPosting}
+                  data-testid="profile-follow-button"
+                  icon={
+                    profile.isFollowing ? (
+                      <UserCheck aria-hidden="true" size={17} />
+                    ) : (
+                      <UserPlus aria-hidden="true" size={17} />
+                    )
+                  }
+                  onClick={onFollowToggle}
+                >
+                  {followPosting ? "Saving" : followLabel}
+                </Button>
+              )}
+            </div>
           </div>
+          {followError ? (
+            <motion.p className="mt-3 text-sm text-rose" variants={sectionItem}>
+              {followError}
+            </motion.p>
+          ) : null}
           <motion.div className="mt-4" variants={sectionItem}>
             <h1 className="text-2xl font-semibold tracking-normal text-text">
               {profile.user.displayName}
@@ -109,6 +147,9 @@ export function ProfileHeader({ isOwnProfile = false, profile }: ProfileHeaderPr
             <ProfileStat label="Replies" value={profile.stats.replies} icon={Reply} />
             <ProfileStat label="Rooms" value={profile.stats.rooms} icon={Radio} />
             <ProfileStat label="Reactions" value={profile.stats.echoes} icon={Sparkles} />
+            <ProfileStat label="Followers" value={profile.stats.followers} icon={Users} />
+            <ProfileStat label="Following" value={profile.stats.following} icon={UserCheck} />
+            <ProfileStat label="Moots" value={profile.stats.moots} icon={UserPlus} />
           </motion.div>
         </motion.div>
       </Panel>
