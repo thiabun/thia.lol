@@ -1,0 +1,67 @@
+name: Bug report
+description: Report something broken, confusing, or weird on thia.lol
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing thia.lol. Please do not include passwords, session cookies, database details, migration tokens, or private messages.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug clearly.
+      placeholder: I clicked..., expected..., but...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: What should have happened instead?
+    validations:
+      required: true
+  - type: input
+    id: page
+    attributes:
+      label: Page or route
+      placeholder: /rooms, /@thia, /chat, etc.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Profiles
+        - Posts / threads / replies
+        - Rooms
+        - Chat
+        - Uploads
+        - Notifications
+        - Badges
+        - Admin / moderation
+        - Legal / footer / copy
+        - Mobile layout
+        - Performance
+        - Other
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to...
+        2. Click...
+        3. See...
+  - type: input
+    id: device
+    attributes:
+      label: Device/browser
+      placeholder: iPhone Safari, Chrome desktop, etc.
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or recordings
+      description: Drag images/video here if useful.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Extra notes
