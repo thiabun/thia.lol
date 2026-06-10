@@ -193,19 +193,29 @@ export type FollowRelationship = {
   mootCount?: number;
 };
 
-export type ReportReason =
-  | "spam"
+export type ReportTargetType = "post" | "profile" | "room" | "message";
+
+export type ReportCategory =
   | "harassment"
-  | "abuse"
+  | "hate"
+  | "sexual_content"
+  | "non_consensual_content"
+  | "private_info"
+  | "spam_or_scam"
+  | "impersonation"
+  | "copyright"
+  | "violence_or_threats"
   | "self_harm"
-  | "illegal"
+  | "illegal_content"
   | "other";
+
+export type ReportReason = ReportCategory;
 
 export type ModerationReportStatus =
   | "open"
-  | "reviewing"
-  | "resolved"
-  | "dismissed";
+  | "reviewed"
+  | "dismissed"
+  | "actioned";
 
 export type ModerationUser = {
   id: number;
@@ -226,12 +236,17 @@ export type ModerationPost = {
 
 export type ModerationReport = {
   id: number;
+  targetType: ReportTargetType;
+  targetId: number | null;
+  category: ReportCategory;
   reason: ReportReason;
   details: string | null;
   status: ModerationReportStatus;
   createdAt: string;
   updatedAt: string;
   reviewedAt: string | null;
+  actionTaken: string | null;
+  moderatorNote: string | null;
   reporter: ModerationUser | null;
   reportedUser: ModerationUser | null;
   reviewedBy: ModerationUser | null;
@@ -240,7 +255,9 @@ export type ModerationReport = {
 };
 
 export type CreateReportInput = {
-  reason: ReportReason;
+  targetType: ReportTargetType;
+  targetId: number;
+  category: ReportCategory;
   details?: string;
   postId?: number;
   reportedUserId?: number;
@@ -632,7 +649,11 @@ export function createReport(
   input: CreateReportInput,
   csrfToken: string,
 ): Promise<ModerationReport> {
-  const body: Record<string, unknown> = { reason: input.reason };
+  const body: Record<string, unknown> = {
+    targetType: input.targetType,
+    targetId: input.targetId,
+    category: input.category,
+  };
 
   if (input.details) {
     body.details = input.details;
@@ -708,6 +729,18 @@ export function hideAdminPost(
   );
 }
 
+export function removeAdminPost(
+  postId: number,
+  input: AdminActionInput,
+  csrfToken: string,
+): Promise<{ id: number; status: "removed" }> {
+  return apiPost<{ id: number; status: "removed" }>(
+    `/admin/posts/${postId}/remove`,
+    adminActionBody(input),
+    csrfToken,
+  );
+}
+
 export function suspendAdminUser(
   userId: number,
   input: AdminActionInput,
@@ -722,7 +755,7 @@ export function suspendAdminUser(
 
 export function resolveAdminReport(
   reportId: number,
-  input: AdminActionInput & { status?: "resolved" | "dismissed" },
+  input: AdminActionInput & { status?: "reviewed" | "dismissed" | "actioned" },
   csrfToken: string,
 ): Promise<ModerationReport> {
   return apiPost<ModerationReport>(
@@ -988,7 +1021,7 @@ function formatRelativeTime(value: string): string {
 }
 
 function adminActionBody(
-  input: AdminActionInput & { status?: "resolved" | "dismissed" },
+  input: AdminActionInput & { status?: "reviewed" | "dismissed" | "actioned" },
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {};
 

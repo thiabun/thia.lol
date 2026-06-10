@@ -36,6 +36,14 @@ function admin_dispatch(array $segments, string $method): void
         json_error('Method not allowed.', 405);
     }
 
+    if (count($segments) === 4 && $segments[1] === 'posts' && preg_match('/^\d+$/', $segments[2]) === 1 && $segments[3] === 'remove') {
+        if ($method === 'POST') {
+            admin_posts_remove((int) $segments[2]);
+        }
+
+        json_error('Method not allowed.', 405);
+    }
+
     if (count($segments) === 4 && $segments[1] === 'users' && preg_match('/^\d+$/', $segments[2]) === 1 && $segments[3] === 'suspend') {
         if ($method === 'POST') {
             admin_users_suspend((int) $segments[2]);
@@ -61,16 +69,40 @@ function reports_create(): void
     require_csrf_token($session);
 
     $body = auth_json_body();
-    $reason = moderation_reason($body['reason'] ?? null);
+    $category = moderation_report_category($body['category'] ?? $body['reason'] ?? null);
     $details = moderation_optional_text($body['details'] ?? null, 2000, 'Report details');
+    $targetType = moderation_target_type($body['targetType'] ?? $body['target_type'] ?? null);
+    $targetId = moderation_optional_id($body['targetId'] ?? $body['target_id'] ?? null, 'Target id');
     $postId = moderation_optional_id($body['postId'] ?? $body['post_id'] ?? null, 'Post id');
     $reportedUserId = moderation_optional_id($body['reportedUserId'] ?? $body['reported_user_id'] ?? null, 'Reported user id');
 
-    if ($postId === null && $reportedUserId === null) {
+    if ($targetType === null && $postId !== null) {
+        $targetType = 'post';
+    }
+
+    if ($targetType === null && $reportedUserId !== null) {
+        $targetType = 'profile';
+    }
+
+    if ($targetType === null) {
         json_error('Report target is required.', 422);
     }
 
-    if ($postId !== null) {
+    if ($targetType === 'room') {
+        json_error('Room reports are not available yet.', 422);
+    }
+
+    if ($targetType === 'message') {
+        json_error('Message reports are not available yet.', 422);
+    }
+
+    if ($targetType === 'post') {
+        $postId ??= $targetId;
+
+        if ($postId === null) {
+            json_error('Post id is required.', 422);
+        }
+
         $post = moderation_post_record($postId);
 
         if ($post === null || $post['deleted_at'] !== null || (string) $post['visibility'] !== 'public') {
@@ -78,20 +110,35 @@ function reports_create(): void
         }
 
         $reportedUserId ??= (int) $post['author_id'];
+        $targetId = $postId;
     }
 
-    if ($reportedUserId !== null && moderation_user_record($reportedUserId) === null) {
-        json_error('Reported user not found.', 404);
+    if ($targetType === 'profile') {
+        $reportedUserId ??= $targetId;
+
+        if ($reportedUserId === null) {
+            json_error('Profile id is required.', 422);
+        }
+
+        if (moderation_user_record($reportedUserId) === null) {
+            json_error('Profile not found.', 404);
+        }
+
+        $targetId = $reportedUserId;
+    } elseif ($reportedUserId !== null && moderation_user_record($reportedUserId) === null) {
+        json_error('Reported profile not found.', 404);
     }
 
     db_query(
-        'INSERT INTO reports (reporter_id, reported_user_id, post_id, reason, details, status)
-         VALUES (:reporter_id, :reported_user_id, :post_id, :reason, :details, :status)',
+        'INSERT INTO reports (target_type, target_id, reporter_id, reported_user_id, post_id, category, details, status)
+         VALUES (:target_type, :target_id, :reporter_id, :reported_user_id, :post_id, :category, :details, :status)',
         [
+            'target_type' => $targetType,
+            'target_id' => $targetId,
             'reporter_id' => (int) $session['user_id'],
             'reported_user_id' => $reportedUserId,
             'post_id' => $postId,
-            'reason' => $reason,
+            'category' => $category,
             'details' => $details,
             'status' => 'open',
         ]
@@ -106,7 +153,7 @@ function admin_reports_index(): void
 
     $statement = db_query(
         moderation_report_select_sql() . "
-        ORDER BY FIELD(rep.status, 'open', 'reviewing', 'resolved', 'dismissed'), rep.created_at DESC
+        ORDER BY FIELD(rep.status, 'open', 'reviewed', 'actioned', 'dismissed'), rep.created_at DESC
         LIMIT 100"
     );
 
@@ -199,9 +246,59 @@ function admin_posts_hide(int $postId): void
         'notes' => $notes,
     ]);
 
+    if ($reportId !== null) {
+        moderation_report_actioned($reportId, $session, 'hide_post', $notes);
+    }
+
     json_success([
         'id' => $postId,
         'status' => 'hidden',
+    ]);
+}
+
+function admin_posts_remove(int $postId): void
+{
+    $session = require_moderator_session();
+    require_csrf_token($session);
+
+    $body = auth_json_body();
+    $post = moderation_post_record($postId);
+
+    if ($post === null) {
+        json_error('Post not found.', 404);
+    }
+
+    $reportId = moderation_optional_id($body['reportId'] ?? $body['report_id'] ?? null, 'Report id');
+    $notes = moderation_optional_text($body['notes'] ?? null, 2000, 'Moderation notes');
+
+    if ($reportId !== null && moderation_report_exists($reportId) === false) {
+        json_error('Report not found.', 404);
+    }
+
+    db_query(
+        "UPDATE posts
+         SET status = 'removed',
+             deleted_at = CURRENT_TIMESTAMP(),
+             updated_at = CURRENT_TIMESTAMP()
+         WHERE id = :id",
+        ['id' => $postId]
+    );
+
+    moderation_action_log($session, [
+        'action' => 'remove_post',
+        'report_id' => $reportId,
+        'target_user_id' => (int) $post['author_id'],
+        'target_post_id' => $postId,
+        'notes' => $notes,
+    ]);
+
+    if ($reportId !== null) {
+        moderation_report_actioned($reportId, $session, 'remove_post', $notes);
+    }
+
+    json_success([
+        'id' => $postId,
+        'status' => 'removed',
     ]);
 }
 
@@ -249,6 +346,10 @@ function admin_users_suspend(int $userId): void
         'notes' => $notes,
     ]);
 
+    if ($reportId !== null) {
+        moderation_report_actioned($reportId, $session, 'suspend_user', $notes);
+    }
+
     json_success(moderation_user_payload(moderation_user_record($userId), 'target'));
 }
 
@@ -264,16 +365,22 @@ function admin_reports_resolve(int $reportId): void
     $body = auth_json_body();
     $status = moderation_report_resolution_status($body['status'] ?? null);
     $notes = moderation_optional_text($body['notes'] ?? null, 2000, 'Resolution notes');
+    $actionTaken = $status === 'dismissed' ? 'dismiss_report' : ($body['actionTaken'] ?? $body['action_taken'] ?? 'mark_reviewed');
+    $actionTaken = moderation_optional_text($actionTaken, 120, 'Action taken') ?? ($status === 'dismissed' ? 'dismiss_report' : 'mark_reviewed');
 
     db_query(
         'UPDATE reports
          SET status = :status,
              reviewed_by = :reviewed_by,
-             reviewed_at = CURRENT_TIMESTAMP()
+             reviewed_at = CURRENT_TIMESTAMP(),
+             action_taken = :action_taken,
+             moderator_note = :moderator_note
          WHERE id = :id',
         [
             'status' => $status,
             'reviewed_by' => (int) $session['user_id'],
+            'action_taken' => $actionTaken,
+            'moderator_note' => $notes,
             'id' => $reportId,
         ]
     );
@@ -284,7 +391,7 @@ function admin_reports_resolve(int $reportId): void
         'report_id' => $reportId,
         'target_user_id' => $report['reported_user_id'] === null ? null : (int) $report['reported_user_id'],
         'target_post_id' => $report['post_id'] === null ? null : (int) $report['post_id'],
-        'notes' => $notes ?? ($status === 'dismissed' ? 'Report dismissed.' : 'Report resolved.'),
+        'notes' => $notes ?? ($status === 'dismissed' ? 'Report dismissed.' : 'Report reviewed.'),
     ]);
 
     json_success(moderation_report_by_id($reportId));
@@ -301,12 +408,54 @@ function require_moderator_session(): array
     return $session;
 }
 
-function moderation_reason(mixed $value): string
+function moderation_report_category(mixed $value): string
 {
-    $allowedReasons = ['spam', 'harassment', 'abuse', 'self_harm', 'illegal', 'other'];
+    $legacyCategories = [
+        'spam' => 'spam_or_scam',
+        'abuse' => 'harassment',
+        'illegal' => 'illegal_content',
+    ];
 
-    if (!is_string($value) || !in_array($value, $allowedReasons, true)) {
-        json_error('Report reason is required.', 422);
+    if (is_string($value) && array_key_exists($value, $legacyCategories)) {
+        return $legacyCategories[$value];
+    }
+
+    $allowedCategories = [
+        'harassment',
+        'hate',
+        'sexual_content',
+        'non_consensual_content',
+        'private_info',
+        'spam_or_scam',
+        'impersonation',
+        'copyright',
+        'violence_or_threats',
+        'self_harm',
+        'illegal_content',
+        'other',
+    ];
+
+    if (!is_string($value) || !in_array($value, $allowedCategories, true)) {
+        json_error('Report category is required.', 422);
+    }
+
+    return $value;
+}
+
+function moderation_target_type(mixed $value): ?string
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    if ($value === 'user') {
+        return 'profile';
+    }
+
+    $allowedTargetTypes = ['post', 'profile', 'room', 'message'];
+
+    if (!is_string($value) || !in_array($value, $allowedTargetTypes, true)) {
+        json_error('Report target is invalid.', 422);
     }
 
     return $value;
@@ -315,11 +464,15 @@ function moderation_reason(mixed $value): string
 function moderation_report_resolution_status(mixed $value): string
 {
     if ($value === null || $value === '') {
-        return 'resolved';
+        return 'reviewed';
     }
 
-    if (!is_string($value) || !in_array($value, ['resolved', 'dismissed'], true)) {
-        json_error('Report status must be resolved or dismissed.', 422);
+    if ($value === 'resolved') {
+        return 'reviewed';
+    }
+
+    if (!is_string($value) || !in_array($value, ['reviewed', 'dismissed', 'actioned'], true)) {
+        json_error('Report status must be reviewed, dismissed, or actioned.', 422);
     }
 
     return $value;
@@ -406,7 +559,7 @@ function moderation_user_record(int $userId): ?array
 function moderation_report_record(int $reportId): array
 {
     $statement = db_query(
-        'SELECT id, reported_user_id, post_id
+        'SELECT id, target_type, target_id, reported_user_id, post_id
          FROM reports
          WHERE id = :id
          LIMIT 1',
@@ -465,16 +618,40 @@ function moderation_action_log(array $session, array $action): void
     );
 }
 
+function moderation_report_actioned(int $reportId, array $session, string $actionTaken, ?string $notes): void
+{
+    db_query(
+        'UPDATE reports
+         SET status = :status,
+             reviewed_by = :reviewed_by,
+             reviewed_at = CURRENT_TIMESTAMP(),
+             action_taken = :action_taken,
+             moderator_note = :moderator_note
+         WHERE id = :id',
+        [
+            'status' => 'actioned',
+            'reviewed_by' => (int) $session['user_id'],
+            'action_taken' => $actionTaken,
+            'moderator_note' => $notes,
+            'id' => $reportId,
+        ]
+    );
+}
+
 function moderation_report_select_sql(): string
 {
     return "SELECT
         rep.id AS report_id,
-        rep.reason AS report_reason,
+        rep.target_type AS report_target_type,
+        rep.target_id AS report_target_id,
+        rep.category AS report_category,
         rep.details AS report_details,
         rep.status AS report_status,
         rep.created_at AS report_created_at,
         rep.updated_at AS report_updated_at,
         rep.reviewed_at AS report_reviewed_at,
+        rep.action_taken AS report_action_taken,
+        rep.moderator_note AS report_moderator_note,
         reporter.id AS reporter_user_id,
         reporter.handle AS reporter_handle,
         reporter.role AS reporter_role,
@@ -504,11 +681,11 @@ function moderation_report_select_sql(): string
     FROM reports rep
     LEFT JOIN users reporter ON reporter.id = rep.reporter_id
     LEFT JOIN profiles reporter_profile ON reporter_profile.user_id = reporter.id
-    LEFT JOIN users reported ON reported.id = rep.reported_user_id
+    LEFT JOIN users reported ON reported.id = COALESCE(rep.reported_user_id, IF(rep.target_type = 'profile', rep.target_id, NULL))
     LEFT JOIN profiles reported_profile ON reported_profile.user_id = reported.id
     LEFT JOIN users reviewer ON reviewer.id = rep.reviewed_by
     LEFT JOIN profiles reviewer_profile ON reviewer_profile.user_id = reviewer.id
-    LEFT JOIN posts p ON p.id = rep.post_id
+    LEFT JOIN posts p ON p.id = COALESCE(rep.post_id, IF(rep.target_type = 'post', rep.target_id, NULL))
     LEFT JOIN users post_author ON post_author.id = p.author_id
     LEFT JOIN profiles post_author_profile ON post_author_profile.user_id = post_author.id
     LEFT JOIN (
@@ -523,12 +700,17 @@ function moderation_report_payload(array $row): array
 {
     return [
         'id' => (int) $row['report_id'],
-        'reason' => (string) $row['report_reason'],
+        'targetType' => (string) $row['report_target_type'],
+        'targetId' => $row['report_target_id'] === null ? null : (int) $row['report_target_id'],
+        'category' => (string) $row['report_category'],
+        'reason' => (string) $row['report_category'],
         'details' => $row['report_details'] ?? null,
         'status' => (string) $row['report_status'],
         'createdAt' => $row['report_created_at'],
         'updatedAt' => $row['report_updated_at'],
         'reviewedAt' => $row['report_reviewed_at'] ?? null,
+        'actionTaken' => $row['report_action_taken'] ?? null,
+        'moderatorNote' => $row['report_moderator_note'] ?? null,
         'reporter' => moderation_user_payload($row, 'reporter'),
         'reportedUser' => moderation_user_payload($row, 'reported'),
         'reviewedBy' => moderation_user_payload($row, 'reviewer'),

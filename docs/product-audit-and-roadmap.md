@@ -57,6 +57,14 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
   - `20260609_0002_add_post_reblogs.sql`
   - `20260609_0003_fix_session_expiry_datetime.sql`
   - `20260610_0001_clean_starter_copy.sql`
+  - `20260610_0002_add_user_follows.sql`
+  - `20260610_0003_add_notifications.sql`
+  - `20260610_0004_add_post_reblogs_created_at_index.sql`
+  - `20260610_0005_add_chat_direct_messages.sql`
+  - `20260610_0006_add_profile_customization_fields.sql`
+  - `20260610_0007_add_badges.sql`
+  - `20260610_0008_add_rooms_2_foundation.sql`
+  - `20260610_0009_moderation_reports_2_foundation.sql`
 - Reblog migration exists and Phase 7 wires a real reblog product flow.
 
 ### Deployment
@@ -97,7 +105,7 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
 | Badges | Working, v1 foundation | `badges` and `user_badges` persist real badge definitions and earned grants. Starter definitions are seeded without fake user grants. Public endpoints expose definitions and profile badges, users can feature badges, admins/moderators can grant/revoke badges, profile headers show featured badges, the Badges tab shows earned badges, and badge grants create notifications when notification storage is available. | Automatic earning rules, full hidden-badge management UI, definition editor UI, room-earned/social criteria, and abuse-resistant criteria/progress models are deferred. |
 | Likes | Working, partial | Like/unlike maps to `post_reactions.type = glow`; UI shows like count and liked state. | Reaction naming is internally broader than UI. Needs transparent counts, optional hiding/muting decisions, anti-spam/rate-limit review, and adult-focused non-manipulative loop design. |
 | Notifications | Working, foundation | Private notifications exist for follows, moots, likes, replies, reblogs, messages, and badge grants. Authenticated users can view notifications, see unread count, mark one read, and mark all read. | Needs push/email decisions, notification preferences, richer grouping, pagination, read-on-open behavior decisions, and safety controls around high-volume activity. |
-| Admin/moderation | Working, partial | Reports can be created from posts; admins/moderators can view report queue, hide posts, suspend users, resolve/dismiss reports, and log moderation actions. | Admin still appears in desktop nav for admins and should move only into account popover. Needs appeal flow, policy pages, moderation transparency, audit views, and better user-facing report status decisions. |
+| Admin/moderation | Working, v2 foundation | Reports can be created from posts with structured target, category, details, reporter, and timestamp fields. Admins/moderators can view open reports first, see category, target type, target summary, reporter/reported summaries, created date, status, details, moderator notes, and action counts. Admins/moderators can mark reports reviewed, dismiss reports, hide/remove reported posts, suspend reported users, and mark linked reports actioned. | Appeals, profile/room/message report UI, room owner/mod queues, room bans/mutes, advanced audit logs, law-enforcement/legal request workflows, admin notification routing, and public report-status views are deferred. |
 | Discover/Home | Working, foundation | Home uses `/api/feed/home` for a personalized ranked feed when logged in and a general ranked feed when logged out. Discover uses `/api/feed/discover` for ranked public posts plus active rooms and people to watch only when backed by real data. | Needs user feed controls, chronological mode, hide/mute/block controls, joined-room weighting after memberships exist, and better transparency surfaces. |
 | Chat/DMs | Working, v1 foundation | `/chat` is a real private 1:1 direct-message surface for moots only. Conversation/message tables exist, API endpoints enforce authentication and membership, and profiles show Message only for moot relationships. | Attachments, post/room sharing, group chats, push/email notifications, realtime polling/WebSockets, message reporting, blocking, deletion, retention controls, and broader request/inbox behavior are deferred. |
 | Legal/cookies/copyright pages | Working, v1 foundation | Public Terms, Privacy Policy, Cookie Policy, Community Guidelines, Copyright/Takedown Policy, Moderation Policy, and Legal Contact pages exist at top-level routes with `/legal` as the policy index/contact page. Footer links, account-popover legal link, report-form policy links, and a discreet localStorage-backed cookie notice are implemented. | Needs legal review, self-service data export, fuller deletion workflows, automated appeals, advanced age/region controls, and deeper retention/account-control decisions. |
@@ -439,6 +447,27 @@ Goal: make the public trust layer match the product.
   - full moderation appeal/status system.
   - advanced age and region controls.
   - optional-cookie consent preferences if analytics or marketing tools are introduced later.
+
+### Phase 10: Moderation / Reports 2.0 Foundation
+
+Goal: make reporting structured enough for practical admin review without building a full case-management system.
+
+- Foundation implemented:
+  - Report categories are standardized as `harassment`, `hate`, `sexual_content`, `non_consensual_content`, `private_info`, `spam_or_scam`, `impersonation`, `copyright`, `violence_or_threats`, `self_harm`, `illegal_content`, and `other`.
+  - Post report UI asks "What's wrong?", captures optional details, shows a clear "Report sent" success state, and links to `/community-guidelines`, `/moderation`, and `/copyright` when copyright is selected.
+  - `/api/reports` accepts `targetType`, `targetId`, `category`, and optional `details`; old `reason` values map into canonical categories for compatibility.
+  - Post reports are implemented. Existing profile/user reporting remains API-compatible but no public profile report UI is exposed yet.
+  - Room and message targets are intentionally deferred and rejected by the API until their moderation context is designed.
+  - `/api/admin/reports` is limited to admins/moderators and returns category, target, reporter, reported user, post summary, review, action, and note fields.
+  - Admins/moderators can mark reports reviewed, dismiss reports, hide or remove reported posts, and suspend reported users. Hide/remove/suspend actions mark linked reports as `actioned`.
+  - Report statuses are `open`, `reviewed`, `dismissed`, and `actioned`.
+- Deferred:
+  - Appeals and user-visible report/action status.
+  - Public profile, room, and message report UI.
+  - Room owner/mod report queues, room bans, room mutes, and room-specific enforcement logs.
+  - Advanced immutable audit logs, moderation analytics, and transparency exports.
+  - Law-enforcement, legal request, emergency escalation, and rights-holder workflow tooling.
+  - Admin/mod notification routing for new reports.
 
 ## 8. Immediate Non-Feature Follow-Ups
 

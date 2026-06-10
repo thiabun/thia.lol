@@ -320,7 +320,7 @@ const policies: Record<string, PolicyPageContent> = {
       },
       {
         title: "Reporting and enforcement",
-        body: "Use the report tools where available or contact us through the Legal Contact page. Moderation actions may include removing or hiding content, restricting accounts, suspending accounts, resolving reports, or taking room-level action.",
+        body: "Use the report tools where available or contact us through the Legal Contact page. Report categories include harassment, hate or abuse, non-consensual content, private information, spam or scam, copyright, threats, self-harm, illegal content, and other rule-breaking behavior. Moderation actions may include removing or hiding content, restricting accounts, suspending accounts, reviewing or dismissing reports, or taking room-level action when those tools exist.",
       },
     ],
   },
@@ -382,8 +382,8 @@ const policies: Record<string, PolicyPageContent> = {
         title: "Report flow",
         items: [
           "Logged-in users can report posts where report tools are available.",
-          "Reports ask for a reason and optional context so moderators can compare the issue with the Community Guidelines.",
-          "If a built-in report tool is not available for a concern, use the Legal Contact page and include links, handles, screenshots if useful, and a plain explanation.",
+          "Reports ask for a category and optional context so moderators can compare the issue with the Community Guidelines.",
+          "Built-in profile, room, and message reports are not fully available yet. Use the Legal Contact page for those concerns and include links, handles, screenshots if useful, and a plain explanation.",
         ],
       },
       {
@@ -391,7 +391,7 @@ const policies: Record<string, PolicyPageContent> = {
         items: [
           "Admins and moderators may review reported content, account context, report details, and relevant public activity.",
           "DMs are not treated as public posts, but they may be reviewed when reported, legally required, or needed for safety or security.",
-          "Moderators may dismiss a report, resolve it with notes, or take enforcement action.",
+          "Moderators may dismiss a report, mark it reviewed with notes, or take enforcement action.",
         ],
       },
       {

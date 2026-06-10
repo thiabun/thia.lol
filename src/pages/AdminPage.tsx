@@ -26,21 +26,22 @@ import {
   getAdminReports,
   grantAdminBadge,
   hideAdminPost,
+  removeAdminPost,
   revokeAdminBadge,
   resolveAdminReport,
   suspendAdminUser,
   type AdminBadgesResult,
+  type ReportCategory,
   type ModerationReport,
   type ModerationReportStatus,
   type ModerationUser,
-  type ReportReason,
 } from "../lib/api";
 import { pageEntrance } from "../lib/motionPresets";
 import { formatCountWithUnit } from "../lib/pluralize";
 import type { BadgeDefinition, Room, UserBadge } from "../lib/types";
 import { useAuth } from "../lib/useAuth";
 
-type ActionName = "hide" | "suspend" | "resolve" | "dismiss";
+type ActionName = "hide" | "remove" | "suspend" | "review" | "dismiss";
 type BadgeTone = "default" | "warm" | "cool" | "leaf" | "rose";
 
 export function AdminPage() {
@@ -131,9 +132,7 @@ export function AdminPage() {
 
   const metrics = useMemo(() => {
     const open = reports.filter((report) => report.status === "open").length;
-    const resolved = reports.filter(
-      (report) => report.status === "resolved" || report.status === "dismissed",
-    ).length;
+    const closed = reports.filter((report) => report.status !== "open").length;
     const hiddenPosts = reports.filter(
       (report) => report.post?.status === "hidden",
     ).length;
@@ -141,7 +140,7 @@ export function AdminPage() {
       (report) => report.reportedUser?.status === "suspended",
     ).length;
 
-    return { open, resolved, hiddenPosts, suspendedUsers, badges: badges.badges.length };
+    return { open, closed, hiddenPosts, suspendedUsers, badges: badges.badges.length };
   }, [badges.badges.length, reports]);
 
   async function runAction(
@@ -325,7 +324,7 @@ export function AdminPage() {
         <AdminMetric
           icon={CheckCircle2}
           label="Closed reports"
-          value={String(metrics.resolved)}
+          value={String(metrics.closed)}
         />
         <AdminMetric
           icon={EyeOff}
@@ -441,6 +440,18 @@ export function AdminPage() {
                 ),
               )
             }
+            onRemovePost={(targetReport) =>
+              void runAction(targetReport, "remove", (token) =>
+                removeAdminPost(
+                  targetReport.post!.id,
+                  {
+                    reportId: targetReport.id,
+                    notes: reportNotes(targetReport.id),
+                  },
+                  token,
+                ),
+              )
+            }
             onSuspendUser={(targetReport) =>
               void runAction(targetReport, "suspend", (token) =>
                 suspendAdminUser(
@@ -453,12 +464,12 @@ export function AdminPage() {
                 ),
               )
             }
-            onResolve={(targetReport) =>
-              void runAction(targetReport, "resolve", (token) =>
+            onReview={(targetReport) =>
+              void runAction(targetReport, "review", (token) =>
                 resolveAdminReport(
                   targetReport.id,
                   {
-                    status: "resolved",
+                    status: "reviewed",
                     notes: reportNotes(targetReport.id),
                   },
                   token,
@@ -679,8 +690,9 @@ type ReportRowProps = {
   pendingAction: string | undefined;
   onNotesChange: (reportId: number, value: string) => void;
   onHidePost: (report: ModerationReport) => void;
+  onRemovePost: (report: ModerationReport) => void;
   onSuspendUser: (report: ModerationReport) => void;
-  onResolve: (report: ModerationReport) => void;
+  onReview: (report: ModerationReport) => void;
   onDismiss: (report: ModerationReport) => void;
 };
 
@@ -691,19 +703,22 @@ function ReportRow({
   pendingAction,
   onNotesChange,
   onHidePost,
+  onRemovePost,
   onSuspendUser,
-  onResolve,
+  onReview,
   onDismiss,
 }: ReportRowProps) {
   const canHidePost =
     report.post !== null &&
     report.post.status !== "hidden" &&
     report.post.status !== "removed";
+  const canRemovePost = report.post !== null && report.post.status !== "removed";
   const canSuspendUser =
     report.reportedUser !== null &&
     report.reportedUser.status !== "suspended" &&
     report.reportedUser.id !== currentUserId;
-  const canClose = report.status === "open" || report.status === "reviewing";
+  const canClose = report.status === "open";
+  const targetTitle = targetLabel(report);
 
   return (
     <Panel className="p-4 sm:p-5">
@@ -711,12 +726,11 @@ function ReportRow({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={statusTone(report.status)}>{statusLabel(report.status)}</Badge>
-            <Badge>{reasonLabel(report.reason)}</Badge>
+            <Badge>{categoryLabel(report.category)}</Badge>
+            <Badge tone="cool">{targetTypeLabel(report.targetType)}</Badge>
             <span className="text-xs text-muted">#{report.id}</span>
           </div>
-          <h2 className="mt-3 text-lg font-semibold text-text">
-            {report.post ? "Reported post" : "Reported user"}
-          </h2>
+          <h2 className="mt-3 text-lg font-semibold text-text">{targetTitle}</h2>
           <p className="mt-1 text-sm leading-6 text-muted">
             Reported by {userLabel(report.reporter)} · {formatDate(report.createdAt)}
           </p>
@@ -751,13 +765,41 @@ function ReportRow({
               </p>
             </div>
           ) : null}
+
+          {report.actionTaken || report.moderatorNote || report.reviewedBy ? (
+            <div className="rounded-card border border-line bg-canvas/45 p-3">
+              <p className="text-xs font-medium uppercase text-muted">Action taken</p>
+              <p className="mt-2 text-sm font-semibold text-text">
+                {actionTakenLabel(report.actionTaken)}
+              </p>
+              {report.reviewedBy ? (
+                <p className="mt-1 text-xs text-muted">
+                  by {userLabel(report.reviewedBy)}
+                  {report.reviewedAt ? ` · ${formatDate(report.reviewedAt)}` : ""}
+                </p>
+              ) : null}
+              {report.moderatorNote ? (
+                <p className="mt-2 text-sm leading-6 text-muted">
+                  {report.moderatorNote}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div className="space-y-3">
+          <div className="rounded-card border border-line bg-canvas/45 p-3">
+            <p className="text-xs font-medium uppercase text-muted">Target summary</p>
+            <p className="mt-2 text-sm font-semibold text-text">{targetTitle}</p>
+            <p className="mt-1 text-xs text-muted">
+              {targetTypeLabel(report.targetType)}
+              {report.targetId ? ` #${report.targetId}` : ""}
+            </p>
+          </div>
           <TargetSummary label="Reported user" user={report.reportedUser} />
           <TextareaField
             id={`moderation-notes-${report.id}`}
-            label="Action notes"
+            label="Moderator note"
             rows={3}
             maxLength={2000}
             value={notes}
@@ -775,6 +817,18 @@ function ReportRow({
                 onClick={() => onHidePost(report)}
               >
                 Hide post
+              </Button>
+            ) : null}
+            {canRemovePost ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={pendingAction === `${report.id}:remove`}
+                icon={<Trash2 aria-hidden="true" size={15} />}
+                onClick={() => onRemovePost(report)}
+              >
+                Remove post
               </Button>
             ) : null}
             {canSuspendUser ? (
@@ -795,11 +849,11 @@ function ReportRow({
                   type="button"
                   variant="primary"
                   size="sm"
-                  disabled={pendingAction === `${report.id}:resolve`}
+                  disabled={pendingAction === `${report.id}:review`}
                   icon={<CheckCircle2 aria-hidden="true" size={15} />}
-                  onClick={() => onResolve(report)}
+                  onClick={() => onReview(report)}
                 >
-                  Resolve
+                  Mark reviewed
                 </Button>
                 <Button
                   type="button"
@@ -912,37 +966,86 @@ function userLabel(user: ModerationUser | null): string {
   return `${user.displayName} (@${user.handle})`;
 }
 
-function reasonLabel(reason: ReportReason): string {
-  const labels: Record<ReportReason, string> = {
-    spam: "Spam",
+function categoryLabel(category: ReportCategory): string {
+  const labels: Record<ReportCategory, string> = {
     harassment: "Harassment",
-    abuse: "Abuse",
+    hate: "Hate or abuse",
+    sexual_content: "Sexual content",
+    non_consensual_content: "Non-consensual content",
+    private_info: "Private information",
+    spam_or_scam: "Spam or scam",
+    impersonation: "Impersonation",
+    copyright: "Copyright",
+    violence_or_threats: "Violence or threats",
     self_harm: "Self-harm",
-    illegal: "Illegal content",
+    illegal_content: "Illegal content",
     other: "Other",
   };
 
-  return labels[reason];
+  return labels[category];
+}
+
+function targetTypeLabel(targetType: ModerationReport["targetType"]): string {
+  const labels: Record<ModerationReport["targetType"], string> = {
+    post: "Post",
+    profile: "Profile",
+    room: "Room",
+    message: "Message",
+  };
+
+  return labels[targetType];
+}
+
+function targetLabel(report: ModerationReport): string {
+  if (report.post) {
+    return "Reported post";
+  }
+
+  if (report.targetType === "profile") {
+    return "Reported profile";
+  }
+
+  if (report.targetType === "room") {
+    return "Reported room";
+  }
+
+  if (report.targetType === "message") {
+    return "Reported message";
+  }
+
+  return "Reported content";
+}
+
+function actionTakenLabel(value: string | null): string {
+  const labels: Record<string, string> = {
+    dismiss_report: "Dismissed",
+    hide_post: "Post hidden",
+    mark_reviewed: "Reviewed",
+    remove_post: "Post removed",
+    suspend_user: "User suspended",
+  };
+
+  if (!value) {
+    return "Reviewed";
+  }
+
+  return labels[value] ?? value.replaceAll("_", " ");
 }
 
 function statusLabel(status: ModerationReportStatus): string {
   const labels: Record<ModerationReportStatus, string> = {
     open: "Open",
-    reviewing: "Reviewing",
-    resolved: "Resolved",
+    reviewed: "Reviewed",
     dismissed: "Dismissed",
+    actioned: "Action taken",
   };
 
   return labels[status];
 }
 
 function statusTone(status: ModerationReportStatus): BadgeTone {
-  if (status === "resolved" || status === "dismissed") {
+  if (status === "reviewed" || status === "dismissed" || status === "actioned") {
     return "leaf";
-  }
-
-  if (status === "reviewing") {
-    return "cool";
   }
 
   return "rose";

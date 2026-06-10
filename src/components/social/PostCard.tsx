@@ -33,7 +33,7 @@ import {
   reblogPost,
   unreblogPost,
   unlikePost,
-  type ReportReason,
+  type ReportCategory,
 } from "../../lib/api";
 import { cn } from "../../lib/classNames";
 import {
@@ -217,12 +217,12 @@ function ReactionControls({
   const [reblogPulse, setReblogPulse] = useState(0);
   const [reblogError, setReblogError] = useState<string>();
   const [reportOpen, setReportOpen] = useState(false);
-  const [reportReason, setReportReason] = useState<ReportReason>("spam");
+  const [reportCategory, setReportCategory] = useState<ReportCategory>("harassment");
   const [reportDetails, setReportDetails] = useState("");
   const [reportPending, setReportPending] = useState(false);
   const [reportMessage, setReportMessage] = useState<string>();
   const [reportError, setReportError] = useState<string>();
-  const canReport = Boolean(csrfToken) && user?.id !== post.author.id;
+  const canReport = status !== "loading" && user?.id !== post.author.id;
   const canReblog =
     status === "authenticated" && Boolean(csrfToken) && user?.id !== post.author.id;
 
@@ -316,9 +316,11 @@ function ReactionControls({
       await runWithAuth((freshCsrfToken) =>
         createReport(
           {
+            targetType: "post",
+            targetId: post.id,
             postId: post.id,
             reportedUserId: post.author.id,
-            reason: reportReason,
+            category: reportCategory,
             ...(details ? { details } : {}),
           },
           freshCsrfToken,
@@ -400,6 +402,7 @@ function ReactionControls({
           className="mt-3 space-y-3 rounded-card border border-line bg-canvas/45 p-3"
           onSubmit={(event) => void handleReportSubmit(event)}
         >
+          <h3 className="text-sm font-semibold text-text">Report post</h3>
           <p className="text-xs leading-5 text-muted">
             Reports are reviewed against the{" "}
             <Link
@@ -416,17 +419,32 @@ function ReactionControls({
               Moderation Policy
             </Link>{" "}
             explains possible actions.
+            {reportCategory === "copyright" ? (
+              <>
+                {" "}
+                For rights concerns, see the{" "}
+                <Link
+                  to="/copyright"
+                  className="font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline"
+                >
+                  Copyright Policy
+                </Link>
+                .
+              </>
+            ) : null}
           </p>
           <SelectField
-            id={`report-reason-${post.id}`}
-            label="Reason"
-            value={reportReason}
-            options={reportReasonOptions}
-            onChange={(event) => setReportReason(event.target.value as ReportReason)}
+            id={`report-category-${post.id}`}
+            label="What's wrong?"
+            value={reportCategory}
+            options={reportCategoryOptions}
+            onChange={(event) =>
+              setReportCategory(event.target.value as ReportCategory)
+            }
           />
           <TextareaField
             id={`report-details-${post.id}`}
-            label="Details"
+            label="Add details"
             rows={3}
             maxLength={2000}
             value={reportDetails}
@@ -444,7 +462,7 @@ function ReactionControls({
               Cancel
             </Button>
             <Button type="submit" size="sm" disabled={reportPending}>
-              Submit
+              Report
             </Button>
           </div>
         </form>
@@ -462,12 +480,18 @@ function ReactionControls({
   );
 }
 
-const reportReasonOptions: Array<{ value: ReportReason; label: string }> = [
-  { value: "spam", label: "Spam" },
+const reportCategoryOptions: Array<{ value: ReportCategory; label: string }> = [
   { value: "harassment", label: "Harassment" },
-  { value: "abuse", label: "Abuse" },
+  { value: "hate", label: "Hate or abuse" },
+  { value: "sexual_content", label: "Sexual content" },
+  { value: "non_consensual_content", label: "Non-consensual content" },
+  { value: "private_info", label: "Private information" },
+  { value: "spam_or_scam", label: "Spam or scam" },
+  { value: "impersonation", label: "Impersonation" },
+  { value: "copyright", label: "Copyright" },
+  { value: "violence_or_threats", label: "Violence or threats" },
   { value: "self_harm", label: "Self-harm" },
-  { value: "illegal", label: "Illegal content" },
+  { value: "illegal_content", label: "Illegal content" },
   { value: "other", label: "Other" },
 ];
 
