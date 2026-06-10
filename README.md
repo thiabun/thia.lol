@@ -1,8 +1,93 @@
 # thia.lol
 
-A static-first social platform frontend for cPanel/Pebblehost hosting.
+`thia.lol` is a small, public-testing social platform built around profiles, posts, rooms, follows, moots, reblogs, notifications, badges, image uploads, and moots-only chat.
 
-## Stack
+The goal is simple: make a fun, personal, slightly chaotic social space that still has the boring-but-important foundations in place: moderation, privacy pages, cookie clarity, copyright notices, and a deployment setup that does not require a whole cloud empire to run.
+
+The live site is here:
+
+```text
+https://thia.lol
+```
+
+## Public testing
+
+The platform is early and actively changing. Bugs, broken UI, confusing flows, awkward copy, and weird edge cases are expected. Please report them instead of politely suffering in silence like a Victorian ghost.
+
+Useful things to report:
+
+- pages that crash or show blank states
+- profile editing bugs
+- room creation/editing bugs
+- upload problems
+- posts, replies, reblogs, likes, or follows behaving strangely
+- chat issues
+- notification issues
+- confusing copy or layout
+- mobile layout problems
+- anything that exposes technical/dev wording publicly
+- anything that feels unsafe, unclear, or too easy to misuse
+
+When reporting a bug, include:
+
+- what page you were on
+- what you clicked or submitted
+- what you expected to happen
+- what actually happened
+- browser/device if relevant
+- screenshot or screen recording if useful
+
+Do not include passwords, session cookies, migration tokens, database details, or private messages in public bug reports.
+
+## What works right now
+
+Current foundation includes:
+
+- accounts and sessions
+- public profiles
+- profile editing and image customization
+- image uploads converted to WebP
+- posts with media
+- replies/thread foundations
+- likes
+- reblogs
+- follows, followers, following, and moots
+- rooms with creation, editing, joining, owners, and moderators foundation
+- notifications
+- moots-only chat foundation
+- badges and featured badges
+- report/moderation foundation
+- legal, privacy, cookie, copyright, and community guideline pages
+
+Some of these are still v1 foundations and need public testing before they can be called polished without lying to everyone, which is generally frowned upon.
+
+## What is still being improved
+
+The current public-testing focus is:
+
+- cleaner profile layout
+- better room settings and moderation tools
+- stronger thread/reply behavior
+- easier chat starting from the Chat page
+- more compact, less duplicated UI
+- better performance and route splitting
+- more useful admin/moderation flows
+- fewer awkward legacy words and generated-sounding copy
+- better smoke tests against real API behavior
+
+See the project planning docs for the full messy map:
+
+```text
+docs/product-audit-and-roadmap.md
+docs/public-testing-readiness-spec.md
+docs/public-testing-readiness-audit.md
+```
+
+## How it works
+
+The app is static-first on the frontend and uses a PHP/MySQL API on cPanel/Pebblehost.
+
+Frontend:
 
 - Vite
 - React
@@ -10,26 +95,44 @@ A static-first social platform frontend for cPanel/Pebblehost hosting.
 - Tailwind CSS
 - Motion for React
 - React Router
-- PHP/MySQL API foundation under `/api`
 
-## Local Development
+Backend/API:
 
-Use Node 20.19+ or Node 22.12+.
+- PHP
+- MySQL/MariaDB
+- PDO prepared statements
+- cookie sessions
+- CSRF-protected mutations
+- SQL migrations through a protected migration runner
 
-On this machine, Node 22 is available through Homebrew:
+Uploads:
 
-```bash
-export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
+- authenticated image uploads only
+- JPEG, PNG, and WebP accepted
+- 10 MB max
+- converted to WebP
+- stored under the deployed server `uploads/` directory
+
+## Contributing and testing
+
+Contributions, bug reports, and careful testing are welcome. Keep changes small, verifiable, and honest about what was tested.
+
+Before changing code, read:
+
+```text
+AGENTS.md
+docs/public-testing-readiness-spec.md
+docs/product-audit-and-roadmap.md
 ```
+
+Basic local commands:
 
 ```bash
 npm install
 npm run dev
 ```
 
-The dev server runs at `http://localhost:5173`.
-
-## Verification
+Verification commands:
 
 ```bash
 npm run typecheck
@@ -38,183 +141,71 @@ npm run optimize:assets
 npm run build
 ```
 
-The production build is written to `dist/`.
+PHP syntax checks, when PHP is available:
 
-## Browser Smoke Tests
+```bash
+find api -name '*.php' -print0 | xargs -0 -n1 php -l
+```
 
-Playwright smoke tests cover session persistence, account menu state, composer layout, reply modal behavior, and mobile header/dock layout.
-
-Install Chromium before running tests:
+Playwright smoke tests:
 
 ```bash
 npx playwright install chromium
-```
-
-On Linux environments that need system packages, use:
-
-```bash
-npx playwright install --with-deps chromium
-```
-
-Run the local e2e suite against a Vite dev server started by Playwright:
-
-```bash
 npm run test:e2e
-```
-
-Open the Playwright UI runner:
-
-```bash
-npm run test:e2e:ui
-```
-
-Run smoke tests against an already-running local server or production:
-
-```bash
 npm run test:smoke
-THIA_BASE_URL=https://thia.lol npm run test:smoke
 ```
 
-Smoke tests that touch auth, posts, replies, rooms, profiles, media, or other API-backed UI require a working API. If the local Vite server logs `/api` proxy connection failures because no PHP API is running, the smoke test environment is incomplete. Start a local PHP API on the proxy target, run against a deployed base URL with `THIA_BASE_URL`, or report the smoke test as blocked. Do not call API-backed smoke tests passed unless the API-backed behavior was exercised.
+API-backed smoke tests require a real API target. If local `/api` proxy requests fail because no PHP API is running, that smoke test is blocked, not passed. Either run a local PHP API with config/database access, or test against a deployed base URL with test credentials.
 
-Authenticated production smoke tests require credentials from environment variables. Do not put these in git:
+Example production smoke shape:
 
 ```bash
 THIA_BASE_URL=https://thia.lol \
-THIA_TEST_EMAIL="admin@example.com" \
+THIA_TEST_EMAIL="test@example.com" \
 THIA_TEST_PASSWORD="..." \
 npm run test:smoke
 ```
 
-Optional environment variables:
+Never commit real credentials, cookies, database passwords, migration tokens, or production config.
 
-- `THIA_BASE_URL`: target origin, defaulting to `http://localhost:5173`.
-- `THIA_TEST_EMAIL`: test account email for login smoke tests.
-- `THIA_TEST_PASSWORD`: test account password for login smoke tests.
-- `THIA_MIGRATION_TOKEN`: reserved for protected migration checks if those are added later.
+## Deployment notes
 
-If credentials are not set, authenticated smoke tests are skipped. Anonymous checks still require a working API when they depend on public posts, rooms, profiles, or replies. Playwright output is ignored via `playwright-report/` and `test-results/`; browser binaries should not be committed.
+The live deployment is cPanel/Pebblehost-oriented:
 
-## Deploying to cPanel
+- `dist/` contents go directly into `public_html/`
+- `api/` files go into `public_html/api/`
+- migrations go into `public_html/api/migrations/`
+- `public_html/config/config.php` is server-only and must not be committed
+- `public_html/uploads/` must be preserved
 
-This app is configured for the domain root with Vite `base: "/"`, so deploy it directly to `public_html` for `https://thia.lol/`.
-
-1. Run `npm run build`.
-2. Open cPanel File Manager or use FTP/SFTP.
-3. Upload the contents of `dist/` into `public_html`, not the `dist` folder itself.
-4. Confirm hidden files are shown and `public_html/.htaccess` exists. It is copied from `public/.htaccess` during the Vite build.
-5. Expected frontend upload structure:
+The detailed deployment guide lives here:
 
 ```text
-public_html/
-  .htaccess
-  index.html
-  ambient-veil.webp
-  assets/
-    index-*.css
-    index-*.js
+docs/deployment-automation.md
+docs/thia-migration-runner-guide.md
+docs/media-uploads.md
 ```
 
-Do not upload `src/`, `node_modules/`, `source-assets/`, or `backend/` as part of the static frontend deploy. Deploy the PHP API separately under `public_html/api`.
+The README is intentionally not a full recreate-the-platform tutorial. The detailed machinery is in `docs/`, because normal people deserve a front page that does not read like cPanel tax law.
 
-6. Visit:
-   - `https://thia.lol/`
-   - `https://thia.lol/discover`
-   - `https://thia.lol/rooms`
-   - `https://thia.lol/@thia`
+## Safety and legal pages
 
-The `.htaccess` file rewrites client-side routes to `index.html` while leaving `/api` alone for the PHP backend. It also keeps `index.html` uncached, gives hashed Vite files under `assets/` long immutable caching, and gives top-level image assets a shorter cache window.
-
-Vite preview serves the static bundle directly and does not simulate Apache `.htaccess`, so `/api` rewrite exclusion should be verified on cPanel/Apache or an Apache-equivalent local server.
-
-If the ambient artwork changes, replace `source-assets/ambient-veil.png` and run `npm run build`. The build regenerates `public/ambient-veil.webp` before creating `dist/`.
-
-## API Setup on cPanel
-
-The PHP API is deployed under `public_html/api` and currently exposes health checks, public content reads, auth endpoints, authenticated post mutations, and protected database migration endpoints.
-
-1. In cPanel, create a MySQL database, create a database user, and grant that user access to the database.
-2. Upload the repository `api/` directory to `public_html/api`.
-3. Upload `backend/database/migrations/` to `public_html/api/migrations/`.
-4. Upload the repository `config/` directory to `public_html/config`, or place a private config directory outside `public_html` if your host allows it.
-5. Copy `config/config.example.php` to `config/config.php` on the server.
-6. Edit `config/config.php` with the cPanel MySQL host, database name, username, password, a long random `security.csrf_secret`, and a server-only `security.migration_token` when migrations should be enabled.
-7. Keep `config/config.php` private. It is gitignored and should not be committed.
-
-If the config is outside the web root, set the `THIA_CONFIG_PATH` environment variable to the absolute path of `config.php`. On Apache/cPanel, that can be set in `api/.htaccess` with a line like:
-
-```apache
-SetEnv THIA_CONFIG_PATH /home/cpaneluser/thia-config/config.php
-```
-
-Health check URLs:
+Public policy pages are available on the live site:
 
 ```text
-https://thia.lol/api/health
-https://thia.lol/api/health?db=1
+/terms
+/privacy
+/cookies
+/community-guidelines
+/copyright
+/moderation
+/legal
 ```
 
-`/api/health?db=1` runs a prepared `SELECT 1` through PDO to confirm database connectivity. Production responses hide raw exception details when `app.environment` is `production` and `app.debug` is `false`.
+They are practical policy pages for public testing, not a replacement for formal legal review.
 
-Authenticated post endpoints:
+## Copyright
 
-```text
-POST /api/posts
-PATCH /api/posts/{id}
-DELETE /api/posts/{id}
-POST /api/posts/{id}/like
-DELETE /api/posts/{id}/like
-```
+© 2026 Thia Markussen. Alle rettigheter forbeholdt / All rights reserved.
 
-Post mutation requests require a valid session cookie and the in-memory CSRF token from `/api/auth/me` in the `X-CSRF-Token` header. Deleted posts are soft-deleted with `status='removed'` and `deleted_at` set.
-
-Likes use `POST /api/posts/{id}/like` and `DELETE /api/posts/{id}/like` because the route maps directly to the UI action. The current `post_reactions` table stores legacy reaction rows with `type ENUM('glow','echo','hush')`; likes are stored as `type='glow'` for compatibility with deployed cPanel databases. Like responses keep the standard envelope and return `postId`, `likeCount`, and `likedByCurrentUser`.
-
-## Database Setup on cPanel
-
-The initial MySQL setup lives in `backend/database/`. Import these files with cPanel phpMyAdmin after creating the database and database user.
-
-1. Open cPanel phpMyAdmin and select the thia.lol database in the left sidebar.
-2. Import `backend/database/schema.sql` first.
-3. Import `backend/database/seed.sql` second.
-4. Confirm these tables exist: `users`, `profiles`, `rooms`, `posts`, `post_reactions`, `sessions`, `auth_rate_limits`, `reports`, and `moderation_actions`.
-5. Confirm the starter data exists: one Thia profile and four public starter rooms.
-6. Confirm `sessions`, `auth_rate_limits`, `reports`, and `moderation_actions` are empty after seeding.
-7. Confirm `posts` is empty unless real posts have already been created.
-
-`schema.sql` is for initial empty-database setup only; it is not a migration system for existing production data. `seed.sql` creates neutral starter rooms but does not create posts, login credentials, or hardcode real passwords.
-
-Committed migrations live in `backend/database/migrations/` and deploy to `public_html/api/migrations/`. They are applied through the protected `/api/admin/migrations/status` and `/api/admin/migrations/run` endpoints, which require an admin session and the `X-Migration-Token` header. Leave `security.migration_token` empty to disable the runner.
-
-Auth session browser checks live in `docs/auth-session-diagnostics.md`. Use `https://thia.lol` consistently while testing; same-origin `/api` calls and host-only session cookies should not be mixed across `www` and non-`www` hostnames. The token-protected `/api/admin/auth/diagnostics` endpoint can confirm duplicate cookie candidates without exposing raw session tokens or token hashes.
-
-## Post-Deploy Checklist
-
-- Direct-refresh `/`, `/discover`, `/rooms`, `/@thia`, `/admin`, `/login`, and `/register`.
-- Confirm `/api` does not return the React app and `/api/health` returns JSON.
-- Confirm `/api/health?db=1` returns JSON with `"database":{"ok":true}` after `config/config.php` is configured.
-- Confirm `backend/database/schema.sql` was imported before `backend/database/seed.sql` in phpMyAdmin.
-- Confirm `config/config.php` has a unique `security.csrf_secret` before using auth endpoints.
-- Confirm `public_html/.htaccess` uploaded; cPanel often hides dotfiles by default.
-- Confirm `public_html/api/.htaccess` uploaded so API routes rewrite to `api/index.php`.
-- If `config/` is under `public_html`, confirm `public_html/config/.htaccess` uploaded to deny direct web access.
-- Confirm `/index.html` sends `Cache-Control: no-cache, no-store, must-revalidate`.
-- Confirm `/assets/index-*.js` and `/assets/index-*.css` send `Cache-Control: public, max-age=31536000, immutable`.
-- Confirm `/ambient-veil.webp` loads and no `/ambient-veil.png` request appears in the browser network panel.
-
-## API Foundation
-
-The root-level API files are not required for the frontend build, but they should be deployed to cPanel for API traffic:
-
-- `api/index.php`
-- `api/bootstrap.php`
-- `api/db.php`
-- `api/migrations.php`
-- `api/.htaccess`
-- `backend/database/migrations/` to `public_html/api/migrations/`
-- `config/config.example.php`
-- `config/.htaccess`
-- `backend/database/schema.sql`
-- `backend/database/seed.sql`
-
-`config/config.php` is intentionally absent from git. Create it from `config/config.example.php` in each environment.
+Beskyttet etter norsk opphavsrett og internasjonal opphavsrett / Protected under Norwegian and international copyright law.
