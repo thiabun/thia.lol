@@ -416,11 +416,11 @@ function room_viewer_membership_select_sql(): string
 
 function room_viewer_membership_join_sql(string $alias, ?int $viewerUserId): string
 {
-    if (!room_memberships_table_exists() || $viewerUserId === null) {
+    if (!room_memberships_table_exists()) {
         return '';
     }
 
-    $viewerSql = (string) $viewerUserId;
+    $viewerSql = $viewerUserId === null ? '0' : (string) $viewerUserId;
 
     return "LEFT JOIN room_memberships viewer_room_membership
             ON viewer_room_membership.room_id = {$alias}.id
