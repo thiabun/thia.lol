@@ -1,20 +1,38 @@
-import { Radio, SearchX } from "lucide-react";
+import { Plus, Radio, SearchX } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router";
 import { PageMeta } from "../components/PageMeta";
+import { RoomEditModal } from "../components/social/RoomEditModal";
 import { Badge } from "../components/ui/Badge";
+import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { SearchField } from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
 import { RoomCard } from "../components/social/RoomCard";
-import { getRooms } from "../lib/api";
+import { createRoom, getRooms, uploadImage } from "../lib/api";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
+import type { ImageUploadPurpose, RoomInput } from "../lib/api";
+import type { Room } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
+import { useAuth } from "../lib/useAuth";
 
 export function RoomsPage() {
+  const navigate = useNavigate();
+  const { csrfToken, user } = useAuth();
   const [query, setQuery] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createdRooms, setCreatedRooms] = useState<Room[]>([]);
   const roomsState = useAsyncData(getRooms);
-  const rooms = useMemo(() => roomsState.data ?? [], [roomsState.data]);
+  const rooms = useMemo(() => {
+    const loaded = roomsState.data ?? [];
+    const loadedIds = new Set(loaded.map((room) => room.id));
+
+    return [
+      ...createdRooms.filter((room) => !loadedIds.has(room.id)),
+      ...loaded,
+    ];
+  }, [createdRooms, roomsState.data]);
   const normalizedQuery = query.trim().toLowerCase();
   const filteredRooms = useMemo(() => {
     if (!normalizedQuery) {
@@ -27,6 +45,26 @@ export function RoomsPage() {
         .some((value) => value.toLowerCase().includes(normalizedQuery)),
     );
   }, [normalizedQuery, rooms]);
+
+  async function handleCreateRoom(input: RoomInput) {
+    if (!csrfToken) {
+      throw new Error("Please log in again before creating a room.");
+    }
+
+    const created = await createRoom(input, csrfToken);
+    setCreatedRooms((current) => [created, ...current]);
+    navigate(`/rooms/${created.slug}`);
+
+    return created;
+  }
+
+  async function handleUpload(file: File, purpose: ImageUploadPurpose) {
+    if (!csrfToken) {
+      throw new Error("Please log in again before uploading.");
+    }
+
+    return uploadImage(file, purpose, csrfToken);
+  }
 
   return (
     <motion.div
@@ -54,14 +92,27 @@ export function RoomsPage() {
               Public rooms for shared topics and conversations.
             </p>
           </div>
-          <SearchField
-            id="room-search"
-            label="Search rooms"
-            placeholder="Search rooms"
-            className="w-full lg:max-w-sm"
-            value={query}
-            onChange={(event) => setQuery(event.currentTarget.value)}
-          />
+          <div className="flex w-full flex-col gap-3 sm:flex-row lg:max-w-xl">
+            <SearchField
+              id="room-search"
+              label="Search rooms"
+              placeholder="Search rooms"
+              className="w-full"
+              value={query}
+              onChange={(event) => setQuery(event.currentTarget.value)}
+            />
+            {user ? (
+              <Button
+                type="button"
+                className="shrink-0"
+                data-testid="create-room-button"
+                icon={<Plus aria-hidden="true" size={17} />}
+                onClick={() => setCreateOpen(true)}
+              >
+                Create room
+              </Button>
+            ) : null}
+          </div>
         </div>
       </Panel>
       </motion.div>
@@ -103,6 +154,16 @@ export function RoomsPage() {
             <RoomCard key={room.id} room={room} index={index} />
           ))}
         </section>
+      ) : null}
+
+      {createOpen ? (
+        <RoomEditModal
+          mode="create"
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          onSave={handleCreateRoom}
+          onUpload={handleUpload}
+        />
       ) : null}
     </motion.div>
   );

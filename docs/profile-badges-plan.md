@@ -175,7 +175,7 @@ Implemented starter definitions:
 - `room_owner`
 - `mutual_magnet`
 
-These are seeded as badge definitions only. No user receives any of them unless a moderator/admin grants them.
+These are seeded as badge definitions only. The `room_owner` badge is now automatically granted when a member creates their first public room through Rooms 2.0 creation; other starter badges still require moderator/admin grant.
 
 ## Admin Grant Flow
 
@@ -201,6 +201,6 @@ Future candidates:
 - Full hidden-badge management UI.
 - Badge editor UI for creating/updating definitions.
 - Criteria/progress JSON for transparent automatic badges.
-- Room-earned badge rules after room membership and roles exist.
+- Broader room-earned badge rules beyond the first-room `room_owner` grant.
 - Social badge rules after abuse controls and visibility rules are stronger.
 - Badge awarding from followers, following, moots, or rooms.

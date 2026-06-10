@@ -142,13 +142,19 @@ function room_payload(array $row): array
         'description' => $summary,
         'mood' => (string) ($row['room_mood'] ?? ''),
         'members' => (int) ($row['room_member_count'] ?? 0),
+        'memberCount' => (int) ($row['room_member_count'] ?? 0),
         'live' => (bool) ($row['room_is_live'] ?? false),
         'accent' => (string) ($row['room_accent'] ?? ''),
+        'iconUrl' => $row['room_icon_url'] ?? null,
+        'bannerUrl' => $row['room_banner_url'] ?? null,
+        'rules' => (string) ($row['room_rules'] ?? ''),
         'visibility' => (string) ($row['room_visibility'] ?? 'public'),
         'createdBy' => ($row['room_created_by'] ?? null) === null
             ? null
             : (int) $row['room_created_by'],
         'owner' => $owner,
+        'joinedByMe' => (bool) ($row['current_room_joined'] ?? false),
+        'myRoomRole' => $row['current_room_role'] ?? null,
         'postCount' => (int) ($row['room_post_count'] ?? 0),
         'latestActivityAt' => $row['room_latest_activity_at'] ?? null,
         'createdAt' => $row['room_created_at'] ?? null,
@@ -285,6 +291,11 @@ function post_reblogs_table_exists(): bool
     return database_table_exists('post_reblogs');
 }
 
+function room_memberships_table_exists(): bool
+{
+    return database_table_exists('room_memberships');
+}
+
 function database_column_exists(string $tableName, string $columnName): bool
 {
     static $cache = [];
@@ -337,6 +348,74 @@ function profile_customization_select_sql(string $alias): string
             NULL AS profile_accent,
             NULL AS profile_background,
             NULL AS profile_theme,";
+}
+
+function room_customization_columns_exist(): bool
+{
+    return database_column_exists('rooms', 'icon_url')
+        && database_column_exists('rooms', 'banner_url')
+        && database_column_exists('rooms', 'rules');
+}
+
+function room_customization_select_sql(string $alias): string
+{
+    if (room_customization_columns_exist()) {
+        return "{$alias}.icon_url AS room_icon_url,
+            {$alias}.banner_url AS room_banner_url,
+            {$alias}.rules AS room_rules,";
+    }
+
+    return "NULL AS room_icon_url,
+            NULL AS room_banner_url,
+            NULL AS room_rules,";
+}
+
+function room_membership_count_select_sql(string $alias): string
+{
+    if (room_memberships_table_exists()) {
+        return "COALESCE(room_member_counts.member_count, 0) AS room_member_count,";
+    }
+
+    return "{$alias}.member_count AS room_member_count,";
+}
+
+function room_membership_count_join_sql(string $alias): string
+{
+    if (!room_memberships_table_exists()) {
+        return '';
+    }
+
+    return "LEFT JOIN (
+            SELECT room_id, COUNT(*) AS member_count
+            FROM room_memberships
+            WHERE banned_at IS NULL
+            GROUP BY room_id
+        ) room_member_counts ON room_member_counts.room_id = {$alias}.id";
+}
+
+function room_viewer_membership_select_sql(): string
+{
+    if (room_memberships_table_exists()) {
+        return "viewer_room_membership.role AS current_room_role,
+            IF(viewer_room_membership.id IS NULL, 0, 1) AS current_room_joined,";
+    }
+
+    return "NULL AS current_room_role,
+            0 AS current_room_joined,";
+}
+
+function room_viewer_membership_join_sql(string $alias, ?int $viewerUserId): string
+{
+    if (!room_memberships_table_exists() || $viewerUserId === null) {
+        return '';
+    }
+
+    $viewerSql = (string) $viewerUserId;
+
+    return "LEFT JOIN room_memberships viewer_room_membership
+            ON viewer_room_membership.room_id = {$alias}.id
+           AND viewer_room_membership.user_id = {$viewerSql}
+           AND viewer_room_membership.banned_at IS NULL";
 }
 
 function profile_social_context(int $profileUserId, ?int $viewerUserId = null): array
@@ -504,6 +583,7 @@ function fetch_profile_by_handle(string $handle): ?array
 
 function fetch_public_rooms(): array
 {
+    $viewerUserId = current_request_user_id();
     $statement = db_query(
         "SELECT
             rooms.id AS room_id,
@@ -511,11 +591,13 @@ function fetch_public_rooms(): array
             rooms.name AS room_name,
             rooms.summary AS room_summary,
             rooms.mood AS room_mood,
-            rooms.member_count AS room_member_count,
+            " . room_membership_count_select_sql('rooms') . "
             rooms.is_live AS room_is_live,
             rooms.accent AS room_accent,
+            " . room_customization_select_sql('rooms') . "
             rooms.visibility AS room_visibility,
             rooms.created_by AS room_created_by,
+            " . room_viewer_membership_select_sql() . "
             owner.id AS owner_user_id,
             owner.handle AS owner_handle,
             owner_profile.display_name AS owner_display_name,
@@ -527,6 +609,8 @@ function fetch_public_rooms(): array
         FROM rooms
         LEFT JOIN users owner ON owner.id = rooms.created_by
         LEFT JOIN profiles owner_profile ON owner_profile.user_id = owner.id
+        " . room_membership_count_join_sql('rooms') . "
+        " . room_viewer_membership_join_sql('rooms', $viewerUserId) . "
         LEFT JOIN (
             SELECT
                 room_id,
@@ -548,6 +632,7 @@ function fetch_public_rooms(): array
 
 function fetch_public_room_by_slug(string $slug): ?array
 {
+    $viewerUserId = current_request_user_id();
     $statement = db_query(
         "SELECT
             rooms.id AS room_id,
@@ -555,11 +640,13 @@ function fetch_public_room_by_slug(string $slug): ?array
             rooms.name AS room_name,
             rooms.summary AS room_summary,
             rooms.mood AS room_mood,
-            rooms.member_count AS room_member_count,
+            " . room_membership_count_select_sql('rooms') . "
             rooms.is_live AS room_is_live,
             rooms.accent AS room_accent,
+            " . room_customization_select_sql('rooms') . "
             rooms.visibility AS room_visibility,
             rooms.created_by AS room_created_by,
+            " . room_viewer_membership_select_sql() . "
             owner.id AS owner_user_id,
             owner.handle AS owner_handle,
             owner_profile.display_name AS owner_display_name,
@@ -571,6 +658,8 @@ function fetch_public_room_by_slug(string $slug): ?array
         FROM rooms
         LEFT JOIN users owner ON owner.id = rooms.created_by
         LEFT JOIN profiles owner_profile ON owner_profile.user_id = owner.id
+        " . room_membership_count_join_sql('rooms') . "
+        " . room_viewer_membership_join_sql('rooms', $viewerUserId) . "
         LEFT JOIN (
             SELECT
                 room_id,
@@ -1077,6 +1166,7 @@ function fetch_public_profile_reblogs(string $handle): array
 
 function fetch_public_profile_rooms(string $handle): array
 {
+    $viewerUserId = current_request_user_id();
     $statement = db_query(
         "SELECT
             rooms.id AS room_id,
@@ -1084,11 +1174,13 @@ function fetch_public_profile_rooms(string $handle): array
             rooms.name AS room_name,
             rooms.summary AS room_summary,
             rooms.mood AS room_mood,
-            rooms.member_count AS room_member_count,
+            " . room_membership_count_select_sql('rooms') . "
             rooms.is_live AS room_is_live,
             rooms.accent AS room_accent,
+            " . room_customization_select_sql('rooms') . "
             rooms.visibility AS room_visibility,
             rooms.created_by AS room_created_by,
+            " . room_viewer_membership_select_sql() . "
             owner.id AS owner_user_id,
             owner.handle AS owner_handle,
             owner_profile.display_name AS owner_display_name,
@@ -1100,6 +1192,8 @@ function fetch_public_profile_rooms(string $handle): array
         FROM rooms
         INNER JOIN users owner ON owner.id = rooms.created_by
         LEFT JOIN profiles owner_profile ON owner_profile.user_id = owner.id
+        " . room_membership_count_join_sql('rooms') . "
+        " . room_viewer_membership_join_sql('rooms', $viewerUserId) . "
         LEFT JOIN (
             SELECT
                 room_id,

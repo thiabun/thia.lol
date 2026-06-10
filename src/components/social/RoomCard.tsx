@@ -1,4 +1,4 @@
-import { ArrowRight, Clock3, MessageCircle, Radio } from "lucide-react";
+import { ArrowRight, Clock3, MessageCircle, Radio, UsersRound } from "lucide-react";
 import { motion } from "motion/react";
 import { Link } from "react-router";
 import { Badge } from "../ui/Badge";
@@ -44,17 +44,34 @@ export function RoomCard({ index = 0, room }: RoomCardProps) {
           to={`/rooms/${room.slug}`}
           className="relative flex h-full flex-col focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus"
         >
+          {room.bannerUrl ? (
+            <img
+              alt=""
+              src={room.bannerUrl}
+              className="-mx-5 -mt-5 mb-4 h-24 w-[calc(100%+2.5rem)] object-cover"
+            />
+          ) : null}
           <div className="flex items-start justify-between gap-4">
             <div
-              className="grid size-12 place-items-center rounded-card border border-white/30 shadow-soft"
+              className="grid size-12 place-items-center overflow-hidden rounded-card border border-white/30 shadow-soft"
               style={{
                 background:
                   "linear-gradient(135deg, color-mix(in oklab, var(--room-accent) 58%, transparent), var(--app-surface))",
               }}
             >
-              <Radio aria-hidden="true" size={19} className="text-text" />
+              {room.iconUrl ? (
+                <img alt="" src={room.iconUrl} className="size-full object-cover" />
+              ) : (
+                <Radio aria-hidden="true" size={19} className="text-text" />
+              )}
             </div>
-            {room.live ? <Badge tone="leaf">active</Badge> : <Badge>new</Badge>}
+            {room.joinedByMe ? (
+              <Badge tone="leaf">Joined</Badge>
+            ) : room.live ? (
+              <Badge tone="leaf">active</Badge>
+            ) : (
+              <Badge>new</Badge>
+            )}
           </div>
           <h2 className="mt-5 text-lg font-semibold text-text">{room.name}</h2>
           <p className="mt-1 text-sm text-muted">/{room.slug}</p>
@@ -73,6 +90,10 @@ export function RoomCard({ index = 0, room }: RoomCardProps) {
               <span className="flex items-center gap-2">
                 <MessageCircle aria-hidden="true" size={16} />
                 {formatCountWithUnit(room.postCount, "post")}
+              </span>
+              <span className="flex items-center gap-2">
+                <UsersRound aria-hidden="true" size={16} />
+                {formatCountWithUnit(room.memberCount, "member")}
               </span>
               {room.latestActivityAt ? (
                 <span className="flex items-center gap-2">

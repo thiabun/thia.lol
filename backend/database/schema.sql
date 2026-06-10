@@ -106,6 +106,9 @@ CREATE TABLE IF NOT EXISTS rooms (
   member_count INT UNSIGNED NOT NULL DEFAULT 0,
   is_live TINYINT(1) NOT NULL DEFAULT 0,
   accent VARCHAR(80) NULL,
+  icon_url VARCHAR(500) NULL,
+  banner_url VARCHAR(500) NULL,
+  rules TEXT NULL,
   visibility ENUM('public', 'members', 'private') NOT NULL DEFAULT 'public',
   created_by BIGINT UNSIGNED NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -117,6 +120,26 @@ CREATE TABLE IF NOT EXISTS rooms (
   CONSTRAINT rooms_created_by_fk
     FOREIGN KEY (created_by) REFERENCES users(id)
     ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS room_memberships (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  room_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  role VARCHAR(30) NOT NULL DEFAULT 'member',
+  joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  muted_at DATETIME NULL,
+  banned_at DATETIME NULL,
+  UNIQUE KEY room_memberships_room_user_unique (room_id, user_id),
+  KEY room_memberships_room_id_idx (room_id),
+  KEY room_memberships_user_id_idx (user_id),
+  KEY room_memberships_role_idx (role),
+  CONSTRAINT room_memberships_room_id_fk
+    FOREIGN KEY (room_id) REFERENCES rooms(id)
+    ON DELETE CASCADE,
+  CONSTRAINT room_memberships_user_id_fk
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS posts (

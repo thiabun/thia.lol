@@ -1,6 +1,6 @@
 # Image Uploads
 
-`thia.lol` supports authenticated image uploads for profile customization and post images.
+`thia.lol` supports authenticated image uploads for profile customization, post images, and room customization.
 
 ## Storage
 
@@ -38,6 +38,8 @@ Processing rules:
 - banner: max 1600x600
 - profile background: max 1920x1080
 - post image: max 1920px long edge
+- room icon: square crop to 512x512
+- room banner: max 1600x600
 - output: `.webp`
 - quality: 82
 - metadata is stripped by decoding and re-encoding

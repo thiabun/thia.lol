@@ -15,6 +15,7 @@ import type {
   PublicStats,
   ReactionCounts,
   Room,
+  RoomMember,
   UserBadge,
 } from "./types";
 import { apiDelete, apiGet, apiPatch, apiPost, apiUpload } from "./apiClient";
@@ -22,7 +23,13 @@ import { apiDelete, apiGet, apiPatch, apiPost, apiUpload } from "./apiClient";
 type ApiRoom = Room & {
   description?: string;
   visibility?: string;
+  memberCount?: number;
   createdBy?: number | null;
+  iconUrl?: string | null;
+  bannerUrl?: string | null;
+  rules?: string;
+  joinedByMe?: boolean;
+  myRoomRole?: Room["myRoomRole"];
   postCount?: number;
   latestActivityAt?: string | null;
   createdAt?: string | null;
@@ -87,7 +94,9 @@ export type ImageUploadPurpose =
   | "avatar"
   | "banner"
   | "profile_background"
-  | "post_media";
+  | "post_media"
+  | "room_icon"
+  | "room_banner";
 
 export type UploadedImage = {
   url: string;
@@ -110,6 +119,17 @@ export type UpdateProfileInput = {
   profileTheme?: string | null;
   links?: string[];
   traits?: string[];
+};
+
+export type RoomInput = {
+  name: string;
+  slug?: string;
+  summary: string;
+  mood?: string | null;
+  accent?: string | null;
+  iconUrl?: string | null;
+  bannerUrl?: string | null;
+  rules?: string | null;
 };
 
 export type UpdateFeaturedBadgesInput = {
@@ -270,6 +290,41 @@ export function getRoomPosts(slug: string): Promise<Post[]> {
   return apiGet<ApiPost[]>(`/rooms/${encodeURIComponent(slug)}/posts`).then((items) =>
     items.filter(isVisiblePost).map(normalizePost),
   );
+}
+
+export function createRoom(input: RoomInput, csrfToken: string): Promise<Room> {
+  return apiPost<ApiRoom>("/rooms", roomInputBody(input), csrfToken).then(normalizeRoom);
+}
+
+export function updateRoom(
+  slug: string,
+  input: Partial<RoomInput>,
+  csrfToken: string,
+): Promise<Room> {
+  return apiPatch<ApiRoom>(
+    `/rooms/${encodeURIComponent(slug)}`,
+    roomInputBody(input),
+    csrfToken,
+  ).then(normalizeRoom);
+}
+
+export function joinRoom(slug: string, csrfToken: string): Promise<Room> {
+  return apiPost<ApiRoom>(
+    `/rooms/${encodeURIComponent(slug)}/join`,
+    {},
+    csrfToken,
+  ).then(normalizeRoom);
+}
+
+export function leaveRoom(slug: string, csrfToken: string): Promise<Room> {
+  return apiDelete<ApiRoom>(
+    `/rooms/${encodeURIComponent(slug)}/join`,
+    csrfToken,
+  ).then(normalizeRoom);
+}
+
+export function getRoomMembers(slug: string): Promise<RoomMember[]> {
+  return apiGet<RoomMember[]>(`/rooms/${encodeURIComponent(slug)}/members`);
 }
 
 export function getProfile(handle: string): Promise<Profile> {
@@ -678,24 +733,72 @@ export function resolveAdminReport(
 }
 
 function normalizeRoom(room: ApiRoom): Room {
+  const memberCount = room.memberCount ?? room.members ?? 0;
+
   return {
     id: room.id,
     slug: room.slug,
     name: room.name,
     summary: room.summary ?? room.description ?? "",
     description: room.description ?? room.summary ?? "",
-    mood: room.mood,
-    members: room.members,
-    live: room.live,
-    accent: room.accent,
+    mood: room.mood ?? "",
+    members: memberCount,
+    memberCount,
+    live: room.live ?? false,
+    accent: room.accent || "var(--accent-sun)",
+    iconUrl: room.iconUrl ?? null,
+    bannerUrl: room.bannerUrl ?? null,
+    rules: room.rules ?? "",
     visibility: room.visibility ?? "public",
     createdBy: room.createdBy ?? null,
     owner: room.owner ?? null,
+    joinedByMe: room.joinedByMe ?? false,
+    myRoomRole: room.myRoomRole ?? null,
     postCount: room.postCount ?? 0,
     latestActivityAt: room.latestActivityAt ?? null,
     createdAt: room.createdAt ?? null,
     updatedAt: room.updatedAt ?? null,
   };
+}
+
+function roomInputBody(input: Partial<RoomInput>): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+
+  if (input.name !== undefined) {
+    body.name = input.name.trim();
+  }
+
+  if (input.slug !== undefined) {
+    body.slug = input.slug.trim().toLowerCase();
+  }
+
+  if (input.summary !== undefined) {
+    body.summary = input.summary.trim();
+  }
+
+  if (input.mood !== undefined) {
+    body.mood = input.mood?.trim() || null;
+  }
+
+  if (input.accent !== undefined) {
+    body.accent = input.accent || undefined;
+  }
+
+  if (input.iconUrl !== undefined) {
+    body.iconUrl = input.iconUrl || null;
+  }
+
+  if (input.bannerUrl !== undefined) {
+    body.bannerUrl = input.bannerUrl || null;
+  }
+
+  if (input.rules !== undefined) {
+    body.rules = input.rules?.trim() || null;
+  }
+
+  body.visibility = "public";
+
+  return body;
 }
 
 function normalizeProfile(profile: ApiProfile): Profile {

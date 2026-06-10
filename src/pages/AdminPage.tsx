@@ -367,7 +367,7 @@ export function AdminPage() {
             <Badge tone="cool">rooms</Badge>
             <h2 className="mt-3 text-xl font-semibold text-text">Room metadata</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-              Read-only room status for moderation planning.
+              Room ownership, membership, and activity metadata for moderation planning.
             </p>
           </div>
           <div className="flex items-center gap-2 text-sm text-muted">
@@ -863,11 +863,23 @@ function AdminRoomRow({ room }: { room: Room }) {
       <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted">
         <span>Owner: {room.owner ? `@${room.owner.handle}` : "unassigned"}</span>
         <span className="inline-flex items-center gap-1">
+          <Radio aria-hidden="true" size={13} />
+          {formatCountWithUnit(room.memberCount, "member")}
+        </span>
+        <span className="inline-flex items-center gap-1">
           <MessageCircle aria-hidden="true" size={13} />
           {formatCountWithUnit(room.postCount, "post")}
         </span>
         <span>Created: {room.createdAt ? formatDate(room.createdAt) : "unknown"}</span>
       </div>
+      <ButtonLink
+        to={`/rooms/${room.slug}`}
+        size="sm"
+        variant="secondary"
+        className="mt-4"
+      >
+        Open room
+      </ButtonLink>
     </div>
   );
 }

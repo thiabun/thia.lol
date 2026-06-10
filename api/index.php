@@ -6,6 +6,7 @@ require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read.php';
 require_once __DIR__ . '/posts.php';
+require_once __DIR__ . '/rooms.php';
 require_once __DIR__ . '/uploads.php';
 require_once __DIR__ . '/profile.php';
 require_once __DIR__ . '/follows.php';
@@ -61,6 +62,10 @@ try {
 
     if (($segments[0] ?? null) === 'posts' && in_array($method, ['GET', 'POST', 'PATCH', 'DELETE'], true)) {
         posts_dispatch($segments, $method);
+    }
+
+    if (($segments[0] ?? null) === 'rooms') {
+        rooms_dispatch($segments, $method);
     }
 
     if (($segments[0] ?? null) === 'uploads') {
@@ -149,18 +154,6 @@ try {
 
     if (($segments[0] ?? null) === 'profiles' && count($segments) === 3 && $segments[2] === 'badges') {
         badges_dispatch($segments, $method);
-    }
-
-    if (($segments[0] ?? null) === 'rooms' && count($segments) === 1) {
-        rooms_index();
-    }
-
-    if (($segments[0] ?? null) === 'rooms' && count($segments) === 2) {
-        rooms_show($segments[1]);
-    }
-
-    if (($segments[0] ?? null) === 'rooms' && count($segments) === 3 && $segments[2] === 'posts') {
-        room_posts_index($segments[1]);
     }
 
     if (($segments[0] ?? null) === 'feed' && count($segments) === 2 && $segments[1] === 'home') {

@@ -124,11 +124,14 @@ function admin_rooms_index(): void
             rooms.name AS room_name,
             rooms.summary AS room_summary,
             rooms.mood AS room_mood,
-            rooms.member_count AS room_member_count,
+            " . room_membership_count_select_sql('rooms') . "
             rooms.is_live AS room_is_live,
             rooms.accent AS room_accent,
+            " . room_customization_select_sql('rooms') . "
             rooms.visibility AS room_visibility,
             rooms.created_by AS room_created_by,
+            NULL AS current_room_role,
+            0 AS current_room_joined,
             owner.id AS owner_user_id,
             owner.handle AS owner_handle,
             owner_profile.display_name AS owner_display_name,
@@ -140,6 +143,7 @@ function admin_rooms_index(): void
         FROM rooms
         LEFT JOIN users owner ON owner.id = rooms.created_by
         LEFT JOIN profiles owner_profile ON owner_profile.user_id = owner.id
+        " . room_membership_count_join_sql('rooms') . "
         LEFT JOIN (
             SELECT
                 room_id,

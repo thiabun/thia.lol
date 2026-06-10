@@ -87,15 +87,30 @@ export type Room = {
   description?: string;
   mood: string;
   members: number;
+  memberCount: number;
   live: boolean;
   accent: string;
+  iconUrl?: string | null;
+  bannerUrl?: string | null;
+  rules?: string;
   visibility?: string;
   createdBy?: number | null;
   owner?: User | null;
+  joinedByMe?: boolean;
+  myRoomRole?: "owner" | "moderator" | "member" | null;
   postCount: number;
   latestActivityAt?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+};
+
+export type RoomMemberRole = "owner" | "moderator" | "member";
+
+export type RoomMember = {
+  id: number;
+  role: RoomMemberRole;
+  joinedAt?: string | null;
+  user: User;
 };
 
 export type ReactionCounts = {

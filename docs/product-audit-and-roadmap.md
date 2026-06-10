@@ -91,7 +91,7 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
 | Posts | Working, partial | Public top-level posts can be created, listed, deleted by author, hidden by moderators/admins, and shown in home/discover/profile/room feeds. | No media uploads, drafts, editing UI, visibility controls, audience controls, advanced moderation states, or feed ranking. |
 | Replies | Working, partial | Replies exist through `parent_id`, thread modal, reply creation, reply counts, ordered reply loading, and reply notifications. | No deep permalink/thread page, nested reply product decision, or moderation/visibility UX beyond inherited post systems. |
 | Reblogs | Working, foundation | `post_reblogs` stores one reblog per post/user. API routes support reblog/undo, post payloads expose counts/state/context, Home can label followed-user reblogs, profile Reblogs is API-backed, PostCard has a Reblog action, and reblog notifications are created. | Quote-posts are deferred. Needs production tuning for duplicate feed rows, richer notification grouping, and longer-term safety controls around high-volume resharing. |
-| Rooms | Partial, needs design/product decision | Public room list/detail pages, room search, room post feeds, room destination in composer, and room metadata exist. | No room creation UI, memberships, roles, moderators, rules, join/leave, private/member rooms, room moderation surface, or subreddit/community-style governance model. |
+| Rooms | Working, v2 foundation | Public room list/detail pages, room search, room post feeds, room destination in composer, room creation/editing, customization fields, owner/member roles, join/leave, member counts, member listing, and admin metadata now exist. | Private/member rooms, ownership transfer, full room moderation queues, bans/mutes UI, role management UI, and richer governance workflows are deferred. |
 | Profiles | Partial, foundation improved | Public profile pages show avatar, display name, handle, bio, location, links, joined date, public stats, posts, replies, rooms, follower/following/moot context, and real badge display. Registration creates a basic profile. See `docs/profile-badges-plan.md`. | Needs privacy controls, pinned posts, hidden-badge management UI, and richer identity controls. |
 | Follows/Moots | Working, foundation | Users can follow/unfollow active profiles, profile payloads expose follower/following/moot counts and current-user relationship state, basic followers/following lists exist, and follow/moot notifications are created. | Needs remove-follower controls, block/mute, deeper feed integration, and chat permission enforcement. |
 | Badges | Working, v1 foundation | `badges` and `user_badges` persist real badge definitions and earned grants. Starter definitions are seeded without fake user grants. Public endpoints expose definitions and profile badges, users can feature badges, admins/moderators can grant/revoke badges, profile headers show featured badges, the Badges tab shows earned badges, and badge grants create notifications when notification storage is available. | Automatic earning rules, full hidden-badge management UI, definition editor UI, room-earned/social criteria, and abuse-resistant criteria/progress models are deferred. |
@@ -268,13 +268,21 @@ Goal: make the current platform shell coherent before deeper features.
 
 Goal: turn rooms into real community spaces.
 
-- Define room model: public/members/private, owner, moderators, members.
-- Add `room_memberships` and room role/moderation schema after audit.
-- Add room creation/editing flow for approved users or admins.
-- Add room rules/about surfaces.
-- Add join/leave and member counts based on real membership.
+- Rooms 2.0 foundation implemented:
+  - public-only room creation with validated name, slug, summary, mood, accent, icon, banner, and rules fields.
+  - idempotent `room_memberships` storage with owner, moderator, and member roles plus muted/banned foundation fields.
+  - creators become room owners and existing `created_by` owners are backfilled as owner memberships.
+  - room detail pages show banner, icon, summary, rules, owner/mod markers, member count, post count, join/leave, posting, and role-gated edit controls.
+  - room index cards show customization, owner, joined state, member counts, and post counts.
+  - admin room metadata shows ownership, member counts, post counts, and a direct room link.
+  - room icon and banner uploads use authenticated `/api/uploads/image` purposes.
+  - `room_owner` badge is granted when a member creates their first public room if badge storage is ready.
+- Deferred room work:
 - Add room-level reporting and moderation context.
 - Decide private/member room rollout only after access controls are tested.
+- Add ownership transfer.
+- Add room bans/mutes UI and role management UI.
+- Add room moderation queues and audit views.
 
 ### Phase 3: Profiles and Badges
 

@@ -76,7 +76,7 @@ function validate_upload_purpose(mixed $value): string
     }
 
     $purpose = trim($value);
-    $allowed = ['avatar', 'banner', 'profile_background', 'post_media'];
+    $allowed = ['avatar', 'banner', 'profile_background', 'post_media', 'room_icon', 'room_banner'];
 
     if (!in_array($purpose, $allowed, true)) {
         json_error('Unsupported image purpose.', 422);
@@ -212,6 +212,8 @@ function upload_purpose_settings(string $purpose): array
         'banner' => ['max_width' => 1600, 'max_height' => 600, 'crop_square' => false],
         'profile_background' => ['max_width' => 1920, 'max_height' => 1080, 'crop_square' => false],
         'post_media' => ['max_width' => 1920, 'max_height' => 1920, 'crop_square' => false],
+        'room_icon' => ['max_width' => 512, 'max_height' => 512, 'crop_square' => true],
+        'room_banner' => ['max_width' => 1600, 'max_height' => 600, 'crop_square' => false],
         default => ['max_width' => 1920, 'max_height' => 1920, 'crop_square' => false],
     };
 }
