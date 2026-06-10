@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Live site
+    url: https://thia.lol
+    about: Try the current public-testing build.
+  - name: Public bug tracker
+    url: https://github.com/thiabun/thia.lol/issues
+    about: Browse existing bugs, tasks, and feature requests before opening a duplicate.
