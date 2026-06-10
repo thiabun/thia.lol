@@ -1,6 +1,8 @@
 import {
   Bell,
+  Cookie,
   Compass,
+  FileText,
   Home,
   LogIn,
   LogOut,
@@ -15,7 +17,7 @@ import type { LucideIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router";
+import { Link, NavLink, Outlet, useNavigate } from "react-router";
 import { PostComposerModal } from "../social/PostComposerModal";
 import { ThemeToggle } from "../ThemeToggle";
 import { Button, ButtonLink } from "../ui/Button";
@@ -38,6 +40,18 @@ const publicNavItems = [
   { to: "/rooms", label: "Rooms", icon: Radio },
   { to: "/chat", label: "Chat", icon: MessageCircle },
 ];
+
+const legalLinks = [
+  { to: "/terms", label: "Terms" },
+  { to: "/privacy", label: "Privacy" },
+  { to: "/cookies", label: "Cookies" },
+  { to: "/community-guidelines", label: "Guidelines" },
+  { to: "/copyright", label: "Copyright" },
+  { to: "/moderation", label: "Moderation" },
+  { to: "/legal", label: "Legal" },
+];
+
+const cookieNoticeStorageKey = "thia_cookie_notice_ack";
 
 export type AppShellOutletContext = {
   openPostComposer: (roomSlug?: string) => void;
@@ -136,6 +150,7 @@ export function AppShell() {
       <main className="mx-auto w-full max-w-7xl px-4 pb-28 pt-5 sm:px-6 lg:px-8">
         <Outlet context={{ openPostComposer } satisfies AppShellOutletContext} />
       </main>
+      <SiteFooter />
       <Button
         type="button"
         className="fixed bottom-6 right-6 z-40 hidden rounded-full px-5 shadow-lift lg:inline-flex"
@@ -159,6 +174,7 @@ export function AppShell() {
         open={composerOpen}
         rooms={rooms}
       />
+      <CookieNotice />
     </div>
   );
 }
@@ -313,6 +329,10 @@ function AccountMenu() {
                   <UserRound aria-hidden="true" size={16} />
                   Profile
                 </AccountMenuLink>
+                <AccountMenuLink to="/legal" onSelect={() => setOpen(false)}>
+                  <FileText aria-hidden="true" size={16} />
+                  Legal
+                </AccountMenuLink>
                 {user.role === "admin" ? (
                   <AccountMenuLink to="/admin" onSelect={() => setOpen(false)}>
                     <Shield aria-hidden="true" size={16} />
@@ -344,6 +364,10 @@ function AccountMenu() {
                 <AccountMenuLink to="/register" onSelect={() => setOpen(false)}>
                   <UserPlus aria-hidden="true" size={16} />
                   Create account
+                </AccountMenuLink>
+                <AccountMenuLink to="/legal" onSelect={() => setOpen(false)}>
+                  <FileText aria-hidden="true" size={16} />
+                  Legal
                 </AccountMenuLink>
               </>
             )}
@@ -463,5 +487,83 @@ function MobileDock({
         onClick={onPostClick}
       />
     </motion.nav>
+  );
+}
+
+function SiteFooter() {
+  return (
+    <footer className="mx-auto w-full max-w-7xl px-4 pb-28 pt-2 sm:px-6 lg:px-8 lg:pb-12">
+      <div className="flex flex-col gap-3 border-t border-line py-5 text-xs text-muted sm:flex-row sm:items-center sm:justify-between">
+        <p>thia.lol is a user-generated social platform.</p>
+        <nav
+          aria-label="Legal and trust"
+          className="flex flex-wrap gap-x-4 gap-y-2"
+          data-testid="legal-footer-links"
+        >
+          {legalLinks.map((link) => (
+            <Link
+              key={link.to}
+              to={link.to}
+              className="font-medium underline-offset-4 transition duration-fluid hover:text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            >
+              {link.label}
+            </Link>
+          ))}
+        </nav>
+      </div>
+    </footer>
+  );
+}
+
+function CookieNotice() {
+  const [visible, setVisible] = useState(() => {
+    try {
+      return window.localStorage.getItem(cookieNoticeStorageKey) !== "1";
+    } catch {
+      return true;
+    }
+  });
+
+  function handleContinue() {
+    try {
+      window.localStorage.setItem(cookieNoticeStorageKey, "1");
+    } catch {
+      // If localStorage is unavailable, hide the notice for this page view.
+    }
+
+    setVisible(false);
+  }
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <div
+      className="fixed inset-x-3 bottom-24 z-50 mx-auto max-w-2xl rounded-panel border border-line bg-surface/96 p-4 text-sm text-muted shadow-lift backdrop-blur-veil lg:bottom-5"
+      data-testid="cookie-notice"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+        <Cookie aria-hidden="true" className="mt-0.5 shrink-0 text-muted" size={18} />
+        <p className="leading-6">
+          thia.lol uses necessary cookies for sign-in and security. No analytics or
+          marketing cookies are currently used.
+          <Link
+            to="/cookies"
+            className="ml-1 font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline"
+          >
+            Cookie policy
+          </Link>
+        </p>
+        <Button
+          type="button"
+          size="sm"
+          className="shrink-0 self-start sm:ml-auto"
+          onClick={handleContinue}
+        >
+          Continue
+        </Button>
+      </div>
+    </div>
   );
 }

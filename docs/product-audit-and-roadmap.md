@@ -11,7 +11,7 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
 ### Frontend
 
 - Vite, React, TypeScript, Tailwind CSS, Motion for React, React Router.
-- App routes currently include `/`, `/discover`, `/rooms`, `/rooms/:slug`, `/chat`, `/@/:handle`, `/admin`, `/login`, and `/register`.
+- App routes currently include `/`, `/discover`, `/rooms`, `/rooms/:slug`, `/chat`, `/notifications`, `/@/:handle`, `/admin`, `/login`, `/register`, `/terms`, `/privacy`, `/cookies`, `/community-guidelines`, `/copyright`, `/moderation`, `/legal`, and `/legal/contact`.
 - Main shell includes desktop navigation, mobile bottom dock, account menu, theme toggle, and post composer modal.
 - API access is centralized through `src/lib/apiClient.ts` and `src/lib/api.ts`.
 - Frontend user content rendering uses React text nodes in inspected surfaces; no `dangerouslySetInnerHTML` use was found.
@@ -100,7 +100,7 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
 | Admin/moderation | Working, partial | Reports can be created from posts; admins/moderators can view report queue, hide posts, suspend users, resolve/dismiss reports, and log moderation actions. | Admin still appears in desktop nav for admins and should move only into account popover. Needs appeal flow, policy pages, moderation transparency, audit views, and better user-facing report status decisions. |
 | Discover/Home | Working, foundation | Home uses `/api/feed/home` for a personalized ranked feed when logged in and a general ranked feed when logged out. Discover uses `/api/feed/discover` for ranked public posts plus active rooms and people to watch only when backed by real data. | Needs user feed controls, chronological mode, hide/mute/block controls, joined-room weighting after memberships exist, and better transparency surfaces. |
 | Chat/DMs | Working, v1 foundation | `/chat` is a real private 1:1 direct-message surface for moots only. Conversation/message tables exist, API endpoints enforce authentication and membership, and profiles show Message only for moot relationships. | Attachments, post/room sharing, group chats, push/email notifications, realtime polling/WebSockets, message reporting, blocking, deletion, retention controls, and broader request/inbox behavior are deferred. |
-| Legal/cookies/copyright pages | Missing, needs design/product decision | Auth cookie implementation exists, but no public Terms, Privacy, Cookie Policy, Community Guidelines, Copyright/Takedown Policy, or consent preference pages were found. | Need legal copy, consent model, user content license terms, reporting/appeal explanations, and transparency basics. |
+| Legal/cookies/copyright pages | Working, v1 foundation | Public Terms, Privacy Policy, Cookie Policy, Community Guidelines, Copyright/Takedown Policy, Moderation Policy, and Legal Contact pages exist at top-level routes with `/legal` as the policy index/contact page. Footer links, account-popover legal link, report-form policy links, and a discreet localStorage-backed cookie notice are implemented. | Needs legal review, self-service data export, fuller deletion workflows, automated appeals, advanced age/region controls, and deeper retention/account-control decisions. |
 
 ## 3. Product Direction
 
@@ -226,29 +226,39 @@ Specific audit questions:
 
 ## 6. Legal and Compliance Checklist
 
-- Terms of Service.
-- Privacy Policy.
-- Cookie Policy.
-- Community Guidelines.
-- Copyright/Takedown Policy.
-- Moderation, reporting, and appeal flow.
+- Terms of Service exists at `/terms`.
+- Privacy Policy exists at `/privacy`.
+- Cookie Policy exists at `/cookies`.
+- Community Guidelines exist at `/community-guidelines`.
+- Copyright/Takedown Policy exists at `/copyright`.
+- Moderation Policy exists at `/moderation`.
+- Legal Contact and policy index exists at `/legal`; `/legal/contact` redirects there.
+- Moderation, reporting, and manual appeal explanation exists in policy copy. A full in-product appeal system is deferred.
 - DSA-inspired transparency basics:
-  - public contact point,
-  - report handling explanation,
-  - moderation action notice language,
-  - appeal path,
-  - basic transparency notes for recommender/feed logic.
+  - public contact point exists,
+  - report handling explanation exists,
+  - moderation action categories are documented,
+  - manual appeal path is documented,
+  - basic transparency notes for recommender/feed logic are documented.
 - GDPR/UK GDPR/PECR/ePrivacy-aware consent basics:
-  - distinguish essential auth/security cookies from analytics/optional cookies,
+  - essential auth/security cookies are distinguished from optional cookies,
   - avoid non-essential cookies until consent exists,
-  - store consent preferences if optional cookies are introduced,
-  - provide privacy contact and data rights language,
-  - explain retention, deletion, and account data handling.
+  - cookie notice acknowledgement is stored locally; optional consent preferences are still deferred until optional cookies exist,
+  - privacy contact and data rights language exists,
+  - retention, deletion, and account data handling are explained at a v1 level.
 - User content license language:
   - users retain ownership,
-  - platform receives limited license needed to host, display, distribute, moderate, and operate the service,
-  - clarify deletion/removal effects,
-  - clarify public content visibility and resharing rules.
+  - platform receives limited license needed to host, display, process, distribute, moderate, and operate the service,
+  - deletion/removal effects are explained with backup, safety, legal, moderation, and earlier-interaction limits,
+  - public content visibility and resharing basics are explained.
+- Deferred legal/compliance work:
+  - lawyer review before treating the policies as final legal advice,
+  - self-service data export,
+  - automated deletion/account closure workflows beyond manual requests and existing content deletion,
+  - full moderation appeals/status system,
+  - advanced age, country, and region controls,
+  - detailed retention schedule and data-processing inventory,
+  - optional analytics/marketing consent controls if those tools are ever introduced.
 
 ## 7. Prioritized Implementation Roadmap
 
@@ -261,7 +271,7 @@ Goal: make the current platform shell coherent before deeper features.
 - Clarify Home vs Discover copy.
 - Decide whether Home is logged-in-first or public-first.
 - Clean up any remaining labels that imply missing features are complete.
-- Add route/page plan for legal pages without publishing placeholder legal claims as final policy.
+- Legal/trust foundation pages now exist; keep future edits practical and avoid overclaiming compliance.
 - Verify smoke tests against a working API path for any API-backed changes.
 
 ### Phase 2: Rooms
@@ -416,15 +426,23 @@ Goal: ship safe, moots-first direct messages.
 
 Goal: make the public trust layer match the product.
 
-- Publish Terms, Privacy Policy, Cookie Policy, Community Guidelines, and Copyright/Takedown Policy.
-- Add reporting/appeal documentation and user-facing moderation notices.
-- Add consent preferences before any non-essential cookies or analytics.
-- Add transparency copy for feeds/recommendations.
-- Review account deletion/export needs before broader launch.
+- Foundation implemented:
+  - `/terms`, `/privacy`, `/cookies`, `/community-guidelines`, `/copyright`, `/moderation`, and `/legal` are public routes.
+  - `/legal/contact` redirects to `/legal` for a single clean contact surface.
+  - The footer contains discreet legal/trust links and the account popover includes Legal.
+  - A small cookie notice explains necessary cookies and states that analytics/marketing cookies are not currently used.
+  - Report forms link to Community Guidelines and Moderation Policy.
+- Deferred:
+  - legal review before broader launch.
+  - self-service data export.
+  - automated account deletion and content-retention workflows.
+  - full moderation appeal/status system.
+  - advanced age and region controls.
+  - optional-cookie consent preferences if analytics or marketing tools are introduced later.
 
 ## 8. Immediate Non-Feature Follow-Ups
 
 - Confirm the production migration state, especially whether `post_reblogs` and `post_reblogs_created_at_index` exist and whether any schema drift exists outside committed migrations.
 - Decide whether public registration remains open, restricted, or invite/admin-controlled while moderation capacity is small.
-- Draft first legal pages before growing rooms, chat, or discovery.
+- Have the v1 legal/trust pages reviewed before growing rooms, chat, or discovery.
 - Keep future smoke tests honest: API-backed behavior must be tested against a working local PHP API or deployed base URL.

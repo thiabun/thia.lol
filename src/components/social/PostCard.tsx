@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { createPortal } from "react-dom";
+import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { AmbientImage } from "../ui/AmbientImage";
 import { Avatar } from "../ui/Avatar";
@@ -399,6 +400,23 @@ function ReactionControls({
           className="mt-3 space-y-3 rounded-card border border-line bg-canvas/45 p-3"
           onSubmit={(event) => void handleReportSubmit(event)}
         >
+          <p className="text-xs leading-5 text-muted">
+            Reports are reviewed against the{" "}
+            <Link
+              to="/community-guidelines"
+              className="font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline"
+            >
+              Community Guidelines
+            </Link>
+            . The{" "}
+            <Link
+              to="/moderation"
+              className="font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline"
+            >
+              Moderation Policy
+            </Link>{" "}
+            explains possible actions.
+          </p>
           <SelectField
             id={`report-reason-${post.id}`}
             label="Reason"
