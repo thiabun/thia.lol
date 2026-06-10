@@ -194,3 +194,12 @@ Recommended next task: Run `THIA_BASE_URL=https://thia.lol` smoke tests with tes
 - Selecting a moot still goes through `POST /api/chat/conversations`, so server-side moots-only enforcement and direct-conversation uniqueness remain the source of truth.
 - No migration was added.
 - Local coverage uses mocked UI tests and PHP source-inspection checks; deployed API-backed chat picker smoke still needs a working authenticated API path.
+
+## 2026-06-11 Profile navigation behavior addendum
+
+- Added a reusable profile-link component for inline identity links and compact identity rows.
+- Fixed static identity text so profile navigation is available from reblog attribution, chat conversation headers, chat conversation list identities, chat moot picker identities, notification actor names, follower/following focused panels, room owner and moderator rows, room-card owner labels, room edit moderator settings, admin badge recent grants, admin room owner labels, and admin report user labels.
+- Kept explicit action controls as buttons or room/chat links: like, reblog, reply, report, delete, room open links, chat open/message actions, badge revoke, moderator removal, and admin moderation actions retain their own behavior.
+- Chat message bubbles are intentionally unchanged because they do not show a separate sender avatar/name/handle in the current 1:1 layout; the selected conversation header and conversation list identity now link to the other participant profile.
+- No API changes or migrations were added.
+- Local coverage uses mocked Playwright smoke tests for post/thread, chat, notifications, follower/following panels, badge/admin, and room identity links. Deployed API-backed manual verification is still recommended after deployment.

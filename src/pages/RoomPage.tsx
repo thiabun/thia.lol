@@ -10,11 +10,15 @@ import {
   UsersRound,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useOutletContext, useParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { PostCard } from "../components/social/PostCard";
 import { RoomEditModal } from "../components/social/RoomEditModal";
+import {
+  InlineUserProfileLink,
+  UserIdentityLink,
+} from "../components/social/UserProfileLink";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -518,7 +522,15 @@ function RoomHeader({
             <RoomMetric
               icon={UserRound}
               label="Owner"
-              value={room.owner ? `@${room.owner.handle}` : "Unassigned"}
+              value={
+                room.owner ? (
+                  <InlineUserProfileLink user={room.owner}>
+                    @{room.owner.handle}
+                  </InlineUserProfileLink>
+                ) : (
+                  "Unassigned"
+                )
+              }
             />
           </div>
         </div>
@@ -593,12 +605,7 @@ function RoomMemberRow({
 }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-card border border-line bg-canvas/45 p-3">
-      <div className="min-w-0">
-        <p className="truncate text-sm font-semibold text-text">
-          {user.displayName}
-        </p>
-        <p className="text-xs text-muted">@{user.handle}</p>
-      </div>
+      <UserIdentityLink user={user} showAvatar={false} className="flex-1" />
       <Badge tone={role === "owner" ? "warm" : "cool"}>{roleLabel(role)}</Badge>
     </div>
   );
@@ -611,7 +618,7 @@ function RoomMetric({
 }: {
   icon: typeof MessageCircle;
   label: string;
-  value: string;
+  value: ReactNode;
 }) {
   return (
     <div className="rounded-card border border-line bg-canvas/50 p-3">

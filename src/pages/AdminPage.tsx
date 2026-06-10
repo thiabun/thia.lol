@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { PageMeta } from "../components/PageMeta";
+import { InlineUserProfileLink } from "../components/social/UserProfileLink";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Badge } from "../components/ui/Badge";
 import { Button, ButtonLink } from "../components/ui/Button";
@@ -656,7 +657,13 @@ function BadgeAdminPanel({
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-text">
                     {grant.badge.name} to{" "}
-                    {grant.user ? `@${grant.user.handle}` : "unknown user"}
+                    {grant.user ? (
+                      <InlineUserProfileLink user={grant.user}>
+                        @{grant.user.handle}
+                      </InlineUserProfileLink>
+                    ) : (
+                      "unknown user"
+                    )}
                   </p>
                   <p className="mt-1 text-xs text-muted">
                     Earned {formatDate(grant.earnedAt)}
@@ -733,7 +740,8 @@ function ReportRow({
           </div>
           <h2 className="mt-3 text-lg font-semibold text-text">{targetTitle}</h2>
           <p className="mt-1 text-sm leading-6 text-muted">
-            Reported by {userLabel(report.reporter)} · {formatDate(report.createdAt)}
+            Reported by <UserLabel user={report.reporter} /> ·{" "}
+            {formatDate(report.createdAt)}
           </p>
         </div>
         <div className="flex items-center gap-2 text-sm text-muted">
@@ -758,7 +766,7 @@ function ReportRow({
                   post {report.post.status}
                 </Badge>
                 <span className="text-xs text-muted">
-                  by {userLabel(report.post.author)}
+                  by <UserLabel user={report.post.author} />
                 </span>
               </div>
               <p className="mt-3 line-clamp-4 text-sm leading-6 text-text">
@@ -775,7 +783,7 @@ function ReportRow({
               </p>
               {report.reviewedBy ? (
                 <p className="mt-1 text-xs text-muted">
-                  by {userLabel(report.reviewedBy)}
+                  by <UserLabel user={report.reviewedBy} />
                   {report.reviewedAt ? ` · ${formatDate(report.reviewedAt)}` : ""}
                 </p>
               ) : null}
@@ -915,7 +923,16 @@ function AdminRoomRow({ room }: { room: Room }) {
         {room.summary || "No description"}
       </p>
       <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted">
-        <span>Owner: {room.owner ? `@${room.owner.handle}` : "unassigned"}</span>
+        <span>
+          Owner:{" "}
+          {room.owner ? (
+            <InlineUserProfileLink user={room.owner}>
+              @{room.owner.handle}
+            </InlineUserProfileLink>
+          ) : (
+            "unassigned"
+          )}
+        </span>
         <span className="inline-flex items-center gap-1">
           <Radio aria-hidden="true" size={13} />
           {formatCountWithUnit(room.memberCount, "member")}
@@ -948,7 +965,9 @@ function TargetSummary({
   return (
     <div className="rounded-card border border-line bg-canvas/45 p-3">
       <p className="text-xs font-medium uppercase text-muted">{label}</p>
-      <p className="mt-2 text-sm font-semibold text-text">{userLabel(user)}</p>
+      <p className="mt-2 text-sm font-semibold text-text">
+        <UserLabel user={user} />
+      </p>
       {user ? (
         <p className="mt-1 text-xs text-muted">
           {user.role} · {user.status}
@@ -958,12 +977,16 @@ function TargetSummary({
   );
 }
 
-function userLabel(user: ModerationUser | null): string {
+function UserLabel({ user }: { user: ModerationUser | null }) {
   if (!user) {
-    return "unknown user";
+    return <>unknown user</>;
   }
 
-  return `${user.displayName} (@${user.handle})`;
+  return (
+    <InlineUserProfileLink user={user}>
+      {user.displayName} (@{user.handle})
+    </InlineUserProfileLink>
+  );
 }
 
 function categoryLabel(category: ReportCategory): string {

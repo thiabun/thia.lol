@@ -26,6 +26,7 @@ import { Badge } from "../ui/Badge";
 import { Button, ButtonLink } from "../ui/Button";
 import { SelectField, TextareaField } from "../ui/Field";
 import { Panel } from "../ui/Panel";
+import { InlineUserProfileLink } from "./UserProfileLink";
 import {
   createReport,
   deletePost,
@@ -100,7 +101,12 @@ export function PostCard({
         {post.rebloggedBy ? (
           <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-muted">
             <Repeat2 aria-hidden="true" size={14} />
-            <span>@{post.rebloggedBy.handle} reblogged</span>
+            <span>
+              <InlineUserProfileLink user={post.rebloggedBy}>
+                @{post.rebloggedBy.handle}
+              </InlineUserProfileLink>{" "}
+              reblogged
+            </span>
           </div>
         ) : null}
         <div className="flex items-start gap-3">

@@ -20,8 +20,8 @@ import { ProfileEditModal } from "../components/social/ProfileEditModal";
 import { PostCard } from "../components/social/PostCard";
 import { ProfileHeader } from "../components/social/ProfileHeader";
 import { RoomCard } from "../components/social/RoomCard";
+import { UserIdentityLink } from "../components/social/UserProfileLink";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
-import { Avatar } from "../components/ui/Avatar";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -661,20 +661,16 @@ function ProfileConnectionList({
   return (
     <div className="space-y-3">
       {items.map((connection) => (
-        <a
+        <div
           key={connection.handle}
           className="flex items-center justify-between gap-3 rounded-card border border-line bg-canvas/45 p-3 transition duration-fluid hover:border-line-strong"
-          href={`/@${connection.handle}`}
         >
-          <div className="flex min-w-0 items-center gap-3">
-            <Avatar user={{ ...connection, aura: "frost" }} className="size-11" />
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-text">
-                {connection.displayName}
-              </p>
-              <p className="text-xs text-muted">@{connection.handle}</p>
-            </div>
-          </div>
+          <UserIdentityLink
+            user={{ ...connection, aura: "frost" }}
+            avatarSize="md"
+            avatarClassName="size-11"
+            className="flex-1"
+          />
           {connection.isMoot ? (
             <Badge tone="warm">Moot</Badge>
           ) : connection.isFollowing ? (
@@ -683,7 +679,7 @@ function ProfileConnectionList({
               Following
             </span>
           ) : null}
-        </a>
+        </div>
       ))}
     </div>
   );

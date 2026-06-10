@@ -57,13 +57,21 @@ test("profile followers, following, and badges use compact panels", async ({ pag
   await expect(page.getByRole("link", { name: /YouTube/ })).toBeVisible();
 
   await page.getByRole("button", { name: /Followers/ }).click();
-  await expect(page.getByRole("dialog", { name: "Followers" })).toBeVisible();
-  await expect(page.getByText("@alex")).toBeVisible();
+  let dialog = page.getByRole("dialog", { name: "Followers" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "Alex's profile" })).toHaveAttribute(
+    "href",
+    "/@alex",
+  );
   await page.getByRole("button", { name: "Close panel" }).click();
 
   await page.getByRole("button", { name: /Following/ }).click();
-  await expect(page.getByRole("dialog", { name: "Following" })).toBeVisible();
-  await expect(page.getByText("@mira")).toBeVisible();
+  dialog = page.getByRole("dialog", { name: "Following" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "Mira's profile" })).toHaveAttribute(
+    "href",
+    "/@mira",
+  );
   await page.getByRole("button", { name: "Close panel" }).click();
 
   await page.getByRole("button", { name: /Badges/ }).click();

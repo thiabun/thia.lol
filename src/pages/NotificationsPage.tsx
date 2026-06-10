@@ -18,6 +18,7 @@ import { Badge } from "../components/ui/Badge";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
+import { InlineUserProfileLink } from "../components/social/UserProfileLink";
 import {
   getNotifications,
   markAllNotificationsRead,
@@ -258,6 +259,11 @@ function NotificationRow({
   pending: boolean;
 }) {
   const unread = notification.readAt === null;
+  const markRead = () => {
+    if (unread) {
+      void onMarkRead(notification);
+    }
+  };
 
   return (
     <motion.div
@@ -272,32 +278,36 @@ function NotificationRow({
           unread && "border-accent/40 bg-surface-strong/86",
         )}
       >
-        <Link
-          to={notification.targetUrl}
-          className="group flex min-w-0 flex-1 items-start gap-3 rounded-card focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus"
-          onClick={() => {
-            if (unread) {
-              void onMarkRead(notification);
-            }
-          }}
-        >
+        <div className="flex min-w-0 flex-1 items-start gap-3">
           <span className="grid size-11 shrink-0 place-items-center rounded-full bg-surface-strong text-accent-strong">
             <NotificationIcon type={notification.type} />
           </span>
           <span className="min-w-0">
-            <span className="block text-sm font-semibold text-text group-hover:text-accent-strong">
-              {notificationCopy(notification)}
+            <span className="block text-sm font-semibold text-text">
+              <NotificationCopy notification={notification} onVisit={markRead} />
             </span>
             {notification.post ? (
-              <span className="mt-1 block line-clamp-2 text-sm leading-6 text-muted">
+              <Link
+                to={notification.targetUrl}
+                className="mt-1 block line-clamp-2 text-sm leading-6 text-muted underline-offset-4 hover:text-accent-strong hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                onClick={markRead}
+              >
                 {notification.post.bodySnippet}
-              </span>
-            ) : null}
+              </Link>
+            ) : (
+              <Link
+                to={notification.targetUrl}
+                className="mt-1 inline-flex text-sm font-medium text-muted underline-offset-4 hover:text-accent-strong hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                onClick={markRead}
+              >
+                {notificationTargetLabel(notification)}
+              </Link>
+            )}
             <span className="mt-2 block text-xs text-muted">
               {formatRelativeTime(notification.createdAt)}
             </span>
           </span>
-        </Link>
+        </div>
         {unread ? (
           <Button
             type="button"
@@ -338,27 +348,39 @@ function applyReadState(
   };
 }
 
-function notificationCopy(notification: NotificationItem): string {
-  const handle = notification.actor ? `@${notification.actor.handle}` : "Someone";
+function NotificationCopy({
+  notification,
+  onVisit,
+}: {
+  notification: NotificationItem;
+  onVisit: () => void;
+}) {
+  const actor = notification.actor ? (
+    <InlineUserProfileLink user={notification.actor} onClick={onVisit}>
+      @{notification.actor.handle}
+    </InlineUserProfileLink>
+  ) : (
+    "Someone"
+  );
 
   if (notification.type === "follow") {
-    return `${handle} followed you`;
+    return <>{actor} followed you</>;
   }
 
   if (notification.type === "moot") {
-    return `You and ${handle} are moots`;
+    return <>You and {actor} are moots</>;
   }
 
   if (notification.type === "like") {
-    return `${handle} liked your post`;
+    return <>{actor} liked your post</>;
   }
 
   if (notification.type === "reblog") {
-    return `${handle} reblogged your post`;
+    return <>{actor} reblogged your post</>;
   }
 
   if (notification.type === "message") {
-    return `${handle} sent you a message`;
+    return <>{actor} sent you a message</>;
   }
 
   if (notification.type === "badge_granted") {
@@ -367,10 +389,22 @@ function notificationCopy(notification: NotificationItem): string {
         ? notification.data.badgeName
         : "a badge";
 
-    return `${handle} granted you ${badgeName}`;
+    return <>{actor} granted you {badgeName}</>;
   }
 
-  return `${handle} replied to your post`;
+  return <>{actor} replied to your post</>;
+}
+
+function notificationTargetLabel(notification: NotificationItem): string {
+  if (notification.type === "message") {
+    return "Open chat";
+  }
+
+  if (notification.type === "follow" || notification.type === "moot") {
+    return "Open profile";
+  }
+
+  return "Open notification";
 }
 
 function NotificationIcon({ type }: { type: NotificationItem["type"] }) {

@@ -81,6 +81,14 @@ test("admin report queue renders open reports first", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Reported post" })).toBeVisible();
   await expect(page.getByText("Private information", { exact: true })).toBeVisible();
   await expect(page.getByText("Target summary")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Viewer (@viewer)" })).toHaveAttribute(
+    "href",
+    "/@viewer",
+  );
+  await expect(page.getByRole("link", { name: "Alex (@alex)" }).first()).toHaveAttribute(
+    "href",
+    "/@alex",
+  );
   await expect(page.getByRole("button", { name: "Mark reviewed" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Dismiss" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Hide post" })).toBeVisible();

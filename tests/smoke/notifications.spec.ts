@@ -48,6 +48,41 @@ test("mobile primary nav keeps Chat while notifications use the header", async (
   await expect(nav.getByRole("link", { name: "Admin" })).toHaveCount(0);
 });
 
+test("notification actor identity links to the actor profile", async ({ page }) => {
+  await mockAuthenticatedNotifications(page, [
+    {
+      id: 9,
+      type: "follow",
+      createdAt: "2026-06-10 10:00:00",
+      readAt: null,
+      actor: {
+        id: 2,
+        handle: "alex",
+        displayName: "Alex",
+        initials: "A",
+        aura: "frost",
+        avatarUrl: null,
+      },
+      post: null,
+      room: null,
+      targetUrl: "/@alex",
+      data: null,
+    },
+  ]);
+
+  await page.goto("/notifications");
+
+  await expect(page.getByRole("link", { name: "@alex" })).toHaveAttribute(
+    "href",
+    "/@alex",
+  );
+  await expect(page.getByRole("link", { name: "Open profile" })).toHaveAttribute(
+    "href",
+    "/@alex",
+  );
+  await expect(page.getByRole("button", { name: "Mark read" })).toBeVisible();
+});
+
 test("mark all notifications as read works against the API", async ({ page }) => {
   skipWithoutCredentials();
 
@@ -87,6 +122,10 @@ test("mark all notifications as read works against the API", async ({ page }) =>
 });
 
 async function mockAuthenticatedEmptyNotifications(page: Page) {
+  await mockAuthenticatedNotifications(page, []);
+}
+
+async function mockAuthenticatedNotifications(page: Page, notifications: unknown[]) {
   await page.route("**/api/auth/me", async (route) => {
     await route.fulfill({
       status: 200,
@@ -119,7 +158,17 @@ async function mockAuthenticatedEmptyNotifications(page: Page) {
 
   await page.route("**/api/notifications", async (route) => {
     if (route.request().method() !== "GET") {
-      await route.fallback();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            readAt: "2026-06-10 10:00:01",
+            unreadCount: 0,
+          },
+        }),
+      });
       return;
     }
 
@@ -129,8 +178,8 @@ async function mockAuthenticatedEmptyNotifications(page: Page) {
       body: JSON.stringify({
         ok: true,
         data: {
-          notifications: [],
-          unreadCount: 0,
+          notifications,
+          unreadCount: notifications.length,
         },
       }),
     });

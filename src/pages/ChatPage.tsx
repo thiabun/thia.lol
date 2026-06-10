@@ -20,10 +20,10 @@ import {
 import { useSearchParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
-import { Avatar } from "../components/ui/Avatar";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
+import { UserIdentityLink } from "../components/social/UserProfileLink";
 import {
   createChatConversation,
   getChatConversations,
@@ -448,15 +448,11 @@ export function ChatPage() {
           {selectedConversation ? (
             <>
               <div className="flex items-center gap-3 border-b border-line px-4 py-3">
-                <Avatar user={selectedConversation.otherParticipant} size="sm" />
-                <div className="min-w-0 flex-1">
-                  <h2 className="truncate text-sm font-semibold text-text">
-                    {selectedConversation.otherParticipant.displayName}
-                  </h2>
-                  <p className="truncate text-xs text-muted">
-                    @{selectedConversation.otherParticipant.handle}
-                  </p>
-                </div>
+                <UserIdentityLink
+                  user={selectedConversation.otherParticipant}
+                  avatarSize="sm"
+                  className="flex-1 rounded-control"
+                />
               </div>
 
               <div
@@ -675,31 +671,29 @@ function ChatMootPicker({
                 const starting = startingHandle === moot.handle;
 
                 return (
-                  <button
+                  <div
                     key={moot.id}
-                    className="flex w-full items-center gap-3 border-b border-line px-4 py-3 text-left transition duration-fluid ease-fluid last:border-b-0 hover:bg-canvas/60 focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-focus"
-                    data-testid={`chat-moot-option-${moot.handle}`}
-                    type="button"
-                    disabled={startingHandle !== undefined}
-                    onClick={() => onSelect(moot)}
+                    className="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0"
                   >
-                    <Avatar user={moot} size="sm" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-text">
-                        {moot.displayName}
-                      </span>
-                      <span className="block truncate text-xs text-muted">
-                        @{moot.handle}
-                      </span>
-                    </span>
-                    <span className="shrink-0 rounded-full border border-line bg-canvas/70 px-3 py-1 text-xs font-semibold text-muted">
+                    <UserIdentityLink
+                      user={moot}
+                      avatarSize="sm"
+                      className="flex-1"
+                    />
+                    <button
+                      className="shrink-0 rounded-full border border-line bg-canvas/70 px-3 py-1 text-xs font-semibold text-muted transition duration-fluid ease-fluid hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-wait disabled:opacity-70"
+                      data-testid={`chat-moot-option-${moot.handle}`}
+                      type="button"
+                      disabled={startingHandle !== undefined}
+                      onClick={() => onSelect(moot)}
+                    >
                       {starting
                         ? "Opening"
                         : existingConversation
                           ? "Open"
                           : "Message"}
-                    </span>
-                  </button>
+                    </button>
+                  </div>
                 );
               })
             : null}
@@ -721,31 +715,33 @@ function ConversationButton({
   selected,
 }: ConversationButtonProps) {
   return (
-    <button
+    <div
       className={cn(
-        "flex w-full items-center gap-3 border-b border-line px-4 py-3 text-left transition duration-fluid ease-fluid last:border-b-0 focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-focus",
+        "flex w-full items-center gap-3 border-b border-line px-4 py-3 text-left transition duration-fluid ease-fluid last:border-b-0",
         selected ? "bg-surface-strong" : "hover:bg-canvas/60",
       )}
-      type="button"
-      onClick={onClick}
     >
-      <Avatar user={conversation.otherParticipant} size="sm" />
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center justify-between gap-2">
-          <span className="truncate text-sm font-semibold text-text">
-            {conversation.otherParticipant.displayName}
+      <UserIdentityLink
+        user={conversation.otherParticipant}
+        avatarSize="sm"
+        className="flex-1"
+      />
+      <button
+        type="button"
+        className="min-w-0 rounded-control px-2 py-1 text-right text-xs text-muted transition duration-fluid ease-fluid hover:bg-canvas/70 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        aria-label={`Open chat with ${conversation.otherParticipant.displayName}`}
+        onClick={onClick}
+      >
+        {conversation.unreadCount > 0 ? (
+          <span className="mb-1 ml-auto block w-fit rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-accent-ink">
+            {conversation.unreadCount}
           </span>
-          {conversation.unreadCount > 0 ? (
-            <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-accent-ink">
-              {conversation.unreadCount}
-            </span>
-          ) : null}
-        </span>
-        <span className="mt-0.5 block truncate text-xs text-muted">
+        ) : null}
+        <span className="block max-w-32 truncate">
           {conversation.lastMessage?.body ?? "No chats yet"}
         </span>
-      </span>
-    </button>
+      </button>
+    </div>
   );
 }
 

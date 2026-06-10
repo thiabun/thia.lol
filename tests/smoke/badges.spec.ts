@@ -36,6 +36,10 @@ test("admin badge grant panel renders for admin", async ({ page }) => {
   await expect(page.getByLabel("Badge")).toBeVisible();
   await expect(page.getByRole("button", { name: "Grant badge" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Founder" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "@alex" })).toHaveAttribute(
+    "href",
+    "/@alex",
+  );
 });
 
 test("grant badge endpoint requires auth/admin", async ({ page }) => {
@@ -166,6 +170,14 @@ async function mockProfileWithBadges(page: Page, badges: unknown[]) {
     });
   });
 
+  await page.route("**/api/rooms", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+
   for (const suffix of ["posts", "replies", "reblogs", "rooms", "followers", "following"]) {
     await page.route(`**/api/profiles/thia/${suffix}`, async (route) => {
       await route.fulfill({
@@ -222,6 +234,14 @@ async function mockAdminBadgePanel(page: Page) {
     });
   });
 
+  await page.route("**/api/rooms", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+
   await page.route("**/api/admin/reports", async (route) => {
     await route.fulfill({
       status: 200,
@@ -259,7 +279,43 @@ async function mockAdminBadgePanel(page: Page) {
               createdAt: "2026-06-10 00:00:00",
             },
           ],
-          recentGrants: [],
+          recentGrants: [
+            {
+              id: 10,
+              reason: "Helpful testing",
+              earnedAt: "2026-06-10 00:00:00",
+              featuredOrder: null,
+              isVisible: true,
+              user: {
+                id: 2,
+                handle: "alex",
+                displayName: "Alex",
+                initials: "A",
+                aura: "frost",
+                avatarUrl: null,
+              },
+              grantedBy: {
+                id: 1,
+                handle: "admin",
+                displayName: "Admin",
+                initials: "A",
+                aura: "frost",
+                avatarUrl: null,
+              },
+              badge: {
+                id: 1,
+                badgeKey: "founder",
+                name: "Founder",
+                description: "Granted to people who helped establish thia.lol.",
+                rarity: "founder",
+                source: "admin-granted",
+                icon: "sparkles",
+                accent: "founder",
+                isActive: true,
+                createdAt: "2026-06-10 00:00:00",
+              },
+            },
+          ],
         },
       }),
     });

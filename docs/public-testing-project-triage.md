@@ -20,6 +20,7 @@ Completed or effectively completed:
 - Room mood and post mood badges have been removed from public surfaces inspected in the current code.
 - Reports 2.0 for posts is implemented: structured categories, report details, admin queue, report statuses, dismiss/review/action controls, post hide/remove, user suspend, and moderation notes.
 - Chat is a real moots-only 1:1 DM foundation with conversations, messages, read state, message notifications, profile-to-chat start through `/chat?with=handle`, and a Chat page "Message a moot" picker backed by an authenticated current-user moots endpoint.
+- Profile navigation behavior sweep is implemented across post/thread author identity, chat conversation and moot-picker identity, notifications, followers/following panels, badge admin recent grants, room owner/moderator surfaces, room cards, and admin report identity labels.
 - Legal, privacy, cookie, copyright, community guideline, moderation, and legal contact pages exist. The footer includes legal links and the required copyright notice.
 - Route-level lazy loading is implemented in `src/App.tsx`.
 - The deploy workflow exists at `.github/workflows/deploy.yml`, runs verification, writes `dist/deploy-meta.json`, deploys frontend/API/migrations to the expected cPanel targets, and runs live unauthenticated smoke checks.
@@ -60,7 +61,7 @@ Items where existing docs no longer match the repository or the latest project c
 
 ### P1
 
-- Run a profile-click behavior sweep across PostCard, thread modal, Chat, Notifications, follower/following panels, badges, rooms, and admin surfaces.
+- Verify profile-click behavior manually after deployment across PostCard, thread modal, Chat, Notifications, follower/following panels, badges, rooms, and admin surfaces.
 - Add or refine profile, room, and message reporting paths. Current policy copy tells users to use Legal Contact for these concerns, but in-product reporting is still limited.
 - Decide and scope first safety controls for social graph and chat: remove follower, block, mute, message deletion/reporting, and retention expectations.
 - Create a public-testing launch checklist that combines deployment steps, migration checks, smoke commands, manual test matrix, known limitations, and tester instructions.
@@ -108,6 +109,7 @@ Items where existing docs no longer match the repository or the latest project c
 - Rationale: Avatars, handles, and display names should consistently navigate to profiles unless inside an explicit action.
 - Estimated complexity: Medium.
 - Codex suitability: High. This is a contained frontend behavior and smoke-test pass.
+- Status: Implemented locally with reusable profile link helpers and mocked smoke coverage. Authenticated deployed/manual verification remains recommended after deployment.
 
 ### 4. Create public-testing launch checklist
 
@@ -247,5 +249,5 @@ Items that should remain deferred rather than become near-term issues:
 ## Suggested Next Three Codex Tasks
 
 1. Create `docs/public-testing-launch-checklist.md` with deployment steps, migration checks, smoke commands, manual testing matrix, known limitations, tester instructions, and bug report guidance.
-2. Run the profile navigation behavior sweep and fix avatar/display-name/handle navigation inconsistencies across public surfaces with focused tests.
-3. Add profile, room, and message report paths after the moderation visibility and retention scope is decided.
+2. Add profile, room, and message report paths after the moderation visibility and retention scope is decided.
+3. Scope the first block, mute, and remove-follower controls before broader public testing.

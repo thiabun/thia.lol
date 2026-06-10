@@ -168,6 +168,42 @@ test("PostCard reblog action updates count and state", async ({ page }) => {
   );
 });
 
+test("PostCard author avatar, name, and handle navigate to profile", async ({
+  page,
+}) => {
+  await mockAuthenticatedApi(page);
+  await mockProfileRoutes(page, "alex");
+  await page.route("**/api/feed/home", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { posts: [makePost()], personalized: true },
+      }),
+    }),
+  );
+
+  await page.goto("/");
+
+  const post = page.locator("article").first();
+  await expect(post.getByRole("link", { name: "Alex's profile" })).toHaveAttribute(
+    "href",
+    "/@alex",
+  );
+  await expect(post.getByRole("link", { name: "Alex", exact: true })).toHaveAttribute(
+    "href",
+    "/@alex",
+  );
+  await expect(post.getByRole("link", { name: "@alex" })).toHaveAttribute(
+    "href",
+    "/@alex",
+  );
+
+  await post.getByRole("link", { name: "Alex", exact: true }).click();
+  await expect(page).toHaveURL(/\/@alex$/);
+  await expect(page.getByRole("heading", { name: "Alex" })).toBeVisible();
+});
+
 test("Profile Feed renders API-backed reblogs", async ({ page }) => {
   await mockAuthenticatedApi(page);
   await page.route("**/api/profiles/alex", (route) =>
@@ -312,6 +348,58 @@ test("post body opens thread while controls keep their own behavior", async ({
   await page.getByRole("button", { name: /Like this post/ }).first().click();
   await expect(page.getByTestId("thread-modal")).toHaveCount(0);
   expect(likeCalled).toBe(true);
+});
+
+test("thread modal root and reply identities navigate to profiles", async ({ page }) => {
+  await mockAuthenticatedApi(page);
+
+  await page.route("**/api/feed/home", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { posts: [makePost({ commentCount: 1 })], personalized: true },
+      }),
+    }),
+  );
+  await page.route("**/api/posts/42/replies", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: [
+          makePost({
+            id: 50,
+            parentId: 42,
+            body: "Reply from Mira.",
+            author: {
+              id: 3,
+              handle: "mira",
+              displayName: "Mira",
+              initials: "M",
+              aura: "frost",
+              avatarUrl: null,
+            },
+          }),
+        ],
+      }),
+    }),
+  );
+
+  await page.goto("/");
+  await page.getByTestId("post-body-open-thread").first().click();
+
+  const dialog = page.getByTestId("thread-modal");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "Alex's profile" })).toHaveAttribute(
+    "href",
+    "/@alex",
+  );
+  await expect(dialog.getByRole("link", { name: "Mira's profile" })).toHaveAttribute(
+    "href",
+    "/@mira",
+  );
+  await expect(dialog.getByRole("button", { name: /Open replies/ }).first()).toBeVisible();
 });
 
 test("thread reply composer is hidden until Reply and exposes media UI", async ({
@@ -715,6 +803,31 @@ async function mockAuthenticatedApi(page: Page) {
           unreadCount: 0,
         },
       }),
+    }),
+  );
+}
+
+async function mockProfileRoutes(page: Page, handle: string) {
+  await page.route(`**/api/profiles/${handle}`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: makePost().profile }),
+    }),
+  );
+
+  for (const suffix of ["posts", "replies", "reblogs", "rooms", "followers", "following"]) {
+    await page.route(`**/api/profiles/${handle}/${suffix}`, (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: [] }),
+      }),
+    );
+  }
+
+  await page.route(`**/api/profiles/${handle}/badges`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: { badges: [], featuredBadges: [] } }),
     }),
   );
 }

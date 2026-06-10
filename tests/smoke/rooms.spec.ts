@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { fetchAuthMe, loginWithEnv, skipWithoutCredentials } from "../helpers/auth";
 
 test("/rooms renders API rooms or the real empty state", async ({ page }) => {
@@ -41,6 +41,23 @@ test("clicking a room opens its detail page", async ({ page }) => {
   await link.click();
   await expect(page).toHaveURL(new RegExp(`${href!.replace("/", "\\/")}$`));
   await expect(page.getByTestId("room-page")).toBeVisible();
+});
+
+test("room cards keep room navigation and owner profile navigation separate", async ({
+  page,
+}) => {
+  await mockRoomCards(page);
+
+  await page.goto("/rooms");
+
+  const firstRoom = page.getByTestId("room-card").first();
+  await expect(
+    firstRoom.getByRole("link", { name: "Open Sun Room" }).first(),
+  ).toHaveAttribute("href", "/rooms/sun-room");
+  await expect(firstRoom.getByRole("link", { name: "@owner" })).toHaveAttribute(
+    "href",
+    "/@owner",
+  );
 });
 
 test("room page Post button opens composer with room preselected", async ({ page }) => {
@@ -176,7 +193,79 @@ test("rooms do not render retired room copy", async ({ page }) => {
   await expect(page.getByText("demo", { exact: false })).toHaveCount(0);
 });
 
-async function firstRoomSlug(page: import("@playwright/test").Page) {
+async function mockRoomCards(page: Page) {
+  await page.route("**/api/auth/me", async (route) => {
+    await route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "Unauthenticated." }),
+    });
+  });
+  await page.route("**/api/rooms", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [mockRoom()] }),
+    });
+  });
+  await page.route("**/api/stats", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          publicRooms: 1,
+          publicPosts: 0,
+          activeUsers: 1,
+          totalReactions: 0,
+        },
+      }),
+    });
+  });
+  await page.route("**/api/notifications", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: { notifications: [], unreadCount: 0 } }),
+    });
+  });
+}
+
+function mockRoom() {
+  return {
+    id: 1,
+    slug: "sun-room",
+    name: "Sun Room",
+    summary: "A public room.",
+    description: "A public room.",
+    mood: "",
+    members: 1,
+    memberCount: 1,
+    live: false,
+    accent: "var(--accent-sun)",
+    iconUrl: null,
+    bannerUrl: null,
+    rules: "",
+    visibility: "public",
+    owner: {
+      id: 1,
+      handle: "owner",
+      displayName: "Owner",
+      initials: "O",
+      aura: "frost",
+      avatarUrl: null,
+    },
+    joinedByMe: false,
+    myRoomRole: null,
+    postCount: 0,
+    latestActivityAt: null,
+    createdAt: "2026-06-10 00:00:00",
+    updatedAt: "2026-06-10 00:00:00",
+  };
+}
+
+async function firstRoomSlug(page: Page) {
   await expect
     .poll(async () => {
       const roomCards = await page.getByTestId("room-card").count();
@@ -197,7 +286,7 @@ async function firstRoomSlug(page: import("@playwright/test").Page) {
   return href?.split("/").pop();
 }
 
-async function firstApiRoomSlug(page: import("@playwright/test").Page) {
+async function firstApiRoomSlug(page: Page) {
   const rooms = await page.evaluate(async () => {
     const response = await fetch("/api/rooms", {
       credentials: "include",

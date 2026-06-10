@@ -32,6 +32,16 @@ test("authenticated chat renders conversations and message composer", async ({
   await expect(page.getByRole("heading", { name: "Chat", exact: true })).toBeVisible();
   await expect(page.getByTestId("chat-new-chat-button")).toBeVisible();
   await expect(page.getByTestId("chat-conversation-list")).toContainText("Moot Friend");
+  await expect(
+    page
+      .getByTestId("chat-conversation-list")
+      .getByRole("link", { name: "Moot Friend's profile" }),
+  ).toHaveAttribute("href", "/@mootfriend");
+  await expect(
+    page.getByRole("link", { name: "Moot Friend's profile" }).first(),
+  ).toHaveAttribute("href", "/@mootfriend");
+  await page.getByRole("button", { name: "Open chat with Moot Friend" }).click();
+  await expect(page).toHaveURL(/\/chat\?conversation=10$/);
   await expect(page.getByTestId("chat-message-list")).toContainText("hello from a moot");
   await expect(page.getByTestId("chat-message-composer")).toBeVisible();
   await expect(page.getByPlaceholder("Write a message")).toBeVisible();
@@ -63,6 +73,11 @@ test("chat moot picker lists only eligible mocked moots", async ({ page }) => {
 
   await expect(page.getByTestId("chat-moot-list")).toContainText("Moot Friend");
   await expect(page.getByTestId("chat-moot-list")).toContainText("@mootfriend");
+  await expect(
+    page
+      .getByTestId("chat-moot-list")
+      .getByRole("link", { name: "Moot Friend's profile" }),
+  ).toHaveAttribute("href", "/@mootfriend");
   await expect(page.getByTestId("chat-moot-list")).not.toContainText("Not A Moot");
 });
 

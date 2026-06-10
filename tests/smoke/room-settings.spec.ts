@@ -40,10 +40,30 @@ test("room moderator controls are gated to owners and admins", async ({ page }) 
 
   await acknowledgeCookieNotice(page);
   await page.goto("/rooms/sun-room");
+  await expect(page.getByRole("link", { name: "@owner" })).toHaveAttribute(
+    "href",
+    "/@owner",
+  );
+  await expect(page.getByRole("link", { name: "Owner's profile" }).first()).toHaveAttribute(
+    "href",
+    "/@owner",
+  );
+  await expect(page.getByRole("link", { name: "Mira's profile" })).toHaveAttribute(
+    "href",
+    "/@mira",
+  );
   await page.getByRole("button", { name: "Edit room" }).click();
 
   const modal = page.getByTestId("room-edit-modal");
   await expect(modal.getByLabel("Add moderator by handle")).toBeVisible();
+  await expect(modal.getByRole("link", { name: "Owner's profile" })).toHaveAttribute(
+    "href",
+    "/@owner",
+  );
+  await expect(modal.getByRole("link", { name: "Mira's profile" })).toHaveAttribute(
+    "href",
+    "/@mira",
+  );
   await modal.getByLabel("Add moderator by handle").fill("alex");
   await modal.getByRole("button", { name: "Add" }).click();
 

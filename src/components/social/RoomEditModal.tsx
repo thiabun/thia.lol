@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { SelectField, TextareaField, TextField } from "../ui/Field";
+import { UserIdentityLink } from "./UserProfileLink";
 import { modalOverlay, modalPanel } from "../../lib/motionPresets";
 import type {
   ImageUploadPurpose,
@@ -474,12 +475,11 @@ function RoomMemberSettingsRow({
 }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-card border border-line bg-surface p-3">
-      <div className="min-w-0">
-        <p className="truncate text-sm font-semibold text-text">
-          {member.user.displayName}
-        </p>
-        <p className="text-xs text-muted">@{member.user.handle}</p>
-      </div>
+      <UserIdentityLink
+        user={member.user}
+        showAvatar={false}
+        className="flex-1"
+      />
       <div className="flex items-center gap-2">
         <span className="text-xs font-medium uppercase text-muted">{member.role}</span>
         {canRemove ? (
