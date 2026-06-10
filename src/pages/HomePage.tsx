@@ -22,6 +22,7 @@ import { deletePost, getFeed, getRooms, getStats, updatePost } from "../lib/api"
 import { pluralize } from "../lib/pluralize";
 import { postCreatedEventName } from "../lib/postEvents";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
+import { cardEntrance, pageEntrance } from "../lib/motionPresets";
 import type { Post } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
@@ -125,7 +126,12 @@ export function HomePage() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_370px]">
+    <motion.div
+      className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_370px]"
+      variants={pageEntrance}
+      initial="hidden"
+      animate="show"
+    >
       <PageMeta
         title="thia.lol"
         description="A small social place for posts, rooms, and profiles."
@@ -133,9 +139,10 @@ export function HomePage() {
       />
       <section className="space-y-5" aria-label="Home feed">
         <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ type: "spring", stiffness: 180, damping: 24 }}
+          variants={cardEntrance}
+          custom={0}
+          initial="hidden"
+          animate="show"
         >
           <Panel className="overflow-hidden">
             <div className="grid gap-0 md:grid-cols-[minmax(0,1fr)_290px]">
@@ -245,41 +252,43 @@ export function HomePage() {
       </section>
 
       <aside className="space-y-5" aria-label="Platform sidebar">
-        <Panel className="p-5">
-          <div className="flex items-center gap-3">
-            <div className="grid size-11 place-items-center rounded-full bg-surface-strong text-accent-strong">
-              <Activity aria-hidden="true" size={20} />
+        <motion.div variants={cardEntrance} custom={1} initial="hidden" animate="show">
+          <Panel className="p-5">
+            <div className="flex items-center gap-3">
+              <div className="grid size-11 place-items-center rounded-full bg-surface-strong text-accent-strong">
+                <Activity aria-hidden="true" size={20} />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-text">
+                  Current stats
+                </h2>
+                <p className="text-sm text-muted">Small for now, easy to follow.</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-base font-semibold text-text">
-                Current stats
-              </h2>
-              <p className="text-sm text-muted">Small for now, easy to follow.</p>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <Metric
+                label={stats ? pluralize(stats.publicRooms, "room") : "Rooms"}
+                value={stats?.publicRooms ?? (statsState.error ? "Unavailable" : "Loading")}
+                icon={Radio}
+              />
+              <Metric
+                label={stats ? pluralize(stats.publicPosts, "post") : "Posts"}
+                value={stats?.publicPosts ?? (statsState.error ? "Unavailable" : "Loading")}
+                icon={MessageCircle}
+              />
+              <Metric
+                label={stats ? pluralize(stats.activeUsers, "member") : "Members"}
+                value={stats?.activeUsers ?? (statsState.error ? "Unavailable" : "Loading")}
+                icon={UsersRound}
+              />
+              <Metric
+                label="Likes"
+                value={stats?.totalReactions ?? (statsState.error ? "Unavailable" : "Loading")}
+                icon={Heart}
+              />
             </div>
-          </div>
-          <div className="mt-5 grid grid-cols-2 gap-3">
-            <Metric
-              label={stats ? pluralize(stats.publicRooms, "room") : "Rooms"}
-              value={stats?.publicRooms ?? (statsState.error ? "Unavailable" : "Loading")}
-              icon={Radio}
-            />
-            <Metric
-              label={stats ? pluralize(stats.publicPosts, "post") : "Posts"}
-              value={stats?.publicPosts ?? (statsState.error ? "Unavailable" : "Loading")}
-              icon={MessageCircle}
-            />
-            <Metric
-              label={stats ? pluralize(stats.activeUsers, "member") : "Members"}
-              value={stats?.activeUsers ?? (statsState.error ? "Unavailable" : "Loading")}
-              icon={UsersRound}
-            />
-            <Metric
-              label="Likes"
-              value={stats?.totalReactions ?? (statsState.error ? "Unavailable" : "Loading")}
-              icon={Heart}
-            />
-          </div>
-        </Panel>
+          </Panel>
+        </motion.div>
 
         <div>
           <div className="mb-3 flex items-center justify-between">
@@ -287,8 +296,8 @@ export function HomePage() {
             <Badge tone="leaf">open</Badge>
           </div>
           <div className="space-y-3">
-            {rooms.slice(0, 2).map((room) => (
-              <RoomCard key={room.id} room={room} />
+            {rooms.slice(0, 2).map((room, index) => (
+              <RoomCard key={room.id} room={room} index={index} />
             ))}
           </div>
           {!roomsState.loading && !roomsState.error && rooms.length === 0 ? (
@@ -309,7 +318,7 @@ export function HomePage() {
           ) : null}
         </div>
       </aside>
-    </div>
+    </motion.div>
   );
 }
 

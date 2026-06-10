@@ -1,4 +1,5 @@
 import { Hash, Radio, UserRound } from "lucide-react";
+import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { PageMeta } from "../components/PageMeta";
 import { PostCard } from "../components/social/PostCard";
@@ -11,6 +12,7 @@ import { AmbientImage } from "../components/ui/AmbientImage";
 import { SearchField } from "../components/ui/Field";
 import { deletePost, getFeed, getRooms, getStats, updatePost } from "../lib/api";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
+import { cardEntrance, pageEntrance } from "../lib/motionPresets";
 import { pluralize } from "../lib/pluralize";
 import type { Post, PublicStats } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
@@ -84,35 +86,44 @@ export function DiscoverPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      className="space-y-6"
+      variants={pageEntrance}
+      initial="hidden"
+      animate="show"
+    >
       <PageMeta
         title="Discover"
         description="Find rooms, people, and recent posts across thia.lol."
         path="/discover"
       />
       <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <Panel className="p-5 sm:p-6">
-          <Badge tone="cool">discover</Badge>
-          <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">
-            Find rooms, people, and recent posts.
-          </h1>
-          <SearchField
-            id="discover-search"
-            label="Search"
-            placeholder="Search people, rooms, posts"
-            className="mt-5"
-          />
-        </Panel>
+        <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
+          <Panel className="p-5 sm:p-6">
+            <Badge tone="cool">discover</Badge>
+            <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">
+              Find rooms, people, and recent posts.
+            </h1>
+            <SearchField
+              id="discover-search"
+              label="Search"
+              placeholder="Search people, rooms, posts"
+              className="mt-5"
+            />
+          </Panel>
+        </motion.div>
 
-        <Panel className="overflow-hidden">
-          <AmbientImage className="aspect-[16/10] w-full" />
-          <div className="p-5">
-            <p className="text-sm font-semibold text-text">Browse around</p>
-            <p className="mt-2 text-sm leading-6 text-muted">
-              A few good places to start, from active rooms to friendly profiles.
-            </p>
-          </div>
-        </Panel>
+        <motion.div variants={cardEntrance} custom={1} initial="hidden" animate="show">
+          <Panel className="overflow-hidden">
+            <AmbientImage className="aspect-[16/10] w-full" />
+            <div className="p-5">
+              <p className="text-sm font-semibold text-text">Browse around</p>
+              <p className="mt-2 text-sm leading-6 text-muted">
+                A few good places to start, from active rooms to friendly profiles.
+              </p>
+            </div>
+          </Panel>
+        </motion.div>
       </section>
 
       {postsState.loading ? (
@@ -167,19 +178,27 @@ export function DiscoverPage() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="Discovery">
-        {discoverItems.map((item) => {
+        {discoverItems.map((item, index) => {
           const Icon = icons[item.kind];
           return (
-            <Panel key={item.id} interactive className="p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div className="grid size-11 place-items-center rounded-card bg-surface-strong text-accent-strong">
-                  <Icon aria-hidden="true" size={19} />
+            <motion.div
+              key={item.id}
+              variants={cardEntrance}
+              custom={index}
+              initial="hidden"
+              animate="show"
+            >
+              <Panel interactive className="p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="grid size-11 place-items-center rounded-card bg-surface-strong text-accent-strong">
+                    <Icon aria-hidden="true" size={19} />
+                  </div>
+                  <Badge>{item.count}</Badge>
                 </div>
-                <Badge>{item.count}</Badge>
-              </div>
-              <h2 className="mt-5 text-lg font-semibold text-text">{item.label}</h2>
-              <p className="mt-2 text-sm leading-6 text-muted">{item.description}</p>
-            </Panel>
+                <h2 className="mt-5 text-lg font-semibold text-text">{item.label}</h2>
+                <p className="mt-2 text-sm leading-6 text-muted">{item.description}</p>
+              </Panel>
+            </motion.div>
           );
         })}
       </section>
@@ -212,13 +231,13 @@ export function DiscoverPage() {
         ) : null}
         {rooms.length > 0 ? (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {rooms.slice(0, 6).map((room) => (
-              <RoomCard key={room.id} room={room} />
+            {rooms.slice(0, 6).map((room, index) => (
+              <RoomCard key={room.id} room={room} index={index} />
             ))}
           </div>
         ) : null}
       </section>
-    </div>
+    </motion.div>
   );
 }
 

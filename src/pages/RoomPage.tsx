@@ -1,4 +1,5 @@
 import { Clock3, MessageCircle, PenLine, Radio } from "lucide-react";
+import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useOutletContext, useParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
@@ -16,6 +17,7 @@ import {
 import { ApiClientError } from "../lib/apiClient";
 import { postCreatedEventName } from "../lib/postEvents";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
+import { cardEntrance, pageEntrance } from "../lib/motionPresets";
 import { formatCountWithUnit } from "../lib/pluralize";
 import type { AppShellOutletContext } from "../components/layout/AppShell";
 import type { Post, Room } from "../lib/types";
@@ -143,7 +145,13 @@ export function RoomPage() {
 
   if (roomMissing) {
     return (
-      <div className="space-y-6" data-testid="room-page">
+      <motion.div
+        className="space-y-6"
+        data-testid="room-page"
+        variants={pageEntrance}
+        initial="hidden"
+        animate="show"
+      >
         <PageMeta
           title="Room not found"
           description="This room could not be found on thia.lol."
@@ -154,12 +162,18 @@ export function RoomPage() {
           title="Room not found"
           text="This room may have moved or is not public."
         />
-      </div>
+      </motion.div>
     );
   }
 
   return (
-    <div className="space-y-6" data-testid="room-page">
+    <motion.div
+      className="space-y-6"
+      data-testid="room-page"
+      variants={pageEntrance}
+      initial="hidden"
+      animate="show"
+    >
       <PageMeta
         title={room ? `${room.name} Room` : "Room"}
         description={room?.summary ?? "A public room on thia.lol."}
@@ -224,7 +238,7 @@ export function RoomPage() {
           ))}
         </section>
       ) : null}
-    </div>
+    </motion.div>
   );
 }
 
@@ -238,60 +252,62 @@ function RoomHeader({
   room: Room;
 }) {
   return (
-    <Panel className="overflow-hidden">
-      <div
-        className="h-2"
-        style={{
-          background:
-            "linear-gradient(90deg, var(--room-accent), color-mix(in oklab, var(--room-accent) 28%, transparent))",
-          ["--room-accent" as string]: room.accent,
-        }}
-      />
-      <div className="p-5 sm:p-6">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0 max-w-3xl">
-            <div className="flex flex-wrap gap-2">
-              <Badge tone="leaf">room</Badge>
-              {room.mood ? <Badge>{room.mood}</Badge> : null}
-              {room.visibility ? <Badge tone="cool">{room.visibility}</Badge> : null}
+    <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
+      <Panel className="overflow-hidden">
+        <div
+          className="h-2"
+          style={{
+            background:
+              "linear-gradient(90deg, var(--room-accent), color-mix(in oklab, var(--room-accent) 28%, transparent))",
+            ["--room-accent" as string]: room.accent,
+          }}
+        />
+        <div className="p-5 sm:p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 max-w-3xl">
+              <div className="flex flex-wrap gap-2">
+                <Badge tone="leaf">room</Badge>
+                {room.mood ? <Badge>{room.mood}</Badge> : null}
+                {room.visibility ? <Badge tone="cool">{room.visibility}</Badge> : null}
+              </div>
+              <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text sm:text-4xl">
+                {room.name}
+              </h1>
+              <p className="mt-1 text-base text-muted">/{room.slug}</p>
+              <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
+                {room.description || room.summary}
+              </p>
             </div>
-            <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text sm:text-4xl">
-              {room.name}
-            </h1>
-            <p className="mt-1 text-base text-muted">/{room.slug}</p>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
-              {room.description || room.summary}
-            </p>
+            <Button
+              type="button"
+              className="w-full shrink-0 sm:w-auto"
+              data-testid="room-post-button"
+              icon={<PenLine aria-hidden="true" size={17} />}
+              onClick={onPost}
+            >
+              Post
+            </Button>
           </div>
-          <Button
-            type="button"
-            className="w-full shrink-0 sm:w-auto"
-            data-testid="room-post-button"
-            icon={<PenLine aria-hidden="true" size={17} />}
-            onClick={onPost}
-          >
-            Post
-          </Button>
-        </div>
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:max-w-xl">
-          <RoomMetric
-            icon={MessageCircle}
-            label="Posts"
-            value={formatCountWithUnit(postCount, "post")}
-          />
-          <RoomMetric
-            icon={Clock3}
-            label="Latest"
-            value={
-              room.latestActivityAt
-                ? formatActivityTime(room.latestActivityAt)
-                : "No activity yet"
-            }
-          />
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:max-w-xl">
+            <RoomMetric
+              icon={MessageCircle}
+              label="Posts"
+              value={formatCountWithUnit(postCount, "post")}
+            />
+            <RoomMetric
+              icon={Clock3}
+              label="Latest"
+              value={
+                room.latestActivityAt
+                  ? formatActivityTime(room.latestActivityAt)
+                  : "No activity yet"
+              }
+            />
+          </div>
         </div>
-      </div>
-    </Panel>
+      </Panel>
+    </motion.div>
   );
 }
 

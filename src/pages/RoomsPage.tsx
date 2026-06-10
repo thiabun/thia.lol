@@ -1,4 +1,5 @@
 import { Radio, SearchX } from "lucide-react";
+import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { PageMeta } from "../components/PageMeta";
 import { Badge } from "../components/ui/Badge";
@@ -7,6 +8,7 @@ import { SearchField } from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
 import { RoomCard } from "../components/social/RoomCard";
 import { getRooms } from "../lib/api";
+import { cardEntrance, pageEntrance } from "../lib/motionPresets";
 import { useAsyncData } from "../lib/useAsyncData";
 
 export function RoomsPage() {
@@ -27,13 +29,20 @@ export function RoomsPage() {
   }, [normalizedQuery, rooms]);
 
   return (
-    <div className="space-y-6" data-testid="rooms-page">
+    <motion.div
+      className="space-y-6"
+      data-testid="rooms-page"
+      variants={pageEntrance}
+      initial="hidden"
+      animate="show"
+    >
       <PageMeta
         title="Rooms"
         description="Browse public rooms on thia.lol."
         path="/rooms"
       />
 
+      <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
       <Panel className="p-5 sm:p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
@@ -55,6 +64,7 @@ export function RoomsPage() {
           />
         </div>
       </Panel>
+      </motion.div>
 
       {roomsState.loading ? (
         <RoomNotice title="Opening rooms" text="The room list is loading." />
@@ -89,12 +99,12 @@ export function RoomsPage() {
 
       {filteredRooms.length > 0 ? (
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-label="Rooms">
-          {filteredRooms.map((room) => (
-            <RoomCard key={room.id} room={room} />
+          {filteredRooms.map((room, index) => (
+            <RoomCard key={room.id} room={room} index={index} />
           ))}
         </section>
       ) : null}
-    </div>
+    </motion.div>
   );
 }
 

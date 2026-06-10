@@ -8,7 +8,7 @@ import {
 } from "react";
 import { EyeOff, Flag, Heart, MessageCircle, Send, Trash2, X } from "lucide-react";
 import { createPortal } from "react-dom";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { AmbientImage } from "../ui/AmbientImage";
 import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
@@ -24,6 +24,17 @@ import {
   type ReportReason,
 } from "../../lib/api";
 import { cn } from "../../lib/classNames";
+import {
+  buttonHover,
+  buttonTap,
+  cardEntrance,
+  cardHover,
+  cardTap,
+  modalOverlay,
+  modalPanel,
+  pulsePop,
+  softSpring,
+} from "../../lib/motionPresets";
 import type { AuthStatus } from "../../lib/authTypes";
 import type { Post } from "../../lib/types";
 import { useAuth } from "../../lib/useAuth";
@@ -51,11 +62,15 @@ export function PostCard({
 
   return (
     <motion.article
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ type: "spring", stiffness: 210, damping: 26, delay: index * 0.04 }}
+      className="group"
+      variants={cardEntrance}
+      custom={index}
+      initial="hidden"
+      animate="show"
+      whileHover={cardHover}
+      whileTap={cardTap}
     >
-      <Panel interactive className="overflow-hidden p-4 sm:p-5">
+      <Panel className="overflow-hidden p-4 transition duration-fluid ease-fluid group-hover:border-line-strong group-hover:shadow-lift sm:p-5">
         <div className="flex items-start gap-3">
           <Avatar user={post.author} />
           <div className="min-w-0 flex-1">
@@ -352,7 +367,8 @@ function CommentButton({ count, onClick }: CommentButtonProps) {
       aria-label={`Open replies. ${count} ${count === 1 ? "reply" : "replies"}.`}
       title="Replies"
       onClick={onClick}
-      whileTap={{ scale: 0.94 }}
+      whileHover={buttonHover}
+      whileTap={buttonTap}
     >
       <MessageCircle aria-hidden="true" size={15} />
       <span>Reply</span>
@@ -385,7 +401,6 @@ function ThreadModal({
 }: ThreadModalProps) {
   const titleId = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const shouldReduceMotion = useReducedMotion();
   const [replies, setReplies] = useState<Post[]>([]);
   const [body, setBody] = useState("");
   const [loading, setLoading] = useState(false);
@@ -496,10 +511,10 @@ function ThreadModal({
       {open ? (
         <motion.div
           className="fixed inset-0 z-50 grid place-items-center bg-text/28 px-3 py-4 backdrop-blur-veil sm:px-4 sm:py-6"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: shouldReduceMotion ? 0 : 0.18, ease: [0.22, 1, 0.36, 1] }}
+          variants={modalOverlay}
+          initial="hidden"
+          animate="show"
+          exit="exit"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               onClose();
@@ -510,15 +525,9 @@ function ThreadModal({
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
+            data-testid="thread-modal"
             className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-panel border border-line bg-surface shadow-lift sm:max-h-[min(760px,calc(100dvh-3rem))]"
-            initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 16, scale: shouldReduceMotion ? 1 : 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: shouldReduceMotion ? 0 : 10, scale: shouldReduceMotion ? 1 : 0.97 }}
-            transition={
-              shouldReduceMotion
-                ? { duration: 0 }
-                : { type: "spring", stiffness: 260, damping: 28 }
-            }
+            variants={modalPanel}
           >
             <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-line bg-surface/95 px-4 py-3 backdrop-blur-veil sm:px-5">
               <h2 id={titleId} className="text-base font-semibold text-text">
@@ -723,13 +732,13 @@ function LikeButton({
       disabled={pending}
       title={liked ? "Liked" : "Like"}
       onClick={onClick}
-      whileTap={{ scale: 0.94 }}
+      whileHover={buttonHover}
+      whileTap={buttonTap}
     >
       <motion.span
         key={pulseKey}
         aria-hidden="true"
-        animate={liked ? { scale: [1, 1.28, 1] } : { scale: 1 }}
-        transition={{ type: "spring", stiffness: 420, damping: 18 }}
+        animate={liked ? pulsePop : { scale: 1, transition: softSpring }}
         className="grid place-items-center"
       >
         <Heart size={15} fill={liked ? "currentColor" : "none"} />

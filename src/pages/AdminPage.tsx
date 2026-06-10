@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { motion } from "motion/react";
 import {
   Activity,
   Ban,
@@ -25,6 +26,7 @@ import {
   type ModerationUser,
   type ReportReason,
 } from "../lib/api";
+import { pageEntrance } from "../lib/motionPresets";
 import { useAuth } from "../lib/useAuth";
 
 type ActionName = "hide" | "suspend" | "resolve" | "dismiss";
@@ -126,7 +128,7 @@ export function AdminPage() {
         <ApiStateNotice
           kind="loading"
           title="Checking admin session"
-          text="The admin queue unlocks after the API confirms your role."
+          text="The admin queue unlocks after your role is confirmed."
         />
       </AdminShell>
     );
@@ -215,7 +217,7 @@ export function AdminPage() {
         <ApiStateNotice
           kind="loading"
           title="Loading reports"
-          text="Fetching the latest moderation queue from the PHP API."
+          text="Fetching the latest moderation queue."
         />
       ) : null}
 
@@ -302,14 +304,19 @@ export function AdminPage() {
 
 function AdminShell({ children }: { children: ReactNode }) {
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <motion.div
+      className="mx-auto max-w-6xl space-y-6"
+      variants={pageEntrance}
+      initial="hidden"
+      animate="show"
+    >
       <PageMeta
         title="Admin"
         description="Moderation and reporting tools for thia.lol."
         path="/admin"
       />
       {children}
-    </div>
+    </motion.div>
   );
 }
 

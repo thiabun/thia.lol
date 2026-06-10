@@ -5,6 +5,7 @@ import { ImagePlus, Radio, Send, UserRound, X } from "lucide-react";
 import { Button } from "../ui/Button";
 import { SelectField, TextareaField } from "../ui/Field";
 import { createPost } from "../../lib/api";
+import { modalOverlay, modalPanel } from "../../lib/motionPresets";
 import type { CreatePostInput } from "../../lib/api";
 import type { Post, Room } from "../../lib/types";
 
@@ -118,10 +119,10 @@ export function PostComposerModal({
       {open ? (
         <motion.div
           className="fixed inset-0 z-50 grid place-items-center bg-text/28 px-4 py-6 backdrop-blur-veil"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+          variants={modalOverlay}
+          initial="hidden"
+          animate="show"
+          exit="exit"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               closeComposer();
@@ -132,11 +133,9 @@ export function PostComposerModal({
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
+            data-testid="composer-modal"
             className="max-h-[calc(100dvh-3rem)] w-full max-w-xl overflow-y-auto rounded-panel border border-line bg-surface p-4 shadow-lift sm:p-5"
-            initial={{ opacity: 0, y: 14, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.97 }}
-            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            variants={modalPanel}
           >
             <div className="flex items-start justify-between gap-4">
               <div>

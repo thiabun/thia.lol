@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { loginWithEnv, skipWithoutCredentials } from "../helpers/auth";
 
 const retiredMockCopy = [
   "Mira Vale",
@@ -21,7 +22,7 @@ test("reply button opens an unclipped thread modal", async ({ page }) => {
 
   await replyButton.click();
 
-  const dialog = page.getByRole("dialog", { name: "Thread" });
+  const dialog = page.getByTestId("thread-modal");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Close thread" })).toBeVisible();
 
@@ -61,10 +62,24 @@ test("mobile header, account menu, and bottom nav fit the viewport", async ({
   expect(hasOverflow).toBe(false);
 
   await page.getByRole("button", { name: /account menu/i }).click();
-  await expect(page.getByRole("menu")).toBeVisible();
+  await expect(page.getByTestId("account-menu")).toBeVisible();
 
-  await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible();
+  await expect(page.getByTestId("mobile-nav")).toBeVisible();
   await expect(page.getByRole("button", { name: "Create post" })).toBeVisible();
+});
+
+test("authenticated post button opens the composer modal", async ({ page }) => {
+  skipWithoutCredentials();
+
+  await loginWithEnv(page);
+  await page.getByRole("button", { name: "Post" }).click();
+
+  const dialog = page.getByTestId("composer-modal");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Post" })).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Close post composer" }).click();
+  await expect(dialog).toBeHidden();
 });
 
 test("public pages do not render retired mock social data", async ({ page }) => {

@@ -19,6 +19,12 @@ import { ThemeToggle } from "../ThemeToggle";
 import { Button } from "../ui/Button";
 import { getRooms } from "../../lib/api";
 import { cn } from "../../lib/classNames";
+import {
+  buttonTap,
+  popoverPanel,
+  sectionItem,
+  snappySpring,
+} from "../../lib/motionPresets";
 import { emitPostCreated } from "../../lib/postEvents";
 import { useAsyncData } from "../../lib/useAsyncData";
 import { useAuth } from "../../lib/useAuth";
@@ -194,12 +200,13 @@ function AccountMenu() {
       <AnimatePresence>
         {open ? (
           <motion.div
-            initial={{ opacity: 0, y: -4, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.97 }}
-            transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+            variants={popoverPanel}
+            initial="hidden"
+            animate="show"
+            exit="exit"
             className="absolute right-0 z-50 mt-2 w-40 origin-top-right rounded-panel border border-line bg-surface/96 p-1 shadow-lift backdrop-blur-veil sm:w-44"
             role="menu"
+            data-testid="account-menu"
           >
             {isAuthenticated && user ? (
               <>
@@ -213,10 +220,13 @@ function AccountMenu() {
                     Admin
                   </AccountMenuLink>
                 ) : null}
-                <button
+                <motion.button
                   type="button"
                   className="flex min-h-10 w-full items-center gap-2 rounded-card px-3 text-left text-sm font-medium text-muted transition duration-fluid ease-fluid hover:bg-surface-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                   role="menuitem"
+                  variants={sectionItem}
+                  whileHover={{ x: 2, transition: snappySpring }}
+                  whileTap={buttonTap}
                   onClick={() => {
                     setOpen(false);
                     void logout();
@@ -224,7 +234,7 @@ function AccountMenu() {
                 >
                   <LogOut aria-hidden="true" size={16} />
                   Log out
-                </button>
+                </motion.button>
               </>
             ) : (
               <>
@@ -255,14 +265,20 @@ function AccountMenuLink({
   to: string;
 }) {
   return (
-    <NavLink
-      to={to}
-      className="flex min-h-10 w-full items-center gap-2 rounded-card px-3 text-sm font-medium text-muted transition duration-fluid ease-fluid hover:bg-surface-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-      role="menuitem"
-      onClick={onSelect}
+    <motion.div
+      variants={sectionItem}
+      whileHover={{ x: 2, transition: snappySpring }}
+      whileTap={buttonTap}
     >
-      {children}
-    </NavLink>
+      <NavLink
+        to={to}
+        className="flex min-h-10 w-full items-center gap-2 rounded-card px-3 text-sm font-medium text-muted transition duration-fluid ease-fluid hover:bg-surface-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        role="menuitem"
+        onClick={onSelect}
+      >
+        {children}
+      </NavLink>
+    </motion.div>
   );
 }
 
@@ -307,28 +323,36 @@ function MobileDock({
       : ["col-start-1", "col-start-2", "col-start-4"];
 
   return (
-    <nav
+    <motion.nav
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={snappySpring}
       className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 gap-1 rounded-panel border border-line bg-surface/88 p-2 shadow-lift backdrop-blur-veil lg:hidden"
       aria-label="Primary"
+      data-testid="mobile-nav"
     >
       {navItems.map(({ to, label, icon: Icon }, index) => (
-        <NavLink
+        <motion.div
           key={to}
-          to={to}
-          end={to === "/"}
-          className={({ isActive }) =>
-            cn(
-              "grid min-h-12 place-items-center rounded-card text-xs font-medium transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-              mobilePositions[index],
-              isActive
-                ? "bg-accent text-accent-ink shadow-soft"
-                : "text-muted hover:bg-surface-strong hover:text-text",
-            )
-          }
+          className={mobilePositions[index]}
+          whileTap={buttonTap}
         >
-          <Icon aria-hidden="true" size={18} />
-          <span className="mt-1">{label}</span>
-        </NavLink>
+          <NavLink
+            to={to}
+            end={to === "/"}
+            className={({ isActive }) =>
+              cn(
+                "grid min-h-12 place-items-center rounded-card text-xs font-medium transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+                isActive
+                  ? "bg-accent text-accent-ink shadow-soft"
+                  : "text-muted hover:bg-surface-strong hover:text-text",
+              )
+            }
+          >
+            <Icon aria-hidden="true" size={18} />
+            <span className="mt-1">{label}</span>
+          </NavLink>
+        </motion.div>
       ))}
       <Button
         type="button"
@@ -339,6 +363,6 @@ function MobileDock({
         icon={<PenLine aria-hidden="true" size={21} />}
         onClick={onPostClick}
       />
-    </nav>
+    </motion.nav>
   );
 }

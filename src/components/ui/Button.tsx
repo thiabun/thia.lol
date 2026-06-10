@@ -1,6 +1,9 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link, type LinkProps } from "react-router";
+import { motion } from "motion/react";
 import { cn } from "../../lib/classNames";
+import { buttonHover, buttonTap } from "../../lib/motionPresets";
+import type { HTMLMotionProps } from "motion/react";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "quiet";
 type ButtonSize = "sm" | "md" | "icon";
@@ -24,10 +27,11 @@ const sizes: Record<ButtonSize, string> = {
   icon: "size-10 p-0",
 };
 
-type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+type ButtonProps = Omit<HTMLMotionProps<"button">, "children"> & {
   variant?: ButtonVariant;
   size?: ButtonSize;
   icon?: ReactNode;
+  children?: ReactNode;
 };
 
 export function Button({
@@ -36,16 +40,27 @@ export function Button({
   size = "md",
   icon,
   children,
+  whileHover,
+  whileTap,
   ...props
 }: ButtonProps) {
+  const isInteractive = !props.disabled;
+  const resolvedWhileHover = whileHover ?? (isInteractive ? buttonHover : undefined);
+  const resolvedWhileTap = whileTap ?? (isInteractive ? buttonTap : undefined);
+  const motionProps = {
+    ...(resolvedWhileHover ? { whileHover: resolvedWhileHover } : {}),
+    ...(resolvedWhileTap ? { whileTap: resolvedWhileTap } : {}),
+  };
+
   return (
-    <button
+    <motion.button
       className={cn(base, variants[variant], sizes[size], className)}
+      {...motionProps}
       {...props}
     >
       {icon}
       {children}
-    </button>
+    </motion.button>
   );
 }
 
