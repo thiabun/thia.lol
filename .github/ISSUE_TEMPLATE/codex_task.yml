@@ -1,0 +1,72 @@
+name: Codex-ready task
+description: Create a scoped implementation task for Codex or a contributor
+title: "[Task]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for scoped implementation work. Keep it specific. Link the relevant docs. Do not include secrets.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should change?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Current behavior, related docs, and why this matters.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is included?
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: What must not be touched?
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      value: |
+        - [ ] 
+        - [ ] 
+        - [ ] Tests or smoke checks updated where practical
+        - [ ] Docs updated if behavior changes
+    validations:
+      required: true
+  - type: textarea
+    id: files-docs
+    attributes:
+      label: Files/docs to read
+      value: |
+        - AGENTS.md
+        - docs/public-testing-readiness-spec.md
+        - docs/public-testing-readiness-audit.md
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification
+      value: |
+        Run:
+        - git pull --rebase
+        - php -l changed api/*.php, if PHP changed
+        - npm run typecheck
+        - npm run lint
+        - npm run optimize:assets
+        - npm run build
+        - git diff --check
+
+        API-backed behavior must use a working API path or be reported as blocked with exact reason.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / risks / migration details
