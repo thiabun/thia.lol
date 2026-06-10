@@ -30,7 +30,6 @@ type FormState = {
   name: string;
   slug: string;
   summary: string;
-  mood: string;
   accent: string;
   iconUrl: string;
   bannerUrl: string;
@@ -61,7 +60,6 @@ export function RoomEditModal({
       const input: RoomInput = {
         name: form.name,
         summary: form.summary,
-        mood: form.mood || null,
         accent: form.accent || null,
         iconUrl: form.iconUrl || null,
         bannerUrl: form.bannerUrl || null,
@@ -230,31 +228,21 @@ export function RoomEditModal({
                 onChange={(event) => updateForm("summary", event.currentTarget.value)}
               />
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <TextField
-                  id="room-mood"
-                  label="Mood"
-                  maxLength={40}
-                  value={form.mood}
-                  disabled={busy}
-                  onChange={(event) => updateForm("mood", event.currentTarget.value)}
-                />
-                <SelectField
-                  id="room-accent"
-                  label="Accent"
-                  icon={Palette}
-                  value={form.accent}
-                  disabled={busy}
-                  options={[
-                    { value: "var(--accent-sun)", label: "Sunveil" },
-                    { value: "var(--accent-frost)", label: "Frostveil" },
-                    { value: "var(--accent-leaf)", label: "Leaf" },
-                    { value: "var(--accent-rose)", label: "Rose" },
-                    { value: "var(--app-accent)", label: "Default" },
-                  ]}
-                  onChange={(event) => updateForm("accent", event.currentTarget.value)}
-                />
-              </div>
+              <SelectField
+                id="room-accent"
+                label="Accent"
+                icon={Palette}
+                value={form.accent}
+                disabled={busy}
+                options={[
+                  { value: "var(--accent-sun)", label: "Sunveil" },
+                  { value: "var(--accent-frost)", label: "Frostveil" },
+                  { value: "var(--accent-leaf)", label: "Leaf" },
+                  { value: "var(--accent-rose)", label: "Rose" },
+                  { value: "var(--app-accent)", label: "Default" },
+                ]}
+                onChange={(event) => updateForm("accent", event.currentTarget.value)}
+              />
 
               <TextareaField
                 id="room-rules"
@@ -336,8 +324,8 @@ function ImageUploadControl({
           <div
             className={
               wide
-                ? "grid h-20 w-32 place-items-center rounded-card bg-ambient-texture text-muted"
-                : "grid size-20 place-items-center rounded-full bg-ambient-texture text-muted"
+                ? "grid h-20 w-32 place-items-center rounded-card border border-dashed border-line bg-surface-strong text-muted"
+                : "grid size-20 place-items-center rounded-full border border-dashed border-line bg-surface-strong text-muted"
             }
           >
             <ImagePlus aria-hidden="true" size={20} />
@@ -373,7 +361,6 @@ function roomToForm(room: Room | undefined): FormState {
     name: room?.name ?? "",
     slug: room?.slug ?? "",
     summary: room?.summary ?? "",
-    mood: room?.mood ?? "",
     accent: room?.accent || "var(--accent-sun)",
     iconUrl: room?.iconUrl ?? "",
     bannerUrl: room?.bannerUrl ?? "",

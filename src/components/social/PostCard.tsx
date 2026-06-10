@@ -19,7 +19,6 @@ import {
 import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { AmbientImage } from "../ui/AmbientImage";
 import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
 import { Button, ButtonLink } from "../ui/Button";
@@ -102,10 +101,7 @@ export function PostCard({
               <span className="text-sm text-muted">{post.createdAt}</span>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
-              <Badge tone={post.mood === "frostveil" ? "cool" : "warm"}>
-                {post.room.name}
-              </Badge>
-              <Badge>{post.mood}</Badge>
+              <Badge tone="warm">{post.room.name}</Badge>
               <PostSocialProof post={post} />
             </div>
           </div>
@@ -113,19 +109,15 @@ export function PostCard({
 
         <p className="mt-4 text-pretty text-base leading-7 text-text">{post.body}</p>
 
-        {post.mediaUrl ? (
+        {post.mediaUrl && post.mediaUrl !== "/ambient-veil.webp" ? (
           <div className="mt-4 overflow-hidden rounded-card border border-line bg-canvas">
-            {post.mediaUrl === "/ambient-veil.webp" ? (
-              <AmbientImage className="aspect-[16/9] w-full" />
-            ) : (
-              <img
-                src={post.mediaUrl}
-                alt=""
-                className="aspect-[16/9] w-full object-cover"
-                loading="lazy"
-                decoding="async"
-              />
-            )}
+            <img
+              src={post.mediaUrl}
+              alt=""
+              className="aspect-[16/9] w-full object-cover"
+              loading="lazy"
+              decoding="async"
+            />
           </div>
         ) : null}
 
@@ -788,25 +780,18 @@ function ParentPostPreview({ post }: { post: Post }) {
             <span className="text-sm text-muted">{post.createdAt}</span>
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
-            <Badge tone={post.mood === "frostveil" ? "cool" : "warm"}>
-              {post.room.name}
-            </Badge>
-            <Badge>{post.mood}</Badge>
+            <Badge tone="warm">{post.room.name}</Badge>
           </div>
           <p className="mt-2 text-pretty text-sm leading-6 text-text">{post.body}</p>
-          {post.mediaUrl ? (
+          {post.mediaUrl && post.mediaUrl !== "/ambient-veil.webp" ? (
             <div className="mt-3 overflow-hidden rounded-card border border-line bg-canvas">
-              {post.mediaUrl === "/ambient-veil.webp" ? (
-                <AmbientImage className="aspect-[16/9] w-full" />
-              ) : (
-                <img
-                  src={post.mediaUrl}
-                  alt=""
-                  className="aspect-[16/9] w-full object-cover"
-                  loading="lazy"
-                  decoding="async"
-                />
-              )}
+              <img
+                src={post.mediaUrl}
+                alt=""
+                className="aspect-[16/9] w-full object-cover"
+                loading="lazy"
+                decoding="async"
+              />
             </div>
           ) : null}
         </div>

@@ -4,24 +4,21 @@ import {
   CalendarDays,
   MessageCircle,
   Radio,
-  Repeat2,
   Reply,
   Shield,
   Sparkles,
   Star,
-  UserCheck,
   Users,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { ProfileEditModal } from "../components/social/ProfileEditModal";
 import { PostCard } from "../components/social/PostCard";
 import { ProfileHeader } from "../components/social/ProfileHeader";
 import { RoomCard } from "../components/social/RoomCard";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
-import { Avatar } from "../components/ui/Avatar";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -29,8 +26,6 @@ import {
   followProfile,
   getProfile,
   getProfileBadges,
-  getProfileFollowers,
-  getProfileFollowing,
   getProfilePosts,
   getProfileReblogs,
   getProfileReplies,
@@ -46,31 +41,24 @@ import {
 } from "../lib/api";
 import { ApiClientError } from "../lib/apiClient";
 import { cn } from "../lib/classNames";
+import { formatShortDate } from "../lib/dates";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
 import type {
   BadgeDefinition,
   Post,
   Profile,
-  ProfileConnection,
   UserBadge,
 } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
 
-type ProfileTab =
-  | "posts"
-  | "replies"
-  | "reblogs"
-  | "rooms"
-  | "followers"
-  | "following"
-  | "badges";
+type ProfileTab = "feed" | "replies" | "rooms";
 
 export function ProfilePage() {
   const { handle, profileHandle } = useParams();
   const navigate = useNavigate();
   const { refreshSession, runWithAuth, status, user } = useAuth();
-  const [activeTab, setActiveTab] = useState<ProfileTab>("posts");
+  const [activeTab, setActiveTab] = useState<ProfileTab>("feed");
   const [editingProfileHandle, setEditingProfileHandle] = useState<string | undefined>();
   const [profileOverride, setProfileOverride] = useState<Profile | undefined>();
   const [badgesOverride, setBadgesOverride] = useState<
@@ -106,14 +94,6 @@ export function ProfilePage() {
     () => () => getProfileRooms(normalizedHandle),
     [normalizedHandle],
   );
-  const followersLoader = useMemo(
-    () => () => getProfileFollowers(normalizedHandle),
-    [normalizedHandle],
-  );
-  const followingLoader = useMemo(
-    () => () => getProfileFollowing(normalizedHandle),
-    [normalizedHandle],
-  );
   const badgesLoader = useMemo(
     () => () => getProfileBadges(normalizedHandle),
     [normalizedHandle],
@@ -123,8 +103,6 @@ export function ProfilePage() {
   const repliesState = useAsyncData(repliesLoader);
   const reblogsState = useAsyncData(reblogsLoader);
   const roomsState = useAsyncData(roomsLoader);
-  const followersState = useAsyncData(followersLoader);
-  const followingState = useAsyncData(followingLoader);
   const badgesState = useAsyncData(badgesLoader);
   const activeFollowState =
     followState?.handle === normalizedHandle ? followState.relationship : undefined;
@@ -135,12 +113,12 @@ export function ProfilePage() {
       ? profileOverride
       : profileState.data;
   const profile = mergeFollowState(sourceProfile, activeFollowState);
-  const profilePosts = postsState.data ?? [];
   const profileReplies = repliesState.data ?? [];
-  const profileReblogs = reblogsState.data ?? [];
+  const profileFeed = useMemo(
+    () => mergeProfileFeed(postsState.data ?? [], reblogsState.data ?? []),
+    [postsState.data, reblogsState.data],
+  );
   const profileRooms = roomsState.data ?? [];
-  const profileFollowers = followersState.data ?? [];
-  const profileFollowing = followingState.data ?? [];
   const profileBadgesResult =
     badgesOverride?.handle === normalizedHandle ? badgesOverride.result : badgesState.data;
   const profileBadges = profileBadgesResult?.badges ?? [];
@@ -325,10 +303,10 @@ export function ProfilePage() {
           role="tablist"
         >
           <ProfileTabButton
-            active={activeTab === "posts"}
-            count={profile.stats.posts}
-            label="Posts"
-            onClick={() => setActiveTab("posts")}
+            active={activeTab === "feed"}
+            count={profileFeed.length}
+            label="Feed"
+            onClick={() => setActiveTab("feed")}
           />
           <ProfileTabButton
             active={activeTab === "replies"}
@@ -337,45 +315,21 @@ export function ProfilePage() {
             onClick={() => setActiveTab("replies")}
           />
           <ProfileTabButton
-            active={activeTab === "reblogs"}
-            count={profileReblogs.length}
-            label="Reblogs"
-            onClick={() => setActiveTab("reblogs")}
-          />
-          <ProfileTabButton
             active={activeTab === "rooms"}
             count={profile.stats.rooms}
             label="Rooms"
             onClick={() => setActiveTab("rooms")}
           />
-          <ProfileTabButton
-            active={activeTab === "followers"}
-            count={profile.stats.followers}
-            label="Followers"
-            onClick={() => setActiveTab("followers")}
-          />
-          <ProfileTabButton
-            active={activeTab === "following"}
-            count={profile.stats.following}
-            label="Following"
-            onClick={() => setActiveTab("following")}
-          />
-          <ProfileTabButton
-            active={activeTab === "badges"}
-            count={profileBadges.length}
-            label="Badges"
-            onClick={() => setActiveTab("badges")}
-          />
         </div>
 
-        {activeTab === "posts" ? (
+        {activeTab === "feed" ? (
           <ProfilePostList
             emptyIcon={MessageCircle}
             emptyText="No posts yet"
-            error={postsState.error}
-            items={profilePosts}
-            loading={postsState.loading}
-            loadingText="Posts are loading."
+            error={postsState.error ?? reblogsState.error}
+            items={profileFeed}
+            loading={postsState.loading || reblogsState.loading}
+            loadingText="Feed is loading."
           />
         ) : null}
         {activeTab === "replies" ? (
@@ -388,16 +342,6 @@ export function ProfilePage() {
             loadingText="Replies are loading."
           />
         ) : null}
-        {activeTab === "reblogs" ? (
-          <ProfilePostList
-            emptyIcon={Repeat2}
-            emptyText="No reblogs yet"
-            error={reblogsState.error}
-            items={profileReblogs}
-            loading={reblogsState.loading}
-            loadingText="Reblogs are loading."
-          />
-        ) : null}
         {activeTab === "rooms" ? (
           <ProfileRoomList
             error={roomsState.error}
@@ -405,39 +349,44 @@ export function ProfilePage() {
             rooms={profileRooms}
           />
         ) : null}
-        {activeTab === "followers" ? (
-          <ProfileConnectionList
-            emptyIcon={Users}
-            emptyText="No followers yet"
-            error={followersState.error}
-            items={profileFollowers}
-            loading={followersState.loading}
-            loadingText="Followers are loading."
-          />
-        ) : null}
-        {activeTab === "following" ? (
-          <ProfileConnectionList
-            emptyIcon={UserCheck}
-            emptyText="Not following anyone yet"
-            error={followingState.error}
-            items={profileFollowing}
-            loading={followingState.loading}
-            loadingText="Following is loading."
-          />
-        ) : null}
-        {activeTab === "badges" ? (
-          <ProfileBadgeList
-            badges={profileBadges}
-            error={badgesState.error}
-            featuredBadges={featuredBadges}
-            isOwnProfile={isOwnProfile}
-            loading={badgesState.loading}
-            onFeaturedChange={handleFeaturedBadgesChange}
-          />
+
+        {isOwnProfile ? (
+          <section className="mt-6 space-y-3" aria-label="Badge display">
+            <div>
+              <h2 className="text-base font-semibold text-text">Badge display</h2>
+              <p className="mt-1 text-sm text-muted">
+                Feature up to four badges on your profile.
+              </p>
+            </div>
+            <ProfileBadgeList
+              badges={profileBadges}
+              error={badgesState.error}
+              featuredBadges={featuredBadges}
+              isOwnProfile={isOwnProfile}
+              loading={badgesState.loading}
+              onFeaturedChange={handleFeaturedBadgesChange}
+            />
+          </section>
         ) : null}
       </motion.div>
     </motion.div>
   );
+}
+
+function mergeProfileFeed(posts: Post[], reblogs: Post[]): Post[] {
+  const seen = new Set<number>();
+  const feed: Post[] = [];
+
+  for (const post of [...posts, ...reblogs]) {
+    if (seen.has(post.id)) {
+      continue;
+    }
+
+    seen.add(post.id);
+    feed.push(post);
+  }
+
+  return feed;
 }
 
 function mergeFollowState(
@@ -633,7 +582,7 @@ function ProfileBadgeList({
       <div className="grid gap-3 md:grid-cols-2">
         {badges.map((userBadge) => {
           const isFeatured = featuredIdSet.has(userBadge.badge.id);
-          const featureLimitReached = featuredIds.length >= 3 && !isFeatured;
+          const featureLimitReached = featuredIds.length >= 4 && !isFeatured;
 
           return (
             <ProfileBadgeCard
@@ -769,82 +718,6 @@ function ProfileRoomList({ error, loading, rooms }: ProfileRoomListProps) {
   );
 }
 
-type ProfileConnectionListProps = {
-  emptyIcon: typeof Users;
-  emptyText: string;
-  error: unknown;
-  items: ProfileConnection[] | undefined;
-  loading: boolean;
-  loadingText: string;
-};
-
-function ProfileConnectionList({
-  emptyIcon,
-  emptyText,
-  error,
-  items,
-  loading,
-  loadingText,
-}: ProfileConnectionListProps) {
-  const connections = items ?? [];
-
-  if (loading) {
-    return <ApiStateNotice kind="loading" title="Loading" text={loadingText} />;
-  }
-
-  if (error) {
-    return (
-      <ApiStateNotice
-        kind="error"
-        title="Profiles are not available"
-        text="Try refreshing in a moment."
-      />
-    );
-  }
-
-  if (connections.length === 0) {
-    return <EmptyState icon={emptyIcon} title={emptyText} text={emptyText} />;
-  }
-
-  return (
-    <div className="grid gap-3 md:grid-cols-2">
-      {connections.map((connection) => (
-        <Link
-          key={connection.handle}
-          className="flex min-h-24 items-center gap-3 rounded-card border border-line bg-surface p-4 shadow-soft transition duration-fluid ease-fluid hover:-translate-y-0.5 hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:hover:translate-y-0"
-          to={`/@${connection.handle}`}
-        >
-          <Avatar
-            user={{
-              aura: "frost",
-              avatarUrl: connection.avatarUrl ?? null,
-              displayName: connection.displayName,
-              initials: connection.initials,
-            }}
-            size="md"
-          />
-          <span className="min-w-0 flex-1">
-            <span className="flex flex-wrap items-center gap-2">
-              <span className="truncate text-sm font-semibold text-text">
-                {connection.displayName}
-              </span>
-              {connection.isMoot ? <Badge>Moot</Badge> : null}
-            </span>
-            <span className="mt-0.5 block truncate text-xs text-muted">
-              @{connection.handle}
-            </span>
-            {connection.bioSnippet ? (
-              <span className="mt-2 line-clamp-2 block text-sm leading-6 text-muted">
-                {connection.bioSnippet}
-              </span>
-            ) : null}
-          </span>
-        </Link>
-      ))}
-    </div>
-  );
-}
-
 type BadgeTone = "default" | "warm" | "cool" | "leaf" | "rose";
 
 function badgeIconElement(badge: BadgeDefinition) {
@@ -948,15 +821,5 @@ function sourceLabel(source: string): string {
 }
 
 function formatBadgeDate(value: string): string {
-  const parsed = new Date(value.includes("T") ? value : value.replace(" ", "T"));
-
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(parsed);
+  return formatShortDate(value);
 }

@@ -36,6 +36,7 @@ import {
   type ModerationReportStatus,
   type ModerationUser,
 } from "../lib/api";
+import { parseApiTimestamp } from "../lib/dates";
 import { pageEntrance } from "../lib/motionPresets";
 import { formatCountWithUnit } from "../lib/pluralize";
 import type { BadgeDefinition, Room, UserBadge } from "../lib/types";
@@ -899,7 +900,6 @@ function AdminRoomRow({ room }: { room: Room }) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="cool">{room.visibility ?? "public"}</Badge>
-            {room.mood ? <Badge>{room.mood}</Badge> : null}
             <span className="text-xs text-muted">#{room.id}</span>
           </div>
           <h3 className="mt-3 text-sm font-semibold text-text">{room.name}</h3>
@@ -1076,7 +1076,7 @@ function rarityTone(rarity: BadgeDefinition["rarity"]): BadgeTone {
 }
 
 function formatDate(value: string): string {
-  const parsed = new Date(value.includes("T") ? value : value.replace(" ", "T"));
+  const parsed = parseApiTimestamp(value);
 
   if (Number.isNaN(parsed.getTime())) {
     return value;

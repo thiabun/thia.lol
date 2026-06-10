@@ -494,7 +494,17 @@ function SiteFooter() {
   return (
     <footer className="mx-auto w-full max-w-7xl px-4 pb-28 pt-2 sm:px-6 lg:px-8 lg:pb-12">
       <div className="flex flex-col gap-3 border-t border-line py-5 text-xs text-muted sm:flex-row sm:items-center sm:justify-between">
-        <p>thia.lol is a user-generated social platform.</p>
+        <div className="space-y-1 leading-5">
+          <p>thia.lol is a social platform for member posts, rooms, and chat.</p>
+          <p>
+            © 2026 Thia Markussen. Alle rettigheter forbeholdt / All rights
+            reserved.
+          </p>
+          <p>
+            Beskyttet etter norsk opphavsrett og internasjonal opphavsrett /
+            Protected under Norwegian and international copyright law.
+          </p>
+        </div>
         <nav
           aria-label="Legal and trust"
           className="flex flex-wrap gap-x-4 gap-y-2"

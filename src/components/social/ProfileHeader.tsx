@@ -6,7 +6,7 @@ import {
   MessageCircle,
   Radio,
   Reply,
-  Sparkles,
+  Heart,
   UserCheck,
   UserPlus,
   Users,
@@ -22,6 +22,7 @@ import {
   sectionItem,
   staggerChildren,
 } from "../../lib/motionPresets";
+import { formatMonthYear } from "../../lib/dates";
 import type { Profile, UserBadge } from "../../lib/types";
 
 type ProfileHeaderProps = {
@@ -65,11 +66,11 @@ export function ProfileHeader({
           {safeImageUrl(profile.bannerUrl) ? (
             <img
               alt=""
-              className="h-32 w-full bg-ambient-texture object-cover sm:h-40"
+              className="h-32 w-full bg-surface-strong object-cover sm:h-40"
               src={profile.bannerUrl ?? undefined}
             />
           ) : (
-            <div className="h-32 bg-ambient-texture sm:h-40" />
+            <div className="h-32 border-b border-line bg-surface-strong sm:h-40" />
           )}
         </div>
         <motion.div
@@ -181,13 +182,6 @@ export function ProfileHeader({
               </div>
             </motion.div>
           ) : null}
-          {profile.traits.length > 0 ? (
-            <motion.div className="mt-5 flex flex-wrap gap-2" variants={sectionItem}>
-              {profile.traits.map((trait) => (
-                <Badge key={trait}>{trait}</Badge>
-              ))}
-            </motion.div>
-          ) : null}
           {featuredBadges.length > 0 ? (
             <motion.div className="mt-5" variants={sectionItem}>
               <h2 className="text-sm font-semibold text-text">Featured badges</h2>
@@ -215,7 +209,7 @@ export function ProfileHeader({
             <ProfileStat label="Posts" value={profile.stats.posts} icon={MessageCircle} />
             <ProfileStat label="Replies" value={profile.stats.replies} icon={Reply} />
             <ProfileStat label="Rooms" value={profile.stats.rooms} icon={Radio} />
-            <ProfileStat label="Reactions" value={profile.stats.echoes} icon={Sparkles} />
+            <ProfileStat label="Likes" value={profile.stats.echoes} icon={Heart} />
             <ProfileStat label="Followers" value={profile.stats.followers} icon={Users} />
             <ProfileStat label="Following" value={profile.stats.following} icon={UserCheck} />
             <ProfileStat label="Moots" value={profile.stats.moots} icon={UserPlus} />
@@ -296,16 +290,7 @@ function safeImageUrl(value: string | null | undefined): boolean {
 }
 
 function formatJoinedDate(value: string): string {
-  const parsed = new Date(value.includes("T") ? value : value.replace(" ", "T"));
-
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    year: "numeric",
-  }).format(parsed);
+  return formatMonthYear(value);
 }
 
 function rarityClass(rarity: UserBadge["badge"]["rarity"]): string {

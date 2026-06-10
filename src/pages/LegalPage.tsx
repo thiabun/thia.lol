@@ -43,7 +43,7 @@ const policies: Record<string, PolicyPageContent> = {
     sections: [
       {
         title: "About these terms",
-        body: "These terms explain the practical rules for using thia.lol. They are a working foundation for a small user-generated social platform and are not formal legal advice.",
+        body: "These terms explain the practical rules for using thia.lol. They are written for a small social platform and are not formal legal advice.",
       },
       {
         title: "Who can use thia.lol",
@@ -145,15 +145,15 @@ const policies: Record<string, PolicyPageContent> = {
     sections: [
       {
         title: "About this policy",
-        body: "This policy explains the personal data thia.lol handles to run a user-generated social platform. It is written for practical transparency and should be reviewed before wider launch.",
+        body: "This policy explains the personal data thia.lol handles to run the platform. It is written for practical transparency and should be reviewed as the service grows.",
       },
       {
         title: "Data we collect",
         items: [
           "Account and profile data, such as handle, display name, email address when provided, password hash, profile text, avatar, banner, links, preferences, role, and account status.",
-          "Public content and activity, including posts, replies, reblogs, rooms, follows, moots, badges, reactions, profile customization, and related timestamps.",
+          "Public content and activity, including posts, replies, reblogs, rooms, follows, moots, badges, likes, profile customization, and related timestamps.",
           "Direct messages, conversation membership, read state, message metadata, and message content as needed to operate chat, deliver notifications, maintain safety, and handle reports or legal requests.",
-          "Uploads, including the image file you provide, generated public image URLs, image dimensions, purpose, and storage metadata needed to display and manage uploaded media.",
+          "Uploads, including the image file you provide, public image URLs, image dimensions, purpose, and storage metadata needed to display and manage uploaded media.",
           "Logs and security data, such as IP address, user agent, request time, authentication events, rate-limit records, error diagnostics, and moderation records.",
           "Cookies, session data, CSRF/security tokens, and local preference records used for sign-in, security, theme, and cookie notice choices.",
         ],
@@ -164,7 +164,7 @@ const policies: Record<string, PolicyPageContent> = {
           "To operate the platform, show profiles, posts, feeds, rooms, messages, notifications, uploads, and account state.",
           "To authenticate users, protect sessions, prevent abuse, apply rate limits, and investigate security problems.",
           "To moderate content, review reports, enforce rules, protect users, and maintain admin/moderation records.",
-          "To personalize basic feeds and recommendations using explainable signals such as recency, follows, moots, rooms, replies, likes, and moderation status.",
+          "To personalize basic feeds and recommendations using explainable factors such as recency, follows, moots, rooms, replies, likes, and moderation status.",
           "To comply with applicable legal obligations, respond to valid requests, preserve records when needed, and protect rights and safety.",
         ],
       },
@@ -410,7 +410,7 @@ const policies: Record<string, PolicyPageContent> = {
       {
         title: "Transparency basics",
         items: [
-          "Public feeds use simple signals such as recency, follows, moots, rooms, replies, likes, and moderation status. The platform should avoid opaque engagement maximization.",
+          "Public feeds use simple factors such as recency, follows, moots, rooms, replies, likes, and moderation status. The platform should avoid opaque engagement maximization.",
           "Policy pages explain the rules, report handling, possible actions, contact route, and known limits.",
           "thia.lol is not claiming very-large-platform obligations or advanced automated safety systems. DSA-inspired transparency is used here as a practical baseline.",
         ],
@@ -442,8 +442,9 @@ export function LegalIndexPage() {
           Legal and trust
         </h1>
         <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
-          thia.lol is a user-generated social platform. These pages explain the
-          working rules, privacy basics, copyright contact, and moderation process.
+          thia.lol is a social platform for member posts, rooms, and chat. These
+          pages explain the rules, privacy basics, copyright contact, and
+          moderation process.
         </p>
         <div className="mt-5 rounded-card border border-line bg-canvas/45 p-4">
           <div className="flex items-start gap-3">

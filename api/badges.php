@@ -7,7 +7,7 @@ require_once __DIR__ . '/notifications.php';
 require_once __DIR__ . '/read.php';
 
 const BADGE_RARITIES = ['common', 'rare', 'epic', 'legendary', 'founder'];
-const MAX_FEATURED_BADGES = 3;
+const MAX_FEATURED_BADGES = 4;
 
 function badges_dispatch(array $segments, string $method): void
 {

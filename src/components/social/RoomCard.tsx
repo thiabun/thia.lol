@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { Badge } from "../ui/Badge";
 import { Panel } from "../ui/Panel";
 import type { Room } from "../../lib/types";
+import { formatRelativeTime } from "../../lib/dates";
 import { formatCountWithUnit } from "../../lib/pluralize";
 import {
   cardEntrance,
@@ -68,10 +69,8 @@ export function RoomCard({ index = 0, room }: RoomCardProps) {
             {room.joinedByMe ? (
               <Badge tone="leaf">Joined</Badge>
             ) : room.live ? (
-              <Badge tone="leaf">active</Badge>
-            ) : (
-              <Badge>new</Badge>
-            )}
+              <Badge tone="leaf">Active</Badge>
+            ) : null}
           </div>
           <h2 className="mt-5 text-lg font-semibold text-text">{room.name}</h2>
           <p className="mt-1 text-sm text-muted">/{room.slug}</p>
@@ -81,10 +80,6 @@ export function RoomCard({ index = 0, room }: RoomCardProps) {
               Owner: @{room.owner.handle}
             </p>
           ) : null}
-          <div className="mt-4 flex flex-wrap gap-2">
-            {room.mood ? <Badge>{room.mood}</Badge> : null}
-            {room.visibility ? <Badge tone="cool">{room.visibility}</Badge> : null}
-          </div>
           <div className="mt-5 flex items-end justify-between gap-3 text-sm text-muted">
             <div className="space-y-2">
               <span className="flex items-center gap-2">
@@ -115,31 +110,5 @@ export function RoomCard({ index = 0, room }: RoomCardProps) {
 }
 
 function formatActivityTime(value: string): string {
-  const parsed = new Date(value.includes("T") ? value : value.replace(" ", "T"));
-
-  if (Number.isNaN(parsed.getTime())) {
-    return "active recently";
-  }
-
-  const seconds = Math.round((parsed.getTime() - Date.now()) / 1000);
-  const absSeconds = Math.abs(seconds);
-
-  if (absSeconds < 60) {
-    return "active now";
-  }
-
-  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
-    ["year", 60 * 60 * 24 * 365],
-    ["month", 60 * 60 * 24 * 30],
-    ["day", 60 * 60 * 24],
-    ["hour", 60 * 60],
-    ["minute", 60],
-  ];
-  const [unit, divisor] =
-    units.find(([, unitSeconds]) => absSeconds >= unitSeconds) ?? units.at(-1)!;
-
-  return new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(
-    Math.round(seconds / divisor),
-    unit,
-  );
+  return formatRelativeTime(value).replace(/^now$/, "active now");
 }

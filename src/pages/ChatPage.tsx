@@ -23,6 +23,7 @@ import {
   sendChatMessage,
 } from "../lib/api";
 import { cn } from "../lib/classNames";
+import { parseApiTimestamp } from "../lib/dates";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
 import type { ChatConversation, ChatMessage } from "../lib/types";
 import { useAuth } from "../lib/useAuth";
@@ -521,13 +522,13 @@ function sortConversations(
 
 function conversationSortTime(conversation: ChatConversation): number {
   const value = conversation.lastMessageAt ?? conversation.createdAt;
-  const parsed = new Date(value.includes("T") ? value : value.replace(" ", "T"));
+  const parsed = parseApiTimestamp(value);
 
   return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
 }
 
 function formatChatTime(value: string): string {
-  const parsed = new Date(value.includes("T") ? value : value.replace(" ", "T"));
+  const parsed = parseApiTimestamp(value);
 
   if (Number.isNaN(parsed.getTime())) {
     return value;

@@ -7,7 +7,6 @@ import {
   MapPin,
   Palette,
   Save,
-  Tags,
   UserRound,
   X,
 } from "lucide-react";
@@ -44,7 +43,6 @@ type FormState = {
   profileAccent: string;
   profileTheme: string;
   links: string;
-  traits: string;
 };
 
 export function ProfileEditModal({
@@ -77,7 +75,6 @@ export function ProfileEditModal({
         profileAccent: form.profileAccent || null,
         profileTheme: form.profileTheme || null,
         links: listFromLines(form.links),
-        traits: listFromLines(form.traits),
       });
 
       setForm(profileToForm(updated));
@@ -192,7 +189,7 @@ export function ProfileEditModal({
                 <ImageUploadControl
                   id="profile-background-upload"
                   imageUrl={form.profileBackground}
-                  label="Upload image"
+                  label="Change background"
                   wide
                   uploading={uploading === "profile_background"}
                   onChange={(event) =>
@@ -278,15 +275,6 @@ export function ProfileEditModal({
                 disabled={busy}
                 onChange={(event) => updateForm("links", event.currentTarget.value)}
               />
-              <TextareaField
-                id="profile-traits"
-                label="Traits"
-                icon={Tags}
-                className="min-h-24"
-                value={form.traits}
-                disabled={busy}
-                onChange={(event) => updateForm("traits", event.currentTarget.value)}
-              />
 
               {message ? (
                 <p className="rounded-card border border-line bg-canvas/55 p-3 text-sm text-text">
@@ -353,8 +341,8 @@ function ImageUploadControl({
           <div
             className={
               wide
-                ? "grid h-20 w-32 place-items-center rounded-card bg-ambient-texture text-muted"
-                : "grid size-20 place-items-center rounded-full bg-ambient-texture text-muted"
+                ? "grid h-20 w-32 place-items-center rounded-card border border-dashed border-line bg-surface-strong text-muted"
+                : "grid size-20 place-items-center rounded-full border border-dashed border-line bg-surface-strong text-muted"
             }
           >
             <ImagePlus aria-hidden="true" size={20} />
@@ -396,7 +384,6 @@ function profileToForm(profile: Profile): FormState {
     profileAccent: profile.profileAccent ?? "",
     profileTheme: profile.profileTheme ?? "",
     links: profile.links.join("\n"),
-    traits: profile.traits.join("\n"),
   };
 }
 

@@ -24,6 +24,7 @@ import {
   markNotificationRead,
 } from "../lib/api";
 import { cn } from "../lib/classNames";
+import { formatRelativeTime } from "../lib/dates";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
 import { emitNotificationsUpdated } from "../lib/notificationEvents";
 import type { NotificationItem, NotificationsResult } from "../lib/types";
@@ -394,33 +395,4 @@ function NotificationIcon({ type }: { type: NotificationItem["type"] }) {
   }
 
   return <MessageCircle aria-hidden="true" size={20} />;
-}
-
-function formatRelativeTime(value: string): string {
-  const parsed = new Date(value.includes("T") ? value : value.replace(" ", "T"));
-
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  const seconds = Math.round((parsed.getTime() - Date.now()) / 1000);
-  const absSeconds = Math.abs(seconds);
-
-  if (absSeconds < 60) {
-    return "now";
-  }
-
-  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
-    ["year", 60 * 60 * 24 * 365],
-    ["month", 60 * 60 * 24 * 30],
-    ["day", 60 * 60 * 24],
-    ["hour", 60 * 60],
-    ["minute", 60],
-  ];
-
-  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-  const [unit, divisor] =
-    units.find(([, unitSeconds]) => absSeconds >= unitSeconds) ?? units.at(-1)!;
-
-  return formatter.format(Math.round(seconds / divisor), unit);
 }

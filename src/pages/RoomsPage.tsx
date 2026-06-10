@@ -40,7 +40,7 @@ export function RoomsPage() {
     }
 
     return rooms.filter((room) =>
-      [room.name, room.slug, room.summary, room.mood]
+      [room.name, room.slug, room.summary]
         .filter(Boolean)
         .some((value) => value.toLowerCase().includes(normalizedQuery)),
     );

@@ -120,11 +120,11 @@ test("mobile primary nav shows platform sections without Admin", async ({ page }
   await expect(nav.getByRole("link", { name: "Admin" })).toHaveCount(0);
 });
 
-test("chat page is honest about placeholder status", async ({ page }) => {
+test("chat page is honest about sign-in state", async ({ page }) => {
   await page.goto("/chat");
 
-  await expect(page.getByRole("heading", { name: "Chat is coming soon" })).toBeVisible();
-  await expect(page.getByText("Direct messages are not available yet.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Chat" })).toBeVisible();
+  await expect(page.getByText("Sign in to see your messages.")).toBeVisible();
 });
 
 test("public profile route loads profile tabs", async ({ page }) => {
@@ -135,11 +135,11 @@ test("public profile route loads profile tabs", async ({ page }) => {
   await expect(page.getByText("Joined")).toBeVisible();
 
   const tabs = page.getByRole("tablist", { name: "Profile sections" });
-  await expect(tabs.getByRole("tab", { name: /Posts/ })).toBeVisible();
+  await expect(tabs.getByRole("tab", { name: /Feed/ })).toBeVisible();
   await expect(tabs.getByRole("tab", { name: /Replies/ })).toBeVisible();
-  await expect(tabs.getByRole("tab", { name: /Reblogs/ })).toBeVisible();
   await expect(tabs.getByRole("tab", { name: /Rooms/ })).toBeVisible();
-  await expect(tabs.getByRole("tab", { name: "Badges" })).toBeVisible();
+  await expect(tabs.getByRole("tab", { name: /Followers/ })).toHaveCount(0);
+  await expect(tabs.getByRole("tab", { name: /Badges/ })).toHaveCount(0);
 });
 
 test("authenticated post button opens the composer modal", async ({ page }) => {

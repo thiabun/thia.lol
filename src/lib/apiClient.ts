@@ -121,14 +121,17 @@ async function unwrapResponse<T>(response: Response): Promise<T> {
 
   if (isApiEnvelope<T>(json)) {
     if (!json.ok || json.data === undefined) {
-      throw new ApiClientError(json.error ?? "API response was not ok", response.status);
+      throw new ApiClientError(
+        json.error ?? "Could not load this right now.",
+        response.status,
+      );
     }
 
     return json.data;
   }
 
   if (json === undefined) {
-    throw new ApiClientError("API returned an empty response", response.status);
+    throw new ApiClientError("Could not load this right now.", response.status);
   }
 
   return json;
@@ -159,5 +162,5 @@ function getErrorMessage<T>(
     return value.error;
   }
 
-  return `API responded with ${status}`;
+  return `Could not load this right now. (${status})`;
 }

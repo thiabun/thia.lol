@@ -95,6 +95,9 @@ test("primary navigation stays focused", async ({ page }) => {
 
 test("cookie policy does not claim analytics are active", async ({ page }) => {
   await page.goto("/cookies");
+  await expect(
+    page.getByRole("heading", { name: "Cookie Policy", level: 1 }),
+  ).toBeVisible();
 
   const bodyText = await page.locator("body").innerText();
   expect(bodyText).toContain(

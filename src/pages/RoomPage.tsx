@@ -33,6 +33,7 @@ import {
 import { ApiClientError } from "../lib/apiClient";
 import { postCreatedEventName } from "../lib/postEvents";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
+import { formatRelativeTime } from "../lib/dates";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
 import { formatCountWithUnit } from "../lib/pluralize";
 import type { AppShellOutletContext } from "../components/layout/AppShell";
@@ -404,8 +405,6 @@ function RoomHeader({
               </div>
               <div className="flex flex-wrap gap-2">
                 <Badge tone="leaf">room</Badge>
-                {room.mood ? <Badge>{room.mood}</Badge> : null}
-                {room.visibility ? <Badge tone="cool">{room.visibility}</Badge> : null}
                 {room.myRoomRole ? <Badge tone="warm">{roleLabel(room.myRoomRole)}</Badge> : null}
               </div>
               <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text sm:text-4xl">
@@ -602,33 +601,7 @@ function RoomNotice({
 }
 
 function formatActivityTime(value: string): string {
-  const parsed = new Date(value.includes("T") ? value : value.replace(" ", "T"));
-
-  if (Number.isNaN(parsed.getTime())) {
-    return "active recently";
-  }
-
-  const seconds = Math.round((parsed.getTime() - Date.now()) / 1000);
-  const absSeconds = Math.abs(seconds);
-
-  if (absSeconds < 60) {
-    return "active now";
-  }
-
-  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
-    ["year", 60 * 60 * 24 * 365],
-    ["month", 60 * 60 * 24 * 30],
-    ["day", 60 * 60 * 24],
-    ["hour", 60 * 60],
-    ["minute", 60],
-  ];
-  const [unit, divisor] =
-    units.find(([, unitSeconds]) => absSeconds >= unitSeconds) ?? units.at(-1)!;
-
-  return new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(
-    Math.round(seconds / divisor),
-    unit,
-  );
+  return formatRelativeTime(value).replace(/^now$/, "active now");
 }
 
 function roleLabel(role: "owner" | "moderator" | "member"): string {
