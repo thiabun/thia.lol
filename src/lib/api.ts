@@ -524,7 +524,7 @@ export function getPostReplies(postId: number): Promise<Post[]> {
 
 export function createPostReply(
   postId: number,
-  input: Pick<CreatePostInput, "body">,
+  input: Pick<CreatePostInput, "body" | "mediaUrl">,
   csrfToken: string,
 ): Promise<Post> {
   return apiPost<ApiPost>(`/posts/${postId}/replies`, input, csrfToken).then(

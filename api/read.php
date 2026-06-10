@@ -367,6 +367,57 @@ function room_not_deleted_sql(string $alias): string
     return room_soft_delete_column_exists() ? " AND {$alias}.deleted_at IS NULL" : '';
 }
 
+function public_post_visible_sql(string $postAlias, string $roomAlias): string
+{
+    return "{$postAlias}.visibility = 'public'
+        AND {$postAlias}.status = 'published'
+        AND {$postAlias}.deleted_at IS NULL
+        AND (
+            {$postAlias}.room_id IS NULL
+            OR ({$roomAlias}.visibility = 'public' " . room_not_deleted_sql($roomAlias) . ")
+        )";
+}
+
+function post_ancestor_visibility_joins_sql(string $postAlias): string
+{
+    return "LEFT JOIN posts parent_post ON parent_post.id = {$postAlias}.parent_id
+    LEFT JOIN rooms parent_post_room ON parent_post_room.id = parent_post.room_id
+    LEFT JOIN posts grandparent_post ON grandparent_post.id = parent_post.parent_id
+    LEFT JOIN rooms grandparent_post_room ON grandparent_post_room.id = grandparent_post.room_id
+    LEFT JOIN posts great_grandparent_post ON great_grandparent_post.id = grandparent_post.parent_id
+    LEFT JOIN rooms great_grandparent_post_room ON great_grandparent_post_room.id = great_grandparent_post.room_id";
+}
+
+function post_ancestor_visibility_sql(string $postAlias): string
+{
+    $parentVisible = public_post_visible_sql('parent_post', 'parent_post_room');
+    $grandparentVisible = public_post_visible_sql('grandparent_post', 'grandparent_post_room');
+    $greatGrandparentVisible = public_post_visible_sql('great_grandparent_post', 'great_grandparent_post_room');
+
+    return "(
+        {$postAlias}.parent_id IS NULL
+        OR (
+            parent_post.id IS NOT NULL
+            AND {$parentVisible}
+            AND (
+                parent_post.parent_id IS NULL
+                OR (
+                    grandparent_post.id IS NOT NULL
+                    AND {$grandparentVisible}
+                    AND (
+                        grandparent_post.parent_id IS NULL
+                        OR (
+                            great_grandparent_post.id IS NOT NULL
+                            AND {$greatGrandparentVisible}
+                            AND great_grandparent_post.parent_id IS NULL
+                        )
+                    )
+                )
+            )
+        )
+    )";
+}
+
 function room_customization_select_sql(string $alias): string
 {
     if (room_customization_columns_exist()) {
@@ -553,15 +604,11 @@ function fetch_profile_by_handle(string $handle): ?array
                 SELECT COUNT(*)
                 FROM posts profile_replies
                 LEFT JOIN rooms profile_reply_rooms ON profile_reply_rooms.id = profile_replies.room_id
+                " . post_ancestor_visibility_joins_sql('profile_replies') . "
                 WHERE profile_replies.author_id = u.id
                   AND profile_replies.parent_id IS NOT NULL
-                  AND profile_replies.visibility = 'public'
-                  AND profile_replies.status = 'published'
-                  AND profile_replies.deleted_at IS NULL
-                  AND (
-                    profile_replies.room_id IS NULL
-                    OR (profile_reply_rooms.visibility = 'public' " . room_not_deleted_sql('profile_reply_rooms') . ")
-                  )
+                  AND " . public_post_visible_sql('profile_replies', 'profile_reply_rooms') . "
+                  AND " . post_ancestor_visibility_sql('profile_replies') . "
             ) AS profile_reply_count,
             (
                 SELECT COUNT(*)
@@ -806,6 +853,7 @@ function post_select_sql(
     INNER JOIN users u ON u.id = p.author_id
     INNER JOIN profiles pr ON pr.user_id = u.id
     LEFT JOIN rooms r ON r.id = p.room_id
+    " . post_ancestor_visibility_joins_sql('p') . "
     LEFT JOIN users owner ON owner.id = r.created_by
     LEFT JOIN profiles owner_profile ON owner_profile.user_id = owner.id
     LEFT JOIN (
@@ -838,14 +886,10 @@ function post_select_sql(
         SELECT author_id, COUNT(*) AS reply_count
         FROM posts profile_replies
         LEFT JOIN rooms profile_reply_rooms ON profile_reply_rooms.id = profile_replies.room_id
-        WHERE profile_replies.visibility = 'public'
-          AND profile_replies.parent_id IS NOT NULL
-          AND profile_replies.status = 'published'
-          AND profile_replies.deleted_at IS NULL
-          AND (
-            profile_replies.room_id IS NULL
-            OR (profile_reply_rooms.visibility = 'public' " . room_not_deleted_sql('profile_reply_rooms') . ")
-          )
+        " . post_ancestor_visibility_joins_sql('profile_replies') . "
+        WHERE profile_replies.parent_id IS NOT NULL
+          AND " . public_post_visible_sql('profile_replies', 'profile_reply_rooms') . "
+          AND " . post_ancestor_visibility_sql('profile_replies') . "
         GROUP BY author_id
     ) profile_replies ON profile_replies.author_id = u.id
     LEFT JOIN (
@@ -878,11 +922,10 @@ function post_select_sql(
         SELECT reply_posts.parent_id, COUNT(*) AS reply_count
         FROM posts reply_posts
         LEFT JOIN rooms reply_rooms ON reply_rooms.id = reply_posts.room_id
+        " . post_ancestor_visibility_joins_sql('reply_posts') . "
         WHERE reply_posts.parent_id IS NOT NULL
-          AND reply_posts.visibility = 'public'
-          AND reply_posts.status = 'published'
-          AND reply_posts.deleted_at IS NULL
-          AND (reply_posts.room_id IS NULL OR (reply_rooms.visibility = 'public' " . room_not_deleted_sql('reply_rooms') . "))
+          AND " . public_post_visible_sql('reply_posts', 'reply_rooms') . "
+          AND " . post_ancestor_visibility_sql('reply_posts') . "
         GROUP BY reply_posts.parent_id
     ) replies ON replies.parent_id = p.id
     LEFT JOIN post_reactions current_like
@@ -892,11 +935,9 @@ function post_select_sql(
     {$followJoins}
     {$reblogJoins}
     {$extraJoins}
-    WHERE p.visibility = 'public'
-      AND p.status = 'published'
-      AND p.deleted_at IS NULL
+    WHERE " . public_post_visible_sql('p', 'r') . "
       AND u.status = 'active'
-      AND (p.room_id IS NULL OR (r.visibility = 'public' " . room_not_deleted_sql('r') . "))
+      AND " . post_ancestor_visibility_sql('p') . "
       {$whereClause}
     ORDER BY {$orderClause}
     LIMIT 50";
@@ -1157,8 +1198,7 @@ function fetch_public_profile_reblogs(string $handle): array
     $statement = db_query(
         post_select_sql(
             "AND profile_reblogger.handle = :handle
-             AND profile_reblogger.status = 'active'
-             AND p.parent_id IS NULL",
+             AND profile_reblogger.status = 'active'",
             'profile_reblogs.created_at DESC, profile_reblogs.id DESC',
             "profile_reblogger.id AS reblogged_by_user_id,
             profile_reblogger.handle AS reblogged_by_handle,
@@ -1245,6 +1285,7 @@ function fetch_public_stats(): array
                 FROM posts stat_posts
                 LEFT JOIN rooms stat_rooms ON stat_rooms.id = stat_posts.room_id
                 WHERE stat_posts.visibility = :post_visibility
+                  AND stat_posts.parent_id IS NULL
                   AND stat_posts.status = :post_status
                   AND stat_posts.deleted_at IS NULL
                   AND (

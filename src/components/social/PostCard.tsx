@@ -3,6 +3,7 @@ import {
   useId,
   useRef,
   useState,
+  type ChangeEvent,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -10,6 +11,7 @@ import {
   EyeOff,
   Flag,
   Heart,
+  ImagePlus,
   MessageCircle,
   Repeat2,
   Send,
@@ -26,12 +28,14 @@ import { SelectField, TextareaField } from "../ui/Field";
 import { Panel } from "../ui/Panel";
 import {
   createReport,
+  deletePost,
   createPostReply,
   getPostReplies,
   likePost,
   reblogPost,
   unreblogPost,
   unlikePost,
+  uploadImage,
   type ReportCategory,
 } from "../../lib/api";
 import { cn } from "../../lib/classNames";
@@ -49,6 +53,7 @@ import {
 import type { AuthStatus } from "../../lib/authTypes";
 import type { Post } from "../../lib/types";
 import { useAuth } from "../../lib/useAuth";
+import { canDeletePost } from "../../lib/postPermissions";
 
 type PostCardProps = {
   post: Post;
@@ -70,6 +75,15 @@ export function PostCard({
   onHide,
 }: PostCardProps) {
   const showActions = canDelete || canHide;
+  const { csrfToken, runWithAuth, status } = useAuth();
+  const [commentCount, setCommentCount] = useState(post.commentCount);
+  const [threadOpen, setThreadOpen] = useState(false);
+  const [threadComposerOpen, setThreadComposerOpen] = useState(false);
+
+  function openThread(options?: { compose?: boolean }) {
+    setThreadComposerOpen(Boolean(options?.compose));
+    setThreadOpen(true);
+  }
 
   return (
     <motion.article
@@ -90,42 +104,73 @@ export function PostCard({
           </div>
         ) : null}
         <div className="flex items-start gap-3">
-          <Avatar user={post.author} />
+          <Link
+            to={`/@${post.author.handle}`}
+            aria-label={`${post.author.displayName}'s profile`}
+            className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          >
+            <Avatar user={post.author} />
+          </Link>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <h2 className="text-sm font-semibold text-text">
+              <Link
+                to={`/@${post.author.handle}`}
+                className="text-sm font-semibold text-text underline-offset-4 hover:text-accent-strong hover:underline"
+              >
                 {post.author.displayName}
-              </h2>
-              <span className="text-sm text-muted">@{post.author.handle}</span>
+              </Link>
+              <Link
+                to={`/@${post.author.handle}`}
+                className="text-sm text-muted underline-offset-4 hover:text-accent-strong hover:underline"
+              >
+                @{post.author.handle}
+              </Link>
               <span className="text-muted/50">·</span>
               <span className="text-sm text-muted">{post.createdAt}</span>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
-              <Badge tone="warm">{post.room.name}</Badge>
+              <Link
+                to={`/rooms/${post.room.slug}`}
+                className="rounded-control focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              >
+                <Badge tone="warm">{post.room.name}</Badge>
+              </Link>
               <PostSocialProof post={post} />
             </div>
           </div>
         </div>
 
-        <p className="mt-4 text-pretty text-base leading-7 text-text">{post.body}</p>
+        <button
+          type="button"
+          data-testid="post-body-open-thread"
+          className="mt-4 block w-full rounded-card text-left transition duration-fluid ease-fluid hover:bg-canvas/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          aria-label="Open thread"
+          onClick={() => openThread()}
+        >
+          <span className="block p-1 text-pretty text-base leading-7 text-text">
+            {post.body}
+          </span>
 
-        {post.mediaUrl && post.mediaUrl !== "/ambient-veil.webp" ? (
-          <div className="mt-4 overflow-hidden rounded-card border border-line bg-canvas">
-            <img
-              src={post.mediaUrl}
-              alt=""
-              className="aspect-[16/9] w-full object-cover"
-              loading="lazy"
-              decoding="async"
-            />
-          </div>
-        ) : null}
+          {post.mediaUrl && post.mediaUrl !== "/ambient-veil.webp" ? (
+            <span className="mt-4 block overflow-hidden rounded-card border border-line bg-canvas">
+              <img
+                src={post.mediaUrl}
+                alt=""
+                className="aspect-[16/9] w-full object-cover"
+                loading="lazy"
+                decoding="async"
+              />
+            </span>
+          ) : null}
+        </button>
 
         <ReactionControls
           key={`${post.id}:${post.likeCount}:${post.likedByCurrentUser}:${post.reblogCount}:${post.rebloggedByMe}:${post.rebloggedByCurrentUser}:${post.commentCount}`}
           post={post}
+          commentCount={commentCount}
           initialLikeCount={post.likeCount}
           initiallyLiked={post.likedByCurrentUser}
+          onOpenThread={() => openThread({ compose: true })}
           actions={
             showActions ? (
               <>
@@ -157,6 +202,25 @@ export function PostCard({
             ) : null
           }
         />
+        {threadOpen ? (
+          <ThreadModal
+            open={threadOpen}
+            post={{ ...post, commentCount }}
+            authStatus={status}
+            csrfToken={csrfToken}
+            initialComposerOpen={threadComposerOpen}
+            runWithAuth={runWithAuth}
+            canDeleteRoot={canDelete}
+            actionPending={actionPending}
+            onClose={() => setThreadOpen(false)}
+            onRootDelete={() => {
+              onDelete?.(post);
+              setThreadOpen(false);
+            }}
+            onReplyCreated={() => setCommentCount((current) => current + 1)}
+            onReplyDeleted={() => setCommentCount((current) => Math.max(0, current - 1))}
+          />
+        ) : null}
       </Panel>
     </motion.article>
   );
@@ -182,16 +246,20 @@ function PostSocialProof({ post }: { post: Post }) {
 
 type ReactionControlsProps = {
   post: Post;
+  commentCount: number;
   initialLikeCount: number;
   initiallyLiked: boolean;
   actions: ReactNode;
+  onOpenThread: () => void;
 };
 
 function ReactionControls({
   post,
+  commentCount,
   initialLikeCount,
   initiallyLiked,
   actions,
+  onOpenThread,
 }: ReactionControlsProps) {
   const { csrfToken, runWithAuth, status, user } = useAuth();
   const [likeCount, setLikeCount] = useState(initialLikeCount);
@@ -200,8 +268,6 @@ function ReactionControls({
   const [reblogged, setReblogged] = useState(
     post.rebloggedByMe ?? post.rebloggedByCurrentUser ?? false,
   );
-  const [commentCount, setCommentCount] = useState(post.commentCount);
-  const [threadOpen, setThreadOpen] = useState(false);
   const [likePending, setLikePending] = useState(false);
   const [likePulse, setLikePulse] = useState(0);
   const [likeError, setLikeError] = useState<string>();
@@ -335,7 +401,7 @@ function ReactionControls({
       <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted">
         <CommentButton
           count={commentCount}
-          onClick={() => setThreadOpen(true)}
+          onClick={onOpenThread}
         />
         <LikeButton
           count={likeCount}
@@ -459,15 +525,6 @@ function ReactionControls({
           </div>
         </form>
       ) : null}
-      <ThreadModal
-        open={threadOpen}
-        post={post}
-        authStatus={status}
-        csrfToken={csrfToken}
-        runWithAuth={runWithAuth}
-        onClose={() => setThreadOpen(false)}
-        onReplyCreated={() => setCommentCount((current) => current + 1)}
-      />
     </>
   );
 }
@@ -486,6 +543,9 @@ const reportCategoryOptions: Array<{ value: ReportCategory; label: string }> = [
   { value: "illegal_content", label: "Illegal content" },
   { value: "other", label: "Other" },
 ];
+
+const maxUploadBytes = 10 * 1024 * 1024;
+const acceptedImageTypes = ["image/jpeg", "image/png", "image/webp"];
 
 type CommentButtonProps = {
   count: number;
@@ -510,17 +570,244 @@ function CommentButton({ count, onClick }: CommentButtonProps) {
   );
 }
 
-type ThreadModalProps = {
-  open: boolean;
-  post: Post;
-  authStatus: AuthStatus;
+type ReplyComposerProps = {
+  parentPostId: number;
   csrfToken: string | undefined;
   runWithAuth: <T>(
     task: (csrfToken: string) => Promise<T>,
     options?: { retryOnCsrf?: boolean },
   ) => Promise<T>;
+  autoFocus?: boolean;
+  className?: string;
+  onCancel: () => void;
+  onCreated: (reply: Post) => void;
+};
+
+function ReplyComposer({
+  parentPostId,
+  csrfToken,
+  runWithAuth,
+  autoFocus = false,
+  className,
+  onCancel,
+  onCreated,
+}: ReplyComposerProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [body, setBody] = useState("");
+  const [mediaUrl, setMediaUrl] = useState<string | undefined>();
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState<string | undefined>();
+  const trimmedBody = body.trim();
+  const canSubmit =
+    Boolean(csrfToken) &&
+    trimmedBody.length > 0 &&
+    trimmedBody.length <= 2000 &&
+    !submitting &&
+    !uploadingImage;
+
+  useEffect(() => {
+    if (autoFocus) {
+      window.setTimeout(() => textareaRef.current?.focus(), 60);
+    }
+  }, [autoFocus]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!csrfToken) {
+      setMessage("Log in to reply.");
+      return;
+    }
+
+    if (trimmedBody.length === 0) {
+      setMessage("Reply cannot be empty.");
+      return;
+    }
+
+    if (trimmedBody.length > 2000) {
+      setMessage("Reply must be 2000 characters or fewer.");
+      return;
+    }
+
+    setSubmitting(true);
+    setMessage(undefined);
+
+    try {
+      const reply = await runWithAuth(
+        (freshCsrfToken) =>
+          createPostReply(
+            parentPostId,
+            mediaUrl ? { body: trimmedBody, mediaUrl } : { body: trimmedBody },
+            freshCsrfToken,
+          ),
+        { retryOnCsrf: true },
+      );
+
+      setBody("");
+      setMediaUrl(undefined);
+      onCreated(reply);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Reply could not be posted.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    if (!csrfToken) {
+      setMessage("Log in to upload an image.");
+      return;
+    }
+
+    if (file.size > maxUploadBytes) {
+      setMessage("Image must be 10 MB or smaller.");
+      return;
+    }
+
+    if (!acceptedImageTypes.includes(file.type)) {
+      setMessage("Unsupported image type. Use JPEG, PNG, or WebP.");
+      return;
+    }
+
+    setUploadingImage(true);
+    setMessage(undefined);
+
+    try {
+      const uploaded = await runWithAuth(
+        (freshCsrfToken) => uploadImage(file, "post_media", freshCsrfToken),
+        { retryOnCsrf: true },
+      );
+      setMediaUrl(uploaded.url);
+      setMessage("Image attached.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Image could not be uploaded.");
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
+  return (
+    <form
+      className={cn(
+        "rounded-card border border-line bg-canvas/45 p-3 shadow-inner-soft",
+        className,
+      )}
+      data-testid="reply-composer"
+      onSubmit={(event) => void handleSubmit(event)}
+    >
+      <TextareaField
+        ref={textareaRef}
+        id={`reply-composer-${parentPostId}`}
+        label="Reply"
+        rows={3}
+        maxLength={2000}
+        className="min-h-20 bg-surface/70"
+        placeholder="Write a reply"
+        value={body}
+        disabled={submitting}
+        onChange={(event) => setBody(event.currentTarget.value)}
+      />
+
+      {mediaUrl ? (
+        <div className="mt-3 overflow-hidden rounded-card border border-line bg-canvas">
+          <img
+            alt=""
+            className="max-h-56 w-full object-cover"
+            src={mediaUrl}
+            loading="lazy"
+            decoding="async"
+          />
+        </div>
+      ) : null}
+
+      {message ? (
+        <p
+          className={cn(
+            "mt-3 rounded-card border p-3 text-sm",
+            message === "Image attached."
+              ? "border-leaf/30 bg-leaf/15 text-leaf-ink"
+              : "border-rose/30 bg-rose/15 text-rose-ink",
+          )}
+        >
+          {message}
+        </p>
+      ) : null}
+
+      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <span className="text-xs text-muted" aria-live="polite">
+          {body.length}/2000
+        </span>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {mediaUrl ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={submitting || uploadingImage}
+              icon={<Trash2 aria-hidden="true" size={15} />}
+              onClick={() => setMediaUrl(undefined)}
+            >
+              Remove
+            </Button>
+          ) : null}
+          <label className="inline-flex min-h-9 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-surface px-3 text-sm font-medium text-text shadow-soft transition duration-fluid hover:border-line-strong focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus">
+            <ImagePlus aria-hidden="true" size={15} />
+            {uploadingImage ? "Uploading" : mediaUrl ? "Replace image" : "Upload image"}
+            <input
+              className="sr-only"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              disabled={submitting || uploadingImage}
+              onChange={(event) => void handleImageChange(event)}
+            />
+          </label>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={submitting}
+            onClick={onCancel}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            size="sm"
+            disabled={!canSubmit}
+            icon={<Send aria-hidden="true" size={15} />}
+          >
+            {submitting ? "Sending..." : "Send"}
+          </Button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+type ThreadModalProps = {
+  open: boolean;
+  post: Post;
+  authStatus: AuthStatus;
+  csrfToken: string | undefined;
+  initialComposerOpen: boolean;
+  runWithAuth: <T>(
+    task: (csrfToken: string) => Promise<T>,
+    options?: { retryOnCsrf?: boolean },
+  ) => Promise<T>;
+  canDeleteRoot: boolean;
+  actionPending: boolean;
   onClose: () => void;
+  onRootDelete: () => void;
   onReplyCreated: (post: Post) => void;
+  onReplyDeleted: (post: Post) => void;
 };
 
 function ThreadModal({
@@ -528,19 +815,21 @@ function ThreadModal({
   post,
   authStatus,
   csrfToken,
+  initialComposerOpen,
   runWithAuth,
+  canDeleteRoot,
+  actionPending,
   onClose,
+  onRootDelete,
   onReplyCreated,
+  onReplyDeleted,
 }: ThreadModalProps) {
   const titleId = useId();
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [replies, setReplies] = useState<Post[]>([]);
-  const [body, setBody] = useState("");
+  const [composerOpen, setComposerOpen] = useState(initialComposerOpen);
+  const [modalCommentCount, setModalCommentCount] = useState(post.commentCount);
   const [loading, setLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [loadError, setLoadError] = useState<string>();
-  const [submitError, setSubmitError] = useState<string>();
-  const canSubmit = Boolean(csrfToken) && body.trim().length > 0 && !submitting;
   const isCheckingAuth = authStatus === "loading";
   const isAuthenticated = authStatus === "authenticated" && Boolean(csrfToken);
 
@@ -580,7 +869,6 @@ function ThreadModal({
 
       setLoading(true);
       setLoadError(undefined);
-      setSubmitError(undefined);
 
       getPostReplies(post.id)
         .then((items) => {
@@ -606,37 +894,17 @@ function ThreadModal({
     };
   }, [open, post.id]);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function handleReplyCreated(reply: Post) {
+    setReplies((current) => [...current, reply]);
+    setModalCommentCount((current) => current + 1);
+    setComposerOpen(false);
+    onReplyCreated(reply);
+  }
 
-    if (!csrfToken) {
-      setSubmitError("Log in to reply.");
-      return;
-    }
-
-    const trimmedBody = body.trim();
-
-    if (!trimmedBody) {
-      return;
-    }
-
-    setSubmitting(true);
-    setSubmitError(undefined);
-
-    try {
-      const reply = await runWithAuth((freshCsrfToken) =>
-        createPostReply(post.id, { body: trimmedBody }, freshCsrfToken),
-        { retryOnCsrf: true },
-      );
-      setReplies((current) => [...current, reply]);
-      setBody("");
-      onReplyCreated(reply);
-      window.setTimeout(() => textareaRef.current?.focus(), 60);
-    } catch {
-      setSubmitError("Reply could not be posted right now.");
-    } finally {
-      setSubmitting(false);
-    }
+  function handleReplyDeleted(reply: Post) {
+    setReplies((current) => current.filter((item) => item.id !== reply.id));
+    setModalCommentCount((current) => Math.max(0, current - 1));
+    onReplyDeleted(reply);
   }
 
   const modal = (
@@ -679,35 +947,52 @@ function ThreadModal({
 
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
               <ParentPostPreview post={post} />
+              <div className="mt-3 border-b border-line pb-3">
+                <ReactionControls
+                  post={post}
+                  commentCount={modalCommentCount}
+                  initialLikeCount={post.likeCount}
+                  initiallyLiked={post.likedByCurrentUser}
+                  onOpenThread={() => setComposerOpen(true)}
+                  actions={
+                    canDeleteRoot ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={actionPending}
+                        icon={<Trash2 aria-hidden="true" size={15} />}
+                        onClick={onRootDelete}
+                      >
+                        Delete
+                      </Button>
+                    ) : null
+                  }
+                />
+              </div>
 
-              {isAuthenticated ? (
-                <form className="mt-4 border-b border-line pb-4" onSubmit={handleSubmit}>
-                  <TextareaField
-                    ref={textareaRef}
-                    id={`reply-composer-${post.id}`}
-                    label="Reply"
-                    rows={4}
-                    maxLength={2000}
-                    className="min-h-28 bg-canvas/55"
-                    placeholder="Write a reply"
-                    value={body}
-                    disabled={submitting}
-                    onChange={(event) => setBody(event.currentTarget.value)}
-                  />
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <span className="text-xs text-muted" aria-live="polite">
-                      {body.length}/2000
-                    </span>
-                    <Button
-                      type="submit"
-                      size="sm"
-                      disabled={!canSubmit}
-                      icon={<Send aria-hidden="true" size={15} />}
-                    >
-                      {submitting ? "Replying..." : "Reply"}
-                    </Button>
-                  </div>
-                </form>
+              {isAuthenticated && composerOpen ? (
+                <ReplyComposer
+                  autoFocus
+                  className="mt-4 border-b border-line pb-4"
+                  parentPostId={post.id}
+                  csrfToken={csrfToken}
+                  runWithAuth={runWithAuth}
+                  onCancel={() => setComposerOpen(false)}
+                  onCreated={handleReplyCreated}
+                />
+              ) : isAuthenticated ? (
+                <div className="mt-4 flex justify-end border-b border-line pb-4">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    icon={<MessageCircle aria-hidden="true" size={15} />}
+                    onClick={() => setComposerOpen(true)}
+                  >
+                    Reply
+                  </Button>
+                </div>
               ) : isCheckingAuth ? (
                 <div className="mt-4 border-b border-line pb-4">
                   <p className="rounded-card border border-line bg-canvas/45 p-4 text-sm text-muted">
@@ -722,12 +1007,6 @@ function ThreadModal({
                   </ButtonLink>
                 </div>
               )}
-
-              {submitError ? (
-                <p className="mt-3 rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
-                  {submitError}
-                </p>
-              ) : null}
 
               <div className="mt-4 space-y-3">
                 {loading ? (
@@ -747,7 +1026,11 @@ function ThreadModal({
                 ) : null}
                 <AnimatePresence initial={false}>
                   {replies.map((reply) => (
-                    <ReplyPreview key={reply.id} reply={reply} />
+                    <ReplyPreview
+                      key={reply.id}
+                      reply={reply}
+                      onDeleted={handleReplyDeleted}
+                    />
                   ))}
                 </AnimatePresence>
               </div>
@@ -769,18 +1052,37 @@ function ParentPostPreview({ post }: { post: Post }) {
   return (
     <div className="rounded-card border border-line bg-canvas/45 p-4">
       <div className="flex items-start gap-3">
-        <Avatar user={post.author} />
+        <Link
+          to={`/@${post.author.handle}`}
+          aria-label={`${post.author.displayName}'s profile`}
+          className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        >
+          <Avatar user={post.author} />
+        </Link>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-sm font-semibold text-text">
+            <Link
+              to={`/@${post.author.handle}`}
+              className="text-sm font-semibold text-text underline-offset-4 hover:text-accent-strong hover:underline"
+            >
               {post.author.displayName}
-            </span>
-            <span className="text-sm text-muted">@{post.author.handle}</span>
+            </Link>
+            <Link
+              to={`/@${post.author.handle}`}
+              className="text-sm text-muted underline-offset-4 hover:text-accent-strong hover:underline"
+            >
+              @{post.author.handle}
+            </Link>
             <span className="text-muted/50">·</span>
             <span className="text-sm text-muted">{post.createdAt}</span>
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
-            <Badge tone="warm">{post.room.name}</Badge>
+            <Link
+              to={`/rooms/${post.room.slug}`}
+              className="rounded-control focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            >
+              <Badge tone="warm">{post.room.name}</Badge>
+            </Link>
           </div>
           <p className="mt-2 text-pretty text-sm leading-6 text-text">{post.body}</p>
           {post.mediaUrl && post.mediaUrl !== "/ambient-veil.webp" ? (
@@ -800,7 +1102,78 @@ function ParentPostPreview({ post }: { post: Post }) {
   );
 }
 
-function ReplyPreview({ reply }: { reply: Post }) {
+type ReplyPreviewProps = {
+  reply: Post;
+  depth?: number;
+  onDeleted: (reply: Post) => void;
+};
+
+function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
+  const { csrfToken, runWithAuth, status, user } = useAuth();
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [childrenOpen, setChildrenOpen] = useState(false);
+  const [childReplies, setChildReplies] = useState<Post[]>([]);
+  const [childrenLoading, setChildrenLoading] = useState(false);
+  const [childrenError, setChildrenError] = useState<string>();
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string>();
+  const [localCommentCount, setLocalCommentCount] = useState(reply.commentCount);
+  const isAuthenticated = status === "authenticated" && Boolean(csrfToken);
+  const allowDelete = canDeletePost(user, reply);
+  const canNest = depth < 3;
+
+  async function loadChildren() {
+    if (childrenLoading || childReplies.length > 0) {
+      setChildrenOpen((open) => !open);
+      return;
+    }
+
+    setChildrenOpen(true);
+    setChildrenLoading(true);
+    setChildrenError(undefined);
+
+    try {
+      setChildReplies(await getPostReplies(reply.id));
+    } catch {
+      setChildrenError("Replies could not load right now.");
+    } finally {
+      setChildrenLoading(false);
+    }
+  }
+
+  async function handleDeleteReply() {
+    if (!allowDelete || deletePending) {
+      return;
+    }
+
+    setDeletePending(true);
+    setDeleteError(undefined);
+
+    try {
+      await runWithAuth(
+        (freshCsrfToken) => deletePost(reply.id, freshCsrfToken),
+        { retryOnCsrf: true },
+      );
+      onDeleted(reply);
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "Reply could not be deleted.");
+    } finally {
+      setDeletePending(false);
+    }
+  }
+
+  function handleNestedReplyCreated(child: Post) {
+    setChildReplies((current) => [...current, child]);
+    setChildrenOpen(true);
+    setComposerOpen(false);
+    setLocalCommentCount((current) => current + 1);
+  }
+
+  function handleNestedReplyDeleted(child: Post) {
+    setChildReplies((current) => current.filter((item) => item.id !== child.id));
+    setLocalCommentCount((current) => Math.max(0, current - 1));
+  }
+
   return (
     <motion.article
       layout
@@ -808,22 +1181,120 @@ function ReplyPreview({ reply }: { reply: Post }) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
       transition={{ type: "spring", stiffness: 260, damping: 26 }}
-      className="rounded-card border border-line bg-canvas/35 p-4"
+      className={cn(
+        "rounded-card border border-line bg-canvas/35 p-4",
+        depth > 0 && "ml-4 border-l-line-strong sm:ml-6",
+      )}
     >
       <div className="flex items-start gap-3">
-        <Avatar user={reply.author} />
+        <Link
+          to={`/@${reply.author.handle}`}
+          aria-label={`${reply.author.displayName}'s profile`}
+          className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        >
+          <Avatar user={reply.author} />
+        </Link>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-sm font-semibold text-text">
+            <Link
+              to={`/@${reply.author.handle}`}
+              className="text-sm font-semibold text-text underline-offset-4 hover:text-accent-strong hover:underline"
+            >
               {reply.author.displayName}
-            </span>
-            <span className="text-sm text-muted">@{reply.author.handle}</span>
+            </Link>
+            <Link
+              to={`/@${reply.author.handle}`}
+              className="text-sm text-muted underline-offset-4 hover:text-accent-strong hover:underline"
+            >
+              @{reply.author.handle}
+            </Link>
             <span className="text-muted/50">·</span>
             <span className="text-sm text-muted">{reply.createdAt}</span>
           </div>
           <p className="mt-2 text-pretty text-sm leading-6 text-text">{reply.body}</p>
+          {reply.mediaUrl && reply.mediaUrl !== "/ambient-veil.webp" ? (
+            <div className="mt-3 overflow-hidden rounded-card border border-line bg-canvas">
+              <img
+                src={reply.mediaUrl}
+                alt=""
+                className="aspect-[16/9] w-full object-cover"
+                loading="lazy"
+                decoding="async"
+              />
+            </div>
+          ) : null}
         </div>
       </div>
+
+      <ReactionControls
+        post={reply}
+        commentCount={localCommentCount}
+        initialLikeCount={reply.likeCount}
+        initiallyLiked={reply.likedByCurrentUser}
+        onOpenThread={() => setComposerOpen(true)}
+        actions={
+          allowDelete ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={deletePending}
+              icon={<Trash2 aria-hidden="true" size={15} />}
+              onClick={() => void handleDeleteReply()}
+            >
+              Delete
+            </Button>
+          ) : null
+        }
+      />
+
+      {deleteError ? (
+        <p className="mt-2 text-xs font-medium text-rose-ink">{deleteError}</p>
+      ) : null}
+
+      {isAuthenticated && composerOpen ? (
+        <ReplyComposer
+          autoFocus
+          className="mt-3"
+          parentPostId={reply.id}
+          csrfToken={csrfToken}
+          runWithAuth={runWithAuth}
+          onCancel={() => setComposerOpen(false)}
+          onCreated={handleNestedReplyCreated}
+        />
+      ) : null}
+
+      {canNest && (localCommentCount > 0 || childReplies.length > 0) ? (
+        <div className="mt-3">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => void loadChildren()}
+          >
+            {childrenOpen ? "Hide replies" : `Show ${localCommentCount} ${localCommentCount === 1 ? "reply" : "replies"}`}
+          </Button>
+        </div>
+      ) : null}
+
+      {childrenError ? (
+        <p className="mt-2 text-xs font-medium text-rose-ink">{childrenError}</p>
+      ) : null}
+      {childrenLoading ? (
+        <p className="mt-2 text-xs text-muted">Loading replies...</p>
+      ) : null}
+      {childrenOpen && childReplies.length > 0 ? (
+        <div className="mt-3 space-y-3">
+          {childReplies.map((child) => (
+            <ReplyPreview
+              key={child.id}
+              reply={child}
+              depth={depth + 1}
+              onDeleted={handleNestedReplyDeleted}
+            />
+          ))}
+        </div>
+      ) : null}
     </motion.article>
   );
 }

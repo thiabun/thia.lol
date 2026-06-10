@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import { loginWithEnv, skipWithoutCredentials } from "../helpers/auth";
 
 test("Home loads the feed empty state", async ({ page }) => {
@@ -14,6 +15,19 @@ test("Home loads the feed empty state", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
   await expect(page.getByText("No posts yet").first()).toBeVisible();
+});
+
+test("API reply queries require visible ancestors by inspection", async () => {
+  const readApi = readFileSync("api/read.php", "utf8");
+  const postsApi = readFileSync("api/posts.php", "utf8");
+
+  expect(readApi).toContain("function post_ancestor_visibility_sql");
+  expect(readApi).toContain("post_ancestor_visibility_sql('p')");
+  expect(readApi).toContain("post_ancestor_visibility_sql('profile_replies')");
+  expect(readApi).toContain("stat_posts.parent_id IS NULL");
+  expect(postsApi).toContain("validate_post_media_url($body['mediaUrl']");
+  expect(postsApi).toContain("post_ancestor_visibility_sql('p')");
+  expect(postsApi).toContain("post_ancestor_visibility_sql('reply_posts')");
 });
 
 test("Discover loads the feed empty state without unbacked sections", async ({
@@ -151,7 +165,7 @@ test("PostCard reblog action updates count and state", async ({ page }) => {
   );
 });
 
-test("Profile Reblogs tab renders API-backed reblogs", async ({ page }) => {
+test("Profile Feed renders API-backed reblogs", async ({ page }) => {
   await mockAuthenticatedApi(page);
   await page.route("**/api/profiles/alex", (route) =>
     route.fulfill({
@@ -220,6 +234,15 @@ test("Profile Reblogs tab renders API-backed reblogs", async ({ page }) => {
       }),
     }),
   );
+  await page.route("**/api/profiles/alex/badges", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { badges: [], featuredBadges: [] },
+      }),
+    }),
+  );
   await page.route("**/api/profiles/alex/rooms", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, data: [] }) }),
   );
@@ -231,10 +254,266 @@ test("Profile Reblogs tab renders API-backed reblogs", async ({ page }) => {
   );
 
   await page.goto("/@alex");
-  await page.getByRole("tab", { name: /Reblogs/ }).click();
 
   await expect(page.getByText("@alex reblogged")).toBeVisible();
   await expect(page.getByText("A post Alex shared.")).toBeVisible();
+});
+
+test("post body opens thread while controls keep their own behavior", async ({
+  page,
+}) => {
+  await mockAuthenticatedApi(page);
+  let likeCalled = false;
+
+  await page.route("**/api/feed/home", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          posts: [makePost({ commentCount: 1 })],
+          personalized: true,
+        },
+      }),
+    }),
+  );
+  await page.route("**/api/posts/42/replies", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: [makePost({ id: 50, parentId: 42, body: "Thread reply." })],
+      }),
+    }),
+  );
+  await page.route("**/api/posts/42/like", async (route) => {
+    likeCalled = true;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { postId: 42, likeCount: 1, likedByCurrentUser: true },
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByTestId("post-body-open-thread").first().click();
+
+  const dialog = page.getByTestId("thread-modal");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Thread reply.")).toBeVisible();
+  await dialog.getByRole("button", { name: "Close thread" }).click();
+  await expect(dialog).toBeHidden();
+
+  await page.getByRole("button", { name: /Like this post/ }).first().click();
+  await expect(page.getByTestId("thread-modal")).toHaveCount(0);
+  expect(likeCalled).toBe(true);
+});
+
+test("thread reply composer is hidden until Reply and exposes media UI", async ({
+  page,
+}) => {
+  await mockAuthenticatedApi(page);
+  let replyPayload: Record<string, unknown> | undefined;
+
+  await page.route("**/api/feed/home", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { posts: [makePost()], personalized: true },
+      }),
+    }),
+  );
+  await page.route("**/api/posts/42/replies", async (route) => {
+    if (route.request().method() === "POST") {
+      replyPayload = (await route.request().postDataJSON()) as Record<string, unknown>;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: makePost({
+            id: 51,
+            parentId: 42,
+            body: String(replyPayload.body),
+            author: {
+              id: 1,
+              handle: "viewer",
+              displayName: "Viewer",
+              initials: "V",
+              aura: "frost",
+              avatarUrl: null,
+            },
+          }),
+        }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByTestId("post-body-open-thread").first().click();
+
+  const dialog = page.getByTestId("thread-modal");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByTestId("reply-composer")).toHaveCount(0);
+
+  await dialog.getByRole("button", { name: /Open replies/ }).first().click();
+  await expect(dialog.getByTestId("reply-composer")).toBeVisible();
+  await expect(dialog.getByText("Upload image")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Send" })).toBeDisabled();
+
+  await dialog.getByRole("textbox", { name: "Reply" }).fill("A compact reply.");
+  await dialog.getByRole("button", { name: "Send" }).click();
+
+  await expect.poll(() => replyPayload).toMatchObject({ body: "A compact reply." });
+  await expect(dialog.getByText("A compact reply.")).toBeVisible();
+});
+
+test("thread renders nested replies and gates reply delete controls", async ({
+  page,
+}) => {
+  await mockAuthenticatedApi(page);
+  let deletedPostId: number | undefined;
+  let rebloggedReply = false;
+
+  await page.route("**/api/feed/home", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { posts: [makePost({ commentCount: 2 })], personalized: true },
+      }),
+    }),
+  );
+  await page.route("**/api/posts/42/replies", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: [
+          makePost({
+            id: 50,
+            parentId: 42,
+            body: "My reply.",
+            commentCount: 1,
+            author: {
+              id: 1,
+              handle: "viewer",
+              displayName: "Viewer",
+              initials: "V",
+              aura: "frost",
+              avatarUrl: null,
+            },
+          }),
+          makePost({ id: 52, parentId: 42, body: "Rebloggable reply." }),
+        ],
+      }),
+    }),
+  );
+  await page.route("**/api/posts/50/replies", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: [makePost({ id: 60, parentId: 50, body: "Nested reply." })],
+      }),
+    }),
+  );
+  await page.route("**/api/posts/50", async (route) => {
+    if (route.request().method() === "DELETE") {
+      deletedPostId = 50;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: { id: 50, status: "removed", deletedAt: "2026-06-10 10:30:00" },
+        }),
+      });
+      return;
+    }
+
+    await route.continue();
+  });
+  await page.route("**/api/posts/52/reblog", async (route) => {
+    rebloggedReply = route.request().method() === "POST";
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          postId: 52,
+          reblogCount: rebloggedReply ? 1 : 0,
+          rebloggedByMe: rebloggedReply,
+          rebloggedByCurrentUser: rebloggedReply,
+        },
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByTestId("post-body-open-thread").first().click();
+  const dialog = page.getByTestId("thread-modal");
+
+  await expect(dialog.getByText("My reply.")).toBeVisible();
+  await expect(dialog.getByText("Rebloggable reply.")).toBeVisible();
+  await dialog.getByRole("button", { name: "Show 1 reply" }).click();
+  await expect(dialog.getByText("Nested reply.")).toBeVisible();
+
+  await dialog.getByRole("button", { name: /Reblog this post/ }).last().click();
+  await expect.poll(() => rebloggedReply).toBe(true);
+
+  await dialog.getByRole("button", { name: "Delete" }).click();
+  await expect.poll(() => deletedPostId).toBe(50);
+  await expect(dialog.getByText("My reply.")).toHaveCount(0);
+});
+
+test("thread report flow submits the post target", async ({ page }) => {
+  await mockAuthenticatedApi(page);
+  let reportPayload: Record<string, unknown> | undefined;
+
+  await page.route("**/api/feed/home", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { posts: [makePost()], personalized: true },
+      }),
+    }),
+  );
+  await page.route("**/api/posts/42/replies", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    }),
+  );
+  await page.route("**/api/reports", async (route) => {
+    reportPayload = (await route.request().postDataJSON()) as Record<string, unknown>;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: { id: 1, ...reportPayload } }),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByTestId("post-body-open-thread").first().click();
+  const dialog = page.getByTestId("thread-modal");
+
+  await dialog.getByRole("button", { name: "Report" }).click();
+  await dialog.getByRole("button", { name: "Report" }).last().click();
+
+  await expect.poll(() => reportPayload).toMatchObject({
+    targetType: "post",
+    targetId: 42,
+    postId: 42,
+    reportedUserId: 2,
+  });
 });
 
 test("reblog and undo work against the API", async ({ page }) => {

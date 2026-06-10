@@ -97,7 +97,7 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
 | --- | --- | --- | --- |
 | Auth | Working, partial | Register, login, logout, session persistence, CSRF, cookie diagnostics, rate limiting, admin setup support. | Needs broader account settings, password reset/email verification decisions, consent/legal integration, production hardening review. |
 | Posts | Working, partial | Public top-level posts can be created, listed, deleted by author, hidden by moderators/admins, and shown in home/discover/profile/room feeds. | No media uploads, drafts, editing UI, visibility controls, audience controls, advanced moderation states, or feed ranking. |
-| Replies | Working, partial | Replies exist through `parent_id`, thread modal, reply creation, reply counts, ordered reply loading, and reply notifications. | No deep permalink/thread page, nested reply product decision, or moderation/visibility UX beyond inherited post systems. |
+| Replies | Working, improved | Replies exist through `parent_id`, thread modal, reply creation, reply counts, ordered reply loading, reply notifications, reply media uploads, reply-level like/reblog/report/delete controls, lazy nested reply display, and parent/root visibility filtering for the rendered thread depth. | No deep permalink/thread page, no unbounded recursive thread/root model, and no production-authenticated verification while login is rate-limited. |
 | Reblogs | Working, foundation | `post_reblogs` stores one reblog per post/user. API routes support reblog/undo, post payloads expose counts/state/context, Home can label followed-user reblogs, profile Reblogs is API-backed, PostCard has a Reblog action, and reblog notifications are created. | Quote-posts are deferred. Needs production tuning for duplicate feed rows, richer notification grouping, and longer-term safety controls around high-volume resharing. |
 | Rooms | Working, v2 foundation | Public room list/detail pages, room search, room post feeds, room destination in composer, room creation/editing, customization fields, owner/member roles, join/leave, member counts, member listing, moderator add/remove controls, soft deletion, and admin metadata now exist. | Private/member rooms, ownership transfer, full room moderation queues, bans/mutes UI, hard-delete/export-retention decisions, and richer governance workflows are deferred. |
 | Profiles | Partial, foundation improved | Public profile pages show avatar, display name, handle, bio, location, structured Connections, joined date, compact follower/following/moot/badge panels, public stats, posts, replies, rooms, and real badge display. Registration creates a basic profile. See `docs/profile-badges-plan.md`. | Needs privacy controls, pinned posts, hidden-badge management UI, and richer identity controls. |
@@ -405,6 +405,7 @@ Goal: let members share another member's post into their own profile/feed withou
   - Profile Reblogs is backed by `GET /api/profiles/:handle/reblogs` and shows only real reblogs.
   - PostCard includes Reblog/Reblogged action copy with count and simple motion.
   - `reblog` notifications are created for another member's post and deduped.
+  - Replies can use the same reblog endpoint when the reply and its rendered ancestor context are public and visible.
 - Deferred:
   - Quote-posts.
   - Reblog-specific feed controls and grouping.

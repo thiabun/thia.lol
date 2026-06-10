@@ -4,7 +4,7 @@ Date: 2026-06-10
 
 ## Current product status
 
-Pass 2 continues the stabilization and cleanup pass. The app has real PHP API-backed posts, replies, reblogs, rooms, profiles, follows/moots, notifications, chat, uploads, badges, legal pages, and admin/moderation foundations. Pass 2 specifically addressed profile save hardening, structured profile Connections, compact profile panels, room edit hardening, room moderator management, and soft room deletion foundations.
+Pass 3 continued the stabilization pass in static/API-inspection mode because production login is rate-limited with HTTP 429. The app has real PHP API-backed posts, replies, reblogs, rooms, profiles, follows/moots, notifications, chat, uploads, badges, legal pages, and admin/moderation foundations. Pass 3 specifically addressed thread/reply visibility, reply parity, post-body thread opening, compact reply composition, nested reply display, and mocked thread action coverage without attempting authenticated production smoke.
 
 ## Visible UI issues found
 
@@ -53,9 +53,13 @@ Pass 2 continues the stabilization and cleanup pass. The app has real PHP API-ba
 
 ## Post/thread/comment issues found
 
-- Post cards render post mood badges.
-- Post timestamp parsing treats SQL timestamps without timezone markers as local browser time, which can make a new UTC database timestamp appear about two hours old in Europe/Oslo.
-- Thread modal exists, but nested/deep thread behavior, reply media, reply deletion, reply reblog rules, and ghost reply cleanup need a separate pass.
+- `posts.parent_id` is a self-reference with `ON DELETE SET NULL`; app-level deletion is soft deletion through `status = 'removed'` plus `deleted_at`, so hard-delete FK behavior is not the normal visibility path.
+- Replies are stored as posts with `parent_id`, can already have replies, and use the same like/reblog/delete/report endpoints when the target post is public, published, and visible.
+- Static inspection found ghost-reply risk: profile reply counts, shared post selection, reply counts, and reactable/replyable lookups checked the reply row itself but did not consistently require visible parent/root context.
+- Profile Feed already combines top-level posts and reblogs; the stale mocked smoke test still expected a separate Reblogs tab and was updated.
+- Reply creation via `/api/posts/:id/replies` did not accept `mediaUrl`, even though top-level post creation did.
+- The thread modal existed, but the composer was always visible for authenticated users and post-body clicks did not open the thread.
+- Thread reply previews had weaker controls than posts: no media rendering, no reply-level action row, no reply deletion, and no nested reply loading.
 
 ## Chat issues found
 
@@ -89,10 +93,25 @@ Pass 2 continues the stabilization and cleanup pass. The app has real PHP API-ba
 - API timestamps are returned as SQL-style strings without timezone markers in several endpoints.
 - Feed ranking compares `p.created_at` to `UTC_TIMESTAMP()`, which indicates UTC intent. The frontend must parse timezone-less database timestamps as UTC unless the API changes to emit ISO 8601 with offsets.
 - Profile customization and Rooms 2 API paths explicitly detect missing migration columns/tables and return 409/503 style readiness errors.
+- Post/reply query consistency now depends on shared `public_post_visible_sql()` and `post_ancestor_visibility_sql()` helpers. The ancestor helper checks visible parent, grandparent, and great-grandparent context, which covers the nested depth currently rendered in the thread UI.
+- `GET /api/feed/home`, `GET /api/feed/discover`, room feeds, profile posts, and profile replies continue to exclude child replies unless explicitly loading a thread/profile replies context.
+- Public stats now count top-level public posts for the public post total instead of counting replies as posts.
+- Profile reblogs now allow reblogged replies to preserve reply reblog parity.
 - No migrations were run in this pass.
 
 ## Bugs fixed in the pass
 
+- Added shared public post and ancestor visibility SQL helpers and applied them to shared post selection, profile reply counts, reply counts, reactable/replyable post lookups, and direct post payload loading. Replies whose visible parent/root context is removed no longer appear as normal public profile/feed content within the supported rendered thread depth.
+- Fixed a profile-stat inconsistency in the post payload query where profile post counts could include replies.
+- Updated public stats so the public post total counts top-level posts.
+- Added reply image parity: `POST /api/posts/:id/replies` now accepts the same validated `mediaUrl` upload path as top-level posts.
+- Kept broad Home/Discover/room feeds top-level-only while allowing Profile Replies and thread reply loading to show replies in context.
+- Preserved reply reblog support by allowing profile reblogs to include reblogged reply posts.
+- Made post body/media clicks open the full thread while avatar/display name/handle links navigate to profile, room badges navigate to rooms, and like/reblog/reply/report/delete controls keep their own behavior.
+- Reworked the thread modal to show root post context, room context, timestamp, stats/actions, report/delete controls, hidden-by-default compact reply composer, and reply list.
+- Added compact reply composer with text validation, 2000-character limit display, cancel/send states, and image upload UI through the existing authenticated upload path.
+- Added reply-level media rendering, like/reblog/reply/report controls, owner/admin/moderator delete gating, and lazy nested reply loading up to the rendered thread depth.
+- Added mocked Playwright coverage for post body thread opening, control isolation, hidden reply composer, reply media UI, nested replies, reply delete gating, reply reblog action, thread report submission, profile Feed reblogs, and static API ghost-reply query inspection.
 - Fixed timezone-naive frontend parsing for SQL-style API timestamps by adding a shared UTC-aware date parser and wiring posts, room activity, notifications, chat, admin dates, profile joined dates, and badge dates through it.
 - Removed room mood from public room cards, room pages, room search, room editing, and admin room metadata display.
 - Removed post mood badges from post cards and thread previews.
@@ -135,10 +154,15 @@ Reason: Static inspection found `/api/rooms/:slug` update correctly routed, CSRF
 Risk: Room customization saves may still fail for owners/moderators in production.
 Recommended next task: Reproduce the room edit save on the deployed site with an owner/admin account, capture the request payload and cPanel error log, then fix the exact SQL/PHP error or run the documented pending migration if that is the cause.
 
-Deferred item: Reply media, reply deletion, nested thread depth, ghost reply cleanup, and reply reblog parity.
-Reason: Thread/comment work touches shared post behavior and needs a separate API-backed pass.
-Risk: Replies can still feel weaker than posts and may have count/context inconsistencies.
-Recommended next task: Audit `posts.parent_id` queries and implement reply visibility/deletion/reblog/media parity with regression tests.
+Deferred item: Authenticated production verification for thread reply create/delete/reblog/report/media upload.
+Reason: Production login is currently rate-limited with HTTP 429. This pass intentionally did not attempt production login or authenticated production smoke.
+Risk: A production-only schema/config/permission issue could still affect live reply mutations.
+Recommended next task: After the rate limit clears, run authenticated deployed smoke for reply create, reply image upload, reply delete, reply reblog, and thread report with a safe test account.
+
+Deferred item: Unbounded deep ancestor filtering.
+Reason: Query filtering now covers the parent/grandparent/great-grandparent depth rendered by the thread UI. A fully unbounded recursive ancestor check would require a broader database compatibility decision for MySQL/MariaDB recursive CTE support or a root/thread id migration.
+Risk: Extremely deep legacy reply chains beyond the rendered depth could still need a stronger root visibility model.
+Recommended next task: If deeper threads become a product goal, add an idempotent `posts.root_id` or `posts.thread_id` migration and backfill it through the migration runner.
 
 Deferred item: Chat "New chat" / "Message a moot" from the Chat page.
 Reason: Needs API support for searchable/listed moots or a safe existing source; no fake non-moot messaging controls should be added.
@@ -157,8 +181,8 @@ Recommended next task: Run `THIA_BASE_URL=https://thia.lol` smoke tests with tes
 
 ## Recommended next tasks
 
-1. Run authenticated deployed smoke tests with a working API path and document exact profile/room edit responses.
-2. Deploy and run `20260610_0010_add_room_soft_delete.sql` through the migration runner, then verify room edit, moderator management, and deletion on the deployed site.
-3. Run a dedicated thread/comment parity pass.
+1. Wait for the production login HTTP 429 rate limit to clear, then run authenticated deployed smoke for profile, room, upload, and thread/reply mutations.
+2. Deploy and run `20260610_0010_add_room_soft_delete.sql` through the migration runner if it is still pending, then verify room edit, moderator management, and deletion on the deployed site.
+3. Decide whether threads need a permanent `root_id`/`thread_id` model before supporting deeper-than-rendered reply trees.
 4. Add Chat page moot picker/start-DM flow.
 5. Add ownership transfer and deeper room moderation tools.
