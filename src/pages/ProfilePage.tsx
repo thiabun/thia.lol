@@ -220,7 +220,15 @@ export function ProfilePage() {
         followError={activeFollowError}
         followPosting={followPosting}
         isOwnProfile={isOwnProfile}
+        messageToHandle={
+          status === "authenticated" && !isOwnProfile && profile.isMoot
+            ? profile.user.handle
+            : undefined
+        }
         onFollowToggle={handleFollowToggle}
+        showChatHint={
+          status === "authenticated" && !isOwnProfile && !profile.isMoot
+        }
       />
       <motion.div variants={cardEntrance} custom={1} initial="hidden" animate="show">
         <div

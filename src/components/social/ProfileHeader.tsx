@@ -13,7 +13,7 @@ import {
 import { motion } from "motion/react";
 import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
-import { Button } from "../ui/Button";
+import { Button, ButtonLink } from "../ui/Button";
 import { Panel } from "../ui/Panel";
 import {
   cardEntrance,
@@ -27,15 +27,19 @@ type ProfileHeaderProps = {
   followError?: string | undefined;
   followPosting?: boolean;
   isOwnProfile?: boolean;
+  messageToHandle?: string | undefined;
   onFollowToggle?: () => void;
+  showChatHint?: boolean;
 };
 
 export function ProfileHeader({
   followError,
   followPosting = false,
   isOwnProfile = false,
+  messageToHandle,
   onFollowToggle,
   profile,
+  showChatHint = false,
 }: ProfileHeaderProps) {
   const links = profile.links.map(normalizeExternalLink).filter(isProfileLink);
   const followLabel = profile.isFollowing ? "Following" : "Follow";
@@ -63,28 +67,45 @@ export function ProfileHeader({
                   Edit profile
                 </Button>
               ) : (
-                <Button
-                  type="button"
-                  variant={profile.isFollowing ? "secondary" : "primary"}
-                  disabled={followPosting}
-                  data-testid="profile-follow-button"
-                  icon={
-                    profile.isFollowing ? (
-                      <UserCheck aria-hidden="true" size={17} />
-                    ) : (
-                      <UserPlus aria-hidden="true" size={17} />
-                    )
-                  }
-                  onClick={onFollowToggle}
-                >
-                  {followPosting ? "Saving" : followLabel}
-                </Button>
+                <>
+                  {messageToHandle ? (
+                    <ButtonLink
+                      data-testid="profile-message-button"
+                      icon={<MessageCircle aria-hidden="true" size={17} />}
+                      to={`/chat?with=${encodeURIComponent(messageToHandle)}`}
+                      variant="secondary"
+                    >
+                      Message
+                    </ButtonLink>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant={profile.isFollowing ? "secondary" : "primary"}
+                    disabled={followPosting}
+                    data-testid="profile-follow-button"
+                    icon={
+                      profile.isFollowing ? (
+                        <UserCheck aria-hidden="true" size={17} />
+                      ) : (
+                        <UserPlus aria-hidden="true" size={17} />
+                      )
+                    }
+                    onClick={onFollowToggle}
+                  >
+                    {followPosting ? "Saving" : followLabel}
+                  </Button>
+                </>
               )}
             </div>
           </div>
           {followError ? (
             <motion.p className="mt-3 text-sm text-rose" variants={sectionItem}>
               {followError}
+            </motion.p>
+          ) : null}
+          {showChatHint ? (
+            <motion.p className="mt-3 text-sm text-muted" variants={sectionItem}>
+              Follow each other to chat
             </motion.p>
           ) : null}
           <motion.div className="mt-4" variants={sectionItem}>

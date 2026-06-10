@@ -116,7 +116,43 @@ export type DiscoverFeed = {
   peopleToWatch: DiscoverPerson[];
 };
 
-export type NotificationType = "follow" | "moot" | "like" | "reply" | "reblog";
+export type ChatMessage = {
+  id: number;
+  conversationId: number;
+  body: string;
+  deletedAt: string | null;
+  createdAt: string;
+  sender: User;
+};
+
+export type ChatLastMessage = Pick<ChatMessage, "id" | "body" | "createdAt" | "sender">;
+
+export type ChatConversation = {
+  id: number;
+  type: "direct";
+  createdAt: string;
+  updatedAt: string | null;
+  lastMessageAt: string | null;
+  lastReadAt: string | null;
+  mutedAt: string | null;
+  archivedAt: string | null;
+  unreadCount: number;
+  otherParticipant: User;
+  lastMessage: ChatLastMessage | null;
+};
+
+export type ChatMessagesResult = {
+  conversation: ChatConversation;
+  messages: ChatMessage[];
+};
+
+export type NotificationType =
+  | "follow"
+  | "moot"
+  | "like"
+  | "reply"
+  | "reblog"
+  | "message";
 
 export type NotificationPostSummary = {
   id: number;

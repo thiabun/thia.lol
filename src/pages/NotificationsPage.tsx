@@ -355,6 +355,10 @@ function notificationCopy(notification: NotificationItem): string {
     return `${handle} reblogged your post`;
   }
 
+  if (notification.type === "message") {
+    return `${handle} sent you a message`;
+  }
+
   return `${handle} replied to your post`;
 }
 

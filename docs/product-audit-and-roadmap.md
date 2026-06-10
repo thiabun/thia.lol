@@ -30,6 +30,7 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
   - `/api/reports`.
   - `/api/admin/reports`, `/api/admin/posts/:id/hide`, `/api/admin/users/:id/suspend`, `/api/admin/reports/:id/resolve`.
   - `/api/admin/migrations/status` and `/api/admin/migrations/run`.
+  - `/api/chat/conversations`, `/api/chat/conversations/:id/messages`, and `/api/chat/conversations/:id/read`.
 - Auth uses hashed passwords, hashed session tokens, HttpOnly/Secure/SameSite=Lax cookies, CSRF tokens for mutating authenticated requests, and basic auth rate limits.
 - Moderation and admin endpoints exist, but policy pages and user-facing appeal flows do not.
 
@@ -47,6 +48,9 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
   - `auth_rate_limits`
   - `reports`
   - `moderation_actions`
+  - `conversations`
+  - `conversation_members`
+  - `messages`
 - Migration runner docs exist in `docs/migration-runner.md`.
 - Current migration files:
   - `20260609_0001_add_post_replies.sql`
@@ -95,7 +99,7 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
 | Notifications | Working, foundation | Private notifications exist for follows, moots, likes, replies, and reblogs. Authenticated users can view notifications, see unread count, mark one read, and mark all read. | Needs push/email decisions, notification preferences, richer grouping, pagination, read-on-open behavior decisions, and safety controls around high-volume activity. |
 | Admin/moderation | Working, partial | Reports can be created from posts; admins/moderators can view report queue, hide posts, suspend users, resolve/dismiss reports, and log moderation actions. | Admin still appears in desktop nav for admins and should move only into account popover. Needs appeal flow, policy pages, moderation transparency, audit views, and better user-facing report status decisions. |
 | Discover/Home | Working, foundation | Home uses `/api/feed/home` for a personalized ranked feed when logged in and a general ranked feed when logged out. Discover uses `/api/feed/discover` for ranked public posts plus active rooms and people to watch only when backed by real data. | Needs user feed controls, chronological mode, hide/mute/block controls, joined-room weighting after memberships exist, and better transparency surfaces. |
-| Chat/DMs | Placeholder, needs design/product decision | `/chat` exists as a coming-soon page and primary nav item. No conversation/message tables, API, or working messaging UI exist. | Define moots-first DMs, request/inbox behavior, blocking/reporting, safety defaults, retention, notifications, and abuse controls before implementation. |
+| Chat/DMs | Working, v1 foundation | `/chat` is a real private 1:1 direct-message surface for moots only. Conversation/message tables exist, API endpoints enforce authentication and membership, and profiles show Message only for moot relationships. | Attachments, post/room sharing, group chats, push/email notifications, realtime polling/WebSockets, message reporting, blocking, deletion, retention controls, and broader request/inbox behavior are deferred. |
 | Legal/cookies/copyright pages | Missing, needs design/product decision | Auth cookie implementation exists, but no public Terms, Privacy, Cookie Policy, Community Guidelines, Copyright/Takedown Policy, or consent preference pages were found. | Need legal copy, consent model, user content license terms, reporting/appeal explanations, and transparency basics. |
 
 ## 3. Product Direction
@@ -153,7 +157,7 @@ Algorithmic behavior should be simple and explainable at first: recency, followe
 
 Notifications should tell a member when someone directly interacts with them without becoming a pressure loop.
 
-- Implemented notification types: follow, moot, like, reply, and reblog.
+- Implemented notification types: follow, moot, like, reply, reblog, and message.
 - Push notifications, email notifications, preferences, grouping, and high-volume controls are deferred.
 - Notifications should stay short, private, and action-oriented.
 
@@ -164,7 +168,7 @@ Chat should start as moots-first direct messages:
 - DMs allowed by default only between moots.
 - Non-moot requests should be a later, explicit product decision.
 - Blocking/reporting must exist before broadening reach.
-- Message notifications, read state, media, deletion, retention, and moderation access need decisions before implementation.
+- Message notifications and per-conversation read state now exist for moots-only 1:1 DMs. Media, deletion, retention, and moderation access need decisions before expansion.
 
 ### Admin Navigation
 
@@ -339,6 +343,7 @@ Goal: give members private feedback when people interact with them.
   - Moot notifications are created for both members when a new follow creates a mutual connection.
   - Like notifications are created when a new `glow` reaction is inserted on another member's post.
   - Reply notifications are created when someone replies to another member's post.
+  - Message notifications are created for the other direct conversation member without exposing message content in notification payloads.
   - The UI exposes notifications through a header bell and `/notifications` page with empty, loading, error, unread, mark-one-read, and mark-all-read states.
 - Deferred:
   - Reblog notifications are active through Phase 7.
@@ -370,11 +375,24 @@ Goal: let members share another member's post into their own profile/feed withou
 
 Goal: ship safe, moots-first direct messages.
 
-- Add conversations/messages schema.
-- Limit DMs to moots by default.
-- Add message report/block flows before or with launch.
-- Decide read receipts, typing indicators, deletion, retention, and message notifications.
-- Keep Chat in nav only when the feature has a working safety baseline.
+- Foundation implemented:
+  - `conversations`, `conversation_members`, and `messages` schema exists for private 1:1 direct conversations.
+  - Direct conversations are uniquely keyed by the two member ids, so creating the same moot DM returns the existing conversation instead of duplicating it.
+  - `GET /api/chat/conversations` lists only conversations the authenticated user belongs to.
+  - `POST /api/chat/conversations` accepts a target handle or user id and only creates/returns a direct conversation when both users follow each other.
+  - `GET /api/chat/conversations/:id/messages` and `POST /api/chat/conversations/:id/messages` enforce membership server-side.
+  - `POST /api/chat/conversations/:id/read` stores the authenticated member's read timestamp.
+  - Message bodies are required, trimmed, capped at 2000 characters, and rendered through React text nodes.
+  - `/chat` now has logged-out, loading, empty, conversation list, selected conversation, message list, composer, send, and error states.
+  - Profiles show Message only when the viewer is logged in, is not viewing their own profile, and the profile relationship is a moot.
+  - Message notifications are created for the recipient only and do not include message body content.
+- Deferred:
+  - Attachments.
+  - Sharing posts or rooms into chat.
+  - Group chats.
+  - Push/email notifications.
+  - Realtime polling, typing indicators, or WebSockets.
+  - Message reporting, blocking, deletion, retention controls, and broader non-moot request/inbox behavior.
 
 ### Phase 9: Legal, Trust, and Compliance Polish
 

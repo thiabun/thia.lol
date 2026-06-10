@@ -1,6 +1,9 @@
 import type {
   DiscoverFeed,
   DiscoverPerson,
+  ChatConversation,
+  ChatMessage,
+  ChatMessagesResult,
   HomeFeed,
   NotificationItem,
   NotificationsResult,
@@ -94,6 +97,11 @@ export type NotificationsReadResult = {
   ids?: number[];
   readAt: string;
   unreadCount: number;
+};
+
+export type ChatReadResult = {
+  conversationId: number;
+  readAt: string;
 };
 
 export type FollowRelationship = {
@@ -407,6 +415,58 @@ export function markAllNotificationsRead(
   csrfToken: string,
 ): Promise<NotificationsReadResult> {
   return apiPost<NotificationsReadResult>("/notifications/read-all", {}, csrfToken);
+}
+
+export function getChatConversations(): Promise<ChatConversation[]> {
+  return apiGet<ChatConversation[]>("/chat/conversations");
+}
+
+export function createChatConversation(
+  input: { targetHandle?: string; targetUserId?: number },
+  csrfToken: string,
+): Promise<ChatConversation> {
+  const body: Record<string, unknown> = {};
+
+  if (input.targetHandle) {
+    body.targetHandle = normalizeHandle(input.targetHandle);
+  }
+
+  if (input.targetUserId !== undefined) {
+    body.targetUserId = input.targetUserId;
+  }
+
+  return apiPost<ChatConversation>("/chat/conversations", body, csrfToken);
+}
+
+export function getChatMessages(
+  conversationId: number,
+): Promise<ChatMessagesResult> {
+  return apiGet<ChatMessagesResult>(
+    `/chat/conversations/${conversationId}/messages`,
+  );
+}
+
+export function sendChatMessage(
+  conversationId: number,
+  body: string,
+  csrfToken: string,
+): Promise<ChatMessage> {
+  return apiPost<ChatMessage>(
+    `/chat/conversations/${conversationId}/messages`,
+    { body },
+    csrfToken,
+  );
+}
+
+export function markChatConversationRead(
+  conversationId: number,
+  csrfToken: string,
+): Promise<ChatReadResult> {
+  return apiPost<ChatReadResult>(
+    `/chat/conversations/${conversationId}/read`,
+    {},
+    csrfToken,
+  );
 }
 
 export function createReport(
