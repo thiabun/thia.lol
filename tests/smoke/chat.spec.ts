@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 import { loginWithEnv, skipWithoutCredentials } from "../helpers/auth";
 
@@ -29,11 +30,63 @@ test("authenticated chat renders conversations and message composer", async ({
   await page.goto("/chat");
 
   await expect(page.getByRole("heading", { name: "Chat", exact: true })).toBeVisible();
+  await expect(page.getByTestId("chat-new-chat-button")).toBeVisible();
   await expect(page.getByTestId("chat-conversation-list")).toContainText("Moot Friend");
   await expect(page.getByTestId("chat-message-list")).toContainText("hello from a moot");
   await expect(page.getByTestId("chat-message-composer")).toBeVisible();
   await expect(page.getByPlaceholder("Write a message")).toBeVisible();
   await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
+});
+
+test("chat moot picker shows empty state when the user has no moots", async ({
+  page,
+}) => {
+  await mockAuthenticatedChat(page, { conversations: [], moots: [] });
+  await page.goto("/chat");
+
+  await page.getByTestId("chat-new-chat-button").click();
+
+  await expect(page.getByTestId("chat-moot-picker")).toBeVisible();
+  await expect(page.getByTestId("chat-moot-empty")).toContainText(
+    "Chats are moots-only",
+  );
+});
+
+test("chat moot picker lists only eligible mocked moots", async ({ page }) => {
+  await mockAuthenticatedChat(page, {
+    conversations: [],
+    moots: [mockMoot],
+  });
+  await page.goto("/chat");
+
+  await page.getByTestId("chat-new-chat-button").click();
+
+  await expect(page.getByTestId("chat-moot-list")).toContainText("Moot Friend");
+  await expect(page.getByTestId("chat-moot-list")).toContainText("@mootfriend");
+  await expect(page.getByTestId("chat-moot-list")).not.toContainText("Not A Moot");
+});
+
+test("selecting a moot opens or creates the direct conversation", async ({
+  page,
+}) => {
+  let createBody: unknown;
+  await mockAuthenticatedChat(page, {
+    conversations: [],
+    moots: [mockMoot],
+    onCreateConversation: async (body) => {
+      createBody = body;
+      return mockConversation;
+    },
+  });
+  await page.goto("/chat");
+
+  await page.getByTestId("chat-new-chat-button").click();
+  await page.getByTestId("chat-moot-option-mootfriend").click();
+
+  await expect(page.getByTestId("chat-moot-picker")).toHaveCount(0);
+  await expect(page.getByTestId("chat-conversation-list")).toContainText("Moot Friend");
+  await expect(page.getByTestId("chat-message-list")).toContainText("hello from a moot");
+  expect(createBody).toMatchObject({ targetUserId: 2 });
 });
 
 test("authenticated conversations API requires login", async ({ page }) => {
@@ -57,6 +110,47 @@ test("authenticated conversations API requires login", async ({ page }) => {
 
   expect(response.ok).toBe(false);
   expect(response.status).toBe(401);
+});
+
+test("authenticated chat moots API requires login", async ({ page }) => {
+  test.skip(
+    process.env.THIA_BASE_URL === undefined,
+    "Set THIA_BASE_URL to run API-backed chat smoke tests against a working API.",
+  );
+
+  const response = await page.evaluate(async () => {
+    const result = await fetch("/api/chat/moots", {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+    const json = (await result.json()) as ApiEnvelope<unknown>;
+
+    return {
+      ...json,
+      status: result.status,
+    };
+  });
+
+  expect(response.ok).toBe(false);
+  expect(response.status).toBe(401);
+});
+
+test("chat moots endpoint is authenticated and reciprocal-follow only by inspection", async () => {
+  const chatApi = readFileSync("api/chat.php", "utf8");
+  const mootsIndexStart = chatApi.indexOf("function chat_moots_index()");
+  const mootsIndexEnd = chatApi.indexOf("function chat_conversations_create()");
+  const mootsIndex = chatApi.slice(mootsIndexStart, mootsIndexEnd);
+
+  expect(mootsIndexStart).toBeGreaterThan(-1);
+  expect(mootsIndex).toContain("require_authenticated_session()");
+  expect(mootsIndex).toContain("require_chat_follows_table()");
+  expect(mootsIndex).toContain("INNER JOIN user_follows reciprocal");
+  expect(mootsIndex).toContain("reciprocal.follower_id = mine.following_id");
+  expect(mootsIndex).toContain("reciprocal.following_id = mine.follower_id");
+  expect(mootsIndex).toContain("u.status = 'active'");
+
+  expect(chatApi).toContain("if (!chat_users_are_moots($viewerUserId, $targetUserId))");
+  expect(chatApi).toContain("json_error('Follow each other to chat.', 403)");
 });
 
 test("non-member cannot read a conversation", async ({ page }) => {
@@ -162,7 +256,19 @@ async function mockAnonymousShell(page: Page) {
   });
 }
 
-async function mockAuthenticatedChat(page: Page) {
+type MockAuthenticatedChatOptions = {
+  conversations?: typeof mockConversation[];
+  moots?: typeof mockMoot[];
+  onCreateConversation?: (body: unknown) => Promise<typeof mockConversation>;
+};
+
+async function mockAuthenticatedChat(
+  page: Page,
+  options: MockAuthenticatedChatOptions = {},
+) {
+  let conversations = options.conversations ?? [mockConversation];
+  const moots = options.moots ?? [mockMoot];
+
   await page.route("**/api/auth/me", async (route) => {
     await route.fulfill({
       status: 200,
@@ -216,6 +322,24 @@ async function mockAuthenticatedChat(page: Page) {
   });
 
   await page.route("**/api/chat/conversations", async (route) => {
+    if (route.request().method() === "POST") {
+      const requestBody = route.request().postDataJSON();
+      const conversation = options.onCreateConversation
+        ? await options.onCreateConversation(requestBody)
+        : mockConversation;
+      conversations = upsertMockConversation(conversations, conversation);
+
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: conversation,
+        }),
+      });
+      return;
+    }
+
     if (route.request().method() !== "GET") {
       await route.fallback();
       return;
@@ -226,7 +350,18 @@ async function mockAuthenticatedChat(page: Page) {
       contentType: "application/json",
       body: JSON.stringify({
         ok: true,
-        data: [mockConversation],
+        data: conversations,
+      }),
+    });
+  });
+
+  await page.route("**/api/chat/moots", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: moots,
       }),
     });
   });
@@ -301,3 +436,23 @@ const mockConversation = {
     },
   },
 };
+
+const mockMoot = {
+  id: 2,
+  handle: "mootfriend",
+  displayName: "Moot Friend",
+  initials: "MF",
+  aura: "frost",
+  avatarUrl: null,
+};
+
+function upsertMockConversation(
+  conversations: typeof mockConversation[],
+  conversation: typeof mockConversation,
+): typeof mockConversation[] {
+  const exists = conversations.some((item) => item.id === conversation.id);
+
+  return exists
+    ? conversations.map((item) => (item.id === conversation.id ? conversation : item))
+    : [conversation, ...conversations];
+}

@@ -19,8 +19,7 @@ Completed or effectively completed:
 - The `20260610_0010_add_room_soft_delete.sql` migration exists in `backend/database/migrations/`.
 - Room mood and post mood badges have been removed from public surfaces inspected in the current code.
 - Reports 2.0 for posts is implemented: structured categories, report details, admin queue, report statuses, dismiss/review/action controls, post hide/remove, user suspend, and moderation notes.
-- Chat is a real moots-only 1:1 DM foundation with conversations, messages, read state, message notifications, and profile-to-chat start through `/chat?with=handle`.
-- The Chat page still lists existing conversations only. It does not yet include a native "Message a moot" picker or searchable moot list.
+- Chat is a real moots-only 1:1 DM foundation with conversations, messages, read state, message notifications, profile-to-chat start through `/chat?with=handle`, and a Chat page "Message a moot" picker backed by an authenticated current-user moots endpoint.
 - Legal, privacy, cookie, copyright, community guideline, moderation, and legal contact pages exist. The footer includes legal links and the required copyright notice.
 - Route-level lazy loading is implemented in `src/App.tsx`.
 - The deploy workflow exists at `.github/workflows/deploy.yml`, runs verification, writes `dist/deploy-meta.json`, deploys frontend/API/migrations to the expected cPanel targets, and runs live unauthenticated smoke checks.
@@ -61,7 +60,6 @@ Items where existing docs no longer match the repository or the latest project c
 
 ### P1
 
-- Add a Chat page "Message a moot" flow that lists or searches eligible moots and preserves moots-only chat rules.
 - Run a profile-click behavior sweep across PostCard, thread modal, Chat, Notifications, follower/following panels, badges, rooms, and admin surfaces.
 - Add or refine profile, room, and message reporting paths. Current policy copy tells users to use Legal Contact for these concerns, but in-product reporting is still limited.
 - Decide and scope first safety controls for social graph and chat: remove follower, block, mute, message deletion/reporting, and retention expectations.
@@ -102,6 +100,7 @@ Items where existing docs no longer match the repository or the latest project c
 - Rationale: Chat can start from a profile or `?with=handle`, but users cannot discover or start a moot DM from the Chat page itself.
 - Estimated complexity: Medium.
 - Codex suitability: High if scoped to an eligible-moot endpoint or safe reuse of follower/following intersection plus focused UI and tests.
+- Status: Implemented locally after this triage pass with `GET /api/chat/moots` and a Chat page "Message a moot" picker. Requires normal deployment verification.
 
 ### 3. Audit and fix profile navigation behavior
 
@@ -248,5 +247,5 @@ Items that should remain deferred rather than become near-term issues:
 ## Suggested Next Three Codex Tasks
 
 1. Create `docs/public-testing-launch-checklist.md` with deployment steps, migration checks, smoke commands, manual testing matrix, known limitations, tester instructions, and bug report guidance.
-2. Implement the Chat page "Message a moot" flow with eligible moot listing/search, empty state, moots-only enforcement, and smoke coverage.
-3. Run the profile navigation behavior sweep and fix avatar/display-name/handle navigation inconsistencies across public surfaces with focused tests.
+2. Run the profile navigation behavior sweep and fix avatar/display-name/handle navigation inconsistencies across public surfaces with focused tests.
+3. Add profile, room, and message report paths after the moderation visibility and retention scope is decided.

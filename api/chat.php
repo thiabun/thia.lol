@@ -26,6 +26,14 @@ function chat_dispatch(array $segments, string $method): void
         json_error('Method not allowed.', 405);
     }
 
+    if (count($segments) === 2 && $segments[1] === 'moots') {
+        if ($method === 'GET' || $method === 'HEAD') {
+            chat_moots_index();
+        }
+
+        json_error('Method not allowed.', 405);
+    }
+
     if (
         count($segments) === 4 &&
         $segments[1] === 'conversations' &&
@@ -124,6 +132,39 @@ function chat_conversations_index(): void
     );
 
     json_success(array_map('chat_conversation_payload', $statement->fetchAll()));
+}
+
+function chat_moots_index(): void
+{
+    $session = require_authenticated_session();
+    require_chat_follows_table();
+
+    $viewerUserId = (int) $session['user_id'];
+    $statement = db_query(
+        "SELECT
+            u.id AS user_id,
+            u.handle,
+            p.display_name,
+            p.avatar_url,
+            mine.created_at AS followed_at,
+            reciprocal.created_at AS followed_by_at
+         FROM user_follows mine
+         INNER JOIN user_follows reciprocal
+            ON reciprocal.follower_id = mine.following_id
+           AND reciprocal.following_id = mine.follower_id
+         INNER JOIN users u ON u.id = mine.following_id
+         INNER JOIN profiles p ON p.user_id = u.id
+         WHERE mine.follower_id = :viewer_user_id
+           AND u.status = 'active'
+         ORDER BY p.display_name ASC, u.handle ASC
+         LIMIT 100",
+        ['viewer_user_id' => $viewerUserId]
+    );
+
+    json_success(array_map(
+        static fn (array $row): array => user_payload($row),
+        $statement->fetchAll()
+    ));
 }
 
 function chat_conversations_create(): void

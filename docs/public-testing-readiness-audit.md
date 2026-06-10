@@ -64,7 +64,7 @@ Pass 3 continued the stabilization pass in static/API-inspection mode because pr
 ## Chat issues found
 
 - Chat exists and profiles can start a moot-only DM.
-- Chat page "New chat" / "Message a moot" workflow from the chat surface is still deferred in this pass.
+- In the original pass, the Chat page "New chat" / "Message a moot" workflow from the chat surface was deferred. See the 2026-06-11 addendum for the implemented picker.
 
 ## Upload/media issues found
 
@@ -165,9 +165,9 @@ Risk: Extremely deep legacy reply chains beyond the rendered depth could still n
 Recommended next task: If deeper threads become a product goal, add an idempotent `posts.root_id` or `posts.thread_id` migration and backfill it through the migration runner.
 
 Deferred item: Chat "New chat" / "Message a moot" from the Chat page.
-Reason: Needs API support for searchable/listed moots or a safe existing source; no fake non-moot messaging controls should be added.
-Risk: Users may not discover how to start DMs unless they visit a moot profile.
-Recommended next task: Add a moots endpoint or reuse following/follower intersection, then add a chat start dialog that only lists eligible moots.
+Reason: Resolved by the 2026-06-11 addendum implementation.
+Risk: Deployed behavior still needs authenticated API-backed verification after the commit is live.
+Recommended next task: Run deployed authenticated smoke for `/chat`, `GET /api/chat/moots`, and selecting an eligible moot in the picker.
 
 Deferred item: Admin room metadata cleanup beyond public room mood removal.
 Reason: Admin organization was not the highest-risk public surface for Pass 1.
@@ -184,5 +184,13 @@ Recommended next task: Run `THIA_BASE_URL=https://thia.lol` smoke tests with tes
 1. Wait for the production login HTTP 429 rate limit to clear, then run authenticated deployed smoke for profile, room, upload, and thread/reply mutations.
 2. Deploy and run `20260610_0010_add_room_soft_delete.sql` through the migration runner if it is still pending, then verify room edit, moderator management, and deletion on the deployed site.
 3. Decide whether threads need a permanent `root_id`/`thread_id` model before supporting deeper-than-rendered reply trees.
-4. Add Chat page moot picker/start-DM flow.
+4. Run deployed authenticated smoke for the Chat page "Message a moot" picker after deployment.
 5. Add ownership transfer and deeper room moderation tools.
+
+## 2026-06-11 Chat picker addendum
+
+- Added a Chat page "Message a moot" picker backed by `GET /api/chat/moots`.
+- The new endpoint requires an authenticated session, uses the existing `user_follows` table, returns only reciprocal follows for the current user, and filters targets to active users.
+- Selecting a moot still goes through `POST /api/chat/conversations`, so server-side moots-only enforcement and direct-conversation uniqueness remain the source of truth.
+- No migration was added.
+- Local coverage uses mocked UI tests and PHP source-inspection checks; deployed API-backed chat picker smoke still needs a working authenticated API path.

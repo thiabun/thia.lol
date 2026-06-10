@@ -5,6 +5,7 @@ import type {
   ChatConversation,
   ChatMessage,
   ChatMessagesResult,
+  ChatMoot,
   HomeFeed,
   NotificationItem,
   NotificationsResult,
@@ -635,6 +636,10 @@ export function markAllNotificationsRead(
 
 export function getChatConversations(): Promise<ChatConversation[]> {
   return apiGet<ChatConversation[]>("/chat/conversations");
+}
+
+export function getChatMoots(): Promise<ChatMoot[]> {
+  return apiGet<ChatMoot[]>("/chat/moots");
 }
 
 export function createChatConversation(

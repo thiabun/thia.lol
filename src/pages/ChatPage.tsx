@@ -1,4 +1,13 @@
-import { ArrowLeft, Inbox, MessageCircle, RefreshCw, Send } from "lucide-react";
+import {
+  ArrowLeft,
+  Inbox,
+  MessageCircle,
+  RefreshCw,
+  Search,
+  Send,
+  UserPlus,
+  X,
+} from "lucide-react";
 import { motion } from "motion/react";
 import {
   useCallback,
@@ -19,13 +28,14 @@ import {
   createChatConversation,
   getChatConversations,
   getChatMessages,
+  getChatMoots,
   markChatConversationRead,
   sendChatMessage,
 } from "../lib/api";
 import { cn } from "../lib/classNames";
 import { parseApiTimestamp } from "../lib/dates";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
-import type { ChatConversation, ChatMessage } from "../lib/types";
+import type { ChatConversation, ChatMessage, ChatMoot } from "../lib/types";
 import { useAuth } from "../lib/useAuth";
 
 const maxMessageLength = 2000;
@@ -45,6 +55,12 @@ export function ChatPage() {
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
   const [startError, setStartError] = useState<string | undefined>();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [moots, setMoots] = useState<ChatMoot[]>([]);
+  const [mootsLoading, setMootsLoading] = useState(false);
+  const [mootsError, setMootsError] = useState<string | undefined>();
+  const [mootQuery, setMootQuery] = useState("");
+  const [startingMootHandle, setStartingMootHandle] = useState<string | undefined>();
   const startedHandleRef = useRef<string | undefined>(undefined);
 
   const requestedConversationId = useMemo(() => {
@@ -56,6 +72,20 @@ export function ChatPage() {
   const selectedConversation = conversations.find(
     (conversation) => conversation.id === selectedConversationId,
   );
+  const filteredMoots = useMemo(() => {
+    const query = mootQuery.trim().toLowerCase();
+
+    if (query === "") {
+      return moots;
+    }
+
+    return moots.filter((moot) => {
+      return (
+        moot.displayName.toLowerCase().includes(query) ||
+        moot.handle.toLowerCase().includes(query)
+      );
+    });
+  }, [mootQuery, moots]);
 
   const loadConversations = useCallback(async () => {
     if (status !== "authenticated") {
@@ -87,6 +117,25 @@ export function ChatPage() {
       setConversationsLoading(false);
     }
   }, [requestedConversationId, status]);
+
+  const loadMoots = useCallback(async () => {
+    if (status !== "authenticated") {
+      return;
+    }
+
+    setMootsLoading(true);
+    setMootsError(undefined);
+
+    try {
+      setMoots(await getChatMoots());
+    } catch (error) {
+      setMootsError(
+        error instanceof Error ? error.message : "Moots could not load.",
+      );
+    } finally {
+      setMootsLoading(false);
+    }
+  }, [status]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -236,6 +285,41 @@ export function ChatPage() {
     }
   }
 
+  function handleOpenPicker() {
+    setPickerOpen(true);
+    setMootQuery("");
+    void loadMoots();
+  }
+
+  async function handleStartConversation(moot: ChatMoot) {
+    if (startingMootHandle) {
+      return;
+    }
+
+    setStartingMootHandle(moot.handle);
+    setMootsError(undefined);
+    setStartError(undefined);
+
+    try {
+      const conversation = await runWithAuth(
+        (csrfToken) =>
+          createChatConversation({ targetUserId: moot.id }, csrfToken),
+        { retryOnCsrf: true },
+      );
+      setConversations((current) => upsertConversation(current, conversation));
+      setSelectedConversationId(conversation.id);
+      setSearchParams({ conversation: String(conversation.id) }, { replace: true });
+      setPickerOpen(false);
+      setMootQuery("");
+    } catch (error) {
+      setMootsError(
+        error instanceof Error ? error.message : "Conversation could not start.",
+      );
+    } finally {
+      setStartingMootHandle(undefined);
+    }
+  }
+
   if (status === "anonymous") {
     return (
       <motion.div
@@ -291,14 +375,24 @@ export function ChatPage() {
             </h1>
             <p className="mt-1 text-sm text-muted">Messages with your moots.</p>
           </div>
-          <Button
-            type="button"
-            variant="secondary"
-            icon={<RefreshCw aria-hidden="true" size={16} />}
-            onClick={() => void loadConversations()}
-          >
-            Refresh
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              icon={<UserPlus aria-hidden="true" size={16} />}
+              data-testid="chat-new-chat-button"
+              onClick={handleOpenPicker}
+            >
+              Message a moot
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              icon={<RefreshCw aria-hidden="true" size={16} />}
+              onClick={() => void loadConversations()}
+            >
+              Refresh
+            </Button>
+          </div>
         </div>
       </motion.div>
 
@@ -321,7 +415,17 @@ export function ChatPage() {
             {!conversationsLoading &&
             !conversationsError &&
             conversations.length === 0 ? (
-              <div className="p-5 text-sm text-muted">No chats yet</div>
+              <div className="space-y-3 p-5 text-sm text-muted">
+                <p>No chats yet.</p>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  icon={<UserPlus aria-hidden="true" size={16} />}
+                  onClick={handleOpenPicker}
+                >
+                  Message a moot
+                </Button>
+              </div>
             ) : null}
             {conversations.map((conversation) => (
               <ConversationButton
@@ -422,11 +526,185 @@ export function ChatPage() {
                 </div>
                 <h2 className="mt-4 text-lg font-semibold text-text">Messages</h2>
                 <p className="mt-2 text-sm text-muted">No chats yet</p>
+                <div className="mt-4">
+                  <Button
+                    type="button"
+                    icon={<UserPlus aria-hidden="true" size={16} />}
+                    onClick={handleOpenPicker}
+                  >
+                    Message a moot
+                  </Button>
+                </div>
               </div>
             </div>
           )}
         </Panel>
       </div>
+
+      {pickerOpen ? (
+        <ChatMootPicker
+          conversations={conversations}
+          filteredMoots={filteredMoots}
+          loading={mootsLoading}
+          moots={moots}
+          query={mootQuery}
+          error={mootsError}
+          startingHandle={startingMootHandle}
+          onClose={() => setPickerOpen(false)}
+          onQueryChange={setMootQuery}
+          onRefresh={() => void loadMoots()}
+          onSelect={(moot) => void handleStartConversation(moot)}
+        />
+      ) : null}
+    </motion.div>
+  );
+}
+
+type ChatMootPickerProps = {
+  conversations: ChatConversation[];
+  error: string | undefined;
+  filteredMoots: ChatMoot[];
+  loading: boolean;
+  moots: ChatMoot[];
+  query: string;
+  startingHandle: string | undefined;
+  onClose: () => void;
+  onQueryChange: (query: string) => void;
+  onRefresh: () => void;
+  onSelect: (moot: ChatMoot) => void;
+};
+
+function ChatMootPicker({
+  conversations,
+  error,
+  filteredMoots,
+  loading,
+  moots,
+  onClose,
+  onQueryChange,
+  onRefresh,
+  onSelect,
+  query,
+  startingHandle,
+}: ChatMootPickerProps) {
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 grid place-items-center bg-text/28 px-4 py-6 backdrop-blur-veil"
+      data-testid="chat-moot-picker"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Message a moot"
+        className="max-h-[calc(100dvh-3rem)] w-full max-w-xl overflow-hidden rounded-panel border border-line bg-surface shadow-lift"
+        initial={{ y: 16, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+      >
+        <div className="border-b border-line p-4 sm:p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-text">Message a moot</h2>
+              <p className="mt-1 text-sm text-muted">
+                Start a direct chat with someone who follows you back.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Close picker"
+              title="Close"
+              icon={<X aria-hidden="true" size={18} />}
+              onClick={onClose}
+            />
+          </div>
+
+          <label className="mt-4 flex items-center gap-2 rounded-control border border-line bg-canvas/60 px-3 py-2 text-sm text-muted focus-within:border-line-strong focus-within:ring-2 focus-within:ring-focus/30">
+            <Search aria-hidden="true" size={16} />
+            <span className="sr-only">Search moots</span>
+            <input
+              className="min-w-0 flex-1 bg-transparent text-text outline-none placeholder:text-muted"
+              placeholder="Search moots"
+              type="search"
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+            />
+          </label>
+        </div>
+
+        <div className="max-h-[26rem] overflow-y-auto" data-testid="chat-moot-list">
+          {loading ? (
+            <div className="p-5 text-sm text-muted">Loading moots.</div>
+          ) : null}
+          {error ? (
+            <div className="space-y-3 p-5">
+              <p className="text-sm text-rose">{error}</p>
+              <Button
+                type="button"
+                variant="secondary"
+                icon={<RefreshCw aria-hidden="true" size={16} />}
+                onClick={onRefresh}
+              >
+                Try again
+              </Button>
+            </div>
+          ) : null}
+          {!loading && !error && moots.length === 0 ? (
+            <div className="p-5 text-sm text-muted" data-testid="chat-moot-empty">
+              No moots yet. Chats are moots-only, so follow each other before
+              starting a DM.
+            </div>
+          ) : null}
+          {!loading && !error && moots.length > 0 && filteredMoots.length === 0 ? (
+            <div className="p-5 text-sm text-muted">No matching moots.</div>
+          ) : null}
+          {!loading && !error
+            ? filteredMoots.map((moot) => {
+                const existingConversation = conversations.find(
+                  (conversation) =>
+                    conversation.otherParticipant.handle === moot.handle,
+                );
+                const starting = startingHandle === moot.handle;
+
+                return (
+                  <button
+                    key={moot.id}
+                    className="flex w-full items-center gap-3 border-b border-line px-4 py-3 text-left transition duration-fluid ease-fluid last:border-b-0 hover:bg-canvas/60 focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-focus"
+                    data-testid={`chat-moot-option-${moot.handle}`}
+                    type="button"
+                    disabled={startingHandle !== undefined}
+                    onClick={() => onSelect(moot)}
+                  >
+                    <Avatar user={moot} size="sm" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-text">
+                        {moot.displayName}
+                      </span>
+                      <span className="block truncate text-xs text-muted">
+                        @{moot.handle}
+                      </span>
+                    </span>
+                    <span className="shrink-0 rounded-full border border-line bg-canvas/70 px-3 py-1 text-xs font-semibold text-muted">
+                      {starting
+                        ? "Opening"
+                        : existingConversation
+                          ? "Open"
+                          : "Message"}
+                    </span>
+                  </button>
+                );
+              })
+            : null}
+        </div>
+      </motion.div>
     </motion.div>
   );
 }

@@ -210,6 +210,8 @@ export type ChatConversation = {
   lastMessage: ChatLastMessage | null;
 };
 
+export type ChatMoot = User;
+
 export type ChatMessagesResult = {
   conversation: ChatConversation;
   messages: ChatMessage[];
