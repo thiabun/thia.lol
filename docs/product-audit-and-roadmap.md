@@ -1,0 +1,320 @@
+# thia.lol Product Audit and Roadmap
+
+Date: 2026-06-10
+
+This audit captures the current product and technical state before adding more social features. It is intentionally scoped to planning: no auth, session, API, database, or runtime behavior changes are part of this document.
+
+Hard product rule: thia.lol must not build addictive mechanics aimed at minors. The platform should be aimed at adults and avoid manipulative dark patterns. Social loops should be rewarding, transparent, user-controllable, and easy to leave or tune.
+
+## 1. Current Architecture Summary
+
+### Frontend
+
+- Vite, React, TypeScript, Tailwind CSS, Motion for React, React Router.
+- App routes currently include `/`, `/discover`, `/rooms`, `/rooms/:slug`, `/@/:handle`, `/admin`, `/login`, and `/register`.
+- Main shell includes desktop navigation, mobile bottom dock, account menu, theme toggle, and post composer modal.
+- API access is centralized through `src/lib/apiClient.ts` and `src/lib/api.ts`.
+- Frontend user content rendering uses React text nodes in inspected surfaces; no `dangerouslySetInnerHTML` use was found.
+
+### PHP API
+
+- cPanel-friendly PHP API lives in `api/`, with routing in `api/index.php`.
+- Main implemented areas:
+  - `/api/health` and `/api/health?db=1`.
+  - `/api/auth/register`, `/api/auth/login`, `/api/auth/logout`, `/api/auth/me`.
+  - `/api/posts`, `/api/posts/:id`, `/api/posts/:id/replies`, `/api/posts/:id/like`, `/api/posts/:id/reactions`.
+  - `/api/profiles/:handle`, `/api/profiles/:handle/posts`.
+  - `/api/rooms`, `/api/rooms/:slug`, `/api/rooms/:slug/posts`.
+  - `/api/stats`.
+  - `/api/reports`.
+  - `/api/admin/reports`, `/api/admin/posts/:id/hide`, `/api/admin/users/:id/suspend`, `/api/admin/reports/:id/resolve`.
+  - `/api/admin/migrations/status` and `/api/admin/migrations/run`.
+- Auth uses hashed passwords, hashed session tokens, HttpOnly/Secure/SameSite=Lax cookies, CSRF tokens for mutating authenticated requests, and basic auth rate limits.
+- Moderation and admin endpoints exist, but policy pages and user-facing appeal flows do not.
+
+### Database and Migrations
+
+- Baseline schema is in `backend/database/schema.sql`.
+- Core tables in the baseline schema:
+  - `users`
+  - `profiles`
+  - `rooms`
+  - `posts`
+  - `post_reactions`
+  - `sessions`
+  - `auth_rate_limits`
+  - `reports`
+  - `moderation_actions`
+- Migration runner docs exist in `docs/migration-runner.md`.
+- Current migration files:
+  - `20260609_0001_add_post_replies.sql`
+  - `20260609_0002_add_post_reblogs.sql`
+  - `20260609_0003_fix_session_expiry_datetime.sql`
+  - `20260610_0001_clean_starter_copy.sql`
+- Reblog migration exists, but the current app/API inventory does not expose a reblog product flow.
+
+### Deployment
+
+- Static build output is `dist/`.
+- Production web root is `public_html/`.
+- Correct deployment invariant: contents of `dist/` go directly into `public_html/`, not `public_html/dist/`.
+- PHP API deployment target is `public_html/api/`.
+- Config target is normally `public_html/config/config.php`, protected by `public_html/config/.htaccess`; real config and secrets are not committed.
+- Deployment automation docs exist in `docs/deployment-automation.md`.
+
+### Playwright and Testing Status
+
+- Playwright is configured in `playwright.config.ts`.
+- Tests live under `tests/smoke/`.
+- Package scripts include:
+  - `npm run lint`
+  - `npm run typecheck`
+  - `npm run optimize:assets`
+  - `npm run build`
+  - `npm run test:e2e`
+  - `npm run test:smoke`
+- Smoke tests cover some UI layout behavior, account menu behavior, auth persistence, composer layout, and retired mock copy checks.
+- Smoke tests can run against local Vite or a deployed base URL via `THIA_BASE_URL`.
+- API-backed smoke tests require a real reachable API path. A Vite-only local server without local PHP API support is incomplete for auth/posts/replies/rooms/profiles/API-backed UI verification.
+
+## 2. Current Feature Inventory and Classification
+
+| Feature | Classification | Current State | Main Product Gaps |
+| --- | --- | --- | --- |
+| Auth | Working, partial | Register, login, logout, session persistence, CSRF, cookie diagnostics, rate limiting, admin setup support. | Needs broader account settings, password reset/email verification decisions, consent/legal integration, production hardening review. |
+| Posts | Working, partial | Public top-level posts can be created, listed, deleted by author, hidden by moderators/admins, and shown in home/discover/profile/room feeds. | No media uploads, drafts, editing UI, visibility controls, audience controls, advanced moderation states, or feed ranking. |
+| Replies | Working, partial | Replies exist through `parent_id`, thread modal, reply creation, reply counts, and ordered reply loading. | No deep permalink/thread page, nested reply product decision, notification hooks, or moderation/visibility UX beyond inherited post systems. |
+| Reblogs | Partial, missing product | Migration exists for `post_reblogs`, but no visible UI or API dispatch for reblog actions was found in the current inventory. | Decide whether reblogs belong in the product, what they are called, where they appear, and how they differ from quotes/replies. |
+| Rooms | Partial, needs design/product decision | Public room list/detail pages, room search, room post feeds, room destination in composer, and room metadata exist. | No room creation UI, memberships, roles, moderators, rules, join/leave, private/member rooms, room moderation surface, or subreddit/community-style governance model. |
+| Profiles | Partial, needs design/product decision | Public profile pages show header data, traits/links where present, stats, and public posts. Registration creates a basic profile. | No profile editing UI, customization, privacy controls, pinned posts, badge display model, follow/moot context, or rich identity page direction. |
+| Badges | Missing, needs design/product decision | No badge/user badge tables or UI were found. | Define earned status markers, anti-abuse rules, display surfaces, admin awarding/revocation, and whether any badges are automatic. |
+| Likes | Working, partial | Like/unlike maps to `post_reactions.type = glow`; UI shows like count and liked state. | Reaction naming is internally broader than UI. Needs transparent counts, optional hiding/muting decisions, anti-spam/rate-limit review, and adult-focused non-manipulative loop design. |
+| Admin/moderation | Working, partial | Reports can be created from posts; admins/moderators can view report queue, hide posts, suspend users, resolve/dismiss reports, and log moderation actions. | Admin still appears in desktop nav for admins and should move only into account popover. Needs appeal flow, policy pages, moderation transparency, audit views, and better user-facing report status decisions. |
+| Discover/Home | Partial, needs design/product decision | Home shows recent posts, rooms, stats, and platform copy. Discover shows recent posts, rooms, search field UI, and stats cards. | Not algorithmic yet. Search is local/surface-level or placeholder depending surface. Needs feed strategy, ranking inputs, user controls, transparency, and separation between following/home and discovery. |
+| Chat/DMs | Missing, needs design/product decision | No conversation/message tables, API, routes, or nav item were found. | Define moots-first DMs, request/inbox behavior, blocking/reporting, safety defaults, retention, notifications, and abuse controls before implementation. |
+| Legal/cookies/copyright pages | Missing, needs design/product decision | Auth cookie implementation exists, but no public Terms, Privacy, Cookie Policy, Community Guidelines, Copyright/Takedown Policy, or consent preference pages were found. | Need legal copy, consent model, user content license terms, reporting/appeal explanations, and transparency basics. |
+
+## 3. Product Direction
+
+### Rooms as Community Spaces
+
+Rooms should become subreddit/community-style spaces: topic-centered, browseable, and governed by room-level rules and moderators. A room should eventually have:
+
+- Clear topic, description, rules, visibility, and moderation stance.
+- Join/leave membership where relevant.
+- Room roles such as owner, moderator, member, muted/banned.
+- Room-level post permissions and reporting context.
+- Public room discovery that does not require algorithmic pressure to participate.
+
+### Profiles as Customizable Identity Pages
+
+Profiles should be member-owned identity pages, not just author headers. They should support:
+
+- Display name, avatar, bio, links, traits, location, and optional profile sections.
+- Customization that fits Sunveil/Frostveil without letting pages become unreadable or unsafe.
+- Pinned content and room/follow context.
+- Badge display with user control over ordering or visibility.
+- Privacy and safety choices that are understandable.
+
+### Badges as Earned Status Markers
+
+Badges should be earned status markers, not engagement bait. They should communicate trust, contribution, participation, or platform milestones in a way users can understand.
+
+Guidelines:
+
+- Avoid streaks, scarcity pressure, or mechanics that exploit compulsion.
+- Prefer transparent criteria and manual/admin-reviewed badges where trust matters.
+- Let users control which badges appear prominently on their profile.
+- Include revoke/hide paths for moderation and user preference.
+
+### Follows/Moots as Core Social Graph
+
+The platform needs a social graph before meaningful feeds, chat, and identity features can mature.
+
+- Follow: one-way interest signal.
+- Moot: mutual follow or explicitly mutual connection, depending product decision.
+- Social graph should power Home, profile context, chat permissions, notifications, and safety controls.
+- User controls must include unfollow, remove follower/moot where appropriate, block/mute later, and feed preference controls.
+
+### Discover/Home as Algorithmic Feeds
+
+Home and Discover should be distinct:
+
+- Home: primarily people and rooms the user chose, with transparent ranking and chronological controls.
+- Discover: public exploration across rooms, people, and posts, with clear labels for why something appears.
+
+Algorithmic behavior should be simple and explainable at first: recency, followed people, joined rooms, room activity, replies, likes, and moderation-safe popularity windows. Avoid opaque engagement maximization.
+
+### Chat as Moots-First DMs
+
+Chat should start as moots-first direct messages:
+
+- DMs allowed by default only between moots.
+- Non-moot requests should be a later, explicit product decision.
+- Blocking/reporting must exist before broadening reach.
+- Message notifications, read state, media, deletion, retention, and moderation access need decisions before implementation.
+
+### Admin Navigation
+
+Admin should be removed from the main desktop navigation and live inside the account popover for admins only. The current account popover already includes Admin for admins, but the desktop nav still includes Admin for admins. That should be cleaned up in Phase 1.
+
+## 4. Navigation Proposal
+
+### Desktop
+
+- Home
+- Discover
+- Rooms
+- Chat
+- Post
+- Account popover
+  - Profile
+  - Settings/account actions when added
+  - Admin for admins only
+  - Log out
+
+### Mobile
+
+- Home
+- Discover
+- Post
+- Rooms
+- Chat
+
+Notes:
+
+- Post should remain a primary creation action.
+- Admin should not occupy primary navigation.
+- Chat should not be added until the product has a moots/social graph and safety model.
+
+## 5. Suggested Database Areas to Audit Later
+
+- `follows`
+- `room_memberships`
+- `room_roles` / room moderators
+- `badges`
+- `user_badges`
+- Profile customization
+- `conversations` / `messages`
+- `notifications`
+- `reports` / moderation actions
+- Consent and cookie preferences
+
+Specific audit questions:
+
+- Which tables already exist in production but not in the baseline schema?
+- Which migrations have been applied on production?
+- Does the migration runner record all schema changes reliably?
+- Which foreign keys and indexes are needed before feeds/chat scale?
+- Which data needs retention, deletion, export, or user control for privacy compliance?
+
+## 6. Legal and Compliance Checklist
+
+- Terms of Service.
+- Privacy Policy.
+- Cookie Policy.
+- Community Guidelines.
+- Copyright/Takedown Policy.
+- Moderation, reporting, and appeal flow.
+- DSA-inspired transparency basics:
+  - public contact point,
+  - report handling explanation,
+  - moderation action notice language,
+  - appeal path,
+  - basic transparency notes for recommender/feed logic.
+- GDPR/UK GDPR/PECR/ePrivacy-aware consent basics:
+  - distinguish essential auth/security cookies from analytics/optional cookies,
+  - avoid non-essential cookies until consent exists,
+  - store consent preferences if optional cookies are introduced,
+  - provide privacy contact and data rights language,
+  - explain retention, deletion, and account data handling.
+- User content license language:
+  - users retain ownership,
+  - platform receives limited license needed to host, display, distribute, moderate, and operate the service,
+  - clarify deletion/removal effects,
+  - clarify public content visibility and resharing rules.
+
+## 7. Prioritized Implementation Roadmap
+
+### Phase 1: Product Shell, Navigation, and Copy Cleanup
+
+Goal: make the current platform shell coherent before deeper features.
+
+- Remove Admin from primary desktop nav; keep Admin inside account popover for admins only.
+- Add Chat nav placeholder only if it clearly communicates unavailable/coming-soon state, or wait until Phase 6.
+- Clarify Home vs Discover copy.
+- Decide whether Home is logged-in-first or public-first.
+- Clean up any remaining labels that imply missing features are complete.
+- Add route/page plan for legal pages without publishing placeholder legal claims as final policy.
+- Verify smoke tests against a working API path for any API-backed changes.
+
+### Phase 2: Rooms
+
+Goal: turn rooms into real community spaces.
+
+- Define room model: public/members/private, owner, moderators, members.
+- Add `room_memberships` and room role/moderation schema after audit.
+- Add room creation/editing flow for approved users or admins.
+- Add room rules/about surfaces.
+- Add join/leave and member counts based on real membership.
+- Add room-level reporting and moderation context.
+- Decide private/member room rollout only after access controls are tested.
+
+### Phase 3: Profiles and Badges
+
+Goal: make identity feel owned and expressive without becoming chaotic.
+
+- Add profile editing.
+- Add customization fields with strict design constraints.
+- Add badge and user badge schema.
+- Add badge display on profile and compact author surfaces.
+- Add admin or rules-based badge awarding.
+- Add privacy/user-control decisions for badges and profile fields.
+
+### Phase 4: Follows, Moots, and Social Graph
+
+Goal: create the graph that powers feeds, identity, and chat.
+
+- Add follow/unfollow.
+- Define and expose moots.
+- Add follower/following counts and profile context.
+- Add remove follower/moot and safety controls as needed.
+- Prepare graph data for Home ranking and Chat permissions.
+
+### Phase 5: Discover/Home Algorithms
+
+Goal: separate chosen social context from public discovery.
+
+- Home feed: followed users, joined rooms, and user-selected controls.
+- Discover feed: public exploration, trending rooms/posts, and newcomer-friendly browsing.
+- Add simple explainability labels such as followed author, joined room, recent in active room, or popular today.
+- Add feed controls: chronological option, hide/mute later, room/user weighting later.
+- Avoid engagement-maximizing dark patterns.
+
+### Phase 6: Chat/DMs
+
+Goal: ship safe, moots-first direct messages.
+
+- Add conversations/messages schema.
+- Limit DMs to moots by default.
+- Add message report/block flows before or with launch.
+- Decide read receipts, typing indicators, deletion, retention, and notifications.
+- Keep Chat in nav only when the feature has a working safety baseline.
+
+### Phase 7: Legal, Trust, and Compliance Polish
+
+Goal: make the public trust layer match the product.
+
+- Publish Terms, Privacy Policy, Cookie Policy, Community Guidelines, and Copyright/Takedown Policy.
+- Add reporting/appeal documentation and user-facing moderation notices.
+- Add consent preferences before any non-essential cookies or analytics.
+- Add transparency copy for feeds/recommendations.
+- Review account deletion/export needs before broader launch.
+
+## 8. Immediate Non-Feature Follow-Ups
+
+- Confirm the production migration state, especially whether `post_reblogs` exists and whether any schema drift exists outside committed migrations.
+- Decide whether reblogs are still part of product direction before building UI/API around the existing migration.
+- Decide whether public registration remains open, restricted, or invite/admin-controlled while moderation capacity is small.
+- Draft first legal pages before growing rooms, chat, or discovery.
+- Keep future smoke tests honest: API-backed behavior must be tested against a working local PHP API or deployed base URL.
