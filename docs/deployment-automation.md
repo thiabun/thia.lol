@@ -73,6 +73,72 @@ public_html/
 
 `public_html/config/config.php` is manually created on the server and must not be overwritten by automation.
 
+## Local Web Disk deployment
+
+GitHub Actions FTP deploy remains the normal automated path, but Web Disk can be used as a faster manual fallback when the cPanel `public_html/` folder is mounted locally.
+
+Use Web Disk only after the change is verified locally and committed. It deploys built files directly from this checkout; it does not replace git history, review, or GitHub Actions.
+
+Build and verify first:
+
+```bash
+npm run typecheck
+npm run lint
+npm run optimize:assets
+npm run build
+```
+
+Dry-run with an explicit destination:
+
+```bash
+npm run deploy:webdisk:dry -- "/Volumes/example/public_html"
+```
+
+Deploy with an explicit destination:
+
+```bash
+npm run deploy:webdisk -- "/Volumes/example/public_html"
+```
+
+Or use an environment variable:
+
+```bash
+THIA_WEB_DISK_PATH="/Volumes/example/public_html" npm run deploy:webdisk:dry
+THIA_WEB_DISK_PATH="/Volumes/example/public_html" npm run deploy:webdisk
+```
+
+The destination must be the mounted `public_html` folder. The script refuses to run when the final path segment is not `public_html`, and write mode also requires the destination to already exist and be writable.
+
+What the script copies:
+
+- `dist/` contents directly into `public_html/`.
+- `api/` contents into `public_html/api/`.
+- `backend/database/migrations/*.sql` into `public_html/api/migrations/`.
+
+What the script may clean:
+
+- `public_html/assets/` is removed before copying `dist/assets/`, so old hashed Vite assets do not pile up.
+- Root frontend files from `dist/`, such as `index.html`, `.htaccess`, and `ambient-veil.webp`, are copied over the matching files in `public_html/`.
+
+What the script skips or preserves:
+
+- It skips `.env`, `.env.*`, `.DS_Store`, `config.php`, and any `config/` path.
+- It never copies `config/config.php` from the repo.
+- It does not remove `public_html/config/`, `public_html/uploads/`, or `public_html/storage/`.
+- It preserves `public_html/.htaccess` unless `dist/.htaccess` exists, which is the intended frontend `.htaccess`.
+- It copies `api/.htaccess` because that file belongs to the committed API deployment.
+
+After a Web Disk deploy, test:
+
+```text
+https://thia.lol/
+https://thia.lol/api/health
+https://thia.lol/api/health?db=1
+https://thia.lol/api/auth/me
+```
+
+Never commit or deploy production secrets. `public_html/config/config.php` must remain server-only.
+
 ## Cache-busting strategy
 
 Vite already emits hashed JS/CSS asset filenames, for example:
