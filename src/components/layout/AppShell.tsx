@@ -120,7 +120,7 @@ function SiteHeader({ navItems }: { navItems: NavItemProps[] }) {
             <span className="block truncate text-sm font-semibold tracking-normal text-text">
               thia.lol
             </span>
-            <span className="block truncate text-xs text-muted">sexy social</span>
+            <span className="block truncate text-xs text-muted">social app</span>
           </span>
         </NavLink>
 
@@ -240,11 +240,11 @@ function AccountMenu() {
               <>
                 <AccountMenuLink to="/login" onSelect={() => setOpen(false)}>
                   <LogIn aria-hidden="true" size={16} />
-                  Log in
+                  Sign in
                 </AccountMenuLink>
                 <AccountMenuLink to="/register" onSelect={() => setOpen(false)}>
                   <UserPlus aria-hidden="true" size={16} />
-                  Sign up
+                  Create account
                 </AccountMenuLink>
               </>
             )}

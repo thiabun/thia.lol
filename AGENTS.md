@@ -102,6 +102,26 @@ Every implementation summary should include:
 6. Exact files or folders to upload to cPanel if manual upload is needed.
 7. Exact URLs to test after deployment.
 
+## Smoke test rule
+
+Do not treat a missing local API as an expected or harmless smoke-test warning.
+
+If the Vite dev server logs `/api` proxy connection failures because no local PHP API is running, the smoke test environment is incomplete.
+
+Codex must either:
+
+- start or configure a local PHP API server,
+- run smoke tests against a real deployed base URL, or
+- report the smoke test as blocked.
+
+Do not claim smoke tests passed if API-backed behavior was not actually exercised.
+
+Any task touching auth, posts, replies, rooms, profiles, media, or API-backed UI must verify against a working API path.
+
+If local PHP cannot be started, document exactly what command or config is missing and how to unblock it.
+
+Proxy warnings are only acceptable for purely static UI tasks that do not depend on API behavior, and this must be stated clearly.
+
 ## Backend rule
 
 Keep `/api/health` lightweight and able to respond without touching the database.

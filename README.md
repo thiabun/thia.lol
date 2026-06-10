@@ -42,7 +42,7 @@ The production build is written to `dist/`.
 
 ## Browser Smoke Tests
 
-Playwright smoke tests cover the browser-only flows that are easy to miss in static checks: session persistence, account menu state, composer layout, reply modal behavior, and mobile header/dock layout.
+Playwright smoke tests cover session persistence, account menu state, composer layout, reply modal behavior, and mobile header/dock layout.
 
 Install Chromium before running tests:
 
@@ -75,6 +75,8 @@ npm run test:smoke
 THIA_BASE_URL=https://thia.lol npm run test:smoke
 ```
 
+Smoke tests that touch auth, posts, replies, rooms, profiles, media, or other API-backed UI require a working API. If the local Vite server logs `/api` proxy connection failures because no PHP API is running, the smoke test environment is incomplete. Start a local PHP API on the proxy target, run against a deployed base URL with `THIA_BASE_URL`, or report the smoke test as blocked. Do not call API-backed smoke tests passed unless the API-backed behavior was exercised.
+
 Authenticated production smoke tests require credentials from environment variables. Do not put these in git:
 
 ```bash
@@ -91,7 +93,7 @@ Optional environment variables:
 - `THIA_TEST_PASSWORD`: test account password for login smoke tests.
 - `THIA_MIGRATION_TOKEN`: reserved for protected migration checks if those are added later.
 
-If credentials are not set, authenticated smoke tests are skipped and anonymous layout/thread checks still run. Playwright output is ignored via `playwright-report/` and `test-results/`; browser binaries should not be committed.
+If credentials are not set, authenticated smoke tests are skipped. Anonymous checks still require a working API when they depend on public posts, rooms, profiles, or replies. Playwright output is ignored via `playwright-report/` and `test-results/`; browser binaries should not be committed.
 
 ## Deploying to cPanel
 
@@ -176,10 +178,11 @@ The initial MySQL setup lives in `backend/database/`. Import these files with cP
 2. Import `backend/database/schema.sql` first.
 3. Import `backend/database/seed.sql` second.
 4. Confirm these tables exist: `users`, `profiles`, `rooms`, `posts`, `post_reactions`, `sessions`, `auth_rate_limits`, `reports`, and `moderation_actions`.
-5. Confirm the starter data exists: one Thia profile, four starter rooms, and four starter posts.
+5. Confirm the starter data exists: one Thia profile and four public starter rooms.
 6. Confirm `sessions`, `auth_rate_limits`, `reports`, and `moderation_actions` are empty after seeding.
+7. Confirm `posts` is empty unless real posts have already been created.
 
-`schema.sql` is for initial empty-database setup only; it is not a migration system for existing production data. `seed.sql` creates starter public content but does not create login credentials or hardcode real passwords.
+`schema.sql` is for initial empty-database setup only; it is not a migration system for existing production data. `seed.sql` creates neutral starter rooms but does not create posts, login credentials, or hardcode real passwords.
 
 Committed migrations live in `backend/database/migrations/` and deploy to `public_html/api/migrations/`. They are applied through the protected `/api/admin/migrations/status` and `/api/admin/migrations/run` endpoints, which require an admin session and the `X-Migration-Token` header. Leave `security.migration_token` empty to disable the runner.
 
@@ -187,7 +190,7 @@ Auth session browser checks live in `docs/auth-session-diagnostics.md`. Use `htt
 
 ## Post-Deploy Checklist
 
-- Direct-refresh `/`, `/discover`, `/rooms`, `/@thia`, `/studio`, `/admin`, `/login`, and `/register`.
+- Direct-refresh `/`, `/discover`, `/rooms`, `/@thia`, `/admin`, `/login`, and `/register`.
 - Confirm `/api` does not return the React app and `/api/health` returns JSON.
 - Confirm `/api/health?db=1` returns JSON with `"database":{"ok":true}` after `config/config.php` is configured.
 - Confirm `backend/database/schema.sql` was imported before `backend/database/seed.sql` in phpMyAdmin.

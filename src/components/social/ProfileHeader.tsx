@@ -67,7 +67,7 @@ export function ProfileHeader({ profile }: ProfileHeaderProps) {
           >
             <ProfileStat label="Posts" value={profile.stats.posts} icon={MessageCircle} />
             <ProfileStat label="Rooms" value={profile.stats.rooms} icon={Radio} />
-            <ProfileStat label="Echoes" value={profile.stats.echoes} icon={LinkIcon} />
+            <ProfileStat label="Reactions" value={profile.stats.echoes} icon={LinkIcon} />
           </motion.div>
         </motion.div>
       </Panel>

@@ -149,11 +149,11 @@ export function HomePage() {
               <div className="p-5 sm:p-6">
                 <Badge tone="warm">info</Badge>
                 <h1 className="mt-4 max-w-2xl text-3xl font-semibold tracking-normal text-text sm:text-4xl">
-                  A softer place to post, wander, and find your people.
+                  Post, reply, and find your people.
                 </h1>
                 <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
-                  Drop into rooms, read what people are sharing, or make a
-                  profile when you are ready.
+                  Join a room, read recent posts, or create a profile when you
+                  are ready.
                 </p>
                 <div className="mt-5 flex flex-wrap gap-3">
                   <ButtonLink
@@ -183,7 +183,7 @@ export function HomePage() {
                     Notice
                   </p>
                   <p className="mt-2 text-lg font-semibold text-text">
-                    thia.lol is new. Things may still shift a little.
+                    thia.lol is new. Features may change.
                   </p>
                 </div>
               </div>
@@ -216,7 +216,7 @@ export function HomePage() {
         <div className="flex items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold text-text">Recent posts</h2>
-            <p className="mt-1 text-sm text-muted">Fresh notes from around the site.</p>
+            <p className="mt-1 text-sm text-muted">Latest posts from around the site.</p>
           </div>
           <ButtonLink
             to="/discover"
@@ -292,7 +292,7 @@ export function HomePage() {
 
         <div>
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-text">Live rooms</h2>
+            <h2 className="text-base font-semibold text-text">Rooms</h2>
             <Badge tone="leaf">open</Badge>
           </div>
           <div className="space-y-3">

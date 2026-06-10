@@ -124,7 +124,9 @@ export type AdminActionInput = {
 };
 
 export function getFeed(): Promise<Post[]> {
-  return apiGet<ApiPost[]>("/posts").then((items) => items.map(normalizePost));
+  return apiGet<ApiPost[]>("/posts").then((items) =>
+    items.filter(isVisiblePost).map(normalizePost),
+  );
 }
 
 export function getRooms(): Promise<Room[]> {
@@ -141,7 +143,7 @@ export function getRoom(idOrSlug: string): Promise<Room | undefined> {
 
 export function getRoomPosts(slug: string): Promise<Post[]> {
   return apiGet<ApiPost[]>(`/rooms/${encodeURIComponent(slug)}/posts`).then((items) =>
-    items.map(normalizePost),
+    items.filter(isVisiblePost).map(normalizePost),
   );
 }
 
@@ -158,7 +160,7 @@ export function getProfilePosts(handle: string): Promise<Post[]> {
 
   return apiGet<ApiPost[]>(
     `/profiles/${encodeURIComponent(normalized)}/posts`,
-  ).then((items) => items.map(normalizePost));
+  ).then((items) => items.filter(isVisiblePost).map(normalizePost));
 }
 
 export function createPost(
@@ -170,7 +172,7 @@ export function createPost(
 
 export function getPostReplies(postId: number): Promise<Post[]> {
   return apiGet<ApiPost[]>(`/posts/${postId}/replies`).then((items) =>
-    items.map(normalizePost),
+    items.filter(isVisiblePost).map(normalizePost),
   );
 }
 
@@ -298,15 +300,17 @@ export function resolveAdminReport(
 }
 
 function normalizeRoom(room: ApiRoom): Room {
+  const retiredSeedRoom = retiredSeedRooms[room.slug];
+
   return {
     id: room.id,
     slug: room.slug,
-    name: room.name,
-    summary: room.summary || room.description || "",
-    description: room.description || room.summary || "",
-    mood: room.mood,
-    members: room.members,
-    live: room.live,
+    name: retiredSeedRoom?.name ?? room.name,
+    summary: retiredSeedRoom?.summary ?? room.summary ?? room.description ?? "",
+    description: retiredSeedRoom?.summary ?? room.description ?? room.summary ?? "",
+    mood: retiredSeedRoom?.mood ?? room.mood,
+    members: retiredSeedRoom?.members ?? room.members,
+    live: retiredSeedRoom?.live ?? room.live,
     accent: room.accent,
     visibility: room.visibility ?? "public",
     postCount: room.postCount ?? 0,
@@ -315,12 +319,21 @@ function normalizeRoom(room: ApiRoom): Room {
 }
 
 function normalizeProfile(profile: ApiProfile): Profile {
+  const isRetiredThiaProfile =
+    profile.user.handle === "thia" &&
+    (profile.bio ===
+      "A secondary profile on the platform, present without making the whole room about her." ||
+      profile.traits.includes("soft systems") ||
+      profile.traits.includes("moon notes"));
+
   return {
     user: profile.user,
-    bio: profile.bio,
+    bio: isRetiredThiaProfile ? "Founder profile for thia.lol." : profile.bio,
     location: profile.location,
     links: profile.links,
-    traits: profile.traits,
+    traits: isRetiredThiaProfile
+      ? ["founder", "frontend", "moderation"]
+      : profile.traits,
     stats: profile.stats,
   };
 }
@@ -353,6 +366,51 @@ function makeFallbackRoom(): Pick<Room, "slug" | "name" | "accent"> {
     name: "Profile feed",
     accent: "var(--accent-frost)",
   };
+}
+
+const retiredStarterPostBodies = new Set([
+  "The nicest launch state might be one where the platform feels awake before it asks anyone to perform.",
+  "A good room has affordances for entering, leaving, returning, and being forgiven for being quiet.",
+  "Tonight's note: make the interface feel like it notices pressure without demanding speed.",
+  "Pinned a small loop for anyone writing after midnight. It does not solve the work. It makes the work kinder.",
+]);
+
+const retiredSeedRooms: Record<
+  string,
+  Pick<Room, "name" | "summary" | "mood" | "members" | "live">
+> = {
+  "soft-launch": {
+    name: "General",
+    summary: "A public room for everyday posts.",
+    mood: "open",
+    members: 0,
+    live: true,
+  },
+  "moon-table": {
+    name: "Updates",
+    summary: "News and changes from thia.lol.",
+    mood: "updates",
+    members: 0,
+    live: true,
+  },
+  "garden-protocol": {
+    name: "Questions",
+    summary: "Ask questions and help other members.",
+    mood: "help",
+    members: 0,
+    live: false,
+  },
+  afterglow: {
+    name: "Media",
+    summary: "Share links, images, and videos when media uploads are available.",
+    mood: "media",
+    members: 0,
+    live: false,
+  },
+};
+
+function isVisiblePost(post: ApiPost): boolean {
+  return !retiredStarterPostBodies.has(post.body);
 }
 
 function formatRelativeTime(value: string): string {

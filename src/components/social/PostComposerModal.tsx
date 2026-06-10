@@ -42,8 +42,8 @@ export function PostComposerModal({
   const destinationSummary = selectedRoom
     ? `${selectedRoom.name}${selectedRoom.summary ? ` · ${selectedRoom.summary}` : ""}`
     : roomSlug
-      ? "Room destination selected."
-    : "Post without choosing a room.";
+      ? "Room selected."
+    : "Post to your profile.";
   const roomOptions = [
     { value: "", label: "Profile feed" },
     ...(roomSlug && !selectedRoom
@@ -143,7 +143,7 @@ export function PostComposerModal({
                   New post
                 </h2>
                 <p className="mt-1 text-sm leading-6 text-muted">
-                  Choose where it belongs, then write what you want to share.
+                  Choose a room, then write something.
                 </p>
               </div>
               <Button
@@ -224,7 +224,7 @@ export function PostComposerModal({
                 name="body"
                 label="Post"
                 className="min-h-32 bg-canvas/55 sm:min-h-36"
-                placeholder={`Share something with ${destinationLabel.toLowerCase()}.`}
+                placeholder="Write something"
                 value={body}
                 maxLength={2000}
                 disabled={submitting}

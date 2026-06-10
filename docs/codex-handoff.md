@@ -134,7 +134,7 @@ Do backend work in this order:
    - GET /api/rooms
    - GET /api/posts
    - GET /api/rooms/{slug}/posts
-4. Frontend read integration with mock fallback.
+4. Frontend read integration with loading, empty, and error states.
 5. Auth backend.
 6. Frontend auth integration.
 7. Authenticated post mutations.

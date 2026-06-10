@@ -11,6 +11,22 @@ const retiredMockCopy = [
   "The nicest launch state might be one where the platform feels awake",
   "A secondary profile on the platform",
   "Showing a saved view",
+  "A softer place to post",
+  "Fresh notes from around the site",
+  "friendly profiles",
+  "Signals from public posts",
+  "sexy social",
+  "Your corner of thia.lol",
+  "soft systems",
+  "moon notes",
+  "platform rituals",
+  "Moon Table",
+  "Soft Launch",
+  "Garden Protocol",
+  "Afterglow",
+  "low blue",
+  "green signal",
+  "honey static",
 ];
 
 test("reply button opens an unclipped thread modal", async ({ page }) => {

@@ -34,11 +34,11 @@ INSERT INTO profiles (
 VALUES (
   @thia_user_id,
   'Thia',
-  'A secondary profile on the platform, present without making the whole room about her.',
+  'Founder profile for thia.lol.',
   'Oslo',
   NULL,
   JSON_ARRAY('thia.lol'),
-  JSON_ARRAY('frontend', 'soft systems', 'moon notes')
+  JSON_ARRAY('founder', 'frontend', 'moderation')
 )
 ON DUPLICATE KEY UPDATE
   display_name = VALUES(display_name),
@@ -62,44 +62,44 @@ INSERT INTO rooms (
 )
 VALUES
   (
-    'soft-launch',
-    'Soft Launch',
-    'A room for early notes, platform rituals, and what the day is asking for.',
-    'quietly busy',
-    284,
+    'general',
+    'General',
+    'A public room for everyday posts.',
+    'open',
+    0,
     1,
     'var(--accent-sun)',
     'public',
     @thia_user_id
   ),
   (
-    'moon-table',
-    'Moon Table',
-    'Slow conversation, night work, tender critique, and tiny finished things.',
-    'low blue',
-    138,
+    'updates',
+    'Updates',
+    'News and changes from thia.lol.',
+    'updates',
+    0,
     1,
     'var(--accent-frost)',
     'public',
     @thia_user_id
   ),
   (
-    'garden-protocol',
-    'Garden Protocol',
-    'Designing care into tools, communities, defaults, and daily interfaces.',
-    'green signal',
-    402,
+    'questions',
+    'Questions',
+    'Ask questions and help other members.',
+    'help',
+    0,
     0,
     'var(--accent-leaf)',
     'public',
     @thia_user_id
   ),
   (
-    'afterglow',
-    'Afterglow',
-    'Music, fragments, long reads, and warm proof that people are still here.',
-    'honey static',
-    319,
+    'media',
+    'Media',
+    'Share links, images, and videos when media uploads are available.',
+    'media',
+    0,
     0,
     'var(--accent-rose)',
     'public',
@@ -115,111 +115,3 @@ ON DUPLICATE KEY UPDATE
   visibility = VALUES(visibility),
   created_by = VALUES(created_by),
   updated_at = CURRENT_TIMESTAMP;
-
-INSERT INTO posts (
-  author_id,
-  room_id,
-  body,
-  mood,
-  media_url,
-  visibility,
-  status
-)
-SELECT
-  @thia_user_id,
-  rooms.id,
-  'The nicest launch state might be one where the platform feels awake before it asks anyone to perform.',
-  'sunveil',
-  '/ambient-veil.webp',
-  'public',
-  'published'
-FROM rooms
-WHERE rooms.slug = 'soft-launch'
-  AND NOT EXISTS (
-    SELECT 1
-    FROM posts
-    WHERE posts.author_id = @thia_user_id
-      AND posts.room_id = rooms.id
-      AND posts.body = 'The nicest launch state might be one where the platform feels awake before it asks anyone to perform.'
-  );
-
-INSERT INTO posts (
-  author_id,
-  room_id,
-  body,
-  mood,
-  media_url,
-  visibility,
-  status
-)
-SELECT
-  @thia_user_id,
-  rooms.id,
-  'A good room has affordances for entering, leaving, returning, and being forgiven for being quiet.',
-  'garden',
-  NULL,
-  'public',
-  'published'
-FROM rooms
-WHERE rooms.slug = 'garden-protocol'
-  AND NOT EXISTS (
-    SELECT 1
-    FROM posts
-    WHERE posts.author_id = @thia_user_id
-      AND posts.room_id = rooms.id
-      AND posts.body = 'A good room has affordances for entering, leaving, returning, and being forgiven for being quiet.'
-  );
-
-INSERT INTO posts (
-  author_id,
-  room_id,
-  body,
-  mood,
-  media_url,
-  visibility,
-  status
-)
-SELECT
-  @thia_user_id,
-  rooms.id,
-  'Tonight''s note: make the interface feel like it notices pressure without demanding speed.',
-  'frostveil',
-  NULL,
-  'public',
-  'published'
-FROM rooms
-WHERE rooms.slug = 'moon-table'
-  AND NOT EXISTS (
-    SELECT 1
-    FROM posts
-    WHERE posts.author_id = @thia_user_id
-      AND posts.room_id = rooms.id
-      AND posts.body = 'Tonight''s note: make the interface feel like it notices pressure without demanding speed.'
-  );
-
-INSERT INTO posts (
-  author_id,
-  room_id,
-  body,
-  mood,
-  media_url,
-  visibility,
-  status
-)
-SELECT
-  @thia_user_id,
-  rooms.id,
-  'Pinned a small loop for anyone writing after midnight. It does not solve the work. It makes the work kinder.',
-  'afterglow',
-  NULL,
-  'public',
-  'published'
-FROM rooms
-WHERE rooms.slug = 'afterglow'
-  AND NOT EXISTS (
-    SELECT 1
-    FROM posts
-    WHERE posts.author_id = @thia_user_id
-      AND posts.room_id = rooms.id
-      AND posts.body = 'Pinned a small loop for anyone writing after midnight. It does not solve the work. It makes the work kinder.'
-  );

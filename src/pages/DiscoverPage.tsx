@@ -119,7 +119,7 @@ export function DiscoverPage() {
             <div className="p-5">
               <p className="text-sm font-semibold text-text">Browse around</p>
               <p className="mt-2 text-sm leading-6 text-muted">
-                A few good places to start, from active rooms to friendly profiles.
+                Start with active rooms and recent posts.
               </p>
             </div>
           </Panel>
@@ -261,7 +261,7 @@ function makeDiscoverItems(stats: PublicStats | undefined, unavailable: boolean)
     {
       id: 2,
       label: "Recent posts",
-      description: "Fresh public notes from across the site.",
+      description: "Recent public posts from across the site.",
       count: countText(stats?.publicPosts, "post"),
       kind: "thread" as const,
     },
@@ -275,7 +275,7 @@ function makeDiscoverItems(stats: PublicStats | undefined, unavailable: boolean)
     {
       id: 4,
       label: "Likes",
-      description: "Signals from public posts people have appreciated.",
+      description: "Likes on public posts.",
       count: countText(stats?.totalReactions, "like"),
       kind: "thread" as const,
     },

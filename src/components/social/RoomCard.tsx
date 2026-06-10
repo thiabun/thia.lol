@@ -54,7 +54,7 @@ export function RoomCard({ index = 0, room }: RoomCardProps) {
             >
               <Radio aria-hidden="true" size={19} className="text-text" />
             </div>
-            {room.live ? <Badge tone="leaf">live</Badge> : <Badge>slow</Badge>}
+            {room.live ? <Badge tone="leaf">active</Badge> : <Badge>new</Badge>}
           </div>
           <h2 className="mt-5 text-lg font-semibold text-text">{room.name}</h2>
           <p className="mt-1 text-sm text-muted">/{room.slug}</p>

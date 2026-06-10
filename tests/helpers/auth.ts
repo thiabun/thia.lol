@@ -53,7 +53,7 @@ export async function loginWithEnv(page: Page): Promise<AuthMeResponse> {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL("/", { timeout: 15_000 });
 
   await expect

@@ -51,7 +51,7 @@ export function RoomsPage() {
               Find a place to post.
             </h1>
             <p className="mt-3 text-base leading-7 text-muted">
-              Public communities for shared topics, moods, and conversations.
+              Public rooms for shared topics and conversations.
             </p>
           </div>
           <SearchField
@@ -67,7 +67,7 @@ export function RoomsPage() {
       </motion.div>
 
       {roomsState.loading ? (
-        <RoomNotice title="Opening rooms" text="The room list is loading." />
+        <RoomNotice title="Loading rooms" text="The room list is loading." />
       ) : null}
 
       {roomsState.error ? (
@@ -82,7 +82,7 @@ export function RoomsPage() {
         <EmptyState
           icon={Radio}
           title="No public rooms yet"
-          text="Rooms will appear here when the first public community opens."
+          text="Public rooms will appear here."
         />
       ) : null}
 

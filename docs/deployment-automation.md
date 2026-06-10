@@ -2,7 +2,7 @@
 
 This project deploys to Pebblehost/cPanel, where the production web root is `public_html/` and the PHP API lives under `public_html/api/`.
 
-Use this document when changing the deploy pipeline. The goal is to make deploys boring, repeatable, cache-safe, and compatible with shared hosting constraints. Thrilling stuff, if your hobbies include not breaking production.
+Use this document when changing the deploy pipeline. The goal is to make deploys repeatable, cache-safe, and compatible with shared hosting constraints.
 
 ## Deployment goals
 
@@ -159,7 +159,7 @@ That means the best cache strategy is:
 - `index.html`: no-cache or must-revalidate.
 - top-level images such as `ambient-veil.webp`: shorter cache unless renamed with a hash.
 
-Do not add manual CSS or JS version query strings unless a non-hashed asset is introduced. Hashed build files are cleaner than `style.css?v=final-final-please-work`, because civilization has suffered enough.
+Do not add manual CSS or JS version query strings unless a non-hashed asset is introduced. Hashed build files are preferred because cache invalidation is handled by the filename.
 
 ## Recommended GitHub Actions workflow
 
@@ -299,7 +299,7 @@ Example contents:
 }
 ```
 
-The frontend can optionally expose this in `/studio` or `/admin` so you can confirm what version is live without guessing like a medieval peasant reading server smoke.
+The frontend can optionally expose this in `/admin` so you can confirm what version is live.
 
 ## Suggested Codex task: deploy workflow refresh
 
@@ -339,15 +339,15 @@ Read AGENTS.md and docs/deployment-automation.md.
 Pull latest changes with git pull --rebase before editing.
 
 Task:
-Add a lightweight live deploy indicator for admin/studio debugging.
+Add a lightweight live deploy indicator for admin debugging.
 
 Requirements:
 1. The deploy workflow should write `deploy-meta.json` into `dist/`.
-2. The frontend should fetch `/deploy-meta.json` from `/studio` or `/admin`.
+2. The frontend should fetch `/deploy-meta.json` from `/admin`.
 3. Show commit SHA, builtAt, and environment in a small diagnostics card.
-4. If the file is missing, show a quiet fallback state.
+4. If the file is missing, show that deploy metadata is unavailable.
 5. Do not expose secrets or server paths.
-6. Do not change public marketing copy.
+6. Do not change public product copy.
 7. Commit verified changes and push with git push.
 
 Verification:
@@ -365,6 +365,7 @@ https://thia.lol/
 https://thia.lol/discover
 https://thia.lol/rooms
 https://thia.lol/@thia
+https://thia.lol/admin
 https://thia.lol/api/health
 https://thia.lol/api/health?db=1
 https://thia.lol/deploy-meta.json

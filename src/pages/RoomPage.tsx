@@ -197,7 +197,7 @@ export function RoomPage() {
       )}
 
       {postsState.loading ? (
-        <RoomNotice title="Loading posts" text="The feed is filling in." />
+        <RoomNotice title="Loading posts" text="Posts are loading." />
       ) : null}
 
       {postsState.error && !postsState.loading ? (
@@ -217,8 +217,8 @@ export function RoomPage() {
       {!postsState.loading && !postsState.error && room && posts.length === 0 ? (
         <EmptyState
           icon={MessageCircle}
-          title="No posts here yet"
-          text="Start the room with the first post."
+          title="This room has no posts yet"
+          text="Start with the first post."
         />
       ) : null}
 

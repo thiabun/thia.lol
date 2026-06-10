@@ -62,11 +62,11 @@ export function AuthPage({ mode }: AuthPageProps) {
       animate="show"
     >
       <PageMeta
-        title={isRegister ? "Register" : "Login"}
+        title={isRegister ? "Create account" : "Sign in"}
         description={
           isRegister
             ? "Create a thia.lol profile."
-            : "Return to thia.lol."
+            : "Sign in to thia.lol."
         }
         path={isRegister ? "/register" : "/login"}
       />
@@ -80,15 +80,15 @@ export function AuthPage({ mode }: AuthPageProps) {
         <Panel className="grid w-full overflow-hidden lg:grid-cols-[minmax(0,1fr)_360px]">
           <form className="p-5 sm:p-8" onSubmit={handleSubmit}>
             <Badge tone={isRegister ? "warm" : "cool"}>
-              {isRegister ? "register" : "login"}
+              {isRegister ? "create account" : "sign in"}
             </Badge>
             <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">
-              {isRegister ? "Create your profile." : "Welcome back."}
+              {isRegister ? "Create account" : "Sign in"}
             </h1>
             <p className="mt-3 text-base leading-7 text-muted">
               {isRegister
-                ? "Choose a handle and start posting when you are ready."
-                : "Sign in to post, react, and keep your place."}
+                ? "Choose a handle and start posting."
+                : "Sign in to post and reply."}
             </p>
 
             {status === "authenticated" && user ? (
@@ -103,7 +103,7 @@ export function AuthPage({ mode }: AuthPageProps) {
                   className="mt-4"
                   onClick={() => void logout()}
                 >
-                  Logout
+                  Log out
                 </Button>
               </div>
             ) : null}
@@ -125,7 +125,7 @@ export function AuthPage({ mode }: AuthPageProps) {
                     name="displayName"
                     label="Display name"
                     type="text"
-                    placeholder="Thia"
+                    placeholder="Alex"
                     autoComplete="name"
                     icon={UserRound}
                     required
@@ -172,7 +172,7 @@ export function AuthPage({ mode }: AuthPageProps) {
             </div>
 
             <Button type="submit" className="mt-6 w-full" disabled={submitting}>
-              {submitting ? "Working..." : isRegister ? "Register" : "Login"}
+              {submitting ? "Working..." : isRegister ? "Create account" : "Sign in"}
             </Button>
 
             <p className="mt-5 text-center text-sm text-muted">
@@ -181,7 +181,7 @@ export function AuthPage({ mode }: AuthPageProps) {
                 to={isRegister ? "/login" : "/register"}
                 className="font-medium text-accent-strong underline-offset-4 hover:underline"
               >
-                {isRegister ? "Login" : "Register"}
+                {isRegister ? "Sign in" : "Create account"}
               </Link>
             </p>
           </form>
@@ -189,9 +189,9 @@ export function AuthPage({ mode }: AuthPageProps) {
           <div className="relative min-h-72 overflow-hidden border-t border-line lg:border-l lg:border-t-0">
             <AmbientImage className="absolute inset-0" overlay />
             <div className="absolute inset-x-5 bottom-5 rounded-card border border-white/35 bg-surface/72 p-4 shadow-soft backdrop-blur-veil">
-              <p className="text-sm font-semibold text-text">Your corner of thia.lol</p>
+              <p className="text-sm font-semibold text-text">Your profile</p>
               <p className="mt-2 text-sm leading-6 text-muted">
-                Keep your profile, rooms, and posts close at hand.
+                Keep your posts and replies in one place.
               </p>
             </div>
           </div>
