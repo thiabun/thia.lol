@@ -1,7 +1,19 @@
 import { AnimatePresence, motion } from "motion/react";
 import type { ChangeEvent, FormEvent } from "react";
 import { useId, useState } from "react";
-import { Hash, ImagePlus, Palette, Radio, Save, ScrollText, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Hash,
+  ImagePlus,
+  Palette,
+  Plus,
+  Radio,
+  Save,
+  ScrollText,
+  Shield,
+  Trash2,
+  X,
+} from "lucide-react";
 import { Button } from "../ui/Button";
 import { SelectField, TextareaField, TextField } from "../ui/Field";
 import { modalOverlay, modalPanel } from "../../lib/motionPresets";
@@ -10,7 +22,7 @@ import type {
   RoomInput,
   UploadedImage,
 } from "../../lib/api";
-import type { Room } from "../../lib/types";
+import type { Room, RoomMember } from "../../lib/types";
 
 const maxUploadBytes = 10 * 1024 * 1024;
 const acceptedTypes = ["image/jpeg", "image/png", "image/webp"];
@@ -19,9 +31,15 @@ type RoomEditModalProps = {
   mode: "create" | "edit";
   open: boolean;
   room?: Room | undefined;
+  members?: RoomMember[];
+  canManageModerators?: boolean;
+  canDeleteRoom?: boolean;
   onClose: () => void;
   onSave: (input: RoomInput) => Promise<Room>;
   onUpload: (file: File, purpose: ImageUploadPurpose) => Promise<UploadedImage>;
+  onAddModerator?: (handle: string) => Promise<void>;
+  onRemoveModerator?: (handle: string) => Promise<void>;
+  onDeleteRoom?: () => Promise<void>;
 };
 
 type UploadSlot = "room_icon" | "room_banner";
@@ -38,7 +56,13 @@ type FormState = {
 
 export function RoomEditModal({
   mode,
+  canDeleteRoom = false,
+  canManageModerators = false,
+  members = [],
+  onAddModerator,
   onClose,
+  onDeleteRoom,
+  onRemoveModerator,
   onSave,
   onUpload,
   open,
@@ -49,7 +73,14 @@ export function RoomEditModal({
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState<UploadSlot | undefined>();
   const [message, setMessage] = useState<string | undefined>();
-  const busy = saving || uploading !== undefined;
+  const [moderatorHandle, setModeratorHandle] = useState("");
+  const [moderatorPending, setModeratorPending] = useState<string | undefined>();
+  const [moderatorMessage, setModeratorMessage] = useState<string | undefined>();
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deletePending, setDeletePending] = useState(false);
+  const busy = saving || uploading !== undefined || deletePending;
+  const moderators = members.filter((member) => member.role === "moderator");
+  const owner = members.find((member) => member.role === "owner");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -127,6 +158,61 @@ export function RoomEditModal({
       name: value,
       slug: mode === "create" ? slugFromName(value) : current.slug,
     }));
+  }
+
+  async function handleAddModerator() {
+    if (!onAddModerator) {
+      return;
+    }
+
+    setModeratorPending("add");
+    setModeratorMessage(undefined);
+
+    try {
+      await onAddModerator(moderatorHandle);
+      setModeratorHandle("");
+      setModeratorMessage("Moderator added");
+    } catch (error) {
+      setModeratorMessage(error instanceof Error ? error.message : "Moderator could not be added.");
+    } finally {
+      setModeratorPending(undefined);
+    }
+  }
+
+  async function handleRemoveModerator(handle: string) {
+    if (!onRemoveModerator) {
+      return;
+    }
+
+    setModeratorPending(handle);
+    setModeratorMessage(undefined);
+
+    try {
+      await onRemoveModerator(handle);
+      setModeratorMessage("Moderator removed");
+    } catch (error) {
+      setModeratorMessage(
+        error instanceof Error ? error.message : "Moderator could not be removed.",
+      );
+    } finally {
+      setModeratorPending(undefined);
+    }
+  }
+
+  async function handleDeleteRoom() {
+    if (!onDeleteRoom) {
+      return;
+    }
+
+    setDeletePending(true);
+    setMessage(undefined);
+
+    try {
+      await onDeleteRoom();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Room could not be deleted.");
+      setDeletePending(false);
+    }
   }
 
   return (
@@ -255,6 +341,95 @@ export function RoomEditModal({
                 onChange={(event) => updateForm("rules", event.currentTarget.value)}
               />
 
+              {mode === "edit" ? (
+                <section className="space-y-3 rounded-card border border-line bg-canvas/45 p-4">
+                  <div className="flex items-center gap-2">
+                    <Shield aria-hidden="true" size={17} className="text-muted" />
+                    <h3 className="text-sm font-semibold text-text">Moderators</h3>
+                  </div>
+                  {owner ? (
+                    <RoomMemberSettingsRow member={owner} />
+                  ) : null}
+                  {moderators.map((member) => (
+                    <RoomMemberSettingsRow
+                      key={member.id}
+                      member={member}
+                      pending={moderatorPending === member.user.handle}
+                      canRemove={canManageModerators}
+                      onRemove={() => void handleRemoveModerator(member.user.handle)}
+                    />
+                  ))}
+                  {moderators.length === 0 ? (
+                    <p className="text-sm text-muted">No room moderators yet.</p>
+                  ) : null}
+
+                  {canManageModerators ? (
+                    <div className="grid gap-3 border-t border-line pt-3 sm:grid-cols-[1fr_auto]">
+                      <TextField
+                        id="room-moderator-handle"
+                        label="Add moderator by handle"
+                        value={moderatorHandle}
+                        maxLength={40}
+                        disabled={busy || moderatorPending !== undefined}
+                        onChange={(event) =>
+                          setModeratorHandle(event.currentTarget.value)
+                        }
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="self-end"
+                        disabled={
+                          busy ||
+                          moderatorPending !== undefined ||
+                          moderatorHandle.trim() === ""
+                        }
+                        icon={<Plus aria-hidden="true" size={15} />}
+                        onClick={() => void handleAddModerator()}
+                      >
+                        {moderatorPending === "add" ? "Adding" : "Add"}
+                      </Button>
+                    </div>
+                  ) : null}
+
+                  {moderatorMessage ? (
+                    <p className="rounded-card border border-line bg-surface p-3 text-sm text-text">
+                      {moderatorMessage}
+                    </p>
+                  ) : null}
+                </section>
+              ) : null}
+
+              {mode === "edit" && canDeleteRoom ? (
+                <section className="space-y-3 rounded-card border border-rose/35 bg-rose/10 p-4">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle aria-hidden="true" size={17} className="text-rose" />
+                    <h3 className="text-sm font-semibold text-rose-ink">Delete room</h3>
+                  </div>
+                  <p className="text-sm leading-6 text-rose-ink">
+                    This hides the room from public pages and keeps posts, memberships,
+                    and moderation history for review.
+                  </p>
+                  <TextField
+                    id="room-delete-confirm"
+                    label={`Type /${room?.slug ?? "room"} to confirm`}
+                    value={deleteConfirm}
+                    disabled={busy}
+                    onChange={(event) => setDeleteConfirm(event.currentTarget.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="border-rose/40 bg-rose/15 text-rose-ink hover:border-rose/60"
+                    disabled={busy || deleteConfirm !== `/${room?.slug ?? ""}`}
+                    icon={<Trash2 aria-hidden="true" size={16} />}
+                    onClick={() => void handleDeleteRoom()}
+                  >
+                    {deletePending ? "Deleting" : "Delete room"}
+                  </Button>
+                </section>
+              ) : null}
+
               {message ? (
                 <p className="rounded-card border border-line bg-canvas/55 p-3 text-sm text-text">
                   {message}
@@ -283,6 +458,44 @@ export function RoomEditModal({
         </motion.div>
       ) : null}
     </AnimatePresence>
+  );
+}
+
+function RoomMemberSettingsRow({
+  canRemove = false,
+  member,
+  onRemove,
+  pending = false,
+}: {
+  canRemove?: boolean;
+  member: RoomMember;
+  onRemove?: () => void;
+  pending?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-card border border-line bg-surface p-3">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold text-text">
+          {member.user.displayName}
+        </p>
+        <p className="text-xs text-muted">@{member.user.handle}</p>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-medium uppercase text-muted">{member.role}</span>
+        {canRemove ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`Remove @${member.user.handle} as moderator`}
+            title="Remove moderator"
+            disabled={pending}
+            icon={<Trash2 aria-hidden="true" size={15} />}
+            onClick={onRemove}
+          />
+        ) : null}
+      </div>
+    </div>
   );
 }
 

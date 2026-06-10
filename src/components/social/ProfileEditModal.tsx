@@ -3,10 +3,11 @@ import type { ChangeEvent, FormEvent } from "react";
 import { useId, useState } from "react";
 import {
   ImagePlus,
-  Link as LinkIcon,
   MapPin,
   Palette,
+  Plus,
   Save,
+  Trash2,
   UserRound,
   X,
 } from "lucide-react";
@@ -19,6 +20,16 @@ import type {
   UpdateProfileInput,
 } from "../../lib/api";
 import type { Profile } from "../../lib/types";
+import type {
+  ProfileConnectionPlatform,
+  ProfileExternalConnection,
+} from "../../lib/types";
+import {
+  connectionPlatformLabel,
+  maxProfileConnections,
+  normalizeProfileConnection,
+  profileConnectionPlatforms,
+} from "../../lib/profileConnections";
 
 const maxUploadBytes = 10 * 1024 * 1024;
 const acceptedTypes = ["image/jpeg", "image/png", "image/webp"];
@@ -42,7 +53,13 @@ type FormState = {
   profileBackground: string;
   profileAccent: string;
   profileTheme: string;
-  links: string;
+  connections: DraftConnection[];
+};
+
+type DraftConnection = {
+  id: string;
+  platform: ProfileConnectionPlatform;
+  value: string;
 };
 
 export function ProfileEditModal({
@@ -61,6 +78,13 @@ export function ProfileEditModal({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const links = normalizedConnections(form.connections);
+
+    if (links === undefined) {
+      setMessage("Check your connections before saving.");
+      return;
+    }
+
     setSaving(true);
     setMessage(undefined);
 
@@ -74,7 +98,7 @@ export function ProfileEditModal({
         profileBackground: form.profileBackground || null,
         profileAccent: form.profileAccent || null,
         profileTheme: form.profileTheme || null,
-        links: listFromLines(form.links),
+        links,
       });
 
       setForm(profileToForm(updated));
@@ -123,6 +147,40 @@ export function ProfileEditModal({
 
   function updateForm(field: keyof FormState, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateConnection(
+    id: string,
+    field: keyof Omit<DraftConnection, "id">,
+    value: string,
+  ) {
+    setForm((current) => ({
+      ...current,
+      connections: current.connections.map((connection) =>
+        connection.id === id ? { ...connection, [field]: value } : connection,
+      ),
+    }));
+  }
+
+  function addConnection() {
+    setForm((current) => ({
+      ...current,
+      connections: [
+        ...current.connections,
+        {
+          id: crypto.randomUUID(),
+          platform: "website",
+          value: "",
+        },
+      ],
+    }));
+  }
+
+  function removeConnection(id: string) {
+    setForm((current) => ({
+      ...current,
+      connections: current.connections.filter((connection) => connection.id !== id),
+    }));
   }
 
   return (
@@ -266,15 +324,88 @@ export function ProfileEditModal({
                 />
               </div>
 
-              <TextareaField
-                id="profile-links"
-                label="Links"
-                icon={LinkIcon}
-                className="min-h-24"
-                value={form.links}
-                disabled={busy}
-                onChange={(event) => updateForm("links", event.currentTarget.value)}
-              />
+              <section className="space-y-3" aria-label="Connections">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-text">Connections</h3>
+                    <p className="mt-1 text-xs leading-5 text-muted">
+                      Add up to {maxProfileConnections} profile connections.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={busy || form.connections.length >= maxProfileConnections}
+                    icon={<Plus aria-hidden="true" size={15} />}
+                    onClick={addConnection}
+                  >
+                    Add connection
+                  </Button>
+                </div>
+
+                {form.connections.length > 0 ? (
+                  <div className="space-y-3">
+                    {form.connections.map((connection, index) => {
+                      const platform = profileConnectionPlatforms.find(
+                        (option) => option.value === connection.platform,
+                      );
+
+                      return (
+                        <div
+                          key={connection.id}
+                          className="grid gap-3 rounded-card border border-line bg-canvas/45 p-3 sm:grid-cols-[0.85fr_1fr_auto]"
+                        >
+                          <SelectField
+                            id={`profile-connection-platform-${connection.id}`}
+                            label={`Connection ${index + 1}`}
+                            value={connection.platform}
+                            disabled={busy}
+                            options={profileConnectionPlatforms}
+                            onChange={(event) =>
+                              updateConnection(
+                                connection.id,
+                                "platform",
+                                event.currentTarget.value,
+                              )
+                            }
+                          />
+                          <TextField
+                            id={`profile-connection-value-${connection.id}`}
+                            label={connectionPlatformLabel(connection.platform)}
+                            value={connection.value}
+                            placeholder={platform?.placeholder}
+                            maxLength={300}
+                            disabled={busy}
+                            onChange={(event) =>
+                              updateConnection(
+                                connection.id,
+                                "value",
+                                event.currentTarget.value,
+                              )
+                            }
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="self-end"
+                            aria-label={`Remove connection ${index + 1}`}
+                            title="Remove connection"
+                            disabled={busy}
+                            icon={<Trash2 aria-hidden="true" size={16} />}
+                            onClick={() => removeConnection(connection.id)}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="rounded-card border border-dashed border-line bg-canvas/45 p-3 text-sm text-muted">
+                    No connections added.
+                  </p>
+                )}
+              </section>
 
               {message ? (
                 <p className="rounded-card border border-line bg-canvas/55 p-3 text-sm text-text">
@@ -383,15 +514,12 @@ function profileToForm(profile: Profile): FormState {
     profileBackground: profile.profileBackground ?? "",
     profileAccent: profile.profileAccent ?? "",
     profileTheme: profile.profileTheme ?? "",
-    links: profile.links.join("\n"),
+    connections: profile.links.map((connection) => ({
+      id: crypto.randomUUID(),
+      platform: connection.platform,
+      value: connection.value || connection.url || "",
+    })),
   };
-}
-
-function listFromLines(value: string): string[] {
-  return value
-    .split(/\n|,/)
-    .map((item) => item.trim())
-    .filter(Boolean);
 }
 
 function uploadFieldName(slot: UploadSlot): keyof FormState {
@@ -404,4 +532,24 @@ function uploadFieldName(slot: UploadSlot): keyof FormState {
   }
 
   return "profileBackground";
+}
+
+function normalizedConnections(
+  connections: DraftConnection[],
+): ProfileExternalConnection[] | undefined {
+  const normalized = connections
+    .filter((connection) => connection.value.trim() !== "")
+    .map((connection) => normalizeProfileConnection(connection));
+
+  if (normalized.some((connection) => connection === null)) {
+    return undefined;
+  }
+
+  return normalized.filter(isProfileExternalConnection).slice(0, maxProfileConnections);
+}
+
+function isProfileExternalConnection(
+  connection: ProfileExternalConnection | null,
+): connection is ProfileExternalConnection {
+  return connection !== null;
 }

@@ -12,6 +12,7 @@ import type {
   Profile,
   ProfileBadgesResult,
   ProfileConnection,
+  ProfileExternalConnection,
   PublicStats,
   ReactionCounts,
   Room,
@@ -20,6 +21,7 @@ import type {
 } from "./types";
 import { apiDelete, apiGet, apiPatch, apiPost, apiUpload } from "./apiClient";
 import { formatRelativeTime } from "./dates";
+import { normalizeProfileConnection } from "./profileConnections";
 
 type ApiRoom = Room & {
   description?: string;
@@ -41,6 +43,7 @@ type ApiProfile = Profile & {
   avatarUrl?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  links?: unknown[];
 };
 
 type ApiBadgeDefinition = BadgeDefinition;
@@ -118,7 +121,7 @@ export type UpdateProfileInput = {
   profileBackground?: string | null;
   profileAccent?: string | null;
   profileTheme?: string | null;
-  links?: string[];
+  links?: ProfileExternalConnection[];
   traits?: string[];
 };
 
@@ -151,6 +154,11 @@ export type GrantBadgeInput = {
 export type DeletePostResult = {
   id: number;
   status: "removed";
+  deletedAt: string;
+};
+
+export type DeleteRoomResult = {
+  slug: string;
   deletedAt: string;
 };
 
@@ -343,6 +351,37 @@ export function leaveRoom(slug: string, csrfToken: string): Promise<Room> {
 
 export function getRoomMembers(slug: string): Promise<RoomMember[]> {
   return apiGet<RoomMember[]>(`/rooms/${encodeURIComponent(slug)}/members`);
+}
+
+export function addRoomModerator(
+  slug: string,
+  handle: string,
+  csrfToken: string,
+): Promise<RoomMember[]> {
+  return apiPost<RoomMember[]>(
+    `/rooms/${encodeURIComponent(slug)}/moderators`,
+    { handle },
+    csrfToken,
+  );
+}
+
+export function removeRoomModerator(
+  slug: string,
+  handle: string,
+  csrfToken: string,
+): Promise<RoomMember[]> {
+  return apiDelete<RoomMember[]>(
+    `/rooms/${encodeURIComponent(slug)}/moderators`,
+    csrfToken,
+    { handle },
+  );
+}
+
+export function deleteRoom(
+  slug: string,
+  csrfToken: string,
+): Promise<DeleteRoomResult> {
+  return apiDelete<DeleteRoomResult>(`/rooms/${encodeURIComponent(slug)}`, csrfToken);
 }
 
 export function getProfile(handle: string): Promise<Profile> {
@@ -851,7 +890,11 @@ function normalizeProfile(profile: ApiProfile): Profile {
     profileAccent: profile.profileAccent ?? null,
     profileBackground: profile.profileBackground ?? null,
     profileTheme: profile.profileTheme ?? null,
-    links: profile.links,
+    links: Array.isArray(profile.links)
+      ? profile.links
+          .map((connection) => normalizeProfileConnection(connection))
+          .filter(isProfileExternalConnection)
+      : [],
     traits: isRetiredThiaProfile
       ? ["founder", "frontend", "moderation"]
       : profile.traits,
@@ -873,6 +916,12 @@ function normalizeProfile(profile: ApiProfile): Profile {
     createdAt: profile.createdAt ?? null,
     updatedAt: profile.updatedAt ?? null,
   };
+}
+
+function isProfileExternalConnection(
+  connection: ProfileExternalConnection | null,
+): connection is ProfileExternalConnection {
+  return connection !== null;
 }
 
 function normalizeProfileBadgesResult(

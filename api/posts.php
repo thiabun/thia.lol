@@ -121,7 +121,7 @@ function posts_replies_index(int $postId): void
              AND p.visibility = 'public'
              AND p.status = 'published'
              AND p.deleted_at IS NULL
-             AND (p.room_id IS NULL OR r.visibility = 'public')",
+             AND (p.room_id IS NULL OR (r.visibility = 'public' " . room_not_deleted_sql('r') . "))",
             'ORDER BY p.created_at ASC, p.id ASC LIMIT 100'
         ),
         [
@@ -660,6 +660,7 @@ function require_room_id(int $roomId): int
          FROM rooms
          WHERE id = :id
            AND visibility = 'public'
+           " . room_not_deleted_sql('rooms') . "
          LIMIT 1",
         ['id' => $roomId]
     );
@@ -679,6 +680,7 @@ function require_room_slug(string $roomSlug): int
          FROM rooms
          WHERE slug = :slug
            AND visibility = 'public'
+           " . room_not_deleted_sql('rooms') . "
          LIMIT 1",
         ['slug' => $slug]
     );
@@ -753,7 +755,7 @@ function fetch_reactable_post_record(int $postId): ?array
            AND p.visibility = 'public'
            AND p.status = 'published'
            AND p.deleted_at IS NULL
-           AND (p.room_id IS NULL OR r.visibility = 'public')
+           AND (p.room_id IS NULL OR (r.visibility = 'public' " . room_not_deleted_sql('r') . "))
          LIMIT 1",
         ['id' => $postId]
     );
@@ -772,7 +774,7 @@ function fetch_replyable_post_record(int $postId): ?array
            AND p.visibility = 'public'
            AND p.status = 'published'
            AND p.deleted_at IS NULL
-           AND (p.room_id IS NULL OR r.visibility = 'public')
+           AND (p.room_id IS NULL OR (r.visibility = 'public' " . room_not_deleted_sql('r') . "))
          LIMIT 1",
         ['id' => $postId]
     );
@@ -896,16 +898,22 @@ function post_payload_select_sql(string $whereClause, string $tailClause = 'LIMI
     LEFT JOIN rooms r ON r.id = p.room_id
     LEFT JOIN (
         SELECT author_id, COUNT(*) AS post_count
-        FROM posts
-        WHERE visibility = 'public'
-          AND status = 'published'
-          AND deleted_at IS NULL
+        FROM posts profile_posts
+        LEFT JOIN rooms profile_post_rooms ON profile_post_rooms.id = profile_posts.room_id
+        WHERE profile_posts.visibility = 'public'
+          AND profile_posts.status = 'published'
+          AND profile_posts.deleted_at IS NULL
+          AND (
+            profile_posts.room_id IS NULL
+            OR (profile_post_rooms.visibility = 'public' " . room_not_deleted_sql('profile_post_rooms') . ")
+          )
         GROUP BY author_id
     ) profile_posts ON profile_posts.author_id = u.id
     LEFT JOIN (
         SELECT created_by, COUNT(*) AS room_count
         FROM rooms
         WHERE visibility = 'public'
+          " . room_not_deleted_sql('rooms') . "
         GROUP BY created_by
     ) profile_rooms ON profile_rooms.created_by = u.id
     LEFT JOIN (
@@ -935,7 +943,7 @@ function post_payload_select_sql(string $whereClause, string $tailClause = 'LIMI
           AND reply_posts.visibility = 'public'
           AND reply_posts.status = 'published'
           AND reply_posts.deleted_at IS NULL
-          AND (reply_posts.room_id IS NULL OR reply_rooms.visibility = 'public')
+          AND (reply_posts.room_id IS NULL OR (reply_rooms.visibility = 'public' " . room_not_deleted_sql('reply_rooms') . "))
         GROUP BY reply_posts.parent_id
     ) replies ON replies.parent_id = p.id
     LEFT JOIN post_reactions current_like

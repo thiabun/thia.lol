@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useOutletContext, useParams } from "react-router";
+import { useNavigate, useOutletContext, useParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { PostCard } from "../components/social/PostCard";
 import { RoomEditModal } from "../components/social/RoomEditModal";
@@ -21,11 +21,14 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
 import {
   deletePost,
+  deleteRoom,
   getRoom,
   getRoomMembers,
   getRoomPosts,
   joinRoom,
   leaveRoom,
+  addRoomModerator,
+  removeRoomModerator,
   updatePost,
   updateRoom,
   uploadImage,
@@ -44,6 +47,7 @@ import { useAuth } from "../lib/useAuth";
 
 export function RoomPage() {
   const { csrfToken, user } = useAuth();
+  const navigate = useNavigate();
   const { openPostComposer } = useOutletContext<AppShellOutletContext>();
   const { slug = "" } = useParams();
   const normalizedSlug = slug.toLowerCase();
@@ -63,6 +67,7 @@ export function RoomPage() {
   const postsState = useAsyncData(postsLoader);
   const membersState = useAsyncData(membersLoader);
   const [roomOverride, setRoomOverride] = useState<Room | undefined>();
+  const [membersOverride, setMembersOverride] = useState<RoomMember[] | undefined>();
   const [createdPosts, setCreatedPosts] = useState<Post[]>([]);
   const [removedPostIds, setRemovedPostIds] = useState<Set<number>>(
     () => new Set(),
@@ -72,12 +77,16 @@ export function RoomPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [postActionError, setPostActionError] = useState<string | undefined>();
   const room = roomOverride?.slug === normalizedSlug ? roomOverride : roomState.data;
-  const members = membersState.data ?? [];
+  const members = membersOverride ?? membersState.data ?? [];
   const canEditRoom =
     Boolean(room) &&
     (user?.role === "admin" ||
       room?.myRoomRole === "owner" ||
       room?.myRoomRole === "moderator");
+  const canManageRoomModerators =
+    Boolean(room) && (user?.role === "admin" || room?.myRoomRole === "owner");
+  const canDeleteRoom =
+    Boolean(room) && (user?.role === "admin" || room?.myRoomRole === "owner");
   const posts = useMemo(
     () => {
       const roomPosts = postsState.data ?? [];
@@ -209,6 +218,33 @@ export function RoomPage() {
     return updated;
   }
 
+  async function handleAddModerator(handle: string) {
+    if (!room || !csrfToken) {
+      throw new Error("Please log in again before managing moderators.");
+    }
+
+    const updatedMembers = await addRoomModerator(room.slug, handle, csrfToken);
+    setMembersOverride(updatedMembers);
+  }
+
+  async function handleRemoveModerator(handle: string) {
+    if (!room || !csrfToken) {
+      throw new Error("Please log in again before managing moderators.");
+    }
+
+    const updatedMembers = await removeRoomModerator(room.slug, handle, csrfToken);
+    setMembersOverride(updatedMembers);
+  }
+
+  async function handleDeleteRoom() {
+    if (!room || !csrfToken) {
+      throw new Error("Please log in again before deleting this room.");
+    }
+
+    await deleteRoom(room.slug, csrfToken);
+    navigate("/rooms");
+  }
+
   async function handleUpload(file: File, purpose: ImageUploadPurpose) {
     if (!csrfToken) {
       throw new Error("Please log in again before uploading.");
@@ -327,9 +363,15 @@ export function RoomPage() {
           mode="edit"
           open={editOpen}
           room={room}
+          members={members}
+          canManageModerators={canManageRoomModerators}
+          canDeleteRoom={canDeleteRoom}
           onClose={() => setEditOpen(false)}
           onSave={handleSaveRoom}
           onUpload={handleUpload}
+          onAddModerator={handleAddModerator}
+          onRemoveModerator={handleRemoveModerator}
+          onDeleteRoom={handleDeleteRoom}
         />
       ) : null}
     </motion.div>

@@ -68,11 +68,12 @@ test.describe("authenticated smoke", () => {
     await expect(page.getByRole("button", { name: "Edit profile" })).toBeVisible();
 
     const tabs = page.getByRole("tablist", { name: "Profile sections" });
-    await expect(tabs.getByRole("tab", { name: /Posts/ })).toBeVisible();
+    await expect(tabs.getByRole("tab", { name: /Feed/ })).toBeVisible();
     await expect(tabs.getByRole("tab", { name: /Replies/ })).toBeVisible();
-    await expect(tabs.getByRole("tab", { name: /Reblogs/ })).toBeVisible();
     await expect(tabs.getByRole("tab", { name: /Rooms/ })).toBeVisible();
-    await expect(tabs.getByRole("tab", { name: "Badges" })).toBeVisible();
+    await expect(tabs.getByRole("tab", { name: /Reblogs/ })).toHaveCount(0);
+    await expect(tabs.getByRole("tab", { name: /Badges/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Badges/ })).toBeVisible();
   });
 
   test("composer shows destination, image upload, and text controls in order", async ({

@@ -17,7 +17,7 @@ export type Profile = {
   profileAccent?: string | null;
   profileBackground?: string | null;
   profileTheme?: string | null;
-  links: string[];
+  links: ProfileExternalConnection[];
   traits: string[];
   stats: {
     posts: number;
@@ -36,6 +36,25 @@ export type Profile = {
   isMoot: boolean;
   createdAt?: string | null;
   updatedAt?: string | null;
+};
+
+export type ProfileConnectionPlatform =
+  | "website"
+  | "youtube"
+  | "twitch"
+  | "tiktok"
+  | "instagram"
+  | "x"
+  | "bluesky"
+  | "github"
+  | "discord"
+  | "spotify";
+
+export type ProfileExternalConnection = {
+  platform: ProfileConnectionPlatform;
+  label: string;
+  value: string;
+  url: string | null;
 };
 
 export type ProfileConnection = {

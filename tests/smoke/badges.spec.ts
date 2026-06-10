@@ -6,11 +6,11 @@ type ApiEnvelope<T> = {
   error?: string;
 };
 
-test("profile Badges tab renders real empty state", async ({ page }) => {
+test("profile Badges panel renders real empty state", async ({ page }) => {
   await mockProfileWithBadges(page, []);
 
   await page.goto("/@thia");
-  await page.getByRole("tab", { name: /Badges/ }).click();
+  await page.getByRole("button", { name: /Badges/ }).click();
 
   await expect(page.getByRole("heading", { name: "No badges yet" })).toBeVisible();
 

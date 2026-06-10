@@ -1,9 +1,13 @@
 import {
   Award,
+  AtSign,
   CalendarDays,
+  ExternalLink,
+  Globe,
   Link as LinkIcon,
   MapPin,
   MessageCircle,
+  Music,
   Radio,
   Reply,
   Heart,
@@ -24,15 +28,21 @@ import {
 } from "../../lib/motionPresets";
 import { formatMonthYear } from "../../lib/dates";
 import type { Profile, UserBadge } from "../../lib/types";
+import type {
+  ProfileConnectionPlatform,
+  ProfileExternalConnection,
+} from "../../lib/types";
 
 type ProfileHeaderProps = {
   profile: Profile;
+  badgeCount?: number;
   followError?: string | undefined;
   followPosting?: boolean;
   isOwnProfile?: boolean;
   messageToHandle?: string | undefined;
   onFollowToggle?: () => void;
   onEditProfile?: (() => void) | undefined;
+  onOpenPanel?: (panel: "followers" | "following" | "badges") => void;
   featuredBadges?: UserBadge[] | undefined;
   showChatHint?: boolean;
 };
@@ -41,14 +51,16 @@ export function ProfileHeader({
   followError,
   followPosting = false,
   isOwnProfile = false,
+  badgeCount = 0,
   featuredBadges = [],
   messageToHandle,
   onEditProfile,
   onFollowToggle,
+  onOpenPanel,
   profile,
   showChatHint = false,
 }: ProfileHeaderProps) {
-  const links = profile.links.map(normalizeExternalLink).filter(isProfileLink);
+  const links = profile.links;
   const followLabel = profile.isFollowing ? "Following" : "Follow";
 
   return (
@@ -165,19 +177,10 @@ export function ProfileHeader({
           </motion.div>
           {links.length > 0 ? (
             <motion.div className="mt-5" variants={sectionItem}>
-              <h2 className="text-sm font-semibold text-text">Links</h2>
+              <h2 className="text-sm font-semibold text-text">Connections</h2>
               <div className="mt-2 flex flex-wrap gap-2">
                 {links.map((link) => (
-                  <a
-                    key={link.href}
-                    className="inline-flex min-h-9 items-center gap-2 rounded-control border border-line bg-canvas/45 px-3 text-sm font-medium text-muted transition duration-fluid ease-fluid hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-                    href={link.href}
-                    rel="noopener noreferrer"
-                    target="_blank"
-                  >
-                    <LinkIcon aria-hidden="true" size={15} />
-                    {link.label}
-                  </a>
+                  <ProfileConnectionPill key={`${link.platform}-${link.value}`} link={link} />
                 ))}
               </div>
             </motion.div>
@@ -210,9 +213,31 @@ export function ProfileHeader({
             <ProfileStat label="Replies" value={profile.stats.replies} icon={Reply} />
             <ProfileStat label="Rooms" value={profile.stats.rooms} icon={Radio} />
             <ProfileStat label="Likes" value={profile.stats.echoes} icon={Heart} />
-            <ProfileStat label="Followers" value={profile.stats.followers} icon={Users} />
-            <ProfileStat label="Following" value={profile.stats.following} icon={UserCheck} />
-            <ProfileStat label="Moots" value={profile.stats.moots} icon={UserPlus} />
+          </motion.div>
+          <motion.div
+            className="mt-3 flex flex-wrap gap-2"
+            variants={sectionItem}
+            aria-label="Profile details"
+          >
+            <ProfilePanelPill
+              label="Followers"
+              value={profile.stats.followers}
+              icon={Users}
+              onClick={() => onOpenPanel?.("followers")}
+            />
+            <ProfilePanelPill
+              label="Following"
+              value={profile.stats.following}
+              icon={UserCheck}
+              onClick={() => onOpenPanel?.("following")}
+            />
+            <ProfilePanelPill label="Moots" value={profile.stats.moots} icon={UserPlus} />
+            <ProfilePanelPill
+              label="Badges"
+              value={badgeCount}
+              icon={Award}
+              onClick={() => onOpenPanel?.("badges")}
+            />
           </motion.div>
         </motion.div>
       </Panel>
@@ -238,38 +263,96 @@ function ProfileStat({ label, value, icon: Icon }: ProfileStatProps) {
   );
 }
 
-type ProfileLink = {
-  href: string;
+type ProfilePanelPillProps = {
   label: string;
+  value: number;
+  icon: typeof MessageCircle;
+  onClick?: () => void;
 };
 
-function normalizeExternalLink(value: string): ProfileLink | null {
-  const trimmed = value.trim();
+function ProfilePanelPill({
+  label,
+  onClick,
+  value,
+  icon: Icon,
+}: ProfilePanelPillProps) {
+  const className =
+    "inline-flex min-h-10 items-center gap-2 rounded-full border border-line bg-canvas/45 px-3 text-sm font-semibold text-text shadow-soft transition duration-fluid ease-fluid";
 
-  if (!trimmed) {
-    return null;
+  if (!onClick) {
+    return (
+      <span className={className}>
+        <Icon aria-hidden="true" size={15} />
+        {value.toLocaleString()} {label}
+      </span>
+    );
   }
 
-  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-
-  try {
-    const url = new URL(candidate);
-
-    if (url.protocol !== "https:" && url.protocol !== "http:") {
-      return null;
-    }
-
-    return {
-      href: url.toString(),
-      label: url.hostname.replace(/^www\./, ""),
-    };
-  } catch {
-    return null;
-  }
+  return (
+    <button
+      type="button"
+      className={`${className} hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus`}
+      onClick={onClick}
+    >
+      <Icon aria-hidden="true" size={15} />
+      {value.toLocaleString()} {label}
+    </button>
+  );
 }
 
-function isProfileLink(link: ProfileLink | null): link is ProfileLink {
-  return link !== null;
+function ProfileConnectionPill({ link }: { link: ProfileExternalConnection }) {
+  const content = (
+    <>
+      {connectionIconElement(link.platform)}
+      {link.label}
+      {link.platform !== "discord" || link.url ? (
+        <ExternalLink aria-hidden="true" size={13} />
+      ) : null}
+    </>
+  );
+
+  if (!link.url) {
+    return (
+      <span className="inline-flex min-h-9 items-center gap-2 rounded-control border border-line bg-canvas/45 px-3 text-sm font-medium text-muted">
+        {content}
+      </span>
+    );
+  }
+
+  return (
+    <a
+      className="inline-flex min-h-9 items-center gap-2 rounded-control border border-line bg-canvas/45 px-3 text-sm font-medium text-muted transition duration-fluid ease-fluid hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      href={link.url}
+      rel="noopener noreferrer"
+      target="_blank"
+    >
+      {content}
+    </a>
+  );
+}
+
+function connectionIconElement(platform: ProfileConnectionPlatform) {
+  if (platform === "website") {
+    return <Globe aria-hidden="true" size={15} />;
+  }
+
+  if (platform === "youtube" || platform === "twitch") {
+    return <Radio aria-hidden="true" size={15} />;
+  }
+
+  if (platform === "tiktok" || platform === "spotify") {
+    return <Music aria-hidden="true" size={15} />;
+  }
+
+  if (platform === "github") {
+    return <LinkIcon aria-hidden="true" size={15} />;
+  }
+
+  if (platform === "discord") {
+    return <MessageCircle aria-hidden="true" size={15} />;
+  }
+
+  return <AtSign aria-hidden="true" size={15} />;
 }
 
 function safeImageUrl(value: string | null | undefined): boolean {

@@ -45,8 +45,9 @@ export async function apiPatch<T>(
 export async function apiDelete<T>(
   path: string,
   csrfToken?: string | undefined,
+  body?: Record<string, unknown>,
 ): Promise<T> {
-  return apiMutate<T>("DELETE", path, undefined, csrfToken);
+  return apiMutate<T>("DELETE", path, body, csrfToken);
 }
 
 export async function apiUpload<T>(

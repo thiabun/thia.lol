@@ -113,10 +113,12 @@ CREATE TABLE IF NOT EXISTS rooms (
   created_by BIGINT UNSIGNED NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted_at DATETIME NULL,
   UNIQUE KEY rooms_slug_unique (slug),
   KEY rooms_visibility_live_idx (visibility, is_live),
   KEY rooms_created_by_idx (created_by),
   KEY rooms_created_at_idx (created_at),
+  KEY rooms_deleted_at_idx (deleted_at),
   CONSTRAINT rooms_created_by_fk
     FOREIGN KEY (created_by) REFERENCES users(id)
     ON DELETE SET NULL

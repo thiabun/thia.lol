@@ -15,7 +15,7 @@ Committed baseline profile storage is `profiles`:
 - `bio`
 - `location`
 - `avatar_url`
-- `links` JSON
+- `links` JSON, now storing structured profile Connections while still reading legacy string links
 - `traits` JSON
 - `created_at`
 - `updated_at`
@@ -34,7 +34,6 @@ Badge storage now exists:
 
 Still not present:
 
-- structured social link objects
 - pinned posts
 - automatic badge criteria/progress tables
 
@@ -54,8 +53,8 @@ Profile payload currently exposes:
 - user identity, including avatar URL
 - bio
 - location
-- links as a string array
-- traits as a string array
+- links as structured Connections, with legacy string link compatibility
+- traits as a string array for older data compatibility only; public editing/display has been removed
 - joined/updated timestamps
 - public stats for posts, replies, rooms, and reactions
 
@@ -66,12 +65,13 @@ Badge payloads expose:
 
 Implemented authenticated/admin routes:
 
-- `PATCH /api/me/badges/featured` updates the current user's featured badge order, up to three badges.
+- `PATCH /api/me/profile` updates the current user's display name, bio, location, avatar, customization fields, and structured Connections.
+- `PATCH /api/me/badges/featured` updates the current user's featured badge order, up to four badges.
 - `GET /api/admin/badges` lists badge definitions and recent grants for moderators/admins.
 - `POST /api/admin/badges/grant` grants a badge to a user by handle and supports an optional reason.
 - `POST /api/admin/badges/revoke` revokes a badge grant by handle and badge key.
 
-No profile edit API is currently implemented. Do not create working edit controls until validation, CSRF-protected update routes, and persistence are added.
+Profile editing is implemented through CSRF-protected API routes with validation for profile text, image URLs, customization tokens, and structured Connections.
 
 ### Frontend
 
@@ -84,13 +84,14 @@ Current surfaced fields:
 - handle
 - bio
 - location
-- external links
+- structured external Connections
 - joined date
 - stats
-- profile tabs for Posts, Replies, API-backed Reblogs, Rooms, social graph lists, and Badges
+- profile tabs for Feed, Replies, and Rooms
+- compact Followers, Following, Moots, and Badges pills that open focused panels
 - featured badges in the profile header when a profile has visible earned badges
-- all visible earned badges in the Badges tab with name, rarity, source, description, reason, and earned date
-- own-profile feature/unfeature controls in the Badges tab
+- all visible earned badges in the Badges focused panel with name, rarity, source, description, reason, and earned date
+- own-profile feature/unfeature controls in the Badges focused panel
 - admin badge management panel for definitions, grant, recent grants, and revoke
 
 Reblogs now use the post reblog API and show only real shared posts. Badges now use real API data only; no mock or placeholder badge grants are rendered.
@@ -106,14 +107,14 @@ Supported now:
 - avatar URL display through `profiles.avatar_url`
 - plain bio
 - location
-- links as strings
-- traits as simple labels
+- structured Connections in `profiles.links`
+- legacy string link read compatibility
 
-Missing schema/API before profile editing can be shipped:
+Profile editing now includes:
 
-- profile update endpoint with CSRF checks
-- URL validation for avatar and links at write time
-- maximum lengths and count limits for links and traits
+- CSRF-protected profile update endpoint
+- URL and platform validation for avatar/customization images and Connections at write time
+- maximum lengths and count limits for Connections
 - optional banner URL field
 - optional constrained accent/theme field
 - optional background field with strict presets, not arbitrary CSS
@@ -160,9 +161,9 @@ Implemented user badge fields:
 Implemented display rules:
 
 - Profiles show featured visible badges first in the header.
-- If a user has visible badges but no explicit featured ordering, the first three earned badges are used as the default featured set.
-- The Badges tab shows visible earned badges sorted by featured order, then earned date.
-- Users can feature or unfeature up to three badges from their own public badge list.
+- If a user has visible badges but no explicit featured ordering, the first four earned badges are used as the default featured set.
+- The Badges focused panel shows visible earned badges sorted by featured order, then earned date.
+- Users can feature or unfeature up to four badges from their own public badge list.
 - Hidden badge API support exists for the featured endpoint, but full hidden-badge management UI is deferred.
 - Revoked badges are deleted from `user_badges` and do not render publicly.
 

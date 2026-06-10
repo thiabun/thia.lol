@@ -357,6 +357,16 @@ function room_customization_columns_exist(): bool
         && database_column_exists('rooms', 'rules');
 }
 
+function room_soft_delete_column_exists(): bool
+{
+    return database_column_exists('rooms', 'deleted_at');
+}
+
+function room_not_deleted_sql(string $alias): string
+{
+    return room_soft_delete_column_exists() ? " AND {$alias}.deleted_at IS NULL" : '';
+}
+
 function room_customization_select_sql(string $alias): string
 {
     if (room_customization_columns_exist()) {
@@ -536,7 +546,7 @@ function fetch_profile_by_handle(string $handle): ?array
                   AND profile_posts.deleted_at IS NULL
                   AND (
                     profile_posts.room_id IS NULL
-                    OR profile_post_rooms.visibility = 'public'
+                    OR (profile_post_rooms.visibility = 'public' " . room_not_deleted_sql('profile_post_rooms') . ")
                   )
             ) AS post_count,
             (
@@ -550,7 +560,7 @@ function fetch_profile_by_handle(string $handle): ?array
                   AND profile_replies.deleted_at IS NULL
                   AND (
                     profile_replies.room_id IS NULL
-                    OR profile_reply_rooms.visibility = 'public'
+                    OR (profile_reply_rooms.visibility = 'public' " . room_not_deleted_sql('profile_reply_rooms') . ")
                   )
             ) AS profile_reply_count,
             (
@@ -558,6 +568,7 @@ function fetch_profile_by_handle(string $handle): ?array
                 FROM rooms profile_rooms
                 WHERE profile_rooms.created_by = u.id
                   AND profile_rooms.visibility = 'public'
+                  " . room_not_deleted_sql('profile_rooms') . "
             ) AS room_count,
             (
                 SELECT COUNT(*)
@@ -624,6 +635,7 @@ function fetch_public_rooms(): array
             GROUP BY room_id
         ) room_posts ON room_posts.room_id = rooms.id
         WHERE rooms.visibility = 'public'
+          " . room_not_deleted_sql('rooms') . "
         ORDER BY room_posts.latest_activity_at DESC, rooms.is_live DESC, rooms.name ASC"
     );
 
@@ -674,6 +686,7 @@ function fetch_public_room_by_slug(string $slug): ?array
         ) room_posts ON room_posts.room_id = rooms.id
         WHERE rooms.slug = :slug
           AND rooms.visibility = 'public'
+          " . room_not_deleted_sql('rooms') . "
         LIMIT 1",
         ['slug' => $slug]
     );
@@ -817,7 +830,7 @@ function post_select_sql(
           AND profile_posts.deleted_at IS NULL
           AND (
             profile_posts.room_id IS NULL
-            OR profile_post_rooms.visibility = 'public'
+            OR (profile_post_rooms.visibility = 'public' " . room_not_deleted_sql('profile_post_rooms') . ")
           )
         GROUP BY author_id
     ) profile_posts ON profile_posts.author_id = u.id
@@ -831,7 +844,7 @@ function post_select_sql(
           AND profile_replies.deleted_at IS NULL
           AND (
             profile_replies.room_id IS NULL
-            OR profile_reply_rooms.visibility = 'public'
+            OR (profile_reply_rooms.visibility = 'public' " . room_not_deleted_sql('profile_reply_rooms') . ")
           )
         GROUP BY author_id
     ) profile_replies ON profile_replies.author_id = u.id
@@ -839,6 +852,7 @@ function post_select_sql(
         SELECT created_by, COUNT(*) AS room_count
         FROM rooms
         WHERE visibility = 'public'
+          " . room_not_deleted_sql('rooms') . "
         GROUP BY created_by
     ) profile_rooms ON profile_rooms.created_by = u.id
     LEFT JOIN (
@@ -868,7 +882,7 @@ function post_select_sql(
           AND reply_posts.visibility = 'public'
           AND reply_posts.status = 'published'
           AND reply_posts.deleted_at IS NULL
-          AND (reply_posts.room_id IS NULL OR reply_rooms.visibility = 'public')
+          AND (reply_posts.room_id IS NULL OR (reply_rooms.visibility = 'public' " . room_not_deleted_sql('reply_rooms') . "))
         GROUP BY reply_posts.parent_id
     ) replies ON replies.parent_id = p.id
     LEFT JOIN post_reactions current_like
@@ -882,7 +896,7 @@ function post_select_sql(
       AND p.status = 'published'
       AND p.deleted_at IS NULL
       AND u.status = 'active'
-      AND (p.room_id IS NULL OR r.visibility = 'public')
+      AND (p.room_id IS NULL OR (r.visibility = 'public' " . room_not_deleted_sql('r') . "))
       {$whereClause}
     ORDER BY {$orderClause}
     LIMIT 50";
@@ -1208,6 +1222,7 @@ function fetch_public_profile_rooms(string $handle): array
         ) room_posts ON room_posts.room_id = rooms.id
         WHERE owner.handle = :handle
           AND rooms.visibility = 'public'
+          " . room_not_deleted_sql('rooms') . "
         ORDER BY rooms.created_at DESC, rooms.name ASC",
         ['handle' => $handle]
     );
@@ -1223,6 +1238,7 @@ function fetch_public_stats(): array
                 SELECT COUNT(*)
                 FROM rooms
                 WHERE visibility = :public_visibility
+                  " . room_not_deleted_sql('rooms') . "
             ) AS public_rooms,
             (
                 SELECT COUNT(*)
@@ -1233,7 +1249,7 @@ function fetch_public_stats(): array
                   AND stat_posts.deleted_at IS NULL
                   AND (
                     stat_posts.room_id IS NULL
-                    OR stat_rooms.visibility = :room_visibility
+                    OR (stat_rooms.visibility = :room_visibility " . room_not_deleted_sql('stat_rooms') . ")
                   )
             ) AS public_posts,
             (
@@ -1252,7 +1268,7 @@ function fetch_public_stats(): array
                   AND reaction_posts.deleted_at IS NULL
                   AND (
                     reaction_posts.room_id IS NULL
-                    OR reaction_rooms.visibility = :reaction_room_visibility
+                    OR (reaction_rooms.visibility = :reaction_room_visibility " . room_not_deleted_sql('reaction_rooms') . ")
                   )
             ) AS total_reactions",
         [
@@ -1370,7 +1386,7 @@ function fetch_people_to_watch(): array
               AND posts.visibility = 'public'
               AND posts.status = 'published'
               AND posts.deleted_at IS NULL
-              AND (posts.room_id IS NULL OR post_rooms.visibility = 'public')
+              AND (posts.room_id IS NULL OR (post_rooms.visibility = 'public' " . room_not_deleted_sql('post_rooms') . "))
             GROUP BY posts.author_id
          ) profile_posts ON profile_posts.author_id = u.id
          {$followJoins}

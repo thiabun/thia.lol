@@ -41,6 +41,10 @@ function rooms_dispatch(array $segments, string $method): void
             rooms_update($segments[1]);
         }
 
+        if ($method === 'DELETE') {
+            rooms_delete($segments[1]);
+        }
+
         json_error('Method not allowed.', 405);
     }
 
@@ -67,6 +71,18 @@ function rooms_dispatch(array $segments, string $method): void
     if (count($segments) === 3 && $segments[2] === 'members') {
         if ($method === 'GET' || $method === 'HEAD') {
             room_members_index($segments[1]);
+        }
+
+        json_error('Method not allowed.', 405);
+    }
+
+    if (count($segments) === 3 && $segments[2] === 'moderators') {
+        if ($method === 'POST') {
+            room_moderator_add($segments[1]);
+        }
+
+        if ($method === 'DELETE') {
+            room_moderator_remove($segments[1]);
         }
 
         json_error('Method not allowed.', 405);
@@ -223,6 +239,131 @@ function rooms_update(string $slug): void
     json_success(fetch_public_room_by_slug((string) $room['slug']));
 }
 
+function rooms_delete(string $slug): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+    require_rooms2_storage();
+
+    $room = room_record_by_slug(normalize_slug($slug));
+
+    if ($room === null) {
+        json_error('Room not found.', 404);
+    }
+
+    if (!room_can_delete($room, $session)) {
+        json_error('You cannot delete this room.', 403);
+    }
+
+    db_query(
+        'UPDATE rooms
+         SET deleted_at = CURRENT_TIMESTAMP(),
+             visibility = :visibility,
+             updated_at = CURRENT_TIMESTAMP()
+         WHERE id = :id
+           AND deleted_at IS NULL',
+        [
+            'id' => (int) $room['id'],
+            'visibility' => 'private',
+        ]
+    );
+
+    json_success([
+        'slug' => (string) $room['slug'],
+        'deletedAt' => gmdate('c'),
+    ]);
+}
+
+function room_moderator_add(string $slug): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+    require_rooms2_storage();
+
+    $room = room_record_by_slug(normalize_slug($slug));
+
+    if ($room === null) {
+        json_error('Room not found.', 404);
+    }
+
+    if (!room_can_manage_moderators($room, $session)) {
+        json_error('You cannot manage moderators for this room.', 403);
+    }
+
+    $body = auth_json_body();
+    $user = room_user_by_handle($body['handle'] ?? null);
+
+    if ($user === null) {
+        json_error('Profile not found.', 404);
+    }
+
+    $existing = room_membership_record((int) $room['id'], (int) $user['id']);
+
+    if ($existing !== null && $existing['banned_at'] !== null) {
+        json_error('Banned members cannot be made moderators.', 422);
+    }
+
+    db_query(
+        "INSERT INTO room_memberships (room_id, user_id, role)
+         VALUES (:room_id, :user_id, 'moderator')
+         ON DUPLICATE KEY UPDATE
+           role = IF(role = 'owner', role, 'moderator'),
+           banned_at = banned_at",
+        [
+            'room_id' => (int) $room['id'],
+            'user_id' => (int) $user['id'],
+        ]
+    );
+    room_sync_member_count((int) $room['id']);
+
+    json_success(fetch_room_members((int) $room['id']));
+}
+
+function room_moderator_remove(string $slug): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+    require_rooms2_storage();
+
+    $room = room_record_by_slug(normalize_slug($slug));
+
+    if ($room === null) {
+        json_error('Room not found.', 404);
+    }
+
+    if (!room_can_manage_moderators($room, $session)) {
+        json_error('You cannot manage moderators for this room.', 403);
+    }
+
+    $body = auth_json_body();
+    $user = room_user_by_handle($body['handle'] ?? null);
+
+    if ($user === null) {
+        json_error('Profile not found.', 404);
+    }
+
+    $membership = room_membership_record((int) $room['id'], (int) $user['id']);
+
+    if ($membership !== null && (string) $membership['role'] === 'owner') {
+        json_error('Room owners cannot be demoted without ownership transfer.', 422);
+    }
+
+    db_query(
+        "UPDATE room_memberships
+         SET role = 'member'
+         WHERE room_id = :room_id
+           AND user_id = :user_id
+           AND role = 'moderator'",
+        [
+            'room_id' => (int) $room['id'],
+            'user_id' => (int) $user['id'],
+        ]
+    );
+    room_sync_member_count((int) $room['id']);
+
+    json_success(fetch_room_members((int) $room['id']));
+}
+
 function rooms_join(string $slug): void
 {
     $session = require_authenticated_session();
@@ -303,6 +444,11 @@ function room_members_index(string $slug): void
         json_error('Room not found.', 404);
     }
 
+    json_success(fetch_room_members((int) $room['id']));
+}
+
+function fetch_room_members(int $roomId): array
+{
     $statement = db_query(
         "SELECT
             memberships.id,
@@ -322,15 +468,15 @@ function room_members_index(string $slug): void
             FIELD(memberships.role, 'owner', 'moderator', 'member'),
             memberships.joined_at ASC
          LIMIT 100",
-        ['room_id' => (int) $room['id']]
+        ['room_id' => $roomId]
     );
 
-    json_success(array_map('room_member_payload', $statement->fetchAll()));
+    return array_map('room_member_payload', $statement->fetchAll());
 }
 
 function require_rooms2_storage(): void
 {
-    if (!room_memberships_table_exists() || !room_customization_columns_exist()) {
+    if (!room_memberships_table_exists() || !room_customization_columns_exist() || !room_soft_delete_column_exists()) {
         json_error('Room membership storage is not ready. Run pending migrations.', 503);
     }
 }
@@ -338,9 +484,10 @@ function require_rooms2_storage(): void
 function room_record_by_slug(string $slug): ?array
 {
     $statement = db_query(
-        'SELECT id, slug, name, summary, mood, accent, visibility, created_by
+        'SELECT id, slug, name, summary, mood, accent, visibility, created_by, deleted_at
          FROM rooms
          WHERE slug = :slug
+           AND deleted_at IS NULL
          LIMIT 1',
         ['slug' => $slug]
     );
@@ -378,6 +525,48 @@ function room_can_edit(array $room, array $session): bool
     return $membership !== null
         && $membership['banned_at'] === null
         && in_array((string) $membership['role'], ['owner', 'moderator'], true);
+}
+
+function room_can_delete(array $room, array $session): bool
+{
+    return (string) $session['role'] === 'admin'
+        || (int) $room['created_by'] === (int) $session['user_id']
+        || (
+            ($membership = room_membership_record((int) $room['id'], (int) $session['user_id'])) !== null
+            && $membership['banned_at'] === null
+            && (string) $membership['role'] === 'owner'
+        );
+}
+
+function room_can_manage_moderators(array $room, array $session): bool
+{
+    return (string) $session['role'] === 'admin'
+        || (int) $room['created_by'] === (int) $session['user_id']
+        || (
+            ($membership = room_membership_record((int) $room['id'], (int) $session['user_id'])) !== null
+            && $membership['banned_at'] === null
+            && (string) $membership['role'] === 'owner'
+        );
+}
+
+function room_user_by_handle(mixed $handle): ?array
+{
+    if (!is_string($handle)) {
+        json_error('Handle is required.', 422);
+    }
+
+    $normalized = normalize_handle($handle);
+    $statement = db_query(
+        "SELECT id, handle
+         FROM users
+         WHERE handle = :handle
+           AND status = 'active'
+         LIMIT 1",
+        ['handle' => $normalized]
+    );
+    $user = $statement->fetch();
+
+    return is_array($user) ? $user : null;
 }
 
 function room_sync_member_count(int $roomId): void

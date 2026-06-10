@@ -8,9 +8,11 @@ import {
   Shield,
   Sparkles,
   Star,
+  UserCheck,
   Users,
+  X,
 } from "lucide-react";
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
@@ -19,6 +21,7 @@ import { PostCard } from "../components/social/PostCard";
 import { ProfileHeader } from "../components/social/ProfileHeader";
 import { RoomCard } from "../components/social/RoomCard";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
+import { Avatar } from "../components/ui/Avatar";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -26,6 +29,8 @@ import {
   followProfile,
   getProfile,
   getProfileBadges,
+  getProfileFollowers,
+  getProfileFollowing,
   getProfilePosts,
   getProfileReblogs,
   getProfileReplies,
@@ -53,6 +58,7 @@ import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
 
 type ProfileTab = "feed" | "replies" | "rooms";
+type ProfilePanel = "followers" | "following" | "badges";
 
 export function ProfilePage() {
   const { handle, profileHandle } = useParams();
@@ -60,6 +66,7 @@ export function ProfilePage() {
   const { refreshSession, runWithAuth, status, user } = useAuth();
   const [activeTab, setActiveTab] = useState<ProfileTab>("feed");
   const [editingProfileHandle, setEditingProfileHandle] = useState<string | undefined>();
+  const [activePanel, setActivePanel] = useState<ProfilePanel | undefined>();
   const [profileOverride, setProfileOverride] = useState<Profile | undefined>();
   const [badgesOverride, setBadgesOverride] = useState<
     { handle: string; result: Awaited<ReturnType<typeof getProfileBadges>> } | undefined
@@ -269,6 +276,7 @@ export function ProfilePage() {
       />
       <ProfileHeader
         profile={profile}
+        badgeCount={profileBadges.length}
         featuredBadges={featuredBadges}
         followError={activeFollowError}
         followPosting={followPosting}
@@ -282,6 +290,7 @@ export function ProfilePage() {
         onEditProfile={
           isOwnProfile ? () => setEditingProfileHandle(normalizedHandle) : undefined
         }
+        onOpenPanel={setActivePanel}
         showChatHint={
           status === "authenticated" && !isOwnProfile && !profile.isMoot
         }
@@ -350,25 +359,20 @@ export function ProfilePage() {
           />
         ) : null}
 
-        {isOwnProfile ? (
-          <section className="mt-6 space-y-3" aria-label="Badge display">
-            <div>
-              <h2 className="text-base font-semibold text-text">Badge display</h2>
-              <p className="mt-1 text-sm text-muted">
-                Feature up to four badges on your profile.
-              </p>
-            </div>
-            <ProfileBadgeList
-              badges={profileBadges}
-              error={badgesState.error}
-              featuredBadges={featuredBadges}
-              isOwnProfile={isOwnProfile}
-              loading={badgesState.loading}
-              onFeaturedChange={handleFeaturedBadgesChange}
-            />
-          </section>
-        ) : null}
       </motion.div>
+      {activePanel ? (
+        <ProfileFocusedPanel
+          badges={profileBadges}
+          badgesError={badgesState.error}
+          badgesLoading={badgesState.loading}
+          featuredBadges={featuredBadges}
+          handle={profile.user.handle}
+          isOwnProfile={isOwnProfile}
+          panel={activePanel}
+          onClose={() => setActivePanel(undefined)}
+          onFeaturedChange={handleFeaturedBadgesChange}
+        />
+      ) : null}
     </motion.div>
   );
 }
@@ -514,6 +518,176 @@ type ProfileBadgeListProps = {
   loading: boolean;
   onFeaturedChange: (featuredBadgeIds: number[]) => Promise<void>;
 };
+
+type ProfileFocusedPanelProps = {
+  badges: UserBadge[];
+  badgesError: unknown;
+  badgesLoading: boolean;
+  featuredBadges: UserBadge[];
+  handle: string;
+  isOwnProfile: boolean;
+  panel: ProfilePanel;
+  onClose: () => void;
+  onFeaturedChange: (featuredBadgeIds: number[]) => Promise<void>;
+};
+
+function ProfileFocusedPanel({
+  badges,
+  badgesError,
+  badgesLoading,
+  featuredBadges,
+  handle,
+  isOwnProfile,
+  onClose,
+  onFeaturedChange,
+  panel,
+}: ProfileFocusedPanelProps) {
+  const title =
+    panel === "followers"
+      ? "Followers"
+      : panel === "following"
+        ? "Following"
+        : "Badges";
+  const socialLoader = useMemo(
+    () => () =>
+      panel === "followers"
+        ? getProfileFollowers(handle)
+        : panel === "following"
+          ? getProfileFollowing(handle)
+          : Promise.resolve([]),
+    [handle, panel],
+  );
+  const socialState = useAsyncData(socialLoader);
+  const showSocial = panel === "followers" || panel === "following";
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        className="fixed inset-0 z-50 grid place-items-center bg-text/28 px-4 py-6 backdrop-blur-veil"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) {
+            onClose();
+          }
+        }}
+      >
+        <motion.div
+          role="dialog"
+          aria-modal="true"
+          aria-label={title}
+          className="max-h-[calc(100dvh-3rem)] w-full max-w-2xl overflow-y-auto rounded-panel border border-line bg-surface p-4 shadow-lift sm:p-5"
+          initial={{ y: 16, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: 16, opacity: 0 }}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-text">{title}</h2>
+              {panel === "badges" && isOwnProfile ? (
+                <p className="mt-1 text-sm text-muted">
+                  Feature up to four badges on your profile.
+                </p>
+              ) : null}
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Close panel"
+              title="Close"
+              icon={<X aria-hidden="true" size={18} />}
+              onClick={onClose}
+            />
+          </div>
+
+          <div className="mt-5">
+            {showSocial ? (
+              <ProfileConnectionList
+                error={socialState.error}
+                items={socialState.data ?? []}
+                loading={socialState.loading}
+                title={title}
+              />
+            ) : (
+              <ProfileBadgeList
+                badges={badges}
+                error={badgesError}
+                featuredBadges={featuredBadges}
+                isOwnProfile={isOwnProfile}
+                loading={badgesLoading}
+                onFeaturedChange={onFeaturedChange}
+              />
+            )}
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+type ProfileConnectionListProps = {
+  error: unknown;
+  items: Awaited<ReturnType<typeof getProfileFollowers>>;
+  loading: boolean;
+  title: string;
+};
+
+function ProfileConnectionList({
+  error,
+  items,
+  loading,
+  title,
+}: ProfileConnectionListProps) {
+  if (loading) {
+    return <ApiStateNotice kind="loading" title="Loading" text={`${title} are loading.`} />;
+  }
+
+  if (error) {
+    return (
+      <ApiStateNotice
+        kind="error"
+        title={`${title} are not available`}
+        text="Try refreshing in a moment."
+      />
+    );
+  }
+
+  if (items.length === 0) {
+    return <EmptyState icon={Users} title={`No ${title.toLowerCase()} yet`} text={`No ${title.toLowerCase()} yet`} />;
+  }
+
+  return (
+    <div className="space-y-3">
+      {items.map((connection) => (
+        <a
+          key={connection.handle}
+          className="flex items-center justify-between gap-3 rounded-card border border-line bg-canvas/45 p-3 transition duration-fluid hover:border-line-strong"
+          href={`/@${connection.handle}`}
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <Avatar user={{ ...connection, aura: "frost" }} className="size-11" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-text">
+                {connection.displayName}
+              </p>
+              <p className="text-xs text-muted">@{connection.handle}</p>
+            </div>
+          </div>
+          {connection.isMoot ? (
+            <Badge tone="warm">Moot</Badge>
+          ) : connection.isFollowing ? (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-muted">
+              <UserCheck aria-hidden="true" size={14} />
+              Following
+            </span>
+          ) : null}
+        </a>
+      ))}
+    </div>
+  );
+}
 
 function ProfileBadgeList({
   badges,

@@ -4,7 +4,7 @@ Date: 2026-06-10
 
 ## Current product status
 
-Pass 1 is a stabilization and cleanup pass, not a feature sprint. The app has real PHP API-backed posts, replies, reblogs, rooms, profiles, follows/moots, notifications, chat, uploads, badges, legal pages, and admin/moderation foundations. The main public-testing risks found at the start of the pass were visible scaffolding language, profile/room customization rough edges, timezone-naive timestamp parsing, profile tab sprawl, room mood copy, and eager route loading.
+Pass 2 continues the stabilization and cleanup pass. The app has real PHP API-backed posts, replies, reblogs, rooms, profiles, follows/moots, notifications, chat, uploads, badges, legal pages, and admin/moderation foundations. Pass 2 specifically addressed profile save hardening, structured profile Connections, compact profile panels, room edit hardening, room moderator management, and soft room deletion foundations.
 
 ## Visible UI issues found
 
@@ -37,17 +37,18 @@ Pass 1 is a stabilization and cleanup pass, not a feature sprint. The app has re
 - Followers, following, and badges were heavyweight tabs instead of compact profile context.
 - Traits were still publicly displayed and editable.
 - Featured badges supported only three badges while the spec allows up to four.
-- Raw link editing remains string-based; structured Connections are not implemented yet.
-- Profile edit sends customization fields and is guarded by migration checks. Saving non-empty customization before the migration is applied returns a 409, not a silent UI workaround.
+- Raw link editing has been replaced by structured Connections stored in the existing `profiles.links` JSON column with backward-compatible reads for legacy string links.
+- Profile edit sends structured connection objects and the PHP endpoint now validates/normalizes both legacy string links and structured connection objects before writing JSON.
+- Profile save hardening found the likely mismatch risk in `links`: the old endpoint accepted string arrays only, while the product now needs structured objects. The endpoint now rejects unsupported platforms, HTML/script-like input, non-HTTPS custom URLs, unsafe Discord values, unsupported Spotify hosts, and excessive connection counts with 422 errors instead of falling into generic failures.
 - API-backed profile edit could not be live-verified without authenticated credentials and a writable API path in this environment.
 
 ## Room issues found
 
 - Room cards, room pages, room search, and room edit still used room mood.
 - Empty room icon/banner upload previews used decorative ambient imagery instead of neutral empty states.
-- Moderator management exists as display foundation only; add/remove moderator controls are not implemented.
-- Room deletion is not implemented and requires a content/cascade decision before public testing.
-- Room edit save requires the Rooms 2 migration. The API returns a 503 when storage is not ready rather than hiding the issue.
+- Moderator management now has owner/admin add/remove controls in room edit/settings backed by `room_memberships.role`.
+- Room deletion is implemented as a soft-delete foundation with a confirmation field. Deleted rooms are hidden from public room lists, room detail, profile room lists, public post/feed eligibility, and public room stats.
+- Room edit save now requires the Rooms 2 storage plus the room soft-delete migration. The API returns a 503 when storage is not ready rather than hiding the issue.
 - API-backed room edit could not be live-verified without authenticated credentials and a writable API path in this environment.
 
 ## Post/thread/comment issues found
@@ -99,46 +100,40 @@ Pass 1 is a stabilization and cleanup pass, not a feature sprint. The app has re
 - Removed profile traits from public profile display and profile editing.
 - Simplified public profile tabs to Feed, Replies, and Rooms. Feed now combines profile posts and reblogs.
 - Increased featured badge support from three to four badges in frontend and API validation.
+- Replaced raw profile link editing with structured Connections for Website, YouTube, Twitch, TikTok, Instagram, X/Twitter, Bluesky, GitHub, Discord, and Spotify.
+- Added profile connection normalization and validation in frontend and PHP while keeping legacy string link reads compatible.
+- Added compact interactive Followers, Following, Moots, and Badges profile pills. Followers/following/badges now open focused panels instead of heavyweight tabs.
+- Moved own-profile badge featuring into the Badges focused panel and kept the four-featured-badge limit.
+- Added room moderator add/remove endpoints and room settings UI using `room_memberships.role`, with owner demotion protection.
+- Added soft room deletion with confirmation and public query filters that preserve posts, memberships, uploads, and moderation history instead of hard-deleting content.
 - Replaced generic public API client fallback errors with "Could not load this right now."
 - Added the required global copyright notice to the footer.
 - Added route-level lazy loading for major pages.
 
+## Migrations added in Pass 2
+
+- `backend/database/migrations/20260610_0010_add_room_soft_delete.sql`
+  - Adds nullable `rooms.deleted_at`.
+  - Adds `rooms_deleted_at_idx`.
+  - Must be deployed to `public_html/api/migrations/` and run through the documented migration runner.
+  - Was not run by Codex.
+
 ## Bugs deferred with reason
-
-Deferred item: Structured profile Connections replacing raw link editing.
-Reason: Requires storage shape, normalization UI, icon mapping, and migration/backward compatibility decisions beyond the safest Pass 1 scope.
-Risk: Raw links remain less polished and can produce inconsistent display labels.
-Recommended next task: Implement structured connection objects in existing `profiles.links` JSON with normalization, validation, icons, and migration-safe read compatibility.
-
-Deferred item: Profile follower/following/badge modals or focused panels.
-Reason: Pass 1 can remove heavyweight tabs and keep compact counts, but modal UX needs separate interaction and accessibility work.
-Risk: Followers/following/badge browsing becomes less discoverable after tab simplification.
-Recommended next task: Add compact profile header pills that open accessible modal panels for followers, following, moots, and badges.
 
 Deferred item: Full profile edit save verification against production/deployed API.
 Reason: Authenticated credentials and a writable working API path are not available in this environment.
 Risk: A production-only schema/config error could remain.
-Recommended next task: Run an authenticated deployed smoke test for `/api/me/profile`, including display name, bio, location, avatar, banner, and empty customization clears.
+Recommended next task: Run an authenticated deployed smoke test for `/api/me/profile`, including display name, bio, location, avatar, banner, empty customization clears, and structured Connections.
 
 Deferred item: Profile edit Internal Server Error root-cause confirmation on production.
-Reason: Static inspection found `/api/me/profile` correctly routed, CSRF-protected, and migration-aware; local reproduction is blocked by missing local MySQL/cPanel config and authenticated test credentials. The API should return 409 if customization columns are missing, so a live 500 still requires cPanel `error_log` or deployed authenticated reproduction.
+Reason: Static inspection found `/api/me/profile` correctly routed, CSRF-protected, and migration-aware. Pass 2 fixed the likely links payload/storage mismatch by adding structured connection validation and legacy compatibility. Local reproduction is blocked by missing local MySQL/cPanel config and authenticated test credentials. A remaining live 500 still requires cPanel `error_log` or deployed authenticated reproduction.
 Risk: A server-only PHP/database/config error may still break profile saves.
-Recommended next task: Reproduce the save on the deployed site with an admin/test account, capture the request payload and cPanel error log, then fix the exact SQL/PHP error or run the documented pending migration if that is the cause.
-
-Deferred item: Room moderator management controls.
-Reason: Requires new protected API endpoints and owner/admin demotion rules; current pass is avoiding role mutation without live API verification.
-Risk: Room owners cannot delegate moderation through the UI.
-Recommended next task: Add `POST/DELETE /api/rooms/:slug/moderators` by handle using `room_memberships.role`, with owner protection and Playwright/API smoke coverage.
+Recommended next task: Reproduce the save on the deployed site with an admin/test account, capture the request payload and cPanel error log, then fix any remaining exact SQL/PHP error or run the documented pending migration if that is the cause.
 
 Deferred item: Room edit Internal Server Error root-cause confirmation on production.
-Reason: Static inspection found `/api/rooms/:slug` update correctly routed, CSRF-protected, permission-checked, and guarded by `require_rooms2_storage()`. Local reproduction is blocked by missing local MySQL/cPanel config and authenticated test credentials. A missing Rooms 2 migration should return 503, so a live 500 still requires cPanel `error_log` or deployed authenticated reproduction.
+Reason: Static inspection found `/api/rooms/:slug` update correctly routed, CSRF-protected, permission-checked, and guarded by `require_rooms2_storage()`. Pass 2 added the soft-delete storage requirement and public deletion filters. Local reproduction is blocked by missing local MySQL/cPanel config and authenticated test credentials. A missing Rooms 2 or room soft-delete migration should return 503, so a live 500 still requires cPanel `error_log` or deployed authenticated reproduction.
 Risk: Room customization saves may still fail for owners/moderators in production.
 Recommended next task: Reproduce the room edit save on the deployed site with an owner/admin account, capture the request payload and cPanel error log, then fix the exact SQL/PHP error or run the documented pending migration if that is the cause.
-
-Deferred item: Room deletion.
-Reason: Deletion needs a clear content model for posts, replies, uploads, memberships, and moderation history before adding a destructive action.
-Risk: Public testing may accumulate test rooms that owners cannot remove.
-Recommended next task: Decide soft-delete vs hard-delete, add idempotent migration if needed, document cascade behavior, then add owner/admin delete with confirmation.
 
 Deferred item: Reply media, reply deletion, nested thread depth, ghost reply cleanup, and reply reblog parity.
 Reason: Thread/comment work touches shared post behavior and needs a separate API-backed pass.
@@ -156,15 +151,14 @@ Risk: Admin surfaces remain noisier than ideal.
 Recommended next task: Reorganize admin room/profile/report panels and remove implementation-heavy copy where it is not diagnostically useful.
 
 Deferred item: Full API-backed public testing checklist.
-Reason: Authenticated live credentials and local PHP/MySQL config are not available in this environment.
+Reason: Authenticated live test credentials are not available, the new room soft-delete migration was not run by Codex, and database-mutating smoke setup should not be done implicitly.
 Risk: Profile edit, room edit, join/leave, uploads, replies, reblogs, badge grants, chat, and admin behavior cannot be honestly marked passed.
 Recommended next task: Run `THIA_BASE_URL=https://thia.lol` smoke tests with test credentials and confirm `/api/health` plus `/api/health?db=1`.
 
 ## Recommended next tasks
 
 1. Run authenticated deployed smoke tests with a working API path and document exact profile/room edit responses.
-2. Implement structured profile Connections in `profiles.links` JSON with backward-compatible reads.
-3. Add room moderator add/remove endpoints and UI.
-4. Decide and implement room deletion semantics.
-5. Run a dedicated thread/comment parity pass.
-6. Add Chat page moot picker/start-DM flow.
+2. Deploy and run `20260610_0010_add_room_soft_delete.sql` through the migration runner, then verify room edit, moderator management, and deletion on the deployed site.
+3. Run a dedicated thread/comment parity pass.
+4. Add Chat page moot picker/start-DM flow.
+5. Add ownership transfer and deeper room moderation tools.

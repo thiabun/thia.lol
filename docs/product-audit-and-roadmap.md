@@ -99,10 +99,10 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
 | Posts | Working, partial | Public top-level posts can be created, listed, deleted by author, hidden by moderators/admins, and shown in home/discover/profile/room feeds. | No media uploads, drafts, editing UI, visibility controls, audience controls, advanced moderation states, or feed ranking. |
 | Replies | Working, partial | Replies exist through `parent_id`, thread modal, reply creation, reply counts, ordered reply loading, and reply notifications. | No deep permalink/thread page, nested reply product decision, or moderation/visibility UX beyond inherited post systems. |
 | Reblogs | Working, foundation | `post_reblogs` stores one reblog per post/user. API routes support reblog/undo, post payloads expose counts/state/context, Home can label followed-user reblogs, profile Reblogs is API-backed, PostCard has a Reblog action, and reblog notifications are created. | Quote-posts are deferred. Needs production tuning for duplicate feed rows, richer notification grouping, and longer-term safety controls around high-volume resharing. |
-| Rooms | Working, v2 foundation | Public room list/detail pages, room search, room post feeds, room destination in composer, room creation/editing, customization fields, owner/member roles, join/leave, member counts, member listing, and admin metadata now exist. | Private/member rooms, ownership transfer, full room moderation queues, bans/mutes UI, role management UI, and richer governance workflows are deferred. |
-| Profiles | Partial, foundation improved | Public profile pages show avatar, display name, handle, bio, location, links, joined date, public stats, posts, replies, rooms, follower/following/moot context, and real badge display. Registration creates a basic profile. See `docs/profile-badges-plan.md`. | Needs privacy controls, pinned posts, hidden-badge management UI, and richer identity controls. |
+| Rooms | Working, v2 foundation | Public room list/detail pages, room search, room post feeds, room destination in composer, room creation/editing, customization fields, owner/member roles, join/leave, member counts, member listing, moderator add/remove controls, soft deletion, and admin metadata now exist. | Private/member rooms, ownership transfer, full room moderation queues, bans/mutes UI, hard-delete/export-retention decisions, and richer governance workflows are deferred. |
+| Profiles | Partial, foundation improved | Public profile pages show avatar, display name, handle, bio, location, structured Connections, joined date, compact follower/following/moot/badge panels, public stats, posts, replies, rooms, and real badge display. Registration creates a basic profile. See `docs/profile-badges-plan.md`. | Needs privacy controls, pinned posts, hidden-badge management UI, and richer identity controls. |
 | Follows/Moots | Working, foundation | Users can follow/unfollow active profiles, profile payloads expose follower/following/moot counts and current-user relationship state, basic followers/following lists exist, and follow/moot notifications are created. | Needs remove-follower controls, block/mute, deeper feed integration, and chat permission enforcement. |
-| Badges | Working, v1 foundation | `badges` and `user_badges` persist real badge definitions and earned grants. Starter definitions are seeded without fake user grants. Public endpoints expose definitions and profile badges, users can feature badges, admins/moderators can grant/revoke badges, profile headers show featured badges, the Badges tab shows earned badges, and badge grants create notifications when notification storage is available. | Automatic earning rules, full hidden-badge management UI, definition editor UI, room-earned/social criteria, and abuse-resistant criteria/progress models are deferred. |
+| Badges | Working, v1 foundation | `badges` and `user_badges` persist real badge definitions and earned grants. Starter definitions are seeded without fake user grants. Public endpoints expose definitions and profile badges, users can feature badges, admins/moderators can grant/revoke badges, profile headers show featured badges, the Badges focused panel shows earned badges, and badge grants create notifications when notification storage is available. | Automatic earning rules, full hidden-badge management UI, definition editor UI, room-earned/social criteria, and abuse-resistant criteria/progress models are deferred. |
 | Likes | Working, partial | Like/unlike maps to `post_reactions.type = glow`; UI shows like count and liked state. | Reaction naming is internally broader than UI. Needs transparent counts, optional hiding/muting decisions, anti-spam/rate-limit review, and adult-focused non-manipulative loop design. |
 | Notifications | Working, foundation | Private notifications exist for follows, moots, likes, replies, reblogs, messages, and badge grants. Authenticated users can view notifications, see unread count, mark one read, and mark all read. | Needs push/email decisions, notification preferences, richer grouping, pagination, read-on-open behavior decisions, and safety controls around high-volume activity. |
 | Admin/moderation | Working, v2 foundation | Reports can be created from posts with structured target, category, details, reporter, and timestamp fields. Admins/moderators can view open reports first, see category, target type, target summary, reporter/reported summaries, created date, status, details, moderator notes, and action counts. Admins/moderators can mark reports reviewed, dismiss reports, hide/remove reported posts, suspend reported users, and mark linked reports actioned. | Appeals, profile/room/message report UI, room owner/mod queues, room bans/mutes, advanced audit logs, law-enforcement/legal request workflows, admin notification routing, and public report-status views are deferred. |
@@ -126,7 +126,7 @@ Rooms should become subreddit/community-style spaces: topic-centered, browseable
 
 Profiles should be member-owned identity pages, not just author headers. They should support:
 
-- Display name, avatar, bio, links, traits, location, and optional profile sections.
+- Display name, avatar, bio, structured Connections, badges, location, and optional profile sections.
 - Customization that fits Sunveil/Frostveil without letting pages become unreadable or unsafe.
 - Pinned content and room/follow context.
 - Badge display with user control over ordering or visibility.
@@ -299,7 +299,8 @@ Goal: turn rooms into real community spaces.
 - Add room-level reporting and moderation context.
 - Decide private/member room rollout only after access controls are tested.
 - Add ownership transfer.
-- Add room bans/mutes UI and role management UI.
+- Add room bans/mutes UI and deeper role management UI.
+- Soft room deletion is implemented; hard-delete/export-retention behavior remains deferred.
 - Add room moderation queues and audit views.
 
 ### Phase 3: Profiles and Badges
@@ -310,12 +311,14 @@ Goal: make identity feel owned and expressive without becoming chaotic.
 - Public profile pages now use real API data for posts, replies, reblogs, rooms, and badges.
 - Add profile editing.
 - Add customization fields with strict design constraints.
+- Structured profile Connections now replace raw link editing while reusing the existing `profiles.links` JSON storage.
+- Followers, following, moots, and badges now use compact profile pills that open focused panels instead of heavyweight tabs.
 - Badge v1 implemented:
   - `badges` and `user_badges` schema.
   - Seeded definitions for `founder`, `early_user`, `bug_hunter`, `moderator`, `room_owner`, and `mutual_magnet`.
   - Public badge definitions and profile badge endpoints.
   - Admin/moderator grant and revoke flow.
-  - Profile header featured badges and Badges tab display.
+  - Profile header featured badges and Badges focused panel display.
   - Current-user featured badge ordering.
 - Deferred:
   - automatic badge earning rules.
