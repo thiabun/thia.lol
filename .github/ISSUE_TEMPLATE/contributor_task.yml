@@ -1,0 +1,57 @@
+name: Contributor task
+description: A small scoped task for contributors
+title: "[Task]: "
+labels:
+  - help wanted
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for small, scoped work that a contributor can pick up without needing to decode the whole project like ancient ruins.
+  - type: textarea
+    id: task
+    attributes:
+      label: Task
+      description: What needs to be done?
+      placeholder: Add an empty state to...
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why is this useful? Link related files, pages, or issues if known.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: What should be true when this is done?
+      placeholder: |
+        - [ ] The page shows...
+        - [ ] Mobile layout still works...
+        - [ ] No new console errors...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Frontend
+        - Backend / API
+        - Design / UI polish
+        - Accessibility
+        - Documentation
+        - Tests
+        - Content / copy
+        - Other
+  - type: checkboxes
+    id: starter-friendly
+    attributes:
+      label: Contributor fit
+      options:
+        - label: This is suitable for a first-time contributor.
+        - label: This may require maintainer guidance.
+        - label: This touches sensitive areas like auth, uploads, moderation, privacy, or security.
