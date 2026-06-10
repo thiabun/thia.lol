@@ -1,0 +1,54 @@
+name: Feature request
+description: Suggest a new feature or improvement for thia.lol
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement. Please keep this focused on the user problem, not just the shiny idea gremlin whispering in the corner.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the user need, frustration, or missing flow.
+      placeholder: It is currently hard to...
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed solution
+      description: What should thia.lol do differently?
+      placeholder: Add/change...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Profiles
+        - Posts / threads / replies
+        - Rooms
+        - Chat
+        - Uploads
+        - Notifications
+        - Badges
+        - Admin / moderation
+        - Legal / footer / copy
+        - Mobile layout
+        - Performance
+        - Accessibility
+        - Other
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any simpler, safer, or smaller versions of this idea?
+  - type: textarea
+    id: notes
+    attributes:
+      label: Extra context
+      description: Screenshots, examples, sketches, or related issues.
