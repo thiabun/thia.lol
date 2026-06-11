@@ -255,6 +255,7 @@ type ReactionControlsProps = {
   initiallyLiked: boolean;
   actions: ReactNode;
   onOpenThread: () => void;
+  compact?: boolean;
 };
 
 function ReactionControls({
@@ -264,6 +265,7 @@ function ReactionControls({
   initiallyLiked,
   actions,
   onOpenThread,
+  compact = false,
 }: ReactionControlsProps) {
   const { csrfToken, runWithAuth, status, user } = useAuth();
   const [likeCount, setLikeCount] = useState(initialLikeCount);
@@ -362,7 +364,12 @@ function ReactionControls({
 
   return (
     <>
-      <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted">
+      <div
+        className={cn(
+          "mt-4 flex flex-wrap items-center gap-2 text-sm text-muted",
+          compact ? "mt-3 gap-x-2 gap-y-1" : null,
+        )}
+      >
         <CommentButton
           count={commentCount}
           onClick={onOpenThread}
@@ -386,7 +393,12 @@ function ReactionControls({
           onClick={() => void handleReblog()}
         />
         {canReport || actions ? (
-          <span className="ml-auto inline-flex items-center gap-2">
+          <span
+            className={cn(
+              "inline-flex items-center gap-2",
+              compact ? "sm:ml-auto" : "ml-auto",
+            )}
+          >
             {canReport ? (
               <ReportForm
                 targetType="post"
@@ -834,6 +846,7 @@ function ThreadModal({
                     initialLikeCount={post.likeCount}
                     initiallyLiked={post.likedByCurrentUser}
                     onOpenThread={() => setComposerOpen(true)}
+                    compact
                     actions={
                       canDeleteRoot ? (
                         <Button
@@ -1137,6 +1150,7 @@ function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
           initialLikeCount={reply.likeCount}
           initiallyLiked={reply.likedByCurrentUser}
           onOpenThread={() => setComposerOpen(true)}
+          compact
           actions={
             allowDelete ? (
               <Button
