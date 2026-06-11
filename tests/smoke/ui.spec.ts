@@ -39,6 +39,9 @@ test("desktop primary nav shows platform sections without Admin", async ({ page 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
 
+  await expect(page.getByLabel("thia.lol home")).toBeVisible();
+  await expect(page.getByText("social app")).toHaveCount(0);
+
   const nav = page.getByTestId("desktop-nav");
   await expect(nav).toBeVisible();
 
@@ -91,6 +94,7 @@ test("mobile header, account menu, and bottom nav fit the viewport", async ({
   await page.goto("/");
 
   await expect(page.getByLabel("thia.lol home")).toBeVisible();
+  await expect(page.getByText("social app")).toHaveCount(0);
 
   const hasOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -103,6 +107,53 @@ test("mobile header, account menu, and bottom nav fit the viewport", async ({
   const nav = page.getByTestId("mobile-nav");
   await expect(nav).toBeVisible();
   await expect(nav.getByRole("button", { name: "Post" })).toBeVisible();
+});
+
+test("mobile bottom nav releases before the footer", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("thia_cookie_notice_ack", "1");
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/login");
+  await page.evaluate(() => {
+    window.scrollTo(0, document.documentElement.scrollHeight);
+  });
+
+  const nav = page.getByTestId("mobile-nav");
+  const footer = page.getByTestId("site-footer");
+  await expect(nav).toBeVisible();
+  await expect(footer).toBeVisible();
+
+  const boxes = await page.evaluate(() => {
+    const navRect = document
+      .querySelector('[data-testid="mobile-nav"]')
+      ?.getBoundingClientRect();
+    const footerRect = document
+      .querySelector('[data-testid="site-footer"]')
+      ?.getBoundingClientRect();
+
+    return {
+      documentHeight: document.documentElement.scrollHeight,
+      footer: footerRect
+        ? {
+            bottom: footerRect.bottom,
+            top: footerRect.top,
+          }
+        : null,
+      nav: navRect
+        ? {
+            bottom: navRect.bottom,
+            top: navRect.top,
+          }
+        : null,
+      scrollY: window.scrollY,
+    };
+  });
+
+  expect(boxes.nav).not.toBeNull();
+  expect(boxes.footer).not.toBeNull();
+  expect(boxes.nav!.bottom).toBeLessThanOrEqual(boxes.footer!.top + 1);
+  expect(boxes.footer!.bottom + boxes.scrollY).toBeCloseTo(boxes.documentHeight, 0);
 });
 
 test("mobile primary nav shows platform sections without Admin", async ({ page }) => {
@@ -118,6 +169,23 @@ test("mobile primary nav shows platform sections without Admin", async ({ page }
 
   await expect(nav.getByRole("button", { name: "Post" })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Admin" })).toHaveCount(0);
+});
+
+test("mobile primary nav remains usable on main routes", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  for (const path of ["/", "/discover", "/rooms", "/chat"]) {
+    await page.goto(path);
+
+    const nav = page.getByTestId("mobile-nav");
+    await expect(nav).toBeVisible();
+
+    for (const label of ["Home", "Discover", "Rooms", "Chat"]) {
+      await expect(nav.getByRole("link", { name: label })).toBeVisible();
+    }
+
+    await expect(nav.getByRole("button", { name: "Post" })).toBeVisible();
+  }
 });
 
 test("chat page is honest about sign-in state", async ({ page }) => {

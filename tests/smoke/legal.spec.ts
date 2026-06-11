@@ -31,6 +31,14 @@ test("legal contact route resolves to the legal index", async ({ page }) => {
 test("footer and account menu expose legal links discreetly", async ({ page }) => {
   await page.goto("/privacy");
 
+  const footer = page.getByTestId("site-footer");
+  await expect(footer).toContainText(
+    "© 2026 Thia Markussen. Alle rettigheter forbeholdt / All rights reserved.",
+  );
+  await expect(footer).toContainText(
+    "Beskyttet etter norsk opphavsrett og internasjonal opphavsrett / Protected under Norwegian and international copyright law.",
+  );
+
   const footerLinks = page.getByTestId("legal-footer-links");
   await expect(footerLinks).toBeVisible();
 

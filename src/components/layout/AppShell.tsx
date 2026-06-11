@@ -140,16 +140,23 @@ export function AppShell() {
   }
 
   return (
-    <div className="min-h-dvh bg-canvas text-text">
+    <div className="flex min-h-dvh flex-col bg-canvas text-text">
       <div className="fixed inset-0 -z-10 bg-page-wash" />
       <SiteHeader
         navItems={publicNavItems}
         notificationUnreadCount={notificationUnreadCount}
         showNotifications={status === "authenticated"}
       />
-      <main className="mx-auto w-full max-w-7xl px-4 pb-28 pt-5 sm:px-6 lg:px-8">
-        <Outlet context={{ openPostComposer } satisfies AppShellOutletContext} />
-      </main>
+      <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 sm:px-6 lg:px-8">
+        <main className="flex-1 pb-6 pt-5 lg:pb-16">
+          <Outlet context={{ openPostComposer } satisfies AppShellOutletContext} />
+        </main>
+        <MobileDock
+          navItems={publicNavItems}
+          onPostClick={handlePostClick}
+          postDisabled={postingDisabled}
+        />
+      </div>
       <SiteFooter />
       <Button
         type="button"
@@ -160,11 +167,6 @@ export function AppShell() {
       >
         Post
       </Button>
-      <MobileDock
-        navItems={publicNavItems}
-        onPostClick={handlePostClick}
-        postDisabled={postingDisabled}
-      />
       <PostComposerModal
         key={composerKey}
         csrfToken={csrfToken}
@@ -200,10 +202,9 @@ function SiteHeader({
             <span className="size-3 rounded-full bg-accent shadow-glow transition duration-fluid group-hover:scale-110" />
           </span>
           <span className="min-w-0">
-            <span className="block truncate text-sm font-semibold tracking-normal text-text">
+            <span className="block truncate text-base font-semibold leading-none tracking-normal text-text">
               thia.lol
             </span>
-            <span className="block truncate text-xs text-muted">social app</span>
           </span>
         </NavLink>
 
@@ -450,7 +451,7 @@ function MobileDock({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={snappySpring}
-      className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 gap-1 rounded-panel border border-line bg-surface/88 p-2 shadow-lift backdrop-blur-veil lg:hidden"
+      className="sticky bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30 mx-auto mb-[calc(1rem+env(safe-area-inset-bottom))] grid w-full max-w-md grid-cols-5 gap-1 rounded-panel border border-line bg-surface/90 p-2 shadow-lift backdrop-blur-veil lg:hidden"
       aria-label="Primary"
       data-testid="mobile-nav"
     >
@@ -492,10 +493,12 @@ function MobileDock({
 
 function SiteFooter() {
   return (
-    <footer className="mx-auto w-full max-w-7xl px-4 pb-28 pt-2 sm:px-6 lg:px-8 lg:pb-12">
-      <div className="flex flex-col gap-3 border-t border-line py-5 text-xs text-muted sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1 leading-5">
-          <p>thia.lol is a social platform for member posts, rooms, and chat.</p>
+    <footer
+      className="mx-auto w-full max-w-7xl px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-1 sm:px-6 lg:px-8 lg:pb-8"
+      data-testid="site-footer"
+    >
+      <div className="flex flex-col gap-4 border-t border-line py-4 text-xs text-muted sm:flex-row sm:items-start sm:justify-between">
+        <div className="max-w-3xl space-y-1 leading-5">
           <p>
             © 2026 Thia Markussen. Alle rettigheter forbeholdt / All rights
             reserved.
@@ -507,7 +510,7 @@ function SiteFooter() {
         </div>
         <nav
           aria-label="Legal and trust"
-          className="flex flex-wrap gap-x-4 gap-y-2"
+          className="flex flex-wrap gap-x-3 gap-y-2 sm:justify-end"
           data-testid="legal-footer-links"
         >
           {legalLinks.map((link) => (
