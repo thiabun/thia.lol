@@ -244,6 +244,25 @@ export type ModerationPost = {
   author: ModerationUser | null;
 };
 
+export type ModerationRoom = {
+  id: number;
+  slug: string;
+  name: string;
+  summary: string;
+  visibility: string;
+  live: boolean;
+  owner: ModerationUser | null;
+};
+
+export type ModerationMessage = {
+  id: number;
+  conversationId: number;
+  body: string;
+  deletedAt: string | null;
+  createdAt: string;
+  sender: ModerationUser | null;
+};
+
 export type ModerationReport = {
   id: number;
   targetType: ReportTargetType;
@@ -261,6 +280,9 @@ export type ModerationReport = {
   reportedUser: ModerationUser | null;
   reviewedBy: ModerationUser | null;
   post: ModerationPost | null;
+  profile: ModerationUser | null;
+  room: ModerationRoom | null;
+  message: ModerationMessage | null;
   actionCount: number;
 };
 

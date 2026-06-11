@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { useNavigate, useOutletContext, useParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { PostCard } from "../components/social/PostCard";
+import { ReportForm } from "../components/social/ReportForm";
 import { RoomEditModal } from "../components/social/RoomEditModal";
 import {
   InlineUserProfileLink,
@@ -298,6 +299,7 @@ export function RoomPage() {
         <RoomHeader
           room={room}
           canEdit={canEditRoom}
+          canReport={user?.id !== room.createdBy}
           pendingAction={pendingRoomAction}
           postCount={posts.length > room.postCount ? posts.length : room.postCount}
           userSignedIn={Boolean(user)}
@@ -384,6 +386,7 @@ export function RoomPage() {
 
 function RoomHeader({
   canEdit,
+  canReport,
   onPost,
   onEdit,
   onJoinToggle,
@@ -393,6 +396,7 @@ function RoomHeader({
   userSignedIn,
 }: {
   canEdit: boolean;
+  canReport: boolean;
   onPost: () => void;
   onEdit: () => void;
   onJoinToggle: () => void;
@@ -495,6 +499,15 @@ function RoomHeader({
                 >
                   Edit room
                 </Button>
+              ) : null}
+              {canReport ? (
+                <ReportForm
+                  targetType="room"
+                  targetId={room.id}
+                  reportedUserId={room.owner?.id}
+                  title="Report room"
+                  explainer={`This reports /${room.slug} to moderators.`}
+                />
               ) : null}
             </div>
           </div>

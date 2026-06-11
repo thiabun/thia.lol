@@ -19,6 +19,7 @@ import {
 } from "react";
 import { useSearchParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
+import { ReportForm } from "../components/social/ReportForm";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -482,6 +483,7 @@ export function ChatPage() {
                     key={message.id}
                     message={message}
                     mine={message.sender.id === user?.id}
+                    canReport={message.sender.id !== user?.id}
                   />
                 ))}
               </div>
@@ -746,11 +748,12 @@ function ConversationButton({
 }
 
 type MessageBubbleProps = {
+  canReport: boolean;
   message: ChatMessage;
   mine: boolean;
 };
 
-function MessageBubble({ message, mine }: MessageBubbleProps) {
+function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
   return (
     <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
       <div
@@ -770,6 +773,17 @@ function MessageBubble({ message, mine }: MessageBubbleProps) {
         >
           {formatChatTime(message.createdAt)}
         </p>
+        {canReport && message.deletedAt === null ? (
+          <div className="mt-2">
+            <ReportForm
+              targetType="message"
+              targetId={message.id}
+              reportedUserId={message.sender.id}
+              title="Report message"
+              explainer="This reports this chat message to moderators."
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   );

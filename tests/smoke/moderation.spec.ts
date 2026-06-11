@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 
 test("report modal opens with categories and legal links", async ({ page }) => {
@@ -59,6 +60,80 @@ test("report category selector submits a post report", async ({ page }) => {
   });
 });
 
+test("profile report submits the profile target", async ({ page }) => {
+  await mockProfileReportApi(page);
+
+  let reportPayload: Record<string, unknown> | undefined;
+  await page.route("**/api/reports", async (route) => {
+    reportPayload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: makeReport({
+          targetType: "profile",
+          targetId: 2,
+          reportedUser: makeReport().reportedUser,
+          post: null,
+        }),
+      }),
+    });
+  });
+
+  await page.goto("/@alex");
+  await page.getByRole("button", { name: "Report" }).click();
+  const reportForm = page.getByRole("heading", { name: "Report profile" }).locator("..");
+
+  await expect(reportForm).toContainText("reports @alex's profile");
+  await page.getByLabel("What's wrong?").selectOption("impersonation");
+  await reportForm.getByRole("button", { name: "Report", exact: true }).click();
+
+  await expect(page.getByText("Report sent.")).toBeVisible();
+  expect(reportPayload).toMatchObject({
+    targetType: "profile",
+    targetId: 2,
+    reportedUserId: 2,
+    category: "impersonation",
+  });
+});
+
+test("room report submits the room target", async ({ page }) => {
+  await mockRoomReportApi(page);
+
+  let reportPayload: Record<string, unknown> | undefined;
+  await page.route("**/api/reports", async (route) => {
+    reportPayload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: makeReport({
+          targetType: "room",
+          targetId: 9,
+          post: null,
+          room: mockModerationRoom(),
+        }),
+      }),
+    });
+  });
+
+  await page.goto("/rooms/general");
+  await page.getByRole("button", { name: "Report" }).click();
+  const reportForm = page.getByRole("heading", { name: "Report room" }).locator("..");
+
+  await expect(reportForm).toContainText("reports /general");
+  await page.getByLabel("What's wrong?").selectOption("spam_or_scam");
+  await reportForm.getByRole("button", { name: "Report", exact: true }).click();
+
+  await expect(page.getByText("Report sent.")).toBeVisible();
+  expect(reportPayload).toMatchObject({
+    targetType: "room",
+    targetId: 9,
+    reportedUserId: 3,
+    category: "spam_or_scam",
+  });
+});
+
 test("report submit requires auth", async ({ page }) => {
   await mockAnonymousApi(page);
   await mockHomeFeed(page);
@@ -93,6 +168,102 @@ test("admin report queue renders open reports first", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Dismiss" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Hide post" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Remove post" })).toBeVisible();
+});
+
+test("admin report queue renders profile, room, and message summaries", async ({
+  page,
+}) => {
+  await mockAuthenticatedApi(page, "admin");
+  await mockAdminApi(page, [
+    makeReport({
+      id: 8,
+      targetType: "profile",
+      targetId: 2,
+      post: null,
+      profile: {
+        id: 2,
+        handle: "alex",
+        displayName: "Alex",
+        role: "member",
+        status: "active",
+      },
+    }),
+    makeReport({
+      id: 9,
+      targetType: "room",
+      targetId: 9,
+      post: null,
+      room: mockModerationRoom(),
+    }),
+    makeReport({
+      id: 10,
+      targetType: "message",
+      targetId: 100,
+      post: null,
+      message: {
+        id: 100,
+        conversationId: 10,
+        body: "unsafe private message",
+        deletedAt: null,
+        createdAt: "2026-06-10 10:00:00",
+        sender: {
+          id: 2,
+          handle: "alex",
+          displayName: "Alex",
+          role: "member",
+          status: "active",
+        },
+      },
+    }),
+  ]);
+
+  await page.goto("/admin");
+
+  await expect(page.getByRole("heading", { name: "Reported profile" })).toBeVisible();
+  await expect(page.getByText("Alex (@alex) · active")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Reported room" })).toBeVisible();
+  await expect(page.getByText("/general · public · not live")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Reported message" })).toBeVisible();
+  await expect(page.getByText("unsafe private message")).toBeVisible();
+});
+
+test("report API validates message membership by source inspection", async () => {
+  const moderationApi = readFileSync("api/moderation.php", "utf8");
+  const messageRecordStart = moderationApi.indexOf(
+    "function moderation_message_record",
+  );
+  const messageRecordEnd = moderationApi.indexOf(
+    "function moderation_report_actioned",
+  );
+  const messageRecord = moderationApi.slice(messageRecordStart, messageRecordEnd);
+
+  expect(messageRecordStart).toBeGreaterThan(-1);
+  expect(messageRecord).toContain("INNER JOIN conversation_members viewer_member");
+  expect(messageRecord).toContain("viewer_member.conversation_id = m.conversation_id");
+  expect(messageRecord).toContain("viewer_member.user_id = :viewer_user_id");
+  expect(moderationApi).toContain(
+    "moderation_message_record($targetId, (int) $session['user_id'])",
+  );
+  expect(moderationApi).toContain("if ($message === null)");
+  expect(moderationApi).toContain("json_error('Message not found.', 404)");
+});
+
+test("moderation policy copy does not claim unavailable report targets", async ({
+  page,
+}) => {
+  await mockAnonymousApi(page);
+  await page.goto("/moderation");
+  await expect(
+    page.getByRole("heading", { name: "Moderation Policy", level: 1 }),
+  ).toBeVisible();
+  const bodyText = await page.locator("body").innerText();
+
+  expect(bodyText).toContain(
+    "Logged-in users can report posts, replies, profiles, rooms, and chat messages",
+  );
+  expect(bodyText).not.toContain(
+    "Built-in profile, room, and message reports are not fully available yet.",
+  );
 });
 
 test("admin actions are gated", async ({ page }) => {
@@ -199,13 +370,59 @@ async function mockHomeFeed(page: Page) {
   );
 }
 
-async function mockAdminApi(page: Page) {
+async function mockProfileReportApi(page: Page) {
+  await mockAuthenticatedApi(page, "member");
+  await page.route("**/api/profiles/alex", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: profileBody() }),
+    }),
+  );
+  await page.route("**/api/profiles/alex/badges", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: { badges: [], featuredBadges: [] } }),
+    }),
+  );
+  for (const suffix of ["posts", "replies", "reblogs", "rooms"]) {
+    await page.route(`**/api/profiles/alex/${suffix}`, (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: [] }),
+      }),
+    );
+  }
+}
+
+async function mockRoomReportApi(page: Page) {
+  await mockAuthenticatedApi(page, "member");
+  await page.route("**/api/rooms/general/posts", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    }),
+  );
+  await page.route("**/api/rooms/general/members", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    }),
+  );
+  await page.route("**/api/rooms/general", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: roomBody() }),
+    }),
+  );
+}
+
+async function mockAdminApi(page: Page, reports = [makeReport()]) {
   await page.route("**/api/admin/reports", (route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         ok: true,
-        data: [makeReport()],
+        data: reports,
       }),
     }),
   );
@@ -221,6 +438,92 @@ async function mockAdminApi(page: Page) {
       body: JSON.stringify({ ok: true, data: { badges: [], recentGrants: [] } }),
     }),
   );
+}
+
+function profileBody() {
+  return {
+    user: {
+      id: 2,
+      handle: "alex",
+      displayName: "Alex",
+      initials: "A",
+      aura: "frost",
+      avatarUrl: null,
+    },
+    bio: "Public profile.",
+    location: "",
+    links: [],
+    traits: [],
+    stats: {
+      posts: 0,
+      replies: 0,
+      rooms: 0,
+      echoes: 0,
+      followers: 0,
+      following: 0,
+      moots: 0,
+    },
+    followerCount: 0,
+    followingCount: 0,
+    mootCount: 0,
+    isFollowing: false,
+    isFollowedBy: false,
+    isMoot: false,
+    createdAt: "2026-06-10 09:00:00",
+    updatedAt: "2026-06-10 09:00:00",
+  };
+}
+
+function roomBody() {
+  return {
+    id: 9,
+    slug: "general",
+    name: "General",
+    summary: "General room.",
+    description: "General room.",
+    mood: "",
+    members: 2,
+    memberCount: 2,
+    live: false,
+    accent: "var(--accent-sun)",
+    iconUrl: null,
+    bannerUrl: null,
+    rules: "",
+    visibility: "public",
+    createdBy: 3,
+    owner: {
+      id: 3,
+      handle: "owner",
+      displayName: "Owner",
+      initials: "O",
+      aura: "frost",
+      avatarUrl: null,
+    },
+    joinedByMe: false,
+    myRoomRole: null,
+    postCount: 0,
+    latestActivityAt: null,
+    createdAt: "2026-06-10 09:00:00",
+    updatedAt: "2026-06-10 09:00:00",
+  };
+}
+
+function mockModerationRoom() {
+  return {
+    id: 9,
+    slug: "general",
+    name: "General",
+    summary: "General room.",
+    visibility: "public",
+    live: false,
+    owner: {
+      id: 3,
+      handle: "owner",
+      displayName: "Owner",
+      role: "member",
+      status: "active",
+    },
+  };
 }
 
 function makeReport(overrides: Record<string, unknown> = {}) {

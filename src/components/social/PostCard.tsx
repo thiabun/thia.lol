@@ -9,7 +9,6 @@ import {
 } from "react";
 import {
   EyeOff,
-  Flag,
   Heart,
   ImagePlus,
   MessageCircle,
@@ -24,11 +23,11 @@ import { AnimatePresence, motion } from "motion/react";
 import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
 import { Button, ButtonLink } from "../ui/Button";
-import { SelectField, TextareaField } from "../ui/Field";
+import { TextareaField } from "../ui/Field";
 import { Panel } from "../ui/Panel";
 import { InlineUserProfileLink } from "./UserProfileLink";
+import { ReportForm } from "./ReportForm";
 import {
-  createReport,
   deletePost,
   createPostReply,
   getPostReplies,
@@ -37,7 +36,6 @@ import {
   unreblogPost,
   unlikePost,
   uploadImage,
-  type ReportCategory,
 } from "../../lib/api";
 import { cn } from "../../lib/classNames";
 import {
@@ -280,12 +278,6 @@ function ReactionControls({
   const [reblogPending, setReblogPending] = useState(false);
   const [reblogPulse, setReblogPulse] = useState(0);
   const [reblogError, setReblogError] = useState<string>();
-  const [reportOpen, setReportOpen] = useState(false);
-  const [reportCategory, setReportCategory] = useState<ReportCategory>("harassment");
-  const [reportDetails, setReportDetails] = useState("");
-  const [reportPending, setReportPending] = useState(false);
-  const [reportMessage, setReportMessage] = useState<string>();
-  const [reportError, setReportError] = useState<string>();
   const canReport = status !== "loading" && user?.id !== post.author.id;
   const canReblog =
     status === "authenticated" && Boolean(csrfToken) && user?.id !== post.author.id;
@@ -368,40 +360,6 @@ function ReactionControls({
     }
   }
 
-  async function handleReportSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const details = reportDetails.trim();
-    setReportPending(true);
-    setReportError(undefined);
-    setReportMessage(undefined);
-
-    try {
-      await runWithAuth((freshCsrfToken) =>
-        createReport(
-          {
-            targetType: "post",
-            targetId: post.id,
-            postId: post.id,
-            reportedUserId: post.author.id,
-            category: reportCategory,
-            ...(details ? { details } : {}),
-          },
-          freshCsrfToken,
-        ),
-      );
-      setReportMessage("Report sent.");
-      setReportDetails("");
-      setReportOpen(false);
-    } catch (error) {
-      setReportError(
-        error instanceof Error ? error.message : "Could not create report.",
-      );
-    } finally {
-      setReportPending(false);
-    }
-  }
-
   return (
     <>
       <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted">
@@ -430,20 +388,14 @@ function ReactionControls({
         {canReport || actions ? (
           <span className="ml-auto inline-flex items-center gap-2">
             {canReport ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={reportPending}
-                icon={<Flag aria-hidden="true" size={15} />}
-                onClick={() => {
-                  setReportError(undefined);
-                  setReportMessage(undefined);
-                  setReportOpen((open) => !open);
-                }}
-              >
-                Report
-              </Button>
+              <ReportForm
+                targetType="post"
+                targetId={post.id}
+                postId={post.id}
+                reportedUserId={post.author.id}
+                title="Report post"
+                explainer="This reports the post to moderators."
+              />
             ) : null}
             {actions}
           </span>
@@ -455,100 +407,9 @@ function ReactionControls({
       {reblogError ? (
         <p className="mt-2 text-xs font-medium text-rose-ink">{reblogError}</p>
       ) : null}
-      {reportMessage ? (
-        <p className="mt-2 text-xs font-medium text-leaf-ink">{reportMessage}</p>
-      ) : null}
-      {reportError ? (
-        <p className="mt-2 text-xs font-medium text-rose-ink">{reportError}</p>
-      ) : null}
-      {reportOpen ? (
-        <form
-          className="mt-3 space-y-3 rounded-card border border-line bg-canvas/45 p-3"
-          onSubmit={(event) => void handleReportSubmit(event)}
-        >
-          <h3 className="text-sm font-semibold text-text">Report post</h3>
-          <p className="text-xs leading-5 text-muted">
-            Reports are reviewed against the{" "}
-            <Link
-              to="/community-guidelines"
-              className="font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline"
-            >
-              Community Guidelines
-            </Link>
-            . The{" "}
-            <Link
-              to="/moderation"
-              className="font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline"
-            >
-              Moderation Policy
-            </Link>{" "}
-            explains possible actions.
-            {reportCategory === "copyright" ? (
-              <>
-                {" "}
-                For rights concerns, see the{" "}
-                <Link
-                  to="/copyright"
-                  className="font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline"
-                >
-                  Copyright Policy
-                </Link>
-                .
-              </>
-            ) : null}
-          </p>
-          <SelectField
-            id={`report-category-${post.id}`}
-            label="What's wrong?"
-            value={reportCategory}
-            options={reportCategoryOptions}
-            onChange={(event) =>
-              setReportCategory(event.target.value as ReportCategory)
-            }
-          />
-          <TextareaField
-            id={`report-details-${post.id}`}
-            label="Add details"
-            rows={3}
-            maxLength={2000}
-            value={reportDetails}
-            placeholder="Optional context for moderators"
-            onChange={(event) => setReportDetails(event.target.value)}
-          />
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={reportPending}
-              onClick={() => setReportOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" size="sm" disabled={reportPending}>
-              Report
-            </Button>
-          </div>
-        </form>
-      ) : null}
     </>
   );
 }
-
-const reportCategoryOptions: Array<{ value: ReportCategory; label: string }> = [
-  { value: "harassment", label: "Harassment" },
-  { value: "hate", label: "Hate or abuse" },
-  { value: "sexual_content", label: "Sexual content" },
-  { value: "non_consensual_content", label: "Non-consensual content" },
-  { value: "private_info", label: "Private information" },
-  { value: "spam_or_scam", label: "Spam or scam" },
-  { value: "impersonation", label: "Impersonation" },
-  { value: "copyright", label: "Copyright" },
-  { value: "violence_or_threats", label: "Violence or threats" },
-  { value: "self_harm", label: "Self-harm" },
-  { value: "illegal_content", label: "Illegal content" },
-  { value: "other", label: "Other" },
-];
 
 const maxUploadBytes = 10 * 1024 * 1024;
 const acceptedImageTypes = ["image/jpeg", "image/png", "image/webp"];

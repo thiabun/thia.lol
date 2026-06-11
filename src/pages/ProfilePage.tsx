@@ -19,6 +19,7 @@ import { PageMeta } from "../components/PageMeta";
 import { ProfileEditModal } from "../components/social/ProfileEditModal";
 import { PostCard } from "../components/social/PostCard";
 import { ProfileHeader } from "../components/social/ProfileHeader";
+import { ReportForm } from "../components/social/ReportForm";
 import { RoomCard } from "../components/social/RoomCard";
 import { UserIdentityLink } from "../components/social/UserProfileLink";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
@@ -295,6 +296,17 @@ export function ProfilePage() {
           status === "authenticated" && !isOwnProfile && !profile.isMoot
         }
       />
+      {!isOwnProfile ? (
+        <motion.div variants={cardEntrance} custom={1} initial="hidden" animate="show">
+          <ReportForm
+            targetType="profile"
+            targetId={profile.user.id}
+            reportedUserId={profile.user.id}
+            title="Report profile"
+            explainer={`This reports @${profile.user.handle}'s profile to moderators.`}
+          />
+        </motion.div>
+      ) : null}
       {isOwnProfile && editingProfile ? (
         <ProfileEditModal
           key={`${profile.user.handle}-${profile.updatedAt ?? ""}`}
@@ -305,7 +317,7 @@ export function ProfilePage() {
           onUpload={handleProfileImageUpload}
         />
       ) : null}
-      <motion.div variants={cardEntrance} custom={1} initial="hidden" animate="show">
+      <motion.div variants={cardEntrance} custom={2} initial="hidden" animate="show">
         <div
           aria-label="Profile sections"
           className="mb-4 flex gap-2 overflow-x-auto pb-1"

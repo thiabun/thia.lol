@@ -104,6 +104,59 @@ test("selecting a moot opens or creates the direct conversation", async ({
   expect(createBody).toMatchObject({ targetUserId: 2 });
 });
 
+test("conversation member can report an individual chat message", async ({ page }) => {
+  let reportPayload: Record<string, unknown> | undefined;
+  await mockAuthenticatedChat(page);
+  await page.route("**/api/reports", async (route) => {
+    reportPayload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          id: 7,
+          ...reportPayload,
+          reason: reportPayload.category,
+          status: "open",
+          createdAt: "2026-06-10 10:00:00",
+          updatedAt: "2026-06-10 10:00:00",
+          reviewedAt: null,
+          actionTaken: null,
+          moderatorNote: null,
+          reporter: null,
+          reportedUser: null,
+          reviewedBy: null,
+          post: null,
+          profile: null,
+          room: null,
+          message: null,
+          actionCount: 0,
+        },
+      }),
+    });
+  });
+
+  await page.goto("/chat");
+  await expect(page.getByTestId("chat-message-list")).toContainText(
+    "hello from a moot",
+  );
+  await page.getByRole("button", { name: "Report" }).click();
+  const reportForm = page.getByRole("heading", { name: "Report message" }).locator("..");
+
+  await expect(reportForm).toContainText("reports this chat message");
+  await page.getByLabel("What's wrong?").selectOption("harassment");
+  await reportForm.getByRole("button", { name: "Report", exact: true }).click();
+
+  await expect(page.getByText("Report sent.")).toBeVisible();
+  expect(reportPayload).toMatchObject({
+    targetType: "message",
+    targetId: 100,
+    reportedUserId: 2,
+    category: "harassment",
+  });
+});
+
 test("authenticated conversations API requires login", async ({ page }) => {
   test.skip(
     process.env.THIA_BASE_URL === undefined,

@@ -158,6 +158,9 @@ Use safe, disposable test content for mutating checks. Avoid posting private inf
 | Engagement | Reblog and unreblog a post or reply |  |  |
 | Reports | Report a disposable post |  |  |
 | Reports | Report a disposable reply |  |  |
+| Reports | Report a test profile that is not your own |  |  |
+| Reports | Report a public room that you do not own |  |  |
+| Reports | Report a chat message from another conversation member |  |  |
 | Profile | Save profile edits |  |  |
 | Profile | Upload avatar image |  |  |
 | Profile | Upload banner image |  |  |
@@ -172,7 +175,7 @@ Use safe, disposable test content for mutating checks. Avoid posting private inf
 | Notifications | Trigger and view notifications |  |  |
 | Chat | Open Chat |  |  |
 | Chat | Start chat from a moot profile |  |  |
-| Admin | Review reported post/reply in admin reports |  |  |
+| Admin | Review reported post/reply/profile/room/message in admin reports |  |  |
 | Admin | Grant and revoke a badge for a test profile |  |  |
 
 ## Public Tester Instructions
@@ -216,7 +219,7 @@ For sensitive safety, privacy, account, or moderation concerns, avoid posting pr
 ## Known Limitations
 
 - Chat page still lacks a native moot picker or start-DM flow. Chat can start from a moot profile or direct supported flow, but the Chat page itself lists existing conversations only.
-- Broader report targets are still incomplete. Post reporting exists; profile, room, and message reporting need additional product and moderation scope.
+- Profile, room, and chat-message report paths are implemented for public testing, but deeper moderation workflows such as room-specific queues, message deletion, retention tooling, and user-visible report status remain deferred.
 - Block, mute, and remove-follower controls are not yet scoped or implemented.
 - Notification controls, grouping, pagination, and high-volume controls are deferred.
 - The deeper thread root model is deferred. Current thread visibility filtering covers the rendered depth, but unbounded deep reply trees may need a `root_id` or `thread_id` model later.

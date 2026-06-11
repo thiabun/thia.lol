@@ -381,9 +381,9 @@ const policies: Record<string, PolicyPageContent> = {
       {
         title: "Report flow",
         items: [
-          "Logged-in users can report posts where report tools are available.",
+          "Logged-in users can report posts, replies, profiles, rooms, and chat messages where report tools are available.",
           "Reports ask for a category and optional context so moderators can compare the issue with the Community Guidelines.",
-          "Built-in profile, room, and message reports are not fully available yet. Use the Legal Contact page for those concerns and include links, handles, screenshots if useful, and a plain explanation.",
+          "Use the Legal Contact page for sensitive safety, privacy, copyright, or account concerns that need extra context outside the report form.",
         ],
       },
       {

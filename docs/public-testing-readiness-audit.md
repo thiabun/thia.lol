@@ -203,3 +203,13 @@ Recommended next task: Run `THIA_BASE_URL=https://thia.lol` smoke tests with tes
 - Chat message bubbles are intentionally unchanged because they do not show a separate sender avatar/name/handle in the current 1:1 layout; the selected conversation header and conversation list identity now link to the other participant profile.
 - No API changes or migrations were added.
 - Local coverage uses mocked Playwright smoke tests for post/thread, chat, notifications, follower/following panels, badge/admin, and room identity links. Deployed API-backed manual verification is still recommended after deployment.
+
+## 2026-06-11 Broader report target addendum
+
+- Added profile, room, and chat-message report paths using the same structured report categories and policy links as post/reply reports.
+- Profile reports target the profile user directly and suppress the public self-report action. The API rejects self-profile reports and requires the reported profile user to be active.
+- Room reports target public, non-deleted rooms and include the room owner as reported-user context when available. The UI suppresses reporting a room owned by the current user.
+- Chat message reports target an individual message and are shown only for messages sent by the other participant in the current authenticated conversation. The API requires conversation membership before accepting a message report and does not expose adjacent private messages in the admin report payload.
+- Admin report rows now include target-specific summaries for profiles, rooms, and messages, while existing post hide/remove, user suspend, review, and dismiss actions remain the only enforcement controls in this scoped pass.
+- No migration was added. The existing `reports.target_type` schema already supports `post`, `profile`, `room`, and `message`.
+- Local coverage uses mocked Playwright smoke tests and PHP source-inspection checks. Deployed API-backed verification is still recommended with authenticated test accounts.

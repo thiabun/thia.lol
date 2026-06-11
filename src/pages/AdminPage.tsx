@@ -801,10 +801,16 @@ function ReportRow({
             <p className="text-xs font-medium uppercase text-muted">Target summary</p>
             <p className="mt-2 text-sm font-semibold text-text">{targetTitle}</p>
             <p className="mt-1 text-xs text-muted">
-              {targetTypeLabel(report.targetType)}
-              {report.targetId ? ` #${report.targetId}` : ""}
+              {targetSummaryText(report)}
             </p>
           </div>
+          {report.profile ? (
+            <TargetSummary label="Profile" user={report.profile} />
+          ) : null}
+          {report.room ? <RoomReportSummary room={report.room} /> : null}
+          {report.message ? (
+            <MessageReportSummary message={report.message} />
+          ) : null}
           <TargetSummary label="Reported user" user={report.reportedUser} />
           <TextareaField
             id={`moderation-notes-${report.id}`}
@@ -977,6 +983,47 @@ function TargetSummary({
   );
 }
 
+function RoomReportSummary({ room }: { room: NonNullable<ModerationReport["room"]> }) {
+  return (
+    <div className="rounded-card border border-line bg-canvas/45 p-3">
+      <p className="text-xs font-medium uppercase text-muted">Room</p>
+      <p className="mt-2 text-sm font-semibold text-text">{room.name}</p>
+      <p className="mt-1 text-xs text-muted">
+        /{room.slug} · {room.visibility} · {room.live ? "live" : "not live"}
+      </p>
+      {room.summary ? (
+        <p className="mt-2 line-clamp-3 text-sm leading-6 text-muted">
+          {room.summary}
+        </p>
+      ) : null}
+      <p className="mt-2 text-xs text-muted">
+        Owner: <UserLabel user={room.owner} />
+      </p>
+    </div>
+  );
+}
+
+function MessageReportSummary({
+  message,
+}: {
+  message: NonNullable<ModerationReport["message"]>;
+}) {
+  return (
+    <div className="rounded-card border border-line bg-canvas/45 p-3">
+      <p className="text-xs font-medium uppercase text-muted">Message</p>
+      <p className="mt-2 text-sm font-semibold text-text">
+        From <UserLabel user={message.sender} />
+      </p>
+      <p className="mt-1 text-xs text-muted">
+        Conversation {message.conversationId} · {formatDate(message.createdAt)}
+      </p>
+      <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm leading-6 text-text">
+        {message.deletedAt ? "Message has been deleted." : message.body}
+      </p>
+    </div>
+  );
+}
+
 function UserLabel({ user }: { user: ModerationUser | null }) {
   if (!user) {
     return <>unknown user</>;
@@ -1037,6 +1084,26 @@ function targetLabel(report: ModerationReport): string {
   }
 
   return "Reported content";
+}
+
+function targetSummaryText(report: ModerationReport): string {
+  if (report.post) {
+    return `Post by ${report.post.author?.handle ? `@${report.post.author.handle}` : "unknown user"}`;
+  }
+
+  if (report.profile) {
+    return `${report.profile.displayName} (@${report.profile.handle}) · ${report.profile.status}`;
+  }
+
+  if (report.room) {
+    return `/${report.room.slug} · ${report.room.visibility}`;
+  }
+
+  if (report.message) {
+    return `Message from ${report.message.sender?.handle ? `@${report.message.sender.handle}` : "unknown user"}`;
+  }
+
+  return targetTypeLabel(report.targetType);
 }
 
 function actionTakenLabel(value: string | null): string {

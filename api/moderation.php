@@ -88,14 +88,6 @@ function reports_create(): void
         json_error('Report target is required.', 422);
     }
 
-    if ($targetType === 'room') {
-        json_error('Room reports are not available yet.', 422);
-    }
-
-    if ($targetType === 'message') {
-        json_error('Message reports are not available yet.', 422);
-    }
-
     if ($targetType === 'post') {
         $postId ??= $targetId;
 
@@ -109,22 +101,65 @@ function reports_create(): void
             json_error('Post not found.', 404);
         }
 
-        $reportedUserId ??= (int) $post['author_id'];
+        $reportedUserId = (int) $post['author_id'];
         $targetId = $postId;
     }
 
     if ($targetType === 'profile') {
-        $reportedUserId ??= $targetId;
+        $targetId ??= $reportedUserId;
 
-        if ($reportedUserId === null) {
+        if ($targetId === null) {
             json_error('Profile id is required.', 422);
         }
 
-        if (moderation_user_record($reportedUserId) === null) {
-            json_error('Profile not found.', 404);
+        $reportedUserId = $targetId;
+
+        if ($reportedUserId === (int) $session['user_id']) {
+            json_error('You cannot report your own profile.', 422);
         }
 
-        $targetId = $reportedUserId;
+        if (moderation_reportable_user_record($reportedUserId) === null) {
+            json_error('Profile not found.', 404);
+        }
+    } elseif ($targetType === 'room') {
+        if ($targetId === null) {
+            json_error('Room id is required.', 422);
+        }
+
+        $room = moderation_room_record($targetId);
+
+        if ($room === null) {
+            json_error('Room not found.', 404);
+        }
+
+        $reportedUserId = null;
+        if (($room['room_created_by'] ?? null) !== null) {
+            $reportedUserId = (int) $room['room_created_by'];
+        }
+
+        if ($reportedUserId === (int) $session['user_id']) {
+            json_error('You cannot report your own room.', 422);
+        }
+    } elseif ($targetType === 'message') {
+        if ($targetId === null) {
+            json_error('Message id is required.', 422);
+        }
+
+        $message = moderation_message_record($targetId, (int) $session['user_id']);
+
+        if ($message === null) {
+            json_error('Message not found.', 404);
+        }
+
+        if ($message['message_deleted_at'] !== null) {
+            json_error('Message not found.', 404);
+        }
+
+        $reportedUserId = (int) $message['message_sender_id'];
+
+        if ($reportedUserId === (int) $session['user_id']) {
+            json_error('You cannot report your own message.', 422);
+        }
     } elseif ($reportedUserId !== null && moderation_user_record($reportedUserId) === null) {
         json_error('Reported profile not found.', 404);
     }
@@ -556,6 +591,84 @@ function moderation_user_record(int $userId): ?array
     return is_array($user) ? $user : null;
 }
 
+function moderation_reportable_user_record(int $userId): ?array
+{
+    $statement = db_query(
+        "SELECT
+            u.id AS target_user_id,
+            u.handle AS target_handle,
+            u.email AS target_email,
+            u.role AS target_role,
+            u.status AS target_status,
+            p.display_name AS target_display_name,
+            p.avatar_url AS target_avatar_url
+         FROM users u
+         INNER JOIN profiles p ON p.user_id = u.id
+         WHERE u.id = :id
+           AND u.status = 'active'
+         LIMIT 1",
+        ['id' => $userId]
+    );
+    $user = $statement->fetch();
+
+    return is_array($user) ? $user : null;
+}
+
+function moderation_room_record(int $roomId): ?array
+{
+    $statement = db_query(
+        "SELECT
+            r.id AS room_id,
+            r.slug AS room_slug,
+            r.name AS room_name,
+            r.summary AS room_summary,
+            r.visibility AS room_visibility,
+            r.is_live AS room_is_live,
+            r.created_by AS room_created_by
+         FROM rooms r
+         WHERE r.id = :id
+           AND r.visibility = 'public'
+           " . room_not_deleted_sql('r') . "
+         LIMIT 1",
+        ['id' => $roomId]
+    );
+    $room = $statement->fetch();
+
+    return is_array($room) ? $room : null;
+}
+
+function moderation_message_record(int $messageId, int $viewerUserId): ?array
+{
+    foreach (['conversation_members', 'messages'] as $tableName) {
+        if (!database_table_exists($tableName)) {
+            json_error('Chat storage is not ready. Run pending migrations.', 503);
+        }
+    }
+
+    $statement = db_query(
+        "SELECT
+            m.id AS message_id,
+            m.conversation_id AS message_conversation_id,
+            m.sender_id AS message_sender_id,
+            m.body AS message_body,
+            m.deleted_at AS message_deleted_at,
+            m.created_at AS message_created_at
+         FROM messages m
+         INNER JOIN conversation_members viewer_member
+            ON viewer_member.conversation_id = m.conversation_id
+           AND viewer_member.user_id = :viewer_user_id
+         WHERE m.id = :message_id
+         LIMIT 1",
+        [
+            'message_id' => $messageId,
+            'viewer_user_id' => $viewerUserId,
+        ]
+    );
+    $message = $statement->fetch();
+
+    return is_array($message) ? $message : null;
+}
+
 function moderation_report_record(int $reportId): array
 {
     $statement = db_query(
@@ -677,6 +790,32 @@ function moderation_report_select_sql(): string
         post_author.role AS post_author_role,
         post_author.status AS post_author_status,
         post_author_profile.display_name AS post_author_display_name,
+        report_profile_user.id AS profile_user_id,
+        report_profile_user.handle AS profile_handle,
+        report_profile_user.role AS profile_role,
+        report_profile_user.status AS profile_status,
+        report_profile.display_name AS profile_display_name,
+        room.id AS room_id,
+        room.slug AS room_slug,
+        room.name AS room_name,
+        room.summary AS room_summary,
+        room.visibility AS room_visibility,
+        room.is_live AS room_is_live,
+        room_owner.id AS room_owner_user_id,
+        room_owner.handle AS room_owner_handle,
+        room_owner.role AS room_owner_role,
+        room_owner.status AS room_owner_status,
+        room_owner_profile.display_name AS room_owner_display_name,
+        message.id AS message_id,
+        message.conversation_id AS message_conversation_id,
+        message.body AS message_body,
+        message.deleted_at AS message_deleted_at,
+        message.created_at AS message_created_at,
+        message_sender.id AS message_sender_user_id,
+        message_sender.handle AS message_sender_handle,
+        message_sender.role AS message_sender_role,
+        message_sender.status AS message_sender_status,
+        message_sender_profile.display_name AS message_sender_display_name,
         COALESCE(actions.action_count, 0) AS action_count
     FROM reports rep
     LEFT JOIN users reporter ON reporter.id = rep.reporter_id
@@ -688,6 +827,14 @@ function moderation_report_select_sql(): string
     LEFT JOIN posts p ON p.id = COALESCE(rep.post_id, IF(rep.target_type = 'post', rep.target_id, NULL))
     LEFT JOIN users post_author ON post_author.id = p.author_id
     LEFT JOIN profiles post_author_profile ON post_author_profile.user_id = post_author.id
+    LEFT JOIN users report_profile_user ON report_profile_user.id = IF(rep.target_type = 'profile', rep.target_id, NULL)
+    LEFT JOIN profiles report_profile ON report_profile.user_id = report_profile_user.id
+    LEFT JOIN rooms room ON room.id = IF(rep.target_type = 'room', rep.target_id, NULL)
+    LEFT JOIN users room_owner ON room_owner.id = room.created_by
+    LEFT JOIN profiles room_owner_profile ON room_owner_profile.user_id = room_owner.id
+    LEFT JOIN messages message ON message.id = IF(rep.target_type = 'message', rep.target_id, NULL)
+    LEFT JOIN users message_sender ON message_sender.id = message.sender_id
+    LEFT JOIN profiles message_sender_profile ON message_sender_profile.user_id = message_sender.id
     LEFT JOIN (
         SELECT report_id, COUNT(*) AS action_count
         FROM moderation_actions
@@ -715,6 +862,9 @@ function moderation_report_payload(array $row): array
         'reportedUser' => moderation_user_payload($row, 'reported'),
         'reviewedBy' => moderation_user_payload($row, 'reviewer'),
         'post' => moderation_post_payload($row),
+        'profile' => moderation_profile_payload($row),
+        'room' => moderation_room_payload($row),
+        'message' => moderation_message_payload($row),
         'actionCount' => (int) ($row['action_count'] ?? 0),
     ];
 }
@@ -747,5 +897,47 @@ function moderation_post_payload(array $row): ?array
         'visibility' => (string) $row['post_visibility'],
         'createdAt' => $row['post_created_at'],
         'author' => moderation_user_payload($row, 'post_author'),
+    ];
+}
+
+function moderation_profile_payload(array $row): ?array
+{
+    if (($row['profile_user_id'] ?? null) === null) {
+        return null;
+    }
+
+    return moderation_user_payload($row, 'profile');
+}
+
+function moderation_room_payload(array $row): ?array
+{
+    if (($row['room_id'] ?? null) === null) {
+        return null;
+    }
+
+    return [
+        'id' => (int) $row['room_id'],
+        'slug' => (string) $row['room_slug'],
+        'name' => (string) $row['room_name'],
+        'summary' => (string) ($row['room_summary'] ?? ''),
+        'visibility' => (string) ($row['room_visibility'] ?? 'public'),
+        'live' => (bool) ($row['room_is_live'] ?? false),
+        'owner' => moderation_user_payload($row, 'room_owner'),
+    ];
+}
+
+function moderation_message_payload(array $row): ?array
+{
+    if (($row['message_id'] ?? null) === null) {
+        return null;
+    }
+
+    return [
+        'id' => (int) $row['message_id'],
+        'conversationId' => (int) $row['message_conversation_id'],
+        'body' => $row['message_deleted_at'] === null ? (string) $row['message_body'] : '',
+        'deletedAt' => $row['message_deleted_at'] ?? null,
+        'createdAt' => $row['message_created_at'],
+        'sender' => moderation_user_payload($row, 'message_sender'),
     ];
 }

@@ -19,6 +19,7 @@ Completed or effectively completed:
 - The `20260610_0010_add_room_soft_delete.sql` migration exists in `backend/database/migrations/`.
 - Room mood and post mood badges have been removed from public surfaces inspected in the current code.
 - Reports 2.0 for posts is implemented: structured categories, report details, admin queue, report statuses, dismiss/review/action controls, post hide/remove, user suspend, and moderation notes.
+- Broader report targets are implemented for profiles, rooms, and chat messages. The shared report form now covers posts/replies, public profiles, public rooms, and individual chat messages; the API validates active profile targets, public non-deleted room targets, and chat conversation membership for message targets; admin reports include profile, room, and message summaries.
 - Chat is a real moots-only 1:1 DM foundation with conversations, messages, read state, message notifications, profile-to-chat start through `/chat?with=handle`, and a Chat page "Message a moot" picker backed by an authenticated current-user moots endpoint.
 - Profile navigation behavior sweep is implemented across post/thread author identity, chat conversation and moot-picker identity, notifications, followers/following panels, badge admin recent grants, room owner/moderator surfaces, room cards, and admin report identity labels.
 - Legal, privacy, cookie, copyright, community guideline, moderation, and legal contact pages exist. The footer includes legal links and the required copyright notice.
@@ -62,7 +63,7 @@ Items where existing docs no longer match the repository or the latest project c
 ### P1
 
 - Verify profile-click behavior manually after deployment across PostCard, thread modal, Chat, Notifications, follower/following panels, badges, rooms, and admin surfaces.
-- Add or refine profile, room, and message reporting paths. Current policy copy tells users to use Legal Contact for these concerns, but in-product reporting is still limited.
+- Verify profile, room, and message reporting paths after deployment with authenticated test accounts.
 - Decide and scope first safety controls for social graph and chat: remove follower, block, mute, message deletion/reporting, and retention expectations.
 - Create a public-testing launch checklist that combines deployment steps, migration checks, smoke commands, manual test matrix, known limitations, and tester instructions.
 
@@ -124,6 +125,7 @@ Items where existing docs no longer match the repository or the latest project c
 - Rationale: Post reporting exists, but profile, room, and message concerns still rely on Legal Contact. Public testing with chat and rooms needs clearer safety paths.
 - Estimated complexity: Large.
 - Codex suitability: Medium. Codex can implement scoped target support, but product decisions are needed for room owner queues, message visibility, and abuse handling.
+- Status: Implemented locally for the scoped targets. No migration was added because the existing reports schema already supports `post`, `profile`, `room`, and `message` target types. Deployed authenticated verification remains recommended.
 
 ### 6. Scope first block, mute, and remove-follower controls
 
@@ -232,7 +234,7 @@ Recommended Project cards without immediate GitHub Issues:
 - Manual card: Thia authenticated smoke pass for profile edit, room edit, uploads, thread reply mutations, reports, reblogs, chat, and badge grant/revoke.
 - Manual card: decide public registration stance during early testing.
 - Product card: decide the first block/mute/remove-follower scope.
-- Product card: decide message moderation visibility and retention before message reporting.
+- Product card: decide deeper message moderation visibility, retention, and deletion policy before adding any tooling beyond reported-message summaries.
 - Product card: decide whether deep thread trees need `root_id`/`thread_id`.
 - External card: legal review before treating policy pages as final.
 
@@ -249,5 +251,5 @@ Items that should remain deferred rather than become near-term issues:
 ## Suggested Next Three Codex Tasks
 
 1. Create `docs/public-testing-launch-checklist.md` with deployment steps, migration checks, smoke commands, manual testing matrix, known limitations, tester instructions, and bug report guidance.
-2. Add profile, room, and message report paths after the moderation visibility and retention scope is decided.
+2. Run deployed authenticated verification for profile, room, and message report paths, including admin queue summaries.
 3. Scope the first block, mute, and remove-follower controls before broader public testing.
