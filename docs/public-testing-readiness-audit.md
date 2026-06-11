@@ -213,3 +213,12 @@ Recommended next task: Run `THIA_BASE_URL=https://thia.lol` smoke tests with tes
 - Admin report rows now include target-specific summaries for profiles, rooms, and messages, while existing post hide/remove, user suspend, review, and dismiss actions remain the only enforcement controls in this scoped pass.
 - No migration was added. The existing `reports.target_type` schema already supports `post`, `profile`, `room`, and `message`.
 - Local coverage uses mocked Playwright smoke tests and PHP source-inspection checks. Deployed API-backed verification is still recommended with authenticated test accounts.
+
+## 2026-06-11 Thread Experience V2 visual foundation addendum
+
+- Widened the thread modal and centered the header title/context so the surface feels more intentional on desktop while staying bounded on mobile.
+- Reworked the modal-only root/reply presentation into one connected conversation container with avatar rails, lighter reply rows, and less card fragmentation.
+- Suppressed fallback `Profile feed` metadata inside the thread modal while preserving real room links, author/profile links, and existing action isolation.
+- Removed the duplicate authenticated root Reply button inside the modal; the root action row remains the single root reply entry point for that context.
+- Preserved existing reply create, media upload UI, nested reply loading, like, reblog, report, and delete behavior. No API changes, PHP changes, database changes, or migrations were added.
+- Local coverage uses mocked Playwright thread tests for modal opening, desktop width, connected container/rows, profile and room links, empty state, reply composer, nested replies, reblog, report, and delete controls. API-backed deployed reply mutation verification is still recommended before launch sign-off.

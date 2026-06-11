@@ -699,6 +699,9 @@ function ThreadModal({
   const [loadError, setLoadError] = useState<string>();
   const isCheckingAuth = authStatus === "loading";
   const isAuthenticated = authStatus === "authenticated" && Boolean(csrfToken);
+  const replyCountLabel = `${modalCommentCount} ${
+    modalCommentCount === 1 ? "reply" : "replies"
+  }`;
 
   useEffect(() => {
     if (!open) {
@@ -794,13 +797,19 @@ function ThreadModal({
             aria-modal="true"
             aria-labelledby={titleId}
             data-testid="thread-modal"
-            className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-panel border border-line bg-surface shadow-lift sm:max-h-[min(760px,calc(100dvh-3rem))]"
+            className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-panel border border-line bg-surface shadow-lift sm:max-h-[min(820px,calc(100dvh-3rem))]"
             variants={modalPanel}
           >
-            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-line bg-surface/95 px-4 py-3 backdrop-blur-veil sm:px-5">
-              <h2 id={titleId} className="text-base font-semibold text-text">
-                Thread
-              </h2>
+            <div className="sticky top-0 z-10 grid grid-cols-[2.5rem_1fr_2.5rem] items-center gap-3 border-b border-line bg-surface/95 px-3 py-3 backdrop-blur-veil sm:px-5">
+              <span aria-hidden="true" />
+              <div className="min-w-0 text-center">
+                <h2 id={titleId} className="truncate text-base font-semibold text-text">
+                  Thread
+                </h2>
+                <p className="mt-0.5 truncate text-xs text-muted">
+                  @{post.author.handle} · {replyCountLabel}
+                </p>
+              </div>
               <Button
                 type="button"
                 variant="ghost"
@@ -812,94 +821,80 @@ function ThreadModal({
               />
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
-              <ParentPostPreview post={post} />
-              <div className="mt-3 border-b border-line pb-3">
-                <ReactionControls
-                  post={post}
-                  commentCount={modalCommentCount}
-                  initialLikeCount={post.likeCount}
-                  initiallyLiked={post.likedByCurrentUser}
-                  onOpenThread={() => setComposerOpen(true)}
-                  actions={
-                    canDeleteRoot ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={actionPending}
-                        icon={<Trash2 aria-hidden="true" size={15} />}
-                        onClick={onRootDelete}
-                      >
-                        Delete
-                      </Button>
-                    ) : null
-                  }
-                />
-              </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5 lg:px-7 lg:py-6">
+              <div
+                className="mx-auto max-w-3xl rounded-panel border border-line bg-canvas/28 shadow-inner-soft"
+                data-testid="thread-conversation"
+              >
+                <ParentPostPreview post={post} />
+                <div className="border-b border-line/70 px-4 pb-4 sm:px-5">
+                  <ReactionControls
+                    post={post}
+                    commentCount={modalCommentCount}
+                    initialLikeCount={post.likeCount}
+                    initiallyLiked={post.likedByCurrentUser}
+                    onOpenThread={() => setComposerOpen(true)}
+                    actions={
+                      canDeleteRoot ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={actionPending}
+                          icon={<Trash2 aria-hidden="true" size={15} />}
+                          onClick={onRootDelete}
+                        >
+                          Delete
+                        </Button>
+                      ) : null
+                    }
+                  />
+                </div>
 
-              {isAuthenticated && composerOpen ? (
-                <ReplyComposer
-                  autoFocus
-                  className="mt-4 border-b border-line pb-4"
-                  parentPostId={post.id}
-                  csrfToken={csrfToken}
-                  runWithAuth={runWithAuth}
-                  onCancel={() => setComposerOpen(false)}
-                  onCreated={handleReplyCreated}
-                />
-              ) : isAuthenticated ? (
-                <div className="mt-4 flex justify-end border-b border-line pb-4">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    icon={<MessageCircle aria-hidden="true" size={15} />}
-                    onClick={() => setComposerOpen(true)}
-                  >
-                    Reply
-                  </Button>
-                </div>
-              ) : isCheckingAuth ? (
-                <div className="mt-4 border-b border-line pb-4">
-                  <p className="rounded-card border border-line bg-canvas/45 p-4 text-sm text-muted">
-                    Checking session...
-                  </p>
-                </div>
-              ) : (
-                <div className="mt-4 flex flex-col gap-3 border-b border-line pb-4 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm text-muted">Log in to reply.</p>
-                  <ButtonLink to="/login" size="sm" onClick={onClose}>
-                    Log in
-                  </ButtonLink>
-                </div>
-              )}
-
-              <div className="mt-4 space-y-3">
-                {loading ? (
-                  <p className="rounded-card border border-line bg-canvas/45 p-4 text-sm text-muted">
-                    Loading replies...
-                  </p>
-                ) : null}
-                {loadError ? (
-                  <p className="rounded-card border border-rose/30 bg-rose/15 p-4 text-sm text-rose-ink">
-                    {loadError}
-                  </p>
-                ) : null}
-                {!loading && !loadError && replies.length === 0 ? (
-                  <p className="rounded-card border border-line bg-canvas/45 p-4 text-sm text-muted">
-                    No replies yet.
-                  </p>
-                ) : null}
-                <AnimatePresence initial={false}>
-                  {replies.map((reply) => (
-                    <ReplyPreview
-                      key={reply.id}
-                      reply={reply}
-                      onDeleted={handleReplyDeleted}
+                {isAuthenticated && composerOpen ? (
+                  <div className="border-b border-line/70 px-4 py-4 sm:px-5">
+                    <ReplyComposer
+                      autoFocus
+                      parentPostId={post.id}
+                      csrfToken={csrfToken}
+                      runWithAuth={runWithAuth}
+                      onCancel={() => setComposerOpen(false)}
+                      onCreated={handleReplyCreated}
                     />
-                  ))}
-                </AnimatePresence>
+                  </div>
+                ) : isCheckingAuth ? (
+                  <div className="border-b border-line/70 px-4 py-4 sm:px-5">
+                    <ThreadStateNotice text="Checking session..." />
+                  </div>
+                ) : !isAuthenticated ? (
+                  <div className="flex flex-col gap-3 border-b border-line/70 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                    <p className="text-sm text-muted">Log in to reply.</p>
+                    <ButtonLink to="/login" size="sm" onClick={onClose}>
+                      Log in
+                    </ButtonLink>
+                  </div>
+                ) : null}
+
+                <div className="px-4 py-2 sm:px-5">
+                  {loading ? <ThreadStateNotice text="Loading replies..." /> : null}
+                  {loadError ? (
+                    <ThreadStateNotice tone="error" text={loadError} />
+                  ) : null}
+                  {!loading && !loadError && replies.length === 0 ? (
+                    <ThreadStateNotice text="No replies yet." />
+                  ) : null}
+                  <div className="divide-y divide-line/60" data-testid="thread-replies">
+                    <AnimatePresence initial={false}>
+                      {replies.map((reply) => (
+                        <ReplyPreview
+                          key={reply.id}
+                          reply={reply}
+                          onDeleted={handleReplyDeleted}
+                        />
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                </div>
               </div>
             </div>
           </motion.div>
@@ -917,16 +912,25 @@ function ThreadModal({
 
 function ParentPostPreview({ post }: { post: Post }) {
   return (
-    <div className="rounded-card border border-line bg-canvas/45 p-4">
-      <div className="flex items-start gap-3">
-        <Link
-          to={`/@${post.author.handle}`}
-          aria-label={`${post.author.displayName}'s profile`}
-          className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-        >
-          <Avatar user={post.author} />
-        </Link>
-        <div className="min-w-0 flex-1">
+    <article
+      className="relative px-4 pb-1 pt-5 sm:px-5 sm:pt-6"
+      data-testid="thread-root-post"
+    >
+      <div className="grid grid-cols-[2.75rem_1fr] gap-3 sm:grid-cols-[3rem_1fr]">
+        <div className="relative flex justify-center">
+          <div
+            className="absolute bottom-0 top-12 w-px bg-line-strong/60"
+            aria-hidden="true"
+          />
+          <Link
+            to={`/@${post.author.handle}`}
+            aria-label={`${post.author.displayName}'s profile`}
+            className="relative z-10 shrink-0 rounded-full bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          >
+            <Avatar user={post.author} />
+          </Link>
+        </div>
+        <div className="min-w-0 pb-4">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <Link
               to={`/@${post.author.handle}`}
@@ -943,15 +947,18 @@ function ParentPostPreview({ post }: { post: Post }) {
             <span className="text-muted/50">·</span>
             <span className="text-sm text-muted">{post.createdAt}</span>
           </div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Link
-              to={`/rooms/${post.room.slug}`}
-              className="rounded-control focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-            >
-              <Badge tone="warm">{post.room.name}</Badge>
-            </Link>
-          </div>
-          <p className="mt-2 text-pretty text-sm leading-6 text-text">{post.body}</p>
+          {post.room.slug !== "profile" ? (
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+              <span>in</span>
+              <Link
+                to={`/rooms/${post.room.slug}`}
+                className="font-medium text-accent-strong underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              >
+                {post.room.name}
+              </Link>
+            </div>
+          ) : null}
+          <p className="mt-3 text-pretty text-base leading-7 text-text">{post.body}</p>
           {post.mediaUrl && post.mediaUrl !== "/ambient-veil.webp" ? (
             <div className="mt-3 overflow-hidden rounded-card border border-line bg-canvas">
               <img
@@ -965,7 +972,27 @@ function ParentPostPreview({ post }: { post: Post }) {
           ) : null}
         </div>
       </div>
-    </div>
+    </article>
+  );
+}
+
+function ThreadStateNotice({
+  text,
+  tone = "neutral",
+}: {
+  text: string;
+  tone?: "neutral" | "error";
+}) {
+  return (
+    <p
+      className={cn(
+        "mx-auto my-5 max-w-sm rounded-card px-4 py-5 text-center text-sm",
+        tone === "error" ? "bg-rose/15 text-rose-ink" : "bg-surface/50 text-muted",
+      )}
+      data-testid="thread-state"
+    >
+      {text}
+    </p>
   );
 }
 
@@ -1049,19 +1076,29 @@ function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
       exit={{ opacity: 0, y: -8 }}
       transition={{ type: "spring", stiffness: 260, damping: 26 }}
       className={cn(
-        "rounded-card border border-line bg-canvas/35 p-4",
-        depth > 0 && "ml-4 border-l-line-strong sm:ml-6",
+        "relative py-4",
+        depth > 0 && nestedReplyOffsetClass(depth),
       )}
+      data-testid="thread-reply-item"
     >
-      <div className="flex items-start gap-3">
-        <Link
-          to={`/@${reply.author.handle}`}
-          aria-label={`${reply.author.displayName}'s profile`}
-          className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-        >
-          <Avatar user={reply.author} />
-        </Link>
-        <div className="min-w-0 flex-1">
+      <div className="grid grid-cols-[2.75rem_1fr] gap-3 sm:grid-cols-[3rem_1fr]">
+        <div className="relative flex justify-center">
+          <div className="absolute -top-4 bottom-0 w-px bg-line/80" aria-hidden="true" />
+          {depth > 0 ? (
+            <div
+              className="absolute left-1/2 top-5 h-px w-5 -translate-x-full bg-line/80"
+              aria-hidden="true"
+            />
+          ) : null}
+          <Link
+            to={`/@${reply.author.handle}`}
+            aria-label={`${reply.author.displayName}'s profile`}
+            className="relative z-10 shrink-0 rounded-full bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          >
+            <Avatar user={reply.author} />
+          </Link>
+        </div>
+        <div className="min-w-0 rounded-card bg-surface/32 px-3 py-3 sm:px-4">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <Link
               to={`/@${reply.author.handle}`}
@@ -1093,36 +1130,40 @@ function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
         </div>
       </div>
 
-      <ReactionControls
-        post={reply}
-        commentCount={localCommentCount}
-        initialLikeCount={reply.likeCount}
-        initiallyLiked={reply.likedByCurrentUser}
-        onOpenThread={() => setComposerOpen(true)}
-        actions={
-          allowDelete ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={deletePending}
-              icon={<Trash2 aria-hidden="true" size={15} />}
-              onClick={() => void handleDeleteReply()}
-            >
-              Delete
-            </Button>
-          ) : null
-        }
-      />
+      <div className="pl-[3.5rem] sm:pl-[3.75rem]">
+        <ReactionControls
+          post={reply}
+          commentCount={localCommentCount}
+          initialLikeCount={reply.likeCount}
+          initiallyLiked={reply.likedByCurrentUser}
+          onOpenThread={() => setComposerOpen(true)}
+          actions={
+            allowDelete ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={deletePending}
+                icon={<Trash2 aria-hidden="true" size={15} />}
+                onClick={() => void handleDeleteReply()}
+              >
+                Delete
+              </Button>
+            ) : null
+          }
+        />
+      </div>
 
       {deleteError ? (
-        <p className="mt-2 text-xs font-medium text-rose-ink">{deleteError}</p>
+        <p className="mt-2 pl-[3.5rem] text-xs font-medium text-rose-ink sm:pl-[3.75rem]">
+          {deleteError}
+        </p>
       ) : null}
 
       {isAuthenticated && composerOpen ? (
         <ReplyComposer
           autoFocus
-          className="mt-3"
+          className="ml-[3.5rem] mt-3 sm:ml-[3.75rem]"
           parentPostId={reply.id}
           csrfToken={csrfToken}
           runWithAuth={runWithAuth}
@@ -1132,7 +1173,7 @@ function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
       ) : null}
 
       {canNest && (localCommentCount > 0 || childReplies.length > 0) ? (
-        <div className="mt-3">
+        <div className="mt-3 pl-[3.5rem] sm:pl-[3.75rem]">
           <Button
             type="button"
             variant="ghost"
@@ -1145,13 +1186,17 @@ function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
       ) : null}
 
       {childrenError ? (
-        <p className="mt-2 text-xs font-medium text-rose-ink">{childrenError}</p>
+        <p className="mt-2 pl-[3.5rem] text-xs font-medium text-rose-ink sm:pl-[3.75rem]">
+          {childrenError}
+        </p>
       ) : null}
       {childrenLoading ? (
-        <p className="mt-2 text-xs text-muted">Loading replies...</p>
+        <p className="mt-2 pl-[3.5rem] text-xs text-muted sm:pl-[3.75rem]">
+          Loading replies...
+        </p>
       ) : null}
       {childrenOpen && childReplies.length > 0 ? (
-        <div className="mt-3 space-y-3">
+        <div className="mt-2">
           {childReplies.map((child) => (
             <ReplyPreview
               key={child.id}
@@ -1164,6 +1209,18 @@ function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
       ) : null}
     </motion.article>
   );
+}
+
+function nestedReplyOffsetClass(depth: number) {
+  if (depth === 1) {
+    return "ml-3 sm:ml-6";
+  }
+
+  if (depth === 2) {
+    return "ml-5 sm:ml-10";
+  }
+
+  return "ml-6 sm:ml-14";
 }
 
 type LikeButtonProps = {

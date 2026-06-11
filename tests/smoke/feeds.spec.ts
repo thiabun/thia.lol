@@ -301,6 +301,7 @@ test("Profile Feed renders API-backed reblogs", async ({ page }) => {
 test("post body opens thread while controls keep their own behavior", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
   await mockAuthenticatedApi(page);
   let likeCalled = false;
 
@@ -341,7 +342,14 @@ test("post body opens thread while controls keep their own behavior", async ({
 
   const dialog = page.getByTestId("thread-modal");
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByTestId("thread-conversation")).toBeVisible();
+  await expect(dialog.getByTestId("thread-root-post")).toBeVisible();
+  await expect(dialog.getByTestId("thread-reply-item")).toHaveCount(1);
   await expect(dialog.getByText("Thread reply.")).toBeVisible();
+
+  const box = await dialog.boundingBox();
+  expect(box?.width).toBeGreaterThan(850);
+
   await dialog.getByRole("button", { name: "Close thread" }).click();
   await expect(dialog).toBeHidden();
 
@@ -358,7 +366,20 @@ test("thread modal root and reply identities navigate to profiles", async ({ pag
       contentType: "application/json",
       body: JSON.stringify({
         ok: true,
-        data: { posts: [makePost({ commentCount: 1 })], personalized: true },
+        data: {
+          posts: [
+            makePost({
+              commentCount: 1,
+              room: {
+                id: 1,
+                slug: "general",
+                name: "General",
+                accent: "var(--accent-frost)",
+              },
+            }),
+          ],
+          personalized: true,
+        },
       }),
     }),
   );
@@ -398,6 +419,10 @@ test("thread modal root and reply identities navigate to profiles", async ({ pag
   await expect(dialog.getByRole("link", { name: "Mira's profile" })).toHaveAttribute(
     "href",
     "/@mira",
+  );
+  await expect(dialog.getByRole("link", { name: "General" })).toHaveAttribute(
+    "href",
+    "/rooms/general",
   );
   await expect(dialog.getByRole("button", { name: /Open replies/ }).first()).toBeVisible();
 });
@@ -453,7 +478,10 @@ test("thread reply composer is hidden until Reply and exposes media UI", async (
 
   const dialog = page.getByTestId("thread-modal");
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByTestId("thread-conversation")).toBeVisible();
+  await expect(dialog.getByTestId("thread-state")).toContainText("No replies yet.");
   await expect(dialog.getByTestId("reply-composer")).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: /Open replies/ })).toHaveCount(1);
 
   await dialog.getByRole("button", { name: /Open replies/ }).first().click();
   await expect(dialog.getByTestId("reply-composer")).toBeVisible();
