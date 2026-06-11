@@ -304,6 +304,7 @@ test("post body opens thread while controls keep their own behavior", async ({
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockAuthenticatedApi(page);
   let likeCalled = false;
+  let reblogCalled = false;
 
   await page.route("**/api/feed/home", (route) =>
     route.fulfill({
@@ -311,7 +312,18 @@ test("post body opens thread while controls keep their own behavior", async ({
       body: JSON.stringify({
         ok: true,
         data: {
-          posts: [makePost({ commentCount: 1 })],
+          posts: [
+            makePost({
+              commentCount: 1,
+              mediaUrl: "/uploads/thread-media.webp",
+              room: {
+                id: 1,
+                slug: "general",
+                name: "General",
+                accent: "var(--accent-frost)",
+              },
+            }),
+          ],
           personalized: true,
         },
       }),
@@ -336,9 +348,36 @@ test("post body opens thread while controls keep their own behavior", async ({
       }),
     });
   });
+  await page.route("**/api/posts/42/reblog", async (route) => {
+    reblogCalled = true;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          postId: 42,
+          reblogCount: 1,
+          rebloggedByMe: true,
+          rebloggedByCurrentUser: true,
+        },
+      }),
+    });
+  });
 
   await page.goto("/");
-  await page.getByTestId("post-body-open-thread").first().click();
+  const post = page.locator("article").first();
+  const bodyOpenButton = post.getByTestId("post-body-open-thread");
+  await expect(bodyOpenButton).toBeVisible();
+  await expect(bodyOpenButton).toHaveCSS("width", /\d+px/);
+  await expect(bodyOpenButton.locator("img")).toBeVisible();
+
+  const postBox = await post.boundingBox();
+  const bodyBox = await bodyOpenButton.boundingBox();
+  expect(postBox).not.toBeNull();
+  expect(bodyBox).not.toBeNull();
+  expect(bodyBox!.width).toBeGreaterThan(postBox!.width * 0.8);
+
+  await bodyOpenButton.locator("img").click();
 
   const dialog = page.getByTestId("thread-modal");
   await expect(dialog).toBeVisible();
@@ -356,6 +395,126 @@ test("post body opens thread while controls keep their own behavior", async ({
   await page.getByRole("button", { name: /Like this post/ }).first().click();
   await expect(page.getByTestId("thread-modal")).toHaveCount(0);
   expect(likeCalled).toBe(true);
+
+  await page.getByRole("button", { name: /Reblog this post/ }).first().click();
+  await expect(page.getByTestId("thread-modal")).toHaveCount(0);
+  expect(reblogCalled).toBe(true);
+});
+
+test("post body open target supports keyboard activation", async ({ page }) => {
+  await mockAuthenticatedApi(page);
+
+  await page.route("**/api/feed/home", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { posts: [makePost()], personalized: true },
+      }),
+    }),
+  );
+  await page.route("**/api/posts/42/replies", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    }),
+  );
+
+  await page.goto("/");
+  await page.getByTestId("post-body-open-thread").first().focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("thread-modal")).toBeVisible();
+});
+
+test("post profile and room links do not open the thread target", async ({
+  page,
+}) => {
+  await mockAuthenticatedApi(page);
+  await mockProfileRoutes(page, "alex");
+  await mockRoomRoutes(page, "general");
+
+  await page.route("**/api/feed/home", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          posts: [
+            makePost({
+              room: {
+                id: 1,
+                slug: "general",
+                name: "General",
+                accent: "var(--accent-frost)",
+              },
+            }),
+          ],
+          personalized: true,
+        },
+      }),
+    }),
+  );
+
+  await page.goto("/");
+  await page.locator("article").first().getByRole("link", { name: "Alex", exact: true }).click();
+  await expect(page.getByTestId("thread-modal")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/@alex$/);
+
+  await page.goto("/");
+  await page.locator("article").first().getByRole("link", { name: "General" }).click();
+  await expect(page.getByTestId("thread-modal")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/rooms\/general$/);
+});
+
+test("post report and delete controls stay isolated from body open", async ({
+  page,
+}) => {
+  await mockAuthenticatedApi(page);
+  let deleted = false;
+
+  await page.route("**/api/feed/home", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          posts: [
+            makePost({
+              author: {
+                id: 1,
+                handle: "viewer",
+                displayName: "Viewer",
+                initials: "V",
+                aura: "frost",
+                avatarUrl: null,
+              },
+            }),
+            makePost({ id: 43, body: "Reportable post." }),
+          ],
+          personalized: true,
+        },
+      }),
+    }),
+  );
+  await page.route("**/api/posts/42", async (route) => {
+    deleted = true;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { id: 42, status: "removed", deletedAt: "2026-06-10 11:00:00" },
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await page.locator("article").first().getByRole("button", { name: "Delete" }).click();
+  await expect(page.getByTestId("thread-modal")).toHaveCount(0);
+  expect(deleted).toBe(true);
+
+  await page.locator("article").first().getByRole("button", { name: "Report" }).click();
+  await expect(page.getByTestId("thread-modal")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Report post" })).toBeVisible();
 });
 
 test("thread modal root and reply identities navigate to profiles", async ({ page }) => {
@@ -425,6 +584,39 @@ test("thread modal root and reply identities navigate to profiles", async ({ pag
     "/rooms/general",
   );
   await expect(dialog.getByRole("button", { name: /Open replies/ }).first()).toBeVisible();
+  await page.waitForTimeout(250);
+
+  const rootPost = dialog.getByTestId("thread-root-post");
+  const replyItem = dialog.getByTestId("thread-reply-item").first();
+  const rootBoxBefore = await rootPost.boundingBox();
+  const replyBoxBefore = await replyItem.boundingBox();
+  expect(rootBoxBefore).not.toBeNull();
+  expect(replyBoxBefore).not.toBeNull();
+
+  await rootPost.hover();
+  await replyItem.hover();
+  await dialog.getByRole("link", { name: "Mira's profile" }).hover();
+  await dialog.getByRole("link", { name: "General" }).hover();
+  await dialog.getByRole("button", { name: /Open replies/ }).first().hover();
+  await page.waitForTimeout(100);
+
+  const rootBoxAfter = await rootPost.boundingBox();
+  const replyBoxAfter = await replyItem.boundingBox();
+  expect(rootBoxAfter).not.toBeNull();
+  expect(replyBoxAfter).not.toBeNull();
+  expect(Math.abs(rootBoxAfter!.width - rootBoxBefore!.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(rootBoxAfter!.height - rootBoxBefore!.height)).toBeLessThanOrEqual(1);
+  expect(Math.abs(replyBoxAfter!.width - replyBoxBefore!.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(replyBoxAfter!.height - replyBoxBefore!.height)).toBeLessThanOrEqual(1);
+
+  await expect(dialog.getByTestId("thread-avatar-rail")).toHaveCount(2);
+  for (const bubble of await dialog.getByTestId("thread-avatar-bubble").all()) {
+    const bubbleBox = await bubble.boundingBox();
+    expect(bubbleBox).not.toBeNull();
+    expect(bubbleBox!.width).toBeLessThanOrEqual(50);
+    expect(bubbleBox!.height).toBeLessThanOrEqual(50);
+  }
+  await expect(dialog.getByTestId("thread-rail-line-after")).toHaveCount(2);
 });
 
 test("thread reply composer is hidden until Reply and exposes media UI", async ({
@@ -856,6 +1048,60 @@ async function mockProfileRoutes(page: Page, handle: string) {
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ ok: true, data: { badges: [], featuredBadges: [] } }),
+    }),
+  );
+}
+
+async function mockRoomRoutes(page: Page, slug: string) {
+  await page.route(`**/api/rooms/${slug}`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          id: 1,
+          slug,
+          name: "General",
+          summary: "Open conversation.",
+          description: "A public room.",
+          mood: "sunveil",
+          members: 1,
+          memberCount: 1,
+          live: false,
+          accent: "var(--accent-frost)",
+          iconUrl: null,
+          bannerUrl: null,
+          rules: "",
+          visibility: "public",
+          createdBy: 2,
+          owner: {
+            id: 2,
+            handle: "alex",
+            displayName: "Alex",
+            initials: "A",
+            aura: "frost",
+            avatarUrl: null,
+          },
+          joinedByMe: false,
+          myRoomRole: null,
+          postCount: 0,
+          latestActivityAt: "2026-06-10 10:00:00",
+          createdAt: "2026-06-10 09:00:00",
+          updatedAt: "2026-06-10 10:00:00",
+        },
+      }),
+    }),
+  );
+  await page.route(`**/api/rooms/${slug}/posts`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    }),
+  );
+  await page.route(`**/api/rooms/${slug}/members`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
     }),
   );
 }

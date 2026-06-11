@@ -84,149 +84,212 @@ export function PostCard({
     setThreadOpen(true);
   }
 
+  const cardMotionProps = threadOpen
+    ? {}
+    : { whileHover: cardHover, whileTap: cardTap };
+
   return (
-    <motion.article
-      id={`post-${post.id}`}
-      className="group"
-      variants={cardEntrance}
-      custom={index}
-      initial="hidden"
-      animate="show"
-      whileHover={cardHover}
-      whileTap={cardTap}
-    >
-      <Panel className="overflow-hidden p-4 transition duration-fluid ease-fluid group-hover:border-line-strong group-hover:shadow-lift sm:p-5">
-        {post.rebloggedBy ? (
-          <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-muted">
-            <Repeat2 aria-hidden="true" size={14} />
-            <span>
-              <InlineUserProfileLink user={post.rebloggedBy}>
-                @{post.rebloggedBy.handle}
-              </InlineUserProfileLink>{" "}
-              reblogged
-            </span>
-          </div>
-        ) : null}
-        <div className="flex items-start gap-3">
-          <Link
-            to={`/@${post.author.handle}`}
-            aria-label={`${post.author.displayName}'s profile`}
-            className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-          >
-            <Avatar user={post.author} />
-          </Link>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <Link
-                to={`/@${post.author.handle}`}
-                className="text-sm font-semibold text-text underline-offset-4 hover:text-accent-strong hover:underline"
-              >
-                {post.author.displayName}
-              </Link>
-              <Link
-                to={`/@${post.author.handle}`}
-                className="text-sm text-muted underline-offset-4 hover:text-accent-strong hover:underline"
-              >
-                @{post.author.handle}
-              </Link>
-              <span className="text-muted/50">·</span>
-              <span className="text-sm text-muted">{post.createdAt}</span>
+    <>
+      <motion.article
+        id={`post-${post.id}`}
+        className="group"
+        variants={cardEntrance}
+        custom={index}
+        initial="hidden"
+        animate="show"
+        {...cardMotionProps}
+      >
+        <Panel className="overflow-hidden p-4 transition duration-fluid ease-fluid group-hover:border-line-strong group-hover:shadow-lift sm:p-5">
+          {post.rebloggedBy ? (
+            <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-muted">
+              <Repeat2 aria-hidden="true" size={14} />
+              <span>
+                <InlineUserProfileLink user={post.rebloggedBy}>
+                  @{post.rebloggedBy.handle}
+                </InlineUserProfileLink>{" "}
+                reblogged
+              </span>
             </div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Link
-                to={`/rooms/${post.room.slug}`}
-                className="rounded-control focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-              >
-                <Badge tone="warm">{post.room.name}</Badge>
-              </Link>
-              <PostSocialProof post={post} />
-            </div>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          data-testid="post-body-open-thread"
-          className="mt-4 block w-full rounded-card text-left transition duration-fluid ease-fluid hover:bg-canvas/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-          aria-label="Open thread"
-          onClick={() => openThread()}
-        >
-          <span className="block p-1 text-pretty text-base leading-7 text-text">
-            {post.body}
-          </span>
-
-          {post.mediaUrl && post.mediaUrl !== "/ambient-veil.webp" ? (
-            <span className="mt-4 block overflow-hidden rounded-card border border-line bg-canvas">
-              <img
-                src={post.mediaUrl}
-                alt=""
-                className="aspect-[16/9] w-full object-cover"
-                loading="lazy"
-                decoding="async"
-              />
-            </span>
           ) : null}
-        </button>
+          <div className="flex items-start gap-3">
+            <Link
+              to={`/@${post.author.handle}`}
+              aria-label={`${post.author.displayName}'s profile`}
+              className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            >
+              <Avatar user={post.author} />
+            </Link>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <Link
+                  to={`/@${post.author.handle}`}
+                  className="text-sm font-semibold text-text underline-offset-4 hover:text-accent-strong hover:underline"
+                >
+                  {post.author.displayName}
+                </Link>
+                <Link
+                  to={`/@${post.author.handle}`}
+                  className="text-sm text-muted underline-offset-4 hover:text-accent-strong hover:underline"
+                >
+                  @{post.author.handle}
+                </Link>
+                <span className="text-muted/50">·</span>
+                <span className="text-sm text-muted">{post.createdAt}</span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Link
+                  to={`/rooms/${post.room.slug}`}
+                  className="rounded-control focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                >
+                  <Badge tone="warm">{post.room.name}</Badge>
+                </Link>
+                <PostSocialProof post={post} />
+              </div>
+            </div>
+          </div>
 
-        <ReactionControls
-          key={`${post.id}:${post.likeCount}:${post.likedByCurrentUser}:${post.reblogCount}:${post.rebloggedByMe}:${post.rebloggedByCurrentUser}:${post.commentCount}`}
-          post={post}
-          commentCount={commentCount}
-          initialLikeCount={post.likeCount}
-          initiallyLiked={post.likedByCurrentUser}
-          onOpenThread={() => openThread({ compose: true })}
-          actions={
-            showActions ? (
-              <>
-                {canHide ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={actionPending}
-                    icon={<EyeOff aria-hidden="true" size={15} />}
-                    onClick={() => onHide?.(post)}
-                  >
-                    Hide
-                  </Button>
-                ) : null}
-                {canDelete ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={actionPending}
-                    icon={<Trash2 aria-hidden="true" size={15} />}
-                    onClick={() => onDelete?.(post)}
-                  >
-                    Delete
-                  </Button>
-                ) : null}
-              </>
-            ) : null
-          }
-        />
-        {threadOpen ? (
-          <ThreadModal
-            open={threadOpen}
-            post={{ ...post, commentCount }}
-            authStatus={status}
-            csrfToken={csrfToken}
-            initialComposerOpen={threadComposerOpen}
-            runWithAuth={runWithAuth}
-            canDeleteRoot={canDelete}
-            actionPending={actionPending}
-            onClose={() => setThreadOpen(false)}
-            onRootDelete={() => {
-              onDelete?.(post);
-              setThreadOpen(false);
-            }}
-            onReplyCreated={() => setCommentCount((current) => current + 1)}
-            onReplyDeleted={() => setCommentCount((current) => Math.max(0, current - 1))}
+          <button
+            type="button"
+            data-testid="post-body-open-thread"
+            className="mt-4 block w-full rounded-card text-left transition duration-fluid ease-fluid hover:bg-canvas/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            aria-label="Open thread"
+            onClick={() => openThread()}
+          >
+            <span className="block p-1 text-pretty text-base leading-7 text-text">
+              {post.body}
+            </span>
+
+            {post.mediaUrl && post.mediaUrl !== "/ambient-veil.webp" ? (
+              <span className="mt-4 block overflow-hidden rounded-card border border-line bg-canvas">
+                <img
+                  src={post.mediaUrl}
+                  alt=""
+                  className="aspect-[16/9] w-full object-cover"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </span>
+            ) : null}
+          </button>
+
+          <ReactionControls
+            key={`${post.id}:${post.likeCount}:${post.likedByCurrentUser}:${post.reblogCount}:${post.rebloggedByMe}:${post.rebloggedByCurrentUser}:${post.commentCount}`}
+            post={post}
+            commentCount={commentCount}
+            initialLikeCount={post.likeCount}
+            initiallyLiked={post.likedByCurrentUser}
+            onOpenThread={() => openThread({ compose: true })}
+            actions={
+              showActions ? (
+                <>
+                  {canHide ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={actionPending}
+                      icon={<EyeOff aria-hidden="true" size={15} />}
+                      onClick={() => onHide?.(post)}
+                    >
+                      Hide
+                    </Button>
+                  ) : null}
+                  {canDelete ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={actionPending}
+                      icon={<Trash2 aria-hidden="true" size={15} />}
+                      onClick={() => onDelete?.(post)}
+                    >
+                      Delete
+                    </Button>
+                  ) : null}
+                </>
+              ) : null
+            }
           />
-        ) : null}
-      </Panel>
-    </motion.article>
+        </Panel>
+      </motion.article>
+      {threadOpen ? (
+        <ThreadModal
+          open={threadOpen}
+          post={{ ...post, commentCount }}
+          authStatus={status}
+          csrfToken={csrfToken}
+          initialComposerOpen={threadComposerOpen}
+          runWithAuth={runWithAuth}
+          canDeleteRoot={canDelete}
+          actionPending={actionPending}
+          onClose={() => setThreadOpen(false)}
+          onRootDelete={() => {
+            onDelete?.(post);
+            setThreadOpen(false);
+          }}
+          onReplyCreated={() => setCommentCount((current) => current + 1)}
+          onReplyDeleted={() => setCommentCount((current) => Math.max(0, current - 1))}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/*
+ * The older implementation rendered ThreadModal inside the animated article.
+ * Because React events bubble through portals, modal hover could still toggle
+ * card hover motion. Keep the portal mounted as a sibling of the card.
+ */
+function ThreadAvatarRail({
+  user,
+  href,
+  ariaLabel,
+  hasLineAfter = true,
+  hasLineBefore = false,
+  hasBranch = false,
+}: {
+  user: Post["author"];
+  href: string;
+  ariaLabel: string;
+  hasLineAfter?: boolean;
+  hasLineBefore?: boolean;
+  hasBranch?: boolean;
+}) {
+  return (
+    <div
+      className="relative flex min-h-12 justify-center"
+      data-testid="thread-avatar-rail"
+    >
+      {hasLineBefore ? (
+        <span
+          className="pointer-events-none absolute left-1/2 top-0 h-2.5 w-px -translate-x-1/2 bg-line/70"
+          aria-hidden="true"
+          data-testid="thread-rail-line-before"
+        />
+      ) : null}
+      {hasLineAfter ? (
+        <span
+          className="pointer-events-none absolute bottom-0 left-1/2 top-[3.25rem] w-px -translate-x-1/2 bg-line/70"
+          aria-hidden="true"
+          data-testid="thread-rail-line-after"
+        />
+      ) : null}
+      {hasBranch ? (
+        <span
+          className="pointer-events-none absolute left-1/2 top-6 h-px w-5 -translate-x-full bg-line/70"
+          aria-hidden="true"
+          data-testid="thread-rail-branch"
+        />
+      ) : null}
+      <Link
+        to={href}
+        aria-label={ariaLabel}
+        className="relative z-10 grid size-12 shrink-0 place-items-center rounded-full bg-canvas ring-4 ring-canvas focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        data-testid="thread-avatar-bubble"
+      >
+        <Avatar user={user} />
+      </Link>
+    </div>
   );
 }
 
@@ -930,19 +993,11 @@ function ParentPostPreview({ post }: { post: Post }) {
       data-testid="thread-root-post"
     >
       <div className="grid grid-cols-[2.75rem_1fr] gap-3 sm:grid-cols-[3rem_1fr]">
-        <div className="relative flex justify-center">
-          <div
-            className="absolute bottom-0 top-12 w-px bg-line-strong/60"
-            aria-hidden="true"
-          />
-          <Link
-            to={`/@${post.author.handle}`}
-            aria-label={`${post.author.displayName}'s profile`}
-            className="relative z-10 shrink-0 rounded-full bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-          >
-            <Avatar user={post.author} />
-          </Link>
-        </div>
+        <ThreadAvatarRail
+          user={post.author}
+          href={`/@${post.author.handle}`}
+          ariaLabel={`${post.author.displayName}'s profile`}
+        />
         <div className="min-w-0 pb-4">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <Link
@@ -1083,7 +1138,6 @@ function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
 
   return (
     <motion.article
-      layout
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
@@ -1095,22 +1149,13 @@ function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
       data-testid="thread-reply-item"
     >
       <div className="grid grid-cols-[2.75rem_1fr] gap-3 sm:grid-cols-[3rem_1fr]">
-        <div className="relative flex justify-center">
-          <div className="absolute -top-4 bottom-0 w-px bg-line/80" aria-hidden="true" />
-          {depth > 0 ? (
-            <div
-              className="absolute left-1/2 top-5 h-px w-5 -translate-x-full bg-line/80"
-              aria-hidden="true"
-            />
-          ) : null}
-          <Link
-            to={`/@${reply.author.handle}`}
-            aria-label={`${reply.author.displayName}'s profile`}
-            className="relative z-10 shrink-0 rounded-full bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-          >
-            <Avatar user={reply.author} />
-          </Link>
-        </div>
+        <ThreadAvatarRail
+          user={reply.author}
+          href={`/@${reply.author.handle}`}
+          ariaLabel={`${reply.author.displayName}'s profile`}
+          hasLineBefore
+          hasBranch={depth > 0}
+        />
         <div className="min-w-0 rounded-card bg-surface/32 px-3 py-3 sm:px-4">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <Link
