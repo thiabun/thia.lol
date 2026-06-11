@@ -1,5 +1,9 @@
 # Public Testing Project Triage
 
+> V2 transition note, 2026-06-11: this document is now a historical v1 transition
+> triage. Use `docs/public-readiness-v2-plan.md` plus GitHub Issues as the
+> active Public Readiness v2 planning and work-tracking sources.
+
 Repository state checked after `git pull --rebase` on local HEAD `a22df6e`.
 
 This document reconciles the public-testing roadmap, readiness spec, readiness audit, product audit, deployment docs, media docs, and profile/badges plan against the current repository state. It is planning only. No GitHub Issues or Project cards have been created from this pass.
