@@ -365,7 +365,8 @@ test("post body opens thread while controls keep their own behavior", async ({
   });
 
   await page.goto("/");
-  const post = page.locator("article").first();
+  const post = page.getByTestId("post-card-open-thread").first();
+  await expect(post).toBeVisible();
   const bodyOpenButton = post.getByTestId("post-body-open-thread");
   await expect(bodyOpenButton).toBeVisible();
   await expect(bodyOpenButton).toHaveCSS("width", /\d+px/);
@@ -377,7 +378,7 @@ test("post body opens thread while controls keep their own behavior", async ({
   expect(bodyBox).not.toBeNull();
   expect(bodyBox!.width).toBeGreaterThan(postBox!.width * 0.8);
 
-  await bodyOpenButton.locator("img").click();
+  await page.mouse.click(postBox!.x + postBox!.width - 24, postBox!.y + 24);
 
   const dialog = page.getByTestId("thread-modal");
   await expect(dialog).toBeVisible();
@@ -392,6 +393,23 @@ test("post body opens thread while controls keep their own behavior", async ({
   await dialog.getByRole("button", { name: "Close thread" }).click();
   await expect(dialog).toBeHidden();
 
+  await bodyOpenButton.click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Close thread" }).click();
+  await expect(dialog).toBeHidden();
+
+  await bodyOpenButton.locator("img").click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Close thread" }).click();
+  await expect(dialog).toBeHidden();
+
+  await page.getByRole("button", { name: /Open replies/ }).first().click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByTestId("reply-composer")).toBeVisible();
+  await expect(page.getByTestId("thread-modal")).toHaveCount(1);
+  await dialog.getByRole("button", { name: "Close thread" }).click();
+  await expect(dialog).toBeHidden();
+
   await page.getByRole("button", { name: /Like this post/ }).first().click();
   await expect(page.getByTestId("thread-modal")).toHaveCount(0);
   expect(likeCalled).toBe(true);
@@ -401,7 +419,7 @@ test("post body opens thread while controls keep their own behavior", async ({
   expect(reblogCalled).toBe(true);
 });
 
-test("post body open target supports keyboard activation", async ({ page }) => {
+test("post card open target supports keyboard activation", async ({ page }) => {
   await mockAuthenticatedApi(page);
 
   await page.route("**/api/feed/home", (route) =>
@@ -421,7 +439,7 @@ test("post body open target supports keyboard activation", async ({ page }) => {
   );
 
   await page.goto("/");
-  await page.getByTestId("post-body-open-thread").first().focus();
+  await page.getByTestId("post-card-open-thread").first().focus();
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("thread-modal")).toBeVisible();
 });
@@ -456,12 +474,38 @@ test("post profile and room links do not open the thread target", async ({
   );
 
   await page.goto("/");
-  await page.locator("article").first().getByRole("link", { name: "Alex", exact: true }).click();
+  await page
+    .getByTestId("post-card-open-thread")
+    .first()
+    .getByRole("link", { name: "Alex's profile" })
+    .click();
   await expect(page.getByTestId("thread-modal")).toHaveCount(0);
   await expect(page).toHaveURL(/\/@alex$/);
 
   await page.goto("/");
-  await page.locator("article").first().getByRole("link", { name: "General" }).click();
+  await page
+    .getByTestId("post-card-open-thread")
+    .first()
+    .getByRole("link", { name: "Alex", exact: true })
+    .click();
+  await expect(page.getByTestId("thread-modal")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/@alex$/);
+
+  await page.goto("/");
+  await page
+    .getByTestId("post-card-open-thread")
+    .first()
+    .getByRole("link", { name: "@alex" })
+    .click();
+  await expect(page.getByTestId("thread-modal")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/@alex$/);
+
+  await page.goto("/");
+  await page
+    .getByTestId("post-card-open-thread")
+    .first()
+    .getByRole("link", { name: "General" })
+    .click();
   await expect(page.getByTestId("thread-modal")).toHaveCount(0);
   await expect(page).toHaveURL(/\/rooms\/general$/);
 });
@@ -508,11 +552,19 @@ test("post report and delete controls stay isolated from body open", async ({
   });
 
   await page.goto("/");
-  await page.locator("article").first().getByRole("button", { name: "Delete" }).click();
+  await page
+    .getByTestId("post-card-open-thread")
+    .first()
+    .getByRole("button", { name: "Delete" })
+    .click();
   await expect(page.getByTestId("thread-modal")).toHaveCount(0);
   expect(deleted).toBe(true);
 
-  await page.locator("article").first().getByRole("button", { name: "Report" }).click();
+  await page
+    .getByTestId("post-card-open-thread")
+    .first()
+    .getByRole("button", { name: "Report" })
+    .click();
   await expect(page.getByTestId("thread-modal")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Report post" })).toBeVisible();
 });
@@ -585,6 +637,9 @@ test("thread modal root and reply identities navigate to profiles", async ({ pag
   );
   await expect(dialog.getByRole("button", { name: /Open replies/ }).first()).toBeVisible();
   await page.waitForTimeout(250);
+
+  await dialog.getByTestId("thread-root-post").click();
+  await expect(page.getByTestId("thread-modal")).toHaveCount(1);
 
   const rootPost = dialog.getByTestId("thread-root-post");
   const replyItem = dialog.getByTestId("thread-reply-item").first();

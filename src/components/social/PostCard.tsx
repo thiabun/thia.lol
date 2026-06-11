@@ -5,6 +5,8 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import {
@@ -84,6 +86,27 @@ export function PostCard({
     setThreadOpen(true);
   }
 
+  function handleCardClick(event: ReactMouseEvent<HTMLElement>) {
+    if (isThreadOpenIgnoredTarget(event.target)) {
+      return;
+    }
+
+    openThread();
+  }
+
+  function handleCardKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    if (isThreadOpenIgnoredTarget(event.target)) {
+      return;
+    }
+
+    event.preventDefault();
+    openThread();
+  }
+
   const cardMotionProps = threadOpen
     ? {}
     : { whileHover: cardHover, whileTap: cardTap };
@@ -92,11 +115,16 @@ export function PostCard({
     <>
       <motion.article
         id={`post-${post.id}`}
-        className="group"
+        aria-label={`Open thread by ${post.author.displayName}`}
+        className="group cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus"
+        data-testid="post-card-open-thread"
+        tabIndex={0}
         variants={cardEntrance}
         custom={index}
         initial="hidden"
         animate="show"
+        onClick={handleCardClick}
+        onKeyDown={handleCardKeyDown}
         {...cardMotionProps}
       >
         <Panel className="overflow-hidden p-4 transition duration-fluid ease-fluid group-hover:border-line-strong group-hover:shadow-lift sm:p-5">
@@ -232,6 +260,32 @@ export function PostCard({
         />
       ) : null}
     </>
+  );
+}
+
+function isThreadOpenIgnoredTarget(target: EventTarget | null) {
+  if (!(target instanceof Element)) {
+    return true;
+  }
+
+  return Boolean(
+    target.closest(
+      [
+        "a",
+        "button",
+        "input",
+        "textarea",
+        "select",
+        "option",
+        "label",
+        "summary",
+        "form",
+        "[contenteditable='true']",
+        "[role='button']",
+        "[role='link']",
+        "[data-thread-open-ignore]",
+      ].join(","),
+    ),
   );
 }
 
