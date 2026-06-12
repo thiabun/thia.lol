@@ -17,8 +17,10 @@ import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { ProfileEditModal } from "../components/social/ProfileEditModal";
+import { ProfileModuleEditorModal } from "../components/social/ProfileModuleEditorModal";
 import { PostCard } from "../components/social/PostCard";
 import { ProfileHeader } from "../components/social/ProfileHeader";
+import { ProfileModulesSection } from "../components/social/ProfileModules";
 import { ReportForm } from "../components/social/ReportForm";
 import { RoomCard } from "../components/social/RoomCard";
 import { UserIdentityLink } from "../components/social/UserProfileLink";
@@ -28,7 +30,10 @@ import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import {
   blockProfile,
+  createProfileModule,
+  deleteProfileModule,
   followProfile,
+  getMyProfileModules,
   getProfile,
   getProfileBadges,
   getProfileFollowers,
@@ -45,9 +50,13 @@ import {
   unmuteProfile,
   updateFeaturedBadges,
   updateMyProfile,
+  updateProfileModule,
+  updateProfileModuleOrder,
   uploadImage,
+  type CreateProfileModuleInput,
   type FollowRelationship,
   type ImageUploadPurpose,
+  type UpdateProfileModuleInput,
   type UpdateProfileInput,
   type UploadedImage,
 } from "../lib/api";
@@ -74,8 +83,14 @@ export function ProfilePage() {
   const { refreshSession, runWithAuth, status, user } = useAuth();
   const [activeTab, setActiveTab] = useState<ProfileTab>("feed");
   const [editingProfileHandle, setEditingProfileHandle] = useState<string | undefined>();
+  const [moduleEditorOpen, setModuleEditorOpen] = useState(false);
+  const [moduleEditorLoading, setModuleEditorLoading] = useState(false);
+  const [moduleEditorError, setModuleEditorError] = useState<string | undefined>();
   const [activePanel, setActivePanel] = useState<ProfilePanel | undefined>();
   const [profileOverride, setProfileOverride] = useState<Profile | undefined>();
+  const [modulesOverride, setModulesOverride] = useState<
+    { handle: string; modules: ProfileModule[] } | undefined
+  >();
   const [badgesOverride, setBadgesOverride] = useState<
     { handle: string; result: Awaited<ReturnType<typeof getProfileBadges>> } | undefined
   >();
@@ -160,6 +175,13 @@ export function ProfilePage() {
     badgesOverride?.handle === normalizedHandle ? badgesOverride.result : badgesState.data;
   const profileBadges = profileBadgesResult?.badges ?? [];
   const featuredBadges = profileBadgesResult?.featuredBadges ?? [];
+  const ownerModules =
+    modulesOverride?.handle === normalizedHandle
+      ? modulesOverride.modules
+      : modulesState.data ?? [];
+  const publicModules = ownerModules.filter(
+    (module) => module.visibility === "public" && module.status === "active",
+  );
   const profileMissing =
     profileState.error instanceof ApiClientError && profileState.error.status === 404;
   const isOwnProfile =
@@ -359,6 +381,65 @@ export function ProfilePage() {
     setBadgesOverride({ handle: normalizedHandle, result: updated });
   }
 
+  async function handleOpenModuleEditor() {
+    setModuleEditorLoading(true);
+    setModuleEditorError(undefined);
+
+    try {
+      const modules = await getMyProfileModules();
+      setModulesOverride({ handle: normalizedHandle, modules });
+    } catch (error) {
+      setModuleEditorError(
+        error instanceof Error ? error.message : "Profile modules could not be loaded.",
+      );
+    } finally {
+      setModuleEditorLoading(false);
+      setModuleEditorOpen(true);
+    }
+  }
+
+  async function handleCreateModule(
+    input: CreateProfileModuleInput,
+  ): Promise<ProfileModule[]> {
+    const modules = await runWithAuth(
+      (csrfToken) => createProfileModule(input, csrfToken),
+      { retryOnCsrf: true },
+    );
+    setModulesOverride({ handle: normalizedHandle, modules });
+    return modules;
+  }
+
+  async function handleUpdateModule(
+    moduleId: number,
+    input: UpdateProfileModuleInput,
+  ): Promise<ProfileModule[]> {
+    const modules = await runWithAuth(
+      (csrfToken) => updateProfileModule(moduleId, input, csrfToken),
+      { retryOnCsrf: true },
+    );
+    setModulesOverride({ handle: normalizedHandle, modules });
+    return modules;
+  }
+
+  async function handleDeleteModule(moduleId: number): Promise<void> {
+    await runWithAuth((csrfToken) => deleteProfileModule(moduleId, csrfToken), {
+      retryOnCsrf: true,
+    });
+    setModulesOverride({
+      handle: normalizedHandle,
+      modules: ownerModules.filter((module) => module.id !== moduleId),
+    });
+  }
+
+  async function handleReorderModules(moduleIds: number[]): Promise<ProfileModule[]> {
+    const modules = await runWithAuth(
+      (csrfToken) => updateProfileModuleOrder(moduleIds, csrfToken),
+      { retryOnCsrf: true },
+    );
+    setModulesOverride({ handle: normalizedHandle, modules });
+    return modules;
+  }
+
   if (profileMissing) {
     return (
       <motion.div
@@ -482,12 +563,26 @@ export function ProfilePage() {
           onUpload={handleProfileImageUpload}
         />
       ) : null}
+      {isOwnProfile && moduleEditorOpen ? (
+        <ProfileModuleEditorModal
+          badges={profileBadges}
+          error={moduleEditorError}
+          loading={moduleEditorLoading}
+          modules={ownerModules}
+          onClose={() => setModuleEditorOpen(false)}
+          onCreate={handleCreateModule}
+          onDelete={handleDeleteModule}
+          onReorder={handleReorderModules}
+          onUpdate={handleUpdateModule}
+        />
+      ) : null}
       <ProfileModulesSection
         badges={profileBadges}
         error={modulesState.error}
         isOwnProfile={isOwnProfile}
         loading={modulesState.loading}
-        modules={modulesState.data ?? []}
+        modules={publicModules}
+        onEdit={isOwnProfile ? () => void handleOpenModuleEditor() : undefined}
       />
       <motion.div
         className="border-t border-line pt-5"
@@ -624,206 +719,6 @@ function mergeFollowState(
       moots: mootCount,
     },
   };
-}
-
-type ProfileModulesSectionProps = {
-  badges: UserBadge[];
-  error: unknown;
-  isOwnProfile: boolean;
-  loading: boolean;
-  modules: ProfileModule[];
-};
-
-function ProfileModulesSection({
-  badges,
-  error,
-  isOwnProfile,
-  loading,
-  modules,
-}: ProfileModulesSectionProps) {
-  const renderableModules = modules.filter((module) =>
-    profileModuleHasContent(module, badges),
-  );
-
-  if (loading && !isOwnProfile) {
-    return null;
-  }
-
-  if (error && !isOwnProfile) {
-    return null;
-  }
-
-  if (!loading && !error && renderableModules.length === 0 && !isOwnProfile) {
-    return null;
-  }
-
-  return (
-    <motion.section
-      aria-label="Personal space"
-      className="border-t border-line pt-5"
-      data-testid="profile-modules"
-      variants={cardEntrance}
-      custom={2}
-      initial="hidden"
-      animate="show"
-    >
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-text">Personal space</h2>
-        </div>
-      </div>
-
-      {loading ? (
-        <ApiStateNotice
-          kind="loading"
-          title="Loading profile modules"
-          text="Profile modules are loading."
-        />
-      ) : null}
-
-      {!loading && error ? (
-        <ApiStateNotice
-          kind="error"
-          title="Profile modules are not available"
-          text="Try refreshing in a moment."
-        />
-      ) : null}
-
-      {!loading && !error && renderableModules.length === 0 ? (
-        <EmptyState
-          icon={Sparkles}
-          title="No profile modules yet"
-          text="This space is empty for now."
-        />
-      ) : null}
-
-      {!loading && !error && renderableModules.length > 0 ? (
-        <div className="grid min-w-0 gap-3 md:grid-cols-2">
-          {renderableModules.map((module) => (
-            <ProfileModuleCard key={module.id} module={module} badges={badges} />
-          ))}
-        </div>
-      ) : null}
-    </motion.section>
-  );
-}
-
-type ProfileModuleCardProps = {
-  badges: UserBadge[];
-  module: ProfileModule;
-};
-
-function ProfileModuleCard({ badges, module }: ProfileModuleCardProps) {
-  const title = module.title ?? profileModuleFallbackTitle(module.type);
-
-  return (
-    <article
-      className="min-w-0 rounded-card border border-line bg-surface/80 p-4 shadow-soft"
-      data-testid={`profile-module-${module.type}`}
-    >
-      <h3 className="text-sm font-semibold text-text">{title}</h3>
-      <ProfileModuleContent module={module} badges={badges} />
-    </article>
-  );
-}
-
-function ProfileModuleContent({
-  badges,
-  module,
-}: ProfileModuleCardProps) {
-  if (module.type === "links") {
-    return (
-      <div className="mt-3 flex min-w-0 flex-wrap gap-2">
-        {(module.config.links ?? []).map((link) => (
-          <a
-            key={`${link.label}-${link.url}`}
-            className="min-w-0 rounded-control border border-line bg-canvas/65 px-3 py-2 text-sm font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-            href={link.url}
-            rel="noreferrer"
-            target="_blank"
-          >
-            <span className="block max-w-full truncate">{link.label}</span>
-          </a>
-        ))}
-      </div>
-    );
-  }
-
-  if (module.type === "featured_badges") {
-    const selectedBadges = profileModuleBadges(module, badges);
-
-    return (
-      <div className="mt-3 flex min-w-0 flex-wrap gap-2">
-        {selectedBadges.map((userBadge) => (
-          <span
-            key={userBadge.id}
-            className={cn(
-              "inline-flex min-w-0 items-center gap-2 rounded-control border px-3 py-2 text-sm font-semibold",
-              rarityIconClass(userBadge.badge.rarity),
-            )}
-          >
-            <span className="min-w-0 truncate">{userBadge.badge.name}</span>
-          </span>
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <div className="mt-3 space-y-3">
-      {module.config.body ? (
-        <p className="break-words text-sm leading-6 text-muted">{module.config.body}</p>
-      ) : null}
-      {module.config.link ? (
-        <a
-          className="inline-flex max-w-full rounded-control border border-line bg-canvas/65 px-3 py-2 text-sm font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-          href={module.config.link.url}
-          rel="noreferrer"
-          target="_blank"
-        >
-          <span className="min-w-0 truncate">{module.config.link.label}</span>
-        </a>
-      ) : null}
-    </div>
-  );
-}
-
-function profileModuleHasContent(module: ProfileModule, badges: UserBadge[]): boolean {
-  if (module.type === "links") {
-    return (module.config.links ?? []).length > 0;
-  }
-
-  if (module.type === "featured_badges") {
-    return profileModuleBadges(module, badges).length > 0;
-  }
-
-  return typeof module.config.body === "string" && module.config.body.trim() !== "";
-}
-
-function profileModuleBadges(module: ProfileModule, badges: UserBadge[]): UserBadge[] {
-  const selectedIds = new Set(module.config.userBadgeIds ?? []);
-
-  if (selectedIds.size === 0) {
-    return [];
-  }
-
-  return badges.filter((badge) => selectedIds.has(badge.id));
-}
-
-function profileModuleFallbackTitle(type: ProfileModule["type"]): string {
-  if (type === "about") {
-    return "About";
-  }
-
-  if (type === "links") {
-    return "Links";
-  }
-
-  if (type === "featured_badges") {
-    return "Featured badges";
-  }
-
-  return "Note";
 }
 
 type ProfileTabButtonProps = {

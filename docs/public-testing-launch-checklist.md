@@ -109,6 +109,12 @@ public_html/
   https://thia.lol/@thia
   ```
 
+- [ ] After the profile module editor deploys, retest an authenticated owner flow:
+  - Open `https://thia.lol/@thia`.
+  - Open Edit personal space.
+  - Create, edit, reorder, and delete a safe test module.
+  - Confirm public rendering through `https://thia.lol/api/profiles/thia/modules`.
+
 ## Public Route Smoke Checklist
 
 Open each route in a clean browser session and confirm it loads without a blank screen, broken shell, or public error details.

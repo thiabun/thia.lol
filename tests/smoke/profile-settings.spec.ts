@@ -261,6 +261,14 @@ async function mockOwnProfile(
     });
   });
 
+  await page.route("**/api/profiles/thia/modules", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+
   await page.route("**/api/profiles/thia/followers", async (route) => {
     await route.fulfill({
       status: 200,

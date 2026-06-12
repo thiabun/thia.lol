@@ -636,12 +636,14 @@ Created high-confidence follow-up issues:
 
 - Priority: P1.
 - Labels: `enhancement`, `area: profiles`, `area: frontend`, `area: ux`, `codex-ready`.
+- Status: Implemented.
 - Summary: Build owner-facing module picker, edit controls, ordering, and preview/public distinction.
 - Acceptance criteria:
   - Owner can add, edit, hide, show, reorder, and remove supported v1 modules.
   - Public view never renders hidden/draft modules.
   - Empty owner prompts do not appear to public viewers.
   - Preview mode is visually distinct from public view.
+  - Live owner mutation smoke is required after authenticated deployment access is available.
 
 ### [#24 `[P2] Featured posts and featured rooms`](https://github.com/thiabun/thia.lol/issues/24)
 

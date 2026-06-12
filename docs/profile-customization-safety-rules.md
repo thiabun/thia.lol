@@ -510,20 +510,20 @@ Suggested acceptance criteria:
 - [x] Public reads return only public, active, valid modules for active users.
 - [x] No arbitrary CSS, HTML, JavaScript, iframes, embeds, or integrations are added.
 - [x] Profile report remains available and covers rendered modules.
-- [ ] API-backed tests run against a working API path or are marked blocked.
+- [x] API-backed tests run against a working API path or are marked blocked.
 
 ### #23 Profile Module Editor And Preview Mode
 
 Suggested acceptance criteria:
 
-- [ ] Editor supports only module types implemented by #22.
-- [ ] Editor includes preview before save where practical.
-- [ ] Editor does not show unsupported integrations, embeds, layout modes, or privacy controls.
-- [ ] Reordering has keyboard-accessible controls.
-- [ ] Destructive actions require confirmation.
-- [ ] Mobile preview or mobile layout smoke coverage verifies no horizontal overflow.
-- [ ] Empty states are honest and do not advertise unavailable modules.
-- [ ] Save/update/delete mutations are CSRF-protected and ownership-checked.
+- [x] Editor supports only module types implemented by #22.
+- [x] Editor includes preview before save where practical.
+- [x] Editor does not show unsupported integrations, embeds, layout modes, or privacy controls.
+- [x] Reordering has keyboard-accessible controls.
+- [x] Destructive actions require confirmation.
+- [x] Mobile preview or mobile layout smoke coverage verifies no horizontal overflow.
+- [x] Empty states are honest and do not advertise unavailable modules.
+- [x] Save/update/delete mutations are CSRF-protected and ownership-checked.
 
 ### #24 Featured Posts And Featured Rooms
 
