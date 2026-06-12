@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { loginWithEnv, skipWithoutCredentials } from "../helpers/auth";
 
@@ -367,13 +367,19 @@ test("post body opens thread while controls keep their own behavior", async ({
   await page.goto("/");
   const post = page.getByTestId("post-card-open-thread").first();
   await expect(post).toBeVisible();
-  const bodyOpenButton = post.getByTestId("post-body-open-thread");
-  await expect(bodyOpenButton).toBeVisible();
-  await expect(bodyOpenButton).toHaveCSS("width", /\d+px/);
-  await expect(bodyOpenButton.locator("img")).toBeVisible();
+  const bodyOpenTarget = post.getByTestId("post-body-open-thread");
+  await expect(bodyOpenTarget).toBeVisible();
+  await expect(bodyOpenTarget).toHaveJSProperty("tagName", "DIV");
+  await expect(bodyOpenTarget).toHaveAttribute("class", "mt-4 block w-full text-left");
+  await expect(bodyOpenTarget).not.toHaveAttribute(
+    "class",
+    /hover:|focus-visible:|rounded|ring|shadow|border|bg-/,
+  );
+  await expect(bodyOpenTarget).toHaveCSS("width", /\d+px/);
+  await expect(bodyOpenTarget.locator("img")).toBeVisible();
 
   const postBox = await post.boundingBox();
-  const bodyBox = await bodyOpenButton.boundingBox();
+  const bodyBox = await bodyOpenTarget.boundingBox();
   expect(postBox).not.toBeNull();
   expect(bodyBox).not.toBeNull();
   expect(bodyBox!.width).toBeGreaterThan(postBox!.width * 0.8);
@@ -393,12 +399,12 @@ test("post body opens thread while controls keep their own behavior", async ({
   await dialog.getByRole("button", { name: "Close thread" }).click();
   await expect(dialog).toBeHidden();
 
-  await bodyOpenButton.click();
+  await bodyOpenTarget.click();
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Close thread" }).click();
   await expect(dialog).toBeHidden();
 
-  await bodyOpenButton.locator("img").click();
+  await bodyOpenTarget.locator("img").click();
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Close thread" }).click();
   await expect(dialog).toBeHidden();
@@ -417,6 +423,51 @@ test("post body opens thread while controls keep their own behavior", async ({
   await page.getByRole("button", { name: /Reblog this post/ }).first().click();
   await expect(page.getByTestId("thread-modal")).toHaveCount(0);
   expect(reblogCalled).toBe(true);
+});
+
+test("post body and media hover stay visually flat in Sunveil and Frostveil", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockAuthenticatedApi(page);
+
+  await page.route("**/api/feed/home", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          posts: [makePost({ mediaUrl: "/uploads/thread-media.webp" })],
+          personalized: true,
+        },
+      }),
+    }),
+  );
+  await page.route("**/api/posts/42/replies", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    }),
+  );
+
+  for (const theme of ["sunveil", "frostveil"] as const) {
+    await page.goto("/");
+    await page.evaluate((nextTheme) => {
+      window.localStorage.setItem("thia.lol.theme", nextTheme);
+      document.documentElement.dataset.theme = nextTheme;
+      document.documentElement.style.colorScheme =
+        nextTheme === "frostveil" ? "dark" : "light";
+    }, theme);
+
+    const post = page.getByTestId("post-card-open-thread").first();
+    const bodyOpenTarget = post.getByTestId("post-body-open-thread");
+    const mediaImage = bodyOpenTarget.locator("img");
+
+    await expect(bodyOpenTarget).toBeVisible();
+    await expect(mediaImage).toBeVisible();
+    await expectHoverToKeepSurfaceFlat(bodyOpenTarget);
+    await expectHoverToKeepSurfaceFlat(mediaImage);
+  }
 });
 
 test("post card open target supports keyboard activation", async ({ page }) => {
@@ -969,6 +1020,31 @@ test("reblog and undo work against the API", async ({ page }) => {
       second.body.data?.rebloggedByCurrentUser,
   ).toBe(wasReblogged);
 });
+
+async function expectHoverToKeepSurfaceFlat(target: Locator) {
+  const before = await getSurfaceStyle(target);
+
+  await target.hover();
+
+  const after = await getSurfaceStyle(target);
+
+  expect(after).toEqual(before);
+}
+
+async function getSurfaceStyle(target: Locator) {
+  return target.evaluate((element) => {
+    const style = window.getComputedStyle(element);
+
+    return {
+      backgroundColor: style.backgroundColor,
+      boxShadow: style.boxShadow,
+      outlineColor: style.outlineColor,
+      outlineOffset: style.outlineOffset,
+      outlineStyle: style.outlineStyle,
+      outlineWidth: style.outlineWidth,
+    };
+  });
+}
 
 async function mockCommonApi(page: Page) {
   await page.route("**/api/auth/me", (route) =>

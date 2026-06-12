@@ -176,12 +176,9 @@ export function PostCard({
             </div>
           </div>
 
-          <button
-            type="button"
+          <div
             data-testid="post-body-open-thread"
-            className="mt-4 block w-full rounded-card text-left transition duration-fluid ease-fluid hover:bg-canvas/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-            aria-label="Open thread"
-            onClick={() => openThread()}
+            className="mt-4 block w-full text-left"
           >
             <span className="block p-1 text-pretty text-base leading-7 text-text">
               {post.body}
@@ -198,7 +195,7 @@ export function PostCard({
                 />
               </span>
             ) : null}
-          </button>
+          </div>
 
           <ReactionControls
             key={`${post.id}:${post.likeCount}:${post.likedByCurrentUser}:${post.reblogCount}:${post.rebloggedByMe}:${post.rebloggedByCurrentUser}:${post.commentCount}`}
