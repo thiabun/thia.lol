@@ -27,6 +27,7 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import {
+  blockProfile,
   followProfile,
   getProfile,
   getProfileBadges,
@@ -36,7 +37,11 @@ import {
   getProfileReblogs,
   getProfileReplies,
   getProfileRooms,
+  muteProfile,
+  removeProfileFollower,
+  unblockProfile,
   unfollowProfile,
+  unmuteProfile,
   updateFeaturedBadges,
   updateMyProfile,
   uploadImage,
@@ -79,6 +84,15 @@ export function ProfilePage() {
   const [followError, setFollowError] = useState<
     { handle: string; message: string } | undefined
   >();
+  const [profileControlBusy, setProfileControlBusy] = useState<
+    "block" | "mute" | undefined
+  >();
+  const [profileControlMessage, setProfileControlMessage] = useState<
+    { handle: string; message: string } | undefined
+  >();
+  const [profileControlError, setProfileControlError] = useState<
+    { handle: string; message: string } | undefined
+  >();
   const normalizedHandle = (handle ?? profileHandle ?? "thia")
     .replace(/^@/, "")
     .toLowerCase();
@@ -116,6 +130,14 @@ export function ProfilePage() {
     followState?.handle === normalizedHandle ? followState.relationship : undefined;
   const activeFollowError =
     followError?.handle === normalizedHandle ? followError.message : undefined;
+  const activeProfileControlMessage =
+    profileControlMessage?.handle === normalizedHandle
+      ? profileControlMessage.message
+      : undefined;
+  const activeProfileControlError =
+    profileControlError?.handle === normalizedHandle
+      ? profileControlError.message
+      : undefined;
   const sourceProfile =
     profileOverride?.user.handle.toLowerCase() === normalizedHandle
       ? profileOverride
@@ -140,7 +162,7 @@ export function ProfilePage() {
   const editingProfile = editingProfileHandle === normalizedHandle;
 
   async function handleFollowToggle() {
-    if (!profile || isOwnProfile || followPosting) {
+    if (!profile || isOwnProfile || profile.blockedByMe || followPosting) {
       return;
     }
 
@@ -174,6 +196,125 @@ export function ProfilePage() {
     } finally {
       setFollowPosting(false);
     }
+  }
+
+  async function handleBlockToggle() {
+    if (!profile || isOwnProfile || profileControlBusy) {
+      return;
+    }
+
+    if (status !== "authenticated") {
+      navigate("/login");
+      return;
+    }
+
+    const nextBlockedState = !profile.blockedByMe;
+    setProfileControlBusy("block");
+    setProfileControlError(undefined);
+    setProfileControlMessage(undefined);
+
+    try {
+      const result = await runWithAuth(
+        (csrfToken) =>
+          nextBlockedState
+            ? blockProfile(profile.user.handle, csrfToken)
+            : unblockProfile(profile.user.handle, csrfToken),
+        { retryOnCsrf: true },
+      );
+
+      setFollowState({
+        handle: normalizedHandle,
+        relationship: result.relationship,
+      });
+      setProfileControlMessage({
+        handle: normalizedHandle,
+        message: nextBlockedState
+          ? `Blocked @${profile.user.handle}.`
+          : `Unblocked @${profile.user.handle}.`,
+      });
+    } catch (error) {
+      setProfileControlError({
+        handle: normalizedHandle,
+        message:
+          error instanceof Error ? error.message : "Could not update block state.",
+      });
+    } finally {
+      setProfileControlBusy(undefined);
+    }
+  }
+
+  async function handleMuteToggle() {
+    if (!profile || isOwnProfile || profileControlBusy) {
+      return;
+    }
+
+    if (status !== "authenticated") {
+      navigate("/login");
+      return;
+    }
+
+    const nextMutedState = !profile.mutedByMe;
+    setProfileControlBusy("mute");
+    setProfileControlError(undefined);
+    setProfileControlMessage(undefined);
+
+    try {
+      const result = await runWithAuth(
+        (csrfToken) =>
+          nextMutedState
+            ? muteProfile(profile.user.handle, csrfToken)
+            : unmuteProfile(profile.user.handle, csrfToken),
+        { retryOnCsrf: true },
+      );
+
+      setFollowState({
+        handle: normalizedHandle,
+        relationship: result.relationship,
+      });
+      setProfileControlMessage({
+        handle: normalizedHandle,
+        message: nextMutedState
+          ? `Muted @${profile.user.handle}. Muted posts are hidden from your feeds where possible.`
+          : `Unmuted @${profile.user.handle}.`,
+      });
+    } catch (error) {
+      setProfileControlError({
+        handle: normalizedHandle,
+        message:
+          error instanceof Error ? error.message : "Could not update mute state.",
+      });
+    } finally {
+      setProfileControlBusy(undefined);
+    }
+  }
+
+  async function handleRemoveFollower(
+    followerHandle: string,
+    wasMoot: boolean,
+  ): Promise<boolean> {
+    if (!profile || !isOwnProfile) {
+      return false;
+    }
+
+    const result = await runWithAuth(
+      (csrfToken) => removeProfileFollower(followerHandle, csrfToken),
+      { retryOnCsrf: true },
+    );
+
+    if (result.removedFollower) {
+      const nextFollowerCount = Math.max(0, profile.followerCount - 1);
+      setProfileOverride({
+        ...profile,
+        followerCount: nextFollowerCount,
+        stats: {
+          ...profile.stats,
+          followers: nextFollowerCount,
+          moots: wasMoot ? Math.max(0, profile.stats.moots - 1) : profile.stats.moots,
+        },
+      });
+    }
+
+    return result.removedFollower;
   }
 
   async function handleProfileSave(input: UpdateProfileInput): Promise<Profile> {
@@ -283,17 +424,34 @@ export function ProfilePage() {
         followPosting={followPosting}
         isOwnProfile={isOwnProfile}
         messageToHandle={
-          status === "authenticated" && !isOwnProfile && profile.isMoot
+          status === "authenticated" &&
+          !isOwnProfile &&
+          !profile.blockedByMe &&
+          profile.isMoot
             ? profile.user.handle
+            : undefined
+        }
+        profileControlBusy={profileControlBusy}
+        profileControlError={activeProfileControlError}
+        profileControlMessage={activeProfileControlMessage}
+        onBlockToggle={
+          status === "authenticated" && !isOwnProfile
+            ? handleBlockToggle
             : undefined
         }
         onFollowToggle={handleFollowToggle}
         onEditProfile={
           isOwnProfile ? () => setEditingProfileHandle(normalizedHandle) : undefined
         }
+        onMuteToggle={
+          status === "authenticated" && !isOwnProfile ? handleMuteToggle : undefined
+        }
         onOpenPanel={setActivePanel}
         showChatHint={
-          status === "authenticated" && !isOwnProfile && !profile.isMoot
+          status === "authenticated" &&
+          !isOwnProfile &&
+          !profile.blockedByMe &&
+          !profile.isMoot
         }
       />
       {!isOwnProfile ? (
@@ -383,6 +541,11 @@ export function ProfilePage() {
           panel={activePanel}
           onClose={() => setActivePanel(undefined)}
           onFeaturedChange={handleFeaturedBadgesChange}
+          {...(
+            isOwnProfile && activePanel === "followers"
+              ? { onRemoveFollower: handleRemoveFollower }
+              : {}
+          )}
         />
       ) : null}
     </motion.div>
@@ -423,6 +586,8 @@ function mergeFollowState(
     isFollowing: followState.isFollowing,
     isFollowedBy: followState.isFollowedBy,
     isMoot: followState.isMoot,
+    blockedByMe: followState.blockedByMe ?? profile.blockedByMe ?? false,
+    mutedByMe: followState.mutedByMe ?? profile.mutedByMe ?? false,
     stats: {
       ...profile.stats,
       followers: followState.followerCount,
@@ -541,6 +706,7 @@ type ProfileFocusedPanelProps = {
   panel: ProfilePanel;
   onClose: () => void;
   onFeaturedChange: (featuredBadgeIds: number[]) => Promise<void>;
+  onRemoveFollower?: (handle: string, wasMoot: boolean) => Promise<boolean>;
 };
 
 function ProfileFocusedPanel({
@@ -552,6 +718,7 @@ function ProfileFocusedPanel({
   isOwnProfile,
   onClose,
   onFeaturedChange,
+  onRemoveFollower,
   panel,
 }: ProfileFocusedPanelProps) {
   const title =
@@ -620,6 +787,11 @@ function ProfileFocusedPanel({
                 error={socialState.error}
                 items={socialState.data ?? []}
                 loading={socialState.loading}
+                {...(
+                  panel === "followers" && isOwnProfile && onRemoveFollower
+                    ? { onRemoveFollower }
+                    : {}
+                )}
                 title={title}
               />
             ) : (
@@ -643,6 +815,7 @@ type ProfileConnectionListProps = {
   error: unknown;
   items: Awaited<ReturnType<typeof getProfileFollowers>>;
   loading: boolean;
+  onRemoveFollower?: (handle: string, wasMoot: boolean) => Promise<boolean>;
   title: string;
 };
 
@@ -650,8 +823,41 @@ function ProfileConnectionList({
   error,
   items,
   loading,
+  onRemoveFollower,
   title,
 }: ProfileConnectionListProps) {
+  const [removedHandles, setRemovedHandles] = useState<Set<string>>(() => new Set());
+  const [confirmingHandle, setConfirmingHandle] = useState<string | undefined>();
+  const [pendingHandle, setPendingHandle] = useState<string | undefined>();
+  const [removeError, setRemoveError] = useState<string | undefined>();
+  const visibleItems = items.filter((item) => !removedHandles.has(item.handle));
+
+  async function handleRemove(connection: (typeof items)[number]) {
+    if (!onRemoveFollower) {
+      return;
+    }
+
+    setPendingHandle(connection.handle);
+    setRemoveError(undefined);
+
+    try {
+      const removed = await onRemoveFollower(connection.handle, connection.isMoot);
+
+      if (removed) {
+        setRemovedHandles((current) => new Set(current).add(connection.handle));
+        setConfirmingHandle(undefined);
+      } else {
+        setRemoveError(`@${connection.handle} was not in your followers.`);
+      }
+    } catch (error) {
+      setRemoveError(
+        error instanceof Error ? error.message : "Could not remove this follower.",
+      );
+    } finally {
+      setPendingHandle(undefined);
+    }
+  }
+
   if (loading) {
     return <ApiStateNotice kind="loading" title="Loading" text={`${title} are loading.`} />;
   }
@@ -666,30 +872,80 @@ function ProfileConnectionList({
     );
   }
 
-  if (items.length === 0) {
+  if (visibleItems.length === 0) {
     return <EmptyState icon={Users} title={`No ${title.toLowerCase()} yet`} text={`No ${title.toLowerCase()} yet`} />;
   }
 
   return (
     <div className="space-y-3">
-      {items.map((connection) => (
+      {removeError ? (
+        <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
+          {removeError}
+        </p>
+      ) : null}
+      {visibleItems.map((connection) => (
         <div
           key={connection.handle}
-          className="flex items-center justify-between gap-3 rounded-card border border-line bg-canvas/45 p-3 transition duration-fluid hover:border-line-strong"
+          className="rounded-card border border-line bg-canvas/45 p-3 transition duration-fluid hover:border-line-strong"
         >
-          <UserIdentityLink
-            user={{ ...connection, aura: "frost" }}
-            avatarSize="md"
-            avatarClassName="size-11"
-            className="flex-1"
-          />
-          {connection.isMoot ? (
-            <Badge tone="warm">Moot</Badge>
-          ) : connection.isFollowing ? (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-muted">
-              <UserCheck aria-hidden="true" size={14} />
-              Following
-            </span>
+          <div className="flex items-center justify-between gap-3">
+            <UserIdentityLink
+              user={{ ...connection, aura: "frost" }}
+              avatarSize="md"
+              avatarClassName="size-11"
+              className="flex-1"
+            />
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {connection.isMoot ? (
+                <Badge tone="warm">Moot</Badge>
+              ) : connection.isFollowing ? (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-muted">
+                  <UserCheck aria-hidden="true" size={14} />
+                  Following
+                </span>
+              ) : null}
+              {onRemoveFollower ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={pendingHandle !== undefined}
+                  onClick={() => {
+                    setRemoveError(undefined);
+                    setConfirmingHandle(connection.handle);
+                  }}
+                >
+                  Remove follower
+                </Button>
+              ) : null}
+            </div>
+          </div>
+          {confirmingHandle === connection.handle ? (
+            <div className="mt-3 rounded-card border border-line bg-surface p-3">
+              <p className="text-sm leading-6 text-muted">
+                Remove @{connection.handle} as a follower? They can follow you again unless you block them.
+              </p>
+              <div className="mt-3 flex flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={pendingHandle !== undefined}
+                  onClick={() => setConfirmingHandle(undefined)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={pendingHandle !== undefined}
+                  onClick={() => void handleRemove(connection)}
+                >
+                  {pendingHandle === connection.handle ? "Removing" : "Remove follower"}
+                </Button>
+              </div>
+            </div>
           ) : null}
         </div>
       ))}

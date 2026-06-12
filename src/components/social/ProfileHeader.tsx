@@ -7,15 +7,20 @@ import {
   Link as LinkIcon,
   MapPin,
   MessageCircle,
+  MoreHorizontal,
   Music,
   Radio,
   Reply,
   Heart,
+  ShieldOff,
   UserCheck,
   UserPlus,
   Users,
+  VolumeX,
+  X,
 } from "lucide-react";
 import { motion } from "motion/react";
+import { useState } from "react";
 import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
 import { Button, ButtonLink } from "../ui/Button";
@@ -40,8 +45,13 @@ type ProfileHeaderProps = {
   followPosting?: boolean;
   isOwnProfile?: boolean;
   messageToHandle?: string | undefined;
+  profileControlBusy?: "block" | "mute" | undefined;
+  profileControlError?: string | undefined;
+  profileControlMessage?: string | undefined;
+  onBlockToggle?: (() => Promise<void> | void) | undefined;
   onFollowToggle?: () => void;
   onEditProfile?: (() => void) | undefined;
+  onMuteToggle?: (() => Promise<void> | void) | undefined;
   onOpenPanel?: (panel: "followers" | "following" | "badges") => void;
   featuredBadges?: UserBadge[] | undefined;
   showChatHint?: boolean;
@@ -54,14 +64,52 @@ export function ProfileHeader({
   badgeCount = 0,
   featuredBadges = [],
   messageToHandle,
+  profileControlBusy,
+  profileControlError,
+  profileControlMessage,
+  onBlockToggle,
   onEditProfile,
   onFollowToggle,
+  onMuteToggle,
   onOpenPanel,
   profile,
   showChatHint = false,
 }: ProfileHeaderProps) {
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [confirmBlockOpen, setConfirmBlockOpen] = useState(false);
   const links = profile.links;
   const followLabel = profile.isFollowing ? "Following" : "Follow";
+  const showProfileControls = !isOwnProfile && Boolean(onBlockToggle || onMuteToggle);
+  const directActionsDisabled = profile.blockedByMe === true;
+
+  async function handleBlockAction() {
+    setActionsOpen(false);
+
+    if (!onBlockToggle) {
+      return;
+    }
+
+    if (!profile.blockedByMe) {
+      setConfirmBlockOpen(true);
+      return;
+    }
+
+    await onBlockToggle();
+  }
+
+  async function handleConfirmBlock() {
+    if (!onBlockToggle) {
+      return;
+    }
+
+    await onBlockToggle();
+    setConfirmBlockOpen(false);
+  }
+
+  async function handleMuteAction() {
+    setActionsOpen(false);
+    await onMuteToggle?.();
+  }
 
   return (
     <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
@@ -99,6 +147,7 @@ export function ProfileHeader({
             />
             <div className="flex flex-wrap items-center gap-2">
               {!isOwnProfile && profile.isMoot ? <Badge>Moot</Badge> : null}
+              {!isOwnProfile && profile.mutedByMe ? <Badge tone="cool">Muted</Badge> : null}
               {isOwnProfile ? (
                 <Button
                   type="button"
@@ -109,7 +158,7 @@ export function ProfileHeader({
                 </Button>
               ) : (
                 <>
-                  {messageToHandle ? (
+                  {messageToHandle && !directActionsDisabled ? (
                     <ButtonLink
                       data-testid="profile-message-button"
                       icon={<MessageCircle aria-hidden="true" size={17} />}
@@ -119,22 +168,85 @@ export function ProfileHeader({
                       Message
                     </ButtonLink>
                   ) : null}
-                  <Button
-                    type="button"
-                    variant={profile.isFollowing ? "secondary" : "primary"}
-                    disabled={followPosting}
-                    data-testid="profile-follow-button"
-                    icon={
-                      profile.isFollowing ? (
-                        <UserCheck aria-hidden="true" size={17} />
-                      ) : (
-                        <UserPlus aria-hidden="true" size={17} />
-                      )
-                    }
-                    onClick={onFollowToggle}
-                  >
-                    {followPosting ? "Saving" : followLabel}
-                  </Button>
+                  {!directActionsDisabled ? (
+                    <Button
+                      type="button"
+                      variant={profile.isFollowing ? "secondary" : "primary"}
+                      disabled={followPosting}
+                      data-testid="profile-follow-button"
+                      icon={
+                        profile.isFollowing ? (
+                          <UserCheck aria-hidden="true" size={17} />
+                        ) : (
+                          <UserPlus aria-hidden="true" size={17} />
+                        )
+                      }
+                      onClick={onFollowToggle}
+                    >
+                      {followPosting ? "Saving" : followLabel}
+                    </Button>
+                  ) : null}
+                  {showProfileControls ? (
+                    <div className="relative">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="icon"
+                        aria-haspopup="menu"
+                        aria-expanded={actionsOpen}
+                        aria-label={`Profile actions for @${profile.user.handle}`}
+                        data-testid="profile-actions-button"
+                        icon={<MoreHorizontal aria-hidden="true" size={18} />}
+                        onClick={() => setActionsOpen((open) => !open)}
+                      />
+                      {actionsOpen ? (
+                        <div
+                          role="menu"
+                          data-testid="profile-actions-menu"
+                          className="absolute right-0 z-20 mt-2 w-64 overflow-hidden rounded-card border border-line bg-surface p-2 text-sm shadow-lift"
+                        >
+                          {onMuteToggle ? (
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="flex w-full items-start gap-3 rounded-card px-3 py-2 text-left text-text transition duration-fluid hover:bg-surface-strong focus-visible:outline-2 focus-visible:outline-focus"
+                              disabled={profileControlBusy !== undefined}
+                              onClick={() => void handleMuteAction()}
+                            >
+                              <VolumeX aria-hidden="true" size={16} className="mt-0.5 shrink-0" />
+                              <span>
+                                <span className="block font-semibold">
+                                  {profile.mutedByMe ? "Unmute" : "Mute"}
+                                </span>
+                                <span className="mt-1 block text-xs leading-5 text-muted">
+                                  Muted posts are hidden from your feeds where possible. They will not be notified.
+                                </span>
+                              </span>
+                            </button>
+                          ) : null}
+                          {onBlockToggle ? (
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="mt-1 flex w-full items-start gap-3 rounded-card px-3 py-2 text-left text-text transition duration-fluid hover:bg-surface-strong focus-visible:outline-2 focus-visible:outline-focus"
+                              disabled={profileControlBusy !== undefined}
+                              onClick={() => void handleBlockAction()}
+                            >
+                              <ShieldOff aria-hidden="true" size={16} className="mt-0.5 shrink-0" />
+                              <span>
+                                <span className="block font-semibold">
+                                  {profile.blockedByMe ? "Unblock" : "Block"}
+                                </span>
+                                <span className="mt-1 block text-xs leading-5 text-muted">
+                                  Blocking removes follows between you, prevents messages, and limits interaction where possible.
+                                </span>
+                              </span>
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </>
               )}
             </div>
@@ -147,6 +259,26 @@ export function ProfileHeader({
           {showChatHint ? (
             <motion.p className="mt-3 text-sm text-muted" variants={sectionItem}>
               Follow each other to chat
+            </motion.p>
+          ) : null}
+          {!isOwnProfile && profile.blockedByMe ? (
+            <motion.p className="mt-3 rounded-card border border-line bg-canvas/55 p-3 text-sm text-muted" variants={sectionItem}>
+              You blocked @{profile.user.handle}. Follow and Message are unavailable until you unblock them.
+            </motion.p>
+          ) : null}
+          {!isOwnProfile && profile.mutedByMe && !profile.blockedByMe ? (
+            <motion.p className="mt-3 text-sm text-muted" variants={sectionItem}>
+              Muted posts are hidden from your feeds where possible.
+            </motion.p>
+          ) : null}
+          {profileControlMessage ? (
+            <motion.p className="mt-3 text-sm text-muted" variants={sectionItem}>
+              {profileControlMessage}
+            </motion.p>
+          ) : null}
+          {profileControlError ? (
+            <motion.p className="mt-3 text-sm text-rose" variants={sectionItem}>
+              {profileControlError}
             </motion.p>
           ) : null}
           <motion.div className="mt-4" variants={sectionItem}>
@@ -241,6 +373,59 @@ export function ProfileHeader({
           </motion.div>
         </motion.div>
       </Panel>
+      {confirmBlockOpen ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-text/28 px-4 py-6 backdrop-blur-veil"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setConfirmBlockOpen(false);
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Block @${profile.user.handle}?`}
+            className="w-full max-w-md rounded-panel border border-line bg-surface p-5 shadow-lift"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-text">
+                  Block @{profile.user.handle}?
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-muted">
+                  Blocking removes follows between you, prevents messages, and limits interaction where possible. This does not hide public content everywhere.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Cancel block"
+                icon={<X aria-hidden="true" size={18} />}
+                onClick={() => setConfirmBlockOpen(false)}
+              />
+            </div>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setConfirmBlockOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={profileControlBusy === "block"}
+                onClick={() => void handleConfirmBlock()}
+              >
+                {profileControlBusy === "block" ? "Blocking" : "Block"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </motion.div>
   );
 }

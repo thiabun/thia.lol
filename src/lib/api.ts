@@ -45,6 +45,8 @@ type ApiProfile = Profile & {
   createdAt?: string;
   updatedAt?: string;
   links?: unknown[];
+  isBlocked?: boolean;
+  isMuted?: boolean;
 };
 
 type ApiBadgeDefinition = BadgeDefinition;
@@ -194,12 +196,27 @@ export type ChatReadResult = {
   readAt: string;
 };
 
+type ApiFollowRelationship = FollowRelationship & {
+  isBlocked?: boolean;
+  isMuted?: boolean;
+};
+
+type ApiProfileControlResult = Omit<ProfileControlResult, "relationship"> & {
+  isBlocked?: boolean;
+  isMuted?: boolean;
+  relationship: ApiFollowRelationship;
+};
+
+type ApiRemoveFollowerResult = Omit<RemoveFollowerResult, "relationship"> & {
+  relationship: ApiFollowRelationship;
+};
+
 export type FollowRelationship = {
   isFollowing: boolean;
   isFollowedBy: boolean;
   isMoot: boolean;
-  isBlocked?: boolean;
-  isMuted?: boolean;
+  blockedByMe?: boolean;
+  mutedByMe?: boolean;
   followerCount: number;
   followingCount: number;
   mootCount?: number;
@@ -507,11 +524,11 @@ export function followProfile(
 ): Promise<FollowRelationship> {
   const normalized = normalizeHandle(handle);
 
-  return apiPost<FollowRelationship>(
+  return apiPost<ApiFollowRelationship>(
     `/profiles/${encodeURIComponent(normalized)}/follow`,
     {},
     csrfToken,
-  );
+  ).then(normalizeFollowRelationship);
 }
 
 export function unfollowProfile(
@@ -520,10 +537,10 @@ export function unfollowProfile(
 ): Promise<FollowRelationship> {
   const normalized = normalizeHandle(handle);
 
-  return apiDelete<FollowRelationship>(
+  return apiDelete<ApiFollowRelationship>(
     `/profiles/${encodeURIComponent(normalized)}/follow`,
     csrfToken,
-  );
+  ).then(normalizeFollowRelationship);
 }
 
 export function blockProfile(
@@ -532,11 +549,11 @@ export function blockProfile(
 ): Promise<ProfileControlResult> {
   const normalized = normalizeHandle(handle);
 
-  return apiPost<ProfileControlResult>(
+  return apiPost<ApiProfileControlResult>(
     `/profiles/${encodeURIComponent(normalized)}/block`,
     {},
     csrfToken,
-  );
+  ).then(normalizeProfileControlResult);
 }
 
 export function unblockProfile(
@@ -545,10 +562,10 @@ export function unblockProfile(
 ): Promise<ProfileControlResult> {
   const normalized = normalizeHandle(handle);
 
-  return apiDelete<ProfileControlResult>(
+  return apiDelete<ApiProfileControlResult>(
     `/profiles/${encodeURIComponent(normalized)}/block`,
     csrfToken,
-  );
+  ).then(normalizeProfileControlResult);
 }
 
 export function muteProfile(
@@ -557,11 +574,11 @@ export function muteProfile(
 ): Promise<ProfileControlResult> {
   const normalized = normalizeHandle(handle);
 
-  return apiPost<ProfileControlResult>(
+  return apiPost<ApiProfileControlResult>(
     `/profiles/${encodeURIComponent(normalized)}/mute`,
     {},
     csrfToken,
-  );
+  ).then(normalizeProfileControlResult);
 }
 
 export function unmuteProfile(
@@ -570,10 +587,10 @@ export function unmuteProfile(
 ): Promise<ProfileControlResult> {
   const normalized = normalizeHandle(handle);
 
-  return apiDelete<ProfileControlResult>(
+  return apiDelete<ApiProfileControlResult>(
     `/profiles/${encodeURIComponent(normalized)}/mute`,
     csrfToken,
-  );
+  ).then(normalizeProfileControlResult);
 }
 
 export function removeProfileFollower(
@@ -582,10 +599,13 @@ export function removeProfileFollower(
 ): Promise<RemoveFollowerResult> {
   const normalized = normalizeHandle(handle);
 
-  return apiDelete<RemoveFollowerResult>(
+  return apiDelete<ApiRemoveFollowerResult>(
     `/profiles/${encodeURIComponent(normalized)}/follower`,
     csrfToken,
-  );
+  ).then((result) => ({
+    ...result,
+    relationship: normalizeFollowRelationship(result.relationship),
+  }));
 }
 
 export function uploadImage(
@@ -1015,10 +1035,37 @@ function normalizeProfile(profile: ApiProfile): Profile {
     isFollowing: profile.isFollowing ?? false,
     isFollowedBy: profile.isFollowedBy ?? false,
     isMoot: profile.isMoot ?? false,
-    isBlocked: profile.isBlocked ?? false,
-    isMuted: profile.isMuted ?? false,
+    blockedByMe: profile.blockedByMe ?? profile.isBlocked ?? false,
+    mutedByMe: profile.mutedByMe ?? profile.isMuted ?? false,
     createdAt: profile.createdAt ?? null,
     updatedAt: profile.updatedAt ?? null,
+  };
+}
+
+function normalizeFollowRelationship(
+  relationship: ApiFollowRelationship,
+): FollowRelationship {
+  return {
+    isFollowing: relationship.isFollowing ?? false,
+    isFollowedBy: relationship.isFollowedBy ?? false,
+    isMoot: relationship.isMoot ?? false,
+    blockedByMe: relationship.blockedByMe ?? relationship.isBlocked ?? false,
+    mutedByMe: relationship.mutedByMe ?? relationship.isMuted ?? false,
+    followerCount: relationship.followerCount ?? 0,
+    followingCount: relationship.followingCount ?? 0,
+    mootCount: relationship.mootCount ?? 0,
+  };
+}
+
+function normalizeProfileControlResult(
+  result: ApiProfileControlResult,
+): ProfileControlResult {
+  const relationship = normalizeFollowRelationship(result.relationship);
+
+  return {
+    isBlocked: result.isBlocked ?? relationship.blockedByMe ?? false,
+    isMuted: result.isMuted ?? relationship.mutedByMe ?? false,
+    relationship,
   };
 }
 
