@@ -576,6 +576,7 @@ function fetch_profile_by_handle(string $handle): ?array
         "SELECT
             u.id AS user_id,
             u.handle,
+            u.role,
             u.status AS user_status,
             p.display_name,
             p.bio,

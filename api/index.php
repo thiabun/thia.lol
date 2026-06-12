@@ -112,6 +112,10 @@ try {
         migrations_dispatch($segments, $method);
     }
 
+    if (($segments[0] ?? null) === 'admin' && ($segments[1] ?? null) === 'profile-save-diagnostics') {
+        profile_diagnostics_dispatch($segments, $method);
+    }
+
     if (($segments[0] ?? null) === 'admin' && ($segments[1] ?? null) === 'badges') {
         badges_dispatch($segments, $method);
     }
