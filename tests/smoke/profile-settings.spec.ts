@@ -35,19 +35,27 @@ test("profile connections normalize, save, and render", async ({ page }) => {
   await expect(modal.getByLabel("Accent")).toHaveCount(0);
   await expect(modal.getByLabel("Theme")).toHaveCount(0);
   await expect(modal.getByLabel("Traits")).toHaveCount(0);
-  for (const platform of [
-    "website",
-    "twitch",
-    "instagram",
-    "bluesky",
-    "youtube",
-    "tiktok",
-    "x",
-    "github",
-    "discord",
-    "spotify",
-  ]) {
-    await expect(modal.getByTestId(`connection-icon-${platform}`).first()).toBeVisible();
+  for (const [platform, iconName] of Object.entries({
+    website: "lucide",
+    twitch: "simple-icons:twitch",
+    instagram: "simple-icons:instagram",
+    bluesky: "simple-icons:bluesky",
+    youtube: "simple-icons:youtube",
+    tiktok: "simple-icons:tiktok",
+    x: "simple-icons:x",
+    github: "simple-icons:github",
+    discord: "simple-icons:discord",
+    spotify: "simple-icons:spotify",
+  })) {
+    const icon = modal.getByTestId(`connection-icon-${platform}`).first();
+    await expect(icon).toBeVisible();
+
+    if (platform === "website") {
+      await expect(icon).toHaveAttribute("data-icon-source", "lucide");
+    } else {
+      await expect(icon).toHaveAttribute("data-icon-source", "simple-icons");
+      await expect(icon).toHaveAttribute("data-icon", iconName);
+    }
   }
 
   await modal.getByRole("button", { name: "Add connection" }).click();
@@ -67,7 +75,10 @@ test("profile connections normalize, save, and render", async ({ page }) => {
     },
   ]);
   await expect(page.getByRole("link", { name: /GitHub/ })).toBeVisible();
-  await expect(page.getByTestId("connection-icon-github").first()).toBeVisible();
+  await expect(page.getByTestId("connection-icon-github").first()).toHaveAttribute(
+    "data-icon",
+    "simple-icons:github",
+  );
 });
 
 test("valid connection cards collapse into compact summaries", async ({ page }) => {
@@ -94,8 +105,14 @@ test("valid connection cards collapse into compact summaries", async ({ page }) 
 
   await expect(modal.getByText("https://thia.lol/")).toBeVisible();
   await expect(modal.getByText("thiachannel")).toBeVisible();
-  await expect(modal.getByTestId("connection-icon-website").first()).toBeVisible();
-  await expect(modal.getByTestId("connection-icon-twitch").first()).toBeVisible();
+  await expect(modal.getByTestId("connection-icon-website").first()).toHaveAttribute(
+    "data-icon-source",
+    "lucide",
+  );
+  await expect(modal.getByTestId("connection-icon-twitch").first()).toHaveAttribute(
+    "data-icon",
+    "simple-icons:twitch",
+  );
   await expect(modal.getByText("Connection 1")).toHaveCount(0);
   await expect(modal.getByText("Connection 2")).toHaveCount(0);
   await expect(modal.getByRole("textbox", { name: "Website" })).toHaveCount(0);

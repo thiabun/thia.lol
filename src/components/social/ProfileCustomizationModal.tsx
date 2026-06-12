@@ -31,6 +31,7 @@ import { modalOverlay, modalPanel } from "../../lib/motionPresets";
 import {
   connectionPlatformHelp,
   connectionPlatformLabel,
+  formatProfileConnectionValue,
   maxProfileConnections,
   profileConnectionPlatforms,
   validateProfileConnectionDraft,
@@ -1024,7 +1025,7 @@ function ConnectionCards({
                     </p>
                     <p className="truncate text-xs text-muted">
                       {isValid
-                        ? connectionDisplayValue(validated.connection)
+                        ? formatProfileConnectionValue(validated.connection)
                         : connection.value.trim() || platform.help}
                     </p>
                   </div>
@@ -2020,18 +2021,6 @@ function platformMeta(platform: ProfileConnectionPlatform) {
     placeholder: "https://example.com",
     tone: "warm" as const,
   };
-}
-
-function connectionDisplayValue(connection: ProfileExternalConnection): string {
-  if (/^https:\/\//i.test(connection.value)) {
-    return connection.value;
-  }
-
-  if (["instagram", "tiktok", "x", "youtube"].includes(connection.platform)) {
-    return connection.value.startsWith("@") ? connection.value : `@${connection.value}`;
-  }
-
-  return connection.value;
 }
 
 function platformToneClass(tone: (typeof profileConnectionPlatforms)[number]["tone"]) {

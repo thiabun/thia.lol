@@ -114,3 +114,13 @@ test("cookie policy does not claim analytics are active", async ({ page }) => {
   expect(bodyText).not.toContain("Analytics cookies help us");
   expect(bodyText).not.toContain("Marketing cookies help us");
 });
+
+test("copyright page includes third-party icon attribution", async ({ page }) => {
+  await page.goto("/copyright");
+
+  await expect(
+    page.getByRole("heading", { name: "Third-party brand icons" }),
+  ).toBeVisible();
+  await expect(page.getByText("Simple Icons via react-icons")).toBeVisible();
+  await expect(page.getByText("does not imply endorsement")).toBeVisible();
+});

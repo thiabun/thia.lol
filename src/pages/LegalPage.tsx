@@ -362,6 +362,10 @@ const policies: Record<string, PolicyPageContent> = {
         body: "There is no automated counter-notice system yet. If your content was removed for copyright reasons and you believe that was a mistake, contact us manually with the content, account, reason, and any rights or permission information you want reviewed.",
       },
       {
+        title: "Third-party brand icons",
+        body: "Profile connection brand icons are provided through Simple Icons via react-icons. Brand names, logos, and trademarks belong to their respective owners. Their display in profile links does not imply endorsement, sponsorship, or affiliation with thia.lol.",
+      },
+      {
         title: "International note",
         body: "thia.lol is not treating copyright as a US-only issue. Reports may involve Norwegian, EU, UK, US, or other international copyright rules. This page is a practical takedown contact process, not a guarantee of a specific legal outcome.",
       },

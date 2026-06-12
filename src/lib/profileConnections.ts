@@ -5,81 +5,132 @@ import type {
 
 export const maxProfileConnections = 10;
 
+export type ProfileConnectionValidationMode =
+  | "https-url"
+  | "profile-url-or-handle"
+  | "handle"
+  | "discord-display-or-invite"
+  | "spotify-url";
+
+export type ProfileConnectionIconName =
+  | "generic-globe"
+  | "simple-icons:twitch"
+  | "simple-icons:instagram"
+  | "simple-icons:bluesky"
+  | "simple-icons:youtube"
+  | "simple-icons:tiktok"
+  | "simple-icons:x"
+  | "simple-icons:github"
+  | "simple-icons:discord"
+  | "simple-icons:spotify";
+
 export const profileConnectionPlatforms: Array<{
   value: ProfileConnectionPlatform;
   label: string;
+  validationMode: ProfileConnectionValidationMode;
   help: string;
   placeholder: string;
+  icon: ProfileConnectionIconName;
+  attributionName?: string;
   tone: "warm" | "cool" | "rose" | "leaf" | "neutral";
 }> = [
   {
     value: "website",
     label: "Website",
+    validationMode: "https-url",
     help: "Use a full https:// URL.",
     placeholder: "https://example.com",
+    icon: "generic-globe",
     tone: "warm",
   },
   {
     value: "youtube",
     label: "YouTube",
+    validationMode: "profile-url-or-handle",
     help: "Use a YouTube channel URL or @handle.",
     placeholder: "@channel or YouTube URL",
+    icon: "simple-icons:youtube",
+    attributionName: "YouTube",
     tone: "rose",
   },
   {
     value: "twitch",
     label: "Twitch",
+    validationMode: "handle",
     help: "Use a Twitch username.",
     placeholder: "channel",
+    icon: "simple-icons:twitch",
+    attributionName: "Twitch",
     tone: "cool",
   },
   {
     value: "tiktok",
     label: "TikTok",
+    validationMode: "profile-url-or-handle",
     help: "Use a TikTok @handle or profile URL.",
     placeholder: "@handle",
+    icon: "simple-icons:tiktok",
+    attributionName: "TikTok",
     tone: "neutral",
   },
   {
     value: "instagram",
     label: "Instagram",
+    validationMode: "handle",
     help: "Use an Instagram username.",
     placeholder: "handle",
+    icon: "simple-icons:instagram",
+    attributionName: "Instagram",
     tone: "rose",
   },
   {
     value: "x",
     label: "X / Twitter",
+    validationMode: "profile-url-or-handle",
     help: "Use an X/Twitter handle or profile URL.",
     placeholder: "handle",
+    icon: "simple-icons:x",
+    attributionName: "X",
     tone: "neutral",
   },
   {
     value: "bluesky",
     label: "Bluesky",
+    validationMode: "handle",
     help: "Use a Bluesky handle.",
     placeholder: "handle.bsky.social",
+    icon: "simple-icons:bluesky",
+    attributionName: "Bluesky",
     tone: "cool",
   },
   {
     value: "github",
     label: "GitHub",
+    validationMode: "profile-url-or-handle",
     help: "Use a GitHub username or profile URL.",
     placeholder: "username",
+    icon: "simple-icons:github",
+    attributionName: "GitHub",
     tone: "neutral",
   },
   {
     value: "discord",
     label: "Discord",
+    validationMode: "discord-display-or-invite",
     help: "Use a safe display value or Discord invite URL.",
     placeholder: "discord.gg/invite or display name",
+    icon: "simple-icons:discord",
+    attributionName: "Discord",
     tone: "cool",
   },
   {
     value: "spotify",
     label: "Spotify",
+    validationMode: "spotify-url",
     help: "Use an open.spotify.com URL.",
     placeholder: "https://open.spotify.com/...",
+    icon: "simple-icons:spotify",
+    attributionName: "Spotify",
     tone: "leaf",
   },
 ];
@@ -140,6 +191,27 @@ export function connectionPlatformHelp(platform: ProfileConnectionPlatform): str
     profileConnectionPlatforms.find((item) => item.value === platform)?.help ??
     "Enter a valid connection value."
   );
+}
+
+export function connectionPlatformIconName(
+  platform: ProfileConnectionPlatform,
+): ProfileConnectionIconName {
+  return (
+    profileConnectionPlatforms.find((item) => item.value === platform)?.icon ??
+    "generic-globe"
+  );
+}
+
+export function formatProfileConnectionValue(connection: ProfileExternalConnection): string {
+  if (/^https:\/\//i.test(connection.value)) {
+    return connection.value;
+  }
+
+  if (["instagram", "tiktok", "x", "youtube"].includes(connection.platform)) {
+    return connection.value.startsWith("@") ? connection.value : `@${connection.value}`;
+  }
+
+  return connection.value;
 }
 
 export function validateProfileConnectionDraft(
