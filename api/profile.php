@@ -18,23 +18,6 @@ function me_dispatch(array $segments, string $method): void
     me_profile_update();
 }
 
-function profile_diagnostics_dispatch(array $segments, string $method): void
-{
-    if (
-        count($segments) !== 2
-        || ($segments[0] ?? null) !== 'admin'
-        || $segments[1] !== 'profile-save-diagnostics'
-    ) {
-        json_error('Not found.', 404);
-    }
-
-    if ($method !== 'POST') {
-        json_error('Method not allowed.', 405);
-    }
-
-    profile_save_diagnostics();
-}
-
 function me_profile_update(): void
 {
     $session = require_authenticated_session();
@@ -181,53 +164,6 @@ function profile_body_value(array $body, string $camelKey, string $snakeKey): mi
     }
 
     return $body[$snakeKey] ?? null;
-}
-
-function profile_save_diagnostics(): void
-{
-    $body = request_json_body();
-    $handle = normalize_handle((string) ($body['handle'] ?? ''));
-
-    if (!in_array($handle, ['thia', 'thia2'], true) || time() >= strtotime('2026-06-12 14:15:00 UTC')) {
-        json_error('Diagnostic access denied.', 403);
-    }
-
-    $profile = fetch_profile_by_handle($handle);
-
-    if ($profile === null) {
-        json_error('Profile not found.', 404);
-    }
-
-    $saveBody = [
-        'displayName' => (string) ($profile['display_name'] ?? ''),
-        'bio' => (string) ($profile['bio'] ?? ''),
-        'location' => (string) ($profile['location'] ?? ''),
-        'avatarUrl' => $profile['avatar_url'] ?? null,
-        'bannerUrl' => $profile['banner_url'] ?? null,
-        'profileBackground' => $profile['profile_background'] ?? null,
-        'profileAccent' => $profile['profile_accent'] ?? null,
-        'profileTheme' => $profile['profile_theme'] ?? null,
-        'links' => json_array_value($profile['links'] ?? null),
-    ];
-
-    $pdo = db();
-    $result = null;
-
-    try {
-        $pdo->beginTransaction();
-        profile_update_for_user((int) $profile['user_id'], (string) $profile['handle'], $saveBody);
-        $result = [
-            'handle' => '@' . (string) $profile['handle'],
-            'dryRunOk' => true,
-            'rolledBack' => true,
-        ];
-    } finally {
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
-        }
-    }
-
-    json_success($result ?? ['dryRunOk' => false, 'rolledBack' => true]);
 }
 
 function profile_update_failed_on_missing_customization_column(PDOException $exception): bool
