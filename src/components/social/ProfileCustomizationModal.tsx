@@ -5,6 +5,7 @@ import {
   ArrowDown,
   ArrowUp,
   BadgeCheck,
+  Edit3,
   Eye,
   EyeOff,
   ImagePlus,
@@ -192,6 +193,9 @@ export function ProfileCustomizationModal({
   const [uploading, setUploading] = useState<UploadSlot | undefined>();
   const [profileMessage, setProfileMessage] = useState<string | undefined>();
   const [connectionErrors, setConnectionErrors] = useState<Record<string, string>>({});
+  const [editingConnectionIds, setEditingConnectionIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [drafts, setDrafts] = useState<ProfileModule[]>(modules);
   const [selectedModuleId, setSelectedModuleId] = useState<number | undefined>(
     modules[0]?.id,
@@ -233,6 +237,7 @@ export function ProfileCustomizationModal({
     field: keyof Omit<DraftConnection, "id">,
     value: string,
   ) {
+    setEditingConnectionIds((current) => new Set(current).add(id));
     setConnectionErrors((current) => {
       if (!current[id]) {
         return current;
@@ -252,21 +257,28 @@ export function ProfileCustomizationModal({
   }
 
   function addConnection(platform: ProfileConnectionPlatform = "website") {
+    const id = crypto.randomUUID();
     setForm((current) => ({
       ...current,
       connections: [
         ...current.connections,
         {
-          id: crypto.randomUUID(),
+          id,
           platform,
           value: "",
         },
       ],
     }));
+    setEditingConnectionIds((current) => new Set(current).add(id));
     setProfileMessage(undefined);
   }
 
   function removeConnection(id: string) {
+    setEditingConnectionIds((current) => {
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
     setConnectionErrors((current) => {
       if (!current[id]) {
         return current;
@@ -283,11 +295,63 @@ export function ProfileCustomizationModal({
     setProfileMessage(undefined);
   }
 
+  function editConnection(id: string) {
+    setEditingConnectionIds((current) => new Set(current).add(id));
+  }
+
+  function finishConnectionEdit(id: string) {
+    const connection = form.connections.find((item) => item.id === id);
+
+    if (!connection) {
+      return;
+    }
+
+    if (!connection.value.trim()) {
+      removeConnection(id);
+      return;
+    }
+
+    const validated = validateProfileConnectionDraft(
+      connection.platform,
+      connection.value,
+    );
+
+    if ("error" in validated) {
+      const error = validated.error ?? "Connection value is invalid.";
+      setConnectionErrors((current) => ({
+        ...current,
+        [id]: error,
+      }));
+      setEditingConnectionIds((current) => new Set(current).add(id));
+      return;
+    }
+
+    setConnectionErrors((current) => {
+      if (!current[id]) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+    setEditingConnectionIds((current) => {
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
+  }
+
   async function handleProfileSave() {
     const links = normalizedConnections(form.connections);
     setConnectionErrors(links.errors);
 
     if (Object.keys(links.errors).length > 0) {
+      setEditingConnectionIds((current) => {
+        const next = new Set(current);
+        Object.keys(links.errors).forEach((id) => next.add(id));
+        return next;
+      });
       setProfileMessage("Fix the highlighted connections before saving.");
       setActiveSection("connections");
       return;
@@ -308,6 +372,7 @@ export function ProfileCustomizationModal({
       });
 
       setForm(profileToForm(updated));
+      setEditingConnectionIds(new Set());
       setProfileMessage("Profile updated");
     } catch (error) {
       setProfileMessage(
@@ -669,8 +734,11 @@ export function ProfileCustomizationModal({
                   <ConnectionCards
                     busy={busy}
                     connections={form.connections}
+                    editingIds={editingConnectionIds}
                     errors={connectionErrors}
                     onAdd={addConnection}
+                    onEdit={editConnection}
+                    onFinishEdit={finishConnectionEdit}
                     onRemove={removeConnection}
                     onUpdate={updateConnection}
                   />
@@ -890,8 +958,11 @@ function ImageUploadControl({
 type ConnectionCardsProps = {
   busy: boolean;
   connections: DraftConnection[];
+  editingIds: Set<string>;
   errors: Record<string, string>;
   onAdd: (platform: ProfileConnectionPlatform) => void;
+  onEdit: (id: string) => void;
+  onFinishEdit: (id: string) => void;
   onRemove: (id: string) => void;
   onUpdate: (
     id: string,
@@ -903,8 +974,11 @@ type ConnectionCardsProps = {
 function ConnectionCards({
   busy,
   connections,
+  editingIds,
   errors,
   onAdd,
+  onEdit,
+  onFinishEdit,
   onRemove,
   onUpdate,
 }: ConnectionCardsProps) {
@@ -922,8 +996,14 @@ function ConnectionCards({
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2">
-        {connections.map((connection, index) => {
+        {connections.map((connection) => {
           const platform = platformMeta(connection.platform);
+          const validated = validateProfileConnectionDraft(
+            connection.platform,
+            connection.value,
+          );
+          const isValid = !("error" in validated);
+          const isEditing = editingIds.has(connection.id) || !isValid;
 
           return (
             <div
@@ -933,7 +1013,7 @@ function ConnectionCards({
                 platformToneClass(platform.tone),
               )}
             >
-              <div className="mb-3 flex items-start justify-between gap-3">
+              <div className={cn("flex items-start justify-between gap-3", isEditing ? "mb-3" : null)}>
                 <div className="flex min-w-0 items-center gap-2">
                   <span className="grid size-9 shrink-0 place-items-center rounded-full border border-line bg-surface/80 text-text">
                     <ProfileConnectionIcon platform={connection.platform} size={17} />
@@ -942,46 +1022,77 @@ function ConnectionCards({
                     <p className="truncate text-sm font-semibold text-text">
                       {platform.label}
                     </p>
-                    <p className="text-xs text-muted">Connection {index + 1}</p>
+                    <p className="truncate text-xs text-muted">
+                      {isValid
+                        ? connectionDisplayValue(validated.connection)
+                        : connection.value.trim() || platform.help}
+                    </p>
                   </div>
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`Remove connection ${index + 1}`}
-                  title="Remove connection"
-                  disabled={busy}
-                  icon={<Trash2 aria-hidden="true" size={16} />}
-                  onClick={() => onRemove(connection.id)}
-                />
+                <div className="flex shrink-0 items-center gap-1">
+                  {!isEditing ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Edit ${platform.label} connection`}
+                      title="Edit connection"
+                      disabled={busy}
+                      icon={<Edit3 aria-hidden="true" size={15} />}
+                      onClick={() => onEdit(connection.id)}
+                    />
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Remove ${platform.label} connection`}
+                    title="Remove connection"
+                    disabled={busy}
+                    icon={<Trash2 aria-hidden="true" size={16} />}
+                    onClick={() => onRemove(connection.id)}
+                  />
+                </div>
               </div>
-              <div className="grid gap-3">
-                <SelectField
-                  id={`profile-connection-platform-${connection.id}`}
-                  label={`Connection ${index + 1}`}
-                  value={connection.platform}
-                  disabled={busy}
-                  options={profileConnectionPlatforms}
-                  onChange={(event) =>
-                    onUpdate(connection.id, "platform", event.currentTarget.value)
-                  }
-                />
-                <TextField
-                  id={`profile-connection-value-${connection.id}`}
-                  label={connectionPlatformLabel(connection.platform)}
-                  value={connection.value}
-                  placeholder={platform.placeholder}
-                  maxLength={300}
-                  disabled={busy}
-                  onChange={(event) =>
-                    onUpdate(connection.id, "value", event.currentTarget.value)
-                  }
-                />
-                <p className="text-xs leading-5 text-muted">
-                  {errors[connection.id] ?? connectionPlatformHelp(connection.platform)}
-                </p>
-              </div>
+              {isEditing ? (
+                <div className="grid gap-3">
+                  <SelectField
+                    id={`profile-connection-platform-${connection.id}`}
+                    label="Platform"
+                    value={connection.platform}
+                    disabled={busy}
+                    options={profileConnectionPlatforms}
+                    onChange={(event) =>
+                      onUpdate(connection.id, "platform", event.currentTarget.value)
+                    }
+                  />
+                  <TextField
+                    id={`profile-connection-value-${connection.id}`}
+                    label={connectionPlatformLabel(connection.platform)}
+                    value={connection.value}
+                    placeholder={platform.placeholder}
+                    maxLength={300}
+                    disabled={busy}
+                    onChange={(event) =>
+                      onUpdate(connection.id, "value", event.currentTarget.value)
+                    }
+                  />
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <p className="min-w-0 text-xs leading-5 text-muted">
+                      {errors[connection.id] ?? connectionPlatformHelp(connection.platform)}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => onFinishEdit(connection.id)}
+                    >
+                      {connection.value.trim() ? "Done" : "Cancel"}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           );
         })}
@@ -1909,6 +2020,18 @@ function platformMeta(platform: ProfileConnectionPlatform) {
     placeholder: "https://example.com",
     tone: "warm" as const,
   };
+}
+
+function connectionDisplayValue(connection: ProfileExternalConnection): string {
+  if (/^https:\/\//i.test(connection.value)) {
+    return connection.value;
+  }
+
+  if (["instagram", "tiktok", "x", "youtube"].includes(connection.platform)) {
+    return connection.value.startsWith("@") ? connection.value : `@${connection.value}`;
+  }
+
+  return connection.value;
 }
 
 function platformToneClass(tone: (typeof profileConnectionPlatforms)[number]["tone"]) {

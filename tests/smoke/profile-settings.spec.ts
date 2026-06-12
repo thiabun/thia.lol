@@ -51,7 +51,7 @@ test("profile connections normalize, save, and render", async ({ page }) => {
   }
 
   await modal.getByRole("button", { name: "Add connection" }).click();
-  await modal.getByRole("combobox", { name: "Connection 1" }).selectOption("github");
+  await modal.getByRole("combobox", { name: "Platform" }).last().selectOption("github");
   await modal.getByRole("textbox", { name: "GitHub" }).fill("thiabun");
   await expect(modal.getByTestId("profile-customization-preview")).toContainText("GitHub");
   await expect(modal.getByTestId("connection-icon-github").first()).toBeVisible();
@@ -68,6 +68,52 @@ test("profile connections normalize, save, and render", async ({ page }) => {
   ]);
   await expect(page.getByRole("link", { name: /GitHub/ })).toBeVisible();
   await expect(page.getByTestId("connection-icon-github").first()).toBeVisible();
+});
+
+test("valid connection cards collapse into compact summaries", async ({ page }) => {
+  await mockOwnProfile(page, () => [
+    {
+      platform: "website",
+      label: "thia.lol",
+      value: "https://thia.lol/",
+      url: "https://thia.lol/",
+    },
+    {
+      platform: "twitch",
+      label: "Twitch",
+      value: "thiachannel",
+      url: "https://www.twitch.tv/thiachannel",
+    },
+  ]);
+
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+  await page.getByRole("button", { name: "Customize profile" }).click();
+  const modal = page.getByTestId("profile-customization-modal");
+  await modal.getByRole("button", { name: /Connections/ }).click();
+
+  await expect(modal.getByText("https://thia.lol/")).toBeVisible();
+  await expect(modal.getByText("thiachannel")).toBeVisible();
+  await expect(modal.getByTestId("connection-icon-website").first()).toBeVisible();
+  await expect(modal.getByTestId("connection-icon-twitch").first()).toBeVisible();
+  await expect(modal.getByText("Connection 1")).toHaveCount(0);
+  await expect(modal.getByText("Connection 2")).toHaveCount(0);
+  await expect(modal.getByRole("textbox", { name: "Website" })).toHaveCount(0);
+  await expect(modal.getByRole("textbox", { name: "Twitch" })).toHaveCount(0);
+
+  await modal.getByRole("button", { name: "Edit Website connection" }).click();
+  await expect(modal.getByRole("textbox", { name: "Website" })).toBeVisible();
+  await modal.getByRole("button", { name: "Done" }).click();
+  await expect(modal.getByRole("textbox", { name: "Website" })).toHaveCount(0);
+
+  await modal.getByRole("button", { name: "Edit Twitch connection" }).click();
+  await modal.getByRole("textbox", { name: "Twitch" }).fill("");
+  await modal.getByRole("button", { name: "Save profile" }).click();
+  await expect(modal.getByText("Twitch value is required.")).toBeVisible();
+  await expect(modal.getByRole("textbox", { name: "Twitch" })).toBeVisible();
+
+  await modal.getByRole("button", { name: "Remove Twitch connection" }).click();
+  await expect(modal.getByText("thiachannel")).toHaveCount(0);
 });
 
 test("legacy string profile links normalize before save", async ({ page }) => {
@@ -117,7 +163,7 @@ test("profile connections show platform-aware validation errors", async ({ page 
 
   await modal.getByRole("textbox", { name: "Website" }).fill("https://thia.lol/");
   await modal.getByRole("button", { name: "Add connection" }).click();
-  await modal.getByRole("combobox", { name: "Connection 2" }).selectOption("spotify");
+  await modal.getByRole("combobox", { name: "Platform" }).last().selectOption("spotify");
   await modal.getByRole("textbox", { name: "Spotify" }).fill("thia");
   await modal.getByRole("button", { name: "Save profile" }).click();
   await expect(modal.getByText("Spotify requires an open.spotify.com URL.")).toBeVisible();
@@ -127,7 +173,7 @@ test("profile connections show platform-aware validation errors", async ({ page 
     "https://open.spotify.com/artist/123",
   );
   await modal.getByRole("button", { name: "Add connection" }).click();
-  await modal.getByRole("combobox", { name: "Connection 3" }).selectOption("twitch");
+  await modal.getByRole("combobox", { name: "Platform" }).last().selectOption("twitch");
   await modal.getByRole("button", { name: "Save profile" }).click();
   await expect(modal.getByText("Twitch value is required.")).toBeVisible();
   expect(savedPayload).toBeUndefined();
