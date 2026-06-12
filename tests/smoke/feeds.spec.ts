@@ -691,6 +691,11 @@ test("thread modal root and reply identities navigate to profiles", async ({ pag
 
   await dialog.getByTestId("thread-root-post").click();
   await expect(page.getByTestId("thread-modal")).toHaveCount(1);
+  await expect(
+    dialog.getByTestId("thread-root-actions").getByRole("button", {
+      name: /Open replies/,
+    }),
+  ).toBeVisible();
 
   const rootPost = dialog.getByTestId("thread-root-post");
   const replyItem = dialog.getByTestId("thread-reply-item").first();
@@ -715,6 +720,19 @@ test("thread modal root and reply identities navigate to profiles", async ({ pag
   expect(Math.abs(replyBoxAfter!.width - replyBoxBefore!.width)).toBeLessThanOrEqual(1);
   expect(Math.abs(replyBoxAfter!.height - replyBoxBefore!.height)).toBeLessThanOrEqual(1);
 
+  const rootActionsBelongToRoot = await rootPost.evaluate((root) =>
+    root.contains(document.querySelector('[data-testid="thread-root-actions"]')),
+  );
+  expect(rootActionsBelongToRoot).toBe(true);
+  await expect(
+    replyItem.getByTestId("thread-reply-actions").getByRole("button", {
+      name: /Open replies/,
+    }),
+  ).toBeVisible();
+  await expect(replyItem.getByTestId("thread-reply-content")).toHaveAttribute(
+    "class",
+    "min-w-0 py-1",
+  );
   await expect(dialog.getByTestId("thread-avatar-rail")).toHaveCount(2);
   for (const bubble of await dialog.getByTestId("thread-avatar-bubble").all()) {
     const bubbleBox = await bubble.boundingBox();
@@ -796,6 +814,7 @@ test("thread reply composer is hidden until Reply and exposes media UI", async (
 test("thread renders nested replies and gates reply delete controls", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 390, height: 760 });
   await mockAuthenticatedApi(page);
   let deletedPostId: number | undefined;
   let rebloggedReply = false;
@@ -882,6 +901,27 @@ test("thread renders nested replies and gates reply delete controls", async ({
   await expect(dialog.getByText("Rebloggable reply.")).toBeVisible();
   await dialog.getByRole("button", { name: "Show 1 reply" }).click();
   await expect(dialog.getByText("Nested reply.")).toBeVisible();
+  await expect(dialog.getByTestId("thread-nested-replies")).toBeVisible();
+  await expect(dialog.getByTestId("thread-rail-branch")).toHaveCount(1);
+
+  const topReplyBox = await dialog
+    .getByText("My reply.")
+    .locator('xpath=ancestor::*[@data-testid="thread-reply-item"][1]')
+    .boundingBox();
+  const nestedReply = dialog
+    .getByText("Nested reply.")
+    .locator('xpath=ancestor::*[@data-testid="thread-reply-item"][1]');
+  const nestedReplyBox = await nestedReply.boundingBox();
+  expect(topReplyBox).not.toBeNull();
+  expect(nestedReplyBox).not.toBeNull();
+  expect(nestedReplyBox!.x - topReplyBox!.x).toBeGreaterThan(6);
+  expect(nestedReplyBox!.x - topReplyBox!.x).toBeLessThan(52);
+  await expect(nestedReply).toHaveClass(/border-l/);
+
+  const conversationOverflow = await dialog
+    .getByTestId("thread-conversation")
+    .evaluate((node) => node.scrollWidth > node.clientWidth + 1);
+  expect(conversationOverflow).toBe(false);
 
   await dialog.getByRole("button", { name: /Reblog this post/ }).last().click();
   await expect.poll(() => rebloggedReply).toBe(true);

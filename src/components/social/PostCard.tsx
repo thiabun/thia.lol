@@ -949,37 +949,39 @@ function ThreadModal({
 
             <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5 lg:px-7 lg:py-6">
               <div
-                className="mx-auto max-w-3xl rounded-panel border border-line bg-canvas/28 shadow-inner-soft"
+                className="mx-auto max-w-3xl overflow-hidden rounded-panel border border-line bg-canvas/24 shadow-inner-soft"
                 data-testid="thread-conversation"
               >
-                <ParentPostPreview post={post} />
-                <div className="border-b border-line/70 px-4 pb-4 sm:px-5">
-                  <ReactionControls
-                    post={post}
-                    commentCount={modalCommentCount}
-                    initialLikeCount={post.likeCount}
-                    initiallyLiked={post.likedByCurrentUser}
-                    onOpenThread={() => setComposerOpen(true)}
-                    compact
-                    actions={
-                      canDeleteRoot ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          disabled={actionPending}
-                          icon={<Trash2 aria-hidden="true" size={15} />}
-                          onClick={onRootDelete}
-                        >
-                          Delete
-                        </Button>
-                      ) : null
-                    }
-                  />
-                </div>
+                <ParentPostPreview
+                  post={post}
+                  actionRow={
+                    <ReactionControls
+                      post={post}
+                      commentCount={modalCommentCount}
+                      initialLikeCount={post.likeCount}
+                      initiallyLiked={post.likedByCurrentUser}
+                      onOpenThread={() => setComposerOpen(true)}
+                      compact
+                      actions={
+                        canDeleteRoot ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={actionPending}
+                            icon={<Trash2 aria-hidden="true" size={15} />}
+                            onClick={onRootDelete}
+                          >
+                            Delete
+                          </Button>
+                        ) : null
+                      }
+                    />
+                  }
+                />
 
                 {isAuthenticated && composerOpen ? (
-                  <div className="border-b border-line/70 px-4 py-4 sm:px-5">
+                  <div className="border-b border-line/70 px-4 py-3 sm:px-5">
                     <ReplyComposer
                       autoFocus
                       parentPostId={post.id}
@@ -990,11 +992,11 @@ function ThreadModal({
                     />
                   </div>
                 ) : isCheckingAuth ? (
-                  <div className="border-b border-line/70 px-4 py-4 sm:px-5">
+                  <div className="border-b border-line/70 px-4 py-3 sm:px-5">
                     <ThreadStateNotice text="Checking session..." />
                   </div>
                 ) : !isAuthenticated ? (
-                  <div className="flex flex-col gap-3 border-b border-line/70 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                  <div className="flex flex-col gap-3 border-b border-line/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                     <p className="text-sm text-muted">Log in to reply.</p>
                     <ButtonLink to="/login" size="sm" onClick={onClose}>
                       Log in
@@ -1002,7 +1004,7 @@ function ThreadModal({
                   </div>
                 ) : null}
 
-                <div className="px-4 py-2 sm:px-5">
+                <div className="px-3 py-1 sm:px-5">
                   {loading ? <ThreadStateNotice text="Loading replies..." /> : null}
                   {loadError ? (
                     <ThreadStateNotice tone="error" text={loadError} />
@@ -1010,7 +1012,7 @@ function ThreadModal({
                   {!loading && !loadError && replies.length === 0 ? (
                     <ThreadStateNotice text="No replies yet." />
                   ) : null}
-                  <div className="divide-y divide-line/60" data-testid="thread-replies">
+                  <div data-testid="thread-replies">
                     <AnimatePresence initial={false}>
                       {replies.map((reply) => (
                         <ReplyPreview
@@ -1037,10 +1039,16 @@ function ThreadModal({
   return createPortal(modal, document.body);
 }
 
-function ParentPostPreview({ post }: { post: Post }) {
+function ParentPostPreview({
+  post,
+  actionRow,
+}: {
+  post: Post;
+  actionRow: ReactNode;
+}) {
   return (
     <article
-      className="relative px-4 pb-1 pt-5 sm:px-5 sm:pt-6"
+      className="relative border-b border-line/70 bg-surface/36 px-4 pb-3 pt-5 sm:px-5 sm:pt-6"
       data-testid="thread-root-post"
     >
       <div className="grid grid-cols-[2.75rem_1fr] gap-3 sm:grid-cols-[3rem_1fr]">
@@ -1049,7 +1057,7 @@ function ParentPostPreview({ post }: { post: Post }) {
           href={`/@${post.author.handle}`}
           ariaLabel={`${post.author.displayName}'s profile`}
         />
-        <div className="min-w-0 pb-4">
+        <div className="min-w-0 pb-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <Link
               to={`/@${post.author.handle}`}
@@ -1077,7 +1085,7 @@ function ParentPostPreview({ post }: { post: Post }) {
               </Link>
             </div>
           ) : null}
-          <p className="mt-3 text-pretty text-base leading-7 text-text">{post.body}</p>
+          <p className="mt-3 text-pretty text-base leading-7 text-text sm:text-[1.0625rem] sm:leading-8">{post.body}</p>
           {post.mediaUrl && post.mediaUrl !== "/ambient-veil.webp" ? (
             <div className="mt-3 overflow-hidden rounded-card border border-line bg-canvas">
               <img
@@ -1089,6 +1097,7 @@ function ParentPostPreview({ post }: { post: Post }) {
               />
             </div>
           ) : null}
+          <div data-testid="thread-root-actions">{actionRow}</div>
         </div>
       </div>
     </article>
@@ -1105,7 +1114,7 @@ function ThreadStateNotice({
   return (
     <p
       className={cn(
-        "mx-auto my-5 max-w-sm rounded-card px-4 py-5 text-center text-sm",
+        "mx-auto my-3 max-w-sm rounded-card px-4 py-4 text-center text-sm",
         tone === "error" ? "bg-rose/15 text-rose-ink" : "bg-surface/50 text-muted",
       )}
       data-testid="thread-state"
@@ -1194,7 +1203,7 @@ function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
       exit={{ opacity: 0, y: -8 }}
       transition={{ type: "spring", stiffness: 260, damping: 26 }}
       className={cn(
-        "relative py-4",
+        "relative py-2.5 first:pt-3 last:pb-3 sm:py-3",
         depth > 0 && nestedReplyOffsetClass(depth),
       )}
       data-testid="thread-reply-item"
@@ -1207,7 +1216,10 @@ function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
           hasLineBefore
           hasBranch={depth > 0}
         />
-        <div className="min-w-0 rounded-card bg-surface/32 px-3 py-3 sm:px-4">
+        <div
+          className="min-w-0 py-1"
+          data-testid="thread-reply-content"
+        >
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <Link
               to={`/@${reply.author.handle}`}
@@ -1236,77 +1248,80 @@ function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
               />
             </div>
           ) : null}
-        </div>
-      </div>
 
-      <div className="pl-[3.5rem] sm:pl-[3.75rem]">
-        <ReactionControls
-          post={reply}
-          commentCount={localCommentCount}
-          initialLikeCount={reply.likeCount}
-          initiallyLiked={reply.likedByCurrentUser}
-          onOpenThread={() => setComposerOpen(true)}
-          compact
-          actions={
-            allowDelete ? (
+          <div data-testid="thread-reply-actions">
+            <ReactionControls
+              post={reply}
+              commentCount={localCommentCount}
+              initialLikeCount={reply.likeCount}
+              initiallyLiked={reply.likedByCurrentUser}
+              onOpenThread={() => setComposerOpen(true)}
+              compact
+              actions={
+                allowDelete ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={deletePending}
+                    icon={<Trash2 aria-hidden="true" size={15} />}
+                    onClick={() => void handleDeleteReply()}
+                  >
+                    Delete
+                  </Button>
+                ) : null
+              }
+            />
+          </div>
+
+          {deleteError ? (
+            <p className="mt-2 text-xs font-medium text-rose-ink">
+              {deleteError}
+            </p>
+          ) : null}
+
+          {canNest && (localCommentCount > 0 || childReplies.length > 0) ? (
+            <div className="mt-2" data-testid="thread-nested-toggle">
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                disabled={deletePending}
-                icon={<Trash2 aria-hidden="true" size={15} />}
-                onClick={() => void handleDeleteReply()}
+                onClick={() => void loadChildren()}
               >
-                Delete
+                {childrenOpen ? "Hide replies" : `Show ${localCommentCount} ${localCommentCount === 1 ? "reply" : "replies"}`}
               </Button>
-            ) : null
-          }
-        />
+            </div>
+          ) : null}
+
+          {childrenError ? (
+            <p className="mt-2 text-xs font-medium text-rose-ink">
+              {childrenError}
+            </p>
+          ) : null}
+          {childrenLoading ? (
+            <p className="mt-2 text-xs text-muted">
+              Loading replies...
+            </p>
+          ) : null}
+        </div>
       </div>
 
-      {deleteError ? (
-        <p className="mt-2 pl-[3.5rem] text-xs font-medium text-rose-ink sm:pl-[3.75rem]">
-          {deleteError}
-        </p>
-      ) : null}
-
       {isAuthenticated && composerOpen ? (
-        <ReplyComposer
-          autoFocus
-          className="ml-[3.5rem] mt-3 sm:ml-[3.75rem]"
-          parentPostId={reply.id}
-          csrfToken={csrfToken}
-          runWithAuth={runWithAuth}
-          onCancel={() => setComposerOpen(false)}
-          onCreated={handleNestedReplyCreated}
-        />
-      ) : null}
-
-      {canNest && (localCommentCount > 0 || childReplies.length > 0) ? (
-        <div className="mt-3 pl-[3.5rem] sm:pl-[3.75rem]">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => void loadChildren()}
-          >
-            {childrenOpen ? "Hide replies" : `Show ${localCommentCount} ${localCommentCount === 1 ? "reply" : "replies"}`}
-          </Button>
+        <div className="mt-2 grid grid-cols-[2.75rem_1fr] gap-3 sm:grid-cols-[3rem_1fr]">
+          <span aria-hidden="true" />
+          <ReplyComposer
+            autoFocus
+            parentPostId={reply.id}
+            csrfToken={csrfToken}
+            runWithAuth={runWithAuth}
+            onCancel={() => setComposerOpen(false)}
+            onCreated={handleNestedReplyCreated}
+          />
         </div>
       ) : null}
 
-      {childrenError ? (
-        <p className="mt-2 pl-[3.5rem] text-xs font-medium text-rose-ink sm:pl-[3.75rem]">
-          {childrenError}
-        </p>
-      ) : null}
-      {childrenLoading ? (
-        <p className="mt-2 pl-[3.5rem] text-xs text-muted sm:pl-[3.75rem]">
-          Loading replies...
-        </p>
-      ) : null}
       {childrenOpen && childReplies.length > 0 ? (
-        <div className="mt-2">
+        <div className="mt-1" data-testid="thread-nested-replies">
           {childReplies.map((child) => (
             <ReplyPreview
               key={child.id}
@@ -1323,14 +1338,14 @@ function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
 
 function nestedReplyOffsetClass(depth: number) {
   if (depth === 1) {
-    return "ml-3 sm:ml-6";
+    return "ml-2 border-l border-line/55 pl-2 sm:ml-5 sm:pl-3";
   }
 
   if (depth === 2) {
-    return "ml-5 sm:ml-10";
+    return "ml-3 border-l border-line/45 pl-2 sm:ml-8 sm:pl-3";
   }
 
-  return "ml-6 sm:ml-14";
+  return "ml-4 border-l border-line/40 pl-2 sm:ml-10 sm:pl-3";
 }
 
 type LikeButtonProps = {
