@@ -12,6 +12,7 @@ require_once __DIR__ . '/profile.php';
 require_once __DIR__ . '/follows.php';
 require_once __DIR__ . '/notifications.php';
 require_once __DIR__ . '/chat.php';
+require_once __DIR__ . '/search.php';
 require_once __DIR__ . '/moderation.php';
 require_once __DIR__ . '/badges.php';
 require_once __DIR__ . '/migrations.php';
@@ -98,6 +99,10 @@ try {
 
     if (($segments[0] ?? null) === 'chat') {
         chat_dispatch($segments, $method);
+    }
+
+    if (($segments[0] ?? null) === 'search') {
+        search_dispatch($segments, $method);
     }
 
     if (($segments[0] ?? null) === 'reports') {

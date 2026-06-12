@@ -112,6 +112,7 @@ Open each route in a clean browser session and confirm it loads without a blank 
 
 - [ ] https://thia.lol/
 - [ ] https://thia.lol/discover
+- [ ] https://thia.lol/search
 - [ ] https://thia.lol/rooms
 - [ ] https://thia.lol/@thia
 - [ ] https://thia.lol/legal
@@ -131,6 +132,8 @@ Open or request each endpoint and confirm the response is valid JSON or the expe
 - [ ] https://thia.lol/api/posts
 - [ ] https://thia.lol/api/feed/discover
 - [ ] https://thia.lol/api/feed/home
+- [ ] https://thia.lol/api/search?q=thia
+- [ ] https://thia.lol/api/search?q=general
 - [ ] https://thia.lol/api/profiles/thia
 - [ ] https://thia.lol/api/profiles/thia/posts
 - [ ] https://thia.lol/api/profiles/thia/replies

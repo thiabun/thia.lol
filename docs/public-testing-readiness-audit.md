@@ -187,6 +187,14 @@ Recommended next task: Run `THIA_BASE_URL=https://thia.lol` smoke tests with tes
 4. Run deployed authenticated smoke for the Chat page "Message a moot" picker after deployment.
 5. Add ownership transfer and deeper room moderation tools.
 
+## 2026-06-12 Search foundation addendum
+
+- Added a public `/search` route with a real search input, loading, empty, too-short, no-result, error, and grouped result states.
+- Added `GET /api/search?q=...` for public profile and room search. V1 searches active profiles by handle, display name, and bio, and public rooms by slug, name, and summary.
+- Search results exclude suspended users through `users.status = 'active'`, exclude deleted/private rooms through existing public room filters, and apply current-viewer block/mute filters when the user context is available.
+- Posts are intentionally not included in v1 so hidden/removed post and ancestor visibility rules are not widened in this pass. Private chat messages, admin-only data, analytics, suggestions, and external search services remain out of scope.
+- Local coverage uses mocked Playwright states plus PHP source-inspection checks for prepared query placeholders and public safety filters. Deployed API checks should include `/search`, `/api/search?q=thia`, and `/api/search?q=general`.
+
 ## 2026-06-11 Chat picker addendum
 
 - Added a Chat page "Message a moot" picker backed by `GET /api/chat/moots`.

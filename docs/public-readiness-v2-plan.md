@@ -270,11 +270,12 @@ Recommended new v2 issues:
 - Priority: P2
 - Area labels: `area: search`, `area: api`, `area: frontend`, `needs-product-decision`
 - Summary: Define Search v1 before adding a route or nav item.
+- Implementation note, 2026-06-12: Search v1 now has a `/search` route and `GET /api/search?q=...` endpoint for public profiles and public, non-deleted rooms. Posts, private chat messages, admin search, analytics, suggestions, and external search services remain out of scope.
 - Acceptance criteria:
-  - [ ] Searchable entities are chosen for v1.
-  - [ ] Privacy and safety constraints are documented.
-  - [ ] API/SQL approach is proposed without external services.
-  - [ ] Empty, loading, error, and no-result states are specified.
+  - [x] Searchable entities are chosen for v1.
+  - [x] Privacy and safety constraints are documented.
+  - [x] API/SQL approach is proposed without external services.
+  - [x] Empty, loading, error, and no-result states are specified.
 
 ### [#18 Profile and personal-space evolution plan](https://github.com/thiabun/thia.lol/issues/18)
 

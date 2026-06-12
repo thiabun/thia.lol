@@ -45,7 +45,7 @@ test("desktop primary nav shows platform sections without Admin", async ({ page 
   const nav = page.getByTestId("desktop-nav");
   await expect(nav).toBeVisible();
 
-  for (const label of ["Home", "Discover", "Rooms", "Chat"]) {
+  for (const label of ["Home", "Discover", "Search", "Rooms", "Chat"]) {
     await expect(nav.getByRole("link", { name: label })).toBeVisible();
   }
 
@@ -168,13 +168,15 @@ test("mobile primary nav shows platform sections without Admin", async ({ page }
   }
 
   await expect(nav.getByRole("button", { name: "Post" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Search" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Search" })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Admin" })).toHaveCount(0);
 });
 
 test("mobile primary nav remains usable on main routes", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
 
-  for (const path of ["/", "/discover", "/rooms", "/chat"]) {
+  for (const path of ["/", "/discover", "/search", "/rooms", "/chat"]) {
     await page.goto(path);
 
     const nav = page.getByTestId("mobile-nav");
@@ -185,6 +187,7 @@ test("mobile primary nav remains usable on main routes", async ({ page }) => {
     }
 
     await expect(nav.getByRole("button", { name: "Post" })).toBeVisible();
+    await expect(nav.getByRole("link", { name: "Search" })).toHaveCount(0);
   }
 });
 

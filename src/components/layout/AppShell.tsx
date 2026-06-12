@@ -9,6 +9,7 @@ import {
   MessageCircle,
   PenLine,
   Radio,
+  Search,
   Shield,
   UserRound,
   UserPlus,
@@ -37,6 +38,7 @@ import { useAuth } from "../../lib/useAuth";
 const publicNavItems = [
   { to: "/", label: "Home", icon: Home },
   { to: "/discover", label: "Discover", icon: Compass },
+  { to: "/search", label: "Search", icon: Search },
   { to: "/rooms", label: "Rooms", icon: Radio },
   { to: "/chat", label: "Chat", icon: MessageCircle },
 ];
@@ -219,6 +221,15 @@ function SiteHeader({
         </nav>
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <ButtonLink
+            to="/search"
+            variant="secondary"
+            size="icon"
+            aria-label="Search"
+            title="Search"
+            className="lg:hidden"
+            icon={<Search aria-hidden="true" size={18} />}
+          />
           {showNotifications ? (
             <NotificationBell unreadCount={notificationUnreadCount} />
           ) : null}
@@ -441,10 +452,8 @@ function MobileDock({
   onPostClick: () => void;
   postDisabled: boolean;
 }) {
-  const mobilePositions =
-    navItems.length === 4
-      ? ["col-start-1", "col-start-2", "col-start-4", "col-start-5"]
-      : ["col-start-1", "col-start-2", "col-start-4"];
+  const mobileNavItems = navItems.filter((item) => item.to !== "/search");
+  const mobilePositions = ["col-start-1", "col-start-2", "col-start-4", "col-start-5"];
 
   return (
     <motion.nav
@@ -455,7 +464,7 @@ function MobileDock({
       aria-label="Primary"
       data-testid="mobile-nav"
     >
-      {navItems.map(({ to, label, icon: Icon }, index) => (
+      {mobileNavItems.map(({ to, label, icon: Icon }, index) => (
         <motion.div
           key={to}
           className={mobilePositions[index]}

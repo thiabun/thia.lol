@@ -34,6 +34,9 @@ const RoomPage = lazy(() =>
 const RoomsPage = lazy(() =>
   import("./pages/RoomsPage").then((module) => ({ default: module.RoomsPage })),
 );
+const SearchPage = lazy(() =>
+  import("./pages/SearchPage").then((module) => ({ default: module.SearchPage })),
+);
 const CommunityGuidelinesPage = lazy(() =>
   import("./pages/LegalPage").then((module) => ({
     default: module.CommunityGuidelinesPage,
@@ -78,6 +81,7 @@ export default function App() {
           <Route element={<AppShell />}>
             <Route index element={<HomePage />} />
             <Route path="discover" element={<DiscoverPage />} />
+            <Route path="search" element={<SearchPage />} />
             <Route path="rooms" element={<RoomsPage />} />
             <Route path="rooms/:slug" element={<RoomPage />} />
             <Route path="chat" element={<ChatPage />} />

@@ -187,6 +187,20 @@ export type DiscoverFeed = {
   peopleToWatch: DiscoverPerson[];
 };
 
+export type SearchProfileResult = {
+  user: User;
+  bioSnippet: string;
+};
+
+export type SearchResults = {
+  query: string;
+  minQueryLength: number;
+  results: {
+    profiles: SearchProfileResult[];
+    rooms: Room[];
+  };
+};
+
 export type ChatMessage = {
   id: number;
   conversationId: number;

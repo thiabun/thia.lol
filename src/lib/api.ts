@@ -18,6 +18,7 @@ import type {
   ReactionCounts,
   Room,
   RoomMember,
+  SearchResults,
   UserBadge,
 } from "./types";
 import { apiDelete, apiGet, apiPatch, apiPost, apiUpload } from "./apiClient";
@@ -80,6 +81,13 @@ type ApiDiscoverFeed = {
   posts: ApiPost[];
   activeRooms: ApiRoom[];
   peopleToWatch: DiscoverPerson[];
+};
+
+type ApiSearchResults = Omit<SearchResults, "results"> & {
+  results: {
+    profiles: SearchResults["results"]["profiles"];
+    rooms: ApiRoom[];
+  };
 };
 
 export type CreatePostInput = {
@@ -359,6 +367,19 @@ export function getRooms(): Promise<Room[]> {
 
 export function getStats(): Promise<PublicStats> {
   return apiGet<PublicStats>("/stats");
+}
+
+export function getSearchResults(query: string): Promise<SearchResults> {
+  const params = new URLSearchParams({ q: query.trim() });
+
+  return apiGet<ApiSearchResults>(`/search?${params.toString()}`).then((result) => ({
+    query: result.query,
+    minQueryLength: result.minQueryLength,
+    results: {
+      profiles: result.results.profiles,
+      rooms: result.results.rooms.filter(isVisibleRoom).map(normalizeRoom),
+    },
+  }));
 }
 
 export function getRoom(idOrSlug: string): Promise<Room | undefined> {
