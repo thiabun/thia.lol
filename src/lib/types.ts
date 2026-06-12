@@ -100,6 +100,37 @@ export type ProfileBadgesResult = {
   featuredBadges: UserBadge[];
 };
 
+export type ProfileModuleType = "about" | "links" | "featured_badges" | "custom_text";
+
+export type ProfileModuleVisibility = "public" | "hidden" | "draft";
+
+export type ProfileModuleStatus = "active" | "hidden" | "deleted";
+
+export type ProfileModuleLink = {
+  label: string;
+  url: string;
+};
+
+export type ProfileModuleConfig = {
+  body?: string;
+  link?: ProfileModuleLink;
+  links?: ProfileModuleLink[];
+  userBadgeIds?: number[];
+};
+
+export type ProfileModule = {
+  id: number;
+  type: ProfileModuleType;
+  title: string | null;
+  config: ProfileModuleConfig;
+  visibility: ProfileModuleVisibility;
+  position: number;
+  status: ProfileModuleStatus;
+  schemaVersion: number;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
 export type Room = {
   id: number;
   slug: string;

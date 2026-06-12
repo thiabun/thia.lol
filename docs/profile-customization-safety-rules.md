@@ -4,9 +4,9 @@ Date: 2026-06-12
 
 ## Purpose
 
-Profiles are moving toward curated personal spaces: identity pages, social profiles, personal websites, creator hubs, and possible blog surfaces. That direction needs guardrails before the module system exists, because customization can break readability, moderation, performance, accessibility, and user trust if it is treated as unlimited page building.
+Profiles are moving toward curated personal spaces: identity pages, social profiles, personal websites, creator hubs, and possible blog surfaces. That direction needs guardrails while the module system grows, because customization can break readability, moderation, performance, accessibility, and user trust if it is treated as unlimited page building.
 
-This document defines the safety framework for future profile customization and profile modules. It does not implement modules, migrations, embeds, integrations, arbitrary themes, privacy controls, analytics, ads, or blog posts.
+This document defines the safety framework for profile customization and profile modules. The first module foundation exists for safe text, links, and badge showcase modules; embeds, integrations, arbitrary themes, privacy controls, analytics, ads, and blog posts remain out of scope.
 
 The current profile implementation already supports constrained identity customization: avatar, banner, profile background image, accent token, theme token, structured Connections, featured badges, followers/following/moot panels, and Feed / Replies / Rooms tabs. Future work should build on that constrained model instead of adding arbitrary CSS, HTML, JavaScript, or unsupported controls.
 
@@ -73,6 +73,11 @@ Current backend behavior:
 - Spotify is restricted to `open.spotify.com`.
 - Known social platforms use host allowlists when a URL is supplied.
 - Profile customization columns are migration-aware and return a clean readiness error when missing.
+- Profile modules use `profile_modules` after migration `20260612_0001_add_profile_modules.sql`.
+- Public module reads return only public active modules for active users.
+- Owner module mutations require authentication and CSRF.
+- First-pass module types are `about`, `links`, `featured_badges`, and `custom_text`.
+- Module config validation rejects unknown keys, unsafe text, unsafe URLs, arbitrary embeds, and arbitrary HTML/CSS/JS.
 
 Future implementation should keep this baseline and tighten it where needed. In particular, future API work should move profile accent/theme handling from generic token validation to explicit allowlists before those values affect more UI.
 
@@ -497,14 +502,14 @@ Every future profile customization or module implementation issue should answer 
 
 Suggested acceptance criteria:
 
-- [ ] Adds an idempotent `profile_modules` migration only after the table shape is approved.
-- [ ] Stores owner, module type, visibility, sort order, config JSON, schema version, status, and timestamps.
-- [ ] Enforces a module type allowlist.
-- [ ] Enforces maximum module count.
-- [ ] Adds server-side validation for each first module type.
-- [ ] Public reads return only public, active, valid modules for active users.
-- [ ] No arbitrary CSS, HTML, JavaScript, iframes, embeds, or integrations are added.
-- [ ] Profile report remains available and covers rendered modules.
+- [x] Adds an idempotent `profile_modules` migration only after the table shape is approved.
+- [x] Stores owner, module type, visibility, sort order, config JSON, schema version, status, and timestamps.
+- [x] Enforces a module type allowlist.
+- [x] Enforces maximum module count.
+- [x] Adds server-side validation for each first module type.
+- [x] Public reads return only public, active, valid modules for active users.
+- [x] No arbitrary CSS, HTML, JavaScript, iframes, embeds, or integrations are added.
+- [x] Profile report remains available and covers rendered modules.
 - [ ] API-backed tests run against a working API path or are marked blocked.
 
 ### #23 Profile Module Editor And Preview Mode

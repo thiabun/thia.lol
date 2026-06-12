@@ -33,6 +33,7 @@ import {
   getProfileBadges,
   getProfileFollowers,
   getProfileFollowing,
+  getProfileModules,
   getProfilePosts,
   getProfileReblogs,
   getProfileReplies,
@@ -58,6 +59,7 @@ import type {
   BadgeDefinition,
   Post,
   Profile,
+  ProfileModule,
   UserBadge,
 } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
@@ -120,12 +122,17 @@ export function ProfilePage() {
     () => () => getProfileBadges(normalizedHandle),
     [normalizedHandle],
   );
+  const modulesLoader = useMemo(
+    () => () => getProfileModules(normalizedHandle),
+    [normalizedHandle],
+  );
   const profileState = useAsyncData(profileLoader);
   const postsState = useAsyncData(postsLoader);
   const repliesState = useAsyncData(repliesLoader);
   const reblogsState = useAsyncData(reblogsLoader);
   const roomsState = useAsyncData(roomsLoader);
   const badgesState = useAsyncData(badgesLoader);
+  const modulesState = useAsyncData(modulesLoader);
   const activeFollowState =
     followState?.handle === normalizedHandle ? followState.relationship : undefined;
   const activeFollowError =
@@ -475,6 +482,13 @@ export function ProfilePage() {
           onUpload={handleProfileImageUpload}
         />
       ) : null}
+      <ProfileModulesSection
+        badges={profileBadges}
+        error={modulesState.error}
+        isOwnProfile={isOwnProfile}
+        loading={modulesState.loading}
+        modules={modulesState.data ?? []}
+      />
       <motion.div
         className="border-t border-line pt-5"
         variants={cardEntrance}
@@ -610,6 +624,206 @@ function mergeFollowState(
       moots: mootCount,
     },
   };
+}
+
+type ProfileModulesSectionProps = {
+  badges: UserBadge[];
+  error: unknown;
+  isOwnProfile: boolean;
+  loading: boolean;
+  modules: ProfileModule[];
+};
+
+function ProfileModulesSection({
+  badges,
+  error,
+  isOwnProfile,
+  loading,
+  modules,
+}: ProfileModulesSectionProps) {
+  const renderableModules = modules.filter((module) =>
+    profileModuleHasContent(module, badges),
+  );
+
+  if (loading && !isOwnProfile) {
+    return null;
+  }
+
+  if (error && !isOwnProfile) {
+    return null;
+  }
+
+  if (!loading && !error && renderableModules.length === 0 && !isOwnProfile) {
+    return null;
+  }
+
+  return (
+    <motion.section
+      aria-label="Personal space"
+      className="border-t border-line pt-5"
+      data-testid="profile-modules"
+      variants={cardEntrance}
+      custom={2}
+      initial="hidden"
+      animate="show"
+    >
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold text-text">Personal space</h2>
+        </div>
+      </div>
+
+      {loading ? (
+        <ApiStateNotice
+          kind="loading"
+          title="Loading profile modules"
+          text="Profile modules are loading."
+        />
+      ) : null}
+
+      {!loading && error ? (
+        <ApiStateNotice
+          kind="error"
+          title="Profile modules are not available"
+          text="Try refreshing in a moment."
+        />
+      ) : null}
+
+      {!loading && !error && renderableModules.length === 0 ? (
+        <EmptyState
+          icon={Sparkles}
+          title="No profile modules yet"
+          text="This space is empty for now."
+        />
+      ) : null}
+
+      {!loading && !error && renderableModules.length > 0 ? (
+        <div className="grid min-w-0 gap-3 md:grid-cols-2">
+          {renderableModules.map((module) => (
+            <ProfileModuleCard key={module.id} module={module} badges={badges} />
+          ))}
+        </div>
+      ) : null}
+    </motion.section>
+  );
+}
+
+type ProfileModuleCardProps = {
+  badges: UserBadge[];
+  module: ProfileModule;
+};
+
+function ProfileModuleCard({ badges, module }: ProfileModuleCardProps) {
+  const title = module.title ?? profileModuleFallbackTitle(module.type);
+
+  return (
+    <article
+      className="min-w-0 rounded-card border border-line bg-surface/80 p-4 shadow-soft"
+      data-testid={`profile-module-${module.type}`}
+    >
+      <h3 className="text-sm font-semibold text-text">{title}</h3>
+      <ProfileModuleContent module={module} badges={badges} />
+    </article>
+  );
+}
+
+function ProfileModuleContent({
+  badges,
+  module,
+}: ProfileModuleCardProps) {
+  if (module.type === "links") {
+    return (
+      <div className="mt-3 flex min-w-0 flex-wrap gap-2">
+        {(module.config.links ?? []).map((link) => (
+          <a
+            key={`${link.label}-${link.url}`}
+            className="min-w-0 rounded-control border border-line bg-canvas/65 px-3 py-2 text-sm font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            href={link.url}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <span className="block max-w-full truncate">{link.label}</span>
+          </a>
+        ))}
+      </div>
+    );
+  }
+
+  if (module.type === "featured_badges") {
+    const selectedBadges = profileModuleBadges(module, badges);
+
+    return (
+      <div className="mt-3 flex min-w-0 flex-wrap gap-2">
+        {selectedBadges.map((userBadge) => (
+          <span
+            key={userBadge.id}
+            className={cn(
+              "inline-flex min-w-0 items-center gap-2 rounded-control border px-3 py-2 text-sm font-semibold",
+              rarityIconClass(userBadge.badge.rarity),
+            )}
+          >
+            <span className="min-w-0 truncate">{userBadge.badge.name}</span>
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 space-y-3">
+      {module.config.body ? (
+        <p className="break-words text-sm leading-6 text-muted">{module.config.body}</p>
+      ) : null}
+      {module.config.link ? (
+        <a
+          className="inline-flex max-w-full rounded-control border border-line bg-canvas/65 px-3 py-2 text-sm font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          href={module.config.link.url}
+          rel="noreferrer"
+          target="_blank"
+        >
+          <span className="min-w-0 truncate">{module.config.link.label}</span>
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
+function profileModuleHasContent(module: ProfileModule, badges: UserBadge[]): boolean {
+  if (module.type === "links") {
+    return (module.config.links ?? []).length > 0;
+  }
+
+  if (module.type === "featured_badges") {
+    return profileModuleBadges(module, badges).length > 0;
+  }
+
+  return typeof module.config.body === "string" && module.config.body.trim() !== "";
+}
+
+function profileModuleBadges(module: ProfileModule, badges: UserBadge[]): UserBadge[] {
+  const selectedIds = new Set(module.config.userBadgeIds ?? []);
+
+  if (selectedIds.size === 0) {
+    return [];
+  }
+
+  return badges.filter((badge) => selectedIds.has(badge.id));
+}
+
+function profileModuleFallbackTitle(type: ProfileModule["type"]): string {
+  if (type === "about") {
+    return "About";
+  }
+
+  if (type === "links") {
+    return "Links";
+  }
+
+  if (type === "featured_badges") {
+    return "Featured badges";
+  }
+
+  return "Note";
 }
 
 type ProfileTabButtonProps = {

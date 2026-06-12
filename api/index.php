@@ -9,6 +9,7 @@ require_once __DIR__ . '/posts.php';
 require_once __DIR__ . '/rooms.php';
 require_once __DIR__ . '/uploads.php';
 require_once __DIR__ . '/profile.php';
+require_once __DIR__ . '/profile_modules.php';
 require_once __DIR__ . '/follows.php';
 require_once __DIR__ . '/notifications.php';
 require_once __DIR__ . '/chat.php';
@@ -79,6 +80,14 @@ try {
 
     if (($segments[0] ?? null) === 'me' && ($segments[1] ?? null) === 'badges') {
         badges_dispatch($segments, $method);
+    }
+
+    if (
+        ($segments[0] ?? null) === 'me'
+        && ($segments[1] ?? null) === 'profile'
+        && in_array($segments[2] ?? null, ['modules', 'module-order'], true)
+    ) {
+        profile_modules_dispatch($segments, $method);
     }
 
     if (($segments[0] ?? null) === 'me') {
@@ -155,6 +164,10 @@ try {
 
     if (($segments[0] ?? null) === 'profiles' && count($segments) === 3 && $segments[2] === 'rooms') {
         profile_rooms_index($segments[1]);
+    }
+
+    if (($segments[0] ?? null) === 'profiles' && count($segments) === 3 && $segments[2] === 'modules') {
+        profile_modules_dispatch($segments, $method);
     }
 
     if (($segments[0] ?? null) === 'profiles' && count($segments) === 3 && $segments[2] === 'badges') {

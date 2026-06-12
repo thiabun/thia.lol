@@ -42,14 +42,17 @@ Implemented owner edit behavior:
 Implemented API and storage:
 
 - Public reads: `GET /api/profiles/:handle`, `/posts`, `/replies`, `/reblogs`, `/rooms`, `/badges`, `/followers`, and `/following`.
+- Public module reads: `GET /api/profiles/:handle/modules` returns public active profile modules for active users.
 - Owner update: `PATCH /api/me/profile`.
+- Owner module foundation: `GET`/`POST`/`PATCH`/`DELETE /api/me/profile/modules` and `PATCH /api/me/profile/module-order`.
 - Featured badges: `PATCH /api/me/badges/featured`.
 - Relationship controls: `POST`/`DELETE /api/profiles/:handle/follow`, `/block`, `/mute`, and `DELETE /api/profiles/:handle/follower`.
 - Baseline profile storage is still mostly identity-level fields on `profiles`, plus related tables for posts, rooms, follows, blocks, mutes, badges, and reports.
+- Module storage lives in `profile_modules` after migration `20260612_0001_add_profile_modules.sql`.
 
 Current limitations:
 
-- Profiles have no module system, module ordering, module visibility, or module-level moderation state.
+- Profiles now have a minimal module foundation, but no full module editor, preview mode, featured posts/rooms, integrations, embeds, or module-level report target.
 - The current page state owns profile loading, tabs, panels, badge featuring, editing, follow controls, block/mute controls, and reporting in one route component.
 - Profile customization has early fields but no unified customization policy document or preview mode.
 - `profileAccent` and `profileTheme` are stored and editable but are not yet a comprehensive layout/theme system.
@@ -620,9 +623,10 @@ Created high-confidence follow-up issues:
 
 - Priority: P1.
 - Labels: `enhancement`, `area: profiles`, `area: api`, `area: database`, `needs-product-decision`.
+- Status: Foundation implemented.
 - Summary: Add storage and API foundation for ordered safe profile modules.
 - Acceptance criteria:
-  - Idempotent migration adds module storage.
+  - Idempotent migration `20260612_0001_add_profile_modules.sql` adds module storage.
   - Public module reads and owner module mutations are implemented with CSRF on mutations.
   - Module type/settings validation is allowlist-based.
   - No arbitrary HTML, CSS, JavaScript, or iframe input is accepted.

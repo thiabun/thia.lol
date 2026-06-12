@@ -90,6 +90,7 @@ public_html/
   ```text
   20260610_0010_add_room_soft_delete.sql
   20260611_0001_add_user_blocks_and_mutes.sql
+  20260612_0001_add_profile_modules.sql
   ```
 
 - [ ] Do not run migrations silently. Record who ran them, when, what was pending, and what the runner reported.
@@ -104,6 +105,8 @@ public_html/
   https://thia.lol/rooms
   https://thia.lol/api/rooms
   https://thia.lol/api/rooms/general/posts
+  https://thia.lol/api/profiles/thia/modules
+  https://thia.lol/@thia
   ```
 
 ## Public Route Smoke Checklist

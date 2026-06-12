@@ -14,6 +14,11 @@ import type {
   ProfileBadgesResult,
   ProfileConnection,
   ProfileExternalConnection,
+  ProfileModule,
+  ProfileModuleConfig,
+  ProfileModuleStatus,
+  ProfileModuleType,
+  ProfileModuleVisibility,
   PublicStats,
   ReactionCounts,
   Room,
@@ -55,6 +60,8 @@ type ApiBadgeDefinition = BadgeDefinition;
 type ApiUserBadge = UserBadge;
 
 type ApiProfileBadgesResult = ProfileBadgesResult;
+
+type ApiProfileModule = ProfileModule;
 
 type ApiAdminBadgesResult = {
   badges: ApiBadgeDefinition[];
@@ -134,6 +141,21 @@ export type UpdateProfileInput = {
   profileTheme?: string | null;
   links?: ProfileExternalConnection[];
   traits?: string[];
+};
+
+export type CreateProfileModuleInput = {
+  type: ProfileModuleType;
+  title?: string | null;
+  config: ProfileModuleConfig;
+  visibility?: ProfileModuleVisibility;
+  status?: Exclude<ProfileModuleStatus, "deleted">;
+};
+
+export type UpdateProfileModuleInput = {
+  title?: string | null;
+  config?: ProfileModuleConfig;
+  visibility?: ProfileModuleVisibility;
+  status?: ProfileModuleStatus;
 };
 
 export type RoomInput = {
@@ -464,6 +486,62 @@ export function getProfile(handle: string): Promise<Profile> {
   return apiGet<ApiProfile>(`/profiles/${encodeURIComponent(normalized)}`).then(
     normalizeProfile,
   );
+}
+
+export function getProfileModules(handle: string): Promise<ProfileModule[]> {
+  const normalized = normalizeHandle(handle);
+
+  return apiGet<ApiProfileModule[]>(
+    `/profiles/${encodeURIComponent(normalized)}/modules`,
+  ).then((items) => items.map(normalizeProfileModule));
+}
+
+export function getMyProfileModules(): Promise<ProfileModule[]> {
+  return apiGet<ApiProfileModule[]>("/me/profile/modules").then((items) =>
+    items.map(normalizeProfileModule),
+  );
+}
+
+export function createProfileModule(
+  input: CreateProfileModuleInput,
+  csrfToken: string,
+): Promise<ProfileModule[]> {
+  return apiPost<ApiProfileModule[]>("/me/profile/modules", input, csrfToken).then(
+    (items) => items.map(normalizeProfileModule),
+  );
+}
+
+export function updateProfileModule(
+  moduleId: number,
+  input: UpdateProfileModuleInput,
+  csrfToken: string,
+): Promise<ProfileModule[]> {
+  return apiPatch<ApiProfileModule[]>(
+    `/me/profile/modules/${moduleId}`,
+    input,
+    csrfToken,
+  ).then((items) => items.map(normalizeProfileModule));
+}
+
+export function deleteProfileModule(
+  moduleId: number,
+  csrfToken: string,
+): Promise<{ id: number; deleted: boolean }> {
+  return apiDelete<{ id: number; deleted: boolean }>(
+    `/me/profile/modules/${moduleId}`,
+    csrfToken,
+  );
+}
+
+export function updateProfileModuleOrder(
+  moduleIds: number[],
+  csrfToken: string,
+): Promise<ProfileModule[]> {
+  return apiPatch<ApiProfileModule[]>(
+    "/me/profile/module-order",
+    { moduleIds },
+    csrfToken,
+  ).then((items) => items.map(normalizeProfileModule));
 }
 
 export function getProfilePosts(handle: string): Promise<Post[]> {
@@ -1103,6 +1181,69 @@ function normalizeProfileBadgesResult(
     badges: result.badges.map(normalizeUserBadge),
     featuredBadges: result.featuredBadges.map(normalizeUserBadge),
   };
+}
+
+function normalizeProfileModule(module: ApiProfileModule): ProfileModule {
+  return {
+    id: module.id,
+    type: module.type,
+    title: module.title ?? null,
+    config: normalizeProfileModuleConfig(module.config),
+    visibility: module.visibility,
+    position: module.position,
+    status: module.status,
+    schemaVersion: module.schemaVersion ?? 1,
+    createdAt: module.createdAt ?? null,
+    updatedAt: module.updatedAt ?? null,
+  };
+}
+
+function normalizeProfileModuleConfig(config: ProfileModuleConfig): ProfileModuleConfig {
+  const normalized: ProfileModuleConfig = {};
+  const link = normalizeProfileModuleLink(config.link);
+  const links = Array.isArray(config.links)
+    ? config.links.map(normalizeProfileModuleLink).filter(isProfileModuleLink)
+    : undefined;
+  const userBadgeIds = Array.isArray(config.userBadgeIds)
+    ? config.userBadgeIds.filter((id): id is number => Number.isInteger(id) && id > 0)
+    : undefined;
+
+  if (typeof config.body === "string") {
+    normalized.body = config.body;
+  }
+
+  if (link) {
+    normalized.link = link;
+  }
+
+  if (links) {
+    normalized.links = links;
+  }
+
+  if (userBadgeIds) {
+    normalized.userBadgeIds = userBadgeIds;
+  }
+
+  return normalized;
+}
+
+function normalizeProfileModuleLink(
+  link: ProfileModuleConfig["link"],
+): ProfileModuleConfig["link"] {
+  if (!link || typeof link.label !== "string" || typeof link.url !== "string") {
+    return undefined;
+  }
+
+  return {
+    label: link.label,
+    url: link.url,
+  };
+}
+
+function isProfileModuleLink(
+  link: ProfileModuleConfig["link"],
+): link is NonNullable<ProfileModuleConfig["link"]> {
+  return link !== undefined;
 }
 
 function normalizeUserBadge(userBadge: ApiUserBadge): UserBadge {
