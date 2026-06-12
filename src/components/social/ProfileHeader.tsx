@@ -1,14 +1,10 @@
 import {
   Award,
-  AtSign,
   CalendarDays,
   ExternalLink,
-  Globe,
-  Link as LinkIcon,
   MapPin,
   MessageCircle,
   MoreHorizontal,
-  Music,
   Radio,
   Reply,
   Heart,
@@ -33,10 +29,8 @@ import {
 } from "../../lib/motionPresets";
 import { formatMonthYear } from "../../lib/dates";
 import type { Profile, UserBadge } from "../../lib/types";
-import type {
-  ProfileConnectionPlatform,
-  ProfileExternalConnection,
-} from "../../lib/types";
+import type { ProfileExternalConnection } from "../../lib/types";
+import { ProfileConnectionIcon } from "./ProfileConnectionIcon";
 
 type ProfileHeaderProps = {
   profile: Profile;
@@ -118,30 +112,30 @@ export function ProfileHeader({
           <img
             alt=""
             aria-hidden="true"
-            className="absolute inset-0 size-full object-cover opacity-10"
+            className="absolute inset-0 z-0 size-full object-cover opacity-10"
             src={profile.profileBackground ?? undefined}
           />
         ) : null}
-        <div className="relative">
+        <div className="isolate relative z-0" data-testid="profile-header-banner">
           {safeImageUrl(profile.bannerUrl) ? (
             <img
               alt=""
-              className="h-36 w-full bg-surface-strong object-cover sm:h-44"
+              className="relative z-0 h-36 w-full bg-surface-strong object-cover sm:h-44"
               src={profile.bannerUrl ?? undefined}
             />
           ) : (
-            <div className="h-36 border-b border-line bg-surface-strong sm:h-44" />
+            <div className="relative z-0 h-36 border-b border-line bg-surface-strong sm:h-44" />
           )}
-          <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-surface via-surface/72 to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 z-10 h-20 bg-gradient-to-t from-surface via-surface/72 to-transparent" />
         </div>
         <motion.div
-          className="relative p-4 sm:p-6 lg:p-7"
+          className="relative z-10 p-4 sm:p-6 lg:p-7"
           variants={staggerChildren}
           initial="hidden"
           animate="show"
         >
-          <div className="-mt-16 flex flex-col gap-4 sm:-mt-20 sm:flex-row sm:items-end sm:justify-between">
-            <div className="flex min-w-0 items-end gap-4" data-testid="profile-identity">
+          <div className="relative z-10 -mt-16 flex flex-col gap-4 sm:-mt-20 sm:flex-row sm:items-end sm:justify-between">
+            <div className="relative z-10 flex min-w-0 items-end gap-4" data-testid="profile-identity">
               <Avatar
                 user={profile.user}
                 size="lg"
@@ -513,7 +507,7 @@ function ProfilePanelPill({
 function ProfileConnectionPill({ link }: { link: ProfileExternalConnection }) {
   const content = (
     <>
-      {connectionIconElement(link.platform)}
+      <ProfileConnectionIcon platform={link.platform} size={15} />
       {link.label}
       {link.platform !== "discord" || link.url ? (
         <ExternalLink aria-hidden="true" size={13} />
@@ -539,30 +533,6 @@ function ProfileConnectionPill({ link }: { link: ProfileExternalConnection }) {
       {content}
     </a>
   );
-}
-
-function connectionIconElement(platform: ProfileConnectionPlatform) {
-  if (platform === "website") {
-    return <Globe aria-hidden="true" size={15} />;
-  }
-
-  if (platform === "youtube" || platform === "twitch") {
-    return <Radio aria-hidden="true" size={15} />;
-  }
-
-  if (platform === "tiktok" || platform === "spotify") {
-    return <Music aria-hidden="true" size={15} />;
-  }
-
-  if (platform === "github") {
-    return <LinkIcon aria-hidden="true" size={15} />;
-  }
-
-  if (platform === "discord") {
-    return <MessageCircle aria-hidden="true" size={15} />;
-  }
-
-  return <AtSign aria-hidden="true" size={15} />;
 }
 
 function safeImageUrl(value: string | null | undefined): boolean {

@@ -4,19 +4,12 @@ import { useId, useMemo, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
-  AtSign,
   BadgeCheck,
-  Camera,
-  Code2,
   Eye,
   EyeOff,
-  Globe,
   ImagePlus,
   Link as LinkIcon,
   MapPin,
-  MessageCircle,
-  Music,
-  Play,
   Plus,
   Save,
   Sparkles,
@@ -55,6 +48,7 @@ import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { SelectField, TextareaField, TextField } from "../ui/Field";
+import { ProfileConnectionIcon } from "./ProfileConnectionIcon";
 import { ProfileModuleGrid } from "./ProfileModules";
 
 const maxUploadBytes = 10 * 1024 * 1024;
@@ -780,6 +774,7 @@ function SectionButton({ active, onClick, section }: SectionButtonProps) {
       type="button"
       className={cn(
         "flex min-w-40 shrink-0 items-start gap-3 rounded-card border p-3 text-left transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus xl:w-full xl:min-w-0",
+        section.id === "preview" ? "xl:hidden" : null,
         active
           ? "border-line-strong bg-surface shadow-soft"
           : "border-line bg-canvas/45 hover:border-line-strong",
@@ -929,7 +924,6 @@ function ConnectionCards({
       <div className="grid gap-3 sm:grid-cols-2">
         {connections.map((connection, index) => {
           const platform = platformMeta(connection.platform);
-          const Icon = platformIcon(connection.platform);
 
           return (
             <div
@@ -942,7 +936,7 @@ function ConnectionCards({
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <span className="grid size-9 shrink-0 place-items-center rounded-full border border-line bg-surface/80 text-text">
-                    <Icon aria-hidden="true" size={17} />
+                    <ProfileConnectionIcon platform={connection.platform} size={17} />
                   </span>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-text">
@@ -1006,10 +1000,7 @@ function PlatformPicker({
     <div>
       <h4 className="text-sm font-semibold text-text">Add by platform</h4>
       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {profileConnectionPlatforms.map((platform) => {
-          const Icon = platformIcon(platform.value);
-
-          return (
+        {profileConnectionPlatforms.map((platform) => (
             <button
               key={platform.value}
               type="button"
@@ -1019,7 +1010,11 @@ function PlatformPicker({
               )}
               onClick={() => onAdd(platform.value)}
             >
-              <Icon aria-hidden="true" className="mt-0.5 shrink-0" size={17} />
+              <ProfileConnectionIcon
+                className="mt-0.5"
+                platform={platform.value}
+                size={17}
+              />
               <span className="min-w-0">
                 <span className="block truncate text-sm font-semibold text-text">
                   {platform.label}
@@ -1029,8 +1024,7 @@ function PlatformPicker({
                 </span>
               </span>
             </button>
-          );
-        })}
+          ))}
       </div>
     </div>
   );
@@ -1524,26 +1518,33 @@ function PreviewPanel({
         <Badge tone="cool">Owner preview</Badge>
       </div>
       <div className="overflow-hidden rounded-panel border border-line bg-surface shadow-soft">
-        <div className="relative h-28 bg-surface-strong">
+        <div
+          className="isolate relative h-28 bg-surface-strong"
+          data-testid="profile-preview-banner"
+        >
           {form.profileBackground ? (
             <img
               alt=""
-              className="absolute inset-0 size-full object-cover opacity-35"
+              className="absolute inset-0 z-0 size-full object-cover opacity-35"
               src={form.profileBackground}
             />
           ) : null}
           {form.bannerUrl ? (
             <img
               alt=""
-              className="absolute inset-0 size-full object-cover"
+              className="absolute inset-0 z-0 size-full object-cover"
               src={form.bannerUrl}
             />
           ) : (
-            <div className="absolute inset-0 bg-gradient-to-br from-accent/25 via-surface-strong to-frost/25" />
+            <div className="absolute inset-0 z-0 bg-gradient-to-br from-accent/25 via-surface-strong to-frost/25" />
           )}
+          <div className="absolute inset-x-0 bottom-0 z-10 h-16 bg-gradient-to-t from-surface via-surface/70 to-transparent" />
         </div>
-        <div className="px-4 pb-4">
-          <div className="-mt-10 flex items-end gap-3">
+        <div className="relative z-10 px-4 pb-4">
+          <div
+            className="relative z-10 -mt-10 flex items-end gap-3"
+            data-testid="profile-preview-identity"
+          >
             <Avatar
               user={previewUser}
               size="lg"
@@ -1569,19 +1570,15 @@ function PreviewPanel({
           ) : null}
           {connections.length > 0 ? (
             <div className="mt-4 flex min-w-0 flex-wrap gap-2">
-              {connections.map((connection) => {
-                const Icon = platformIcon(connection.platform);
-
-                return (
+              {connections.map((connection) => (
                   <span
                     key={`${connection.platform}-${connection.value}`}
                     className="inline-flex min-w-0 items-center gap-2 rounded-control border border-line bg-canvas/65 px-3 py-2 text-sm font-semibold text-text"
                   >
-                    <Icon aria-hidden="true" size={15} />
+                    <ProfileConnectionIcon platform={connection.platform} size={15} />
                     <span className="truncate">{connectionPlatformLabel(connection.platform)}</span>
                   </span>
-                );
-              })}
+                ))}
             </div>
           ) : null}
           {featuredBadges.length > 0 ? (
@@ -1912,21 +1909,6 @@ function platformMeta(platform: ProfileConnectionPlatform) {
     placeholder: "https://example.com",
     tone: "warm" as const,
   };
-}
-
-function platformIcon(platform: ProfileConnectionPlatform): LucideIcon {
-  return {
-    website: Globe,
-    youtube: Play,
-    twitch: AtSign,
-    tiktok: AtSign,
-    instagram: Camera,
-    x: AtSign,
-    bluesky: AtSign,
-    github: Code2,
-    discord: MessageCircle,
-    spotify: Music,
-  }[platform];
 }
 
 function platformToneClass(tone: (typeof profileConnectionPlatforms)[number]["tone"]) {

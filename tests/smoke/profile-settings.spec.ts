@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
@@ -22,8 +22,12 @@ test("profile connections normalize, save, and render", async ({ page }) => {
   await expect(modal.getByRole("button", { name: /Appearance/ })).toBeVisible();
   await expect(modal.getByRole("button", { name: /Connections/ })).toBeVisible();
   await expect(modal.getByRole("button", { name: /Modules/ })).toBeVisible();
-  await expect(modal.getByRole("button", { name: /Preview/ })).toBeVisible();
+  await expect(modal.getByRole("button", { name: /Preview/ })).toHaveCount(0);
   await expect(modal.getByTestId("profile-customization-preview")).toBeVisible();
+  await modal.getByRole("textbox", { name: "Display name" }).fill("Thia Studio");
+  await expect(modal.getByTestId("profile-customization-preview")).toContainText(
+    "Thia Studio",
+  );
   await modal.getByRole("button", { name: /Appearance/ }).click();
   await expect(modal.getByRole("heading", { name: "Appearance" })).toBeVisible();
   await modal.getByRole("button", { name: /Connections/ }).click();
@@ -31,10 +35,26 @@ test("profile connections normalize, save, and render", async ({ page }) => {
   await expect(modal.getByLabel("Accent")).toHaveCount(0);
   await expect(modal.getByLabel("Theme")).toHaveCount(0);
   await expect(modal.getByLabel("Traits")).toHaveCount(0);
+  for (const platform of [
+    "website",
+    "twitch",
+    "instagram",
+    "bluesky",
+    "youtube",
+    "tiktok",
+    "x",
+    "github",
+    "discord",
+    "spotify",
+  ]) {
+    await expect(modal.getByTestId(`connection-icon-${platform}`).first()).toBeVisible();
+  }
 
   await modal.getByRole("button", { name: "Add connection" }).click();
   await modal.getByRole("combobox", { name: "Connection 1" }).selectOption("github");
   await modal.getByRole("textbox", { name: "GitHub" }).fill("thiabun");
+  await expect(modal.getByTestId("profile-customization-preview")).toContainText("GitHub");
+  await expect(modal.getByTestId("connection-icon-github").first()).toBeVisible();
   await modal.getByRole("button", { name: "Save profile" }).click();
 
   await expect.poll(() => savedPayload).toBeTruthy();
@@ -47,6 +67,7 @@ test("profile connections normalize, save, and render", async ({ page }) => {
     },
   ]);
   await expect(page.getByRole("link", { name: /GitHub/ })).toBeVisible();
+  await expect(page.getByTestId("connection-icon-github").first()).toBeVisible();
 });
 
 test("legacy string profile links normalize before save", async ({ page }) => {
@@ -142,11 +163,46 @@ test("mobile edit profile modal has no horizontal overflow", async ({ page }) =>
   await page.goto("/@thia");
   await page.getByRole("button", { name: "Customize profile" }).click();
 
-  await expect(page.getByTestId("profile-customization-modal")).toBeVisible();
+  const modal = page.getByTestId("profile-customization-modal");
+  await expect(modal).toBeVisible();
+  await expect(modal.getByRole("button", { name: /Preview/ })).toBeVisible();
+  await modal.getByRole("button", { name: /Preview/ }).click();
+  await expect(modal.getByTestId("profile-customization-preview-mobile")).toBeVisible();
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
   expect(hasHorizontalOverflow).toBe(false);
+});
+
+test("profile banners stay behind identity in public header and preview", async ({ page }) => {
+  await mockOwnProfile(page, () => [], undefined, {
+    bannerUrl: "/ambient-veil.webp",
+    profileBackground: "/ambient-veil.webp",
+  });
+
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expect(page.getByTestId("profile-header-banner")).toBeVisible();
+  await expect(page.getByTestId("profile-identity")).toContainText("Thia");
+  await expect(page.getByTestId("profile-identity")).toContainText("@thia");
+  await expectElementAtPointBelongsTo(
+    page,
+    page.getByTestId("profile-identity"),
+    "profile-identity",
+  );
+
+  await page.getByRole("button", { name: "Customize profile" }).click();
+  const modal = page.getByTestId("profile-customization-modal");
+  const desktopPreview = modal.getByTestId("profile-customization-preview");
+  await expect(desktopPreview.getByTestId("profile-preview-banner")).toBeVisible();
+  await expect(desktopPreview.getByTestId("profile-preview-identity")).toContainText("Thia");
+  await expect(desktopPreview.getByTestId("profile-preview-identity")).toContainText("@thia");
+  await expectElementAtPointBelongsTo(
+    page,
+    desktopPreview.getByTestId("profile-preview-identity"),
+    "profile-preview-identity",
+  );
 });
 
 test("profile API keeps legacy link saves guarded by source inspection", async () => {
@@ -269,6 +325,7 @@ async function mockOwnProfile(
   page: Page,
   links: () => unknown[],
   onSave?: (payload: Record<string, unknown>) => void,
+  profileOverrides: Partial<ReturnType<typeof profileBody>> = {},
 ) {
   await page.route("**/api/**", async (route) => {
     await route.fulfill({
@@ -333,7 +390,7 @@ async function mockOwnProfile(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: profileBody(links()) }),
+      body: JSON.stringify({ ok: true, data: profileBody(links(), profileOverrides) }),
     });
   });
 
@@ -341,7 +398,7 @@ async function mockOwnProfile(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: profileBody(links()) }),
+      body: JSON.stringify({ ok: true, data: profileBody(links(), profileOverrides) }),
     });
   });
 
@@ -434,8 +491,8 @@ async function acknowledgeCookieNotice(page: Page) {
   });
 }
 
-function profileBody(links: unknown[]) {
-  return {
+function profileBody(links: unknown[], overrides: Partial<ProfileBody> = {}): ProfileBody {
+  const body: ProfileBody = {
     user: {
       id: 1,
       handle: "thia",
@@ -470,6 +527,73 @@ function profileBody(links: unknown[]) {
     createdAt: "2026-06-10 00:00:00",
     updatedAt: "2026-06-10 00:00:00",
   };
+
+  return {
+    ...body,
+    ...overrides,
+    user: {
+      ...body.user,
+      ...(overrides.user ?? {}),
+    },
+  };
+}
+
+type ProfileBody = {
+  user: {
+    id: number;
+    handle: string;
+    displayName: string;
+    initials: string;
+    aura: string;
+    avatarUrl: string | null;
+  };
+  bio: string;
+  location: string;
+  bannerUrl: string | null;
+  profileAccent: string | null;
+  profileBackground: string | null;
+  profileTheme: string | null;
+  links: unknown[];
+  traits: unknown[];
+  stats: {
+    posts: number;
+    replies: number;
+    rooms: number;
+    echoes: number;
+    followers: number;
+    following: number;
+    moots: number;
+  };
+  followerCount: number;
+  followingCount: number;
+  mootCount: number;
+  isFollowing: boolean;
+  isFollowedBy: boolean;
+  isMoot: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+async function expectElementAtPointBelongsTo(
+  page: Page,
+  locator: Locator,
+  testId: string,
+) {
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+
+  const owner = await page.evaluate(
+    ({ x, y }) => {
+      const element = document.elementFromPoint(x, y);
+      return element?.closest("[data-testid]")?.getAttribute("data-testid") ?? null;
+    },
+    {
+      x: (box?.x ?? 0) + Math.min((box?.width ?? 0) - 4, 96),
+      y: (box?.y ?? 0) + Math.min((box?.height ?? 0) - 4, 24),
+    },
+  );
+
+  expect(owner).toBe(testId);
 }
 
 function badgeGrant() {
