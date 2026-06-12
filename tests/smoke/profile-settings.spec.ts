@@ -14,10 +14,15 @@ test("profile connections normalize, save, and render", async ({ page }) => {
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
   await expect(page.getByRole("button", { name: "Edit profile" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit personal space" })).toBeVisible();
 
   await page.getByRole("button", { name: "Edit profile" }).click();
   const modal = page.getByTestId("profile-edit-modal");
+  await expect(modal.getByRole("heading", { name: "Profile images" })).toBeVisible();
+  await expect(modal.getByRole("heading", { name: "Identity" })).toBeVisible();
   await expect(modal.getByRole("heading", { name: "Connections" })).toBeVisible();
+  await expect(modal.getByLabel("Accent")).toHaveCount(0);
+  await expect(modal.getByLabel("Theme")).toHaveCount(0);
   await expect(modal.getByLabel("Traits")).toHaveCount(0);
 
   await modal.getByRole("button", { name: "Add connection" }).click();
@@ -37,7 +42,7 @@ test("profile connections normalize, save, and render", async ({ page }) => {
   await expect(page.getByRole("link", { name: /GitHub/ })).toBeVisible();
 });
 
-test("legacy string profile links can save without changes", async ({ page }) => {
+test("legacy string profile links normalize before save", async ({ page }) => {
   let profileLinks: unknown[] = ["thia.lol"];
   let savedPayload: Record<string, unknown> | undefined;
 
@@ -63,12 +68,86 @@ test("legacy string profile links can save without changes", async ({ page }) =>
   await expect(page.getByRole("link", { name: "thia.lol", exact: true })).toBeVisible();
 });
 
+test("profile connections show platform-aware validation errors", async ({ page }) => {
+  let savedPayload: Record<string, unknown> | undefined;
+
+  await mockOwnProfile(page, () => [], (payload) => {
+    savedPayload = payload;
+  });
+
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+  await page.getByRole("button", { name: "Edit profile" }).click();
+  const modal = page.getByTestId("profile-edit-modal");
+
+  await modal.getByRole("button", { name: "Add connection" }).click();
+  await modal.getByRole("textbox", { name: "Website" }).fill("thia.lol");
+  await modal.getByRole("button", { name: "Save changes" }).click();
+  await expect(modal.getByText("Website requires a full https:// URL.")).toBeVisible();
+  expect(savedPayload).toBeUndefined();
+
+  await modal.getByRole("textbox", { name: "Website" }).fill("https://thia.lol/");
+  await modal.getByRole("button", { name: "Add connection" }).click();
+  await modal.getByRole("combobox", { name: "Connection 2" }).selectOption("spotify");
+  await modal.getByRole("textbox", { name: "Spotify" }).fill("thia");
+  await modal.getByRole("button", { name: "Save changes" }).click();
+  await expect(modal.getByText("Spotify requires an open.spotify.com URL.")).toBeVisible();
+  expect(savedPayload).toBeUndefined();
+
+  await modal.getByRole("textbox", { name: "Spotify" }).fill(
+    "https://open.spotify.com/artist/123",
+  );
+  await modal.getByRole("button", { name: "Add connection" }).click();
+  await modal.getByRole("combobox", { name: "Connection 3" }).selectOption("twitch");
+  await modal.getByRole("button", { name: "Save changes" }).click();
+  await expect(modal.getByText("Twitch value is required.")).toBeVisible();
+  expect(savedPayload).toBeUndefined();
+
+  await modal.getByRole("textbox", { name: "Twitch" }).fill("thia");
+  await modal.getByRole("button", { name: "Save changes" }).click();
+
+  await expect.poll(() => savedPayload).toBeTruthy();
+  expect(savedPayload?.links).toMatchObject([
+    {
+      platform: "website",
+      value: "https://thia.lol/",
+      url: "https://thia.lol/",
+    },
+    {
+      platform: "spotify",
+      value: "https://open.spotify.com/artist/123",
+      url: "https://open.spotify.com/artist/123",
+    },
+    {
+      platform: "twitch",
+      value: "thia",
+      url: "https://www.twitch.tv/thia",
+    },
+  ]);
+});
+
+test("mobile edit profile modal has no horizontal overflow", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockOwnProfile(page, () => []);
+
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+  await page.getByRole("button", { name: "Edit profile" }).click();
+
+  await expect(page.getByTestId("profile-edit-modal")).toBeVisible();
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  );
+  expect(hasHorizontalOverflow).toBe(false);
+});
+
 test("profile API keeps legacy link saves guarded by source inspection", async () => {
   const profileApi = readFileSync("api/profile.php", "utf8");
 
   expect(profileApi).toContain("function profile_connection_from_legacy_map");
   expect(profileApi).toContain("!array_key_exists('platform', $value)");
   expect(profileApi).toContain("profile_website_connection($trimmed)");
+  expect(profileApi).toContain("Website URL must be a valid https URL.");
   expect(profileApi).toContain("profile_update_failed_on_missing_customization_column");
   expect(profileApi).toContain("Profile customization migration has not been applied.");
   expect(profileApi).toContain("profile_update_failed_on_invalid_json");
@@ -183,6 +262,17 @@ async function mockOwnProfile(
   links: () => unknown[],
   onSave?: (payload: Record<string, unknown>) => void,
 ) {
+  await page.route("**/api/**", async (route) => {
+    await route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        error: `Unmocked API route: ${route.request().method()} ${new URL(route.request().url()).pathname}`,
+      }),
+    });
+  });
+
   await page.route("**/api/auth/me", async (route) => {
     await route.fulfill({
       status: 200,
@@ -262,6 +352,14 @@ async function mockOwnProfile(
   });
 
   await page.route("**/api/profiles/thia/modules", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+
+  await page.route("**/api/me/profile/modules", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",

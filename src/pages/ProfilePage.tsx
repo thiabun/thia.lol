@@ -542,6 +542,33 @@ export function ProfilePage() {
           !profile.isMoot
         }
       />
+      {isOwnProfile ? (
+        <motion.div
+          className="flex flex-col gap-3 rounded-card border border-line bg-surface/78 p-4 shadow-soft sm:flex-row sm:items-center sm:justify-between"
+          data-testid="profile-owner-tools"
+          variants={cardEntrance}
+          custom={1}
+          initial="hidden"
+          animate="show"
+        >
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-text">Personal space</h2>
+            <p className="mt-1 text-sm leading-6 text-muted">
+              Manage the modules that appear between your profile header and feed.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            className="shrink-0"
+            disabled={moduleEditorLoading}
+            icon={<Sparkles aria-hidden="true" size={16} />}
+            onClick={() => void handleOpenModuleEditor()}
+          >
+            {moduleEditorLoading ? "Opening" : "Edit personal space"}
+          </Button>
+        </motion.div>
+      ) : null}
       {!isOwnProfile ? (
         <motion.div variants={cardEntrance} custom={1} initial="hidden" animate="show">
           <ReportForm
@@ -582,7 +609,6 @@ export function ProfilePage() {
         isOwnProfile={isOwnProfile}
         loading={modulesState.loading}
         modules={publicModules}
-        onEdit={isOwnProfile ? () => void handleOpenModuleEditor() : undefined}
       />
       <motion.div
         className="border-t border-line pt-5"

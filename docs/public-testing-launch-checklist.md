@@ -114,6 +114,10 @@ public_html/
   - Open Edit personal space.
   - Create, edit, reorder, and delete a safe test module.
   - Confirm public rendering through `https://thia.lol/api/profiles/thia/modules`.
+- [ ] After profile customization UX changes deploy, retest Edit profile:
+  - Confirm Edit personal space is visible only to the profile owner.
+  - Confirm Accent/Theme preset controls are not shown until they have a real public rendering effect.
+  - Confirm Website requires an explicit `https://` URL and Spotify requires an `open.spotify.com` URL.
 
 ## Public Route Smoke Checklist
 

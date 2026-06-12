@@ -1,10 +1,9 @@
 import { AnimatePresence, motion } from "motion/react";
-import type { ChangeEvent, FormEvent } from "react";
+import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import { useId, useState } from "react";
 import {
   ImagePlus,
   MapPin,
-  Palette,
   Plus,
   Save,
   Trash2,
@@ -26,9 +25,10 @@ import type {
 } from "../../lib/types";
 import {
   connectionPlatformLabel,
+  connectionPlatformHelp,
   maxProfileConnections,
-  normalizeProfileConnection,
   profileConnectionPlatforms,
+  validateProfileConnectionDraft,
 } from "../../lib/profileConnections";
 
 const maxUploadBytes = 10 * 1024 * 1024;
@@ -51,8 +51,6 @@ type FormState = {
   avatarUrl: string;
   bannerUrl: string;
   profileBackground: string;
-  profileAccent: string;
-  profileTheme: string;
   connections: DraftConnection[];
 };
 
@@ -74,14 +72,16 @@ export function ProfileEditModal({
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState<UploadSlot | undefined>();
   const [message, setMessage] = useState<string | undefined>();
+  const [connectionErrors, setConnectionErrors] = useState<Record<string, string>>({});
   const busy = saving || uploading !== undefined;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const links = normalizedConnections(form.connections);
+    setConnectionErrors(links.errors);
 
-    if (links === undefined) {
-      setMessage("Check your connections before saving.");
+    if (Object.keys(links.errors).length > 0) {
+      setMessage("Fix the highlighted connections before saving.");
       return;
     }
 
@@ -96,9 +96,7 @@ export function ProfileEditModal({
         avatarUrl: form.avatarUrl || null,
         bannerUrl: form.bannerUrl || null,
         profileBackground: form.profileBackground || null,
-        profileAccent: form.profileAccent || null,
-        profileTheme: form.profileTheme || null,
-        links,
+        links: links.connections,
       });
 
       setForm(profileToForm(updated));
@@ -154,6 +152,15 @@ export function ProfileEditModal({
     field: keyof Omit<DraftConnection, "id">,
     value: string,
   ) {
+    setConnectionErrors((current) => {
+      if (!current[id]) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
     setForm((current) => ({
       ...current,
       connections: current.connections.map((connection) =>
@@ -177,6 +184,15 @@ export function ProfileEditModal({
   }
 
   function removeConnection(id: string) {
+    setConnectionErrors((current) => {
+      if (!current[id]) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
     setForm((current) => ({
       ...current,
       connections: current.connections.filter((connection) => connection.id !== id),
@@ -203,16 +219,16 @@ export function ProfileEditModal({
             aria-modal="true"
             aria-labelledby={titleId}
             data-testid="profile-edit-modal"
-            className="max-h-[calc(100dvh-3rem)] w-full max-w-2xl overflow-y-auto rounded-panel border border-line bg-surface p-4 shadow-lift sm:p-5"
+            className="max-h-[calc(100dvh-3rem)] w-full max-w-3xl overflow-y-auto rounded-panel border border-line bg-surface p-4 shadow-lift sm:p-6"
             variants={modalPanel}
           >
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start justify-between gap-4 border-b border-line pb-4">
               <div>
                 <h2 id={titleId} className="text-lg font-semibold text-text">
                   Edit profile
                 </h2>
                 <p className="mt-1 text-sm leading-6 text-muted">
-                  Images are converted to WebP.
+                  Update the public identity, images, and connections shown on this profile.
                 </p>
               </div>
               <Button
@@ -228,110 +244,80 @@ export function ProfileEditModal({
             </div>
 
             <form className="mt-5 space-y-5" onSubmit={handleSubmit}>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <ImageUploadControl
-                  id="profile-avatar-upload"
-                  imageUrl={form.avatarUrl}
-                  label="Change avatar"
-                  uploading={uploading === "avatar"}
-                  onChange={(event) => void handleImageChange(event, "avatar")}
-                />
-                <ImageUploadControl
-                  id="profile-banner-upload"
-                  imageUrl={form.bannerUrl}
-                  label="Change banner"
-                  wide
-                  uploading={uploading === "banner"}
-                  onChange={(event) => void handleImageChange(event, "banner")}
-                />
-                <ImageUploadControl
-                  id="profile-background-upload"
-                  imageUrl={form.profileBackground}
-                  label="Change background"
-                  wide
-                  uploading={uploading === "profile_background"}
-                  onChange={(event) =>
-                    void handleImageChange(event, "profile_background")
-                  }
-                />
-              </div>
+              <EditorSection
+                title="Profile images"
+                description="Images are converted to WebP and shown across the profile layout."
+              >
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <ImageUploadControl
+                    id="profile-avatar-upload"
+                    imageUrl={form.avatarUrl}
+                    label="Change avatar"
+                    uploading={uploading === "avatar"}
+                    onChange={(event) => void handleImageChange(event, "avatar")}
+                  />
+                  <ImageUploadControl
+                    id="profile-banner-upload"
+                    imageUrl={form.bannerUrl}
+                    label="Change banner"
+                    wide
+                    uploading={uploading === "banner"}
+                    onChange={(event) => void handleImageChange(event, "banner")}
+                  />
+                  <ImageUploadControl
+                    id="profile-background-upload"
+                    imageUrl={form.profileBackground}
+                    label="Change background"
+                    wide
+                    uploading={uploading === "profile_background"}
+                    onChange={(event) =>
+                      void handleImageChange(event, "profile_background")
+                    }
+                  />
+                </div>
+              </EditorSection>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <TextField
-                  id="profile-display-name"
-                  label="Display name"
-                  icon={UserRound}
-                  maxLength={120}
-                  required
-                  value={form.displayName}
-                  disabled={busy}
-                  onChange={(event) => updateForm("displayName", event.currentTarget.value)}
-                />
-                <TextField
-                  id="profile-location"
-                  label="Location"
-                  icon={MapPin}
-                  maxLength={120}
-                  value={form.location}
-                  disabled={busy}
-                  onChange={(event) => updateForm("location", event.currentTarget.value)}
-                />
-              </div>
+              <EditorSection
+                title="Identity"
+                description="Keep this concise; the profile header uses the same text."
+              >
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <TextField
+                    id="profile-display-name"
+                    label="Display name"
+                    icon={UserRound}
+                    maxLength={120}
+                    required
+                    value={form.displayName}
+                    disabled={busy}
+                    onChange={(event) => updateForm("displayName", event.currentTarget.value)}
+                  />
+                  <TextField
+                    id="profile-location"
+                    label="Location"
+                    icon={MapPin}
+                    maxLength={120}
+                    value={form.location}
+                    disabled={busy}
+                    onChange={(event) => updateForm("location", event.currentTarget.value)}
+                  />
+                </div>
 
-              <TextareaField
-                id="profile-bio"
-                label="Bio"
-                className="min-h-28"
-                maxLength={500}
-                value={form.bio}
-                disabled={busy}
-                onChange={(event) => updateForm("bio", event.currentTarget.value)}
-              />
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <SelectField
-                  id="profile-accent"
-                  label="Accent"
-                  icon={Palette}
-                  value={form.profileAccent}
+                <TextareaField
+                  id="profile-bio"
+                  label="Bio"
+                  className="min-h-28"
+                  maxLength={500}
+                  value={form.bio}
                   disabled={busy}
-                  options={[
-                    { value: "", label: "Default" },
-                    { value: "sunveil", label: "Sunveil" },
-                    { value: "frostveil", label: "Frostveil" },
-                    { value: "leaf", label: "Leaf" },
-                    { value: "rose", label: "Rose" },
-                  ]}
-                  onChange={(event) =>
-                    updateForm("profileAccent", event.currentTarget.value)
-                  }
+                  onChange={(event) => updateForm("bio", event.currentTarget.value)}
                 />
-                <SelectField
-                  id="profile-theme"
-                  label="Theme"
-                  icon={Palette}
-                  value={form.profileTheme}
-                  disabled={busy}
-                  options={[
-                    { value: "", label: "Default" },
-                    { value: "soft", label: "Soft" },
-                    { value: "clear", label: "Clear" },
-                    { value: "glow", label: "Glow" },
-                  ]}
-                  onChange={(event) =>
-                    updateForm("profileTheme", event.currentTarget.value)
-                  }
-                />
-              </div>
+              </EditorSection>
 
-              <section className="space-y-3" aria-label="Connections">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-semibold text-text">Connections</h3>
-                    <p className="mt-1 text-xs leading-5 text-muted">
-                      Add up to {maxProfileConnections} profile connections.
-                    </p>
-                  </div>
+              <EditorSection
+                title="Connections"
+                description={`Add up to ${maxProfileConnections} public profile connections.`}
+                action={
                   <Button
                     type="button"
                     variant="secondary"
@@ -342,7 +328,8 @@ export function ProfileEditModal({
                   >
                     Add connection
                   </Button>
-                </div>
+                }
+              >
 
                 {form.connections.length > 0 ? (
                   <div className="space-y-3">
@@ -354,7 +341,7 @@ export function ProfileEditModal({
                       return (
                         <div
                           key={connection.id}
-                          className="grid gap-3 rounded-card border border-line bg-canvas/45 p-3 sm:grid-cols-[0.85fr_1fr_auto]"
+                          className="grid min-w-0 gap-3 rounded-card border border-line bg-canvas/45 p-3 sm:grid-cols-[0.8fr_minmax(0,1fr)_auto]"
                         >
                           <SelectField
                             id={`profile-connection-platform-${connection.id}`}
@@ -385,11 +372,15 @@ export function ProfileEditModal({
                               )
                             }
                           />
+                          <p className="text-xs leading-5 text-muted sm:col-start-2">
+                            {connectionErrors[connection.id] ??
+                              connectionPlatformHelp(connection.platform)}
+                          </p>
                           <Button
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="self-end"
+                            className="self-end sm:row-span-2 sm:row-start-1"
                             aria-label={`Remove connection ${index + 1}`}
                             title="Remove connection"
                             disabled={busy}
@@ -405,7 +396,7 @@ export function ProfileEditModal({
                     No connections added.
                   </p>
                 )}
-              </section>
+              </EditorSection>
 
               {message ? (
                 <p className="rounded-card border border-line bg-canvas/55 p-3 text-sm text-text">
@@ -446,6 +437,31 @@ type ImageUploadControlProps = {
   uploading: boolean;
   wide?: boolean;
 };
+
+type EditorSectionProps = {
+  action?: ReactNode;
+  children: ReactNode;
+  description: string;
+  title: string;
+};
+
+function EditorSection({ action, children, description, title }: EditorSectionProps) {
+  return (
+    <section
+      className="space-y-4 rounded-card border border-line bg-canvas/35 p-4"
+      aria-label={title}
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-text">{title}</h3>
+          <p className="mt-1 text-xs leading-5 text-muted">{description}</p>
+        </div>
+        {action ? <div className="shrink-0">{action}</div> : null}
+      </div>
+      {children}
+    </section>
+  );
+}
 
 function ImageUploadControl({
   id,
@@ -512,8 +528,6 @@ function profileToForm(profile: Profile): FormState {
     avatarUrl: profile.user.avatarUrl ?? "",
     bannerUrl: profile.bannerUrl ?? "",
     profileBackground: profile.profileBackground ?? "",
-    profileAccent: profile.profileAccent ?? "",
-    profileTheme: profile.profileTheme ?? "",
     connections: profile.links.map((connection) => ({
       id: crypto.randomUUID(),
       platform: connection.platform,
@@ -536,20 +550,26 @@ function uploadFieldName(slot: UploadSlot): keyof FormState {
 
 function normalizedConnections(
   connections: DraftConnection[],
-): ProfileExternalConnection[] | undefined {
-  const normalized = connections
-    .filter((connection) => connection.value.trim() !== "")
-    .map((connection) => normalizeProfileConnection(connection));
+): { connections: ProfileExternalConnection[]; errors: Record<string, string> } {
+  const normalized: ProfileExternalConnection[] = [];
+  const errors: Record<string, string> = {};
 
-  if (normalized.some((connection) => connection === null)) {
-    return undefined;
+  for (const connection of connections) {
+    const validated = validateProfileConnectionDraft(
+      connection.platform,
+      connection.value,
+    );
+
+    if ("error" in validated) {
+      errors[connection.id] = validated.error;
+      continue;
+    }
+
+    normalized.push(validated.connection);
   }
 
-  return normalized.filter(isProfileExternalConnection).slice(0, maxProfileConnections);
-}
-
-function isProfileExternalConnection(
-  connection: ProfileExternalConnection | null,
-): connection is ProfileExternalConnection {
-  return connection !== null;
+  return {
+    connections: normalized.slice(0, maxProfileConnections),
+    errors,
+  };
 }

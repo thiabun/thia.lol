@@ -528,7 +528,11 @@ function profile_connection_input(string $value): string
 
 function profile_website_connection(string $value): array
 {
-    $url = profile_https_url(str_starts_with(strtolower($value), 'http') ? $value : 'https://' . $value, 'Website URL');
+    if (!str_starts_with(strtolower($value), 'https://')) {
+        json_error('Website URL must be a valid https URL.', 422);
+    }
+
+    $url = profile_https_url($value, 'Website URL');
 
     return [
         'platform' => 'website',

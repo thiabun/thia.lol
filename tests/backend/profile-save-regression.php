@@ -21,7 +21,7 @@ $legacyNoopPayload = [
     'profileBackground' => null,
     'profileAccent' => null,
     'profileTheme' => null,
-    'links' => ['thia.lol'],
+    'links' => ['https://thia.lol/'],
 ];
 
 $withCustomization = profile_update_statement_for_body($legacyNoopPayload, 123, true);

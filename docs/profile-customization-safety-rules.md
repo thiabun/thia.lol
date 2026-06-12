@@ -148,9 +148,11 @@ The following are not allowed:
 - Body text, labels, buttons, tabs, and moderation controls should meet WCAG AA contrast targets where practical: 4.5:1 for normal text and 3:1 for large text or essential UI graphics.
 - Profile presets must be tested in both light and dark app themes.
 - Accent colors may decorate borders, badges, highlights, and buttons, but they must not become the only readability mechanism.
+- Accent/theme profile controls should stay hidden unless a selected preset visibly affects the profile through a documented, tested, contrast-safe mapping.
 - User-selected background media must not sit directly behind text without a product-controlled overlay, blur, opacity, or surface treatment.
 - Profile content must render as text nodes, not raw HTML.
 - Long handles, URLs, display names, and module titles must wrap or truncate without breaking layout.
+- Connection editors must validate values by platform before save. URL-only connections require explicit HTTPS URLs, and handle-based connections must reject empty, HTML-like, or script-like values.
 
 ### Density And Layout
 

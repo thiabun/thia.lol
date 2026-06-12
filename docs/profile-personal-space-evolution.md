@@ -52,16 +52,17 @@ Implemented API and storage:
 
 Current limitations:
 
-- Profiles now have a minimal module foundation, but no full module editor, preview mode, featured posts/rooms, integrations, embeds, or module-level report target.
+- Profiles now have a minimal module foundation and owner editor/preview for v1 modules, but no featured posts/rooms, integrations, embeds, or module-level report target.
 - The current page state owns profile loading, tabs, panels, badge featuring, editing, follow controls, block/mute controls, and reporting in one route component.
-- Profile customization has early fields but no unified customization policy document or preview mode.
-- `profileAccent` and `profileTheme` are stored and editable but are not yet a comprehensive layout/theme system.
+- Profile customization safety rules are documented, but broad visual theming remains deferred.
+- `profileAccent` and `profileTheme` may exist in legacy/profile storage but are hidden from the edit UI until supported presets have a visible, tested rendering effect.
 - There are no pinned posts, featured posts, featured rooms, project showcases, galleries, blog entries, pronouns, status/presence, or creator mode.
 - Blog-like content does not exist as a separate product concept. Posts have `parent_id`, room association, visibility, status, media, and reblogs, but no `post_type` or long-form model.
 - `profiles.traits` still exists for storage compatibility, but public editing/display has been removed. Future work should not revive traits as an unstructured customization surface.
 - Hidden-badge API support exists through badge visibility, but a full user-facing hidden-badge management UI is deferred.
 - Block and mute reduce exposure where practical, but the product must not claim that blocking hides public content everywhere.
 - External integrations are currently links, not live integrations or embeds. There are no API keys, webhook flows, iframe embeds, OAuth flows, or live external status cards.
+- Connections are validated by platform during profile editing: website and Spotify use explicit HTTPS URLs, while supported social platforms use safe handles and/or profile URLs according to the platform rules.
 
 ## Product Vision
 

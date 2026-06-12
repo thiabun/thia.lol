@@ -8,18 +8,69 @@ export const maxProfileConnections = 10;
 export const profileConnectionPlatforms: Array<{
   value: ProfileConnectionPlatform;
   label: string;
+  help: string;
   placeholder: string;
 }> = [
-  { value: "website", label: "Website", placeholder: "https://example.com" },
-  { value: "youtube", label: "YouTube", placeholder: "@channel or YouTube URL" },
-  { value: "twitch", label: "Twitch", placeholder: "channel" },
-  { value: "tiktok", label: "TikTok", placeholder: "@handle" },
-  { value: "instagram", label: "Instagram", placeholder: "handle" },
-  { value: "x", label: "X / Twitter", placeholder: "handle" },
-  { value: "bluesky", label: "Bluesky", placeholder: "handle.bsky.social" },
-  { value: "github", label: "GitHub", placeholder: "username" },
-  { value: "discord", label: "Discord", placeholder: "discord.gg/invite or display name" },
-  { value: "spotify", label: "Spotify", placeholder: "open.spotify.com URL" },
+  {
+    value: "website",
+    label: "Website",
+    help: "Use a full https:// URL.",
+    placeholder: "https://example.com",
+  },
+  {
+    value: "youtube",
+    label: "YouTube",
+    help: "Use a YouTube channel URL or @handle.",
+    placeholder: "@channel or YouTube URL",
+  },
+  {
+    value: "twitch",
+    label: "Twitch",
+    help: "Use a Twitch username.",
+    placeholder: "channel",
+  },
+  {
+    value: "tiktok",
+    label: "TikTok",
+    help: "Use a TikTok @handle or profile URL.",
+    placeholder: "@handle",
+  },
+  {
+    value: "instagram",
+    label: "Instagram",
+    help: "Use an Instagram username.",
+    placeholder: "handle",
+  },
+  {
+    value: "x",
+    label: "X / Twitter",
+    help: "Use an X/Twitter handle or profile URL.",
+    placeholder: "handle",
+  },
+  {
+    value: "bluesky",
+    label: "Bluesky",
+    help: "Use a Bluesky handle.",
+    placeholder: "handle.bsky.social",
+  },
+  {
+    value: "github",
+    label: "GitHub",
+    help: "Use a GitHub username or profile URL.",
+    placeholder: "username",
+  },
+  {
+    value: "discord",
+    label: "Discord",
+    help: "Use a safe display value or Discord invite URL.",
+    placeholder: "discord.gg/invite or display name",
+  },
+  {
+    value: "spotify",
+    label: "Spotify",
+    help: "Use an open.spotify.com URL.",
+    placeholder: "https://open.spotify.com/...",
+  },
 ];
 
 type RawProfileConnection =
@@ -71,6 +122,74 @@ export function connectionPlatformLabel(platform: ProfileConnectionPlatform): st
     profileConnectionPlatforms.find((item) => item.value === platform)?.label ??
     "Connection"
   );
+}
+
+export function connectionPlatformHelp(platform: ProfileConnectionPlatform): string {
+  return (
+    profileConnectionPlatforms.find((item) => item.value === platform)?.help ??
+    "Enter a valid connection value."
+  );
+}
+
+export function validateProfileConnectionDraft(
+  platform: ProfileConnectionPlatform,
+  value: string,
+): { connection: ProfileExternalConnection; error?: never } | { connection?: never; error: string } {
+  const trimmed = sanitizeInput(value);
+  const label = connectionPlatformLabel(platform);
+
+  if (!trimmed) {
+    return { error: `${label} value is required.` };
+  }
+
+  if (isUnsafeText(trimmed)) {
+    return { error: `${label} must be plain text without HTML or scripts.` };
+  }
+
+  if (platform === "website") {
+    if (!/^https:\/\//i.test(trimmed)) {
+      return { error: "Website requires a full https:// URL." };
+    }
+
+    const connection = normalizeWebsite(trimmed);
+    return connection ? { connection } : { error: "Website URL is invalid." };
+  }
+
+  if (platform === "spotify") {
+    const connection = normalizeSpotify(trimmed);
+    return connection ? { connection } : { error: "Spotify requires an open.spotify.com URL." };
+  }
+
+  if (platform === "discord") {
+    const connection = normalizeDiscord(trimmed);
+    return connection
+      ? { connection }
+      : { error: "Discord requires a safe display value or invite URL." };
+  }
+
+  if (["twitch", "instagram", "bluesky"].includes(platform)) {
+    if (/^https?:\/\//i.test(trimmed)) {
+      return { error: `${label} requires a username or handle.` };
+    }
+
+    const connection = normalizePlatformHandle(platform, trimmed);
+    return connection ? { connection } : { error: `${label} username is invalid.` };
+  }
+
+  const urlConnection = normalizePlatformUrl(platform, trimmed);
+
+  if (urlConnection) {
+    return { connection: urlConnection };
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return { error: `${label} URL is invalid.` };
+  }
+
+  const handleConnection = normalizePlatformHandle(platform, trimmed);
+  return handleConnection
+    ? { connection: handleConnection }
+    : { error: `${label} username is invalid.` };
 }
 
 function normalizeWebsite(value: string): ProfileExternalConnection | null {
@@ -224,13 +343,26 @@ function sanitizeInput(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
+function isUnsafeText(value: string): boolean {
+  return /[<>]/.test(value)
+    || /javascript\s*:/i.test(value)
+    || /data\s*:/i.test(value)
+    || /\bon[a-z]+\s*=/i.test(value);
+}
+
 function safeUrl(value: string): URL | null {
-  if (/[<>]/.test(value) || /javascript\s*:/i.test(value)) {
+  if (isUnsafeText(value)) {
     return null;
   }
 
   try {
-    return new URL(value);
+    const url = new URL(value);
+
+    if (url.username || url.password) {
+      return null;
+    }
+
+    return url;
   } catch {
     return null;
   }

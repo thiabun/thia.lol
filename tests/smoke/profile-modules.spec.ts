@@ -75,6 +75,7 @@ test("visitor with no modules does not see fake module scaffolding", async ({ pa
   await page.goto("/@thia");
 
   await expect(page.getByTestId("profile-modules")).toHaveCount(0);
+  await expect(page.getByTestId("profile-owner-tools")).toHaveCount(0);
   await expect(page.getByText("No profile modules yet")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Edit personal space" })).toHaveCount(0);
 });
@@ -84,6 +85,7 @@ test("owner empty module state is honest", async ({ page }) => {
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
+  await expect(page.getByTestId("profile-owner-tools")).toBeVisible();
   await expect(page.getByTestId("profile-modules")).toBeVisible();
   await expect(page.getByRole("heading", { name: "No profile modules yet" })).toBeVisible();
   await expect(page.getByText("This space is empty for now.")).toBeVisible();
