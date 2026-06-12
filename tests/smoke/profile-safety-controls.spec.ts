@@ -68,6 +68,11 @@ test("profile safety actions block, unblock, mute, and unmute another profile", 
   await acknowledgeCookieNotice(page);
   await page.goto("/@alex");
 
+  await expect(page.getByTestId("profile-header")).toBeVisible();
+  await expect(page.getByTestId("profile-identity")).toContainText("Alex");
+  await expect(page.getByTestId("profile-identity")).toContainText("@alex");
+  await expect(page.getByTestId("profile-social-context")).toContainText("3 Followers");
+  await expect(page.getByRole("button", { name: "Report" })).toBeVisible();
   await expect(page.getByTestId("profile-message-button")).toBeVisible();
   await expect(page.getByTestId("profile-follow-button")).toBeVisible();
   await page.getByTestId("profile-actions-button").click();

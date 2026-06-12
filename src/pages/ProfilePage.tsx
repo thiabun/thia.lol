@@ -406,7 +406,7 @@ export function ProfilePage() {
 
   return (
     <motion.div
-      className="mx-auto max-w-4xl space-y-5"
+      className="mx-auto max-w-5xl space-y-5"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
@@ -475,34 +475,48 @@ export function ProfilePage() {
           onUpload={handleProfileImageUpload}
         />
       ) : null}
-      <motion.div variants={cardEntrance} custom={2} initial="hidden" animate="show">
-        <div
-          aria-label="Profile sections"
-          className="mb-4 flex gap-2 overflow-x-auto pb-1"
-          role="tablist"
-        >
-          <ProfileTabButton
-            active={activeTab === "feed"}
-            count={profileFeed.length}
-            label="Feed"
-            onClick={() => setActiveTab("feed")}
-          />
-          <ProfileTabButton
-            active={activeTab === "replies"}
-            count={profile.stats.replies}
-            label="Replies"
-            onClick={() => setActiveTab("replies")}
-          />
-          <ProfileTabButton
-            active={activeTab === "rooms"}
-            count={profile.stats.rooms}
-            label="Rooms"
-            onClick={() => setActiveTab("rooms")}
-          />
+      <motion.div
+        className="border-t border-line pt-5"
+        variants={cardEntrance}
+        custom={2}
+        initial="hidden"
+        animate="show"
+        data-testid="profile-activity"
+      >
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-text">Profile feed</h2>
+          </div>
+          <div
+            aria-label="Profile sections"
+            className="flex gap-2 overflow-x-auto pb-1 sm:justify-end"
+            role="tablist"
+            data-testid="profile-activity-tabs"
+          >
+            <ProfileTabButton
+              active={activeTab === "feed"}
+              count={profileFeed.length}
+              label="Feed"
+              onClick={() => setActiveTab("feed")}
+            />
+            <ProfileTabButton
+              active={activeTab === "replies"}
+              count={profile.stats.replies}
+              label="Replies"
+              onClick={() => setActiveTab("replies")}
+            />
+            <ProfileTabButton
+              active={activeTab === "rooms"}
+              count={profile.stats.rooms}
+              label="Rooms"
+              onClick={() => setActiveTab("rooms")}
+            />
+          </div>
         </div>
 
         {activeTab === "feed" ? (
           <ProfilePostList
+            emptyDescription="Posts and reblogs from this profile will appear here."
             emptyIcon={MessageCircle}
             emptyText="No posts yet"
             error={postsState.error ?? reblogsState.error}
@@ -513,6 +527,7 @@ export function ProfilePage() {
         ) : null}
         {activeTab === "replies" ? (
           <ProfilePostList
+            emptyDescription="Replies from this profile will appear here."
             emptyIcon={Reply}
             emptyText="No replies yet"
             error={repliesState.error}
@@ -642,6 +657,7 @@ function ProfileTabButton({
 }
 
 type ProfilePostListProps = {
+  emptyDescription: string;
   emptyIcon: typeof MessageCircle;
   emptyText: string;
   error: unknown;
@@ -651,6 +667,7 @@ type ProfilePostListProps = {
 };
 
 function ProfilePostList({
+  emptyDescription,
   emptyIcon,
   emptyText,
   error,
@@ -675,7 +692,7 @@ function ProfilePostList({
   }
 
   if (posts.length === 0) {
-    return <EmptyState icon={emptyIcon} title={emptyText} text={emptyText} />;
+    return <EmptyState icon={emptyIcon} title={emptyText} text={emptyDescription} />;
   }
 
   return (
@@ -1144,7 +1161,13 @@ function ProfileRoomList({ error, loading, rooms }: ProfileRoomListProps) {
   }
 
   if (rooms.length === 0) {
-    return <EmptyState icon={Radio} title="No rooms yet" text="No rooms yet" />;
+    return (
+      <EmptyState
+        icon={Radio}
+        title="No rooms yet"
+        text="Rooms this profile owns or belongs to will appear here."
+      />
+    );
   }
 
   return (
