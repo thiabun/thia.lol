@@ -1,10 +1,11 @@
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import { useId, useMemo, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
   BadgeCheck,
+  BookOpen,
   Edit3,
   Eye,
   EyeOff,
@@ -15,6 +16,7 @@ import {
   Save,
   Sparkles,
   Trash2,
+  Type,
   UserRound,
   X,
   type LucideIcon,
@@ -99,26 +101,35 @@ const sections: Array<{
   },
 ];
 
-const moduleTypes: Array<{ type: ProfileModuleType; label: string; description: string }> = [
+const moduleTypes: Array<{
+  type: ProfileModuleType;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+}> = [
   {
     type: "about",
     label: "About",
     description: "A short profile introduction.",
+    icon: BookOpen,
   },
   {
     type: "custom_text",
     label: "Text",
     description: "A compact note or update.",
+    icon: Type,
   },
   {
     type: "links",
     label: "Links",
     description: "A safe list of external links.",
+    icon: LinkIcon,
   },
   {
     type: "featured_badges",
     label: "Badges",
     description: "A shelf of earned visible badges.",
+    icon: BadgeCheck,
   },
 ];
 
@@ -198,9 +209,7 @@ export function ProfileCustomizationModal({
     () => new Set(),
   );
   const [drafts, setDrafts] = useState<ProfileModule[]>(modules);
-  const [selectedModuleId, setSelectedModuleId] = useState<number | undefined>(
-    modules[0]?.id,
-  );
+  const [selectedModuleId, setSelectedModuleId] = useState<number | undefined>();
   const [moduleDirty, setModuleDirty] = useState<DirtyMap>({});
   const [orderDirty, setOrderDirty] = useState(false);
   const [moduleBusy, setModuleBusy] = useState<"save" | "delete" | "order" | undefined>();
@@ -444,12 +453,8 @@ export function ProfileCustomizationModal({
     setModuleFormError(undefined);
   }
 
-  function moveSelectedModule(direction: -1 | 1) {
-    if (!selectedModule) {
-      return;
-    }
-
-    const index = drafts.findIndex((module) => module.id === selectedModule.id);
+  function moveModule(moduleId: number, direction: -1 | 1) {
+    const index = drafts.findIndex((module) => module.id === moduleId);
     const nextIndex = index + direction;
 
     if (index < 0 || nextIndex < 0 || nextIndex >= drafts.length) {
@@ -497,11 +502,8 @@ export function ProfileCustomizationModal({
         selectedModule.id < 0
           ? await onCreateModule(input)
           : await onUpdateModule(selectedModule.id, input);
-      const selectedAfterSave =
-        selectedModule.id < 0 ? updated[updated.length - 1]?.id : selectedModule.id;
-
       setDrafts(updated);
-      setSelectedModuleId(selectedAfterSave ?? updated[0]?.id);
+      setSelectedModuleId(undefined);
       setModuleDirty({});
       setOrderDirty(false);
       setModuleMessage("Module saved");
@@ -514,12 +516,14 @@ export function ProfileCustomizationModal({
     }
   }
 
-  async function handleModuleDelete() {
-    if (!selectedModule) {
+  async function handleModuleDelete(moduleId?: number) {
+    const targetModule = drafts.find((module) => module.id === (moduleId ?? selectedModuleId));
+
+    if (!targetModule) {
       return;
     }
 
-    if (!window.confirm("Delete this module?")) {
+    if (!window.confirm(`Delete ${targetModule.title || moduleTypeLabel(targetModule.type)}?`)) {
       return;
     }
 
@@ -528,17 +532,17 @@ export function ProfileCustomizationModal({
     setModuleFormError(undefined);
 
     try {
-      const nextDrafts = drafts.filter((module) => module.id !== selectedModule.id);
+      const nextDrafts = drafts.filter((module) => module.id !== targetModule.id);
 
-      if (selectedModule.id > 0) {
-        await onDeleteModule(selectedModule.id);
+      if (targetModule.id > 0) {
+        await onDeleteModule(targetModule.id);
       }
 
       setDrafts(nextDrafts);
-      setSelectedModuleId(nextDrafts[0]?.id);
+      setSelectedModuleId((current) => (current === targetModule.id ? undefined : current));
       setModuleDirty((current) => {
         const next = { ...current };
-        delete next[selectedModule.id];
+        delete next[targetModule.id];
         return next;
       });
       setModuleMessage("Module deleted");
@@ -582,7 +586,7 @@ export function ProfileCustomizationModal({
   return (
     <AnimatePresence>
       <motion.div
-        className="fixed inset-0 z-50 grid place-items-center bg-text/28 px-3 py-4 backdrop-blur-veil sm:px-4 sm:py-6"
+        className="fixed inset-0 z-50 grid bg-text/28 p-0 backdrop-blur-veil sm:place-items-center sm:px-4 sm:py-6"
         variants={modalOverlay}
         initial="hidden"
         animate="show"
@@ -598,10 +602,10 @@ export function ProfileCustomizationModal({
           aria-modal="true"
           aria-labelledby={titleId}
           data-testid="profile-customization-modal"
-          className="max-h-[calc(100dvh-2rem)] w-full max-w-7xl overflow-y-auto rounded-panel border border-line bg-surface p-4 shadow-lift sm:max-h-[calc(100dvh-3rem)] sm:p-5"
+          className="h-dvh w-full overflow-y-auto bg-surface p-4 shadow-lift sm:h-auto sm:max-h-[calc(100dvh-3rem)] sm:max-w-7xl sm:rounded-panel sm:border sm:border-line sm:p-5"
           variants={modalPanel}
         >
-          <div className="flex items-start justify-between gap-4 border-b border-line pb-4">
+          <div className="sticky top-0 z-20 -mx-4 flex items-start justify-between gap-4 border-b border-line bg-surface/95 px-4 pb-4 pt-1 backdrop-blur-veil sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pt-0">
             <div className="min-w-0">
               <h2 id={titleId} className="text-lg font-semibold text-text">
                 Customize profile
@@ -622,7 +626,7 @@ export function ProfileCustomizationModal({
             />
           </div>
 
-          <div className="mt-5 grid min-w-0 gap-5 xl:grid-cols-[14rem_minmax(0,1fr)_24rem]">
+          <div className="mt-5 grid min-w-0 gap-5 xl:grid-cols-[12rem_minmax(0,1fr)_minmax(26rem,32rem)]">
             <nav
               aria-label="Customization sections"
               className="flex gap-2 overflow-x-auto pb-1 xl:block xl:space-y-2 xl:overflow-visible xl:pb-0"
@@ -759,11 +763,10 @@ export function ProfileCustomizationModal({
                   message={moduleMessage}
                   orderDirty={orderDirty}
                   selectedDirty={selectedModuleDirty}
-                  selectedModule={selectedModule}
                   selectedModuleId={selectedModuleId}
                   onAddModule={addModule}
-                  onDelete={() => void handleModuleDelete()}
-                  onMove={moveSelectedModule}
+                  onDelete={(moduleId) => void handleModuleDelete(moduleId)}
+                  onMove={moveModule}
                   onSave={(event) => void handleModuleSave(event)}
                   onSaveOrder={() => void handleSaveOrder()}
                   onSelect={setSelectedModuleId}
@@ -842,11 +845,11 @@ function SectionButton({ active, onClick, section }: SectionButtonProps) {
     <button
       type="button"
       className={cn(
-        "flex min-w-40 shrink-0 items-start gap-3 rounded-card border p-3 text-left transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus xl:w-full xl:min-w-0",
+        "flex min-w-40 shrink-0 items-start gap-3 rounded-card p-3 text-left transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus xl:w-full xl:min-w-0",
         section.id === "preview" ? "xl:hidden" : null,
         active
-          ? "border-line-strong bg-surface shadow-soft"
-          : "border-line bg-canvas/45 hover:border-line-strong",
+          ? "bg-surface shadow-soft"
+          : "bg-transparent hover:bg-canvas/55",
       )}
       onClick={onClick}
     >
@@ -871,7 +874,7 @@ type EditorSectionProps = {
 function EditorSection({ action, children, description, title }: EditorSectionProps) {
   return (
     <section
-      className="space-y-4 rounded-panel border border-line bg-canvas/35 p-4"
+      className="space-y-5 px-1 sm:px-0"
       aria-label={title}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -909,7 +912,7 @@ function ImageUploadControl({
         <ImagePlus aria-hidden="true" size={16} />
         {label}
       </div>
-      <div className="flex min-w-0 items-center gap-3 rounded-card border border-line bg-surface/70 p-3">
+      <div className="flex min-w-0 items-center gap-3 rounded-card bg-canvas/45 p-3">
         {imageUrl ? (
           <img
             alt=""
@@ -1154,14 +1157,13 @@ type ModulesEditorSectionProps = {
   message?: string | undefined;
   orderDirty: boolean;
   selectedDirty: boolean;
-  selectedModule: ProfileModule | undefined;
   selectedModuleId: number | undefined;
   onAddModule: (type: ProfileModuleType) => void;
-  onDelete: () => void;
-  onMove: (direction: -1 | 1) => void;
+  onDelete: (moduleId: number) => void;
+  onMove: (moduleId: number, direction: -1 | 1) => void;
   onSave: (event: FormEvent<HTMLFormElement>) => void;
   onSaveOrder: () => void;
-  onSelect: (moduleId: number) => void;
+  onSelect: (moduleId: number | undefined) => void;
   onUpdate: (updater: (module: ProfileModule) => ProfileModule) => void;
 };
 
@@ -1177,7 +1179,6 @@ function ModulesEditorSection({
   message,
   orderDirty,
   selectedDirty,
-  selectedModule,
   selectedModuleId,
   onAddModule,
   onDelete,
@@ -1190,224 +1191,333 @@ function ModulesEditorSection({
   return (
     <section
       aria-label="Modules"
-      className="space-y-5 rounded-panel border border-line bg-canvas/35 p-4"
+      className="space-y-6 px-1 sm:px-0"
       data-testid="profile-module-editor"
     >
       <div>
-        <h3 className="text-base font-semibold text-text">Modules</h3>
+        <h3 className="text-lg font-semibold text-text">Modules</h3>
         <p className="mt-1 text-sm leading-6 text-muted">
           Build the personal-space blocks that appear before the profile feed.
         </p>
       </div>
 
       {loading ? (
-        <p className="rounded-card border border-line bg-surface/70 p-3 text-sm text-muted">
+        <p className="rounded-card bg-canvas/55 p-3 text-sm text-muted">
           Loading modules.
         </p>
       ) : null}
 
       {error ? (
-        <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
+        <p className="rounded-card bg-rose/15 p-3 text-sm text-rose-ink">
           {error}
         </p>
       ) : null}
 
       {!loading ? (
-        <div className="grid min-w-0 gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
-          <aside className="min-w-0 space-y-5">
-            <section>
-              <h4 className="text-sm font-semibold text-text">Your modules</h4>
-              <div className="mt-3 space-y-2" data-testid="profile-module-list">
-                {drafts.length === 0 ? (
-                  <p className="rounded-card border border-dashed border-line bg-surface/70 p-3 text-sm text-muted">
-                    No modules yet.
-                  </p>
-                ) : null}
-                {drafts.map((module, index) => (
-                  <button
-                    key={module.id}
-                    type="button"
-                    className={cn(
-                      "w-full rounded-card border p-3 text-left transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-                      selectedModuleId === module.id
-                        ? "border-line-strong bg-surface shadow-soft"
-                        : "border-line bg-surface/60 hover:border-line-strong",
-                    )}
-                    onClick={() => onSelect(module.id)}
-                  >
-                    <span className="block truncate text-sm font-semibold text-text">
-                      {module.title || moduleTypeLabel(module.type)}
-                    </span>
-                    <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
-                      <span>{moduleTypeLabel(module.type)}</span>
-                      <span>{visibilityLabel(module.visibility)}</span>
-                      <span>#{index + 1}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  icon={<ArrowUp aria-hidden="true" size={15} />}
-                  disabled={!selectedModule || drafts[0]?.id === selectedModule.id}
-                  onClick={() => onMove(-1)}
-                >
-                  Up
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  icon={<ArrowDown aria-hidden="true" size={15} />}
-                  disabled={!selectedModule || drafts[drafts.length - 1]?.id === selectedModule.id}
-                  onClick={() => onMove(1)}
-                >
-                  Down
-                </Button>
+        <div className="min-w-0 space-y-7">
+          <section>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h4 className="text-sm font-semibold text-text">Your modules</h4>
+                <p className="mt-1 text-xs leading-5 text-muted">
+                  Expand a block to edit it. Drag-free ordering stays keyboard friendly.
+                </p>
               </div>
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
-                className="mt-3 w-full"
                 disabled={!canPersistOrder || busy !== undefined}
                 onClick={onSaveOrder}
               >
                 {busy === "order" ? "Saving order" : "Save order"}
               </Button>
-              {orderDirty && hasUnsavedNewModule ? (
-                <p className="mt-2 text-xs leading-5 text-muted">
-                  Save new modules before saving order.
+            </div>
+            {orderDirty && hasUnsavedNewModule ? (
+              <p className="mt-2 text-xs leading-5 text-muted">
+                Save new modules before saving order.
+              </p>
+            ) : null}
+            {message ? (
+              <motion.p
+                className="mt-3 rounded-card bg-leaf/15 p-3 text-sm text-leaf-ink"
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                {message}
+              </motion.p>
+            ) : null}
+            <div className="mt-3 space-y-3" data-testid="profile-module-list">
+              {drafts.length === 0 ? (
+                <p className="rounded-card border border-dashed border-line bg-canvas/45 p-4 text-sm text-muted">
+                  No modules yet. Pick a block below to start shaping this space.
                 </p>
               ) : null}
-            </section>
+              {drafts.map((module, index) => (
+                <ModuleTile
+                  key={module.id}
+                  badges={badges}
+                  busy={busy}
+                  canMoveDown={index < drafts.length - 1}
+                  canMoveUp={index > 0}
+                  expanded={selectedModuleId === module.id}
+                  formError={selectedModuleId === module.id ? formError : undefined}
+                  module={module}
+                  selectedDirty={selectedModuleId === module.id ? selectedDirty : false}
+                  onDelete={() => onDelete(module.id)}
+                  onMove={(direction) => onMove(module.id, direction)}
+                  onSave={onSave}
+                  onSelect={() =>
+                    onSelect(selectedModuleId === module.id ? undefined : module.id)
+                  }
+                  onUpdate={onUpdate}
+                />
+              ))}
+            </div>
+          </section>
 
-            <section>
-              <h4 className="text-sm font-semibold text-text">Add module</h4>
-              <div className="mt-3 space-y-2">
-                {moduleTypes.map((moduleType) => (
+          <section>
+            <h4 className="text-sm font-semibold text-text">Add a building block</h4>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {moduleTypes.map((moduleType) => {
+                const Icon = moduleType.icon;
+
+                return (
                   <button
                     key={moduleType.type}
                     type="button"
-                    className="w-full rounded-card border border-line bg-surface/60 p-3 text-left transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                    className="group flex min-w-0 items-start gap-3 rounded-card border border-line bg-surface/55 p-4 text-left shadow-soft transition duration-fluid ease-fluid hover:-translate-y-0.5 hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:hover:translate-y-0"
                     onClick={() => onAddModule(moduleType.type)}
                   >
-                    <span className="block text-sm font-semibold text-text">
-                      {moduleType.label}
+                    <span className="grid size-10 shrink-0 place-items-center rounded-full bg-accent/15 text-text transition group-hover:bg-accent/25">
+                      <Icon aria-hidden="true" size={18} />
                     </span>
-                    <span className="mt-1 block text-xs leading-5 text-muted">
-                      {moduleType.description}
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-text">
+                        {moduleType.label}
+                      </span>
+                      <span className="mt-1 block text-xs leading-5 text-muted">
+                        {moduleType.description}
+                      </span>
                     </span>
                   </button>
-                ))}
-              </div>
-            </section>
-          </aside>
-
-          <div className="min-w-0 space-y-5">
-            {selectedModule ? (
-              <form
-                className="rounded-panel border border-line bg-surface/70 p-4"
-                onSubmit={onSave}
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <h4 className="text-base font-semibold text-text">
-                      {moduleTypeLabel(selectedModule.type)}
-                    </h4>
-                    <p className="mt-1 text-sm leading-6 text-muted">
-                      Preview updates before saving.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      icon={<Trash2 aria-hidden="true" size={15} />}
-                      disabled={busy !== undefined}
-                      onClick={onDelete}
-                    >
-                      Delete
-                    </Button>
-                    <Button
-                      type="submit"
-                      size="sm"
-                      icon={<Save aria-hidden="true" size={15} />}
-                      disabled={
-                        busy !== undefined || (!selectedDirty && selectedModule.id > 0)
-                      }
-                    >
-                      {busy === "save" ? "Saving" : "Save module"}
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
-                  <TextField
-                    id="module-title"
-                    label="Title"
-                    maxLength={maxTitleLength}
-                    value={selectedModule.title ?? ""}
-                    onChange={(event) =>
-                      onUpdate((module) => ({
-                        ...module,
-                        title: event.currentTarget.value || null,
-                      }))
-                    }
-                  />
-                  <SelectField
-                    id="module-visibility"
-                    label="Visibility"
-                    options={visibilityOptions}
-                    value={selectedModule.visibility}
-                    onChange={(event) =>
-                      onUpdate((module) => ({
-                        ...module,
-                        visibility: event.currentTarget.value as ProfileModuleVisibility,
-                      }))
-                    }
-                  />
-                </div>
-
-                <ModuleTypeFields
-                  badges={badges}
-                  module={selectedModule}
-                  onChange={onUpdate}
-                />
-
-                <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-                  {visibilityIcon(selectedModule.visibility)}
-                  <span className="text-muted">
-                    {selectedModule.visibility === "public"
-                      ? "Public modules render on your profile after saving."
-                      : "Hidden and draft modules stay out of public view."}
-                  </span>
-                </div>
-
-                {formError ? (
-                  <p className="mt-4 rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
-                    {formError}
-                  </p>
-                ) : null}
-                {message ? (
-                  <p className="mt-4 rounded-card border border-leaf/30 bg-leaf/15 p-3 text-sm text-leaf-ink">
-                    {message}
-                  </p>
-                ) : null}
-              </form>
-            ) : (
-              <div className="rounded-panel border border-dashed border-line bg-surface/70 p-6 text-sm text-muted">
-                Choose a module type to start.
-              </div>
-            )}
-          </div>
+                );
+              })}
+            </div>
+          </section>
         </div>
       ) : null}
     </section>
+  );
+}
+
+type ModuleTileProps = {
+  badges: UserBadge[];
+  busy: "save" | "delete" | "order" | undefined;
+  canMoveDown: boolean;
+  canMoveUp: boolean;
+  expanded: boolean;
+  formError?: string | undefined;
+  module: ProfileModule;
+  selectedDirty: boolean;
+  onDelete: () => void;
+  onMove: (direction: -1 | 1) => void;
+  onSave: (event: FormEvent<HTMLFormElement>) => void;
+  onSelect: () => void;
+  onUpdate: (updater: (module: ProfileModule) => ProfileModule) => void;
+};
+
+function ModuleTile({
+  badges,
+  busy,
+  canMoveDown,
+  canMoveUp,
+  expanded,
+  formError,
+  module,
+  selectedDirty,
+  onDelete,
+  onMove,
+  onSave,
+  onSelect,
+  onUpdate,
+}: ModuleTileProps) {
+  const moduleType = moduleTypeMeta(module.type);
+  const Icon = moduleType.icon;
+  const title = module.title || moduleType.label;
+  const shouldReduceMotion = useReducedMotion();
+
+  return (
+    <article
+      className={cn(
+        "min-w-0 rounded-panel bg-surface/72 p-3 shadow-soft transition duration-fluid ease-fluid",
+        expanded ? "ring-1 ring-line-strong" : "hover:bg-surface",
+      )}
+      data-testid={`profile-module-card-${module.id}`}
+    >
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-start gap-3 rounded-card text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          aria-expanded={expanded}
+          data-testid={`profile-module-toggle-${module.id}`}
+          onClick={onSelect}
+        >
+          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-canvas/75 text-text">
+            <Icon aria-hidden="true" size={18} />
+          </span>
+          <span className="min-w-0">
+            <span className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="truncate text-sm font-semibold text-text">{title}</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-canvas/70 px-2 py-1 text-[0.72rem] font-semibold text-muted">
+                {visibilityIcon(module.visibility)}
+                {visibilityLabel(module.visibility)}
+              </span>
+            </span>
+            <span className="mt-1 block break-words text-xs leading-5 text-muted">
+              {moduleSummary(module)}
+            </span>
+          </span>
+        </button>
+        <div className="flex shrink-0 flex-wrap gap-1 sm:justify-end">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`Move ${title} up`}
+            title="Move up"
+            disabled={!canMoveUp || busy !== undefined}
+            icon={<ArrowUp aria-hidden="true" size={15} />}
+            onClick={() => onMove(-1)}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`Move ${title} down`}
+            title="Move down"
+            disabled={!canMoveDown || busy !== undefined}
+            icon={<ArrowDown aria-hidden="true" size={15} />}
+            onClick={() => onMove(1)}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`${expanded ? "Collapse" : "Edit"} ${title}`}
+            title={expanded ? "Collapse" : "Edit"}
+            disabled={busy !== undefined}
+            icon={<Edit3 aria-hidden="true" size={15} />}
+            onClick={onSelect}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`Delete ${title}`}
+            title="Delete"
+            disabled={busy !== undefined}
+            icon={<Trash2 aria-hidden="true" size={15} />}
+            onClick={onDelete}
+          />
+        </div>
+      </div>
+
+      <AnimatePresence initial={false}>
+        {expanded ? (
+          <motion.form
+            className="mt-4 space-y-4 overflow-hidden border-t border-line/70 pt-4"
+            data-testid="profile-module-expanded"
+            initial={shouldReduceMotion ? false : { opacity: 0, height: 0 }}
+            animate={
+              shouldReduceMotion ? { opacity: 1 } : { opacity: 1, height: "auto" }
+            }
+            exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.18, ease: "easeOut" }}
+            onSubmit={onSave}
+          >
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto]">
+              <TextField
+                id={`module-title-${module.id}`}
+                label="Title"
+                maxLength={maxTitleLength}
+                value={module.title ?? ""}
+                onChange={(event) =>
+                  onUpdate((current) => ({
+                    ...current,
+                    title: event.currentTarget.value || null,
+                  }))
+                }
+              />
+              <VisibilitySegmentedControl
+                value={module.visibility}
+                onChange={(visibility) =>
+                  onUpdate((current) => ({
+                    ...current,
+                    visibility,
+                  }))
+                }
+              />
+            </div>
+
+            <ModuleTypeFields badges={badges} module={module} onChange={onUpdate} />
+
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+              <span className="min-w-0 text-muted">
+                {module.visibility === "public"
+                  ? "Public modules render on your profile after saving."
+                  : "Hidden and draft modules stay out of public view."}
+              </span>
+              <Button
+                type="submit"
+                size="sm"
+                icon={<Save aria-hidden="true" size={15} />}
+                disabled={busy !== undefined || (!selectedDirty && module.id > 0)}
+              >
+                {busy === "save" ? "Saving" : "Save module"}
+              </Button>
+            </div>
+
+            {formError ? (
+              <p className="rounded-card bg-rose/15 p-3 text-sm text-rose-ink">
+                {formError}
+              </p>
+            ) : null}
+          </motion.form>
+        ) : null}
+      </AnimatePresence>
+    </article>
+  );
+}
+
+type VisibilitySegmentedControlProps = {
+  onChange: (visibility: ProfileModuleVisibility) => void;
+  value: ProfileModuleVisibility;
+};
+
+function VisibilitySegmentedControl({ onChange, value }: VisibilitySegmentedControlProps) {
+  return (
+    <fieldset className="min-w-0">
+      <legend className="mb-2 text-sm font-medium text-text">Visibility</legend>
+      <div className="inline-flex min-h-10 max-w-full rounded-control bg-canvas/70 p-1">
+        {visibilityOptions.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={cn(
+              "rounded-control px-3 py-2 text-sm font-medium transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+              value === option.value
+                ? "bg-surface text-text shadow-soft"
+                : "text-muted hover:text-text",
+            )}
+            aria-pressed={value === option.value}
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 
@@ -1617,7 +1727,7 @@ function PreviewPanel({
   return (
     <section
       aria-label="Profile preview"
-      className="min-w-0 rounded-panel border border-line bg-canvas/35 p-4"
+      className="min-w-0 rounded-panel border border-line-strong bg-surface p-4 shadow-lift"
       data-testid={testId}
     >
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -1977,20 +2087,38 @@ function previewModules(modules: ProfileModule[]): ProfileModule[] {
     .map((module, index) => ({ ...module, position: index + 1 }));
 }
 
+function moduleTypeMeta(type: ProfileModuleType) {
+  const fallback = moduleTypes[0];
+
+  if (!fallback) {
+    throw new Error("Profile module types are not configured.");
+  }
+
+  return moduleTypes.find((moduleType) => moduleType.type === type) ?? fallback;
+}
+
 function moduleTypeLabel(type: ProfileModuleType): string {
-  if (type === "about") {
-    return "About";
+  return moduleTypeMeta(type)?.label ?? "Module";
+}
+
+function moduleSummary(module: ProfileModule): string {
+  if (module.type === "links") {
+    const count = module.config.links?.length ?? 0;
+    return count === 1 ? "1 link" : `${count} links`;
   }
 
-  if (type === "custom_text") {
-    return "Text";
+  if (module.type === "featured_badges") {
+    const count = module.config.userBadgeIds?.length ?? 0;
+    return count === 1 ? "1 selected badge" : `${count} selected badges`;
   }
 
-  if (type === "links") {
-    return "Links";
+  const body = (module.config.body ?? "").trim();
+
+  if (!body) {
+    return moduleTypeMeta(module.type)?.description ?? "Ready to edit.";
   }
 
-  return "Badges";
+  return body.length > 96 ? `${body.slice(0, 93)}...` : body;
 }
 
 function visibilityLabel(visibility: ProfileModuleVisibility): string {
