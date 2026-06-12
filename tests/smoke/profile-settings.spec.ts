@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
 
 test("profile connections normalize, save, and render", async ({ page }) => {
   let profileLinks: unknown[] = [];
@@ -33,6 +34,44 @@ test("profile connections normalize, save, and render", async ({ page }) => {
     },
   ]);
   await expect(page.getByRole("link", { name: /GitHub/ })).toBeVisible();
+});
+
+test("legacy string profile links can save without changes", async ({ page }) => {
+  let profileLinks: unknown[] = ["thia.lol"];
+  let savedPayload: Record<string, unknown> | undefined;
+
+  await mockOwnProfile(page, () => profileLinks, (payload) => {
+    savedPayload = payload;
+    profileLinks = Array.isArray(payload.links) ? payload.links : [];
+  });
+
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+  await page.getByRole("button", { name: "Edit profile" }).click();
+  await page.getByRole("button", { name: "Save changes" }).click();
+
+  await expect.poll(() => savedPayload).toBeTruthy();
+  expect(savedPayload?.links).toMatchObject([
+    {
+      platform: "website",
+      label: "thia.lol",
+      value: "https://thia.lol/",
+      url: "https://thia.lol/",
+    },
+  ]);
+  await expect(page.getByRole("link", { name: "thia.lol", exact: true })).toBeVisible();
+});
+
+test("profile API keeps legacy link saves guarded by source inspection", async () => {
+  const profileApi = readFileSync("api/profile.php", "utf8");
+
+  expect(profileApi).toContain("function profile_connection_from_legacy_map");
+  expect(profileApi).toContain("!array_key_exists('platform', $value)");
+  expect(profileApi).toContain("profile_website_connection($trimmed)");
+  expect(profileApi).toContain("profile_update_failed_on_missing_customization_column");
+  expect(profileApi).toContain("Profile customization migration has not been applied.");
+  expect(profileApi).toContain("profile_update_failed_on_invalid_json");
+  expect(profileApi).toContain("Profile data could not be saved. Check profile links and try again.");
 });
 
 test("profile followers, following, and badges use compact panels", async ({ page }) => {

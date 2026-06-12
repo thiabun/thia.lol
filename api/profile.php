@@ -24,6 +24,11 @@ function me_profile_update(): void
     require_csrf_token($session);
 
     $body = request_json_body();
+
+    if (array_is_list($body)) {
+        json_error('JSON body must be an object.', 400);
+    }
+
     $updates = [];
     $params = ['user_id' => (int) $session['user_id']];
     $hasCustomizationColumns = profile_customization_columns_exist();
@@ -96,13 +101,25 @@ function me_profile_update(): void
         json_error('No supported profile updates were provided.', 422);
     }
 
-    db_query(
-        sprintf(
-            'UPDATE profiles SET %s, updated_at = CURRENT_TIMESTAMP() WHERE user_id = :user_id',
-            implode(', ', $updates)
-        ),
-        $params
-    );
+    try {
+        db_query(
+            sprintf(
+                'UPDATE profiles SET %s, updated_at = CURRENT_TIMESTAMP() WHERE user_id = :user_id',
+                implode(', ', $updates)
+            ),
+            $params
+        );
+    } catch (PDOException $exception) {
+        if (profile_update_failed_on_missing_customization_column($exception)) {
+            json_error('Profile customization migration has not been applied.', 409, $exception);
+        }
+
+        if (profile_update_failed_on_invalid_json($exception)) {
+            json_error('Profile data could not be saved. Check profile links and try again.', 422, $exception);
+        }
+
+        throw $exception;
+    }
 
     $profile = fetch_profile_by_handle((string) $session['handle']);
 
@@ -117,6 +134,32 @@ function me_profile_update(): void
     ));
 }
 
+function profile_update_failed_on_missing_customization_column(PDOException $exception): bool
+{
+    $message = strtolower($exception->getMessage());
+
+    return str_contains($message, 'unknown column')
+        && (
+            str_contains($message, 'banner_url')
+            || str_contains($message, 'profile_accent')
+            || str_contains($message, 'profile_background')
+            || str_contains($message, 'profile_theme')
+        );
+}
+
+function profile_update_failed_on_invalid_json(PDOException $exception): bool
+{
+    $message = strtolower($exception->getMessage());
+
+    return str_contains($message, 'json')
+        && (
+            str_contains($message, 'links')
+            || str_contains($message, 'traits')
+            || str_contains($message, 'constraint')
+            || str_contains($message, 'check')
+        );
+}
+
 function validate_profile_text(mixed $value, int $min, int $max, string $label): string
 {
     if (!is_string($value)) {
@@ -128,6 +171,10 @@ function validate_profile_text(mixed $value, int $min, int $max, string $label):
 
     if ($length < $min) {
         json_error("{$label} is required.", 422);
+    }
+
+    if (preg_match('/[\x00-\x1F\x7F]/', $trimmed) === 1) {
+        json_error("{$label} is invalid.", 422);
     }
 
     if ($length > $max) {
@@ -333,6 +380,14 @@ function profile_connection_from_value(mixed $value): ?array
         json_error('Connections are invalid.', 422);
     }
 
+    if (!array_is_list($value) && !array_key_exists('platform', $value)) {
+        $legacyConnection = profile_connection_from_legacy_map($value);
+
+        if ($legacyConnection !== null) {
+            return $legacyConnection;
+        }
+    }
+
     $platform = profile_connection_platform($value['platform'] ?? null);
     $rawValue = $value['value'] ?? $value['url'] ?? $value['href'] ?? $value['handle'] ?? $value['username'] ?? null;
 
@@ -352,6 +407,48 @@ function profile_connection_from_value(mixed $value): ?array
         'spotify' => profile_spotify_connection($input),
         default => profile_platform_connection($platform, $input),
     };
+}
+
+function profile_connection_from_legacy_map(array $value): ?array
+{
+    $legacyKeys = [
+        'website',
+        'url',
+        'href',
+        'youtube',
+        'twitch',
+        'tiktok',
+        'instagram',
+        'twitter',
+        'x',
+        'bluesky',
+        'github',
+        'discord',
+        'spotify',
+    ];
+
+    foreach ($legacyKeys as $key) {
+        if (!array_key_exists($key, $value) || !is_string($value[$key])) {
+            continue;
+        }
+
+        $input = profile_connection_input($value[$key]);
+
+        if ($input === '') {
+            continue;
+        }
+
+        $platform = $key === 'url' || $key === 'href' ? 'website' : profile_connection_platform($key);
+
+        return match ($platform) {
+            'website' => profile_website_connection($input),
+            'discord' => profile_discord_connection($input),
+            'spotify' => profile_spotify_connection($input),
+            default => profile_platform_connection($platform, $input),
+        };
+    }
+
+    return null;
 }
 
 function profile_connection_platform(mixed $value): string
