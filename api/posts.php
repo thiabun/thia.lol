@@ -876,7 +876,7 @@ function post_payload_select_sql(string $whereClause, string $tailClause = 'LIMI
         pr.updated_at AS profile_updated_at,
         COALESCE(profile_posts.post_count, 0) AS post_count,
         COALESCE(profile_rooms.room_count, 0) AS room_count,
-        COALESCE(profile_echoes.echo_count, 0) AS profile_echo_count,
+        COALESCE(profile_likes.like_count, 0) AS profile_like_count,
         r.id AS room_id,
         r.slug AS room_slug,
         r.name AS room_name,
@@ -920,15 +920,8 @@ function post_payload_select_sql(string $whereClause, string $tailClause = 'LIMI
         GROUP BY created_by
     ) profile_rooms ON profile_rooms.created_by = u.id
     LEFT JOIN (
-        SELECT echo_posts.author_id, COUNT(*) AS echo_count
-        FROM post_reactions echoes
-        INNER JOIN posts echo_posts ON echo_posts.id = echoes.post_id
-        WHERE echoes.type = 'echo'
-          AND echo_posts.visibility = 'public'
-          AND echo_posts.status = 'published'
-          AND echo_posts.deleted_at IS NULL
-        GROUP BY echo_posts.author_id
-    ) profile_echoes ON profile_echoes.author_id = u.id
+        " . profile_received_likes_aggregate_sql() . "
+    ) profile_likes ON profile_likes.author_id = u.id
     LEFT JOIN (
         SELECT
             post_id,

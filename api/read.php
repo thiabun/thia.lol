@@ -93,7 +93,7 @@ function profile_payload(array $row, ?array $stats = null, ?array $social = null
         'posts' => (int) ($row['post_count'] ?? 0),
         'replies' => (int) ($row['profile_reply_count'] ?? 0),
         'rooms' => (int) ($row['room_count'] ?? 0),
-        'echoes' => (int) ($row['profile_echo_count'] ?? $row['echo_count'] ?? 0),
+        'echoes' => (int) ($row['profile_like_count'] ?? $row['profile_echo_count'] ?? $row['echo_count'] ?? 0),
     ];
     $stats['followers'] = (int) $social['followerCount'];
     $stats['following'] = (int) $social['followingCount'];
@@ -390,6 +390,32 @@ function public_post_visible_sql(string $postAlias, string $roomAlias): string
             {$postAlias}.room_id IS NULL
             OR ({$roomAlias}.visibility = 'public' " . room_not_deleted_sql($roomAlias) . ")
         )";
+}
+
+function profile_received_likes_count_sql(string $authorSql): string
+{
+    return "(SELECT COUNT(*)
+            FROM post_reactions profile_likes
+            INNER JOIN posts profile_like_posts ON profile_like_posts.id = profile_likes.post_id
+            LEFT JOIN rooms profile_like_rooms ON profile_like_rooms.id = profile_like_posts.room_id
+            " . post_ancestor_visibility_joins_sql('profile_like_posts') . "
+            WHERE profile_like_posts.author_id = {$authorSql}
+              AND profile_likes.type = 'glow'
+              AND " . public_post_visible_sql('profile_like_posts', 'profile_like_rooms') . "
+              AND " . post_ancestor_visibility_sql('profile_like_posts') . ")";
+}
+
+function profile_received_likes_aggregate_sql(): string
+{
+    return "SELECT profile_like_posts.author_id, COUNT(*) AS like_count
+        FROM post_reactions profile_likes
+        INNER JOIN posts profile_like_posts ON profile_like_posts.id = profile_likes.post_id
+        LEFT JOIN rooms profile_like_rooms ON profile_like_rooms.id = profile_like_posts.room_id
+        " . post_ancestor_visibility_joins_sql('profile_like_posts') . "
+        WHERE profile_likes.type = 'glow'
+          AND " . public_post_visible_sql('profile_like_posts', 'profile_like_rooms') . "
+          AND " . post_ancestor_visibility_sql('profile_like_posts') . "
+        GROUP BY profile_like_posts.author_id";
 }
 
 function pair_not_blocked_sql(string $firstUserSql, string $secondUserSql): string
@@ -723,16 +749,7 @@ function fetch_profile_by_handle(string $handle): ?array
                   AND profile_rooms.visibility = 'public'
                   " . room_not_deleted_sql('profile_rooms') . "
             ) AS room_count,
-            (
-                SELECT COUNT(*)
-                FROM post_reactions echoes
-                INNER JOIN posts echo_posts ON echo_posts.id = echoes.post_id
-                WHERE echo_posts.author_id = u.id
-                  AND echo_posts.visibility = 'public'
-                  AND echo_posts.status = 'published'
-                  AND echo_posts.deleted_at IS NULL
-                  AND echoes.type = 'echo'
-            ) AS echo_count
+            " . profile_received_likes_count_sql('u.id') . " AS profile_like_count
         FROM users u
         INNER JOIN profiles p ON p.user_id = u.id
         WHERE u.handle = :handle
@@ -927,7 +944,7 @@ function post_select_sql(
         COALESCE(profile_posts.post_count, 0) AS post_count,
         COALESCE(profile_replies.reply_count, 0) AS profile_reply_count,
         COALESCE(profile_rooms.room_count, 0) AS room_count,
-        COALESCE(profile_echoes.echo_count, 0) AS profile_echo_count,
+        COALESCE(profile_likes.like_count, 0) AS profile_like_count,
         r.id AS room_id,
         r.slug AS room_slug,
         r.name AS room_name,
@@ -1006,15 +1023,8 @@ function post_select_sql(
         GROUP BY created_by
     ) profile_rooms ON profile_rooms.created_by = u.id
     LEFT JOIN (
-        SELECT echo_posts.author_id, COUNT(*) AS echo_count
-        FROM post_reactions echoes
-        INNER JOIN posts echo_posts ON echo_posts.id = echoes.post_id
-        WHERE echoes.type = 'echo'
-          AND echo_posts.visibility = 'public'
-          AND echo_posts.status = 'published'
-          AND echo_posts.deleted_at IS NULL
-        GROUP BY echo_posts.author_id
-    ) profile_echoes ON profile_echoes.author_id = u.id
+        " . profile_received_likes_aggregate_sql() . "
+    ) profile_likes ON profile_likes.author_id = u.id
     LEFT JOIN (
         SELECT
             post_id,
