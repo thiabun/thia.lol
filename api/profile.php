@@ -18,23 +18,6 @@ function me_dispatch(array $segments, string $method): void
     me_profile_update();
 }
 
-function profile_diagnostics_dispatch(array $segments, string $method): void
-{
-    if (
-        count($segments) !== 2
-        || ($segments[0] ?? null) !== 'admin'
-        || $segments[1] !== 'profile-save-diagnostics'
-    ) {
-        json_error('Not found.', 404);
-    }
-
-    if ($method !== 'POST') {
-        json_error('Method not allowed.', 405);
-    }
-
-    profile_save_diagnostics();
-}
-
 function me_profile_update(): void
 {
     $session = require_authenticated_session();
@@ -46,7 +29,38 @@ function me_profile_update(): void
     json_success($payload);
 }
 
-function profile_update_for_user(int $userId, string $handle, array $body, ?array &$diagnostics = null): array
+function profile_update_for_user(int $userId, string $handle, array $body): array
+{
+    $statement = profile_update_statement_for_body($body, $userId);
+
+    try {
+        db_query($statement['sql'], $statement['params']);
+    } catch (PDOException $exception) {
+        if (profile_update_failed_on_missing_customization_column($exception)) {
+            json_error('Profile customization migration has not been applied.', 409, $exception);
+        }
+
+        if (profile_update_failed_on_invalid_json($exception)) {
+            json_error('Profile data could not be saved. Check profile links and try again.', 422, $exception);
+        }
+
+        throw $exception;
+    }
+
+    $profile = fetch_profile_by_handle($handle);
+
+    if ($profile === null) {
+        json_error('Profile not found.', 404);
+    }
+
+    return profile_payload(
+        $profile,
+        null,
+        profile_social_context((int) $profile['user_id'], $userId)
+    );
+}
+
+function profile_update_statement_for_body(array $body, int $userId, ?bool $hasCustomizationColumns = null): array
 {
     if (array_is_list($body)) {
         json_error('JSON body must be an object.', 400);
@@ -54,17 +68,12 @@ function profile_update_for_user(int $userId, string $handle, array $body, ?arra
 
     $updates = [];
     $params = ['user_id' => $userId];
-    $hasCustomizationColumns = profile_customization_columns_exist();
-
-    if (is_array($diagnostics)) {
-        $diagnostics['body'] = profile_diagnostic_body_shape($body);
-        $diagnostics['customizationColumnsReady'] = $hasCustomizationColumns;
-    }
+    $hasCustomizationColumns = $hasCustomizationColumns ?? profile_customization_columns_exist();
 
     if (array_key_exists('displayName', $body) || array_key_exists('display_name', $body)) {
         $updates[] = 'display_name = :display_name';
         $params['display_name'] = validate_profile_text(
-            $body['displayName'] ?? $body['display_name'],
+            profile_body_value($body, 'displayName', 'display_name'),
             1,
             120,
             'Display name'
@@ -83,17 +92,20 @@ function profile_update_for_user(int $userId, string $handle, array $body, ?arra
 
     if (array_key_exists('avatarUrl', $body) || array_key_exists('avatar_url', $body)) {
         $updates[] = 'avatar_url = :avatar_url';
-        $params['avatar_url'] = validate_profile_image_url($body['avatarUrl'] ?? $body['avatar_url'], 'Avatar');
+        $params['avatar_url'] = validate_profile_image_url(
+            profile_body_value($body, 'avatarUrl', 'avatar_url'),
+            'Avatar'
+        );
     }
 
     if (array_key_exists('bannerUrl', $body) || array_key_exists('banner_url', $body)) {
-        $bannerUrl = validate_profile_image_url($body['bannerUrl'] ?? $body['banner_url'], 'Banner');
+        $bannerUrl = validate_profile_image_url(profile_body_value($body, 'bannerUrl', 'banner_url'), 'Banner');
         add_profile_customization_update($updates, $params, $hasCustomizationColumns, 'banner_url', $bannerUrl);
     }
 
     if (array_key_exists('profileBackground', $body) || array_key_exists('profile_background', $body)) {
         $profileBackground = validate_profile_image_url(
-            $body['profileBackground'] ?? $body['profile_background'],
+            profile_body_value($body, 'profileBackground', 'profile_background'),
             'Profile background'
         );
         add_profile_customization_update(
@@ -106,12 +118,18 @@ function profile_update_for_user(int $userId, string $handle, array $body, ?arra
     }
 
     if (array_key_exists('profileAccent', $body) || array_key_exists('profile_accent', $body)) {
-        $profileAccent = validate_profile_token($body['profileAccent'] ?? $body['profile_accent'], 'Accent');
+        $profileAccent = validate_profile_token(
+            profile_body_value($body, 'profileAccent', 'profile_accent'),
+            'Accent'
+        );
         add_profile_customization_update($updates, $params, $hasCustomizationColumns, 'profile_accent', $profileAccent);
     }
 
     if (array_key_exists('profileTheme', $body) || array_key_exists('profile_theme', $body)) {
-        $profileTheme = validate_profile_token($body['profileTheme'] ?? $body['profile_theme'], 'Theme');
+        $profileTheme = validate_profile_token(
+            profile_body_value($body, 'profileTheme', 'profile_theme'),
+            'Theme'
+        );
         add_profile_customization_update($updates, $params, $hasCustomizationColumns, 'profile_theme', $profileTheme);
     }
 
@@ -129,58 +147,23 @@ function profile_update_for_user(int $userId, string $handle, array $body, ?arra
         json_error('No supported profile updates were provided.', 422);
     }
 
-    if (is_array($diagnostics)) {
-        $diagnostics['updateColumns'] = profile_diagnostic_update_columns($updates);
-        $diagnostics['params'] = profile_diagnostic_param_shape($params);
-        $diagnostics['stage'] = 'before-update';
+    return [
+        'sql' => sprintf(
+            'UPDATE profiles SET %s, updated_at = CURRENT_TIMESTAMP() WHERE user_id = :user_id',
+            implode(', ', $updates)
+        ),
+        'params' => $params,
+        'updates' => $updates,
+    ];
+}
+
+function profile_body_value(array $body, string $camelKey, string $snakeKey): mixed
+{
+    if (array_key_exists($camelKey, $body)) {
+        return $body[$camelKey];
     }
 
-    try {
-        db_query(
-            sprintf(
-                'UPDATE profiles SET %s, updated_at = CURRENT_TIMESTAMP() WHERE user_id = :user_id',
-                implode(', ', $updates)
-            ),
-            $params
-        );
-    } catch (PDOException $exception) {
-        if (is_array($diagnostics)) {
-            $diagnostics['stage'] = 'update-failed';
-            $diagnostics['exception'] = profile_diagnostic_exception($exception);
-            throw $exception;
-        }
-
-        if (profile_update_failed_on_missing_customization_column($exception)) {
-            json_error('Profile customization migration has not been applied.', 409, $exception);
-        }
-
-        if (profile_update_failed_on_invalid_json($exception)) {
-            json_error('Profile data could not be saved. Check profile links and try again.', 422, $exception);
-        }
-
-        throw $exception;
-    }
-
-    if (is_array($diagnostics)) {
-        $diagnostics['stage'] = 'after-update';
-    }
-
-    $profile = fetch_profile_by_handle($handle);
-
-    if ($profile === null) {
-        json_error('Profile not found.', 404);
-    }
-
-    if (is_array($diagnostics)) {
-        $diagnostics['stage'] = 'after-fetch';
-        $diagnostics['profile'] = profile_diagnostic_profile_shape($profile);
-    }
-
-    return profile_payload(
-        $profile,
-        null,
-        profile_social_context((int) $profile['user_id'], $userId)
-    );
+    return $body[$snakeKey] ?? null;
 }
 
 function profile_update_failed_on_missing_customization_column(PDOException $exception): bool
@@ -208,263 +191,6 @@ function profile_update_failed_on_invalid_json(PDOException $exception): bool
             || str_contains($message, 'check')
         );
 }
-
-function require_profile_diagnostics_token(): void
-{
-    $expected = api_config()['security']['migration_token'] ?? '';
-
-    if (!is_string($expected) || $expected === '') {
-        json_error('Not found.', 404);
-    }
-
-    $provided = $_SERVER['HTTP_X_MIGRATION_TOKEN'] ?? '';
-
-    if (!is_string($provided) || $provided === '' || !hash_equals($expected, $provided)) {
-        json_error('Diagnostic access denied.', 403);
-    }
-}
-
-function profile_save_diagnostics(): void
-{
-    $body = request_json_body();
-    $handle = normalize_handle((string) ($body['handle'] ?? ''));
-
-    if (!profile_diagnostics_access_allowed($handle)) {
-        json_error('Diagnostic access denied.', 403);
-    }
-
-    $profile = fetch_profile_by_handle($handle);
-
-    if ($profile === null) {
-        json_error('Profile not found.', 404);
-    }
-
-    $diagnostics = [
-        'handle' => '@' . (string) $profile['handle'],
-        'user' => [
-            'idPresent' => ((int) $profile['user_id']) > 0,
-            'status' => (string) ($profile['user_status'] ?? 'unknown'),
-        ],
-        'profileBefore' => profile_diagnostic_profile_shape($profile),
-    ];
-
-    $saveBody = profile_diagnostic_save_body($profile);
-    $pdo = db();
-
-    try {
-        $pdo->beginTransaction();
-        profile_update_for_user((int) $profile['user_id'], (string) $profile['handle'], $saveBody, $diagnostics);
-        $diagnostics['dryRun'] = [
-            'ok' => true,
-            'rolledBack' => true,
-        ];
-    } catch (Throwable $exception) {
-        $diagnostics['dryRun'] = [
-            'ok' => false,
-            'rolledBack' => true,
-        ];
-        $diagnostics['exception'] = profile_diagnostic_exception($exception);
-    } finally {
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
-        }
-    }
-
-    json_success($diagnostics);
-}
-
-function profile_diagnostics_access_allowed(string $handle): bool
-{
-    $expected = api_config()['security']['migration_token'] ?? '';
-    $provided = $_SERVER['HTTP_X_MIGRATION_TOKEN'] ?? '';
-
-    if (
-        is_string($expected)
-        && $expected !== ''
-        && is_string($provided)
-        && $provided !== ''
-        && hash_equals($expected, $provided)
-    ) {
-        return true;
-    }
-
-    if (!in_array($handle, ['thia', 'thia2'], true)) {
-        return false;
-    }
-
-    return time() < strtotime('2026-06-12 13:30:00 UTC');
-}
-
-function profile_diagnostic_save_body(array $profile): array
-{
-    return [
-        'displayName' => (string) ($profile['display_name'] ?? ''),
-        'bio' => (string) ($profile['bio'] ?? ''),
-        'location' => (string) ($profile['location'] ?? ''),
-        'avatarUrl' => $profile['avatar_url'] ?? null,
-        'bannerUrl' => $profile['banner_url'] ?? null,
-        'profileBackground' => $profile['profile_background'] ?? null,
-        'profileAccent' => $profile['profile_accent'] ?? null,
-        'profileTheme' => $profile['profile_theme'] ?? null,
-        'links' => json_array_value($profile['links'] ?? null),
-    ];
-}
-
-function profile_diagnostic_profile_shape(array $profile): array
-{
-    $links = json_array_value($profile['links'] ?? null);
-    $traits = json_array_value($profile['traits'] ?? null);
-
-    return [
-        'displayNameLength' => profile_text_length((string) ($profile['display_name'] ?? '')),
-        'bioLength' => profile_text_length((string) ($profile['bio'] ?? '')),
-        'locationLength' => profile_text_length((string) ($profile['location'] ?? '')),
-        'avatarUrl' => profile_diagnostic_url_shape($profile['avatar_url'] ?? null),
-        'bannerUrl' => profile_diagnostic_url_shape($profile['banner_url'] ?? null),
-        'profileBackground' => profile_diagnostic_url_shape($profile['profile_background'] ?? null),
-        'profileAccent' => profile_diagnostic_optional_string_shape($profile['profile_accent'] ?? null),
-        'profileTheme' => profile_diagnostic_optional_string_shape($profile['profile_theme'] ?? null),
-        'links' => [
-            'count' => count($links),
-            'shapes' => array_map('profile_diagnostic_value_shape', $links),
-        ],
-        'traits' => [
-            'count' => count($traits),
-            'shapes' => array_map('profile_diagnostic_value_shape', $traits),
-        ],
-    ];
-}
-
-function profile_diagnostic_body_shape(array $body): array
-{
-    $shape = [];
-
-    foreach ($body as $key => $value) {
-        $shape[(string) $key] = profile_diagnostic_value_shape($value);
-    }
-
-    return $shape;
-}
-
-function profile_diagnostic_value_shape(mixed $value): array
-{
-    if ($value === null) {
-        return ['type' => 'null'];
-    }
-
-    if (is_string($value)) {
-        return [
-            'type' => 'string',
-            'length' => profile_text_length($value),
-            'empty' => trim($value) === '',
-        ];
-    }
-
-    if (is_array($value)) {
-        return [
-            'type' => array_is_list($value) ? 'list' : 'object',
-            'count' => count($value),
-            'keys' => array_is_list($value) ? [] : array_values(array_map('strval', array_keys($value))),
-        ];
-    }
-
-    return ['type' => get_debug_type($value)];
-}
-
-function profile_diagnostic_url_shape(mixed $value): array
-{
-    if ($value === null || $value === '') {
-        return ['present' => false];
-    }
-
-    if (!is_string($value)) {
-        return ['present' => true, 'type' => get_debug_type($value)];
-    }
-
-    return [
-        'present' => true,
-        'length' => profile_text_length($value),
-        'kind' => str_starts_with($value, '/uploads/media/')
-            ? 'upload'
-            : (preg_match('#^https?://#i', $value) === 1 ? 'absolute-url' : 'other'),
-    ];
-}
-
-function profile_diagnostic_optional_string_shape(mixed $value): array
-{
-    if ($value === null || $value === '') {
-        return ['present' => false];
-    }
-
-    return [
-        'present' => true,
-        'type' => get_debug_type($value),
-        'length' => is_string($value) ? profile_text_length($value) : null,
-    ];
-}
-
-function profile_diagnostic_update_columns(array $updates): array
-{
-    return array_map(static function (string $update): string {
-        return trim((string) preg_replace('/\\s*=\\s*:.+$/', '', $update));
-    }, $updates);
-}
-
-function profile_diagnostic_param_shape(array $params): array
-{
-    $shape = [];
-
-    foreach ($params as $key => $value) {
-        $shape[(string) $key] = profile_diagnostic_value_shape($value);
-    }
-
-    return $shape;
-}
-
-function profile_diagnostic_exception(Throwable $exception): array
-{
-    $pdoInfo = $exception instanceof PDOException ? $exception->errorInfo : null;
-
-    return [
-        'type' => get_class($exception),
-        'category' => profile_diagnostic_exception_category($exception),
-        'sqlState' => is_array($pdoInfo) && isset($pdoInfo[0]) ? (string) $pdoInfo[0] : null,
-        'driverCode' => is_array($pdoInfo) && isset($pdoInfo[1]) ? (string) $pdoInfo[1] : null,
-        'messageHash' => hash('sha256', $exception->getMessage()),
-    ];
-}
-
-function profile_diagnostic_exception_category(Throwable $exception): string
-{
-    $message = strtolower($exception->getMessage());
-
-    if ($exception instanceof PDOException && profile_update_failed_on_missing_customization_column($exception)) {
-        return 'missing-profile-customization-column';
-    }
-
-    if ($exception instanceof PDOException && profile_update_failed_on_invalid_json($exception)) {
-        return 'invalid-profile-json';
-    }
-
-    if (str_contains($message, 'data too long')) {
-        return 'data-too-long';
-    }
-
-    if (str_contains($message, 'duplicate')) {
-        return 'duplicate-key';
-    }
-
-    if (str_contains($message, 'foreign key')) {
-        return 'foreign-key';
-    }
-
-    if (str_contains($message, 'unknown column')) {
-        return 'unknown-column';
-    }
-
-    return 'unclassified';
-}
-
 
 function validate_profile_text(mixed $value, int $min, int $max, string $label): string
 {

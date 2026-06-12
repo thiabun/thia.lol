@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 test("profile connections normalize, save, and render", async ({ page }) => {
@@ -72,6 +73,14 @@ test("profile API keeps legacy link saves guarded by source inspection", async (
   expect(profileApi).toContain("Profile customization migration has not been applied.");
   expect(profileApi).toContain("profile_update_failed_on_invalid_json");
   expect(profileApi).toContain("Profile data could not be saved. Check profile links and try again.");
+});
+
+test("profile API accepts null optional fields by backend regression fixture", async () => {
+  const output = execFileSync("php", ["tests/backend/profile-save-regression.php"], {
+    encoding: "utf8",
+  });
+
+  expect(output).toContain("profile save regression ok");
 });
 
 test("profile followers, following, and badges use compact panels", async ({ page }) => {
