@@ -2,6 +2,11 @@
 
 Date: 2026-06-12
 
+Safety rules for future customization and modules are defined in
+`docs/profile-customization-safety-rules.md`. Treat that document as required
+context before implementing profile modules, module editors, featured content,
+or integrations.
+
 ## Purpose
 
 Profiles are already one of the strongest identity surfaces on `thia.lol`, but the current model is still close to a standard social profile: header, bio, connections, badges, counts, and activity tabs. Public Readiness V2 needs profiles to become more flexible and desirable without making the platform feel fragmented, unsafe, unreadable, or impossible to moderate.
