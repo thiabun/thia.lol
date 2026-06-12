@@ -68,7 +68,7 @@ Items where existing docs no longer match the repository or the latest project c
 
 - Verify profile-click behavior manually after deployment across PostCard, thread modal, Chat, Notifications, follower/following panels, badges, rooms, and admin surfaces.
 - Verify profile, room, and message reporting paths after deployment with authenticated test accounts.
-- Decide and scope first safety controls for social graph and chat: remove follower, block, mute, message deletion/reporting, and retention expectations.
+- Verify and finish first safety controls for social graph and chat: Phase 1 block, mute, and remove-follower API/data foundation is implemented locally, while frontend controls and deeper message retention/deletion expectations remain follow-up work.
 - Create a public-testing launch checklist that combines deployment steps, migration checks, smoke commands, manual test matrix, known limitations, and tester instructions.
 
 ### P2
@@ -76,7 +76,7 @@ Items where existing docs no longer match the repository or the latest project c
 - Admin cleanup: organize reports, rooms, badges, and user moderation panels; reduce implementation-heavy copy where it is not diagnostically useful.
 - Add an admin deploy metadata card that fetches `/deploy-meta.json` and shows commit, build time, and environment without exposing secrets.
 - Add notification preferences, grouping, pagination, and high-volume controls.
-- Add feed controls such as chronological mode, hide/mute/block inputs, and clearer "why this appears" explanations.
+- Add feed controls such as chronological mode, visible mute/block inputs, and clearer "why this appears" explanations. Phase 1 API filtering covers muted/blocked authors in Home/Discover where current-user context exists.
 - Add profile polish: pinned posts, privacy controls, hidden-badge management UI, and richer identity controls.
 - Add room governance: ownership transfer, bans/mutes UI, room-level report queues, and room-specific moderation logs.
 - Run measured performance cleanup beyond route-level lazy loading, including large modal/component splitting and dead-code removal where evidence supports it.

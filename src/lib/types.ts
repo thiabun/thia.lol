@@ -34,6 +34,8 @@ export type Profile = {
   isFollowing: boolean;
   isFollowedBy: boolean;
   isMoot: boolean;
+  isBlocked?: boolean;
+  isMuted?: boolean;
   createdAt?: string | null;
   updatedAt?: string | null;
 };

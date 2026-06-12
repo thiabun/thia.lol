@@ -32,10 +32,10 @@ api/ contents -> public_html/api/
 backend/database/migrations/*.sql -> public_html/api/migrations/
 ```
 
-For the follows/moots migration specifically, make sure this file exists on the server:
+For the block/mute/remove-follower foundation, make sure this file exists on the server:
 
 ```text
-public_html/api/migrations/20260610_0002_add_user_follows.sql
+public_html/api/migrations/20260611_0001_add_user_blocks_and_mutes.sql
 ```
 
 Also make sure the server config has a migration token set in:
@@ -77,7 +77,7 @@ await fetch('/api/admin/migrations/status', {
 Look for the new migration:
 
 ```text
-20260610_0002_add_user_follows.sql
+20260611_0001_add_user_blocks_and_mutes.sql
 ```
 
 If it says `applied: false`, it is pending and ready to run.
@@ -108,12 +108,12 @@ A good result should show `ok: true` and list the migration as applied or skippe
 Run the status command again and confirm:
 
 ```text
-20260610_0002_add_user_follows.sql -> applied: true
+20260611_0001_add_user_blocks_and_mutes.sql -> applied: true
 ```
 
 ## Step 5: test the feature
 
-After the follows migration, test these URLs:
+After the block/mute/remove-follower migration, test these URLs:
 
 ```text
 https://thia.lol/api/health
@@ -121,6 +121,7 @@ https://thia.lol/api/health?db=1
 https://thia.lol/api/profiles/thia
 https://thia.lol/api/profiles/thia/followers
 https://thia.lol/api/profiles/thia/following
+https://thia.lol/api/chat/moots
 https://thia.lol/@thia
 ```
 

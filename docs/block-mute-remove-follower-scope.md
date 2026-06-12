@@ -2,6 +2,14 @@
 
 Date: 2026-06-11
 
+Implementation note, 2026-06-12: Phase 1 API/data foundation is now
+implemented in the repo with migration
+`backend/database/migrations/20260611_0001_add_user_blocks_and_mutes.sql`.
+The migration still must be deployed and run through the protected migration
+runner before live block/mute endpoints can be used. Full frontend controls,
+settings lists, room-level controls, and broader feed/profile UX remain
+follow-up work.
+
 ## Purpose
 
 `thia.lol` now has the core social graph and interaction surfaces needed for public testing: follows, moots, moots-only chat, reports, public rooms, profile identity, replies, reblogs, and moderation review. That makes basic user control the next safety gap.
@@ -558,18 +566,24 @@ Scope:
 
 Acceptance criteria:
 
-- [ ] `POST /api/profiles/:handle/block` creates an idempotent block.
-- [ ] Blocking deletes both follow rows between the two users.
-- [ ] Blocking self returns `422`.
-- [ ] Blocking a missing/inactive profile returns `404`.
-- [ ] Block storage missing returns `503`.
-- [ ] `DELETE /api/profiles/:handle/block` removes only the current user's block and does not restore follows.
-- [ ] `POST /api/profiles/:handle/mute` creates an idempotent mute without changing follows.
-- [ ] `DELETE /api/profiles/:handle/mute` removes only the current user's mute.
-- [ ] `DELETE /api/profiles/:handle/follower` deletes only the target user's follow of the current user.
-- [ ] Follow create is rejected if either side has blocked the other.
-- [ ] No block, mute, or remove-follower action creates a notification.
-- [ ] API responses do not reveal another user's block state with explicit copy.
+- [x] `POST /api/profiles/:handle/block` creates an idempotent block.
+- [x] Blocking deletes both follow rows between the two users.
+- [x] Blocking self returns `422`.
+- [x] Blocking a missing/inactive profile returns `404`.
+- [x] Block storage missing returns `503`.
+- [x] `DELETE /api/profiles/:handle/block` removes only the current user's block and does not restore follows.
+- [x] `POST /api/profiles/:handle/mute` creates an idempotent mute without changing follows.
+- [x] `DELETE /api/profiles/:handle/mute` removes only the current user's mute.
+- [x] `DELETE /api/profiles/:handle/follower` deletes only the target user's follow of the current user.
+- [x] Follow create is rejected if either side has blocked the other.
+- [x] No block, mute, or remove-follower action creates a notification.
+- [x] API responses do not reveal another user's block state with explicit copy.
+
+Phase 1 also rejects blocked-pair chat conversation creation and message sends,
+filters blocked pairs from the chat moot picker, and applies current-user
+block/mute filtering to Home/Discover post authors and people recommendations.
+Reblog-context filtering and full frontend controls are deferred to later
+phases.
 
 ### 2. Profile and Follower Panel Controls
 

@@ -198,9 +198,22 @@ export type FollowRelationship = {
   isFollowing: boolean;
   isFollowedBy: boolean;
   isMoot: boolean;
+  isBlocked?: boolean;
+  isMuted?: boolean;
   followerCount: number;
   followingCount: number;
   mootCount?: number;
+};
+
+export type ProfileControlResult = {
+  isBlocked: boolean;
+  isMuted: boolean;
+  relationship: FollowRelationship;
+};
+
+export type RemoveFollowerResult = {
+  removedFollower: boolean;
+  relationship: FollowRelationship;
 };
 
 export type ReportTargetType = "post" | "profile" | "room" | "message";
@@ -509,6 +522,68 @@ export function unfollowProfile(
 
   return apiDelete<FollowRelationship>(
     `/profiles/${encodeURIComponent(normalized)}/follow`,
+    csrfToken,
+  );
+}
+
+export function blockProfile(
+  handle: string,
+  csrfToken: string,
+): Promise<ProfileControlResult> {
+  const normalized = normalizeHandle(handle);
+
+  return apiPost<ProfileControlResult>(
+    `/profiles/${encodeURIComponent(normalized)}/block`,
+    {},
+    csrfToken,
+  );
+}
+
+export function unblockProfile(
+  handle: string,
+  csrfToken: string,
+): Promise<ProfileControlResult> {
+  const normalized = normalizeHandle(handle);
+
+  return apiDelete<ProfileControlResult>(
+    `/profiles/${encodeURIComponent(normalized)}/block`,
+    csrfToken,
+  );
+}
+
+export function muteProfile(
+  handle: string,
+  csrfToken: string,
+): Promise<ProfileControlResult> {
+  const normalized = normalizeHandle(handle);
+
+  return apiPost<ProfileControlResult>(
+    `/profiles/${encodeURIComponent(normalized)}/mute`,
+    {},
+    csrfToken,
+  );
+}
+
+export function unmuteProfile(
+  handle: string,
+  csrfToken: string,
+): Promise<ProfileControlResult> {
+  const normalized = normalizeHandle(handle);
+
+  return apiDelete<ProfileControlResult>(
+    `/profiles/${encodeURIComponent(normalized)}/mute`,
+    csrfToken,
+  );
+}
+
+export function removeProfileFollower(
+  handle: string,
+  csrfToken: string,
+): Promise<RemoveFollowerResult> {
+  const normalized = normalizeHandle(handle);
+
+  return apiDelete<RemoveFollowerResult>(
+    `/profiles/${encodeURIComponent(normalized)}/follower`,
     csrfToken,
   );
 }
@@ -940,6 +1015,8 @@ function normalizeProfile(profile: ApiProfile): Profile {
     isFollowing: profile.isFollowing ?? false,
     isFollowedBy: profile.isFollowedBy ?? false,
     isMoot: profile.isMoot ?? false,
+    isBlocked: profile.isBlocked ?? false,
+    isMuted: profile.isMuted ?? false,
     createdAt: profile.createdAt ?? null,
     updatedAt: profile.updatedAt ?? null,
   };

@@ -87,7 +87,7 @@ try {
     if (
         ($segments[0] ?? null) === 'profiles' &&
         count($segments) === 3 &&
-        in_array($segments[2], ['follow', 'followers', 'following'], true)
+        in_array($segments[2], ['follow', 'followers', 'following', 'block', 'mute', 'follower'], true)
     ) {
         follows_dispatch($segments, $method);
     }

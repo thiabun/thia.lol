@@ -140,6 +140,7 @@ function chat_moots_index(): void
     require_chat_follows_table();
 
     $viewerUserId = (int) $session['user_id'];
+    $blockFilter = chat_blocked_pair_filter_sql($viewerUserId, 'u.id');
     $statement = db_query(
         "SELECT
             u.id AS user_id,
@@ -156,6 +157,7 @@ function chat_moots_index(): void
          INNER JOIN profiles p ON p.user_id = u.id
          WHERE mine.follower_id = :viewer_user_id
            AND u.status = 'active'
+           {$blockFilter}
          ORDER BY p.display_name ASC, u.handle ASC
          LIMIT 100",
         ['viewer_user_id' => $viewerUserId]
@@ -182,6 +184,8 @@ function chat_conversations_create(): void
     if ($viewerUserId === $targetUserId) {
         json_error('Choose another member to message.', 422);
     }
+
+    reject_blocked_chat($viewerUserId, $targetUserId);
 
     if (!chat_users_are_moots($viewerUserId, $targetUserId)) {
         json_error('Follow each other to chat.', 403);
@@ -232,7 +236,8 @@ function chat_messages_create(int $conversationId): void
     require_chat_tables();
 
     $viewerUserId = (int) $session['user_id'];
-    chat_fetch_conversation_for_user($conversationId, $viewerUserId);
+    $conversation = chat_fetch_conversation_for_user($conversationId, $viewerUserId);
+    reject_blocked_chat($viewerUserId, (int) $conversation['otherParticipant']['id']);
 
     $body = request_json_body();
     $messageBody = chat_message_body_from_request($body);
@@ -597,6 +602,78 @@ function chat_users_are_moots(int $firstUserId, int $secondUserId): bool
     return is_array($row) &&
         (bool) ($row['first_follows_second'] ?? false) &&
         (bool) ($row['second_follows_first'] ?? false);
+}
+
+function reject_blocked_chat(int $viewerUserId, int $targetUserId): void
+{
+    $state = chat_pair_block_state($viewerUserId, $targetUserId);
+
+    if ($state['viewerBlocksTarget']) {
+        json_error('Unblock this member before messaging.', 409);
+    }
+
+    if ($state['targetBlocksViewer']) {
+        json_error('You cannot message this member.', 403);
+    }
+}
+
+function chat_pair_block_state(int $viewerUserId, int $targetUserId): array
+{
+    $state = [
+        'viewerBlocksTarget' => false,
+        'targetBlocksViewer' => false,
+    ];
+
+    if (!user_blocks_table_exists()) {
+        return $state;
+    }
+
+    $row = db_query(
+        'SELECT
+            EXISTS (
+                SELECT 1
+                FROM user_blocks
+                WHERE blocker_id = :viewer_user_id
+                  AND blocked_id = :target_user_id
+            ) AS viewer_blocks_target,
+            EXISTS (
+                SELECT 1
+                FROM user_blocks
+                WHERE blocker_id = :target_user_id_again
+                  AND blocked_id = :viewer_user_id_again
+            ) AS target_blocks_viewer',
+        [
+            'viewer_user_id' => $viewerUserId,
+            'target_user_id' => $targetUserId,
+            'target_user_id_again' => $targetUserId,
+            'viewer_user_id_again' => $viewerUserId,
+        ]
+    )->fetch();
+
+    if (!is_array($row)) {
+        return $state;
+    }
+
+    return [
+        'viewerBlocksTarget' => (bool) ($row['viewer_blocks_target'] ?? false),
+        'targetBlocksViewer' => (bool) ($row['target_blocks_viewer'] ?? false),
+    ];
+}
+
+function chat_blocked_pair_filter_sql(int $viewerUserId, string $targetUserSql): string
+{
+    if (!user_blocks_table_exists()) {
+        return '';
+    }
+
+    $viewerSql = (string) $viewerUserId;
+
+    return " AND NOT EXISTS (
+        SELECT 1
+        FROM user_blocks chat_pair_blocks
+        WHERE (chat_pair_blocks.blocker_id = {$viewerSql} AND chat_pair_blocks.blocked_id = {$targetUserSql})
+           OR (chat_pair_blocks.blocker_id = {$targetUserSql} AND chat_pair_blocks.blocked_id = {$viewerSql})
+    )";
 }
 
 function chat_ordered_direct_pair(int $firstUserId, int $secondUserId): array

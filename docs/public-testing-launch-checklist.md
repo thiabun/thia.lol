@@ -89,6 +89,7 @@ public_html/
 
   ```text
   20260610_0010_add_room_soft_delete.sql
+  20260611_0001_add_user_blocks_and_mutes.sql
   ```
 
 - [ ] Do not run migrations silently. Record who ran them, when, what was pending, and what the runner reported.
@@ -167,6 +168,10 @@ Use safe, disposable test content for mutating checks. Avoid posting private inf
 | Profile | Save structured Connections |  |  |
 | Social graph | Follow and unfollow another test profile |  |  |
 | Social graph | Confirm moot state after mutual follow |  |  |
+| Social graph | Block a followed/mutual test profile and confirm both follow rows are removed |  | Requires `20260611_0001_add_user_blocks_and_mutes.sql` |
+| Social graph | Unblock the test profile and confirm follows are not restored automatically |  |  |
+| Social graph | Mute and unmute a test profile without changing follow state |  | Requires `20260611_0001_add_user_blocks_and_mutes.sql` |
+| Social graph | Remove a follower and confirm only their follow row is deleted |  |  |
 | Rooms | Create a disposable room |  |  |
 | Rooms | Edit room metadata and images |  |  |
 | Rooms | Join and leave a room |  |  |
@@ -220,7 +225,7 @@ For sensitive safety, privacy, account, or moderation concerns, avoid posting pr
 
 - Chat page still lacks a native moot picker or start-DM flow. Chat can start from a moot profile or direct supported flow, but the Chat page itself lists existing conversations only.
 - Profile, room, and chat-message report paths are implemented for public testing, but deeper moderation workflows such as room-specific queues, message deletion, retention tooling, and user-visible report status remain deferred.
-- Block, mute, and remove-follower controls are not yet scoped or implemented.
+- Block, mute, and remove-follower API/data foundation exists, but full frontend profile/follower controls and settings lists are still follow-up work.
 - Notification controls, grouping, pagination, and high-volume controls are deferred.
 - The deeper thread root model is deferred. Current thread visibility filtering covers the rendered depth, but unbounded deep reply trees may need a `root_id` or `thread_id` model later.
 - Some authenticated flows may still need manual verification against production.

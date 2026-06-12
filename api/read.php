@@ -86,6 +86,8 @@ function profile_payload(array $row, ?array $stats = null, ?array $social = null
         'isFollowing' => (bool) ($row['is_following'] ?? false),
         'isFollowedBy' => (bool) ($row['is_followed_by'] ?? false),
         'isMoot' => (bool) ($row['is_moot'] ?? false),
+        'isBlocked' => (bool) ($row['is_blocked'] ?? false),
+        'isMuted' => (bool) ($row['is_muted'] ?? false),
     ];
     $stats = $stats ?? [
         'posts' => (int) ($row['post_count'] ?? 0),
@@ -115,6 +117,8 @@ function profile_payload(array $row, ?array $stats = null, ?array $social = null
         'isFollowing' => (bool) $social['isFollowing'],
         'isFollowedBy' => (bool) $social['isFollowedBy'],
         'isMoot' => (bool) $social['isMoot'],
+        'isBlocked' => (bool) ($social['isBlocked'] ?? false),
+        'isMuted' => (bool) ($social['isMuted'] ?? false),
         'createdAt' => $row['profile_created_at'] ?? null,
         'updatedAt' => $row['profile_updated_at'] ?? null,
     ];
@@ -291,6 +295,16 @@ function post_reblogs_table_exists(): bool
     return database_table_exists('post_reblogs');
 }
 
+function user_blocks_table_exists(): bool
+{
+    return database_table_exists('user_blocks');
+}
+
+function user_mutes_table_exists(): bool
+{
+    return database_table_exists('user_mutes');
+}
+
 function room_memberships_table_exists(): bool
 {
     return database_table_exists('room_memberships');
@@ -376,6 +390,41 @@ function public_post_visible_sql(string $postAlias, string $roomAlias): string
             {$postAlias}.room_id IS NULL
             OR ({$roomAlias}.visibility = 'public' " . room_not_deleted_sql($roomAlias) . ")
         )";
+}
+
+function pair_not_blocked_sql(string $firstUserSql, string $secondUserSql): string
+{
+    if (!user_blocks_table_exists()) {
+        return '';
+    }
+
+    return " AND NOT EXISTS (
+        SELECT 1
+        FROM user_blocks pair_blocks
+        WHERE (pair_blocks.blocker_id = {$firstUserSql} AND pair_blocks.blocked_id = {$secondUserSql})
+           OR (pair_blocks.blocker_id = {$secondUserSql} AND pair_blocks.blocked_id = {$firstUserSql})
+    )";
+}
+
+function viewer_feed_relationship_filter_sql(?int $viewerUserId, string $authorUserSql = 'u.id', bool $includeMutes = true): string
+{
+    if ($viewerUserId === null) {
+        return '';
+    }
+
+    $viewerSql = (string) $viewerUserId;
+    $filters = pair_not_blocked_sql($viewerSql, $authorUserSql);
+
+    if ($includeMutes && user_mutes_table_exists()) {
+        $filters .= " AND NOT EXISTS (
+            SELECT 1
+            FROM user_mutes feed_mutes
+            WHERE feed_mutes.muter_id = {$viewerSql}
+              AND feed_mutes.muted_id = {$authorUserSql}
+        )";
+    }
+
+    return $filters;
 }
 
 function post_ancestor_visibility_joins_sql(string $postAlias): string
@@ -488,6 +537,8 @@ function profile_social_context(int $profileUserId, ?int $viewerUserId = null): 
         'isFollowing' => false,
         'isFollowedBy' => false,
         'isMoot' => false,
+        'isBlocked' => false,
+        'isMuted' => false,
     ];
 
     if (!user_follows_table_exists()) {
@@ -502,6 +553,7 @@ function profile_social_context(int $profileUserId, ?int $viewerUserId = null): 
                 INNER JOIN users follower_users ON follower_users.id = followers.follower_id
                 WHERE followers.following_id = :profile_user_id_followers
                   AND follower_users.status = 'active'
+                  " . pair_not_blocked_sql('followers.follower_id', 'followers.following_id') . "
             ) AS follower_count,
             (
                 SELECT COUNT(*)
@@ -509,6 +561,7 @@ function profile_social_context(int $profileUserId, ?int $viewerUserId = null): 
                 INNER JOIN users following_users ON following_users.id = following.following_id
                 WHERE following.follower_id = :profile_user_id_following
                   AND following_users.status = 'active'
+                  " . pair_not_blocked_sql('following.follower_id', 'following.following_id') . "
             ) AS following_count,
             (
                 SELECT COUNT(*)
@@ -519,6 +572,7 @@ function profile_social_context(int $profileUserId, ?int $viewerUserId = null): 
                 INNER JOIN users moot_users ON moot_users.id = moots.following_id
                 WHERE moots.follower_id = :profile_user_id_moots
                   AND moot_users.status = 'active'
+                  " . pair_not_blocked_sql('moots.follower_id', 'moots.following_id') . "
             ) AS moot_count",
         [
             'profile_user_id_followers' => $profileUserId,
@@ -538,6 +592,56 @@ function profile_social_context(int $profileUserId, ?int $viewerUserId = null): 
         return $context;
     }
 
+    $blockSelect = user_blocks_table_exists()
+        ? ",
+            EXISTS (
+                SELECT 1
+                FROM user_blocks
+                WHERE blocker_id = :viewer_user_id_blocked
+                  AND blocked_id = :profile_user_id_blocked
+            ) AS is_blocked,
+            EXISTS (
+                SELECT 1
+                FROM user_blocks
+                WHERE blocker_id = :profile_user_id_blocked_by
+                  AND blocked_id = :viewer_user_id_blocked_by
+            ) AS is_blocked_by"
+        : ",
+            0 AS is_blocked,
+            0 AS is_blocked_by";
+    $muteSelect = user_mutes_table_exists()
+        ? ",
+            EXISTS (
+                SELECT 1
+                FROM user_mutes
+                WHERE muter_id = :viewer_user_id_muted
+                  AND muted_id = :profile_user_id_muted
+            ) AS is_muted"
+        : ",
+            0 AS is_muted";
+    $relationshipParams = [
+        'profile_user_id_following' => $profileUserId,
+        'viewer_user_id_following' => $viewerUserId,
+        'profile_user_id_followed_by' => $profileUserId,
+        'viewer_user_id_followed_by' => $viewerUserId,
+    ];
+
+    if (user_blocks_table_exists()) {
+        $relationshipParams += [
+            'viewer_user_id_blocked' => $viewerUserId,
+            'profile_user_id_blocked' => $profileUserId,
+            'profile_user_id_blocked_by' => $profileUserId,
+            'viewer_user_id_blocked_by' => $viewerUserId,
+        ];
+    }
+
+    if (user_mutes_table_exists()) {
+        $relationshipParams += [
+            'viewer_user_id_muted' => $viewerUserId,
+            'profile_user_id_muted' => $profileUserId,
+        ];
+    }
+
     $relationship = db_query(
         "SELECT
             EXISTS (
@@ -551,18 +655,20 @@ function profile_social_context(int $profileUserId, ?int $viewerUserId = null): 
                 FROM user_follows
                 WHERE follower_id = :profile_user_id_followed_by
                   AND following_id = :viewer_user_id_followed_by
-            ) AS is_followed_by",
-        [
-            'profile_user_id_following' => $profileUserId,
-            'viewer_user_id_following' => $viewerUserId,
-            'profile_user_id_followed_by' => $profileUserId,
-            'viewer_user_id_followed_by' => $viewerUserId,
-        ]
+            ) AS is_followed_by
+            {$blockSelect}
+            {$muteSelect}",
+        $relationshipParams
     )->fetch();
 
     if (is_array($relationship)) {
-        $context['isFollowing'] = (bool) ($relationship['is_following'] ?? false);
-        $context['isFollowedBy'] = (bool) ($relationship['is_followed_by'] ?? false);
+        $isBlocked = (bool) ($relationship['is_blocked'] ?? false);
+        $isBlockedBy = (bool) ($relationship['is_blocked_by'] ?? false);
+
+        $context['isBlocked'] = $isBlocked;
+        $context['isMuted'] = (bool) ($relationship['is_muted'] ?? false);
+        $context['isFollowing'] = !$isBlocked && !$isBlockedBy && (bool) ($relationship['is_following'] ?? false);
+        $context['isFollowedBy'] = !$isBlocked && !$isBlockedBy && (bool) ($relationship['is_followed_by'] ?? false);
         $context['isMoot'] = $context['isFollowing'] && $context['isFollowedBy'];
     }
 
@@ -1107,7 +1213,7 @@ function fetch_home_feed(): array
     $scoreSql = home_rank_score_sql($viewerUserId);
     $statement = db_query(
         post_select_sql(
-            'AND p.parent_id IS NULL',
+            'AND p.parent_id IS NULL' . viewer_feed_relationship_filter_sql($viewerUserId),
             'feed_rank_score DESC, p.created_at DESC, p.id DESC',
             "{$scoreSql} AS feed_rank_score,
             " . followed_reblog_context_select_sql($viewerUserId),
@@ -1124,7 +1230,7 @@ function fetch_discover_posts(): array
     $viewerUserId = current_request_user_id();
     $statement = db_query(
         post_select_sql(
-            'AND p.parent_id IS NULL',
+            'AND p.parent_id IS NULL' . viewer_feed_relationship_filter_sql($viewerUserId),
             'feed_rank_score DESC, p.created_at DESC, p.id DESC',
             "{$scoreSql} AS feed_rank_score",
             $viewerUserId
@@ -1397,6 +1503,7 @@ function fetch_people_to_watch(): array
     $excludeFollowed = $hasFollows
         ? "AND viewer_follows.following_id IS NULL"
         : "";
+    $relationshipFilter = viewer_feed_relationship_filter_sql($viewerUserId);
 
     $statement = db_query(
         "SELECT
@@ -1434,6 +1541,7 @@ function fetch_people_to_watch(): array
          WHERE u.status = 'active'
            AND ({$viewerSql} IS NULL OR u.id <> {$viewerSql})
            {$excludeFollowed}
+           {$relationshipFilter}
            AND COALESCE(profile_posts.post_count, 0) > 0
          ORDER BY
             profile_posts.latest_post_at DESC,
