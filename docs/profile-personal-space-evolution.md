@@ -7,6 +7,10 @@ Safety rules for future customization and modules are defined in
 context before implementing profile modules, module editors, featured content,
 or integrations.
 
+The owner-facing customization experience is planned in
+`docs/profile-customization-experience.md`. Treat it as the source of truth for
+profile editor IA, preview behavior, and future theme/editor direction.
+
 ## Purpose
 
 Profiles are already one of the strongest identity surfaces on `thia.lol`, but the current model is still close to a standard social profile: header, bio, connections, badges, counts, and activity tabs. Public Readiness V2 needs profiles to become more flexible and desirable without making the platform feel fragmented, unsafe, unreadable, or impossible to moderate.
@@ -17,7 +21,7 @@ This document is planning only. It does not implement frontend redesigns, API ch
 
 ## Current Profile State
 
-Current implementation is static-first React backed by PHP/MySQL APIs. The profile surface is centered on `src/pages/ProfilePage.tsx`, `src/components/social/ProfileHeader.tsx`, `src/components/social/ProfileEditModal.tsx`, `src/lib/profileConnections.ts`, `api/profile.php`, `api/follows.php`, `api/read.php`, `api/badges.php`, and `backend/database/schema.sql`.
+Current implementation is static-first React backed by PHP/MySQL APIs. The profile surface is centered on `src/pages/ProfilePage.tsx`, `src/components/social/ProfileHeader.tsx`, `src/components/social/ProfileCustomizationModal.tsx`, `src/lib/profileConnections.ts`, `api/profile.php`, `api/follows.php`, `api/read.php`, `api/badges.php`, and `backend/database/schema.sql`.
 
 Implemented public profile behavior:
 

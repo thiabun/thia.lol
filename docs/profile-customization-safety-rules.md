@@ -35,10 +35,10 @@ Current profile customization fields:
 - `profiles.links`
 - featured badge ordering through `user_badges.featured_order`
 
-Current frontend token options:
+Current frontend behavior:
 
-- Profile accent: default, `sunveil`, `frostveil`, `leaf`, `rose`.
-- Profile theme: default, `soft`, `clear`, `glow`.
+- Profile accent/theme values may exist in storage for compatibility, but controls are hidden until presets visibly affect public rendering through tested, contrast-safe mappings.
+- The active customization surface is organized around Identity, Appearance, Connections, Modules, and Preview.
 
 Current profile text and media constraints:
 

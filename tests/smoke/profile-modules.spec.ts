@@ -77,7 +77,7 @@ test("visitor with no modules does not see fake module scaffolding", async ({ pa
   await expect(page.getByTestId("profile-modules")).toHaveCount(0);
   await expect(page.getByTestId("profile-owner-tools")).toHaveCount(0);
   await expect(page.getByText("No profile modules yet")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Edit personal space" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
 });
 
 test("owner empty module state is honest", async ({ page }) => {
@@ -85,11 +85,11 @@ test("owner empty module state is honest", async ({ page }) => {
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await expect(page.getByTestId("profile-owner-tools")).toBeVisible();
+  await expect(page.getByTestId("profile-owner-tools")).toHaveCount(0);
   await expect(page.getByTestId("profile-modules")).toBeVisible();
   await expect(page.getByRole("heading", { name: "No profile modules yet" })).toBeVisible();
   await expect(page.getByText("This space is empty for now.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Edit personal space" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Customize profile" })).toBeVisible();
 });
 
 test("owner editor lists modules and previews plain text", async ({ page }) => {
@@ -100,13 +100,15 @@ test("owner editor lists modules and previews plain text", async ({ page }) => {
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await page.getByRole("button", { name: "Edit personal space" }).click();
-  const editor = page.getByTestId("profile-module-editor");
+  await page.getByRole("button", { name: "Customize profile" }).click();
+  const modal = page.getByTestId("profile-customization-modal");
+  await modal.getByRole("button", { name: /Modules/ }).click();
+  const editor = modal.getByTestId("profile-module-editor");
   await expect(editor).toBeVisible();
   await expect(editor.getByTestId("profile-module-list")).toContainText("About this space");
 
   await editor.getByLabel("Body").fill("Literal <strong>plain</strong> preview");
-  const preview = editor.getByTestId("profile-module-preview");
+  const preview = modal.getByTestId("profile-module-preview");
   await expect(preview).toContainText("Literal <strong>plain</strong> preview");
   await expect(preview.locator("strong")).toHaveCount(0);
 });
@@ -123,8 +125,10 @@ test("owner can add and save an about module", async ({ page }) => {
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await page.getByRole("button", { name: "Edit personal space" }).click();
-  const editor = page.getByTestId("profile-module-editor");
+  await page.getByRole("button", { name: "Customize profile" }).click();
+  const modal = page.getByTestId("profile-customization-modal");
+  await modal.getByRole("button", { name: /Modules/ }).click();
+  const editor = modal.getByTestId("profile-module-editor");
   await editor.getByRole("button", { name: "About" }).click();
   await editor.getByLabel("Title").fill("My intro");
   await editor.getByLabel("Body").fill("A safe public intro.");
@@ -153,8 +157,10 @@ test("links editor rejects unsafe URL before save", async ({ page }) => {
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await page.getByRole("button", { name: "Edit personal space" }).click();
-  const editor = page.getByTestId("profile-module-editor");
+  await page.getByRole("button", { name: "Customize profile" }).click();
+  const modal = page.getByTestId("profile-customization-modal");
+  await modal.getByRole("button", { name: /Modules/ }).click();
+  const editor = modal.getByTestId("profile-module-editor");
   await editor.getByRole("button", { name: "Links" }).click();
   await editor.getByLabel("Link 1 label").fill("Bad link");
   await editor.getByLabel("Link 1 URL").fill("javascript:alert(1)");
@@ -184,8 +190,10 @@ test("owner can delete and reorder modules with confirmation", async ({ page }) 
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await page.getByRole("button", { name: "Edit personal space" }).click();
-  const editor = page.getByTestId("profile-module-editor");
+  await page.getByRole("button", { name: "Customize profile" }).click();
+  const modal = page.getByTestId("profile-customization-modal");
+  await modal.getByRole("button", { name: /Modules/ }).click();
+  const editor = modal.getByTestId("profile-module-editor");
   await editor.getByRole("button", { name: /Second/ }).click();
   await editor.getByRole("button", { name: "Up", exact: true }).click();
   await editor.getByRole("button", { name: "Save order" }).click();
@@ -205,7 +213,8 @@ test("mobile module editor and preview do not overflow", async ({ page }) => {
   });
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
-  await page.getByRole("button", { name: "Edit personal space" }).click();
+  await page.getByRole("button", { name: "Customize profile" }).click();
+  await page.getByTestId("profile-customization-modal").getByRole("button", { name: /Modules/ }).click();
 
   await expect(page.getByTestId("profile-module-editor")).toBeVisible();
   const hasHorizontalOverflow = await page.evaluate(

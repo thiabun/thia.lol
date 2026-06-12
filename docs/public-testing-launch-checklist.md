@@ -111,11 +111,12 @@ public_html/
 
 - [ ] After the profile module editor deploys, retest an authenticated owner flow:
   - Open `https://thia.lol/@thia`.
-  - Open Edit personal space.
+  - Open Customize profile, then Modules.
   - Create, edit, reorder, and delete a safe test module.
   - Confirm public rendering through `https://thia.lol/api/profiles/thia/modules`.
-- [ ] After profile customization UX changes deploy, retest Edit profile:
-  - Confirm Edit personal space is visible only to the profile owner.
+- [ ] After profile customization UX changes deploy, retest Customize profile:
+  - Confirm Customize profile is visible only to the profile owner.
+  - Confirm Identity, Appearance, Connections, Modules, and Preview are reachable.
   - Confirm Accent/Theme preset controls are not shown until they have a real public rendering effect.
   - Confirm Website requires an explicit `https://` URL and Spotify requires an `open.spotify.com` URL.
 

@@ -13,13 +13,20 @@ test("profile connections normalize, save, and render", async ({ page }) => {
 
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
-  await expect(page.getByRole("button", { name: "Edit profile" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Edit personal space" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Customize profile" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit personal space" })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Edit profile" }).click();
-  const modal = page.getByTestId("profile-edit-modal");
-  await expect(modal.getByRole("heading", { name: "Profile images" })).toBeVisible();
+  await page.getByRole("button", { name: "Customize profile" }).click();
+  const modal = page.getByTestId("profile-customization-modal");
   await expect(modal.getByRole("heading", { name: "Identity" })).toBeVisible();
+  await expect(modal.getByRole("button", { name: /Appearance/ })).toBeVisible();
+  await expect(modal.getByRole("button", { name: /Connections/ })).toBeVisible();
+  await expect(modal.getByRole("button", { name: /Modules/ })).toBeVisible();
+  await expect(modal.getByRole("button", { name: /Preview/ })).toBeVisible();
+  await expect(modal.getByTestId("profile-customization-preview")).toBeVisible();
+  await modal.getByRole("button", { name: /Appearance/ }).click();
+  await expect(modal.getByRole("heading", { name: "Appearance" })).toBeVisible();
+  await modal.getByRole("button", { name: /Connections/ }).click();
   await expect(modal.getByRole("heading", { name: "Connections" })).toBeVisible();
   await expect(modal.getByLabel("Accent")).toHaveCount(0);
   await expect(modal.getByLabel("Theme")).toHaveCount(0);
@@ -28,7 +35,7 @@ test("profile connections normalize, save, and render", async ({ page }) => {
   await modal.getByRole("button", { name: "Add connection" }).click();
   await modal.getByRole("combobox", { name: "Connection 1" }).selectOption("github");
   await modal.getByRole("textbox", { name: "GitHub" }).fill("thiabun");
-  await modal.getByRole("button", { name: "Save changes" }).click();
+  await modal.getByRole("button", { name: "Save profile" }).click();
 
   await expect.poll(() => savedPayload).toBeTruthy();
   expect(savedPayload?.links).toMatchObject([
@@ -53,8 +60,8 @@ test("legacy string profile links normalize before save", async ({ page }) => {
 
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
-  await page.getByRole("button", { name: "Edit profile" }).click();
-  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.getByRole("button", { name: "Customize profile" }).click();
+  await page.getByRole("button", { name: "Save profile" }).click();
 
   await expect.poll(() => savedPayload).toBeTruthy();
   expect(savedPayload?.links).toMatchObject([
@@ -77,12 +84,13 @@ test("profile connections show platform-aware validation errors", async ({ page 
 
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
-  await page.getByRole("button", { name: "Edit profile" }).click();
-  const modal = page.getByTestId("profile-edit-modal");
+  await page.getByRole("button", { name: "Customize profile" }).click();
+  const modal = page.getByTestId("profile-customization-modal");
+  await modal.getByRole("button", { name: /Connections/ }).click();
 
   await modal.getByRole("button", { name: "Add connection" }).click();
   await modal.getByRole("textbox", { name: "Website" }).fill("thia.lol");
-  await modal.getByRole("button", { name: "Save changes" }).click();
+  await modal.getByRole("button", { name: "Save profile" }).click();
   await expect(modal.getByText("Website requires a full https:// URL.")).toBeVisible();
   expect(savedPayload).toBeUndefined();
 
@@ -90,7 +98,7 @@ test("profile connections show platform-aware validation errors", async ({ page 
   await modal.getByRole("button", { name: "Add connection" }).click();
   await modal.getByRole("combobox", { name: "Connection 2" }).selectOption("spotify");
   await modal.getByRole("textbox", { name: "Spotify" }).fill("thia");
-  await modal.getByRole("button", { name: "Save changes" }).click();
+  await modal.getByRole("button", { name: "Save profile" }).click();
   await expect(modal.getByText("Spotify requires an open.spotify.com URL.")).toBeVisible();
   expect(savedPayload).toBeUndefined();
 
@@ -99,12 +107,12 @@ test("profile connections show platform-aware validation errors", async ({ page 
   );
   await modal.getByRole("button", { name: "Add connection" }).click();
   await modal.getByRole("combobox", { name: "Connection 3" }).selectOption("twitch");
-  await modal.getByRole("button", { name: "Save changes" }).click();
+  await modal.getByRole("button", { name: "Save profile" }).click();
   await expect(modal.getByText("Twitch value is required.")).toBeVisible();
   expect(savedPayload).toBeUndefined();
 
   await modal.getByRole("textbox", { name: "Twitch" }).fill("thia");
-  await modal.getByRole("button", { name: "Save changes" }).click();
+  await modal.getByRole("button", { name: "Save profile" }).click();
 
   await expect.poll(() => savedPayload).toBeTruthy();
   expect(savedPayload?.links).toMatchObject([
@@ -132,9 +140,9 @@ test("mobile edit profile modal has no horizontal overflow", async ({ page }) =>
 
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
-  await page.getByRole("button", { name: "Edit profile" }).click();
+  await page.getByRole("button", { name: "Customize profile" }).click();
 
-  await expect(page.getByTestId("profile-edit-modal")).toBeVisible();
+  await expect(page.getByTestId("profile-customization-modal")).toBeVisible();
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );

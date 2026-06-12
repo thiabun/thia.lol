@@ -16,8 +16,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
-import { ProfileEditModal } from "../components/social/ProfileEditModal";
-import { ProfileModuleEditorModal } from "../components/social/ProfileModuleEditorModal";
+import { ProfileCustomizationModal } from "../components/social/ProfileCustomizationModal";
 import { PostCard } from "../components/social/PostCard";
 import { ProfileHeader } from "../components/social/ProfileHeader";
 import { ProfileModulesSection } from "../components/social/ProfileModules";
@@ -82,8 +81,7 @@ export function ProfilePage() {
   const navigate = useNavigate();
   const { refreshSession, runWithAuth, status, user } = useAuth();
   const [activeTab, setActiveTab] = useState<ProfileTab>("feed");
-  const [editingProfileHandle, setEditingProfileHandle] = useState<string | undefined>();
-  const [moduleEditorOpen, setModuleEditorOpen] = useState(false);
+  const [customizingProfileHandle, setCustomizingProfileHandle] = useState<string | undefined>();
   const [moduleEditorLoading, setModuleEditorLoading] = useState(false);
   const [moduleEditorError, setModuleEditorError] = useState<string | undefined>();
   const [activePanel, setActivePanel] = useState<ProfilePanel | undefined>();
@@ -188,7 +186,7 @@ export function ProfilePage() {
     status === "authenticated" &&
     Boolean(user) &&
     user?.handle.toLowerCase() === normalizedHandle;
-  const editingProfile = editingProfileHandle === normalizedHandle;
+  const customizingProfile = customizingProfileHandle === normalizedHandle;
 
   async function handleFollowToggle() {
     if (!profile || isOwnProfile || profile.blockedByMe || followPosting) {
@@ -381,7 +379,7 @@ export function ProfilePage() {
     setBadgesOverride({ handle: normalizedHandle, result: updated });
   }
 
-  async function handleOpenModuleEditor() {
+  async function handleOpenCustomization() {
     setModuleEditorLoading(true);
     setModuleEditorError(undefined);
 
@@ -394,7 +392,7 @@ export function ProfilePage() {
       );
     } finally {
       setModuleEditorLoading(false);
-      setModuleEditorOpen(true);
+      setCustomizingProfileHandle(normalizedHandle);
     }
   }
 
@@ -529,7 +527,7 @@ export function ProfilePage() {
         }
         onFollowToggle={handleFollowToggle}
         onEditProfile={
-          isOwnProfile ? () => setEditingProfileHandle(normalizedHandle) : undefined
+          isOwnProfile ? () => void handleOpenCustomization() : undefined
         }
         onMuteToggle={
           status === "authenticated" && !isOwnProfile ? handleMuteToggle : undefined
@@ -542,33 +540,6 @@ export function ProfilePage() {
           !profile.isMoot
         }
       />
-      {isOwnProfile ? (
-        <motion.div
-          className="flex flex-col gap-3 rounded-card border border-line bg-surface/78 p-4 shadow-soft sm:flex-row sm:items-center sm:justify-between"
-          data-testid="profile-owner-tools"
-          variants={cardEntrance}
-          custom={1}
-          initial="hidden"
-          animate="show"
-        >
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-text">Personal space</h2>
-            <p className="mt-1 text-sm leading-6 text-muted">
-              Manage the modules that appear between your profile header and feed.
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="secondary"
-            className="shrink-0"
-            disabled={moduleEditorLoading}
-            icon={<Sparkles aria-hidden="true" size={16} />}
-            onClick={() => void handleOpenModuleEditor()}
-          >
-            {moduleEditorLoading ? "Opening" : "Edit personal space"}
-          </Button>
-        </motion.div>
-      ) : null}
       {!isOwnProfile ? (
         <motion.div variants={cardEntrance} custom={1} initial="hidden" animate="show">
           <ReportForm
@@ -580,27 +551,21 @@ export function ProfilePage() {
           />
         </motion.div>
       ) : null}
-      {isOwnProfile && editingProfile ? (
-        <ProfileEditModal
+      {isOwnProfile && customizingProfile ? (
+        <ProfileCustomizationModal
           key={`${profile.user.handle}-${profile.updatedAt ?? ""}`}
-          open={editingProfile}
-          profile={profile}
-          onClose={() => setEditingProfileHandle(undefined)}
-          onSave={handleProfileSave}
-          onUpload={handleProfileImageUpload}
-        />
-      ) : null}
-      {isOwnProfile && moduleEditorOpen ? (
-        <ProfileModuleEditorModal
           badges={profileBadges}
-          error={moduleEditorError}
-          loading={moduleEditorLoading}
+          moduleError={moduleEditorError}
+          moduleLoading={moduleEditorLoading}
           modules={ownerModules}
-          onClose={() => setModuleEditorOpen(false)}
-          onCreate={handleCreateModule}
-          onDelete={handleDeleteModule}
-          onReorder={handleReorderModules}
-          onUpdate={handleUpdateModule}
+          profile={profile}
+          onClose={() => setCustomizingProfileHandle(undefined)}
+          onCreateModule={handleCreateModule}
+          onDeleteModule={handleDeleteModule}
+          onReorderModules={handleReorderModules}
+          onSaveProfile={handleProfileSave}
+          onUpdateModule={handleUpdateModule}
+          onUpload={handleProfileImageUpload}
         />
       ) : null}
       <ProfileModulesSection

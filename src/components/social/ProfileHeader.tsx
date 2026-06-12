@@ -166,7 +166,7 @@ export function ProfileHeader({
                   className="w-full sm:w-auto"
                   onClick={onEditProfile}
                 >
-                  Edit profile
+                  Customize profile
                 </Button>
               ) : (
                 <>

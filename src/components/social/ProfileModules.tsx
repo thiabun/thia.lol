@@ -12,7 +12,6 @@ type ProfileModulesSectionProps = {
   isOwnProfile: boolean;
   loading: boolean;
   modules: ProfileModule[];
-  onEdit?: (() => void) | undefined;
 };
 
 export function ProfileModulesSection({
@@ -21,7 +20,6 @@ export function ProfileModulesSection({
   isOwnProfile,
   loading,
   modules,
-  onEdit,
 }: ProfileModulesSectionProps) {
   const renderableModules = modules.filter((module) =>
     profileModuleHasContent(module, badges),
@@ -53,15 +51,6 @@ export function ProfileModulesSection({
         <div className="min-w-0">
           <h2 className="text-lg font-semibold text-text">Personal space</h2>
         </div>
-        {onEdit ? (
-          <button
-            type="button"
-            className="inline-flex min-h-10 items-center justify-center rounded-control border border-line bg-canvas/65 px-4 text-sm font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-            onClick={onEdit}
-          >
-            Edit personal space
-          </button>
-        ) : null}
       </div>
 
       {loading ? (

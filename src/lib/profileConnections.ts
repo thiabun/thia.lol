@@ -10,66 +10,77 @@ export const profileConnectionPlatforms: Array<{
   label: string;
   help: string;
   placeholder: string;
+  tone: "warm" | "cool" | "rose" | "leaf" | "neutral";
 }> = [
   {
     value: "website",
     label: "Website",
     help: "Use a full https:// URL.",
     placeholder: "https://example.com",
+    tone: "warm",
   },
   {
     value: "youtube",
     label: "YouTube",
     help: "Use a YouTube channel URL or @handle.",
     placeholder: "@channel or YouTube URL",
+    tone: "rose",
   },
   {
     value: "twitch",
     label: "Twitch",
     help: "Use a Twitch username.",
     placeholder: "channel",
+    tone: "cool",
   },
   {
     value: "tiktok",
     label: "TikTok",
     help: "Use a TikTok @handle or profile URL.",
     placeholder: "@handle",
+    tone: "neutral",
   },
   {
     value: "instagram",
     label: "Instagram",
     help: "Use an Instagram username.",
     placeholder: "handle",
+    tone: "rose",
   },
   {
     value: "x",
     label: "X / Twitter",
     help: "Use an X/Twitter handle or profile URL.",
     placeholder: "handle",
+    tone: "neutral",
   },
   {
     value: "bluesky",
     label: "Bluesky",
     help: "Use a Bluesky handle.",
     placeholder: "handle.bsky.social",
+    tone: "cool",
   },
   {
     value: "github",
     label: "GitHub",
     help: "Use a GitHub username or profile URL.",
     placeholder: "username",
+    tone: "neutral",
   },
   {
     value: "discord",
     label: "Discord",
     help: "Use a safe display value or Discord invite URL.",
     placeholder: "discord.gg/invite or display name",
+    tone: "cool",
   },
   {
     value: "spotify",
     label: "Spotify",
     help: "Use an open.spotify.com URL.",
     placeholder: "https://open.spotify.com/...",
+    tone: "leaf",
   },
 ];
 

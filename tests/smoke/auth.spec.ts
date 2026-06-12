@@ -65,7 +65,7 @@ test.describe("authenticated smoke", () => {
         name: session.data?.user?.displayName ?? "",
       }),
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: "Edit profile" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Customize profile" })).toBeVisible();
 
     const tabs = page.getByRole("tablist", { name: "Profile sections" });
     await expect(tabs.getByRole("tab", { name: /Feed/ })).toBeVisible();
@@ -113,11 +113,12 @@ test.describe("authenticated smoke", () => {
     expect(handle).toEqual(expect.any(String));
 
     await page.goto(`/@${handle}`);
-    await page.getByRole("button", { name: "Edit profile" }).click();
+    await page.getByRole("button", { name: "Customize profile" }).click();
 
-    const dialog = page.getByRole("dialog", { name: "Edit profile" });
+    const dialog = page.getByRole("dialog", { name: "Customize profile" });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByLabel("Display name")).toBeVisible();
+    await dialog.getByRole("button", { name: /Appearance/ }).click();
     await expect(dialog.getByText("Change avatar").first()).toBeVisible();
     await expect(dialog.getByText("Change banner").first()).toBeVisible();
     await expect(dialog.getByText("Image must be 10 MB or smaller")).toHaveCount(3);
