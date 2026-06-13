@@ -1,12 +1,14 @@
 import {
-  ArrowLeft,
   Inbox,
+  LoaderCircle,
   MessageCircle,
   RefreshCw,
   Search,
   Send,
+  WifiOff,
   UserPlus,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { motion } from "motion/react";
 import {
@@ -16,14 +18,14 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type ReactNode,
 } from "react";
 import { useSearchParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { ReportForm } from "../components/social/ReportForm";
-import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Button, ButtonLink } from "../components/ui/Button";
-import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
+import { RouteHeader, RouteStateNotice } from "../components/ui/RouteState";
 import { UserIdentityLink } from "../components/social/UserProfileLink";
 import {
   createChatConversation,
@@ -100,7 +102,10 @@ export function ChatPage() {
       const nextConversations = await getChatConversations();
       setConversations(nextConversations);
       setSelectedConversationId((current) => {
-        if (requestedConversationId) {
+        if (
+          requestedConversationId &&
+          nextConversations.some((item) => item.id === requestedConversationId)
+        ) {
           return requestedConversationId;
         }
 
@@ -321,23 +326,35 @@ export function ChatPage() {
     }
   }
 
+  const showInitialConversationLoading =
+    conversationsLoading && conversations.length === 0;
+  const showInitialConversationError =
+    Boolean(conversationsError) && conversations.length === 0;
+  const conversationsEmpty =
+    !conversationsLoading && !conversationsError && conversations.length === 0;
+  const showConversationLayout = conversations.length > 0;
+
   if (status === "anonymous") {
     return (
       <motion.div
-        className="mx-auto max-w-3xl"
+        className="mx-auto max-w-4xl space-y-5"
         variants={pageEntrance}
         initial="hidden"
         animate="show"
       >
         <PageMeta title="Chat" description="Messages on thia.lol." path="/chat" />
-        <EmptyState
-          icon={MessageCircle}
+        <RouteHeader
+          badge="private"
+          badgeTone="cool"
           title="Chat"
-          text="Sign in to see your messages."
+          description="Moots-only direct messages."
         />
-        <div className="mt-4 flex justify-center">
-          <ButtonLink to="/login">Sign in</ButtonLink>
-        </div>
+        <RouteStateNotice
+          icon={MessageCircle}
+          title="Sign in to see your messages."
+          text="Chat is available to signed-in members."
+          actions={<ButtonLink to="/login">Sign in</ButtonLink>}
+        />
       </motion.div>
     );
   }
@@ -345,16 +362,23 @@ export function ChatPage() {
   if (status === "loading") {
     return (
       <motion.div
-        className="mx-auto max-w-5xl"
+        className="mx-auto max-w-5xl space-y-5"
         variants={pageEntrance}
         initial="hidden"
         animate="show"
       >
         <PageMeta title="Chat" description="Messages on thia.lol." path="/chat" />
-        <ApiStateNotice
+        <RouteHeader
+          badge="private"
+          badgeTone="cool"
+          title="Chat"
+          description="Moots-only direct messages."
+        />
+        <RouteStateNotice
           kind="loading"
-          title="Loading Chat"
-          text="Messages are loading."
+          icon={LoaderCircle}
+          title="Loading chat"
+          text="Your messages are loading."
         />
       </motion.div>
     );
@@ -369,175 +393,209 @@ export function ChatPage() {
     >
       <PageMeta title="Chat" description="Messages on thia.lol." path="/chat" />
       <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-normal text-text">
-              Chat
-            </h1>
-            <p className="mt-1 text-sm text-muted">Messages with your moots.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              icon={<UserPlus aria-hidden="true" size={16} />}
-              data-testid="chat-new-chat-button"
-              onClick={handleOpenPicker}
-            >
-              Message a moot
-            </Button>
+        <RouteHeader
+          badge="private"
+          badgeTone="cool"
+          title="Chat"
+          description="Moots-only direct messages."
+          actions={
+            <>
+              <Button
+                type="button"
+                icon={<UserPlus aria-hidden="true" size={16} />}
+                data-testid="chat-new-chat-button"
+                onClick={handleOpenPicker}
+              >
+                Message a moot
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                icon={<RefreshCw aria-hidden="true" size={16} />}
+                onClick={() => void loadConversations()}
+              >
+                Refresh
+              </Button>
+            </>
+          }
+        />
+      </motion.div>
+
+      {startError ? (
+        <RouteStateNotice
+          kind="error"
+          icon={WifiOff}
+          title="Chat could not start"
+          text={startError}
+        />
+      ) : null}
+
+      {showInitialConversationLoading ? (
+        <RouteStateNotice
+          kind="loading"
+          icon={LoaderCircle}
+          title="Loading conversations"
+          text="Your chats are loading."
+        />
+      ) : null}
+
+      {showInitialConversationError ? (
+        <RouteStateNotice
+          kind="error"
+          icon={WifiOff}
+          title="Could not load conversations"
+          text={conversationsError ?? "Try refreshing in a moment."}
+          actions={
             <Button
               type="button"
               variant="secondary"
               icon={<RefreshCw aria-hidden="true" size={16} />}
               onClick={() => void loadConversations()}
             >
-              Refresh
+              Try again
             </Button>
-          </div>
-        </div>
-      </motion.div>
-
-      {startError ? (
-        <ApiStateNotice kind="error" title="Chat could not start" text={startError} />
+          }
+        />
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(260px,340px)_1fr]">
-        <Panel className="overflow-hidden">
-          <div className="border-b border-line px-4 py-3">
-            <h2 className="text-sm font-semibold text-text">Messages</h2>
-          </div>
-          <div data-testid="chat-conversation-list">
-            {conversationsLoading ? (
-              <div className="p-4 text-sm text-muted">Loading messages.</div>
-            ) : null}
-            {conversationsError ? (
-              <div className="p-4 text-sm text-rose">{conversationsError}</div>
-            ) : null}
-            {!conversationsLoading &&
-            !conversationsError &&
-            conversations.length === 0 ? (
-              <div className="space-y-3 p-5 text-sm text-muted">
-                <p>No chats yet.</p>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  icon={<UserPlus aria-hidden="true" size={16} />}
-                  onClick={handleOpenPicker}
-                >
-                  Message a moot
-                </Button>
-              </div>
-            ) : null}
-            {conversations.map((conversation) => (
-              <ConversationButton
-                key={conversation.id}
-                conversation={conversation}
-                selected={conversation.id === selectedConversationId}
-                onClick={() => {
-                  setSelectedConversationId(conversation.id);
-                  setSearchParams(
-                    { conversation: String(conversation.id) },
-                    { replace: true },
-                  );
-                }}
-              />
-            ))}
-          </div>
-        </Panel>
+      {conversationsEmpty ? (
+        <RouteStateNotice
+          icon={Inbox}
+          title="No chats yet"
+          text="Start a direct chat with a moot when you both follow each other."
+          actions={
+            <Button
+              type="button"
+              icon={<UserPlus aria-hidden="true" size={16} />}
+              onClick={handleOpenPicker}
+            >
+              Message a moot
+            </Button>
+          }
+        />
+      ) : null}
 
-        <Panel className="flex min-h-[560px] flex-col overflow-hidden">
-          {selectedConversation ? (
-            <>
-              <div className="flex items-center gap-3 border-b border-line px-4 py-3">
-                <UserIdentityLink
-                  user={selectedConversation.otherParticipant}
-                  avatarSize="sm"
-                  className="flex-1 rounded-control"
-                />
-              </div>
-
-              <div
-                className="flex-1 space-y-3 overflow-y-auto px-4 py-4"
-                data-testid="chat-message-list"
-              >
-                {messagesLoading ? (
-                  <div className="text-sm text-muted">Loading messages.</div>
-                ) : null}
-                {messagesError ? (
-                  <div className="text-sm text-rose">{messagesError}</div>
-                ) : null}
-                {!messagesLoading && !messagesError && messages.length === 0 ? (
-                  <div className="flex h-full min-h-72 items-center justify-center">
-                    <div className="text-center">
-                      <div className="mx-auto grid size-12 place-items-center rounded-full bg-surface-strong text-accent-strong">
-                        <Inbox aria-hidden="true" size={22} />
-                      </div>
-                      <p className="mt-3 text-sm font-semibold text-text">
-                        No chats yet
-                      </p>
-                    </div>
-                  </div>
-                ) : null}
-                {messages.map((message) => (
-                  <MessageBubble
-                    key={message.id}
-                    message={message}
-                    mine={message.sender.id === user?.id}
-                    canReport={message.sender.id !== user?.id}
-                  />
-                ))}
-              </div>
-
-              <form
-                className="border-t border-line p-3"
-                data-testid="chat-message-composer"
-                onSubmit={(event) => void handleSend(event)}
-              >
-                <div className="flex items-end gap-2">
-                  <label className="sr-only" htmlFor="chat-message-body">
-                    Write a message
-                  </label>
-                  <textarea
-                    id="chat-message-body"
-                    className="min-h-11 flex-1 resize-none rounded-control border border-line bg-canvas/60 px-3 py-2 text-sm leading-6 text-text outline-none transition duration-fluid ease-fluid placeholder:text-muted focus:border-line-strong focus:ring-2 focus:ring-focus/30"
-                    maxLength={maxMessageLength}
-                    placeholder="Write a message"
-                    rows={2}
-                    value={body}
-                    onChange={(event) => setBody(event.target.value)}
-                  />
-                  <Button
-                    type="submit"
-                    disabled={body.trim() === "" || sending}
-                    icon={<Send aria-hidden="true" size={16} />}
-                  >
-                    {sending ? "Sending" : "Send"}
-                  </Button>
-                </div>
-              </form>
-            </>
-          ) : (
-            <div className="grid flex-1 place-items-center p-6 text-center">
-              <div>
-                <div className="mx-auto grid size-12 place-items-center rounded-full bg-surface-strong text-accent-strong">
-                  <ArrowLeft aria-hidden="true" size={22} />
-                </div>
-                <h2 className="mt-4 text-lg font-semibold text-text">Messages</h2>
-                <p className="mt-2 text-sm text-muted">No chats yet</p>
-                <div className="mt-4">
-                  <Button
-                    type="button"
-                    icon={<UserPlus aria-hidden="true" size={16} />}
-                    onClick={handleOpenPicker}
-                  >
-                    Message a moot
-                  </Button>
-                </div>
-              </div>
+      {showConversationLayout ? (
+        <div className="grid gap-4 lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
+          <Panel className="overflow-hidden">
+            <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
+              <h2 className="text-sm font-semibold text-text">Conversations</h2>
+              {conversationsLoading ? (
+                <span className="text-xs font-medium text-muted">Refreshing</span>
+              ) : null}
             </div>
-          )}
-        </Panel>
-      </div>
+            <div className="divide-y divide-line" data-testid="chat-conversation-list">
+              {conversationsError ? (
+                <div className="p-4 text-sm leading-6 text-rose-ink">
+                  {conversationsError}
+                </div>
+              ) : null}
+              {conversations.map((conversation) => (
+                <ConversationButton
+                  key={conversation.id}
+                  conversation={conversation}
+                  selected={conversation.id === selectedConversationId}
+                  onClick={() => {
+                    setSelectedConversationId(conversation.id);
+                    setSearchParams(
+                      { conversation: String(conversation.id) },
+                      { replace: true },
+                    );
+                  }}
+                />
+              ))}
+            </div>
+          </Panel>
+
+          <Panel className="flex min-h-[28rem] flex-col overflow-hidden lg:min-h-[32rem]">
+            {selectedConversation ? (
+              <>
+                <div className="flex items-center gap-3 border-b border-line px-4 py-3">
+                  <UserIdentityLink
+                    user={selectedConversation.otherParticipant}
+                    avatarSize="sm"
+                    className="flex-1 rounded-control"
+                  />
+                </div>
+
+                <div
+                  className="flex-1 space-y-3 overflow-y-auto px-4 py-4"
+                  data-testid="chat-message-list"
+                >
+                  {messagesLoading ? (
+                    <InlineChatState
+                      icon={LoaderCircle}
+                      kind="loading"
+                      title="Loading messages"
+                      text="This conversation is loading."
+                    />
+                  ) : null}
+                  {messagesError ? (
+                    <InlineChatState
+                      icon={WifiOff}
+                      kind="error"
+                      title="Could not load messages"
+                      text={messagesError}
+                    />
+                  ) : null}
+                  {!messagesLoading && !messagesError && messages.length === 0 ? (
+                    <InlineChatState
+                      centered
+                      icon={Inbox}
+                      title="No messages yet"
+                      text="Start with a short note when you're ready."
+                    />
+                  ) : null}
+                  {messages.map((message) => (
+                    <MessageBubble
+                      key={message.id}
+                      message={message}
+                      mine={message.sender.id === user?.id}
+                      canReport={message.sender.id !== user?.id}
+                    />
+                  ))}
+                </div>
+
+                <form
+                  className="border-t border-line p-3 sm:p-4"
+                  data-testid="chat-message-composer"
+                  onSubmit={(event) => void handleSend(event)}
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <label className="sr-only" htmlFor="chat-message-body">
+                      Write a message
+                    </label>
+                    <textarea
+                      id="chat-message-body"
+                      className="min-h-12 flex-1 resize-none rounded-control border border-line bg-canvas/60 px-3 py-2 text-sm leading-6 text-text outline-none transition duration-fluid ease-fluid placeholder:text-muted focus:border-line-strong focus:ring-2 focus:ring-focus/30"
+                      maxLength={maxMessageLength}
+                      placeholder="Write a message"
+                      rows={2}
+                      value={body}
+                      onChange={(event) => setBody(event.target.value)}
+                    />
+                    <Button
+                      type="submit"
+                      className="min-h-12 w-full sm:w-auto"
+                      disabled={body.trim() === "" || sending}
+                      icon={<Send aria-hidden="true" size={16} />}
+                    >
+                      {sending ? "Sending" : "Send"}
+                    </Button>
+                  </div>
+                </form>
+              </>
+            ) : (
+              <InlineChatState
+                centered
+                icon={MessageCircle}
+                title="Choose a conversation"
+                text="Pick a chat from the list to read messages."
+              />
+            )}
+          </Panel>
+        </div>
+      ) : null}
 
       {pickerOpen ? (
         <ChatMootPicker
@@ -587,7 +645,7 @@ function ChatMootPicker({
 }: ChatMootPickerProps) {
   return (
     <motion.div
-      className="fixed inset-0 z-50 grid place-items-center bg-text/28 px-4 py-6 backdrop-blur-veil"
+      className="fixed inset-0 z-50 grid place-items-stretch bg-text/28 p-0 backdrop-blur-veil sm:place-items-center sm:px-4 sm:py-6"
       data-testid="chat-moot-picker"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -602,11 +660,11 @@ function ChatMootPicker({
         role="dialog"
         aria-modal="true"
         aria-label="Message a moot"
-        className="max-h-[calc(100dvh-3rem)] w-full max-w-xl overflow-hidden rounded-panel border border-line bg-surface shadow-lift"
+        className="flex h-dvh w-full flex-col overflow-hidden border border-line bg-surface shadow-lift sm:h-auto sm:max-h-[calc(100dvh-3rem)] sm:max-w-xl sm:rounded-panel"
         initial={{ y: 16, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
       >
-        <div className="border-b border-line p-4 sm:p-5">
+        <div className="shrink-0 border-b border-line p-4 sm:p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="text-lg font-semibold text-text">Message a moot</h2>
@@ -625,7 +683,7 @@ function ChatMootPicker({
             />
           </div>
 
-          <label className="mt-4 flex items-center gap-2 rounded-control border border-line bg-canvas/60 px-3 py-2 text-sm text-muted focus-within:border-line-strong focus-within:ring-2 focus-within:ring-focus/30">
+          <label className="mt-4 flex min-h-11 items-center gap-2 rounded-control border border-line bg-canvas/60 px-3 py-2 text-sm text-muted focus-within:border-line-strong focus-within:ring-2 focus-within:ring-focus/30">
             <Search aria-hidden="true" size={16} />
             <span className="sr-only">Search moots</span>
             <input
@@ -638,31 +696,53 @@ function ChatMootPicker({
           </label>
         </div>
 
-        <div className="max-h-[26rem] overflow-y-auto" data-testid="chat-moot-list">
+        <div className="flex-1 overflow-y-auto" data-testid="chat-moot-list">
           {loading ? (
-            <div className="p-5 text-sm text-muted">Loading moots.</div>
+            <InlineChatState
+              className="m-4"
+              icon={LoaderCircle}
+              kind="loading"
+              title="Loading moots"
+              text="Eligible chat partners are loading."
+            />
           ) : null}
           {error ? (
-            <div className="space-y-3 p-5">
-              <p className="text-sm text-rose">{error}</p>
-              <Button
-                type="button"
-                variant="secondary"
-                icon={<RefreshCw aria-hidden="true" size={16} />}
-                onClick={onRefresh}
-              >
-                Try again
-              </Button>
-            </div>
+            <InlineChatState
+              actions={
+                <Button
+                  type="button"
+                  variant="secondary"
+                  icon={<RefreshCw aria-hidden="true" size={16} />}
+                  onClick={onRefresh}
+                >
+                  Try again
+                </Button>
+              }
+              className="m-4"
+              icon={WifiOff}
+              kind="error"
+              title="Could not load moots"
+              text={error}
+            />
           ) : null}
           {!loading && !error && moots.length === 0 ? (
-            <div className="p-5 text-sm text-muted" data-testid="chat-moot-empty">
-              No moots yet. Chats are moots-only, so follow each other before
-              starting a DM.
-            </div>
+            <InlineChatState
+              centered
+              className="min-h-72"
+              icon={MessageCircle}
+              testId="chat-moot-empty"
+              title="No moots yet"
+              text="Chats are moots-only, so follow each other before starting a DM."
+            />
           ) : null}
           {!loading && !error && moots.length > 0 && filteredMoots.length === 0 ? (
-            <div className="p-5 text-sm text-muted">No matching moots.</div>
+            <InlineChatState
+              centered
+              className="min-h-72"
+              icon={Search}
+              title="No matching moots"
+              text="Try a shorter search."
+            />
           ) : null}
           {!loading && !error
             ? filteredMoots.map((moot) => {
@@ -683,7 +763,7 @@ function ChatMootPicker({
                       className="flex-1"
                     />
                     <button
-                      className="shrink-0 rounded-full border border-line bg-canvas/70 px-3 py-1 text-xs font-semibold text-muted transition duration-fluid ease-fluid hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-wait disabled:opacity-70"
+                      className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-control border border-line bg-canvas/70 px-3 py-2 text-sm font-semibold text-muted transition duration-fluid ease-fluid hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-wait disabled:opacity-70"
                       data-testid={`chat-moot-option-${moot.handle}`}
                       type="button"
                       disabled={startingHandle !== undefined}
@@ -705,6 +785,77 @@ function ChatMootPicker({
   );
 }
 
+type InlineChatStateKind = "neutral" | "loading" | "error";
+
+type InlineChatStateProps = {
+  actions?: ReactNode;
+  centered?: boolean;
+  className?: string;
+  icon: LucideIcon;
+  kind?: InlineChatStateKind;
+  testId?: string;
+  text: string;
+  title: string;
+};
+
+const inlineStateIconStyles: Record<InlineChatStateKind, string> = {
+  neutral: "bg-surface-strong text-accent-strong",
+  loading: "bg-cool/15 text-cool-ink",
+  error: "bg-rose/15 text-rose-ink",
+};
+
+function InlineChatState({
+  actions,
+  centered = false,
+  className,
+  icon: Icon,
+  kind = "neutral",
+  testId,
+  text,
+  title,
+}: InlineChatStateProps) {
+  return (
+    <div
+      className={cn(
+        centered
+          ? "grid flex-1 place-items-center p-6 text-center"
+          : "rounded-card bg-canvas/55 p-3",
+        className,
+      )}
+      data-testid={testId}
+    >
+      <div
+        className={cn(
+          centered ? "mx-auto max-w-sm" : "flex items-start gap-3",
+        )}
+      >
+        <div
+          className={cn(
+            "grid size-11 shrink-0 place-items-center rounded-full",
+            centered ? "mx-auto" : "",
+            inlineStateIconStyles[kind],
+          )}
+        >
+          <Icon
+            aria-hidden="true"
+            size={20}
+            className={kind === "loading" ? "animate-spin" : undefined}
+          />
+        </div>
+        <div className={cn("min-w-0", centered ? "mt-4" : "")}>
+          <h2 className="text-sm font-semibold text-text">{title}</h2>
+          <p className="mt-1 text-sm leading-6 text-muted">{text}</p>
+          {actions ? (
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+              {actions}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type ConversationButtonProps = {
   conversation: ChatConversation;
   selected: boolean;
@@ -719,19 +870,20 @@ function ConversationButton({
   return (
     <div
       className={cn(
-        "flex w-full items-center gap-3 border-b border-line px-4 py-3 text-left transition duration-fluid ease-fluid last:border-b-0",
+        "flex w-full items-center gap-3 px-4 py-3 text-left transition duration-fluid ease-fluid",
         selected ? "bg-surface-strong" : "hover:bg-canvas/60",
       )}
     >
       <UserIdentityLink
         user={conversation.otherParticipant}
         avatarSize="sm"
-        className="flex-1"
+        className="min-h-12 flex-1 rounded-control py-1"
       />
       <button
         type="button"
-        className="min-w-0 rounded-control px-2 py-1 text-right text-xs text-muted transition duration-fluid ease-fluid hover:bg-canvas/70 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        className="flex min-h-12 min-w-[8rem] max-w-[9rem] flex-col items-end justify-center rounded-control px-3 py-2 text-right text-xs text-muted transition duration-fluid ease-fluid hover:bg-canvas/70 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         aria-label={`Open chat with ${conversation.otherParticipant.displayName}`}
+        aria-pressed={selected}
         onClick={onClick}
       >
         {conversation.unreadCount > 0 ? (
@@ -740,7 +892,7 @@ function ConversationButton({
           </span>
         ) : null}
         <span className="block max-w-32 truncate">
-          {conversation.lastMessage?.body ?? "No chats yet"}
+          {conversation.lastMessage?.body ?? "No messages yet"}
         </span>
       </button>
     </div>

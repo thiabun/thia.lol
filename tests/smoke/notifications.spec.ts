@@ -48,6 +48,17 @@ test("mobile primary nav keeps Chat while notifications use the header", async (
   await expect(nav.getByRole("link", { name: "Admin" })).toHaveCount(0);
 });
 
+test("logged-out notifications route keeps route hierarchy", async ({ page }) => {
+  await mockAnonymousNotifications(page);
+  await page.goto("/notifications");
+
+  await expect(
+    page.getByRole("heading", { name: "Notifications", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Sign in to see notifications.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Sign in" })).toBeVisible();
+});
+
 test("notification actor identity links to the actor profile", async ({ page }) => {
   await mockAuthenticatedNotifications(page, [
     {
@@ -123,6 +134,24 @@ test("mark all notifications as read works against the API", async ({ page }) =>
 
 async function mockAuthenticatedEmptyNotifications(page: Page) {
   await mockAuthenticatedNotifications(page, []);
+}
+
+async function mockAnonymousNotifications(page: Page) {
+  await page.route("**/api/auth/me", async (route) => {
+    await route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "Unauthenticated." }),
+    });
+  });
+
+  await page.route("**/api/rooms", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
 }
 
 async function mockAuthenticatedNotifications(page: Page, notifications: unknown[]) {

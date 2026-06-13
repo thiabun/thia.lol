@@ -48,6 +48,16 @@ test("authenticated chat renders conversations and message composer", async ({
   await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
 });
 
+test("authenticated chat empty state stays route-level", async ({ page }) => {
+  await mockAuthenticatedChat(page, { conversations: [] });
+  await page.goto("/chat");
+
+  await expect(page.getByRole("heading", { name: "Chat", exact: true })).toBeVisible();
+  await expect(page.getByText("No chats yet")).toBeVisible();
+  await expect(page.getByTestId("chat-conversation-list")).toHaveCount(0);
+  await expect(page.getByTestId("chat-message-composer")).toHaveCount(0);
+});
+
 test("chat moot picker shows empty state when the user has no moots", async ({
   page,
 }) => {

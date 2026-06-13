@@ -4,20 +4,22 @@ import {
   Check,
   CheckCheck,
   Heart,
+  LoaderCircle,
   MessageCircle,
+  RefreshCw,
   Repeat2,
   UserPlus,
   UsersRound,
+  WifiOff,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { PageMeta } from "../components/PageMeta";
-import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Badge } from "../components/ui/Badge";
 import { Button, ButtonLink } from "../components/ui/Button";
-import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
+import { RouteHeader, RouteStateNotice } from "../components/ui/RouteState";
 import { InlineUserProfileLink } from "../components/social/UserProfileLink";
 import {
   getNotifications,
@@ -137,7 +139,7 @@ export function NotificationsPage() {
   if (status === "anonymous") {
     return (
       <motion.div
-        className="mx-auto max-w-3xl"
+        className="mx-auto max-w-4xl space-y-5"
         variants={pageEntrance}
         initial="hidden"
         animate="show"
@@ -147,16 +149,54 @@ export function NotificationsPage() {
           description="Your thia.lol notifications."
           path="/notifications"
         />
-        <EmptyState
-          icon={Bell}
+        <RouteHeader
+          badge="private"
+          badgeTone="cool"
           title="Notifications"
-          text="Sign in to see who followed, liked, replied to, or reblogged you."
+          description="Private updates from follows, replies, likes, reblogs, messages, and badges."
         />
-        <div className="mt-4 flex justify-center">
-          <ButtonLink to="/login" icon={<Bell aria-hidden="true" size={17} />}>
-            Sign in
-          </ButtonLink>
-        </div>
+        <RouteStateNotice
+          icon={Bell}
+          title="Sign in to see notifications."
+          text="Notifications are available after sign-in."
+          actions={
+            <ButtonLink
+              to="/login"
+              icon={<Bell aria-hidden="true" size={17} />}
+            >
+              Sign in
+            </ButtonLink>
+          }
+        />
+      </motion.div>
+    );
+  }
+
+  if (status === "loading") {
+    return (
+      <motion.div
+        className="mx-auto max-w-4xl space-y-5"
+        variants={pageEntrance}
+        initial="hidden"
+        animate="show"
+      >
+        <PageMeta
+          title="Notifications"
+          description="Your thia.lol notifications."
+          path="/notifications"
+        />
+        <RouteHeader
+          badge="private"
+          badgeTone="cool"
+          title="Notifications"
+          description="Private updates from follows, replies, likes, reblogs, messages, and badges."
+        />
+        <RouteStateNotice
+          kind="loading"
+          icon={LoaderCircle}
+          title="Loading notifications"
+          text="Your notifications are loading."
+        />
       </motion.div>
     );
   }
@@ -175,20 +215,20 @@ export function NotificationsPage() {
       />
 
       <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
-        <Panel className="p-5 sm:p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <Badge tone="cool">private</Badge>
-              <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">
-                Notifications
-              </h1>
-              <p
-                className="mt-2 text-sm text-muted"
-                data-testid="notifications-unread-count"
-              >
-                {unreadCount} unread
-              </p>
-            </div>
+        <RouteHeader
+          badge="private"
+          badgeTone="cool"
+          title="Notifications"
+          description="Private updates from follows, replies, likes, reblogs, messages, and badges."
+          meta={
+            <p
+              className="text-sm font-medium text-muted"
+              data-testid="notifications-unread-count"
+            >
+              {unreadCount} unread
+            </p>
+          }
+          actions={
             <Button
               type="button"
               variant="secondary"
@@ -198,37 +238,52 @@ export function NotificationsPage() {
             >
               {pendingId === "all" ? "Working..." : "Mark all as read"}
             </Button>
-          </div>
-        </Panel>
+          }
+        />
       </motion.div>
 
       {state.loading ? (
-        <ApiStateNotice
+        <RouteStateNotice
           kind="loading"
+          icon={LoaderCircle}
           title="Loading notifications"
-          text="Notifications are loading."
+          text="Your notifications are loading."
         />
       ) : null}
 
       {state.error ? (
-        <ApiStateNotice
+        <RouteStateNotice
           kind="error"
+          icon={WifiOff}
           title="Could not load notifications"
           text="Try refreshing in a moment."
+          actions={
+            <Button
+              type="button"
+              variant="secondary"
+              icon={<RefreshCw aria-hidden="true" size={17} />}
+              onClick={loadNotifications}
+            >
+              Try again
+            </Button>
+          }
         />
       ) : null}
 
       {actionError ? (
-        <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
-          {actionError}
-        </p>
+        <RouteStateNotice
+          kind="error"
+          icon={WifiOff}
+          title="Could not update notifications"
+          text={actionError}
+        />
       ) : null}
 
       {!state.loading && !state.error && notifications.length === 0 ? (
-        <EmptyState
+        <RouteStateNotice
           icon={Bell}
           title="No notifications yet"
-          text="Follows, likes, replies, and reblogs will show up here."
+          text="Follows, likes, replies, reblogs, messages, and badges will show up here."
         />
       ) : null}
 
@@ -283,8 +338,13 @@ function NotificationRow({
             <NotificationIcon type={notification.type} />
           </span>
           <span className="min-w-0">
-            <span className="block text-sm font-semibold text-text">
-              <NotificationCopy notification={notification} onVisit={markRead} />
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-semibold text-text">
+                <NotificationCopy notification={notification} onVisit={markRead} />
+              </span>
+              <Badge tone={unread ? "warm" : "default"}>
+                {unread ? "unread" : "read"}
+              </Badge>
             </span>
             {notification.post ? (
               <Link
@@ -312,14 +372,17 @@ function NotificationRow({
           <Button
             type="button"
             variant="ghost"
-            size="sm"
             disabled={pending}
             icon={<Check aria-hidden="true" size={16} />}
             onClick={() => void onMarkRead(notification)}
           >
             {pending ? "Working..." : "Mark read"}
           </Button>
-        ) : null}
+        ) : (
+          <span className="inline-flex min-h-11 items-center text-sm font-medium text-muted">
+            Read
+          </span>
+        )}
       </Panel>
     </motion.div>
   );
