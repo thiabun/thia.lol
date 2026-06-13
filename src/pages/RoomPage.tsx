@@ -481,7 +481,7 @@ function RoomHeader({
               ) : null}
               <Button
                 type="button"
-                className="w-full sm:w-auto"
+                className="hidden w-full sm:inline-flex sm:w-auto"
                 data-testid="room-post-button"
                 icon={<PenLine aria-hidden="true" size={17} />}
                 onClick={onPost}

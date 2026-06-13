@@ -1,4 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
+
+const bugReportUrl =
+  "https://github.com/thiabun/thia.lol/issues/new?template=bug_report.yml";
 
 const legalPages = [
   { path: "/terms", heading: "Terms of Service" },
@@ -9,6 +12,10 @@ const legalPages = [
   { path: "/moderation", heading: "Moderation Policy" },
   { path: "/legal", heading: "Legal and trust" },
 ];
+
+test.beforeEach(async ({ page }) => {
+  await mockPublicShell(page);
+});
 
 test("public legal and trust pages load", async ({ page }) => {
   for (const legalPage of legalPages) {
@@ -53,6 +60,14 @@ test("footer and account menu expose legal links discreetly", async ({ page }) =
   ]) {
     await expect(footerLinks.getByRole("link", { name: label })).toBeVisible();
   }
+
+  await expect(footerLinks.getByRole("link", { name: "Report a bug" })).toHaveAttribute(
+    "href",
+    bugReportUrl,
+  );
+  await expect(page.getByTestId("bug-report-guidance")).toContainText(
+    "Never share passwords, cookies, tokens, or private DMs.",
+  );
 
   await page.getByRole("button", { name: /account menu/i }).click();
   await expect(page.getByTestId("account-menu")).toBeVisible();
@@ -124,3 +139,33 @@ test("copyright page includes third-party icon attribution", async ({ page }) =>
   await expect(page.getByText("Simple Icons via react-icons")).toBeVisible();
   await expect(page.getByText("does not imply endorsement")).toBeVisible();
 });
+
+async function mockPublicShell(page: Page) {
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "Not authenticated." }),
+    }),
+  );
+
+  await page.route("**/api/rooms", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    }),
+  );
+
+  await page.route("**/api/notifications", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          notifications: [],
+          unreadCount: 0,
+        },
+      }),
+    }),
+  );
+}

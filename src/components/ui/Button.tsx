@@ -9,7 +9,11 @@ type ButtonVariant = "primary" | "secondary" | "ghost" | "quiet";
 type ButtonSize = "sm" | "md" | "icon";
 
 const base =
-  "inline-flex items-center justify-center gap-2 rounded-control font-medium transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:pointer-events-none disabled:opacity-50";
+  "items-center justify-center gap-2 rounded-control font-medium transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:pointer-events-none disabled:opacity-50";
+
+const defaultDisplay = "inline-flex";
+const displayClassPattern =
+  /(^|\s)(hidden|block|inline|inline-block|flex|inline-flex|grid|inline-grid)(\s|$)/;
 
 const variants: Record<ButtonVariant, string> = {
   primary:
@@ -51,10 +55,14 @@ export function Button({
     ...(resolvedWhileHover ? { whileHover: resolvedWhileHover } : {}),
     ...(resolvedWhileTap ? { whileTap: resolvedWhileTap } : {}),
   };
+  const displayClass =
+    typeof className === "string" && displayClassPattern.test(className)
+      ? undefined
+      : defaultDisplay;
 
   return (
     <motion.button
-      className={cn(base, variants[variant], sizes[size], className)}
+      className={cn(displayClass, base, variants[variant], sizes[size], className)}
       {...motionProps}
       {...props}
     >
@@ -78,8 +86,16 @@ export function ButtonLink({
   children,
   ...props
 }: ButtonLinkProps) {
+  const displayClass =
+    typeof className === "string" && displayClassPattern.test(className)
+      ? undefined
+      : defaultDisplay;
+
   return (
-    <Link className={cn(base, variants[variant], sizes[size], className)} {...props}>
+    <Link
+      className={cn(displayClass, base, variants[variant], sizes[size], className)}
+      {...props}
+    >
       {icon}
       {children}
     </Link>

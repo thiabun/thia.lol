@@ -1,5 +1,4 @@
-import { expect, test } from "@playwright/test";
-import { loginWithEnv, skipWithoutCredentials } from "../helpers/auth";
+import { expect, type Page, test } from "@playwright/test";
 
 const retiredMockCopy = [
   "Mira Vale",
@@ -36,6 +35,7 @@ const retiredMockCopy = [
 ];
 
 test("desktop primary nav shows platform sections without Admin", async ({ page }) => {
+  await mockPublicShell(page);
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
 
@@ -53,13 +53,18 @@ test("desktop primary nav shows platform sections without Admin", async ({ page 
 });
 
 test("reply button opens an unclipped thread modal", async ({ page }) => {
+  await mockPublicShell(page, {
+    homePosts: [makePost({ commentCount: 1 })],
+  });
+  await page.route("**/api/posts/42/replies", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    }),
+  );
+
   await page.goto("/");
-
-  const replyButton = page.getByRole("button", { name: /open replies/i }).first();
-
-  test.skip((await replyButton.count()) === 0, "No posts are available to open.");
-
-  await replyButton.click();
+  await page.getByRole("button", { name: /open replies/i }).first().click();
 
   const dialog = page.getByTestId("thread-modal");
   await expect(dialog).toBeVisible();
@@ -90,29 +95,28 @@ test("reply button opens an unclipped thread modal", async ({ page }) => {
 test("mobile header, account menu, and bottom nav fit the viewport", async ({
   page,
 }) => {
+  await mockPublicShell(page);
+  await acknowledgeCookieNotice(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
 
   await expect(page.getByLabel("thia.lol home")).toBeVisible();
   await expect(page.getByText("social app")).toHaveCount(0);
-
-  const hasOverflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
-  );
-  expect(hasOverflow).toBe(false);
+  await expectNoHorizontalOverflow(page);
 
   await page.getByRole("button", { name: /account menu/i }).click();
   await expect(page.getByTestId("account-menu")).toBeVisible();
 
   const nav = page.getByTestId("mobile-nav");
   await expect(nav).toBeVisible();
-  await expect(nav.getByRole("button", { name: "Post" })).toBeVisible();
+  await expect(nav.getByRole("button", { name: "Post" })).toHaveCount(1);
+  await expectMobilePostInsideDock(page);
+  await expectChatHitTargetClear(page);
 });
 
 test("mobile bottom nav releases before the footer", async ({ page }) => {
-  await page.addInitScript(() => {
-    window.localStorage.setItem("thia_cookie_notice_ack", "1");
-  });
+  await mockPublicShell(page);
+  await acknowledgeCookieNotice(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/login");
   await page.evaluate(() => {
@@ -147,6 +151,7 @@ test("mobile bottom nav releases before the footer", async ({ page }) => {
           }
         : null,
       scrollY: window.scrollY,
+      viewportBottomGap: navRect ? window.innerHeight - navRect.bottom : null,
     };
   });
 
@@ -154,9 +159,14 @@ test("mobile bottom nav releases before the footer", async ({ page }) => {
   expect(boxes.footer).not.toBeNull();
   expect(boxes.nav!.bottom).toBeLessThanOrEqual(boxes.footer!.top + 1);
   expect(boxes.footer!.bottom + boxes.scrollY).toBeCloseTo(boxes.documentHeight, 0);
+  expect(boxes.viewportBottomGap).not.toBeNull();
+  expect(boxes.viewportBottomGap!).toBeGreaterThanOrEqual(0);
+  expect(boxes.viewportBottomGap!).toBeLessThanOrEqual(32);
 });
 
-test("mobile primary nav shows platform sections without Admin", async ({ page }) => {
+test("mobile primary nav shows one Post affordance and no Admin", async ({ page }) => {
+  await mockPublicShell(page);
+  await acknowledgeCookieNotice(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
 
@@ -167,16 +177,18 @@ test("mobile primary nav shows platform sections without Admin", async ({ page }
     await expect(nav.getByRole("link", { name: label })).toBeVisible();
   }
 
-  await expect(nav.getByRole("button", { name: "Post" })).toBeVisible();
+  await expect(nav.getByRole("button", { name: "Post" })).toHaveCount(1);
   await expect(nav.getByRole("link", { name: "Search" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Search" })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Admin" })).toHaveCount(0);
 });
 
 test("mobile primary nav remains usable on main routes", async ({ page }) => {
+  await mockPublicShell(page);
+  await acknowledgeCookieNotice(page);
   await page.setViewportSize({ width: 390, height: 844 });
 
-  for (const path of ["/", "/discover", "/search", "/rooms", "/chat"]) {
+  for (const path of ["/", "/discover", "/search", "/rooms", "/chat", "/@thia"]) {
     await page.goto(path);
 
     const nav = page.getByTestId("mobile-nav");
@@ -186,12 +198,55 @@ test("mobile primary nav remains usable on main routes", async ({ page }) => {
       await expect(nav.getByRole("link", { name: label })).toBeVisible();
     }
 
-    await expect(nav.getByRole("button", { name: "Post" })).toBeVisible();
+    await expect(nav.getByRole("button", { name: "Post" })).toHaveCount(1);
     await expect(nav.getByRole("link", { name: "Search" })).toHaveCount(0);
+    await expectNoHorizontalOverflow(page);
+    await expectMobilePostInsideDock(page);
   }
 });
 
+test("route changes keep the mobile bottom nav clickable", async ({ page }) => {
+  await mockPublicShell(page);
+  await acknowledgeCookieNotice(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  for (const item of [
+    { label: "Discover", pattern: /\/discover$/ },
+    { label: "Rooms", pattern: /\/rooms$/ },
+    { label: "Chat", pattern: /\/chat$/ },
+    { label: "Home", pattern: /\/$/ },
+  ]) {
+    const nav = page.getByTestId("mobile-nav");
+    await expect(nav).toBeVisible();
+    await nav.getByRole("link", { name: item.label }).click();
+    await expect(page).toHaveURL(item.pattern);
+    await expect(nav.getByRole("button", { name: "Post" })).toHaveCount(1);
+    await expectChatHitTargetClear(page);
+  }
+});
+
+test("mobile room route uses one contextual Post action", async ({ page }) => {
+  await mockAuthenticatedShell(page, { rooms: [makeRoom()] });
+  await acknowledgeCookieNotice(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/rooms/sun-room");
+
+  await expect(page.getByTestId("room-page")).toBeVisible();
+  await expect(page.getByTestId("room-post-button")).toBeHidden();
+
+  const nav = page.getByTestId("mobile-nav");
+  await expect(nav.getByRole("button", { name: "Post" })).toHaveCount(1);
+  await nav.getByTestId("mobile-post-action").click();
+
+  const dialog = page.getByTestId("composer-modal");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByTestId("composer-room-selector")).toHaveValue("sun-room");
+  await expect(dialog.getByText("/sun-room", { exact: true })).toBeVisible();
+});
+
 test("chat page is honest about sign-in state", async ({ page }) => {
+  await mockPublicShell(page);
   await page.goto("/chat");
 
   await expect(page.getByRole("heading", { name: "Chat" })).toBeVisible();
@@ -199,6 +254,7 @@ test("chat page is honest about sign-in state", async ({ page }) => {
 });
 
 test("public profile route loads profile tabs", async ({ page }) => {
+  await mockPublicShell(page);
   await page.goto("/@thia");
 
   await expect(page.getByRole("heading", { name: "Thia" })).toBeVisible();
@@ -213,21 +269,35 @@ test("public profile route loads profile tabs", async ({ page }) => {
   await expect(tabs.getByRole("tab", { name: /Badges/ })).toHaveCount(0);
 });
 
-test("authenticated post button opens the composer modal", async ({ page }) => {
-  skipWithoutCredentials();
+test("authenticated post button opens an accessible composer select", async ({
+  page,
+}) => {
+  await mockAuthenticatedShell(page, { rooms: [makeRoom()] });
+  await page.goto("/");
 
-  await loginWithEnv(page);
   await page.getByRole("button", { name: "Post" }).click();
 
   const dialog = page.getByTestId("composer-modal");
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Post" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Post", exact: true })).toBeVisible();
+
+  const selector = dialog.getByRole("combobox", { name: "Post to" });
+  await expect(selector).toBeVisible();
+  await expect(selector).toHaveCSS("appearance", "none");
+
+  await selector.focus();
+  await expect(selector).toBeFocused();
+  await selector.selectOption("sun-room");
+  await expect(selector).toHaveValue("sun-room");
+  await expect(dialog.getByText("/sun-room", { exact: true })).toBeVisible();
 
   await dialog.getByRole("button", { name: "Close post composer" }).click();
   await expect(dialog).toBeHidden();
 });
 
-test("public pages do not render retired mock social data", async ({ page }) => {
+test("public pages do not render retired social copy", async ({ page }) => {
+  await mockPublicShell(page);
+
   for (const path of ["/", "/discover", "/rooms", "/chat", "/@thia"]) {
     await page.goto(path);
     await expect(page.locator("body")).toBeVisible();
@@ -239,3 +309,353 @@ test("public pages do not render retired mock social data", async ({ page }) => 
     }
   }
 });
+
+async function expectNoHorizontalOverflow(page: Page) {
+  const hasOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  );
+  expect(hasOverflow).toBe(false);
+}
+
+async function acknowledgeCookieNotice(page: Page) {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("thia_cookie_notice_ack", "1");
+  });
+}
+
+async function expectMobilePostInsideDock(page: Page) {
+  const boxes = await page.evaluate(() => {
+    const nav = document
+      .querySelector('[data-testid="mobile-nav"]')
+      ?.getBoundingClientRect();
+    const post = document
+      .querySelector('[data-testid="mobile-post-action"]')
+      ?.getBoundingClientRect();
+
+    return {
+      nav: nav
+        ? { bottom: nav.bottom, left: nav.left, right: nav.right, top: nav.top }
+        : null,
+      post: post
+        ? { bottom: post.bottom, left: post.left, right: post.right, top: post.top }
+        : null,
+    };
+  });
+
+  expect(boxes.nav).not.toBeNull();
+  expect(boxes.post).not.toBeNull();
+  expect(boxes.post!.top).toBeGreaterThanOrEqual(boxes.nav!.top);
+  expect(boxes.post!.bottom).toBeLessThanOrEqual(boxes.nav!.bottom);
+  expect(boxes.post!.left).toBeGreaterThanOrEqual(boxes.nav!.left);
+  expect(boxes.post!.right).toBeLessThanOrEqual(boxes.nav!.right);
+}
+
+async function expectChatHitTargetClear(page: Page) {
+  const clear = await page.evaluate(() => {
+    const chat = document
+      .querySelector('[data-testid="mobile-nav"] a[href="/chat"]')
+      ?.getBoundingClientRect();
+
+    if (!chat) {
+      return false;
+    }
+
+    const x = chat.left + chat.width / 2;
+    const y = chat.top + chat.height / 2;
+    const hit = document.elementFromPoint(x, y);
+
+    return Boolean(hit?.closest('a[href="/chat"]'));
+  });
+
+  expect(clear).toBe(true);
+}
+
+type ShellOptions = {
+  authenticated?: boolean;
+  discoverPosts?: ReturnType<typeof makePost>[];
+  homePosts?: ReturnType<typeof makePost>[];
+  rooms?: ReturnType<typeof makeRoom>[];
+};
+
+async function mockPublicShell(page: Page, options: ShellOptions = {}) {
+  await mockShell(page, { ...options, authenticated: false });
+}
+
+async function mockAuthenticatedShell(page: Page, options: ShellOptions = {}) {
+  await mockShell(page, { ...options, authenticated: true });
+}
+
+async function mockShell(
+  page: Page,
+  {
+    authenticated = false,
+    discoverPosts = [],
+    homePosts = [],
+    rooms = [],
+  }: ShellOptions = {},
+) {
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      status: authenticated ? 200 : 401,
+      contentType: "application/json",
+      body: JSON.stringify(
+        authenticated
+          ? {
+              ok: true,
+              data: {
+                user: {
+                  id: 1,
+                  handle: "viewer",
+                  email: "viewer@example.test",
+                  role: "member",
+                  status: "active",
+                  displayName: "Viewer",
+                  avatarUrl: null,
+                },
+                profile: {
+                  displayName: "Viewer",
+                  bio: "",
+                  location: "",
+                  avatarUrl: null,
+                  links: [],
+                  traits: [],
+                },
+                csrfToken: "test-csrf",
+              },
+            }
+          : { ok: false, error: "Not authenticated." },
+      ),
+    }),
+  );
+
+  await page.route("**/api/notifications", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          notifications: [],
+          unreadCount: 0,
+        },
+      }),
+    }),
+  );
+
+  await page.route("**/api/feed/home", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { posts: homePosts, personalized: authenticated },
+      }),
+    }),
+  );
+
+  await page.route("**/api/feed/discover", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { posts: discoverPosts, activeRooms: [], peopleToWatch: [] },
+      }),
+    }),
+  );
+
+  await page.route("**/api/stats", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          publicRooms: rooms.length,
+          publicPosts: homePosts.length + discoverPosts.length,
+          activeUsers: 1,
+          totalReactions: 0,
+        },
+      }),
+    }),
+  );
+
+  for (const room of rooms) {
+    await page.route(`**/api/rooms/${room.slug}`, (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: room }),
+      }),
+    );
+    await page.route(`**/api/rooms/${room.slug}/posts`, (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: [] }),
+      }),
+    );
+    await page.route(`**/api/rooms/${room.slug}/members`, (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: [] }),
+      }),
+    );
+  }
+
+  await page.route("**/api/rooms", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: rooms }),
+    }),
+  );
+
+  await mockProfileRoutes(page, "thia");
+}
+
+async function mockProfileRoutes(page: Page, handle: string) {
+  await page.route(`**/api/profiles/${handle}`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: makeProfile(handle) }),
+    }),
+  );
+
+  for (const suffix of [
+    "posts",
+    "replies",
+    "reblogs",
+    "rooms",
+    "followers",
+    "following",
+    "modules",
+  ]) {
+    await page.route(`**/api/profiles/${handle}/${suffix}`, (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: [] }),
+      }),
+    );
+  }
+
+  await page.route(`**/api/profiles/${handle}/badges`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: { badges: [], featuredBadges: [] } }),
+    }),
+  );
+}
+
+function makeProfile(handle: string) {
+  return {
+    user: {
+      id: 2,
+      handle,
+      displayName: handle === "thia" ? "Thia" : "Member",
+      initials: handle.charAt(0).toUpperCase(),
+      aura: "frost",
+      avatarUrl: null,
+    },
+    bio: "A public profile.",
+    location: "",
+    bannerUrl: null,
+    profileAccent: null,
+    profileBackground: null,
+    profileTheme: null,
+    links: [],
+    traits: [],
+    stats: {
+      posts: 0,
+      replies: 0,
+      rooms: 0,
+      echoes: 0,
+      followers: 0,
+      following: 0,
+      moots: 0,
+    },
+    followerCount: 0,
+    followingCount: 0,
+    mootCount: 0,
+    isFollowing: false,
+    isFollowedBy: false,
+    isMoot: false,
+    createdAt: "2026-06-10 09:00:00",
+    updatedAt: "2026-06-10 09:00:00",
+  };
+}
+
+function makeRoom() {
+  return {
+    id: 1,
+    slug: "sun-room",
+    name: "Sun Room",
+    summary: "A public room.",
+    description: "A public room.",
+    mood: "",
+    members: 1,
+    memberCount: 1,
+    live: false,
+    accent: "var(--accent-sun)",
+    iconUrl: null,
+    bannerUrl: null,
+    rules: "",
+    visibility: "public",
+    owner: {
+      id: 2,
+      handle: "owner",
+      displayName: "Owner",
+      initials: "O",
+      aura: "frost",
+      avatarUrl: null,
+    },
+    joinedByMe: false,
+    myRoomRole: null,
+    postCount: 0,
+    latestActivityAt: null,
+    createdAt: "2026-06-10 00:00:00",
+    updatedAt: "2026-06-10 00:00:00",
+  };
+}
+
+function makePost(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 42,
+    body: "A public post.",
+    mood: "sunveil",
+    mediaUrl: null,
+    visibility: "public",
+    status: "published",
+    parentId: null,
+    deletedAt: null,
+    createdAt: "2026-06-10 10:00:00",
+    updatedAt: "2026-06-10 10:00:00",
+    author: {
+      id: 2,
+      handle: "alex",
+      displayName: "Alex",
+      initials: "A",
+      aura: "frost",
+      avatarUrl: null,
+    },
+    profile: makeProfile("alex"),
+    room: {
+      id: 1,
+      slug: "general",
+      name: "General",
+      summary: "Open conversation.",
+      description: "Open conversation.",
+      mood: "",
+      members: 1,
+      memberCount: 1,
+      live: false,
+      accent: "var(--accent-frost)",
+      postCount: 1,
+    },
+    commentCount: 0,
+    reactions: { glow: 0, echo: 0, hush: 0 },
+    likeCount: 0,
+    likedByCurrentUser: false,
+    reblogCount: 0,
+    rebloggedByMe: false,
+    rebloggedByCurrentUser: false,
+    socialContext: {
+      authorRelationship: null,
+      likedByFollowedCount: 0,
+    },
+    ...overrides,
+  };
+}

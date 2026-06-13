@@ -18,7 +18,7 @@ import type { LucideIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Link, NavLink, Outlet, useNavigate } from "react-router";
+import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from "react-router";
 import { PostComposerModal } from "../social/PostComposerModal";
 import { ThemeToggle } from "../ThemeToggle";
 import { Button, ButtonLink } from "../ui/Button";
@@ -53,6 +53,9 @@ const legalLinks = [
   { to: "/legal", label: "Legal" },
 ];
 
+const bugReportUrl =
+  "https://github.com/thiabun/thia.lol/issues/new?template=bug_report.yml";
+
 const cookieNoticeStorageKey = "thia_cookie_notice_ack";
 
 export type AppShellOutletContext = {
@@ -61,6 +64,7 @@ export type AppShellOutletContext = {
 
 export function AppShell() {
   const { csrfToken, status, user } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
   const roomsState = useAsyncData(getRooms);
   const [composerOpen, setComposerOpen] = useState(false);
@@ -71,6 +75,10 @@ export function AppShell() {
   >();
   const postingDisabled = status === "loading";
   const rooms = roomsState.data ?? [];
+  const currentRoomSlug = matchPath(
+    { path: "/rooms/:slug", end: true },
+    location.pathname,
+  )?.params.slug;
 
   useEffect(() => {
     let active = true;
@@ -138,7 +146,7 @@ export function AppShell() {
   }
 
   function handlePostClick() {
-    openPostComposer();
+    openPostComposer(currentRoomSlug);
   }
 
   return (
@@ -460,7 +468,7 @@ function MobileDock({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={snappySpring}
-      className="sticky bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30 mx-auto mb-[calc(1rem+env(safe-area-inset-bottom))] grid w-full max-w-md grid-cols-5 gap-1 rounded-panel border border-line bg-surface/90 p-2 shadow-lift backdrop-blur-veil lg:hidden"
+      className="sticky bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30 mx-auto mb-[calc(1rem+env(safe-area-inset-bottom))] grid w-full max-w-md grid-cols-5 items-center gap-1 rounded-panel border border-line bg-surface/90 p-2 shadow-lift backdrop-blur-veil lg:hidden"
       aria-label="Primary"
       data-testid="mobile-nav"
     >
@@ -489,9 +497,10 @@ function MobileDock({
       ))}
       <Button
         type="button"
-        className="absolute left-1/2 top-0 size-14 -translate-x-1/2 -translate-y-5 rounded-full shadow-lift"
+        className="col-start-3 mx-auto size-12 rounded-full shadow-lift"
         disabled={postDisabled}
         aria-label="Post"
+        data-testid="mobile-post-action"
         title="Post"
         icon={<PenLine aria-hidden="true" size={21} />}
         onClick={onPostClick}
@@ -517,21 +526,35 @@ function SiteFooter() {
             Protected under Norwegian and international copyright law.
           </p>
         </div>
-        <nav
-          aria-label="Legal and trust"
-          className="flex flex-wrap gap-x-3 gap-y-2 sm:justify-end"
-          data-testid="legal-footer-links"
-        >
-          {legalLinks.map((link) => (
-            <Link
-              key={link.to}
-              to={link.to}
-              className="font-medium underline-offset-4 transition duration-fluid hover:text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        <div className="space-y-2 sm:max-w-sm sm:text-right">
+          <nav
+            aria-label="Legal and trust"
+            className="flex flex-wrap gap-x-3 gap-y-2 sm:justify-end"
+            data-testid="legal-footer-links"
+          >
+            {legalLinks.map((link) => (
+              <Link
+                key={link.to}
+                to={link.to}
+                className="font-medium underline-offset-4 transition duration-fluid hover:text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              >
+                {link.label}
+              </Link>
+            ))}
+            <a
+              href={bugReportUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-text underline-offset-4 transition duration-fluid hover:text-accent-strong hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
             >
-              {link.label}
-            </Link>
-          ))}
-        </nav>
+              Report a bug
+            </a>
+          </nav>
+          <p className="leading-5" data-testid="bug-report-guidance">
+            Include what happened, route, device/browser, and safe screenshots.
+            Never share passwords, cookies, tokens, or private DMs.
+          </p>
+        </div>
       </div>
     </footer>
   );

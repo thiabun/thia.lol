@@ -5,7 +5,7 @@ import type {
   TextareaHTMLAttributes,
 } from "react";
 import { forwardRef } from "react";
-import { Search, type LucideIcon } from "lucide-react";
+import { ChevronDown, Search, type LucideIcon } from "lucide-react";
 import { cn } from "../../lib/classNames";
 
 const controlClass =
@@ -108,18 +108,33 @@ export function SelectField({
 }: SelectFieldProps) {
   return (
     <FieldShell id={id} label={label} icon={icon}>
-      <select id={id} className={cn(controlClass, className)} {...props}>
-        {options.map((option) => {
-          const value = typeof option === "string" ? option : option.value;
-          const label = typeof option === "string" ? option : option.label;
+      <span className="relative block">
+        <select
+          id={id}
+          className={cn(
+            controlClass,
+            "appearance-none pr-11 disabled:cursor-not-allowed",
+            className,
+          )}
+          {...props}
+        >
+          {options.map((option) => {
+            const value = typeof option === "string" ? option : option.value;
+            const label = typeof option === "string" ? option : option.label;
 
-          return (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          );
-        })}
-      </select>
+            return (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            );
+          })}
+        </select>
+        <ChevronDown
+          aria-hidden="true"
+          className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-muted"
+          size={17}
+        />
+      </span>
     </FieldShell>
   );
 }
