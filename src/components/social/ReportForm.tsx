@@ -84,6 +84,12 @@ export function ReportForm({
 
   const iconTrigger = triggerMode === "icon";
   const compactIconTrigger = iconTrigger && triggerSize === "compact";
+  const flagIcon = (
+    <Flag
+      aria-hidden="true"
+      size={triggerIconSize ?? (compactIconTrigger ? 13 : 15)}
+    />
+  );
 
   return (
     <div className={className}>
@@ -103,10 +109,13 @@ export function ReportForm({
         )}
         disabled={disabled || pending}
         icon={
-          <Flag
-            aria-hidden="true"
-            size={triggerIconSize ?? (compactIconTrigger ? 13 : 15)}
-          />
+          compactIconTrigger ? (
+            <span className="inline-grid size-5 place-items-center rounded-[0.3rem] transition duration-fluid ease-fluid">
+              {flagIcon}
+            </span>
+          ) : (
+            flagIcon
+          )
         }
         onClick={() => {
           setError(undefined);

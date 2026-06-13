@@ -975,7 +975,7 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
           "relative mb-1 max-w-[min(28rem,78%)] rounded-[1.125rem] px-3 py-2 text-sm leading-5 shadow-soft transition duration-fluid ease-fluid",
           mine
             ? "bg-accent text-accent-ink"
-            : "border border-line bg-canvas/65 text-text hover:border-line-strong",
+            : "border border-line bg-surface/75 text-text hover:border-line-strong",
         )}
       >
         <div className="relative z-10">
@@ -1002,12 +1002,12 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
                   triggerMode="icon"
                   triggerLabel="Report message"
                   triggerSize="compact"
-                  triggerIconSize={11}
+                  triggerIconSize={12}
                   triggerClassName={cn(
-                    "-my-1 size-7 border border-transparent opacity-45 transition duration-fluid ease-fluid hover:opacity-100 focus-visible:opacity-100 group-hover/message:opacity-75 group-focus-within/message:opacity-100 motion-reduce:transition-none",
+                    "-my-1 size-7 border border-transparent !bg-transparent !opacity-100 transition duration-fluid ease-fluid hover:!bg-transparent focus-visible:!bg-transparent motion-reduce:transition-none",
                     mine
-                      ? "text-accent-ink/70 hover:border-accent-ink/20 hover:bg-accent-ink/8 hover:text-accent-ink focus-visible:border-accent-ink/25 focus-visible:bg-accent-ink/10 focus-visible:text-accent-ink"
-                      : "text-muted hover:border-line-strong/70 hover:bg-canvas/60 hover:text-text focus-visible:border-line-strong focus-visible:bg-canvas/70 focus-visible:text-text",
+                      ? "!text-accent-ink/70 hover:!text-accent-ink focus-visible:!text-accent-ink hover:[&>span]:bg-accent-ink/8 hover:[&>span]:outline hover:[&>span]:outline-1 hover:[&>span]:outline-accent-ink/20 focus-visible:[&>span]:bg-accent-ink/10 focus-visible:[&>span]:outline focus-visible:[&>span]:outline-1 focus-visible:[&>span]:outline-accent-ink/25"
+                      : "!text-text/55 group-hover/message:!text-text/70 hover:!text-text/85 focus-visible:!text-text hover:[&>span]:bg-surface-strong/60 hover:[&>span]:outline hover:[&>span]:outline-1 hover:[&>span]:outline-line-strong/55 focus-visible:[&>span]:bg-surface-strong/70 focus-visible:[&>span]:outline focus-visible:[&>span]:outline-1 focus-visible:[&>span]:outline-focus/55",
                   )}
                   feedbackClassName="basis-full"
                   formClassName="basis-full bg-canvas/80 text-left"
@@ -1016,17 +1016,37 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
             ) : null}
           </div>
         </div>
-        <span
-          aria-hidden="true"
-          className={cn(
-            "pointer-events-none absolute bottom-0 size-3 translate-y-1/2 rotate-45 rounded-[0.18rem]",
-            mine
-              ? "right-4 bg-accent"
-              : "left-4 border-b border-l border-line bg-canvas/65",
-          )}
-        />
+        <MessageBubbleTail mine={mine} />
       </div>
     </div>
+  );
+}
+
+function MessageBubbleTail({ mine }: { mine: boolean }) {
+  const path =
+    "M2 0.5H12.4C12.4 4.8 14.5 8.1 18 10.2C10.5 10.1 5.3 6.7 2 0.5Z";
+
+  return (
+    <svg
+      aria-hidden="true"
+      className={cn(
+        "pointer-events-none absolute -bottom-[0.42rem] h-3 w-5",
+        mine ? "right-3 -scale-x-100 text-accent" : "left-3 text-surface",
+      )}
+      focusable="false"
+      viewBox="0 0 20 12"
+    >
+      <path className="fill-current" d={path} />
+      {mine ? null : (
+        <path
+          className="fill-none stroke-line"
+          d={path}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="1.15"
+        />
+      )}
+    </svg>
   );
 }
 
