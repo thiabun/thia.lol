@@ -223,7 +223,9 @@ test("conversation member can report an individual chat message", async ({ page 
   await expect(page.getByTestId("chat-message-list")).toContainText(
     "hello from a moot",
   );
-  await page.getByRole("button", { name: "Report message" }).click();
+  const reportTrigger = page.getByRole("button", { name: "Report message" });
+  await expect(reportTrigger).toHaveAttribute("title", "Report message");
+  await reportTrigger.click();
   const reportForm = page.getByRole("heading", { name: "Report message" }).locator("..");
 
   await expect(reportForm).toContainText("reports this chat message");

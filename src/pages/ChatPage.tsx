@@ -969,37 +969,51 @@ type MessageBubbleProps = {
 
 function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
   return (
-    <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
+    <div className={cn("group/message flex", mine ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[min(34rem,82%)] rounded-card px-3 py-2 text-sm leading-6 shadow-soft",
+          "max-w-[min(28rem,78%)] rounded-[1.125rem] px-3 py-2 text-sm leading-5 shadow-soft transition duration-fluid ease-fluid",
           mine
             ? "bg-accent text-accent-ink"
-            : "border border-line bg-canvas/65 text-text",
+            : "border border-line bg-canvas/65 text-text hover:border-line-strong",
         )}
       >
         <p className="whitespace-pre-wrap break-words">{message.body}</p>
-        <p
+        <div
           className={cn(
-            "mt-1 text-[0.7rem]",
+            "mt-1 flex flex-wrap items-center gap-1.5 text-[0.68rem] leading-none",
             mine ? "text-accent-ink/70" : "text-muted",
           )}
         >
-          {formatChatTime(message.createdAt)}
-        </p>
-        {canReport && message.deletedAt === null ? (
-          <div className="mt-1 flex justify-end">
-            <ReportForm
-              targetType="message"
-              targetId={message.id}
-              reportedUserId={message.sender.id}
-              title="Report message"
-              explainer="This reports this chat message to moderators."
-              triggerMode="icon"
-              triggerLabel="Report message"
-            />
-          </div>
-        ) : null}
+          <span>{formatChatTime(message.createdAt)}</span>
+          {canReport && message.deletedAt === null ? (
+            <>
+              <span className="text-current/45" aria-hidden="true">
+                •
+              </span>
+              <ReportForm
+                className="contents"
+                targetType="message"
+                targetId={message.id}
+                reportedUserId={message.sender.id}
+                title="Report message"
+                explainer="This reports this chat message to moderators."
+                triggerMode="icon"
+                triggerLabel="Report message"
+                triggerSize="compact"
+                triggerIconSize={12}
+                triggerClassName={cn(
+                  "-my-1.5 size-8 opacity-45 transition duration-fluid ease-fluid hover:opacity-100 focus-visible:opacity-100 group-hover/message:opacity-80 group-focus-within/message:opacity-100 motion-reduce:transition-none",
+                  mine
+                    ? "text-accent-ink/70 hover:bg-accent-ink/12 hover:text-accent-ink focus-visible:bg-accent-ink/14 focus-visible:text-accent-ink"
+                    : "text-muted hover:bg-accent/10 hover:text-text focus-visible:bg-accent/12 focus-visible:text-text",
+                )}
+                feedbackClassName="basis-full"
+                formClassName="basis-full bg-canvas/80 text-left"
+              />
+            </>
+          ) : null}
+        </div>
       </div>
     </div>
   );

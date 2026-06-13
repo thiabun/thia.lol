@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { Button } from "../ui/Button";
 import { SelectField, TextareaField } from "../ui/Field";
 import { createReport, type ReportCategory, type ReportTargetType } from "../../lib/api";
+import { cn } from "../../lib/classNames";
 import { useAuth } from "../../lib/useAuth";
 
 type ReportFormProps = {
@@ -16,18 +17,30 @@ type ReportFormProps = {
   reportedUserId?: number | undefined;
   triggerMode?: "text" | "icon";
   triggerLabel?: string;
+  triggerSize?: "default" | "compact";
+  triggerClassName?: string;
+  triggerIconSize?: number;
+  className?: string;
+  feedbackClassName?: string;
+  formClassName?: string;
 };
 
 export function ReportForm({
+  className,
   disabled = false,
   explainer,
+  feedbackClassName,
+  formClassName,
   postId,
   reportedUserId,
   targetId,
   targetType,
   title,
+  triggerClassName,
+  triggerIconSize,
   triggerMode = "text",
   triggerLabel = "Report",
+  triggerSize = "default",
 }: ReportFormProps) {
   const { runWithAuth } = useAuth();
   const [open, setOpen] = useState(false);
@@ -70,18 +83,31 @@ export function ReportForm({
   }
 
   const iconTrigger = triggerMode === "icon";
+  const compactIconTrigger = iconTrigger && triggerSize === "compact";
 
   return (
-    <div>
+    <div className={className}>
       <Button
         type="button"
         variant="ghost"
-        size={iconTrigger ? "icon" : "sm"}
+        size={compactIconTrigger ? "sm" : iconTrigger ? "icon" : "sm"}
         aria-label={iconTrigger ? triggerLabel : undefined}
         title={iconTrigger ? triggerLabel : undefined}
-        className={iconTrigger ? "rounded-full text-muted" : undefined}
+        className={cn(
+          iconTrigger
+            ? compactIconTrigger
+              ? "min-h-0 size-7 rounded-full px-0 text-muted"
+              : "rounded-full text-muted"
+            : undefined,
+          triggerClassName,
+        )}
         disabled={disabled || pending}
-        icon={<Flag aria-hidden="true" size={15} />}
+        icon={
+          <Flag
+            aria-hidden="true"
+            size={triggerIconSize ?? (compactIconTrigger ? 13 : 15)}
+          />
+        }
         onClick={() => {
           setError(undefined);
           setMessage(undefined);
@@ -91,14 +117,21 @@ export function ReportForm({
         {iconTrigger ? null : triggerLabel}
       </Button>
       {message ? (
-        <p className="mt-2 text-xs font-medium text-leaf-ink">{message}</p>
+        <p className={cn("mt-2 text-xs font-medium text-leaf-ink", feedbackClassName)}>
+          {message}
+        </p>
       ) : null}
       {error ? (
-        <p className="mt-2 text-xs font-medium text-rose-ink">{error}</p>
+        <p className={cn("mt-2 text-xs font-medium text-rose-ink", feedbackClassName)}>
+          {error}
+        </p>
       ) : null}
       {open ? (
         <form
-          className="mt-3 space-y-3 rounded-card border border-line bg-canvas/45 p-3"
+          className={cn(
+            "mt-3 space-y-3 rounded-card border border-line bg-canvas/45 p-3",
+            formClassName,
+          )}
           onSubmit={(event) => void handleSubmit(event)}
         >
           <h3 className="text-sm font-semibold text-text">{title}</h3>
