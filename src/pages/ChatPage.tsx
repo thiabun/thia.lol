@@ -979,7 +979,7 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
             "relative z-10 rounded-[1.125rem] px-3 py-2 text-sm leading-5 transition duration-fluid ease-fluid",
             mine
               ? "bg-accent text-accent-ink"
-              : "border border-line bg-surface/75 text-text hover:border-line-strong",
+              : "border border-line bg-surface text-text hover:border-line-strong",
           )}
         >
           <p className="whitespace-pre-wrap break-words">{message.body}</p>
@@ -1026,19 +1026,19 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
 
 function MessageBubbleTail({ mine }: { mine: boolean }) {
   const path =
-    "M18 0.5H8.4C8.4 4.9 6.2 8.2 2 10.4C9.8 10.4 15.1 7 18 0.5Z";
+    "M23.2 0.8H8.6C8.8 5.7 6.8 9.6 1.4 13.2C11 12.8 18.8 8.6 23.2 0.8Z";
 
   return (
     <svg
       aria-hidden="true"
       className={cn(
-        "pointer-events-none absolute -bottom-[0.42rem] z-0 h-3 w-5",
-        mine ? "-right-0.5 -scale-x-100" : "-left-0.5",
+        "pointer-events-none absolute -bottom-[0.5rem] z-0 h-3.5 w-7",
+        mine ? "-right-1 -scale-x-100" : "-left-1",
       )}
       focusable="false"
-      viewBox="0 0 20 12"
+      viewBox="0 0 24 14"
     >
-      <path className={mine ? "fill-accent" : "fill-surface/75"} d={path} />
+      <path className={mine ? "fill-accent" : "fill-surface"} d={path} />
       {mine ? null : (
         <path
           className="fill-none stroke-line"
