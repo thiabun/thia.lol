@@ -971,14 +971,17 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
   return (
     <div className={cn("group/message flex", mine ? "justify-end" : "justify-start")}>
       <div
-        className={cn(
-          "relative mb-1 max-w-[min(28rem,78%)] rounded-[1.125rem] px-3 py-2 text-sm leading-5 shadow-soft transition duration-fluid ease-fluid",
-          mine
-            ? "bg-accent text-accent-ink"
-            : "border border-line bg-surface/75 text-text hover:border-line-strong",
-        )}
+        className="relative mb-1 max-w-[min(28rem,78%)] [filter:drop-shadow(0_14px_40px_oklch(0_0_0_/_0.1))]"
       >
-        <div className="relative z-10">
+        <MessageBubbleTail mine={mine} />
+        <div
+          className={cn(
+            "relative z-10 rounded-[1.125rem] px-3 py-2 text-sm leading-5 transition duration-fluid ease-fluid",
+            mine
+              ? "bg-accent text-accent-ink"
+              : "border border-line bg-surface/75 text-text hover:border-line-strong",
+          )}
+        >
           <p className="whitespace-pre-wrap break-words">{message.body}</p>
           <div
             className={cn(
@@ -1016,7 +1019,6 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
             ) : null}
           </div>
         </div>
-        <MessageBubbleTail mine={mine} />
       </div>
     </div>
   );
@@ -1024,19 +1026,19 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
 
 function MessageBubbleTail({ mine }: { mine: boolean }) {
   const path =
-    "M2 0.5H12.4C12.4 4.8 14.5 8.1 18 10.2C10.5 10.1 5.3 6.7 2 0.5Z";
+    "M18 0.5H8.4C8.4 4.9 6.2 8.2 2 10.4C9.8 10.4 15.1 7 18 0.5Z";
 
   return (
     <svg
       aria-hidden="true"
       className={cn(
-        "pointer-events-none absolute -bottom-[0.42rem] h-3 w-5",
-        mine ? "right-3 -scale-x-100 text-accent" : "left-3 text-surface",
+        "pointer-events-none absolute -bottom-[0.42rem] z-0 h-3 w-5",
+        mine ? "-right-0.5 -scale-x-100" : "-left-0.5",
       )}
       focusable="false"
       viewBox="0 0 20 12"
     >
-      <path className="fill-current" d={path} />
+      <path className={mine ? "fill-accent" : "fill-surface/75"} d={path} />
       {mine ? null : (
         <path
           className="fill-none stroke-line"
