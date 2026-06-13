@@ -1,5 +1,11 @@
 # Public Readiness v2 Plan
 
+> **Status: Active.** This is the v2 orientation map and issue index. GitHub
+> Issues are the active tracker for v2 work; keep this document focused on
+> context, classification, and links instead of growing it into another task
+> queue. Use issue [#16](https://github.com/thiabun/thia.lol/issues/16) for
+> project-board and label workflow setup.
+
 Date: 2026-06-11
 
 Source brief: `Public readiness v2.md`, supplied for this planning pass.
@@ -29,9 +35,9 @@ Still fragile or unfinished:
 - Some v1 docs are stale or historical and compete with GitHub Issues as work trackers.
 - Project labels and board structure are still mostly recommendations instead of an enforced source of truth.
 - Mobile bottom navigation, footer spacing, and top-bar copy need a product-shell polish pass.
-- Search exists only in local page contexts such as rooms/chat, not as a planned product surface.
+- Search v1 exists as `/search` plus `GET /api/search?q=...` for public profiles and public, non-deleted rooms; posts, private chat messages, admin search, autocomplete, and richer ranking remain future work.
 - Profiles need a longer-term personal-space direction before adding rich integrations.
-- Block, mute, and remove-follower are scoped but not implemented.
+- Block, mute, and remove-follower are scoped; API/data foundation exists, while full frontend controls and settings surfaces remain follow-up work.
 - Analytics, revenue, ads, and API/SQL product maturity need planning before any tracker, ad, or monetization code is added.
 - Production-authenticated verification remains environment-bound for mutations that require a working deployed API and test accounts.
 
@@ -43,7 +49,7 @@ Still fragile or unfinished:
 - Redundant controls: replies and thread controls should appear once per context, with one clear entry point for replying.
 - Footer and bottom-bar layout issues: the mobile dock should not fight the footer, and the footer should be compact enough to feel like site chrome rather than a second page.
 - Top bar cleanup: remove the "social app" sublabel under `thia.lol`; the product name is strong enough by itself.
-- Missing search direction: the app has enough people, rooms, posts, and profiles that Search should be planned before the nav fills up.
+- Search direction is still shallow: v1 covers public profiles and rooms, but posts, ranking, autocomplete, privacy constraints, and nav placement need GitHub Issues before expansion.
 - Stale and fragmented docs: historical audits, roadmaps, and checklists are useful, but active progress should move into GitHub Issues and a Project board.
 - Need for stronger product/design guidelines: future Codex tasks need shared rules for layout density, cards, motion, copy, empty states, and social surfaces.
 - Need for richer profiles and personal spaces: profile pages should support identity, blogging-like use, creator presence, and future media integrations without making Thia the whole platform identity.
@@ -89,10 +95,11 @@ Still fragile or unfinished:
 
 ### 5. Search Foundation
 
-- Goal: plan a useful Search surface before navigation and data models get more crowded.
-- Scope: define initial searchable entities, likely route, empty states, privacy/safety constraints, and a first static/API-backed implementation path.
+- Goal: grow the initial Search foundation carefully before navigation and data models get more crowded.
+- Scope: define follow-up searchable entities, empty states, privacy/safety constraints, ranking limits, and API-backed implementation paths.
 - Out of scope: full-text search engine; external search services; indexing private chats; analytics-driven ranking.
-- Recommended first issue: write the Search v1 spec for posts, profiles, rooms, and maybe tags if tags are introduced later.
+- Current state: Search v1 for public profiles and public, non-deleted rooms is implemented under issue [#17](https://github.com/thiabun/thia.lol/issues/17).
+- Recommended follow-up issue: decide whether posts, handles, tags, or room content should be added next, and document the visibility constraints before implementation.
 - Codex suitability: Medium. Planning is high suitability; implementation may need SQL/API decisions.
 - Risk level: Medium.
 
@@ -173,35 +180,51 @@ Guidance:
 
 Do not delete docs in this pass unless a file is clearly obsolete and duplicated elsewhere. Prefer banners, merges, or issue migration first.
 
-### Keep As Source Of Truth
+### Active Product And Planning Docs
 
 - `AGENTS.md`: repo operating rules and deployment constraints.
 - `README.md`: public repo overview, local commands, testing, and deployment notes.
-- `docs/public-readiness-v2-plan.md`: main v2 plan and issue map.
-- `docs/public-testing-launch-checklist.md`: practical deploy/public-testing checklist.
+- `docs/public-readiness-v2-plan.md`: active v2 orientation and issue map.
+- `docs/product-audit-and-roadmap.md`: active product/architecture reference, with older roadmap sections superseded by GitHub Issues.
+- `docs/platform-ui-modernization.md`: active UI modernization direction.
 - `docs/block-mute-remove-follower-scope.md`: active product/API scope for safety controls until implemented.
-- `docs/deployment-automation.md`: deployment workflow reference.
-- `docs/thia-migration-runner-guide.md` and `docs/migration-runner.md`: migration runner references, though they should be reconciled later if overlapping.
-- `docs/media-uploads.md`: upload behavior reference.
-- `docs/admin-setup.md` and `docs/auth-session-diagnostics.md`: operational references.
+- `docs/profile-badges-plan.md`: active profile/badge foundation reference.
+
+### Operational References
+
+- `docs/public-testing-launch-checklist.md`: deploy, migration, smoke, manual testing, and go/no-go checklist.
+- `docs/deployment-automation.md`: cPanel/GitHub Actions deployment workflow reference.
+- `docs/thia-migration-runner-guide.md` and `docs/migration-runner.md`: migration runner references; reconcile later if they drift.
+- `docs/media-uploads.md`: image upload behavior and cPanel storage reference.
+- `docs/admin-setup.md` and `docs/auth-session-diagnostics.md`: admin/session operational references.
+
+### Historical / Superseded Docs
+
+- `docs/public-testing-readiness-spec.md`: historical v1 implementation spec. Preserve hard safety/API-smoke rules, but do not use it as the active v2 source of truth.
+- `docs/public-testing-readiness-audit.md`: historical v1 pass report and addendum log. Keep for audit trail; current work belongs in GitHub Issues.
+- `docs/public-testing-roadmap.md`: historical v1 public-testing roadmap. Its priority list is superseded by GitHub Issues and the v2 plan.
+- `docs/public-testing-project-triage.md`: historical v1 transition triage. Useful for provenance, but not the active tracker.
 
 ### Update
 
-- `docs/public-testing-project-triage.md`: mark as v1 transition/historical triage and point active v2 tracking to this plan plus GitHub Issues.
-- `docs/public-testing-roadmap.md`: update stale P0/P1 items or add a banner saying it is a v1 roadmap superseded by v2 issues.
-- `docs/product-audit-and-roadmap.md`: update stale feature inventory entries that still say chat/report/media/admin states are deferred when they are implemented.
-- `docs/public-testing-readiness-audit.md`: keep as historical v1 audit, but add a top note pointing to v2.
+- Add status notes to active, operational, and historical docs.
+- Update stale feature inventory entries that still describe implemented foundations as deferred.
+- Point active v2 work to GitHub Issues and project board workflow issue [#16](https://github.com/thiabun/thia.lol/issues/16).
+- Keep deployment, migration, safety, legal, upload, and API-smoke warnings intact.
 
 ### Merge
 
-- Merge repeated label/board recommendations from `docs/public-testing-project-triage.md`, `docs/public-testing-roadmap.md`, and this document into GitHub labels/project configuration after Thia confirms the board shape.
+- Treat the label/board guidance in this document as the canonical v2 recommendation until issue [#16](https://github.com/thiabun/thia.lol/issues/16) is completed.
+- Historical label lists in `docs/public-testing-project-triage.md` and `docs/public-testing-roadmap.md` should point here instead of being maintained separately.
 - Merge duplicate migration-runner guidance if `docs/thia-migration-runner-guide.md` and `docs/migration-runner.md` drift.
 
-### Archive Or Deprecate
+### Proposed Archive Candidates
 
-- `docs/public-testing-readiness-spec.md`: useful historical v1 implementation spec, but no longer the active source of truth for v2 product direction.
-- `docs/public-testing-readiness-audit.md`: historical v1 audit/addendum log after this v2 plan is adopted.
-- `Public readiness v2.md`: preserve as the source brief if Thia wants uploaded planning briefs tracked in the repository; otherwise keep this plan as the committed source of truth.
+- `docs/public-testing-readiness-spec.md`: archive candidate because v1 implementation scope is complete or superseded. Keep until hard rules are copied into active operational docs where needed.
+- `docs/public-testing-readiness-audit.md`: archive candidate because it is a completed pass report. Keep until any still-useful deferred items are represented as GitHub Issues.
+- `docs/public-testing-roadmap.md`: archive candidate because active priorities now live in GitHub Issues and this v2 plan.
+- `docs/public-testing-project-triage.md`: archive candidate because its recommendations have either been implemented, moved to the launch checklist, or carried forward into GitHub Issues.
+- User-supplied `Public readiness v2.md` source brief and attachments: preserve only if Thia wants uploaded planning briefs tracked in the repository; otherwise keep this plan as the committed source of truth and do not commit source-brief attachments by accident.
 
 ### Delete Only If Clearly Obsolete
 

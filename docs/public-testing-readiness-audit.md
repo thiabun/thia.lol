@@ -1,5 +1,10 @@
 # Public Testing Readiness Audit
 
+> **Status: Historical / superseded.** This is the audit trail for v1 cleanup
+> passes and addenda. Keep it for provenance and for preserved API-smoke,
+> migration, upload, legal, and safety findings. Active v2 work should be filed
+> and tracked in GitHub Issues instead of appended here.
+
 Date: 2026-06-10
 
 ## Current product status

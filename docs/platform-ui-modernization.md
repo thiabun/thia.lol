@@ -1,5 +1,9 @@
 # Platform UI Modernization
 
+> **Status: Active.** Use this for the current UI modernization direction.
+> Implementation should be split into focused GitHub Issues rather than tracked
+> as an expanding checklist in this file.
+
 Date: 2026-06-13
 
 ## Purpose

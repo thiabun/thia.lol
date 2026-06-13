@@ -1,5 +1,10 @@
 # cPanel Deployment Automation
 
+> **Status: Operational reference.** Use this when changing, verifying, or
+> manually falling back from the cPanel deployment workflow. It preserves
+> deployment invariants and server-only file warnings; active deploy work should
+> still be tracked in GitHub Issues.
+
 This project deploys to Pebblehost/cPanel, where the production web root is `public_html/` and the PHP API lives under `public_html/api/`.
 
 Use this document when changing the deploy pipeline. The goal is to make deploys repeatable, cache-safe, and compatible with shared hosting constraints.
@@ -308,7 +313,11 @@ Example contents:
 
 The frontend can optionally expose this in `/admin` so you can confirm what version is live.
 
-## Suggested Codex task: deploy workflow refresh
+## Historical task template: deploy workflow refresh
+
+The deploy workflow refresh is mostly complete in the current repo. Keep this
+template as an operational reference for future deploy workflow audits, not as
+an open checklist.
 
 ```text
 Read AGENTS.md and docs/deployment-automation.md.

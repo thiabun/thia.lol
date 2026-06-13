@@ -1,5 +1,8 @@
 # Codex Collaboration Guide
 
+> **Status: Active operating guide.** This file defines repository constraints,
+> deployment invariants, verification expectations, and Codex workflow rules.
+
 This repository is for `thia.lol`, a static-first social platform hosted on Pebblehost/cPanel.
 
 Read this file before making changes. The project is intentionally shaped around cPanel constraints, so do not replace the architecture with a server framework, hosted edge runtime, or Vercel-only workflow unless explicitly requested.

@@ -1,10 +1,16 @@
 # Public Testing Launch Checklist
 
+> **Status: Operational reference.** Use this for deploy, migration, smoke,
+> manual testing, and go/no-go checks around public testing. Active follow-up
+> work should be filed in GitHub Issues instead of tracked in this checklist.
+
 ## Purpose
 
 This is the practical pre-launch and public-testing checklist for `thia.lol`. Use it before opening a wider testing window, after deploys, and when coordinating checks between Thia, Codex, and public testers.
 
-This checklist does not replace the roadmap, readiness spec, deployment docs, migration runner guide, or product triage. It pulls the launch-critical steps into one place.
+This checklist does not replace the v2 plan, deployment docs, migration runner
+guide, media/upload docs, or active GitHub Issues. It pulls the launch-critical
+steps into one place.
 
 ## Current Launch Position
 
@@ -14,7 +20,8 @@ This checklist does not replace the roadmap, readiness spec, deployment docs, mi
 - Major public-testing cleanup passes are mostly complete: public profile cleanup, thread/reply pass, room v2 foundation, reports v2 for posts, route-level lazy loading, legal pages, uploads, badges, follows/moots, notifications, and moots-only chat foundation are present.
 - Authenticated manual testing may still be needed for mutating flows such as profile saves, room edits, uploads, replies, reblogs, reports, chat, badge grants, and deletes.
 - Authenticated smoke testing is no longer a planning blocker for docs work. Thia may run manual authenticated testing when needed.
-- Remaining known work is tracked in `docs/public-testing-project-triage.md`.
+- Remaining known work should be tracked in GitHub Issues. Use
+  `docs/public-readiness-v2-plan.md` for current v2 orientation and issue links.
 
 ## Pre-Launch Code Checklist
 
@@ -91,6 +98,7 @@ public_html/
   20260610_0010_add_room_soft_delete.sql
   20260611_0001_add_user_blocks_and_mutes.sql
   20260612_0001_add_profile_modules.sql
+  20260613_0001_add_profile_featured_content.sql
   ```
 
 - [ ] Do not run migrations silently. Record who ran them, when, what was pending, and what the runner reported.
@@ -240,7 +248,7 @@ For sensitive safety, privacy, account, or moderation concerns, avoid posting pr
 
 ## Known Limitations
 
-- Chat page still lacks a native moot picker or start-DM flow. Chat can start from a moot profile or direct supported flow, but the Chat page itself lists existing conversations only.
+- Chat has a native "Message a moot" picker and profile-to-chat start flow. Broader non-moot requests, group chat, attachments, realtime behavior, and retention/deletion tooling remain deferred.
 - Profile, room, and chat-message report paths are implemented for public testing, but deeper moderation workflows such as room-specific queues, message deletion, retention tooling, and user-visible report status remain deferred.
 - Block, mute, and remove-follower API/data foundation exists, but full frontend profile/follower controls and settings lists are still follow-up work.
 - Notification controls, grouping, pagination, and high-volume controls are deferred.
@@ -274,7 +282,7 @@ No-go if:
 ## After Launch
 
 - Triage incoming GitHub Issues.
-- Label issues with the roadmap labels from `docs/public-testing-roadmap.md` and `docs/public-testing-project-triage.md`.
+- Label issues using the v2 label guidance in `docs/public-readiness-v2-plan.md` and the project workflow tracked by issue [#16](https://github.com/thiabun/thia.lol/issues/16).
 - Prioritize P0/P1 bugs that block loading, posting, profiles, rooms, auth, uploads, safety, moderation, or deploy confidence.
-- Keep `docs/public-testing-project-triage.md` updated as launch reality changes.
+- Keep active launch reality in GitHub Issues and update operational docs only when their procedures change.
 - Avoid feature creep during public testing. Prefer fixing broken or confusing existing behavior before expanding scope.

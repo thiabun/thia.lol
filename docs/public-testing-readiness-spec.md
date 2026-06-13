@@ -1,8 +1,19 @@
 # Public Testing Readiness Spec
 
-This document is the source of truth for the public-testing cleanup pass. Read it before implementing any large cleanup, bug-fix, profile, room, thread, chat, performance, or public-copy polish work.
+> **Status: Historical / superseded.** This was the v1 public-testing cleanup
+> implementation spec. Preserve its safety, migration, legal, upload, and
+> API-smoke warnings, but do not use it as the active tracker for v2 work.
+> Active work now belongs in GitHub Issues, with orientation in
+> `docs/public-readiness-v2-plan.md`.
 
-The goal is to prepare `thia.lol` for public testing without losing product decisions in a long prompt. If a task asks for public testing readiness, treat this file as required context alongside `AGENTS.md`, `docs/product-audit-and-roadmap.md`, `docs/thia-migration-runner-guide.md`, `docs/media-uploads.md`, and `docs/profile-badges-plan.md`.
+This document is a historical source for the public-testing cleanup pass. Read
+it when investigating why v1 cleanup decisions were made, or when a current
+GitHub Issue explicitly points here for context.
+
+The original goal was to prepare `thia.lol` for public testing without losing
+product decisions in a long prompt. Current v2 tasks should instead start from
+`AGENTS.md`, `docs/public-readiness-v2-plan.md`, the relevant operational docs,
+and the GitHub Issue acceptance criteria.
 
 ## Core objective
 

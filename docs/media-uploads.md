@@ -1,5 +1,9 @@
 # Image Uploads
 
+> **Status: Operational reference.** Use this for current image upload behavior,
+> cPanel storage, file limits, conversion rules, and deploy preservation
+> requirements. Future upload work should be tracked in GitHub Issues.
+
 `thia.lol` supports authenticated image uploads for profile customization, post images, and room customization.
 
 ## Storage

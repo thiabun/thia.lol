@@ -1,5 +1,10 @@
 # Thia migration runner guide
 
+> **Status: Operational reference.** Use this when committed SQL migrations need
+> to be checked or applied on the live cPanel database. Do not run migrations
+> silently, do not commit migration tokens, and do not mark API-backed smoke as
+> passed without a working API path.
+
 This is the practical version of running database migrations for `thia.lol` without turning phpMyAdmin into a ritual sacrifice.
 
 Use this when Codex adds a new SQL file under `backend/database/migrations/` and you need to apply it on the live cPanel database.
@@ -32,10 +37,15 @@ api/ contents -> public_html/api/
 backend/database/migrations/*.sql -> public_html/api/migrations/
 ```
 
-For the block/mute/remove-follower foundation, make sure this file exists on the server:
+For the current issue or deploy, use the migration filenames listed in the
+issue, pull request, commit summary, or launch checklist. Recent feature-gating
+migrations to check commonly include:
 
 ```text
+public_html/api/migrations/20260610_0010_add_room_soft_delete.sql
 public_html/api/migrations/20260611_0001_add_user_blocks_and_mutes.sql
+public_html/api/migrations/20260612_0001_add_profile_modules.sql
+public_html/api/migrations/20260613_0001_add_profile_featured_content.sql
 ```
 
 Also make sure the server config has a migration token set in:
@@ -74,13 +84,16 @@ await fetch('/api/admin/migrations/status', {
 }))
 ```
 
-Look for the new migration:
+Look for the relevant migration file or files. For example:
 
 ```text
+20260610_0010_add_room_soft_delete.sql
 20260611_0001_add_user_blocks_and_mutes.sql
+20260612_0001_add_profile_modules.sql
+20260613_0001_add_profile_featured_content.sql
 ```
 
-If it says `applied: false`, it is pending and ready to run.
+If a required migration says `applied: false`, it is pending and ready to run.
 
 ## Step 3: run pending migrations
 
@@ -105,15 +118,20 @@ A good result should show `ok: true` and list the migration as applied or skippe
 
 ## Step 4: check status again
 
-Run the status command again and confirm:
+Run the status command again and confirm every required migration reports
+`applied: true`. For example:
 
 ```text
+20260610_0010_add_room_soft_delete.sql -> applied: true
 20260611_0001_add_user_blocks_and_mutes.sql -> applied: true
+20260612_0001_add_profile_modules.sql -> applied: true
+20260613_0001_add_profile_featured_content.sql -> applied: true
 ```
 
 ## Step 5: test the feature
 
-After the block/mute/remove-follower migration, test these URLs:
+After running migrations, test health first, then test the URLs that match the
+feature being enabled:
 
 ```text
 https://thia.lol/api/health
@@ -121,6 +139,7 @@ https://thia.lol/api/health?db=1
 https://thia.lol/api/profiles/thia
 https://thia.lol/api/profiles/thia/followers
 https://thia.lol/api/profiles/thia/following
+https://thia.lol/api/profiles/thia/modules
 https://thia.lol/api/chat/moots
 https://thia.lol/@thia
 ```

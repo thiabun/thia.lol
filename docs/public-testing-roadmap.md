@@ -1,10 +1,16 @@
 # Public Testing Roadmap
 
-This roadmap tracks the public-testing work for `thia.lol`. It is meant to be readable by testers, contributors, Codex, and future Thia at 3 a.m. wondering what the app was supposed to become.
+> **Status: Historical / superseded.** This was the v1 public-testing roadmap.
+> The priority list below is preserved for context, but active v2 work is now
+> tracked in GitHub Issues and oriented by `docs/public-readiness-v2-plan.md`.
+> Do not use this file as the current task queue.
 
-For implementation details, read:
+This roadmap tracked the public-testing work for `thia.lol`. It is meant to be readable by testers, contributors, Codex, and future Thia at 3 a.m. wondering what the app was supposed to become.
+
+For historical implementation details, read:
 
 - `AGENTS.md`
+- `docs/public-readiness-v2-plan.md` for current v2 orientation
 - `docs/public-testing-readiness-spec.md`
 - `docs/public-testing-readiness-audit.md`
 - `docs/product-audit-and-roadmap.md`
@@ -13,55 +19,15 @@ For implementation details, read:
 
 ## Board setup recommendation
 
-Use GitHub Issues and a GitHub Project board named:
-
-```text
-thia.lol Public Testing
-```
-
-Suggested board statuses:
-
-- Inbox
-- Needs triage
-- Ready
-- In progress
-- Needs review
-- Blocked
-- Done
-
-Suggested labels, if/when labels are configured:
-
-- `type: bug`
-- `type: feature`
-- `type: polish`
-- `type: performance`
-- `type: docs`
-- `type: test`
-- `type: security`
-- `type: database`
-- `type: api`
-- `type: frontend`
-- `type: ux`
-- `area: profiles`
-- `area: rooms`
-- `area: posts`
-- `area: threads`
-- `area: chat`
-- `area: uploads`
-- `area: moderation`
-- `area: admin`
-- `area: legal`
-- `area: deploy`
-- `priority: p0`
-- `priority: p1`
-- `priority: p2`
-- `priority: p3`
-- `codex-ready`
-- `needs-human-test`
-- `blocked`
-- `public-testing`
+This v1 board/label recommendation is superseded. Use the v2 board and label
+guidance in `docs/public-readiness-v2-plan.md`, and track setup through issue
+[#16](https://github.com/thiabun/thia.lol/issues/16).
 
 ## Current public-testing priorities
+
+The priority list below is historical. Some items are now implemented, some are
+manual verification tasks, and the remaining work should be represented as
+GitHub Issues instead of edited here.
 
 ### P0: Verify auth-backed production smoke
 

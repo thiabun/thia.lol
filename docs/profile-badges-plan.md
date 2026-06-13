@@ -1,5 +1,9 @@
 # Profiles and Badges Foundation
 
+> **Status: Active product reference.** Use this for the current profile and
+> badge foundation. Track future profile/badge implementation work in GitHub
+> Issues rather than extending this document into a task queue.
+
 Date: 2026-06-10
 
 This document captures the Phase 3 foundation for profile identity pages and badges. Badges v1 is now implemented as real persisted profile status objects with admin grant/revoke controls and featured profile display. It does not introduce an automatic badge-awarding engine yet.
@@ -128,7 +132,10 @@ Recommended first edit shape:
 - avatar URL
 - up to five links
 
-Do not add uploads until storage, scanning/moderation, file limits, and deletion behavior are defined.
+Authenticated image uploads now exist for profile avatar/banner customization.
+Do not add non-image uploads, arbitrary embeds, or broader media lifecycle
+features until scanning/moderation, file limits, deletion behavior, and
+retention expectations are defined.
 
 ## Badge Model
 

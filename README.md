@@ -63,7 +63,8 @@ Some of these are still v1 foundations and need public testing before they can b
 
 ## What is still being improved
 
-The current public-testing focus is:
+Active v2 work is tracked in GitHub Issues and the project board, not in long
+planning docs. Current focus areas include:
 
 - cleaner profile layout
 - better room settings and moderation tools
@@ -75,13 +76,17 @@ The current public-testing focus is:
 - fewer awkward legacy words and generated-sounding copy
 - better smoke tests against real API behavior
 
-See the project planning docs for the full messy map:
+Use these docs for current context:
 
 ```text
+docs/public-readiness-v2-plan.md
 docs/product-audit-and-roadmap.md
-docs/public-testing-readiness-spec.md
-docs/public-testing-readiness-audit.md
+docs/public-testing-launch-checklist.md
 ```
+
+The older public-testing readiness spec, roadmap, triage, and audit docs are
+historical records from v1 cleanup passes. They remain useful for context, but
+GitHub Issues are the active tracker for new v2 work.
 
 ## How it works
 
@@ -121,7 +126,7 @@ Before changing code, read:
 
 ```text
 AGENTS.md
-docs/public-testing-readiness-spec.md
+docs/public-readiness-v2-plan.md
 docs/product-audit-and-roadmap.md
 ```
 

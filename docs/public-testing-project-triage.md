@@ -1,5 +1,9 @@
 # Public Testing Project Triage
 
+> **Status: Historical / superseded.** This is a v1 transition triage record.
+> Active Public Readiness v2 work should be tracked in GitHub Issues and the
+> project-board workflow from `docs/public-readiness-v2-plan.md`.
+
 > V2 transition note, 2026-06-11: this document is now a historical v1 transition
 > triage. Use `docs/public-readiness-v2-plan.md` plus GitHub Issues as the
 > active Public Readiness v2 planning and work-tracking sources.
@@ -182,55 +186,9 @@ Items where existing docs no longer match the repository or the latest project c
 
 ## Recommended GitHub Project Structure
 
-Use a GitHub Project named:
-
-```text
-thia.lol Public Testing
-```
-
-Suggested columns:
-
-- Inbox
-- Ready
-- In Progress
-- Review
-- Blocked
-- Done
-
-Suggested labels:
-
-- `type: bug`
-- `type: feature`
-- `type: polish`
-- `type: docs`
-- `type: performance`
-- `type: test`
-- `area: api`
-- `area: auth`
-- `area: deploy`
-- `area: docs`
-- `area: feeds`
-- `area: profiles`
-- `area: posts`
-- `area: threads`
-- `area: rooms`
-- `area: chat`
-- `area: uploads`
-- `area: notifications`
-- `area: moderation`
-- `area: admin`
-- `area: badges`
-- `area: legal`
-- `area: tests`
-- `priority: p0`
-- `priority: p1`
-- `priority: p2`
-- `priority: p3`
-- `codex-ready`
-- `needs-human-test`
-- `needs-product-decision`
-- `blocked`
-- `public-testing`
+This v1 project recommendation is superseded. Use the v2 project-board and
+label guidance in `docs/public-readiness-v2-plan.md`, and track setup through
+issue [#16](https://github.com/thiabun/thia.lol/issues/16).
 
 Recommended Project cards without immediate GitHub Issues:
 

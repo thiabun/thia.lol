@@ -1,5 +1,10 @@
 # thia.lol Product Audit and Roadmap
 
+> **Status: Active product reference.** Use this for architecture, feature
+> inventory, and product guardrails. The older prioritized roadmap sections are
+> background context only; active v2 work is tracked in GitHub Issues and
+> `docs/public-readiness-v2-plan.md`.
+
 Date: 2026-06-10
 
 This audit captures the current product and technical state before adding more social features. It is intentionally scoped to planning: no auth, session, API, database, or runtime behavior changes are part of this document.
@@ -65,6 +70,10 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
   - `20260610_0007_add_badges.sql`
   - `20260610_0008_add_rooms_2_foundation.sql`
   - `20260610_0009_moderation_reports_2_foundation.sql`
+  - `20260610_0010_add_room_soft_delete.sql`
+  - `20260611_0001_add_user_blocks_and_mutes.sql`
+  - `20260612_0001_add_profile_modules.sql`
+  - `20260613_0001_add_profile_featured_content.sql`
 - Reblog migration exists and Phase 7 wires a real reblog product flow.
 
 ### Deployment
@@ -96,16 +105,16 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
 | Feature | Classification | Current State | Main Product Gaps |
 | --- | --- | --- | --- |
 | Auth | Working, partial | Register, login, logout, session persistence, CSRF, cookie diagnostics, rate limiting, admin setup support. | Needs broader account settings, password reset/email verification decisions, consent/legal integration, production hardening review. |
-| Posts | Working, partial | Public top-level posts can be created, listed, deleted by author, hidden by moderators/admins, and shown in home/discover/profile/room feeds. | No media uploads, drafts, editing UI, visibility controls, audience controls, advanced moderation states, or feed ranking. |
+| Posts | Working, partial | Public top-level posts can be created, listed, deleted by author, hidden by moderators/admins, shown in home/discover/profile/room feeds, and include image media through the authenticated upload path. | No drafts, editing UI, visibility controls, audience controls, advanced moderation states, or user-facing feed controls. |
 | Replies | Working, improved | Replies exist through `parent_id`, thread modal, reply creation, reply counts, ordered reply loading, reply notifications, reply media uploads, reply-level like/reblog/report/delete controls, lazy nested reply display, and parent/root visibility filtering for the rendered thread depth. | No deep permalink/thread page, no unbounded recursive thread/root model, and no production-authenticated verification while login is rate-limited. |
 | Reblogs | Working, foundation | `post_reblogs` stores one reblog per post/user. API routes support reblog/undo, post payloads expose counts/state/context, Home can label followed-user reblogs, profile Reblogs is API-backed, PostCard has a Reblog action, and reblog notifications are created. | Quote-posts are deferred. Needs production tuning for duplicate feed rows, richer notification grouping, and longer-term safety controls around high-volume resharing. |
 | Rooms | Working, v2 foundation | Public room list/detail pages, room search, room post feeds, room destination in composer, room creation/editing, customization fields, owner/member roles, join/leave, member counts, member listing, moderator add/remove controls, soft deletion, and admin metadata now exist. | Private/member rooms, ownership transfer, full room moderation queues, bans/mutes UI, hard-delete/export-retention decisions, and richer governance workflows are deferred. |
 | Profiles | Partial, foundation improved | Public profile pages show avatar, display name, handle, bio, location, structured Connections, joined date, compact follower/following/moot/badge panels, public stats, posts, replies, rooms, and real badge display. Registration creates a basic profile. See `docs/profile-badges-plan.md`. | Needs privacy controls, pinned posts, hidden-badge management UI, and richer identity controls. |
-| Follows/Moots | Working, foundation | Users can follow/unfollow active profiles, profile payloads expose follower/following/moot counts and current-user relationship state, basic followers/following lists exist, and follow/moot notifications are created. | Needs remove-follower controls, block/mute, deeper feed integration, and chat permission enforcement. |
+| Follows/Moots | Working, foundation | Users can follow/unfollow active profiles, profile payloads expose follower/following/moot counts and current-user relationship state, basic followers/following lists exist, follow/moot notifications are created, and moots gate the current DM surface. | Needs remove-follower controls, block/mute frontend completion, deeper feed integration, and broader safety decisions before chat reach expands. |
 | Badges | Working, v1 foundation | `badges` and `user_badges` persist real badge definitions and earned grants. Starter definitions are seeded without fake user grants. Public endpoints expose definitions and profile badges, users can feature badges, admins/moderators can grant/revoke badges, profile headers show featured badges, the Badges focused panel shows earned badges, and badge grants create notifications when notification storage is available. | Automatic earning rules, full hidden-badge management UI, definition editor UI, room-earned/social criteria, and abuse-resistant criteria/progress models are deferred. |
 | Likes | Working, partial | Like/unlike maps to `post_reactions.type = glow`; UI shows like count and liked state. | Reaction naming is internally broader than UI. Needs transparent counts, optional hiding/muting decisions, anti-spam/rate-limit review, and adult-focused non-manipulative loop design. |
 | Notifications | Working, foundation | Private notifications exist for follows, moots, likes, replies, reblogs, messages, and badge grants. Authenticated users can view notifications, see unread count, mark one read, and mark all read. | Needs push/email decisions, notification preferences, richer grouping, pagination, read-on-open behavior decisions, and safety controls around high-volume activity. |
-| Admin/moderation | Working, v2 foundation | Reports can be created from posts with structured target, category, details, reporter, and timestamp fields. Admins/moderators can view open reports first, see category, target type, target summary, reporter/reported summaries, created date, status, details, moderator notes, and action counts. Admins/moderators can mark reports reviewed, dismiss reports, hide/remove reported posts, suspend reported users, and mark linked reports actioned. | Appeals, profile/room/message report UI, room owner/mod queues, room bans/mutes, advanced audit logs, law-enforcement/legal request workflows, admin notification routing, and public report-status views are deferred. |
+| Admin/moderation | Working, v2 foundation | Reports can be created from posts/replies, profiles, rooms, and individual chat messages with structured target, category, details, reporter, and timestamp fields. Admins/moderators can view open reports first, see category, target type, target summary, reporter/reported summaries, created date, status, details, moderator notes, and action counts. Admins/moderators can mark reports reviewed, dismiss reports, hide/remove reported posts, suspend reported users, and mark linked reports actioned. | Appeals, room owner/mod queues, room bans/mutes, message deletion/retention tooling, advanced audit logs, law-enforcement/legal request workflows, admin notification routing, and public report-status views are deferred. |
 | Discover/Home | Working, foundation | Home uses `/api/feed/home` for a personalized ranked feed when logged in and a general ranked feed when logged out. Discover uses `/api/feed/discover` for ranked public posts plus active rooms and people to watch only when backed by real data. | Needs user feed controls, chronological mode, hide/mute/block controls, joined-room weighting after memberships exist, and better transparency surfaces. |
 | Search | Working, v1 foundation | `/search` and `GET /api/search?q=...` search public profiles and public, non-deleted rooms with simple prepared SQL matching and grouped frontend results. | Posts, autocomplete, full-text indexing, advanced ranking, saved searches, analytics, private message search, and admin search are deferred. |
 | Chat/DMs | Working, v1 foundation | `/chat` is a real private 1:1 direct-message surface for moots only. Conversation/message tables exist, API endpoints enforce authentication and membership, and profiles show Message only for moot relationships. | Attachments, post/room sharing, group chats, push/email notifications, realtime polling/WebSockets, message reporting, blocking, deletion, retention controls, and broader request/inbox behavior are deferred. |
@@ -181,7 +190,7 @@ Chat should start as moots-first direct messages:
 
 ### Admin Navigation
 
-Admin should be removed from the main desktop navigation and live inside the account popover for admins only. The current account popover already includes Admin for admins, but the desktop nav still includes Admin for admins. That should be cleaned up in Phase 1.
+Admin should live inside the account popover for admins only and should not occupy primary navigation. The current shell follows that direction; keep future admin entry points scoped to authenticated admin contexts.
 
 ## 4. Navigation Proposal
 
@@ -210,7 +219,7 @@ Notes:
 
 - Post should remain a primary creation action.
 - Admin should not occupy primary navigation.
-- Chat currently links to an honest coming-soon placeholder. Do not add working messaging until the product has a moots/social graph and safety model.
+- Chat is now a working moots-only DM route. Do not broaden chat beyond moots or add group/realtime behavior until safety controls, reporting, retention, and moderation expectations are scoped.
 
 ## 5. Suggested Database Areas to Audit Later
 
@@ -271,12 +280,16 @@ Specific audit questions:
 
 ## 7. Prioritized Implementation Roadmap
 
+This roadmap section is historical context from the v1 audit. Current work
+items should be GitHub Issues, with v2 orientation in
+`docs/public-readiness-v2-plan.md`.
+
 ### Phase 1: Product Shell, Navigation, and Copy Cleanup
 
 Goal: make the current platform shell coherent before deeper features.
 
 - Remove Admin from primary desktop nav; keep Admin inside account popover for admins only.
-- Add Chat nav placeholder only if it clearly communicates unavailable/coming-soon state.
+- Keep Chat positioned as a moots-only DM surface; do not broaden reach without a separate safety/product issue.
 - Clarify Home vs Discover copy.
 - Decide whether Home is logged-in-first or public-first.
 - Clean up any remaining labels that imply missing features are complete.
@@ -386,7 +399,7 @@ Goal: give members private feedback when people interact with them.
   - Badge grant notifications are created when a moderator/admin grants a badge.
   - The UI exposes notifications through a header bell and `/notifications` page with empty, loading, error, unread, mark-one-read, and mark-all-read states.
 - Deferred:
-  - Reblog notifications are active through Phase 7.
+  - Reblog notifications are implemented; richer grouping and preferences remain deferred.
   - Push notifications and email notifications.
   - Notification preferences.
   - Notification grouping, pagination, and high-volume controls.
@@ -461,15 +474,15 @@ Goal: make reporting structured enough for practical admin review without buildi
   - Report categories are standardized as `harassment`, `hate`, `sexual_content`, `non_consensual_content`, `private_info`, `spam_or_scam`, `impersonation`, `copyright`, `violence_or_threats`, `self_harm`, `illegal_content`, and `other`.
   - Post report UI asks "What's wrong?", captures optional details, shows a clear "Report sent" success state, and links to `/community-guidelines`, `/moderation`, and `/copyright` when copyright is selected.
   - `/api/reports` accepts `targetType`, `targetId`, `category`, and optional `details`; old `reason` values map into canonical categories for compatibility.
-  - Post reports are implemented. Existing profile/user reporting remains API-compatible but no public profile report UI is exposed yet.
-  - Room and message targets are intentionally deferred and rejected by the API until their moderation context is designed.
+  - Post/reply, profile, room, and chat-message report paths are implemented with scoped public UI and API validation.
+  - Chat-message reports require conversation membership and expose only a target summary to admin review, not adjacent private message content.
   - `/api/admin/reports` is limited to admins/moderators and returns category, target, reporter, reported user, post summary, review, action, and note fields.
   - Admins/moderators can mark reports reviewed, dismiss reports, hide or remove reported posts, and suspend reported users. Hide/remove/suspend actions mark linked reports as `actioned`.
   - Report statuses are `open`, `reviewed`, `dismissed`, and `actioned`.
 - Deferred:
   - Appeals and user-visible report/action status.
-  - Public profile, room, and message report UI.
   - Room owner/mod report queues, room bans, room mutes, and room-specific enforcement logs.
+  - Message deletion, retention, escalation, and broader private-message moderation tooling.
   - Advanced immutable audit logs, moderation analytics, and transparency exports.
   - Law-enforcement, legal request, emergency escalation, and rights-holder workflow tooling.
   - Admin/mod notification routing for new reports.
