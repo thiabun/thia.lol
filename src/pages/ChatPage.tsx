@@ -972,48 +972,59 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
     <div className={cn("group/message flex", mine ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[min(28rem,78%)] rounded-[1.125rem] px-3 py-2 text-sm leading-5 shadow-soft transition duration-fluid ease-fluid",
+          "relative mb-1 max-w-[min(28rem,78%)] rounded-[1.125rem] px-3 py-2 text-sm leading-5 shadow-soft transition duration-fluid ease-fluid",
           mine
             ? "bg-accent text-accent-ink"
             : "border border-line bg-canvas/65 text-text hover:border-line-strong",
         )}
       >
-        <p className="whitespace-pre-wrap break-words">{message.body}</p>
-        <div
-          className={cn(
-            "mt-1 flex flex-wrap items-center gap-1.5 text-[0.68rem] leading-none",
-            mine ? "text-accent-ink/70" : "text-muted",
-          )}
-        >
-          <span>{formatChatTime(message.createdAt)}</span>
-          {canReport && message.deletedAt === null ? (
-            <>
-              <span className="text-current/45" aria-hidden="true">
-                •
-              </span>
-              <ReportForm
-                className="contents"
-                targetType="message"
-                targetId={message.id}
-                reportedUserId={message.sender.id}
-                title="Report message"
-                explainer="This reports this chat message to moderators."
-                triggerMode="icon"
-                triggerLabel="Report message"
-                triggerSize="compact"
-                triggerIconSize={12}
-                triggerClassName={cn(
-                  "-my-1.5 size-8 opacity-45 transition duration-fluid ease-fluid hover:opacity-100 focus-visible:opacity-100 group-hover/message:opacity-80 group-focus-within/message:opacity-100 motion-reduce:transition-none",
-                  mine
-                    ? "text-accent-ink/70 hover:bg-accent-ink/12 hover:text-accent-ink focus-visible:bg-accent-ink/14 focus-visible:text-accent-ink"
-                    : "text-muted hover:bg-accent/10 hover:text-text focus-visible:bg-accent/12 focus-visible:text-text",
-                )}
-                feedbackClassName="basis-full"
-                formClassName="basis-full bg-canvas/80 text-left"
-              />
-            </>
-          ) : null}
+        <div className="relative z-10">
+          <p className="whitespace-pre-wrap break-words">{message.body}</p>
+          <div
+            className={cn(
+              "mt-1 flex flex-wrap items-center gap-1.5 text-[0.68rem] leading-none",
+              mine ? "text-accent-ink/70" : "text-muted",
+            )}
+          >
+            <span>{formatChatTime(message.createdAt)}</span>
+            {canReport && message.deletedAt === null ? (
+              <>
+                <span className="text-current/45" aria-hidden="true">
+                  •
+                </span>
+                <ReportForm
+                  className="contents"
+                  targetType="message"
+                  targetId={message.id}
+                  reportedUserId={message.sender.id}
+                  title="Report message"
+                  explainer="This reports this chat message to moderators."
+                  triggerMode="icon"
+                  triggerLabel="Report message"
+                  triggerSize="compact"
+                  triggerIconSize={11}
+                  triggerClassName={cn(
+                    "-my-1 size-7 border border-transparent opacity-45 transition duration-fluid ease-fluid hover:opacity-100 focus-visible:opacity-100 group-hover/message:opacity-75 group-focus-within/message:opacity-100 motion-reduce:transition-none",
+                    mine
+                      ? "text-accent-ink/70 hover:border-accent-ink/20 hover:bg-accent-ink/8 hover:text-accent-ink focus-visible:border-accent-ink/25 focus-visible:bg-accent-ink/10 focus-visible:text-accent-ink"
+                      : "text-muted hover:border-line-strong/70 hover:bg-canvas/60 hover:text-text focus-visible:border-line-strong focus-visible:bg-canvas/70 focus-visible:text-text",
+                  )}
+                  feedbackClassName="basis-full"
+                  formClassName="basis-full bg-canvas/80 text-left"
+                />
+              </>
+            ) : null}
+          </div>
         </div>
+        <span
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute bottom-0 size-3 translate-y-1/2 rotate-45 rounded-[0.18rem]",
+            mine
+              ? "right-4 bg-accent"
+              : "left-4 border-b border-l border-line bg-canvas/65",
+          )}
+        />
       </div>
     </div>
   );

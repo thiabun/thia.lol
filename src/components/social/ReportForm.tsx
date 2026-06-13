@@ -96,7 +96,7 @@ export function ReportForm({
         className={cn(
           iconTrigger
             ? compactIconTrigger
-              ? "min-h-0 size-7 rounded-full px-0 text-muted"
+              ? "min-h-0 size-7 rounded-[0.45rem] px-0 text-muted"
               : "rounded-full text-muted"
             : undefined,
           triggerClassName,
