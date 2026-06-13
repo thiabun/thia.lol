@@ -20,9 +20,10 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { ReportForm } from "../components/social/ReportForm";
+import { Avatar } from "../components/ui/Avatar";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { RouteHeader, RouteStateNotice } from "../components/ui/RouteState";
@@ -868,45 +869,94 @@ function ConversationButton({
   selected,
 }: ConversationButtonProps) {
   const lastMessage = conversation.lastMessage?.body ?? "No messages yet";
+  const participant = conversation.otherParticipant;
+  const profilePath = `/@${participant.handle}`;
 
   return (
     <div
-      className={cn(
-        "group flex w-full items-center gap-2 px-3 py-2.5 text-left transition duration-fluid ease-fluid sm:gap-3 sm:px-4",
-        selected ? "bg-surface-strong" : "hover:bg-canvas/55",
-      )}
+      className="group relative isolate flex min-h-[4.75rem] w-full items-center gap-3 px-4 py-3 text-left transition duration-fluid ease-fluid"
       data-testid={`chat-conversation-row-${conversation.id}`}
     >
-      <UserIdentityLink
-        user={conversation.otherParticipant}
-        avatarSize="sm"
-        className="min-h-12 w-40 max-w-[45%] shrink-0 rounded-control px-1 py-1 sm:w-44"
-      />
       <motion.button
         type="button"
         className={cn(
-          "flex min-h-12 min-w-0 flex-1 items-center justify-between gap-3 rounded-control px-3 py-2 text-left transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+          "absolute inset-0 z-0 bg-transparent text-left transition duration-fluid ease-fluid focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/45",
           selected
-            ? "bg-canvas/70 text-text"
-            : "text-muted hover:bg-surface-strong/80 hover:text-text",
+            ? "bg-surface-strong/86"
+            : "group-hover:bg-surface-strong/58 group-focus-within:bg-surface-strong/48",
         )}
-        aria-label={`Open chat with ${conversation.otherParticipant.displayName}`}
+        aria-label={`Open chat with ${participant.displayName}`}
         aria-pressed={selected}
+        data-testid={`chat-conversation-open-${conversation.id}`}
         onClick={onClick}
-        whileTap={{ scale: 0.992 }}
+        whileTap={{ scale: 0.996 }}
       >
+        <span className="sr-only">
+          Open chat with {participant.displayName}
+        </span>
+      </motion.button>
+
+      <span
+        className={cn(
+          "pointer-events-none absolute bottom-3 left-0 top-3 z-10 w-0.5 rounded-full bg-accent transition duration-fluid ease-fluid",
+          selected
+            ? "opacity-100"
+            : "opacity-0 group-hover:opacity-45 motion-reduce:transition-none",
+        )}
+        aria-hidden="true"
+      />
+
+      <div className="pointer-events-none relative z-10 flex min-w-0 shrink-0 items-center gap-3 sm:w-44">
+        <Link
+          to={profilePath}
+          aria-label={`${participant.displayName}'s profile`}
+          className="pointer-events-auto grid size-11 shrink-0 place-items-center rounded-full transition duration-fluid ease-fluid hover:scale-[1.03] hover:ring-2 hover:ring-accent/35 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:hover:scale-100"
+          data-testid={`chat-conversation-avatar-${conversation.id}`}
+        >
+          <Avatar user={participant} size="sm" />
+        </Link>
+        <span className="pointer-events-none min-w-0">
+          <Link
+            to={profilePath}
+            className="pointer-events-auto block w-fit max-w-full truncate rounded-control text-sm font-semibold text-text underline-offset-4 transition duration-fluid ease-fluid hover:text-accent-strong hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            data-testid={`chat-conversation-name-${conversation.id}`}
+          >
+            {participant.displayName}
+          </Link>
+          <Link
+            to={profilePath}
+            className="pointer-events-auto mt-0.5 block w-fit max-w-full truncate rounded-control text-xs text-muted underline-offset-4 transition duration-fluid ease-fluid hover:text-accent-strong hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            data-testid={`chat-conversation-handle-${conversation.id}`}
+          >
+            @{participant.handle}
+          </Link>
+        </span>
+      </div>
+
+      <div className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center justify-between gap-3 text-muted transition duration-fluid ease-fluid group-hover:text-text">
         <span className="min-w-0">
-          <span className="block truncate text-sm font-medium">{lastMessage}</span>
-          <span className="mt-0.5 block text-xs text-muted">
+          <span
+            className="block truncate text-sm font-medium"
+            data-testid={`chat-conversation-preview-${conversation.id}`}
+          >
+            {lastMessage}
+          </span>
+          <span
+            className="mt-0.5 block text-xs text-muted"
+            data-testid={`chat-conversation-timestamp-${conversation.id}`}
+          >
             {formatConversationTime(conversation)}
           </span>
         </span>
         {conversation.unreadCount > 0 ? (
-          <span className="shrink-0 rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-accent-ink shadow-soft">
+          <span
+            className="shrink-0 rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-accent-ink shadow-soft"
+            data-testid={`chat-conversation-unread-${conversation.id}`}
+          >
             {conversation.unreadCount}
           </span>
         ) : null}
-      </motion.button>
+      </div>
     </div>
   );
 }

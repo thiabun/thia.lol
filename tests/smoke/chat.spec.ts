@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { loginWithEnv, skipWithoutCredentials } from "../helpers/auth";
 
 type ApiEnvelope<T> = {
@@ -42,13 +42,82 @@ test("authenticated chat renders conversations and message composer", async ({
   ).toHaveAttribute("href", "/@mootfriend");
   await page
     .getByTestId("chat-conversation-row-10")
-    .getByRole("button", { name: "Open chat with Moot Friend" })
+    .getByTestId("chat-conversation-open-10")
     .click();
   await expect(page).toHaveURL(/\/chat\?conversation=10$/);
   await expect(page.getByTestId("chat-message-list")).toContainText("hello from a moot");
   await expect(page.getByTestId("chat-message-composer")).toBeVisible();
   await expect(page.getByPlaceholder("Write a message")).toBeVisible();
   await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
+});
+
+test("chat conversation row separates profile links from open targets", async ({
+  page,
+}) => {
+  await mockAuthenticatedChat(page, {
+    conversations: [mockConversation, mockUnreadConversation],
+  });
+
+  await expectChatReset(page);
+  const row = page.getByTestId("chat-conversation-row-10");
+
+  await expect(row.getByTestId("chat-conversation-avatar-10")).toHaveAttribute(
+    "href",
+    "/@mootfriend",
+  );
+  await expect(row.getByTestId("chat-conversation-name-10")).toHaveAttribute(
+    "href",
+    "/@mootfriend",
+  );
+  await expect(row.getByTestId("chat-conversation-handle-10")).toHaveAttribute(
+    "href",
+    "/@mootfriend",
+  );
+
+  await row.getByTestId("chat-conversation-avatar-10").click();
+  await expect(page).toHaveURL(/\/@mootfriend$/);
+
+  await expectChatReset(page);
+  await page.getByTestId("chat-conversation-name-10").click();
+  await expect(page).toHaveURL(/\/@mootfriend$/);
+
+  await expectChatReset(page);
+  await page.getByTestId("chat-conversation-handle-10").click();
+  await expect(page).toHaveURL(/\/@mootfriend$/);
+
+  await expectOpenFromConversationTarget(
+    page,
+    page.getByTestId("chat-conversation-preview-10"),
+  );
+  await expectOpenFromConversationTarget(
+    page,
+    page.getByTestId("chat-conversation-timestamp-10"),
+  );
+  await expectOpenFromConversationTarget(
+    page,
+    page.getByTestId("chat-conversation-unread-11"),
+    11,
+  );
+
+  await expectChatReset(page);
+  const rowBox = await page.getByTestId("chat-conversation-row-10").boundingBox();
+  if (!rowBox) {
+    throw new Error("Conversation row did not render.");
+  }
+  await page.mouse.click(rowBox.x + rowBox.width - 6, rowBox.y + 6);
+  await expect(page).toHaveURL(/\/chat\?conversation=10$/);
+
+  await expectChatReset(page);
+  const openButton = page.getByTestId("chat-conversation-open-10");
+  await openButton.focus();
+  await expect(openButton).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/chat\?conversation=10$/);
+
+  await expectChatReset(page);
+  const nameLink = page.getByTestId("chat-conversation-name-10");
+  await nameLink.focus();
+  await expect(nameLink).toBeFocused();
 });
 
 test("authenticated chat empty state stays route-level", async ({ page }) => {
@@ -319,6 +388,32 @@ test("moots-only conversation creation works with configured test users", async 
   });
 });
 
+async function expectChatReset(page: Page) {
+  await page.goto("/chat");
+  await expect(page).toHaveURL(/\/chat$/);
+  await expect(page.getByTestId("chat-conversation-row-10")).toBeVisible();
+}
+
+async function expectOpenFromConversationTarget(
+  page: Page,
+  target: Locator,
+  conversationId = 10,
+) {
+  await expectChatReset(page);
+  await clickLocatorCenter(page, target);
+  await expect(page).toHaveURL(new RegExp(`/chat\\?conversation=${conversationId}$`));
+}
+
+async function clickLocatorCenter(page: Page, locator: Locator) {
+  const box = await locator.boundingBox();
+
+  if (!box) {
+    throw new Error("Conversation target did not render.");
+  }
+
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+}
+
 async function mockAnonymousShell(page: Page) {
   await page.route("**/api/auth/me", async (route) => {
     await route.fulfill({
@@ -402,6 +497,8 @@ async function mockAuthenticatedChat(
     });
   });
 
+  await mockProfileRoutes(page, mockConversation.otherParticipant);
+
   await page.route("**/api/chat/conversations", async (route) => {
     if (route.request().method() === "POST") {
       const requestBody = route.request().postDataJSON();
@@ -447,22 +544,26 @@ async function mockAuthenticatedChat(
     });
   });
 
-  await page.route("**/api/chat/conversations/10/messages", async (route) => {
+  await page.route("**/api/chat/conversations/*/messages", async (route) => {
+    const conversationId = chatConversationIdFromUrl(route.request().url());
+    const conversation =
+      conversations.find((item) => item.id === conversationId) ?? mockConversation;
+
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         ok: true,
         data: {
-          conversation: mockConversation,
+          conversation,
           messages: [
             {
-              id: 100,
-              conversationId: 10,
-              body: "hello from a moot",
+              id: conversation.lastMessage?.id ?? 100 + conversation.id,
+              conversationId: conversation.id,
+              body: conversation.lastMessage?.body ?? "hello from a moot",
               deletedAt: null,
               createdAt: "2026-06-10 10:00:00",
-              sender: mockConversation.otherParticipant,
+              sender: conversation.otherParticipant,
             },
           ],
         },
@@ -470,19 +571,102 @@ async function mockAuthenticatedChat(
     });
   });
 
-  await page.route("**/api/chat/conversations/10/read", async (route) => {
+  await page.route("**/api/chat/conversations/*/read", async (route) => {
+    const conversationId = chatConversationIdFromUrl(route.request().url());
+
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         ok: true,
         data: {
-          conversationId: 10,
+          conversationId,
           readAt: "2026-06-10 10:00:01",
         },
       }),
     });
   });
+}
+
+function chatConversationIdFromUrl(url: string): number {
+  const match = new URL(url).pathname.match(/\/chat\/conversations\/(\d+)\//);
+
+  return match ? Number(match[1]) : 10;
+}
+
+async function mockProfileRoutes(
+  page: Page,
+  user: typeof mockConversation.otherParticipant,
+) {
+  await page.route(`**/api/profiles/${user.handle}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: makeProfile(user) }),
+    });
+  });
+
+  for (const suffix of [
+    "posts",
+    "replies",
+    "reblogs",
+    "rooms",
+    "followers",
+    "following",
+    "modules",
+  ]) {
+    await page.route(`**/api/profiles/${user.handle}/${suffix}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: [] }),
+      });
+    });
+  }
+
+  await page.route(`**/api/profiles/${user.handle}/badges`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { badges: [], featuredBadges: [] },
+      }),
+    });
+  });
+}
+
+function makeProfile(user: typeof mockConversation.otherParticipant) {
+  return {
+    user,
+    bio: "A public profile.",
+    location: "",
+    bannerUrl: null,
+    profileAccent: null,
+    profileBackground: null,
+    profileTheme: null,
+    links: [],
+    traits: [],
+    stats: {
+      posts: 0,
+      replies: 0,
+      rooms: 0,
+      echoes: 0,
+      followers: 0,
+      following: 0,
+      moots: 0,
+    },
+    followerCount: 0,
+    followingCount: 0,
+    mootCount: 0,
+    isFollowing: true,
+    isFollowedBy: true,
+    isMoot: true,
+    blockedByMe: false,
+    mutedByMe: false,
+    createdAt: "2026-06-10 09:00:00",
+    updatedAt: "2026-06-10 09:00:00",
+  };
 }
 
 const mockConversation = {
@@ -513,6 +697,34 @@ const mockConversation = {
       displayName: "Moot Friend",
       initials: "MF",
       aura: "frost",
+      avatarUrl: null,
+    },
+  },
+};
+
+const mockUnreadConversation = {
+  ...mockConversation,
+  id: 11,
+  lastMessageAt: "2026-06-10 09:30:00",
+  unreadCount: 3,
+  otherParticipant: {
+    id: 3,
+    handle: "unreadmoot",
+    displayName: "Unread Moot",
+    initials: "UM",
+    aura: "tide",
+    avatarUrl: null,
+  },
+  lastMessage: {
+    id: 110,
+    body: "new unread note",
+    createdAt: "2026-06-10 09:30:00",
+    sender: {
+      id: 3,
+      handle: "unreadmoot",
+      displayName: "Unread Moot",
+      initials: "UM",
+      aura: "tide",
       avatarUrl: null,
     },
   },
