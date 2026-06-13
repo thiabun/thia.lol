@@ -14,6 +14,7 @@ type ReportFormProps = {
   disabled?: boolean;
   postId?: number;
   reportedUserId?: number | undefined;
+  triggerMode?: "text" | "icon";
   triggerLabel?: string;
 };
 
@@ -25,6 +26,7 @@ export function ReportForm({
   targetId,
   targetType,
   title,
+  triggerMode = "text",
   triggerLabel = "Report",
 }: ReportFormProps) {
   const { runWithAuth } = useAuth();
@@ -67,12 +69,17 @@ export function ReportForm({
     }
   }
 
+  const iconTrigger = triggerMode === "icon";
+
   return (
     <div>
       <Button
         type="button"
         variant="ghost"
-        size="sm"
+        size={iconTrigger ? "icon" : "sm"}
+        aria-label={iconTrigger ? triggerLabel : undefined}
+        title={iconTrigger ? triggerLabel : undefined}
+        className={iconTrigger ? "rounded-full text-muted" : undefined}
         disabled={disabled || pending}
         icon={<Flag aria-hidden="true" size={15} />}
         onClick={() => {
@@ -81,7 +88,7 @@ export function ReportForm({
           setOpen((current) => !current);
         }}
       >
-        {triggerLabel}
+        {iconTrigger ? null : triggerLabel}
       </Button>
       {message ? (
         <p className="mt-2 text-xs font-medium text-leaf-ink">{message}</p>

@@ -16,7 +16,6 @@ import { motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { PageMeta } from "../components/PageMeta";
-import { Badge } from "../components/ui/Badge";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { RouteHeader, RouteStateNotice } from "../components/ui/RouteState";
@@ -153,7 +152,7 @@ export function NotificationsPage() {
           badge="private"
           badgeTone="cool"
           title="Notifications"
-          description="Private updates from follows, replies, likes, reblogs, messages, and badges."
+          description="Private updates from people interacting with you."
         />
         <RouteStateNotice
           icon={Bell}
@@ -189,13 +188,13 @@ export function NotificationsPage() {
           badge="private"
           badgeTone="cool"
           title="Notifications"
-          description="Private updates from follows, replies, likes, reblogs, messages, and badges."
+          description="Private updates from people interacting with you."
         />
         <RouteStateNotice
           kind="loading"
           icon={LoaderCircle}
           title="Loading notifications"
-          text="Your notifications are loading."
+          text="Checking for updates."
         />
       </motion.div>
     );
@@ -219,7 +218,7 @@ export function NotificationsPage() {
           badge="private"
           badgeTone="cool"
           title="Notifications"
-          description="Private updates from follows, replies, likes, reblogs, messages, and badges."
+          description="Private updates from people interacting with you."
           meta={
             <p
               className="text-sm font-medium text-muted"
@@ -247,7 +246,7 @@ export function NotificationsPage() {
           kind="loading"
           icon={LoaderCircle}
           title="Loading notifications"
-          text="Your notifications are loading."
+          text="Checking for updates."
         />
       ) : null}
 
@@ -283,7 +282,7 @@ export function NotificationsPage() {
         <RouteStateNotice
           icon={Bell}
           title="No notifications yet"
-          text="Follows, likes, replies, reblogs, messages, and badges will show up here."
+          text="New activity will show up here."
         />
       ) : null}
 
@@ -329,60 +328,73 @@ function NotificationRow({
     >
       <Panel
         className={cn(
-          "flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between",
-          unread && "border-accent/40 bg-surface-strong/86",
+          "overflow-hidden transition duration-fluid ease-fluid hover:border-line-strong hover:shadow-lift",
+          unread ? "border-accent/40 bg-surface-strong/86" : "bg-surface/76",
         )}
       >
-        <div className="flex min-w-0 flex-1 items-start gap-3">
-          <span className="grid size-11 shrink-0 place-items-center rounded-full bg-surface-strong text-accent-strong">
-            <NotificationIcon type={notification.type} />
-          </span>
-          <span className="min-w-0">
-            <span className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-semibold text-text">
+        <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <span
+              className={cn(
+                "relative grid size-11 shrink-0 place-items-center rounded-full bg-surface-strong text-accent-strong",
+                unread && "bg-accent/12 text-accent-strong",
+              )}
+            >
+              <NotificationIcon type={notification.type} />
+              <span className="sr-only">
+                {unread ? "Unread notification" : "Read notification"}
+              </span>
+              {unread ? (
+                <span
+                  className="absolute right-0.5 top-0.5 size-2.5 rounded-full bg-accent shadow-glow"
+                  aria-hidden="true"
+                />
+              ) : null}
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-text">
                 <NotificationCopy notification={notification} onVisit={markRead} />
               </span>
-              <Badge tone={unread ? "warm" : "default"}>
-                {unread ? "unread" : "read"}
-              </Badge>
+              {notification.post ? (
+                <Link
+                  to={notification.targetUrl}
+                  className="mt-1 block line-clamp-2 text-sm leading-6 text-muted underline-offset-4 hover:text-accent-strong hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                  onClick={markRead}
+                >
+                  {notification.post.bodySnippet}
+                </Link>
+              ) : (
+                <Link
+                  to={notification.targetUrl}
+                  className="mt-1 inline-flex text-sm font-medium text-muted underline-offset-4 hover:text-accent-strong hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                  onClick={markRead}
+                >
+                  {notificationTargetLabel(notification)}
+                </Link>
+              )}
+              <span className="mt-2 block text-xs text-muted">
+                {formatRelativeTime(notification.createdAt)}
+              </span>
             </span>
-            {notification.post ? (
-              <Link
-                to={notification.targetUrl}
-                className="mt-1 block line-clamp-2 text-sm leading-6 text-muted underline-offset-4 hover:text-accent-strong hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-                onClick={markRead}
-              >
-                {notification.post.bodySnippet}
-              </Link>
-            ) : (
-              <Link
-                to={notification.targetUrl}
-                className="mt-1 inline-flex text-sm font-medium text-muted underline-offset-4 hover:text-accent-strong hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-                onClick={markRead}
-              >
-                {notificationTargetLabel(notification)}
-              </Link>
-            )}
-            <span className="mt-2 block text-xs text-muted">
-              {formatRelativeTime(notification.createdAt)}
-            </span>
-          </span>
+          </div>
+          {unread ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-10 shrink-0 rounded-full self-end sm:self-center"
+              aria-label={
+                pending ? "Marking notification as read" : "Mark notification as read"
+              }
+              title="Mark as read"
+              disabled={pending}
+              icon={<Check aria-hidden="true" size={16} />}
+              onClick={() => void onMarkRead(notification)}
+            />
+          ) : (
+            <span className="hidden size-10 shrink-0 sm:block" aria-hidden="true" />
+          )}
         </div>
-        {unread ? (
-          <Button
-            type="button"
-            variant="ghost"
-            disabled={pending}
-            icon={<Check aria-hidden="true" size={16} />}
-            onClick={() => void onMarkRead(notification)}
-          >
-            {pending ? "Working..." : "Mark read"}
-          </Button>
-        ) : (
-          <span className="inline-flex min-h-11 items-center text-sm font-medium text-muted">
-            Read
-          </span>
-        )}
       </Panel>
     </motion.div>
   );

@@ -614,7 +614,7 @@ test("post report and delete controls stay isolated from body open", async ({
   await page
     .getByTestId("post-card-open-thread")
     .first()
-    .getByRole("button", { name: "Report" })
+    .getByRole("button", { name: "Report post" })
     .click();
   await expect(page.getByTestId("thread-modal")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Report post" })).toBeVisible();
@@ -962,8 +962,8 @@ test("thread report flow submits the post target", async ({ page }) => {
   await page.getByTestId("post-body-open-thread").first().click();
   const dialog = page.getByTestId("thread-modal");
 
-  await dialog.getByRole("button", { name: "Report" }).click();
-  await dialog.getByRole("button", { name: "Report" }).last().click();
+  await dialog.getByRole("button", { name: "Report post" }).click();
+  await dialog.getByRole("button", { name: "Report", exact: true }).click();
 
   await expect.poll(() => reportPayload).toMatchObject({
     targetType: "post",

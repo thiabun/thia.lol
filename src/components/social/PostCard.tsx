@@ -521,6 +521,8 @@ function ReactionControls({
                 reportedUserId={post.author.id}
                 title="Report post"
                 explainer="This reports the post to moderators."
+                triggerMode="icon"
+                triggerLabel="Report post"
               />
             ) : null}
             {actions}

@@ -6,7 +6,7 @@ test("report modal opens with categories and legal links", async ({ page }) => {
   await mockHomeFeed(page);
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Report" }).click();
+  await page.getByRole("button", { name: "Report post" }).click();
 
   await expect(page.getByRole("heading", { name: "Report post" })).toBeVisible();
   await expect(page.getByLabel("What's wrong?")).toBeVisible();
@@ -43,7 +43,7 @@ test("report category selector submits a post report", async ({ page }) => {
   });
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Report" }).click();
+  await page.getByRole("button", { name: "Report post" }).click();
   const reportForm = page.getByRole("heading", { name: "Report post" }).locator("..");
   await page.getByLabel("What's wrong?").selectOption("private_info");
   await page.getByLabel("Add details").fill("This includes private information.");
@@ -139,7 +139,7 @@ test("report submit requires auth", async ({ page }) => {
   await mockHomeFeed(page);
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Report" }).click();
+  await page.getByRole("button", { name: "Report post" }).click();
   const reportForm = page.getByRole("heading", { name: "Report post" }).locator("..");
   await reportForm.getByRole("button", { name: "Report", exact: true }).click();
 

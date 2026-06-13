@@ -40,7 +40,10 @@ test("authenticated chat renders conversations and message composer", async ({
   await expect(
     page.getByRole("link", { name: "Moot Friend's profile" }).first(),
   ).toHaveAttribute("href", "/@mootfriend");
-  await page.getByRole("button", { name: "Open chat with Moot Friend" }).click();
+  await page
+    .getByTestId("chat-conversation-row-10")
+    .getByRole("button", { name: "Open chat with Moot Friend" })
+    .click();
   await expect(page).toHaveURL(/\/chat\?conversation=10$/);
   await expect(page.getByTestId("chat-message-list")).toContainText("hello from a moot");
   await expect(page.getByTestId("chat-message-composer")).toBeVisible();
@@ -151,7 +154,7 @@ test("conversation member can report an individual chat message", async ({ page 
   await expect(page.getByTestId("chat-message-list")).toContainText(
     "hello from a moot",
   );
-  await page.getByRole("button", { name: "Report" }).click();
+  await page.getByRole("button", { name: "Report message" }).click();
   const reportForm = page.getByRole("heading", { name: "Report message" }).locator("..");
 
   await expect(reportForm).toContainText("reports this chat message");

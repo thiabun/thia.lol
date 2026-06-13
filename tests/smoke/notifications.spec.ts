@@ -91,7 +91,9 @@ test("notification actor identity links to the actor profile", async ({ page }) 
     "href",
     "/@alex",
   );
-  await expect(page.getByRole("button", { name: "Mark read" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Mark notification as read" }),
+  ).toBeVisible();
 });
 
 test("mark all notifications as read works against the API", async ({ page }) => {

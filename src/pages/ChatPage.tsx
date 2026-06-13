@@ -867,34 +867,46 @@ function ConversationButton({
   onClick,
   selected,
 }: ConversationButtonProps) {
+  const lastMessage = conversation.lastMessage?.body ?? "No messages yet";
+
   return (
     <div
       className={cn(
-        "flex w-full items-center gap-3 px-4 py-3 text-left transition duration-fluid ease-fluid",
-        selected ? "bg-surface-strong" : "hover:bg-canvas/60",
+        "group flex w-full items-center gap-2 px-3 py-2.5 text-left transition duration-fluid ease-fluid sm:gap-3 sm:px-4",
+        selected ? "bg-surface-strong" : "hover:bg-canvas/55",
       )}
+      data-testid={`chat-conversation-row-${conversation.id}`}
     >
       <UserIdentityLink
         user={conversation.otherParticipant}
         avatarSize="sm"
-        className="min-h-12 flex-1 rounded-control py-1"
+        className="min-h-12 w-40 max-w-[45%] shrink-0 rounded-control px-1 py-1 sm:w-44"
       />
-      <button
+      <motion.button
         type="button"
-        className="flex min-h-12 min-w-[8rem] max-w-[9rem] flex-col items-end justify-center rounded-control px-3 py-2 text-right text-xs text-muted transition duration-fluid ease-fluid hover:bg-canvas/70 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        className={cn(
+          "flex min-h-12 min-w-0 flex-1 items-center justify-between gap-3 rounded-control px-3 py-2 text-left transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+          selected
+            ? "bg-canvas/70 text-text"
+            : "text-muted hover:bg-surface-strong/80 hover:text-text",
+        )}
         aria-label={`Open chat with ${conversation.otherParticipant.displayName}`}
         aria-pressed={selected}
         onClick={onClick}
+        whileTap={{ scale: 0.992 }}
       >
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-medium">{lastMessage}</span>
+          <span className="mt-0.5 block text-xs text-muted">
+            {formatConversationTime(conversation)}
+          </span>
+        </span>
         {conversation.unreadCount > 0 ? (
-          <span className="mb-1 ml-auto block w-fit rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-accent-ink">
+          <span className="shrink-0 rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-accent-ink shadow-soft">
             {conversation.unreadCount}
           </span>
         ) : null}
-        <span className="block max-w-32 truncate">
-          {conversation.lastMessage?.body ?? "No messages yet"}
-        </span>
-      </button>
+      </motion.button>
     </div>
   );
 }
@@ -926,13 +938,15 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
           {formatChatTime(message.createdAt)}
         </p>
         {canReport && message.deletedAt === null ? (
-          <div className="mt-2">
+          <div className="mt-1 flex justify-end">
             <ReportForm
               targetType="message"
               targetId={message.id}
               reportedUserId={message.sender.id}
               title="Report message"
               explainer="This reports this chat message to moderators."
+              triggerMode="icon"
+              triggerLabel="Report message"
             />
           </div>
         ) : null}
@@ -965,6 +979,10 @@ function conversationSortTime(conversation: ChatConversation): number {
   const parsed = parseApiTimestamp(value);
 
   return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+}
+
+function formatConversationTime(conversation: ChatConversation): string {
+  return formatChatTime(conversation.lastMessageAt ?? conversation.createdAt);
 }
 
 function formatChatTime(value: string): string {
