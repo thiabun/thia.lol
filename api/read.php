@@ -108,6 +108,8 @@ function profile_payload(array $row, ?array $stats = null, ?array $social = null
         'profileAccent' => $row['profile_accent'] ?? null,
         'profileBackground' => $row['profile_background'] ?? null,
         'profileTheme' => $row['profile_theme'] ?? null,
+        'featuredPostId' => profile_featured_nullable_id($row['featured_post_id'] ?? null),
+        'featuredRoomId' => profile_featured_nullable_id($row['featured_room_id'] ?? null),
         'links' => json_array_value($row['links'] ?? null),
         'traits' => json_array_value($row['traits'] ?? null),
         'stats' => $stats,
@@ -122,6 +124,40 @@ function profile_payload(array $row, ?array $stats = null, ?array $social = null
         'createdAt' => $row['profile_created_at'] ?? null,
         'updatedAt' => $row['profile_updated_at'] ?? null,
     ];
+}
+
+function profile_payload_with_featured(
+    array $row,
+    ?array $stats = null,
+    ?array $social = null,
+    ?int $viewerUserId = null
+): array {
+    $payload = profile_payload($row, $stats, $social);
+    $profileUserId = (int) $row['user_id'];
+
+    $payload['featuredPost'] = fetch_profile_featured_post(
+        $row['featured_post_id'] ?? null,
+        $profileUserId,
+        $viewerUserId
+    );
+    $payload['featuredRoom'] = fetch_profile_featured_room(
+        $row['featured_room_id'] ?? null,
+        $profileUserId,
+        $viewerUserId
+    );
+
+    return $payload;
+}
+
+function profile_featured_nullable_id(mixed $value): ?int
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    $id = (int) $value;
+
+    return $id > 0 ? $id : null;
 }
 
 function room_payload(array $row): array
@@ -349,6 +385,12 @@ function profile_customization_columns_exist(): bool
         && database_column_exists('profiles', 'profile_theme');
 }
 
+function profile_featured_columns_exist(): bool
+{
+    return database_column_exists('profiles', 'featured_post_id')
+        && database_column_exists('profiles', 'featured_room_id');
+}
+
 function profile_customization_select_sql(string $alias): string
 {
     if (profile_customization_columns_exist()) {
@@ -362,6 +404,17 @@ function profile_customization_select_sql(string $alias): string
             NULL AS profile_accent,
             NULL AS profile_background,
             NULL AS profile_theme,";
+}
+
+function profile_featured_select_sql(string $alias): string
+{
+    if (profile_featured_columns_exist()) {
+        return "{$alias}.featured_post_id,
+            {$alias}.featured_room_id,";
+    }
+
+    return "NULL AS featured_post_id,
+            NULL AS featured_room_id,";
 }
 
 function room_customization_columns_exist(): bool
@@ -704,6 +757,7 @@ function profile_social_context(int $profileUserId, ?int $viewerUserId = null): 
 function fetch_profile_by_handle(string $handle): ?array
 {
     $customizationSelect = profile_customization_select_sql('p');
+    $featuredSelect = profile_featured_select_sql('p');
     $statement = db_query(
         "SELECT
             u.id AS user_id,
@@ -714,6 +768,7 @@ function fetch_profile_by_handle(string $handle): ?array
             p.location,
             p.avatar_url,
             {$customizationSelect}
+            {$featuredSelect}
             p.links,
             p.traits,
             p.created_at AS profile_created_at,
@@ -760,6 +815,115 @@ function fetch_profile_by_handle(string $handle): ?array
     $row = $statement->fetch();
 
     return is_array($row) ? $row : null;
+}
+
+function fetch_profile_featured_post(mixed $postId, int $profileUserId, ?int $viewerUserId = null): ?array
+{
+    $featuredPostId = profile_featured_nullable_id($postId);
+
+    if ($featuredPostId === null) {
+        return null;
+    }
+
+    $statement = db_query(
+        post_select_sql(
+            'AND p.id = :post_id
+             AND p.author_id = :profile_user_id'
+                . viewer_feed_relationship_filter_sql($viewerUserId, 'u.id'),
+            'p.created_at DESC, p.id DESC',
+            '',
+            $viewerUserId
+        ),
+        [
+            'post_id' => $featuredPostId,
+            'profile_user_id' => $profileUserId,
+        ]
+    );
+    $row = $statement->fetch();
+
+    return is_array($row) ? post_payload($row) : null;
+}
+
+function fetch_profile_featured_room(mixed $roomId, int $profileUserId, ?int $viewerUserId = null): ?array
+{
+    $featuredRoomId = profile_featured_nullable_id($roomId);
+
+    if ($featuredRoomId === null) {
+        return null;
+    }
+
+    $viewerProfileFilter = viewer_feed_relationship_filter_sql($viewerUserId, (string) $profileUserId);
+    $viewerOwnerFilter = viewer_feed_relationship_filter_sql($viewerUserId, 'owner.id');
+    $statement = db_query(
+        "SELECT
+            rooms.id AS room_id,
+            rooms.slug AS room_slug,
+            rooms.name AS room_name,
+            rooms.summary AS room_summary,
+            rooms.mood AS room_mood,
+            " . room_membership_count_select_sql('rooms') . "
+            rooms.is_live AS room_is_live,
+            rooms.accent AS room_accent,
+            " . room_customization_select_sql('rooms') . "
+            rooms.visibility AS room_visibility,
+            rooms.created_by AS room_created_by,
+            " . room_viewer_membership_select_sql() . "
+            owner.id AS owner_user_id,
+            owner.handle AS owner_handle,
+            owner_profile.display_name AS owner_display_name,
+            owner_profile.avatar_url AS owner_avatar_url,
+            COALESCE(room_posts.post_count, 0) AS room_post_count,
+            room_posts.latest_activity_at AS room_latest_activity_at,
+            rooms.created_at AS room_created_at,
+            rooms.updated_at AS room_updated_at
+        FROM rooms
+        LEFT JOIN users owner ON owner.id = rooms.created_by
+        LEFT JOIN profiles owner_profile ON owner_profile.user_id = owner.id
+        " . room_membership_count_join_sql('rooms') . "
+        " . room_viewer_membership_join_sql('rooms', $viewerUserId) . "
+        LEFT JOIN (
+            SELECT
+                room_id,
+                SUM(parent_id IS NULL) AS post_count,
+                MAX(created_at) AS latest_activity_at
+            FROM posts
+            WHERE room_id IS NOT NULL
+              AND visibility = 'public'
+              AND status = 'published'
+              AND deleted_at IS NULL
+            GROUP BY room_id
+        ) room_posts ON room_posts.room_id = rooms.id
+        WHERE rooms.id = :room_id
+          AND rooms.visibility = 'public'
+          " . room_not_deleted_sql('rooms') . "
+          AND " . profile_featured_room_eligibility_sql($profileUserId, 'rooms') . "
+          {$viewerProfileFilter}
+          {$viewerOwnerFilter}
+        LIMIT 1",
+        ['room_id' => $featuredRoomId]
+    );
+    $row = $statement->fetch();
+
+    return is_array($row) ? room_payload($row) : null;
+}
+
+function profile_featured_room_eligibility_sql(int $profileUserId, string $roomAlias): string
+{
+    $profileUserSql = (string) $profileUserId;
+    $membershipSql = '';
+
+    if (room_memberships_table_exists()) {
+        $membershipSql = " OR EXISTS (
+            SELECT 1
+            FROM room_memberships featured_room_memberships
+            WHERE featured_room_memberships.room_id = {$roomAlias}.id
+              AND featured_room_memberships.user_id = {$profileUserSql}
+              AND featured_room_memberships.banned_at IS NULL
+              AND featured_room_memberships.role IN ('owner', 'moderator', 'member')
+        )";
+    }
+
+    return "({$roomAlias}.created_by = {$profileUserSql}{$membershipSql})";
 }
 
 function fetch_public_rooms(): array
@@ -1580,10 +1744,13 @@ function profiles_show(string $handle): void
         json_error('Profile not found.', 404);
     }
 
-    json_success(profile_payload(
+    $viewerUserId = current_request_user_id();
+
+    json_success(profile_payload_with_featured(
         $profile,
         null,
-        profile_social_context((int) $profile['user_id'], current_request_user_id())
+        profile_social_context((int) $profile['user_id'], $viewerUserId),
+        $viewerUserId
     ));
 }
 

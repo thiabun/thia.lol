@@ -12,8 +12,12 @@ import {
   ImagePlus,
   Link as LinkIcon,
   MapPin,
+  MessageCircle,
+  Pin,
   Plus,
+  Radio,
   Save,
+  Search,
   Sparkles,
   Trash2,
   Type,
@@ -24,6 +28,7 @@ import {
 import type {
   CreateProfileModuleInput,
   ImageUploadPurpose,
+  UpdateProfileFeaturedInput,
   UpdateProfileInput,
   UpdateProfileModuleInput,
   UploadedImage,
@@ -46,6 +51,8 @@ import type {
   ProfileModuleConfig,
   ProfileModuleType,
   ProfileModuleVisibility,
+  Post,
+  Room,
   UserBadge,
 } from "../../lib/types";
 import { Avatar } from "../ui/Avatar";
@@ -86,6 +93,12 @@ const sections: Array<{
     label: "Connections",
     description: "Platform-aware profile links.",
     icon: LinkIcon,
+  },
+  {
+    id: "featured",
+    label: "Featured",
+    description: "A post and room highlight.",
+    icon: Pin,
   },
   {
     id: "modules",
@@ -143,6 +156,7 @@ type CustomizationSection =
   | "identity"
   | "appearance"
   | "connections"
+  | "featured"
   | "modules"
   | "preview";
 
@@ -168,6 +182,11 @@ type DirtyMap = Record<number, boolean>;
 
 type ProfileCustomizationModalProps = {
   badges: UserBadge[];
+  featuredOptionsError?: string | undefined;
+  featuredOptionsLoading: boolean;
+  featuredPostOptions: Post[];
+  featuredRoomOptions: Room[];
+  initialSection?: CustomizationSection | undefined;
   moduleError?: string | undefined;
   moduleLoading: boolean;
   modules: ProfileModule[];
@@ -175,6 +194,7 @@ type ProfileCustomizationModalProps = {
   onCreateModule: (input: CreateProfileModuleInput) => Promise<ProfileModule[]>;
   onDeleteModule: (moduleId: number) => Promise<void>;
   onReorderModules: (moduleIds: number[]) => Promise<ProfileModule[]>;
+  onSaveFeaturedContent: (input: UpdateProfileFeaturedInput) => Promise<Profile>;
   onSaveProfile: (input: UpdateProfileInput) => Promise<Profile>;
   onUpdateModule: (
     moduleId: number,
@@ -186,6 +206,11 @@ type ProfileCustomizationModalProps = {
 
 export function ProfileCustomizationModal({
   badges,
+  featuredOptionsError,
+  featuredOptionsLoading,
+  featuredPostOptions,
+  featuredRoomOptions,
+  initialSection = "identity",
   moduleError,
   moduleLoading,
   modules,
@@ -193,17 +218,28 @@ export function ProfileCustomizationModal({
   onCreateModule,
   onDeleteModule,
   onReorderModules,
+  onSaveFeaturedContent,
   onSaveProfile,
   onUpdateModule,
   onUpload,
   profile,
 }: ProfileCustomizationModalProps) {
   const titleId = useId();
-  const [activeSection, setActiveSection] = useState<CustomizationSection>("identity");
+  const [activeSection, setActiveSection] = useState<CustomizationSection>(initialSection);
   const [form, setForm] = useState<ProfileFormState>(() => profileToForm(profile));
   const [savingProfile, setSavingProfile] = useState(false);
   const [uploading, setUploading] = useState<UploadSlot | undefined>();
   const [profileMessage, setProfileMessage] = useState<string | undefined>();
+  const [featuredPostId, setFeaturedPostId] = useState<number | null>(
+    () => profile.featuredPost?.id ?? profile.featuredPostId ?? null,
+  );
+  const [featuredRoomId, setFeaturedRoomId] = useState<number | null>(
+    () => profile.featuredRoom?.id ?? profile.featuredRoomId ?? null,
+  );
+  const [featuredPostQuery, setFeaturedPostQuery] = useState("");
+  const [featuredRoomQuery, setFeaturedRoomQuery] = useState("");
+  const [savingFeatured, setSavingFeatured] = useState(false);
+  const [featuredMessage, setFeaturedMessage] = useState<string | undefined>();
   const [connectionErrors, setConnectionErrors] = useState<Record<string, string>>({});
   const [editingConnectionIds, setEditingConnectionIds] = useState<Set<string>>(
     () => new Set(),
@@ -216,7 +252,11 @@ export function ProfileCustomizationModal({
   const [moduleMessage, setModuleMessage] = useState<string | undefined>();
   const [moduleFormError, setModuleFormError] = useState<string | undefined>();
 
-  const busy = savingProfile || uploading !== undefined || moduleBusy !== undefined;
+  const busy =
+    savingProfile ||
+    savingFeatured ||
+    uploading !== undefined ||
+    moduleBusy !== undefined;
   const selectedModule = drafts.find((module) => module.id === selectedModuleId);
   const hasUnsavedModules = Object.values(moduleDirty).some(Boolean) || orderDirty;
   const hasUnsavedNewModule = drafts.some((module) => module.id < 0);
@@ -224,6 +264,16 @@ export function ProfileCustomizationModal({
     ? moduleDirty[selectedModule.id] === true
     : false;
   const canPersistOrder = drafts.length > 1 && orderDirty && !hasUnsavedNewModule;
+  const initialFeaturedPostId = profile.featuredPost?.id ?? profile.featuredPostId ?? null;
+  const initialFeaturedRoomId = profile.featuredRoom?.id ?? profile.featuredRoomId ?? null;
+  const featuredDirty =
+    featuredPostId !== initialFeaturedPostId || featuredRoomId !== initialFeaturedRoomId;
+  const previewFeaturedPost =
+    featuredPostOptions.find((post) => post.id === featuredPostId) ??
+    (profile.featuredPost?.id === featuredPostId ? profile.featuredPost : null);
+  const previewFeaturedRoom =
+    featuredRoomOptions.find((room) => room.id === featuredRoomId) ??
+    (profile.featuredRoom?.id === featuredRoomId ? profile.featuredRoom : null);
   const validPreviewConnections = useMemo(
     () => normalizedConnections(form.connections).connections,
     [form.connections],
@@ -427,6 +477,28 @@ export function ProfileCustomizationModal({
       );
     } finally {
       setUploading(undefined);
+    }
+  }
+
+  async function handleFeaturedSave() {
+    setSavingFeatured(true);
+    setFeaturedMessage(undefined);
+
+    try {
+      const updated = await onSaveFeaturedContent({
+        featuredPostId,
+        featuredRoomId,
+      });
+
+      setFeaturedPostId(updated.featuredPost?.id ?? updated.featuredPostId ?? null);
+      setFeaturedRoomId(updated.featuredRoom?.id ?? updated.featuredRoomId ?? null);
+      setFeaturedMessage("Featured content updated");
+    } catch (error) {
+      setFeaturedMessage(
+        error instanceof Error ? error.message : "Featured content could not be saved.",
+      );
+    } finally {
+      setSavingFeatured(false);
     }
   }
 
@@ -750,6 +822,44 @@ export function ProfileCustomizationModal({
                 </EditorSection>
               </div>
 
+              <div className={activeSection === "featured" ? "block" : "hidden"}>
+                <FeaturedContentEditor
+                  busy={busy}
+                  error={featuredOptionsError}
+                  featuredPostId={featuredPostId}
+                  featuredPostQuery={featuredPostQuery}
+                  featuredRoomId={featuredRoomId}
+                  featuredRoomQuery={featuredRoomQuery}
+                  loading={featuredOptionsLoading}
+                  message={featuredMessage}
+                  currentPost={profile.featuredPost ?? null}
+                  currentRoom={profile.featuredRoom ?? null}
+                  postOptions={featuredPostOptions}
+                  roomOptions={featuredRoomOptions}
+                  saving={savingFeatured}
+                  saveDisabled={!featuredDirty}
+                  onClearPost={() => {
+                    setFeaturedPostId(null);
+                    setFeaturedMessage(undefined);
+                  }}
+                  onClearRoom={() => {
+                    setFeaturedRoomId(null);
+                    setFeaturedMessage(undefined);
+                  }}
+                  onPostQueryChange={(value) => setFeaturedPostQuery(value)}
+                  onRoomQueryChange={(value) => setFeaturedRoomQuery(value)}
+                  onSave={() => void handleFeaturedSave()}
+                  onSelectPost={(postId) => {
+                    setFeaturedPostId(postId);
+                    setFeaturedMessage(undefined);
+                  }}
+                  onSelectRoom={(roomId) => {
+                    setFeaturedRoomId(roomId);
+                    setFeaturedMessage(undefined);
+                  }}
+                />
+              </div>
+
               <div className={activeSection === "modules" ? "block" : "hidden"}>
                 <ModulesEditorSection
                   badges={badges}
@@ -779,6 +889,8 @@ export function ProfileCustomizationModal({
                   badges={badges}
                   connections={validPreviewConnections}
                   drafts={drafts}
+                  featuredPost={previewFeaturedPost}
+                  featuredRoom={previewFeaturedRoom}
                   form={form}
                   profile={profile}
                   testId="profile-customization-preview-mobile"
@@ -791,7 +903,9 @@ export function ProfileCustomizationModal({
                 </p>
               ) : null}
 
-              {activeSection !== "modules" && activeSection !== "preview" ? (
+              {activeSection !== "modules" &&
+              activeSection !== "featured" &&
+              activeSection !== "preview" ? (
                 <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                   <Button
                     type="button"
@@ -819,6 +933,8 @@ export function ProfileCustomizationModal({
                   badges={badges}
                   connections={validPreviewConnections}
                   drafts={drafts}
+                  featuredPost={previewFeaturedPost}
+                  featuredRoom={previewFeaturedRoom}
                   form={form}
                   profile={profile}
                   testId="profile-customization-preview"
@@ -1143,6 +1259,364 @@ function PlatformPicker({
       </div>
     </div>
   );
+}
+
+type FeaturedContentEditorProps = {
+  busy: boolean;
+  currentPost: Post | null;
+  currentRoom: Room | null;
+  error?: string | undefined;
+  featuredPostId: number | null;
+  featuredPostQuery: string;
+  featuredRoomId: number | null;
+  featuredRoomQuery: string;
+  loading: boolean;
+  message?: string | undefined;
+  postOptions: Post[];
+  roomOptions: Room[];
+  saveDisabled: boolean;
+  saving: boolean;
+  onClearPost: () => void;
+  onClearRoom: () => void;
+  onPostQueryChange: (value: string) => void;
+  onRoomQueryChange: (value: string) => void;
+  onSave: () => void;
+  onSelectPost: (postId: number) => void;
+  onSelectRoom: (roomId: number) => void;
+};
+
+function FeaturedContentEditor({
+  busy,
+  currentPost,
+  currentRoom,
+  error,
+  featuredPostId,
+  featuredPostQuery,
+  featuredRoomId,
+  featuredRoomQuery,
+  loading,
+  message,
+  postOptions,
+  roomOptions,
+  saveDisabled,
+  saving,
+  onClearPost,
+  onClearRoom,
+  onPostQueryChange,
+  onRoomQueryChange,
+  onSave,
+  onSelectPost,
+  onSelectRoom,
+}: FeaturedContentEditorProps) {
+  const selectedPost =
+    postOptions.find((post) => post.id === featuredPostId) ??
+    (currentPost?.id === featuredPostId ? currentPost : undefined);
+  const selectedRoom =
+    roomOptions.find((room) => room.id === featuredRoomId) ??
+    (currentRoom?.id === featuredRoomId ? currentRoom : undefined);
+  const visiblePosts = filterFeaturedPosts(postOptions, featuredPostQuery).slice(0, 8);
+  const visibleRooms = filterFeaturedRooms(roomOptions, featuredRoomQuery).slice(0, 8);
+
+  return (
+    <section
+      aria-label="Featured content"
+      className="space-y-6 px-1 sm:px-0"
+      data-testid="profile-featured-editor"
+    >
+      <div>
+        <h3 className="text-lg font-semibold text-text">Featured content</h3>
+        <p className="mt-1 text-sm leading-6 text-muted">
+          Highlight one public post and one public room above your modules.
+        </p>
+      </div>
+
+      {loading ? (
+        <p className="rounded-card bg-canvas/55 p-3 text-sm text-muted">
+          Loading featured content options.
+        </p>
+      ) : null}
+
+      {error ? (
+        <p className="rounded-card bg-rose/15 p-3 text-sm text-rose-ink">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        <FeaturedPostPicker
+          busy={busy}
+          options={visiblePosts}
+          query={featuredPostQuery}
+          selectedPost={selectedPost}
+          selectedPostId={featuredPostId}
+          totalCount={postOptions.length}
+          onClear={onClearPost}
+          onQueryChange={onPostQueryChange}
+          onSelect={onSelectPost}
+        />
+        <FeaturedRoomPicker
+          busy={busy}
+          options={visibleRooms}
+          query={featuredRoomQuery}
+          selectedRoom={selectedRoom}
+          selectedRoomId={featuredRoomId}
+          totalCount={roomOptions.length}
+          onClear={onClearRoom}
+          onQueryChange={onRoomQueryChange}
+          onSelect={onSelectRoom}
+        />
+      </div>
+
+      {message ? (
+        <p className="rounded-card border border-line bg-canvas/55 p-3 text-sm text-text">
+          {message}
+        </p>
+      ) : null}
+
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        <Button
+          type="button"
+          disabled={busy || saveDisabled}
+          icon={<Save aria-hidden="true" size={17} />}
+          onClick={onSave}
+        >
+          {saving ? "Saving" : "Save featured content"}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+type FeaturedPostPickerProps = {
+  busy: boolean;
+  options: Post[];
+  query: string;
+  selectedPost: Post | undefined;
+  selectedPostId: number | null;
+  totalCount: number;
+  onClear: () => void;
+  onQueryChange: (value: string) => void;
+  onSelect: (postId: number) => void;
+};
+
+function FeaturedPostPicker({
+  busy,
+  options,
+  query,
+  selectedPost,
+  selectedPostId,
+  totalCount,
+  onClear,
+  onQueryChange,
+  onSelect,
+}: FeaturedPostPickerProps) {
+  return (
+    <div className="min-w-0 rounded-card border border-line bg-surface/60 p-4">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h4 className="flex items-center gap-2 text-sm font-semibold text-text">
+            <MessageCircle aria-hidden="true" size={16} />
+            Featured post
+          </h4>
+          {selectedPost ? (
+            <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">
+              {postOptionText(selectedPost)}
+            </p>
+          ) : (
+            <p className="mt-1 text-xs leading-5 text-muted">No post selected.</p>
+          )}
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={busy || selectedPostId === null}
+          onClick={onClear}
+        >
+          Clear
+        </Button>
+      </div>
+
+      <TextField
+        id="featured-post-search"
+        label="Search posts"
+        icon={Search}
+        className="mt-4"
+        value={query}
+        disabled={busy || totalCount === 0}
+        onChange={(event) => onQueryChange(event.currentTarget.value)}
+      />
+
+      <div className="mt-3 space-y-2" data-testid="featured-post-options">
+        {totalCount === 0 ? (
+          <p className="rounded-card border border-dashed border-line bg-canvas/45 p-3 text-sm text-muted">
+            No public posts are available to feature.
+          </p>
+        ) : null}
+        {totalCount > 0 && options.length === 0 ? (
+          <p className="rounded-card border border-dashed border-line bg-canvas/45 p-3 text-sm text-muted">
+            No posts match that search.
+          </p>
+        ) : null}
+        {options.map((post) => (
+          <button
+            key={post.id}
+            type="button"
+            aria-pressed={selectedPostId === post.id}
+            className={cn(
+              "block w-full rounded-card border p-3 text-left transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+              selectedPostId === post.id
+                ? "border-accent/50 bg-accent/12"
+                : "border-line bg-canvas/45 hover:border-line-strong",
+            )}
+            disabled={busy}
+            onClick={() => onSelect(post.id)}
+          >
+            <span className="block line-clamp-2 text-sm font-semibold leading-6 text-text">
+              {postOptionText(post)}
+            </span>
+            <span className="mt-1 block text-xs text-muted">
+              {post.parentId ? "Reply" : "Post"} · {post.createdAt}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+type FeaturedRoomPickerProps = {
+  busy: boolean;
+  options: Room[];
+  query: string;
+  selectedRoom: Room | undefined;
+  selectedRoomId: number | null;
+  totalCount: number;
+  onClear: () => void;
+  onQueryChange: (value: string) => void;
+  onSelect: (roomId: number) => void;
+};
+
+function FeaturedRoomPicker({
+  busy,
+  options,
+  query,
+  selectedRoom,
+  selectedRoomId,
+  totalCount,
+  onClear,
+  onQueryChange,
+  onSelect,
+}: FeaturedRoomPickerProps) {
+  return (
+    <div className="min-w-0 rounded-card border border-line bg-surface/60 p-4">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h4 className="flex items-center gap-2 text-sm font-semibold text-text">
+            <Radio aria-hidden="true" size={16} />
+            Featured room
+          </h4>
+          {selectedRoom ? (
+            <p className="mt-1 truncate text-xs leading-5 text-muted">
+              {selectedRoom.name} /{selectedRoom.slug}
+            </p>
+          ) : (
+            <p className="mt-1 text-xs leading-5 text-muted">No room selected.</p>
+          )}
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={busy || selectedRoomId === null}
+          onClick={onClear}
+        >
+          Clear
+        </Button>
+      </div>
+
+      <TextField
+        id="featured-room-search"
+        label="Search rooms"
+        icon={Search}
+        className="mt-4"
+        value={query}
+        disabled={busy || totalCount === 0}
+        onChange={(event) => onQueryChange(event.currentTarget.value)}
+      />
+
+      <div className="mt-3 space-y-2" data-testid="featured-room-options">
+        {totalCount === 0 ? (
+          <p className="rounded-card border border-dashed border-line bg-canvas/45 p-3 text-sm text-muted">
+            No eligible rooms are available to feature.
+          </p>
+        ) : null}
+        {totalCount > 0 && options.length === 0 ? (
+          <p className="rounded-card border border-dashed border-line bg-canvas/45 p-3 text-sm text-muted">
+            No rooms match that search.
+          </p>
+        ) : null}
+        {options.map((room) => (
+          <button
+            key={room.id}
+            type="button"
+            aria-pressed={selectedRoomId === room.id}
+            className={cn(
+              "block w-full rounded-card border p-3 text-left transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+              selectedRoomId === room.id
+                ? "border-accent/50 bg-accent/12"
+                : "border-line bg-canvas/45 hover:border-line-strong",
+            )}
+            disabled={busy}
+            onClick={() => onSelect(room.id)}
+          >
+            <span className="block truncate text-sm font-semibold text-text">
+              {room.name}
+            </span>
+            <span className="mt-1 block truncate text-xs text-muted">
+              /{room.slug} · {room.summary}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function filterFeaturedPosts(posts: Post[], query: string): Post[] {
+  const normalized = query.trim().toLowerCase();
+
+  if (normalized === "") {
+    return posts;
+  }
+
+  return posts.filter((post) =>
+    [post.body, post.room.name, post.createdAt]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalized),
+  );
+}
+
+function filterFeaturedRooms(rooms: Room[], query: string): Room[] {
+  const normalized = query.trim().toLowerCase();
+
+  if (normalized === "") {
+    return rooms;
+  }
+
+  return rooms.filter((room) =>
+    [room.name, room.slug, room.summary]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalized),
+  );
+}
+
+function postOptionText(post: Post): string {
+  const body = post.body.trim().replace(/\s+/g, " ");
+
+  return body.length > 130 ? `${body.slice(0, 127)}...` : body;
 }
 
 type ModulesEditorSectionProps = {
@@ -1704,6 +2178,8 @@ type PreviewPanelProps = {
   badges: UserBadge[];
   connections: ProfileExternalConnection[];
   drafts: ProfileModule[];
+  featuredPost: Post | null;
+  featuredRoom: Room | null;
   form: ProfileFormState;
   profile: Profile;
   testId?: string;
@@ -1713,6 +2189,8 @@ function PreviewPanel({
   badges,
   connections,
   drafts,
+  featuredPost,
+  featuredRoom,
   form,
   profile,
   testId,
@@ -1817,6 +2295,38 @@ function PreviewPanel({
             </div>
           ) : null}
         </div>
+      </div>
+      <div
+        className="mt-4"
+        data-testid="profile-featured-preview"
+      >
+        {featuredPost || featuredRoom ? (
+          <div className="space-y-3">
+            {featuredPost ? (
+              <div className="rounded-card border border-line bg-canvas/55 p-3">
+                <p className="flex items-center gap-2 text-xs font-semibold uppercase text-muted">
+                  <MessageCircle aria-hidden="true" size={14} />
+                  Featured post
+                </p>
+                <p className="mt-2 line-clamp-3 text-sm leading-6 text-text">
+                  {postOptionText(featuredPost)}
+                </p>
+              </div>
+            ) : null}
+            {featuredRoom ? (
+              <div className="rounded-card border border-line bg-canvas/55 p-3">
+                <p className="flex items-center gap-2 text-xs font-semibold uppercase text-muted">
+                  <Radio aria-hidden="true" size={14} />
+                  Featured room
+                </p>
+                <p className="mt-2 truncate text-sm font-semibold text-text">
+                  {featuredRoom.name}
+                </p>
+                <p className="mt-1 truncate text-xs text-muted">/{featuredRoom.slug}</p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       <div
         className="mt-4"

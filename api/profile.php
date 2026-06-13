@@ -7,7 +7,19 @@ require_once __DIR__ . '/read.php';
 
 function me_dispatch(array $segments, string $method): void
 {
-    if (count($segments) !== 2 || ($segments[0] ?? null) !== 'me' || $segments[1] !== 'profile') {
+    if (($segments[0] ?? null) !== 'me' || ($segments[1] ?? null) !== 'profile') {
+        json_error('Not found.', 404);
+    }
+
+    if (count($segments) === 3 && $segments[2] === 'featured') {
+        if ($method === 'PATCH') {
+            me_profile_featured_update();
+        }
+
+        json_error('Method not allowed.', 405);
+    }
+
+    if (count($segments) !== 2) {
         json_error('Not found.', 404);
     }
 
@@ -25,6 +37,17 @@ function me_profile_update(): void
 
     $body = request_json_body();
     $payload = profile_update_for_user((int) $session['user_id'], (string) $session['handle'], $body);
+
+    json_success($payload);
+}
+
+function me_profile_featured_update(): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+
+    $body = request_json_body();
+    $payload = profile_featured_update_for_user((int) $session['user_id'], (string) $session['handle'], $body);
 
     json_success($payload);
 }
@@ -53,11 +76,79 @@ function profile_update_for_user(int $userId, string $handle, array $body): arra
         json_error('Profile not found.', 404);
     }
 
-    return profile_payload(
+    return profile_payload_with_featured(
         $profile,
         null,
-        profile_social_context((int) $profile['user_id'], $userId)
+        profile_social_context((int) $profile['user_id'], $userId),
+        $userId
     );
+}
+
+function profile_featured_update_for_user(int $userId, string $handle, array $body): array
+{
+    require_profile_featured_storage();
+
+    $statement = profile_featured_update_statement_for_body($body, $userId);
+    db_query($statement['sql'], $statement['params']);
+
+    $profile = fetch_profile_by_handle($handle);
+
+    if ($profile === null) {
+        json_error('Profile not found.', 404);
+    }
+
+    return profile_payload_with_featured(
+        $profile,
+        null,
+        profile_social_context((int) $profile['user_id'], $userId),
+        $userId
+    );
+}
+
+function profile_featured_update_statement_for_body(array $body, int $userId): array
+{
+    if (array_is_list($body)) {
+        json_error('JSON body must be an object.', 400);
+    }
+
+    profile_featured_reject_unknown_keys($body, [
+        'featuredPostId',
+        'featured_post_id',
+        'featuredRoomId',
+        'featured_room_id',
+    ]);
+
+    $updates = [];
+    $params = ['user_id' => $userId];
+
+    if (array_key_exists('featuredPostId', $body) || array_key_exists('featured_post_id', $body)) {
+        $updates[] = 'featured_post_id = :featured_post_id';
+        $params['featured_post_id'] = profile_featured_post_id_for_user(
+            profile_body_value($body, 'featuredPostId', 'featured_post_id'),
+            $userId
+        );
+    }
+
+    if (array_key_exists('featuredRoomId', $body) || array_key_exists('featured_room_id', $body)) {
+        $updates[] = 'featured_room_id = :featured_room_id';
+        $params['featured_room_id'] = profile_featured_room_id_for_user(
+            profile_body_value($body, 'featuredRoomId', 'featured_room_id'),
+            $userId
+        );
+    }
+
+    if ($updates === []) {
+        json_error('No featured content updates were provided.', 422);
+    }
+
+    return [
+        'sql' => sprintf(
+            'UPDATE profiles SET %s, updated_at = CURRENT_TIMESTAMP() WHERE user_id = :user_id',
+            implode(', ', $updates)
+        ),
+        'params' => $params,
+        'updates' => $updates,
+    ];
 }
 
 function profile_update_statement_for_body(array $body, int $userId, ?bool $hasCustomizationColumns = null): array
@@ -155,6 +246,174 @@ function profile_update_statement_for_body(array $body, int $userId, ?bool $hasC
         'params' => $params,
         'updates' => $updates,
     ];
+}
+
+function require_profile_featured_storage(): void
+{
+    if (!profile_featured_columns_exist()) {
+        json_error('Featured profile content storage is not ready. Run pending migrations.', 503);
+    }
+}
+
+function profile_featured_post_id_for_user(mixed $value, int $userId): ?int
+{
+    $postId = profile_featured_nullable_input_id($value, 'Featured post');
+
+    if ($postId === null) {
+        return null;
+    }
+
+    $post = profile_featured_post_record($postId);
+
+    if ($post === null) {
+        json_error('Featured post is not available.', 422);
+    }
+
+    if ((int) $post['author_id'] !== $userId) {
+        json_error('You can only feature your own posts.', 403);
+    }
+
+    $roomDeletedAt = $post['room_deleted_at'] ?? null;
+
+    if (
+        (string) $post['visibility'] !== 'public'
+        || (string) $post['status'] !== 'published'
+        || (string) $post['author_status'] !== 'active'
+        || $post['deleted_at'] !== null
+        || (
+            $post['room_id'] !== null
+            && (
+                (string) ($post['room_visibility'] ?? '') !== 'public'
+                || $roomDeletedAt !== null
+            )
+        )
+        || !profile_featured_public_post_exists($postId, $userId)
+    ) {
+        json_error('Featured post is not available.', 422);
+    }
+
+    return $postId;
+}
+
+function profile_featured_room_id_for_user(mixed $value, int $userId): ?int
+{
+    $roomId = profile_featured_nullable_input_id($value, 'Featured room');
+
+    if ($roomId === null) {
+        return null;
+    }
+
+    $room = profile_featured_room_record($roomId, $userId);
+
+    if ($room === null) {
+        json_error('Featured room is not available.', 422);
+    }
+
+    if ((string) $room['visibility'] !== 'public' || ($room['deleted_at'] ?? null) !== null) {
+        json_error('Featured room is not available.', 422);
+    }
+
+    if (!(bool) ($room['is_eligible'] ?? false)) {
+        json_error('You can only feature rooms you own or belong to.', 403);
+    }
+
+    return $roomId;
+}
+
+function profile_featured_nullable_input_id(mixed $value, string $label): ?int
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    if (is_int($value) && $value > 0) {
+        return $value;
+    }
+
+    if (is_string($value) && preg_match('/^[0-9]+$/', $value) === 1 && (int) $value > 0) {
+        return (int) $value;
+    }
+
+    json_error("{$label} is invalid.", 422);
+}
+
+function profile_featured_post_record(int $postId): ?array
+{
+    $roomDeletedSelect = room_soft_delete_column_exists() ? 'rooms.deleted_at AS room_deleted_at,' : 'NULL AS room_deleted_at,';
+    $statement = db_query(
+        "SELECT
+            posts.id,
+            posts.author_id,
+            posts.room_id,
+            posts.parent_id,
+            posts.visibility,
+            posts.status,
+            posts.deleted_at,
+            rooms.visibility AS room_visibility,
+            {$roomDeletedSelect}
+            users.status AS author_status
+         FROM posts
+         INNER JOIN users ON users.id = posts.author_id
+         LEFT JOIN rooms ON rooms.id = posts.room_id
+         WHERE posts.id = :post_id
+         LIMIT 1",
+        ['post_id' => $postId]
+    );
+    $row = $statement->fetch();
+
+    return is_array($row) ? $row : null;
+}
+
+function profile_featured_public_post_exists(int $postId, int $userId): bool
+{
+    $statement = db_query(
+        "SELECT posts.id
+         FROM posts
+         INNER JOIN users ON users.id = posts.author_id
+         LEFT JOIN rooms ON rooms.id = posts.room_id
+         " . post_ancestor_visibility_joins_sql('posts') . "
+         WHERE posts.id = :post_id
+           AND posts.author_id = :user_id
+           AND users.status = 'active'
+           AND " . public_post_visible_sql('posts', 'rooms') . "
+           AND " . post_ancestor_visibility_sql('posts') . "
+         LIMIT 1",
+        [
+            'post_id' => $postId,
+            'user_id' => $userId,
+        ]
+    );
+
+    return (bool) $statement->fetch();
+}
+
+function profile_featured_room_record(int $roomId, int $userId): ?array
+{
+    $roomDeletedSelect = room_soft_delete_column_exists() ? 'rooms.deleted_at AS deleted_at,' : 'NULL AS deleted_at,';
+    $statement = db_query(
+        "SELECT
+            rooms.id,
+            rooms.visibility,
+            rooms.created_by,
+            {$roomDeletedSelect}
+            IF(" . profile_featured_room_eligibility_sql($userId, 'rooms') . ", 1, 0) AS is_eligible
+         FROM rooms
+         WHERE rooms.id = :room_id
+         LIMIT 1",
+        ['room_id' => $roomId]
+    );
+    $row = $statement->fetch();
+
+    return is_array($row) ? $row : null;
+}
+
+function profile_featured_reject_unknown_keys(array $body, array $allowed): void
+{
+    foreach (array_keys($body) as $key) {
+        if (!in_array($key, $allowed, true)) {
+            json_error("Unsupported featured profile field: {$key}.", 422);
+        }
+    }
 }
 
 function profile_body_value(array $body, string $camelKey, string $snakeKey): mixed

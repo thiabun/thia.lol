@@ -46,10 +46,14 @@ type ApiRoom = Room & {
   updatedAt?: string | null;
 };
 
-type ApiProfile = Profile & {
+type ApiProfile = Omit<Profile, "featuredPost" | "featuredRoom"> & {
   avatarUrl?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  featuredPostId?: number | null;
+  featuredRoomId?: number | null;
+  featuredPost?: ApiPost | null;
+  featuredRoom?: ApiRoom | null;
   links?: unknown[];
   isBlocked?: boolean;
   isMuted?: boolean;
@@ -171,6 +175,11 @@ export type RoomInput = {
 
 export type UpdateFeaturedBadgesInput = {
   featuredBadgeIds: number[];
+};
+
+export type UpdateProfileFeaturedInput = {
+  featuredPostId?: number | null;
+  featuredRoomId?: number | null;
 };
 
 export type AdminBadgesResult = {
@@ -726,6 +735,15 @@ export function updateMyProfile(
   return apiPatch<ApiProfile>("/me/profile", input, csrfToken).then(normalizeProfile);
 }
 
+export function updateProfileFeaturedContent(
+  input: UpdateProfileFeaturedInput,
+  csrfToken: string,
+): Promise<Profile> {
+  return apiPatch<ApiProfile>("/me/profile/featured", input, csrfToken).then(
+    normalizeProfile,
+  );
+}
+
 export function createPost(
   input: CreatePostInput,
   csrfToken: string,
@@ -1111,6 +1129,10 @@ function normalizeProfile(profile: ApiProfile): Profile {
     profileAccent: profile.profileAccent ?? null,
     profileBackground: profile.profileBackground ?? null,
     profileTheme: profile.profileTheme ?? null,
+    featuredPostId: profile.featuredPostId ?? profile.featuredPost?.id ?? null,
+    featuredRoomId: profile.featuredRoomId ?? profile.featuredRoom?.id ?? null,
+    featuredPost: profile.featuredPost ? normalizePost(profile.featuredPost) : null,
+    featuredRoom: profile.featuredRoom ? normalizeRoom(profile.featuredRoom) : null,
     links: Array.isArray(profile.links)
       ? profile.links
           .map((connection) => normalizeProfileConnection(connection))

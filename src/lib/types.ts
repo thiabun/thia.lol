@@ -17,6 +17,10 @@ export type Profile = {
   profileAccent?: string | null;
   profileBackground?: string | null;
   profileTheme?: string | null;
+  featuredPostId?: number | null;
+  featuredRoomId?: number | null;
+  featuredPost?: Post | null;
+  featuredRoom?: Room | null;
   links: ProfileExternalConnection[];
   traits: string[];
   stats: {

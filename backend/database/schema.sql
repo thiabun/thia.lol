@@ -35,9 +35,13 @@ CREATE TABLE IF NOT EXISTS profiles (
   profile_theme VARCHAR(50) NULL,
   links JSON NULL,
   traits JSON NULL,
+  featured_post_id BIGINT UNSIGNED NULL,
+  featured_room_id BIGINT UNSIGNED NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY profiles_display_name_idx (display_name),
+  KEY profiles_featured_post_idx (featured_post_id),
+  KEY profiles_featured_room_idx (featured_room_id),
   CONSTRAINT profiles_user_fk
     FOREIGN KEY (user_id) REFERENCES users(id)
     ON DELETE CASCADE

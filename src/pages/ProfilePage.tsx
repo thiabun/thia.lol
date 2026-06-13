@@ -32,6 +32,7 @@ import {
   createProfileModule,
   deleteProfileModule,
   followProfile,
+  getRooms,
   getMyProfileModules,
   getProfile,
   getProfileBadges,
@@ -49,12 +50,14 @@ import {
   unmuteProfile,
   updateFeaturedBadges,
   updateMyProfile,
+  updateProfileFeaturedContent,
   updateProfileModule,
   updateProfileModuleOrder,
   uploadImage,
   type CreateProfileModuleInput,
   type FollowRelationship,
   type ImageUploadPurpose,
+  type UpdateProfileFeaturedInput,
   type UpdateProfileModuleInput,
   type UpdateProfileInput,
   type UploadedImage,
@@ -68,6 +71,7 @@ import type {
   Post,
   Profile,
   ProfileModule,
+  Room,
   UserBadge,
 } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
@@ -75,6 +79,7 @@ import { useAuth } from "../lib/useAuth";
 
 type ProfileTab = "feed" | "replies" | "rooms";
 type ProfilePanel = "followers" | "following" | "badges";
+type ProfileCustomizationInitialSection = "identity" | "featured";
 
 export function ProfilePage() {
   const { handle, profileHandle } = useParams();
@@ -82,8 +87,19 @@ export function ProfilePage() {
   const { refreshSession, runWithAuth, status, user } = useAuth();
   const [activeTab, setActiveTab] = useState<ProfileTab>("feed");
   const [customizingProfileHandle, setCustomizingProfileHandle] = useState<string | undefined>();
+  const [customizationInitialSection, setCustomizationInitialSection] =
+    useState<ProfileCustomizationInitialSection>("identity");
   const [moduleEditorLoading, setModuleEditorLoading] = useState(false);
   const [moduleEditorError, setModuleEditorError] = useState<string | undefined>();
+  const [featuredOptionState, setFeaturedOptionState] = useState<
+    | {
+        handle: string;
+        posts: Post[];
+        rooms: Room[];
+        error?: string | undefined;
+      }
+    | undefined
+  >();
   const [activePanel, setActivePanel] = useState<ProfilePanel | undefined>();
   const [profileOverride, setProfileOverride] = useState<Profile | undefined>();
   const [modulesOverride, setModulesOverride] = useState<
@@ -379,17 +395,51 @@ export function ProfilePage() {
     setBadgesOverride({ handle: normalizedHandle, result: updated });
   }
 
-  async function handleOpenCustomization() {
+  async function handleFeaturedContentSave(
+    input: UpdateProfileFeaturedInput,
+  ): Promise<Profile> {
+    const updated = await runWithAuth(
+      (csrfToken) => updateProfileFeaturedContent(input, csrfToken),
+      { retryOnCsrf: true },
+    );
+
+    setProfileOverride(updated);
+
+    return updated;
+  }
+
+  async function handleOpenCustomization(
+    initialSection: ProfileCustomizationInitialSection = "identity",
+  ) {
     setModuleEditorLoading(true);
     setModuleEditorError(undefined);
+    setCustomizationInitialSection(initialSection);
 
     try {
-      const modules = await getMyProfileModules();
+      const [modules, eligiblePosts, rooms] = await Promise.all([
+        getMyProfileModules(),
+        getProfilePosts(normalizedHandle),
+        getRooms(),
+      ]);
       setModulesOverride({ handle: normalizedHandle, modules });
+      setFeaturedOptionState({
+        handle: normalizedHandle,
+        posts: eligiblePosts,
+        rooms: eligibleFeaturedRooms(rooms, user?.id),
+      });
     } catch (error) {
-      setModuleEditorError(
-        error instanceof Error ? error.message : "Profile modules could not be loaded.",
-      );
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Profile customization options could not be loaded.";
+
+      setModuleEditorError(message);
+      setFeaturedOptionState({
+        handle: normalizedHandle,
+        posts: postsState.data ?? [],
+        rooms: eligibleFeaturedRooms(profileRooms, user?.id),
+        error: message,
+      });
     } finally {
       setModuleEditorLoading(false);
       setCustomizingProfileHandle(normalizedHandle);
@@ -555,6 +605,23 @@ export function ProfilePage() {
         <ProfileCustomizationModal
           key={`${profile.user.handle}-${profile.updatedAt ?? ""}`}
           badges={profileBadges}
+          featuredOptionsError={
+            featuredOptionState?.handle === normalizedHandle
+              ? featuredOptionState.error
+              : undefined
+          }
+          featuredOptionsLoading={moduleEditorLoading}
+          featuredPostOptions={
+            featuredOptionState?.handle === normalizedHandle
+              ? featuredOptionState.posts
+              : postsState.data ?? []
+          }
+          featuredRoomOptions={
+            featuredOptionState?.handle === normalizedHandle
+              ? featuredOptionState.rooms
+              : eligibleFeaturedRooms(profileRooms, user?.id)
+          }
+          initialSection={customizationInitialSection}
           moduleError={moduleEditorError}
           moduleLoading={moduleEditorLoading}
           modules={ownerModules}
@@ -563,11 +630,17 @@ export function ProfilePage() {
           onCreateModule={handleCreateModule}
           onDeleteModule={handleDeleteModule}
           onReorderModules={handleReorderModules}
+          onSaveFeaturedContent={handleFeaturedContentSave}
           onSaveProfile={handleProfileSave}
           onUpdateModule={handleUpdateModule}
           onUpload={handleProfileImageUpload}
         />
       ) : null}
+      <ProfileFeaturedContentSection
+        isOwnProfile={isOwnProfile}
+        profile={profile}
+        onCustomize={isOwnProfile ? () => void handleOpenCustomization("featured") : undefined}
+      />
       <ProfileModulesSection
         badges={profileBadges}
         error={modulesState.error}
@@ -710,6 +783,142 @@ function mergeFollowState(
       moots: mootCount,
     },
   };
+}
+
+function eligibleFeaturedRooms(rooms: Room[], userId: number | undefined): Room[] {
+  return rooms.filter((room) => {
+    if (room.visibility && room.visibility !== "public") {
+      return false;
+    }
+
+    if (userId !== undefined && room.createdBy === userId) {
+      return true;
+    }
+
+    return (
+      room.joinedByMe === true ||
+      room.myRoomRole === "owner" ||
+      room.myRoomRole === "moderator" ||
+      room.myRoomRole === "member"
+    );
+  });
+}
+
+type ProfileFeaturedContentSectionProps = {
+  isOwnProfile: boolean;
+  onCustomize?: (() => void) | undefined;
+  profile: Profile;
+};
+
+function ProfileFeaturedContentSection({
+  isOwnProfile,
+  onCustomize,
+  profile,
+}: ProfileFeaturedContentSectionProps) {
+  const featuredPost = profile.featuredPost;
+  const featuredRoom = profile.featuredRoom;
+
+  if (!featuredPost && !featuredRoom && !isOwnProfile) {
+    return null;
+  }
+
+  return (
+    <motion.section
+      aria-label="Featured content"
+      className="border-t border-line pt-5"
+      data-testid="profile-featured-content"
+      variants={cardEntrance}
+      custom={2}
+      initial="hidden"
+      animate="show"
+    >
+      <div className="space-y-5">
+        {featuredPost ? (
+          <section aria-label="Featured post" data-testid="profile-featured-post">
+            <div className="mb-3 flex items-center gap-2">
+              <Star aria-hidden="true" size={17} className="text-accent-strong" />
+              <h2 className="text-lg font-semibold text-text">Featured post</h2>
+            </div>
+            <PostCard post={featuredPost} index={0} />
+          </section>
+        ) : isOwnProfile ? (
+          <FeaturedEmptyPrompt
+            actionLabel="Feature post"
+            icon={MessageCircle}
+            title="Feature a post"
+            text="Choose one public post to keep near the top of your profile."
+            onCustomize={onCustomize}
+          />
+        ) : null}
+
+        {featuredRoom ? (
+          <section aria-label="Featured room" data-testid="profile-featured-room">
+            <div className="mb-3 flex items-center gap-2">
+              <Radio aria-hidden="true" size={17} className="text-accent-strong" />
+              <h2 className="text-lg font-semibold text-text">Featured room</h2>
+            </div>
+            <div className="grid max-w-2xl gap-4 md:grid-cols-2">
+              <RoomCard room={featuredRoom} index={0} />
+            </div>
+          </section>
+        ) : isOwnProfile ? (
+          <FeaturedEmptyPrompt
+            actionLabel="Feature room"
+            icon={Radio}
+            title="Feature a room"
+            text="Choose one public room you own, moderate, or belong to."
+            onCustomize={onCustomize}
+          />
+        ) : null}
+      </div>
+    </motion.section>
+  );
+}
+
+type FeaturedEmptyPromptProps = {
+  actionLabel: string;
+  icon: typeof MessageCircle;
+  onCustomize?: (() => void) | undefined;
+  title: string;
+  text: string;
+};
+
+function FeaturedEmptyPrompt({
+  actionLabel,
+  icon: Icon,
+  onCustomize,
+  text,
+  title,
+}: FeaturedEmptyPromptProps) {
+  return (
+    <div
+      className="rounded-card border border-dashed border-line bg-canvas/45 p-4"
+      data-testid="profile-featured-empty"
+    >
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-strong text-accent-strong">
+            <Icon aria-hidden="true" size={18} />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-text">{title}</span>
+            <span className="mt-1 block text-sm leading-6 text-muted">{text}</span>
+          </span>
+        </div>
+        {onCustomize ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            icon={<Sparkles aria-hidden="true" size={15} />}
+            onClick={onCustomize}
+          >
+            {actionLabel}
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 type ProfileTabButtonProps = {
