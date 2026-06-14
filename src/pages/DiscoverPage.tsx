@@ -149,7 +149,7 @@ export function DiscoverPage() {
             <EmptyState
               icon={Hash}
               title="No posts yet"
-              text="Public posts will appear here."
+              text="Nothing is rising yet. Check back after more public posts land."
             />
           ) : null}
 

@@ -167,7 +167,7 @@ export function PostComposerModal({
     <AnimatePresence>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-50 grid place-items-center bg-text/28 px-4 py-6 backdrop-blur-veil"
+          className="fixed inset-0 z-50 grid place-items-stretch bg-text/28 p-0 backdrop-blur-veil sm:place-items-center sm:px-4 sm:py-6"
           variants={modalOverlay}
           initial="hidden"
           animate="show"
@@ -183,7 +183,7 @@ export function PostComposerModal({
             aria-modal="true"
             aria-labelledby={titleId}
             data-testid="composer-modal"
-            className="max-h-[calc(100dvh-3rem)] w-full max-w-xl overflow-y-auto rounded-panel border border-line bg-surface p-4 shadow-lift sm:p-5"
+            className="h-dvh max-h-dvh w-full max-w-xl overflow-y-auto border border-line bg-surface p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-lift sm:h-auto sm:max-h-[calc(100dvh-3rem)] sm:rounded-panel sm:p-5"
             variants={modalPanel}
           >
             <div className="flex items-start justify-between gap-4">

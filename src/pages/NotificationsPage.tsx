@@ -282,7 +282,7 @@ export function NotificationsPage() {
         <RouteStateNotice
           icon={Bell}
           title="No notifications yet"
-          text="New activity will show up here."
+          text="Likes, replies, follows, messages, and badges will appear here."
         />
       ) : null}
 
@@ -386,7 +386,7 @@ function NotificationRow({
               aria-label={
                 pending ? "Marking notification as read" : "Mark notification as read"
               }
-              title="Mark as read"
+              title={pending ? "Marking notification as read" : "Mark notification as read"}
               disabled={pending}
               icon={<Check aria-hidden="true" size={16} />}
               onClick={() => void onMarkRead(notification)}

@@ -343,7 +343,7 @@ export function RoomPage() {
         <EmptyState
           icon={MessageCircle}
           title="No posts yet"
-          text="This room is quiet."
+          text="This room is quiet for now."
         />
       ) : null}
 
@@ -502,11 +502,13 @@ function RoomHeader({
               ) : null}
               {canReport ? (
                 <ReportForm
+                  className="w-full sm:w-auto"
                   targetType="room"
                   targetId={room.id}
                   reportedUserId={room.owner?.id}
                   title="Report room"
                   explainer={`This reports /${room.slug} to moderators.`}
+                  triggerClassName="w-full sm:w-auto"
                 />
               ) : null}
             </div>
@@ -596,7 +598,7 @@ function RoomAbout({
             <RoomMemberRow key={member.id} user={member.user} role={member.role} />
           ))}
           {moderators.length === 0 ? (
-            <p className="text-sm text-muted">No room moderators yet.</p>
+            <p className="text-sm text-muted">No extra moderators yet.</p>
           ) : null}
           {membersError ? (
             <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
@@ -617,7 +619,7 @@ function RoomMemberRow({
   user: RoomMember["user"];
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-card border border-line bg-canvas/45 p-3">
+    <div className="flex flex-col items-start gap-3 rounded-card border border-line bg-canvas/45 p-3 sm:flex-row sm:items-center sm:justify-between">
       <UserIdentityLink user={user} showAvatar={false} className="flex-1" />
       <Badge tone={role === "owner" ? "warm" : "cool"}>{roleLabel(role)}</Badge>
     </div>

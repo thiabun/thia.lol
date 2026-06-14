@@ -81,40 +81,40 @@ export function RoomsPage() {
       />
 
       <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
-      <Panel className="p-5 sm:p-6">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <Badge tone="leaf">rooms</Badge>
-            <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">
-              Find a place to post.
-            </h1>
-            <p className="mt-3 text-base leading-7 text-muted">
-              Public rooms for shared topics and conversations.
-            </p>
+        <Panel className="p-5 sm:p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-2xl">
+              <Badge tone="leaf">rooms</Badge>
+              <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">
+                Find a place to post.
+              </h1>
+              <p className="mt-3 text-base leading-7 text-muted">
+                Public rooms for shared topics and conversations.
+              </p>
+            </div>
+            <div className="flex w-full flex-col gap-3 sm:flex-row lg:max-w-xl">
+              <SearchField
+                id="room-search"
+                label="Search rooms"
+                placeholder="Search rooms"
+                className="w-full"
+                value={query}
+                onChange={(event) => setQuery(event.currentTarget.value)}
+              />
+              {user ? (
+                <Button
+                  type="button"
+                  className="w-full shrink-0 sm:w-auto"
+                  data-testid="create-room-button"
+                  icon={<Plus aria-hidden="true" size={17} />}
+                  onClick={() => setCreateOpen(true)}
+                >
+                  Create room
+                </Button>
+              ) : null}
+            </div>
           </div>
-          <div className="flex w-full flex-col gap-3 sm:flex-row lg:max-w-xl">
-            <SearchField
-              id="room-search"
-              label="Search rooms"
-              placeholder="Search rooms"
-              className="w-full"
-              value={query}
-              onChange={(event) => setQuery(event.currentTarget.value)}
-            />
-            {user ? (
-              <Button
-                type="button"
-                className="shrink-0"
-                data-testid="create-room-button"
-                icon={<Plus aria-hidden="true" size={17} />}
-                onClick={() => setCreateOpen(true)}
-              >
-                Create room
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      </Panel>
+        </Panel>
       </motion.div>
 
       {roomsState.loading ? (
@@ -133,7 +133,7 @@ export function RoomsPage() {
         <EmptyState
           icon={Radio}
           title="No public rooms yet"
-          text="Public rooms will appear here."
+          text="Rooms people create will appear here."
         />
       ) : null}
 

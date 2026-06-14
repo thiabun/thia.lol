@@ -1068,7 +1068,7 @@ function ProfileFocusedPanel({
   return (
     <AnimatePresence>
       <motion.div
-        className="fixed inset-0 z-50 grid place-items-center bg-text/28 px-4 py-6 backdrop-blur-veil"
+        className="fixed inset-0 z-50 grid place-items-stretch bg-text/28 p-0 backdrop-blur-veil sm:place-items-center sm:px-4 sm:py-6"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -1082,7 +1082,7 @@ function ProfileFocusedPanel({
           role="dialog"
           aria-modal="true"
           aria-label={title}
-          className="max-h-[calc(100dvh-3rem)] w-full max-w-2xl overflow-y-auto rounded-panel border border-line bg-surface p-4 shadow-lift sm:p-5"
+          className="h-dvh max-h-dvh w-full max-w-2xl overflow-y-auto border border-line bg-surface p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-lift sm:h-auto sm:max-h-[calc(100dvh-3rem)] sm:rounded-panel sm:p-5"
           initial={{ y: 16, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 16, opacity: 0 }}
@@ -1101,7 +1101,7 @@ function ProfileFocusedPanel({
               variant="ghost"
               size="icon"
               aria-label="Close panel"
-              title="Close"
+              title={`Close ${title.toLowerCase()} panel`}
               icon={<X aria-hidden="true" size={18} />}
               onClick={onClose}
             />
@@ -1199,7 +1199,13 @@ function ProfileConnectionList({
   }
 
   if (visibleItems.length === 0) {
-    return <EmptyState icon={Users} title={`No ${title.toLowerCase()} yet`} text={`No ${title.toLowerCase()} yet`} />;
+    return (
+      <EmptyState
+        icon={Users}
+        title={`No ${title.toLowerCase()} yet`}
+        text={emptyProfileConnectionText(title)}
+      />
+    );
   }
 
   return (
@@ -1214,7 +1220,7 @@ function ProfileConnectionList({
           key={connection.handle}
           className="rounded-card border border-line bg-canvas/45 p-3 transition duration-fluid hover:border-line-strong"
         >
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <UserIdentityLink
               user={{ ...connection, aura: "frost" }}
               avatarSize="md"
@@ -1333,7 +1339,13 @@ function ProfileBadgeList({
   }
 
   if (badges.length === 0) {
-    return <EmptyState icon={Award} title="No badges yet" text="No badges yet" />;
+    return (
+      <EmptyState
+        icon={Award}
+        title="No badges yet"
+        text="Earned badges will appear here."
+      />
+    );
   }
 
   return (
@@ -1363,6 +1375,18 @@ function ProfileBadgeList({
       </div>
     </div>
   );
+}
+
+function emptyProfileConnectionText(title: string): string {
+  if (title === "Followers") {
+    return "People who follow this profile will appear here.";
+  }
+
+  if (title === "Following") {
+    return "Profiles this member follows will appear here.";
+  }
+
+  return "Connections will appear here.";
 }
 
 type ProfileBadgeCardProps = {

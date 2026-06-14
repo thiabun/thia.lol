@@ -246,7 +246,7 @@ export function HomePage() {
           <EmptyState
             icon={MessageCircle}
             title="No posts yet"
-            text="Public posts will appear here."
+            text="Public posts will show up here once people start sharing."
           />
         ) : null}
 
@@ -319,7 +319,7 @@ export function HomePage() {
             <EmptyState
               icon={Radio}
               title="No rooms yet"
-              text="Public rooms will appear here."
+              text="Public rooms will show up here once someone creates one."
             />
           ) : null}
           {roomsState.error ? (

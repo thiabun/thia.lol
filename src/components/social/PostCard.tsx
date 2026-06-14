@@ -510,7 +510,7 @@ function ReactionControls({
           <span
             className={cn(
               "inline-flex items-center gap-2",
-              compact ? "sm:ml-auto" : "ml-auto",
+              compact ? "w-full justify-end sm:ml-auto sm:w-auto" : "ml-auto",
             )}
           >
             {canReport ? (
@@ -909,7 +909,7 @@ function ThreadModal({
     <AnimatePresence>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-50 grid place-items-center bg-text/28 px-3 py-4 backdrop-blur-veil sm:px-4 sm:py-6"
+          className="fixed inset-0 z-50 grid place-items-stretch bg-text/28 p-0 backdrop-blur-veil sm:place-items-center sm:px-4 sm:py-6"
           variants={modalOverlay}
           initial="hidden"
           animate="show"
@@ -925,7 +925,7 @@ function ThreadModal({
             aria-modal="true"
             aria-labelledby={titleId}
             data-testid="thread-modal"
-            className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-panel border border-line bg-surface shadow-lift sm:max-h-[min(820px,calc(100dvh-3rem))]"
+            className="flex h-dvh max-h-dvh w-full max-w-5xl flex-col overflow-hidden border border-line bg-surface shadow-lift sm:h-auto sm:max-h-[min(820px,calc(100dvh-3rem))] sm:rounded-panel"
             variants={modalPanel}
           >
             <div className="sticky top-0 z-10 grid grid-cols-[2.5rem_1fr_2.5rem] items-center gap-3 border-b border-line bg-surface/95 px-3 py-3 backdrop-blur-veil sm:px-5">

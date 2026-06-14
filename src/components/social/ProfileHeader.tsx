@@ -203,6 +203,7 @@ export function ProfileHeader({
                         aria-haspopup="menu"
                         aria-expanded={actionsOpen}
                         aria-label={`Profile actions for @${profile.user.handle}`}
+                        title={`Profile actions for @${profile.user.handle}`}
                         data-testid="profile-actions-button"
                         icon={<MoreHorizontal aria-hidden="true" size={18} />}
                         onClick={() => setActionsOpen((open) => !open)}
@@ -420,7 +421,8 @@ export function ProfileHeader({
                 type="button"
                 variant="ghost"
                 size="icon"
-                aria-label="Cancel block"
+                aria-label="Close block confirmation"
+                title="Close block confirmation"
                 icon={<X aria-hidden="true" size={18} />}
                 onClick={() => setConfirmBlockOpen(false)}
               />
@@ -496,6 +498,7 @@ function ProfilePanelPill({
     <button
       type="button"
       className={`${className} hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus`}
+      title={`Open ${label.toLowerCase()} panel`}
       onClick={onClick}
     >
       <Icon aria-hidden="true" size={15} />

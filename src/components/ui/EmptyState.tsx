@@ -16,7 +16,7 @@ export function EmptyState({
   className,
 }: EmptyStateProps) {
   return (
-    <Panel className={cn("p-8 text-center", className)}>
+    <Panel className={cn("p-6 text-center sm:p-8", className)}>
       <div className="mx-auto grid size-12 place-items-center rounded-full bg-surface-strong text-accent-strong">
         <Icon aria-hidden="true" size={22} />
       </div>
