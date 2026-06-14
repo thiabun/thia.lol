@@ -34,6 +34,22 @@ git push
 
 If `git pull --rebase` or `git push` fails, stop and report the error instead of continuing with hidden local-only changes.
 
+## GitHub issue engagement rule
+
+When work is driven by a GitHub issue, treat the GitHub issue as part of the
+delivery surface:
+
+- Read the issue before implementation and keep its acceptance criteria in scope.
+- Reference the issue number in the work summary and, when useful, in commit or
+  PR text.
+- After verification passes, the commit is created, and `git push` succeeds,
+  update the issue with the resolution status.
+- If the issue is fully resolved, close it with a short comment that includes the
+  commit SHA and verification status.
+- If the issue is not fully resolved, leave it open and comment with the
+  remaining deferred items, blockers, or follow-up issue links.
+- Do not silently leave a completed issue open after pushing resolved work.
+
 ## Deployment invariant
 
 The contents of `dist/` go directly into `public_html/`.
