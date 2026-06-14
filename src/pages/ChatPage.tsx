@@ -7,7 +7,6 @@ import {
   Send,
   WifiOff,
   UserPlus,
-  type LucideIcon,
 } from "lucide-react";
 import { motion } from "motion/react";
 import {
@@ -17,7 +16,6 @@ import {
   useRef,
   useState,
   type FormEvent,
-  type ReactNode,
 } from "react";
 import { Link, useSearchParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
@@ -26,7 +24,11 @@ import { Avatar } from "../components/ui/Avatar";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { ModalSheet } from "../components/ui/ModalSheet";
 import { Panel } from "../components/ui/Panel";
-import { RouteHeader, RouteStateNotice } from "../components/ui/RouteState";
+import {
+  CompactStateNotice,
+  RouteHeader,
+  RouteStateNotice,
+} from "../components/ui/RouteState";
 import { UserIdentityLink } from "../components/social/UserProfileLink";
 import {
   createChatConversation,
@@ -487,9 +489,13 @@ export function ChatPage() {
             </div>
             <div className="max-h-[calc(18rem-3rem)] divide-y divide-line overflow-y-auto lg:max-h-none" data-testid="chat-conversation-list">
               {conversationsError ? (
-                <div className="p-4 text-sm leading-6 text-rose-ink">
-                  {conversationsError}
-                </div>
+                <CompactStateNotice
+                  className="m-3"
+                  icon={WifiOff}
+                  kind="error"
+                  title="Conversation list did not refresh"
+                  text="Your current chats are still visible."
+                />
               ) : null}
               {conversations.map((conversation) => (
                 <ConversationButton
@@ -524,7 +530,7 @@ export function ChatPage() {
                   data-testid="chat-message-list"
                 >
                   {messagesLoading ? (
-                    <InlineChatState
+                    <CompactStateNotice
                       icon={LoaderCircle}
                       kind="loading"
                       title="Loading messages"
@@ -532,7 +538,7 @@ export function ChatPage() {
                     />
                   ) : null}
                   {messagesError ? (
-                    <InlineChatState
+                    <CompactStateNotice
                       icon={WifiOff}
                       kind="error"
                       title="Could not load messages"
@@ -540,7 +546,7 @@ export function ChatPage() {
                     />
                   ) : null}
                   {!messagesLoading && !messagesError && messages.length === 0 ? (
-                    <InlineChatState
+                    <CompactStateNotice
                       centered
                       icon={Inbox}
                       title="No messages yet"
@@ -587,7 +593,7 @@ export function ChatPage() {
                 </form>
               </>
             ) : (
-              <InlineChatState
+              <CompactStateNotice
                 centered
                 icon={MessageCircle}
                 title="Choose a conversation"
@@ -677,7 +683,7 @@ function ChatMootPicker({
 
       <div className="min-h-0 flex-1 overflow-y-auto" data-testid="chat-moot-list">
           {loading ? (
-            <InlineChatState
+            <CompactStateNotice
               className="m-4"
               icon={LoaderCircle}
               kind="loading"
@@ -686,7 +692,7 @@ function ChatMootPicker({
             />
           ) : null}
           {error ? (
-            <InlineChatState
+            <CompactStateNotice
               actions={
                 <Button
                   type="button"
@@ -705,7 +711,7 @@ function ChatMootPicker({
             />
           ) : null}
           {!loading && !error && moots.length === 0 ? (
-            <InlineChatState
+            <CompactStateNotice
               centered
               className="min-h-72"
               icon={MessageCircle}
@@ -715,7 +721,7 @@ function ChatMootPicker({
             />
           ) : null}
           {!loading && !error && moots.length > 0 && filteredMoots.length === 0 ? (
-            <InlineChatState
+            <CompactStateNotice
               centered
               className="min-h-72"
               icon={Search}
@@ -762,77 +768,6 @@ function ChatMootPicker({
             : null}
       </div>
     </ModalSheet>
-  );
-}
-
-type InlineChatStateKind = "neutral" | "loading" | "error";
-
-type InlineChatStateProps = {
-  actions?: ReactNode;
-  centered?: boolean;
-  className?: string;
-  icon: LucideIcon;
-  kind?: InlineChatStateKind;
-  testId?: string;
-  text: string;
-  title: string;
-};
-
-const inlineStateIconStyles: Record<InlineChatStateKind, string> = {
-  neutral: "bg-surface-strong text-accent-strong",
-  loading: "bg-cool/15 text-cool-ink",
-  error: "bg-rose/15 text-rose-ink",
-};
-
-function InlineChatState({
-  actions,
-  centered = false,
-  className,
-  icon: Icon,
-  kind = "neutral",
-  testId,
-  text,
-  title,
-}: InlineChatStateProps) {
-  return (
-    <div
-      className={cn(
-        centered
-          ? "grid flex-1 place-items-center p-6 text-center"
-          : "rounded-card bg-canvas/55 p-3",
-        className,
-      )}
-      data-testid={testId}
-    >
-      <div
-        className={cn(
-          centered ? "mx-auto max-w-sm" : "flex items-start gap-3",
-        )}
-      >
-        <div
-          className={cn(
-            "grid size-11 shrink-0 place-items-center rounded-full",
-            centered ? "mx-auto" : "",
-            inlineStateIconStyles[kind],
-          )}
-        >
-          <Icon
-            aria-hidden="true"
-            size={20}
-            className={kind === "loading" ? "animate-spin" : undefined}
-          />
-        </div>
-        <div className={cn("min-w-0", centered ? "mt-4" : "")}>
-          <h2 className="text-sm font-semibold text-text">{title}</h2>
-          <p className="mt-1 text-sm leading-6 text-muted">{text}</p>
-          {actions ? (
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
-              {actions}
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </div>
   );
 }
 

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
+import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Avatar } from "../components/ui/Avatar";
 import { Badge } from "../components/ui/Badge";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -158,14 +159,18 @@ export function SearchPage() {
       ) : null}
 
       {queryReady && loading ? (
-        <SearchNotice title="Searching" text="Looking through public profiles and rooms." />
+        <ApiStateNotice
+          kind="loading"
+          title="Searching profiles and rooms"
+          text="Looking through public profiles and rooms."
+        />
       ) : null}
 
       {queryReady && activeError ? (
-        <SearchNotice
+        <ApiStateNotice
+          kind="error"
           title="Search is not available"
           text="Try again in a moment."
-          tone="rose"
         />
       ) : null}
 
@@ -204,24 +209,6 @@ export function SearchPage() {
         </div>
       ) : null}
     </motion.div>
-  );
-}
-
-function SearchNotice({
-  text,
-  title,
-  tone = "cool",
-}: {
-  text: string;
-  title: string;
-  tone?: "cool" | "rose";
-}) {
-  return (
-    <Panel className="p-4">
-      <Badge tone={tone}>{tone === "rose" ? "notice" : "loading"}</Badge>
-      <h2 className="mt-3 text-sm font-semibold text-text">{title}</h2>
-      <p className="mt-1 text-sm leading-6 text-muted">{text}</p>
-    </Panel>
   );
 }
 

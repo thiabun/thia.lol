@@ -381,7 +381,7 @@ export function RoomEditModal({
                   ) : null}
 
                   {moderatorMessage ? (
-                    <ModalSheetStatus tone="success">
+                    <ModalSheetStatus tone={moderatorStatusTone(moderatorMessage)}>
                       {moderatorMessage}
                     </ModalSheetStatus>
                   ) : null}
@@ -551,4 +551,10 @@ function slugFromName(name: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
+}
+
+function moderatorStatusTone(message: string) {
+  return message === "Moderator added" || message === "Moderator removed"
+    ? "success"
+    : "error";
 }

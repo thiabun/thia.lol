@@ -20,6 +20,7 @@ import {
   InlineUserProfileLink,
   UserIdentityLink,
 } from "../components/social/UserProfileLink";
+import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -308,24 +309,32 @@ export function RoomPage() {
           onPost={() => openPostComposer(room.slug)}
         />
       ) : roomState.loading ? (
-        <RoomNotice title="Opening room" text="The room is loading." />
+        <ApiStateNotice
+          kind="loading"
+          title="Opening room"
+          text="Fetching room details."
+        />
       ) : (
-        <RoomNotice
+        <ApiStateNotice
+          kind="error"
           title="Room is not available"
           text="Try refreshing in a moment."
-          tone="rose"
         />
       )}
 
       {postsState.loading ? (
-        <RoomNotice title="Loading posts" text="Posts are loading." />
+        <ApiStateNotice
+          kind="loading"
+          title="Loading room posts"
+          text="Fetching posts from this room."
+        />
       ) : null}
 
       {postsState.error && !postsState.loading ? (
-        <RoomNotice
+        <ApiStateNotice
+          kind="error"
           title="Posts are not available"
           text="Try refreshing in a moment."
-          tone="rose"
         />
       ) : null}
 
@@ -643,24 +652,6 @@ function RoomMetric({
       </div>
       <p className="mt-2 text-sm font-semibold text-text">{value}</p>
     </div>
-  );
-}
-
-function RoomNotice({
-  text,
-  title,
-  tone = "cool",
-}: {
-  text: string;
-  title: string;
-  tone?: "cool" | "rose";
-}) {
-  return (
-    <Panel className="p-4">
-      <Badge tone={tone}>{tone === "rose" ? "notice" : "loading"}</Badge>
-      <h2 className="mt-3 text-sm font-semibold text-text">{title}</h2>
-      <p className="mt-1 text-sm leading-6 text-muted">{text}</p>
-    </Panel>
   );
 }
 

@@ -11,6 +11,7 @@ import {
   EyeOff,
   ImagePlus,
   Link as LinkIcon,
+  LoaderCircle,
   MapPin,
   MessageCircle,
   Pin,
@@ -22,6 +23,7 @@ import {
   Trash2,
   Type,
   UserRound,
+  WifiOff,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -59,6 +61,8 @@ import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { SelectField, TextareaField, TextField } from "../ui/Field";
+import { ModalSheetStatus } from "../ui/ModalSheet";
+import { CompactStateNotice } from "../ui/RouteState";
 import { ProfileConnectionIcon } from "./ProfileConnectionIcon";
 import { ProfileModuleGrid } from "./ProfileModules";
 
@@ -898,9 +902,9 @@ export function ProfileCustomizationModal({
               </div>
 
               {profileMessage ? (
-                <p className="rounded-card border border-line bg-canvas/55 p-3 text-sm text-text">
+                <ModalSheetStatus tone={profileStatusTone(profileMessage)}>
                   {profileMessage}
-                </p>
+                </ModalSheetStatus>
               ) : null}
 
               {activeSection !== "modules" &&
@@ -1331,15 +1335,21 @@ function FeaturedContentEditor({
       </div>
 
       {loading ? (
-        <p className="rounded-card bg-canvas/55 p-3 text-sm text-muted">
-          Loading featured content options.
-        </p>
+        <CompactStateNotice
+          icon={LoaderCircle}
+          kind="loading"
+          title="Loading featured options"
+          text="Fetching posts and rooms you can feature."
+        />
       ) : null}
 
       {error ? (
-        <p className="rounded-card bg-rose/15 p-3 text-sm text-rose-ink">
-          {error}
-        </p>
+        <CompactStateNotice
+          icon={WifiOff}
+          kind="error"
+          title="Featured options are not available"
+          text={error}
+        />
       ) : null}
 
       <div className="grid gap-5 lg:grid-cols-2">
@@ -1368,9 +1378,9 @@ function FeaturedContentEditor({
       </div>
 
       {message ? (
-        <p className="rounded-card border border-line bg-canvas/55 p-3 text-sm text-text">
+        <ModalSheetStatus tone={featuredStatusTone(message)}>
           {message}
-        </p>
+        </ModalSheetStatus>
       ) : null}
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
@@ -1619,6 +1629,16 @@ function postOptionText(post: Post): string {
   return body.length > 130 ? `${body.slice(0, 127)}...` : body;
 }
 
+function profileStatusTone(message: string) {
+  return message === "Profile updated" || message === "Images are converted to WebP"
+    ? "success"
+    : "error";
+}
+
+function featuredStatusTone(message: string) {
+  return message === "Featured content updated" ? "success" : "error";
+}
+
 type ModulesEditorSectionProps = {
   badges: UserBadge[];
   busy: "save" | "delete" | "order" | undefined;
@@ -1676,15 +1696,21 @@ function ModulesEditorSection({
       </div>
 
       {loading ? (
-        <p className="rounded-card bg-canvas/55 p-3 text-sm text-muted">
-          Loading modules.
-        </p>
+        <CompactStateNotice
+          icon={LoaderCircle}
+          kind="loading"
+          title="Loading modules"
+          text="Fetching your profile modules."
+        />
       ) : null}
 
       {error ? (
-        <p className="rounded-card bg-rose/15 p-3 text-sm text-rose-ink">
-          {error}
-        </p>
+        <CompactStateNotice
+          icon={WifiOff}
+          kind="error"
+          title="Modules are not available"
+          text={error}
+        />
       ) : null}
 
       {!loading ? (
@@ -1713,19 +1739,22 @@ function ModulesEditorSection({
               </p>
             ) : null}
             {message ? (
-              <motion.p
-                className="mt-3 rounded-card bg-leaf/15 p-3 text-sm text-leaf-ink"
+              <motion.div
+                className="mt-3"
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
               >
-                {message}
-              </motion.p>
+                <ModalSheetStatus tone="success">{message}</ModalSheetStatus>
+              </motion.div>
             ) : null}
             <div className="mt-3 space-y-3" data-testid="profile-module-list">
               {drafts.length === 0 ? (
-                <p className="rounded-card border border-dashed border-line bg-canvas/45 p-4 text-sm text-muted">
-                  No modules yet. Pick a block below to start shaping this space.
-                </p>
+                <CompactStateNotice
+                  icon={Sparkles}
+                  title="No modules yet"
+                  text="Pick a block below to start shaping this space."
+                  className="border border-dashed border-line bg-canvas/45"
+                />
               ) : null}
               {drafts.map((module, index) => (
                 <ModuleTile
@@ -1953,9 +1982,7 @@ function ModuleTile({
             </div>
 
             {formError ? (
-              <p className="rounded-card bg-rose/15 p-3 text-sm text-rose-ink">
-                {formError}
-              </p>
+              <ModalSheetStatus tone="error">{formError}</ModalSheetStatus>
             ) : null}
           </motion.form>
         ) : null}

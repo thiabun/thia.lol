@@ -120,15 +120,15 @@ export function DiscoverPage() {
       {discoverState.loading ? (
         <ApiStateNotice
           kind="loading"
-          title="Loading feed"
-          text="Posts are loading."
+          title="Loading rising posts"
+          text="Fetching rising public posts."
         />
       ) : null}
 
       {discoverState.error ? (
         <ApiStateNotice
           kind="error"
-          title="Could not load feed"
+          title="Discovery feed is not available"
           text="Try refreshing in a moment."
         />
       ) : null}

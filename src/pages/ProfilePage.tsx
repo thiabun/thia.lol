@@ -692,10 +692,12 @@ export function ProfilePage() {
             emptyDescription="Posts and reblogs from this profile will appear here."
             emptyIcon={MessageCircle}
             emptyText="No posts yet"
+            errorTitle="Profile feed is not available"
             error={postsState.error ?? reblogsState.error}
             items={profileFeed}
             loading={postsState.loading || reblogsState.loading}
-            loadingText="Feed is loading."
+            loadingText="Fetching posts and reblogs."
+            loadingTitle="Loading profile feed"
           />
         ) : null}
         {activeTab === "replies" ? (
@@ -703,10 +705,12 @@ export function ProfilePage() {
             emptyDescription="Replies from this profile will appear here."
             emptyIcon={Reply}
             emptyText="No replies yet"
+            errorTitle="Replies are not available"
             error={repliesState.error}
             items={profileReplies}
             loading={repliesState.loading}
-            loadingText="Replies are loading."
+            loadingText="Fetching replies from this profile."
+            loadingTitle="Loading replies"
           />
         ) : null}
         {activeTab === "rooms" ? (
@@ -969,32 +973,42 @@ type ProfilePostListProps = {
   emptyDescription: string;
   emptyIcon: typeof MessageCircle;
   emptyText: string;
+  errorTitle: string;
   error: unknown;
   items: Post[] | undefined;
   loading: boolean;
   loadingText: string;
+  loadingTitle: string;
 };
 
 function ProfilePostList({
   emptyDescription,
   emptyIcon,
   emptyText,
+  errorTitle,
   error,
   items,
   loading,
   loadingText,
+  loadingTitle,
 }: ProfilePostListProps) {
   const posts = items ?? [];
 
   if (loading) {
-    return <ApiStateNotice kind="loading" title="Loading" text={loadingText} />;
+    return (
+      <ApiStateNotice
+        kind="loading"
+        title={loadingTitle}
+        text={loadingText}
+      />
+    );
   }
 
   if (error) {
     return (
       <ApiStateNotice
         kind="error"
-        title="Posts are not available"
+        title={errorTitle}
         text="Try refreshing in a moment."
       />
     );
@@ -1153,7 +1167,13 @@ function ProfileConnectionList({
   }
 
   if (loading) {
-    return <ApiStateNotice kind="loading" title="Loading" text={`${title} are loading.`} />;
+    return (
+      <ApiStateNotice
+        kind="loading"
+        title={`Loading ${title.toLowerCase()}`}
+        text={`Fetching this profile's ${title.toLowerCase()}.`}
+      />
+    );
   }
 
   if (error) {
@@ -1291,7 +1311,7 @@ function ProfileBadgeList({
       <ApiStateNotice
         kind="loading"
         title="Loading badges"
-        text="Badges are loading."
+        text="Fetching earned badges."
       />
     );
   }
@@ -1447,7 +1467,11 @@ type ProfileRoomListProps = {
 function ProfileRoomList({ error, loading, rooms }: ProfileRoomListProps) {
   if (loading) {
     return (
-      <ApiStateNotice kind="loading" title="Loading rooms" text="Rooms are loading." />
+      <ApiStateNotice
+        kind="loading"
+        title="Loading rooms"
+        text="Fetching rooms from this profile."
+      />
     );
   }
 

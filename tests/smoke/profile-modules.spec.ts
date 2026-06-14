@@ -88,7 +88,9 @@ test("owner empty module state is honest", async ({ page }) => {
   await expect(page.getByTestId("profile-owner-tools")).toHaveCount(0);
   await expect(page.getByTestId("profile-modules")).toBeVisible();
   await expect(page.getByRole("heading", { name: "No profile modules yet" })).toBeVisible();
-  await expect(page.getByText("This space is empty for now.")).toBeVisible();
+  await expect(
+    page.getByText("Add modules in Customize profile to fill this space."),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "Customize profile" })).toBeVisible();
 });
 

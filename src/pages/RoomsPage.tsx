@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { RoomEditModal } from "../components/social/RoomEditModal";
+import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -118,14 +119,18 @@ export function RoomsPage() {
       </motion.div>
 
       {roomsState.loading ? (
-        <RoomNotice title="Loading rooms" text="The room list is loading." />
+        <ApiStateNotice
+          kind="loading"
+          title="Loading rooms"
+          text="Fetching public rooms."
+        />
       ) : null}
 
       {roomsState.error ? (
-        <RoomNotice
+        <ApiStateNotice
+          kind="error"
           title="Rooms are not available"
           text="Try refreshing in a moment."
-          tone="rose"
         />
       ) : null}
 
@@ -166,23 +171,5 @@ export function RoomsPage() {
         />
       ) : null}
     </motion.div>
-  );
-}
-
-function RoomNotice({
-  text,
-  title,
-  tone = "cool",
-}: {
-  text: string;
-  title: string;
-  tone?: "cool" | "rose";
-}) {
-  return (
-    <Panel className="p-4">
-      <Badge tone={tone}>{tone === "rose" ? "notice" : "loading"}</Badge>
-      <h2 className="mt-3 text-sm font-semibold text-text">{title}</h2>
-      <p className="mt-1 text-sm leading-6 text-muted">{text}</p>
-    </Panel>
   );
 }

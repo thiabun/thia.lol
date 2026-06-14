@@ -6,11 +6,13 @@ import {
   Ban,
   CheckCircle2,
   EyeOff,
+  LoaderCircle,
   MessageCircle,
   Radio,
   RefreshCw,
   Shield,
   Trash2,
+  WifiOff,
   XCircle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -19,8 +21,10 @@ import { InlineUserProfileLink } from "../components/social/UserProfileLink";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Badge } from "../components/ui/Badge";
 import { Button, ButtonLink } from "../components/ui/Button";
+import { EmptyState } from "../components/ui/EmptyState";
 import { SelectField, TextareaField, TextField } from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
+import { CompactStateNotice } from "../components/ui/RouteState";
 import {
   getAdminBadges,
   getAdminRooms,
@@ -378,13 +382,23 @@ export function AdminPage() {
         </div>
 
         {loadingRooms ? (
-          <p className="mt-4 text-sm text-muted">Loading rooms</p>
+          <CompactStateNotice
+            className="mt-4"
+            icon={LoaderCircle}
+            kind="loading"
+            title="Loading room metadata"
+            text="Fetching public room details for moderation."
+          />
         ) : null}
 
         {roomsError ? (
-          <p className="mt-4 rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
-            {roomsError}
-          </p>
+          <CompactStateNotice
+            className="mt-4"
+            icon={WifiOff}
+            kind="error"
+            title="Room metadata is not available"
+            text={roomsError}
+          />
         ) : null}
 
         {rooms.length > 0 ? (
@@ -405,21 +419,20 @@ export function AdminPage() {
       ) : null}
 
       {error ? (
-        <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
-          {error}
-        </p>
+        <ApiStateNotice
+          kind="error"
+          title="Report queue is not available"
+          text={error}
+        />
       ) : null}
 
       <section className="space-y-4" aria-label="Reports">
-        {reports.length === 0 && !loading ? (
-          <Panel className="p-5">
-            <Badge tone="leaf">clear</Badge>
-            <h2 className="mt-3 text-lg font-semibold text-text">No reports yet</h2>
-            <p className="mt-2 text-sm leading-6 text-muted">
-              New reports will appear here after logged-in members flag posts or
-              profiles.
-            </p>
-          </Panel>
+        {reports.length === 0 && !loading && !error ? (
+          <EmptyState
+            icon={Shield}
+            title="No reports yet"
+            text="Member reports will appear here when moderators need to review them."
+          />
         ) : null}
 
         {reports.map((report) => (
@@ -573,12 +586,24 @@ function BadgeAdminPanel({
         </div>
       </div>
 
-      {loading ? <p className="mt-4 text-sm text-muted">Loading badges</p> : null}
+      {loading ? (
+        <CompactStateNotice
+          className="mt-4"
+          icon={LoaderCircle}
+          kind="loading"
+          title="Loading badges"
+          text="Fetching badge definitions and recent grants."
+        />
+      ) : null}
 
       {error ? (
-        <p className="mt-4 rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
-          {error}
-        </p>
+        <CompactStateNotice
+          className="mt-4"
+          icon={WifiOff}
+          kind="error"
+          title="Badges are not available"
+          text={error}
+        />
       ) : null}
 
       {message ? (

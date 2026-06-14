@@ -12,10 +12,12 @@ import {
   EyeOff,
   Heart,
   ImagePlus,
+  LoaderCircle,
   MessageCircle,
   Repeat2,
   Send,
   Trash2,
+  WifiOff,
 } from "lucide-react";
 import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
@@ -25,6 +27,7 @@ import { Button, ButtonLink } from "../ui/Button";
 import { TextareaField } from "../ui/Field";
 import { ModalSheet } from "../ui/ModalSheet";
 import { Panel } from "../ui/Panel";
+import { CompactStateNotice } from "../ui/RouteState";
 import { InlineUserProfileLink } from "./UserProfileLink";
 import { ReportForm } from "./ReportForm";
 import {
@@ -937,7 +940,11 @@ function ThreadModal({
                   </div>
                 ) : isCheckingAuth ? (
                   <div className="border-b border-line/70 px-4 py-3 sm:px-5">
-                    <ThreadStateNotice text="Checking session..." />
+                    <ThreadStateNotice
+                      kind="loading"
+                      title="Checking session"
+                      text="Confirming you can reply."
+                    />
                   </div>
                 ) : !isAuthenticated ? (
                   <div className="flex flex-col gap-3 border-b border-line/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
@@ -949,12 +956,25 @@ function ThreadModal({
                 ) : null}
 
                 <div className="px-3 py-1 sm:px-5">
-                  {loading ? <ThreadStateNotice text="Loading replies..." /> : null}
+                  {loading ? (
+                    <ThreadStateNotice
+                      kind="loading"
+                      title="Loading replies"
+                      text="Fetching this thread."
+                    />
+                  ) : null}
                   {loadError ? (
-                    <ThreadStateNotice tone="error" text={loadError} />
+                    <ThreadStateNotice
+                      kind="error"
+                      title="Replies are not available"
+                      text={loadError}
+                    />
                   ) : null}
                   {!loading && !loadError && replies.length === 0 ? (
-                    <ThreadStateNotice text="No replies yet." />
+                    <ThreadStateNotice
+                      title="No replies yet"
+                      text="Start the conversation with a reply."
+                    />
                   ) : null}
                   <div data-testid="thread-replies">
                     <AnimatePresence initial={false}>
@@ -1039,22 +1059,27 @@ function ParentPostPreview({
 }
 
 function ThreadStateNotice({
+  kind = "neutral",
   text,
-  tone = "neutral",
+  title,
 }: {
+  kind?: "neutral" | "loading" | "error";
   text: string;
-  tone?: "neutral" | "error";
+  title: string;
 }) {
+  const Icon =
+    kind === "loading" ? LoaderCircle : kind === "error" ? WifiOff : MessageCircle;
+
   return (
-    <p
-      className={cn(
-        "mx-auto my-3 max-w-sm rounded-card px-4 py-4 text-center text-sm",
-        tone === "error" ? "bg-rose/15 text-rose-ink" : "bg-surface/50 text-muted",
-      )}
-      data-testid="thread-state"
-    >
-      {text}
-    </p>
+    <CompactStateNotice
+      centered
+      className="my-3 rounded-card bg-surface/50"
+      testId="thread-state"
+      icon={Icon}
+      kind={kind}
+      title={title}
+      text={text}
+    />
   );
 }
 
@@ -1228,14 +1253,22 @@ function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
           ) : null}
 
           {childrenError ? (
-            <p className="mt-2 text-xs font-medium text-rose-ink">
-              {childrenError}
-            </p>
+            <CompactStateNotice
+              className="mt-2"
+              icon={WifiOff}
+              kind="error"
+              title="Nested replies are not available"
+              text={childrenError}
+            />
           ) : null}
           {childrenLoading ? (
-            <p className="mt-2 text-xs text-muted">
-              Loading replies...
-            </p>
+            <CompactStateNotice
+              className="mt-2"
+              icon={LoaderCircle}
+              kind="loading"
+              title="Loading nested replies"
+              text="Fetching the next replies."
+            />
           ) : null}
         </div>
       </div>

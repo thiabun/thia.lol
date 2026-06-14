@@ -795,7 +795,10 @@ test("thread reply composer is hidden until Reply and exposes media UI", async (
   const dialog = page.getByTestId("thread-modal");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByTestId("thread-conversation")).toBeVisible();
-  await expect(dialog.getByTestId("thread-state")).toContainText("No replies yet.");
+  await expect(dialog.getByTestId("thread-state")).toContainText("No replies yet");
+  await expect(dialog.getByTestId("thread-state")).toContainText(
+    "Start the conversation with a reply.",
+  );
   await expect(dialog.getByTestId("reply-composer")).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: /Open replies/ })).toHaveCount(1);
 

@@ -205,15 +205,15 @@ export function HomePage() {
         {feedState.loading ? (
           <ApiStateNotice
             kind="loading"
-            title="Loading feed"
-            text="Posts are loading."
+            title="Loading recent posts"
+            text="Fetching recent public posts."
           />
         ) : null}
 
         {feedState.error ? (
           <ApiStateNotice
             kind="error"
-            title="Could not load feed"
+            title="Home feed is not available"
             text="Try refreshing in a moment."
           />
         ) : null}

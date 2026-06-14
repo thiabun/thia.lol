@@ -85,7 +85,7 @@ export function RouteStateNotice({
           <Icon
             aria-hidden="true"
             size={20}
-            className={kind === "loading" ? "animate-spin" : undefined}
+            className={kind === "loading" ? "animate-spin motion-reduce:animate-none" : undefined}
           />
         </div>
         <div className="min-w-0 flex-1">
@@ -99,5 +99,65 @@ export function RouteStateNotice({
         </div>
       </div>
     </Panel>
+  );
+}
+
+type CompactStateNoticeProps = {
+  actions?: ReactNode;
+  centered?: boolean;
+  className?: string;
+  icon: LucideIcon;
+  kind?: RouteStateNoticeKind;
+  testId?: string;
+  text: string;
+  title: string;
+};
+
+export function CompactStateNotice({
+  actions,
+  centered = false,
+  className,
+  icon: Icon,
+  kind = "neutral",
+  testId,
+  text,
+  title,
+}: CompactStateNoticeProps) {
+  return (
+    <div
+      className={cn(
+        centered
+          ? "grid flex-1 place-items-center p-6 text-center"
+          : "rounded-card bg-canvas/55 p-3",
+        className,
+      )}
+      data-testid={testId}
+      role={kind === "error" ? "alert" : "status"}
+    >
+      <div className={cn(centered ? "mx-auto max-w-sm" : "flex items-start gap-3")}>
+        <div
+          className={cn(
+            "grid size-11 shrink-0 place-items-center rounded-full",
+            centered ? "mx-auto" : "",
+            iconStyles[kind],
+          )}
+        >
+          <Icon
+            aria-hidden="true"
+            size={20}
+            className={kind === "loading" ? "animate-spin motion-reduce:animate-none" : undefined}
+          />
+        </div>
+        <div className={cn("min-w-0", centered ? "mt-4" : "")}>
+          <h2 className="text-sm font-semibold text-text">{title}</h2>
+          <p className="mt-1 text-sm leading-6 text-muted">{text}</p>
+          {actions ? (
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+              {actions}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
   );
 }
