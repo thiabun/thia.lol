@@ -970,13 +970,11 @@ type MessageBubbleProps = {
 function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
   return (
     <div className={cn("group/message flex", mine ? "justify-end" : "justify-start")}>
-      <div
-        className="relative mb-1 max-w-[min(28rem,78%)] [filter:drop-shadow(0_14px_40px_oklch(0_0_0_/_0.1))]"
-      >
+      <div className="relative mb-1 max-w-[min(28rem,78%)]">
         <MessageBubbleTail mine={mine} />
         <div
           className={cn(
-            "relative z-10 rounded-[1rem] px-3 py-1.5 text-sm leading-5 transition duration-fluid ease-fluid",
+            "relative z-10 rounded-[1rem] px-3 py-1.5 text-sm leading-5 shadow-soft transition duration-fluid ease-fluid",
             mine
               ? "bg-accent text-accent-ink"
               : "border border-line bg-surface text-text hover:border-line-strong",
@@ -1034,8 +1032,8 @@ function MessageBubbleTail({ mine }: { mine: boolean }) {
     <svg
       aria-hidden="true"
       className={cn(
-        "pointer-events-none absolute bottom-0.5 z-0 h-4 w-6",
-        mine ? "-right-2.5 -scale-x-100" : "-left-2.5",
+        "pointer-events-none absolute bottom-1 z-0 h-4 w-6",
+        mine ? "-right-2 -scale-x-100" : "-left-2",
       )}
       focusable="false"
       viewBox="0 0 26 16"
@@ -1043,7 +1041,7 @@ function MessageBubbleTail({ mine }: { mine: boolean }) {
       <path className={mine ? "fill-accent" : "fill-surface"} d={path} />
       {mine ? null : (
         <path
-          className="fill-none stroke-line"
+          className="fill-none stroke-line transition duration-fluid ease-fluid group-hover/message:stroke-line-strong motion-reduce:transition-none"
           d={outlinePath}
           strokeLinecap="round"
           strokeLinejoin="round"
