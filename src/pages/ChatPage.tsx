@@ -520,7 +520,7 @@ export function ChatPage() {
                 </div>
 
                 <div
-                  className="chat-message-list-bg flex-1 space-y-3 overflow-y-auto px-4 py-4"
+                  className="flex-1 space-y-3 overflow-y-auto px-4 py-4"
                   data-testid="chat-message-list"
                 >
                   {messagesLoading ? (
@@ -971,52 +971,50 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
   return (
     <div className={cn("group/message flex", mine ? "justify-end" : "justify-start")}>
       <div className="relative mb-1 max-w-[min(28rem,78%)]">
+        <MessageBubbleTail mine={mine} />
         <div
           className={cn(
-            "chat-message-bubble relative z-10 rounded-[1rem] px-3 py-1.5 text-sm leading-5 transition duration-fluid ease-fluid",
+            "relative z-10 rounded-[1rem] px-3 py-1.5 text-sm leading-5 shadow-soft transition duration-fluid ease-fluid",
             mine
-              ? "chat-message-bubble--mine text-accent-ink"
-              : "chat-message-bubble--theirs text-text",
+              ? "bg-accent text-accent-ink"
+              : "border border-line bg-surface text-text hover:border-line-strong",
           )}
         >
-          <MessageBubbleTailStroke mine={mine} />
-          <div className="relative z-20">
-            <p className="whitespace-pre-wrap break-words">{message.body}</p>
-            <div
-              className={cn(
-                "mt-0.5 flex flex-wrap items-center gap-1.5 text-[0.68rem] leading-none",
-                mine ? "text-accent-ink/70" : "text-muted",
-              )}
-            >
-              <span>{formatChatTime(message.createdAt)}</span>
-              {canReport && message.deletedAt === null ? (
-                <>
-                  <span className="text-current/45" aria-hidden="true">
-                    •
-                  </span>
-                  <ReportForm
-                    className="contents"
-                    targetType="message"
-                    targetId={message.id}
-                    reportedUserId={message.sender.id}
-                    title="Report message"
-                    explainer="This reports this chat message to moderators."
-                    triggerMode="icon"
-                    triggerLabel="Report message"
-                    triggerSize="compact"
-                    triggerIconSize={12}
-                    triggerClassName={cn(
-                      "-my-1 size-7 border border-transparent !bg-transparent !opacity-100 transition duration-fluid ease-fluid hover:!bg-transparent focus-visible:!bg-transparent focus-visible:!outline-none motion-reduce:transition-none",
-                      mine
-                        ? "!text-accent-ink/70 hover:!text-accent-ink focus-visible:!text-accent-ink hover:[&>span]:bg-accent-ink/10 focus-visible:[&>span]:bg-accent-ink/12 focus-visible:[&>span]:ring-1 focus-visible:[&>span]:ring-accent-ink/25"
-                        : "!text-text/55 group-hover/message:!text-text/70 hover:!text-text/85 focus-visible:!text-text hover:[&>span]:bg-text/8 focus-visible:[&>span]:bg-text/10 focus-visible:[&>span]:ring-1 focus-visible:[&>span]:ring-focus/45",
-                    )}
-                    feedbackClassName="basis-full"
-                    formClassName="basis-full bg-canvas/80 text-left"
-                  />
-                </>
-              ) : null}
-            </div>
+          <p className="whitespace-pre-wrap break-words">{message.body}</p>
+          <div
+            className={cn(
+              "mt-0.5 flex flex-wrap items-center gap-1.5 text-[0.68rem] leading-none",
+              mine ? "text-accent-ink/70" : "text-muted",
+            )}
+          >
+            <span>{formatChatTime(message.createdAt)}</span>
+            {canReport && message.deletedAt === null ? (
+              <>
+                <span className="text-current/45" aria-hidden="true">
+                  •
+                </span>
+                <ReportForm
+                  className="contents"
+                  targetType="message"
+                  targetId={message.id}
+                  reportedUserId={message.sender.id}
+                  title="Report message"
+                  explainer="This reports this chat message to moderators."
+                  triggerMode="icon"
+                  triggerLabel="Report message"
+                  triggerSize="compact"
+                  triggerIconSize={12}
+                  triggerClassName={cn(
+                    "-my-1 size-7 border border-transparent !bg-transparent !opacity-100 transition duration-fluid ease-fluid hover:!bg-transparent focus-visible:!bg-transparent focus-visible:!outline-none motion-reduce:transition-none",
+                    mine
+                      ? "!text-accent-ink/70 hover:!text-accent-ink focus-visible:!text-accent-ink hover:[&>span]:bg-accent-ink/10 focus-visible:[&>span]:bg-accent-ink/12 focus-visible:[&>span]:ring-1 focus-visible:[&>span]:ring-accent-ink/25"
+                      : "!text-text/55 group-hover/message:!text-text/70 hover:!text-text/85 focus-visible:!text-text hover:[&>span]:bg-text/8 focus-visible:[&>span]:bg-text/10 focus-visible:[&>span]:ring-1 focus-visible:[&>span]:ring-focus/45",
+                  )}
+                  feedbackClassName="basis-full"
+                  formClassName="basis-full bg-canvas/80 text-left"
+                />
+              </>
+            ) : null}
           </div>
         </div>
       </div>
@@ -1024,30 +1022,32 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
   );
 }
 
-function MessageBubbleTailStroke({ mine }: { mine: boolean }) {
-  const path = "M29 11.5C23 12.8 17.5 17.5 2 20.8C12.2 21.7 23.2 17.2 29 15.2";
+function MessageBubbleTail({ mine }: { mine: boolean }) {
+  const outlinePath =
+    "M25.3 1.2C18.2 3.1 12.6 10.9 1.5 15.1C11 15.2 19.4 10.5 25.3 4.1";
+  const path =
+    "M25.5 0.8H12.8C12.4 6.3 8.5 11.9 1.4 15.2C10.8 15.5 19.2 10.8 25.5 4.2Z";
 
   return (
     <svg
       aria-hidden="true"
       className={cn(
-        "pointer-events-none absolute -bottom-[0.05rem] z-[2] h-[1.3rem] w-[1.85rem]",
-        mine ? "-right-[0.95rem] -scale-x-100" : "-left-[0.95rem]",
+        "pointer-events-none absolute bottom-1 z-0 h-4 w-6",
+        mine ? "-right-2 -scale-x-100" : "-left-2",
       )}
       focusable="false"
-      viewBox="0 0 30 22"
+      viewBox="0 0 26 16"
     >
-      <path
-        className={
-          mine
-            ? "fill-none stroke-accent"
-            : "fill-none stroke-line-strong transition duration-fluid ease-fluid motion-reduce:transition-none"
-        }
-        d={path}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.15"
-      />
+      <path className={mine ? "fill-accent" : "fill-surface"} d={path} />
+      {mine ? null : (
+        <path
+          className="fill-none stroke-line transition duration-fluid ease-fluid group-hover/message:stroke-line-strong motion-reduce:transition-none"
+          d={outlinePath}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="1.15"
+        />
+      )}
     </svg>
   );
 }
