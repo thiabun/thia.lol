@@ -495,7 +495,7 @@ function MobileDock({
           </NavLink>
         </motion.div>
       ))}
-      <div className="relative col-start-3 row-start-1 mx-auto flex h-[3.25rem] -translate-y-1.5 items-center justify-center">
+      <div className="relative col-start-3 row-start-1 mx-auto flex h-[3.25rem] items-center justify-center">
         <Button
           type="button"
           className="size-11 rounded-full border border-white/45 p-0 shadow-[0_14px_34px_color-mix(in_oklab,var(--app-accent)_38%,transparent)] ring-1 ring-accent/20"
@@ -505,10 +505,6 @@ function MobileDock({
           title="Post"
           icon={<PenLine aria-hidden="true" size={20} />}
           onClick={onPostClick}
-        />
-        <span
-          className="pointer-events-none absolute bottom-0 left-1/2 size-1.5 -translate-x-1/2 rounded-full bg-accent shadow-glow"
-          aria-hidden="true"
         />
       </div>
     </motion.nav>

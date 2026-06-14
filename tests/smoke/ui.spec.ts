@@ -394,7 +394,7 @@ async function expectRefinedMobileDock(page: Page) {
 
   const navCenterY = boxes.nav!.top + boxes.nav!.height / 2;
   const postCenterY = boxes.post!.top + boxes.post!.height / 2;
-  expect(postCenterY).toBeLessThan(navCenterY - 1);
+  expect(Math.abs(postCenterY - navCenterY)).toBeLessThanOrEqual(1.5);
 
   expect(boxes.links).toHaveLength(4);
   for (const link of boxes.links) {
