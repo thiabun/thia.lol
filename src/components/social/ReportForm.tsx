@@ -110,7 +110,7 @@ export function ReportForm({
         disabled={disabled || pending}
         icon={
           compactIconTrigger ? (
-            <span className="inline-grid size-5 place-items-center rounded-[0.3rem] transition duration-fluid ease-fluid">
+            <span className="inline-grid size-[1.125rem] place-items-center rounded-full transition duration-fluid ease-fluid">
               {flagIcon}
             </span>
           ) : (

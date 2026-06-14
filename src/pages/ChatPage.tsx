@@ -976,7 +976,7 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
         <MessageBubbleTail mine={mine} />
         <div
           className={cn(
-            "relative z-10 rounded-[1.125rem] px-3 py-2 text-sm leading-5 transition duration-fluid ease-fluid",
+            "relative z-10 rounded-[1rem] px-3 py-1.5 text-sm leading-5 transition duration-fluid ease-fluid",
             mine
               ? "bg-accent text-accent-ink"
               : "border border-line bg-surface text-text hover:border-line-strong",
@@ -985,7 +985,7 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
           <p className="whitespace-pre-wrap break-words">{message.body}</p>
           <div
             className={cn(
-              "mt-1 flex flex-wrap items-center gap-1.5 text-[0.68rem] leading-none",
+              "mt-0.5 flex flex-wrap items-center gap-1.5 text-[0.68rem] leading-none",
               mine ? "text-accent-ink/70" : "text-muted",
             )}
           >
@@ -1007,10 +1007,10 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
                   triggerSize="compact"
                   triggerIconSize={12}
                   triggerClassName={cn(
-                    "-my-1 size-7 border border-transparent !bg-transparent !opacity-100 transition duration-fluid ease-fluid hover:!bg-transparent focus-visible:!bg-transparent motion-reduce:transition-none",
+                    "-my-1 size-7 border border-transparent !bg-transparent !opacity-100 transition duration-fluid ease-fluid hover:!bg-transparent focus-visible:!bg-transparent focus-visible:!outline-none motion-reduce:transition-none",
                     mine
-                      ? "!text-accent-ink/70 hover:!text-accent-ink focus-visible:!text-accent-ink hover:[&>span]:bg-accent-ink/8 hover:[&>span]:outline hover:[&>span]:outline-1 hover:[&>span]:outline-accent-ink/20 focus-visible:[&>span]:bg-accent-ink/10 focus-visible:[&>span]:outline focus-visible:[&>span]:outline-1 focus-visible:[&>span]:outline-accent-ink/25"
-                      : "!text-text/55 group-hover/message:!text-text/70 hover:!text-text/85 focus-visible:!text-text hover:[&>span]:bg-surface-strong/60 hover:[&>span]:outline hover:[&>span]:outline-1 hover:[&>span]:outline-line-strong/55 focus-visible:[&>span]:bg-surface-strong/70 focus-visible:[&>span]:outline focus-visible:[&>span]:outline-1 focus-visible:[&>span]:outline-focus/55",
+                      ? "!text-accent-ink/70 hover:!text-accent-ink focus-visible:!text-accent-ink hover:[&>span]:bg-accent-ink/10 focus-visible:[&>span]:bg-accent-ink/12 focus-visible:[&>span]:ring-1 focus-visible:[&>span]:ring-accent-ink/25"
+                      : "!text-text/55 group-hover/message:!text-text/70 hover:!text-text/85 focus-visible:!text-text hover:[&>span]:bg-text/8 focus-visible:[&>span]:bg-text/10 focus-visible:[&>span]:ring-1 focus-visible:[&>span]:ring-focus/45",
                   )}
                   feedbackClassName="basis-full"
                   formClassName="basis-full bg-canvas/80 text-left"
@@ -1025,24 +1025,26 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
 }
 
 function MessageBubbleTail({ mine }: { mine: boolean }) {
+  const outlinePath =
+    "M25.3 1.2C18.2 3.1 12.6 10.9 1.5 15.1C11 15.2 19.4 10.5 25.3 4.1";
   const path =
-    "M23.2 0.8H8.6C8.8 5.7 6.8 9.6 1.4 13.2C11 12.8 18.8 8.6 23.2 0.8Z";
+    "M25.5 0.8H12.8C12.4 6.3 8.5 11.9 1.4 15.2C10.8 15.5 19.2 10.8 25.5 4.2Z";
 
   return (
     <svg
       aria-hidden="true"
       className={cn(
-        "pointer-events-none absolute -bottom-[0.5rem] z-0 h-3.5 w-7",
-        mine ? "-right-1 -scale-x-100" : "-left-1",
+        "pointer-events-none absolute bottom-0.5 z-0 h-4 w-6",
+        mine ? "-right-2.5 -scale-x-100" : "-left-2.5",
       )}
       focusable="false"
-      viewBox="0 0 24 14"
+      viewBox="0 0 26 16"
     >
       <path className={mine ? "fill-accent" : "fill-surface"} d={path} />
       {mine ? null : (
         <path
           className="fill-none stroke-line"
-          d={path}
+          d={outlinePath}
           strokeLinecap="round"
           strokeLinejoin="round"
           strokeWidth="1.15"
