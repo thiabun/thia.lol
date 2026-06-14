@@ -1,4 +1,3 @@
-import { AnimatePresence, motion } from "motion/react";
 import type { ChangeEvent, FormEvent } from "react";
 import { useId, useState } from "react";
 import {
@@ -12,12 +11,11 @@ import {
   ScrollText,
   Shield,
   Trash2,
-  X,
 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { SelectField, TextareaField, TextField } from "../ui/Field";
+import { ModalSheet, ModalSheetStatus } from "../ui/ModalSheet";
 import { UserIdentityLink } from "./UserProfileLink";
-import { modalOverlay, modalPanel } from "../../lib/motionPresets";
 import type {
   ImageUploadPurpose,
   RoomInput,
@@ -69,7 +67,7 @@ export function RoomEditModal({
   open,
   room,
 }: RoomEditModalProps) {
-  const titleId = useId();
+  const formId = useId();
   const [form, setForm] = useState<FormState>(() => roomToForm(room));
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState<UploadSlot | undefined>();
@@ -82,6 +80,7 @@ export function RoomEditModal({
   const busy = saving || uploading !== undefined || deletePending;
   const moderators = members.filter((member) => member.role === "moderator");
   const owner = members.find((member) => member.role === "owner");
+  const messageTone = message === "Images are converted to WebP" ? "success" : "error";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -217,50 +216,38 @@ export function RoomEditModal({
   }
 
   return (
-    <AnimatePresence>
-      {open ? (
-        <motion.div
-          className="fixed inset-0 z-50 grid place-items-stretch bg-text/28 p-0 backdrop-blur-veil sm:place-items-center sm:px-4 sm:py-6"
-          variants={modalOverlay}
-          initial="hidden"
-          animate="show"
-          exit="exit"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !busy) {
-              onClose();
-            }
-          }}
-        >
-          <motion.div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={titleId}
-            data-testid="room-edit-modal"
-            className="h-dvh max-h-dvh w-full max-w-2xl overflow-y-auto border border-line bg-surface p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-lift sm:h-auto sm:max-h-[calc(100dvh-3rem)] sm:rounded-panel sm:p-5"
-            variants={modalPanel}
+    <ModalSheet
+      open={open}
+      onClose={onClose}
+      title={mode === "create" ? "Create room" : "Edit room"}
+      description="Details, media, and moderation."
+      closeLabel="Close room editor"
+      testId="room-edit-modal"
+      size="lg"
+      mobile="full"
+      busy={busy}
+      footer={
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={busy}
+            onClick={onClose}
           >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 id={titleId} className="text-lg font-semibold text-text">
-                  {mode === "create" ? "Create room" : "Edit room"}
-                </h2>
-                <p className="mt-1 text-sm leading-6 text-muted">
-                  Public rooms can be joined and posted in by members.
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="Close room editor"
-                title="Close"
-                icon={<X aria-hidden="true" size={18} />}
-                disabled={busy}
-                onClick={onClose}
-              />
-            </div>
-
-            <form className="mt-5 space-y-5" onSubmit={handleSubmit}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form={formId}
+            disabled={busy}
+            icon={<Save aria-hidden="true" size={17} />}
+          >
+            {saving ? "Saving" : mode === "create" ? "Create room" : "Save changes"}
+          </Button>
+        </div>
+      }
+    >
+      <form id={formId} className="space-y-5" onSubmit={handleSubmit}>
               <div className="grid gap-4 sm:grid-cols-2">
                 <ImageUploadControl
                   id="room-icon-upload"
@@ -394,9 +381,9 @@ export function RoomEditModal({
                   ) : null}
 
                   {moderatorMessage ? (
-                    <p className="rounded-card border border-line bg-surface p-3 text-sm text-text">
+                    <ModalSheetStatus tone="success">
                       {moderatorMessage}
-                    </p>
+                    </ModalSheetStatus>
                   ) : null}
                 </section>
               ) : null}
@@ -432,33 +419,10 @@ export function RoomEditModal({
               ) : null}
 
               {message ? (
-                <p className="rounded-card border border-line bg-canvas/55 p-3 text-sm text-text">
-                  {message}
-                </p>
+                <ModalSheetStatus tone={messageTone}>{message}</ModalSheetStatus>
               ) : null}
-
-              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={onClose}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={busy}
-                  icon={<Save aria-hidden="true" size={17} />}
-                >
-                  {saving ? "Saving" : mode === "create" ? "Create room" : "Save changes"}
-                </Button>
-              </div>
-            </form>
-          </motion.div>
-        </motion.div>
-      ) : null}
-    </AnimatePresence>
+      </form>
+    </ModalSheet>
   );
 }
 

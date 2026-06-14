@@ -963,7 +963,16 @@ test("thread report flow submits the post target", async ({ page }) => {
   const dialog = page.getByTestId("thread-modal");
 
   await dialog.getByRole("button", { name: "Report post" }).click();
-  await dialog.getByRole("button", { name: "Report", exact: true }).click();
+  const reportDialog = page.getByRole("dialog", { name: "Report post" });
+  await expect(reportDialog).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(reportDialog).toBeHidden();
+  await expect(dialog).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Report post" }).click();
+  await expect(reportDialog).toBeVisible();
+  await reportDialog.getByRole("button", { name: "Report", exact: true }).click();
 
   await expect.poll(() => reportPayload).toMatchObject({
     targetType: "post",

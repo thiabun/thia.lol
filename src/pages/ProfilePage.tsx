@@ -10,9 +10,8 @@ import {
   Star,
   UserCheck,
   Users,
-  X,
 } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
@@ -27,6 +26,7 @@ import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
+import { ModalSheet } from "../components/ui/ModalSheet";
 import {
   blockProfile,
   createProfileModule,
@@ -1064,50 +1064,21 @@ function ProfileFocusedPanel({
   );
   const socialState = useAsyncData(socialLoader);
   const showSocial = panel === "followers" || panel === "following";
+  const description =
+    panel === "badges" && isOwnProfile
+      ? "Feature up to four badges on your profile."
+      : undefined;
 
   return (
-    <AnimatePresence>
-      <motion.div
-        className="fixed inset-0 z-50 grid place-items-stretch bg-text/28 p-0 backdrop-blur-veil sm:place-items-center sm:px-4 sm:py-6"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onMouseDown={(event) => {
-          if (event.target === event.currentTarget) {
-            onClose();
-          }
-        }}
-      >
-        <motion.div
-          role="dialog"
-          aria-modal="true"
-          aria-label={title}
-          className="h-dvh max-h-dvh w-full max-w-2xl overflow-y-auto border border-line bg-surface p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-lift sm:h-auto sm:max-h-[calc(100dvh-3rem)] sm:rounded-panel sm:p-5"
-          initial={{ y: 16, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 16, opacity: 0 }}
-        >
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-semibold text-text">{title}</h2>
-              {panel === "badges" && isOwnProfile ? (
-                <p className="mt-1 text-sm text-muted">
-                  Feature up to four badges on your profile.
-                </p>
-              ) : null}
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Close panel"
-              title={`Close ${title.toLowerCase()} panel`}
-              icon={<X aria-hidden="true" size={18} />}
-              onClick={onClose}
-            />
-          </div>
-
-          <div className="mt-5">
+    <ModalSheet
+      open
+      onClose={onClose}
+      title={title}
+      description={description}
+      closeLabel="Close panel"
+      size="lg"
+      mobile="full"
+    >
             {showSocial ? (
               <ProfileConnectionList
                 error={socialState.error}
@@ -1130,10 +1101,7 @@ function ProfileFocusedPanel({
                 onFeaturedChange={onFeaturedChange}
               />
             )}
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+    </ModalSheet>
   );
 }
 

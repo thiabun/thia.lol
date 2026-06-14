@@ -1,11 +1,10 @@
-import { AnimatePresence, motion } from "motion/react";
 import type { ChangeEvent, FormEvent } from "react";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { ImagePlus, Radio, Send, Trash2, UserRound, X } from "lucide-react";
+import { useCallback, useId, useRef, useState } from "react";
+import { ImagePlus, Radio, Send, Trash2, UserRound } from "lucide-react";
 import { Button } from "../ui/Button";
 import { SelectField, TextareaField } from "../ui/Field";
+import { ModalSheet, ModalSheetStatus } from "../ui/ModalSheet";
 import { createPost, uploadImage } from "../../lib/api";
-import { modalOverlay, modalPanel } from "../../lib/motionPresets";
 import type { CreatePostInput } from "../../lib/api";
 import type { Post, Room } from "../../lib/types";
 
@@ -29,7 +28,7 @@ export function PostComposerModal({
   open,
   rooms,
 }: PostComposerModalProps) {
-  const titleId = useId();
+  const formId = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [body, setBody] = useState("");
   const [roomSlug, setRoomSlug] = useState(initialRoomSlug ?? "");
@@ -60,6 +59,7 @@ export function PostComposerModal({
       label: `/${room.slug} - ${room.name}`,
     })),
   ];
+  const messageTone = message === "Images are converted to WebP" ? "success" : "error";
 
   const closeComposer = useCallback(() => {
     setBody("");
@@ -70,28 +70,6 @@ export function PostComposerModal({
     setSubmitting(false);
     onClose();
   }, [onClose]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        closeComposer();
-      }
-    }
-
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [closeComposer, open]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -164,49 +142,46 @@ export function PostComposerModal({
   }
 
   return (
-    <AnimatePresence>
-      {open ? (
-        <motion.div
-          className="fixed inset-0 z-50 grid place-items-stretch bg-text/28 p-0 backdrop-blur-veil sm:place-items-center sm:px-4 sm:py-6"
-          variants={modalOverlay}
-          initial="hidden"
-          animate="show"
-          exit="exit"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              closeComposer();
-            }
-          }}
-        >
-          <motion.div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={titleId}
-            data-testid="composer-modal"
-            className="h-dvh max-h-dvh w-full max-w-xl overflow-y-auto border border-line bg-surface p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-lift sm:h-auto sm:max-h-[calc(100dvh-3rem)] sm:rounded-panel sm:p-5"
-            variants={modalPanel}
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 id={titleId} className="text-lg font-semibold text-text">
-                  New post
-                </h2>
-                <p className="mt-1 text-sm leading-6 text-muted">
-                  Pick where this post belongs.
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="Close post composer"
-                title="Close"
-                icon={<X aria-hidden="true" size={18} />}
-                onClick={closeComposer}
-              />
-            </div>
-
-            <form className="mt-4 space-y-4" onSubmit={handleSubmit}>
+    <ModalSheet
+      open={open}
+      onClose={closeComposer}
+      title="New post"
+      description="Post to a profile or room."
+      closeLabel="Close post composer"
+      testId="composer-modal"
+      size="md"
+      mobile="full"
+      busy={submitting || uploadingImage}
+      initialFocusRef={textareaRef}
+      footer={
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <span className="text-xs text-muted" aria-live="polite">
+            {body.length}/2000
+          </span>
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              className="flex-1 sm:flex-none"
+              disabled={submitting || uploadingImage}
+              onClick={closeComposer}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form={formId}
+              className="flex-1 sm:flex-none"
+              disabled={!canSubmit}
+              icon={<Send aria-hidden="true" size={17} />}
+            >
+              {submitting ? "Posting..." : "Post"}
+            </Button>
+          </div>
+        </div>
+      }
+    >
+      <form id={formId} className="space-y-4" onSubmit={handleSubmit}>
               <div className="space-y-3">
                 <SelectField
                   id="post-composer-room"
@@ -307,39 +282,9 @@ export function PostComposerModal({
               />
 
               {message ? (
-                <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
-                  {message}
-                </p>
+                <ModalSheetStatus tone={messageTone}>{message}</ModalSheetStatus>
               ) : null}
-
-              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <span className="text-xs text-muted" aria-live="polite">
-                  {body.length}/2000
-                </span>
-                <div className="flex items-center justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="flex-1 sm:flex-none"
-                    disabled={submitting}
-                    onClick={closeComposer}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="flex-1 sm:flex-none"
-                    disabled={!canSubmit}
-                    icon={<Send aria-hidden="true" size={17} />}
-                  >
-                    {submitting ? "Posting..." : "Post"}
-                  </Button>
-                </div>
-              </div>
-            </form>
-          </motion.div>
-        </motion.div>
-      ) : null}
-    </AnimatePresence>
+      </form>
+    </ModalSheet>
   );
 }

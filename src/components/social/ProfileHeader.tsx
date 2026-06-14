@@ -13,13 +13,13 @@ import {
   UserPlus,
   Users,
   VolumeX,
-  X,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
 import { Button, ButtonLink } from "../ui/Button";
+import { ModalSheet } from "../ui/ModalSheet";
 import { Panel } from "../ui/Panel";
 import { cn } from "../../lib/classNames";
 import {
@@ -393,60 +393,38 @@ export function ProfileHeader({
           ) : null}
         </motion.div>
       </Panel>
-      {confirmBlockOpen ? (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-text/28 px-4 py-6 backdrop-blur-veil"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setConfirmBlockOpen(false);
-            }
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Block @${profile.user.handle}?`}
-            className="w-full max-w-md rounded-panel border border-line bg-surface p-5 shadow-lift"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-text">
-                  Block @{profile.user.handle}?
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-muted">
-                  Blocking removes follows between you, prevents messages, and limits interaction where possible. This does not hide public content everywhere.
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="Close block confirmation"
-                title="Close block confirmation"
-                icon={<X aria-hidden="true" size={18} />}
-                onClick={() => setConfirmBlockOpen(false)}
-              />
-            </div>
-            <div className="mt-5 flex flex-wrap justify-end gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setConfirmBlockOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={profileControlBusy === "block"}
-                onClick={() => void handleConfirmBlock()}
-              >
-                {profileControlBusy === "block" ? "Blocking" : "Block"}
-              </Button>
-            </div>
+      <ModalSheet
+        open={confirmBlockOpen}
+        onClose={() => setConfirmBlockOpen(false)}
+        title={`Block @${profile.user.handle}?`}
+        closeLabel="Close block confirmation"
+        size="sm"
+        mobile="dialog"
+        busy={profileControlBusy === "block"}
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setConfirmBlockOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={profileControlBusy === "block"}
+              onClick={() => void handleConfirmBlock()}
+            >
+              {profileControlBusy === "block" ? "Blocking" : "Block"}
+            </Button>
           </div>
-        </div>
-      ) : null}
+        }
+      >
+        <p className="text-sm leading-6 text-muted">
+          Blocking removes follows between you, prevents messages, and limits interaction where possible. This does not hide public content everywhere.
+        </p>
+      </ModalSheet>
     </motion.div>
   );
 }

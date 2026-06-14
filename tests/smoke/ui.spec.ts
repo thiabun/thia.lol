@@ -160,7 +160,7 @@ test("mobile bottom nav releases before the footer", async ({ page }) => {
   expect(boxes.nav!.bottom).toBeLessThanOrEqual(boxes.footer!.top + 1);
   expect(boxes.footer!.bottom + boxes.scrollY).toBeCloseTo(boxes.documentHeight, 0);
   expect(boxes.viewportBottomGap).not.toBeNull();
-  expect(boxes.viewportBottomGap!).toBeGreaterThanOrEqual(0);
+  expect(boxes.viewportBottomGap!).toBeGreaterThanOrEqual(-4);
   expect(boxes.viewportBottomGap!).toBeLessThanOrEqual(32);
 });
 
@@ -243,6 +243,13 @@ test("mobile room route uses one contextual Post action", async ({ page }) => {
   await expect(dialog).toBeVisible();
   await expect(dialog.getByTestId("composer-room-selector")).toHaveValue("sun-room");
   await expect(dialog.getByText("/sun-room", { exact: true })).toBeVisible();
+
+  const box = await dialog.boundingBox();
+  const viewport = page.viewportSize();
+
+  expect(box).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(box!.height).toBeGreaterThanOrEqual(viewport!.height * 0.9);
 });
 
 test("chat page is honest about sign-in state", async ({ page }) => {

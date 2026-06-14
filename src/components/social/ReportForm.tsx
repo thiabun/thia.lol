@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { Flag } from "lucide-react";
 import { Link } from "react-router";
 import { Button } from "../ui/Button";
 import { SelectField, TextareaField } from "../ui/Field";
+import { ModalSheet, ModalSheetStatus } from "../ui/ModalSheet";
 import { createReport, type ReportCategory, type ReportTargetType } from "../../lib/api";
 import { cn } from "../../lib/classNames";
 import { useAuth } from "../../lib/useAuth";
@@ -43,6 +44,7 @@ export function ReportForm({
   triggerSize = "default",
 }: ReportFormProps) {
   const { runWithAuth } = useAuth();
+  const formId = useId();
   const [open, setOpen] = useState(false);
   const [category, setCategory] = useState<ReportCategory>("harassment");
   const [details, setDetails] = useState("");
@@ -120,7 +122,7 @@ export function ReportForm({
         onClick={() => {
           setError(undefined);
           setMessage(undefined);
-          setOpen((current) => !current);
+          setOpen(true);
         }}
       >
         {iconTrigger ? null : triggerLabel}
@@ -130,22 +132,39 @@ export function ReportForm({
           {message}
         </p>
       ) : null}
-      {error ? (
-        <p className={cn("mt-2 text-xs font-medium text-rose-ink", feedbackClassName)}>
-          {error}
-        </p>
-      ) : null}
-      {open ? (
+      <ModalSheet
+        open={open}
+        onClose={() => setOpen(false)}
+        title={title}
+        description={explainer}
+        closeLabel={`Close ${title.toLowerCase()}`}
+        size="md"
+        mobile="sheet"
+        busy={pending}
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={pending}
+              onClick={() => setOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" form={formId} size="sm" disabled={pending}>
+              {pending ? "Sending" : "Report"}
+            </Button>
+          </div>
+        }
+      >
         <form
-          className={cn(
-            "mt-3 space-y-3 rounded-card border border-line bg-canvas/45 p-3",
-            formClassName,
-          )}
+          id={formId}
+          className={cn("space-y-4", formClassName)}
           onSubmit={(event) => void handleSubmit(event)}
         >
-          <h3 className="text-sm font-semibold text-text">{title}</h3>
-          <p className="text-xs leading-5 text-muted">
-            {explainer} Reports are reviewed against the{" "}
+          <p className="text-sm leading-6 text-muted">
+            Reports are reviewed against the{" "}
             <Link
               to="/community-guidelines"
               className="font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline"
@@ -178,6 +197,7 @@ export function ReportForm({
             id={`report-category-${targetType}-${targetId}`}
             label="What's wrong?"
             value={category}
+            disabled={pending}
             options={reportCategoryOptions}
             onChange={(event) => setCategory(event.target.value as ReportCategory)}
           />
@@ -187,25 +207,13 @@ export function ReportForm({
             rows={3}
             maxLength={2000}
             value={details}
+            disabled={pending}
             placeholder="Optional context for moderators"
             onChange={(event) => setDetails(event.target.value)}
           />
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={pending}
-              onClick={() => setOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" size="sm" disabled={pending}>
-              Report
-            </Button>
-          </div>
+          {error ? <ModalSheetStatus tone="error">{error}</ModalSheetStatus> : null}
         </form>
-      ) : null}
+      </ModalSheet>
     </div>
   );
 }

@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useId,
   useRef,
   useState,
   type ChangeEvent,
@@ -17,15 +16,14 @@ import {
   Repeat2,
   Send,
   Trash2,
-  X,
 } from "lucide-react";
-import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
 import { Button, ButtonLink } from "../ui/Button";
 import { TextareaField } from "../ui/Field";
+import { ModalSheet } from "../ui/ModalSheet";
 import { Panel } from "../ui/Panel";
 import { InlineUserProfileLink } from "./UserProfileLink";
 import { ReportForm } from "./ReportForm";
@@ -46,8 +44,6 @@ import {
   cardEntrance,
   cardHover,
   cardTap,
-  modalOverlay,
-  modalPanel,
   pulsePop,
   softSpring,
 } from "../../lib/motionPresets";
@@ -819,7 +815,6 @@ function ThreadModal({
   onReplyCreated,
   onReplyDeleted,
 }: ThreadModalProps) {
-  const titleId = useId();
   const [replies, setReplies] = useState<Post[]>([]);
   const [composerOpen, setComposerOpen] = useState(initialComposerOpen);
   const [modalCommentCount, setModalCommentCount] = useState(post.commentCount);
@@ -830,28 +825,6 @@ function ThreadModal({
   const replyCountLabel = `${modalCommentCount} ${
     modalCommentCount === 1 ? "reply" : "replies"
   }`;
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [onClose, open]);
 
   useEffect(() => {
     if (!open) {
@@ -905,51 +878,20 @@ function ThreadModal({
     onReplyDeleted(reply);
   }
 
-  const modal = (
-    <AnimatePresence>
-      {open ? (
-        <motion.div
-          className="fixed inset-0 z-50 grid place-items-stretch bg-text/28 p-0 backdrop-blur-veil sm:place-items-center sm:px-4 sm:py-6"
-          variants={modalOverlay}
-          initial="hidden"
-          animate="show"
-          exit="exit"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              onClose();
-            }
-          }}
-        >
-          <motion.div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={titleId}
-            data-testid="thread-modal"
-            className="flex h-dvh max-h-dvh w-full max-w-5xl flex-col overflow-hidden border border-line bg-surface shadow-lift sm:h-auto sm:max-h-[min(820px,calc(100dvh-3rem))] sm:rounded-panel"
-            variants={modalPanel}
-          >
-            <div className="sticky top-0 z-10 grid grid-cols-[2.5rem_1fr_2.5rem] items-center gap-3 border-b border-line bg-surface/95 px-3 py-3 backdrop-blur-veil sm:px-5">
-              <span aria-hidden="true" />
-              <div className="min-w-0 text-center">
-                <h2 id={titleId} className="truncate text-base font-semibold text-text">
-                  Thread
-                </h2>
-                <p className="mt-0.5 truncate text-xs text-muted">
-                  @{post.author.handle} · {replyCountLabel}
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="Close thread"
-                title="Close"
-                icon={<X aria-hidden="true" size={18} />}
-                onClick={onClose}
-              />
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5 lg:px-7 lg:py-6">
+  return (
+    <ModalSheet
+      open={open}
+      onClose={onClose}
+      title="Thread"
+      description={`@${post.author.handle} · ${replyCountLabel}`}
+      closeLabel="Close thread"
+      testId="thread-modal"
+      size="xl"
+      mobile="full"
+      headerAlign="center"
+      panelClassName="sm:max-h-[min(820px,calc(100dvh-3rem))]"
+      bodyClassName="px-3 py-4 sm:px-5 lg:px-7 lg:py-6"
+    >
               <div
                 className="mx-auto max-w-3xl overflow-hidden rounded-panel border border-line bg-canvas/24 shadow-inner-soft"
                 data-testid="thread-conversation"
@@ -1027,18 +969,8 @@ function ThreadModal({
                   </div>
                 </div>
               </div>
-            </div>
-          </motion.div>
-        </motion.div>
-      ) : null}
-    </AnimatePresence>
+    </ModalSheet>
   );
-
-  if (typeof document === "undefined") {
-    return null;
-  }
-
-  return createPortal(modal, document.body);
 }
 
 function ParentPostPreview({

@@ -7,7 +7,6 @@ import {
   Send,
   WifiOff,
   UserPlus,
-  X,
   type LucideIcon,
 } from "lucide-react";
 import { motion } from "motion/react";
@@ -25,6 +24,7 @@ import { PageMeta } from "../components/PageMeta";
 import { ReportForm } from "../components/social/ReportForm";
 import { Avatar } from "../components/ui/Avatar";
 import { Button, ButtonLink } from "../components/ui/Button";
+import { ModalSheet } from "../components/ui/ModalSheet";
 import { Panel } from "../components/ui/Panel";
 import { RouteHeader, RouteStateNotice } from "../components/ui/RouteState";
 import { UserIdentityLink } from "../components/social/UserProfileLink";
@@ -644,60 +644,38 @@ function ChatMootPicker({
   query,
   startingHandle,
 }: ChatMootPickerProps) {
-  return (
-    <motion.div
-      className="fixed inset-0 z-50 grid place-items-stretch bg-text/28 p-0 backdrop-blur-veil sm:place-items-center sm:px-4 sm:py-6"
-      data-testid="chat-moot-picker"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <motion.div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Message a moot"
-        className="flex h-dvh w-full flex-col overflow-hidden border border-line bg-surface shadow-lift sm:h-auto sm:max-h-[calc(100dvh-3rem)] sm:max-w-xl sm:rounded-panel"
-        initial={{ y: 16, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-      >
-        <div className="shrink-0 border-b border-line p-4 sm:p-5">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-semibold text-text">Message a moot</h2>
-              <p className="mt-1 text-sm text-muted">
-                Start a direct chat with someone who follows you back.
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Close picker"
-              title="Close"
-              icon={<X aria-hidden="true" size={18} />}
-              onClick={onClose}
-            />
-          </div>
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
-          <label className="mt-4 flex min-h-11 items-center gap-2 rounded-control border border-line bg-canvas/60 px-3 py-2 text-sm text-muted focus-within:border-line-strong focus-within:ring-2 focus-within:ring-focus/30">
+  return (
+    <ModalSheet
+      open
+      onClose={onClose}
+      title="Message a moot"
+      description="Start a direct chat with someone who follows you back."
+      closeLabel="Close picker"
+      testId="chat-moot-picker"
+      size="md"
+      mobile="full"
+      busy={startingHandle !== undefined}
+      initialFocusRef={searchInputRef}
+      bodyClassName="flex flex-col overflow-hidden p-0"
+    >
+      <div className="shrink-0 border-b border-line px-4 py-3 sm:px-5">
+        <label className="flex min-h-11 items-center gap-2 rounded-control border border-line bg-canvas/60 px-3 py-2 text-sm text-muted focus-within:border-line-strong focus-within:ring-2 focus-within:ring-focus/30">
             <Search aria-hidden="true" size={16} />
             <span className="sr-only">Search moots</span>
             <input
+              ref={searchInputRef}
               className="min-w-0 flex-1 bg-transparent text-text outline-none placeholder:text-muted"
               placeholder="Search moots"
               type="search"
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
             />
-          </label>
-        </div>
+        </label>
+      </div>
 
-        <div className="flex-1 overflow-y-auto" data-testid="chat-moot-list">
+      <div className="min-h-0 flex-1 overflow-y-auto" data-testid="chat-moot-list">
           {loading ? (
             <InlineChatState
               className="m-4"
@@ -782,9 +760,8 @@ function ChatMootPicker({
                 );
               })
             : null}
-        </div>
-      </motion.div>
-    </motion.div>
+      </div>
+    </ModalSheet>
   );
 }
 
@@ -1013,7 +990,6 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
                       : "!text-text/55 group-hover/message:!text-text/70 hover:!text-text/85 focus-visible:!text-text hover:[&>span]:bg-text/8 focus-visible:[&>span]:bg-text/10 focus-visible:[&>span]:ring-1 focus-visible:[&>span]:ring-focus/45",
                   )}
                   feedbackClassName="basis-full"
-                  formClassName="basis-full bg-canvas/80 text-left"
                 />
               </>
             ) : null}

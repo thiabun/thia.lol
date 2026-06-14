@@ -8,22 +8,33 @@ test("report modal opens with categories and legal links", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Report post" }).click();
 
-  await expect(page.getByRole("heading", { name: "Report post" })).toBeVisible();
-  await expect(page.getByLabel("What's wrong?")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Community Guidelines" })).toHaveAttribute(
+  const reportDialog = page.getByRole("dialog", { name: "Report post" });
+  await expect(reportDialog).toBeVisible();
+  await expect(reportDialog.getByLabel("What's wrong?")).toBeVisible();
+  await expect(
+    reportDialog.getByRole("link", { name: "Community Guidelines" }),
+  ).toHaveAttribute(
     "href",
     "/community-guidelines",
   );
-  await expect(page.getByRole("link", { name: "Moderation Policy" })).toHaveAttribute(
+  await expect(
+    reportDialog.getByRole("link", { name: "Moderation Policy" }),
+  ).toHaveAttribute(
     "href",
     "/moderation",
   );
+  await expect(page.locator("article").first().getByRole("dialog")).toHaveCount(0);
 
-  await page.getByLabel("What's wrong?").selectOption("copyright");
-  await expect(page.getByRole("link", { name: "Copyright Policy" })).toHaveAttribute(
+  await reportDialog.getByLabel("What's wrong?").selectOption("copyright");
+  await expect(
+    reportDialog.getByRole("link", { name: "Copyright Policy" }),
+  ).toHaveAttribute(
     "href",
     "/copyright",
   );
+
+  await page.keyboard.press("Escape");
+  await expect(reportDialog).toBeHidden();
 });
 
 test("report category selector submits a post report", async ({ page }) => {
@@ -44,10 +55,12 @@ test("report category selector submits a post report", async ({ page }) => {
 
   await page.goto("/");
   await page.getByRole("button", { name: "Report post" }).click();
-  const reportForm = page.getByRole("heading", { name: "Report post" }).locator("..");
-  await page.getByLabel("What's wrong?").selectOption("private_info");
-  await page.getByLabel("Add details").fill("This includes private information.");
-  await reportForm.getByRole("button", { name: "Report", exact: true }).click();
+  const reportDialog = page.getByRole("dialog", { name: "Report post" });
+  await reportDialog.getByLabel("What's wrong?").selectOption("private_info");
+  await reportDialog
+    .getByLabel("Add details")
+    .fill("This includes private information.");
+  await reportDialog.getByRole("button", { name: "Report", exact: true }).click();
 
   await expect(page.getByText("Report sent.")).toBeVisible();
   expect(reportPayload).toMatchObject({
@@ -82,11 +95,11 @@ test("profile report submits the profile target", async ({ page }) => {
 
   await page.goto("/@alex");
   await page.getByRole("button", { name: "Report" }).click();
-  const reportForm = page.getByRole("heading", { name: "Report profile" }).locator("..");
+  const reportDialog = page.getByRole("dialog", { name: "Report profile" });
 
-  await expect(reportForm).toContainText("reports @alex's profile");
-  await page.getByLabel("What's wrong?").selectOption("impersonation");
-  await reportForm.getByRole("button", { name: "Report", exact: true }).click();
+  await expect(reportDialog).toContainText("reports @alex's profile");
+  await reportDialog.getByLabel("What's wrong?").selectOption("impersonation");
+  await reportDialog.getByRole("button", { name: "Report", exact: true }).click();
 
   await expect(page.getByText("Report sent.")).toBeVisible();
   expect(reportPayload).toMatchObject({
@@ -119,11 +132,11 @@ test("room report submits the room target", async ({ page }) => {
 
   await page.goto("/rooms/general");
   await page.getByRole("button", { name: "Report" }).click();
-  const reportForm = page.getByRole("heading", { name: "Report room" }).locator("..");
+  const reportDialog = page.getByRole("dialog", { name: "Report room" });
 
-  await expect(reportForm).toContainText("reports /general");
-  await page.getByLabel("What's wrong?").selectOption("spam_or_scam");
-  await reportForm.getByRole("button", { name: "Report", exact: true }).click();
+  await expect(reportDialog).toContainText("reports /general");
+  await reportDialog.getByLabel("What's wrong?").selectOption("spam_or_scam");
+  await reportDialog.getByRole("button", { name: "Report", exact: true }).click();
 
   await expect(page.getByText("Report sent.")).toBeVisible();
   expect(reportPayload).toMatchObject({
@@ -140,10 +153,10 @@ test("report submit requires auth", async ({ page }) => {
 
   await page.goto("/");
   await page.getByRole("button", { name: "Report post" }).click();
-  const reportForm = page.getByRole("heading", { name: "Report post" }).locator("..");
-  await reportForm.getByRole("button", { name: "Report", exact: true }).click();
+  const reportDialog = page.getByRole("dialog", { name: "Report post" });
+  await reportDialog.getByRole("button", { name: "Report", exact: true }).click();
 
-  await expect(page.getByText("Log in to continue.")).toBeVisible();
+  await expect(reportDialog.getByText("Log in to continue.")).toBeVisible();
 });
 
 test("admin report queue renders open reports first", async ({ page }) => {

@@ -226,11 +226,11 @@ test("conversation member can report an individual chat message", async ({ page 
   const reportTrigger = page.getByRole("button", { name: "Report message" });
   await expect(reportTrigger).toHaveAttribute("title", "Report message");
   await reportTrigger.click();
-  const reportForm = page.getByRole("heading", { name: "Report message" }).locator("..");
+  const reportDialog = page.getByRole("dialog", { name: "Report message" });
 
-  await expect(reportForm).toContainText("reports this chat message");
-  await page.getByLabel("What's wrong?").selectOption("harassment");
-  await reportForm.getByRole("button", { name: "Report", exact: true }).click();
+  await expect(reportDialog).toContainText("reports this chat message");
+  await reportDialog.getByLabel("What's wrong?").selectOption("harassment");
+  await reportDialog.getByRole("button", { name: "Report", exact: true }).click();
 
   await expect(page.getByText("Report sent.")).toBeVisible();
   expect(reportPayload).toMatchObject({
@@ -246,6 +246,8 @@ test("authenticated conversations API requires login", async ({ page }) => {
     process.env.THIA_BASE_URL === undefined,
     "Set THIA_BASE_URL to run API-backed chat smoke tests against a working API.",
   );
+
+  await page.goto("/");
 
   const response = await page.evaluate(async () => {
     const result = await fetch("/api/chat/conversations", {
@@ -269,6 +271,8 @@ test("authenticated chat moots API requires login", async ({ page }) => {
     process.env.THIA_BASE_URL === undefined,
     "Set THIA_BASE_URL to run API-backed chat smoke tests against a working API.",
   );
+
+  await page.goto("/");
 
   const response = await page.evaluate(async () => {
     const result = await fetch("/api/chat/moots", {
