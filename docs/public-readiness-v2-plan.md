@@ -72,6 +72,7 @@ Still fragile or unfinished:
 - Scope: document rules for cards, connected social surfaces, density, empty states, nav, footer, copy, profile identity, motion, and Sunveil/Frostveil usage.
 - Out of scope: full design system rewrite; replacing Tailwind; brand overhaul.
 - Recommended first issue: write a product UI guideline and component inventory tied to existing app surfaces.
+- Canonical reference: `docs/product-ui-ux-guidelines.md`.
 - Codex suitability: High for audit and docs; medium for visual QA because screenshots require careful review.
 - Risk level: Low.
 
@@ -162,19 +163,12 @@ Guidance:
 - Keep API-backed reply create/delete/reblog/report/media behavior honest: test against a working API path or mark smoke blocked.
 - Do not add a deep thread database migration until the product decision about `posts.root_id` or `posts.thread_id` is made.
 
-## Design/Product Guidelines Draft
+## Design/Product Guidelines
 
-- Conversations should visually connect. Parent posts and replies should look like one thread.
-- Identity should be obvious. A member's avatar, display name, handle, and badges should be easy to scan without crowding the post body.
-- Actions should appear once per context. Duplicate reply/report/delete controls make the product feel noisy and uncertain.
-- Cards should not over-fragment the product. Use cards for repeated items, modals, and framed tools, not for every subsection of a page.
-- Empty states should be calm, centered, and specific.
-- Feature copy should be plain. Avoid decorative filler and implementation language on public surfaces.
-- Mobile bottom nav and footer should not fight each other. The footer must remain reachable and feel like the lowest page element.
-- Profile pages should support personal identity and future creator/blog use while preserving platform coherence.
-- Sunveil and Frostveil should guide mood, contrast, and motion, but not become one-note palettes.
-- Motion should help state changes feel alive, not distract from reading or replying.
-- Public surfaces should never overclaim privacy, moderation, analytics, or legal guarantees.
+The draft guidance from this plan has been promoted into
+`docs/product-ui-ux-guidelines.md`. Treat that file as the active canonical
+reference for product UI/UX rules, component inventory, anti-patterns, and
+future Codex task expectations.
 
 ## Docs Cleanup Plan
 
@@ -185,6 +179,7 @@ Do not delete docs in this pass unless a file is clearly obsolete and duplicated
 - `AGENTS.md`: repo operating rules and deployment constraints.
 - `README.md`: public repo overview, local commands, testing, and deployment notes.
 - `docs/public-readiness-v2-plan.md`: active v2 orientation and issue map.
+- `docs/product-ui-ux-guidelines.md`: canonical UI/UX rules and component inventory for future implementation issues.
 - `docs/product-audit-and-roadmap.md`: active product/architecture reference, with older roadmap sections superseded by GitHub Issues.
 - `docs/platform-ui-modernization.md`: active UI modernization direction.
 - `docs/block-mute-remove-follower-scope.md`: active product/API scope for safety controls until implemented.

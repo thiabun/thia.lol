@@ -3,6 +3,8 @@
 > **Status: Active.** Use this for the current UI modernization direction.
 > Implementation should be split into focused GitHub Issues rather than tracked
 > as an expanding checklist in this file.
+> Product UI/UX rules and component inventory live in
+> `docs/product-ui-ux-guidelines.md`.
 
 Date: 2026-06-13
 

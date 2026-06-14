@@ -80,6 +80,7 @@ Use these docs for current context:
 
 ```text
 docs/public-readiness-v2-plan.md
+docs/product-ui-ux-guidelines.md
 docs/product-audit-and-roadmap.md
 docs/public-testing-launch-checklist.md
 ```
