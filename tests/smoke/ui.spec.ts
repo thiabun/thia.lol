@@ -110,7 +110,7 @@ test("mobile header, account menu, and bottom nav fit the viewport", async ({
   const nav = page.getByTestId("mobile-nav");
   await expect(nav).toBeVisible();
   await expect(nav.getByRole("button", { name: "Post" })).toHaveCount(1);
-  await expectMobilePostInsideDock(page);
+  await expectRefinedMobileDock(page);
   await expectChatHitTargetClear(page);
 });
 
@@ -201,7 +201,7 @@ test("mobile primary nav remains usable on main routes", async ({ page }) => {
     await expect(nav.getByRole("button", { name: "Post" })).toHaveCount(1);
     await expect(nav.getByRole("link", { name: "Search" })).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
-    await expectMobilePostInsideDock(page);
+    await expectRefinedMobileDock(page);
   }
 });
 
@@ -305,10 +305,18 @@ test("public pages do not render retired social copy", async ({ page }) => {
     const bodyText = await page.locator("body").innerText();
 
     for (const copy of retiredMockCopy) {
-      expect(bodyText).not.toContain(copy);
+      expect(bodyText).not.toMatch(retiredCopyPattern(copy));
     }
   }
 });
+
+function retiredCopyPattern(copy: string): RegExp {
+  const escapedCopy = copy
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\s+/g, "\\s+");
+
+  return new RegExp(`(^|[^\\p{L}\\p{N}_])${escapedCopy}([^\\p{L}\\p{N}_]|$)`, "iu");
+}
 
 async function expectNoHorizontalOverflow(page: Page) {
   const hasOverflow = await page.evaluate(
@@ -323,7 +331,7 @@ async function acknowledgeCookieNotice(page: Page) {
   });
 }
 
-async function expectMobilePostInsideDock(page: Page) {
+async function expectRefinedMobileDock(page: Page) {
   const boxes = await page.evaluate(() => {
     const nav = document
       .querySelector('[data-testid="mobile-nav"]')
@@ -331,23 +339,74 @@ async function expectMobilePostInsideDock(page: Page) {
     const post = document
       .querySelector('[data-testid="mobile-post-action"]')
       ?.getBoundingClientRect();
+    const links = Array.from(
+      document.querySelectorAll('[data-testid="mobile-nav"] a'),
+    ).map((link) => {
+      const rect = link.getBoundingClientRect();
+
+      return {
+        active: link.getAttribute("aria-current") === "page",
+        bottom: rect.bottom,
+        height: rect.height,
+        href: link.getAttribute("href"),
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        width: rect.width,
+      };
+    });
 
     return {
       nav: nav
-        ? { bottom: nav.bottom, left: nav.left, right: nav.right, top: nav.top }
+        ? {
+            bottom: nav.bottom,
+            height: nav.height,
+            left: nav.left,
+            right: nav.right,
+            top: nav.top,
+            width: nav.width,
+          }
         : null,
       post: post
-        ? { bottom: post.bottom, left: post.left, right: post.right, top: post.top }
+        ? {
+            bottom: post.bottom,
+            height: post.height,
+            left: post.left,
+            right: post.right,
+            top: post.top,
+            width: post.width,
+          }
         : null,
+      links,
     };
   });
 
   expect(boxes.nav).not.toBeNull();
   expect(boxes.post).not.toBeNull();
-  expect(boxes.post!.top).toBeGreaterThanOrEqual(boxes.nav!.top);
-  expect(boxes.post!.bottom).toBeLessThanOrEqual(boxes.nav!.bottom);
+  expect(boxes.nav!.height).toBeGreaterThanOrEqual(56);
+  expect(boxes.nav!.height).toBeLessThanOrEqual(76);
+  expect(boxes.post!.width).toBeGreaterThanOrEqual(43.5);
+  expect(boxes.post!.height).toBeGreaterThanOrEqual(43.5);
+  expect(boxes.post!.top).toBeGreaterThanOrEqual(boxes.nav!.top - 8);
+  expect(boxes.post!.bottom).toBeLessThanOrEqual(boxes.nav!.bottom + 1);
   expect(boxes.post!.left).toBeGreaterThanOrEqual(boxes.nav!.left);
   expect(boxes.post!.right).toBeLessThanOrEqual(boxes.nav!.right);
+
+  const navCenterY = boxes.nav!.top + boxes.nav!.height / 2;
+  const postCenterY = boxes.post!.top + boxes.post!.height / 2;
+  expect(postCenterY).toBeLessThan(navCenterY - 1);
+
+  expect(boxes.links).toHaveLength(4);
+  for (const link of boxes.links) {
+    expect(link.height).toBeGreaterThanOrEqual(43.5);
+    expect(link.height).toBeLessThanOrEqual(48);
+    expect(link.width).toBeLessThanOrEqual(80);
+  }
+
+  const activeLink = boxes.links.find((link) => link.active);
+  if (activeLink) {
+    expect(activeLink.height).toBeLessThanOrEqual(48);
+  }
 }
 
 async function expectChatHitTargetClear(page: Page) {

@@ -468,14 +468,14 @@ function MobileDock({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={snappySpring}
-      className="sticky bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30 mx-auto mb-[calc(1rem+env(safe-area-inset-bottom))] grid w-full max-w-md grid-cols-5 items-center gap-1 rounded-panel border border-line bg-surface/90 p-2 shadow-lift backdrop-blur-veil lg:hidden"
+      className="sticky bottom-[calc(0.55rem+env(safe-area-inset-bottom))] z-30 mx-auto mb-[calc(0.75rem+env(safe-area-inset-bottom))] grid w-full max-w-md grid-cols-5 items-center gap-0.5 rounded-[1.35rem] border border-line/80 bg-surface/82 px-2 py-1.5 shadow-[0_16px_44px_oklch(0_0_0_/_0.13)] backdrop-blur-veil lg:hidden"
       aria-label="Primary"
       data-testid="mobile-nav"
     >
       {mobileNavItems.map(({ to, label, icon: Icon }, index) => (
         <motion.div
           key={to}
-          className={mobilePositions[index]}
+          className={cn("flex justify-center", mobilePositions[index])}
           whileTap={buttonTap}
         >
           <NavLink
@@ -483,28 +483,34 @@ function MobileDock({
             end={to === "/"}
             className={({ isActive }) =>
               cn(
-                "grid min-h-12 place-items-center rounded-card text-xs font-medium transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+                "grid min-h-11 w-full max-w-[4.9rem] place-items-center rounded-full px-1 py-1 text-[0.69rem] font-medium leading-none transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
                 isActive
-                  ? "bg-accent text-accent-ink shadow-soft"
-                  : "text-muted hover:bg-surface-strong hover:text-text",
+                  ? "bg-accent/18 text-text shadow-inner-soft ring-1 ring-accent/25"
+                  : "text-muted hover:bg-surface-strong/70 hover:text-text",
               )
             }
           >
             <Icon aria-hidden="true" size={18} />
-            <span className="mt-1">{label}</span>
+            <span className="mt-1.5">{label}</span>
           </NavLink>
         </motion.div>
       ))}
-      <Button
-        type="button"
-        className="col-start-3 mx-auto size-12 rounded-full shadow-lift"
-        disabled={postDisabled}
-        aria-label="Post"
-        data-testid="mobile-post-action"
-        title="Post"
-        icon={<PenLine aria-hidden="true" size={21} />}
-        onClick={onPostClick}
-      />
+      <div className="relative col-start-3 row-start-1 mx-auto flex h-12 -translate-y-1 items-center justify-center">
+        <Button
+          type="button"
+          className="size-11 rounded-full border border-white/45 p-0 shadow-[0_14px_34px_color-mix(in_oklab,var(--app-accent)_38%,transparent)] ring-1 ring-accent/20"
+          disabled={postDisabled}
+          aria-label="Post"
+          data-testid="mobile-post-action"
+          title="Post"
+          icon={<PenLine aria-hidden="true" size={20} />}
+          onClick={onPostClick}
+        />
+        <span
+          className="pointer-events-none absolute bottom-0.5 left-1/2 size-1.5 -translate-x-1/2 rounded-full bg-accent shadow-glow"
+          aria-hidden="true"
+        />
+      </div>
     </motion.nav>
   );
 }
