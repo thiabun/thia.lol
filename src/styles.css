@@ -166,6 +166,81 @@ textarea {
   background: var(--media-scrim);
 }
 
+.chat-message-list-bg {
+  --chat-message-area-bg: color-mix(in oklab, var(--app-surface) 82%, var(--app-canvas));
+  background: var(--chat-message-area-bg);
+}
+
+.chat-message-bubble {
+  --chat-bubble-bg: var(--app-surface);
+  --chat-bubble-line: var(--app-line);
+  isolation: isolate;
+  background: var(--chat-bubble-bg);
+  border: 1px solid var(--chat-bubble-line);
+  box-shadow: var(--shadow-soft);
+}
+
+.chat-message-bubble::before {
+  position: absolute;
+  z-index: 0;
+  bottom: -0.05rem;
+  width: 1.85rem;
+  height: 1.3rem;
+  pointer-events: none;
+  background: var(--chat-bubble-bg);
+  clip-path: path("M 29 11.5 C 23 12.8 17.5 17.5 2 20.8 C 12.2 21.7 23.2 17.2 29 15.2 Z");
+  filter:
+    drop-shadow(-1.7px 1px 0 var(--chat-bubble-line))
+    drop-shadow(0 1.45px 0 var(--chat-bubble-line));
+  transition: background var(--duration-fluid) var(--ease-fluid);
+  content: "";
+}
+
+.chat-message-bubble::after {
+  position: absolute;
+  z-index: 1;
+  bottom: -1px;
+  width: 0.96rem;
+  height: 1.45rem;
+  pointer-events: none;
+  background: var(--chat-bubble-bg);
+  transition: background var(--duration-fluid) var(--ease-fluid);
+  content: "";
+}
+
+.chat-message-bubble--theirs {
+  --chat-bubble-bg: color-mix(in oklab, var(--app-surface) 90%, var(--app-canvas));
+  --chat-bubble-line: var(--app-line-strong);
+}
+
+.chat-message-bubble--theirs:hover {
+  --chat-bubble-line: var(--app-line-strong);
+}
+
+.chat-message-bubble--theirs::after {
+  left: -1px;
+  border-bottom-left-radius: 1rem;
+}
+
+.chat-message-bubble--theirs::before {
+  left: -0.95rem;
+}
+
+.chat-message-bubble--mine {
+  --chat-bubble-bg: var(--app-accent);
+  --chat-bubble-line: color-mix(in oklab, var(--app-accent) 74%, var(--app-accent-ink));
+}
+
+.chat-message-bubble--mine::after {
+  right: -1px;
+  border-bottom-right-radius: 1rem;
+}
+
+.chat-message-bubble--mine::before {
+  right: -0.95rem;
+  transform: scaleX(-1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
