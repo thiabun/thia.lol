@@ -390,6 +390,7 @@ test("post body opens thread while controls keep their own behavior", async ({
   const bodyBox = await bodyOpenTarget.boundingBox();
   expect(postBox).not.toBeNull();
   expect(bodyBox).not.toBeNull();
+  expect(postBox!.width).toBeLessThanOrEqual(610);
   expect(bodyBox!.width).toBeGreaterThan(postBox!.width * 0.8);
 
   await page.mouse.click(postBox!.x + postBox!.width - 24, postBox!.y + 24);

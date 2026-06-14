@@ -114,7 +114,7 @@ export function PostCard({
       <motion.article
         id={`post-${post.id}`}
         aria-label={`Open thread by ${post.author.displayName}`}
-        className="group cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus"
+        className="group mx-auto w-full max-w-[38rem] cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus"
         data-testid="post-card-open-thread"
         tabIndex={0}
         variants={cardEntrance}
