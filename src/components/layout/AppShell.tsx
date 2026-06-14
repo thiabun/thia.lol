@@ -552,10 +552,6 @@ function SiteFooter() {
               Report a bug
             </a>
           </nav>
-          <p className="leading-5" data-testid="bug-report-guidance">
-            Include what happened, route, device/browser, and safe screenshots.
-            Never share passwords, cookies, tokens, or private DMs.
-          </p>
         </div>
       </div>
     </footer>

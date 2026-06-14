@@ -65,9 +65,6 @@ test("footer and account menu expose legal links discreetly", async ({ page }) =
     "href",
     bugReportUrl,
   );
-  await expect(page.getByTestId("bug-report-guidance")).toContainText(
-    "Never share passwords, cookies, tokens, or private DMs.",
-  );
 
   await page.getByRole("button", { name: /account menu/i }).click();
   await expect(page.getByTestId("account-menu")).toBeVisible();
