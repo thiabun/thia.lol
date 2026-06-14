@@ -1,5 +1,9 @@
 # Auth Session Diagnostics
 
+> **Status: Operational reference.** Use this for production auth/session
+> debugging. Keep migration tokens, cookies, raw session tokens, token hashes,
+> and rotation records out of committed files, tickets, screenshots, and chat.
+
 Use these browser checks when production appears logged in but authenticated API calls return `401`.
 
 Admin diagnostics are intentionally retained behind the server-only migration token. Login and register responses only include cookie diagnostics when `app.debug` is explicitly `true`.

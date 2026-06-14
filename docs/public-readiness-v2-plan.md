@@ -3,12 +3,18 @@
 > **Status: Active.** This is the v2 orientation map and issue index. GitHub
 > Issues are the active tracker for v2 work; keep this document focused on
 > context, classification, and links instead of growing it into another task
-> queue. Use issue [#16](https://github.com/thiabun/thia.lol/issues/16) for
-> project-board and label workflow setup.
+> queue. The docs map lives in `docs/README.md`. Project-board and label setup
+> was tracked in issue [#16](https://github.com/thiabun/thia.lol/issues/16).
 
 Date: 2026-06-11
 
 Source brief: `Public readiness v2.md`, supplied for this planning pass.
+
+Current UI/UX direction: issue [#14](https://github.com/thiabun/thia.lol/issues/14)
+created the canonical product UI/UX guidelines, and issue
+[#32](https://github.com/thiabun/thia.lol/issues/32) applied the broad product
+UI/UX overhaul pass. Use those issues and `docs/product-ui-ux-guidelines.md`
+for future UI work.
 
 ## Public Readiness v2 Goal
 
@@ -178,11 +184,15 @@ Do not delete docs in this pass unless a file is clearly obsolete and duplicated
 
 - `AGENTS.md`: repo operating rules and deployment constraints.
 - `README.md`: public repo overview, local commands, testing, and deployment notes.
+- `docs/README.md`: active docs index, read order, classification table, and archive candidates.
 - `docs/public-readiness-v2-plan.md`: active v2 orientation and issue map.
 - `docs/product-ui-ux-guidelines.md`: canonical UI/UX rules and component inventory for future implementation issues.
 - `docs/product-audit-and-roadmap.md`: active product/architecture reference, with older roadmap sections superseded by GitHub Issues.
 - `docs/platform-ui-modernization.md`: active UI modernization direction.
 - `docs/block-mute-remove-follower-scope.md`: active product/API scope for safety controls until implemented.
+- `docs/profile-personal-space-evolution.md`: active profile/personal-space product direction.
+- `docs/profile-customization-experience.md`: active owner profile customization experience direction.
+- `docs/profile-customization-safety-rules.md`: active profile customization safety guardrails.
 - `docs/profile-badges-plan.md`: active profile/badge foundation reference.
 
 ### Operational References
@@ -192,6 +202,7 @@ Do not delete docs in this pass unless a file is clearly obsolete and duplicated
 - `docs/thia-migration-runner-guide.md` and `docs/migration-runner.md`: migration runner references; reconcile later if they drift.
 - `docs/media-uploads.md`: image upload behavior and cPanel storage reference.
 - `docs/admin-setup.md` and `docs/auth-session-diagnostics.md`: admin/session operational references.
+- `docs/codex-handoff.md`: Codex task packet and implementation handoff reference.
 
 ### Historical / Superseded Docs
 
@@ -199,6 +210,8 @@ Do not delete docs in this pass unless a file is clearly obsolete and duplicated
 - `docs/public-testing-readiness-audit.md`: historical v1 pass report and addendum log. Keep for audit trail; current work belongs in GitHub Issues.
 - `docs/public-testing-roadmap.md`: historical v1 public-testing roadmap. Its priority list is superseded by GitHub Issues and the v2 plan.
 - `docs/public-testing-project-triage.md`: historical v1 transition triage. Useful for provenance, but not the active tracker.
+- `docs/platform-ui-modernization-audit.md`: historical UI audit snapshot that informed issue #14, issue #32, and later UI work.
+- `docs/thread-experience-redesign.md`: historical thread redesign research from issue #13; current thread rules belong in the UI guidelines and issue follow-ups.
 
 ### Update
 
@@ -219,6 +232,9 @@ Do not delete docs in this pass unless a file is clearly obsolete and duplicated
 - `docs/public-testing-readiness-audit.md`: archive candidate because it is a completed pass report. Keep until any still-useful deferred items are represented as GitHub Issues.
 - `docs/public-testing-roadmap.md`: archive candidate because active priorities now live in GitHub Issues and this v2 plan.
 - `docs/public-testing-project-triage.md`: archive candidate because its recommendations have either been implemented, moved to the launch checklist, or carried forward into GitHub Issues.
+- `docs/thread-experience-redesign.md`: archive candidate after unique thread UX details are merged into active UI guidelines or issue follow-ups.
+- `docs/platform-ui-modernization-audit.md`: archive candidate after remaining audit findings are represented as issues or closed.
+- `docs/migration-runner.md`: merge candidate with `docs/thia-migration-runner-guide.md` if the two migration references drift.
 - User-supplied `Public readiness v2.md` source brief and attachments: preserve only if Thia wants uploaded planning briefs tracked in the repository; otherwise keep this plan as the committed source of truth and do not commit source-brief attachments by accident.
 
 ### Delete Only If Clearly Obsolete
@@ -257,6 +273,7 @@ Recommended new v2 issues:
 
 - Priority: P1
 - Area labels: `area: design`, `area: docs`, `area: frontend`
+- Status: Closed; canonical guidance lives in `docs/product-ui-ux-guidelines.md`.
 - Summary: Document product rules for connected conversations, cards, density, motion, copy, empty states, profiles, nav, and legal/trust surfaces.
 - Acceptance criteria:
   - [ ] Guidelines cover conversations, identity, actions, cards, empty states, copy, mobile nav/footer, profiles, and motion.
@@ -277,6 +294,7 @@ Recommended new v2 issues:
 
 - Priority: P1
 - Area labels: `area: project`, `area: docs`, `needs-product-decision`
+- Status: Closed; keep active implementation tracking in GitHub Issues and the project workflow.
 - Summary: Configure v2 labels/statuses and make GitHub Issues/Project the source of truth for active work.
 - Acceptance criteria:
   - [ ] Labels cover type, priority, area, Codex readiness, product decisions, and human testing.
@@ -287,6 +305,7 @@ Recommended new v2 issues:
 
 - Priority: P2
 - Area labels: `area: search`, `area: api`, `area: frontend`, `needs-product-decision`
+- Status: Closed for Search v1; follow-up search expansion should be new issues.
 - Summary: Define Search v1 before adding a route or nav item.
 - Implementation note, 2026-06-12: Search v1 now has a `/search` route and `GET /api/search?q=...` endpoint for public profiles and public, non-deleted rooms. Posts, private chat messages, admin search, analytics, suggestions, and external search services remain out of scope.
 - Acceptance criteria:
@@ -327,6 +346,13 @@ Recommended new v2 issues:
   - [ ] Needed schema/API changes are split into small future issues.
   - [ ] No production migration is run.
   - [ ] API-backed smoke requirements are documented for each track.
+
+### [#32 Product UI/UX overhaul pass](https://github.com/thiabun/thia.lol/issues/32)
+
+- Priority: P1
+- Status: Closed; this implemented the broad UI direction from issue #14.
+- Summary: Applied the product UI/UX principles across existing high-visibility surfaces without replacing the design system.
+- Follow-up rule: new UI work should start from `docs/product-ui-ux-guidelines.md`, cite issue #14/#32 where useful, and track remaining implementation as GitHub Issues.
 
 ## Suggested Project Board Structure
 

@@ -1,5 +1,9 @@
 # Codex Handoff Workflow
 
+> **Status: Operational reference.** Use this for shaping Codex task packets and
+> backend/deployment handoffs. `AGENTS.md` remains the authoritative operating
+> guide, and active implementation work should be tracked in GitHub Issues.
+
 Use this document to coordinate work between planning/review and Codex implementation.
 
 ## Operating model

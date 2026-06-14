@@ -1,5 +1,11 @@
 # Platform UI Modernization Audit
 
+> **Status: Historical / superseded audit.** This snapshot informed the active
+> UI/UX guideline in issue [#14](https://github.com/thiabun/thia.lol/issues/14)
+> and the implementation pass in issue
+> [#32](https://github.com/thiabun/thia.lol/issues/32). Do not use it as the
+> active UI task tracker.
+
 Date: 2026-06-13
 
 ## Executive Summary

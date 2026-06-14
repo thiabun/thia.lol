@@ -1,5 +1,11 @@
 # Thread Experience Redesign
 
+> **Status: Historical / superseded planning reference.** This research
+> supported issue [#13](https://github.com/thiabun/thia.lol/issues/13), which is
+> now closed. Current conversation UI rules live in
+> `docs/product-ui-ux-guidelines.md`, and any remaining thread work should be
+> tracked in GitHub Issues.
+
 Date: 2026-06-11
 
 Status: research, audit, and planning only. This document does not approve a frontend implementation, backend implementation, migration, or route change by itself.

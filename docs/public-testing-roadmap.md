@@ -29,6 +29,13 @@ The priority list below is historical. Some items are now implemented, some are
 manual verification tasks, and the remaining work should be represented as
 GitHub Issues instead of edited here.
 
+Cleanup note, 2026-06-15: this section intentionally preserves the old v1
+priority wording for context, but it is not current status. Thread redesign,
+Chat start UX, profile click behavior, reports 2.0, mobile spacing, empty
+states, icon accessibility, Search v1, profile customization, and broad UI/UX
+polish have since been tracked and mostly closed through GitHub Issues. Use the
+issue board and `docs/public-readiness-v2-plan.md` for live status.
+
 ### P0: Verify auth-backed production smoke
 
 Production auth smoke was blocked by login rate limiting. Once the rate limit clears, rerun auth-backed smoke with one worker.
@@ -54,6 +61,9 @@ Use the migration runner in `docs/thia-migration-runner-guide.md`.
 
 ### P1: Threads, replies, and post-click behavior
 
+Historical note: the issue-backed thread/reply cleanup and v2 visual foundation
+have been implemented. Future deep-thread work should be a new issue.
+
 Fix the thread/reply model so comments behave like real post/thread nodes.
 
 Goals:
@@ -69,6 +79,9 @@ Goals:
 
 ### P1: Chat start UX
 
+Historical note: the Chat page moot picker was implemented. Future chat reach,
+attachments, retention, or realtime behavior should be new issues.
+
 Improve Chat so users can start a DM from the Chat page.
 
 Goals:
@@ -79,6 +92,9 @@ Goals:
 - preserve moots-only chat rule
 
 ### P1: Profile click behavior audit
+
+Historical note: the profile navigation behavior sweep was implemented. Future
+identity-link regressions should be filed as bugs or focused polish issues.
 
 Across the app, user avatars, handles, and display names should normally navigate to the profile unless an explicit action is being clicked.
 
@@ -94,6 +110,10 @@ Audit:
 - Admin views
 
 ### P1: Moderation / reports 2.0
+
+Historical note: report categories, admin report review, and profile/room/chat
+message report targets are implemented foundations. Deeper moderation workflows
+remain follow-up issue scope.
 
 Make reports more structured and admin review more useful.
 
@@ -119,6 +139,9 @@ Goals:
 
 ### P2: Performance and bundle cleanup
 
+Historical note: route-level lazy loading is implemented. The open performance
+track is issue [#6](https://github.com/thiabun/thia.lol/issues/6).
+
 The app has grown and should continue reducing eager loading and bloat.
 
 Goals:
@@ -130,6 +153,9 @@ Goals:
 - avoid breaking cPanel routing
 
 ### P2: Public testing launch checklist
+
+Historical note: `docs/public-testing-launch-checklist.md` exists and is the
+active operational launch checklist.
 
 Create a single checklist for public testing.
 

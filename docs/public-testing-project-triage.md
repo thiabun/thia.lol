@@ -12,6 +12,12 @@ Repository state checked after `git pull --rebase` on local HEAD `a22df6e`.
 
 This document reconciles the public-testing roadmap, readiness spec, readiness audit, product audit, deployment docs, media docs, and profile/badges plan against the current repository state. It is planning only. No GitHub Issues or Project cards have been created from this pass.
 
+Cleanup note, 2026-06-15: keep the sections below as v1 transition provenance,
+not current work assignment. Many recommended issues were created and closed
+after this triage, including #13, #14, #16, #17, and #32. Current work should
+start from GitHub Issues plus `docs/README.md` and
+`docs/public-readiness-v2-plan.md`.
+
 ## Current Reality
 
 The current repository is no longer in the state described by the oldest parts of the audit set.
@@ -95,7 +101,7 @@ Items where existing docs no longer match the repository or the latest project c
 - Defer chat attachments, post/room sharing into chat, group chats, realtime, typing indicators, read receipts, and non-moot requests until safety controls are in place.
 - Defer private/member-only rooms until access controls and moderation workflows are tested.
 
-## Recommended GitHub Issues
+## Historical Recommended GitHub Issues
 
 ### 1. Confirm live migration and deployment readiness
 
@@ -210,7 +216,10 @@ Items that should remain deferred rather than become near-term issues:
 - Self-service data export and automated account deletion until legal/product requirements are clearer.
 - Automatic badge earning rules before abuse controls and transparent criteria are designed.
 
-## Suggested Next Three Codex Tasks
+## Historical Suggested Next Three Codex Tasks
+
+These are retained to show the v1 handoff path. They are not the current next
+task list.
 
 1. Create `docs/public-testing-launch-checklist.md` with deployment steps, migration checks, smoke commands, manual testing matrix, known limitations, tester instructions, and bug report guidance.
 2. Run deployed authenticated verification for profile, room, and message report paths, including admin queue summaries.

@@ -1,5 +1,11 @@
 # Migration Runner Brief
 
+> **Status: Operational / historical implementation brief.** Use this when
+> changing the migration runner or authoring new migrations. For applying live
+> migrations, prefer `docs/thia-migration-runner-guide.md`. If these files
+> drift, merge the useful authoring rules into the practical guide before
+> archiving this brief.
+
 Use this file as the canonical Codex prompt for adding safe database migrations to `thia.lol`.
 
 ## Goal

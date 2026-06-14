@@ -79,6 +79,7 @@ planning docs. Current focus areas include:
 Use these docs for current context:
 
 ```text
+docs/README.md
 docs/public-readiness-v2-plan.md
 docs/product-ui-ux-guidelines.md
 docs/product-audit-and-roadmap.md

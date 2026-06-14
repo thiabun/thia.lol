@@ -4,7 +4,8 @@
 > Implementation should be split into focused GitHub Issues rather than tracked
 > as an expanding checklist in this file.
 > Product UI/UX rules and component inventory live in
-> `docs/product-ui-ux-guidelines.md`.
+> `docs/product-ui-ux-guidelines.md`. The broad UI/UX implementation pass was
+> tracked in issue [#32](https://github.com/thiabun/thia.lol/issues/32).
 
 Date: 2026-06-13
 

@@ -7,12 +7,15 @@ Date: 2026-06-14
 
 Source issue: [#14 Product UI/UX guidelines and component inventory](https://github.com/thiabun/thia.lol/issues/14)
 
+Implementation follow-up: [#32 Product UI/UX overhaul pass](https://github.com/thiabun/thia.lol/issues/32)
+
 Related context:
 
 - `AGENTS.md`
 - `docs/public-readiness-v2-plan.md`
 - `docs/platform-ui-modernization.md`
 - `docs/platform-ui-modernization-audit.md`
+- `docs/README.md`
 
 ## Purpose
 

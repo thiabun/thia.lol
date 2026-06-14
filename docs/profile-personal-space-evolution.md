@@ -1,5 +1,10 @@
 # Profile / Personal Space Evolution
 
+> **Status: Active product direction.** Use this for long-term profile and
+> personal-space planning. Remaining implementation and product decisions should
+> be tracked through issue [#18](https://github.com/thiabun/thia.lol/issues/18)
+> and focused follow-up issues, not by extending this document into a task list.
+
 Date: 2026-06-12
 
 Safety rules for future customization and modules are defined in

@@ -1,5 +1,10 @@
 # Block, Mute, and Remove Follower Scope
 
+> **Status: Active safety reference.** Use this for block, mute, and
+> remove-follower behavior, limitations, API/data shape, and production
+> migration caveats. Track remaining implementation or verification work in
+> GitHub Issues instead of expanding this document into a task queue.
+
 Date: 2026-06-11
 
 Implementation note, 2026-06-12: Phase 1 API/data foundation is now

@@ -1,5 +1,11 @@
 # Profile Customization Safety Rules
 
+> **Status: Active safety reference.** Use this for profile modules,
+> customization, media, links, integration guardrails, accessibility, and
+> moderation constraints. It was created for issue
+> [#25](https://github.com/thiabun/thia.lol/issues/25); future work should be
+> tracked in GitHub Issues.
+
 Date: 2026-06-12
 
 ## Purpose

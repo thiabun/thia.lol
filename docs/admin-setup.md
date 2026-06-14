@@ -1,5 +1,9 @@
 # Admin Account Setup
 
+> **Status: Operational reference.** Use this only for one-time seeded admin
+> activation and setup-token handling. Do not commit real setup tokens,
+> passwords, emails, or server config.
+
 This one-time setup activates the seeded `@thia` account for login without committing a real email, password, or setup token.
 
 ## Generate a Setup Token

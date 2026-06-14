@@ -1,5 +1,10 @@
 # Profile Customization Experience
 
+> **Status: Active product direction.** Use this for owner profile editor IA,
+> preview behavior, Connections, and customization experience. Issue
+> [#26](https://github.com/thiabun/thia.lol/issues/26) implemented the first
+> safe slice; future work should be tracked in GitHub Issues.
+
 Date: 2026-06-13
 
 ## Purpose
