@@ -350,12 +350,12 @@ export function ChatPage() {
           badge="private"
           badgeTone="cool"
           title="Chat"
-          description="Moots-only direct messages."
+          description="Direct messages."
         />
         <RouteStateNotice
           icon={MessageCircle}
           title="Sign in to see your messages."
-          text="Chat is available to signed-in members."
+          text="Chat is available after sign-in."
           actions={<ButtonLink to="/login">Sign in</ButtonLink>}
         />
       </motion.div>
@@ -375,13 +375,13 @@ export function ChatPage() {
           badge="private"
           badgeTone="cool"
           title="Chat"
-          description="Moots-only direct messages."
+          description="Direct messages."
         />
         <RouteStateNotice
           kind="loading"
           icon={LoaderCircle}
           title="Loading chat"
-          text="Your messages are loading."
+          text="Messages are loading."
         />
       </motion.div>
     );
@@ -400,7 +400,7 @@ export function ChatPage() {
           badge="private"
           badgeTone="cool"
           title="Chat"
-          description="Moots-only direct messages."
+          description="Direct messages."
           actions={
             <>
               <Button
@@ -414,11 +414,12 @@ export function ChatPage() {
               <Button
                 type="button"
                 variant="secondary"
+                size="icon"
+                aria-label="Refresh conversations"
+                title="Refresh conversations"
                 icon={<RefreshCw aria-hidden="true" size={16} />}
                 onClick={() => void loadConversations()}
-              >
-                Refresh
-              </Button>
+              />
             </>
           }
         />
@@ -438,7 +439,7 @@ export function ChatPage() {
           kind="loading"
           icon={LoaderCircle}
           title="Loading conversations"
-          text="Your chats are loading."
+          text="Conversations are loading."
         />
       ) : null}
 
@@ -465,7 +466,7 @@ export function ChatPage() {
         <RouteStateNotice
           icon={Inbox}
           title="No chats yet"
-          text="Start a direct chat with a moot when you both follow each other."
+          text="Start with someone who follows you back."
           actions={
             <Button
               type="button"
@@ -534,7 +535,7 @@ export function ChatPage() {
                       icon={LoaderCircle}
                       kind="loading"
                       title="Loading messages"
-                      text="This conversation is loading."
+                      text="Messages are loading."
                     />
                   ) : null}
                   {messagesError ? (
@@ -550,7 +551,7 @@ export function ChatPage() {
                       centered
                       icon={Inbox}
                       title="No messages yet"
-                      text="Start with a short note when you're ready."
+                      text="Send the first message."
                     />
                   ) : null}
                   {messages.map((message) => (
@@ -597,7 +598,7 @@ export function ChatPage() {
                 centered
                 icon={MessageCircle}
                 title="Choose a conversation"
-                text="Pick a chat from the list to read messages."
+                text="Pick a chat from the list."
               />
             )}
           </Panel>
@@ -657,7 +658,7 @@ function ChatMootPicker({
       open
       onClose={onClose}
       title="Message a moot"
-      description="Start a direct chat with someone who follows you back."
+      description="Choose someone who follows you back."
       closeLabel="Close picker"
       testId="chat-moot-picker"
       size="md"
@@ -688,7 +689,7 @@ function ChatMootPicker({
               icon={LoaderCircle}
               kind="loading"
               title="Loading moots"
-              text="Eligible chat partners are loading."
+              text="Chat partners are loading."
             />
           ) : null}
           {error ? (
@@ -717,7 +718,7 @@ function ChatMootPicker({
               icon={MessageCircle}
               testId="chat-moot-empty"
               title="No moots yet"
-              text="Chats are moots-only, so follow each other before starting a DM."
+              text="Follow each other to start a chat."
             />
           ) : null}
           {!loading && !error && moots.length > 0 && filteredMoots.length === 0 ? (

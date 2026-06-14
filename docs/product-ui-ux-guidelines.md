@@ -194,12 +194,12 @@ Avoid:
 If a heading already explains the section, do not add a second sentence that
 repeats it. If a state is already visually obvious, skip the explanation.
 
-### 5. Ambient Veil Is Atmosphere, Not Content
+### 5. Ambient Veil Is Retired
 
-`AmbientImage` and `ambient-veil.webp` may support brand atmosphere, page mood,
-or a real hero/background moment. They must not be used as fake content, fake
-media, fake user identity, fake room identity, or a placeholder for something
-the user expects to inspect.
+`AmbientImage` and `ambient-veil.webp` are retired from active UI and build
+assets. Do not reintroduce them as fake content, fake media, fake user
+identity, fake room identity, or a placeholder for something the user expects
+to inspect.
 
 Future placeholders should be:
 

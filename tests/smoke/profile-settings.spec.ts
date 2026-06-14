@@ -239,8 +239,8 @@ test("mobile edit profile modal has no horizontal overflow", async ({ page }) =>
 
 test("profile banners stay behind identity in public header and preview", async ({ page }) => {
   await mockOwnProfile(page, () => [], undefined, {
-    bannerUrl: "/ambient-veil.webp",
-    profileBackground: "/ambient-veil.webp",
+    bannerUrl: "/uploads/media/2026/06/profile-test.webp",
+    profileBackground: "/uploads/media/2026/06/profile-test.webp",
   });
 
   await acknowledgeCookieNotice(page);

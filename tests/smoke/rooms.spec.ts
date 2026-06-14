@@ -5,7 +5,7 @@ test("/rooms renders API rooms or the real empty state", async ({ page }) => {
   await page.goto("/rooms");
 
   await expect(page.getByTestId("rooms-page")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Find a place to post." })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Rooms" })).toBeVisible();
 
   await expect
     .poll(async () => {

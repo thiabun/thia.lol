@@ -140,7 +140,7 @@ test("chat moot picker shows empty state when the user has no moots", async ({
 
   await expect(page.getByTestId("chat-moot-picker")).toBeVisible();
   await expect(page.getByTestId("chat-moot-empty")).toContainText(
-    "Chats are moots-only",
+    "Follow each other to start a chat.",
   );
 });
 

@@ -66,8 +66,8 @@ export const cardTap: TargetAndTransition = {
 };
 
 export const roomCardHover: TargetAndTransition = {
-  y: -5,
-  scale: 1.01,
+  y: -1,
+  scale: 1.002,
   transition: snappySpring,
 };
 

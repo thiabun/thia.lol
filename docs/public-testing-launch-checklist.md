@@ -82,7 +82,6 @@ Expected production shape:
 public_html/
   .htaccess
   index.html
-  ambient-veil.webp
   assets/
   api/
   config/

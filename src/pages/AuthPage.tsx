@@ -4,7 +4,6 @@ import type { FormEvent } from "react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { PageMeta } from "../components/PageMeta";
-import { AmbientImage } from "../components/ui/AmbientImage";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { TextField } from "../components/ui/Field";
@@ -71,13 +70,13 @@ export function AuthPage({ mode }: AuthPageProps) {
         path={isRegister ? "/register" : "/login"}
       />
       <motion.div
-        className="w-full"
+        className="w-full max-w-xl"
         variants={cardEntrance}
         custom={0}
         initial="hidden"
         animate="show"
       >
-        <Panel className="grid w-full overflow-hidden lg:grid-cols-[minmax(0,1fr)_360px]">
+        <Panel className="w-full overflow-hidden">
           <form className="p-5 sm:p-8" onSubmit={handleSubmit}>
             <Badge tone={isRegister ? "warm" : "cool"}>
               {isRegister ? "create account" : "sign in"}
@@ -185,16 +184,6 @@ export function AuthPage({ mode }: AuthPageProps) {
               </Link>
             </p>
           </form>
-
-          <div className="relative min-h-72 overflow-hidden border-t border-line lg:border-l lg:border-t-0">
-            <AmbientImage className="absolute inset-0" overlay />
-            <div className="absolute inset-x-5 bottom-5 rounded-card border border-white/35 bg-surface/72 p-4 shadow-soft backdrop-blur-veil">
-              <p className="text-sm font-semibold text-text">Your profile</p>
-              <p className="mt-2 text-sm leading-6 text-muted">
-                Keep your posts and replies in one place.
-              </p>
-            </div>
-          </div>
         </Panel>
       </motion.div>
     </motion.div>

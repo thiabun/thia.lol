@@ -42,6 +42,22 @@ test.describe("authenticated smoke", () => {
     await expect(menu.getByRole("menuitem", { name: "Admin" })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: "Log out" })).toBeVisible();
 
+    const profileClass = await menu
+      .getByRole("menuitem", { name: "Profile" })
+      .evaluate((element) => element.getAttribute("class"));
+    const logoutClass = await menu
+      .getByRole("menuitem", { name: "Log out" })
+      .evaluate((element) => element.getAttribute("class"));
+    const profileBox = await menu
+      .getByRole("menuitem", { name: "Profile" })
+      .boundingBox();
+    const logoutBox = await menu
+      .getByRole("menuitem", { name: "Log out" })
+      .boundingBox();
+
+    expect(logoutClass).toBe(profileClass);
+    expect(profileBox?.height).toBe(logoutBox?.height);
+
     await page.setViewportSize({ width: 390, height: 844 });
     const mobileNav = page.getByTestId("mobile-nav");
     await expect(mobileNav).toBeVisible();

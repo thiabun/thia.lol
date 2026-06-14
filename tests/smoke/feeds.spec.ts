@@ -49,11 +49,13 @@ test("Discover loads the feed empty state without unbacked sections", async ({
 
   await page.goto("/discover");
 
-  await expect(page.getByRole("heading", { name: "Discover" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Discover" }),
+  ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Rising" })).toBeVisible();
   await expect(page.getByText("No posts yet").first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Active rooms" })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "People to watch" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "People" })).toHaveCount(0);
 });
 
 test("Discover renders primary sections only when backed by data", async ({
@@ -105,7 +107,7 @@ test("Discover renders primary sections only when backed by data", async ({
   await page.goto("/discover");
 
   await expect(page.getByRole("heading", { name: "Active rooms" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "People to watch" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "General" })).toBeVisible();
   await expect(page.getByText("@alex")).toBeVisible();
 });

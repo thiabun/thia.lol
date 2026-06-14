@@ -27,7 +27,6 @@ import { cn } from "../../lib/classNames";
 import {
   buttonTap,
   popoverPanel,
-  sectionItem,
   snappySpring,
 } from "../../lib/motionPresets";
 import { emitPostCreated } from "../../lib/postEvents";
@@ -345,27 +344,21 @@ function AccountMenu() {
           >
             {isAuthenticated && user ? (
               <>
-                <AccountMenuLink to={`/@${user.handle}`} onSelect={() => setOpen(false)}>
+                <AccountMenuItem to={`/@${user.handle}`} onSelect={() => setOpen(false)}>
                   <UserRound aria-hidden="true" size={16} />
                   Profile
-                </AccountMenuLink>
-                <AccountMenuLink to="/legal" onSelect={() => setOpen(false)}>
+                </AccountMenuItem>
+                <AccountMenuItem to="/legal" onSelect={() => setOpen(false)}>
                   <FileText aria-hidden="true" size={16} />
                   Legal
-                </AccountMenuLink>
+                </AccountMenuItem>
                 {user.role === "admin" ? (
-                  <AccountMenuLink to="/admin" onSelect={() => setOpen(false)}>
+                  <AccountMenuItem to="/admin" onSelect={() => setOpen(false)}>
                     <Shield aria-hidden="true" size={16} />
                     Admin
-                  </AccountMenuLink>
+                  </AccountMenuItem>
                 ) : null}
-                <motion.button
-                  type="button"
-                  className="flex min-h-10 w-full items-center gap-2 rounded-card px-3 text-left text-sm font-medium text-muted transition duration-fluid ease-fluid hover:bg-surface-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-                  role="menuitem"
-                  variants={sectionItem}
-                  whileHover={{ x: 2, transition: snappySpring }}
-                  whileTap={buttonTap}
+                <AccountMenuItem
                   onClick={() => {
                     setOpen(false);
                     void logout();
@@ -373,22 +366,22 @@ function AccountMenu() {
                 >
                   <LogOut aria-hidden="true" size={16} />
                   Log out
-                </motion.button>
+                </AccountMenuItem>
               </>
             ) : (
               <>
-                <AccountMenuLink to="/login" onSelect={() => setOpen(false)}>
+                <AccountMenuItem to="/login" onSelect={() => setOpen(false)}>
                   <LogIn aria-hidden="true" size={16} />
                   Sign in
-                </AccountMenuLink>
-                <AccountMenuLink to="/register" onSelect={() => setOpen(false)}>
+                </AccountMenuItem>
+                <AccountMenuItem to="/register" onSelect={() => setOpen(false)}>
                   <UserPlus aria-hidden="true" size={16} />
                   Create account
-                </AccountMenuLink>
-                <AccountMenuLink to="/legal" onSelect={() => setOpen(false)}>
+                </AccountMenuItem>
+                <AccountMenuItem to="/legal" onSelect={() => setOpen(false)}>
                   <FileText aria-hidden="true" size={16} />
                   Legal
-                </AccountMenuLink>
+                </AccountMenuItem>
               </>
             )}
           </motion.div>
@@ -398,30 +391,42 @@ function AccountMenu() {
   );
 }
 
-function AccountMenuLink({
+const accountMenuItemClass =
+  "flex min-h-10 w-full items-center gap-2 rounded-card px-3 text-left text-sm font-medium text-muted transition duration-fluid ease-fluid hover:bg-surface-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
+
+function AccountMenuItem({
   children,
+  onClick,
   onSelect,
   to,
 }: {
   children: ReactNode;
-  onSelect: () => void;
-  to: string;
+  onClick?: () => void;
+  onSelect?: () => void;
+  to?: string;
 }) {
-  return (
-    <motion.div
-      variants={sectionItem}
-      whileHover={{ x: 2, transition: snappySpring }}
-      whileTap={buttonTap}
-    >
+  if (to) {
+    return (
       <NavLink
         to={to}
-        className="flex min-h-10 w-full items-center gap-2 rounded-card px-3 text-sm font-medium text-muted transition duration-fluid ease-fluid hover:bg-surface-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        className={accountMenuItemClass}
         role="menuitem"
         onClick={onSelect}
       >
         {children}
       </NavLink>
-    </motion.div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className={accountMenuItemClass}
+      role="menuitem"
+      onClick={onClick ?? onSelect}
+    >
+      {children}
+    </button>
   );
 }
 

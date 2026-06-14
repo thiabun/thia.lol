@@ -5,7 +5,6 @@ import { useNavigate } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { RoomEditModal } from "../components/social/RoomEditModal";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
-import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { SearchField } from "../components/ui/Field";
@@ -69,7 +68,7 @@ export function RoomsPage() {
 
   return (
     <motion.div
-      className="space-y-6"
+      className="space-y-4"
       data-testid="rooms-page"
       variants={pageEntrance}
       initial="hidden"
@@ -82,18 +81,17 @@ export function RoomsPage() {
       />
 
       <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
-        <Panel className="p-5 sm:p-6">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <Panel className="p-4 sm:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="max-w-2xl">
-              <Badge tone="leaf">rooms</Badge>
-              <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">
-                Find a place to post.
+              <h1 className="text-3xl font-semibold tracking-normal text-text">
+                Rooms
               </h1>
-              <p className="mt-3 text-base leading-7 text-muted">
-                Public rooms for shared topics and conversations.
+              <p className="mt-2 text-sm leading-6 text-muted">
+                Public rooms for shared posts.
               </p>
             </div>
-            <div className="flex w-full flex-col gap-3 sm:flex-row lg:max-w-xl">
+            <div className="flex w-full flex-col gap-2 sm:flex-row lg:max-w-xl">
               <SearchField
                 id="room-search"
                 label="Search rooms"
@@ -106,6 +104,7 @@ export function RoomsPage() {
                 <Button
                   type="button"
                   className="w-full shrink-0 sm:w-auto"
+                  size="sm"
                   data-testid="create-room-button"
                   icon={<Plus aria-hidden="true" size={17} />}
                   onClick={() => setCreateOpen(true)}
@@ -122,7 +121,7 @@ export function RoomsPage() {
         <ApiStateNotice
           kind="loading"
           title="Loading rooms"
-          text="Fetching public rooms."
+          text="Public rooms are loading."
         />
       ) : null}
 
@@ -138,7 +137,7 @@ export function RoomsPage() {
         <EmptyState
           icon={Radio}
           title="No public rooms yet"
-          text="Rooms people create will appear here."
+          text="Rooms will appear here."
         />
       ) : null}
 
@@ -154,7 +153,7 @@ export function RoomsPage() {
       ) : null}
 
       {filteredRooms.length > 0 ? (
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-label="Rooms">
+        <section className="grid gap-2 md:grid-cols-2 xl:grid-cols-3" aria-label="Rooms">
           {filteredRooms.map((room, index) => (
             <RoomCard key={room.id} room={room} index={index} />
           ))}

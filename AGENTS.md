@@ -60,7 +60,6 @@ Correct:
 public_html/
   .htaccess
   index.html
-  ambient-veil.webp
   assets/
 ```
 

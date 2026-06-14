@@ -33,11 +33,11 @@ export function PageMeta({ title, description, path }: PageMetaProps) {
     setMeta("property", "og:title", fullTitle);
     setMeta("property", "og:description", description);
     setMeta("property", "og:url", canonicalUrl);
-    setMeta("property", "og:image", new URL("/ambient-veil.webp", siteOrigin).toString());
-    setMeta("name", "twitter:card", "summary_large_image");
+    removeMeta("property", "og:image");
+    setMeta("name", "twitter:card", "summary");
     setMeta("name", "twitter:title", fullTitle);
     setMeta("name", "twitter:description", description);
-    setMeta("name", "twitter:image", new URL("/ambient-veil.webp", siteOrigin).toString());
+    removeMeta("name", "twitter:image");
     setCanonical(canonicalUrl);
   }, [description, location.pathname, path, theme, title]);
 
@@ -56,6 +56,12 @@ function setMeta(attribute: "name" | "property", key: string, content: string) {
   }
 
   element.content = content;
+}
+
+function removeMeta(attribute: "name" | "property", key: string) {
+  document.head
+    .querySelectorAll<HTMLMetaElement>(`meta[${attribute}="${key}"]`)
+    .forEach((element) => element.remove());
 }
 
 function setCanonical(url: string) {

@@ -114,6 +114,41 @@ test("mobile header, account menu, and bottom nav fit the viewport", async ({
   await expectChatHitTargetClear(page);
 });
 
+test("authenticated account menu uses one row pattern", async ({ page }) => {
+  await mockAuthenticatedShell(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: /account menu/i }).click();
+  const menu = page.getByTestId("account-menu");
+  await expect(menu).toBeVisible();
+
+  const profile = menu.getByRole("menuitem", { name: "Profile" });
+  const legal = menu.getByRole("menuitem", { name: "Legal" });
+  const logout = menu.getByRole("menuitem", { name: "Log out" });
+
+  await expect(profile).toBeVisible();
+  await expect(legal).toBeVisible();
+  await expect(logout).toBeVisible();
+
+  const profileClass = await profile.evaluate((element) =>
+    element.getAttribute("class"),
+  );
+  const legalClass = await legal.evaluate((element) => element.getAttribute("class"));
+  const logoutClass = await logout.evaluate((element) =>
+    element.getAttribute("class"),
+  );
+  const profileBox = await profile.boundingBox();
+  const logoutBox = await logout.boundingBox();
+
+  expect(legalClass).toBe(profileClass);
+  expect(logoutClass).toBe(profileClass);
+  expect(profileBox?.height).toBe(logoutBox?.height);
+
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+});
+
 test("mobile bottom nav releases before the footer", async ({ page }) => {
   await mockPublicShell(page);
   await acknowledgeCookieNotice(page);

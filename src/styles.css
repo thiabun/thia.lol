@@ -55,11 +55,6 @@
   --accent-leaf-ink: oklch(0.26 0.06 155);
   --accent-rose: oklch(0.77 0.118 25);
   --accent-rose-ink: oklch(0.35 0.076 24);
-  --media-scrim: linear-gradient(
-    180deg,
-    oklch(0.99 0.02 90 / 0.06),
-    oklch(0.98 0.04 84 / 0.68)
-  );
 }
 
 :root[data-theme="frostveil"] {
@@ -83,11 +78,6 @@
   --accent-leaf-ink: oklch(0.93 0.035 158);
   --accent-rose: oklch(0.73 0.122 14);
   --accent-rose-ink: oklch(0.95 0.03 20);
-  --media-scrim: linear-gradient(
-    180deg,
-    oklch(0.14 0.03 235 / 0.08),
-    oklch(0.15 0.034 238 / 0.76)
-  );
 }
 
 :root {
@@ -148,22 +138,6 @@ textarea {
       transparent 82%
     ),
     linear-gradient(180deg, var(--app-canvas), var(--app-canvas-soft));
-}
-
-@utility bg-ambient-texture {
-  background-image:
-    linear-gradient(
-      180deg,
-      color-mix(in oklab, var(--app-surface) 26%, transparent),
-      color-mix(in oklab, var(--app-canvas) 22%, transparent)
-    ),
-    url("/ambient-veil.webp");
-  background-position: center;
-  background-size: cover;
-}
-
-@utility bg-media-scrim {
-  background: var(--media-scrim);
 }
 
 @media (prefers-reduced-motion: reduce) {

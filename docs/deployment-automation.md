@@ -54,7 +54,6 @@ Do not require:
 public_html/
   .htaccess
   index.html
-  ambient-veil.webp
   assets/
     index-[hash].css
     index-[hash].js
@@ -133,7 +132,7 @@ What the script copies:
 What the script may clean:
 
 - `public_html/assets/` is removed before copying `dist/assets/`, so old hashed Vite assets do not pile up.
-- Root frontend files from `dist/`, such as `index.html`, `.htaccess`, and `ambient-veil.webp`, are copied over the matching files in `public_html/`.
+- Root frontend files from `dist/`, such as `index.html` and `.htaccess`, are copied over the matching files in `public_html/`.
 
 What the script skips or preserves:
 
@@ -168,7 +167,7 @@ That means the best cache strategy is:
 
 - `assets/*`: long cache, immutable.
 - `index.html`: no-cache or must-revalidate.
-- top-level images such as `ambient-veil.webp`: shorter cache unless renamed with a hash.
+- any future non-hashed top-level images: shorter cache unless renamed with a hash.
 
 Do not add manual CSS or JS version query strings unless a non-hashed asset is introduced. Hashed build files are preferred because cache invalidation is handled by the filename.
 

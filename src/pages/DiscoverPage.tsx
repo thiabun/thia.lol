@@ -77,7 +77,7 @@ export function DiscoverPage() {
 
   return (
     <motion.div
-      className="space-y-6"
+      className="space-y-5"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
@@ -87,32 +87,15 @@ export function DiscoverPage() {
         description="Discover rising posts, active rooms, and people to watch on thia.lol."
         path="/discover"
       />
-      <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <section>
         <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
-          <Panel className="p-5 sm:p-6">
-            <Badge tone="cool">Discover</Badge>
-            <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">
+          <Panel className="p-4 sm:p-5">
+            <h1 className="text-3xl font-semibold tracking-normal text-text">
               Discover
             </h1>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
-              Rising posts, active rooms, and people to watch from public activity.
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+              Public posts, active rooms, and members.
             </p>
-          </Panel>
-        </motion.div>
-
-        <motion.div variants={cardEntrance} custom={1} initial="hidden" animate="show">
-          <Panel className="p-5">
-            <div className="flex items-center gap-3">
-              <div className="grid size-11 place-items-center rounded-full bg-surface-strong text-accent-strong">
-                <Hash aria-hidden="true" size={19} />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-text">Rising</p>
-                <p className="mt-1 text-sm leading-6 text-muted">
-                  Ranked by likes, replies, room activity, and freshness.
-                </p>
-              </div>
-            </div>
           </Panel>
         </motion.div>
       </section>
@@ -120,8 +103,8 @@ export function DiscoverPage() {
       {discoverState.loading ? (
         <ApiStateNotice
           kind="loading"
-          title="Loading rising posts"
-          text="Fetching rising public posts."
+          title="Loading Discover"
+          text="Public activity is loading."
         />
       ) : null}
 
@@ -142,14 +125,13 @@ export function DiscoverPage() {
       <section aria-label="Rising posts">
         <div className="mb-3 flex items-center justify-between gap-4">
           <h2 className="text-xl font-semibold text-text">Rising</h2>
-          <Badge tone="warm">Posts</Badge>
         </div>
         <div className="space-y-4">
           {!discoverState.loading && !discoverState.error && visiblePosts.length === 0 ? (
             <EmptyState
               icon={Hash}
               title="No posts yet"
-              text="Nothing is rising yet. Check back after more public posts land."
+              text="Public posts will appear here."
             />
           ) : null}
 
@@ -175,12 +157,13 @@ export function DiscoverPage() {
             <ButtonLink
               to="/rooms"
               variant="ghost"
+              size="icon"
+              aria-label="Open Rooms"
+              title="Open Rooms"
               icon={<ArrowRight aria-hidden="true" size={16} />}
-            >
-              Rooms
-            </ButtonLink>
+            />
           </div>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             {rooms.map((room, index) => (
               <RoomCard key={room.id} room={room} index={index} />
             ))}
@@ -189,10 +172,9 @@ export function DiscoverPage() {
       ) : null}
 
       {people.length > 0 ? (
-        <section aria-label="People to watch">
+        <section aria-label="People">
           <div className="mb-3 flex items-center justify-between gap-4">
-            <h2 className="text-xl font-semibold text-text">People to watch</h2>
-            <Badge tone="cool">Profiles</Badge>
+            <h2 className="text-xl font-semibold text-text">People</h2>
           </div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {people.map((person, index) => (
@@ -219,7 +201,7 @@ function PersonCard({
       initial="hidden"
       animate="show"
     >
-      <Panel interactive className="h-full p-5">
+      <Panel interactive className="h-full p-3 shadow-none">
         <Link
           to={`/@${person.handle}`}
           className="flex h-full flex-col focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus"
@@ -248,20 +230,16 @@ function PersonCard({
             ) : null}
           </div>
           {person.bioSnippet ? (
-            <p className="mt-4 flex-1 text-sm leading-6 text-muted">
+            <p className="mt-3 line-clamp-2 flex-1 text-sm leading-5 text-muted">
               {person.bioSnippet}
             </p>
-          ) : (
-            <p className="mt-4 flex-1 text-sm leading-6 text-muted">
-              Public profile
-            </p>
-          )}
-          <div className="mt-5 flex flex-wrap gap-2 text-sm text-muted">
-            <span className="inline-flex items-center gap-2 rounded-full border border-line bg-canvas/45 px-3 py-1">
+          ) : null}
+          <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-canvas/55 px-2 py-1">
               <MessageCircle aria-hidden="true" size={14} />
               {formatCountWithUnit(person.postCount, "post")}
             </span>
-            <span className="inline-flex items-center gap-2 rounded-full border border-line bg-canvas/45 px-3 py-1">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-canvas/55 px-2 py-1">
               <UsersRound aria-hidden="true" size={14} />
               {formatCountWithUnit(person.followerCount, "follower")}
             </span>
