@@ -156,14 +156,16 @@ test("PostCard reblog action updates count and state", async ({ page }) => {
 
   await expect(page.getByRole("button", { name: /Reblog this post/ })).toBeEnabled();
   await page.getByRole("button", { name: /Reblog this post/ }).click();
-  await expect(page.getByRole("button", { name: /Undo reblog/ })).toContainText(
-    "Reblogged",
+  await expect(page.getByRole("button", { name: /Undo reblog/ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
   );
   await expect(page.getByRole("button", { name: /Undo reblog/ })).toContainText("3");
 
   await page.getByRole("button", { name: /Undo reblog/ }).click();
-  await expect(page.getByRole("button", { name: /Reblog this post/ })).toContainText(
-    "Reblog",
+  await expect(page.getByRole("button", { name: /Reblog this post/ })).toHaveAttribute(
+    "aria-pressed",
+    "false",
   );
   await expect(page.getByRole("button", { name: /Reblog this post/ })).toContainText(
     "2",
@@ -608,7 +610,7 @@ test("post report and delete controls stay isolated from body open", async ({
   await page
     .getByTestId("post-card-open-thread")
     .first()
-    .getByRole("button", { name: "Delete" })
+    .getByRole("button", { name: "Delete post" })
     .click();
   await expect(page.getByTestId("thread-modal")).toHaveCount(0);
   expect(deleted).toBe(true);
@@ -931,7 +933,7 @@ test("thread renders nested replies and gates reply delete controls", async ({
   await dialog.getByRole("button", { name: /Reblog this post/ }).last().click();
   await expect.poll(() => rebloggedReply).toBe(true);
 
-  await dialog.getByRole("button", { name: "Delete" }).click();
+  await dialog.getByRole("button", { name: "Delete reply" }).click();
   await expect.poll(() => deletedPostId).toBe(50);
   await expect(dialog.getByText("My reply.")).toHaveCount(0);
 });

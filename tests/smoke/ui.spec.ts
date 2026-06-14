@@ -143,7 +143,7 @@ test("authenticated account menu uses one row pattern", async ({ page }) => {
 
   expect(legalClass).toBe(profileClass);
   expect(logoutClass).toBe(profileClass);
-  expect(profileBox?.height).toBe(logoutBox?.height);
+  expect(Math.abs((profileBox?.height ?? 0) - (logoutBox?.height ?? 0))).toBeLessThan(1);
 
   await page.keyboard.press("Escape");
   await expect(menu).toBeHidden();

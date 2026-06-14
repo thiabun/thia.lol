@@ -150,7 +150,7 @@ export function HomePage() {
                     : "Posts from follows, moots, rooms, and recent conversations."}
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 sm:flex-nowrap sm:justify-end">
                 {isAnonymous ? (
                   <ButtonLink
                     to="/login"

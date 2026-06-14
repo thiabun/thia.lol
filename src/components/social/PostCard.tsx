@@ -22,7 +22,6 @@ import {
 import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { Avatar } from "../ui/Avatar";
-import { Badge } from "../ui/Badge";
 import { Button, ButtonLink } from "../ui/Button";
 import { TextareaField } from "../ui/Field";
 import { ModalSheet } from "../ui/ModalSheet";
@@ -162,15 +161,7 @@ export function PostCard({
                 </Link>
                 <span className="text-muted/50">·</span>
                 <span className="text-sm text-muted">{post.createdAt}</span>
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Link
-                  to={`/rooms/${post.room.slug}`}
-                  className="rounded-control focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-                >
-                  <Badge tone="warm">{post.room.name}</Badge>
-                </Link>
-                <PostSocialProof post={post} />
+                <PostMetaChips post={post} />
               </div>
             </div>
           </div>
@@ -207,28 +198,22 @@ export function PostCard({
               showActions ? (
                 <>
                   {canHide ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
+                    <PostActionIconButton
+                      label="Hide post"
                       disabled={actionPending}
+                      variant="ghost"
                       icon={<EyeOff aria-hidden="true" size={15} />}
                       onClick={() => onHide?.(post)}
-                    >
-                      Hide
-                    </Button>
+                    />
                   ) : null}
                   {canDelete ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
+                    <PostActionIconButton
+                      label="Delete post"
                       disabled={actionPending}
+                      variant="ghost"
                       icon={<Trash2 aria-hidden="true" size={15} />}
                       onClick={() => onDelete?.(post)}
-                    >
-                      Delete
-                    </Button>
+                    />
                   ) : null}
                 </>
               ) : null
@@ -343,21 +328,80 @@ function ThreadAvatarRail({
   );
 }
 
-function PostSocialProof({ post }: { post: Post }) {
+type MetaChipTone = "default" | "warm" | "cool" | "leaf";
+
+const metaChipToneClasses: Record<MetaChipTone, string> = {
+  default: "border-line bg-surface text-muted",
+  warm: "border-warm/25 bg-warm/10 text-warm-ink",
+  cool: "border-cool/25 bg-cool/10 text-cool-ink",
+  leaf: "border-leaf/25 bg-leaf/10 text-leaf-ink",
+};
+
+const metaChipClass =
+  "inline-flex min-h-5 items-center rounded-full border px-1.5 text-[0.68rem] font-medium leading-none";
+
+function PostMetaChips({ post }: { post: Post }) {
   const relationship = post.socialContext?.authorRelationship;
   const followedLikeCount = post.socialContext?.likedByFollowedCount ?? 0;
+  const hasChips =
+    Boolean(post.room) ||
+    relationship === "moot" ||
+    relationship === "following" ||
+    relationship === "self" ||
+    followedLikeCount > 0;
+
+  if (!hasChips) {
+    return null;
+  }
 
   return (
-    <>
-      {relationship === "moot" ? <Badge tone="leaf">Moot</Badge> : null}
-      {relationship === "following" ? <Badge tone="cool">Following</Badge> : null}
-      {relationship === "self" ? <Badge>You</Badge> : null}
-      {followedLikeCount > 0 ? (
-        <Badge tone="warm">
-          Liked by {followedLikeCount === 1 ? "someone you follow" : "people you follow"}
-        </Badge>
+    <span className="contents">
+      <span className="text-muted/50">·</span>
+      <Link
+        to={`/rooms/${post.room.slug}`}
+        title={`Posted in ${post.room.name}`}
+        className={cn(
+          metaChipClass,
+          metaChipToneClasses.warm,
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+        )}
+      >
+        {post.room.name}
+      </Link>
+      {relationship === "moot" ? <MetaChip tone="leaf">Moot</MetaChip> : null}
+      {relationship === "following" ? (
+        <MetaChip tone="cool">Following</MetaChip>
       ) : null}
-    </>
+      {relationship === "self" ? <MetaChip>You</MetaChip> : null}
+      {followedLikeCount > 0 ? (
+        <MetaChip
+          tone="warm"
+          title={`Liked by ${
+            followedLikeCount === 1
+              ? "someone you follow"
+              : `${followedLikeCount} people you follow`
+          }`}
+        >
+          {followedLikeCount} follow {followedLikeCount === 1 ? "like" : "likes"}
+        </MetaChip>
+      ) : null}
+    </span>
+  );
+}
+
+function MetaChip({
+  children,
+  title,
+  tone = "default",
+}: {
+  children: ReactNode;
+  title?: string;
+  tone?: MetaChipTone;
+}) {
+  return (
+    <span className={cn(metaChipClass, metaChipToneClasses[tone])} title={title}>
+      {children}
+    </span>
   );
 }
 
@@ -522,6 +566,7 @@ function ReactionControls({
                 explainer="This reports the post to moderators."
                 triggerMode="icon"
                 triggerLabel="Report post"
+                triggerSize="compact"
               />
             ) : null}
             {actions}
@@ -550,7 +595,7 @@ function CommentButton({ count, onClick }: CommentButtonProps) {
   return (
     <motion.button
       type="button"
-      className="inline-flex min-h-9 items-center gap-2 rounded-full px-3 transition duration-fluid ease-fluid hover:bg-surface-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      className="inline-flex min-h-8 items-center gap-1.5 rounded-full px-2.5 text-sm leading-none transition duration-fluid ease-fluid hover:bg-surface-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       aria-label={`Open replies. ${count} ${count === 1 ? "reply" : "replies"}.`}
       title="Replies"
       onClick={onClick}
@@ -558,7 +603,6 @@ function CommentButton({ count, onClick }: CommentButtonProps) {
       whileTap={buttonTap}
     >
       <MessageCircle aria-hidden="true" size={15} />
-      <span>Reply</span>
       <span className="tabular-nums">{count}</span>
     </motion.button>
   );
@@ -911,16 +955,13 @@ function ThreadModal({
                       compact
                       actions={
                         canDeleteRoot ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
+                          <PostActionIconButton
+                            label="Delete post"
                             disabled={actionPending}
+                            variant="ghost"
                             icon={<Trash2 aria-hidden="true" size={15} />}
                             onClick={onRootDelete}
-                          >
-                            Delete
-                          </Button>
+                          />
                         ) : null
                       }
                     />
@@ -1027,18 +1068,8 @@ function ParentPostPreview({
             </Link>
             <span className="text-muted/50">·</span>
             <span className="text-sm text-muted">{post.createdAt}</span>
+            <PostMetaChips post={post} />
           </div>
-          {post.room.slug !== "profile" ? (
-            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-              <span>in</span>
-              <Link
-                to={`/rooms/${post.room.slug}`}
-                className="font-medium text-accent-strong underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-              >
-                {post.room.name}
-              </Link>
-            </div>
-          ) : null}
           <p className="mt-3 text-pretty text-base leading-7 text-text sm:text-[1.0625rem] sm:leading-8">{post.body}</p>
           {post.mediaUrl && post.mediaUrl !== "/ambient-veil.webp" ? (
             <div className="mt-3 overflow-hidden rounded-card border border-line bg-canvas">
@@ -1218,16 +1249,13 @@ function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
               compact
               actions={
                 allowDelete ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
+                  <PostActionIconButton
+                    label="Delete reply"
                     disabled={deletePending}
+                    variant="ghost"
                     icon={<Trash2 aria-hidden="true" size={15} />}
                     onClick={() => void handleDeleteReply()}
-                  >
-                    Delete
-                  </Button>
+                  />
                 ) : null
               }
             />
@@ -1334,7 +1362,7 @@ function LikeButton({
     <motion.button
       type="button"
       className={cn(
-        "inline-flex min-h-9 items-center gap-2 rounded-full px-3 transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-wait",
+        "inline-flex min-h-8 items-center gap-1.5 rounded-full px-2.5 text-sm leading-none transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-wait",
         liked
           ? "bg-rose/20 text-rose-ink shadow-inner-soft"
           : "hover:bg-surface-strong hover:text-text",
@@ -1343,7 +1371,7 @@ function LikeButton({
       aria-label={`${liked ? "Unlike" : "Like"} this post. ${count} ${count === 1 ? "like" : "likes"}.`}
       aria-pressed={liked}
       disabled={pending}
-      title={liked ? "Liked" : "Like"}
+      title={liked ? "Unlike" : "Like"}
       onClick={onClick}
       whileHover={buttonHover}
       whileTap={buttonTap}
@@ -1356,7 +1384,6 @@ function LikeButton({
       >
         <Heart size={15} fill={liked ? "currentColor" : "none"} />
       </motion.span>
-      <span>{liked ? "Liked" : "Like"}</span>
       <span className="tabular-nums">{count}</span>
     </motion.button>
   );
@@ -1385,7 +1412,7 @@ function ReblogButton({
     <motion.button
       type="button"
       className={cn(
-        "inline-flex min-h-9 items-center gap-2 rounded-full px-3 transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55",
+        "inline-flex min-h-8 items-center gap-1.5 rounded-full px-2.5 text-sm leading-none transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55",
         reblogged
           ? "bg-leaf/20 text-leaf-ink shadow-inner-soft"
           : "hover:bg-surface-strong hover:text-text",
@@ -1394,7 +1421,7 @@ function ReblogButton({
       aria-label={`${reblogged ? "Undo reblog" : "Reblog"} this post. ${count} ${count === 1 ? "reblog" : "reblogs"}.`}
       aria-pressed={reblogged}
       disabled={disabled || pending}
-      title={disabled ? disabledTitle : reblogged ? "Reblogged" : "Reblog"}
+      title={disabled ? disabledTitle : reblogged ? "Undo reblog" : "Reblog"}
       onClick={onClick}
       whileHover={buttonHover}
       whileTap={buttonTap}
@@ -1411,8 +1438,44 @@ function ReblogButton({
       >
         <Repeat2 size={15} />
       </motion.span>
-      <span>{reblogged ? "Reblogged" : "Reblog"}</span>
       <span className="tabular-nums">{count}</span>
+    </motion.button>
+  );
+}
+
+function PostActionIconButton({
+  disabled,
+  icon,
+  label,
+  onClick,
+  variant = "ghost",
+}: {
+  disabled?: boolean;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+  variant?: "ghost" | "danger";
+}) {
+  const motionProps = disabled
+    ? {}
+    : { whileHover: buttonHover, whileTap: buttonTap };
+
+  return (
+    <motion.button
+      type="button"
+      className={cn(
+        "inline-flex size-8 items-center justify-center rounded-full transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-wait disabled:opacity-55",
+        variant === "danger"
+          ? "text-rose-ink hover:bg-rose/15"
+          : "text-muted hover:bg-surface-strong hover:text-text",
+      )}
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      {...motionProps}
+    >
+      {icon}
     </motion.button>
   );
 }
