@@ -42,6 +42,7 @@ import {
   type ModerationUser,
 } from "../lib/api";
 import { parseApiTimestamp } from "../lib/dates";
+import { cn } from "../lib/classNames";
 import { pageEntrance } from "../lib/motionPresets";
 import { formatCountWithUnit } from "../lib/pluralize";
 import type { BadgeDefinition, Room, UserBadge } from "../lib/types";
@@ -302,16 +303,18 @@ export function AdminPage() {
           <div>
             <Badge tone="rose">moderation</Badge>
             <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">
-              Report queue
+              Admin workspace
             </h1>
             <p className="mt-3 max-w-2xl text-base leading-7 text-muted">
-              Review reports, hide posts, suspend accounts, and close the loop.
+              Review reports first. Keep rooms and badges close by without crowding
+              the queue.
             </p>
           </div>
           <Button
             type="button"
             variant="secondary"
             size="sm"
+            className="w-full sm:w-auto"
             disabled={loading || loadingRooms || loadingBadges}
             icon={<RefreshCw aria-hidden="true" size={15} />}
             onClick={() => {
@@ -325,7 +328,7 @@ export function AdminPage() {
         </div>
       </Panel>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <AdminMetric icon={Activity} label="Open reports" value={String(metrics.open)} />
         <AdminMetric
           icon={CheckCircle2}
@@ -349,84 +352,34 @@ export function AdminPage() {
         />
       </section>
 
-      <BadgeAdminPanel
-        badgeKey={badgeKey}
-        badges={badges.badges}
-        error={badgesError}
-        handle={badgeHandle}
-        loading={loadingBadges}
-        message={badgeMessage}
-        pendingAction={pendingBadgeAction}
-        reason={badgeReason}
-        recentGrants={badges.recentGrants}
-        onBadgeKeyChange={setBadgeKey}
-        onGrant={() => void handleGrantBadge()}
-        onHandleChange={setBadgeHandle}
-        onReasonChange={setBadgeReason}
-        onRevoke={(grant) => void handleRevokeBadge(grant)}
-      />
-
-      <Panel className="p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <Badge tone="cool">rooms</Badge>
-            <h2 className="mt-3 text-xl font-semibold text-text">Room metadata</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-              Room ownership, membership, and activity metadata for moderation planning.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-muted">
-            <Radio aria-hidden="true" size={16} />
-            {formatCountWithUnit(rooms.length, "room")}
-          </div>
-        </div>
-
-        {loadingRooms ? (
-          <CompactStateNotice
-            className="mt-4"
-            icon={LoaderCircle}
+      <AdminSection
+        badge="reports"
+        badgeTone="rose"
+        title="Report queue"
+        description="Open reports stay at the top; completed reports remain available for review context."
+        meta={
+          <span className="inline-flex items-center gap-2 text-sm text-muted">
+            <Shield aria-hidden="true" size={16} />
+            {formatCountWithUnit(reports.length, "report")}
+          </span>
+        }
+      >
+        {loading ? (
+          <ApiStateNotice
             kind="loading"
-            title="Loading room metadata"
-            text="Fetching public room details for moderation."
+            title="Loading reports"
+            text="Fetching the latest moderation queue."
           />
         ) : null}
 
-        {roomsError ? (
-          <CompactStateNotice
-            className="mt-4"
-            icon={WifiOff}
+        {error ? (
+          <ApiStateNotice
             kind="error"
-            title="Room metadata is not available"
-            text={roomsError}
+            title="Report queue is not available"
+            text={error}
           />
         ) : null}
 
-        {rooms.length > 0 ? (
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            {rooms.map((room) => (
-              <AdminRoomRow key={room.id} room={room} />
-            ))}
-          </div>
-        ) : null}
-      </Panel>
-
-      {loading ? (
-        <ApiStateNotice
-          kind="loading"
-          title="Loading reports"
-          text="Fetching the latest moderation queue."
-        />
-      ) : null}
-
-      {error ? (
-        <ApiStateNotice
-          kind="error"
-          title="Report queue is not available"
-          text={error}
-        />
-      ) : null}
-
-      <section className="space-y-4" aria-label="Reports">
         {reports.length === 0 && !loading && !error ? (
           <EmptyState
             icon={Shield}
@@ -435,76 +388,105 @@ export function AdminPage() {
           />
         ) : null}
 
-        {reports.map((report) => (
-          <ReportRow
-            key={report.id}
-            report={report}
-            currentUserId={user.id}
-            notes={notesByReport[report.id] ?? ""}
-            pendingAction={pendingAction}
-            onNotesChange={setReportNotes}
-            onHidePost={(targetReport) =>
-              void runAction(targetReport, "hide", (token) =>
-                hideAdminPost(
-                  targetReport.post!.id,
-                  {
-                    reportId: targetReport.id,
-                    notes: reportNotes(targetReport.id),
-                  },
-                  token,
-                ),
-              )
-            }
-            onRemovePost={(targetReport) =>
-              void runAction(targetReport, "remove", (token) =>
-                removeAdminPost(
-                  targetReport.post!.id,
-                  {
-                    reportId: targetReport.id,
-                    notes: reportNotes(targetReport.id),
-                  },
-                  token,
-                ),
-              )
-            }
-            onSuspendUser={(targetReport) =>
-              void runAction(targetReport, "suspend", (token) =>
-                suspendAdminUser(
-                  targetReport.reportedUser!.id,
-                  {
-                    reportId: targetReport.id,
-                    notes: reportNotes(targetReport.id),
-                  },
-                  token,
-                ),
-              )
-            }
-            onReview={(targetReport) =>
-              void runAction(targetReport, "review", (token) =>
-                resolveAdminReport(
-                  targetReport.id,
-                  {
-                    status: "reviewed",
-                    notes: reportNotes(targetReport.id),
-                  },
-                  token,
-                ),
-              )
-            }
-            onDismiss={(targetReport) =>
-              void runAction(targetReport, "dismiss", (token) =>
-                resolveAdminReport(
-                  targetReport.id,
-                  {
-                    status: "dismissed",
-                    notes: reportNotes(targetReport.id),
-                  },
-                  token,
-                ),
-              )
-            }
-          />
-        ))}
+        {reports.length > 0 ? (
+          <div className="space-y-3">
+            {reports.map((report) => (
+              <ReportRow
+                key={report.id}
+                report={report}
+                currentUserId={user.id}
+                notes={notesByReport[report.id] ?? ""}
+                pendingAction={pendingAction}
+                onNotesChange={setReportNotes}
+                onHidePost={(targetReport) =>
+                  void runAction(targetReport, "hide", (token) =>
+                    hideAdminPost(
+                      targetReport.post!.id,
+                      {
+                        reportId: targetReport.id,
+                        notes: reportNotes(targetReport.id),
+                      },
+                      token,
+                    ),
+                  )
+                }
+                onRemovePost={(targetReport) =>
+                  void runAction(targetReport, "remove", (token) =>
+                    removeAdminPost(
+                      targetReport.post!.id,
+                      {
+                        reportId: targetReport.id,
+                        notes: reportNotes(targetReport.id),
+                      },
+                      token,
+                    ),
+                  )
+                }
+                onSuspendUser={(targetReport) =>
+                  void runAction(targetReport, "suspend", (token) =>
+                    suspendAdminUser(
+                      targetReport.reportedUser!.id,
+                      {
+                        reportId: targetReport.id,
+                        notes: reportNotes(targetReport.id),
+                      },
+                      token,
+                    ),
+                  )
+                }
+                onReview={(targetReport) =>
+                  void runAction(targetReport, "review", (token) =>
+                    resolveAdminReport(
+                      targetReport.id,
+                      {
+                        status: "reviewed",
+                        notes: reportNotes(targetReport.id),
+                      },
+                      token,
+                    ),
+                  )
+                }
+                onDismiss={(targetReport) =>
+                  void runAction(targetReport, "dismiss", (token) =>
+                    resolveAdminReport(
+                      targetReport.id,
+                      {
+                        status: "dismissed",
+                        notes: reportNotes(targetReport.id),
+                      },
+                      token,
+                    ),
+                  )
+                }
+              />
+            ))}
+          </div>
+        ) : null}
+      </AdminSection>
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+        <BadgeAdminPanel
+          badgeKey={badgeKey}
+          badges={badges.badges}
+          error={badgesError}
+          handle={badgeHandle}
+          loading={loadingBadges}
+          message={badgeMessage}
+          pendingAction={pendingBadgeAction}
+          reason={badgeReason}
+          recentGrants={badges.recentGrants}
+          onBadgeKeyChange={setBadgeKey}
+          onGrant={() => void handleGrantBadge()}
+          onHandleChange={setBadgeHandle}
+          onReasonChange={setBadgeReason}
+          onRevoke={(grant) => void handleRevokeBadge(grant)}
+        />
+
+        <RoomMetadataPanel
+          error={roomsError}
+          loading={loadingRooms}
+          rooms={rooms}
+        />
       </section>
     </AdminShell>
   );
@@ -513,7 +495,7 @@ export function AdminPage() {
 function AdminShell({ children }: { children: ReactNode }) {
   return (
     <motion.div
-      className="mx-auto max-w-6xl space-y-6"
+      className="mx-auto max-w-7xl space-y-6"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
@@ -525,6 +507,46 @@ function AdminShell({ children }: { children: ReactNode }) {
       />
       {children}
     </motion.div>
+  );
+}
+
+type AdminSectionProps = {
+  badge: string;
+  badgeTone?: BadgeTone;
+  children: ReactNode;
+  className?: string;
+  description?: string;
+  meta?: ReactNode;
+  title: string;
+};
+
+function AdminSection({
+  badge,
+  badgeTone = "default",
+  children,
+  className,
+  description,
+  meta,
+  title,
+}: AdminSectionProps) {
+  return (
+    <Panel className={cn("overflow-hidden", className)}>
+      <div className="border-b border-line/70 bg-canvas/35 p-4 sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <Badge tone={badgeTone}>{badge}</Badge>
+            <h2 className="mt-3 text-xl font-semibold text-text">{title}</h2>
+            {description ? (
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+                {description}
+              </p>
+            ) : null}
+          </div>
+          {meta ? <div className="shrink-0">{meta}</div> : null}
+        </div>
+      </div>
+      <div className="space-y-4 p-4 sm:p-5">{children}</div>
+    </Panel>
   );
 }
 
@@ -571,34 +593,29 @@ function BadgeAdminPanel({
   ];
 
   return (
-    <Panel className="p-5">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <Badge tone="warm">badges</Badge>
-          <h2 className="mt-3 text-xl font-semibold text-text">Badge management</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-            Grant visible status badges to members with traceable reasons.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 text-sm text-muted">
+    <AdminSection
+      badge="badges"
+      badgeTone="warm"
+      title="Badge management"
+      description="Grant and revoke visible member badges."
+      meta={
+        <span className="inline-flex items-center gap-2 text-sm text-muted">
           <Award aria-hidden="true" size={16} />
           {formatCountWithUnit(activeBadges.length, "definition")}
-        </div>
-      </div>
-
+        </span>
+      }
+    >
       {loading ? (
         <CompactStateNotice
-          className="mt-4"
           icon={LoaderCircle}
           kind="loading"
           title="Loading badges"
-          text="Fetching badge definitions and recent grants."
+          text="Fetching definitions and recent grants."
         />
       ) : null}
 
       {error ? (
         <CompactStateNotice
-          className="mt-4"
           icon={WifiOff}
           kind="error"
           title="Badges are not available"
@@ -607,77 +624,100 @@ function BadgeAdminPanel({
       ) : null}
 
       {message ? (
-        <p className="mt-4 rounded-card border border-line bg-canvas/55 p-3 text-sm text-text">
-          {message}
-        </p>
+        <CompactStateNotice
+          icon={CheckCircle2}
+          title={message}
+          text="The badge panel has refreshed."
+        />
       ) : null}
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr_1.4fr_auto] lg:items-end">
-        <TextField
-          id="badge-grant-handle"
-          label="Handle"
-          value={handle}
-          placeholder="member"
-          disabled={pendingAction === "grant"}
-          onChange={(event) => onHandleChange(event.currentTarget.value)}
-        />
-        <SelectField
-          id="badge-grant-definition"
-          label="Badge"
-          value={badgeKey}
-          disabled={pendingAction === "grant"}
-          options={badgeOptions}
-          onChange={(event) => onBadgeKeyChange(event.currentTarget.value)}
-        />
-        <TextField
-          id="badge-grant-reason"
-          label="Reason"
-          value={reason}
-          maxLength={255}
-          disabled={pendingAction === "grant"}
-          onChange={(event) => onReasonChange(event.currentTarget.value)}
-        />
-        <Button
-          type="button"
-          disabled={pendingAction === "grant" || !handle.trim() || !badgeKey}
-          icon={<Award aria-hidden="true" size={16} />}
-          onClick={onGrant}
-        >
-          {pendingAction === "grant" ? "Granting" : "Grant badge"}
-        </Button>
+      <div className="rounded-card bg-canvas/45 p-3 sm:p-4">
+        <div className="grid gap-3 lg:grid-cols-[1fr_1fr]">
+          <TextField
+            id="badge-grant-handle"
+            label="Handle"
+            value={handle}
+            placeholder="member"
+            disabled={pendingAction === "grant"}
+            onChange={(event) => onHandleChange(event.currentTarget.value)}
+          />
+          <SelectField
+            id="badge-grant-definition"
+            label="Badge"
+            value={badgeKey}
+            disabled={pendingAction === "grant"}
+            options={badgeOptions}
+            onChange={(event) => onBadgeKeyChange(event.currentTarget.value)}
+          />
+        </div>
+        <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+          <TextField
+            id="badge-grant-reason"
+            label="Reason"
+            value={reason}
+            maxLength={255}
+            disabled={pendingAction === "grant"}
+            onChange={(event) => onReasonChange(event.currentTarget.value)}
+          />
+          <Button
+            type="button"
+            className="w-full lg:w-auto"
+            disabled={pendingAction === "grant" || !handle.trim() || !badgeKey}
+            icon={<Award aria-hidden="true" size={16} />}
+            onClick={onGrant}
+          >
+            {pendingAction === "grant" ? "Granting" : "Grant badge"}
+          </Button>
+        </div>
       </div>
 
       {activeBadges.length > 0 ? (
-        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {activeBadges.map((badge) => (
-            <div
-              key={badge.badgeKey}
-              className="rounded-card border border-line bg-canvas/45 p-3"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge tone={rarityTone(badge.rarity)}>{rarityLabel(badge.rarity)}</Badge>
-                <span className="text-xs text-muted">{badge.source}</span>
+        <div>
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold text-text">Active definitions</h3>
+            <span className="text-xs text-muted">
+              {activeBadges.length.toLocaleString()} active
+            </span>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {activeBadges.map((badge) => (
+              <div key={badge.badgeKey} className="rounded-card bg-canvas/45 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-semibold text-text">{badge.name}</h4>
+                    <p className="mt-1 truncate text-xs text-muted">
+                      {badge.badgeKey}
+                    </p>
+                  </div>
+                  <Badge tone={rarityTone(badge.rarity)}>
+                    {rarityLabel(badge.rarity)}
+                  </Badge>
+                </div>
+                {badge.description ? (
+                  <p className="mt-3 line-clamp-2 text-sm leading-6 text-muted">
+                    {badge.description}
+                  </p>
+                ) : null}
               </div>
-              <h3 className="mt-3 text-sm font-semibold text-text">{badge.name}</h3>
-              <p className="mt-1 text-xs text-muted">{badge.badgeKey}</p>
-              {badge.description ? (
-                <p className="mt-3 line-clamp-3 text-sm leading-6 text-muted">
-                  {badge.description}
-                </p>
-              ) : null}
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
+      ) : !loading && !error ? (
+        <CompactStateNotice
+          icon={Award}
+          title="No active badge definitions"
+          text="Active definitions will appear here when badge storage is ready."
+        />
       ) : null}
 
       {recentGrants.length > 0 ? (
-        <div className="mt-6">
+        <div>
           <h3 className="text-sm font-semibold text-text">Recent grants</h3>
           <div className="mt-3 space-y-2">
             {recentGrants.map((grant) => (
               <div
                 key={grant.id}
-                className="flex flex-col gap-3 rounded-card border border-line bg-canvas/45 p-3 sm:flex-row sm:items-center sm:justify-between"
+                className="flex flex-col gap-3 rounded-card bg-canvas/45 p-3 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-text">
@@ -700,6 +740,7 @@ function BadgeAdminPanel({
                     type="button"
                     variant="ghost"
                     size="sm"
+                    className="w-full sm:w-auto"
                     disabled={pendingAction === `revoke:${grant.id}`}
                     icon={<Trash2 aria-hidden="true" size={15} />}
                     onClick={() => onRevoke(grant)}
@@ -711,8 +752,14 @@ function BadgeAdminPanel({
             ))}
           </div>
         </div>
+      ) : !loading && !error ? (
+        <CompactStateNotice
+          icon={Award}
+          title="No recent grants"
+          text="New grants and revokes will refresh this list."
+        />
       ) : null}
-    </Panel>
+    </AdminSection>
   );
 }
 
@@ -751,12 +798,19 @@ function ReportRow({
     report.reportedUser.status !== "suspended" &&
     report.reportedUser.id !== currentUserId;
   const canClose = report.status === "open";
+  const hasEnforcementActions = canHidePost || canRemovePost || canSuspendUser;
+  const hasAnyAction = canClose || hasEnforcementActions;
   const targetTitle = targetLabel(report);
 
   return (
-    <Panel className="p-4 sm:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
+    <Panel
+      className={cn(
+        "p-4 sm:p-5",
+        report.status === "open" && "border-rose/30",
+      )}
+    >
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={statusTone(report.status)}>{statusLabel(report.status)}</Badge>
             <Badge>{categoryLabel(report.category)}</Badge>
@@ -769,23 +823,26 @@ function ReportRow({
             {formatDate(report.createdAt)}
           </p>
         </div>
-        <div className="flex items-center gap-2 text-sm text-muted">
-          <Shield aria-hidden="true" size={16} />
-          {report.actionCount} action{report.actionCount === 1 ? "" : "s"}
+        <div className="rounded-card bg-canvas/55 p-3 text-sm text-muted lg:min-w-44">
+          <p className="text-xs font-medium uppercase text-muted">History</p>
+          <p className="mt-2 inline-flex items-center gap-2 text-sm">
+            <Shield aria-hidden="true" size={14} />
+            {report.actionCount} action{report.actionCount === 1 ? "" : "s"}
+          </p>
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_18rem]">
+      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_21rem]">
         <div className="space-y-3">
           {report.details ? (
-            <div className="rounded-card border border-line bg-canvas/45 p-3">
+            <div className="rounded-card bg-canvas/45 p-3 sm:p-4">
               <p className="text-xs font-medium uppercase text-muted">Reporter note</p>
               <p className="mt-2 text-sm leading-6 text-text">{report.details}</p>
             </div>
           ) : null}
 
           {report.post ? (
-            <div className="rounded-card border border-line bg-canvas/45 p-3">
+            <div className="rounded-card bg-canvas/45 p-3 sm:p-4">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone={report.post.status === "hidden" ? "rose" : "warm"}>
                   post {report.post.status}
@@ -801,7 +858,7 @@ function ReportRow({
           ) : null}
 
           {report.actionTaken || report.moderatorNote || report.reviewedBy ? (
-            <div className="rounded-card border border-line bg-canvas/45 p-3">
+            <div className="rounded-card bg-canvas/45 p-3 sm:p-4">
               <p className="text-xs font-medium uppercase text-muted">Action taken</p>
               <p className="mt-2 text-sm font-semibold text-text">
                 {actionTakenLabel(report.actionTaken)}
@@ -822,12 +879,15 @@ function ReportRow({
         </div>
 
         <div className="space-y-3">
-          <div className="rounded-card border border-line bg-canvas/45 p-3">
-            <p className="text-xs font-medium uppercase text-muted">Target summary</p>
+          <div className="rounded-card bg-canvas/45 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-medium uppercase text-muted">
+                Target summary
+              </p>
+              <Badge tone="cool">{targetTypeLabel(report.targetType)}</Badge>
+            </div>
             <p className="mt-2 text-sm font-semibold text-text">{targetTitle}</p>
-            <p className="mt-1 text-xs text-muted">
-              {targetSummaryText(report)}
-            </p>
+            <p className="mt-1 text-xs text-muted">{targetSummaryText(report)}</p>
           </div>
           {report.profile ? (
             <TargetSummary label="Profile" user={report.profile} />
@@ -837,80 +897,165 @@ function ReportRow({
             <MessageReportSummary message={report.message} />
           ) : null}
           <TargetSummary label="Reported user" user={report.reportedUser} />
-          <TextareaField
-            id={`moderation-notes-${report.id}`}
-            label="Moderator note"
-            rows={3}
-            maxLength={2000}
-            value={notes}
-            placeholder="Optional internal note"
-            onChange={(event) => onNotesChange(report.id, event.target.value)}
-          />
-          <div className="flex flex-wrap gap-2">
-            {canHidePost ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                disabled={pendingAction === `${report.id}:hide`}
-                icon={<EyeOff aria-hidden="true" size={15} />}
-                onClick={() => onHidePost(report)}
-              >
-                Hide post
-              </Button>
-            ) : null}
-            {canRemovePost ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                disabled={pendingAction === `${report.id}:remove`}
-                icon={<Trash2 aria-hidden="true" size={15} />}
-                onClick={() => onRemovePost(report)}
-              >
-                Remove post
-              </Button>
-            ) : null}
-            {canSuspendUser ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                disabled={pendingAction === `${report.id}:suspend`}
-                icon={<Ban aria-hidden="true" size={15} />}
-                onClick={() => onSuspendUser(report)}
-              >
-                Suspend
-              </Button>
-            ) : null}
-            {canClose ? (
-              <>
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  disabled={pendingAction === `${report.id}:review`}
-                  icon={<CheckCircle2 aria-hidden="true" size={15} />}
-                  onClick={() => onReview(report)}
-                >
-                  Mark reviewed
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={pendingAction === `${report.id}:dismiss`}
-                  icon={<XCircle aria-hidden="true" size={15} />}
-                  onClick={() => onDismiss(report)}
-                >
-                  Dismiss
-                </Button>
-              </>
-            ) : null}
+
+          <div className="rounded-card bg-canvas/45 p-3">
+            <TextareaField
+              id={`moderation-notes-${report.id}`}
+              label="Moderator note"
+              rows={3}
+              maxLength={2000}
+              value={notes}
+              placeholder="Optional internal note"
+              onChange={(event) => onNotesChange(report.id, event.target.value)}
+            />
+
+            {hasAnyAction ? (
+              <div className="mt-3 space-y-3">
+                {canClose ? (
+                  <div>
+                    <p className="text-xs font-medium uppercase text-muted">
+                      Close report
+                    </p>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <Button
+                        type="button"
+                        variant="primary"
+                        size="sm"
+                        className="w-full"
+                        disabled={pendingAction === `${report.id}:review`}
+                        icon={<CheckCircle2 aria-hidden="true" size={15} />}
+                        onClick={() => onReview(report)}
+                      >
+                        Mark reviewed
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="w-full"
+                        disabled={pendingAction === `${report.id}:dismiss`}
+                        icon={<XCircle aria-hidden="true" size={15} />}
+                        onClick={() => onDismiss(report)}
+                      >
+                        Dismiss
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {hasEnforcementActions ? (
+                  <div>
+                    <p className="text-xs font-medium uppercase text-muted">
+                      Enforcement
+                    </p>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      {canHidePost ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="w-full"
+                          disabled={pendingAction === `${report.id}:hide`}
+                          icon={<EyeOff aria-hidden="true" size={15} />}
+                          onClick={() => onHidePost(report)}
+                        >
+                          Hide post
+                        </Button>
+                      ) : null}
+                      {canRemovePost ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="w-full border-rose/30 bg-rose/10 text-rose-ink hover:border-rose/40"
+                          disabled={pendingAction === `${report.id}:remove`}
+                          icon={<Trash2 aria-hidden="true" size={15} />}
+                          onClick={() => onRemovePost(report)}
+                        >
+                          Remove post
+                        </Button>
+                      ) : null}
+                      {canSuspendUser ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="w-full border-rose/30 bg-rose/10 text-rose-ink hover:border-rose/40"
+                          disabled={pendingAction === `${report.id}:suspend`}
+                          icon={<Ban aria-hidden="true" size={15} />}
+                          onClick={() => onSuspendUser(report)}
+                        >
+                          Suspend
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <p className="mt-3 rounded-card bg-surface/70 p-3 text-sm text-muted">
+                No available actions for this report.
+              </p>
+            )}
           </div>
         </div>
       </div>
     </Panel>
+  );
+}
+
+type RoomMetadataPanelProps = {
+  error: string | undefined;
+  loading: boolean;
+  rooms: Room[];
+};
+
+function RoomMetadataPanel({ error, loading, rooms }: RoomMetadataPanelProps) {
+  return (
+    <AdminSection
+      badge="rooms"
+      badgeTone="cool"
+      title="Room administration"
+      description="Owner, member, and activity context for public rooms."
+      meta={
+        <span className="inline-flex items-center gap-2 text-sm text-muted">
+          <Radio aria-hidden="true" size={16} />
+          {formatCountWithUnit(rooms.length, "room")}
+        </span>
+      }
+    >
+      {loading ? (
+        <CompactStateNotice
+          icon={LoaderCircle}
+          kind="loading"
+          title="Loading room metadata"
+          text="Fetching public room details."
+        />
+      ) : null}
+
+      {error ? (
+        <CompactStateNotice
+          icon={WifiOff}
+          kind="error"
+          title="Room metadata is not available"
+          text={error}
+        />
+      ) : null}
+
+      {rooms.length > 0 ? (
+        <div className="space-y-2">
+          {rooms.map((room) => (
+            <AdminRoomRow key={room.id} room={room} />
+          ))}
+        </div>
+      ) : !loading && !error ? (
+        <CompactStateNotice
+          icon={Radio}
+          title="No rooms to review"
+          text="Public room metadata will appear here after rooms are created."
+        />
+      ) : null}
+    </AdminSection>
   );
 }
 
@@ -922,38 +1067,52 @@ type AdminMetricProps = {
 
 function AdminMetric({ icon: Icon, label, value }: AdminMetricProps) {
   return (
-    <Panel className="p-4">
-      <div className="grid size-11 place-items-center rounded-card bg-surface-strong text-accent-strong">
+    <Panel className="flex items-center gap-3 p-3 sm:p-4">
+      <div className="grid size-10 shrink-0 place-items-center rounded-card bg-surface-strong text-accent-strong">
         <Icon aria-hidden="true" size={19} />
       </div>
-      <p className="mt-4 text-sm text-muted">{label}</p>
-      <p className="mt-1 text-xl font-semibold text-text">{value}</p>
+      <div className="min-w-0">
+        <p className="text-xs font-medium uppercase text-muted">{label}</p>
+        <p className="mt-1 text-xl font-semibold text-text">{value}</p>
+      </div>
     </Panel>
   );
 }
 
 function AdminRoomRow({ room }: { room: Room }) {
   return (
-    <div className="rounded-card border border-line bg-canvas/45 p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="cool">{room.visibility ?? "public"}</Badge>
-            <span className="text-xs text-muted">#{room.id}</span>
+    <div className="rounded-card bg-canvas/45 p-3 sm:p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <div
+            className="mt-1 size-8 shrink-0 rounded-full border border-line"
+            style={{ backgroundColor: room.accent }}
+            aria-hidden="true"
+          />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="cool">{room.visibility ?? "public"}</Badge>
+              <span className="text-xs text-muted">#{room.id}</span>
+            </div>
+            <h3 className="mt-2 truncate text-sm font-semibold text-text">
+              {room.name}
+            </h3>
+            <p className="mt-1 truncate text-xs text-muted">/{room.slug}</p>
           </div>
-          <h3 className="mt-3 text-sm font-semibold text-text">{room.name}</h3>
-          <p className="mt-1 truncate text-xs text-muted">/{room.slug}</p>
         </div>
-        <div
-          className="size-7 shrink-0 rounded-full border border-line"
-          style={{ backgroundColor: room.accent }}
-          aria-hidden="true"
-        />
+        <ButtonLink
+          to={`/rooms/${room.slug}`}
+          size="sm"
+          variant="secondary"
+          className="w-full sm:w-auto"
+        >
+          Open room
+        </ButtonLink>
       </div>
       <p className="mt-3 line-clamp-2 text-sm leading-6 text-muted">
         {room.summary || "No description"}
       </p>
-      <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted">
+      <div className="mt-3 grid gap-2 text-xs text-muted sm:grid-cols-2">
         <span>
           Owner:{" "}
           {room.owner ? (
@@ -974,14 +1133,6 @@ function AdminRoomRow({ room }: { room: Room }) {
         </span>
         <span>Created: {room.createdAt ? formatDate(room.createdAt) : "unknown"}</span>
       </div>
-      <ButtonLink
-        to={`/rooms/${room.slug}`}
-        size="sm"
-        variant="secondary"
-        className="mt-4"
-      >
-        Open room
-      </ButtonLink>
     </div>
   );
 }
@@ -994,7 +1145,7 @@ function TargetSummary({
   user: ModerationUser | null;
 }) {
   return (
-    <div className="rounded-card border border-line bg-canvas/45 p-3">
+    <div className="rounded-card bg-canvas/45 p-3">
       <p className="text-xs font-medium uppercase text-muted">{label}</p>
       <p className="mt-2 text-sm font-semibold text-text">
         <UserLabel user={user} />
@@ -1010,7 +1161,7 @@ function TargetSummary({
 
 function RoomReportSummary({ room }: { room: NonNullable<ModerationReport["room"]> }) {
   return (
-    <div className="rounded-card border border-line bg-canvas/45 p-3">
+    <div className="rounded-card bg-canvas/45 p-3">
       <p className="text-xs font-medium uppercase text-muted">Room</p>
       <p className="mt-2 text-sm font-semibold text-text">{room.name}</p>
       <p className="mt-1 text-xs text-muted">
@@ -1034,7 +1185,7 @@ function MessageReportSummary({
   message: NonNullable<ModerationReport["message"]>;
 }) {
   return (
-    <div className="rounded-card border border-line bg-canvas/45 p-3">
+    <div className="rounded-card bg-canvas/45 p-3">
       <p className="text-xs font-medium uppercase text-muted">Message</p>
       <p className="mt-2 text-sm font-semibold text-text">
         From <UserLabel user={message.sender} />
