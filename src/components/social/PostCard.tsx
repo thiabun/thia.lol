@@ -174,17 +174,7 @@ export function PostCard({
               {post.body}
             </span>
 
-            {post.mediaUrl && post.mediaUrl !== "/ambient-veil.webp" ? (
-              <span className="mt-4 block overflow-hidden rounded-card border border-line bg-canvas">
-                <img
-                  src={post.mediaUrl}
-                  alt=""
-                  className="aspect-[16/9] w-full object-cover"
-                  loading="lazy"
-                  decoding="async"
-                />
-              </span>
-            ) : null}
+            <PostMedia mediaUrl={post.mediaUrl} />
           </div>
 
           <ReactionControls
@@ -267,6 +257,42 @@ function isThreadOpenIgnoredTarget(target: EventTarget | null) {
         "[data-thread-open-ignore]",
       ].join(","),
     ),
+  );
+}
+
+type PostMediaProps = {
+  className?: string;
+  maxHeightClass?: string;
+  mediaUrl: string | null | undefined;
+  testId?: string;
+};
+
+function PostMedia({
+  className = "mt-4",
+  maxHeightClass = "max-h-[min(70vh,34rem)]",
+  mediaUrl,
+  testId = "post-media",
+}: PostMediaProps) {
+  if (!mediaUrl || mediaUrl === "/ambient-veil.webp") {
+    return null;
+  }
+
+  return (
+    <span className={cn("block max-w-full", className)} data-testid={testId}>
+      <span className="inline-flex w-fit max-w-full overflow-hidden rounded-card border border-line bg-canvas/70 align-top">
+        <img
+          src={mediaUrl}
+          alt=""
+          className={cn(
+            "block h-auto max-w-full object-contain",
+            maxHeightClass,
+          )}
+          loading="lazy"
+          decoding="async"
+          data-testid={`${testId}-image`}
+        />
+      </span>
+    </span>
   );
 }
 
@@ -754,17 +780,12 @@ function ReplyComposer({
         onChange={(event) => setBody(event.currentTarget.value)}
       />
 
-      {mediaUrl ? (
-        <div className="mt-3 overflow-hidden rounded-card border border-line bg-canvas">
-          <img
-            alt=""
-            className="max-h-56 w-full object-cover"
-            src={mediaUrl}
-            loading="lazy"
-            decoding="async"
-          />
-        </div>
-      ) : null}
+      <PostMedia
+        className="mt-3"
+        maxHeightClass="max-h-56"
+        mediaUrl={mediaUrl}
+        testId="reply-composer-media"
+      />
 
       {message ? (
         <p
@@ -1071,17 +1092,7 @@ function ParentPostPreview({
             <PostMetaChips post={post} />
           </div>
           <p className="mt-3 text-pretty text-base leading-7 text-text sm:text-[1.0625rem] sm:leading-8">{post.body}</p>
-          {post.mediaUrl && post.mediaUrl !== "/ambient-veil.webp" ? (
-            <div className="mt-3 overflow-hidden rounded-card border border-line bg-canvas">
-              <img
-                src={post.mediaUrl}
-                alt=""
-                className="aspect-[16/9] w-full object-cover"
-                loading="lazy"
-                decoding="async"
-              />
-            </div>
-          ) : null}
+          <PostMedia className="mt-3" mediaUrl={post.mediaUrl} />
           <div data-testid="thread-root-actions">{actionRow}</div>
         </div>
       </div>
@@ -1227,17 +1238,7 @@ function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
             <span className="text-sm text-muted">{reply.createdAt}</span>
           </div>
           <p className="mt-2 text-pretty text-sm leading-6 text-text">{reply.body}</p>
-          {reply.mediaUrl && reply.mediaUrl !== "/ambient-veil.webp" ? (
-            <div className="mt-3 overflow-hidden rounded-card border border-line bg-canvas">
-              <img
-                src={reply.mediaUrl}
-                alt=""
-                className="aspect-[16/9] w-full object-cover"
-                loading="lazy"
-                decoding="async"
-              />
-            </div>
-          ) : null}
+          <PostMedia className="mt-3" mediaUrl={reply.mediaUrl} />
 
           <div data-testid="thread-reply-actions">
             <ReactionControls

@@ -2,6 +2,10 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { loginWithEnv, skipWithoutCredentials } from "../helpers/auth";
 
+const portraitMediaFixture = `data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920"><rect width="1080" height="1920" fill="#f6e8b8"/><circle cx="540" cy="500" r="320" fill="#8fb7b1"/><rect x="360" y="980" width="360" height="640" rx="120" fill="#42526b"/></svg>',
+)}`;
+
 test("Home loads the feed empty state", async ({ page }) => {
   await mockCommonApi(page);
   await page.route("**/api/feed/home", (route) =>
@@ -319,7 +323,7 @@ test("post body opens thread while controls keep their own behavior", async ({
           posts: [
             makePost({
               commentCount: 1,
-              mediaUrl: "/uploads/thread-media.webp",
+              mediaUrl: portraitMediaFixture,
               room: {
                 id: 1,
                 slug: "general",
@@ -441,7 +445,7 @@ test("post body and media hover stay visually flat in Sunveil and Frostveil", as
       body: JSON.stringify({
         ok: true,
         data: {
-          posts: [makePost({ mediaUrl: "/uploads/thread-media.webp" })],
+          posts: [makePost({ mediaUrl: portraitMediaFixture })],
           personalized: true,
         },
       }),
@@ -465,10 +469,17 @@ test("post body and media hover stay visually flat in Sunveil and Frostveil", as
 
     const post = page.getByTestId("post-card-open-thread").first();
     const bodyOpenTarget = post.getByTestId("post-body-open-thread");
-    const mediaImage = bodyOpenTarget.locator("img");
+    const mediaFrame = bodyOpenTarget.getByTestId("post-media");
+    const mediaImage = bodyOpenTarget.getByTestId("post-media-image");
 
     await expect(bodyOpenTarget).toBeVisible();
+    await expect(mediaFrame).toBeVisible();
     await expect(mediaImage).toBeVisible();
+    const mediaBox = await mediaImage.boundingBox();
+    expect(mediaBox).not.toBeNull();
+    expect(mediaBox!.height).toBeGreaterThan(mediaBox!.width);
+    expect(mediaBox!.height).toBeLessThanOrEqual(560);
+    await expect(mediaImage).toHaveCSS("object-fit", "contain");
     await expectHoverToKeepSurfaceFlat(bodyOpenTarget);
     await expectHoverToKeepSurfaceFlat(mediaImage);
   }
