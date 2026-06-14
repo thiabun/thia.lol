@@ -354,29 +354,12 @@ function ThreadAvatarRail({
   );
 }
 
-type MetaChipTone = "default" | "warm" | "cool" | "leaf";
-
-const metaChipToneClasses: Record<MetaChipTone, string> = {
-  default: "border-line bg-surface text-muted",
-  warm: "border-warm/25 bg-warm/10 text-warm-ink",
-  cool: "border-cool/25 bg-cool/10 text-cool-ink",
-  leaf: "border-leaf/25 bg-leaf/10 text-leaf-ink",
-};
-
 const metaChipClass =
   "inline-flex min-h-5 items-center rounded-full border px-1.5 text-[0.68rem] font-medium leading-none";
+const roomMetaChipClass = "border-warm/25 bg-warm/10 text-warm-ink";
 
 function PostMetaChips({ post }: { post: Post }) {
-  const relationship = post.socialContext?.authorRelationship;
-  const followedLikeCount = post.socialContext?.likedByFollowedCount ?? 0;
-  const hasChips =
-    Boolean(post.room) ||
-    relationship === "moot" ||
-    relationship === "following" ||
-    relationship === "self" ||
-    followedLikeCount > 0;
-
-  if (!hasChips) {
+  if (!post.room) {
     return null;
   }
 
@@ -388,45 +371,12 @@ function PostMetaChips({ post }: { post: Post }) {
         title={`Posted in ${post.room.name}`}
         className={cn(
           metaChipClass,
-          metaChipToneClasses.warm,
+          roomMetaChipClass,
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
         )}
       >
         {post.room.name}
       </Link>
-      {relationship === "moot" ? <MetaChip tone="leaf">Moot</MetaChip> : null}
-      {relationship === "following" ? (
-        <MetaChip tone="cool">Following</MetaChip>
-      ) : null}
-      {relationship === "self" ? <MetaChip>You</MetaChip> : null}
-      {followedLikeCount > 0 ? (
-        <MetaChip
-          tone="warm"
-          title={`Liked by ${
-            followedLikeCount === 1
-              ? "someone you follow"
-              : `${followedLikeCount} people you follow`
-          }`}
-        >
-          {followedLikeCount} follow {followedLikeCount === 1 ? "like" : "likes"}
-        </MetaChip>
-      ) : null}
-    </span>
-  );
-}
-
-function MetaChip({
-  children,
-  title,
-  tone = "default",
-}: {
-  children: ReactNode;
-  title?: string;
-  tone?: MetaChipTone;
-}) {
-  return (
-    <span className={cn(metaChipClass, metaChipToneClasses[tone])} title={title}>
-      {children}
     </span>
   );
 }
