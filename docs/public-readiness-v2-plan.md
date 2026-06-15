@@ -329,6 +329,7 @@ Recommended new v2 issues:
 
 - Priority: P2
 - Area labels: `area: product`, `area: privacy`, `area: revenue`, `needs-product-decision`
+- Status: Closed; planning lives in `docs/analytics-revenue-ads-plan.md`.
 - Summary: Plan revenue and analytics maturity without adding trackers, ads, or optional cookies yet.
 - Acceptance criteria:
   - [ ] Analytics options are compared with cookie/privacy impact.

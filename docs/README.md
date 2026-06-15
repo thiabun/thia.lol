@@ -29,6 +29,7 @@ paragraphs.
 | `docs/platform-ui-modernization.md` | Current UI modernization direction and bug-reporting/product-shell guidance. |
 | `docs/product-audit-and-roadmap.md` | Product architecture, feature inventory, legal/compliance guardrails, and historical roadmap context. |
 | `docs/api-sql-product-maturity-audit.md` | API/SQL readiness audit for Public Readiness v2 issue #20, including future migration/API sequencing and smoke requirements. |
+| `docs/analytics-revenue-ads-plan.md` | Analytics, revenue, ads, cookie/consent, trust, and API/SQL planning for issue #19. |
 | `docs/profile-personal-space-evolution.md` | Longer-term profile/personal-space product model. |
 | `docs/profile-customization-experience.md` | Owner profile editor IA, preview, Connections, and customization experience direction. |
 | `docs/profile-customization-safety-rules.md` | Safety guardrails for profile modules, media, links, customization, and future integrations. |
