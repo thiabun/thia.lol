@@ -327,9 +327,18 @@ test("authenticated post button opens an accessible composer select", async ({
   await expect(dialog.getByText("Post to your profile.")).toHaveCount(0);
   await expect(dialog.getByText("Images are converted to WebP")).toHaveCount(0);
 
+  const destinationControl = dialog.getByTestId("composer-destination-control");
   const selector = dialog.getByRole("combobox", { name: "Post to" });
+  await expect(destinationControl).toBeVisible();
   await expect(selector).toBeVisible();
   await expect(selector).toHaveCSS("appearance", "none");
+
+  const destinationControlBox = await destinationControl.boundingBox();
+  const selectorBox = await selector.boundingBox();
+  expect(destinationControlBox).not.toBeNull();
+  expect(selectorBox).not.toBeNull();
+  expect(selectorBox!.width).toBeGreaterThanOrEqual(destinationControlBox!.width - 2);
+  expect(selectorBox!.height).toBeGreaterThanOrEqual(destinationControlBox!.height - 2);
 
   await selector.focus();
   await expect(selector).toBeFocused();

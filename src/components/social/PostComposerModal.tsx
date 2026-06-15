@@ -48,6 +48,8 @@ export function PostComposerModal({
       label: `/${room.slug}`,
     })),
   ];
+  const selectedRoomOptionLabel =
+    roomOptions.find((option) => option.value === roomSlug)?.label ?? "Profile feed";
 
   const closeComposer = useCallback(() => {
     setBody("");
@@ -145,20 +147,27 @@ export function PostComposerModal({
       footer={
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
-            <label className="relative inline-flex min-h-9 max-w-[13rem] items-center gap-2 rounded-full border border-line bg-canvas/70 pl-3 pr-8 text-sm font-medium text-text shadow-inner-soft transition duration-fluid focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus hover:border-line-strong">
+            <label
+              className="group relative inline-flex min-h-9 max-w-[13rem] cursor-pointer items-center gap-2 overflow-hidden rounded-full border border-line bg-canvas/70 px-3 pr-8 text-sm font-medium text-text shadow-inner-soft transition duration-fluid hover:border-line-strong hover:bg-surface focus-within:border-line-strong focus-within:bg-surface-strong"
+              data-testid="composer-destination-control"
+              title="Post destination"
+            >
               <Radio
                 aria-hidden="true"
-                className="shrink-0 text-muted"
+                className="shrink-0 text-muted transition duration-fluid group-focus-within:text-text group-hover:text-text"
                 size={15}
                 strokeWidth={2.2}
               />
               <span className="sr-only">Post to</span>
+              <span aria-hidden="true" className="min-w-0 truncate">
+                {selectedRoomOptionLabel}
+              </span>
               <select
                 id="post-composer-room"
                 name="roomSlug"
                 aria-label="Post to"
                 data-testid="composer-room-selector"
-                className="min-w-0 flex-1 appearance-none bg-transparent text-sm font-medium text-text outline-none disabled:cursor-not-allowed"
+                className="absolute inset-0 z-10 h-full w-full cursor-pointer appearance-none opacity-0 outline-none disabled:cursor-not-allowed"
                 value={roomSlug}
                 disabled={submitting}
                 onChange={(event) => setRoomSlug(event.currentTarget.value)}
@@ -171,7 +180,7 @@ export function PostComposerModal({
               </select>
               <ChevronDown
                 aria-hidden="true"
-                className="pointer-events-none absolute right-3 text-muted"
+                className="pointer-events-none absolute right-3 text-muted transition duration-fluid group-focus-within:text-text group-hover:text-text"
                 size={15}
               />
             </label>
