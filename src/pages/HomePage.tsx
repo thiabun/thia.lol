@@ -1,6 +1,4 @@
 import {
-  ArrowRight,
-  Compass,
   MessageCircle,
   Radio,
   UsersRound,
@@ -150,8 +148,8 @@ export function HomePage() {
                     : "Posts from follows, moots, rooms, and recent conversations."}
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2 sm:flex-nowrap sm:justify-end">
-                {isAnonymous ? (
+              {isAnonymous ? (
+                <div className="flex flex-wrap gap-2 sm:flex-nowrap sm:justify-end">
                   <ButtonLink
                     to="/login"
                     size="sm"
@@ -159,24 +157,8 @@ export function HomePage() {
                   >
                     Sign in
                   </ButtonLink>
-                ) : null}
-                <ButtonLink
-                  to="/discover"
-                  size="sm"
-                  variant={isAnonymous ? "secondary" : "primary"}
-                  icon={<Compass aria-hidden="true" size={16} />}
-                >
-                  Discover
-                </ButtonLink>
-                <ButtonLink
-                  to="/rooms"
-                  size="sm"
-                  variant="secondary"
-                  icon={<Radio aria-hidden="true" size={16} />}
-                >
-                  Rooms
-                </ButtonLink>
-              </div>
+                </div>
+              ) : null}
             </div>
           </Panel>
         </motion.div>
@@ -203,17 +185,7 @@ export function HomePage() {
           </p>
         ) : null}
 
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="text-xl font-semibold text-text">Recent posts</h2>
-          <ButtonLink
-            to="/discover"
-            variant="ghost"
-            size="icon"
-            aria-label="Open Discover"
-            title="Open Discover"
-            icon={<ArrowRight aria-hidden="true" size={16} />}
-          />
-        </div>
+        <h2 className="text-xl font-semibold text-text">Recent posts</h2>
 
         {!feedState.loading && !feedState.error && posts.length === 0 ? (
           <EmptyState
@@ -241,17 +213,7 @@ export function HomePage() {
 
       <aside className="space-y-4" aria-label="Platform sidebar">
         <div>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-text">Rooms</h2>
-            <ButtonLink
-              to="/rooms"
-              variant="ghost"
-              size="icon"
-              aria-label="Open Rooms"
-              title="Open Rooms"
-              icon={<ArrowRight aria-hidden="true" size={16} />}
-            />
-          </div>
+          <h2 className="mb-3 text-base font-semibold text-text">Rooms</h2>
           <div className="space-y-2">
             {rooms.slice(0, 3).map((room, index) => (
               <RoomCard key={room.id} room={room} index={index} />
