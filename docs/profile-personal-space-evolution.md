@@ -5,7 +5,7 @@
 > be tracked through issue [#18](https://github.com/thiabun/thia.lol/issues/18)
 > and focused follow-up issues, not by extending this document into a task list.
 
-Date: 2026-06-12
+Date: 2026-06-15
 
 Safety rules for future customization and modules are defined in
 `docs/profile-customization-safety-rules.md`. Treat that document as required
@@ -23,6 +23,437 @@ Profiles are already one of the strongest identity surfaces on `thia.lol`, but t
 The long-term goal is a curated personal space. A profile should be able to act as a social profile, personal website, blog homepage, creator hub, identity page, and showcase for rooms or projects. It should do that while keeping `thia.lol` as the primary product identity and while keeping Thia's profile, for example `/@thia`, as a founder/member space rather than the whole platform.
 
 This document is planning only. It does not implement frontend redesigns, API changes, migrations, integrations, embeds, analytics, ads, private accounts, or paid profile features.
+
+## Profiles v3 - Personal Spaces
+
+Issue [#18](https://github.com/thiabun/thia.lol/issues/18) defines Profiles v3
+as the product direction for moving profiles from basic social information pages
+into richer personal spaces. The goal is stronger ownership and self-expression
+without copying profile-site products one-to-one and without turning profile
+customization into unsafe page building.
+
+Profiles v3 should absorb the useful product lessons from richer profile-site
+references:
+
+- A full-page visual background can create stronger ownership than a small
+  cropped banner.
+- A compact identity card can carry name, avatar, status, badges, links, and
+  social context without needing many equal-weight stat boxes.
+- Music, video, links, and icons can express identity when they are controlled,
+  opt-in, and safe.
+- Translucent surfaces and media overlays can feel personal, but they become
+  unreadable quickly without contrast, dim, blur, and motion rules.
+- The current `thia.lol` profile reference shows the main gap: the banner is
+  visually cut off, blends into the page background too aggressively, and the
+  header reads as a large information card rather than a personal space.
+
+The reference images are product and visual references, not cloning targets.
+`guns.lol` is primarily a Linktree/profile-site product; `thia.lol` remains a
+social platform where profiles connect to posts, replies, rooms, moots, badges,
+reports, moderation, and future modules.
+
+### Product Vision
+
+Profiles v3 are personal spaces that can serve several use cases, in priority
+order:
+
+1. Identity surface: who this member is on `thia.lol`, with avatar, name,
+   handle, short bio, badges, social context, and safety actions always clear.
+2. Social hub: followers, following, moots, rooms, posts, replies, and message
+   eligibility in a compact hierarchy.
+3. Creator space: featured work, rooms, media, links, music, streams, projects,
+   and status when the member wants a richer presence.
+4. Content entry point: featured post, featured room, recent activity, and later
+   blog/journal surfaces that lead visitors into the rest of the platform.
+5. Expressive personal space: theme, background, layout, and modules that let a
+   profile feel owned without breaking readability or trust.
+
+Profiles v3 are not:
+
+- Unsafe custom HTML pages.
+- Arbitrary CSS or JavaScript playgrounds.
+- Random iframe or embed surfaces.
+- Pure Linktree clones detached from the social graph.
+- Ads, tracker, affiliate, or marketing-cookie surfaces by default.
+- Autoplay audio/video traps.
+- Moderation nightmares where admins cannot inspect what is rendered.
+- A way to make Thia's profile the primary platform identity.
+
+Future analytics, ads, trackers, paid profile features, and optional cookies
+need explicit product, legal, privacy, and consent planning before any code is
+added. Profiles v3 should leave room for those decisions by using structured
+module types and consent-aware extension points, but they are out of scope for
+this planning issue.
+
+### Current Problems
+
+The current profile foundation is functional, but several product issues block
+the richer personal-space direction:
+
+- Banner media crops unpredictably, scales awkwardly across devices, and can cut
+  off the part of the image the owner cares about.
+- Banner and background treatments blend into the profile surface too strongly,
+  reducing ownership and making uploaded media feel decorative rather than
+  intentionally placed.
+- Profile header/card density is too high: identity, stats, social context,
+  links, badges, owner actions, and tabs compete inside a boxed structure.
+- There are too many boxed stats, chips, and bordered groups with similar visual
+  weight.
+- The profile page communicates information, but it does not yet create the
+  stronger sense of vibe and ownership that richer profile products show.
+- The Customize Profile modal is improved, but still feels bulky for routine
+  edits and mixes identity, appearance, Connections, modules, and preview into a
+  large editor.
+- Theme and background controls are limited and not yet expressive enough to
+  support clear owner-selected page mood.
+- Modules exist, but the catalog is still early and not expressive enough for
+  music, media, featured content, creator presence, or richer social identity.
+
+### Capability Priorities
+
+Profiles v3 should be built in small, testable slices. The priority is the
+product value and safety order, not a promise that every capability ships.
+
+#### P1 - Foundation Before Integrations
+
+- Compact profile layout refresh that reduces boxed stats, repeated metadata,
+  and oversized header/card treatment.
+- Better banner/background model with predictable crop, fit, position, overlay,
+  blur, dim, and mobile behavior.
+- Stronger theme editor using allowlisted accent, surface, text, and focus
+  tokens with contrast checks.
+- Profile page background image support as a first-class layer, separate from
+  the compact identity card.
+- Layout presets that preserve mobile stacking and safety action visibility.
+- Module ordering and visibility controls using existing safe module storage.
+- Compact visitor view with only public, safe, meaningful content.
+- Richer owner edit view with preview-first controls, draft/hidden state where
+  supported, and no fake public behavior.
+
+#### P2 - Expressive Social And Creator Modules
+
+- Featured post module.
+- Featured room module.
+- Connections/custom links module with stronger platform presentation.
+- Badge showcase module.
+- About/status module for a short richer introduction or current mood.
+- Gallery/media module after media moderation and storage rules are clearer.
+- Creator/live module as a static or link-first card before any live status.
+- Compact music player module as a user-initiated link/card first.
+
+#### P3 - Integrations And Rich Media
+
+- Spotify and Apple Music song/playlist cards, starting with safe URL cards.
+- YouTube channel/video cards, starting with safe URL cards.
+- Twitch channel/live cards, starting with a channel link or static card.
+- API-backed metadata only after key ownership, caching, privacy, quota, and
+  fallback rules are documented.
+- Embeds only after host allowlists, sandbox/loading behavior, cookie/consent
+  impact, moderation limits, and performance budgets are approved.
+- Video or animated background support only after reduced-motion, mobile
+  performance, file size, mute, poster, and fallback behavior are specified.
+
+### Background And Banner Model
+
+The current single "banner" idea is not enough for Profiles v3. Profile media
+should become a layered model:
+
+1. Full profile background layer: optional page-level image or video/animated
+   media that establishes mood behind the profile content.
+2. Compact identity card: readable foreground surface containing avatar,
+   display name, handle, bio/status, badges, social context, links, and actions.
+3. Header media region: optional true banner or hero strip for users who want a
+   distinct header image instead of relying only on a full-page background.
+
+This combination supports both `thia.lol` social readability and stronger
+personal ownership. It also makes the old banner problem explicit: a banner is a
+banner, not a background, and a background is a decorative layer, not the only
+identity surface.
+
+Required controls for uploaded profile visual media:
+
+- `fit`: cover, contain, or fill, with cover as the default for backgrounds and
+  a predictable aspect-ratio default for banners.
+- `position`: center, top, bottom, left, right, or a small set of combined
+  positions.
+- Focal point: owner-selectable x/y focal point for cover crops, especially for
+  mobile.
+- Overlay strength: none, soft, medium, strong, with automatic minimum overlay
+  for text readability.
+- Blur: none, soft, medium, strong, applied as a rendering treatment rather than
+  modifying the uploaded asset.
+- Dim: none, soft, medium, strong, with separate light/dark defaults.
+- Background span: viewport, profile content, or header-only, with mobile-safe
+  defaults.
+- Mobile behavior: independent mobile crop/focal point or safe fallback to
+  center/contain when the image is narrow.
+- Reduced motion behavior: animated backgrounds become static posters; video
+  backgrounds do not autoplay for users who prefer reduced motion.
+- Data saver behavior: load static poster or compressed image before heavy
+  media; never require a video background for profile comprehension.
+- File limits: keep existing image limits as the baseline; future video/animated
+  media needs stricter duration, dimensions, size, encoding, and poster limits.
+- Safe fallbacks: if media is missing, blocked, moderated, too heavy, or fails
+  to load, render the default Sunveil/Frostveil profile surface with readable
+  identity.
+
+Open product decision: the first implementation should likely ship the full
+profile background layer plus compact identity card before adding a separate
+advanced banner editor. That directly solves ownership and banner blending while
+keeping the current banner as a compatibility field until the new model is
+ready.
+
+### Music, Audio, And Video Rules
+
+Music and rich media can make profiles feel owned, but the site must not become
+hostile to visitors.
+
+Rules:
+
+- No autoplay audio by default.
+- Audio playback must be user-initiated.
+- A compact music player can show title, artist/source, cover image, progress
+  only when real, and play/pause controls only when playback is actually
+  supported.
+- Link-first music cards are preferred before embeds or API playback.
+- Video backgrounds must always be muted.
+- Video backgrounds must have a poster image and must not contain required text.
+- Respect `prefers-reduced-motion`; animated/video backgrounds fall back to the
+  poster image.
+- Respect data saver and mobile performance constraints where detectable.
+- Safe embeds only: no user-supplied iframe markup, no arbitrary embed code, and
+  no third-party scripts before privacy/cookie review.
+- External provider cards must be honest: link, static metadata, API-backed, or
+  embed. Do not fake live or now-playing state.
+- Music and video modules must remain reportable through profile reporting at
+  first, with module-level reporting considered once modules are independently
+  meaningful.
+- External provider privacy implications must be visible in planning before
+  implementation, especially for Spotify, Apple Music, YouTube, and Twitch.
+- Upload size, duration, encoding, storage, and bandwidth limits must be defined
+  before accepting non-image profile media.
+- Copyright and licensing concerns must be explicit: `thia.lol` should not host
+  arbitrary copyrighted songs or videos without a separate legal/moderation
+  plan.
+
+### Theme And Customization Guardrails
+
+Profiles v3 may allow:
+
+- Accent color from an allowlist.
+- Surface color/treatment from an allowlist.
+- Text color from safe preset pairings, not arbitrary color pickers at first.
+- Focus and action color tokens that preserve keyboard visibility.
+- Full profile background image with controlled fit, position, overlay, blur,
+  dim, and span.
+- True banner/header media with crop controls if retained.
+- Profile card surface treatment such as solid, translucent, frosted, or softly
+  bordered presets.
+- Module order.
+- Module visibility where implemented.
+- Layout preset, such as classic social, showcase, or creator space, with mobile
+  resolving to a readable stack.
+- Limited reviewed decorations, such as subtle particles or frame treatments,
+  only if they pass motion, contrast, performance, and moderation review.
+
+Profiles v3 must not allow:
+
+- Arbitrary HTML.
+- Arbitrary CSS.
+- Arbitrary JavaScript.
+- User-supplied iframe or embed markup.
+- External trackers, tracking pixels, ad scripts, affiliate scripts, or
+  analytics tags.
+- Seizure-risk flashing, strobing, rapidly pulsing, or forced motion.
+- Unbounded page building or unlimited modules.
+- Fake verification, admin, founder, partner, sponsor, moderation, privacy, or
+  official status.
+- Decorations that hide report, follow, message, block, mute, remove-follower,
+  admin, or moderation context.
+
+Guardrails:
+
+- Presets must meet contrast targets for normal text, large text, icons, focus
+  states, disabled states, and destructive actions.
+- Public profile text must render as text nodes.
+- Mobile must stay readable with no horizontal overflow.
+- Every media slot must have file size, dimensions, type, and fallback rules.
+- Animated treatments must respect reduced motion and avoid infinite distracting
+  loops.
+- Background media must never be the only way to understand the profile.
+- Moderated, removed, deleted, hidden, or unavailable media/modules must fail
+  closed and not render publicly.
+- Default Sunveil/Frostveil themes must remain complete and attractive for users
+  who never customize.
+
+### Profile Layout Direction
+
+Profiles v3 should use the issue #14/#32 UI direction: clear, easy, modern,
+sleek, refined, friendly, compact, and alive.
+
+Layout direction:
+
+- Lead with identity and vibe, not stats.
+- Use one compact identity card or foreground region over a controlled page
+  background.
+- Keep avatar, display name, handle, bio/status, primary relationship action,
+  report/safety menu, and owner edit action easy to find.
+- Collapse stats into compact social context instead of a grid of equal-weight
+  boxes.
+- Keep Connections as recognizable icon/link rows or a module, not a large
+  boxed section by default.
+- Put modules and recent content below identity in an order that supports
+  scanning.
+- Keep Feed, Replies, and Rooms available, but consider whether activity becomes
+  a section within the personal space rather than the visual center.
+- Owner-only prompts should be short and absent from public visitor view.
+- Cards should frame actual modules, posts, rooms, or modals, not every
+  subsection.
+
+Avoid:
+
+- Too many cards.
+- Nested cards.
+- Too many borders.
+- Giant stat blocks.
+- Repeated metadata.
+- Decorative empty space.
+- Explanatory copy inside the public profile view.
+
+Prioritize:
+
+- Identity.
+- Vibe.
+- Key social context.
+- Modules.
+- Recent content.
+- Safety actions.
+- Fast mobile readability.
+
+### Customize Profile v3
+
+Customize Profile v3 should become a compact, preview-first studio rather than
+a large database-style form.
+
+Principles:
+
+- Compact: routine edits should require fewer visible controls at once.
+- Bloat-less: remove duplicate helper copy and collapse advanced controls until
+  needed.
+- Clear: group by what the owner is trying to shape.
+- Preview-first: desktop should show a live preview where space allows; mobile
+  should have an easy preview mode.
+- Honest: no controls for unsupported embeds, integrations, layout modes,
+  privacy states, or theme values.
+- Safe: all controls map to constrained tokens, validated media, or known module
+  settings.
+
+Recommended groups:
+
+- Identity: display name, bio/status, location, avatar, handle display.
+- Theme: preset, accent, surface, text pairing, focus/action treatment.
+- Background: page background, banner/header media, fit, position, focal point,
+  overlay, blur, dim, mobile fallback.
+- Modules: add/edit/reorder/hide supported modules; start with About, Custom
+  Text, Connections, Badge Showcase, Featured Post, Featured Room, and later
+  Music.
+- Connections: link cards with platform icons, validation, handle helpers, and
+  explicit outbound behavior.
+- Music module: link-first card controls before any embed or hosted playback.
+- Safety/visibility: module visibility, hidden/draft state where implemented,
+  and reminders that reports/safety actions remain visible.
+
+The modal should not become a full page builder. Advanced media and theme
+controls can live behind compact disclosure controls, but the public preview
+must make the result clear before save.
+
+### Safety, Moderation, Privacy, Legal, And Performance
+
+Risks and mitigations:
+
+| Risk | Mitigation |
+| --- | --- |
+| Uploaded media contains unsafe, NSFW, copyrighted, impersonating, or private-info content. | Keep profile reporting visible, add admin media context, preserve moderation categories, and define media removal behavior before expanding media types. |
+| Copyrighted music or videos are uploaded or embedded in misleading ways. | Start link-first; do not host arbitrary songs/videos; require separate legal and moderation plan before hosted audio/video. |
+| External providers track visitors or set optional cookies. | Do not load embeds/scripts by default; perform privacy/cookie review; require consent planning before optional trackers or third-party scripts. |
+| Heavy images, videos, or animated backgrounds slow mobile profiles. | Enforce file size, dimension, duration, encoding, poster, lazy-load, and data-saver rules; keep static fallback. |
+| Animated backgrounds harm accessibility. | Respect reduced motion, avoid flashing/strobing, provide static poster fallback, and limit decorative loops. |
+| Custom themes make text unreadable. | Use preset pairings, contrast checks, minimum overlays, and default fallback themes. |
+| Profile impersonation or fake trust markers. | Keep badges/trust markers controlled by badge/admin systems; reject deceptive module labels and official-looking decorations. |
+| Unsafe links or embeds expose scams or malicious content. | Normalize URLs, require HTTPS, use host allowlists, reject script schemes, and keep external content reportable through the profile. |
+| Modules become hard to moderate. | Use known module types, bounded settings, profile-level reporting first, and module-level reporting/admin summaries when modules become substantial. |
+| Public visitor view becomes cluttered or confusing. | Limit module counts, provide layout presets, hide empty modules publicly, and keep owner prompts owner-only. |
+| Ads, trackers, analytics, paid cosmetics, or sponsorships appear without consent/legal planning. | Keep all monetization/tracking out of Profiles v3 implementation until a separate analytics/revenue/legal issue approves scope. |
+| Admins cannot diagnose what rendered. | Store structured settings, normalized URLs, media references, module type/version, and moderation status; avoid executing third-party embeds in admin summaries. |
+| Mobile layout breaks. | Require single-stack mobile rendering, stable aspect ratios, no horizontal overflow, and screenshot/smoke coverage for implementation issues. |
+
+### Product Decisions Made For Issue #18
+
+- Profiles v3 are personal spaces connected to the social platform, not
+  standalone profile-site clones.
+- The first visual model should separate full-page background from the compact
+  identity card and any true banner/header region.
+- Banner cropping/scaling is a product bug in the current model and needs
+  explicit crop, fit, focal point, overlay, blur, dim, and mobile controls.
+- Music and media are valid profile-expression goals, but audio must be
+  user-initiated and video backgrounds must be muted with reduced-motion
+  fallback.
+- Integrations start link-first, then static cards, then API-backed cards, and
+  only later reviewed embeds.
+- Theme controls should be allowlisted presets and token pairings, not arbitrary
+  user CSS.
+- Customize Profile v3 should be compact and preview-first, grouped by owner
+  intent rather than database fields.
+- Follow-up implementation should be split into focused issues after this
+  planning direction, with no migrations or code changes in this issue.
+
+### Open Product Questions
+
+- Should the first implementation retire the old banner visually, or keep it as
+  an optional header media region alongside the full-page background?
+- Which layout presets should exist first: classic social, showcase, creator
+  space, or fewer?
+- Should users be able to choose separate desktop and mobile focal points for
+  background/banner media?
+- Should background video be allowed at all during public testing, or should
+  animated backgrounds start with GIF/WebP-style image constraints only?
+- Should music be a local uploaded asset, external link/card only, or provider
+  embed later? The safest first answer is external link/card only.
+- Should profile modules become individually reportable in the first expansion,
+  or remain covered by profile reports until richer media ships?
+- How strict should adult/public-testing media limits be for profile
+  backgrounds, galleries, music, and creator modules?
+- Should Connections live in the identity card, as a module, or both with owner
+  controls?
+- Should future paid profile cosmetics or supporter features be allowed, and how
+  would they avoid fake status or pressure mechanics?
+
+### Proposed Follow-Up Issues
+
+Do not create these until Thia approves the split. Suggested first issues:
+
+- `[P1] Profile media model and banner/background controls`: define and
+  implement full-page background, true banner/header media, fit, position, focal
+  point, overlay, blur, dim, mobile behavior, and fallbacks.
+- `[P1] Profile layout compacting implementation`: reduce card/stat/chip bloat,
+  introduce compact identity card direction, and preserve Feed/Replies/Rooms,
+  actions, reports, badges, and Connections.
+- `[P1] Profile customization modal v3 redesign`: compact the editor around
+  Identity, Theme, Background, Modules, Connections, Music, and
+  Safety/visibility with a stronger preview-first flow.
+- `[P2] Theme token storage and rendering plan`: define allowlisted accent,
+  surface, text, focus, overlay, and card treatment tokens with contrast tests.
+- `[P2] Profile module expansion v3`: add featured post, featured room, richer
+  Connections, About/status, Badge Showcase, and module ordering/visibility
+  refinements in small slices.
+- `[P2] Profile music module plan`: decide link-card, static metadata,
+  API-backed, or embed scope for Spotify, Apple Music, YouTube Music, and
+  uploaded audio; document copyright and autoplay rules.
+- `[P2] Profile media moderation/admin diagnostics`: define admin visibility,
+  media takedown, report context, moderation status, and module/media summaries.
+- `[P2] Background/video performance budget`: set profile media size, duration,
+  poster, lazy-loading, mobile, reduced-motion, and data-saver budgets before
+  animated/video backgrounds.
 
 ## Current Profile State
 
