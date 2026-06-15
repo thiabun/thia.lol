@@ -64,7 +64,7 @@ test.describe("authenticated smoke", () => {
     await expect(mobileNav.getByRole("link", { name: "Admin" })).toHaveCount(0);
   });
 
-  test("account menu links to own profile with profile tabs", async ({ page }) => {
+  test("account menu links to own profile with activity module tabs", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     const session = await loginWithEnv(page);
     const handle = session.data?.user?.handle;
@@ -83,13 +83,14 @@ test.describe("authenticated smoke", () => {
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "Customize profile" })).toBeVisible();
 
-    const tabs = page.getByRole("tablist", { name: "Profile sections" });
+    await expect(page.getByTestId("profile-grid-module-activity")).toBeVisible();
+    const tabs = page.getByTestId("profile-activity-tabs");
     await expect(tabs.getByRole("tab", { name: /Feed/ })).toBeVisible();
     await expect(tabs.getByRole("tab", { name: /Replies/ })).toBeVisible();
     await expect(tabs.getByRole("tab", { name: /Rooms/ })).toBeVisible();
     await expect(tabs.getByRole("tab", { name: /Reblogs/ })).toHaveCount(0);
     await expect(tabs.getByRole("tab", { name: /Badges/ })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /Badges/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Badges/ })).toHaveCount(0);
   });
 
   test("composer exposes compact destination, upload, and text controls", async ({

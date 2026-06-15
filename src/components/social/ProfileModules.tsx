@@ -1,4 +1,5 @@
 import { Sparkles } from "lucide-react";
+import type { ReactNode } from "react";
 import { cn } from "../../lib/classNames";
 import {
   profileModuleBadges,
@@ -29,6 +30,7 @@ type ProfileModulesSectionProps = {
   loading: boolean;
   modules: ProfileModule[];
   onCustomize?: (() => void) | undefined;
+  renderModuleContent?: ProfileModuleContentRenderer | undefined;
 };
 
 export function ProfileModulesSection({
@@ -39,6 +41,7 @@ export function ProfileModulesSection({
   loading,
   modules,
   onCustomize,
+  renderModuleContent,
 }: ProfileModulesSectionProps) {
   const renderableModules = renderableProfileModules(modules, badges);
 
@@ -102,17 +105,21 @@ export function ProfileModulesSection({
           modules={renderableModules}
           badges={badges}
           layoutPreset={layoutPreset}
+          renderModuleContent={renderModuleContent}
         />
       ) : null}
     </ProfileGridSection>
   );
 }
 
+type ProfileModuleContentRenderer = (module: ProfileModule) => ReactNode | undefined;
+
 type ProfileModuleGridProps = {
   badges: UserBadge[];
   layoutPreset?: ProfileLayoutPreset | undefined;
   maxColumns?: 2 | 3;
   modules: ProfileModule[];
+  renderModuleContent?: ProfileModuleContentRenderer | undefined;
 };
 
 export function ProfileModuleGrid({
@@ -120,6 +127,7 @@ export function ProfileModuleGrid({
   layoutPreset = defaultProfileLayoutPreset,
   maxColumns,
   modules,
+  renderModuleContent,
 }: ProfileModuleGridProps) {
   const renderableModules = renderableProfileModules(modules, badges);
   const resolvedMaxColumns = maxColumns ?? profileLayoutMaxColumns(layoutPreset);
@@ -150,8 +158,11 @@ export function ProfileModuleGrid({
         <ProfileGridModule
           key={module.id}
           size={profileModuleGridSize(module, layoutPreset, index)}
+          testId={`profile-grid-module-${module.type}`}
         >
-          <ProfileModuleCard module={module} badges={badges} />
+          {renderModuleContent?.(module) ?? (
+            <ProfileModuleCard module={module} badges={badges} />
+          )}
         </ProfileGridModule>
       ))}
     </ProfileGrid>
@@ -178,6 +189,14 @@ export function ProfileModuleCard({ badges, module }: ProfileModuleCardProps) {
 }
 
 function ProfileModuleContent({ badges, module }: ProfileModuleCardProps) {
+  if (module.type === "activity") {
+    return (
+      <p className="mt-2 text-sm leading-6 text-muted">
+        Feed, replies, and rooms appear here on the public profile.
+      </p>
+    );
+  }
+
   if (module.type === "links") {
     return (
       <div className="mt-2 flex min-w-0 flex-wrap gap-2">

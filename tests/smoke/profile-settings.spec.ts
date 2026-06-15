@@ -302,7 +302,7 @@ test("profile API accepts null optional fields by backend regression fixture", a
   expect(output).toContain("profile save regression ok");
 });
 
-test("profile followers, following, and badges use compact panels", async ({ page }) => {
+test("profile followers and following use compact panels", async ({ page }) => {
   await mockOwnProfile(page, () => [
     {
       platform: "youtube",
@@ -341,12 +341,10 @@ test("profile followers, following, and badges use compact panels", async ({ pag
   );
   await page.getByRole("button", { name: "Close panel" }).click();
 
-  await page.getByRole("button", { name: /Badges/ }).click();
-  await expect(page.getByRole("dialog", { name: "Badges" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Founder" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Badges/ })).toHaveCount(0);
 });
 
-test("profile layout renders identity, social context, tabs, and mobile stack", async ({
+test("profile layout renders identity, essential social stats, activity module, and mobile stack", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -372,12 +370,19 @@ test("profile layout renders identity, social context, tabs, and mobile stack", 
   await expect(page.getByText("Founder", { exact: true })).toBeVisible();
 
   const socialContext = page.getByTestId("profile-social-context");
-  await expect(socialContext.getByText("Posts")).toBeVisible();
+  await expect(socialContext.getByText("Likes")).toBeVisible();
   await expect(socialContext.getByText("Followers")).toBeVisible();
+  await expect(socialContext.getByText("Following")).toBeVisible();
+  await expect(socialContext.getByText("Posts")).toHaveCount(0);
+  await expect(socialContext.getByText("Replies")).toHaveCount(0);
+  await expect(socialContext.getByText("Rooms")).toHaveCount(0);
+  await expect(socialContext.getByText("Moots")).toHaveCount(0);
+  await expect(socialContext.getByText("Badges")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /1 Followers/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /1 Following/ })).toBeVisible();
-  await expect(page.getByText("1 Moots")).toBeVisible();
+  await expect(page.getByText("1 Moots")).toHaveCount(0);
 
+  await expect(page.getByTestId("profile-grid-module-activity")).toBeVisible();
   const tabs = page.getByTestId("profile-activity-tabs");
   await expect(tabs.getByRole("tab", { name: /Feed/ })).toBeVisible();
   await expect(tabs.getByRole("tab", { name: /Replies/ })).toBeVisible();
@@ -495,7 +500,7 @@ async function mockOwnProfile(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: [] }),
+      body: JSON.stringify({ ok: true, data: [activityModule()] }),
     });
   });
 
@@ -503,7 +508,7 @@ async function mockOwnProfile(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: [] }),
+      body: JSON.stringify({ ok: true, data: [activityModule()] }),
     });
   });
 
@@ -648,6 +653,21 @@ type ProfileBody = {
   createdAt: string;
   updatedAt: string;
 };
+
+function activityModule() {
+  return {
+    id: 9,
+    type: "activity",
+    title: "Activity",
+    config: {},
+    visibility: "public",
+    position: 1,
+    status: "active",
+    schemaVersion: 1,
+    createdAt: "2026-06-12 00:00:00",
+    updatedAt: "2026-06-12 00:00:00",
+  };
+}
 
 async function expectElementAtPointBelongsTo(
   page: Page,

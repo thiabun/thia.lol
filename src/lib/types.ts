@@ -107,7 +107,12 @@ export type ProfileBadgesResult = {
   featuredBadges: UserBadge[];
 };
 
-export type ProfileModuleType = "about" | "links" | "featured_badges" | "custom_text";
+export type ProfileModuleType =
+  | "about"
+  | "links"
+  | "featured_badges"
+  | "custom_text"
+  | "activity";
 
 export type ProfileModuleVisibility = "public" | "hidden" | "draft";
 

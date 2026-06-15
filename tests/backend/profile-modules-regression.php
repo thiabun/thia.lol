@@ -15,6 +15,9 @@ function assert_true(bool $condition, string $message): void
 $about = profile_module_config('about', ['body' => 'A concise personal note.'], 123);
 assert_true($about['body'] === 'A concise personal note.', 'about body mismatch');
 
+$activity = profile_module_config('activity', [], 123);
+assert_true($activity === [], 'activity config should be empty');
+
 $customText = profile_module_config(
     'custom_text',
     [

@@ -6,13 +6,13 @@ type ApiEnvelope<T> = {
   error?: string;
 };
 
-test("profile Badges panel renders real empty state", async ({ page }) => {
+test("profile header does not expose a badge count panel", async ({ page }) => {
   await mockProfileWithBadges(page, []);
 
   await page.goto("/@thia");
-  await page.getByRole("button", { name: /Badges/ }).click();
 
-  await expect(page.getByRole("heading", { name: "No badges yet" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Badges/ })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "No badges yet" })).toHaveCount(0);
 
   for (const badgeName of [
     "Founder",
@@ -171,6 +171,14 @@ async function mockProfileWithBadges(page: Page, badges: unknown[]) {
   });
 
   await page.route("**/api/rooms", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+
+  await page.route("**/api/profiles/thia/modules", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",

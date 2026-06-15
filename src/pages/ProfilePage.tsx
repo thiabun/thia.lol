@@ -559,6 +559,26 @@ export function ProfilePage() {
     );
   }
 
+  const showActivityModule = shouldRenderProfileActivityModule({
+    feed: profileFeed,
+    isOwnProfile,
+    loading:
+      postsState.loading ||
+      reblogsState.loading ||
+      repliesState.loading ||
+      roomsState.loading,
+    replies: profileReplies,
+    rooms: profileRooms,
+    error:
+      postsState.error ??
+      reblogsState.error ??
+      repliesState.error ??
+      roomsState.error,
+  });
+  const profileSpaceModules = publicModules.filter(
+    (module) => module.type !== "activity" || showActivityModule,
+  );
+
   return (
     <motion.div
       className="relative mx-auto max-w-5xl"
@@ -575,7 +595,6 @@ export function ProfilePage() {
         />
         <ProfileHeader
           profile={profile}
-          badgeCount={profileBadges.length}
           featuredBadges={featuredBadges}
           followError={activeFollowError}
           followPosting={followPosting}
@@ -677,83 +696,28 @@ export function ProfilePage() {
           isOwnProfile={isOwnProfile}
           layoutPreset={profileLayoutPreset}
           loading={modulesState.loading}
-          modules={publicModules}
+          modules={profileSpaceModules}
           onCustomize={isOwnProfile ? () => void handleOpenCustomization("modules") : undefined}
+          renderModuleContent={(module) =>
+            module.type === "activity" ? (
+              <ProfileActivityModule
+                activeTab={activeTab}
+                feed={profileFeed}
+                feedError={postsState.error ?? reblogsState.error}
+                feedLoading={postsState.loading || reblogsState.loading}
+                profile={profile}
+                replies={profileReplies}
+                repliesError={repliesState.error}
+                repliesLoading={repliesState.loading}
+                rooms={profileRooms}
+                roomsError={roomsState.error}
+                roomsLoading={roomsState.loading}
+                title={module.title ?? "Activity"}
+                onTabChange={setActiveTab}
+              />
+            ) : undefined
+          }
         />
-        <motion.div
-          className="border-t border-line pt-4"
-          variants={cardEntrance}
-          custom={2}
-          initial="hidden"
-          animate="show"
-          data-testid="profile-activity"
-        >
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-text">Activity</h2>
-          </div>
-          <div
-            aria-label="Profile sections"
-            className="flex gap-1 overflow-x-auto rounded-control bg-canvas/55 p-1 sm:justify-end"
-            role="tablist"
-            data-testid="profile-activity-tabs"
-          >
-            <ProfileTabButton
-              active={activeTab === "feed"}
-              count={profileFeed.length}
-              label="Feed"
-              onClick={() => setActiveTab("feed")}
-            />
-            <ProfileTabButton
-              active={activeTab === "replies"}
-              count={profile.stats.replies}
-              label="Replies"
-              onClick={() => setActiveTab("replies")}
-            />
-            <ProfileTabButton
-              active={activeTab === "rooms"}
-              count={profile.stats.rooms}
-              label="Rooms"
-              onClick={() => setActiveTab("rooms")}
-            />
-          </div>
-        </div>
-
-        {activeTab === "feed" ? (
-          <ProfilePostList
-            emptyDescription="No posts."
-            emptyIcon={MessageCircle}
-            emptyText="No posts yet"
-            errorTitle="Profile feed is not available"
-            error={postsState.error ?? reblogsState.error}
-            items={profileFeed}
-            loading={postsState.loading || reblogsState.loading}
-            loadingText="Loading posts."
-            loadingTitle="Loading profile feed"
-          />
-        ) : null}
-        {activeTab === "replies" ? (
-          <ProfilePostList
-            emptyDescription="No replies."
-            emptyIcon={Reply}
-            emptyText="No replies yet"
-            errorTitle="Replies are not available"
-            error={repliesState.error}
-            items={profileReplies}
-            loading={repliesState.loading}
-            loadingText="Loading replies."
-            loadingTitle="Loading replies"
-          />
-        ) : null}
-        {activeTab === "rooms" ? (
-          <ProfileRoomList
-            error={roomsState.error}
-            loading={roomsState.loading}
-            rooms={profileRooms}
-          />
-        ) : null}
-
-      </motion.div>
       {activePanel ? (
         <ProfileFocusedPanel
           badges={profileBadges}
@@ -1130,6 +1094,137 @@ type ProfileTabButtonProps = {
   onClick: () => void;
 };
 
+type ProfileActivityRenderState = {
+  error: unknown;
+  feed: Post[];
+  isOwnProfile: boolean;
+  loading: boolean;
+  replies: Post[];
+  rooms: Room[];
+};
+
+function shouldRenderProfileActivityModule({
+  error,
+  feed,
+  isOwnProfile,
+  loading,
+  replies,
+  rooms,
+}: ProfileActivityRenderState): boolean {
+  return (
+    isOwnProfile ||
+    loading ||
+    Boolean(error) ||
+    feed.length > 0 ||
+    replies.length > 0 ||
+    rooms.length > 0
+  );
+}
+
+type ProfileActivityModuleProps = {
+  activeTab: ProfileTab;
+  feed: Post[];
+  feedError: unknown;
+  feedLoading: boolean;
+  onTabChange: (tab: ProfileTab) => void;
+  profile: Profile;
+  replies: Post[];
+  repliesError: unknown;
+  repliesLoading: boolean;
+  rooms: Room[];
+  roomsError: unknown;
+  roomsLoading: boolean;
+  title: string;
+};
+
+function ProfileActivityModule({
+  activeTab,
+  feed,
+  feedError,
+  feedLoading,
+  onTabChange,
+  profile,
+  replies,
+  repliesError,
+  repliesLoading,
+  rooms,
+  roomsError,
+  roomsLoading,
+  title,
+}: ProfileActivityModuleProps) {
+  return (
+    <div className="min-w-0 space-y-3" data-testid="profile-module-activity">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h3 className="text-sm font-semibold text-text">{title}</h3>
+        <div
+          aria-label="Profile sections"
+          className="flex gap-1 overflow-x-auto rounded-control bg-canvas/55 p-1 sm:justify-end"
+          role="tablist"
+          data-testid="profile-activity-tabs"
+        >
+          <ProfileTabButton
+            active={activeTab === "feed"}
+            count={feed.length}
+            label="Feed"
+            onClick={() => onTabChange("feed")}
+          />
+          <ProfileTabButton
+            active={activeTab === "replies"}
+            count={profile.stats.replies}
+            label="Replies"
+            onClick={() => onTabChange("replies")}
+          />
+          <ProfileTabButton
+            active={activeTab === "rooms"}
+            count={profile.stats.rooms}
+            label="Rooms"
+            onClick={() => onTabChange("rooms")}
+          />
+        </div>
+      </div>
+
+      <div data-testid="profile-activity">
+        {activeTab === "feed" ? (
+          <ProfilePostList
+            emptyCompact
+            emptyDescription="No posts."
+            emptyIcon={MessageCircle}
+            emptyText="No posts yet"
+            errorTitle="Profile feed is not available"
+            error={feedError}
+            items={feed}
+            loading={feedLoading}
+            loadingText="Loading posts."
+            loadingTitle="Loading profile feed"
+          />
+        ) : null}
+        {activeTab === "replies" ? (
+          <ProfilePostList
+            emptyCompact
+            emptyDescription="No replies."
+            emptyIcon={Reply}
+            emptyText="No replies yet"
+            errorTitle="Replies are not available"
+            error={repliesError}
+            items={replies}
+            loading={repliesLoading}
+            loadingText="Loading replies."
+            loadingTitle="Loading replies"
+          />
+        ) : null}
+        {activeTab === "rooms" ? (
+          <ProfileRoomList
+            emptyCompact
+            error={roomsError}
+            loading={roomsLoading}
+            rooms={rooms}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function ProfileTabButton({
   active,
   comingLater = false,
@@ -1166,6 +1261,7 @@ function ProfileTabButton({
 }
 
 type ProfilePostListProps = {
+  emptyCompact?: boolean;
   emptyDescription: string;
   emptyIcon: typeof MessageCircle;
   emptyText: string;
@@ -1178,6 +1274,7 @@ type ProfilePostListProps = {
 };
 
 function ProfilePostList({
+  emptyCompact = false,
   emptyDescription,
   emptyIcon,
   emptyText,
@@ -1211,6 +1308,16 @@ function ProfilePostList({
   }
 
   if (posts.length === 0) {
+    if (emptyCompact) {
+      return (
+        <ProfileCompactEmpty
+          icon={emptyIcon}
+          title={emptyText}
+          text={emptyDescription}
+        />
+      );
+    }
+
     return <EmptyState icon={emptyIcon} title={emptyText} text={emptyDescription} />;
   }
 
@@ -1219,6 +1326,28 @@ function ProfilePostList({
       {posts.map((post, index) => (
         <PostCard key={post.id} post={post} index={index} />
       ))}
+    </div>
+  );
+}
+
+function ProfileCompactEmpty({
+  icon: Icon,
+  text,
+  title,
+}: {
+  icon: typeof MessageCircle;
+  text: string;
+  title: string;
+}) {
+  return (
+    <div className="flex items-start gap-3 rounded-card border border-dashed border-line bg-canvas/45 p-3">
+      <div className="grid size-9 shrink-0 place-items-center rounded-full bg-surface-strong text-accent-strong">
+        <Icon aria-hidden="true" size={16} />
+      </div>
+      <div className="min-w-0">
+        <h4 className="text-sm font-semibold text-text">{title}</h4>
+        <p className="mt-1 text-sm leading-5 text-muted">{text}</p>
+      </div>
     </div>
   );
 }
@@ -1655,12 +1784,18 @@ function ProfileBadgeCard({
 }
 
 type ProfileRoomListProps = {
+  emptyCompact?: boolean;
   error: unknown;
   loading: boolean;
   rooms: Awaited<ReturnType<typeof getProfileRooms>>;
 };
 
-function ProfileRoomList({ error, loading, rooms }: ProfileRoomListProps) {
+function ProfileRoomList({
+  emptyCompact = false,
+  error,
+  loading,
+  rooms,
+}: ProfileRoomListProps) {
   if (loading) {
     return (
       <ApiStateNotice
@@ -1682,6 +1817,16 @@ function ProfileRoomList({ error, loading, rooms }: ProfileRoomListProps) {
   }
 
   if (rooms.length === 0) {
+    if (emptyCompact) {
+      return (
+        <ProfileCompactEmpty
+          icon={Radio}
+          title="No rooms yet"
+          text="No rooms."
+        />
+      );
+    }
+
     return (
       <EmptyState
         icon={Radio}

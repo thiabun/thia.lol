@@ -461,13 +461,13 @@ Current implementation is static-first React backed by PHP/MySQL APIs. The profi
 
 Implemented public profile behavior:
 
-- Profile header shows avatar, display name, handle, bio, location, joined date, optional banner, optional background image treatment, structured Connections, featured badges, stats, and social pills.
+- Profile header shows avatar, display name, handle, bio, location, joined date, optional banner, optional background image treatment, structured Connections, featured badges, and only the essential social stats: Likes, Followers, and Following.
 - Avatar is stored as `profiles.avatar_url`; banner/background/accent/theme fields live on `profiles` after the profile customization migration.
 - Bio and location are plain text with length validation.
 - Connections are structured JSON in `profiles.links`, with supported platform types for Website, YouTube, Twitch, TikTok, Instagram, X/Twitter, Bluesky, GitHub, Discord, and Spotify.
 - Badges use real persisted badge definitions and user grants. Up to four visible badges can be featured in the profile header.
-- Followers, Following, Moots, and Badges are compact pills. Followers/following/badges open focused panels instead of full profile tabs.
-- Profile tabs are currently Feed, Replies, and Rooms. Feed merges top-level posts and reblogs; Replies shows replies; Rooms shows public rooms associated with the profile.
+- Followers and Following are compact pills that open focused panels instead of full profile tabs.
+- Activity is a profile module containing Feed, Replies, and Rooms. Feed merges top-level posts and reblogs; Replies shows replies; Rooms shows public rooms associated with the profile.
 - Profiles can be reported by logged-in users, except self-report is hidden in the UI.
 - Follow, unfollow, block, unblock, mute, unmute, and remove-follower foundations exist. Block/mute/remove-follower depend on the pending production migration `20260611_0001_add_user_blocks_and_mutes.sql`.
 - Message affordance appears only for moot relationships and is suppressed when the current user has blocked the profile.
@@ -652,6 +652,34 @@ the up/down controls as the keyboard baseline. Future gallery, music, media, and
 integration modules should join `profileModuleRegistry` first, define bounded
 content checks and grid sizing, and continue to avoid arbitrary HTML, CSS,
 JavaScript, iframes, embeds, analytics, monetization, or profile marketplaces.
+
+### Implementation Note - 2026-06-15 Profiles v3 Blank Slate Cleanup
+
+Issue [#36](https://github.com/thiabun/thia.lol/issues/36) removes the last
+fixed activity section from public profiles:
+
+- Feed, Replies, and Rooms now live in a built-in `activity` module registered
+  through `profileModuleRegistry` and rendered through the same `ProfileGrid`
+  and `ProfileGridModule` path as other personal-space modules.
+- Activity remains compact: public empty activity does not render as a dead
+  panel, while owners can still see a compact owner-only empty state when the
+  module is public.
+- Activity can be ordered and hidden through the existing module preference
+  model. The public module API returns a default Activity module when no saved
+  preference exists, and owner module reads create a real built-in row so
+  visibility and ordering can persist.
+- The public header stats are reduced to Likes, Followers, and Following.
+  Posts, Replies, Rooms, Moots, Badges, module counts, and other metadata-first
+  counters are intentionally not shown by default.
+- Fixed profile sections are being avoided because they make every profile feel
+  like the same social dashboard. Future profile content should enter as
+  bounded, registry-backed modules with visibility, ordering, compact empty
+  behavior, and mobile-safe layout rules.
+
+Follow-up implication: future modules such as gallery, music, links, projects,
+or blog/journal surfaces should not add permanent page sections beside the grid.
+They should define content checks, default sizing, owner controls, and public
+empty behavior before they render on visitor profiles.
 
 Current limitations:
 

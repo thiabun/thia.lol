@@ -5,8 +5,6 @@ import {
   MapPin,
   MessageCircle,
   MoreHorizontal,
-  Radio,
-  Reply,
   Heart,
   ShieldOff,
   UserCheck,
@@ -34,7 +32,6 @@ import { ProfileConnectionIcon } from "./ProfileConnectionIcon";
 
 type ProfileHeaderProps = {
   profile: Profile;
-  badgeCount?: number;
   followError?: string | undefined;
   followPosting?: boolean;
   isOwnProfile?: boolean;
@@ -55,7 +52,6 @@ export function ProfileHeader({
   followError,
   followPosting = false,
   isOwnProfile = false,
-  badgeCount = 0,
   featuredBadges = [],
   messageToHandle,
   profileControlBusy,
@@ -275,7 +271,6 @@ export function ProfileHeader({
           ) : null}
           <ProfileMetaRow profile={profile} />
           <ProfileSocialContext
-            badgeCount={badgeCount}
             onOpenPanel={onOpenPanel}
             profile={profile}
           />
@@ -445,13 +440,11 @@ function ProfileMetaRow({ profile }: { profile: Profile }) {
 }
 
 type ProfileSocialContextProps = {
-  badgeCount: number;
   onOpenPanel?: ((panel: "followers" | "following" | "badges") => void) | undefined;
   profile: Profile;
 };
 
 function ProfileSocialContext({
-  badgeCount,
   onOpenPanel,
   profile,
 }: ProfileSocialContextProps) {
@@ -462,9 +455,6 @@ function ProfileSocialContext({
       data-testid="profile-social-context"
       aria-label="Profile details"
     >
-      <ProfileStat label="Posts" value={profile.stats.posts} icon={MessageCircle} />
-      <ProfileStat label="Replies" value={profile.stats.replies} icon={Reply} />
-      <ProfileStat label="Rooms" value={profile.stats.rooms} icon={Radio} />
       <ProfileStat label="Likes" value={profile.stats.echoes} icon={Heart} />
       <ProfilePanelPill
         label="Followers"
@@ -477,13 +467,6 @@ function ProfileSocialContext({
         value={profile.stats.following}
         icon={UserCheck}
         onClick={() => onOpenPanel?.("following")}
-      />
-      <ProfilePanelPill label="Moots" value={profile.stats.moots} icon={UserPlus} />
-      <ProfilePanelPill
-        label="Badges"
-        value={badgeCount}
-        icon={Award}
-        onClick={() => onOpenPanel?.("badges")}
       />
     </motion.div>
   );

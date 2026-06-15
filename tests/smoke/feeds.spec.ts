@@ -290,6 +290,12 @@ test("Profile Feed renders API-backed reblogs", async ({ page }) => {
       }),
     }),
   );
+  await page.route("**/api/profiles/alex/modules", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [activityModule()] }),
+    }),
+  );
   await page.route("**/api/profiles/alex/rooms", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify({ ok: true, data: [] }) }),
   );
@@ -1243,6 +1249,13 @@ async function mockProfileRoutes(page: Page, handle: string) {
     );
   }
 
+  await page.route(`**/api/profiles/${handle}/modules`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [activityModule()] }),
+    }),
+  );
+
   await page.route(`**/api/profiles/${handle}/badges`, (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -1303,6 +1316,21 @@ async function mockRoomRoutes(page: Page, slug: string) {
       body: JSON.stringify({ ok: true, data: [] }),
     }),
   );
+}
+
+function activityModule() {
+  return {
+    id: 9,
+    type: "activity",
+    title: "Activity",
+    config: {},
+    visibility: "public",
+    position: 1,
+    status: "active",
+    schemaVersion: 1,
+    createdAt: "2026-06-12 00:00:00",
+    updatedAt: "2026-06-12 00:00:00",
+  };
 }
 
 function makePost(overrides: Record<string, unknown> = {}) {

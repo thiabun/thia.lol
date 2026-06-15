@@ -46,6 +46,12 @@ export const profileModuleRegistry = {
     fallbackTitle: "Featured badges",
     label: "Badges",
   },
+  activity: {
+    defaultSize: "wide",
+    description: "Feed, replies, and rooms.",
+    fallbackTitle: "Activity",
+    label: "Activity",
+  },
 } satisfies Record<ProfileModuleType, ProfileModuleRegistryEntry>;
 
 export const profileModuleTypes = Object.keys(
@@ -75,7 +81,7 @@ export function profileModuleGridSize(
   index = 0,
 ): ProfileGridModuleSize {
   if (layoutPreset === "compact") {
-    return module.type === "about" ? "wide" : "small";
+    return module.type === "about" || module.type === "activity" ? "wide" : "small";
   }
 
   if (layoutPreset === "showcase" && index === 0 && module.type === "about") {
@@ -106,6 +112,10 @@ export function profileModuleHasContent(
 
   if (module.type === "featured_badges") {
     return profileModuleBadges(module, badges).length > 0;
+  }
+
+  if (module.type === "activity") {
+    return true;
   }
 
   return typeof module.config.body === "string" && module.config.body.trim() !== "";
@@ -142,6 +152,10 @@ export function profileModuleSummary(module: ProfileModule): string {
   if (module.type === "featured_badges") {
     const count = module.config.userBadgeIds?.length ?? 0;
     return count === 1 ? "1 selected badge" : `${count} selected badges`;
+  }
+
+  if (module.type === "activity") {
+    return getProfileModuleDefinition(module.type).description;
   }
 
   const body = (module.config.body ?? "").trim();

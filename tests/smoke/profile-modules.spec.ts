@@ -90,6 +90,70 @@ test("profile renders public modules safely", async ({ page }) => {
   expect(hasHorizontalOverflow).toBe(false);
 });
 
+test("activity renders through the module grid without a duplicate fixed section", async ({
+  page,
+}) => {
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      activityModule({ id: 9, title: "Latest activity", position: 1 }),
+      aboutModule({ id: 1, title: "About", body: "A compact intro.", position: 2 }),
+    ],
+    profilePosts: [postFixture({ body: "Profile activity post." })],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const section = page.getByTestId("profile-modules");
+  await expect(section).toBeVisible();
+  await expect(section.getByTestId("profile-grid-module-activity")).toBeVisible();
+  await expect(section.getByTestId("profile-module-activity")).toBeVisible();
+  await expect(section.getByRole("heading", { name: "Latest activity" })).toBeVisible();
+
+  const tabs = section.getByTestId("profile-activity-tabs");
+  await expect(tabs.getByRole("tab", { name: /Feed/ })).toBeVisible();
+  await expect(tabs.getByRole("tab", { name: /Replies/ })).toBeVisible();
+  await expect(tabs.getByRole("tab", { name: /Rooms/ })).toBeVisible();
+  await expect(section.getByText("Profile activity post.")).toBeVisible();
+  await expect(page.getByTestId("profile-activity")).toHaveCount(1);
+  await expect(
+    page
+      .getByTestId("profile-module-grid")
+      .getByTestId("profile-grid-module-activity")
+      .getByTestId("profile-activity"),
+  ).toBeVisible();
+});
+
+test("activity respects hidden module preferences", async ({ page }) => {
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      {
+        ...activityModule({ id: 9, title: "Hidden activity", position: 1 }),
+        visibility: "hidden",
+      },
+    ],
+    profilePosts: [postFixture({ body: "Hidden activity post." })],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expect(page.getByTestId("profile-module-activity")).toHaveCount(0);
+  await expect(page.getByText("Hidden activity post.")).toHaveCount(0);
+});
+
+test("public empty activity module stays hidden on minimal profiles", async ({ page }) => {
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [activityModule({ id: 9 })],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expect(page.getByTestId("profile-module-activity")).toHaveCount(0);
+  await expect(page.getByTestId("profile-activity-tabs")).toHaveCount(0);
+});
+
 test("profile module grid keeps responsive columns bounded", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockProfileModules(page, {
@@ -281,6 +345,48 @@ test("owner can save a layout preset from module customization", async ({ page }
   ).toHaveAttribute("data-profile-layout-preset", "compact");
 });
 
+test("owner can hide and reorder the built-in activity module", async ({ page }) => {
+  let orderedIds: number[] | undefined;
+  let activityUpdate: Record<string, unknown> | undefined;
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      activityModule({ id: 9, title: "Activity", position: 1 }),
+      aboutModule({ id: 1, title: "About", body: "Saved profile note", position: 2 }),
+    ],
+    onOrder: (ids) => {
+      orderedIds = ids;
+    },
+    onUpdate: (id, payload) => {
+      if (id === 9) {
+        activityUpdate = payload;
+      }
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByRole("button", { name: "Customize layout" }).click();
+  const modal = page.getByTestId("profile-customization-modal");
+  const editor = modal.getByTestId("profile-module-editor");
+  await expect(editor.getByText("Activity")).toBeVisible();
+  await expect(editor.getByRole("button", { name: "Delete Activity" })).toHaveCount(0);
+
+  await editor.getByRole("button", { name: "Move Activity down" }).click();
+  await editor.getByRole("button", { name: "Save order" }).click();
+  await expect.poll(() => orderedIds).toEqual([1, 9]);
+
+  const activityCard = editor.getByTestId("profile-module-card-9");
+  await activityCard.getByRole("button", { name: "Edit Activity" }).click();
+  await activityCard.getByRole("button", { name: "Hidden" }).click();
+  await activityCard.getByRole("button", { name: "Save module" }).click();
+
+  await expect.poll(() => activityUpdate).toMatchObject({
+    visibility: "hidden",
+    config: {},
+  });
+});
+
 test("owner can add and save an about module", async ({ page }) => {
   let createdPayload: Record<string, unknown> | undefined;
   await mockProfileModules(page, {
@@ -417,7 +523,11 @@ test("profile module API guardrails are present by inspection", async () => {
 
   expect(router).toContain("profile_modules.php");
   expect(router).toContain("profile_modules_dispatch($segments, $method)");
-  expect(modulesApi).toContain("const PROFILE_MODULE_TYPES = ['about', 'links', 'featured_badges', 'custom_text']");
+  expect(modulesApi).toContain("const PROFILE_ACTIVITY_MODULE_TYPE = 'activity'");
+  expect(modulesApi).toContain("PROFILE_ACTIVITY_MODULE_TYPE]");
+  expect(modulesApi).toContain("ensure_profile_activity_module");
+  expect(modulesApi).toContain("profile_module_activity_config");
+  expect(modulesApi).toContain("Activity can be hidden instead of deleted.");
   expect(modulesApi).toContain("require_csrf_token($session)");
   expect(modulesApi).toContain("Profile module storage is not ready. Run pending migrations.");
   expect(modulesApi).toContain("profile_module_reject_unknown_keys");
@@ -452,7 +562,11 @@ async function mockProfileModules(
     onOrder?: (ids: number[]) => void;
     onProfileSave?: (payload: Record<string, unknown>) => void;
     onUpdate?: (id: number, payload: Record<string, unknown>) => void;
+    profilePosts?: unknown[];
     profileOverrides?: Record<string, unknown>;
+    profileReblogs?: unknown[];
+    profileReplies?: unknown[];
+    profileRooms?: unknown[];
   },
 ) {
   let ownerModules = [...options.modules] as Array<Record<string, unknown>>;
@@ -686,12 +800,21 @@ async function mockProfileModules(
     });
   });
 
-  for (const suffix of ["posts", "replies", "reblogs", "rooms", "followers", "following"]) {
+  const profileRouteData: Record<string, unknown[]> = {
+    posts: options.profilePosts ?? [],
+    replies: options.profileReplies ?? [],
+    reblogs: options.profileReblogs ?? [],
+    rooms: options.profileRooms ?? [],
+    followers: [],
+    following: [],
+  };
+
+  for (const [suffix, data] of Object.entries(profileRouteData)) {
     await page.route(`**/api/profiles/thia/${suffix}`, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ ok: true, data: [] }),
+        body: JSON.stringify({ ok: true, data }),
       });
     });
   }
@@ -846,5 +969,74 @@ function textModule(
     schemaVersion: 1,
     createdAt: "2026-06-12 00:00:00",
     updatedAt: "2026-06-12 00:00:00",
+  };
+}
+
+function activityModule(
+  overrides: {
+    id?: number;
+    title?: string | null;
+    position?: number;
+  } = {},
+) {
+  return {
+    id: overrides.id ?? 9,
+    type: "activity",
+    title: overrides.title ?? "Activity",
+    config: {},
+    visibility: "public",
+    position: overrides.position ?? 1,
+    status: "active",
+    schemaVersion: 1,
+    createdAt: "2026-06-12 00:00:00",
+    updatedAt: "2026-06-12 00:00:00",
+  };
+}
+
+function postFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 42,
+    body: "A profile post.",
+    mood: "sunveil",
+    mediaUrl: null,
+    visibility: "public",
+    status: "published",
+    parentId: null,
+    deletedAt: null,
+    createdAt: "2026-06-10 10:00:00",
+    updatedAt: "2026-06-10 10:00:00",
+    author: {
+      id: 1,
+      handle: "thia",
+      displayName: "Thia",
+      initials: "T",
+      aura: "frost",
+      avatarUrl: null,
+    },
+    room: {
+      id: 1,
+      slug: "general",
+      name: "General",
+      summary: "Open conversation.",
+      description: "Open conversation.",
+      mood: "",
+      members: 1,
+      memberCount: 1,
+      live: false,
+      accent: "var(--accent-frost)",
+      postCount: 1,
+    },
+    commentCount: 0,
+    reactions: { glow: 0, echo: 0, hush: 0 },
+    likeCount: 0,
+    likedByCurrentUser: false,
+    reblogCount: 0,
+    rebloggedByMe: false,
+    rebloggedByCurrentUser: false,
+    socialContext: {
+      authorRelationship: null,
+      likedByFollowedCount: 0,
+    },
+    ...overrides,
   };
 }

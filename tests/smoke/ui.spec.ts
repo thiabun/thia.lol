@@ -300,7 +300,7 @@ test("chat page is honest about sign-in state", async ({ page }) => {
   await expect(page.getByText("Sign in to see messages.")).toBeVisible();
 });
 
-test("public profile route loads profile tabs", async ({ page }) => {
+test("public profile route keeps an empty profile compact", async ({ page }) => {
   await mockPublicShell(page);
   await page.goto("/@thia");
 
@@ -308,12 +308,9 @@ test("public profile route loads profile tabs", async ({ page }) => {
   await expect(page.getByText("@thia")).toBeVisible();
   await expect(page.getByText("Joined")).toBeVisible();
 
-  const tabs = page.getByRole("tablist", { name: "Profile sections" });
-  await expect(tabs.getByRole("tab", { name: /Feed/ })).toBeVisible();
-  await expect(tabs.getByRole("tab", { name: /Replies/ })).toBeVisible();
-  await expect(tabs.getByRole("tab", { name: /Rooms/ })).toBeVisible();
-  await expect(tabs.getByRole("tab", { name: /Followers/ })).toHaveCount(0);
-  await expect(tabs.getByRole("tab", { name: /Badges/ })).toHaveCount(0);
+  await expect(page.getByTestId("profile-module-activity")).toHaveCount(0);
+  await expect(page.getByTestId("profile-activity-tabs")).toHaveCount(0);
+  await expect(page.getByText("No posts.")).toHaveCount(0);
 });
 
 test("authenticated post button opens an accessible composer select", async ({

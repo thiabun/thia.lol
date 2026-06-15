@@ -129,6 +129,7 @@ const sections: Array<{
 ];
 
 const moduleTypes: Array<{
+  addable?: boolean;
   type: ProfileModuleType;
   label: string;
   description: string;
@@ -157,6 +158,13 @@ const moduleTypes: Array<{
     label: getProfileModuleDefinition("featured_badges").label,
     description: getProfileModuleDefinition("featured_badges").description,
     icon: BadgeCheck,
+  },
+  {
+    type: "activity",
+    label: getProfileModuleDefinition("activity").label,
+    description: getProfileModuleDefinition("activity").description,
+    icon: Radio,
+    addable: false,
   },
 ];
 
@@ -1857,7 +1865,7 @@ function ModulesEditorSection({
           <section>
             <h4 className="text-sm font-semibold text-text">Add a building block</h4>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              {moduleTypes.map((moduleType) => {
+              {moduleTypes.filter((moduleType) => moduleType.addable !== false).map((moduleType) => {
                 const Icon = moduleType.icon;
 
                 return (
@@ -2009,6 +2017,7 @@ function ModuleTile({
   const moduleType = moduleTypeMeta(module.type);
   const Icon = moduleType.icon;
   const title = module.title || moduleType.label;
+  const isBuiltInActivity = module.type === "activity";
   const shouldReduceMotion = useReducedMotion();
 
   return (
@@ -2074,16 +2083,18 @@ function ModuleTile({
             icon={<Edit3 aria-hidden="true" size={15} />}
             onClick={onSelect}
           />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={`Delete ${title}`}
-            title="Delete"
-            disabled={busy !== undefined}
-            icon={<Trash2 aria-hidden="true" size={15} />}
-            onClick={onDelete}
-          />
+          {!isBuiltInActivity ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={`Delete ${title}`}
+              title="Delete"
+              disabled={busy !== undefined}
+              icon={<Trash2 aria-hidden="true" size={15} />}
+              onClick={onDelete}
+            />
+          ) : null}
         </div>
       </div>
 
@@ -2190,6 +2201,14 @@ type ModuleTypeFieldsProps = {
 };
 
 function ModuleTypeFields({ badges, module, onChange }: ModuleTypeFieldsProps) {
+  if (module.type === "activity") {
+    return (
+      <div className="mt-4 rounded-card border border-line bg-canvas/45 p-3 text-sm leading-6 text-muted">
+        Feed, replies, and rooms use the existing profile activity sources.
+      </div>
+    );
+  }
+
   if (module.type === "links") {
     const links = module.config.links ?? [];
 
@@ -2607,6 +2626,10 @@ function createDraftModule(type: ProfileModuleType): ProfileModule {
 }
 
 function defaultConfig(type: ProfileModuleType): ProfileModuleConfig {
+  if (type === "activity") {
+    return {};
+  }
+
   if (type === "links") {
     return { links: [{ label: "", url: "" }] };
   }
@@ -2629,6 +2652,10 @@ function moduleInput(module: ProfileModule): CreateProfileModuleInput {
 }
 
 function normalizedConfig(module: ProfileModule): ProfileModuleConfig {
+  if (module.type === "activity") {
+    return {};
+  }
+
   if (module.type === "links") {
     return {
       links: (module.config.links ?? []).map((link) => ({
@@ -2650,6 +2677,10 @@ function validateModuleDraft(module: ProfileModule, badges: UserBadge[]): string
 
   if (titleError) {
     return titleError;
+  }
+
+  if (module.type === "activity") {
+    return undefined;
   }
 
   if (module.type === "links") {

@@ -5,7 +5,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read.php';
 
-const PROFILE_MODULE_TYPES = ['about', 'links', 'featured_badges', 'custom_text'];
+const PROFILE_ACTIVITY_MODULE_TYPE = 'activity';
+const PROFILE_MODULE_TYPES = ['about', 'links', 'featured_badges', 'custom_text', PROFILE_ACTIVITY_MODULE_TYPE];
 const PROFILE_MODULE_VISIBILITIES = ['public', 'hidden', 'draft'];
 const PROFILE_MODULE_STATUSES = ['active', 'hidden', 'deleted'];
 const PROFILE_MODULE_SCHEMA_VERSION = 1;
@@ -96,7 +97,15 @@ function profile_modules_public_index(string $handle): void
         ]
     );
 
-    json_success(profile_modules_payload($statement->fetchAll(), true));
+    $modules = profile_modules_payload($statement->fetchAll(), true);
+
+    if (!profile_activity_module_preference_exists((int) $profile['user_id'])) {
+        $modules[] = profile_activity_module_payload(
+            profile_modules_next_position((int) $profile['user_id'])
+        );
+    }
+
+    json_success($modules);
 }
 
 function profile_modules_owner_index(): void
@@ -127,6 +136,10 @@ function profile_modules_create(): void
     $title = profile_module_title($body['title'] ?? null);
     $visibility = profile_module_visibility($body['visibility'] ?? 'public');
     $status = profile_module_status($body['status'] ?? 'active');
+
+    if ($type === PROFILE_ACTIVITY_MODULE_TYPE && profile_activity_module_preference_exists($userId)) {
+        json_error('Activity module already exists.', 422);
+    }
 
     if ($status === 'deleted') {
         json_error('New modules cannot be created as deleted.', 422);
@@ -244,6 +257,10 @@ function profile_modules_delete(string $rawModuleId): void
         json_error('You cannot delete this profile module.', 403);
     }
 
+    if ((string) $module['type'] === PROFILE_ACTIVITY_MODULE_TYPE) {
+        json_error('Activity can be hidden instead of deleted.', 422);
+    }
+
     db_query(
         "UPDATE profile_modules
          SET status = 'deleted',
@@ -329,6 +346,8 @@ function profile_modules_storage_exists(): bool
 
 function profile_modules_for_owner(int $userId): array
 {
+    ensure_profile_activity_module($userId);
+
     $statement = db_query(
         'SELECT *
          FROM profile_modules
@@ -429,10 +448,12 @@ function profile_modules_active_count(int $userId): int
         'SELECT COUNT(*) AS module_count
          FROM profile_modules
          WHERE user_id = :user_id
-           AND status <> :deleted_status',
+           AND status <> :deleted_status
+           AND type <> :activity_type',
         [
             'user_id' => $userId,
             'deleted_status' => 'deleted',
+            'activity_type' => PROFILE_ACTIVITY_MODULE_TYPE,
         ]
     );
     $row = $statement->fetch();
@@ -457,6 +478,64 @@ function profile_modules_next_position(int $userId): int
     return is_array($row) ? max(1, (int) ($row['next_position'] ?? 1)) : 1;
 }
 
+function profile_activity_module_preference_exists(int $userId): bool
+{
+    $statement = db_query(
+        'SELECT id
+         FROM profile_modules
+         WHERE user_id = :user_id
+           AND type = :activity_type
+           AND status <> :deleted_status
+         LIMIT 1',
+        [
+            'user_id' => $userId,
+            'activity_type' => PROFILE_ACTIVITY_MODULE_TYPE,
+            'deleted_status' => 'deleted',
+        ]
+    );
+
+    return is_array($statement->fetch());
+}
+
+function ensure_profile_activity_module(int $userId): void
+{
+    if (profile_activity_module_preference_exists($userId)) {
+        return;
+    }
+
+    db_query(
+        'INSERT INTO profile_modules
+            (user_id, type, title, config_json, visibility, position, status, schema_version)
+         VALUES
+            (:user_id, :type, NULL, :config_json, :visibility, :position, :status, :schema_version)',
+        [
+            'user_id' => $userId,
+            'type' => PROFILE_ACTIVITY_MODULE_TYPE,
+            'config_json' => '{}',
+            'visibility' => 'public',
+            'position' => profile_modules_next_position($userId),
+            'status' => 'active',
+            'schema_version' => PROFILE_MODULE_SCHEMA_VERSION,
+        ]
+    );
+}
+
+function profile_activity_module_payload(int $position): array
+{
+    return [
+        'id' => 0,
+        'type' => PROFILE_ACTIVITY_MODULE_TYPE,
+        'title' => null,
+        'config' => [],
+        'visibility' => 'public',
+        'position' => $position,
+        'status' => 'active',
+        'schemaVersion' => PROFILE_MODULE_SCHEMA_VERSION,
+        'createdAt' => null,
+        'updatedAt' => null,
+    ];
+}
+
 function profile_module_owner_ids(int $userId): array
 {
     $statement = db_query(
@@ -479,6 +558,14 @@ function profile_module_owner_ids(int $userId): array
 
 function profile_module_config(string $type, mixed $value, int $userId): array
 {
+    if ($type === PROFILE_ACTIVITY_MODULE_TYPE) {
+        if (!is_array($value) || ($value !== [] && array_is_list($value))) {
+            json_error('Module config must be an object.', 422);
+        }
+
+        return profile_module_activity_config($value);
+    }
+
     if (!is_array($value) || array_is_list($value)) {
         json_error('Module config must be an object.', 422);
     }
@@ -490,6 +577,13 @@ function profile_module_config(string $type, mixed $value, int $userId): array
         'featured_badges' => profile_module_featured_badges_config($value, $userId),
         default => json_error('Choose a supported module type.', 422),
     };
+}
+
+function profile_module_activity_config(array $config): array
+{
+    profile_module_reject_unknown_keys($config, []);
+
+    return [];
 }
 
 function profile_module_about_config(array $config): array
