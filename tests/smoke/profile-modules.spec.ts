@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
@@ -67,6 +67,9 @@ test("profile renders public modules safely", async ({ page }) => {
   const section = page.getByTestId("profile-modules");
   await expect(section).toBeVisible();
   await expect(section.getByRole("heading", { name: "Personal space" })).toBeVisible();
+  await expect(section.getByTestId("profile-module-grid")).toBeVisible();
+  await expect(section.locator('[data-profile-grid-size="wide"]')).toHaveCount(1);
+  await expect(section.locator('[data-profile-grid-size="small"]')).toHaveCount(2);
   await expect(section.getByRole("heading", { name: "About this space" })).toBeVisible();
   await expect(section).toContainText("Literal <strong>plain</strong> text");
   await expect(section.locator("strong")).toHaveCount(0);
@@ -80,6 +83,29 @@ test("profile renders public modules safely", async ({ page }) => {
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
   expect(hasHorizontalOverflow).toBe(false);
+});
+
+test("profile module grid keeps responsive columns bounded", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      aboutModule({ id: 1, title: "About", body: "A compact intro.", position: 1 }),
+      aboutModule({ id: 2, title: "Work", body: "Current work.", position: 2 }),
+      aboutModule({ id: 3, title: "Now", body: "Current status.", position: 3 }),
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const grid = page.getByTestId("profile-module-grid");
+  await expectGridColumnCount(grid, 1);
+
+  await page.setViewportSize({ width: 900, height: 900 });
+  await expectGridColumnCount(grid, 2);
+
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await expectGridColumnCount(grid, 3);
 });
 
 test("visitor with no modules does not see fake module scaffolding", async ({ page }) => {
@@ -534,6 +560,17 @@ async function acknowledgeCookieNotice(page: Page) {
   await page.addInitScript(() => {
     window.localStorage.setItem("thia_cookie_notice_ack", "1");
   });
+}
+
+async function expectGridColumnCount(locator: Locator, expectedCount: number) {
+  await expect
+    .poll(async () =>
+      locator.evaluate((element) => {
+        const columns = window.getComputedStyle(element).gridTemplateColumns;
+        return columns.split(" ").filter(Boolean).length;
+      }),
+    )
+    .toBe(expectedCount);
 }
 
 function profileBody() {

@@ -45,6 +45,10 @@ import {
   profileConnectionPlatforms,
   validateProfileConnectionDraft,
 } from "../../lib/profileConnections";
+import {
+  getProfileModuleDefinition,
+  profileModuleSummary,
+} from "../../lib/profileModuleRegistry";
 import type {
   Profile,
   ProfileConnectionPlatform,
@@ -126,26 +130,26 @@ const moduleTypes: Array<{
 }> = [
   {
     type: "about",
-    label: "About",
-    description: "A short profile introduction.",
+    label: getProfileModuleDefinition("about").label,
+    description: getProfileModuleDefinition("about").description,
     icon: BookOpen,
   },
   {
     type: "custom_text",
-    label: "Text",
-    description: "A compact note or update.",
+    label: getProfileModuleDefinition("custom_text").label,
+    description: getProfileModuleDefinition("custom_text").description,
     icon: Type,
   },
   {
     type: "links",
-    label: "Links",
-    description: "A safe list of external links.",
+    label: getProfileModuleDefinition("links").label,
+    description: getProfileModuleDefinition("links").description,
     icon: LinkIcon,
   },
   {
     type: "featured_badges",
-    label: "Badges",
-    description: "A shelf of earned visible badges.",
+    label: getProfileModuleDefinition("featured_badges").label,
+    description: getProfileModuleDefinition("featured_badges").description,
     icon: BadgeCheck,
   },
 ];
@@ -599,7 +603,7 @@ export function ProfileCustomizationModal({
       return;
     }
 
-    if (!window.confirm(`Delete ${targetModule.title || moduleTypeLabel(targetModule.type)}?`)) {
+    if (!window.confirm(`Delete ${targetModule.title || moduleTypeMeta(targetModule.type).label}?`)) {
       return;
     }
 
@@ -1867,7 +1871,7 @@ function ModuleTile({
               </span>
             </span>
             <span className="mt-1 block break-words text-xs leading-5 text-muted">
-              {moduleSummary(module)}
+              {profileModuleSummary(module)}
             </span>
           </span>
         </button>
@@ -2352,7 +2356,11 @@ function PreviewPanel({
             : "profile-module-preview-mobile"
         }
       >
-        <ProfileModuleGrid badges={badges} modules={previewModules(drafts)} />
+        <ProfileModuleGrid
+          badges={badges}
+          maxColumns={2}
+          modules={previewModules(drafts)}
+        />
       </div>
     </section>
   );
@@ -2621,30 +2629,6 @@ function moduleTypeMeta(type: ProfileModuleType) {
   }
 
   return moduleTypes.find((moduleType) => moduleType.type === type) ?? fallback;
-}
-
-function moduleTypeLabel(type: ProfileModuleType): string {
-  return moduleTypeMeta(type)?.label ?? "Module";
-}
-
-function moduleSummary(module: ProfileModule): string {
-  if (module.type === "links") {
-    const count = module.config.links?.length ?? 0;
-    return count === 1 ? "1 link" : `${count} links`;
-  }
-
-  if (module.type === "featured_badges") {
-    const count = module.config.userBadgeIds?.length ?? 0;
-    return count === 1 ? "1 selected badge" : `${count} selected badges`;
-  }
-
-  const body = (module.config.body ?? "").trim();
-
-  if (!body) {
-    return moduleTypeMeta(module.type)?.description ?? "Ready to edit.";
-  }
-
-  return body.length > 96 ? `${body.slice(0, 93)}...` : body;
 }
 
 function visibilityLabel(visibility: ProfileModuleVisibility): string {

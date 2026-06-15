@@ -1,10 +1,15 @@
 import { Sparkles } from "lucide-react";
-import { motion } from "motion/react";
 import { cn } from "../../lib/classNames";
-import { cardEntrance } from "../../lib/motionPresets";
+import {
+  profileModuleBadges,
+  profileModuleFallbackTitle,
+  profileModuleGridSize,
+  renderableProfileModules,
+} from "../../lib/profileModuleRegistry";
 import type { BadgeRarity, ProfileModule, UserBadge } from "../../lib/types";
 import { ApiStateNotice } from "../ui/ApiStateNotice";
 import { EmptyState } from "../ui/EmptyState";
+import { ProfileGrid, ProfileGridModule, ProfileGridSection } from "./ProfileGrid";
 
 type ProfileModulesSectionProps = {
   badges: UserBadge[];
@@ -21,9 +26,7 @@ export function ProfileModulesSection({
   loading,
   modules,
 }: ProfileModulesSectionProps) {
-  const renderableModules = modules.filter((module) =>
-    profileModuleHasContent(module, badges),
-  );
+  const renderableModules = renderableProfileModules(modules, badges);
 
   if (loading && !isOwnProfile) {
     return null;
@@ -38,21 +41,7 @@ export function ProfileModulesSection({
   }
 
   return (
-    <motion.section
-      aria-label="Personal space"
-      className="border-t border-line pt-4"
-      data-testid="profile-modules"
-      variants={cardEntrance}
-      custom={2}
-      initial="hidden"
-      animate="show"
-    >
-      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <h2 className="text-base font-semibold text-text">Personal space</h2>
-        </div>
-      </div>
-
+    <ProfileGridSection title="Personal space" testId="profile-modules">
       {loading ? (
         <ApiStateNotice
           kind="loading"
@@ -80,34 +69,43 @@ export function ProfileModulesSection({
       {!loading && !error && renderableModules.length > 0 ? (
         <ProfileModuleGrid modules={renderableModules} badges={badges} />
       ) : null}
-    </motion.section>
+    </ProfileGridSection>
   );
 }
 
 type ProfileModuleGridProps = {
   badges: UserBadge[];
+  maxColumns?: 2 | 3;
   modules: ProfileModule[];
 };
 
-export function ProfileModuleGrid({ badges, modules }: ProfileModuleGridProps) {
-  const renderableModules = modules.filter((module) =>
-    profileModuleHasContent(module, badges),
-  );
+export function ProfileModuleGrid({
+  badges,
+  maxColumns = 3,
+  modules,
+}: ProfileModuleGridProps) {
+  const renderableModules = renderableProfileModules(modules, badges);
 
   if (renderableModules.length === 0) {
     return (
-      <div className="rounded-card border border-dashed border-line bg-canvas/45 p-4 text-sm text-muted">
-        No module content to preview.
-      </div>
+      <ProfileGrid maxColumns={maxColumns} testId="profile-module-grid">
+        <ProfileGridModule size="wide">
+          <div className="rounded-card border border-dashed border-line bg-canvas/45 p-4 text-sm text-muted">
+            No module content to preview.
+          </div>
+        </ProfileGridModule>
+      </ProfileGrid>
     );
   }
 
   return (
-    <div className="grid min-w-0 gap-3 md:grid-cols-2">
+    <ProfileGrid maxColumns={maxColumns} testId="profile-module-grid">
       {renderableModules.map((module) => (
-        <ProfileModuleCard key={module.id} module={module} badges={badges} />
+        <ProfileGridModule key={module.id} size={profileModuleGridSize(module)}>
+          <ProfileModuleCard module={module} badges={badges} />
+        </ProfileGridModule>
       ))}
-    </div>
+    </ProfileGrid>
   );
 }
 
@@ -121,7 +119,7 @@ export function ProfileModuleCard({ badges, module }: ProfileModuleCardProps) {
 
   return (
     <article
-      className="min-w-0 rounded-card border border-line bg-surface/72 p-3"
+      className="h-full min-w-0 rounded-card border border-line bg-surface/68 p-3"
       data-testid={`profile-module-${module.type}`}
     >
       <h3 className="text-sm font-semibold text-text">{title}</h3>
@@ -186,47 +184,6 @@ function ProfileModuleContent({ badges, module }: ProfileModuleCardProps) {
       ) : null}
     </div>
   );
-}
-
-function profileModuleHasContent(
-  module: ProfileModule,
-  badges: UserBadge[],
-): boolean {
-  if (module.type === "links") {
-    return (module.config.links ?? []).length > 0;
-  }
-
-  if (module.type === "featured_badges") {
-    return profileModuleBadges(module, badges).length > 0;
-  }
-
-  return typeof module.config.body === "string" && module.config.body.trim() !== "";
-}
-
-function profileModuleBadges(module: ProfileModule, badges: UserBadge[]): UserBadge[] {
-  const selectedIds = new Set(module.config.userBadgeIds ?? []);
-
-  if (selectedIds.size === 0) {
-    return [];
-  }
-
-  return badges.filter((badge) => selectedIds.has(badge.id));
-}
-
-function profileModuleFallbackTitle(type: ProfileModule["type"]): string {
-  if (type === "about") {
-    return "About";
-  }
-
-  if (type === "links") {
-    return "Links";
-  }
-
-  if (type === "featured_badges") {
-    return "Featured badges";
-  }
-
-  return "Note";
 }
 
 function rarityChipClass(rarity: BadgeRarity): string {

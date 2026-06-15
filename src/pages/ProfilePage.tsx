@@ -18,6 +18,11 @@ import { motion } from "motion/react";
 import { lazy, Suspense, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
+import {
+  ProfileGrid,
+  ProfileGridModule,
+  ProfileGridSection,
+} from "../components/social/ProfileGrid";
 import { PostCard } from "../components/social/PostCard";
 import { ProfileHeader } from "../components/social/ProfileHeader";
 import { ProfileModulesSection } from "../components/social/ProfileModules";
@@ -893,48 +898,44 @@ function ProfileFeaturedContentSection({
   }
 
   return (
-    <motion.section
-      aria-label="Featured content"
-      className="border-t border-line pt-4"
-      data-testid="profile-featured-content"
-      variants={cardEntrance}
-      custom={2}
-      initial="hidden"
-      animate="show"
+    <ProfileGridSection
+      title="Featured"
+      testId="profile-featured-content"
+      action={
+        hasFeaturedContent && isOwnProfile && onCustomize ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="shadow-none"
+            icon={<Sparkles aria-hidden="true" size={15} />}
+            onClick={onCustomize}
+          >
+            Change
+          </Button>
+        ) : null
+      }
     >
       {hasFeaturedContent ? (
-        <>
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-base font-semibold text-text">Featured</h2>
-            {isOwnProfile && onCustomize ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="shadow-none"
-                icon={<Sparkles aria-hidden="true" size={15} />}
-                onClick={onCustomize}
-              >
-                Change
-              </Button>
-            ) : null}
-          </div>
-          <div
-            className={cn(
-              "grid gap-3",
-              featuredPost && featuredRoom
-                ? "lg:grid-cols-[minmax(0,1.15fr)_minmax(17rem,0.85fr)]"
-                : "max-w-3xl",
-            )}
-          >
-            {featuredPost ? <FeaturedPostCard post={featuredPost} /> : null}
-            {featuredRoom ? <FeaturedRoomCard room={featuredRoom} /> : null}
-          </div>
-        </>
+        <ProfileGrid
+          className={featuredPost && featuredRoom ? undefined : "max-w-3xl"}
+          testId="profile-featured-grid"
+        >
+          {featuredPost ? (
+            <ProfileGridModule size={featuredRoom ? "wide" : "feature"}>
+              <FeaturedPostCard post={featuredPost} />
+            </ProfileGridModule>
+          ) : null}
+          {featuredRoom ? (
+            <ProfileGridModule size={featuredPost ? "small" : "wide"}>
+              <FeaturedRoomCard room={featuredRoom} />
+            </ProfileGridModule>
+          ) : null}
+        </ProfileGrid>
       ) : (
         <FeaturedEmptyPrompt onCustomize={onCustomize} />
       )}
-    </motion.section>
+    </ProfileGridSection>
   );
 }
 

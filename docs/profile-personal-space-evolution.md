@@ -541,6 +541,74 @@ Deferred after Phase 2:
   presets, custom theme presets, integrations, embeds, analytics, monetization,
   and module marketplaces.
 
+### Implementation Note - 2026-06-15 Profiles v3 Phase 3
+
+Issue [#34](https://github.com/thiabun/thia.lol/issues/34) adds the first
+Personal Space grid foundation. This pass is frontend architecture only: it
+does not add drag-and-drop, custom layouts, custom HTML/CSS/JS, gallery/music
+modules, embeds, marketplace behavior, or new backend persistence.
+
+Grid architecture:
+
+- `ProfileGridSection` owns the compact section shell used by profile-space
+  surfaces.
+- `ProfileGrid` owns the responsive grid: one column on mobile, two columns on
+  tablet, and at most three columns on wide desktop.
+- `ProfileGridModule` owns module span metadata through a small size contract,
+  while module cards keep their own content and safety rendering.
+- Featured post/room cards and existing profile modules now render through
+  these primitives, so future modules can join the same layout without
+  rewriting the profile page.
+
+Module sizing model:
+
+- `small`: default one-column module for compact links, badges, and short notes.
+- `wide`: spans the tablet row and takes more desktop space for modules that
+  need readable text width, such as About or longer link/badge shelves.
+- `tall`: reserved for future modules that need vertical emphasis without
+  becoming masonry.
+- `feature`: reserved for primary highlights that should lead the grid.
+
+Module registry foundation:
+
+- `profileModuleRegistry` is the first shared registry for module label,
+  description, fallback title, default size, content checks, badge filtering,
+  and summaries.
+- Public rendering and owner preview both use this registry, reducing the risk
+  that a future module renders differently in preview and on the public profile.
+- Existing registry-backed module types remain `about`, `custom_text`, `links`,
+  and `featured_badges`.
+
+Future drag/drop considerations:
+
+- Drag-and-drop should attach to persisted module order, not invent visual-only
+  layout positions.
+- Keyboard-safe up/down ordering remains the baseline interaction until a
+  drag/drop library is explicitly approved.
+- Any future drag/drop implementation must preserve mobile single-column order,
+  public safety action visibility, and bounded desktop columns.
+
+Future persistence requirements:
+
+- The current database persists module type, config, visibility, status, and
+  order, but not grid size, layout preset, or featured placement.
+- If owners later choose sizes or layouts, store allowlisted size/preset tokens
+  per module or profile. Do not store CSS classes, arbitrary grid coordinates,
+  or raw layout code.
+- Public reads must continue to fail closed when modules, media, referenced
+  posts, referenced rooms, or badge grants are hidden, deleted, unavailable, or
+  moderated.
+
+Future gallery and music integration points:
+
+- Gallery should become a registry-backed module after media-library,
+  moderation, thumbnail, storage, and takedown rules are defined. It should
+  likely start as `wide` or `feature` depending on item count, with stable
+  aspect ratios and lazy-loaded thumbnails.
+- Music should become a registry-backed link-first module before any playback
+  or embed behavior. It must remain user-initiated, honest about whether it is
+  a static link or API-backed card, and safe under reduced-motion/privacy rules.
+
 Implemented API and storage:
 
 - Public reads: `GET /api/profiles/:handle`, `/posts`, `/replies`, `/reblogs`, `/rooms`, `/badges`, `/followers`, and `/following`.

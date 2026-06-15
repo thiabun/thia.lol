@@ -27,6 +27,9 @@ test("visitor profile renders featured post and room above modules", async ({ pa
 
   const featured = page.getByTestId("profile-featured-content");
   await expect(featured).toBeVisible();
+  await expect(featured.getByTestId("profile-featured-grid")).toBeVisible();
+  await expect(featured.locator('[data-profile-grid-size="wide"]')).toHaveCount(1);
+  await expect(featured.locator('[data-profile-grid-size="small"]')).toHaveCount(1);
   await expect(featured.getByRole("heading", { name: "Featured post" })).toBeVisible();
   await expect(featured).toContainText("A launch note worth keeping close.");
   await expect(featured.getByRole("heading", { name: "Featured room" })).toBeVisible();
