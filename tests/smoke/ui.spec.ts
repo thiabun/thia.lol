@@ -268,6 +268,12 @@ test("mobile room route uses one contextual Post action", async ({ page }) => {
   await page.goto("/rooms/sun-room");
 
   await expect(page.getByTestId("room-page")).toBeVisible();
+  await expect(page.getByTestId("room-header")).toBeVisible();
+  await expect(page.getByTestId("room-meta")).toContainText("0 posts");
+  await expect(page.getByTestId("room-meta")).toContainText("1 member");
+  await expect(page.getByText("No activity yet")).toHaveCount(0);
+  await expect(page.getByText("No room rules have been added yet.")).toHaveCount(0);
+  await expect(page.getByText("No extra moderators yet.")).toHaveCount(0);
   await expect(page.getByTestId("room-post-button")).toBeHidden();
 
   const nav = page.getByTestId("mobile-nav");

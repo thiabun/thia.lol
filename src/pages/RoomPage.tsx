@@ -427,58 +427,81 @@ function RoomHeader({
 
   return (
     <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
-      <Panel className="overflow-hidden">
-        <div style={{ ["--room-accent" as string]: room.accent }}>
-          {room.bannerUrl ? (
-            <img
-              alt=""
-              src={room.bannerUrl}
-              className="h-40 w-full object-cover sm:h-56"
-            />
-          ) : (
-            <div
-              className="h-20"
-              style={{
-                background:
-                  "linear-gradient(90deg, var(--room-accent), color-mix(in oklab, var(--room-accent) 28%, transparent))",
-              }}
-            />
-          )}
-        </div>
-        <div className="p-5 sm:p-6">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0 max-w-3xl">
+      <Panel
+        className="overflow-hidden"
+        data-testid="room-header"
+        style={{ ["--room-accent" as string]: room.accent }}
+      >
+        {room.bannerUrl ? (
+          <img alt="" src={room.bannerUrl} className="h-24 w-full object-cover sm:h-28" />
+        ) : null}
+        <div className="p-4 sm:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex min-w-0 flex-1 gap-3">
               <div
-                className="-mt-14 mb-4 grid size-24 place-items-center overflow-hidden rounded-panel border border-white/50 bg-surface shadow-lift"
+                className="grid size-14 shrink-0 place-items-center overflow-hidden rounded-card border bg-canvas/65 shadow-inner-soft sm:size-16"
                 style={{
+                  borderColor:
+                    "color-mix(in oklab, var(--room-accent) 42%, var(--app-line))",
                   background:
-                    "linear-gradient(135deg, color-mix(in oklab, var(--room-accent) 54%, transparent), var(--app-surface))",
-                  ["--room-accent" as string]: room.accent,
+                    "linear-gradient(135deg, color-mix(in oklab, var(--room-accent) 34%, transparent), var(--app-canvas))",
                 }}
               >
                 {room.iconUrl ? (
                   <img alt="" src={room.iconUrl} className="size-full object-cover" />
                 ) : (
-                  <Radio aria-hidden="true" size={30} className="text-text" />
+                  <Radio aria-hidden="true" size={22} className="text-text" />
                 )}
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Badge tone="leaf">room</Badge>
-                {room.myRoomRole ? <Badge tone="warm">{roleLabel(room.myRoomRole)}</Badge> : null}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="min-w-0 text-2xl font-semibold tracking-normal text-text sm:text-3xl">
+                    {room.name}
+                  </h1>
+                  {room.myRoomRole ? (
+                    <Badge className="min-h-6 px-2 text-[0.7rem]" tone="warm">
+                      {roleLabel(room.myRoomRole)}
+                    </Badge>
+                  ) : null}
+                </div>
+                <p className="mt-0.5 text-sm text-muted">/{room.slug}</p>
+                {room.description || room.summary ? (
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
+                    {room.description || room.summary}
+                  </p>
+                ) : null}
+                <div
+                  className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-muted"
+                  data-testid="room-meta"
+                >
+                  <RoomMetaItem icon={MessageCircle}>
+                    {formatCountWithUnit(postCount, "post")}
+                  </RoomMetaItem>
+                  <RoomMetaItem icon={UsersRound}>
+                    {formatCountWithUnit(room.memberCount, "member")}
+                  </RoomMetaItem>
+                  {room.latestActivityAt ? (
+                    <RoomMetaItem icon={Clock3}>
+                      {formatActivityTime(room.latestActivityAt)}
+                    </RoomMetaItem>
+                  ) : null}
+                  {room.owner ? (
+                    <RoomMetaItem icon={UserRound}>
+                      <span>by </span>
+                      <InlineUserProfileLink user={room.owner}>
+                        @{room.owner.handle}
+                      </InlineUserProfileLink>
+                    </RoomMetaItem>
+                  ) : null}
+                </div>
               </div>
-              <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text sm:text-4xl">
-                {room.name}
-              </h1>
-              <p className="mt-1 text-base text-muted">/{room.slug}</p>
-              <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
-                {room.description || room.summary}
-              </p>
             </div>
-            <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row lg:flex-col">
+            <div className="flex w-full shrink-0 flex-wrap gap-2 sm:w-auto lg:justify-end">
               {userSignedIn ? (
                 <Button
                   type="button"
                   variant={room.joinedByMe ? "secondary" : "primary"}
+                  size="sm"
                   className="w-full sm:w-auto"
                   data-testid="room-join-button"
                   disabled={Boolean(pendingAction) || isOwner}
@@ -490,6 +513,7 @@ function RoomHeader({
               ) : null}
               <Button
                 type="button"
+                size="sm"
                 className="hidden w-full sm:inline-flex sm:w-auto"
                 data-testid="room-post-button"
                 icon={<PenLine aria-hidden="true" size={17} />}
@@ -501,6 +525,7 @@ function RoomHeader({
                 <Button
                   type="button"
                   variant="secondary"
+                  size="sm"
                   className="w-full sm:w-auto"
                   data-testid="edit-room-button"
                   icon={<Settings aria-hidden="true" size={17} />}
@@ -511,51 +536,18 @@ function RoomHeader({
               ) : null}
               {canReport ? (
                 <ReportForm
-                  className="w-full sm:w-auto"
+                  className="shrink-0"
                   targetType="room"
                   targetId={room.id}
                   reportedUserId={room.owner?.id}
                   title="Report room"
                   explainer={`This reports /${room.slug} to moderators.`}
-                  triggerClassName="w-full sm:w-auto"
+                  triggerMode="icon"
+                  triggerLabel="Report room"
+                  triggerClassName="size-9 rounded-full"
                 />
               ) : null}
             </div>
-          </div>
-
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:max-w-4xl">
-            <RoomMetric
-              icon={MessageCircle}
-              label="Posts"
-              value={formatCountWithUnit(postCount, "post")}
-            />
-            <RoomMetric
-              icon={UsersRound}
-              label="Members"
-              value={formatCountWithUnit(room.memberCount, "member")}
-            />
-            <RoomMetric
-              icon={Clock3}
-              label="Latest"
-              value={
-                room.latestActivityAt
-                  ? formatActivityTime(room.latestActivityAt)
-                  : "No activity yet"
-              }
-            />
-            <RoomMetric
-              icon={UserRound}
-              label="Owner"
-              value={
-                room.owner ? (
-                  <InlineUserProfileLink user={room.owner}>
-                    @{room.owner.handle}
-                  </InlineUserProfileLink>
-                ) : (
-                  "Unassigned"
-                )
-              }
-            />
           </div>
         </div>
       </Panel>
@@ -573,49 +565,49 @@ function RoomAbout({
   room: Room;
 }) {
   const moderators = members.filter((member) => member.role === "moderator");
+  const rules = room.rules?.trim() ?? "";
+  const showRules = rules.length > 0;
+  const showModerators = moderators.length > 0 || Boolean(membersError);
+
+  if (!showRules && !showModerators) {
+    return null;
+  }
 
   return (
-    <section className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]" aria-label="Room details">
-      <Panel className="p-5">
-        <div className="flex items-center gap-2">
-          <ScrollText aria-hidden="true" size={17} className="text-muted" />
-          <h2 className="text-base font-semibold text-text">Room rules</h2>
-        </div>
-        {room.rules ? (
-          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted">
-            {room.rules}
+    <section className="grid gap-3 lg:grid-cols-2" aria-label="Room details">
+      {showRules ? (
+        <Panel className="p-4">
+          <div className="flex items-center gap-2">
+            <ScrollText aria-hidden="true" size={16} className="text-muted" />
+            <h2 className="text-sm font-semibold text-text">Rules</h2>
+          </div>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">
+            {rules}
           </p>
-        ) : (
-          <p className="mt-3 text-sm leading-6 text-muted">
-            No room rules have been added yet.
-          </p>
-        )}
-      </Panel>
+        </Panel>
+      ) : null}
 
-      <Panel className="p-5">
-        <div className="flex items-center gap-2">
-          <Shield aria-hidden="true" size={17} className="text-muted" />
-          <h2 className="text-base font-semibold text-text">Moderators</h2>
-        </div>
-        <div className="mt-3 space-y-3">
-          {room.owner ? (
-            <RoomMemberRow user={room.owner} role="owner" />
-          ) : (
-            <p className="text-sm text-muted">Owner unassigned</p>
-          )}
-          {moderators.map((member) => (
-            <RoomMemberRow key={member.id} user={member.user} role={member.role} />
-          ))}
-          {moderators.length === 0 ? (
-            <p className="text-sm text-muted">No extra moderators yet.</p>
-          ) : null}
-          {membersError ? (
-            <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
-              Members are not available.
-            </p>
-          ) : null}
-        </div>
-      </Panel>
+      {showModerators ? (
+        <Panel className="p-4">
+          <div className="flex items-center gap-2">
+            <Shield aria-hidden="true" size={16} className="text-muted" />
+            <h2 className="text-sm font-semibold text-text">Moderators</h2>
+          </div>
+          <div className="mt-2 space-y-2">
+            {moderators.length > 0 && room.owner ? (
+              <RoomMemberRow user={room.owner} role="owner" />
+            ) : null}
+            {moderators.map((member) => (
+              <RoomMemberRow key={member.id} user={member.user} role={member.role} />
+            ))}
+            {membersError ? (
+              <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
+                Members are not available.
+              </p>
+            ) : null}
+          </div>
+        </Panel>
+      ) : null}
     </section>
   );
 }
@@ -628,30 +620,27 @@ function RoomMemberRow({
   user: RoomMember["user"];
 }) {
   return (
-    <div className="flex flex-col items-start gap-3 rounded-card border border-line bg-canvas/45 p-3 sm:flex-row sm:items-center sm:justify-between">
-      <UserIdentityLink user={user} showAvatar={false} className="flex-1" />
-      <Badge tone={role === "owner" ? "warm" : "cool"}>{roleLabel(role)}</Badge>
+    <div className="flex items-center justify-between gap-2 rounded-card border border-line bg-canvas/35 px-3 py-2">
+      <UserIdentityLink user={user} showAvatar={false} className="min-w-0 flex-1" />
+      <Badge className="min-h-6 px-2 text-[0.7rem]" tone={role === "owner" ? "warm" : "cool"}>
+        {roleLabel(role)}
+      </Badge>
     </div>
   );
 }
 
-function RoomMetric({
+function RoomMetaItem({
+  children,
   icon: Icon,
-  label,
-  value,
 }: {
+  children: ReactNode;
   icon: typeof MessageCircle;
-  label: string;
-  value: ReactNode;
 }) {
   return (
-    <div className="rounded-card border border-line bg-canvas/50 p-3">
-      <div className="flex items-center gap-2 text-xs text-muted">
-        <Icon aria-hidden="true" size={14} />
-        {label}
-      </div>
-      <p className="mt-2 text-sm font-semibold text-text">{value}</p>
-    </div>
+    <span className="inline-flex items-center gap-1.5">
+      <Icon aria-hidden="true" size={14} />
+      <span className="min-w-0">{children}</span>
+    </span>
   );
 }
 
