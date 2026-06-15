@@ -297,7 +297,7 @@ test("chat page is honest about sign-in state", async ({ page }) => {
   await page.goto("/chat");
 
   await expect(page.getByRole("heading", { name: "Chat" })).toBeVisible();
-  await expect(page.getByText("Sign in to see your messages.")).toBeVisible();
+  await expect(page.getByText("Sign in to see messages.")).toBeVisible();
 });
 
 test("public profile route loads profile tabs", async ({ page }) => {

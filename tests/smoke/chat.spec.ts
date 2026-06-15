@@ -15,7 +15,7 @@ test("chat route shows an honest logged-out state and keeps Chat in nav", async 
   await page.goto("/chat");
 
   await expect(page.getByRole("heading", { name: "Chat", exact: true })).toBeVisible();
-  await expect(page.getByText("Sign in to see your messages.")).toBeVisible();
+  await expect(page.getByText("Sign in to see messages.")).toBeVisible();
   await expect(page.getByRole("link", { name: "Sign in" })).toBeVisible();
 
   const nav = page.getByTestId("desktop-nav");
@@ -140,7 +140,7 @@ test("chat moot picker shows empty state when the user has no moots", async ({
 
   await expect(page.getByTestId("chat-moot-picker")).toBeVisible();
   await expect(page.getByTestId("chat-moot-empty")).toContainText(
-    "Follow each other to start a chat.",
+    "Follow each other to chat.",
   );
 });
 

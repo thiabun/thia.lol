@@ -7,17 +7,18 @@ test("/search renders an empty query state", async ({ page }) => {
   await page.goto("/search");
 
   await expect(page.getByTestId("search-page")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Search thia.lol." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Search", exact: true })).toBeVisible();
   await expect(page.getByLabel("Search thia.lol")).toBeVisible();
-  await expect(page.getByText("Start with a name or room")).toBeVisible();
+  await expect(page.getByText("Start with a name or room")).toHaveCount(0);
+  await expect(page.getByText("Search uses public profile and room data only.")).toHaveCount(0);
 });
 
 test("/search shows the too-short query state", async ({ page }) => {
   await mockShellRequests(page);
   await page.goto("/search?q=t");
 
-  await expect(page.getByText("Keep typing")).toBeVisible();
-  await expect(page.getByText("Enter at least 2 characters to search.")).toBeVisible();
+  await expect(page.getByText("Use at least 2 characters.")).toBeVisible();
+  await expect(page.getByText("Keep typing")).toHaveCount(0);
 });
 
 test("/search shows successful profile and room results", async ({ page }) => {
@@ -72,7 +73,7 @@ test("/search shows successful profile and room results", async ({ page }) => {
 
   await page.goto("/search?q=thi");
 
-  await expect(page.getByText('2 results for "thi"')).toBeVisible();
+  await expect(page.getByText("2 results")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Profiles" })).toBeVisible();
   await expect(page.getByTestId("search-profile-result")).toHaveCount(1);
   await expect(page.getByRole("link", { name: /Thia @thia/ })).toHaveAttribute(

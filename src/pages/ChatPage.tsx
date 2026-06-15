@@ -349,13 +349,14 @@ export function ChatPage() {
         <RouteHeader
           badge="private"
           badgeTone="cool"
+          className="p-4 sm:p-5"
           title="Chat"
-          description="Direct messages."
+          description="Messages."
         />
         <RouteStateNotice
           icon={MessageCircle}
-          title="Sign in to see your messages."
-          text="Chat is available after sign-in."
+          title="Sign in to see messages."
+          text="Chat requires sign-in."
           actions={<ButtonLink to="/login">Sign in</ButtonLink>}
         />
       </motion.div>
@@ -374,14 +375,15 @@ export function ChatPage() {
         <RouteHeader
           badge="private"
           badgeTone="cool"
+          className="p-4 sm:p-5"
           title="Chat"
-          description="Direct messages."
+          description="Messages."
         />
         <RouteStateNotice
           kind="loading"
           icon={LoaderCircle}
           title="Loading chat"
-          text="Messages are loading."
+          text="Loading messages."
         />
       </motion.div>
     );
@@ -399,17 +401,19 @@ export function ChatPage() {
         <RouteHeader
           badge="private"
           badgeTone="cool"
+          className="p-4 sm:p-5"
           title="Chat"
-          description="Direct messages."
+          description="Messages."
           actions={
             <>
               <Button
                 type="button"
+                size="sm"
                 icon={<UserPlus aria-hidden="true" size={16} />}
                 data-testid="chat-new-chat-button"
                 onClick={handleOpenPicker}
               >
-                Message a moot
+                New chat
               </Button>
               <Button
                 type="button"
@@ -439,7 +443,7 @@ export function ChatPage() {
           kind="loading"
           icon={LoaderCircle}
           title="Loading conversations"
-          text="Conversations are loading."
+          text="Loading chats."
         />
       ) : null}
 
@@ -454,10 +458,10 @@ export function ChatPage() {
               type="button"
               variant="secondary"
               icon={<RefreshCw aria-hidden="true" size={16} />}
+              aria-label="Retry loading conversations"
+              title="Retry loading conversations"
               onClick={() => void loadConversations()}
-            >
-              Try again
-            </Button>
+            />
           }
         />
       ) : null}
@@ -466,29 +470,30 @@ export function ChatPage() {
         <RouteStateNotice
           icon={Inbox}
           title="No chats yet"
-          text="Start with someone who follows you back."
+          text="Start with a moot."
           actions={
             <Button
               type="button"
+              size="sm"
               icon={<UserPlus aria-hidden="true" size={16} />}
               onClick={handleOpenPicker}
             >
-              Message a moot
+              New chat
             </Button>
           }
         />
       ) : null}
 
       {showConversationLayout ? (
-        <div className="grid gap-4 lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
-          <Panel className="max-h-[18rem] overflow-hidden lg:max-h-none">
-            <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
+        <div className="grid gap-3 lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)]">
+          <Panel className="max-h-[16rem] overflow-hidden lg:max-h-none">
+            <div className="flex items-center justify-between gap-3 border-b border-line px-3 py-2.5">
               <h2 className="text-sm font-semibold text-text">Conversations</h2>
               {conversationsLoading ? (
                 <span className="text-xs font-medium text-muted">Refreshing</span>
               ) : null}
             </div>
-            <div className="max-h-[calc(18rem-3rem)] divide-y divide-line overflow-y-auto lg:max-h-none" data-testid="chat-conversation-list">
+            <div className="max-h-[calc(16rem-2.75rem)] divide-y divide-line overflow-y-auto lg:max-h-none" data-testid="chat-conversation-list">
               {conversationsError ? (
                 <CompactStateNotice
                   className="m-3"
@@ -515,10 +520,10 @@ export function ChatPage() {
             </div>
           </Panel>
 
-          <Panel className="flex min-h-[24rem] flex-col overflow-hidden sm:min-h-[28rem] lg:min-h-[32rem]">
+          <Panel className="flex min-h-[22rem] flex-col overflow-hidden sm:min-h-[26rem] lg:min-h-[30rem]">
             {selectedConversation ? (
               <>
-                <div className="flex items-center gap-3 border-b border-line px-4 py-3">
+                <div className="flex items-center gap-3 border-b border-line px-3 py-2.5 sm:px-4">
                   <UserIdentityLink
                     user={selectedConversation.otherParticipant}
                     avatarSize="sm"
@@ -527,7 +532,7 @@ export function ChatPage() {
                 </div>
 
                 <div
-                  className="flex-1 space-y-3 overflow-y-auto px-3 py-4 sm:px-4"
+                  className="flex-1 space-y-3 overflow-y-auto px-3 py-3 sm:px-4"
                   data-testid="chat-message-list"
                 >
                   {messagesLoading ? (
@@ -565,26 +570,27 @@ export function ChatPage() {
                 </div>
 
                 <form
-                  className="border-t border-line p-3 sm:p-4"
+                  className="border-t border-line p-3"
                   data-testid="chat-message-composer"
                   onSubmit={(event) => void handleSend(event)}
                 >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                     <label className="sr-only" htmlFor="chat-message-body">
                       Write a message
                     </label>
                     <textarea
                       id="chat-message-body"
-                      className="min-h-12 flex-1 resize-none rounded-control border border-line bg-canvas/60 px-3 py-2 text-sm leading-6 text-text outline-none transition duration-fluid ease-fluid placeholder:text-muted focus:border-line-strong focus:ring-2 focus:ring-focus/30"
+                      className="min-h-10 flex-1 resize-none rounded-control border border-line bg-canvas/60 px-3 py-2 text-sm leading-6 text-text outline-none transition duration-fluid ease-fluid placeholder:text-muted focus:border-line-strong focus:ring-2 focus:ring-focus/30"
                       maxLength={maxMessageLength}
                       placeholder="Write a message"
-                      rows={2}
+                      rows={1}
                       value={body}
                       onChange={(event) => setBody(event.target.value)}
                     />
                     <Button
                       type="submit"
-                      className="min-h-12 w-full sm:w-auto"
+                      size="sm"
+                      className="min-h-10 w-full sm:w-auto"
                       disabled={body.trim() === "" || sending}
                       icon={<Send aria-hidden="true" size={16} />}
                     >
@@ -598,7 +604,7 @@ export function ChatPage() {
                 centered
                 icon={MessageCircle}
                 title="Choose a conversation"
-                text="Pick a chat from the list."
+                text="Select a chat."
               />
             )}
           </Panel>
@@ -657,8 +663,7 @@ function ChatMootPicker({
     <ModalSheet
       open
       onClose={onClose}
-      title="Message a moot"
-      description="Choose someone who follows you back."
+      title="New chat"
       closeLabel="Close picker"
       testId="chat-moot-picker"
       size="md"
@@ -668,13 +673,13 @@ function ChatMootPicker({
       bodyClassName="flex flex-col overflow-hidden p-0"
     >
       <div className="shrink-0 border-b border-line px-4 py-3 sm:px-5">
-        <label className="flex min-h-11 items-center gap-2 rounded-control border border-line bg-canvas/60 px-3 py-2 text-sm text-muted focus-within:border-line-strong focus-within:ring-2 focus-within:ring-focus/30">
+        <label className="flex min-h-10 items-center gap-2 rounded-control border border-line bg-canvas/60 px-3 py-2 text-sm text-muted focus-within:border-line-strong focus-within:ring-2 focus-within:ring-focus/30">
             <Search aria-hidden="true" size={16} />
             <span className="sr-only">Search moots</span>
             <input
               ref={searchInputRef}
               className="min-w-0 flex-1 bg-transparent text-text outline-none placeholder:text-muted"
-              placeholder="Search moots"
+              placeholder="Search"
               type="search"
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
@@ -689,7 +694,7 @@ function ChatMootPicker({
               icon={LoaderCircle}
               kind="loading"
               title="Loading moots"
-              text="Chat partners are loading."
+              text="Loading."
             />
           ) : null}
           {error ? (
@@ -699,10 +704,10 @@ function ChatMootPicker({
                   type="button"
                   variant="secondary"
                   icon={<RefreshCw aria-hidden="true" size={16} />}
+                  aria-label="Retry loading moots"
+                  title="Retry loading moots"
                   onClick={onRefresh}
-                >
-                  Try again
-                </Button>
+                />
               }
               className="m-4"
               icon={WifiOff}
@@ -718,7 +723,7 @@ function ChatMootPicker({
               icon={MessageCircle}
               testId="chat-moot-empty"
               title="No moots yet"
-              text="Follow each other to start a chat."
+              text="Follow each other to chat."
             />
           ) : null}
           {!loading && !error && moots.length > 0 && filteredMoots.length === 0 ? (
@@ -741,7 +746,7 @@ function ChatMootPicker({
                 return (
                   <div
                     key={moot.id}
-                    className="flex flex-col items-stretch gap-3 border-b border-line px-4 py-3 last:border-b-0 sm:flex-row sm:items-center"
+                    className="flex flex-col items-stretch gap-2 border-b border-line px-4 py-2.5 last:border-b-0 sm:flex-row sm:items-center"
                   >
                     <UserIdentityLink
                       user={moot}
@@ -749,7 +754,7 @@ function ChatMootPicker({
                       className="flex-1"
                     />
                     <button
-                      className="inline-flex min-h-11 w-full shrink-0 items-center justify-center rounded-control border border-line bg-canvas/70 px-3 py-2 text-sm font-semibold text-muted transition duration-fluid ease-fluid hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-wait disabled:opacity-70 sm:w-auto"
+                      className="inline-flex min-h-9 w-full shrink-0 items-center justify-center rounded-control border border-line bg-canvas/70 px-3 py-2 text-sm font-semibold text-muted transition duration-fluid ease-fluid hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-wait disabled:opacity-70 sm:w-auto"
                       aria-label={`${existingConversation ? "Open chat with" : "Message"} ${moot.displayName}`}
                       data-testid={`chat-moot-option-${moot.handle}`}
                       title={`${existingConversation ? "Open chat with" : "Message"} ${moot.displayName}`}
@@ -789,7 +794,7 @@ function ConversationButton({
 
   return (
     <div
-      className="group relative isolate flex min-h-[4.75rem] w-full flex-col items-stretch gap-2 px-4 py-3 text-left transition duration-fluid ease-fluid sm:flex-row sm:items-center sm:gap-3"
+      className="group relative isolate flex min-h-[4.25rem] w-full flex-col items-stretch gap-1.5 px-3 py-2.5 text-left transition duration-fluid ease-fluid sm:flex-row sm:items-center sm:gap-2.5"
       data-testid={`chat-conversation-row-${conversation.id}`}
     >
       <motion.button
@@ -813,7 +818,7 @@ function ConversationButton({
 
       <span
         className={cn(
-          "pointer-events-none absolute bottom-3 left-0 top-3 z-10 w-0.5 rounded-full bg-accent transition duration-fluid ease-fluid",
+          "pointer-events-none absolute bottom-2.5 left-0 top-2.5 z-10 w-0.5 rounded-full bg-accent transition duration-fluid ease-fluid",
           selected
             ? "opacity-100"
             : "opacity-0 group-hover:opacity-45 motion-reduce:transition-none",
@@ -821,11 +826,11 @@ function ConversationButton({
         aria-hidden="true"
       />
 
-      <div className="pointer-events-none relative z-10 flex min-w-0 shrink-0 items-center gap-3 sm:w-44">
+      <div className="pointer-events-none relative z-10 flex min-w-0 shrink-0 items-center gap-2.5 sm:w-40">
         <Link
           to={profilePath}
           aria-label={`${participant.displayName}'s profile`}
-          className="pointer-events-auto grid size-11 shrink-0 place-items-center rounded-full transition duration-fluid ease-fluid hover:scale-[1.03] hover:ring-2 hover:ring-accent/35 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:hover:scale-100"
+          className="pointer-events-auto grid size-10 shrink-0 place-items-center rounded-full transition duration-fluid ease-fluid hover:scale-[1.03] hover:ring-2 hover:ring-accent/35 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:hover:scale-100"
           data-testid={`chat-conversation-avatar-${conversation.id}`}
         >
           <Avatar user={participant} size="sm" />
@@ -848,7 +853,7 @@ function ConversationButton({
         </span>
       </div>
 
-      <div className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center justify-between gap-3 pl-14 text-muted transition duration-fluid ease-fluid group-hover:text-text sm:pl-0">
+      <div className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center justify-between gap-3 pl-[3.125rem] text-muted transition duration-fluid ease-fluid group-hover:text-text sm:pl-0">
         <span className="min-w-0">
           <span
             className="block truncate text-sm font-medium"

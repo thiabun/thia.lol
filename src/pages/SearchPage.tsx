@@ -1,4 +1,4 @@
-import { Search, SearchX } from "lucide-react";
+import { SearchX } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -6,12 +6,11 @@ import { Link, useSearchParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Avatar } from "../components/ui/Avatar";
-import { Badge } from "../components/ui/Badge";
 import { EmptyState } from "../components/ui/EmptyState";
 import { SearchField } from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
 import { getSearchResults } from "../lib/api";
-import { cardEntrance, pageEntrance } from "../lib/motionPresets";
+import { pageEntrance } from "../lib/motionPresets";
 import type { Room, SearchResults } from "../lib/types";
 
 const minimumQueryLength = 2;
@@ -101,12 +100,12 @@ export function SearchPage() {
     const count = profileResults.length + roomResults.length;
     const label = count === 1 ? "result" : "results";
 
-    return `${count} ${label} for "${activeResults.query}"`;
+    return `${count} ${label}`;
   }, [activeResults, hasResults, profileResults.length, roomResults.length]);
 
   return (
     <motion.div
-      className="mx-auto max-w-5xl space-y-6"
+      className="mx-auto max-w-4xl space-y-4"
       data-testid="search-page"
       variants={pageEntrance}
       initial="hidden"
@@ -118,51 +117,30 @@ export function SearchPage() {
         path="/search"
       />
 
-      <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
-        <Panel className="p-5 sm:p-6">
-          <div className="max-w-3xl">
-            <Badge tone="cool">search</Badge>
-            <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">
-              Search thia.lol.
-            </h1>
-            <p className="mt-3 text-base leading-7 text-muted">
-              Find public profiles and rooms by name, handle, slug, or description.
-            </p>
-          </div>
-          <SearchField
-            id="site-search"
-            label="Search thia.lol"
-            placeholder="Search profiles and rooms"
-            className="mt-5"
-            value={query}
-            autoComplete="off"
-            autoFocus
-            onChange={(event) => setQuery(event.currentTarget.value)}
-          />
-        </Panel>
-      </motion.div>
-
-      {!trimmedQuery ? (
-        <EmptyState
-          icon={Search}
-          title="Start with a name or room"
-          text="Search uses public profile and room data only."
+      <div className="space-y-3">
+        <h1 className="text-2xl font-semibold tracking-normal text-text sm:text-3xl">
+          Search
+        </h1>
+        <SearchField
+          id="site-search"
+          label="Search thia.lol"
+          placeholder="Profiles and rooms"
+          value={query}
+          autoComplete="off"
+          autoFocus
+          onChange={(event) => setQuery(event.currentTarget.value)}
         />
-      ) : null}
+      </div>
 
       {trimmedQuery && !queryReady ? (
-        <EmptyState
-          icon={Search}
-          title="Keep typing"
-          text={`Enter at least ${minimumQueryLength} characters to search.`}
-        />
+        <p className="text-sm text-muted">Use at least {minimumQueryLength} characters.</p>
       ) : null}
 
       {queryReady && loading ? (
         <ApiStateNotice
           kind="loading"
-          title="Searching profiles and rooms"
-          text="Looking through public profiles and rooms."
+          title="Searching"
+          text="Checking public profiles and rooms."
         />
       ) : null}
 
@@ -183,7 +161,7 @@ export function SearchPage() {
       ) : null}
 
       {queryReady && !loading && !activeError && hasResults ? (
-        <div className="space-y-6" aria-live="polite">
+        <div className="space-y-4" aria-live="polite">
           <p className="text-sm font-medium text-muted">{resultSummary}</p>
           {profileResults.length > 0 ? (
             <ResultGroup title="Profiles" count={profileResults.length}>
@@ -222,9 +200,9 @@ function ResultGroup({
   title: string;
 }) {
   return (
-    <section className="space-y-3" aria-label={title}>
+    <section className="space-y-2.5" aria-label={title}>
       <div className="flex items-center gap-2">
-        <h2 className="text-lg font-semibold text-text">{title}</h2>
+        <h2 className="text-base font-semibold text-text">{title}</h2>
         <span className="rounded-full bg-surface-strong px-2 py-0.5 text-xs font-medium text-muted">
           {count}
         </span>
@@ -245,16 +223,16 @@ function ProfileResult({
       className="block rounded-panel focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       data-testid="search-profile-result"
     >
-      <Panel interactive className="h-full p-4">
+      <Panel interactive className="h-full p-3">
         <div className="flex gap-3">
-          <Avatar user={profile.user} size="md" />
+          <Avatar user={profile.user} size="sm" />
           <div className="min-w-0">
             <h3 className="truncate text-sm font-semibold text-text">
               {profile.user.displayName}
             </h3>
             <p className="mt-0.5 truncate text-sm text-muted">@{profile.user.handle}</p>
             {profile.bioSnippet ? (
-              <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted">
+              <p className="mt-1.5 line-clamp-1 text-sm leading-6 text-muted">
                 {profile.bioSnippet}
               </p>
             ) : null}
@@ -272,14 +250,14 @@ function RoomResult({ room }: { room: Room }) {
       className="block rounded-panel focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       data-testid="search-room-result"
     >
-      <Panel interactive className="h-full p-4">
+      <Panel interactive className="h-full p-3">
         <div className="flex gap-3">
           <RoomIcon room={room} />
           <div className="min-w-0">
             <h3 className="truncate text-sm font-semibold text-text">{room.name}</h3>
             <p className="mt-0.5 truncate text-sm text-muted">/{room.slug}</p>
             {room.description || room.summary ? (
-              <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted">
+              <p className="mt-1.5 line-clamp-1 text-sm leading-6 text-muted">
                 {room.description || room.summary}
               </p>
             ) : null}
@@ -295,7 +273,7 @@ function RoomIcon({ room }: { room: Room }) {
     return (
       <img
         alt={room.name}
-        className="size-11 shrink-0 rounded-card border border-white/35 bg-surface object-cover shadow-soft"
+        className="size-10 shrink-0 rounded-card border border-white/35 bg-surface object-cover shadow-soft"
         src={room.iconUrl}
       />
     );
@@ -305,7 +283,7 @@ function RoomIcon({ room }: { room: Room }) {
     <div
       aria-label={room.name}
       role="img"
-      className="grid size-11 shrink-0 place-items-center rounded-card border border-white/35 bg-surface-strong text-sm font-semibold text-text shadow-soft"
+      className="grid size-10 shrink-0 place-items-center rounded-card border border-white/35 bg-surface-strong text-sm font-semibold text-text shadow-soft"
       title={room.name}
     >
       {room.name.trim().charAt(0).toUpperCase() || "#"}
