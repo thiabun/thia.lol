@@ -18,10 +18,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -46,7 +46,7 @@ jobs:
           node -e "const fs = require('node:fs'); fs.writeFileSync('dist/deploy-meta.json', JSON.stringify({ app: 'thia.lol', environment: 'production', commit: process.env.GITHUB_SHA, builtAt: new Date().toISOString() }, null, 2) + '\n');"
 
       - name: Deploy frontend to public_html
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
@@ -62,7 +62,7 @@ jobs:
             **/config.php
 
       - name: Deploy API to public_html/api
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
@@ -76,7 +76,7 @@ jobs:
             **/config.php
 
       - name: Deploy database migrations to public_html/api/migrations
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
