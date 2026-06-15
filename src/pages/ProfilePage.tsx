@@ -1,9 +1,12 @@
 import {
+  ArrowRight,
   Award,
   Bug,
   CalendarDays,
+  Heart,
   MessageCircle,
   Radio,
+  Repeat2,
   Reply,
   Shield,
   Sparkles,
@@ -13,7 +16,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { lazy, Suspense, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { PostCard } from "../components/social/PostCard";
 import { ProfileHeader } from "../components/social/ProfileHeader";
@@ -65,6 +68,8 @@ import { ApiClientError } from "../lib/apiClient";
 import { cn } from "../lib/classNames";
 import { formatShortDate } from "../lib/dates";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
+import { formatCountWithUnit } from "../lib/pluralize";
+import { safeProfileImageUrl } from "../lib/profileMedia";
 import type {
   BadgeDefinition,
   Post,
@@ -547,128 +552,130 @@ export function ProfilePage() {
 
   return (
     <motion.div
-      className="mx-auto max-w-5xl space-y-4 sm:space-y-5"
+      className="relative mx-auto max-w-5xl"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
     >
-      <PageMeta
-        title={`${profile.user.displayName} (@${profile.user.handle})`}
-        description={profile.bio}
-        path={`/@${profile.user.handle}`}
-      />
-      <ProfileHeader
-        profile={profile}
-        badgeCount={profileBadges.length}
-        featuredBadges={featuredBadges}
-        followError={activeFollowError}
-        followPosting={followPosting}
-        isOwnProfile={isOwnProfile}
-        messageToHandle={
-          status === "authenticated" &&
-          !isOwnProfile &&
-          !profile.blockedByMe &&
-          profile.isMoot
-            ? profile.user.handle
-            : undefined
-        }
-        profileControlBusy={profileControlBusy}
-        profileControlError={activeProfileControlError}
-        profileControlMessage={activeProfileControlMessage}
-        onBlockToggle={
-          status === "authenticated" && !isOwnProfile
-            ? handleBlockToggle
-            : undefined
-        }
-        onFollowToggle={handleFollowToggle}
-        onEditProfile={
-          isOwnProfile ? () => void handleOpenCustomization() : undefined
-        }
-        onMuteToggle={
-          status === "authenticated" && !isOwnProfile ? handleMuteToggle : undefined
-        }
-        onOpenPanel={setActivePanel}
-        showChatHint={
-          status === "authenticated" &&
-          !isOwnProfile &&
-          !profile.blockedByMe &&
-          !profile.isMoot
-        }
-      />
-      {!isOwnProfile ? (
-        <motion.div variants={cardEntrance} custom={1} initial="hidden" animate="show">
-          <ReportForm
-            targetType="profile"
-            targetId={profile.user.id}
-            reportedUserId={profile.user.id}
-            title="Report profile"
-            explainer={`This reports @${profile.user.handle}'s profile to moderators.`}
-          />
-        </motion.div>
-      ) : null}
-      {isOwnProfile && customizingProfile ? (
-        <Suspense
-          fallback={
-            <ProfileCustomizationLoadingSheet
-              onClose={() => setCustomizingProfileHandle(undefined)}
-            />
+      <ProfilePersonalBackdrop profile={profile} />
+      <div className="relative z-10 space-y-4 sm:space-y-5">
+        <PageMeta
+          title={`${profile.user.displayName} (@${profile.user.handle})`}
+          description={profile.bio}
+          path={`/@${profile.user.handle}`}
+        />
+        <ProfileHeader
+          profile={profile}
+          badgeCount={profileBadges.length}
+          featuredBadges={featuredBadges}
+          followError={activeFollowError}
+          followPosting={followPosting}
+          isOwnProfile={isOwnProfile}
+          messageToHandle={
+            status === "authenticated" &&
+            !isOwnProfile &&
+            !profile.blockedByMe &&
+            profile.isMoot
+              ? profile.user.handle
+              : undefined
           }
+          profileControlBusy={profileControlBusy}
+          profileControlError={activeProfileControlError}
+          profileControlMessage={activeProfileControlMessage}
+          onBlockToggle={
+            status === "authenticated" && !isOwnProfile
+              ? handleBlockToggle
+              : undefined
+          }
+          onFollowToggle={handleFollowToggle}
+          onEditProfile={
+            isOwnProfile ? () => void handleOpenCustomization() : undefined
+          }
+          onMuteToggle={
+            status === "authenticated" && !isOwnProfile ? handleMuteToggle : undefined
+          }
+          onOpenPanel={setActivePanel}
+          showChatHint={
+            status === "authenticated" &&
+            !isOwnProfile &&
+            !profile.blockedByMe &&
+            !profile.isMoot
+          }
+        />
+        {!isOwnProfile ? (
+          <motion.div variants={cardEntrance} custom={1} initial="hidden" animate="show">
+            <ReportForm
+              targetType="profile"
+              targetId={profile.user.id}
+              reportedUserId={profile.user.id}
+              title="Report profile"
+              explainer={`This reports @${profile.user.handle}'s profile to moderators.`}
+            />
+          </motion.div>
+        ) : null}
+        {isOwnProfile && customizingProfile ? (
+          <Suspense
+            fallback={
+              <ProfileCustomizationLoadingSheet
+                onClose={() => setCustomizingProfileHandle(undefined)}
+              />
+            }
+          >
+            <ProfileCustomizationModal
+              key={`${profile.user.handle}-${profile.updatedAt ?? ""}`}
+              badges={profileBadges}
+              featuredOptionsError={
+                featuredOptionState?.handle === normalizedHandle
+                  ? featuredOptionState.error
+                  : undefined
+              }
+              featuredOptionsLoading={moduleEditorLoading}
+              featuredPostOptions={
+                featuredOptionState?.handle === normalizedHandle
+                  ? featuredOptionState.posts
+                  : postsState.data ?? []
+              }
+              featuredRoomOptions={
+                featuredOptionState?.handle === normalizedHandle
+                  ? featuredOptionState.rooms
+                  : eligibleFeaturedRooms(profileRooms, user?.id)
+              }
+              initialSection={customizationInitialSection}
+              moduleError={moduleEditorError}
+              moduleLoading={moduleEditorLoading}
+              modules={ownerModules}
+              profile={profile}
+              onClose={() => setCustomizingProfileHandle(undefined)}
+              onCreateModule={handleCreateModule}
+              onDeleteModule={handleDeleteModule}
+              onReorderModules={handleReorderModules}
+              onSaveFeaturedContent={handleFeaturedContentSave}
+              onSaveProfile={handleProfileSave}
+              onUpdateModule={handleUpdateModule}
+              onUpload={handleProfileImageUpload}
+            />
+          </Suspense>
+        ) : null}
+        <ProfileFeaturedContentSection
+          isOwnProfile={isOwnProfile}
+          profile={profile}
+          onCustomize={isOwnProfile ? () => void handleOpenCustomization("featured") : undefined}
+        />
+        <ProfileModulesSection
+          badges={profileBadges}
+          error={modulesState.error}
+          isOwnProfile={isOwnProfile}
+          loading={modulesState.loading}
+          modules={publicModules}
+        />
+        <motion.div
+          className="border-t border-line pt-4"
+          variants={cardEntrance}
+          custom={2}
+          initial="hidden"
+          animate="show"
+          data-testid="profile-activity"
         >
-          <ProfileCustomizationModal
-            key={`${profile.user.handle}-${profile.updatedAt ?? ""}`}
-            badges={profileBadges}
-            featuredOptionsError={
-              featuredOptionState?.handle === normalizedHandle
-                ? featuredOptionState.error
-                : undefined
-            }
-            featuredOptionsLoading={moduleEditorLoading}
-            featuredPostOptions={
-              featuredOptionState?.handle === normalizedHandle
-                ? featuredOptionState.posts
-                : postsState.data ?? []
-            }
-            featuredRoomOptions={
-              featuredOptionState?.handle === normalizedHandle
-                ? featuredOptionState.rooms
-                : eligibleFeaturedRooms(profileRooms, user?.id)
-            }
-            initialSection={customizationInitialSection}
-            moduleError={moduleEditorError}
-            moduleLoading={moduleEditorLoading}
-            modules={ownerModules}
-            profile={profile}
-            onClose={() => setCustomizingProfileHandle(undefined)}
-            onCreateModule={handleCreateModule}
-            onDeleteModule={handleDeleteModule}
-            onReorderModules={handleReorderModules}
-            onSaveFeaturedContent={handleFeaturedContentSave}
-            onSaveProfile={handleProfileSave}
-            onUpdateModule={handleUpdateModule}
-            onUpload={handleProfileImageUpload}
-          />
-        </Suspense>
-      ) : null}
-      <ProfileFeaturedContentSection
-        isOwnProfile={isOwnProfile}
-        profile={profile}
-        onCustomize={isOwnProfile ? () => void handleOpenCustomization("featured") : undefined}
-      />
-      <ProfileModulesSection
-        badges={profileBadges}
-        error={modulesState.error}
-        isOwnProfile={isOwnProfile}
-        loading={modulesState.loading}
-        modules={publicModules}
-      />
-      <motion.div
-        className="border-t border-line pt-4"
-        variants={cardEntrance}
-        custom={2}
-        initial="hidden"
-        animate="show"
-        data-testid="profile-activity"
-      >
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-base font-semibold text-text">Activity</h2>
@@ -753,6 +760,7 @@ export function ProfilePage() {
           )}
         />
       ) : null}
+      </div>
     </motion.div>
   );
 }
@@ -840,6 +848,31 @@ function eligibleFeaturedRooms(rooms: Room[], userId: number | undefined): Room[
   });
 }
 
+function ProfilePersonalBackdrop({ profile }: { profile: Profile }) {
+  const imageUrl =
+    safeProfileImageUrl(profile.profileBackground) ?? safeProfileImageUrl(profile.bannerUrl);
+
+  if (!imageUrl) {
+    return null;
+  }
+
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-x-[-0.75rem] top-[-1.25rem] z-0 h-64 overflow-hidden rounded-[1.25rem] sm:inset-x-[-1.5rem] sm:h-80"
+      data-testid="profile-personal-backdrop"
+    >
+      <img
+        alt=""
+        className="size-full scale-105 object-cover opacity-[0.18] blur-xl sm:opacity-[0.2]"
+        src={imageUrl}
+      />
+      <div className="absolute inset-0 bg-gradient-to-b from-canvas/20 via-canvas/76 to-canvas" />
+      <div className="absolute inset-0 bg-gradient-to-r from-surface/82 via-transparent to-surface/82" />
+    </div>
+  );
+}
+
 type ProfileFeaturedContentSectionProps = {
   isOwnProfile: boolean;
   onCustomize?: (() => void) | undefined;
@@ -853,79 +886,160 @@ function ProfileFeaturedContentSection({
 }: ProfileFeaturedContentSectionProps) {
   const featuredPost = profile.featuredPost;
   const featuredRoom = profile.featuredRoom;
+  const hasFeaturedContent = Boolean(featuredPost || featuredRoom);
 
-  if (!featuredPost && !featuredRoom && !isOwnProfile) {
+  if (!hasFeaturedContent && !isOwnProfile) {
     return null;
   }
 
   return (
     <motion.section
       aria-label="Featured content"
-      className="border-t border-line pt-5"
+      className="border-t border-line pt-4"
       data-testid="profile-featured-content"
       variants={cardEntrance}
       custom={2}
       initial="hidden"
       animate="show"
     >
-      <div className="space-y-5">
-        {featuredPost ? (
-          <section aria-label="Featured post" data-testid="profile-featured-post">
-            <div className="mb-3 flex items-center gap-2">
-              <Star aria-hidden="true" size={17} className="text-accent-strong" />
-              <h2 className="text-lg font-semibold text-text">Featured post</h2>
-            </div>
-            <PostCard post={featuredPost} index={0} />
-          </section>
-        ) : isOwnProfile ? (
-          <FeaturedEmptyPrompt
-            actionLabel="Feature post"
-            icon={MessageCircle}
-            title="Feature a post"
-            text="Pin one public post."
-            onCustomize={onCustomize}
-          />
-        ) : null}
-
-        {featuredRoom ? (
-          <section aria-label="Featured room" data-testid="profile-featured-room">
-            <div className="mb-3 flex items-center gap-2">
-              <Radio aria-hidden="true" size={17} className="text-accent-strong" />
-              <h2 className="text-lg font-semibold text-text">Featured room</h2>
-            </div>
-            <div className="grid max-w-2xl gap-4 md:grid-cols-2">
-              <RoomCard room={featuredRoom} index={0} />
-            </div>
-          </section>
-        ) : isOwnProfile ? (
-          <FeaturedEmptyPrompt
-            actionLabel="Feature room"
-            icon={Radio}
-            title="Feature a room"
-            text="Pin one public room."
-            onCustomize={onCustomize}
-          />
-        ) : null}
-      </div>
+      {hasFeaturedContent ? (
+        <>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-base font-semibold text-text">Featured</h2>
+            {isOwnProfile && onCustomize ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="shadow-none"
+                icon={<Sparkles aria-hidden="true" size={15} />}
+                onClick={onCustomize}
+              >
+                Change
+              </Button>
+            ) : null}
+          </div>
+          <div
+            className={cn(
+              "grid gap-3",
+              featuredPost && featuredRoom
+                ? "lg:grid-cols-[minmax(0,1.15fr)_minmax(17rem,0.85fr)]"
+                : "max-w-3xl",
+            )}
+          >
+            {featuredPost ? <FeaturedPostCard post={featuredPost} /> : null}
+            {featuredRoom ? <FeaturedRoomCard room={featuredRoom} /> : null}
+          </div>
+        </>
+      ) : (
+        <FeaturedEmptyPrompt onCustomize={onCustomize} />
+      )}
     </motion.section>
   );
 }
 
-type FeaturedEmptyPromptProps = {
-  actionLabel: string;
-  icon: typeof MessageCircle;
-  onCustomize?: (() => void) | undefined;
-  title: string;
-  text: string;
-};
+function FeaturedPostCard({ post }: { post: Post }) {
+  return (
+    <article
+      className="min-w-0 rounded-card border border-line bg-surface/74 p-3 shadow-soft backdrop-blur-veil"
+      data-testid="profile-featured-post"
+    >
+      <div className="flex min-w-0 items-center gap-2 text-xs font-semibold uppercase text-muted">
+        <Star aria-hidden="true" size={14} className="text-accent-strong" />
+        <h3 className="text-xs font-semibold uppercase text-muted">Featured post</h3>
+        <span className="text-muted/50">·</span>
+        <span>{post.createdAt}</span>
+      </div>
+      <p className="mt-2 line-clamp-3 break-words text-sm leading-6 text-text">
+        {post.body}
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+        <span className="inline-flex items-center gap-1.5">
+          <Reply aria-hidden="true" size={13} />
+          {formatCountWithUnit(post.commentCount, "reply")}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <Heart aria-hidden="true" size={13} />
+          {formatCountWithUnit(post.likeCount, "like")}
+        </span>
+        {post.reblogCount ? (
+          <span className="inline-flex items-center gap-1.5">
+            <Repeat2 aria-hidden="true" size={13} />
+            {formatCountWithUnit(post.reblogCount, "reblog")}
+          </span>
+        ) : null}
+        <Link
+          className="inline-flex min-w-0 items-center gap-1.5 rounded-control font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          to={`/rooms/${post.room.slug}`}
+        >
+          <Radio aria-hidden="true" size={13} />
+          <span className="truncate">{post.room.name}</span>
+        </Link>
+      </div>
+    </article>
+  );
+}
+
+function FeaturedRoomCard({ room }: { room: Room }) {
+  return (
+    <Link
+      className="group min-w-0 rounded-card border border-line bg-surface/74 p-3 shadow-soft backdrop-blur-veil transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      data-testid="profile-featured-room"
+      style={{ ["--room-accent" as string]: room.accent }}
+      to={`/rooms/${room.slug}`}
+    >
+      <div className="flex min-w-0 items-start gap-3">
+        <span
+          className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-card border border-line bg-canvas/65"
+          style={{
+            background:
+              "linear-gradient(135deg, color-mix(in oklab, var(--room-accent) 36%, transparent), var(--app-surface))",
+          }}
+        >
+          {room.iconUrl ? (
+            <img alt="" className="size-full object-cover" src={room.iconUrl} />
+          ) : (
+            <Radio aria-hidden="true" size={17} className="text-text" />
+          )}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2 text-xs font-semibold uppercase text-muted">
+            <Star aria-hidden="true" size={14} className="text-accent-strong" />
+            <h3 className="text-xs font-semibold uppercase text-muted">Featured room</h3>
+          </div>
+          <span className="mt-1 block truncate text-sm font-semibold text-text">
+            {room.name}
+          </span>
+          <span className="mt-0.5 block truncate text-xs text-muted">/{room.slug}</span>
+          <span className="mt-1 block line-clamp-2 text-sm leading-5 text-muted">
+            {room.summary}
+          </span>
+        </div>
+        <ArrowRight
+          aria-hidden="true"
+          size={16}
+          className="mt-1 shrink-0 text-muted transition duration-fluid ease-fluid group-hover:translate-x-0.5 group-hover:text-text"
+        />
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 pl-[3.25rem] text-xs text-muted">
+        <span className="inline-flex items-center gap-1.5">
+          <MessageCircle aria-hidden="true" size={13} />
+          {formatCountWithUnit(room.postCount, "post")}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <Users aria-hidden="true" size={13} />
+          {formatCountWithUnit(room.memberCount, "member")}
+        </span>
+      </div>
+    </Link>
+  );
+}
 
 function FeaturedEmptyPrompt({
-  actionLabel,
-  icon: Icon,
   onCustomize,
-  text,
-  title,
-}: FeaturedEmptyPromptProps) {
+}: {
+  onCustomize?: (() => void) | undefined;
+}) {
   return (
     <div
       className="rounded-card border border-dashed border-line bg-canvas/35 p-3"
@@ -934,11 +1048,15 @@ function FeaturedEmptyPrompt({
       <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           <span className="grid size-8 shrink-0 place-items-center rounded-full bg-surface-strong text-accent-strong">
-            <Icon aria-hidden="true" size={16} />
+            <Star aria-hidden="true" size={16} />
           </span>
           <span className="min-w-0">
-            <span className="block text-sm font-semibold text-text">{title}</span>
-            <span className="mt-1 block text-sm leading-6 text-muted">{text}</span>
+            <span className="block text-sm font-semibold text-text">
+              Feature a post or room
+            </span>
+            <span className="mt-1 block text-sm leading-6 text-muted">
+              Pick one public highlight.
+            </span>
           </span>
         </div>
         {onCustomize ? (
@@ -949,7 +1067,7 @@ function FeaturedEmptyPrompt({
             icon={<Sparkles aria-hidden="true" size={15} />}
             onClick={onCustomize}
           >
-            {actionLabel}
+            Choose featured
           </Button>
         ) : null}
       </div>

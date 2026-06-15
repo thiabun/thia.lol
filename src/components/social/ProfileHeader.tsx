@@ -27,6 +27,7 @@ import {
   staggerChildren,
 } from "../../lib/motionPresets";
 import { formatMonthYear } from "../../lib/dates";
+import { safeProfileImageUrl } from "../../lib/profileMedia";
 import type { Profile, UserBadge } from "../../lib/types";
 import type { ProfileExternalConnection } from "../../lib/types";
 import { ProfileConnectionIcon } from "./ProfileConnectionIcon";
@@ -71,13 +72,11 @@ export function ProfileHeader({
   const [actionsOpen, setActionsOpen] = useState(false);
   const [confirmBlockOpen, setConfirmBlockOpen] = useState(false);
   const links = profile.links;
-  const hasBanner = safeImageUrl(profile.bannerUrl);
-  const hasBackground = safeImageUrl(profile.profileBackground);
+  const bannerUrl = safeProfileImageUrl(profile.bannerUrl);
+  const backgroundUrl = safeProfileImageUrl(profile.profileBackground);
   const followLabel = profile.isFollowing ? "Following" : "Follow";
   const showProfileControls = !isOwnProfile && Boolean(onBlockToggle || onMuteToggle);
   const directActionsDisabled = profile.blockedByMe === true;
-  const bannerUrl = hasBanner ? profile.bannerUrl ?? undefined : undefined;
-  const backgroundUrl = hasBackground ? profile.profileBackground ?? undefined : undefined;
 
   async function handleBlockAction() {
     setActionsOpen(false);
@@ -621,23 +620,6 @@ function ProfileConnectionChip({ link }: { link: ProfileExternalConnection }) {
       {content}
     </a>
   );
-}
-
-function safeImageUrl(value: string | null | undefined): boolean {
-  if (!value) {
-    return false;
-  }
-
-  if (/^\/uploads\/media\/[0-9]{4}\/[0-9]{2}\/[a-z0-9_-]+\.webp$/.test(value)) {
-    return true;
-  }
-
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" || url.protocol === "http:";
-  } catch {
-    return false;
-  }
 }
 
 function formatJoinedDate(value: string): string {

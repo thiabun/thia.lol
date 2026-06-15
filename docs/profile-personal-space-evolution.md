@@ -499,24 +499,71 @@ PHP API behavior, while tightening the public profile presentation:
   this pass does not add music, gallery, layout-builder, theme-token, or
   marketplace behavior.
 
+### Implementation Note - 2026-06-15 Profiles v3 Phase 2
+
+Issue [#33](https://github.com/thiabun/thia.lol/issues/33) adds the first
+Personal Expression slice without broad theme, media, or module expansion:
+
+- Existing `profiles.profile_background` and `profiles.banner_url` now cooperate
+  visually. The page renders a soft, cropped, blurred backing layer from the
+  background image, falling back to the banner image when no dedicated
+  background exists, while the header keeps its short stable banner strip and
+  readable foreground surface.
+- The background treatment is frontend-only and uses the existing upload fields.
+  It does not introduce structured background controls for fit, position, focal
+  point, overlay, blur, dim, or mobile-specific crops.
+- Featured content is profile-level and intentionally small: one eligible public
+  post and one eligible public room can render above modules as compact summary
+  cards. Public visitors never see empty featured placeholders.
+- Owner controls live in the existing lazy-loaded Customize Profile modal under
+  the Featured section. The public profile only shows a small owner-only change
+  action when featured content exists, or a single compact setup prompt when it
+  does not.
+- Featured content storage uses `profiles.featured_post_id` and
+  `profiles.featured_room_id` from migration
+  `20260613_0001_add_profile_featured_content.sql`, with
+  `PATCH /api/me/profile/featured` handling CSRF-protected owner updates.
+- Featured post eligibility is owner-only and public-only. Deleted, hidden,
+  removed, non-public, inactive-author, blocked, unavailable, or private-room
+  references fail closed and do not render publicly.
+- Featured room eligibility is public rooms the profile owner created or belongs
+  to. Deleted, private, unavailable, blocked-owner, or non-eligible references
+  fail closed and do not render publicly.
+
+Deferred after Phase 2:
+
+- True structured background/banner controls: fit, position, focal point,
+  overlay, blur, dim, span, mobile fallback, and API/storage for those settings.
+- A dedicated `profile_featured_content` table or module-backed featured model.
+  The current single post plus single room fields are enough for this scoped
+  slice but not a full featured-content system.
+- Featured media thumbnails, gallery/media modules, music modules, layout
+  presets, custom theme presets, integrations, embeds, analytics, monetization,
+  and module marketplaces.
+
 Implemented API and storage:
 
 - Public reads: `GET /api/profiles/:handle`, `/posts`, `/replies`, `/reblogs`, `/rooms`, `/badges`, `/followers`, and `/following`.
 - Public module reads: `GET /api/profiles/:handle/modules` returns public active profile modules for active users.
 - Owner update: `PATCH /api/me/profile`.
+- Owner featured content update: `PATCH /api/me/profile/featured`.
 - Owner module foundation: `GET`/`POST`/`PATCH`/`DELETE /api/me/profile/modules` and `PATCH /api/me/profile/module-order`.
 - Featured badges: `PATCH /api/me/badges/featured`.
 - Relationship controls: `POST`/`DELETE /api/profiles/:handle/follow`, `/block`, `/mute`, and `DELETE /api/profiles/:handle/follower`.
 - Baseline profile storage is still mostly identity-level fields on `profiles`, plus related tables for posts, rooms, follows, blocks, mutes, badges, and reports.
 - Module storage lives in `profile_modules` after migration `20260612_0001_add_profile_modules.sql`.
+- Featured content storage lives on `profiles.featured_post_id` and `profiles.featured_room_id` after migration `20260613_0001_add_profile_featured_content.sql`.
 
 Current limitations:
 
-- Profiles now have a minimal module foundation and owner editor/preview for v1 modules, but no featured posts/rooms, integrations, embeds, or module-level report target.
+- Profiles now have a minimal module foundation and owner editor/preview for v1 modules, but no integrations, embeds, or module-level report target.
+- Profiles now support one featured post and one featured room, but no multi-item
+  pinned-content shelf, featured module ranking, or dedicated featured-content
+  table.
 - The current page state owns profile loading, tabs, panels, badge featuring, editing, follow controls, block/mute controls, and reporting in one route component.
 - Profile customization safety rules are documented, but broad visual theming remains deferred.
 - `profileAccent` and `profileTheme` may exist in legacy/profile storage but are hidden from the edit UI until supported presets have a visible, tested rendering effect.
-- There are no pinned posts, featured posts, featured rooms, project showcases, galleries, blog entries, pronouns, status/presence, or creator mode.
+- There are no project showcases, galleries, blog entries, pronouns, status/presence, creator mode, or featured post media layouts.
 - Blog-like content does not exist as a separate product concept. Posts have `parent_id`, room association, visibility, status, media, and reblogs, but no `post_type` or long-form model.
 - `profiles.traits` still exists for storage compatibility, but public editing/display has been removed. Future work should not revive traits as an unstructured customization surface.
 - Hidden-badge API support exists through badge visibility, but a full user-facing hidden-badge management UI is deferred.

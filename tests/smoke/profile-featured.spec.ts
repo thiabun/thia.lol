@@ -119,8 +119,8 @@ test("owner empty featured state stays compact on mobile", async ({ page }) => {
 
   const featured = page.getByTestId("profile-featured-content");
   await expect(featured).toBeVisible();
-  await expect(featured.getByText("Feature a post")).toBeVisible();
-  await expect(featured.getByText("Feature a room")).toBeVisible();
+  await expect(featured.getByText("Feature a post or room")).toBeVisible();
+  await expect(featured.getByText("Pick one public highlight.")).toBeVisible();
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
