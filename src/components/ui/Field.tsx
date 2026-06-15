@@ -8,8 +8,15 @@ import { forwardRef } from "react";
 import { ChevronDown, Search, type LucideIcon } from "lucide-react";
 import { cn } from "../../lib/classNames";
 
-const controlClass =
-  "min-h-12 w-full rounded-card border border-line bg-canvas/55 px-4 text-sm text-text shadow-inner-soft outline-none transition duration-fluid placeholder:text-muted/70 focus:border-line-strong focus:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
+type FieldDensity = "default" | "compact";
+
+const controlBaseClass =
+  "w-full rounded-card border border-line bg-canvas/55 text-sm text-text shadow-inner-soft outline-none transition duration-fluid placeholder:text-muted/70 focus:border-line-strong focus:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
+
+const controlDensityClass: Record<FieldDensity, string> = {
+  compact: "min-h-10 px-3",
+  default: "min-h-12 px-4",
+};
 
 type FieldShellProps = {
   id: string;
@@ -47,11 +54,13 @@ function FieldShell({
 type TextFieldProps = InputHTMLAttributes<HTMLInputElement> & {
   id: string;
   label: string;
+  density?: FieldDensity | undefined;
   icon?: LucideIcon | undefined;
   hideLabel?: boolean | undefined;
 };
 
 export function TextField({
+  density = "default",
   id,
   label,
   icon,
@@ -61,7 +70,11 @@ export function TextField({
 }: TextFieldProps) {
   return (
     <FieldShell id={id} label={label} icon={icon} hideLabel={hideLabel}>
-      <input id={id} className={cn(controlClass, className)} {...props} />
+      <input
+        id={id}
+        className={cn(controlBaseClass, controlDensityClass[density], className)}
+        {...props}
+      />
     </FieldShell>
   );
 }
@@ -69,13 +82,14 @@ export function TextField({
 type TextareaFieldProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
   id: string;
   label: string;
+  density?: FieldDensity | undefined;
   icon?: LucideIcon | undefined;
   hideLabel?: boolean | undefined;
 };
 
 export const TextareaField = forwardRef<HTMLTextAreaElement, TextareaFieldProps>(
   function TextareaField(
-    { id, label, icon, hideLabel, className, ...props },
+    { density = "default", id, label, icon, hideLabel, className, ...props },
     ref,
   ) {
     return (
@@ -83,7 +97,12 @@ export const TextareaField = forwardRef<HTMLTextAreaElement, TextareaFieldProps>
         <textarea
           ref={ref}
           id={id}
-          className={cn(controlClass, "resize-none py-3 leading-6", className)}
+          className={cn(
+            controlBaseClass,
+            controlDensityClass[density],
+            density === "compact" ? "resize-none py-2 leading-5" : "resize-none py-3 leading-6",
+            className,
+          )}
           {...props}
         />
       </FieldShell>
@@ -94,11 +113,13 @@ export const TextareaField = forwardRef<HTMLTextAreaElement, TextareaFieldProps>
 type SelectFieldProps = SelectHTMLAttributes<HTMLSelectElement> & {
   id: string;
   label: string;
+  density?: FieldDensity | undefined;
   icon?: LucideIcon | undefined;
   options: Array<string | { value: string; label: string }>;
 };
 
 export function SelectField({
+  density = "default",
   id,
   label,
   icon,
@@ -112,7 +133,8 @@ export function SelectField({
         <select
           id={id}
           className={cn(
-            controlClass,
+            controlBaseClass,
+            controlDensityClass[density],
             "appearance-none pr-11 disabled:cursor-not-allowed",
             className,
           )}

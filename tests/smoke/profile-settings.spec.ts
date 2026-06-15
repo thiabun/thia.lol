@@ -31,6 +31,9 @@ test("profile connections normalize, save, and render", async ({ page }) => {
 
   await page.getByRole("button", { name: "Customize profile" }).click();
   const modal = page.getByTestId("profile-customization-modal");
+  await expect(modal).toBeVisible();
+  const modalBox = await modal.boundingBox();
+  expect(modalBox?.width ?? 0).toBeLessThanOrEqual(1154);
   await expect(modal.getByRole("heading", { name: "Identity" })).toBeVisible();
   await expect(modal.getByRole("button", { name: /Appearance/ })).toBeVisible();
   await expect(modal.getByRole("button", { name: /Connections/ })).toBeVisible();
@@ -114,6 +117,7 @@ test("valid connection cards collapse into compact summaries", async ({ page }) 
   await page.goto("/@thia");
   await page.getByRole("button", { name: "Customize profile" }).click();
   const modal = page.getByTestId("profile-customization-modal");
+  await expect(modal).toBeVisible();
   await modal.getByRole("button", { name: /Connections/ }).click();
 
   await expect(modal.getByText("https://thia.lol/")).toBeVisible();
@@ -183,6 +187,7 @@ test("profile connections show platform-aware validation errors", async ({ page 
   await page.goto("/@thia");
   await page.getByRole("button", { name: "Customize profile" }).click();
   const modal = page.getByTestId("profile-customization-modal");
+  await expect(modal).toBeVisible();
   await modal.getByRole("button", { name: /Connections/ }).click();
 
   await modal.getByRole("button", { name: "Add connection" }).click();
@@ -241,6 +246,16 @@ test("mobile edit profile modal has no horizontal overflow", async ({ page }) =>
 
   const modal = page.getByTestId("profile-customization-modal");
   await expect(modal).toBeVisible();
+  await modal.getByRole("button", { name: /Identity/ }).click();
+  await expect(modal.getByRole("heading", { name: "Identity" })).toBeVisible();
+  await modal.getByRole("button", { name: /Appearance/ }).click();
+  await expect(modal.getByRole("heading", { name: "Appearance" })).toBeVisible();
+  await modal.getByRole("button", { name: /Connections/ }).click();
+  await expect(modal.getByRole("heading", { name: "Connections" })).toBeVisible();
+  await modal.getByRole("button", { name: /Featured/ }).click();
+  await expect(modal.getByTestId("profile-featured-editor")).toBeVisible();
+  await modal.getByRole("button", { name: /Modules/ }).click();
+  await expect(modal.getByTestId("profile-layout-editor")).toBeVisible();
   await expect(modal.getByRole("button", { name: /Preview/ })).toBeVisible();
   await modal.getByRole("button", { name: /Preview/ }).click();
   await expect(modal.getByTestId("profile-customization-preview-mobile")).toBeVisible();
@@ -248,6 +263,29 @@ test("mobile edit profile modal has no horizontal overflow", async ({ page }) =>
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
   expect(hasHorizontalOverflow).toBe(false);
+});
+
+test("profile customization cancel closes without saving identity edits", async ({ page }) => {
+  let savedPayload: Record<string, unknown> | undefined;
+
+  await mockOwnProfile(page, () => [], (payload) => {
+    savedPayload = payload;
+  });
+
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+  await page.getByRole("button", { name: "Customize profile" }).click();
+  const modal = page.getByTestId("profile-customization-modal");
+  await modal.getByRole("textbox", { name: "Display name" }).fill("Unsaved Thia");
+  await expect(modal.getByTestId("profile-customization-preview")).toContainText(
+    "Unsaved Thia",
+  );
+  await modal.getByRole("button", { name: "Cancel" }).click();
+
+  await expect(modal).toHaveCount(0);
+  expect(savedPayload).toBeUndefined();
+  await expect(page.getByTestId("profile-identity")).toContainText("Thia");
+  await expect(page.getByTestId("profile-identity")).not.toContainText("Unsaved Thia");
 });
 
 test("profile banners stay behind identity in public header and preview", async ({ page }) => {

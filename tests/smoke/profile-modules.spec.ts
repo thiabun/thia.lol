@@ -281,7 +281,7 @@ test("owner empty module state is honest", async ({ page }) => {
     page.getByText("Customize profile to add modules."),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Customize profile" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Customize layout" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Customize layout" })).toHaveCount(0);
 });
 
 test("owner editor lists modules and previews plain text", async ({ page }) => {
@@ -329,8 +329,9 @@ test("owner can save a layout preset from module customization", async ({ page }
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await page.getByRole("button", { name: "Customize layout" }).click();
+  await page.getByRole("button", { name: "Customize profile" }).click();
   const modal = page.getByTestId("profile-customization-modal");
+  await modal.getByRole("button", { name: /Modules/ }).click();
   const editor = modal.getByTestId("profile-module-editor");
   await expect(editor).toBeVisible();
   await editor.getByRole("button", { name: /Compact/ }).click();
@@ -366,8 +367,9 @@ test("owner can hide and reorder the built-in activity module", async ({ page })
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await page.getByRole("button", { name: "Customize layout" }).click();
+  await page.getByRole("button", { name: "Customize profile" }).click();
   const modal = page.getByTestId("profile-customization-modal");
+  await modal.getByRole("button", { name: /Modules/ }).click();
   const editor = modal.getByTestId("profile-module-editor");
   await expect(editor.getByText("Activity")).toBeVisible();
   await expect(editor.getByRole("button", { name: "Delete Activity" })).toHaveCount(0);

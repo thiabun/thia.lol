@@ -18,8 +18,7 @@ import type {
   UserBadge,
 } from "../../lib/types";
 import { ApiStateNotice } from "../ui/ApiStateNotice";
-import { Button } from "../ui/Button";
-import { EmptyState } from "../ui/EmptyState";
+import { CompactStateNotice } from "../ui/RouteState";
 import { ProfileGrid, ProfileGridModule, ProfileGridSection } from "./ProfileGrid";
 
 type ProfileModulesSectionProps = {
@@ -29,7 +28,6 @@ type ProfileModulesSectionProps = {
   layoutPreset?: ProfileLayoutPreset | undefined;
   loading: boolean;
   modules: ProfileModule[];
-  onCustomize?: (() => void) | undefined;
   renderModuleContent?: ProfileModuleContentRenderer | undefined;
 };
 
@@ -40,7 +38,6 @@ export function ProfileModulesSection({
   layoutPreset = defaultProfileLayoutPreset,
   loading,
   modules,
-  onCustomize,
   renderModuleContent,
 }: ProfileModulesSectionProps) {
   const renderableModules = renderableProfileModules(modules, badges);
@@ -61,20 +58,6 @@ export function ProfileModulesSection({
     <ProfileGridSection
       title="Personal space"
       testId="profile-modules"
-      action={
-        isOwnProfile && onCustomize ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="shadow-none"
-            icon={<Sparkles aria-hidden="true" size={15} />}
-            onClick={onCustomize}
-          >
-            Customize layout
-          </Button>
-        ) : null
-      }
     >
       {loading ? (
         <ApiStateNotice
@@ -93,10 +76,11 @@ export function ProfileModulesSection({
       ) : null}
 
       {!loading && !error && renderableModules.length === 0 ? (
-        <EmptyState
+        <CompactStateNotice
           icon={Sparkles}
           title="No modules yet"
           text="Customize profile to add modules."
+          className="border border-dashed border-line bg-canvas/45"
         />
       ) : null}
 

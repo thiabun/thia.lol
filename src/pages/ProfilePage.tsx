@@ -697,7 +697,6 @@ export function ProfilePage() {
           layoutPreset={profileLayoutPreset}
           loading={modulesState.loading}
           modules={profileSpaceModules}
-          onCustomize={isOwnProfile ? () => void handleOpenCustomization("modules") : undefined}
           renderModuleContent={(module) =>
             module.type === "activity" ? (
               <ProfileActivityModule

@@ -130,9 +130,27 @@ Future integrations belong in Modules or Connections, not in fake global switche
 Issue #26 implements the first safe slice:
 
 - One owner-only `Customize profile` entry point.
-- A wide modal with Identity, Appearance, Connections, Modules, and Preview sections.
+- A modal with Identity, Appearance, Connections, Modules, and Preview sections.
 - A persistent desktop preview and reachable mobile preview.
 - Platform-aware Connection cards.
 - Existing profile save, image upload, and module endpoints only.
 
 It intentionally does not add new schema, integrations, broad themes, arbitrary styling, or new module types.
+
+## Implementation Note - 2026-06-16 Compact Pass
+
+Issue #37 tightens the first owner editor into a compact Profiles v3 flow
+without changing profile fields, modules, or backend contracts:
+
+- Desktop customization is narrower, with smaller shell padding and a compact
+  side preview.
+- Mobile keeps the editor full-height, with horizontally scrollable compact
+  section tabs and no horizontal page overflow.
+- Identity, Appearance, Connections, Featured, Modules, and Preview remain
+  reachable in the same flow.
+- Profile fields, upload rows, featured pickers, module tiles, layout presets,
+  and preview cards use denser spacing so routine edits feel like profile
+  adjustment rather than a dashboard.
+- Layout customization now lives inside the Modules section of `Customize
+  profile`; the public profile no longer shows a separate `Customize layout`
+  action.

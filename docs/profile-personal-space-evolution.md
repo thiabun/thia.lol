@@ -101,9 +101,10 @@ the richer personal-space direction:
   weight.
 - The profile page communicates information, but it does not yet create the
   stronger sense of vibe and ownership that richer profile products show.
-- The Customize Profile modal is improved, but still feels bulky for routine
-  edits and mixes identity, appearance, Connections, modules, and preview into a
-  large editor.
+- Earlier Customize Profile passes still felt bulky for routine edits; issue
+  #37 tightened the editor shell, tabs, forms, module controls, and preview
+  while keeping identity, appearance, Connections, featured content, modules,
+  layout controls, and preview in one flow.
 - Theme and background controls are limited and not yet expressive enough to
   support clear owner-selected page mood.
 - Modules exist, but the catalog is still early and not expressive enough for
