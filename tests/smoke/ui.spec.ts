@@ -344,6 +344,7 @@ test("authenticated post button opens an accessible composer select", async ({
   await expect(selector).toBeFocused();
   await selector.selectOption("sun-room");
   await expect(selector).toHaveValue("sun-room");
+  await expect(selector).not.toBeFocused();
 
   await dialog.getByRole("button", { name: "Close post composer" }).click();
   await expect(dialog).toBeHidden();

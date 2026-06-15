@@ -148,13 +148,13 @@ export function PostComposerModal({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
             <label
-              className="group relative inline-flex min-h-9 max-w-[13rem] cursor-pointer items-center gap-2 overflow-hidden rounded-full border border-line bg-canvas/70 px-3 pr-8 text-sm font-medium text-text shadow-inner-soft transition duration-fluid hover:border-line-strong hover:bg-surface focus-within:border-line-strong focus-within:bg-surface-strong"
+              className="group relative inline-flex min-h-9 max-w-[13rem] cursor-pointer items-center gap-2 overflow-hidden rounded-full border border-line bg-canvas/70 px-3 pr-8 text-sm font-medium text-text shadow-inner-soft transition duration-fluid hover:border-line-strong hover:bg-surface focus-within:border-line-strong"
               data-testid="composer-destination-control"
               title="Post destination"
             >
               <Radio
                 aria-hidden="true"
-                className="shrink-0 text-muted transition duration-fluid group-focus-within:text-text group-hover:text-text"
+                className="shrink-0 text-muted transition duration-fluid group-hover:text-text"
                 size={15}
                 strokeWidth={2.2}
               />
@@ -170,7 +170,10 @@ export function PostComposerModal({
                 className="absolute inset-0 z-10 h-full w-full cursor-pointer appearance-none opacity-0 outline-none disabled:cursor-not-allowed"
                 value={roomSlug}
                 disabled={submitting}
-                onChange={(event) => setRoomSlug(event.currentTarget.value)}
+                onChange={(event) => {
+                  setRoomSlug(event.currentTarget.value);
+                  event.currentTarget.blur();
+                }}
               >
                 {roomOptions.map((option) => (
                   <option key={option.value || "profile"} value={option.value}>
@@ -180,7 +183,7 @@ export function PostComposerModal({
               </select>
               <ChevronDown
                 aria-hidden="true"
-                className="pointer-events-none absolute right-3 text-muted transition duration-fluid group-focus-within:text-text group-hover:text-text"
+                className="pointer-events-none absolute right-3 text-muted transition duration-fluid group-hover:text-text"
                 size={15}
               />
             </label>
