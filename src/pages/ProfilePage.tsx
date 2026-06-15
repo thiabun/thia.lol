@@ -18,11 +18,6 @@ import { motion } from "motion/react";
 import { lazy, Suspense, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
-import {
-  ProfileGrid,
-  ProfileGridModule,
-  ProfileGridSection,
-} from "../components/social/ProfileGrid";
 import { PostCard } from "../components/social/PostCard";
 import { ProfileHeader } from "../components/social/ProfileHeader";
 import { ProfileModulesSection } from "../components/social/ProfileModules";
@@ -80,7 +75,6 @@ import type {
   BadgeDefinition,
   Post,
   Profile,
-  ProfileLayoutPreset,
   ProfileModule,
   Room,
   UserBadge,
@@ -575,9 +569,18 @@ export function ProfilePage() {
       repliesState.error ??
       roomsState.error,
   });
-  const profileSpaceModules = publicModules.filter(
-    (module) => module.type !== "activity" || showActivityModule,
-  );
+  const hasFeaturedContent = Boolean(profile.featuredPost || profile.featuredRoom);
+  const profileSpaceModules = publicModules.filter((module) => {
+    if (module.type === "activity") {
+      return showActivityModule;
+    }
+
+    if (module.type === "featured") {
+      return hasFeaturedContent;
+    }
+
+    return true;
+  });
 
   return (
     <motion.div
@@ -684,12 +687,6 @@ export function ProfilePage() {
             />
           </Suspense>
         ) : null}
-        <ProfileFeaturedContentSection
-          isOwnProfile={isOwnProfile}
-          layoutPreset={profileLayoutPreset}
-          profile={profile}
-          onCustomize={isOwnProfile ? () => void handleOpenCustomization("featured") : undefined}
-        />
         <ProfileModulesSection
           badges={profileBadges}
           error={modulesState.error}
@@ -697,8 +694,18 @@ export function ProfilePage() {
           layoutPreset={profileLayoutPreset}
           loading={modulesState.loading}
           modules={profileSpaceModules}
-          renderModuleContent={(module) =>
-            module.type === "activity" ? (
+          renderModuleContent={(module) => {
+            if (module.type === "featured") {
+              return (
+                <FeaturedModuleCard
+                  profile={profile}
+                  title={module.title ?? "Featured"}
+                />
+              );
+            }
+
+            if (module.type === "activity") {
+              return (
               <ProfileActivityModule
                 activeTab={activeTab}
                 feed={profileFeed}
@@ -714,8 +721,11 @@ export function ProfilePage() {
                 title={module.title ?? "Activity"}
                 onTabChange={setActiveTab}
               />
-            ) : undefined
-          }
+              );
+            }
+
+            return undefined;
+          }}
         />
       {activePanel ? (
         <ProfileFocusedPanel
@@ -848,103 +858,28 @@ function ProfilePersonalBackdrop({ profile }: { profile: Profile }) {
   );
 }
 
-type ProfileFeaturedContentSectionProps = {
-  isOwnProfile: boolean;
-  layoutPreset: ProfileLayoutPreset;
-  onCustomize?: (() => void) | undefined;
-  profile: Profile;
-};
-
-function ProfileFeaturedContentSection({
-  isOwnProfile,
-  layoutPreset,
-  onCustomize,
+function FeaturedModuleCard({
   profile,
-}: ProfileFeaturedContentSectionProps) {
+  title,
+}: {
+  profile: Profile;
+  title: string;
+}) {
   const featuredPost = profile.featuredPost;
   const featuredRoom = profile.featuredRoom;
-  const hasFeaturedContent = Boolean(featuredPost || featuredRoom);
-
-  if (!hasFeaturedContent && !isOwnProfile) {
-    return null;
-  }
 
   return (
-    <ProfileGridSection
-      title="Featured"
-      testId="profile-featured-content"
-      action={
-        hasFeaturedContent && isOwnProfile && onCustomize ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="shadow-none"
-            icon={<Sparkles aria-hidden="true" size={15} />}
-            onClick={onCustomize}
-          >
-            Change
-          </Button>
-        ) : null
-      }
+    <article
+      className="h-full min-w-0 rounded-card border border-line bg-surface/68 p-3"
+      data-testid="profile-module-featured"
     >
-      {hasFeaturedContent ? (
-        <ProfileGrid
-          className={featuredPost && featuredRoom ? undefined : "max-w-3xl"}
-          layoutPreset={layoutPreset}
-          maxColumns={layoutPreset === "compact" ? 2 : 3}
-          testId="profile-featured-grid"
-        >
-          {featuredPost ? (
-            <ProfileGridModule
-              size={featuredPostGridSize(layoutPreset, Boolean(featuredRoom))}
-            >
-              <FeaturedPostCard post={featuredPost} />
-            </ProfileGridModule>
-          ) : null}
-          {featuredRoom ? (
-            <ProfileGridModule
-              size={featuredRoomGridSize(layoutPreset, Boolean(featuredPost))}
-            >
-              <FeaturedRoomCard room={featuredRoom} />
-            </ProfileGridModule>
-          ) : null}
-        </ProfileGrid>
-      ) : (
-        <FeaturedEmptyPrompt onCustomize={onCustomize} />
-      )}
-    </ProfileGridSection>
+      <h3 className="text-sm font-semibold text-text">{title}</h3>
+      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+        {featuredPost ? <FeaturedPostCard post={featuredPost} /> : null}
+        {featuredRoom ? <FeaturedRoomCard room={featuredRoom} /> : null}
+      </div>
+    </article>
   );
-}
-
-function featuredPostGridSize(
-  layoutPreset: ProfileLayoutPreset,
-  hasFeaturedRoom: boolean,
-): "small" | "wide" | "feature" {
-  if (layoutPreset === "compact") {
-    return hasFeaturedRoom ? "small" : "wide";
-  }
-
-  if (layoutPreset === "showcase") {
-    return "feature";
-  }
-
-  return hasFeaturedRoom ? "wide" : "feature";
-}
-
-function featuredRoomGridSize(
-  layoutPreset: ProfileLayoutPreset,
-  hasFeaturedPost: boolean,
-): "small" | "wide" | "feature" {
-  if (layoutPreset === "compact") {
-    return "small";
-  }
-
-  if (layoutPreset === "showcase") {
-    return hasFeaturedPost ? "wide" : "feature";
-  }
-
-  return hasFeaturedPost ? "small" : "wide";
 }
 
 function FeaturedPostCard({ post }: { post: Post }) {
@@ -1041,46 +976,6 @@ function FeaturedRoomCard({ room }: { room: Room }) {
         </span>
       </div>
     </Link>
-  );
-}
-
-function FeaturedEmptyPrompt({
-  onCustomize,
-}: {
-  onCustomize?: (() => void) | undefined;
-}) {
-  return (
-    <div
-      className="rounded-card border border-dashed border-line bg-canvas/35 p-3"
-      data-testid="profile-featured-empty"
-    >
-      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-surface-strong text-accent-strong">
-            <Star aria-hidden="true" size={16} />
-          </span>
-          <span className="min-w-0">
-            <span className="block text-sm font-semibold text-text">
-              Feature a post or room
-            </span>
-            <span className="mt-1 block text-sm leading-6 text-muted">
-              Pick one public highlight.
-            </span>
-          </span>
-        </div>
-        {onCustomize ? (
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            icon={<Sparkles aria-hidden="true" size={15} />}
-            onClick={onCustomize}
-          >
-            Choose featured
-          </Button>
-        ) : null}
-      </div>
-    </div>
   );
 }
 

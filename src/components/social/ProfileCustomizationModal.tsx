@@ -160,6 +160,13 @@ const moduleTypes: Array<{
     icon: BadgeCheck,
   },
   {
+    type: "featured",
+    label: getProfileModuleDefinition("featured").label,
+    description: getProfileModuleDefinition("featured").description,
+    icon: Pin,
+    addable: false,
+  },
+  {
     type: "activity",
     label: getProfileModuleDefinition("activity").label,
     description: getProfileModuleDefinition("activity").description,
@@ -2033,7 +2040,7 @@ function ModuleTile({
   const moduleType = moduleTypeMeta(module.type);
   const Icon = moduleType.icon;
   const title = module.title || moduleType.label;
-  const isBuiltInActivity = module.type === "activity";
+  const isBuiltInModule = module.type === "activity" || module.type === "featured";
   const shouldReduceMotion = useReducedMotion();
 
   return (
@@ -2099,7 +2106,7 @@ function ModuleTile({
             icon={<Edit3 aria-hidden="true" size={15} />}
             onClick={onSelect}
           />
-          {!isBuiltInActivity ? (
+          {!isBuiltInModule ? (
             <Button
               type="button"
               variant="ghost"
@@ -2222,6 +2229,14 @@ function ModuleTypeFields({ badges, module, onChange }: ModuleTypeFieldsProps) {
     return (
       <div className="mt-3 rounded-card border border-line bg-canvas/45 p-2.5 text-sm leading-5 text-muted">
         Feed, replies, and rooms use the existing profile activity sources.
+      </div>
+    );
+  }
+
+  if (module.type === "featured") {
+    return (
+      <div className="mt-3 rounded-card border border-line bg-canvas/45 p-2.5 text-sm leading-5 text-muted">
+        Featured post and room selections stay in the Featured tab.
       </div>
     );
   }
@@ -2430,7 +2445,10 @@ function PreviewPanel({
     avatarUrl: form.avatarUrl || null,
   };
   const featuredBadges = badges.filter((badge) => badge.featuredOrder !== null).slice(0, 4);
-  const publicPreviewModules = previewModules(drafts);
+  const hasFeaturedPreview = Boolean(featuredPost || featuredRoom);
+  const publicPreviewModules = previewModules(drafts).filter(
+    (module) => module.type !== "featured" || hasFeaturedPreview,
+  );
 
   return (
     <section
@@ -2528,38 +2546,6 @@ function PreviewPanel({
       </div>
       <div
         className="mt-3"
-        data-testid="profile-featured-preview"
-      >
-        {featuredPost || featuredRoom ? (
-          <div className="space-y-3">
-            {featuredPost ? (
-              <div className="rounded-card border border-line bg-canvas/55 p-2.5">
-                <p className="flex items-center gap-2 text-xs font-semibold uppercase text-muted">
-                  <MessageCircle aria-hidden="true" size={14} />
-                  Featured post
-                </p>
-                <p className="mt-1.5 line-clamp-3 text-sm leading-5 text-text">
-                  {postOptionText(featuredPost)}
-                </p>
-              </div>
-            ) : null}
-            {featuredRoom ? (
-              <div className="rounded-card border border-line bg-canvas/55 p-2.5">
-                <p className="flex items-center gap-2 text-xs font-semibold uppercase text-muted">
-                  <Radio aria-hidden="true" size={14} />
-                  Featured room
-                </p>
-                <p className="mt-1.5 truncate text-sm font-semibold text-text">
-                  {featuredRoom.name}
-                </p>
-                <p className="mt-1 truncate text-xs text-muted">/{featuredRoom.slug}</p>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-      <div
-        className="mt-3"
         data-testid={
           testId === "profile-customization-preview"
             ? "profile-module-preview"
@@ -2572,6 +2558,15 @@ function PreviewPanel({
             layoutPreset={layoutPreset}
             maxColumns={2}
             modules={publicPreviewModules}
+            renderModuleContent={(module) =>
+              module.type === "featured" ? (
+                <FeaturedPreviewModule
+                  featuredPost={featuredPost}
+                  featuredRoom={featuredRoom}
+                  title={module.title ?? "Featured"}
+                />
+              ) : undefined
+            }
           />
         ) : (
           <p className="rounded-card border border-dashed border-line bg-canvas/45 p-2.5 text-xs leading-5 text-muted">
@@ -2580,6 +2575,50 @@ function PreviewPanel({
         )}
       </div>
     </section>
+  );
+}
+
+function FeaturedPreviewModule({
+  featuredPost,
+  featuredRoom,
+  title,
+}: {
+  featuredPost: Post | null;
+  featuredRoom: Room | null;
+  title: string;
+}) {
+  return (
+    <article
+      className="h-full min-w-0 rounded-card border border-line bg-surface/68 p-3"
+      data-testid="profile-featured-preview"
+    >
+      <h3 className="text-sm font-semibold text-text">{title}</h3>
+      <div className="mt-2 space-y-2">
+        {featuredPost ? (
+          <div className="rounded-card border border-line bg-canvas/55 p-2.5">
+            <p className="flex items-center gap-2 text-xs font-semibold uppercase text-muted">
+              <MessageCircle aria-hidden="true" size={14} />
+              Featured post
+            </p>
+            <p className="mt-1.5 line-clamp-3 text-sm leading-5 text-text">
+              {postOptionText(featuredPost)}
+            </p>
+          </div>
+        ) : null}
+        {featuredRoom ? (
+          <div className="rounded-card border border-line bg-canvas/55 p-2.5">
+            <p className="flex items-center gap-2 text-xs font-semibold uppercase text-muted">
+              <Radio aria-hidden="true" size={14} />
+              Featured room
+            </p>
+            <p className="mt-1.5 truncate text-sm font-semibold text-text">
+              {featuredRoom.name}
+            </p>
+            <p className="mt-1 truncate text-xs text-muted">/{featuredRoom.slug}</p>
+          </div>
+        ) : null}
+      </div>
+    </article>
   );
 }
 
@@ -2653,7 +2692,7 @@ function createDraftModule(type: ProfileModuleType): ProfileModule {
 }
 
 function defaultConfig(type: ProfileModuleType): ProfileModuleConfig {
-  if (type === "activity") {
+  if (type === "activity" || type === "featured") {
     return {};
   }
 
@@ -2679,7 +2718,7 @@ function moduleInput(module: ProfileModule): CreateProfileModuleInput {
 }
 
 function normalizedConfig(module: ProfileModule): ProfileModuleConfig {
-  if (module.type === "activity") {
+  if (module.type === "activity" || module.type === "featured") {
     return {};
   }
 
@@ -2706,7 +2745,7 @@ function validateModuleDraft(module: ProfileModule, badges: UserBadge[]): string
     return titleError;
   }
 
-  if (module.type === "activity") {
+  if (module.type === "activity" || module.type === "featured") {
     return undefined;
   }
 

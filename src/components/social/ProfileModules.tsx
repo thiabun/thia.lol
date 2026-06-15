@@ -19,7 +19,7 @@ import type {
 } from "../../lib/types";
 import { ApiStateNotice } from "../ui/ApiStateNotice";
 import { CompactStateNotice } from "../ui/RouteState";
-import { ProfileGrid, ProfileGridModule, ProfileGridSection } from "./ProfileGrid";
+import { ProfileGrid, ProfileGridModule } from "./ProfileGrid";
 
 type ProfileModulesSectionProps = {
   badges: UserBadge[];
@@ -55,14 +55,15 @@ export function ProfileModulesSection({
   }
 
   return (
-    <ProfileGridSection
-      title="Personal space"
-      testId="profile-modules"
+    <section
+      aria-label="Profile modules"
+      className="border-t border-line pt-4"
+      data-testid="profile-modules"
     >
       {loading ? (
         <ApiStateNotice
           kind="loading"
-          title="Loading personal space"
+          title="Loading modules"
           text="Loading modules."
         />
       ) : null}
@@ -92,7 +93,7 @@ export function ProfileModulesSection({
           renderModuleContent={renderModuleContent}
         />
       ) : null}
-    </ProfileGridSection>
+    </section>
   );
 }
 
@@ -140,7 +141,7 @@ export function ProfileModuleGrid({
     >
       {renderableModules.map((module, index) => (
         <ProfileGridModule
-          key={module.id}
+          key={`${module.type}-${module.id}`}
           size={profileModuleGridSize(module, layoutPreset, index)}
           testId={`profile-grid-module-${module.type}`}
         >

@@ -66,7 +66,7 @@ test("profile renders public modules safely", async ({ page }) => {
 
   const section = page.getByTestId("profile-modules");
   await expect(section).toBeVisible();
-  await expect(section.getByRole("heading", { name: "Personal space" })).toBeVisible();
+  await expect(page.getByText("Personal space")).toHaveCount(0);
   await expect(section.getByTestId("profile-module-grid")).toBeVisible();
   await expect(section.locator('[data-profile-grid-size="wide"]')).toHaveCount(1);
   await expect(section.locator('[data-profile-grid-size="small"]')).toHaveCount(2);
@@ -526,9 +526,14 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(router).toContain("profile_modules.php");
   expect(router).toContain("profile_modules_dispatch($segments, $method)");
   expect(modulesApi).toContain("const PROFILE_ACTIVITY_MODULE_TYPE = 'activity'");
+  expect(modulesApi).toContain("const PROFILE_FEATURED_MODULE_TYPE = 'featured'");
+  expect(modulesApi).toContain("PROFILE_BUILT_IN_MODULE_TYPES");
+  expect(modulesApi).toContain("ensure_profile_featured_module");
+  expect(modulesApi).toContain("profile_featured_module_payload");
   expect(modulesApi).toContain("PROFILE_ACTIVITY_MODULE_TYPE]");
   expect(modulesApi).toContain("ensure_profile_activity_module");
   expect(modulesApi).toContain("profile_module_activity_config");
+  expect(modulesApi).toContain("Featured can be hidden instead of deleted.");
   expect(modulesApi).toContain("Activity can be hidden instead of deleted.");
   expect(modulesApi).toContain("require_csrf_token($session)");
   expect(modulesApi).toContain("Profile module storage is not ready. Run pending migrations.");

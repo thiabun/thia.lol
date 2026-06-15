@@ -46,6 +46,12 @@ export const profileModuleRegistry = {
     fallbackTitle: "Featured badges",
     label: "Badges",
   },
+  featured: {
+    defaultSize: "wide",
+    description: "A selected post and room highlight.",
+    fallbackTitle: "Featured",
+    label: "Featured",
+  },
   activity: {
     defaultSize: "wide",
     description: "Feed, replies, and rooms.",
@@ -81,10 +87,18 @@ export function profileModuleGridSize(
   index = 0,
 ): ProfileGridModuleSize {
   if (layoutPreset === "compact") {
-    return module.type === "about" || module.type === "activity" ? "wide" : "small";
+    return module.type === "about" ||
+      module.type === "activity" ||
+      module.type === "featured"
+      ? "wide"
+      : "small";
   }
 
-  if (layoutPreset === "showcase" && index === 0 && module.type === "about") {
+  if (
+    layoutPreset === "showcase" &&
+    index === 0 &&
+    (module.type === "about" || module.type === "featured")
+  ) {
     return "feature";
   }
 
@@ -115,6 +129,10 @@ export function profileModuleHasContent(
   }
 
   if (module.type === "activity") {
+    return true;
+  }
+
+  if (module.type === "featured") {
     return true;
   }
 
@@ -155,6 +173,10 @@ export function profileModuleSummary(module: ProfileModule): string {
   }
 
   if (module.type === "activity") {
+    return getProfileModuleDefinition(module.type).description;
+  }
+
+  if (module.type === "featured") {
     return getProfileModuleDefinition(module.type).description;
   }
 

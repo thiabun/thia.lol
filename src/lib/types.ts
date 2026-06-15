@@ -111,6 +111,7 @@ export type ProfileModuleType =
   | "about"
   | "links"
   | "featured_badges"
+  | "featured"
   | "custom_text"
   | "activity";
 

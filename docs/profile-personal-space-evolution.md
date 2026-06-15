@@ -514,12 +514,13 @@ Personal Expression slice without broad theme, media, or module expansion:
   It does not introduce structured background controls for fit, position, focal
   point, overlay, blur, dim, or mobile-specific crops.
 - Featured content is profile-level and intentionally small: one eligible public
-  post and one eligible public room can render above modules as compact summary
-  cards. Public visitors never see empty featured placeholders.
-- Owner controls live in the existing lazy-loaded Customize Profile modal under
-  the Featured section. The public profile only shows a small owner-only change
-  action when featured content exists, or a single compact setup prompt when it
-  does not.
+  post and one eligible public room render through the registry-backed
+  `featured` module inside the profile module grid. Public visitors never see
+  empty featured placeholders.
+- Owner content selection lives in the existing lazy-loaded Customize Profile
+  modal under the Featured section. Featured visibility, order, and layout live
+  with the other module controls; the public profile does not show separate
+  featured change actions or setup prompts.
 - Featured content storage uses `profiles.featured_post_id` and
   `profiles.featured_room_id` from migration
   `20260613_0001_add_profile_featured_content.sql`, with
@@ -535,9 +536,9 @@ Deferred after Phase 2:
 
 - True structured background/banner controls: fit, position, focal point,
   overlay, blur, dim, span, mobile fallback, and API/storage for those settings.
-- A dedicated `profile_featured_content` table or module-backed featured model.
-  The current single post plus single room fields are enough for this scoped
-  slice but not a full featured-content system.
+- A dedicated `profile_featured_content` table or multi-item featured-content
+  model. The current single post plus single room fields are enough for this
+  scoped slice but not a full featured-content system.
 - Featured media thumbnails, gallery/media modules, music modules, layout
   presets, custom theme presets, integrations, embeds, analytics, monetization,
   and module marketplaces.
@@ -577,8 +578,8 @@ Module registry foundation:
   and summaries.
 - Public rendering and owner preview both use this registry, reducing the risk
   that a future module renders differently in preview and on the public profile.
-- Existing registry-backed module types remain `about`, `custom_text`, `links`,
-  and `featured_badges`.
+- Existing registry-backed module types are `about`, `custom_text`, `links`,
+  `featured_badges`, `featured`, and `activity`.
 
 Future drag/drop considerations:
 
@@ -642,8 +643,9 @@ for the Personal Space grid without turning profiles into a page builder:
   `20260615_0001_add_profile_layout_preset.sql`. Reads fall back to `balanced`
   when the column or value is missing.
 - The first allowlisted presets are `balanced`, `compact`, and `showcase`.
-  Presets affect grid gaps, desktop max columns, featured card sizing, and
-  registry-backed module sizing. Mobile remains a single stable column.
+  Presets affect grid gaps, desktop max columns, and registry-backed module
+  sizing, including the built-in Featured and Activity modules. Mobile remains
+  a single stable column.
 - Owner layout editing lives inside the existing lazy-loaded Customize Profile
   modal under Modules, with a compact segmented preset control and separate
   layout save action. Public visitors do not see layout controls.
@@ -681,6 +683,22 @@ Follow-up implication: future modules such as gallery, music, links, projects,
 or blog/journal surfaces should not add permanent page sections beside the grid.
 They should define content checks, default sizing, owner controls, and public
 empty behavior before they render on visitor profiles.
+
+### Implementation Note - 2026-06-16 Featured Module Pass
+
+Featured is now a normal built-in module instead of a fixed public profile
+section:
+
+- Public profiles render as the profile header plus the module grid. There is no
+  fixed Featured heading, owner-only Change action, setup prompt, or public
+  placeholder outside the grid.
+- `profileModuleRegistry` registers `featured`, and the profile module API
+  creates/synthesizes Featured the same way it does Activity so saved visibility
+  and ordering preferences can persist.
+- Featured content selection remains in Customize Profile under the Featured
+  tab, while visibility, order, and layout controls stay in the Modules tab.
+- Featured only renders publicly when the module is active/public and at least
+  one eligible featured post or room is available.
 
 Current limitations:
 

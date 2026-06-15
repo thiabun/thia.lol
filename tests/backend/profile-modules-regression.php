@@ -18,6 +18,9 @@ assert_true($about['body'] === 'A concise personal note.', 'about body mismatch'
 $activity = profile_module_config('activity', [], 123);
 assert_true($activity === [], 'activity config should be empty');
 
+$featured = profile_module_config('featured', [], 123);
+assert_true($featured === [], 'featured config should be empty');
+
 $customText = profile_module_config(
     'custom_text',
     [

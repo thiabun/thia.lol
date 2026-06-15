@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
@@ -15,46 +15,121 @@ test.beforeEach(async ({ context }) => {
   });
 });
 
-test("visitor profile renders featured post and room above modules", async ({ page }) => {
+test("visitor profile renders featured post and room through the module grid", async ({ page }) => {
   await mockFeaturedProfile(page, {
     authenticated: false,
     featuredPost: postOption(),
     featuredRoom: roomOption(),
-    modules: [aboutModule()],
-  });
-  await acknowledgeCookieNotice(page);
-  await page.goto("/@thia");
-
-  const featured = page.getByTestId("profile-featured-content");
-  await expect(featured).toBeVisible();
-  await expect(featured.getByTestId("profile-featured-grid")).toBeVisible();
-  await expect(featured.locator('[data-profile-grid-size="wide"]')).toHaveCount(1);
-  await expect(featured.locator('[data-profile-grid-size="small"]')).toHaveCount(1);
-  await expect(featured.getByRole("heading", { name: "Featured post" })).toBeVisible();
-  await expect(featured).toContainText("A launch note worth keeping close.");
-  await expect(featured.getByRole("heading", { name: "Featured room" })).toBeVisible();
-  await expect(featured).toContainText("General");
-
-  const modules = page.getByTestId("profile-modules");
-  await expect(modules).toBeVisible();
-  const featuredBox = await featured.boundingBox();
-  const modulesBox = await modules.boundingBox();
-  expect(featuredBox?.y ?? 0).toBeLessThan(modulesBox?.y ?? 0);
-});
-
-test("visitor without featured content sees no fake featured section", async ({ page }) => {
-  await mockFeaturedProfile(page, {
-    authenticated: false,
-    featuredPost: null,
-    featuredRoom: null,
-    modules: [],
+    modules: [
+      featuredModule({ position: 1, title: "Pinned highlights" }),
+      aboutModule({ position: 2 }),
+    ],
   });
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
   await expect(page.getByTestId("profile-featured-content")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Change" })).toHaveCount(0);
+
+  const modules = page.getByTestId("profile-modules");
+  await expect(modules).toBeVisible();
+  await expect(modules.getByTestId("profile-grid-module-featured")).toBeVisible();
+  await expect(modules.getByTestId("profile-grid-module-featured")).toHaveAttribute(
+    "data-profile-grid-size",
+    "wide",
+  );
+
+  const featured = modules.getByTestId("profile-module-featured");
+  await expect(featured).toBeVisible();
+  await expect(featured.getByText("Pinned highlights", { exact: true })).toBeVisible();
+  await expect(featured.getByRole("heading", { name: "Featured post" })).toBeVisible();
+  await expect(featured).toContainText("A launch note worth keeping close.");
+  await expect(featured.getByRole("heading", { name: "Featured room" })).toBeVisible();
+  await expect(featured).toContainText("General");
+  await expectTextOrder(modules, [
+    "Pinned highlights",
+    "A launch note worth keeping close.",
+    "About this space",
+  ]);
+});
+
+test("visitor without featured content sees no fake featured module", async ({ page }) => {
+  await mockFeaturedProfile(page, {
+    authenticated: false,
+    featuredPost: null,
+    featuredRoom: null,
+    modules: [featuredModule()],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expect(page.getByTestId("profile-featured-content")).toHaveCount(0);
+  await expect(page.getByTestId("profile-grid-module-featured")).toHaveCount(0);
   await expect(page.getByText("Feature a post")).toHaveCount(0);
   await expect(page.getByText("Feature a room")).toHaveCount(0);
+});
+
+test("visitor hidden featured module preference suppresses featured content", async ({ page }) => {
+  await mockFeaturedProfile(page, {
+    authenticated: false,
+    featuredPost: postOption(),
+    featuredRoom: roomOption(),
+    modules: [featuredModule({ visibility: "hidden" })],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expect(page.getByTestId("profile-grid-module-featured")).toHaveCount(0);
+  await expect(page.getByText("A launch note worth keeping close.")).toHaveCount(0);
+  await expect(page.getByText("General")).toHaveCount(0);
+});
+
+test("visitor featured module respects profile layout and order", async ({ page }) => {
+  await mockFeaturedProfile(page, {
+    authenticated: false,
+    featuredPost: postOption(),
+    featuredRoom: null,
+    modules: [aboutModule({ position: 1 }), featuredModule({ position: 2 })],
+    profileOverrides: { profileLayoutPreset: "showcase" },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const modules = page.getByTestId("profile-modules");
+  const grid = modules.getByTestId("profile-module-grid");
+  await expect(grid).toHaveAttribute("data-profile-layout-preset", "showcase");
+  await expect(modules.getByTestId("profile-grid-module-featured")).toHaveAttribute(
+    "data-profile-grid-size",
+    "wide",
+  );
+  await expectTextOrder(modules, [
+    "About this space",
+    "Featured",
+    "A launch note worth keeping close.",
+  ]);
+});
+
+test("first featured module can lead the showcase layout", async ({ page }) => {
+  await mockFeaturedProfile(page, {
+    authenticated: false,
+    featuredPost: postOption(),
+    featuredRoom: roomOption(),
+    modules: [featuredModule({ position: 1 }), aboutModule({ position: 2 })],
+    profileOverrides: { profileLayoutPreset: "showcase" },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const modules = page.getByTestId("profile-modules");
+  await expect(modules.getByTestId("profile-grid-module-featured")).toHaveAttribute(
+    "data-profile-grid-size",
+    "feature",
+  );
+  await expectTextOrder(modules, [
+    "Featured",
+    "A launch note worth keeping close.",
+    "About this space",
+  ]);
 });
 
 test("owner can select and clear featured content from customization", async ({ page }) => {
@@ -63,7 +138,7 @@ test("owner can select and clear featured content from customization", async ({ 
     authenticated: true,
     featuredPost: null,
     featuredRoom: null,
-    modules: [],
+    modules: [featuredModule()],
     onFeaturedSave: (payload) => {
       savedPayloads.push(payload);
     },
@@ -71,7 +146,10 @@ test("owner can select and clear featured content from customization", async ({ 
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await page.getByTestId("profile-header").getByRole("button", { name: "Customize profile" }).click();
+  await page
+    .getByTestId("profile-header")
+    .getByRole("button", { name: "Customize profile" })
+    .click();
   const modal = page.getByTestId("profile-customization-modal");
   await modal.getByRole("button", { name: /Featured/ }).click();
 
@@ -115,15 +193,15 @@ test("owner empty featured state stays compact on mobile", async ({ page }) => {
     authenticated: true,
     featuredPost: null,
     featuredRoom: null,
-    modules: [],
+    modules: [featuredModule()],
   });
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  const featured = page.getByTestId("profile-featured-content");
-  await expect(featured).toBeVisible();
-  await expect(featured.getByText("Feature a post or room")).toBeVisible();
-  await expect(featured.getByText("Pick one public highlight.")).toBeVisible();
+  await expect(page.getByTestId("profile-featured-content")).toHaveCount(0);
+  await expect(page.getByTestId("profile-grid-module-featured")).toHaveCount(0);
+  await expect(page.getByText("Feature a post or room")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Customize profile" })).toBeVisible();
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
@@ -170,6 +248,7 @@ async function mockFeaturedProfile(
     featuredRoom: ReturnType<typeof roomOption> | null;
     modules: unknown[];
     onFeaturedSave?: (payload: Record<string, unknown>) => void;
+    profileOverrides?: Record<string, unknown>;
   },
 ) {
   let featuredPost = options.featuredPost;
@@ -237,7 +316,10 @@ async function mockFeaturedProfile(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: [roomOption(), roomOption({ id: 202, slug: "quiet", name: "Quiet Room" })] }),
+      body: JSON.stringify({
+        ok: true,
+        data: [roomOption(), roomOption({ id: 202, slug: "quiet", name: "Quiet Room" })],
+      }),
     });
   });
 
@@ -247,7 +329,7 @@ async function mockFeaturedProfile(
       contentType: "application/json",
       body: JSON.stringify({
         ok: true,
-        data: profileBody(featuredPost, featuredRoom),
+        data: profileBody(featuredPost, featuredRoom, options.profileOverrides),
       }),
     });
   });
@@ -262,7 +344,7 @@ async function mockFeaturedProfile(
       contentType: "application/json",
       body: JSON.stringify({
         ok: true,
-        data: profileBody(featuredPost, featuredRoom),
+        data: profileBody(featuredPost, featuredRoom, options.profileOverrides),
       }),
     });
   });
@@ -306,7 +388,10 @@ async function mockFeaturedProfile(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: [postOption(), postOption({ id: 102, body: "A quiet archive note." })] }),
+      body: JSON.stringify({
+        ok: true,
+        data: [postOption(), postOption({ id: 102, body: "A quiet archive note." })],
+      }),
     });
   });
 
@@ -333,6 +418,7 @@ async function acknowledgeCookieNotice(page: Page) {
 function profileBody(
   featuredPost: ReturnType<typeof postOption> | null,
   featuredRoom: ReturnType<typeof roomOption> | null,
+  overrides: Record<string, unknown> = {},
 ) {
   return {
     user: user(),
@@ -342,6 +428,7 @@ function profileBody(
     profileAccent: null,
     profileBackground: null,
     profileTheme: null,
+    profileLayoutPreset: "balanced",
     featuredPostId: featuredPost?.id ?? null,
     featuredRoomId: featuredRoom?.id ?? null,
     featuredPost,
@@ -365,6 +452,7 @@ function profileBody(
     isMoot: false,
     createdAt: "2026-06-10 00:00:00",
     updatedAt: "2026-06-10 00:00:00",
+    ...overrides,
   };
 }
 
@@ -449,15 +537,61 @@ function roomOptionShape() {
   };
 }
 
-function aboutModule() {
+async function expectTextOrder(locator: Locator, texts: string[]) {
+  const indexes = await locator.evaluate(
+    (element, expectedTexts) =>
+      expectedTexts.map((text) => element.textContent?.indexOf(text) ?? -1),
+    texts,
+  );
+
+  for (const index of indexes) {
+    expect(index).toBeGreaterThanOrEqual(0);
+  }
+
+  expect([...indexes].sort((a, b) => a - b)).toEqual(indexes);
+}
+
+function featuredModule(
+  overrides: {
+    id?: number;
+    position?: number;
+    status?: string;
+    title?: string | null;
+    visibility?: string;
+  } = {},
+) {
   return {
-    id: 1,
+    id: overrides.id ?? 8,
+    type: "featured",
+    title: overrides.title ?? "Featured",
+    config: {},
+    visibility: overrides.visibility ?? "public",
+    position: overrides.position ?? 1,
+    status: overrides.status ?? "active",
+    schemaVersion: 1,
+    createdAt: "2026-06-12 00:00:00",
+    updatedAt: "2026-06-12 00:00:00",
+  };
+}
+
+function aboutModule(
+  overrides: {
+    body?: string;
+    id?: number;
+    position?: number;
+    status?: string;
+    title?: string;
+    visibility?: string;
+  } = {},
+) {
+  return {
+    id: overrides.id ?? 1,
     type: "about",
-    title: "About this space",
-    config: { body: "Saved profile note" },
-    visibility: "public",
-    position: 1,
-    status: "active",
+    title: overrides.title ?? "About this space",
+    config: { body: overrides.body ?? "Saved profile note" },
+    visibility: overrides.visibility ?? "public",
+    position: overrides.position ?? 1,
+    status: overrides.status ?? "active",
     schemaVersion: 1,
     createdAt: "2026-06-12 00:00:00",
     updatedAt: "2026-06-12 00:00:00",
