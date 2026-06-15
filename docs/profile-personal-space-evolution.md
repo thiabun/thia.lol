@@ -518,9 +518,10 @@ Personal Expression slice without broad theme, media, or module expansion:
   `featured` module inside the profile module grid. Public visitors never see
   empty featured placeholders.
 - Owner content selection lives in the existing lazy-loaded Customize Profile
-  modal under the Featured section. Featured visibility, order, and layout live
-  with the other module controls; the public profile does not show separate
-  featured change actions or setup prompts.
+  modal by expanding the Featured module in Modules. Featured post, room,
+  visibility, order, and layout preferences are edited in the same module flow;
+  the public profile does not show separate featured change actions or setup
+  prompts.
 - Featured content storage uses `profiles.featured_post_id` and
   `profiles.featured_room_id` from migration
   `20260613_0001_add_profile_featured_content.sql`, with
@@ -695,8 +696,9 @@ section:
 - `profileModuleRegistry` registers `featured`, and the profile module API
   creates/synthesizes Featured the same way it does Activity so saved visibility
   and ordering preferences can persist.
-- Featured content selection remains in Customize Profile under the Featured
-  tab, while visibility, order, and layout controls stay in the Modules tab.
+- Featured content selection remains in Customize Profile by editing the
+  Featured module inside the Modules tab, alongside visibility, order, and
+  layout controls.
 - Featured only renders publicly when the module is active/public and at least
   one eligible featured post or room is available.
 

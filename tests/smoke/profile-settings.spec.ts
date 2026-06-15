@@ -252,8 +252,6 @@ test("mobile edit profile modal has no horizontal overflow", async ({ page }) =>
   await expect(modal.getByRole("heading", { name: "Appearance" })).toBeVisible();
   await modal.getByRole("button", { name: /Connections/ }).click();
   await expect(modal.getByRole("heading", { name: "Connections" })).toBeVisible();
-  await modal.getByRole("button", { name: /Featured/ }).click();
-  await expect(modal.getByTestId("profile-featured-editor")).toBeVisible();
   await modal.getByRole("button", { name: /Modules/ }).click();
   await expect(modal.getByTestId("profile-layout-editor")).toBeVisible();
   await expect(modal.getByRole("button", { name: /Preview/ })).toBeVisible();

@@ -151,15 +151,17 @@ test("owner can select and clear featured content from customization", async ({ 
     .getByRole("button", { name: "Customize profile" })
     .click();
   const modal = page.getByTestId("profile-customization-modal");
-  await modal.getByRole("button", { name: /Featured/ }).click();
+  await modal.getByRole("button", { name: /Modules/ }).click();
 
-  const editor = modal.getByTestId("profile-featured-editor");
+  let moduleCard = modal.getByTestId("profile-module-card-8");
+  await moduleCard.getByRole("button", { name: "Edit Featured" }).click();
+  let editor = moduleCard.getByTestId("profile-featured-editor");
   await expect(editor).toBeVisible();
   await editor.getByLabel("Search posts").fill("launch");
   await editor.getByRole("button", { name: /A launch note worth keeping close/ }).click();
   await editor.getByLabel("Search rooms").fill("general");
   await editor.getByRole("button", { name: /General/ }).click();
-  await editor.getByRole("button", { name: "Save featured content" }).click();
+  await moduleCard.getByRole("button", { name: "Save module" }).click();
 
   await expect.poll(() => savedPayloads).toEqual([
     {
@@ -171,9 +173,12 @@ test("owner can select and clear featured content from customization", async ({ 
     modal.getByTestId("profile-customization-preview").getByTestId("profile-featured-preview"),
   ).toContainText("A launch note worth keeping close.");
 
+  moduleCard = modal.getByTestId("profile-module-card-8");
+  await moduleCard.getByRole("button", { name: "Edit Featured" }).click();
+  editor = moduleCard.getByTestId("profile-featured-editor");
   await editor.getByRole("button", { name: "Clear" }).first().click();
   await editor.getByRole("button", { name: "Clear" }).last().click();
-  await editor.getByRole("button", { name: "Save featured content" }).click();
+  await moduleCard.getByRole("button", { name: "Save module" }).click();
 
   await expect.poll(() => savedPayloads).toEqual([
     {

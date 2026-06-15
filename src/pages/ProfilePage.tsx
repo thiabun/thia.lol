@@ -84,7 +84,7 @@ import { useAuth } from "../lib/useAuth";
 
 type ProfileTab = "feed" | "replies" | "rooms";
 type ProfilePanel = "followers" | "following" | "badges";
-type ProfileCustomizationInitialSection = "identity" | "featured" | "modules";
+type ProfileCustomizationInitialSection = "identity" | "modules";
 
 const ProfileCustomizationModal = lazy(() =>
   import("../components/social/ProfileCustomizationModal").then((module) => ({

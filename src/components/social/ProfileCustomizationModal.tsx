@@ -109,12 +109,6 @@ const sections: Array<{
     icon: LinkIcon,
   },
   {
-    id: "featured",
-    label: "Featured",
-    description: "A post and room highlight.",
-    icon: Pin,
-  },
-  {
     id: "modules",
     label: "Modules",
     description: "Personal-space blocks.",
@@ -185,7 +179,6 @@ type CustomizationSection =
   | "identity"
   | "appearance"
   | "connections"
-  | "featured"
   | "modules"
   | "preview";
 
@@ -267,8 +260,6 @@ export function ProfileCustomizationModal({
   );
   const [featuredPostQuery, setFeaturedPostQuery] = useState("");
   const [featuredRoomQuery, setFeaturedRoomQuery] = useState("");
-  const [savingFeatured, setSavingFeatured] = useState(false);
-  const [featuredMessage, setFeaturedMessage] = useState<string | undefined>();
   const [connectionErrors, setConnectionErrors] = useState<Record<string, string>>({});
   const [editingConnectionIds, setEditingConnectionIds] = useState<Set<string>>(
     () => new Set(),
@@ -291,7 +282,6 @@ export function ProfileCustomizationModal({
 
   const busy =
     savingProfile ||
-    savingFeatured ||
     savingLayout ||
     uploading !== undefined ||
     moduleBusy !== undefined;
@@ -320,7 +310,7 @@ export function ProfileCustomizationModal({
 
   function requestClose() {
     if (
-      (hasUnsavedModules || layoutDirty) &&
+      (hasUnsavedModules || layoutDirty || featuredDirty) &&
       !window.confirm("Discard unsaved customization changes?")
     ) {
       return;
@@ -522,28 +512,6 @@ export function ProfileCustomizationModal({
     }
   }
 
-  async function handleFeaturedSave() {
-    setSavingFeatured(true);
-    setFeaturedMessage(undefined);
-
-    try {
-      const updated = await onSaveFeaturedContent({
-        featuredPostId,
-        featuredRoomId,
-      });
-
-      setFeaturedPostId(updated.featuredPost?.id ?? updated.featuredPostId ?? null);
-      setFeaturedRoomId(updated.featuredRoom?.id ?? updated.featuredRoomId ?? null);
-      setFeaturedMessage("Featured content updated");
-    } catch (error) {
-      setFeaturedMessage(
-        error instanceof Error ? error.message : "Featured content could not be saved.",
-      );
-    } finally {
-      setSavingFeatured(false);
-    }
-  }
-
   async function handleLayoutSave() {
     if (!layoutDirty) {
       return;
@@ -638,16 +606,44 @@ export function ProfileCustomizationModal({
     setModuleFormError(undefined);
 
     try {
-      const input = moduleInput(selectedModule);
-      const updated =
-        selectedModule.id < 0
-          ? await onCreateModule(input)
-          : await onUpdateModule(selectedModule.id, input);
-      setDrafts(updated);
+      const shouldSaveModule = selectedModule.id < 0 || selectedModuleDirty;
+      const shouldSaveFeatured =
+        selectedModule.type === "featured" && featuredDirty;
+
+      let updatedModules: ProfileModule[] | undefined;
+
+      if (shouldSaveModule) {
+        const input = moduleInput(selectedModule);
+        updatedModules =
+          selectedModule.id < 0
+            ? await onCreateModule(input)
+            : await onUpdateModule(selectedModule.id, input);
+      }
+
+      if (shouldSaveFeatured) {
+        const updatedProfile = await onSaveFeaturedContent({
+          featuredPostId,
+          featuredRoomId,
+        });
+
+        setFeaturedPostId(
+          updatedProfile.featuredPost?.id ?? updatedProfile.featuredPostId ?? null,
+        );
+        setFeaturedRoomId(
+          updatedProfile.featuredRoom?.id ?? updatedProfile.featuredRoomId ?? null,
+        );
+      }
+
+      if (updatedModules) {
+        setDrafts(updatedModules);
+      }
+
       setSelectedModuleId(undefined);
       setModuleDirty({});
       setOrderDirty(false);
-      setModuleMessage("Module saved");
+      setModuleMessage(
+        selectedModule.type === "featured" ? "Featured module saved" : "Module saved",
+      );
     } catch (caught) {
       setModuleFormError(
         caught instanceof Error ? caught.message : "Module could not be saved.",
@@ -886,44 +882,6 @@ export function ProfileCustomizationModal({
                 </EditorSection>
               </div>
 
-              <div className={activeSection === "featured" ? "block" : "hidden"}>
-                <FeaturedContentEditor
-                  busy={busy}
-                  error={featuredOptionsError}
-                  featuredPostId={featuredPostId}
-                  featuredPostQuery={featuredPostQuery}
-                  featuredRoomId={featuredRoomId}
-                  featuredRoomQuery={featuredRoomQuery}
-                  loading={featuredOptionsLoading}
-                  message={featuredMessage}
-                  currentPost={profile.featuredPost ?? null}
-                  currentRoom={profile.featuredRoom ?? null}
-                  postOptions={featuredPostOptions}
-                  roomOptions={featuredRoomOptions}
-                  saving={savingFeatured}
-                  saveDisabled={!featuredDirty}
-                  onClearPost={() => {
-                    setFeaturedPostId(null);
-                    setFeaturedMessage(undefined);
-                  }}
-                  onClearRoom={() => {
-                    setFeaturedRoomId(null);
-                    setFeaturedMessage(undefined);
-                  }}
-                  onPostQueryChange={(value) => setFeaturedPostQuery(value)}
-                  onRoomQueryChange={(value) => setFeaturedRoomQuery(value)}
-                  onSave={() => void handleFeaturedSave()}
-                  onSelectPost={(postId) => {
-                    setFeaturedPostId(postId);
-                    setFeaturedMessage(undefined);
-                  }}
-                  onSelectRoom={(roomId) => {
-                    setFeaturedRoomId(roomId);
-                    setFeaturedMessage(undefined);
-                  }}
-                />
-              </div>
-
               <div className={activeSection === "modules" ? "block" : "hidden"}>
                 <ModulesEditorSection
                   badges={badges}
@@ -933,6 +891,44 @@ export function ProfileCustomizationModal({
                   editorBusy={busy}
                   error={moduleError}
                   formError={moduleFormError}
+                  featuredContent={{
+                    busy,
+                    currentPost: profile.featuredPost ?? null,
+                    currentRoom: profile.featuredRoom ?? null,
+                    error: featuredOptionsError,
+                    featuredPostId,
+                    featuredPostQuery,
+                    featuredRoomId,
+                    featuredRoomQuery,
+                    loading: featuredOptionsLoading,
+                    postOptions: featuredPostOptions,
+                    roomOptions: featuredRoomOptions,
+                    onClearPost: () => {
+                      setFeaturedPostId(null);
+                      setModuleMessage(undefined);
+                    },
+                    onClearRoom: () => {
+                      setFeaturedRoomId(null);
+                      setModuleMessage(undefined);
+                    },
+                    onPostQueryChange: (value) => {
+                      setFeaturedPostQuery(value);
+                      setModuleMessage(undefined);
+                    },
+                    onRoomQueryChange: (value) => {
+                      setFeaturedRoomQuery(value);
+                      setModuleMessage(undefined);
+                    },
+                    onSelectPost: (postId) => {
+                      setFeaturedPostId(postId);
+                      setModuleMessage(undefined);
+                    },
+                    onSelectRoom: (roomId) => {
+                      setFeaturedRoomId(roomId);
+                      setModuleMessage(undefined);
+                    },
+                  }}
+                  featuredDirty={featuredDirty}
                   hasUnsavedNewModule={hasUnsavedNewModule}
                   layoutDirty={layoutDirty}
                   layoutMessage={layoutMessage}
@@ -979,7 +975,6 @@ export function ProfileCustomizationModal({
               ) : null}
 
               {activeSection !== "modules" &&
-              activeSection !== "featured" &&
               activeSection !== "preview" ? (
                 <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                   <Button
@@ -1354,16 +1349,12 @@ type FeaturedContentEditorProps = {
   featuredRoomId: number | null;
   featuredRoomQuery: string;
   loading: boolean;
-  message?: string | undefined;
   postOptions: Post[];
   roomOptions: Room[];
-  saveDisabled: boolean;
-  saving: boolean;
   onClearPost: () => void;
   onClearRoom: () => void;
   onPostQueryChange: (value: string) => void;
   onRoomQueryChange: (value: string) => void;
-  onSave: () => void;
   onSelectPost: (postId: number) => void;
   onSelectRoom: (roomId: number) => void;
 };
@@ -1378,16 +1369,12 @@ function FeaturedContentEditor({
   featuredRoomId,
   featuredRoomQuery,
   loading,
-  message,
   postOptions,
   roomOptions,
-  saveDisabled,
-  saving,
   onClearPost,
   onClearRoom,
   onPostQueryChange,
   onRoomQueryChange,
-  onSave,
   onSelectPost,
   onSelectRoom,
 }: FeaturedContentEditorProps) {
@@ -1409,7 +1396,7 @@ function FeaturedContentEditor({
       <div>
         <h3 className="text-base font-semibold text-text">Featured content</h3>
         <p className="mt-1 text-sm leading-5 text-muted">
-          Highlight one public post and one public room above your modules.
+          Highlight one public post and one public room in this module.
         </p>
       </div>
 
@@ -1454,24 +1441,6 @@ function FeaturedContentEditor({
           onQueryChange={onRoomQueryChange}
           onSelect={onSelectRoom}
         />
-      </div>
-
-      {message ? (
-        <ModalSheetStatus tone={featuredStatusTone(message)}>
-          {message}
-        </ModalSheetStatus>
-      ) : null}
-
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Button
-          type="button"
-          size="sm"
-          disabled={busy || saveDisabled}
-          icon={<Save aria-hidden="true" size={17} />}
-          onClick={onSave}
-        >
-          {saving ? "Saving" : "Save featured content"}
-        </Button>
       </div>
     </section>
   );
@@ -1717,10 +1686,6 @@ function profileStatusTone(message: string) {
     : "error";
 }
 
-function featuredStatusTone(message: string) {
-  return message === "Featured content updated" ? "success" : "error";
-}
-
 type ModulesEditorSectionProps = {
   badges: UserBadge[];
   busy: "save" | "delete" | "order" | undefined;
@@ -1728,6 +1693,8 @@ type ModulesEditorSectionProps = {
   drafts: ProfileModule[];
   editorBusy: boolean;
   error?: string | undefined;
+  featuredContent: FeaturedContentEditorProps;
+  featuredDirty: boolean;
   formError?: string | undefined;
   hasUnsavedNewModule: boolean;
   layoutDirty: boolean;
@@ -1757,6 +1724,8 @@ function ModulesEditorSection({
   drafts,
   editorBusy,
   error,
+  featuredContent,
+  featuredDirty,
   formError,
   hasUnsavedNewModule,
   layoutDirty,
@@ -1870,6 +1839,12 @@ function ModulesEditorSection({
                   canMoveDown={index < drafts.length - 1}
                   canMoveUp={index > 0}
                   expanded={selectedModuleId === module.id}
+                  featuredContent={featuredContent}
+                  featuredDirty={
+                    selectedModuleId === module.id && module.type === "featured"
+                      ? featuredDirty
+                      : false
+                  }
                   formError={selectedModuleId === module.id ? formError : undefined}
                   module={module}
                   selectedDirty={selectedModuleId === module.id ? selectedDirty : false}
@@ -2012,6 +1987,8 @@ type ModuleTileProps = {
   canMoveDown: boolean;
   canMoveUp: boolean;
   expanded: boolean;
+  featuredContent: FeaturedContentEditorProps;
+  featuredDirty: boolean;
   formError?: string | undefined;
   module: ProfileModule;
   selectedDirty: boolean;
@@ -2028,6 +2005,8 @@ function ModuleTile({
   canMoveDown,
   canMoveUp,
   expanded,
+  featuredContent,
+  featuredDirty,
   formError,
   module,
   selectedDirty,
@@ -2041,6 +2020,7 @@ function ModuleTile({
   const Icon = moduleType.icon;
   const title = module.title || moduleType.label;
   const isBuiltInModule = module.type === "activity" || module.type === "featured";
+  const canSaveModule = module.id < 0 || selectedDirty || featuredDirty;
   const shouldReduceMotion = useReducedMotion();
 
   return (
@@ -2159,7 +2139,12 @@ function ModuleTile({
               />
             </div>
 
-            <ModuleTypeFields badges={badges} module={module} onChange={onUpdate} />
+            <ModuleTypeFields
+              badges={badges}
+              featuredContent={featuredContent}
+              module={module}
+              onChange={onUpdate}
+            />
 
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
               <span className="min-w-0 text-xs leading-5 text-muted">
@@ -2171,7 +2156,7 @@ function ModuleTile({
                 type="submit"
                 size="sm"
                 icon={<Save aria-hidden="true" size={15} />}
-                disabled={busy !== undefined || (!selectedDirty && module.id > 0)}
+                disabled={busy !== undefined || !canSaveModule}
               >
                 {busy === "save" ? "Saving" : "Save module"}
               </Button>
@@ -2220,11 +2205,17 @@ function VisibilitySegmentedControl({ onChange, value }: VisibilitySegmentedCont
 
 type ModuleTypeFieldsProps = {
   badges: UserBadge[];
+  featuredContent: FeaturedContentEditorProps;
   module: ProfileModule;
   onChange: (updater: (module: ProfileModule) => ProfileModule) => void;
 };
 
-function ModuleTypeFields({ badges, module, onChange }: ModuleTypeFieldsProps) {
+function ModuleTypeFields({
+  badges,
+  featuredContent,
+  module,
+  onChange,
+}: ModuleTypeFieldsProps) {
   if (module.type === "activity") {
     return (
       <div className="mt-3 rounded-card border border-line bg-canvas/45 p-2.5 text-sm leading-5 text-muted">
@@ -2234,11 +2225,7 @@ function ModuleTypeFields({ badges, module, onChange }: ModuleTypeFieldsProps) {
   }
 
   if (module.type === "featured") {
-    return (
-      <div className="mt-3 rounded-card border border-line bg-canvas/45 p-2.5 text-sm leading-5 text-muted">
-        Featured post and room selections stay in the Featured tab.
-      </div>
-    );
+    return <FeaturedContentEditor {...featuredContent} />;
   }
 
   if (module.type === "links") {

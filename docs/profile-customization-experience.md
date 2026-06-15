@@ -121,7 +121,7 @@ Future integrations belong in Modules or Connections, not in fake global switche
 1. Unified customization modal: merge profile editing and module editing entry points, add persistent preview, and redesign Connections as platform cards using existing APIs.
 2. Preview maturity: add mobile/desktop preview toggles and better unsaved-state messaging without changing public APIs.
 3. Appearance presets spec: define visible, contrast-safe accent/surface/background treatment presets before restoring theme controls.
-4. Featured content maturity: keep post and room selection inside Customize Profile while Featured renders as a normal module with visibility, order, and layout preferences.
+4. Featured content maturity: edit post and room selection from the Featured module in Modules, alongside visibility, order, and layout preferences.
 5. Integration cards: add link-first Twitch, Spotify, Apple Music, YouTube, GitHub, or Discord cards only after safety, privacy, and performance rules are explicit.
 6. Blog direction: decide whether long-form content is a post type, module-backed selected posts, or a separate model before building blog UI.
 
