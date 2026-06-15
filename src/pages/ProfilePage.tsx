@@ -527,7 +527,7 @@ export function ProfilePage() {
           <ApiStateNotice
             kind="loading"
             title={`Loading @${normalizedHandle}`}
-            text="Profile details are loading."
+            text="Loading profile."
           />
         ) : (
           <ApiStateNotice
@@ -689,27 +689,27 @@ export function ProfilePage() {
 
         {activeTab === "feed" ? (
           <ProfilePostList
-            emptyDescription="Posts and reblogs from this profile will appear here."
+            emptyDescription="No posts."
             emptyIcon={MessageCircle}
             emptyText="No posts yet"
             errorTitle="Profile feed is not available"
             error={postsState.error ?? reblogsState.error}
             items={profileFeed}
             loading={postsState.loading || reblogsState.loading}
-            loadingText="Fetching posts and reblogs."
+            loadingText="Loading posts."
             loadingTitle="Loading profile feed"
           />
         ) : null}
         {activeTab === "replies" ? (
           <ProfilePostList
-            emptyDescription="Replies from this profile will appear here."
+            emptyDescription="No replies."
             emptyIcon={Reply}
             emptyText="No replies yet"
             errorTitle="Replies are not available"
             error={repliesState.error}
             items={profileReplies}
             loading={repliesState.loading}
-            loadingText="Fetching replies from this profile."
+            loadingText="Loading replies."
             loadingTitle="Loading replies"
           />
         ) : null}
@@ -850,7 +850,7 @@ function ProfileFeaturedContentSection({
             actionLabel="Feature post"
             icon={MessageCircle}
             title="Feature a post"
-            text="Choose one public post to keep near the top of your profile."
+            text="Pin one public post."
             onCustomize={onCustomize}
           />
         ) : null}
@@ -870,7 +870,7 @@ function ProfileFeaturedContentSection({
             actionLabel="Feature room"
             icon={Radio}
             title="Feature a room"
-            text="Choose one public room you own, moderate, or belong to."
+            text="Pin one public room."
             onCustomize={onCustomize}
           />
         ) : null}
@@ -946,7 +946,7 @@ function ProfileTabButton({
     <button
       aria-selected={active}
       className={cn(
-        "inline-flex min-h-10 shrink-0 items-center gap-2 rounded-control border px-4 text-sm font-semibold transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+        "inline-flex min-h-9 shrink-0 items-center gap-2 rounded-control border px-3 text-sm font-semibold transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
         active
           ? "border-line-strong bg-surface text-text shadow-soft"
           : "border-line bg-canvas/55 text-muted hover:border-line-strong hover:text-text",
@@ -1171,7 +1171,7 @@ function ProfileConnectionList({
       <ApiStateNotice
         kind="loading"
         title={`Loading ${title.toLowerCase()}`}
-        text={`Fetching this profile's ${title.toLowerCase()}.`}
+        text="Loading."
       />
     );
   }
@@ -1311,7 +1311,7 @@ function ProfileBadgeList({
       <ApiStateNotice
         kind="loading"
         title="Loading badges"
-        text="Fetching earned badges."
+        text="Loading badges."
       />
     );
   }
@@ -1331,7 +1331,7 @@ function ProfileBadgeList({
       <EmptyState
         icon={Award}
         title="No badges yet"
-        text="Earned badges will appear here."
+        text="No earned badges."
       />
     );
   }
@@ -1367,14 +1367,14 @@ function ProfileBadgeList({
 
 function emptyProfileConnectionText(title: string): string {
   if (title === "Followers") {
-    return "People who follow this profile will appear here.";
+    return "No followers.";
   }
 
   if (title === "Following") {
-    return "Profiles this member follows will appear here.";
+    return "Not following anyone.";
   }
 
-  return "Connections will appear here.";
+  return "No connections.";
 }
 
 type ProfileBadgeCardProps = {
@@ -1470,7 +1470,7 @@ function ProfileRoomList({ error, loading, rooms }: ProfileRoomListProps) {
       <ApiStateNotice
         kind="loading"
         title="Loading rooms"
-        text="Fetching rooms from this profile."
+        text="Loading rooms."
       />
     );
   }
@@ -1490,7 +1490,7 @@ function ProfileRoomList({ error, loading, rooms }: ProfileRoomListProps) {
       <EmptyState
         icon={Radio}
         title="No rooms yet"
-        text="Rooms this profile owns or belongs to will appear here."
+        text="No rooms."
       />
     );
   }

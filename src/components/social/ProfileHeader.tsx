@@ -72,6 +72,8 @@ export function ProfileHeader({
   const [actionsOpen, setActionsOpen] = useState(false);
   const [confirmBlockOpen, setConfirmBlockOpen] = useState(false);
   const links = profile.links;
+  const hasBanner = safeImageUrl(profile.bannerUrl);
+  const hasBackground = safeImageUrl(profile.profileBackground);
   const followLabel = profile.isFollowing ? "Following" : "Follow";
   const showProfileControls = !isOwnProfile && Boolean(onBlockToggle || onMuteToggle);
   const directActionsDisabled = profile.blockedByMe === true;
@@ -108,7 +110,7 @@ export function ProfileHeader({
   return (
     <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
       <Panel className="relative overflow-hidden border-line-strong" data-testid="profile-header">
-        {safeImageUrl(profile.profileBackground) ? (
+        {hasBackground ? (
           <img
             alt=""
             aria-hidden="true"
@@ -116,37 +118,46 @@ export function ProfileHeader({
             src={profile.profileBackground ?? undefined}
           />
         ) : null}
-        <div className="isolate relative z-0" data-testid="profile-header-banner">
-          {safeImageUrl(profile.bannerUrl) ? (
+        {hasBanner ? (
+          <div className="isolate relative z-0" data-testid="profile-header-banner">
             <img
               alt=""
-              className="relative z-0 h-36 w-full bg-surface-strong object-cover sm:h-44"
+              className="relative z-0 h-28 w-full bg-surface-strong object-cover sm:h-36"
               src={profile.bannerUrl ?? undefined}
             />
-          ) : (
-            <div className="relative z-0 h-36 border-b border-line bg-surface-strong sm:h-44" />
-          )}
-          <div className="absolute inset-x-0 bottom-0 z-10 h-20 bg-gradient-to-t from-surface via-surface/72 to-transparent" />
-        </div>
+            <div className="absolute inset-x-0 bottom-0 z-10 h-16 bg-gradient-to-t from-surface via-surface/72 to-transparent" />
+          </div>
+        ) : null}
         <motion.div
-          className="relative z-10 p-4 sm:p-6 lg:p-7"
+          className="relative z-10 p-4 sm:p-5"
           variants={staggerChildren}
           initial="hidden"
           animate="show"
         >
-          <div className="relative z-10 -mt-16 flex flex-col gap-4 sm:-mt-20 sm:flex-row sm:items-end sm:justify-between">
-            <div className="relative z-10 flex min-w-0 items-end gap-4" data-testid="profile-identity">
+          <div
+            className={cn(
+              "relative z-10 flex flex-col gap-4 sm:flex-row sm:justify-between",
+              hasBanner ? "-mt-12 sm:-mt-16 sm:items-end" : "sm:items-center",
+            )}
+          >
+            <div
+              className={cn(
+                "relative z-10 flex min-w-0 gap-3",
+                hasBanner ? "items-end" : "items-center",
+              )}
+              data-testid="profile-identity"
+            >
               <Avatar
                 user={profile.user}
                 size="lg"
-                className="size-24 border-4 border-surface text-2xl shadow-lift sm:size-28"
+                className="size-20 border-[3px] border-surface text-xl shadow-soft sm:size-24"
               />
               <div className="min-w-0 pb-1">
                 <div className="flex flex-wrap items-center gap-2">
                   {!isOwnProfile && profile.isMoot ? <Badge>Moot</Badge> : null}
                   {!isOwnProfile && profile.mutedByMe ? <Badge tone="cool">Muted</Badge> : null}
                 </div>
-                <h1 className="mt-2 break-words text-2xl font-semibold tracking-normal text-text sm:text-3xl">
+                <h1 className="mt-2 break-words text-2xl font-semibold tracking-normal text-text">
                   {profile.user.displayName}
                 </h1>
                 <p className="mt-1 break-all text-sm text-muted">@{profile.user.handle}</p>
@@ -218,18 +229,13 @@ export function ProfileHeader({
                             <button
                               type="button"
                               role="menuitem"
-                              className="flex w-full items-start gap-3 rounded-card px-3 py-2 text-left text-text transition duration-fluid hover:bg-surface-strong focus-visible:outline-2 focus-visible:outline-focus"
+                              className="flex w-full items-center gap-3 rounded-card px-3 py-2 text-left text-text transition duration-fluid hover:bg-surface-strong focus-visible:outline-2 focus-visible:outline-focus"
                               disabled={profileControlBusy !== undefined}
                               onClick={() => void handleMuteAction()}
                             >
-                              <VolumeX aria-hidden="true" size={16} className="mt-0.5 shrink-0" />
-                              <span>
-                                <span className="block font-semibold">
-                                  {profile.mutedByMe ? "Unmute" : "Mute"}
-                                </span>
-                                <span className="mt-1 block text-xs leading-5 text-muted">
-                                  Muted posts are hidden from your feeds where possible. They will not be notified.
-                                </span>
+                              <VolumeX aria-hidden="true" size={16} className="shrink-0" />
+                              <span className="font-semibold">
+                                {profile.mutedByMe ? "Unmute" : "Mute"}
                               </span>
                             </button>
                           ) : null}
@@ -237,18 +243,13 @@ export function ProfileHeader({
                             <button
                               type="button"
                               role="menuitem"
-                              className="mt-1 flex w-full items-start gap-3 rounded-card px-3 py-2 text-left text-text transition duration-fluid hover:bg-surface-strong focus-visible:outline-2 focus-visible:outline-focus"
+                              className="mt-1 flex w-full items-center gap-3 rounded-card px-3 py-2 text-left text-text transition duration-fluid hover:bg-surface-strong focus-visible:outline-2 focus-visible:outline-focus"
                               disabled={profileControlBusy !== undefined}
                               onClick={() => void handleBlockAction()}
                             >
-                              <ShieldOff aria-hidden="true" size={16} className="mt-0.5 shrink-0" />
-                              <span>
-                                <span className="block font-semibold">
-                                  {profile.blockedByMe ? "Unblock" : "Block"}
-                                </span>
-                                <span className="mt-1 block text-xs leading-5 text-muted">
-                                  Blocking removes follows between you, prevents messages, and limits interaction where possible.
-                                </span>
+                              <ShieldOff aria-hidden="true" size={16} className="shrink-0" />
+                              <span className="font-semibold">
+                                {profile.blockedByMe ? "Unblock" : "Block"}
                               </span>
                             </button>
                           ) : null}
@@ -272,7 +273,7 @@ export function ProfileHeader({
           ) : null}
           {!isOwnProfile && profile.blockedByMe ? (
             <motion.p className="mt-3 rounded-card border border-line bg-canvas/55 p-3 text-sm text-muted" variants={sectionItem}>
-              You blocked @{profile.user.handle}. Follow and Message are unavailable until you unblock them.
+              @{profile.user.handle} is blocked.
             </motion.p>
           ) : null}
           {!isOwnProfile && profile.mutedByMe && !profile.blockedByMe ? (
@@ -290,11 +291,13 @@ export function ProfileHeader({
               {profileControlError}
             </motion.p>
           ) : null}
-          <motion.div className="mt-5" variants={sectionItem}>
-            <p className="max-w-3xl text-pretty text-base leading-7 text-text">
-              {profile.bio || "No bio yet."}
-            </p>
-          </motion.div>
+          {profile.bio ? (
+            <motion.div className="mt-4" variants={sectionItem}>
+              <p className="max-w-3xl text-pretty text-sm leading-6 text-text">
+                {profile.bio}
+              </p>
+            </motion.div>
+          ) : null}
           <motion.div
             className="mt-4 flex flex-wrap gap-3 text-sm text-muted"
             variants={sectionItem}
@@ -313,45 +316,37 @@ export function ProfileHeader({
             ) : null}
           </motion.div>
           <motion.div
-            className="mt-6 grid gap-5 border-t border-line pt-5 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.72fr)]"
+            className="mt-5 border-t border-line pt-4"
             variants={sectionItem}
             data-testid="profile-social-context"
           >
-            <div>
-              <h2 className="text-sm font-semibold text-text">At a glance</h2>
-              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                <ProfileStat label="Posts" value={profile.stats.posts} icon={MessageCircle} />
-                <ProfileStat label="Replies" value={profile.stats.replies} icon={Reply} />
-                <ProfileStat label="Rooms" value={profile.stats.rooms} icon={Radio} />
-                <ProfileStat label="Likes" value={profile.stats.echoes} icon={Heart} />
-              </div>
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold text-text">Social context</h2>
-              <div
-                className="mt-3 flex flex-wrap gap-2"
-                aria-label="Profile details"
-              >
-                <ProfilePanelPill
-                  label="Followers"
-                  value={profile.stats.followers}
-                  icon={Users}
-                  onClick={() => onOpenPanel?.("followers")}
-                />
-                <ProfilePanelPill
-                  label="Following"
-                  value={profile.stats.following}
-                  icon={UserCheck}
-                  onClick={() => onOpenPanel?.("following")}
-                />
-                <ProfilePanelPill label="Moots" value={profile.stats.moots} icon={UserPlus} />
-                <ProfilePanelPill
-                  label="Badges"
-                  value={badgeCount}
-                  icon={Award}
-                  onClick={() => onOpenPanel?.("badges")}
-                />
-              </div>
+            <div
+              className="flex flex-wrap gap-2"
+              aria-label="Profile details"
+            >
+              <ProfileStat label="Posts" value={profile.stats.posts} icon={MessageCircle} />
+              <ProfileStat label="Replies" value={profile.stats.replies} icon={Reply} />
+              <ProfileStat label="Rooms" value={profile.stats.rooms} icon={Radio} />
+              <ProfileStat label="Likes" value={profile.stats.echoes} icon={Heart} />
+              <ProfilePanelPill
+                label="Followers"
+                value={profile.stats.followers}
+                icon={Users}
+                onClick={() => onOpenPanel?.("followers")}
+              />
+              <ProfilePanelPill
+                label="Following"
+                value={profile.stats.following}
+                icon={UserCheck}
+                onClick={() => onOpenPanel?.("following")}
+              />
+              <ProfilePanelPill label="Moots" value={profile.stats.moots} icon={UserPlus} />
+              <ProfilePanelPill
+                label="Badges"
+                value={badgeCount}
+                icon={Award}
+                onClick={() => onOpenPanel?.("badges")}
+              />
             </div>
           </motion.div>
           {links.length > 0 || featuredBadges.length > 0 ? (
@@ -422,7 +417,7 @@ export function ProfileHeader({
         }
       >
         <p className="text-sm leading-6 text-muted">
-          Blocking removes follows between you, prevents messages, and limits interaction where possible. This does not hide public content everywhere.
+          Blocking removes follows and prevents messages. Public content may still appear elsewhere.
         </p>
       </ModalSheet>
     </motion.div>
@@ -437,13 +432,14 @@ type ProfileStatProps = {
 
 function ProfileStat({ label, value, icon: Icon }: ProfileStatProps) {
   return (
-    <div className="rounded-card border border-line bg-canvas/45 p-3">
-      <div className="flex items-center gap-2 text-xs text-muted">
+    <span className="inline-flex min-h-8 items-center gap-1.5 rounded-control border border-line bg-canvas/45 px-2.5 text-sm text-text">
+      <span className="flex items-center gap-1.5 text-muted">
         <Icon aria-hidden="true" size={14} />
         {label}
-      </div>
-      <p className="mt-2 text-lg font-semibold text-text">{value.toLocaleString()}</p>
-    </div>
+      </span>
+      {" "}
+      <span className="font-semibold">{value.toLocaleString()}</span>
+    </span>
   );
 }
 
@@ -461,13 +457,15 @@ function ProfilePanelPill({
   icon: Icon,
 }: ProfilePanelPillProps) {
   const className =
-    "inline-flex min-h-10 items-center gap-2 rounded-full border border-line bg-canvas/45 px-3 text-sm font-semibold text-text shadow-soft transition duration-fluid ease-fluid";
+    "inline-flex min-h-8 items-center gap-1.5 rounded-control border border-line bg-canvas/45 px-2.5 text-sm text-text transition duration-fluid ease-fluid";
 
   if (!onClick) {
     return (
       <span className={className}>
         <Icon aria-hidden="true" size={15} />
-        {value.toLocaleString()} {label}
+        <span className="font-semibold">{value.toLocaleString()}</span>
+        {" "}
+        {label}
       </span>
     );
   }
@@ -480,7 +478,9 @@ function ProfilePanelPill({
       onClick={onClick}
     >
       <Icon aria-hidden="true" size={15} />
-      {value.toLocaleString()} {label}
+      <span className="font-semibold">{value.toLocaleString()}</span>
+      {" "}
+      {label}
     </button>
   );
 }

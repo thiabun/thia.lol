@@ -312,7 +312,7 @@ export function RoomPage() {
         <ApiStateNotice
           kind="loading"
           title="Opening room"
-          text="Fetching room details."
+          text="Loading room."
         />
       ) : (
         <ApiStateNotice
@@ -326,7 +326,7 @@ export function RoomPage() {
         <ApiStateNotice
           kind="loading"
           title="Loading room posts"
-          text="Fetching posts from this room."
+          text="Loading posts."
         />
       ) : null}
 
@@ -352,7 +352,7 @@ export function RoomPage() {
         <EmptyState
           icon={MessageCircle}
           title="No posts yet"
-          text="This room is quiet for now."
+          text="No room posts."
         />
       ) : null}
 

@@ -26,14 +26,14 @@ export function RouteHeader({
   title,
 }: RouteHeaderProps) {
   return (
-    <Panel className={cn("p-5 sm:p-6", className)}>
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+    <Panel className={cn("p-4 sm:p-5", className)}>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="max-w-2xl">
           <Badge tone={badgeTone}>{badge}</Badge>
-          <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">
+          <h1 className="mt-3 text-2xl font-semibold tracking-normal text-text sm:text-3xl">
             {title}
           </h1>
-          <p className="mt-3 text-base leading-7 text-muted">{description}</p>
+          <p className="mt-2 text-sm leading-6 text-muted">{description}</p>
           {meta ? <div className="mt-3">{meta}</div> : null}
         </div>
         {actions ? (

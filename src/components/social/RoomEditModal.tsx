@@ -220,7 +220,6 @@ export function RoomEditModal({
       open={open}
       onClose={onClose}
       title={mode === "create" ? "Create room" : "Edit room"}
-      description="Details, media, and moderation."
       closeLabel="Close room editor"
       testId="room-edit-modal"
       size="lg"

@@ -145,19 +145,19 @@ export function NotificationsPage() {
       >
         <PageMeta
           title="Notifications"
-          description="Your thia.lol notifications."
+          description="Notifications."
           path="/notifications"
         />
         <RouteHeader
           badge="private"
           badgeTone="cool"
           title="Notifications"
-          description="Private updates from people interacting with you."
+          description="Updates."
         />
         <RouteStateNotice
           icon={Bell}
           title="Sign in to see notifications."
-          text="Notifications are available after sign-in."
+          text="Notifications require sign-in."
           actions={
             <ButtonLink
               to="/login"
@@ -181,20 +181,20 @@ export function NotificationsPage() {
       >
         <PageMeta
           title="Notifications"
-          description="Your thia.lol notifications."
+          description="Notifications."
           path="/notifications"
         />
         <RouteHeader
           badge="private"
           badgeTone="cool"
           title="Notifications"
-          description="Private updates from people interacting with you."
+          description="Updates."
         />
         <RouteStateNotice
           kind="loading"
           icon={LoaderCircle}
           title="Loading notifications"
-          text="Checking for updates."
+          text="Loading updates."
         />
       </motion.div>
     );
@@ -209,7 +209,7 @@ export function NotificationsPage() {
     >
       <PageMeta
         title="Notifications"
-        description="Your thia.lol notifications."
+        description="Notifications."
         path="/notifications"
       />
 
@@ -218,7 +218,7 @@ export function NotificationsPage() {
           badge="private"
           badgeTone="cool"
           title="Notifications"
-          description="Private updates from people interacting with you."
+          description="Updates."
           meta={
             <p
               className="text-sm font-medium text-muted"
@@ -246,7 +246,7 @@ export function NotificationsPage() {
           kind="loading"
           icon={LoaderCircle}
           title="Loading notifications"
-          text="Checking for updates."
+          text="Loading updates."
         />
       ) : null}
 
@@ -282,7 +282,7 @@ export function NotificationsPage() {
         <RouteStateNotice
           icon={Bell}
           title="No notifications yet"
-          text="Likes, replies, follows, messages, and badges will appear here."
+          text="No updates."
         />
       ) : null}
 

@@ -686,9 +686,6 @@ export function ProfileCustomizationModal({
               <h2 id={titleId} className="text-lg font-semibold text-text">
                 Customize profile
               </h2>
-              <p className="mt-1 text-sm leading-6 text-muted">
-                Shape your identity, connections, modules, and public preview in one place.
-              </p>
             </div>
             <Button
               type="button"
@@ -719,10 +716,7 @@ export function ProfileCustomizationModal({
 
             <div className="min-w-0 space-y-5">
               <div className={activeSection === "identity" ? "block" : "hidden"}>
-                <EditorSection
-                  title="Identity"
-                  description="The profile header uses this text directly."
-                >
+                <EditorSection title="Identity">
                   <div className="grid gap-4 sm:grid-cols-2">
                     <TextField
                       id="profile-display-name"
@@ -761,10 +755,7 @@ export function ProfileCustomizationModal({
               </div>
 
               <div className={activeSection === "appearance" ? "block" : "hidden"}>
-                <EditorSection
-                  title="Appearance"
-                  description="Only working image controls are shown. Theme presets stay hidden until they affect the public profile."
-                >
+                <EditorSection title="Appearance">
                   <div className="grid gap-4 sm:grid-cols-2">
                     <ImageUploadControl
                       id="profile-avatar-upload"
@@ -798,7 +789,6 @@ export function ProfileCustomizationModal({
               <div className={activeSection === "connections" ? "block" : "hidden"}>
                 <EditorSection
                   title="Connections"
-                  description={`Add up to ${maxProfileConnections} public profile connections.`}
                   action={
                     <Button
                       type="button"
@@ -976,9 +966,6 @@ function SectionButton({ active, onClick, section }: SectionButtonProps) {
       <Icon aria-hidden="true" className="mt-0.5 shrink-0 text-muted" size={17} />
       <span className="min-w-0">
         <span className="block text-sm font-semibold text-text">{section.label}</span>
-        <span className="mt-1 hidden text-xs leading-5 text-muted xl:block">
-          {section.description}
-        </span>
       </span>
     </button>
   );
@@ -987,7 +974,7 @@ function SectionButton({ active, onClick, section }: SectionButtonProps) {
 type EditorSectionProps = {
   action?: ReactNode;
   children: ReactNode;
-  description: string;
+  description?: string;
   title: string;
 };
 
@@ -1000,7 +987,9 @@ function EditorSection({ action, children, description, title }: EditorSectionPr
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h3 className="text-base font-semibold text-text">{title}</h3>
-          <p className="mt-1 text-sm leading-6 text-muted">{description}</p>
+          {description ? (
+            <p className="mt-1 text-sm leading-6 text-muted">{description}</p>
+          ) : null}
         </div>
         {action ? <div className="shrink-0">{action}</div> : null}
       </div>
@@ -1339,7 +1328,7 @@ function FeaturedContentEditor({
           icon={LoaderCircle}
           kind="loading"
           title="Loading featured options"
-          text="Fetching posts and rooms you can feature."
+          text="Loading options."
         />
       ) : null}
 
@@ -1700,7 +1689,7 @@ function ModulesEditorSection({
           icon={LoaderCircle}
           kind="loading"
           title="Loading modules"
-          text="Fetching your profile modules."
+          text="Loading modules."
         />
       ) : null}
 

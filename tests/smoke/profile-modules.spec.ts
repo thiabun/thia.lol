@@ -76,7 +76,7 @@ test("visitor with no modules does not see fake module scaffolding", async ({ pa
 
   await expect(page.getByTestId("profile-modules")).toHaveCount(0);
   await expect(page.getByTestId("profile-owner-tools")).toHaveCount(0);
-  await expect(page.getByText("No profile modules yet")).toHaveCount(0);
+  await expect(page.getByText("No modules yet")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
 });
 
@@ -87,9 +87,9 @@ test("owner empty module state is honest", async ({ page }) => {
 
   await expect(page.getByTestId("profile-owner-tools")).toHaveCount(0);
   await expect(page.getByTestId("profile-modules")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "No profile modules yet" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No modules yet" })).toBeVisible();
   await expect(
-    page.getByText("Add modules in Customize profile to fill this space."),
+    page.getByText("Customize profile to add modules."),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Customize profile" })).toBeVisible();
 });

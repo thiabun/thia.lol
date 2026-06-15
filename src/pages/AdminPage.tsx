@@ -256,7 +256,7 @@ export function AdminPage() {
         <ApiStateNotice
           kind="loading"
           title="Checking admin session"
-          text="The admin queue unlocks after your role is confirmed."
+          text="Checking access."
         />
       </AdminShell>
     );
@@ -269,7 +269,7 @@ export function AdminPage() {
           <Badge tone="rose">restricted</Badge>
           <h1 className="mt-4 text-2xl font-semibold text-text">Sign in required</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-            Moderation tools are available to signed-in moderators and admins.
+            Admin requires a moderator account.
           </p>
           <ButtonLink to="/login" className="mt-5" size="sm">
             Sign in
@@ -288,8 +288,7 @@ export function AdminPage() {
             Moderator access required
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-            Your current role is {user.role}. Report queues and enforcement actions
-            are limited to moderators and admins.
+            Current role: {user.role}.
           </p>
         </Panel>
       </AdminShell>
@@ -298,23 +297,19 @@ export function AdminPage() {
 
   return (
     <AdminShell>
-      <Panel className="p-5 sm:p-6">
+      <Panel className="p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <Badge tone="rose">moderation</Badge>
-            <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text">
-              Admin workspace
+            <h1 className="text-2xl font-semibold tracking-normal text-text sm:text-3xl">
+              Admin
             </h1>
-            <p className="mt-3 max-w-2xl text-base leading-7 text-muted">
-              Review reports first. Keep rooms and badges close by without crowding
-              the queue.
-            </p>
           </div>
           <Button
             type="button"
             variant="secondary"
-            size="sm"
-            className="w-full sm:w-auto"
+            size="icon"
+            aria-label="Refresh admin data"
+            title="Refresh admin data"
             disabled={loading || loadingRooms || loadingBadges}
             icon={<RefreshCw aria-hidden="true" size={15} />}
             onClick={() => {
@@ -322,13 +317,11 @@ export function AdminPage() {
               void loadRooms();
               void loadBadges();
             }}
-          >
-            Refresh
-          </Button>
+          />
         </div>
       </Panel>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
         <AdminMetric icon={Activity} label="Open reports" value={String(metrics.open)} />
         <AdminMetric
           icon={CheckCircle2}
@@ -356,7 +349,6 @@ export function AdminPage() {
         badge="reports"
         badgeTone="rose"
         title="Report queue"
-        description="Open reports stay at the top; completed reports remain available for review context."
         meta={
           <span className="inline-flex items-center gap-2 text-sm text-muted">
             <Shield aria-hidden="true" size={16} />
@@ -368,7 +360,7 @@ export function AdminPage() {
           <ApiStateNotice
             kind="loading"
             title="Loading reports"
-            text="Fetching the latest moderation queue."
+            text="Loading queue."
           />
         ) : null}
 
@@ -384,7 +376,7 @@ export function AdminPage() {
           <EmptyState
             icon={Shield}
             title="No reports yet"
-            text="Member reports will appear here when moderators need to review them."
+            text="Reported content appears here."
           />
         ) : null}
 
@@ -495,7 +487,7 @@ export function AdminPage() {
 function AdminShell({ children }: { children: ReactNode }) {
   return (
     <motion.div
-      className="mx-auto max-w-7xl space-y-6"
+      className="mx-auto max-w-7xl space-y-4"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
@@ -531,11 +523,11 @@ function AdminSection({
 }: AdminSectionProps) {
   return (
     <Panel className={cn("overflow-hidden", className)}>
-      <div className="border-b border-line/70 bg-canvas/35 p-4 sm:p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="border-b border-line/70 bg-canvas/30 p-3 sm:p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <Badge tone={badgeTone}>{badge}</Badge>
-            <h2 className="mt-3 text-xl font-semibold text-text">{title}</h2>
+            <h2 className="mt-2 text-lg font-semibold text-text">{title}</h2>
             {description ? (
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
                 {description}
@@ -545,7 +537,7 @@ function AdminSection({
           {meta ? <div className="shrink-0">{meta}</div> : null}
         </div>
       </div>
-      <div className="space-y-4 p-4 sm:p-5">{children}</div>
+      <div className="space-y-3 p-3 sm:p-4">{children}</div>
     </Panel>
   );
 }
@@ -597,7 +589,6 @@ function BadgeAdminPanel({
       badge="badges"
       badgeTone="warm"
       title="Badge management"
-      description="Grant and revoke visible member badges."
       meta={
         <span className="inline-flex items-center gap-2 text-sm text-muted">
           <Award aria-hidden="true" size={16} />
@@ -610,7 +601,7 @@ function BadgeAdminPanel({
           icon={LoaderCircle}
           kind="loading"
           title="Loading badges"
-          text="Fetching definitions and recent grants."
+          text="Loading badge data."
         />
       ) : null}
 
@@ -627,11 +618,11 @@ function BadgeAdminPanel({
         <CompactStateNotice
           icon={CheckCircle2}
           title={message}
-          text="The badge panel has refreshed."
+          text="Updated."
         />
       ) : null}
 
-      <div className="rounded-card bg-canvas/45 p-3 sm:p-4">
+      <div className="rounded-card bg-canvas/45 p-3">
         <div className="grid gap-3 lg:grid-cols-[1fr_1fr]">
           <TextField
             id="badge-grant-handle"
@@ -706,7 +697,7 @@ function BadgeAdminPanel({
         <CompactStateNotice
           icon={Award}
           title="No active badge definitions"
-          text="Active definitions will appear here when badge storage is ready."
+          text="No active definitions."
         />
       ) : null}
 
@@ -756,7 +747,7 @@ function BadgeAdminPanel({
         <CompactStateNotice
           icon={Award}
           title="No recent grants"
-          text="New grants and revokes will refresh this list."
+          text="No recent badge changes."
         />
       ) : null}
     </AdminSection>
@@ -805,44 +796,41 @@ function ReportRow({
   return (
     <Panel
       className={cn(
-        "p-4 sm:p-5",
+        "p-3 sm:p-4",
         report.status === "open" && "border-rose/30",
       )}
     >
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={statusTone(report.status)}>{statusLabel(report.status)}</Badge>
             <Badge>{categoryLabel(report.category)}</Badge>
             <Badge tone="cool">{targetTypeLabel(report.targetType)}</Badge>
             <span className="text-xs text-muted">#{report.id}</span>
+            <span className="inline-flex items-center gap-1 text-xs text-muted">
+              <Shield aria-hidden="true" size={13} />
+              {report.actionCount}
+            </span>
           </div>
-          <h2 className="mt-3 text-lg font-semibold text-text">{targetTitle}</h2>
+          <h2 className="mt-2 text-base font-semibold text-text">{targetTitle}</h2>
           <p className="mt-1 text-sm leading-6 text-muted">
             Reported by <UserLabel user={report.reporter} /> ·{" "}
             {formatDate(report.createdAt)}
           </p>
         </div>
-        <div className="rounded-card bg-canvas/55 p-3 text-sm text-muted lg:min-w-44">
-          <p className="text-xs font-medium uppercase text-muted">History</p>
-          <p className="mt-2 inline-flex items-center gap-2 text-sm">
-            <Shield aria-hidden="true" size={14} />
-            {report.actionCount} action{report.actionCount === 1 ? "" : "s"}
-          </p>
-        </div>
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_21rem]">
+      <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="space-y-3">
           {report.details ? (
-            <div className="rounded-card bg-canvas/45 p-3 sm:p-4">
+            <div className="rounded-card bg-canvas/45 p-3">
               <p className="text-xs font-medium uppercase text-muted">Reporter note</p>
               <p className="mt-2 text-sm leading-6 text-text">{report.details}</p>
             </div>
           ) : null}
 
           {report.post ? (
-            <div className="rounded-card bg-canvas/45 p-3 sm:p-4">
+            <div className="rounded-card bg-canvas/45 p-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone={report.post.status === "hidden" ? "rose" : "warm"}>
                   post {report.post.status}
@@ -858,7 +846,7 @@ function ReportRow({
           ) : null}
 
           {report.actionTaken || report.moderatorNote || report.reviewedBy ? (
-            <div className="rounded-card bg-canvas/45 p-3 sm:p-4">
+            <div className="rounded-card bg-canvas/45 p-3">
               <p className="text-xs font-medium uppercase text-muted">Action taken</p>
               <p className="mt-2 text-sm font-semibold text-text">
                 {actionTakenLabel(report.actionTaken)}
@@ -1016,7 +1004,6 @@ function RoomMetadataPanel({ error, loading, rooms }: RoomMetadataPanelProps) {
       badge="rooms"
       badgeTone="cool"
       title="Room administration"
-      description="Owner, member, and activity context for public rooms."
       meta={
         <span className="inline-flex items-center gap-2 text-sm text-muted">
           <Radio aria-hidden="true" size={16} />
@@ -1029,7 +1016,7 @@ function RoomMetadataPanel({ error, loading, rooms }: RoomMetadataPanelProps) {
           icon={LoaderCircle}
           kind="loading"
           title="Loading room metadata"
-          text="Fetching public room details."
+          text="Loading rooms."
         />
       ) : null}
 
@@ -1052,7 +1039,7 @@ function RoomMetadataPanel({ error, loading, rooms }: RoomMetadataPanelProps) {
         <CompactStateNotice
           icon={Radio}
           title="No rooms to review"
-          text="Public room metadata will appear here after rooms are created."
+          text="No rooms yet."
         />
       ) : null}
     </AdminSection>
@@ -1067,25 +1054,25 @@ type AdminMetricProps = {
 
 function AdminMetric({ icon: Icon, label, value }: AdminMetricProps) {
   return (
-    <Panel className="flex items-center gap-3 p-3 sm:p-4">
-      <div className="grid size-10 shrink-0 place-items-center rounded-card bg-surface-strong text-accent-strong">
-        <Icon aria-hidden="true" size={19} />
+    <div className="flex items-center gap-2 rounded-card border border-line bg-surface/70 p-2.5">
+      <div className="grid size-8 shrink-0 place-items-center rounded-card bg-surface-strong text-accent-strong">
+        <Icon aria-hidden="true" size={16} />
       </div>
       <div className="min-w-0">
-        <p className="text-xs font-medium uppercase text-muted">{label}</p>
-        <p className="mt-1 text-xl font-semibold text-text">{value}</p>
+        <p className="text-[0.68rem] font-medium uppercase text-muted">{label}</p>
+        <p className="text-lg font-semibold text-text">{value}</p>
       </div>
-    </Panel>
+    </div>
   );
 }
 
 function AdminRoomRow({ room }: { room: Room }) {
   return (
-    <div className="rounded-card bg-canvas/45 p-3 sm:p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div className="rounded-card bg-canvas/45 p-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           <div
-            className="mt-1 size-8 shrink-0 rounded-full border border-line"
+            className="mt-1 size-6 shrink-0 rounded-full border border-line"
             style={{ backgroundColor: room.accent }}
             aria-hidden="true"
           />
@@ -1094,7 +1081,7 @@ function AdminRoomRow({ room }: { room: Room }) {
               <Badge tone="cool">{room.visibility ?? "public"}</Badge>
               <span className="text-xs text-muted">#{room.id}</span>
             </div>
-            <h3 className="mt-2 truncate text-sm font-semibold text-text">
+            <h3 className="mt-1 truncate text-sm font-semibold text-text">
               {room.name}
             </h3>
             <p className="mt-1 truncate text-xs text-muted">/{room.slug}</p>
@@ -1109,10 +1096,12 @@ function AdminRoomRow({ room }: { room: Room }) {
           Open room
         </ButtonLink>
       </div>
-      <p className="mt-3 line-clamp-2 text-sm leading-6 text-muted">
-        {room.summary || "No description"}
-      </p>
-      <div className="mt-3 grid gap-2 text-xs text-muted sm:grid-cols-2">
+      {room.summary ? (
+        <p className="mt-3 line-clamp-2 text-sm leading-6 text-muted">
+          {room.summary}
+        </p>
+      ) : null}
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
         <span>
           Owner:{" "}
           {room.owner ? (
@@ -1131,7 +1120,6 @@ function AdminRoomRow({ room }: { room: Room }) {
           <MessageCircle aria-hidden="true" size={13} />
           {formatCountWithUnit(room.postCount, "post")}
         </span>
-        <span>Created: {room.createdAt ? formatDate(room.createdAt) : "unknown"}</span>
       </div>
     </div>
   );

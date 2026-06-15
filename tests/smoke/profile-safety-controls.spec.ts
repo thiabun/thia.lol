@@ -91,11 +91,11 @@ test("profile safety actions block, unblock, mute, and unmute another profile", 
   await page.getByRole("menuitem", { name: /Block/ }).click();
   const blockDialog = page.getByRole("dialog", { name: "Block @alex?" });
   await expect(blockDialog).toContainText(
-    "This does not hide public content everywhere.",
+    "Public content may still appear elsewhere.",
   );
   await blockDialog.getByRole("button", { name: "Block", exact: true }).click();
 
-  await expect(page.getByText("You blocked @alex.")).toBeVisible();
+  await expect(page.getByText("@alex is blocked.")).toBeVisible();
   await expect(page.getByTestId("profile-message-button")).toHaveCount(0);
   await expect(page.getByTestId("profile-follow-button")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Report" })).toBeVisible();

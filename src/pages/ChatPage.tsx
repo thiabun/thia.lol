@@ -540,7 +540,7 @@ export function ChatPage() {
                       icon={LoaderCircle}
                       kind="loading"
                       title="Loading messages"
-                      text="Messages are loading."
+                      text="Loading messages."
                     />
                   ) : null}
                   {messagesError ? (

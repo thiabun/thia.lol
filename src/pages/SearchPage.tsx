@@ -140,7 +140,7 @@ export function SearchPage() {
         <ApiStateNotice
           kind="loading"
           title="Searching"
-          text="Checking public profiles and rooms."
+          text="Searching profiles and rooms."
         />
       ) : null}
 

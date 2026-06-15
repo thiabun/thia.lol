@@ -164,10 +164,10 @@ export function HomePage() {
         </motion.div>
 
         {feedState.loading ? (
-          <ApiStateNotice
-            kind="loading"
-            title="Loading posts"
-            text="Recent posts are loading."
+        <ApiStateNotice
+          kind="loading"
+          title="Loading posts"
+          text="Loading posts."
           />
         ) : null}
 
@@ -191,7 +191,7 @@ export function HomePage() {
           <EmptyState
             icon={MessageCircle}
             title="No posts yet"
-            text="Public posts will appear here."
+            text="No public posts."
           />
         ) : null}
 
@@ -223,7 +223,7 @@ export function HomePage() {
             <EmptyState
               icon={Radio}
               title="No rooms yet"
-              text="Public rooms will appear here."
+              text="No rooms."
             />
           ) : null}
           {roomsState.error ? (

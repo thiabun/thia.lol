@@ -1,4 +1,4 @@
-import { ArrowRight, Hash, MessageCircle, UsersRound } from "lucide-react";
+import { Hash, MessageCircle, UsersRound } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
@@ -8,7 +8,6 @@ import { RoomCard } from "../components/social/RoomCard";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Avatar } from "../components/ui/Avatar";
 import { Badge } from "../components/ui/Badge";
-import { ButtonLink } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
 import { deletePost, getDiscoverFeed, updatePost } from "../lib/api";
@@ -84,7 +83,7 @@ export function DiscoverPage() {
     >
       <PageMeta
         title="Discover"
-        description="Discover rising posts, active rooms, and people to watch on thia.lol."
+        description="Public activity."
         path="/discover"
       />
       <section>
@@ -103,8 +102,8 @@ export function DiscoverPage() {
       {discoverState.loading ? (
         <ApiStateNotice
           kind="loading"
-          title="Loading Discover"
-          text="Public activity is loading."
+          title="Loading activity"
+          text="Loading activity."
         />
       ) : null}
 
@@ -131,7 +130,7 @@ export function DiscoverPage() {
             <EmptyState
               icon={Hash}
               title="No posts yet"
-              text="Public posts will appear here."
+              text="No public posts."
             />
           ) : null}
 
@@ -154,14 +153,6 @@ export function DiscoverPage() {
         <section aria-label="Active rooms">
           <div className="mb-3 flex items-center justify-between gap-4">
             <h2 className="text-xl font-semibold text-text">Active rooms</h2>
-            <ButtonLink
-              to="/rooms"
-              variant="ghost"
-              size="icon"
-              aria-label="Open Rooms"
-              title="Open Rooms"
-              icon={<ArrowRight aria-hidden="true" size={16} />}
-            />
           </div>
           <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             {rooms.map((room, index) => (

@@ -57,7 +57,7 @@ export function ProfileModulesSection({
         <ApiStateNotice
           kind="loading"
           title="Loading personal space"
-          text="Fetching this profile's public modules."
+          text="Loading modules."
         />
       ) : null}
 
@@ -72,8 +72,8 @@ export function ProfileModulesSection({
       {!loading && !error && renderableModules.length === 0 ? (
         <EmptyState
           icon={Sparkles}
-          title="No profile modules yet"
-          text="Add modules in Customize profile to fill this space."
+          title="No modules yet"
+          text="Customize profile to add modules."
         />
       ) : null}
 

@@ -360,8 +360,8 @@ test("profile layout renders identity, social context, tabs, and mobile stack", 
   await expect(page.getByText("Founder", { exact: true })).toBeVisible();
 
   const socialContext = page.getByTestId("profile-social-context");
-  await expect(socialContext.getByText("At a glance")).toBeVisible();
-  await expect(socialContext.getByText("Social context")).toBeVisible();
+  await expect(socialContext.getByText("Posts")).toBeVisible();
+  await expect(socialContext.getByText("Followers")).toBeVisible();
   await expect(page.getByRole("button", { name: /1 Followers/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /1 Following/ })).toBeVisible();
   await expect(page.getByText("1 Moots")).toBeVisible();
@@ -370,13 +370,13 @@ test("profile layout renders identity, social context, tabs, and mobile stack", 
   await expect(tabs.getByRole("tab", { name: /Feed/ })).toBeVisible();
   await expect(tabs.getByRole("tab", { name: /Replies/ })).toBeVisible();
   await expect(tabs.getByRole("tab", { name: /Rooms/ })).toBeVisible();
-  await expect(page.getByText("Posts and reblogs from this profile will appear here.")).toBeVisible();
+  await expect(page.getByText("No posts.")).toBeVisible();
 
   await tabs.getByRole("tab", { name: /Replies/ }).click();
-  await expect(page.getByText("Replies from this profile will appear here.")).toBeVisible();
+  await expect(page.getByText("No replies.")).toBeVisible();
 
   await tabs.getByRole("tab", { name: /Rooms/ }).click();
-  await expect(page.getByText("Rooms this profile owns or belongs to will appear here.")).toBeVisible();
+  await expect(page.getByText("No rooms.")).toBeVisible();
 
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,

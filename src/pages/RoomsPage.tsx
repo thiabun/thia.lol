@@ -121,7 +121,7 @@ export function RoomsPage() {
         <ApiStateNotice
           kind="loading"
           title="Loading rooms"
-          text="Public rooms are loading."
+          text="Loading rooms."
         />
       ) : null}
 
@@ -137,7 +137,7 @@ export function RoomsPage() {
         <EmptyState
           icon={Radio}
           title="No public rooms yet"
-          text="Rooms will appear here."
+          text="No public rooms."
         />
       ) : null}
 

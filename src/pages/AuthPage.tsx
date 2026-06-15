@@ -62,11 +62,7 @@ export function AuthPage({ mode }: AuthPageProps) {
     >
       <PageMeta
         title={isRegister ? "Create account" : "Sign in"}
-        description={
-          isRegister
-            ? "Create a thia.lol profile."
-            : "Sign in to thia.lol."
-        }
+        description={isRegister ? "Create account." : "Sign in."}
         path={isRegister ? "/register" : "/login"}
       />
       <motion.div
@@ -77,7 +73,7 @@ export function AuthPage({ mode }: AuthPageProps) {
         animate="show"
       >
         <Panel className="w-full overflow-hidden">
-          <form className="p-5 sm:p-8" onSubmit={handleSubmit}>
+          <form className="p-5 sm:p-6" onSubmit={handleSubmit}>
             <Badge tone={isRegister ? "warm" : "cool"}>
               {isRegister ? "create account" : "sign in"}
             </Badge>
@@ -86,8 +82,8 @@ export function AuthPage({ mode }: AuthPageProps) {
             </h1>
             <p className="mt-3 text-base leading-7 text-muted">
               {isRegister
-                ? "Choose a handle and start posting."
-                : "Sign in to post and reply."}
+                ? "Choose a handle."
+                : "Use your account."}
             </p>
 
             {status === "authenticated" && user ? (
