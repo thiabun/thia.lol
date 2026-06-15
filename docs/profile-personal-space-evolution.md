@@ -479,6 +479,26 @@ Implemented owner edit behavior:
 - Profile saves use `PATCH /api/me/profile` with CSRF protection and server-side validation.
 - Legacy string links are still normalized for backward compatibility.
 
+### Implementation Note - 2026-06-15 Profiles v3 Phase 1
+
+The first Personal Space Foundation pass is frontend-only. It keeps the existing
+profile fields, tabs, modules, featured content, profile editor entry point, and
+PHP API behavior, while tightening the public profile presentation:
+
+- Header identity is compact and primary: avatar, display name, handle, bio,
+  actions, metadata, social context, links, and featured badges now sit in a
+  lighter hierarchy.
+- Banner media renders as a short, stable strip with a fixed height and centered
+  cover behavior instead of a tall cropped region that visually blends into the
+  page.
+- Existing `profile_background` is treated only as a soft backing layer in the
+  header. A true Profiles v3 page-background system still needs explicit fit,
+  position, focal-point, overlay, blur, dim, mobile fallback, API, and migration
+  decisions before backend work.
+- The existing module section remains the future personal-space foundation, but
+  this pass does not add music, gallery, layout-builder, theme-token, or
+  marketplace behavior.
+
 Implemented API and storage:
 
 - Public reads: `GET /api/profiles/:handle`, `/posts`, `/replies`, `/reblogs`, `/rooms`, `/badges`, `/followers`, and `/following`.

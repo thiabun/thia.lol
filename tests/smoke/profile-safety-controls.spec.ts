@@ -1,5 +1,18 @@
 import { expect, type Page, test } from "@playwright/test";
 
+test.beforeEach(async ({ context }) => {
+  await context.route("**/api/**", async (route) => {
+    await route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        error: `Unmocked API route: ${route.request().method()} ${new URL(route.request().url()).pathname}`,
+      }),
+    });
+  });
+});
+
 test("profile safety actions block, unblock, mute, and unmute another profile", async ({
   page,
 }) => {
@@ -365,7 +378,7 @@ async function mockProfileSafetyPage(
     });
   });
 
-  for (const suffix of ["posts", "replies", "reblogs", "rooms"]) {
+  for (const suffix of ["posts", "replies", "reblogs", "rooms", "modules"]) {
     await page.route(`**/api/profiles/${options.profile.user.handle}/${suffix}`, async (route) => {
       await route.fulfill({
         status: 200,

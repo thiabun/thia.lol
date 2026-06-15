@@ -40,16 +40,16 @@ export function ProfileModulesSection({
   return (
     <motion.section
       aria-label="Personal space"
-      className="border-t border-line pt-5"
+      className="border-t border-line pt-4"
       data-testid="profile-modules"
       variants={cardEntrance}
       custom={2}
       initial="hidden"
       animate="show"
     >
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-text">Personal space</h2>
+          <h2 className="text-base font-semibold text-text">Personal space</h2>
         </div>
       </div>
 
@@ -121,7 +121,7 @@ export function ProfileModuleCard({ badges, module }: ProfileModuleCardProps) {
 
   return (
     <article
-      className="min-w-0 rounded-card border border-line bg-surface/80 p-4 shadow-soft"
+      className="min-w-0 rounded-card border border-line bg-surface/72 p-3"
       data-testid={`profile-module-${module.type}`}
     >
       <h3 className="text-sm font-semibold text-text">{title}</h3>
@@ -133,11 +133,11 @@ export function ProfileModuleCard({ badges, module }: ProfileModuleCardProps) {
 function ProfileModuleContent({ badges, module }: ProfileModuleCardProps) {
   if (module.type === "links") {
     return (
-      <div className="mt-3 flex min-w-0 flex-wrap gap-2">
+      <div className="mt-2 flex min-w-0 flex-wrap gap-2">
         {(module.config.links ?? []).map((link) => (
           <a
             key={`${link.label}-${link.url}`}
-            className="min-w-0 rounded-control border border-line bg-canvas/65 px-3 py-2 text-sm font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            className="min-w-0 rounded-control border border-line bg-canvas/55 px-3 py-1.5 text-sm font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
             href={link.url}
             rel="noreferrer"
             target="_blank"
@@ -153,12 +153,12 @@ function ProfileModuleContent({ badges, module }: ProfileModuleCardProps) {
     const selectedBadges = profileModuleBadges(module, badges);
 
     return (
-      <div className="mt-3 flex min-w-0 flex-wrap gap-2">
+      <div className="mt-2 flex min-w-0 flex-wrap gap-2">
         {selectedBadges.map((userBadge) => (
           <span
             key={userBadge.id}
             className={cn(
-              "inline-flex min-w-0 items-center gap-2 rounded-control border px-3 py-2 text-sm font-semibold",
+              "inline-flex min-w-0 items-center gap-2 rounded-control border px-3 py-1.5 text-sm font-semibold",
               rarityChipClass(userBadge.badge.rarity),
             )}
           >
@@ -170,13 +170,13 @@ function ProfileModuleContent({ badges, module }: ProfileModuleCardProps) {
   }
 
   return (
-    <div className="mt-3 space-y-3">
+    <div className="mt-2 space-y-2">
       {module.config.body ? (
         <p className="break-words text-sm leading-6 text-muted">{module.config.body}</p>
       ) : null}
       {module.config.link ? (
         <a
-          className="inline-flex max-w-full rounded-control border border-line bg-canvas/65 px-3 py-2 text-sm font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          className="inline-flex max-w-full rounded-control border border-line bg-canvas/55 px-3 py-1.5 text-sm font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
           href={module.config.link.url}
           rel="noreferrer"
           target="_blank"

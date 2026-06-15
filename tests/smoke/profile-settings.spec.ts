@@ -2,6 +2,19 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
+test.beforeEach(async ({ context }) => {
+  await context.route("**/api/**", async (route) => {
+    await route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        error: `Unmocked API route: ${route.request().method()} ${new URL(route.request().url()).pathname}`,
+      }),
+    });
+  });
+});
+
 test("profile connections normalize, save, and render", async ({ page }) => {
   let profileLinks: unknown[] = [];
   let savedPayload: Record<string, unknown> | undefined;
@@ -356,7 +369,6 @@ test("profile layout renders identity, social context, tabs, and mobile stack", 
   await expect(page.getByText("Oslo")).toBeVisible();
   await expect(page.getByText(/Joined/)).toBeVisible();
   await expect(page.getByRole("link", { name: /GitHub/ })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Featured badges" })).toBeVisible();
   await expect(page.getByText("Founder", { exact: true })).toBeVisible();
 
   const socialContext = page.getByTestId("profile-social-context");

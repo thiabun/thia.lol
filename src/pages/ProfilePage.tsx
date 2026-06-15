@@ -547,7 +547,7 @@ export function ProfilePage() {
 
   return (
     <motion.div
-      className="mx-auto max-w-5xl space-y-5"
+      className="mx-auto max-w-5xl space-y-4 sm:space-y-5"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
@@ -662,7 +662,7 @@ export function ProfilePage() {
         modules={publicModules}
       />
       <motion.div
-        className="border-t border-line pt-5"
+        className="border-t border-line pt-4"
         variants={cardEntrance}
         custom={2}
         initial="hidden"
@@ -671,11 +671,11 @@ export function ProfilePage() {
       >
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-text">Profile feed</h2>
+            <h2 className="text-base font-semibold text-text">Activity</h2>
           </div>
           <div
             aria-label="Profile sections"
-            className="flex gap-2 overflow-x-auto pb-1 sm:justify-end"
+            className="flex gap-1 overflow-x-auto rounded-control bg-canvas/55 p-1 sm:justify-end"
             role="tablist"
             data-testid="profile-activity-tabs"
           >
@@ -928,13 +928,13 @@ function FeaturedEmptyPrompt({
 }: FeaturedEmptyPromptProps) {
   return (
     <div
-      className="rounded-card border border-dashed border-line bg-canvas/45 p-4"
+      className="rounded-card border border-dashed border-line bg-canvas/35 p-3"
       data-testid="profile-featured-empty"
     >
       <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-strong text-accent-strong">
-            <Icon aria-hidden="true" size={18} />
+          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-surface-strong text-accent-strong">
+            <Icon aria-hidden="true" size={16} />
           </span>
           <span className="min-w-0">
             <span className="block text-sm font-semibold text-text">{title}</span>
@@ -978,11 +978,11 @@ function ProfileTabButton({
     <button
       aria-selected={active}
       className={cn(
-        "inline-flex min-h-9 shrink-0 items-center gap-2 rounded-control border px-3 text-sm font-semibold transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+        "inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-control px-3 text-sm font-semibold transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
         active
-          ? "border-line-strong bg-surface text-text shadow-soft"
-          : "border-line bg-canvas/55 text-muted hover:border-line-strong hover:text-text",
-        disabled && "cursor-not-allowed opacity-60 hover:border-line hover:text-muted",
+          ? "bg-surface text-text shadow-inner-soft ring-1 ring-line/80"
+          : "text-muted hover:bg-surface/70 hover:text-text",
+        disabled && "cursor-not-allowed opacity-60 hover:bg-transparent hover:text-muted",
       )}
       disabled={disabled}
       role="tab"

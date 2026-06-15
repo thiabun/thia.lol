@@ -20,7 +20,6 @@ import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
 import { Button, ButtonLink } from "../ui/Button";
 import { ModalSheet } from "../ui/ModalSheet";
-import { Panel } from "../ui/Panel";
 import { cn } from "../../lib/classNames";
 import {
   cardEntrance,
@@ -77,6 +76,8 @@ export function ProfileHeader({
   const followLabel = profile.isFollowing ? "Following" : "Follow";
   const showProfileControls = !isOwnProfile && Boolean(onBlockToggle || onMuteToggle);
   const directActionsDisabled = profile.blockedByMe === true;
+  const bannerUrl = hasBanner ? profile.bannerUrl ?? undefined : undefined;
+  const backgroundUrl = hasBackground ? profile.profileBackground ?? undefined : undefined;
 
   async function handleBlockAction() {
     setActionsOpen(false);
@@ -109,57 +110,50 @@ export function ProfileHeader({
 
   return (
     <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
-      <Panel className="relative overflow-hidden border-line-strong" data-testid="profile-header">
-        {hasBackground ? (
-          <img
-            alt=""
-            aria-hidden="true"
-            className="absolute inset-0 z-0 size-full object-cover opacity-10"
-            src={profile.profileBackground ?? undefined}
-          />
-        ) : null}
-        {hasBanner ? (
-          <div className="isolate relative z-0" data-testid="profile-header-banner">
-            <img
-              alt=""
-              className="relative z-0 h-28 w-full bg-surface-strong object-cover sm:h-36"
-              src={profile.bannerUrl ?? undefined}
-            />
-            <div className="absolute inset-x-0 bottom-0 z-10 h-16 bg-gradient-to-t from-surface via-surface/72 to-transparent" />
-          </div>
-        ) : null}
+      <motion.section
+        className="relative overflow-hidden rounded-panel border border-line-strong bg-surface/86 shadow-soft backdrop-blur-veil"
+        data-testid="profile-header"
+      >
+        <ProfileHeaderBackdrop backgroundUrl={backgroundUrl} />
+        {bannerUrl ? <ProfileBanner src={bannerUrl} /> : <ProfileTopAccent />}
         <motion.div
-          className="relative z-10 p-4 sm:p-5"
+          className={cn("relative z-10 p-4 sm:p-5", bannerUrl ? "pt-0" : undefined)}
           variants={staggerChildren}
           initial="hidden"
           animate="show"
         >
           <div
             className={cn(
-              "relative z-10 flex flex-col gap-4 sm:flex-row sm:justify-between",
-              hasBanner ? "-mt-12 sm:-mt-16 sm:items-end" : "sm:items-center",
+              "relative z-10 flex flex-col gap-3 sm:flex-row sm:justify-between",
+              bannerUrl ? "-mt-8 sm:-mt-10 sm:items-start" : "sm:items-center",
             )}
           >
             <div
               className={cn(
                 "relative z-10 flex min-w-0 gap-3",
-                hasBanner ? "items-end" : "items-center",
+                bannerUrl ? "items-end" : "items-center",
               )}
               data-testid="profile-identity"
             >
               <Avatar
                 user={profile.user}
                 size="lg"
-                className="size-20 border-[3px] border-surface text-xl shadow-soft sm:size-24"
+                className="size-16 border-[3px] border-surface text-lg shadow-soft ring-1 ring-line/70 sm:size-20"
               />
-              <div className="min-w-0 pb-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  {!isOwnProfile && profile.isMoot ? <Badge>Moot</Badge> : null}
-                  {!isOwnProfile && profile.mutedByMe ? <Badge tone="cool">Muted</Badge> : null}
+              <div className="min-w-0 pb-0.5">
+                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                  <h1 className="break-words text-2xl font-semibold tracking-normal text-text">
+                    {profile.user.displayName}
+                  </h1>
+                  {!isOwnProfile && profile.isMoot ? (
+                    <Badge className="min-h-6 px-2 text-[0.7rem]">Moot</Badge>
+                  ) : null}
+                  {!isOwnProfile && profile.mutedByMe ? (
+                    <Badge className="min-h-6 px-2 text-[0.7rem]" tone="cool">
+                      Muted
+                    </Badge>
+                  ) : null}
                 </div>
-                <h1 className="mt-2 break-words text-2xl font-semibold tracking-normal text-text">
-                  {profile.user.displayName}
-                </h1>
                 <p className="mt-1 break-all text-sm text-muted">@{profile.user.handle}</p>
               </div>
             </div>
@@ -168,7 +162,8 @@ export function ProfileHeader({
                 <Button
                   type="button"
                   variant="secondary"
-                  className="w-full sm:w-auto"
+                  size="sm"
+                  className="shadow-none"
                   onClick={onEditProfile}
                 >
                   Customize profile
@@ -180,6 +175,7 @@ export function ProfileHeader({
                       className="flex-1 sm:flex-none"
                       data-testid="profile-message-button"
                       icon={<MessageCircle aria-hidden="true" size={17} />}
+                      size="sm"
                       to={`/chat?with=${encodeURIComponent(messageToHandle)}`}
                       variant="secondary"
                     >
@@ -193,6 +189,7 @@ export function ProfileHeader({
                       disabled={followPosting}
                       className="flex-1 sm:flex-none"
                       data-testid="profile-follow-button"
+                      size="sm"
                       icon={
                         profile.isFollowing ? (
                           <UserCheck aria-hidden="true" size={17} />
@@ -211,6 +208,7 @@ export function ProfileHeader({
                         type="button"
                         variant="secondary"
                         size="icon"
+                        className="size-9 shadow-none"
                         aria-haspopup="menu"
                         aria-expanded={actionsOpen}
                         aria-label={`Profile actions for @${profile.user.handle}`}
@@ -261,133 +259,30 @@ export function ProfileHeader({
               )}
             </div>
           </div>
-          {followError ? (
-            <motion.p className="mt-3 text-sm text-rose" variants={sectionItem}>
-              {followError}
-            </motion.p>
-          ) : null}
-          {showChatHint ? (
-            <motion.p className="mt-3 text-sm text-muted" variants={sectionItem}>
-              Follow each other to chat
-            </motion.p>
-          ) : null}
-          {!isOwnProfile && profile.blockedByMe ? (
-            <motion.p className="mt-3 rounded-card border border-line bg-canvas/55 p-3 text-sm text-muted" variants={sectionItem}>
-              @{profile.user.handle} is blocked.
-            </motion.p>
-          ) : null}
-          {!isOwnProfile && profile.mutedByMe && !profile.blockedByMe ? (
-            <motion.p className="mt-3 text-sm text-muted" variants={sectionItem}>
-              Muted posts are hidden from your feeds where possible.
-            </motion.p>
-          ) : null}
-          {profileControlMessage ? (
-            <motion.p className="mt-3 text-sm text-muted" variants={sectionItem}>
-              {profileControlMessage}
-            </motion.p>
-          ) : null}
-          {profileControlError ? (
-            <motion.p className="mt-3 text-sm text-rose" variants={sectionItem}>
-              {profileControlError}
-            </motion.p>
-          ) : null}
+          <ProfileStatusMessages
+            followError={followError}
+            isOwnProfile={isOwnProfile}
+            profile={profile}
+            profileControlError={profileControlError}
+            profileControlMessage={profileControlMessage}
+            showChatHint={showChatHint}
+          />
           {profile.bio ? (
-            <motion.div className="mt-4" variants={sectionItem}>
+            <motion.div className="mt-3" variants={sectionItem}>
               <p className="max-w-3xl text-pretty text-sm leading-6 text-text">
                 {profile.bio}
               </p>
             </motion.div>
           ) : null}
-          <motion.div
-            className="mt-4 flex flex-wrap gap-3 text-sm text-muted"
-            variants={sectionItem}
-          >
-            {profile.location ? (
-              <span className="inline-flex items-center gap-2">
-                <MapPin aria-hidden="true" size={15} />
-                {profile.location}
-              </span>
-            ) : null}
-            {profile.createdAt ? (
-              <span className="inline-flex items-center gap-2">
-                <CalendarDays aria-hidden="true" size={15} />
-                Joined {formatJoinedDate(profile.createdAt)}
-              </span>
-            ) : null}
-          </motion.div>
-          <motion.div
-            className="mt-5 border-t border-line pt-4"
-            variants={sectionItem}
-            data-testid="profile-social-context"
-          >
-            <div
-              className="flex flex-wrap gap-2"
-              aria-label="Profile details"
-            >
-              <ProfileStat label="Posts" value={profile.stats.posts} icon={MessageCircle} />
-              <ProfileStat label="Replies" value={profile.stats.replies} icon={Reply} />
-              <ProfileStat label="Rooms" value={profile.stats.rooms} icon={Radio} />
-              <ProfileStat label="Likes" value={profile.stats.echoes} icon={Heart} />
-              <ProfilePanelPill
-                label="Followers"
-                value={profile.stats.followers}
-                icon={Users}
-                onClick={() => onOpenPanel?.("followers")}
-              />
-              <ProfilePanelPill
-                label="Following"
-                value={profile.stats.following}
-                icon={UserCheck}
-                onClick={() => onOpenPanel?.("following")}
-              />
-              <ProfilePanelPill label="Moots" value={profile.stats.moots} icon={UserPlus} />
-              <ProfilePanelPill
-                label="Badges"
-                value={badgeCount}
-                icon={Award}
-                onClick={() => onOpenPanel?.("badges")}
-              />
-            </div>
-          </motion.div>
-          {links.length > 0 || featuredBadges.length > 0 ? (
-            <motion.div
-              className="mt-5 grid gap-5 border-t border-line pt-5 md:grid-cols-2"
-              variants={sectionItem}
-            >
-              {links.length > 0 ? (
-                <section aria-label="Connections">
-                  <h2 className="text-sm font-semibold text-text">Connections</h2>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {links.map((link) => (
-                      <ProfileConnectionPill key={`${link.platform}-${link.value}`} link={link} />
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-              {featuredBadges.length > 0 ? (
-                <section aria-label="Featured badges">
-                  <h2 className="text-sm font-semibold text-text">Featured badges</h2>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {featuredBadges.map((userBadge) => (
-                      <span
-                        key={userBadge.id}
-                        className={cn(
-                          "inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-sm font-semibold shadow-soft",
-                          rarityClass(userBadge.badge.rarity),
-                        )}
-                        title={userBadge.badge.description ?? userBadge.badge.name}
-                      >
-                        <Award aria-hidden="true" size={16} />
-                        {userBadge.badge.name}
-                      </span>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-            </motion.div>
-          ) : null}
+          <ProfileMetaRow profile={profile} />
+          <ProfileSocialContext
+            badgeCount={badgeCount}
+            onOpenPanel={onOpenPanel}
+            profile={profile}
+          />
+          <ProfileSignalStrip featuredBadges={featuredBadges} links={links} />
         </motion.div>
-      </Panel>
+      </motion.section>
       <ModalSheet
         open={confirmBlockOpen}
         onClose={() => setConfirmBlockOpen(false)}
@@ -424,6 +319,219 @@ export function ProfileHeader({
   );
 }
 
+function ProfileHeaderBackdrop({
+  backgroundUrl,
+}: {
+  backgroundUrl?: string | undefined;
+}) {
+  if (!backgroundUrl) {
+    return null;
+  }
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-0" aria-hidden="true">
+      <img
+        alt=""
+        className="size-full scale-105 object-cover opacity-[0.16] blur-md"
+        src={backgroundUrl}
+      />
+      <div className="absolute inset-0 bg-gradient-to-b from-surface/90 via-surface/78 to-surface/96" />
+    </div>
+  );
+}
+
+function ProfileBanner({ src }: { src: string }) {
+  return (
+    <div
+      className="relative z-0 h-20 overflow-hidden bg-canvas/60 sm:h-24 md:h-28"
+      data-testid="profile-header-banner"
+    >
+      <img
+        alt=""
+        className="h-full w-full object-cover object-center"
+        src={src}
+      />
+      <div className="absolute inset-0 bg-gradient-to-t from-surface/88 via-surface/20 to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 h-px bg-line/80" />
+    </div>
+  );
+}
+
+function ProfileTopAccent() {
+  return (
+    <div
+      aria-hidden="true"
+      className="absolute inset-x-0 top-0 z-0 h-1 bg-gradient-to-r from-accent/50 via-cool/35 to-leaf/35"
+    />
+  );
+}
+
+type ProfileStatusMessagesProps = {
+  followError?: string | undefined;
+  isOwnProfile: boolean;
+  profile: Profile;
+  profileControlError?: string | undefined;
+  profileControlMessage?: string | undefined;
+  showChatHint: boolean;
+};
+
+function ProfileStatusMessages({
+  followError,
+  isOwnProfile,
+  profile,
+  profileControlError,
+  profileControlMessage,
+  showChatHint,
+}: ProfileStatusMessagesProps) {
+  return (
+    <>
+      {followError ? (
+        <motion.p className="mt-3 text-sm text-rose" variants={sectionItem}>
+          {followError}
+        </motion.p>
+      ) : null}
+      {showChatHint ? (
+        <motion.p className="mt-3 text-sm text-muted" variants={sectionItem}>
+          Follow each other to chat
+        </motion.p>
+      ) : null}
+      {!isOwnProfile && profile.blockedByMe ? (
+        <motion.p className="mt-3 text-sm text-muted" variants={sectionItem}>
+          @{profile.user.handle} is blocked.
+        </motion.p>
+      ) : null}
+      {!isOwnProfile && profile.mutedByMe && !profile.blockedByMe ? (
+        <motion.p className="mt-3 text-sm text-muted" variants={sectionItem}>
+          Muted posts are hidden from your feeds where possible.
+        </motion.p>
+      ) : null}
+      {profileControlMessage ? (
+        <motion.p className="mt-3 text-sm text-muted" variants={sectionItem}>
+          {profileControlMessage}
+        </motion.p>
+      ) : null}
+      {profileControlError ? (
+        <motion.p className="mt-3 text-sm text-rose" variants={sectionItem}>
+          {profileControlError}
+        </motion.p>
+      ) : null}
+    </>
+  );
+}
+
+function ProfileMetaRow({ profile }: { profile: Profile }) {
+  if (!profile.location && !profile.createdAt) {
+    return null;
+  }
+
+  return (
+    <motion.div
+      className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5 text-sm text-muted"
+      variants={sectionItem}
+    >
+      {profile.location ? (
+        <span className="inline-flex items-center gap-1.5">
+          <MapPin aria-hidden="true" size={14} />
+          {profile.location}
+        </span>
+      ) : null}
+      {profile.createdAt ? (
+        <span className="inline-flex items-center gap-1.5">
+          <CalendarDays aria-hidden="true" size={14} />
+          Joined {formatJoinedDate(profile.createdAt)}
+        </span>
+      ) : null}
+    </motion.div>
+  );
+}
+
+type ProfileSocialContextProps = {
+  badgeCount: number;
+  onOpenPanel?: ((panel: "followers" | "following" | "badges") => void) | undefined;
+  profile: Profile;
+};
+
+function ProfileSocialContext({
+  badgeCount,
+  onOpenPanel,
+  profile,
+}: ProfileSocialContextProps) {
+  return (
+    <motion.div
+      className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5"
+      variants={sectionItem}
+      data-testid="profile-social-context"
+      aria-label="Profile details"
+    >
+      <ProfileStat label="Posts" value={profile.stats.posts} icon={MessageCircle} />
+      <ProfileStat label="Replies" value={profile.stats.replies} icon={Reply} />
+      <ProfileStat label="Rooms" value={profile.stats.rooms} icon={Radio} />
+      <ProfileStat label="Likes" value={profile.stats.echoes} icon={Heart} />
+      <ProfilePanelPill
+        label="Followers"
+        value={profile.stats.followers}
+        icon={Users}
+        onClick={() => onOpenPanel?.("followers")}
+      />
+      <ProfilePanelPill
+        label="Following"
+        value={profile.stats.following}
+        icon={UserCheck}
+        onClick={() => onOpenPanel?.("following")}
+      />
+      <ProfilePanelPill label="Moots" value={profile.stats.moots} icon={UserPlus} />
+      <ProfilePanelPill
+        label="Badges"
+        value={badgeCount}
+        icon={Award}
+        onClick={() => onOpenPanel?.("badges")}
+      />
+    </motion.div>
+  );
+}
+
+function ProfileSignalStrip({
+  featuredBadges,
+  links,
+}: {
+  featuredBadges: UserBadge[];
+  links: ProfileExternalConnection[];
+}) {
+  if (links.length === 0 && featuredBadges.length === 0) {
+    return null;
+  }
+
+  return (
+    <motion.div
+      className="mt-3 flex flex-wrap items-center gap-2"
+      variants={sectionItem}
+      aria-label="Connections and featured badges"
+    >
+      {links.map((link) => (
+        <ProfileConnectionChip key={`${link.platform}-${link.value}`} link={link} />
+      ))}
+      {featuredBadges.map((userBadge) => (
+        <ProfileFeaturedBadgeChip key={userBadge.id} userBadge={userBadge} />
+      ))}
+    </motion.div>
+  );
+}
+
+function ProfileFeaturedBadgeChip({ userBadge }: { userBadge: UserBadge }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-full border px-2.5 text-xs font-semibold",
+        rarityClass(userBadge.badge.rarity),
+      )}
+      title={userBadge.badge.description ?? userBadge.badge.name}
+    >
+      <Award aria-hidden="true" size={14} />
+      <span className="min-w-0 truncate">{userBadge.badge.name}</span>
+    </span>
+  );
+}
+
 type ProfileStatProps = {
   label: string;
   value: number;
@@ -432,13 +540,11 @@ type ProfileStatProps = {
 
 function ProfileStat({ label, value, icon: Icon }: ProfileStatProps) {
   return (
-    <span className="inline-flex min-h-8 items-center gap-1.5 rounded-control border border-line bg-canvas/45 px-2.5 text-sm text-text">
-      <span className="flex items-center gap-1.5 text-muted">
-        <Icon aria-hidden="true" size={14} />
-        {label}
-      </span>
+    <span className="inline-flex min-h-7 items-center gap-1.5 whitespace-nowrap text-sm text-muted">
+      <Icon aria-hidden="true" size={14} />
+      <span className="font-semibold text-text">{value.toLocaleString()}</span>
       {" "}
-      <span className="font-semibold">{value.toLocaleString()}</span>
+      <span>{label}</span>
     </span>
   );
 }
@@ -457,48 +563,49 @@ function ProfilePanelPill({
   icon: Icon,
 }: ProfilePanelPillProps) {
   const className =
-    "inline-flex min-h-8 items-center gap-1.5 rounded-control border border-line bg-canvas/45 px-2.5 text-sm text-text transition duration-fluid ease-fluid";
+    "inline-flex min-h-7 items-center gap-1.5 whitespace-nowrap rounded-control text-sm text-muted transition duration-fluid ease-fluid";
+  const content = (
+    <>
+      <Icon aria-hidden="true" size={14} />
+      <span className="font-semibold text-text">{value.toLocaleString()}</span>
+      {" "}
+      <span>{label}</span>
+    </>
+  );
 
   if (!onClick) {
-    return (
-      <span className={className}>
-        <Icon aria-hidden="true" size={15} />
-        <span className="font-semibold">{value.toLocaleString()}</span>
-        {" "}
-        {label}
-      </span>
-    );
+    return <span className={className}>{content}</span>;
   }
 
   return (
     <button
       type="button"
-      className={`${className} hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus`}
+      className={cn(
+        className,
+        "-mx-1 px-1 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+      )}
       title={`Open ${label.toLowerCase()} panel`}
       onClick={onClick}
     >
-      <Icon aria-hidden="true" size={15} />
-      <span className="font-semibold">{value.toLocaleString()}</span>
-      {" "}
-      {label}
+      {content}
     </button>
   );
 }
 
-function ProfileConnectionPill({ link }: { link: ProfileExternalConnection }) {
+function ProfileConnectionChip({ link }: { link: ProfileExternalConnection }) {
   const content = (
     <>
-      <ProfileConnectionIcon platform={link.platform} size={15} />
-      {link.label}
+      <ProfileConnectionIcon platform={link.platform} size={14} />
+      <span className="min-w-0 truncate">{link.label}</span>
       {link.platform !== "discord" || link.url ? (
-        <ExternalLink aria-hidden="true" size={13} />
+        <ExternalLink aria-hidden="true" className="shrink-0" size={12} />
       ) : null}
     </>
   );
 
   if (!link.url) {
     return (
-      <span className="inline-flex min-h-9 items-center gap-2 rounded-control border border-line bg-canvas/45 px-3 text-sm font-medium text-muted">
+      <span className="inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-full border border-line bg-canvas/55 px-2.5 text-xs font-medium text-muted">
         {content}
       </span>
     );
@@ -506,7 +613,7 @@ function ProfileConnectionPill({ link }: { link: ProfileExternalConnection }) {
 
   return (
     <a
-      className="inline-flex min-h-9 items-center gap-2 rounded-control border border-line bg-canvas/45 px-3 text-sm font-medium text-muted transition duration-fluid ease-fluid hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      className="inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-full border border-line bg-canvas/55 px-2.5 text-xs font-medium text-muted transition duration-fluid ease-fluid hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       href={link.url}
       rel="noopener noreferrer"
       target="_blank"

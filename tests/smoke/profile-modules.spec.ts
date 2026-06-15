@@ -2,6 +2,19 @@ import { expect, type Page, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
+test.beforeEach(async ({ context }) => {
+  await context.route("**/api/**", async (route) => {
+    await route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        error: `Unmocked API route: ${route.request().method()} ${new URL(route.request().url()).pathname}`,
+      }),
+    });
+  });
+});
+
 test("profile renders public modules safely", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockProfileModules(page, {
