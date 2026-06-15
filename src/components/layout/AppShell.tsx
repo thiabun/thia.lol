@@ -204,12 +204,9 @@ function SiteHeader({
       <div className="mx-auto flex min-h-16 w-full max-w-7xl items-center gap-2 px-4 sm:gap-3 sm:px-6 lg:px-8">
         <NavLink
           to="/"
-          className="group flex min-w-0 shrink items-center gap-2 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus sm:gap-3"
+          className="flex min-w-0 shrink items-center rounded-md px-1 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
           aria-label="thia.lol home"
         >
-          <span className="grid size-9 shrink-0 place-items-center rounded-full border border-line bg-surface shadow-soft sm:size-10">
-            <span className="size-3 rounded-full bg-accent shadow-glow transition duration-fluid group-hover:scale-110" />
-          </span>
           <span className="min-w-0">
             <span className="block truncate text-base font-semibold leading-none tracking-normal text-text">
               thia.lol
