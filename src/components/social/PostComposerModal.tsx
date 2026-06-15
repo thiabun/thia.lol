@@ -1,8 +1,7 @@
 import type { ChangeEvent, FormEvent } from "react";
 import { useCallback, useId, useRef, useState } from "react";
-import { ImagePlus, Radio, Send, Trash2, UserRound } from "lucide-react";
+import { ChevronDown, ImagePlus, Radio, Send, Trash2 } from "lucide-react";
 import { Button } from "../ui/Button";
-import { SelectField, TextareaField } from "../ui/Field";
 import { ModalSheet, ModalSheetStatus } from "../ui/ModalSheet";
 import { createPost, uploadImage } from "../../lib/api";
 import type { CreatePostInput } from "../../lib/api";
@@ -39,16 +38,6 @@ export function PostComposerModal({
   const selectedRoom = rooms.find((room) => room.slug === roomSlug);
   const canSubmit =
     Boolean(csrfToken) && body.trim().length > 0 && !submitting && !uploadingImage;
-  const destinationLabel = selectedRoom
-    ? `/${selectedRoom.slug}`
-    : roomSlug
-      ? `/${roomSlug}`
-      : "Profile feed";
-  const destinationSummary = selectedRoom
-    ? `${selectedRoom.name}${selectedRoom.summary ? ` · ${selectedRoom.summary}` : ""}`
-    : roomSlug
-      ? "Room selected."
-    : "Post to your profile.";
   const roomOptions = [
     { value: "", label: "Profile feed" },
     ...(roomSlug && !selectedRoom
@@ -56,10 +45,9 @@ export function PostComposerModal({
       : []),
     ...rooms.map((room) => ({
       value: room.slug,
-      label: `/${room.slug} - ${room.name}`,
+      label: `/${room.slug}`,
     })),
   ];
-  const messageTone = message === "Images are converted to WebP" ? "success" : "error";
 
   const closeComposer = useCallback(() => {
     setBody("");
@@ -75,7 +63,7 @@ export function PostComposerModal({
     event.preventDefault();
 
     if (!csrfToken) {
-      setMessage("Please log in again before posting.");
+      setMessage("Sign in again before posting.");
       return;
     }
 
@@ -98,7 +86,7 @@ export function PostComposerModal({
       onCreated?.(post);
       closeComposer();
     } catch {
-      setMessage("Post could not be shared right now. Please try again.");
+      setMessage("Post could not be shared.");
     } finally {
       setSubmitting(false);
     }
@@ -113,12 +101,12 @@ export function PostComposerModal({
     }
 
     if (!csrfToken) {
-      setMessage("Please log in again before uploading.");
+      setMessage("Sign in again before uploading.");
       return;
     }
 
     if (file.size > maxUploadBytes) {
-      setMessage("Image must be 10 MB or smaller");
+      setMessage("Image must be 10 MB or smaller.");
       return;
     }
 
@@ -133,7 +121,7 @@ export function PostComposerModal({
     try {
       const uploaded = await uploadImage(file, "post_media", csrfToken);
       setMediaUrl(uploaded.url);
-      setMessage("Images are converted to WebP");
+      setMessage(undefined);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Image could not be uploaded.");
     } finally {
@@ -146,34 +134,95 @@ export function PostComposerModal({
       open={open}
       onClose={closeComposer}
       title="New post"
-      description="Post to a profile or room."
       closeLabel="Close post composer"
       testId="composer-modal"
       size="md"
       mobile="full"
       busy={submitting || uploadingImage}
       initialFocusRef={textareaRef}
+      bodyClassName="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-5 sm:py-4"
+      footerClassName="shrink-0 border-t border-line bg-surface px-4 py-3 sm:px-5"
       footer={
-        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <span className="text-xs text-muted" aria-live="polite">
-            {body.length}/2000
-          </span>
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              className="flex-1 sm:flex-none"
-              disabled={submitting || uploadingImage}
-              onClick={closeComposer}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            <label className="relative inline-flex min-h-9 max-w-[13rem] items-center gap-2 rounded-full border border-line bg-canvas/70 pl-3 pr-8 text-sm font-medium text-text shadow-inner-soft transition duration-fluid focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus hover:border-line-strong">
+              <Radio
+                aria-hidden="true"
+                className="shrink-0 text-muted"
+                size={15}
+                strokeWidth={2.2}
+              />
+              <span className="sr-only">Post to</span>
+              <select
+                id="post-composer-room"
+                name="roomSlug"
+                aria-label="Post to"
+                data-testid="composer-room-selector"
+                className="min-w-0 flex-1 appearance-none bg-transparent text-sm font-medium text-text outline-none disabled:cursor-not-allowed"
+                value={roomSlug}
+                disabled={submitting}
+                onChange={(event) => setRoomSlug(event.currentTarget.value)}
+              >
+                {roomOptions.map((option) => (
+                  <option key={option.value || "profile"} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                aria-hidden="true"
+                className="pointer-events-none absolute right-3 text-muted"
+                size={15}
+              />
+            </label>
+
+            <label
+              className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-full text-muted transition duration-fluid hover:bg-surface-strong hover:text-text focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus has-[:disabled]:pointer-events-none has-[:disabled]:opacity-50"
+              title={mediaUrl ? "Replace image" : "Upload image"}
             >
-              Cancel
-            </Button>
+              <ImagePlus aria-hidden="true" size={18} />
+              <span className="sr-only">
+                {uploadingImage
+                  ? "Uploading image"
+                  : mediaUrl
+                    ? "Replace image"
+                    : "Upload image"}
+              </span>
+              <input
+                className="sr-only"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                disabled={submitting || uploadingImage}
+                onChange={handleImageChange}
+              />
+            </label>
+
+            {mediaUrl ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-9 rounded-full"
+                disabled={submitting || uploadingImage}
+                aria-label="Remove image"
+                title="Remove image"
+                onClick={() => setMediaUrl(undefined)}
+              >
+                <Trash2 aria-hidden="true" size={17} />
+              </Button>
+            ) : null}
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-xs text-muted" aria-live="polite">
+              {body.length}/2000
+            </span>
             <Button
               type="submit"
               form={formId}
-              className="flex-1 sm:flex-none"
+              size="sm"
               disabled={!canSubmit}
-              icon={<Send aria-hidden="true" size={17} />}
+              icon={<Send aria-hidden="true" size={16} />}
             >
               {submitting ? "Posting..." : "Post"}
             </Button>
@@ -181,109 +230,34 @@ export function PostComposerModal({
         </div>
       }
     >
-      <form id={formId} className="space-y-4" onSubmit={handleSubmit}>
-              <div className="space-y-3">
-                <SelectField
-                  id="post-composer-room"
-                  name="roomSlug"
-                  label="Post to"
-                  icon={Radio}
-                  data-testid="composer-room-selector"
-                  options={roomOptions}
-                  value={roomSlug}
-                  disabled={submitting}
-                  onChange={(event) => setRoomSlug(event.currentTarget.value)}
-                />
+      <form id={formId} className="space-y-3" onSubmit={handleSubmit}>
+        <label htmlFor="post-composer-body" className="sr-only">
+          Post
+        </label>
+        <textarea
+          ref={textareaRef}
+          id="post-composer-body"
+          name="body"
+          className="min-h-44 w-full resize-none bg-transparent text-base leading-7 text-text outline-none placeholder:text-muted/75 disabled:opacity-60 sm:min-h-52 sm:text-lg"
+          placeholder="Write a post"
+          value={body}
+          maxLength={2000}
+          disabled={submitting}
+          required
+          onChange={(event) => setBody(event.currentTarget.value)}
+        />
 
-                <div className="flex items-start gap-3 rounded-card border border-line bg-canvas/55 p-3 shadow-inner-soft">
-                  <div className="grid size-9 shrink-0 place-items-center rounded-full bg-surface-strong text-accent-strong">
-                    {selectedRoom ? (
-                      <Radio aria-hidden="true" size={16} />
-                    ) : (
-                      <UserRound aria-hidden="true" size={16} />
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium uppercase text-muted">
-                      Post to
-                    </p>
-                    <p className="mt-1 truncate text-sm font-semibold text-text">
-                      {destinationLabel}
-                    </p>
-                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">
-                      {destinationSummary}
-                    </p>
-                  </div>
-                </div>
-              </div>
+        {mediaUrl ? (
+          <div className="overflow-hidden rounded-card border border-line bg-canvas/55">
+            <img
+              alt=""
+              className="mx-auto max-h-64 max-w-full object-contain"
+              src={mediaUrl}
+            />
+          </div>
+        ) : null}
 
-              <div className="rounded-card border border-line bg-canvas/55 p-3 shadow-inner-soft">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="flex items-center gap-2 text-sm font-medium text-text">
-                      <ImagePlus aria-hidden="true" size={16} />
-                      Upload image
-                    </p>
-                    <p className="mt-1 text-xs leading-5 text-muted">
-                      Image must be 10 MB or smaller. Images are converted to WebP.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {mediaUrl ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={submitting || uploadingImage}
-                        icon={<Trash2 aria-hidden="true" size={16} />}
-                        onClick={() => setMediaUrl(undefined)}
-                      >
-                        Remove
-                      </Button>
-                    ) : null}
-                    <label className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-surface px-3 text-sm font-medium text-text shadow-soft transition duration-fluid hover:border-line-strong focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus">
-                      <ImagePlus aria-hidden="true" size={16} />
-                      {uploadingImage
-                        ? "Uploading"
-                        : mediaUrl
-                          ? "Replace image"
-                          : "Upload image"}
-                      <input
-                        className="sr-only"
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        disabled={submitting || uploadingImage}
-                        onChange={handleImageChange}
-                      />
-                    </label>
-                  </div>
-                </div>
-                {mediaUrl ? (
-                  <img
-                    alt=""
-                    className="mt-3 max-h-72 w-full rounded-card object-cover"
-                    src={mediaUrl}
-                  />
-                ) : null}
-              </div>
-
-              <TextareaField
-                ref={textareaRef}
-                id="post-composer-body"
-                name="body"
-                label="Post"
-                className="min-h-32 bg-canvas/55 sm:min-h-36"
-                placeholder="Write something"
-                value={body}
-                maxLength={2000}
-                disabled={submitting}
-                required
-                onChange={(event) => setBody(event.currentTarget.value)}
-              />
-
-              {message ? (
-                <ModalSheetStatus tone={messageTone}>{message}</ModalSheetStatus>
-              ) : null}
+        {message ? <ModalSheetStatus tone="error">{message}</ModalSheetStatus> : null}
       </form>
     </ModalSheet>
   );

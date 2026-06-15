@@ -92,7 +92,7 @@ test.describe("authenticated smoke", () => {
     await expect(page.getByRole("button", { name: /Badges/ })).toBeVisible();
   });
 
-  test("composer shows destination, image upload, and text controls in order", async ({
+  test("composer exposes compact destination, upload, and text controls", async ({
     page,
   }) => {
     await loginWithEnv(page);
@@ -101,14 +101,18 @@ test.describe("authenticated smoke", () => {
     const dialog = page.getByRole("dialog", { name: "New post" });
     await expect(dialog).toBeVisible();
 
-    const destination = dialog.getByLabel("Post to");
-    const imageUpload = dialog.getByText("Upload image").first();
+    const destination = dialog.getByRole("combobox", { name: "Post to" });
+    const imageUpload = dialog.getByTitle("Upload image");
     const body = dialog.getByRole("textbox", { name: "Post" });
 
+    await expect(body).toBeVisible();
     await expect(destination).toBeVisible();
     await expect(imageUpload).toBeVisible();
-    await expect(body).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Post", exact: true })).toBeVisible();
     await expect(dialog.getByText(/video/i)).toHaveCount(0);
+    await expect(dialog.getByText("Post to a profile or room.")).toHaveCount(0);
+    await expect(dialog.getByText("Post to your profile.")).toHaveCount(0);
+    await expect(dialog.getByText("Images are converted to WebP")).toHaveCount(0);
 
     const destinationBox = await destination.boundingBox();
     const imageUploadBox = await imageUpload.boundingBox();
@@ -117,8 +121,8 @@ test.describe("authenticated smoke", () => {
     expect(destinationBox).not.toBeNull();
     expect(imageUploadBox).not.toBeNull();
     expect(bodyBox).not.toBeNull();
-    expect(destinationBox!.y).toBeLessThan(imageUploadBox!.y);
-    expect(imageUploadBox!.y).toBeLessThan(bodyBox!.y);
+    expect(bodyBox!.y).toBeLessThan(destinationBox!.y);
+    expect(destinationBox!.x).toBeLessThan(imageUploadBox!.x);
   });
 
   test("profile edit opens with real image upload controls", async ({ page }) => {

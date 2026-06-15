@@ -91,7 +91,6 @@ test("room page Post button opens composer with room preselected", async ({ page
   const dialog = page.getByTestId("composer-modal");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByTestId("composer-room-selector")).toHaveValue(slug!);
-  await expect(dialog.getByText(`/${slug}`)).toBeVisible();
 });
 
 test("Create room button shows for logged-in users", async ({ page }) => {

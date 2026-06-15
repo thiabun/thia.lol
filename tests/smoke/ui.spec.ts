@@ -277,7 +277,6 @@ test("mobile room route uses one contextual Post action", async ({ page }) => {
   const dialog = page.getByTestId("composer-modal");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByTestId("composer-room-selector")).toHaveValue("sun-room");
-  await expect(dialog.getByText("/sun-room", { exact: true })).toBeVisible();
 
   const box = await dialog.boundingBox();
   const viewport = page.viewportSize();
@@ -322,6 +321,11 @@ test("authenticated post button opens an accessible composer select", async ({
   const dialog = page.getByTestId("composer-modal");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Post", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("textbox", { name: "Post" })).toBeVisible();
+  await expect(dialog.getByTitle("Upload image")).toBeVisible();
+  await expect(dialog.getByText("Post to a profile or room.")).toHaveCount(0);
+  await expect(dialog.getByText("Post to your profile.")).toHaveCount(0);
+  await expect(dialog.getByText("Images are converted to WebP")).toHaveCount(0);
 
   const selector = dialog.getByRole("combobox", { name: "Post to" });
   await expect(selector).toBeVisible();
@@ -331,7 +335,6 @@ test("authenticated post button opens an accessible composer select", async ({
   await expect(selector).toBeFocused();
   await selector.selectOption("sun-room");
   await expect(selector).toHaveValue("sun-room");
-  await expect(dialog.getByText("/sun-room", { exact: true })).toBeVisible();
 
   await dialog.getByRole("button", { name: "Close post composer" }).click();
   await expect(dialog).toBeHidden();
