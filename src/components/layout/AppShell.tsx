@@ -16,10 +16,9 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from "react-router";
-import { PostComposerModal } from "../social/PostComposerModal";
 import { ThemeToggle } from "../ThemeToggle";
 import { Button, ButtonLink } from "../ui/Button";
 import { getNotifications, getRooms } from "../../lib/api";
@@ -31,8 +30,14 @@ import {
 } from "../../lib/motionPresets";
 import { emitPostCreated } from "../../lib/postEvents";
 import { notificationsUpdatedEventName } from "../../lib/notificationEvents";
-import { useAsyncData } from "../../lib/useAsyncData";
 import { useAuth } from "../../lib/useAuth";
+import type { Room } from "../../lib/types";
+
+const PostComposerModal = lazy(() =>
+  import("../social/PostComposerModal").then((module) => ({
+    default: module.PostComposerModal,
+  })),
+);
 
 const publicNavItems = [
   { to: "/", label: "Home", icon: Home },
@@ -65,15 +70,16 @@ export function AppShell() {
   const { csrfToken, status, user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const roomsState = useAsyncData(getRooms);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [composerActivated, setComposerActivated] = useState(false);
   const [composerRoomSlug, setComposerRoomSlug] = useState<string | undefined>();
+  const [composerRooms, setComposerRooms] = useState<Room[]>([]);
+  const [composerRoomsLoaded, setComposerRoomsLoaded] = useState(false);
   const [composerKey, setComposerKey] = useState(0);
   const [notificationUnreadCount, setNotificationUnreadCount] = useState<
     number | undefined
   >();
   const postingDisabled = status === "loading";
-  const rooms = roomsState.data ?? [];
   const currentRoomSlug = matchPath(
     { path: "/rooms/:slug", end: true },
     location.pathname,
@@ -133,10 +139,40 @@ export function AppShell() {
     };
   }, []);
 
+  useEffect(() => {
+    if (
+      !composerOpen ||
+      status !== "authenticated" ||
+      composerRoomsLoaded
+    ) {
+      return;
+    }
+
+    let active = true;
+
+    getRooms()
+      .then((rooms) => {
+        if (active) {
+          setComposerRooms(rooms);
+          setComposerRoomsLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setComposerRooms([]);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [composerOpen, composerRoomsLoaded, status]);
+
   function openPostComposer(roomSlug?: string) {
     if (status === "authenticated" && user && csrfToken) {
       setComposerRoomSlug(roomSlug);
       setComposerKey((current) => current + 1);
+      setComposerActivated(true);
       setComposerOpen(true);
       return;
     }
@@ -176,16 +212,31 @@ export function AppShell() {
       >
         Post
       </Button>
-      <PostComposerModal
-        key={composerKey}
-        csrfToken={csrfToken}
-        initialRoomSlug={composerRoomSlug}
-        onClose={() => setComposerOpen(false)}
-        onCreated={emitPostCreated}
-        open={composerOpen}
-        rooms={rooms}
-      />
+      {composerActivated ? (
+        <Suspense fallback={composerOpen ? <ComposerLoadingNotice /> : null}>
+          <PostComposerModal
+            key={composerKey}
+            csrfToken={csrfToken}
+            initialRoomSlug={composerRoomSlug}
+            onClose={() => setComposerOpen(false)}
+            onCreated={emitPostCreated}
+            open={composerOpen}
+            rooms={composerRooms}
+          />
+        </Suspense>
+      ) : null}
       <CookieNotice />
+    </div>
+  );
+}
+
+function ComposerLoadingNotice() {
+  return (
+    <div
+      className="fixed inset-x-4 bottom-24 z-50 mx-auto max-w-sm rounded-panel border border-line bg-surface/96 px-4 py-3 text-sm text-muted shadow-lift backdrop-blur-veil lg:bottom-6 lg:right-6 lg:left-auto"
+      role="status"
+    >
+      Opening composer.
     </div>
   );
 }
@@ -470,7 +521,7 @@ function MobileDock({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={snappySpring}
-      className="sticky bottom-[calc(0.55rem+env(safe-area-inset-bottom))] z-30 mx-auto mb-[calc(0.75rem+env(safe-area-inset-bottom))] grid w-full max-w-md grid-cols-5 items-center gap-0.5 rounded-[1.35rem] border border-line/80 bg-surface/82 px-2 py-1.5 shadow-[0_16px_44px_oklch(0_0_0_/_0.13)] backdrop-blur-veil lg:hidden"
+      className="sticky bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30 mx-auto mb-[calc(0.75rem+env(safe-area-inset-bottom))] grid w-full max-w-md grid-cols-5 items-center gap-0.5 rounded-[1.35rem] border border-line/80 bg-surface/82 px-2 py-1.5 shadow-[0_16px_44px_oklch(0_0_0_/_0.13)] backdrop-blur-veil lg:hidden"
       aria-label="Primary"
       data-testid="mobile-nav"
     >

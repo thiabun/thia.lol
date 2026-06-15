@@ -12,10 +12,9 @@ import {
   Users,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
-import { ProfileCustomizationModal } from "../components/social/ProfileCustomizationModal";
 import { PostCard } from "../components/social/PostCard";
 import { ProfileHeader } from "../components/social/ProfileHeader";
 import { ProfileModulesSection } from "../components/social/ProfileModules";
@@ -80,6 +79,12 @@ import { useAuth } from "../lib/useAuth";
 type ProfileTab = "feed" | "replies" | "rooms";
 type ProfilePanel = "followers" | "following" | "badges";
 type ProfileCustomizationInitialSection = "identity" | "featured";
+
+const ProfileCustomizationModal = lazy(() =>
+  import("../components/social/ProfileCustomizationModal").then((module) => ({
+    default: module.ProfileCustomizationModal,
+  })),
+);
 
 export function ProfilePage() {
   const { handle, profileHandle } = useParams();
@@ -602,39 +607,47 @@ export function ProfilePage() {
         </motion.div>
       ) : null}
       {isOwnProfile && customizingProfile ? (
-        <ProfileCustomizationModal
-          key={`${profile.user.handle}-${profile.updatedAt ?? ""}`}
-          badges={profileBadges}
-          featuredOptionsError={
-            featuredOptionState?.handle === normalizedHandle
-              ? featuredOptionState.error
-              : undefined
+        <Suspense
+          fallback={
+            <ProfileCustomizationLoadingSheet
+              onClose={() => setCustomizingProfileHandle(undefined)}
+            />
           }
-          featuredOptionsLoading={moduleEditorLoading}
-          featuredPostOptions={
-            featuredOptionState?.handle === normalizedHandle
-              ? featuredOptionState.posts
-              : postsState.data ?? []
-          }
-          featuredRoomOptions={
-            featuredOptionState?.handle === normalizedHandle
-              ? featuredOptionState.rooms
-              : eligibleFeaturedRooms(profileRooms, user?.id)
-          }
-          initialSection={customizationInitialSection}
-          moduleError={moduleEditorError}
-          moduleLoading={moduleEditorLoading}
-          modules={ownerModules}
-          profile={profile}
-          onClose={() => setCustomizingProfileHandle(undefined)}
-          onCreateModule={handleCreateModule}
-          onDeleteModule={handleDeleteModule}
-          onReorderModules={handleReorderModules}
-          onSaveFeaturedContent={handleFeaturedContentSave}
-          onSaveProfile={handleProfileSave}
-          onUpdateModule={handleUpdateModule}
-          onUpload={handleProfileImageUpload}
-        />
+        >
+          <ProfileCustomizationModal
+            key={`${profile.user.handle}-${profile.updatedAt ?? ""}`}
+            badges={profileBadges}
+            featuredOptionsError={
+              featuredOptionState?.handle === normalizedHandle
+                ? featuredOptionState.error
+                : undefined
+            }
+            featuredOptionsLoading={moduleEditorLoading}
+            featuredPostOptions={
+              featuredOptionState?.handle === normalizedHandle
+                ? featuredOptionState.posts
+                : postsState.data ?? []
+            }
+            featuredRoomOptions={
+              featuredOptionState?.handle === normalizedHandle
+                ? featuredOptionState.rooms
+                : eligibleFeaturedRooms(profileRooms, user?.id)
+            }
+            initialSection={customizationInitialSection}
+            moduleError={moduleEditorError}
+            moduleLoading={moduleEditorLoading}
+            modules={ownerModules}
+            profile={profile}
+            onClose={() => setCustomizingProfileHandle(undefined)}
+            onCreateModule={handleCreateModule}
+            onDeleteModule={handleDeleteModule}
+            onReorderModules={handleReorderModules}
+            onSaveFeaturedContent={handleFeaturedContentSave}
+            onSaveProfile={handleProfileSave}
+            onUpdateModule={handleUpdateModule}
+            onUpload={handleProfileImageUpload}
+          />
+        </Suspense>
       ) : null}
       <ProfileFeaturedContentSection
         isOwnProfile={isOwnProfile}
@@ -741,6 +754,25 @@ export function ProfilePage() {
         />
       ) : null}
     </motion.div>
+  );
+}
+
+function ProfileCustomizationLoadingSheet({ onClose }: { onClose: () => void }) {
+  return (
+    <ModalSheet
+      open
+      onClose={onClose}
+      title="Profile editor"
+      closeLabel="Close profile editor"
+      size="lg"
+      mobile="full"
+    >
+      <ApiStateNotice
+        kind="loading"
+        title="Opening profile editor"
+        text="Loading editor."
+      />
+    </ModalSheet>
   );
 }
 

@@ -20,7 +20,6 @@ import type {
   ProfileModuleType,
   ProfileModuleVisibility,
   PublicStats,
-  ReactionCounts,
   Room,
   RoomMember,
   SearchResults,
@@ -204,13 +203,6 @@ export type DeleteRoomResult = {
   deletedAt: string;
 };
 
-export type ReactionType = keyof ReactionCounts;
-
-export type ReactionResult = {
-  postId: number;
-  reactions: ReactionCounts;
-};
-
 export type LikeResult = {
   postId: number;
   likeCount: number;
@@ -288,8 +280,6 @@ export type ReportCategory =
   | "illegal_content"
   | "other";
 
-export type ReportReason = ReportCategory;
-
 export type ModerationReportStatus =
   | "open"
   | "reviewed"
@@ -337,7 +327,7 @@ export type ModerationReport = {
   targetType: ReportTargetType;
   targetId: number | null;
   category: ReportCategory;
-  reason: ReportReason;
+  reason: ReportCategory;
   details: string | null;
   status: ModerationReportStatus;
   createdAt: string;
@@ -368,12 +358,6 @@ export type AdminActionInput = {
   reportId?: number;
   notes?: string;
 };
-
-export function getFeed(): Promise<Post[]> {
-  return apiGet<ApiPost[]>("/posts").then((items) =>
-    items.filter(isVisiblePost).map(normalizePost),
-  );
-}
 
 export function getHomeFeed(): Promise<HomeFeed> {
   return apiGet<ApiHomeFeed>("/feed/home").then((feed) => ({
@@ -780,29 +764,6 @@ export function deletePost(
   csrfToken: string,
 ): Promise<DeletePostResult> {
   return apiDelete<DeletePostResult>(`/posts/${id}`, csrfToken);
-}
-
-export function addReaction(
-  postId: number,
-  type: ReactionType,
-  csrfToken: string,
-): Promise<ReactionCounts> {
-  return apiPost<ReactionResult>(
-    `/posts/${postId}/reactions`,
-    { type },
-    csrfToken,
-  ).then((result) => result.reactions);
-}
-
-export function removeReaction(
-  postId: number,
-  type: ReactionType,
-  csrfToken: string,
-): Promise<ReactionCounts> {
-  return apiDelete<ReactionResult>(
-    `/posts/${postId}/reactions/${encodeURIComponent(type)}`,
-    csrfToken,
-  ).then((result) => result.reactions);
 }
 
 export function likePost(

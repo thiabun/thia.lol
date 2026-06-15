@@ -10,12 +10,19 @@ import {
   UsersRound,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { useNavigate, useOutletContext, useParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { PostCard } from "../components/social/PostCard";
 import { ReportForm } from "../components/social/ReportForm";
-import { RoomEditModal } from "../components/social/RoomEditModal";
 import {
   InlineUserProfileLink,
   UserIdentityLink,
@@ -50,6 +57,12 @@ import type { ImageUploadPurpose, RoomInput } from "../lib/api";
 import type { Post, Room, RoomMember } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
+
+const RoomEditModal = lazy(() =>
+  import("../components/social/RoomEditModal").then((module) => ({
+    default: module.RoomEditModal,
+  })),
+);
 
 export function RoomPage() {
   const { csrfToken, user } = useAuth();
@@ -374,22 +387,35 @@ export function RoomPage() {
       ) : null}
 
       {room && editOpen ? (
-        <RoomEditModal
-          mode="edit"
-          open={editOpen}
-          room={room}
-          members={members}
-          canManageModerators={canManageRoomModerators}
-          canDeleteRoom={canDeleteRoom}
-          onClose={() => setEditOpen(false)}
-          onSave={handleSaveRoom}
-          onUpload={handleUpload}
-          onAddModerator={handleAddModerator}
-          onRemoveModerator={handleRemoveModerator}
-          onDeleteRoom={handleDeleteRoom}
-        />
+        <Suspense fallback={<RoomEditorLoadingNotice />}>
+          <RoomEditModal
+            mode="edit"
+            open={editOpen}
+            room={room}
+            members={members}
+            canManageModerators={canManageRoomModerators}
+            canDeleteRoom={canDeleteRoom}
+            onClose={() => setEditOpen(false)}
+            onSave={handleSaveRoom}
+            onUpload={handleUpload}
+            onAddModerator={handleAddModerator}
+            onRemoveModerator={handleRemoveModerator}
+            onDeleteRoom={handleDeleteRoom}
+          />
+        </Suspense>
       ) : null}
     </motion.div>
+  );
+}
+
+function RoomEditorLoadingNotice() {
+  return (
+    <div
+      className="fixed inset-x-4 bottom-24 z-50 mx-auto max-w-sm rounded-panel border border-line bg-surface/96 px-4 py-3 text-sm text-muted shadow-lift backdrop-blur-veil"
+      role="status"
+    >
+      Opening room editor.
+    </div>
   );
 }
 

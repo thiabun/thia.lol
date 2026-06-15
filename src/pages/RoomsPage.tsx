@@ -1,9 +1,8 @@
 import { Plus, Radio, SearchX } from "lucide-react";
 import { motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { PageMeta } from "../components/PageMeta";
-import { RoomEditModal } from "../components/social/RoomEditModal";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -16,6 +15,12 @@ import type { ImageUploadPurpose, RoomInput } from "../lib/api";
 import type { Room } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
+
+const RoomEditModal = lazy(() =>
+  import("../components/social/RoomEditModal").then((module) => ({
+    default: module.RoomEditModal,
+  })),
+);
 
 export function RoomsPage() {
   const navigate = useNavigate();
@@ -161,14 +166,27 @@ export function RoomsPage() {
       ) : null}
 
       {createOpen ? (
-        <RoomEditModal
-          mode="create"
-          open={createOpen}
-          onClose={() => setCreateOpen(false)}
-          onSave={handleCreateRoom}
-          onUpload={handleUpload}
-        />
+        <Suspense fallback={<RoomEditorLoadingNotice />}>
+          <RoomEditModal
+            mode="create"
+            open={createOpen}
+            onClose={() => setCreateOpen(false)}
+            onSave={handleCreateRoom}
+            onUpload={handleUpload}
+          />
+        </Suspense>
       ) : null}
     </motion.div>
+  );
+}
+
+function RoomEditorLoadingNotice() {
+  return (
+    <div
+      className="fixed inset-x-4 bottom-24 z-50 mx-auto max-w-sm rounded-panel border border-line bg-surface/96 px-4 py-3 text-sm text-muted shadow-lift backdrop-blur-veil"
+      role="status"
+    >
+      Opening room editor.
+    </div>
   );
 }
