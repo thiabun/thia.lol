@@ -1,4 +1,9 @@
-import type { ProfileModule, ProfileModuleType, UserBadge } from "./types";
+import type {
+  ProfileLayoutPreset,
+  ProfileModule,
+  ProfileModuleType,
+  UserBadge,
+} from "./types";
 
 export type ProfileGridModuleSize = "small" | "wide" | "tall" | "feature";
 
@@ -43,6 +48,17 @@ export const profileModuleRegistry = {
   },
 } satisfies Record<ProfileModuleType, ProfileModuleRegistryEntry>;
 
+export const profileModuleTypes = Object.keys(
+  profileModuleRegistry,
+) as ProfileModuleType[];
+
+export function isProfileModuleType(value: unknown): value is ProfileModuleType {
+  return (
+    typeof value === "string" &&
+    Object.hasOwn(profileModuleRegistry, value)
+  );
+}
+
 export function getProfileModuleDefinition(
   type: ProfileModuleType,
 ): ProfileModuleRegistryEntry {
@@ -53,7 +69,19 @@ export function profileModuleFallbackTitle(type: ProfileModuleType): string {
   return getProfileModuleDefinition(type).fallbackTitle;
 }
 
-export function profileModuleGridSize(module: ProfileModule): ProfileGridModuleSize {
+export function profileModuleGridSize(
+  module: ProfileModule,
+  layoutPreset: ProfileLayoutPreset = "balanced",
+  index = 0,
+): ProfileGridModuleSize {
+  if (layoutPreset === "compact") {
+    return module.type === "about" ? "wide" : "small";
+  }
+
+  if (layoutPreset === "showcase" && index === 0 && module.type === "about") {
+    return "feature";
+  }
+
   if (module.type === "links" && (module.config.links?.length ?? 0) > 4) {
     return "wide";
   }
@@ -100,7 +128,9 @@ export function renderableProfileModules(
   modules: ProfileModule[],
   badges: UserBadge[],
 ): ProfileModule[] {
-  return modules.filter((module) => profileModuleHasContent(module, badges));
+  return modules.filter(
+    (module) => isProfileModuleType(module.type) && profileModuleHasContent(module, badges),
+  );
 }
 
 export function profileModuleSummary(module: ProfileModule): string {

@@ -6,8 +6,18 @@ import {
   profileModuleGridSize,
   renderableProfileModules,
 } from "../../lib/profileModuleRegistry";
-import type { BadgeRarity, ProfileModule, UserBadge } from "../../lib/types";
+import {
+  defaultProfileLayoutPreset,
+  profileLayoutMaxColumns,
+} from "../../lib/profileLayoutPresets";
+import type {
+  BadgeRarity,
+  ProfileLayoutPreset,
+  ProfileModule,
+  UserBadge,
+} from "../../lib/types";
 import { ApiStateNotice } from "../ui/ApiStateNotice";
+import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
 import { ProfileGrid, ProfileGridModule, ProfileGridSection } from "./ProfileGrid";
 
@@ -15,16 +25,20 @@ type ProfileModulesSectionProps = {
   badges: UserBadge[];
   error: unknown;
   isOwnProfile: boolean;
+  layoutPreset?: ProfileLayoutPreset | undefined;
   loading: boolean;
   modules: ProfileModule[];
+  onCustomize?: (() => void) | undefined;
 };
 
 export function ProfileModulesSection({
   badges,
   error,
   isOwnProfile,
+  layoutPreset = defaultProfileLayoutPreset,
   loading,
   modules,
+  onCustomize,
 }: ProfileModulesSectionProps) {
   const renderableModules = renderableProfileModules(modules, badges);
 
@@ -41,7 +55,24 @@ export function ProfileModulesSection({
   }
 
   return (
-    <ProfileGridSection title="Personal space" testId="profile-modules">
+    <ProfileGridSection
+      title="Personal space"
+      testId="profile-modules"
+      action={
+        isOwnProfile && onCustomize ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="shadow-none"
+            icon={<Sparkles aria-hidden="true" size={15} />}
+            onClick={onCustomize}
+          >
+            Customize layout
+          </Button>
+        ) : null
+      }
+    >
       {loading ? (
         <ApiStateNotice
           kind="loading"
@@ -67,7 +98,11 @@ export function ProfileModulesSection({
       ) : null}
 
       {!loading && !error && renderableModules.length > 0 ? (
-        <ProfileModuleGrid modules={renderableModules} badges={badges} />
+        <ProfileModuleGrid
+          modules={renderableModules}
+          badges={badges}
+          layoutPreset={layoutPreset}
+        />
       ) : null}
     </ProfileGridSection>
   );
@@ -75,20 +110,27 @@ export function ProfileModulesSection({
 
 type ProfileModuleGridProps = {
   badges: UserBadge[];
+  layoutPreset?: ProfileLayoutPreset | undefined;
   maxColumns?: 2 | 3;
   modules: ProfileModule[];
 };
 
 export function ProfileModuleGrid({
   badges,
-  maxColumns = 3,
+  layoutPreset = defaultProfileLayoutPreset,
+  maxColumns,
   modules,
 }: ProfileModuleGridProps) {
   const renderableModules = renderableProfileModules(modules, badges);
+  const resolvedMaxColumns = maxColumns ?? profileLayoutMaxColumns(layoutPreset);
 
   if (renderableModules.length === 0) {
     return (
-      <ProfileGrid maxColumns={maxColumns} testId="profile-module-grid">
+      <ProfileGrid
+        layoutPreset={layoutPreset}
+        maxColumns={resolvedMaxColumns}
+        testId="profile-module-grid"
+      >
         <ProfileGridModule size="wide">
           <div className="rounded-card border border-dashed border-line bg-canvas/45 p-4 text-sm text-muted">
             No module content to preview.
@@ -99,9 +141,16 @@ export function ProfileModuleGrid({
   }
 
   return (
-    <ProfileGrid maxColumns={maxColumns} testId="profile-module-grid">
-      {renderableModules.map((module) => (
-        <ProfileGridModule key={module.id} size={profileModuleGridSize(module)}>
+    <ProfileGrid
+      layoutPreset={layoutPreset}
+      maxColumns={resolvedMaxColumns}
+      testId="profile-module-grid"
+    >
+      {renderableModules.map((module, index) => (
+        <ProfileGridModule
+          key={module.id}
+          size={profileModuleGridSize(module, layoutPreset, index)}
+        >
           <ProfileModuleCard module={module} badges={badges} />
         </ProfileGridModule>
       ))}

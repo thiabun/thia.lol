@@ -622,6 +622,37 @@ Implemented API and storage:
 - Module storage lives in `profile_modules` after migration `20260612_0001_add_profile_modules.sql`.
 - Featured content storage lives on `profiles.featured_post_id` and `profiles.featured_room_id` after migration `20260613_0001_add_profile_featured_content.sql`.
 
+### Implementation Note - 2026-06-15 Profiles v3 Phase 4
+
+Issue [#35](https://github.com/thiabun/thia.lol/issues/35) adds owner controls
+for the Personal Space grid without turning profiles into a page builder:
+
+- Module visibility continues to use the existing `profile_modules.visibility`
+  field. Owners can save known modules as `public`, `hidden`, or `draft`; public
+  reads render only active public modules with meaningful content.
+- Module order continues to use `profile_modules.position` and the existing
+  CSRF-protected `PATCH /api/me/profile/module-order` endpoint. The owner UI
+  keeps keyboard-accessible move up/down controls and does not add drag-and-drop.
+- Unknown, retired, hidden, deleted, or empty module records are ignored before
+  public rendering. The frontend also filters module types through
+  `profileModuleRegistry` so only supported modules can produce cards.
+- Layout preset storage is profile-level through
+  `profiles.profile_layout_preset`, added by migration
+  `20260615_0001_add_profile_layout_preset.sql`. Reads fall back to `balanced`
+  when the column or value is missing.
+- The first allowlisted presets are `balanced`, `compact`, and `showcase`.
+  Presets affect grid gaps, desktop max columns, featured card sizing, and
+  registry-backed module sizing. Mobile remains a single stable column.
+- Owner layout editing lives inside the existing lazy-loaded Customize Profile
+  modal under Modules, with a compact segmented preset control and separate
+  layout save action. Public visitors do not see layout controls.
+
+Future drag-and-drop should attach to the same persisted module order and keep
+the up/down controls as the keyboard baseline. Future gallery, music, media, and
+integration modules should join `profileModuleRegistry` first, define bounded
+content checks and grid sizing, and continue to avoid arbitrary HTML, CSS,
+JavaScript, iframes, embeds, analytics, monetization, or profile marketplaces.
+
 Current limitations:
 
 - Profiles now have a minimal module foundation and owner editor/preview for v1 modules, but no integrations, embeds, or module-level report target.

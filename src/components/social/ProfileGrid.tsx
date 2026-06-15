@@ -1,12 +1,15 @@
 import type { ReactNode } from "react";
 import { motion } from "motion/react";
 import { cn } from "../../lib/classNames";
+import { defaultProfileLayoutPreset } from "../../lib/profileLayoutPresets";
 import type { ProfileGridModuleSize } from "../../lib/profileModuleRegistry";
+import type { ProfileLayoutPreset } from "../../lib/types";
 import { cardEntrance } from "../../lib/motionPresets";
 
 type ProfileGridProps = {
   children: ReactNode;
   className?: string | undefined;
+  layoutPreset?: ProfileLayoutPreset | undefined;
   maxColumns?: 2 | 3;
   testId?: string | undefined;
 };
@@ -14,16 +17,19 @@ type ProfileGridProps = {
 export function ProfileGrid({
   children,
   className,
+  layoutPreset = defaultProfileLayoutPreset,
   maxColumns = 3,
   testId = "profile-grid",
 }: ProfileGridProps) {
   return (
     <div
       className={cn(
-        "grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2",
+        "grid min-w-0 grid-cols-1 md:grid-cols-2",
+        layoutPreset === "compact" ? "gap-2" : "gap-3",
         maxColumns === 3 ? "xl:grid-cols-3" : undefined,
         className,
       )}
+      data-profile-layout-preset={layoutPreset}
       data-testid={testId}
     >
       {children}

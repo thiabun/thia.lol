@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   profile_accent VARCHAR(50) NULL,
   profile_background VARCHAR(500) NULL,
   profile_theme VARCHAR(50) NULL,
+  profile_layout_preset VARCHAR(20) NOT NULL DEFAULT 'balanced',
   links JSON NULL,
   traits JSON NULL,
   featured_post_id BIGINT UNSIGNED NULL,

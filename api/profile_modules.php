@@ -346,14 +346,25 @@ function profile_modules_for_owner(int $userId): array
 
 function profile_modules_payload(array $rows, bool $public): array
 {
-    return array_map(
-        static fn (array $row): array => profile_module_payload($row, $public),
-        $rows
-    );
+    $modules = [];
+
+    foreach ($rows as $row) {
+        $module = profile_module_payload($row, $public);
+
+        if ($module !== null) {
+            $modules[] = $module;
+        }
+    }
+
+    return $modules;
 }
 
-function profile_module_payload(array $row, bool $public): array
+function profile_module_payload(array $row, bool $public): ?array
 {
+    if (!profile_module_type_is_supported($row['type'] ?? null)) {
+        return null;
+    }
+
     $config = profile_module_json((string) $row['config_json']);
     $config = profile_module_output_config((string) $row['type'], $config, (int) $row['user_id']);
 
@@ -369,6 +380,11 @@ function profile_module_payload(array $row, bool $public): array
         'createdAt' => $row['created_at'] ?? null,
         'updatedAt' => $row['updated_at'] ?? null,
     ];
+}
+
+function profile_module_type_is_supported(mixed $value): bool
+{
+    return is_string($value) && in_array($value, PROFILE_MODULE_TYPES, true);
 }
 
 function profile_module_output_config(string $type, array $config, int $userId): array

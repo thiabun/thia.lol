@@ -1,5 +1,7 @@
 export type ThemeName = "sunveil" | "frostveil";
 
+export type ProfileLayoutPreset = "balanced" | "compact" | "showcase";
+
 export type User = {
   id: number;
   handle: string;
@@ -17,6 +19,7 @@ export type Profile = {
   profileAccent?: string | null;
   profileBackground?: string | null;
   profileTheme?: string | null;
+  profileLayoutPreset: ProfileLayoutPreset;
   featuredPostId?: number | null;
   featuredRoomId?: number | null;
   featuredPost?: Post | null;

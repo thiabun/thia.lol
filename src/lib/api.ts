@@ -14,6 +14,7 @@ import type {
   ProfileBadgesResult,
   ProfileConnection,
   ProfileExternalConnection,
+  ProfileLayoutPreset,
   ProfileModule,
   ProfileModuleConfig,
   ProfileModuleStatus,
@@ -27,7 +28,9 @@ import type {
 } from "./types";
 import { apiDelete, apiGet, apiPatch, apiPost, apiUpload } from "./apiClient";
 import { formatRelativeTime } from "./dates";
+import { normalizeProfileLayoutPreset } from "./profileLayoutPresets";
 import { normalizeProfileConnection } from "./profileConnections";
+import { isProfileModuleType } from "./profileModuleRegistry";
 
 type ApiRoom = Room & {
   description?: string;
@@ -45,7 +48,10 @@ type ApiRoom = Room & {
   updatedAt?: string | null;
 };
 
-type ApiProfile = Omit<Profile, "featuredPost" | "featuredRoom"> & {
+type ApiProfile = Omit<
+  Profile,
+  "featuredPost" | "featuredRoom" | "profileLayoutPreset"
+> & {
   avatarUrl?: string | null;
   createdAt?: string;
   updatedAt?: string;
@@ -53,6 +59,7 @@ type ApiProfile = Omit<Profile, "featuredPost" | "featuredRoom"> & {
   featuredRoomId?: number | null;
   featuredPost?: ApiPost | null;
   featuredRoom?: ApiRoom | null;
+  profileLayoutPreset?: string | null;
   links?: unknown[];
   isBlocked?: boolean;
   isMuted?: boolean;
@@ -142,6 +149,7 @@ export type UpdateProfileInput = {
   profileBackground?: string | null;
   profileAccent?: string | null;
   profileTheme?: string | null;
+  profileLayoutPreset?: ProfileLayoutPreset;
   links?: ProfileExternalConnection[];
   traits?: string[];
 };
@@ -486,12 +494,14 @@ export function getProfileModules(handle: string): Promise<ProfileModule[]> {
 
   return apiGet<ApiProfileModule[]>(
     `/profiles/${encodeURIComponent(normalized)}/modules`,
-  ).then((items) => items.map(normalizeProfileModule));
+  ).then((items) =>
+    items.filter(isApiProfileModule).map(normalizeProfileModule),
+  );
 }
 
 export function getMyProfileModules(): Promise<ProfileModule[]> {
   return apiGet<ApiProfileModule[]>("/me/profile/modules").then((items) =>
-    items.map(normalizeProfileModule),
+    items.filter(isApiProfileModule).map(normalizeProfileModule),
   );
 }
 
@@ -500,7 +510,7 @@ export function createProfileModule(
   csrfToken: string,
 ): Promise<ProfileModule[]> {
   return apiPost<ApiProfileModule[]>("/me/profile/modules", input, csrfToken).then(
-    (items) => items.map(normalizeProfileModule),
+    (items) => items.filter(isApiProfileModule).map(normalizeProfileModule),
   );
 }
 
@@ -513,7 +523,7 @@ export function updateProfileModule(
     `/me/profile/modules/${moduleId}`,
     input,
     csrfToken,
-  ).then((items) => items.map(normalizeProfileModule));
+  ).then((items) => items.filter(isApiProfileModule).map(normalizeProfileModule));
 }
 
 export function deleteProfileModule(
@@ -534,7 +544,7 @@ export function updateProfileModuleOrder(
     "/me/profile/module-order",
     { moduleIds },
     csrfToken,
-  ).then((items) => items.map(normalizeProfileModule));
+  ).then((items) => items.filter(isApiProfileModule).map(normalizeProfileModule));
 }
 
 export function getProfilePosts(handle: string): Promise<Post[]> {
@@ -1090,6 +1100,7 @@ function normalizeProfile(profile: ApiProfile): Profile {
     profileAccent: profile.profileAccent ?? null,
     profileBackground: profile.profileBackground ?? null,
     profileTheme: profile.profileTheme ?? null,
+    profileLayoutPreset: normalizeProfileLayoutPreset(profile.profileLayoutPreset),
     featuredPostId: profile.featuredPostId ?? profile.featuredPost?.id ?? null,
     featuredRoomId: profile.featuredRoomId ?? profile.featuredRoom?.id ?? null,
     featuredPost: profile.featuredPost ? normalizePost(profile.featuredPost) : null,
@@ -1179,6 +1190,10 @@ function normalizeProfileModule(module: ApiProfileModule): ProfileModule {
     createdAt: module.createdAt ?? null,
     updatedAt: module.updatedAt ?? null,
   };
+}
+
+function isApiProfileModule(module: ApiProfileModule): boolean {
+  return isProfileModuleType(module.type);
 }
 
 function normalizeProfileModuleConfig(config: ProfileModuleConfig): ProfileModuleConfig {

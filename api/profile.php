@@ -5,6 +5,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read.php';
 
+const PROFILE_LAYOUT_PRESETS = ['balanced', 'compact', 'showcase'];
+
 function me_dispatch(array $segments, string $method): void
 {
     if (($segments[0] ?? null) !== 'me' || ($segments[1] ?? null) !== 'profile') {
@@ -151,7 +153,12 @@ function profile_featured_update_statement_for_body(array $body, int $userId): a
     ];
 }
 
-function profile_update_statement_for_body(array $body, int $userId, ?bool $hasCustomizationColumns = null): array
+function profile_update_statement_for_body(
+    array $body,
+    int $userId,
+    ?bool $hasCustomizationColumns = null,
+    ?bool $hasLayoutPresetColumn = null
+): array
 {
     if (array_is_list($body)) {
         json_error('JSON body must be an object.', 400);
@@ -160,6 +167,7 @@ function profile_update_statement_for_body(array $body, int $userId, ?bool $hasC
     $updates = [];
     $params = ['user_id' => $userId];
     $hasCustomizationColumns = $hasCustomizationColumns ?? profile_customization_columns_exist();
+    $hasLayoutPresetColumn = $hasLayoutPresetColumn ?? profile_layout_preset_column_exists();
 
     if (array_key_exists('displayName', $body) || array_key_exists('display_name', $body)) {
         $updates[] = 'display_name = :display_name';
@@ -222,6 +230,13 @@ function profile_update_statement_for_body(array $body, int $userId, ?bool $hasC
             'Theme'
         );
         add_profile_customization_update($updates, $params, $hasCustomizationColumns, 'profile_theme', $profileTheme);
+    }
+
+    if (array_key_exists('profileLayoutPreset', $body) || array_key_exists('profile_layout_preset', $body)) {
+        $profileLayoutPreset = validate_profile_layout_preset(
+            profile_body_value($body, 'profileLayoutPreset', 'profile_layout_preset')
+        );
+        add_profile_layout_preset_update($updates, $params, $hasLayoutPresetColumn, $profileLayoutPreset);
     }
 
     if (array_key_exists('links', $body)) {
@@ -435,6 +450,7 @@ function profile_update_failed_on_missing_customization_column(PDOException $exc
             || str_contains($message, 'profile_accent')
             || str_contains($message, 'profile_background')
             || str_contains($message, 'profile_theme')
+            || str_contains($message, 'profile_layout_preset')
         );
 }
 
@@ -492,6 +508,43 @@ function add_profile_customization_update(
 
     $updates[] = "{$column} = :{$column}";
     $params[$column] = $value;
+}
+
+function add_profile_layout_preset_update(
+    array &$updates,
+    array &$params,
+    bool $hasLayoutPresetColumn,
+    string $value
+): void {
+    if (!$hasLayoutPresetColumn) {
+        json_error('Profile layout preference migration has not been applied.', 409);
+    }
+
+    $updates[] = 'profile_layout_preset = :profile_layout_preset';
+    $params['profile_layout_preset'] = $value;
+}
+
+function validate_profile_layout_preset(mixed $value): string
+{
+    if ($value === null) {
+        return 'balanced';
+    }
+
+    if (!is_string($value)) {
+        json_error('Choose a supported profile layout.', 422);
+    }
+
+    $preset = strtolower(trim($value));
+
+    if ($preset === '') {
+        return 'balanced';
+    }
+
+    if (!in_array($preset, PROFILE_LAYOUT_PRESETS, true)) {
+        json_error('Choose a supported profile layout.', 422);
+    }
+
+    return $preset;
 }
 
 function validate_profile_nullable_text(mixed $value, int $max, string $label): ?string

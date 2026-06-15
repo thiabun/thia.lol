@@ -74,11 +74,13 @@ import { cn } from "../lib/classNames";
 import { formatShortDate } from "../lib/dates";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
 import { formatCountWithUnit } from "../lib/pluralize";
+import { defaultProfileLayoutPreset } from "../lib/profileLayoutPresets";
 import { safeProfileImageUrl } from "../lib/profileMedia";
 import type {
   BadgeDefinition,
   Post,
   Profile,
+  ProfileLayoutPreset,
   ProfileModule,
   Room,
   UserBadge,
@@ -88,7 +90,7 @@ import { useAuth } from "../lib/useAuth";
 
 type ProfileTab = "feed" | "replies" | "rooms";
 type ProfilePanel = "followers" | "following" | "badges";
-type ProfileCustomizationInitialSection = "identity" | "featured";
+type ProfileCustomizationInitialSection = "identity" | "featured" | "modules";
 
 const ProfileCustomizationModal = lazy(() =>
   import("../components/social/ProfileCustomizationModal").then((module) => ({
@@ -211,6 +213,8 @@ export function ProfilePage() {
   const publicModules = ownerModules.filter(
     (module) => module.visibility === "public" && module.status === "active",
   );
+  const profileLayoutPreset =
+    profile?.profileLayoutPreset ?? defaultProfileLayoutPreset;
   const profileMissing =
     profileState.error instanceof ApiClientError && profileState.error.status === 404;
   const isOwnProfile =
@@ -663,6 +667,7 @@ export function ProfilePage() {
         ) : null}
         <ProfileFeaturedContentSection
           isOwnProfile={isOwnProfile}
+          layoutPreset={profileLayoutPreset}
           profile={profile}
           onCustomize={isOwnProfile ? () => void handleOpenCustomization("featured") : undefined}
         />
@@ -670,8 +675,10 @@ export function ProfilePage() {
           badges={profileBadges}
           error={modulesState.error}
           isOwnProfile={isOwnProfile}
+          layoutPreset={profileLayoutPreset}
           loading={modulesState.loading}
           modules={publicModules}
+          onCustomize={isOwnProfile ? () => void handleOpenCustomization("modules") : undefined}
         />
         <motion.div
           className="border-t border-line pt-4"
@@ -880,12 +887,14 @@ function ProfilePersonalBackdrop({ profile }: { profile: Profile }) {
 
 type ProfileFeaturedContentSectionProps = {
   isOwnProfile: boolean;
+  layoutPreset: ProfileLayoutPreset;
   onCustomize?: (() => void) | undefined;
   profile: Profile;
 };
 
 function ProfileFeaturedContentSection({
   isOwnProfile,
+  layoutPreset,
   onCustomize,
   profile,
 }: ProfileFeaturedContentSectionProps) {
@@ -919,15 +928,21 @@ function ProfileFeaturedContentSection({
       {hasFeaturedContent ? (
         <ProfileGrid
           className={featuredPost && featuredRoom ? undefined : "max-w-3xl"}
+          layoutPreset={layoutPreset}
+          maxColumns={layoutPreset === "compact" ? 2 : 3}
           testId="profile-featured-grid"
         >
           {featuredPost ? (
-            <ProfileGridModule size={featuredRoom ? "wide" : "feature"}>
+            <ProfileGridModule
+              size={featuredPostGridSize(layoutPreset, Boolean(featuredRoom))}
+            >
               <FeaturedPostCard post={featuredPost} />
             </ProfileGridModule>
           ) : null}
           {featuredRoom ? (
-            <ProfileGridModule size={featuredPost ? "small" : "wide"}>
+            <ProfileGridModule
+              size={featuredRoomGridSize(layoutPreset, Boolean(featuredPost))}
+            >
               <FeaturedRoomCard room={featuredRoom} />
             </ProfileGridModule>
           ) : null}
@@ -937,6 +952,36 @@ function ProfileFeaturedContentSection({
       )}
     </ProfileGridSection>
   );
+}
+
+function featuredPostGridSize(
+  layoutPreset: ProfileLayoutPreset,
+  hasFeaturedRoom: boolean,
+): "small" | "wide" | "feature" {
+  if (layoutPreset === "compact") {
+    return hasFeaturedRoom ? "small" : "wide";
+  }
+
+  if (layoutPreset === "showcase") {
+    return "feature";
+  }
+
+  return hasFeaturedRoom ? "wide" : "feature";
+}
+
+function featuredRoomGridSize(
+  layoutPreset: ProfileLayoutPreset,
+  hasFeaturedPost: boolean,
+): "small" | "wide" | "feature" {
+  if (layoutPreset === "compact") {
+    return "small";
+  }
+
+  if (layoutPreset === "showcase") {
+    return hasFeaturedPost ? "wide" : "feature";
+  }
+
+  return hasFeaturedPost ? "small" : "wide";
 }
 
 function FeaturedPostCard({ post }: { post: Post }) {

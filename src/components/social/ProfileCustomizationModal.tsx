@@ -10,6 +10,7 @@ import {
   Eye,
   EyeOff,
   ImagePlus,
+  LayoutGrid,
   Link as LinkIcon,
   LoaderCircle,
   MapPin,
@@ -38,6 +39,10 @@ import type {
 import { cn } from "../../lib/classNames";
 import { modalOverlay, modalPanel } from "../../lib/motionPresets";
 import {
+  defaultProfileLayoutPreset,
+  profileLayoutPresetOptions,
+} from "../../lib/profileLayoutPresets";
+import {
   connectionPlatformHelp,
   connectionPlatformLabel,
   formatProfileConnectionValue,
@@ -53,6 +58,7 @@ import type {
   Profile,
   ProfileConnectionPlatform,
   ProfileExternalConnection,
+  ProfileLayoutPreset,
   ProfileModule,
   ProfileModuleConfig,
   ProfileModuleType,
@@ -253,6 +259,14 @@ export function ProfileCustomizationModal({
     () => new Set(),
   );
   const [drafts, setDrafts] = useState<ProfileModule[]>(modules);
+  const [layoutPreset, setLayoutPreset] = useState<ProfileLayoutPreset>(
+    () => profile.profileLayoutPreset ?? defaultProfileLayoutPreset,
+  );
+  const [savedLayoutPreset, setSavedLayoutPreset] = useState<ProfileLayoutPreset>(
+    () => profile.profileLayoutPreset ?? defaultProfileLayoutPreset,
+  );
+  const [savingLayout, setSavingLayout] = useState(false);
+  const [layoutMessage, setLayoutMessage] = useState<string | undefined>();
   const [selectedModuleId, setSelectedModuleId] = useState<number | undefined>();
   const [moduleDirty, setModuleDirty] = useState<DirtyMap>({});
   const [orderDirty, setOrderDirty] = useState(false);
@@ -263,10 +277,12 @@ export function ProfileCustomizationModal({
   const busy =
     savingProfile ||
     savingFeatured ||
+    savingLayout ||
     uploading !== undefined ||
     moduleBusy !== undefined;
   const selectedModule = drafts.find((module) => module.id === selectedModuleId);
   const hasUnsavedModules = Object.values(moduleDirty).some(Boolean) || orderDirty;
+  const layoutDirty = layoutPreset !== savedLayoutPreset;
   const hasUnsavedNewModule = drafts.some((module) => module.id < 0);
   const selectedModuleDirty = selectedModule
     ? moduleDirty[selectedModule.id] === true
@@ -288,7 +304,10 @@ export function ProfileCustomizationModal({
   );
 
   function requestClose() {
-    if (hasUnsavedModules && !window.confirm("Discard unsaved module changes?")) {
+    if (
+      (hasUnsavedModules || layoutDirty) &&
+      !window.confirm("Discard unsaved customization changes?")
+    ) {
       return;
     }
 
@@ -507,6 +526,33 @@ export function ProfileCustomizationModal({
       );
     } finally {
       setSavingFeatured(false);
+    }
+  }
+
+  async function handleLayoutSave() {
+    if (!layoutDirty) {
+      return;
+    }
+
+    setSavingLayout(true);
+    setLayoutMessage(undefined);
+
+    try {
+      const updated = await onSaveProfile({
+        profileLayoutPreset: layoutPreset,
+      });
+      const nextPreset =
+        updated.profileLayoutPreset ?? defaultProfileLayoutPreset;
+
+      setLayoutPreset(nextPreset);
+      setSavedLayoutPreset(nextPreset);
+      setLayoutMessage("Layout saved");
+    } catch (error) {
+      setLayoutMessage(
+        error instanceof Error ? error.message : "Layout could not be saved.",
+      );
+    } finally {
+      setSavingLayout(false);
     }
   }
 
@@ -864,18 +910,28 @@ export function ProfileCustomizationModal({
                   busy={moduleBusy}
                   canPersistOrder={canPersistOrder}
                   drafts={drafts}
+                  editorBusy={busy}
                   error={moduleError}
                   formError={moduleFormError}
                   hasUnsavedNewModule={hasUnsavedNewModule}
+                  layoutDirty={layoutDirty}
+                  layoutMessage={layoutMessage}
+                  layoutPreset={layoutPreset}
                   loading={moduleLoading}
                   message={moduleMessage}
                   orderDirty={orderDirty}
+                  savingLayout={savingLayout}
                   selectedDirty={selectedModuleDirty}
                   selectedModuleId={selectedModuleId}
                   onAddModule={addModule}
                   onDelete={(moduleId) => void handleModuleDelete(moduleId)}
+                  onLayoutChange={(preset) => {
+                    setLayoutPreset(preset);
+                    setLayoutMessage(undefined);
+                  }}
                   onMove={moveModule}
                   onSave={(event) => void handleModuleSave(event)}
+                  onSaveLayout={() => void handleLayoutSave()}
                   onSaveOrder={() => void handleSaveOrder()}
                   onSelect={setSelectedModuleId}
                   onUpdate={updateSelectedModule}
@@ -890,6 +946,7 @@ export function ProfileCustomizationModal({
                   featuredPost={previewFeaturedPost}
                   featuredRoom={previewFeaturedRoom}
                   form={form}
+                  layoutPreset={layoutPreset}
                   profile={profile}
                   testId="profile-customization-preview-mobile"
                 />
@@ -934,6 +991,7 @@ export function ProfileCustomizationModal({
                   featuredPost={previewFeaturedPost}
                   featuredRoom={previewFeaturedRoom}
                   form={form}
+                  layoutPreset={layoutPreset}
                   profile={profile}
                   testId="profile-customization-preview"
                 />
@@ -1637,18 +1695,25 @@ type ModulesEditorSectionProps = {
   busy: "save" | "delete" | "order" | undefined;
   canPersistOrder: boolean;
   drafts: ProfileModule[];
+  editorBusy: boolean;
   error?: string | undefined;
   formError?: string | undefined;
   hasUnsavedNewModule: boolean;
+  layoutDirty: boolean;
+  layoutMessage?: string | undefined;
+  layoutPreset: ProfileLayoutPreset;
   loading: boolean;
   message?: string | undefined;
   orderDirty: boolean;
+  savingLayout: boolean;
   selectedDirty: boolean;
   selectedModuleId: number | undefined;
   onAddModule: (type: ProfileModuleType) => void;
   onDelete: (moduleId: number) => void;
+  onLayoutChange: (preset: ProfileLayoutPreset) => void;
   onMove: (moduleId: number, direction: -1 | 1) => void;
   onSave: (event: FormEvent<HTMLFormElement>) => void;
+  onSaveLayout: () => void;
   onSaveOrder: () => void;
   onSelect: (moduleId: number | undefined) => void;
   onUpdate: (updater: (module: ProfileModule) => ProfileModule) => void;
@@ -1659,18 +1724,25 @@ function ModulesEditorSection({
   busy,
   canPersistOrder,
   drafts,
+  editorBusy,
   error,
   formError,
   hasUnsavedNewModule,
+  layoutDirty,
+  layoutMessage,
+  layoutPreset,
   loading,
   message,
   orderDirty,
+  savingLayout,
   selectedDirty,
   selectedModuleId,
   onAddModule,
   onDelete,
+  onLayoutChange,
   onMove,
   onSave,
+  onSaveLayout,
   onSaveOrder,
   onSelect,
   onUpdate,
@@ -1708,6 +1780,16 @@ function ModulesEditorSection({
 
       {!loading ? (
         <div className="min-w-0 space-y-7">
+          <LayoutPresetControl
+            disabled={editorBusy}
+            dirty={layoutDirty}
+            message={layoutMessage}
+            saving={savingLayout}
+            value={layoutPreset}
+            onChange={onLayoutChange}
+            onSave={onSaveLayout}
+          />
+
           <section>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
@@ -1801,6 +1883,92 @@ function ModulesEditorSection({
               })}
             </div>
           </section>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+type LayoutPresetControlProps = {
+  dirty: boolean;
+  disabled: boolean;
+  message?: string | undefined;
+  onChange: (preset: ProfileLayoutPreset) => void;
+  onSave: () => void;
+  saving: boolean;
+  value: ProfileLayoutPreset;
+};
+
+function LayoutPresetControl({
+  dirty,
+  disabled,
+  message,
+  onChange,
+  onSave,
+  saving,
+  value,
+}: LayoutPresetControlProps) {
+  return (
+    <section
+      aria-label="Layout preset"
+      className="rounded-panel border border-line bg-surface/62 p-3"
+      data-testid="profile-layout-editor"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h4 className="flex items-center gap-2 text-sm font-semibold text-text">
+            <LayoutGrid aria-hidden="true" size={16} />
+            Layout
+          </h4>
+          <p className="mt-1 text-xs leading-5 text-muted">
+            Pick how personal-space cards flow on larger screens.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          disabled={disabled || !dirty}
+          icon={<Save aria-hidden="true" size={15} />}
+          onClick={onSave}
+        >
+          {saving ? "Saving" : "Save layout"}
+        </Button>
+      </div>
+
+      <div
+        className="mt-3 grid gap-2 sm:grid-cols-3"
+        data-testid="profile-layout-presets"
+      >
+        {profileLayoutPresetOptions.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={value === option.value}
+            className={cn(
+              "min-w-0 rounded-card border p-3 text-left transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+              value === option.value
+                ? "border-accent/55 bg-accent/12"
+                : "border-line bg-canvas/45 hover:border-line-strong",
+            )}
+            disabled={disabled}
+            onClick={() => onChange(option.value)}
+          >
+            <span className="block truncate text-sm font-semibold text-text">
+              {option.label}
+            </span>
+            <span className="mt-1 block text-xs leading-5 text-muted">
+              {option.description}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {message ? (
+        <div className="mt-3">
+          <ModalSheetStatus tone={message === "Layout saved" ? "success" : "error"}>
+            {message}
+          </ModalSheetStatus>
         </div>
       ) : null}
     </section>
@@ -2201,6 +2369,7 @@ type PreviewPanelProps = {
   featuredPost: Post | null;
   featuredRoom: Room | null;
   form: ProfileFormState;
+  layoutPreset: ProfileLayoutPreset;
   profile: Profile;
   testId?: string;
 };
@@ -2212,6 +2381,7 @@ function PreviewPanel({
   featuredPost,
   featuredRoom,
   form,
+  layoutPreset,
   profile,
   testId,
 }: PreviewPanelProps) {
@@ -2358,6 +2528,7 @@ function PreviewPanel({
       >
         <ProfileModuleGrid
           badges={badges}
+          layoutPreset={layoutPreset}
           maxColumns={2}
           modules={previewModules(drafts)}
         />
