@@ -5,7 +5,7 @@
 > [#26](https://github.com/thiabun/thia.lol/issues/26) implemented the first
 > safe slice; future work should be tracked in GitHub Issues.
 
-Date: 2026-06-13
+Date: 2026-06-17
 
 ## Purpose
 
@@ -30,6 +30,7 @@ The profile editor should feel like:
 - A creator workspace.
 - An identity editor.
 - A personal space designer.
+- Adding widgets to a desktop or arranging apps on a home screen.
 
 It should not feel like:
 
@@ -37,6 +38,7 @@ It should not feel like:
 - A fake theme builder.
 - A link-in-bio clone.
 - A page builder where users can break layout, safety controls, or moderation context.
+- A control panel, admin dashboard, or mission-control settings surface.
 
 The first experience layer should keep functionality practical: edit current profile identity, upload current profile images, manage current Connections, manage current safe v1 modules, and preview the combined result.
 
@@ -49,6 +51,56 @@ intent-based sections:
 - Look: avatar, banner, and profile background image. Accent/theme controls stay hidden until presets visibly affect public rendering through tested, contrast-safe mappings.
 - Modules: current v1 modules, layout preset, ordering, visibility, save/delete behavior, and module-native featured post/room selection.
 - Preview: desktop and mobile-oriented previews of the public profile using current safe data only.
+
+## Canvas Dock Model
+
+The active P3 editor is an owner-only inline canvas editor:
+
+- Desktop: a translucent widget dock sits over the live profile. The profile
+  canvas remains visible and editable behind it.
+- Mobile: the dock compresses into a bottom sheet. Exact desktop placement is
+  still ignored for public mobile layout.
+- The dock categories are Essentials, Featured, Media, Integrations, and
+  Removed.
+- Module cards show purpose, size behavior, connection/metadata state where
+  relevant, and direct Add or Restore actions.
+- The selected-module inspector uses custom controls: segmented size buttons,
+  icon nudge controls, show/hide, remove, and module-specific actions where
+  supported. Avoid visible raw grid selects as the primary UI.
+- Save is a single primary Done action. Cancel exits without persisting draft
+  layout changes.
+
+## Module Lifecycle
+
+`profile_info` is the only non-removable identity anchor. Featured post,
+featured room, activity, and expressive modules are normal removable modules.
+
+Deleting a module soft-deletes it:
+
+- Public reads exclude it.
+- Default owner reads exclude it.
+- Editor/library reads can request deleted modules with `includeDeleted=1`.
+- Title, config, and saved grid placement are preserved where possible.
+- Restore makes the module active and visible, then uses the collision-push
+  algorithm to fit the canvas safely.
+
+Deleting featured post or featured room modules clears the profile-level
+featured pointer but must not delete the underlying post or room. The deleted
+module keeps a restore snapshot of the selected content id when possible. On
+restore, the backend may reselect the content if it is still eligible; otherwise
+the module returns with a compact owner state to choose content again.
+
+## Movement And Collision
+
+Canvas movement should feel predictable and reversible:
+
+- The moved or selected module is the anchor and claims its requested slot.
+- Visible modules that collide are pushed row-major to the next valid fit.
+- Hidden and deleted modules do not occupy cells.
+- If no 6 x 9 fit exists, save fails atomically.
+- Drag feedback should show a ghost or highlighted module, target cell
+  affordance, and displaced-module movement through restrained layout
+  animation. Respect `prefers-reduced-motion`.
 
 ## Preview System
 
@@ -106,15 +158,27 @@ Motion should make customization feel fluid without distracting from editing.
 - Respect reduced-motion preferences.
 - Avoid infinite decorative loops, flashing, strobing, and performance-heavy effects.
 
-## Future Integration Placement
+## Integration Placement
 
-Future integrations belong in Modules or Connections, not in fake global switches.
+Integrations belong in the canvas dock, not in a settings dashboard or fake
+global switches.
 
-- Twitch: start as a safe channel link or static card; live status/embeds require separate API/privacy/performance review.
-- Spotify: URL-first link/card; embeds or metadata require a later integration issue.
-- Apple Music: URL-first link/card; embeds require later review.
-- YouTube: channel/video links first; latest-video or embed behavior is later work.
-- Blog modules: should follow the long-form content decision in the profile evolution plan before implementation.
+- Provider cards show configured/unconfigured state and connected account
+  identity when OAuth is available and connected.
+- `Connect` starts the CSRF-protected OAuth flow and returns to the profile
+  editor with success/error query state.
+- `Disconnect` revokes the local connection state.
+- `Use link` accepts allowlisted provider URLs and resolves metadata through the
+  server before creating modules.
+- Suggestions are API-backed where available. If a provider is missing config,
+  missing OAuth, or failing, the UI should degrade to pasted URLs and compact
+  outbound cards.
+- Spotify and Apple Music create `music` modules. YouTube, Twitch, and GitHub
+  create `creator_live` modules. Apple Music user-token auth is deferred; this
+  pass supports Apple Music URLs, generated embeds, and configured
+  developer-token metadata only.
+- The platform never stores or renders user-supplied iframe HTML. Embeds are
+  generated from normalized provider/resource ids only.
 
 ## Recommended Implementation Phases
 

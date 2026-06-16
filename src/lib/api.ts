@@ -240,6 +240,25 @@ export type ProfileIntegrationsResult = {
   accounts: ProfileIntegrationAccount[];
 };
 
+export type ProfileIntegrationSuggestion = {
+  id: string;
+  label: string;
+  description: string;
+  sourceUrl: string;
+  moduleType: Extract<ProfileModuleType, "creator_live" | "music">;
+  moduleTitle?: string | null;
+  card?: ProfileIntegrationCard | null;
+};
+
+export type ProfileIntegrationSuggestionsResult = {
+  provider: ProfileIntegrationProvider;
+  status: ProfileIntegrationProviderStatus;
+  account?: ProfileIntegrationAccount | null;
+  items: ProfileIntegrationSuggestion[];
+  message?: string | null;
+  generatedAt?: string | null;
+};
+
 export type StartProfileIntegrationResult = {
   provider: ProfileIntegrationProvider;
   authorizationUrl: string;
@@ -576,8 +595,10 @@ export function getProfileModules(handle: string): Promise<ProfileModule[]> {
   );
 }
 
-export function getMyProfileModules(): Promise<ProfileModule[]> {
-  return apiGet<ApiProfileModule[]>("/me/profile/modules").then((items) =>
+export function getMyProfileModules(options: { includeDeleted?: boolean } = {}): Promise<ProfileModule[]> {
+  const query = options.includeDeleted ? "?includeDeleted=1" : "";
+
+  return apiGet<ApiProfileModule[]>(`/me/profile/modules${query}`).then((items) =>
     items.filter(isApiProfileModule).map(normalizeProfileModule),
   );
 }
@@ -609,6 +630,17 @@ export function deleteProfileModule(
 ): Promise<ProfileModule[]> {
   return apiDelete<ApiProfileModule[]>(
     `/me/profile/modules/${moduleId}`,
+    csrfToken,
+  ).then((items) => items.filter(isApiProfileModule).map(normalizeProfileModule));
+}
+
+export function restoreProfileModule(
+  moduleId: number,
+  csrfToken: string,
+): Promise<ProfileModule[]> {
+  return apiPost<ApiProfileModule[]>(
+    `/me/profile/modules/${moduleId}/restore`,
+    {},
     csrfToken,
   ).then((items) => items.filter(isApiProfileModule).map(normalizeProfileModule));
 }
@@ -673,6 +705,14 @@ export function disconnectProfileIntegration(
     `/me/integrations/${provider}`,
     csrfToken,
   ).then(normalizeProfileIntegrationsResult);
+}
+
+export function getProfileIntegrationSuggestions(
+  provider: ProfileIntegrationProvider,
+): Promise<ProfileIntegrationSuggestionsResult> {
+  return apiGet<ProfileIntegrationSuggestionsResult>(
+    `/me/integrations/${provider}/suggestions`,
+  ).then(normalizeProfileIntegrationSuggestionsResult);
 }
 
 export function resolveProfileIntegrationMetadata(
@@ -1465,6 +1505,25 @@ function normalizeProfileModuleConfig(config: ProfileModuleConfig): ProfileModul
     normalized.canvasSize = config.canvasSize;
   }
 
+  const restoreFeaturedPostId = config.restoreFeaturedPostId;
+  const restoreFeaturedRoomId = config.restoreFeaturedRoomId;
+
+  if (
+    typeof restoreFeaturedPostId === "number" &&
+    Number.isInteger(restoreFeaturedPostId) &&
+    restoreFeaturedPostId > 0
+  ) {
+    normalized.restoreFeaturedPostId = restoreFeaturedPostId;
+  }
+
+  if (
+    typeof restoreFeaturedRoomId === "number" &&
+    Number.isInteger(restoreFeaturedRoomId) &&
+    restoreFeaturedRoomId > 0
+  ) {
+    normalized.restoreFeaturedRoomId = restoreFeaturedRoomId;
+  }
+
   if (link) {
     normalized.link = link;
   }
@@ -1654,6 +1713,75 @@ function normalizeProfileIntegrationProvider(
     value === "github"
     ? value
     : undefined;
+}
+
+function normalizeProfileIntegrationSuggestionsResult(
+  value: ProfileIntegrationSuggestionsResult,
+): ProfileIntegrationSuggestionsResult {
+  const provider = normalizeProfileIntegrationProvider(value.provider) ?? "spotify";
+  const status =
+    normalizeProfileIntegrationProviderStatus(value.status) ?? {
+      provider,
+      configured: false,
+      oauthEnabled: false,
+    };
+  const account = value.account
+    ? normalizeProfileIntegrationAccount(value.account)
+    : null;
+
+  return {
+    provider,
+    status,
+    account: account ?? null,
+    items: Array.isArray(value.items)
+      ? value.items
+          .map(normalizeProfileIntegrationSuggestion)
+          .filter(isProfileIntegrationSuggestion)
+      : [],
+    message: typeof value.message === "string" ? value.message : null,
+    generatedAt: typeof value.generatedAt === "string" ? value.generatedAt : null,
+  };
+}
+
+function normalizeProfileIntegrationSuggestion(
+  value: ProfileIntegrationSuggestion,
+): ProfileIntegrationSuggestion | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const sourceUrl =
+    typeof value.sourceUrl === "string"
+      ? normalizeProfileModuleExternalUrl(value.sourceUrl)
+      : undefined;
+  const card = normalizeProfileIntegrationCard(value.card);
+
+  if (
+    typeof value.id !== "string" ||
+    typeof value.label !== "string" ||
+    !sourceUrl ||
+    (value.moduleType !== "creator_live" && value.moduleType !== "music")
+  ) {
+    return undefined;
+  }
+
+  return {
+    id: value.id,
+    label: value.label,
+    description:
+      typeof value.description === "string" ? value.description : "",
+    sourceUrl,
+    moduleType: value.moduleType,
+    moduleTitle:
+      typeof value.moduleTitle === "string" ? value.moduleTitle : null,
+    card: card ?? null,
+  };
+}
+
+function isProfileIntegrationSuggestion(
+  value: ProfileIntegrationSuggestion | undefined,
+): value is ProfileIntegrationSuggestion {
+  return value !== undefined;
 }
 
 function normalizeProfileIntegrationCard(

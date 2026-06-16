@@ -258,6 +258,9 @@ export function ProfileModuleGrid({
                 ? "rounded-card transition duration-fluid ease-fluid"
                 : undefined,
               editing && module.visibility !== "public" ? "opacity-55" : undefined,
+              editing && dragState?.moduleId === module.id
+                ? "z-20 scale-[1.01] opacity-80 shadow-lift"
+                : undefined,
               editing?.selectedModuleId === module.id
                 ? "ring-2 ring-focus ring-offset-2 ring-offset-canvas"
                 : undefined,
@@ -275,6 +278,12 @@ export function ProfileModuleGrid({
             size={span.size}
             testId={`profile-grid-module-${module.type}`}
           >
+            {editing && dragState?.moduleId === module.id ? (
+              <div
+                className="pointer-events-none absolute inset-1 z-10 rounded-card border-2 border-dashed border-focus bg-focus/10"
+                data-testid="profile-canvas-placement-preview"
+              />
+            ) : null}
             {editing ? (
               <button
                 type="button"

@@ -121,10 +121,60 @@ test("cookie policy does not claim analytics are active", async ({ page }) => {
 
   const bodyText = await page.locator("body").innerText();
   expect(bodyText).toContain(
-    "It does not currently use analytics or marketing cookies.",
+    "It does not currently use thia.lol analytics or marketing cookies.",
   );
+  expect(bodyText).toContain("Third-party embeds");
+  expect(bodyText).toContain("thia.lol does not control provider cookies.");
   expect(bodyText).not.toContain("Analytics cookies help us");
   expect(bodyText).not.toContain("Marketing cookies help us");
+});
+
+test("privacy and terms explain integrations, embeds, and rich media", async ({
+  page,
+}) => {
+  await page.goto("/privacy");
+  await expect(
+    page.getByRole("heading", { name: "Privacy Policy", level: 1 }),
+  ).toBeVisible();
+  const privacyText = await page.locator("body").innerText();
+
+  expect(privacyText).toContain("Spotify, Apple Music, YouTube, Twitch, GitHub");
+  expect(privacyText).toContain("OAuth access and refresh tokens");
+  expect(privacyText).toContain("encrypted server-side");
+  expect(privacyText).toContain("Metadata cache records");
+  expect(privacyText).toContain("User-supplied iframe HTML is not stored or rendered.");
+  expect(privacyText).toContain("Provider passwords are never requested or stored");
+
+  await page.goto("/terms");
+  await expect(
+    page.getByRole("heading", { name: "Terms of Service", level: 1 }),
+  ).toBeVisible();
+  const termsText = await page.locator("body").innerText();
+
+  expect(termsText).toContain("Profiles, modules, and integrations");
+  expect(termsText).toContain("Image backgrounds");
+  expect(termsText).toContain("video backgrounds");
+  expect(termsText).toContain("Removing a profile module removes it from the canvas");
+  expect(termsText).toContain("The platform does not allow arbitrary user-supplied iframe HTML.");
+});
+
+test("guidelines and moderation cover external profile content", async ({
+  page,
+}) => {
+  await page.goto("/community-guidelines");
+  await expect(
+    page.getByRole("heading", { name: "Community Guidelines", level: 1 }),
+  ).toBeVisible();
+  await expect(page.getByText("Profiles and external content")).toBeVisible();
+  await expect(page.getByText("thia.lol can moderate what appears on thia.lol")).toBeVisible();
+
+  await page.goto("/moderation");
+  await expect(
+    page.getByRole("heading", { name: "Moderation Policy", level: 1 }),
+  ).toBeVisible();
+  const moderationText = await page.locator("body").innerText();
+  expect(moderationText).toContain("Profile reports can include profile modules");
+  expect(moderationText).toContain("third-party services remain responsible");
 });
 
 test("copyright page includes third-party icon attribution", async ({ page }) => {

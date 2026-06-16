@@ -20,6 +20,10 @@ function integrations_dispatch(array $segments, string $method): void
             profile_integrations_disconnect($segments[2]);
         }
 
+        if (count($segments) === 4 && $segments[3] === 'suggestions' && ($method === 'GET' || $method === 'HEAD')) {
+            profile_integrations_provider_suggestions($segments[2]);
+        }
+
         if (count($segments) === 4 && $segments[3] === 'start' && $method === 'POST') {
             profile_integrations_oauth_start($segments[2]);
         }
@@ -107,12 +111,34 @@ function profile_integrations_oauth_callback(string $rawProvider): void
     $provider = profile_integration_provider($rawProvider);
     $state = $_GET['state'] ?? null;
     $code = $_GET['code'] ?? null;
+    $oauthError = $_GET['error'] ?? null;
 
-    if (!is_string($state) || $state === '' || !is_string($code) || $code === '') {
-        json_error('OAuth callback is missing required parameters.', 422);
+    if (is_string($oauthError) && $oauthError !== '') {
+        profile_integration_redirect_to_app('/settings', [
+            'integrationProvider' => $provider,
+            'integrationStatus' => 'error',
+            'integrationError' => substr($oauthError, 0, 80),
+        ]);
     }
 
-    $stateRow = profile_integration_oauth_state($provider, $state, (int) $session['user_id']);
+    if (!is_string($state) || $state === '' || !is_string($code) || $code === '') {
+        profile_integration_redirect_to_app('/settings', [
+            'integrationProvider' => $provider,
+            'integrationStatus' => 'error',
+            'integrationError' => 'missing_callback_parameters',
+        ]);
+    }
+
+    $stateRow = profile_integration_oauth_state_row($provider, $state, (int) $session['user_id']);
+
+    if ($stateRow === null) {
+        profile_integration_redirect_to_app('/settings', [
+            'integrationProvider' => $provider,
+            'integrationStatus' => 'error',
+            'integrationError' => 'invalid_or_expired_state',
+        ]);
+    }
+
     $codeVerifier = profile_integration_decrypt((string) $stateRow['code_verifier_cipher']);
     $token = profile_integration_exchange_code($provider, $code, $codeVerifier);
     $identity = profile_integration_fetch_identity($provider, $token);
@@ -136,10 +162,46 @@ function profile_integrations_oauth_callback(string $rawProvider): void
         throw $exception;
     }
 
+    profile_integration_redirect_to_app((string) ($stateRow['redirect_path'] ?? '/settings'), [
+        'integrationProvider' => $provider,
+        'integrationStatus' => 'connected',
+    ]);
+}
+
+function profile_integrations_provider_suggestions(string $rawProvider): void
+{
+    $session = require_authenticated_session();
+    require_profile_integrations_storage();
+
+    $provider = profile_integration_provider($rawProvider);
+    $userId = (int) $session['user_id'];
+    $status = profile_integration_provider_public_status($provider);
+    $account = profile_integration_account_for_user($userId, $provider);
+    $activeAccount = $account !== null && ($account['revokedAt'] ?? null) === null ? $account : null;
+    $items = [];
+    $message = null;
+
+    if (!$status['configured']) {
+        $message = 'This provider is not configured yet.';
+    } elseif ($provider === 'apple_music') {
+        $message = 'Paste an Apple Music URL to add a music card.';
+    } elseif ($activeAccount === null) {
+        $message = 'Connect this provider to see suggestions, or paste a supported URL.';
+    } else {
+        try {
+            $items = profile_integration_suggestion_items($provider, $userId, $activeAccount);
+        } catch (Throwable $exception) {
+            $message = 'Suggestions are not available right now. Pasted URLs still work.';
+        }
+    }
+
     json_success([
         'provider' => $provider,
-        'redirectPath' => (string) ($stateRow['redirect_path'] ?? '/settings'),
-        'account' => profile_integration_account_for_user((int) $session['user_id'], $provider),
+        'status' => $status,
+        'account' => $activeAccount,
+        'items' => $items,
+        'message' => $message,
+        'generatedAt' => gmdate('c'),
     ]);
 }
 
@@ -280,7 +342,7 @@ function profile_integration_provider_configured(string $provider, array $config
 function profile_integration_provider_oauth_enabled(string $provider, array $config): bool
 {
     if ($provider === 'apple_music') {
-        return (string) ($config['developer_token'] ?? '') !== '';
+        return false;
     }
 
     return (string) ($config['client_id'] ?? '') !== ''
@@ -362,6 +424,17 @@ function profile_integration_json_list(mixed $value): array
 
 function profile_integration_oauth_state(string $provider, string $state, int $userId): array
 {
+    $row = profile_integration_oauth_state_row($provider, $state, $userId);
+
+    if (!is_array($row)) {
+        json_error('OAuth state is invalid or expired.', 403);
+    }
+
+    return $row;
+}
+
+function profile_integration_oauth_state_row(string $provider, string $state, int $userId): ?array
+{
     $statement = db_query(
         'SELECT *
          FROM profile_integration_oauth_states
@@ -379,11 +452,7 @@ function profile_integration_oauth_state(string $provider, string $state, int $u
     );
     $row = $statement->fetch();
 
-    if (!is_array($row)) {
-        json_error('OAuth state is invalid or expired.', 403);
-    }
-
-    return $row;
+    return is_array($row) ? $row : null;
 }
 
 function profile_integration_upsert_account(int $userId, string $provider, array $token, array $identity): void
@@ -1362,6 +1431,209 @@ function profile_integration_decrypt(string $value): string
     }
 
     return $plain;
+}
+
+function profile_integration_redirect_to_app(string $redirectPath, array $query): void
+{
+    $safePath = profile_integration_redirect_path($redirectPath);
+    $baseUrl = rtrim((string) (api_config()['app']['base_url'] ?? 'https://thia.lol'), '/');
+    $separator = str_contains($safePath, '?') ? '&' : '?';
+    $target = $baseUrl . $safePath . $separator . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
+
+    header('Location: ' . $target, true, 303);
+    exit;
+}
+
+function profile_integration_suggestion_items(string $provider, int $userId, array $account): array
+{
+    return match ($provider) {
+        'spotify' => profile_integration_spotify_suggestions($userId),
+        'youtube' => profile_integration_youtube_suggestions($account),
+        'twitch' => profile_integration_twitch_suggestions($account, $userId),
+        'github' => profile_integration_github_suggestions($userId),
+        default => [],
+    };
+}
+
+function profile_integration_suggestion_item(string $id, string $label, string $description, string $sourceUrl, string $moduleType, ?array $card): array
+{
+    return [
+        'id' => $id,
+        'label' => $label,
+        'description' => $description,
+        'sourceUrl' => $sourceUrl,
+        'moduleType' => $moduleType,
+        'moduleTitle' => $moduleType === 'music' ? 'Music' : 'Creator',
+        'card' => $card,
+    ];
+}
+
+function profile_integration_spotify_suggestions(int $userId): array
+{
+    $token = profile_integration_access_token($userId, 'spotify');
+
+    if ($token === null) {
+        return [];
+    }
+
+    $response = profile_integration_http_json(
+        'GET',
+        'https://api.spotify.com/v1/me/player/recently-played?limit=5',
+        ['Authorization: Bearer ' . $token]
+    );
+    $items = [];
+
+    foreach (($response['items'] ?? []) as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+
+        $track = $item['track'] ?? [];
+        $url = is_array($track) ? ($track['external_urls']['spotify'] ?? null) : null;
+
+        if (!is_string($url) || $url === '') {
+            continue;
+        }
+
+        $card = profile_integration_resolve_url($url, 'spotify', $userId);
+        $title = is_array($track) && is_string($track['name'] ?? null) ? (string) $track['name'] : 'Spotify track';
+
+        $items[] = profile_integration_suggestion_item(
+            'spotify:' . md5($url),
+            $title,
+            'Recently played on Spotify',
+            $url,
+            'music',
+            $card
+        );
+    }
+
+    return $items;
+}
+
+function profile_integration_youtube_suggestions(array $account): array
+{
+    $handle = profile_integration_account_handle($account);
+
+    if ($handle === null) {
+        return [];
+    }
+
+    $sourceUrl = str_starts_with($handle, '@')
+        ? 'https://www.youtube.com/' . preg_replace('/[^A-Za-z0-9_@.-]/', '', $handle)
+        : 'https://www.youtube.com/channel/' . rawurlencode((string) $account['providerAccountId']);
+    $card = profile_integration_generated_card($sourceUrl, 'youtube');
+
+    return [
+        profile_integration_suggestion_item(
+            'youtube:channel:' . (string) $account['providerAccountId'],
+            (string) ($account['displayName'] ?? $handle),
+            'Connected YouTube channel',
+            $sourceUrl,
+            'creator_live',
+            $card
+        ),
+    ];
+}
+
+function profile_integration_twitch_suggestions(array $account, int $userId): array
+{
+    $handle = profile_integration_account_handle($account);
+
+    if ($handle === null) {
+        return [];
+    }
+
+    $sourceUrl = 'https://www.twitch.tv/' . rawurlencode(ltrim($handle, '@'));
+    $card = profile_integration_resolve_url($sourceUrl, 'twitch', $userId);
+
+    return [
+        profile_integration_suggestion_item(
+            'twitch:channel:' . ltrim($handle, '@'),
+            (string) ($account['displayName'] ?? '@' . ltrim($handle, '@')),
+            'Connected Twitch channel',
+            $sourceUrl,
+            'creator_live',
+            $card
+        ),
+    ];
+}
+
+function profile_integration_github_suggestions(int $userId): array
+{
+    $token = profile_integration_access_token($userId, 'github');
+
+    if ($token === null) {
+        return [];
+    }
+
+    $response = profile_integration_http_json(
+        'GET',
+        'https://api.github.com/user/repos?visibility=public&sort=updated&per_page=5',
+        [
+            'Authorization: Bearer ' . $token,
+            'Accept: application/vnd.github+json',
+        ]
+    );
+    $items = [];
+
+    foreach (($response ?? []) as $repo) {
+        if (!is_array($repo) || !is_string($repo['html_url'] ?? null) || !is_string($repo['full_name'] ?? null)) {
+            continue;
+        }
+
+        $url = (string) $repo['html_url'];
+        $card = profile_integration_resolve_url($url, 'github', $userId);
+
+        $items[] = profile_integration_suggestion_item(
+            'github:repo:' . strtolower((string) $repo['full_name']),
+            (string) $repo['full_name'],
+            is_string($repo['description'] ?? null) && $repo['description'] !== ''
+                ? (string) $repo['description']
+                : 'Public GitHub repository',
+            $url,
+            'creator_live',
+            $card
+        );
+    }
+
+    return $items;
+}
+
+function profile_integration_access_token(int $userId, string $provider): ?string
+{
+    $statement = db_query(
+        'SELECT access_token_cipher
+         FROM profile_integration_accounts
+         WHERE user_id = :user_id
+           AND provider = :provider
+           AND revoked_at IS NULL
+         LIMIT 1',
+        [
+            'user_id' => $userId,
+            'provider' => $provider,
+        ]
+    );
+    $row = $statement->fetch();
+
+    if (!is_array($row) || !is_string($row['access_token_cipher'] ?? null) || $row['access_token_cipher'] === '') {
+        return null;
+    }
+
+    return profile_integration_decrypt((string) $row['access_token_cipher']);
+}
+
+function profile_integration_account_handle(array $account): ?string
+{
+    $handle = $account['providerHandle'] ?? null;
+
+    if (is_string($handle) && trim($handle) !== '') {
+        return trim($handle);
+    }
+
+    $accountId = $account['providerAccountId'] ?? null;
+
+    return is_string($accountId) && trim($accountId) !== '' ? trim($accountId) : null;
 }
 
 function profile_integration_reject_unknown_keys(array $body, array $allowed): void

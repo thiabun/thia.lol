@@ -5,7 +5,7 @@
 > be tracked through issue [#18](https://github.com/thiabun/thia.lol/issues/18)
 > and focused follow-up issues, not by extending this document into a task list.
 
-Date: 2026-06-15
+Date: 2026-06-17
 
 Safety rules for future customization and modules are defined in
 `docs/profile-customization-safety-rules.md`. Treat that document as required
@@ -174,6 +174,21 @@ P3A makes the modular profile canvas a real editable surface.
   and deletion. Deleting featured post or featured room modules clears
   `profiles.featured_post_id` or `profiles.featured_room_id`.
 - Deleted featured/activity defaults are not silently recreated.
+- Deleted modules use a reversible lifecycle: `status = deleted` removes the
+  module from public and default owner reads, but the editor can request
+  `includeDeleted=1` and restore the prior title, config, and saved grid
+  placement where possible.
+- The editor model is a widget dock over the live profile canvas. Desktop uses a
+  translucent bottom dock with categories, module cards, search, suggestions,
+  and a selected-module inspector. Mobile uses the same compact actions as a
+  bottom sheet and public mobile layout still ignores exact desktop placement.
+- The dock categories are Essentials, Featured, Media, Integrations, and
+  Removed. Add, remove, restore, connect, use-link, and add-card actions should
+  live in this canvas editor instead of a separate settings dashboard.
+- Collision push is row-major and intent-preserving: the anchored module claims
+  its requested slot, visible colliders move to the next valid fit, hidden or
+  deleted modules do not occupy cells, and save fails atomically if the 6 x 9
+  canvas cannot fit the visible layout.
 - Mobile public profiles ignore exact desktop placement and stack modules in a
   readable order.
 
@@ -194,6 +209,15 @@ the profile renderer constrained.
   outbound link card.
 - Spotify, Apple Music, YouTube, Twitch, and GitHub URLs are normalized by
   provider/resource id.
+- OAuth and rich integration controls belong inside the canvas dock. Provider
+  cards should show configured/unconfigured state, connected identity,
+  connect/disconnect actions, suggestions where API-backed, and a plain link
+  fallback where OAuth or provider config is unavailable.
+- Apple Music in this pass is URL/link/embed/metadata support only. MusicKit
+  user-token authorization is deferred.
+- Rich card creation starts from an allowlisted provider URL or a server-derived
+  provider suggestion. Spotify and Apple Music create `music` modules; YouTube,
+  Twitch, and GitHub create `creator_live` modules.
 - Inline embeds are generated only from allowlisted provider IDs and URLs. The
   platform never stores or renders user-supplied iframe HTML.
 - GitHub renders as a rich card, not an iframe.

@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read.php';
 require_once __DIR__ . '/integrations.php';
+require_once __DIR__ . '/profile.php';
 
 const PROFILE_INFO_MODULE_TYPE = 'profile_info';
 const PROFILE_ACTIVITY_MODULE_TYPE = 'activity';
@@ -62,6 +63,14 @@ function profile_modules_dispatch(array $segments, string $method): void
 
             if ($method === 'POST') {
                 profile_modules_create();
+            }
+
+            json_error('Method not allowed.', 405);
+        }
+
+        if (count($segments) === 5 && $segments[4] === 'restore') {
+            if ($method === 'POST') {
+                profile_modules_restore($segments[3]);
             }
 
             json_error('Method not allowed.', 405);
@@ -150,7 +159,7 @@ function profile_modules_owner_index(): void
     $session = require_authenticated_session();
     require_profile_modules_storage();
 
-    json_success(profile_modules_for_owner((int) $session['user_id']));
+    json_success(profile_modules_for_owner((int) $session['user_id'], profile_modules_include_deleted_requested()));
 }
 
 function profile_modules_create(): void
@@ -314,13 +323,19 @@ function profile_modules_delete(string $rawModuleId): void
     $pdo->beginTransaction();
 
     try {
+        $config = profile_module_delete_snapshot_config($module, $userId);
+
         db_query(
             "UPDATE profile_modules
              SET status = 'deleted',
                  visibility = 'hidden',
+                 config_json = :config_json,
                  updated_at = CURRENT_TIMESTAMP()
              WHERE id = :id",
-            ['id' => $moduleId]
+            [
+                'config_json' => json_encode($config, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                'id' => $moduleId,
+            ]
         );
 
         profile_module_apply_delete_side_effects((string) $module['type'], $userId);
@@ -332,6 +347,73 @@ function profile_modules_delete(string $rawModuleId): void
     }
 
     json_success(profile_modules_for_owner($userId));
+}
+
+function profile_modules_restore(string $rawModuleId): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+    require_profile_modules_storage();
+    require_profile_canvas_storage();
+
+    $moduleId = profile_module_id($rawModuleId);
+    $module = profile_module_record($moduleId);
+
+    if ($module === null) {
+        json_error('Profile module not found.', 404);
+    }
+
+    $userId = (int) $session['user_id'];
+
+    if ((int) $module['user_id'] !== $userId) {
+        json_error('You cannot restore this profile module.', 403);
+    }
+
+    $type = (string) $module['type'];
+
+    if (!profile_module_type_is_supported($type) || profile_module_type_is_retired($type)) {
+        json_error('This profile module can no longer be restored.', 422);
+    }
+
+    if (profile_module_type_is_protected($type)) {
+        json_error('Profile info is always active.', 422);
+    }
+
+    if ((string) $module['status'] !== 'deleted') {
+        json_success(profile_modules_for_owner($userId, true));
+    }
+
+    if (profile_modules_active_count($userId) >= PROFILE_MODULE_MAX_PER_PROFILE) {
+        json_error('Profiles can have up to 8 modules.', 422);
+    }
+
+    $pdo = db();
+    $pdo->beginTransaction();
+
+    try {
+        db_query(
+            "UPDATE profile_modules
+             SET status = 'active',
+                 visibility = 'public',
+                 updated_at = CURRENT_TIMESTAMP()
+             WHERE id = :id
+               AND user_id = :user_id",
+            [
+                'id' => $moduleId,
+                'user_id' => $userId,
+            ]
+        );
+
+        profile_module_apply_restore_side_effects($module, $userId);
+        profile_canvas_reflow_existing_modules($userId, $moduleId);
+
+        $pdo->commit();
+    } catch (Throwable $exception) {
+        $pdo->rollBack();
+        throw $exception;
+    }
+
+    json_success(profile_modules_for_owner($userId, true));
 }
 
 function profile_modules_order_update(): void
@@ -636,7 +718,7 @@ function profile_canvas_module_placements(mixed $value, int $userId, ?int $ancho
 function profile_canvas_owner_module_records(int $userId): array
 {
     $statement = db_query(
-        'SELECT id, type, visibility, status
+        'SELECT id, type, visibility, status, position, grid_column, grid_row, grid_col_span, grid_row_span
          FROM profile_modules
          WHERE user_id = :user_id
            AND status <> :deleted_status
@@ -897,23 +979,134 @@ function profile_canvas_apply_module_placements(array $placements, int $userId):
     }
 }
 
-function profile_modules_for_owner(int $userId): array
+function profile_canvas_reflow_existing_modules(int $userId, ?int $anchorModuleId): void
+{
+    $records = profile_canvas_owner_module_records($userId);
+    $placements = [];
+
+    foreach (array_values($records) as $index => $record) {
+        $placements[] = profile_canvas_existing_module_placement($record, $index);
+    }
+
+    $placements = profile_canvas_push_collisions($placements, $anchorModuleId);
+
+    usort(
+        $placements,
+        static function (array $first, array $second): int {
+            $visibleCompare = (int) (!$first['visible']) <=> (int) (!$second['visible']);
+
+            if ($visibleCompare !== 0) {
+                return $visibleCompare;
+            }
+
+            $rowCompare = $first['row'] <=> $second['row'];
+
+            if ($rowCompare !== 0) {
+                return $rowCompare;
+            }
+
+            $columnCompare = $first['column'] <=> $second['column'];
+
+            if ($columnCompare !== 0) {
+                return $columnCompare;
+            }
+
+            return profile_module_default_sort_order($first['type']) <=> profile_module_default_sort_order($second['type']);
+        }
+    );
+
+    profile_canvas_apply_module_placements($placements, $userId);
+}
+
+function profile_canvas_existing_module_placement(array $record, int $index): array
+{
+    $type = (string) $record['type'];
+    $span = profile_canvas_existing_span($record, $index);
+    $column = profile_module_saved_grid_value($record['grid_column'] ?? null) ?? 1;
+    $row = profile_module_saved_grid_value($record['grid_row'] ?? null) ?? 1;
+    $column = max(1, min(PROFILE_CANVAS_COLUMNS - $span['colSpan'] + 1, $column));
+    $row = max(1, min(PROFILE_CANVAS_ROWS - $span['rowSpan'] + 1, $row));
+
+    return [
+        'id' => (int) $record['id'],
+        'type' => $type,
+        'column' => $column,
+        'row' => $row,
+        'colSpan' => $span['colSpan'],
+        'rowSpan' => $span['rowSpan'],
+        'visible' => $type === PROFILE_INFO_MODULE_TYPE || (string) $record['visibility'] === 'public',
+    ];
+}
+
+function profile_canvas_existing_span(array $record, int $index): array
+{
+    $type = (string) $record['type'];
+    $colSpan = profile_module_saved_grid_value($record['grid_col_span'] ?? null);
+    $rowSpan = profile_module_saved_grid_value($record['grid_row_span'] ?? null);
+
+    if ($colSpan !== null && $rowSpan !== null && profile_canvas_span_allowed($type, $colSpan, $rowSpan)) {
+        return [
+            'colSpan' => $colSpan,
+            'rowSpan' => $rowSpan,
+        ];
+    }
+
+    $size = profile_canvas_default_size($type, $index);
+    [$defaultColSpan, $defaultRowSpan] = array_map('intval', explode('x', $size, 2));
+
+    return [
+        'colSpan' => $defaultColSpan,
+        'rowSpan' => $defaultRowSpan,
+    ];
+}
+
+function profile_canvas_default_size(string $type, int $index): string
+{
+    return match ($type) {
+        PROFILE_INFO_MODULE_TYPE => '3x2',
+        'about', 'custom_text', 'links', 'featured_badges', PROFILE_MUSIC_MODULE_TYPE => '2x1',
+        PROFILE_FEATURED_POST_MODULE_TYPE => '3x2',
+        PROFILE_FEATURED_ROOM_MODULE_TYPE => '2x1',
+        PROFILE_GALLERY_MEDIA_MODULE_TYPE => '2x2',
+        PROFILE_CREATOR_LIVE_MODULE_TYPE => '2x1',
+        PROFILE_ACTIVITY_MODULE_TYPE => $index <= 2 ? '3x3' : '3x2',
+        default => '1x1',
+    };
+}
+
+function profile_modules_for_owner(int $userId, bool $includeDeleted = false): array
 {
     ensure_profile_canvas_builtin_modules($userId);
 
+    $where = $includeDeleted
+        ? 'WHERE user_id = :user_id'
+        : 'WHERE user_id = :user_id AND status <> :deleted_status';
+    $params = ['user_id' => $userId];
+
+    if (!$includeDeleted) {
+        $params['deleted_status'] = 'deleted';
+    }
+
     $statement = db_query(
-        'SELECT *
+        "SELECT *
          FROM profile_modules
-         WHERE user_id = :user_id
-           AND status <> :deleted_status
-         ORDER BY position ASC, id ASC',
-        [
-            'user_id' => $userId,
-            'deleted_status' => 'deleted',
-        ]
+         {$where}
+         ORDER BY FIELD(status, 'active', 'hidden', 'deleted'), position ASC, id ASC",
+        $params
     );
 
     return profile_modules_payload($statement->fetchAll(), false);
+}
+
+function profile_modules_include_deleted_requested(): bool
+{
+    $value = $_GET['includeDeleted'] ?? $_GET['include_deleted'] ?? null;
+
+    if (is_string($value)) {
+        return in_array(strtolower(trim($value)), ['1', 'true', 'yes'], true);
+    }
+
+    return $value === 1 || $value === true;
 }
 
 function ensure_profile_canvas_builtin_modules(int $userId): void
@@ -1082,6 +1275,131 @@ function profile_module_apply_delete_side_effects(string $type, int $userId): vo
             ['user_id' => $userId]
         );
     }
+}
+
+function profile_module_delete_snapshot_config(array $module, int $userId): array
+{
+    $type = (string) $module['type'];
+    $config = profile_module_json((string) $module['config_json']);
+
+    if ($type !== PROFILE_FEATURED_POST_MODULE_TYPE && $type !== PROFILE_FEATURED_ROOM_MODULE_TYPE) {
+        return $config;
+    }
+
+    $statement = db_query(
+        'SELECT featured_post_id, featured_room_id
+         FROM profiles
+         WHERE user_id = :user_id
+         LIMIT 1',
+        ['user_id' => $userId]
+    );
+    $row = $statement->fetch();
+
+    if (!is_array($row)) {
+        return $config;
+    }
+
+    if ($type === PROFILE_FEATURED_POST_MODULE_TYPE && $row['featured_post_id'] !== null) {
+        $config['restoreFeaturedPostId'] = (int) $row['featured_post_id'];
+    }
+
+    if ($type === PROFILE_FEATURED_ROOM_MODULE_TYPE && $row['featured_room_id'] !== null) {
+        $config['restoreFeaturedRoomId'] = (int) $row['featured_room_id'];
+    }
+
+    return $config;
+}
+
+function profile_module_apply_restore_side_effects(array $module, int $userId): void
+{
+    $type = (string) $module['type'];
+    $config = profile_module_json((string) $module['config_json']);
+
+    if ($type === PROFILE_FEATURED_POST_MODULE_TYPE) {
+        $postId = profile_module_restore_id($config['restoreFeaturedPostId'] ?? null);
+
+        if ($postId !== null && profile_module_featured_post_can_restore($postId, $userId)) {
+            db_query(
+                'UPDATE profiles
+                 SET featured_post_id = :featured_post_id,
+                     updated_at = CURRENT_TIMESTAMP()
+                 WHERE user_id = :user_id',
+                [
+                    'featured_post_id' => $postId,
+                    'user_id' => $userId,
+                ]
+            );
+        }
+    }
+
+    if ($type === PROFILE_FEATURED_ROOM_MODULE_TYPE) {
+        $roomId = profile_module_restore_id($config['restoreFeaturedRoomId'] ?? null);
+
+        if ($roomId !== null && profile_module_featured_room_can_restore($roomId, $userId)) {
+            db_query(
+                'UPDATE profiles
+                 SET featured_room_id = :featured_room_id,
+                     updated_at = CURRENT_TIMESTAMP()
+                 WHERE user_id = :user_id',
+                [
+                    'featured_room_id' => $roomId,
+                    'user_id' => $userId,
+                ]
+            );
+        }
+    }
+}
+
+function profile_module_restore_id(mixed $value): ?int
+{
+    if (is_int($value) && $value > 0) {
+        return $value;
+    }
+
+    if (is_string($value) && preg_match('/^[0-9]+$/', $value) === 1 && (int) $value > 0) {
+        return (int) $value;
+    }
+
+    return null;
+}
+
+function profile_module_featured_post_can_restore(int $postId, int $userId): bool
+{
+    $post = profile_featured_post_record($postId);
+
+    if ($post === null || (int) $post['author_id'] !== $userId) {
+        return false;
+    }
+
+    $roomDeletedAt = $post['room_deleted_at'] ?? null;
+
+    if (
+        (string) $post['visibility'] !== 'public'
+        || (string) $post['status'] !== 'published'
+        || (string) $post['author_status'] !== 'active'
+        || $post['deleted_at'] !== null
+        || (
+            $post['room_id'] !== null
+            && (
+                (string) ($post['room_visibility'] ?? '') !== 'public'
+                || $roomDeletedAt !== null
+            )
+        )
+    ) {
+        return false;
+    }
+
+    return profile_featured_public_post_exists($postId, $userId);
+}
+
+function profile_module_featured_room_can_restore(int $roomId, int $userId): bool
+{
+    $room = profile_featured_room_record($roomId, $userId);
+
+    return is_array($room)
+        && (string) $room['visibility'] === 'public'
+        && ($room['deleted_at'] ?? null) === null
+        && (bool) ($room['is_eligible'] ?? false);
 }
 
 function profile_module_output_config(string $type, array $config, int $userId): array

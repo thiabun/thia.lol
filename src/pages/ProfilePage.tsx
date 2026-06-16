@@ -1,6 +1,7 @@
 import {
   ArrowRight,
   Award,
+  BadgeCheck,
   Bug,
   CalendarDays,
   ChevronLeft,
@@ -10,7 +11,9 @@ import {
   EyeOff,
   Heart,
   LayoutGrid,
+  Link2,
   MessageCircle,
+  Music2,
   Plus,
   Radio,
   Repeat2,
@@ -21,9 +24,11 @@ import {
   Sparkles,
   Star,
   Trash2,
+  Undo2,
   X,
   UserCheck,
   Users,
+  Video,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -45,9 +50,12 @@ import {
   blockProfile,
   createProfileModule,
   deleteProfileModule,
+  disconnectProfileIntegration,
   followProfile,
+  getMyProfileIntegrations,
   getProfile,
   getProfileBadges,
+  getProfileIntegrationSuggestions,
   getProfileFollowers,
   getProfileFollowing,
   getProfileModules,
@@ -58,6 +66,9 @@ import {
   getProfileRooms,
   muteProfile,
   removeProfileFollower,
+  resolveProfileIntegrationMetadata,
+  restoreProfileModule,
+  startProfileIntegration,
   unblockProfile,
   unfollowProfile,
   unmuteProfile,
@@ -65,6 +76,11 @@ import {
   updateFeaturedBadges,
   type CreateProfileModuleInput,
   type FollowRelationship,
+  type ProfileIntegrationAccount,
+  type ProfileIntegrationProvider,
+  type ProfileIntegrationProviderStatus,
+  type ProfileIntegrationSuggestion,
+  type ProfileIntegrationsResult,
 } from "../lib/api";
 import { ApiClientError } from "../lib/apiClient";
 import { cn } from "../lib/classNames";
@@ -87,6 +103,7 @@ import type {
   Post,
   Profile,
   ProfileBackgroundBlur,
+  ProfileIntegrationCard,
   ProfileLayoutPreset,
   ProfileModule,
   ProfileModuleLayout,
@@ -119,11 +136,24 @@ export function ProfilePage() {
   const [canvasSaving, setCanvasSaving] = useState(false);
   const [canvasError, setCanvasError] = useState<string | undefined>();
   const [draftModules, setDraftModules] = useState<ProfileModule[]>([]);
+  const [deletedDraftModules, setDeletedDraftModules] = useState<ProfileModule[]>([]);
   const [draftBackgroundBlur, setDraftBackgroundBlur] =
     useState<ProfileBackgroundBlur>("medium");
   const [selectedCanvasModuleId, setSelectedCanvasModuleId] = useState<
     number | undefined
   >();
+  const [profileIntegrations, setProfileIntegrations] =
+    useState<ProfileIntegrationsResult | undefined>();
+  const [integrationSuggestions, setIntegrationSuggestions] = useState<
+    Partial<Record<ProfileIntegrationProvider, ProfileIntegrationSuggestion[]>>
+  >({});
+  const [integrationUrlPreview, setIntegrationUrlPreview] = useState<
+    ProfileIntegrationCard | undefined
+  >();
+  const [integrationBusy, setIntegrationBusy] = useState<
+    ProfileIntegrationProvider | "metadata" | undefined
+  >();
+  const [integrationMessage, setIntegrationMessage] = useState<string | undefined>();
   const [followState, setFollowState] = useState<
     { handle: string; relationship: FollowRelationship } | undefined
   >();
@@ -396,14 +426,24 @@ export function ProfilePage() {
     setCanvasError(undefined);
 
     try {
-      const modules = await getMyProfileModules();
+      const [modules, integrations] = await Promise.all([
+        getMyProfileModules({ includeDeleted: true }),
+        getMyProfileIntegrations().catch(() => undefined),
+      ]);
+      const activeModules = modules.filter((module) => module.status !== "deleted");
+      const deletedModules = modules.filter((module) => module.status === "deleted");
       const preparedModules = prepareProfileCanvasModules(
         profile,
-        modules,
+        activeModules,
         profileLayoutPreset,
       );
 
       setDraftModules(preparedModules);
+      setDeletedDraftModules(deletedModules);
+      setProfileIntegrations(integrations);
+      setIntegrationSuggestions({});
+      setIntegrationUrlPreview(undefined);
+      setIntegrationMessage(undefined);
       setDraftBackgroundBlur(profile.profileBackgroundBlur);
       setSelectedCanvasModuleId(preparedModules[0]?.id);
       setCanvasEditing(true);
@@ -420,8 +460,11 @@ export function ProfilePage() {
     setCanvasEditing(false);
     setCanvasError(undefined);
     setDraftModules([]);
+    setDeletedDraftModules([]);
     setSelectedCanvasModuleId(undefined);
     setDraftBackgroundBlur(profile?.profileBackgroundBlur ?? "medium");
+    setIntegrationUrlPreview(undefined);
+    setIntegrationMessage(undefined);
   }
 
   async function handleSaveCanvasEdit() {
@@ -549,9 +592,10 @@ export function ProfilePage() {
         (csrfToken) => createProfileModule(input, csrfToken),
         { retryOnCsrf: true },
       );
+      const activeModules = modules.filter((module) => module.status !== "deleted");
       const normalizedModules = prepareProfileCanvasModules(
         profile,
-        modules,
+        activeModules,
         profileLayoutPreset,
       );
       const newestModule = normalizedModules.reduce<ProfileModule | undefined>(
@@ -585,6 +629,20 @@ export function ProfilePage() {
         (csrfToken) => deleteProfileModule(module.id, csrfToken),
         { retryOnCsrf: true },
       );
+      const deletedModule: ProfileModule = {
+        ...module,
+        status: "deleted",
+        visibility: "hidden",
+        config: {
+          ...module.config,
+          ...(module.type === "featured_post" && profile.featuredPostId
+            ? { restoreFeaturedPostId: profile.featuredPostId }
+            : {}),
+          ...(module.type === "featured_room" && profile.featuredRoomId
+            ? { restoreFeaturedRoomId: profile.featuredRoomId }
+            : {}),
+        },
+      };
       const nextProfile = {
         ...profile,
         ...(module.type === "featured_post"
@@ -594,14 +652,19 @@ export function ProfilePage() {
           ? { featuredRoomId: null, featuredRoom: null }
           : {}),
       };
+      const activeModules = modules.filter((item) => item.status !== "deleted");
       const normalizedModules = prepareProfileCanvasModules(
         nextProfile,
-        modules,
+        activeModules,
         profileLayoutPreset,
       );
 
       setProfileOverride(nextProfile);
       setDraftModules(normalizedModules);
+      setDeletedDraftModules((items) => [
+        deletedModule,
+        ...items.filter((item) => item.id !== module.id),
+      ]);
       setModulesOverride({ handle: normalizedHandle, modules: normalizedModules });
       setSelectedCanvasModuleId(normalizedModules[0]?.id);
     } catch (error) {
@@ -610,6 +673,164 @@ export function ProfilePage() {
       );
     } finally {
       setCanvasSaving(false);
+    }
+  }
+
+  async function handleRestoreCanvasModule(module: ProfileModule) {
+    if (!profile || !canvasEditing || canvasSaving) {
+      return;
+    }
+
+    setCanvasSaving(true);
+    setCanvasError(undefined);
+
+    try {
+      const modules = await runWithAuth(
+        (csrfToken) => restoreProfileModule(module.id, csrfToken),
+        { retryOnCsrf: true },
+      );
+      const activeModules = modules.filter((item) => item.status !== "deleted");
+      const deletedModules = modules.filter((item) => item.status === "deleted");
+      const normalizedModules = prepareProfileCanvasModules(
+        profile,
+        activeModules,
+        profileLayoutPreset,
+      );
+      const restored = normalizedModules.find((item) => item.id === module.id);
+
+      setDraftModules(normalizedModules);
+      setDeletedDraftModules(deletedModules);
+      setModulesOverride({ handle: normalizedHandle, modules: normalizedModules });
+      setSelectedCanvasModuleId(restored?.id ?? normalizedModules[0]?.id);
+    } catch (error) {
+      setCanvasError(
+        error instanceof Error ? error.message : "Could not restore profile module.",
+      );
+    } finally {
+      setCanvasSaving(false);
+    }
+  }
+
+  async function handleConnectIntegration(provider: ProfileIntegrationProvider) {
+    if (!profile || integrationBusy) {
+      return;
+    }
+
+    setIntegrationBusy(provider);
+    setIntegrationMessage(undefined);
+
+    try {
+      const result = await runWithAuth(
+        (csrfToken) =>
+          startProfileIntegration(
+            provider,
+            csrfToken,
+            `/@${profile.user.handle}?editCanvas=1`,
+          ),
+        { retryOnCsrf: true },
+      );
+
+      window.location.assign(result.authorizationUrl);
+    } catch (error) {
+      setIntegrationMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not start this integration.",
+      );
+      setIntegrationBusy(undefined);
+    }
+  }
+
+  async function handleDisconnectIntegration(provider: ProfileIntegrationProvider) {
+    if (integrationBusy) {
+      return;
+    }
+
+    setIntegrationBusy(provider);
+    setIntegrationMessage(undefined);
+
+    try {
+      const result = await runWithAuth(
+        (csrfToken) => disconnectProfileIntegration(provider, csrfToken),
+        { retryOnCsrf: true },
+      );
+
+      setProfileIntegrations(result);
+      setIntegrationSuggestions((items) => ({ ...items, [provider]: [] }));
+    } catch (error) {
+      setIntegrationMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not disconnect this integration.",
+      );
+    } finally {
+      setIntegrationBusy(undefined);
+    }
+  }
+
+  async function handleLoadIntegrationSuggestions(provider: ProfileIntegrationProvider) {
+    if (integrationBusy) {
+      return;
+    }
+
+    setIntegrationBusy(provider);
+    setIntegrationMessage(undefined);
+
+    try {
+      const result = await getProfileIntegrationSuggestions(provider);
+
+      setIntegrationSuggestions((items) => ({
+        ...items,
+        [provider]: result.items,
+      }));
+      setIntegrationMessage(result.message ?? undefined);
+    } catch (error) {
+      setIntegrationMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not load integration suggestions.",
+      );
+    } finally {
+      setIntegrationBusy(undefined);
+    }
+  }
+
+  async function handleResolveIntegrationUrl(url: string, provider?: ProfileIntegrationProvider) {
+    if (!profile || integrationBusy) {
+      return;
+    }
+
+    setIntegrationBusy("metadata");
+    setIntegrationMessage(undefined);
+    setIntegrationUrlPreview(undefined);
+
+    try {
+      const card = await runWithAuth(
+        (csrfToken) =>
+          resolveProfileIntegrationMetadata(
+            { url, ...(provider ? { provider } : {}) },
+            csrfToken,
+          ),
+        { retryOnCsrf: true },
+      );
+
+      setIntegrationUrlPreview(card);
+    } catch (error) {
+      setIntegrationMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not preview this integration URL.",
+      );
+    } finally {
+      setIntegrationBusy(undefined);
+    }
+  }
+
+  function handleAddIntegrationCard(card: ProfileIntegrationCard) {
+    const input = profileCanvasModuleInputFromIntegration(card);
+
+    if (input) {
+      void handleAddCanvasModule(input);
     }
   }
 
@@ -727,15 +948,33 @@ export function ProfilePage() {
             busy={canvasLoading || canvasSaving}
             editing={canvasEditing}
             error={canvasError}
+            integrationBusy={integrationBusy}
+            integrationMessage={integrationMessage}
+            integrationPreview={integrationUrlPreview}
+            integrationSuggestions={integrationSuggestions}
+            integrations={profileIntegrations}
             modules={draftModules}
+            removedModules={deletedDraftModules}
             selectedModule={selectedCanvasModule}
             userBadges={profileBadges}
+            onAddIntegrationCard={handleAddIntegrationCard}
             onAddModule={(input) => void handleAddCanvasModule(input)}
             onBackgroundBlurChange={setDraftBackgroundBlur}
             onCancel={handleCancelCanvasEdit}
+            onConnectIntegration={(provider) => void handleConnectIntegration(provider)}
             onDeleteModule={(module) => void handleDeleteCanvasModule(module)}
+            onDisconnectIntegration={(provider) =>
+              void handleDisconnectIntegration(provider)
+            }
             onEdit={() => void handleStartCanvasEdit()}
             onLayoutChange={handleCanvasModuleLayoutChange}
+            onLoadIntegrationSuggestions={(provider) =>
+              void handleLoadIntegrationSuggestions(provider)
+            }
+            onResolveIntegrationUrl={(url, provider) =>
+              void handleResolveIntegrationUrl(url, provider)
+            }
+            onRestoreModule={(module) => void handleRestoreCanvasModule(module)}
             onSave={() => void handleSaveCanvasEdit()}
             onSelectModule={setSelectedCanvasModuleId}
             onVisibilityChange={handleCanvasModuleVisibilityChange}
@@ -1308,13 +1547,30 @@ type ProfileCanvasEditorToolbarProps = {
   busy: boolean;
   editing: boolean;
   error?: string | undefined;
+  integrationBusy?: ProfileIntegrationProvider | "metadata" | undefined;
+  integrationMessage?: string | undefined;
+  integrationPreview?: ProfileIntegrationCard | undefined;
+  integrationSuggestions: Partial<
+    Record<ProfileIntegrationProvider, ProfileIntegrationSuggestion[]>
+  >;
+  integrations?: ProfileIntegrationsResult | undefined;
   modules: ProfileModule[];
+  removedModules: ProfileModule[];
+  onAddIntegrationCard: (card: ProfileIntegrationCard) => void;
   onAddModule: (input: CreateProfileModuleInput) => void;
   onBackgroundBlurChange: (blur: ProfileBackgroundBlur) => void;
   onCancel: () => void;
+  onConnectIntegration: (provider: ProfileIntegrationProvider) => void;
   onDeleteModule: (module: ProfileModule) => void;
+  onDisconnectIntegration: (provider: ProfileIntegrationProvider) => void;
   onEdit: () => void;
   onLayoutChange: (moduleId: number, layout: ProfileModuleLayout) => void;
+  onLoadIntegrationSuggestions: (provider: ProfileIntegrationProvider) => void;
+  onResolveIntegrationUrl: (
+    url: string,
+    provider?: ProfileIntegrationProvider,
+  ) => void;
+  onRestoreModule: (module: ProfileModule) => void;
   onSave: () => void;
   onSelectModule: (moduleId: number) => void;
   onVisibilityChange: (moduleId: number, visible: boolean) => void;
@@ -1322,24 +1578,93 @@ type ProfileCanvasEditorToolbarProps = {
   userBadges: UserBadge[];
 };
 
+type ProfileCanvasDockCategory =
+  | "essentials"
+  | "featured"
+  | "media"
+  | "integrations"
+  | "removed";
+
+const profileCanvasDockCategories: {
+  description: string;
+  label: string;
+  value: ProfileCanvasDockCategory;
+}[] = [
+  {
+    description: "Identity, intro, links, badges, and activity.",
+    label: "Essentials",
+    value: "essentials",
+  },
+  {
+    description: "Pinned post and room modules.",
+    label: "Featured",
+    value: "featured",
+  },
+  {
+    description: "Gallery, creator, and music cards.",
+    label: "Media",
+    value: "media",
+  },
+  {
+    description: "Spotify, Apple Music, YouTube, Twitch, and GitHub.",
+    label: "Integrations",
+    value: "integrations",
+  },
+  {
+    description: "Modules removed from this canvas.",
+    label: "Removed",
+    value: "removed",
+  },
+];
+
+const profileCanvasDockEntries: Record<
+  Exclude<ProfileCanvasDockCategory, "integrations" | "removed">,
+  ProfileCanvasAddEntry[]
+> = {
+  essentials: ["about", "links", "featured_badges", "activity"],
+  featured: ["featured_post", "featured_room"],
+  media: ["gallery_media", "creator_live", "music", "custom_text"],
+};
+
+const profileIntegrationProviders: ProfileIntegrationProvider[] = [
+  "spotify",
+  "apple_music",
+  "youtube",
+  "twitch",
+  "github",
+];
+
 function ProfileCanvasEditorToolbar({
   backgroundBlur,
   busy,
   editing,
   error,
+  integrationBusy,
+  integrationMessage,
+  integrationPreview,
+  integrationSuggestions,
+  integrations,
   modules,
+  onAddIntegrationCard,
   onAddModule,
   onBackgroundBlurChange,
   onCancel,
+  onConnectIntegration,
   onDeleteModule,
+  onDisconnectIntegration,
   onEdit,
   onLayoutChange,
+  onLoadIntegrationSuggestions,
+  onResolveIntegrationUrl,
+  onRestoreModule,
   onSave,
-  onSelectModule,
   onVisibilityChange,
+  removedModules,
   selectedModule,
   userBadges,
 }: ProfileCanvasEditorToolbarProps) {
+  const [activeCategory, setActiveCategory] =
+    useState<ProfileCanvasDockCategory>("essentials");
   const [addDraft, setAddDraft] = useState<ProfileCanvasAddDraft>({
     body: "",
     entry: "about",
@@ -1347,6 +1672,10 @@ function ProfileCanvasEditorToolbar({
     title: "",
     url: "",
   });
+  const [moduleSearch, setModuleSearch] = useState("");
+  const [integrationUrl, setIntegrationUrl] = useState("");
+  const [integrationProvider, setIntegrationProvider] =
+    useState<ProfileIntegrationProvider | undefined>();
 
   if (!editing) {
     return (
@@ -1383,10 +1712,30 @@ function ProfileCanvasEditorToolbar({
   const selectedDefinition = selectedModule
     ? getProfileModuleDefinition(selectedModule.type)
     : undefined;
-  const canHide = selectedModule?.type !== "profile_info";
   const selectedVisible = selectedModule?.visibility === "public";
+  const canHide = selectedModule?.type !== "profile_info";
+  const canDelete = Boolean(selectedModule && selectedModule.type !== "profile_info");
   const addConfig = profileCanvasAddInput(addDraft, userBadges);
-  const canDelete = selectedModule && selectedModule.type !== "profile_info";
+  const activeModuleTypes = new Set(modules.map((module) => module.type));
+  const normalizedSearch = moduleSearch.trim().toLowerCase();
+  const categoryEntries =
+    activeCategory === "integrations" || activeCategory === "removed"
+      ? []
+      : profileCanvasDockEntries[activeCategory];
+  const visibleEntries = categoryEntries.filter((entry) => {
+    if (entry === "featured_badges" && userBadges.length === 0) {
+      return false;
+    }
+
+    if (!normalizedSearch) {
+      return true;
+    }
+
+    return profileCanvasAddEntryLabel(entry).toLowerCase().includes(normalizedSearch);
+  });
+  const providerStatuses = profileIntegrationProviders.map((provider) =>
+    profileIntegrationStatus(provider, integrations?.providers),
+  );
 
   function updateLayout(patch: Partial<ProfileModuleLayout>) {
     if (!selectedModule) {
@@ -1409,175 +1758,89 @@ function ProfileCanvasEditorToolbar({
     });
   }
 
+  function updateAddEntry(entry: ProfileCanvasAddEntry) {
+    setAddDraft((draft) => ({
+      ...draft,
+      body: "",
+      entry,
+      label: "",
+      title: "",
+      url: "",
+    }));
+  }
+
+  function addSuggestion(suggestion: ProfileIntegrationSuggestion) {
+    onAddModule({
+      type: suggestion.moduleType,
+      title: suggestion.moduleTitle ?? null,
+      visibility: "public",
+      status: "active",
+      config: {
+        platform: integrationPlatformFromProvider(suggestion.card?.provider),
+        label: suggestion.label,
+        url: suggestion.sourceUrl,
+        ...(suggestion.description ? { description: suggestion.description } : {}),
+      },
+    });
+  }
+
   return (
     <section
       aria-label="Profile canvas editor"
-      className="rounded-panel border border-line bg-surface/72 p-3 shadow-soft backdrop-blur-veil"
+      className="fixed inset-x-3 bottom-3 z-40 mx-auto max-h-[82dvh] max-w-6xl overflow-hidden rounded-panel border border-line bg-surface/78 shadow-lift backdrop-blur-veil lg:grid lg:grid-cols-[13rem_minmax(0,1fr)_19rem]"
       data-testid="profile-canvas-editor"
+      data-profile-canvas-dock="true"
     >
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2 lg:grid-cols-[1.1fr_0.8fr_0.9fr_0.9fr]">
-          <label className="min-w-0 text-xs font-semibold uppercase text-muted">
-            Module
-            <select
-              className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/70 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-              value={selectedModule?.id ?? ""}
-              onChange={(event) => onSelectModule(Number(event.target.value))}
-              data-testid="profile-canvas-module-select"
+      <div className="flex min-h-0 flex-col border-b border-line/70 p-3 lg:border-b-0 lg:border-r">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase text-muted">Canvas</p>
+            <h2 className="truncate text-base font-semibold text-text">
+              Arrange modules
+            </h2>
+          </div>
+          <div className="flex shrink-0 items-center gap-1 lg:hidden">
+            <button
+              type="button"
+              className="grid size-9 place-items-center rounded-control border border-line bg-canvas/55 text-text focus-visible:outline-2 focus-visible:outline-focus"
+              aria-label="Cancel editing"
+              onClick={onCancel}
             >
-              {modules.map((module) => (
-                <option key={module.id} value={module.id}>
-                  {module.title ?? profileModuleFallbackTitle(module.type)}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="min-w-0 text-xs font-semibold uppercase text-muted">
-            Blur
-            <select
-              className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/70 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-              value={backgroundBlur}
-              onChange={(event) =>
-                onBackgroundBlurChange(event.target.value as ProfileBackgroundBlur)
-              }
-              data-testid="profile-background-blur-select"
+              <X aria-hidden="true" size={17} />
+            </button>
+            <button
+              type="button"
+              className="grid size-9 place-items-center rounded-control bg-accent text-accent-ink focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-55"
+              aria-label="Done"
+              data-testid="profile-canvas-save-button-mobile"
+              disabled={busy}
+              onClick={onSave}
             >
-              <option value="none">None</option>
-              <option value="soft">Soft</option>
-              <option value="medium">Medium</option>
-              <option value="heavy">Heavy</option>
-            </select>
-          </label>
-
-          <label className="min-w-0 text-xs font-semibold uppercase text-muted">
-            Span
-            <select
-              className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/70 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-              value={selectedSize}
-              onChange={(event) =>
-                updateSpan(event.target.value as ProfileGridModuleSize)
-              }
-              data-testid="profile-canvas-span-select"
-              disabled={!selectedModule}
-            >
-              {(selectedModule
-                ? profileModuleAllowedSizes(selectedModule.type)
-                : (["1x1"] as const)
-              ).map((size) => (
-                <option key={size} value={size}>
-                  {sizeLabel(size)}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className="grid grid-cols-2 gap-2">
-            <label className="min-w-0 text-xs font-semibold uppercase text-muted">
-              Col
-              <select
-                className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/70 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-                value={selectedLayout.column}
-                onChange={(event) =>
-                  updateLayout({ column: Number(event.target.value) })
-                }
-                data-testid="profile-canvas-column-select"
-                disabled={!selectedModule}
-              >
-                {numberOptions(6 - selectedLayout.colSpan + 1).map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="min-w-0 text-xs font-semibold uppercase text-muted">
-              Row
-              <select
-                className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/70 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-                value={selectedLayout.row}
-                onChange={(event) =>
-                  updateLayout({ row: Number(event.target.value) })
-                }
-                data-testid="profile-canvas-row-select"
-                disabled={!selectedModule}
-              >
-                {numberOptions(9 - selectedLayout.rowSpan + 1).map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <Save aria-hidden="true" size={17} />
+            </button>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex rounded-control border border-line bg-canvas/55 p-1">
-            <CanvasIconButton
-              label="Move up"
-              disabled={!selectedModule || selectedLayout.row <= 1}
-              icon={<ChevronUp aria-hidden="true" size={15} />}
-              onClick={() => updateLayout({ row: selectedLayout.row - 1 })}
-            />
-            <CanvasIconButton
-              label="Move left"
-              disabled={!selectedModule || selectedLayout.column <= 1}
-              icon={<ChevronLeft aria-hidden="true" size={15} />}
-              onClick={() => updateLayout({ column: selectedLayout.column - 1 })}
-            />
-            <CanvasIconButton
-              label="Move right"
-              disabled={
-                !selectedModule ||
-                selectedLayout.column >= 6 - selectedLayout.colSpan + 1
-              }
-              icon={<ChevronRight aria-hidden="true" size={15} />}
-              onClick={() => updateLayout({ column: selectedLayout.column + 1 })}
-            />
-            <CanvasIconButton
-              label="Move down"
-              disabled={
-                !selectedModule ||
-                selectedLayout.row >= 9 - selectedLayout.rowSpan + 1
-              }
-              icon={<ChevronDownIcon />}
-              onClick={() => updateLayout({ row: selectedLayout.row + 1 })}
-            />
-          </div>
+        <div className="mt-3 grid grid-cols-2 gap-1 lg:grid-cols-1" role="tablist" aria-label="Module categories">
+          {profileCanvasDockCategories.map((category) => (
+            <button
+              key={category.value}
+              type="button"
+              role="tab"
+              aria-selected={activeCategory === category.value}
+              className="min-w-0 rounded-card px-3 py-2 text-left text-sm font-semibold text-muted transition duration-fluid ease-fluid hover:bg-canvas/55 hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-selected:bg-canvas/70 aria-selected:text-text"
+              data-testid={`profile-canvas-category-${category.value}`}
+              onClick={() => setActiveCategory(category.value)}
+            >
+              <span className="block truncate">{category.label}</span>
+              <span className="hidden truncate text-xs font-medium text-muted lg:block">
+                {category.description}
+              </span>
+            </button>
+          ))}
+        </div>
 
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            disabled={!selectedModule || !canHide}
-            data-testid="profile-canvas-visibility-button"
-            icon={
-              selectedVisible ? (
-                <Eye aria-hidden="true" size={16} />
-              ) : (
-                <EyeOff aria-hidden="true" size={16} />
-              )
-            }
-            onClick={() =>
-              selectedModule
-                ? onVisibilityChange(selectedModule.id, !selectedVisible)
-                : undefined
-            }
-          >
-            {selectedVisible ? "Shown" : "Hidden"}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            disabled={!canDelete || busy}
-            data-testid="profile-canvas-delete-module-button"
-            icon={<Trash2 aria-hidden="true" size={16} />}
-            onClick={() => (selectedModule ? onDeleteModule(selectedModule) : undefined)}
-          >
-            Delete
-          </Button>
+        <div className="mt-auto hidden gap-2 pt-3 lg:flex">
           <Button
             type="button"
             size="sm"
@@ -1596,102 +1859,735 @@ function ProfileCanvasEditorToolbar({
             icon={<Save aria-hidden="true" size={16} />}
             onClick={onSave}
           >
-            {busy ? "Saving" : "Save"}
+            Done
           </Button>
         </div>
       </div>
 
-      <div className="mt-3 grid gap-2 border-t border-line/70 pt-3 sm:grid-cols-[0.9fr_1fr_1fr_auto]">
-        <label className="min-w-0 text-xs font-semibold uppercase text-muted">
-          Add
-          <select
-            className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/70 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-            value={addDraft.entry}
-            data-testid="profile-canvas-add-type-select"
-            onChange={(event) =>
-              setAddDraft((draft) => ({
-                ...draft,
-                entry: event.target.value as ProfileCanvasAddEntry,
-              }))
-            }
-          >
-            {profileCanvasAddEntries
-              .filter((entry) => entry.value !== "featured_badges" || userBadges.length > 0)
-              .map((entry) => (
-                <option key={entry.value} value={entry.value}>
-                  {entry.label}
-                </option>
-              ))}
-          </select>
-        </label>
-        <label className="min-w-0 text-xs font-semibold uppercase text-muted">
-          Label
-          <input
-            className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/70 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-            value={addDraft.label}
-            data-testid="profile-canvas-add-label-input"
-            onChange={(event) =>
-              setAddDraft((draft) => ({ ...draft, label: event.target.value }))
-            }
-            placeholder="Optional"
-          />
-        </label>
-        {profileCanvasAddEntryNeedsUrl(addDraft.entry) ? (
-          <label className="min-w-0 text-xs font-semibold uppercase text-muted">
-            URL
+      <div className="min-h-0 overflow-y-auto p-3" data-testid="profile-canvas-dock">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <label className="relative min-w-0 flex-1">
+            <span className="sr-only">Search modules</span>
             <input
-              className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/70 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-              value={addDraft.url}
-              data-testid="profile-canvas-add-url-input"
-              onChange={(event) =>
-                setAddDraft((draft) => ({ ...draft, url: event.target.value }))
-              }
-              placeholder="https://..."
+              className="h-10 w-full rounded-control border border-line bg-canvas/55 px-3 text-sm font-medium text-text placeholder:text-muted focus-visible:outline-2 focus-visible:outline-focus"
+              value={moduleSearch}
+              onChange={(event) => setModuleSearch(event.target.value)}
+              placeholder="Search modules"
+              data-testid="profile-canvas-module-search"
             />
           </label>
+          <div className="inline-flex items-center gap-1 rounded-control border border-line bg-canvas/50 p-1">
+            {(["none", "soft", "medium", "heavy"] as const).map((blur) => (
+              <button
+                key={blur}
+                type="button"
+                className="rounded-control px-2.5 py-1.5 text-xs font-semibold text-muted transition duration-fluid ease-fluid hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-surface aria-pressed:text-text"
+                aria-pressed={backgroundBlur === blur}
+                data-testid={`profile-background-blur-${blur}`}
+                onClick={() => onBackgroundBlurChange(blur)}
+              >
+                {blurLabel(blur)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {activeCategory === "integrations" ? (
+          <div className="mt-3 space-y-3" data-testid="profile-canvas-integrations">
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {providerStatuses.map((providerStatus) => {
+                const account = profileIntegrationAccount(providerStatus.provider, integrations?.accounts);
+                const connected = Boolean(account && !account.revokedAt);
+                const suggestions = integrationSuggestions[providerStatus.provider] ?? [];
+
+                return (
+                  <article
+                    key={providerStatus.provider}
+                    className="min-w-0 rounded-card border border-line bg-canvas/48 p-3"
+                    data-testid={`profile-integration-card-${providerStatus.provider}`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className="grid size-9 shrink-0 place-items-center rounded-card border border-line bg-surface/78 text-text">
+                        {profileIntegrationIcon(providerStatus.provider)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="truncate text-sm font-semibold text-text">
+                          {integrationProviderLabel(providerStatus.provider)}
+                        </h3>
+                        <p className="mt-0.5 truncate text-xs text-muted">
+                          {connected
+                            ? account?.displayName ?? account?.providerHandle ?? "Connected"
+                            : providerStatus.configured
+                              ? "Ready for links"
+                              : "Needs server config"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {providerStatus.oauthEnabled && !connected ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          disabled={busy || integrationBusy === providerStatus.provider}
+                          onClick={() => onConnectIntegration(providerStatus.provider)}
+                        >
+                          Connect
+                        </Button>
+                      ) : null}
+                      {connected ? (
+                        <>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            disabled={busy || integrationBusy === providerStatus.provider}
+                            onClick={() => onLoadIntegrationSuggestions(providerStatus.provider)}
+                          >
+                            Suggestions
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            disabled={busy || integrationBusy === providerStatus.provider}
+                            onClick={() => onDisconnectIntegration(providerStatus.provider)}
+                          >
+                            Disconnect
+                          </Button>
+                        </>
+                      ) : null}
+                    </div>
+                    {suggestions.length > 0 ? (
+                      <div className="mt-3 space-y-2">
+                        {suggestions.slice(0, 3).map((suggestion) => (
+                          <button
+                            key={suggestion.id}
+                            type="button"
+                            className="flex w-full min-w-0 items-center gap-2 rounded-card border border-line bg-surface/58 p-2 text-left transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus"
+                            onClick={() => addSuggestion(suggestion)}
+                          >
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-semibold text-text">
+                                {suggestion.label}
+                              </span>
+                              <span className="block truncate text-xs text-muted">
+                                {suggestion.description || "Add card"}
+                              </span>
+                            </span>
+                            <Plus aria-hidden="true" size={15} className="shrink-0" />
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+
+            <div className="rounded-card border border-line bg-canvas/48 p-3">
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                <label className="min-w-0">
+                  <span className="text-xs font-semibold uppercase text-muted">
+                    Use link
+                  </span>
+                  <input
+                    className="mt-1 h-10 w-full rounded-control border border-line bg-surface/68 px-3 text-sm font-medium text-text placeholder:text-muted focus-visible:outline-2 focus-visible:outline-focus"
+                    value={integrationUrl}
+                    data-testid="profile-integration-url-input"
+                    onChange={(event) => setIntegrationUrl(event.target.value)}
+                    placeholder="Paste Spotify, Apple Music, YouTube, Twitch, or GitHub URL"
+                  />
+                </label>
+                <div className="flex items-end gap-2">
+                  <select
+                    className="h-10 rounded-control border border-line bg-surface/68 px-2 text-sm font-semibold text-text focus-visible:outline-2 focus-visible:outline-focus"
+                    value={integrationProvider ?? ""}
+                    aria-label="Preferred provider"
+                    onChange={(event) =>
+                      setIntegrationProvider(
+                        event.target.value
+                          ? (event.target.value as ProfileIntegrationProvider)
+                          : undefined,
+                      )
+                    }
+                  >
+                    <option value="">Auto</option>
+                    {profileIntegrationProviders.map((provider) => (
+                      <option key={provider} value={provider}>
+                        {integrationProviderLabel(provider)}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={!profileCanvasAddUrlIsReady(integrationUrl) || integrationBusy === "metadata"}
+                    data-testid="profile-integration-preview-button"
+                    onClick={() => onResolveIntegrationUrl(integrationUrl, integrationProvider)}
+                  >
+                    Preview
+                  </Button>
+                </div>
+              </div>
+              {integrationPreview ? (
+                <div className="mt-3 flex min-w-0 items-center gap-3 rounded-card border border-line bg-surface/62 p-3">
+                  <span className="grid size-10 shrink-0 place-items-center rounded-card border border-line bg-canvas/60 text-text">
+                    {profileIntegrationIcon(integrationPreview.provider)}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-text">
+                      {integrationPreview.metadata.title ?? integrationProviderLabel(integrationPreview.provider)}
+                    </p>
+                    <p className="truncate text-xs text-muted">
+                      {integrationPreview.apiBacked ? "API metadata" : "Static link card"}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    data-testid="profile-integration-add-card-button"
+                    onClick={() => onAddIntegrationCard(integrationPreview)}
+                  >
+                    Add card
+                  </Button>
+                </div>
+              ) : null}
+              {integrationMessage ? (
+                <p className="mt-2 text-sm font-medium text-muted" role="status">
+                  {integrationMessage}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        ) : activeCategory === "removed" ? (
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {removedModules.length > 0 ? (
+              removedModules.map((module) => (
+                <ProfileDockModuleCard
+                  key={module.id}
+                  actionLabel="Restore"
+                  disabled={busy}
+                  icon={profileCanvasModuleIcon(module.type)}
+                  meta="Removed from canvas"
+                  title={module.title ?? profileModuleFallbackTitle(module.type)}
+                  onAction={() => onRestoreModule(module)}
+                  testId={`profile-canvas-restore-module-${module.id}`}
+                />
+              ))
+            ) : (
+              <p className="rounded-card border border-dashed border-line bg-canvas/45 p-4 text-sm text-muted">
+                Removed modules will appear here with their previous title, settings, and layout where possible.
+              </p>
+            )}
+          </div>
         ) : (
-          <label className="min-w-0 text-xs font-semibold uppercase text-muted">
-            Text
-            <input
-              className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/70 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-              value={addDraft.body}
-              data-testid="profile-canvas-add-body-input"
-              onChange={(event) =>
-                setAddDraft((draft) => ({ ...draft, body: event.target.value }))
-              }
-              placeholder={
-                profileCanvasAddEntryNeedsBody(addDraft.entry) ? "Required" : "Optional"
-              }
-            />
-          </label>
+          <>
+            <div
+              className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
+              data-testid="profile-canvas-module-browser"
+            >
+              {activeCategory === "essentials" &&
+              (!normalizedSearch || "profile info".includes(normalizedSearch)) ? (
+                <ProfileDockModuleCard
+                  actionLabel="On canvas"
+                  disabled
+                  icon={<UserCheck aria-hidden="true" size={20} />}
+                  meta="Identity anchor. Always visible and not removable."
+                  title="Profile info"
+                  onAction={() => undefined}
+                  testId="profile-canvas-identity-anchor"
+                />
+              ) : null}
+              {visibleEntries.map((entry) => {
+                const existing = profileCanvasEntryActiveModule(entry, modules);
+                const needsDetails =
+                  profileCanvasAddEntryNeedsUrl(entry) || profileCanvasAddEntryNeedsBody(entry);
+                const selectedForDraft = addDraft.entry === entry;
+                const canAdd = selectedForDraft && addConfig;
+                const singletonExists = existing && profileCanvasEntryIsSingleton(entry);
+
+                return (
+                  <ProfileDockModuleCard
+                    key={entry}
+                    actionLabel={singletonExists ? "On canvas" : needsDetails && !canAdd ? "Details" : "Add"}
+                    active={selectedForDraft}
+                    disabled={busy || Boolean(singletonExists)}
+                    icon={profileCanvasEntryIcon(entry)}
+                    meta={profileCanvasEntryPurpose(entry)}
+                    title={profileCanvasAddEntryLabel(entry)}
+                    onAction={() => {
+                      const nextDraft: ProfileCanvasAddDraft = {
+                        body: "",
+                        entry,
+                        label: "",
+                        title: "",
+                        url: "",
+                      };
+
+                      updateAddEntry(entry);
+
+                      if (!needsDetails) {
+                        const nextConfig = profileCanvasAddInput(nextDraft, userBadges);
+
+                        if (nextConfig) {
+                          onAddModule(nextConfig);
+                        }
+                      }
+                    }}
+                    testId={`profile-canvas-add-module-${entry}`}
+                  />
+                );
+              })}
+            </div>
+
+            <div className="mt-3 rounded-card border border-line bg-canvas/45 p-3">
+              <div className="grid gap-2 sm:grid-cols-[0.9fr_1fr_1fr_auto]">
+                <label className="min-w-0 text-xs font-semibold uppercase text-muted">
+                  Module
+                  <select
+                    className="mt-1 h-10 w-full rounded-control border border-line bg-surface/68 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
+                    value={addDraft.entry}
+                    data-testid="profile-canvas-add-type-select"
+                    onChange={(event) => updateAddEntry(event.target.value as ProfileCanvasAddEntry)}
+                  >
+                    {profileCanvasAddEntries
+                      .filter((entry) => entry.value !== "featured_badges" || userBadges.length > 0)
+                      .map((entry) => (
+                        <option key={entry.value} value={entry.value}>
+                          {entry.label}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label className="min-w-0 text-xs font-semibold uppercase text-muted">
+                  Label
+                  <input
+                    className="mt-1 h-10 w-full rounded-control border border-line bg-surface/68 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
+                    value={addDraft.label}
+                    data-testid="profile-canvas-add-label-input"
+                    onChange={(event) =>
+                      setAddDraft((draft) => ({ ...draft, label: event.target.value }))
+                    }
+                    placeholder="Optional"
+                  />
+                </label>
+                {profileCanvasAddEntryNeedsUrl(addDraft.entry) ? (
+                  <label className="min-w-0 text-xs font-semibold uppercase text-muted">
+                    URL
+                    <input
+                      className="mt-1 h-10 w-full rounded-control border border-line bg-surface/68 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
+                      value={addDraft.url}
+                      data-testid="profile-canvas-add-url-input"
+                      onChange={(event) =>
+                        setAddDraft((draft) => ({ ...draft, url: event.target.value }))
+                      }
+                      placeholder="https://..."
+                    />
+                  </label>
+                ) : (
+                  <label className="min-w-0 text-xs font-semibold uppercase text-muted">
+                    Text
+                    <input
+                      className="mt-1 h-10 w-full rounded-control border border-line bg-surface/68 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
+                      value={addDraft.body}
+                      data-testid="profile-canvas-add-body-input"
+                      onChange={(event) =>
+                        setAddDraft((draft) => ({ ...draft, body: event.target.value }))
+                      }
+                      placeholder={profileCanvasAddEntryNeedsBody(addDraft.entry) ? "Required" : "Optional"}
+                    />
+                  </label>
+                )}
+                <div className="flex items-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={!addConfig || busy}
+                    data-testid="profile-canvas-add-module-button"
+                    icon={<Plus aria-hidden="true" size={16} />}
+                    onClick={() => (addConfig ? onAddModule(addConfig) : undefined)}
+                  >
+                    Add
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </>
         )}
-        <div className="flex items-end">
-          <Button
-            type="button"
-            size="sm"
-            disabled={!addConfig || busy}
-            data-testid="profile-canvas-add-module-button"
-            icon={<Plus aria-hidden="true" size={16} />}
-            onClick={() => (addConfig ? onAddModule(addConfig) : undefined)}
-          >
-            Add
-          </Button>
-        </div>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
-        <span className="inline-flex items-center gap-1.5">
+      <div className="min-h-0 overflow-y-auto border-t border-line/70 p-3 lg:border-l lg:border-t-0">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted">
           <LayoutGrid aria-hidden="true" size={14} />
-          6 x 9
-        </span>
-        {selectedDefinition ? <span>{selectedDefinition.label}</span> : null}
+          6 x 9 canvas
+        </div>
+        {selectedModule ? (
+          <div className="mt-3 space-y-3">
+            <div className="rounded-card border border-line bg-canvas/45 p-3">
+              <p className="truncate text-sm font-semibold text-text">
+                {selectedModule.title ?? profileModuleFallbackTitle(selectedModule.type)}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-muted">
+                {selectedDefinition?.purpose ?? "Selected module"}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold uppercase text-muted">Size</p>
+              <div className="mt-1 grid grid-cols-2 gap-1 rounded-control border border-line bg-canvas/50 p-1">
+                {profileModuleAllowedSizes(selectedModule.type).map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    className="rounded-control px-2 py-1.5 text-xs font-semibold text-muted transition duration-fluid ease-fluid hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-surface aria-pressed:text-text"
+                    aria-pressed={selectedSize === size}
+                    data-testid={`profile-canvas-size-${size}`}
+                    onClick={() => updateSpan(size)}
+                  >
+                    {sizeLabel(size)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold uppercase text-muted">Move</p>
+              <div className="mt-1 inline-grid grid-cols-3 gap-1 rounded-control border border-line bg-canvas/50 p-1">
+                <span />
+                <CanvasIconButton
+                  label="Move up"
+                  disabled={selectedLayout.row <= 1}
+                  icon={<ChevronUp aria-hidden="true" size={15} />}
+                  onClick={() => updateLayout({ row: selectedLayout.row - 1 })}
+                />
+                <span />
+                <CanvasIconButton
+                  label="Move left"
+                  disabled={selectedLayout.column <= 1}
+                  icon={<ChevronLeft aria-hidden="true" size={15} />}
+                  onClick={() => updateLayout({ column: selectedLayout.column - 1 })}
+                />
+                <span className="grid size-8 place-items-center rounded-control text-xs font-semibold text-muted">
+                  {selectedLayout.column},{selectedLayout.row}
+                </span>
+                <CanvasIconButton
+                  label="Move right"
+                  disabled={selectedLayout.column >= 6 - selectedLayout.colSpan + 1}
+                  icon={<ChevronRight aria-hidden="true" size={15} />}
+                  onClick={() => updateLayout({ column: selectedLayout.column + 1 })}
+                />
+                <span />
+                <CanvasIconButton
+                  label="Move down"
+                  disabled={selectedLayout.row >= 9 - selectedLayout.rowSpan + 1}
+                  icon={<ChevronDownIcon />}
+                  onClick={() => updateLayout({ row: selectedLayout.row + 1 })}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={!canHide}
+                data-testid="profile-canvas-visibility-button"
+                icon={
+                  selectedVisible ? (
+                    <Eye aria-hidden="true" size={16} />
+                  ) : (
+                    <EyeOff aria-hidden="true" size={16} />
+                  )
+                }
+                onClick={() => onVisibilityChange(selectedModule.id, !selectedVisible)}
+              >
+                {selectedVisible ? "Shown" : "Hidden"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={!canDelete || busy}
+                data-testid="profile-canvas-delete-module-button"
+                icon={<Trash2 aria-hidden="true" size={16} />}
+                onClick={() => onDeleteModule(selectedModule)}
+              >
+                Remove
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <p className="mt-3 rounded-card border border-dashed border-line bg-canvas/45 p-3 text-sm text-muted">
+            Choose a module on the canvas to move, resize, hide, or remove it.
+          </p>
+        )}
         {error ? (
-          <span className="font-medium text-rose-ink" role="alert">
+          <p className="mt-3 text-sm font-medium text-rose-ink" role="alert">
             {error}
-          </span>
+          </p>
+        ) : null}
+        {activeModuleTypes.size === 0 ? (
+          <p className="mt-3 text-xs text-muted">Add a module to start shaping this space.</p>
         ) : null}
       </div>
     </section>
+  );
+}
+
+function ProfileDockModuleCard({
+  actionLabel,
+  active,
+  disabled,
+  icon,
+  meta,
+  onAction,
+  testId,
+  title,
+}: {
+  actionLabel: string;
+  active?: boolean;
+  disabled?: boolean;
+  icon: ReactNode;
+  meta: string;
+  onAction: () => void;
+  testId: string;
+  title: string;
+}) {
+  return (
+    <article
+      className={cn(
+        "flex min-h-28 min-w-0 flex-col rounded-card border bg-canvas/48 p-3 transition duration-fluid ease-fluid",
+        active ? "border-line-strong bg-surface/70" : "border-line",
+      )}
+      data-testid={testId}
+    >
+      <div className="flex min-w-0 items-start gap-2">
+        <span className="grid size-10 shrink-0 place-items-center rounded-card border border-line bg-surface/78 text-text">
+          {icon}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-sm font-semibold text-text">{title}</h3>
+          <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted">{meta}</p>
+        </div>
+      </div>
+      <div className="mt-auto pt-3">
+        <button
+          type="button"
+          className="inline-flex h-8 items-center gap-1.5 rounded-control border border-line bg-surface/70 px-2.5 text-xs font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55"
+          disabled={disabled}
+          onClick={onAction}
+        >
+          {actionLabel === "Restore" ? (
+            <Undo2 aria-hidden="true" size={14} />
+          ) : actionLabel === "On canvas" ? (
+            <Eye aria-hidden="true" size={14} />
+          ) : (
+            <Plus aria-hidden="true" size={14} />
+          )}
+          {actionLabel}
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function profileCanvasAddEntryLabel(entry: ProfileCanvasAddEntry): string {
+  return profileCanvasAddEntries.find((item) => item.value === entry)?.label ?? "Module";
+}
+
+function profileCanvasEntryPurpose(entry: ProfileCanvasAddEntry): string {
+  return matchProfileCanvasEntry(entry, {
+    about: "A compact intro, mood, or current focus.",
+    activity: "Recent public posts, replies, and rooms.",
+    creator_live: "A creator channel, stream, or public project link.",
+    custom_text: "A short plain-text note with an optional link.",
+    featured_badges: "Earned badges worth showing at a glance.",
+    featured_post: "Pin one eligible post without moving the post itself.",
+    featured_room: "Pin one eligible room without changing the room.",
+    gallery_media: "Uploaded profile media in a restrained preview.",
+    github_project: "A public repository card.",
+    links: "A concise set of links or connections.",
+    music: "Spotify, Apple Music, or another music link card.",
+  });
+}
+
+function profileCanvasEntryIcon(entry: ProfileCanvasAddEntry): ReactNode {
+  return matchProfileCanvasEntry(entry, {
+    about: <Sparkles aria-hidden="true" size={20} />,
+    activity: <Repeat2 aria-hidden="true" size={20} />,
+    creator_live: <Radio aria-hidden="true" size={20} />,
+    custom_text: <FileTextIcon />,
+    featured_badges: <BadgeCheck aria-hidden="true" size={20} />,
+    featured_post: <Star aria-hidden="true" size={20} />,
+    featured_room: <Users aria-hidden="true" size={20} />,
+    gallery_media: <Video aria-hidden="true" size={20} />,
+    github_project: <Bug aria-hidden="true" size={20} />,
+    links: <Link2 aria-hidden="true" size={20} />,
+    music: <Music2 aria-hidden="true" size={20} />,
+  });
+}
+
+function profileCanvasModuleIcon(type: ProfileModuleType): ReactNode {
+  if (type === "profile_info") {
+    return <UserCheck aria-hidden="true" size={20} />;
+  }
+
+  const entry = profileCanvasEntryFromType(type);
+
+  return entry ? profileCanvasEntryIcon(entry) : <Sparkles aria-hidden="true" size={20} />;
+}
+
+function profileCanvasEntryFromType(type: ProfileModuleType): ProfileCanvasAddEntry | undefined {
+  if (type === "about") {
+    return "about";
+  }
+
+  if (type === "links") {
+    return "links";
+  }
+
+  if (type === "featured_badges") {
+    return "featured_badges";
+  }
+
+  if (type === "featured_post") {
+    return "featured_post";
+  }
+
+  if (type === "featured_room") {
+    return "featured_room";
+  }
+
+  if (type === "gallery_media") {
+    return "gallery_media";
+  }
+
+  if (type === "creator_live") {
+    return "creator_live";
+  }
+
+  if (type === "music") {
+    return "music";
+  }
+
+  if (type === "custom_text") {
+    return "custom_text";
+  }
+
+  if (type === "activity") {
+    return "activity";
+  }
+
+  return undefined;
+}
+
+function profileCanvasEntryActiveModule(
+  entry: ProfileCanvasAddEntry,
+  modules: ProfileModule[],
+): ProfileModule | undefined {
+  const type = entry === "github_project" ? "creator_live" : entry;
+
+  if (!profileCanvasEntryIsSingleton(entry)) {
+    return undefined;
+  }
+
+  return modules.find((module) => module.type === type && module.status === "active");
+}
+
+function profileCanvasEntryIsSingleton(entry: ProfileCanvasAddEntry): boolean {
+  return entry === "featured_post" || entry === "featured_room" || entry === "activity";
+}
+
+function matchProfileCanvasEntry<T>(
+  entry: ProfileCanvasAddEntry,
+  values: Record<ProfileCanvasAddEntry, T>,
+): T {
+  return values[entry];
+}
+
+function blurLabel(blur: ProfileBackgroundBlur): string {
+  return blur === "none" ? "None" : blur[0]!.toUpperCase() + blur.slice(1);
+}
+
+function profileIntegrationStatus(
+  provider: ProfileIntegrationProvider,
+  statuses: ProfileIntegrationProviderStatus[] | undefined,
+): ProfileIntegrationProviderStatus {
+  return (
+    statuses?.find((status) => status.provider === provider) ?? {
+      provider,
+      configured: false,
+      oauthEnabled: false,
+    }
+  );
+}
+
+function profileIntegrationAccount(
+  provider: ProfileIntegrationProvider,
+  accounts: ProfileIntegrationAccount[] | undefined,
+): ProfileIntegrationAccount | undefined {
+  return accounts?.find((account) => account.provider === provider);
+}
+
+function integrationProviderLabel(provider: ProfileIntegrationProvider): string {
+  return provider === "apple_music"
+    ? "Apple Music"
+    : provider[0]!.toUpperCase() + provider.slice(1);
+}
+
+function integrationPlatformFromProvider(
+  provider: ProfileIntegrationProvider | undefined,
+): string {
+  return provider ?? "website";
+}
+
+function profileIntegrationIcon(provider: ProfileIntegrationProvider): ReactNode {
+  if (provider === "spotify" || provider === "apple_music") {
+    return <Music2 aria-hidden="true" size={20} />;
+  }
+
+  if (provider === "youtube" || provider === "twitch") {
+    return <Radio aria-hidden="true" size={20} />;
+  }
+
+  return <Bug aria-hidden="true" size={20} />;
+}
+
+function profileCanvasModuleInputFromIntegration(
+  card: ProfileIntegrationCard,
+): CreateProfileModuleInput | undefined {
+  const type =
+    card.provider === "spotify" || card.provider === "apple_music"
+      ? "music"
+      : "creator_live";
+  const title = type === "music" ? "Music" : "Creator";
+  const label =
+    card.metadata.title ?? integrationProviderLabel(card.provider);
+
+  return {
+    type,
+    title,
+    visibility: "public",
+    status: "active",
+    config: {
+      platform: integrationPlatformFromProvider(card.provider),
+      label,
+      url: card.sourceUrl,
+      ...(card.metadata.description
+        ? { description: card.metadata.description }
+        : {}),
+    },
+  };
+}
+
+function FileTextIcon() {
+  return (
+    <span className="grid size-5 place-items-center text-[0.68rem] font-bold">
+      T
+    </span>
   );
 }
 
@@ -1738,10 +2634,6 @@ function clampProfileModuleLayout(layout: ProfileModuleLayout): ProfileModuleLay
     colSpan,
     rowSpan,
   };
-}
-
-function numberOptions(max: number): number[] {
-  return Array.from({ length: Math.max(1, max) }, (_, index) => index + 1);
 }
 
 function sizeLabel(size: ProfileGridModuleSize): string {

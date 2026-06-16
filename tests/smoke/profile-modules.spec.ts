@@ -684,7 +684,10 @@ test("owner edits background blur, module placement, and visibility", async ({
   await mockProfileModules(page, {
     authenticated: true,
     modules: [
-      aboutModule({ id: 1, title: "About", body: "Move me.", position: 2 }),
+      {
+        ...aboutModule({ id: 1, title: "About", body: "Move me.", position: 2 }),
+        layout: { column: 1, row: 2, colSpan: 2, rowSpan: 1 },
+      },
       linksModule({ id: 2, title: "Links", position: 3 }),
     ],
     onCanvasSave: (payload) => {
@@ -697,10 +700,9 @@ test("owner edits background blur, module placement, and visibility", async ({
   await page.getByTestId("profile-canvas-edit-button").click();
   await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
 
-  await page.getByTestId("profile-background-blur-select").selectOption("heavy");
-  await page.getByTestId("profile-canvas-module-select").selectOption("1");
-  await page.getByTestId("profile-canvas-row-select").selectOption("3");
-  await page.getByTestId("profile-canvas-column-select").selectOption("1");
+  await page.getByTestId("profile-background-blur-heavy").click();
+  await page.getByTestId("profile-canvas-drag-handle-1").click();
+  await page.getByRole("button", { name: "Move down" }).click();
   await page.getByTestId("profile-canvas-visibility-button").click();
   await page.getByTestId("profile-canvas-save-button").click();
 
@@ -711,8 +713,6 @@ test("owner edits background blur, module placement, and visibility", async ({
   const savedModules = savedPayload?.modules as Array<Record<string, unknown>>;
   const aboutPlacement = savedModules.find((module) => module.id === 1);
   expect(aboutPlacement).toMatchObject({
-    column: 1,
-    row: 3,
     visible: false,
   });
   await expect(page.getByTestId("profile-personal-backdrop")).toHaveAttribute(
@@ -763,7 +763,6 @@ test("owner drags a canvas module and save includes pushed placement", async ({
   });
   await page.mouse.up();
 
-  await expect(page.getByTestId("profile-canvas-module-select")).toHaveValue("1");
   await page.getByTestId("profile-canvas-save-button").click();
   await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
 
@@ -843,15 +842,113 @@ test("owner adds modules and deletes featured modules from the canvas editor", a
   });
   await expect(page.getByText("Canvas-added note")).toBeVisible();
 
-  await page.getByTestId("profile-canvas-module-select").selectOption("20");
+  await page.getByTestId("profile-canvas-drag-handle-20").click();
   await page.getByTestId("profile-canvas-delete-module-button").click();
   expect(deletedIds).toContain(20);
   await expect(page.getByText("Pinned post can be removed.")).toHaveCount(0);
 
-  await page.getByTestId("profile-canvas-module-select").selectOption("21");
+  await page.getByTestId("profile-canvas-drag-handle-21").click();
   await page.getByTestId("profile-canvas-delete-module-button").click();
   expect(deletedIds).toContain(21);
   await expect(page.getByText("General")).toHaveCount(0);
+
+  await page.getByTestId("profile-canvas-category-removed").click();
+  await page.getByTestId("profile-canvas-restore-module-20").getByRole("button", { name: "Restore" }).click();
+  await expect(page.getByTestId("profile-grid-module-featured_post")).toBeVisible();
+});
+
+test("owner creates a rich integration card from the widget dock", async ({
+  page,
+}) => {
+  const createdPayloads: Array<Record<string, unknown>> = [];
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+    onCreate: (payload) => {
+      createdPayloads.push(payload);
+    },
+  });
+  await page.route("**/api/me/integrations", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          providers: [
+            { provider: "spotify", configured: true, oauthEnabled: true },
+            { provider: "apple_music", configured: true, oauthEnabled: false },
+            { provider: "youtube", configured: false, oauthEnabled: false },
+            { provider: "twitch", configured: false, oauthEnabled: false },
+            { provider: "github", configured: true, oauthEnabled: true },
+          ],
+          accounts: [],
+        },
+      }),
+    });
+  });
+  await page.route("**/api/me/integrations/metadata/resolve", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          provider: "spotify",
+          resourceType: "playlist",
+          resourceId: "focus",
+          resourceKey: "spotify:playlist:focus",
+          sourceUrl: "https://open.spotify.com/playlist/focus",
+          apiBacked: true,
+          fetchedAt: "2026-06-17T00:00:00Z",
+          expiresAt: "2026-06-17T01:00:00Z",
+          staleAt: "2026-06-18T00:00:00Z",
+          metadata: {
+            title: "Focus playlist",
+            subtitle: "Spotify",
+            description: "No autoplay.",
+            imageUrl: null,
+            live: false,
+            liveFetchedAt: null,
+            recentLabel: null,
+            recentFetchedAt: null,
+            stats: {},
+          },
+          embed: {
+            type: "iframe",
+            src: "https://open.spotify.com/embed/playlist/focus",
+            title: "Spotify embed",
+            allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+            height: 152,
+          },
+        },
+      }),
+    });
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-canvas-edit-button").click();
+  await page.getByTestId("profile-canvas-category-integrations").click();
+  await page
+    .getByTestId("profile-integration-url-input")
+    .fill("https://open.spotify.com/playlist/focus");
+  await page.getByTestId("profile-integration-preview-button").click();
+  await expect(page.getByText("Focus playlist")).toBeVisible();
+  await page.getByTestId("profile-integration-add-card-button").click();
+
+  expect(createdPayloads.at(-1)).toMatchObject({
+    type: "music",
+    visibility: "public",
+    status: "active",
+    config: {
+      platform: "spotify",
+      label: "Focus playlist",
+      url: "https://open.spotify.com/playlist/focus",
+      description: "No autoplay.",
+    },
+  });
 });
 
 test("mobile stack ignores saved desktop placement", async ({ page }) => {
@@ -1133,6 +1230,11 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(modulesApi).toContain("PROFILE_RETIRED_MODULE_TYPES");
   expect(modulesApi).toContain("ensure_profile_canvas_builtin_modules");
   expect(modulesApi).toContain("ensure_profile_info_module");
+  expect(modulesApi).toContain("includeDeleted");
+  expect(modulesApi).toContain("profile_modules_restore");
+  expect(modulesApi).toContain("profile_canvas_reflow_existing_modules");
+  expect(modulesApi).toContain("restoreFeaturedPostId");
+  expect(modulesApi).toContain("restoreFeaturedRoomId");
   expect(modulesApi).toContain("visibility = 'hidden'");
   expect(modulesApi).toContain("profile_module_gallery_media_config");
   expect(modulesApi).toContain("profile_module_music_config");
@@ -1164,6 +1266,8 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(integrationsApi).toContain("profile_integration_encrypt");
   expect(integrationsApi).toContain("profile_integrations_oauth_start");
   expect(integrationsApi).toContain("profile_integrations_oauth_callback");
+  expect(integrationsApi).toContain("profile_integrations_provider_suggestions");
+  expect(integrationsApi).toContain("profile_integration_redirect_to_app");
   expect(integrationsApi).toContain("profile_integrations_metadata_resolve");
   expect(integrationsApi).toContain("profile_integration_card_for_module");
   expect(integrationsApi).toContain("sodium_crypto_secretbox");
@@ -1454,8 +1558,24 @@ async function mockProfileModules(
 
   await page.route("**/api/me/profile/modules/**", async (route) => {
     const url = new URL(route.request().url());
-    const rawId = url.pathname.split("/").at(-1);
+    const pathParts = url.pathname.split("/");
+    const isRestore = pathParts.at(-1) === "restore";
+    const rawId = isRestore ? pathParts.at(-2) : pathParts.at(-1);
     const id = Number(rawId);
+
+    if (isRestore && route.request().method() === "POST") {
+      ownerModules = ownerModules.map((module) =>
+        module.id === id
+          ? { ...module, status: "active", visibility: "public" }
+          : module,
+      );
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: ownerModules }),
+      });
+      return;
+    }
 
     if (route.request().method() === "PATCH") {
       const payload = (await route.request().postDataJSON()) as Record<string, unknown>;
@@ -1474,14 +1594,14 @@ async function mockProfileModules(
     if (route.request().method() === "DELETE") {
       options.onDelete?.(id);
       const moduleToDelete = ownerModules.find((module) => module.id === id);
-      ownerModules = ownerModules.flatMap((module) => {
+      ownerModules = ownerModules.map((module) => {
         if (module.id !== id) {
-          return [module];
+          return module;
         }
 
         return module.type === "profile_info"
-          ? [{ ...module, visibility: "hidden", status: "active" }]
-          : [];
+          ? { ...module, visibility: "hidden", status: "active" }
+          : { ...module, visibility: "hidden", status: "deleted" };
       });
       if (moduleToDelete?.type === "featured_post") {
         profileOverrides = { ...profileOverrides, featuredPostId: null, featuredPost: null };
@@ -1492,7 +1612,10 @@ async function mockProfileModules(
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ ok: true, data: ownerModules }),
+        body: JSON.stringify({
+          ok: true,
+          data: ownerModules.filter((module) => module.status !== "deleted"),
+        }),
       });
       return;
     }
@@ -1529,6 +1652,23 @@ async function mockProfileModules(
       ];
       await route.fulfill({
         status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: ownerModules }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 405,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "Method not allowed." }),
+    });
+  });
+
+  await page.route(/\/api\/me\/profile\/modules\?/, async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
         contentType: "application/json",
         body: JSON.stringify({ ok: true, data: ownerModules }),
       });

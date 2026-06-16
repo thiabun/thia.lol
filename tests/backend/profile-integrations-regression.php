@@ -19,6 +19,8 @@ putenv('THIA_CONFIG_PATH=' . $configPath);
 require_once dirname(__DIR__, 2) . '/api/integrations.php';
 require_once dirname(__DIR__, 2) . '/api/profile.php';
 
+$integrationSource = file_get_contents(dirname(__DIR__, 2) . '/api/integrations.php');
+
 function assert_true(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -56,9 +58,14 @@ assert_true($github['embed'] === null, 'github should not generate iframe embeds
 
 $spotifyCard = profile_integration_generated_card('https://open.spotify.com/playlist/playlist123', null);
 assert_true($spotifyCard['embed']['src'] === 'https://open.spotify.com/embed/playlist/playlist123', 'spotify embed src mismatch');
+assert_true(profile_integration_provider_oauth_enabled('apple_music', ['developer_token' => 'developer-token']) === false, 'Apple Music should not expose OAuth start in this pass');
 
 $twitchCard = profile_integration_generated_card('https://twitch.tv/thiabun', null);
 assert_true(str_contains($twitchCard['embed']['src'], 'parent=thia.lol'), 'twitch embed must include parent');
+assert_true(is_string($integrationSource), 'integration source should be readable');
+assert_true(str_contains($integrationSource, 'function profile_integrations_provider_suggestions'), 'provider suggestions endpoint should exist');
+assert_true(str_contains($integrationSource, 'function profile_integration_redirect_to_app'), 'OAuth callback should redirect back to app');
+assert_true(str_contains($integrationSource, 'Apple Music'), 'Apple Music support should remain explicit');
 
 $cipher = profile_integration_encrypt('secret-token');
 assert_true($cipher !== 'secret-token', 'token should be encrypted');

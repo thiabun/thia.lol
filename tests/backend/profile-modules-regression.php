@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/api/profile_modules.php';
 
+$profileModulesSource = file_get_contents(dirname(__DIR__, 2) . '/api/profile_modules.php');
+
 function assert_true(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -128,6 +130,11 @@ $music = profile_module_config(
 );
 assert_true($music['platform'] === 'spotify', 'music platform mismatch');
 assert_true($music['url'] === 'https://open.spotify.com/playlist/profile-test', 'music URL mismatch');
+assert_true(is_string($profileModulesSource), 'profile modules source should be readable');
+assert_true(str_contains($profileModulesSource, 'function profile_modules_restore'), 'restore endpoint should exist');
+assert_true(str_contains($profileModulesSource, 'includeDeleted'), 'includeDeleted editor library read should exist');
+assert_true(str_contains($profileModulesSource, 'restoreFeaturedPostId'), 'featured post restore snapshot should exist');
+assert_true(str_contains($profileModulesSource, 'profile_canvas_reflow_existing_modules'), 'restore should reflow canvas placements');
 
 assert_module_config_rejected(
     'links',

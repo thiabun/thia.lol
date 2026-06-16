@@ -6,7 +6,7 @@
 > [#25](https://github.com/thiabun/thia.lol/issues/25); future work should be
 > tracked in GitHub Issues.
 
-Date: 2026-06-12
+Date: 2026-06-17
 
 ## Purpose
 
@@ -54,7 +54,8 @@ Current frontend behavior:
 
 - Profile accent/theme values may exist in storage for compatibility, but controls are hidden until presets visibly affect public rendering through tested, contrast-safe mappings.
 - The previous `Customize profile` modal has been removed. Owner customization
-  now uses inline canvas editing on the profile page.
+  now uses inline canvas editing on the profile page through a translucent
+  widget dock on desktop and a compact bottom sheet on mobile.
 - Public profiles continue to render persisted identity, media, modules,
   featured content, badges, and links through constrained public components.
 
@@ -95,7 +96,9 @@ Current backend behavior:
 - Profile customization columns are migration-aware and return a clean readiness error when missing.
 - Profile modules use `profile_modules` after migration `20260612_0001_add_profile_modules.sql`.
 - Public module reads return only public active modules for active users.
-- Owner module mutations require authentication and CSRF.
+- Owner module mutations require authentication and CSRF. Editor/library reads
+  may request deleted modules with `includeDeleted=1` so removed modules can be
+  restored without recreating them from scratch.
 - Supported module types include `profile_info`, `about`, `links`,
   `featured_badges`, `custom_text`, `featured_post`, `featured_room`,
   `gallery_media`, `creator_live`, `music`, and `activity`.
@@ -106,6 +109,12 @@ Current backend behavior:
 - `profile_info` is the only protected module. Featured post, featured room,
   and activity modules can be deleted like normal modules; deleting featured
   post/room modules also clears the selected featured profile references.
+- Soft-deleted modules preserve title, config, and grid placement where
+  possible. Restore reactivates the module, makes it visible, and collision
+  pushes active modules into a valid fit. Hidden and deleted modules must not
+  occupy grid cells.
+- Deleting featured post or room modules must not delete the underlying post or
+  room. Restore may reselect a saved featured id only if it is still eligible.
 
 Future implementation should keep this baseline and tighten it where needed. In particular, future API work should move profile accent/theme handling from generic token validation to explicit allowlists before those values affect more UI.
 
@@ -129,6 +138,9 @@ Allowed now or likely allowed later, subject to validation:
 - Safe external links through the existing Connection model or future module-specific URL validation.
 - Curated media embeds only when generated from normalized provider/resource IDs
   through an approved allowlist, lazy-loaded, and honestly described.
+- OAuth and rich-card controls belong inside the profile canvas dock. Provider
+  cards must show missing server config, disconnected state, connected identity,
+  and provider/API failures honestly.
 - Profile layout presets as constrained templates that preserve mobile stacking
   and action visibility.
 
@@ -173,6 +185,8 @@ The following are not allowed:
 - Fake verification markers.
 - Fake admin, moderator, founder, partner, sponsor, or official status.
 - Integration controls that imply Twitch, Spotify, Apple Music, YouTube, GitHub, Discord, or other services are live when only a link exists.
+- User-supplied iframe HTML or arbitrary embed codes, even if copied from a
+  supported provider.
 - Profile privacy controls before privacy behavior is implemented and tested.
 
 ## Visual Safety Rules
@@ -211,6 +225,10 @@ The following are not allowed:
 - Integration modules may show live/recent labels only when the state is
   API-backed and timestamped. Static links and embeds should be labeled as
   static provider cards.
+- Third-party linked or embedded content is still part of the profile surface
+  for reports and moderation decisions. thia.lol can remove or hide the local
+  module/link/embed, but cannot directly moderate or remove content hosted by
+  Spotify, Apple, YouTube, Twitch, GitHub, or other providers.
 - Module shells should use stable dimensions, restrained titles, visible focus
   states, internal overflow where needed, and no nested decorative cards.
 

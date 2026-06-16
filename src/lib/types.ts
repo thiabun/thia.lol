@@ -186,6 +186,8 @@ export type ProfileModuleConfig = {
   links?: ProfileModuleLink[];
   mediaItems?: ProfileModuleMediaItem[];
   platform?: string;
+  restoreFeaturedPostId?: number;
+  restoreFeaturedRoomId?: number;
   statusText?: string;
   userBadgeIds?: number[];
   url?: string;

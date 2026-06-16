@@ -20,7 +20,7 @@ type PolicyPageContent = {
   sections: PolicySection[];
 };
 
-const updated = "June 10, 2026";
+const updated = "June 17, 2026";
 const contactEmail = "hello@thia.lol";
 
 const policyLinks = [
@@ -64,16 +64,26 @@ const policies: Record<string, PolicyPageContent> = {
       {
         title: "Your content",
         items: [
-          "You keep ownership of the posts, replies, reblogs, room content, profile text, images, and other content you create or upload.",
+          "You keep ownership of the posts, replies, reblogs, room content, profile text, profile modules, images, videos, galleries, rich cards, and other content you create, upload, link, import, or embed.",
           "By posting or uploading content, you give thia.lol a limited, worldwide, non-exclusive license to host, store, display, process, copy, resize, moderate, and distribute that content as needed to operate and improve the service.",
-          "This license lets the platform show your content in feeds, profiles, rooms, notifications, search or discovery surfaces, and shared public pages. It does not transfer ownership to thia.lol.",
+          "This license lets the platform show your content in feeds, profiles, rooms, notifications, search or discovery surfaces, shared public pages, profile canvases, modules, and background media. It does not transfer ownership to thia.lol.",
+          "You are responsible for making sure linked, imported, embedded, or integration-derived content is lawful, allowed by the third-party service, and appropriate under these terms.",
           "When you delete content or your account, the license ends for the deleted material except where retention is reasonably needed for backups, security, legal, moderation, or earlier public interactions such as replies or reblogs.",
+        ],
+      },
+      {
+        title: "Profiles, modules, and integrations",
+        items: [
+          "Profiles can include modules such as profile info, about/status, links, badges, gallery/media, creator cards, music cards, featured posts, featured rooms, activity, and integration-rich cards.",
+          "You may connect or use supported provider links for Spotify, Apple Music, YouTube, Twitch, GitHub, and future supported integrations when those integrations are available.",
+          "OAuth connections, provider API metadata, and generated embeds are optional profile features. Do not use them to mislead people about live status, endorsement, sponsorship, verification, or ownership.",
+          "Removing a profile module removes it from the canvas; it does not delete the underlying post, room, repository, provider account, track, video, stream, or linked third-party content.",
         ],
       },
       {
         title: "Prohibited content and behavior",
         items: [
-          "Do not post illegal content, threats, harassment, hate content, non-consensual sexual content, private personal information, scams, spam, malware, or content that infringes someone else's rights.",
+          "Do not post, upload, link, import, embed, or feature illegal content, threats, harassment, hate content, non-consensual sexual content, private personal information, scams, spam, malware, or content that infringes someone else's rights.",
           "Do not impersonate people, evade moderation, abuse reporting tools, automate disruptive activity, or interfere with the service.",
           "Do not use thia.lol to coordinate harm, exploit vulnerable people, or pressure others into unwanted contact.",
         ],
@@ -89,9 +99,18 @@ const policies: Record<string, PolicyPageContent> = {
       {
         title: "Uploads and media",
         items: [
-          "Only upload images you own, created, or have permission to use.",
+          "Only upload images or videos you own, created, or have permission to use.",
           "Uploads must follow the same rules as text posts. Do not upload illegal, infringing, deceptive, abusive, or non-consensual material.",
-          "Image uploads may be resized, converted, stripped of metadata, or removed to operate the service and keep it safe.",
+          "Image backgrounds, video backgrounds, gallery modules, rich cards, creator modules, and music modules must remain readable, lawful, and safe.",
+          "Image uploads may be resized, converted, stripped of metadata, or removed to operate the service and keep it safe. Video background uploads may be limited by file type, size, purpose, and playback safety.",
+        ],
+      },
+      {
+        title: "Embedded and external content",
+        items: [
+          "thia.lol may generate allowlisted embeds or rich cards from normalized provider URLs. The platform does not allow arbitrary user-supplied iframe HTML.",
+          "Embeds and linked provider cards can load content controlled by third parties. Their availability, privacy behavior, tracking, and content rules are controlled by those providers.",
+          "External links, embeds, repositories, streams, videos, tracks, playlists, and creator pages remain subject to the third-party service's terms and moderation.",
         ],
       },
       {
@@ -151,9 +170,10 @@ const policies: Record<string, PolicyPageContent> = {
         title: "Data we collect",
         items: [
           "Account and profile data, such as handle, display name, email address when provided, password hash, profile text, avatar, banner, links, preferences, role, and account status.",
-          "Public content and activity, including posts, replies, reblogs, rooms, follows, moots, badges, likes, profile customization, and related timestamps.",
+          "Public content and activity, including posts, replies, reblogs, rooms, follows, moots, badges, likes, profile modules, canvas layout, background blur, image/video background choices, rich cards, and related timestamps.",
           "Direct messages, conversation membership, read state, message metadata, and message content as needed to operate chat, deliver notifications, maintain safety, and handle reports or legal requests.",
-          "Uploads, including the image file you provide, public image URLs, image dimensions, purpose, and storage metadata needed to display and manage uploaded media.",
+          "Uploads, including the image or video file you provide, public media URLs, dimensions or MIME/type metadata, purpose, and storage metadata needed to display and manage uploaded media.",
+          "Integration data when you connect or use providers, such as provider name, provider account id or handle, display name, avatar URL, granted scopes, token expiry, connection status, revoked/error timestamps, normalized provider URLs, cached metadata, generated embed metadata, and fetch timestamps.",
           "Logs and security data, such as IP address, user agent, request time, authentication events, rate-limit records, error diagnostics, and moderation records.",
           "Cookies, session data, CSRF/security tokens, and local preference records used for sign-in, security, theme, and cookie notice choices.",
         ],
@@ -162,16 +182,38 @@ const policies: Record<string, PolicyPageContent> = {
         title: "Why we use data",
         items: [
           "To operate the platform, show profiles, posts, feeds, rooms, messages, notifications, uploads, and account state.",
+          "To render profile canvases, rich cards, profile backgrounds, media modules, creator modules, music modules, and integration metadata that you choose to add.",
           "To authenticate users, protect sessions, prevent abuse, apply rate limits, and investigate security problems.",
           "To moderate content, review reports, enforce rules, protect users, and maintain admin/moderation records.",
           "To personalize basic feeds and recommendations using explainable factors such as recency, follows, moots, rooms, replies, likes, and moderation status.",
+          "To call supported third-party APIs on demand for OAuth, provider account identity, and metadata refresh where a provider is configured and the feature is used.",
           "To comply with applicable legal obligations, respond to valid requests, preserve records when needed, and protect rights and safety.",
+        ],
+      },
+      {
+        title: "Integrations and OAuth",
+        items: [
+          "Supported integration providers may include Spotify, Apple Music, YouTube, Twitch, GitHub, and future providers added to the same constrained model.",
+          "Spotify, YouTube, Twitch, and GitHub may use OAuth when configured. Apple Music support in this pass is URL, embed, and developer-token metadata support, not MusicKit user-token authorization.",
+          "OAuth access and refresh tokens, when stored, are encrypted server-side using a server-only integration encryption key. Provider client secrets and provider passwords are not stored in your profile and are not sent to the browser.",
+          "thia.lol stores the minimum provider account identity and granted scope data needed to show connected state, refresh metadata, disconnect accounts, and troubleshoot errors.",
+          "Metadata cache records may store normalized source URLs, provider/resource ids, fetched metadata, generated embed information, freshness/stale timestamps, and last error information so public cards can degrade gracefully.",
+          "Provider passwords are never requested or stored by thia.lol. You authorize through the provider's own OAuth page when OAuth is used.",
+        ],
+      },
+      {
+        title: "Embeds and third-party loading",
+        items: [
+          "Inline embeds are generated only for allowlisted providers from normalized provider/resource ids. User-supplied iframe HTML is not stored or rendered.",
+          "When an embed is rendered, your browser may connect directly to the provider, such as Spotify, Apple, YouTube, Twitch, or GitHub-linked resources.",
+          "Those third parties may receive technical data such as IP address, user agent, page/referrer context, cookies they control, and interaction data according to their own policies.",
+          "If provider metadata refresh fails, thia.lol may show the last good cached card. If no cache exists, it may show a compact outbound link card.",
         ],
       },
       {
         title: "What is public",
         items: [
-          "Public posts, replies, reblogs, rooms, profile pages, handles, display names, avatars, banners, badges, follow counts, and visible room activity may be seen by other people.",
+          "Public posts, replies, reblogs, rooms, profile pages, handles, display names, avatars, banners, backgrounds, badges, follow counts, visible room activity, public modules, rich cards, embeds, and visible integration-derived metadata may be seen by other people.",
           "Public content can be copied or linked by others. Removing it from thia.lol does not guarantee copies elsewhere disappear.",
           "DMs are not public, but they may be processed to deliver the chat feature and may be reviewed if reported, required by law, or needed for safety or security.",
         ],
@@ -181,6 +223,7 @@ const policies: Record<string, PolicyPageContent> = {
         items: [
           "Hosting and infrastructure providers that process data for site hosting, file storage, security, and maintenance.",
           "Moderators and admins who need access to review reports, enforce rules, maintain the service, or resolve support requests.",
+          "Supported integration providers when you connect an account, resolve metadata, render an embed, or ask thia.lol to refresh provider-backed cards.",
           "Legal, safety, or rights holders when we reasonably believe disclosure is required by law, valid process, urgent safety needs, or rights enforcement.",
           "Other users and the public when you publish public content or interact in visible spaces.",
         ],
@@ -199,6 +242,7 @@ const policies: Record<string, PolicyPageContent> = {
           "You can ask for access to personal data associated with your account.",
           "You can ask to correct inaccurate account or profile data.",
           "You can ask for deletion of your account or specific content, subject to safety, legal, moderation, backup, and technical limits.",
+          "You can disconnect OAuth integrations where the feature is available. You may also need to revoke access inside the third-party provider's own account settings.",
           "Where applicable under Norway, EU, UK, or similar privacy rules, you may object to or request restriction of certain processing.",
           "Automated self-service data export is not built yet. You can request a manual export, and a fuller export flow is deferred.",
         ],
@@ -222,7 +266,7 @@ const policies: Record<string, PolicyPageContent> = {
     sections: [
       {
         title: "Current cookie use",
-        body: "thia.lol currently uses necessary cookies and local preferences. It does not currently use analytics or marketing cookies.",
+        body: "thia.lol currently uses necessary cookies and local preferences. It does not currently use thia.lol analytics or marketing cookies.",
       },
       {
         title: "Strictly necessary cookies",
@@ -242,7 +286,15 @@ const policies: Record<string, PolicyPageContent> = {
       },
       {
         title: "Analytics and marketing",
-        body: "No analytics, advertising, retargeting, or marketing cookies are currently used. If optional analytics are added later, the cookie policy and consent controls should be updated first.",
+        body: "No thia.lol analytics, advertising, retargeting, or marketing cookies are currently used. If optional analytics are added later, the cookie policy and consent controls should be updated first.",
+      },
+      {
+        title: "Third-party embeds",
+        items: [
+          "Profile embeds and rich provider cards may load third-party content only after the profile/module renders the provider surface.",
+          "Third-party providers may set or read cookies they control, receive technical request data, or apply their own tracking rules according to their policies.",
+          "thia.lol does not control provider cookies. You can use browser privacy controls, provider account controls, or avoid interacting with embeds if you do not want that provider loading.",
+        ],
       },
       {
         title: "Managing choices",
@@ -269,6 +321,7 @@ const policies: Record<string, PolicyPageContent> = {
         title: "Be legal",
         items: [
           "Do not post, upload, link to, request, or coordinate illegal content or activity.",
+          "Do not use profile modules, rich cards, embeds, creator links, music cards, galleries, or integrations to surface illegal content or evade platform rules.",
           "Do not use the service to evade lawful restrictions, court orders, or platform enforcement.",
         ],
       },
@@ -302,13 +355,23 @@ const policies: Record<string, PolicyPageContent> = {
         items: [
           "Do not flood feeds, manipulate engagement, mass-message people, or create deceptive accounts.",
           "Do not post phishing, malware, fraudulent offers, fake giveaways, or misleading links.",
+          "Do not use embedded or external provider content to hide scams, malware, trackers, or deceptive destination changes.",
         ],
       },
       {
         title: "Respect copyright and identity",
         items: [
-          "Only post content you own or have permission to use.",
+          "Only post, upload, link, embed, import, or feature content you own or have permission to use.",
           "Do not impersonate another person, brand, moderator, admin, or organization in a misleading way.",
+          "Do not make integration cards, creator modules, GitHub projects, playlists, videos, streams, or Apple/Spotify/YouTube/Twitch/GitHub identities look like they belong to you if they do not.",
+        ],
+      },
+      {
+        title: "Profiles and external content",
+        items: [
+          "Profile-level reports may consider public modules, linked content, embedded content, imported metadata, creator modules, music modules, backgrounds, and galleries.",
+          "thia.lol can moderate what appears on thia.lol, including removing modules or restricting accounts. It cannot directly moderate or remove content from third-party platforms.",
+          "If third-party content violates that provider's rules, you may also need to report it to the provider.",
         ],
       },
       {
@@ -333,14 +396,14 @@ const policies: Record<string, PolicyPageContent> = {
     sections: [
       {
         title: "Respect creative rights",
-        body: "Only post or upload content you own, created, licensed, or are otherwise allowed to use. This applies to text, images, profile media, room media, and anything else you submit.",
+        body: "Only post, upload, link, embed, import, or feature content you own, created, licensed, or are otherwise allowed to use. This applies to text, images, videos, profile backgrounds, galleries, rich cards, music cards, creator modules, room media, and anything else you submit or surface.",
       },
       {
         title: "Reporting copyright infringement",
         items: [
           `Send copyright or takedown concerns to ${contactEmail}.`,
           "Include your name or organization, contact email, and a clear description of the copyrighted work.",
-          "Include the thia.lol URL or enough detail to identify the allegedly infringing content.",
+          "Include the thia.lol URL or enough detail to identify the allegedly infringing content, including profile module, embed, gallery item, background media, creator card, or linked provider URL if relevant.",
           "Explain why you believe the use is unauthorized.",
           "Confirm that the information in your report is accurate and that you are the rights holder or authorized to act for the rights holder.",
         ],
@@ -349,6 +412,7 @@ const policies: Record<string, PolicyPageContent> = {
         title: "What may happen after a report",
         items: [
           "We may remove, hide, restrict, or keep content unavailable while reviewing a rights concern.",
+          "We may remove a module, card, background, gallery item, or link from thia.lol while leaving the underlying third-party content untouched because thia.lol does not control third-party platforms.",
           "We may contact the person who posted the content when appropriate.",
           "We may reject incomplete, abusive, or unclear reports.",
         ],
@@ -386,6 +450,7 @@ const policies: Record<string, PolicyPageContent> = {
         title: "Report flow",
         items: [
           "Logged-in users can report posts, replies, profiles, rooms, and chat messages where report tools are available.",
+          "Profile reports can include profile modules, rich cards, linked or embedded content, gallery media, creator modules, music modules, image backgrounds, video backgrounds, and integration-derived metadata.",
           "Reports ask for a category and optional context so moderators can compare the issue with the Community Guidelines.",
           "Use the Legal Contact page for sensitive safety, privacy, copyright, or account concerns that need extra context outside the report form.",
         ],
@@ -394,6 +459,7 @@ const policies: Record<string, PolicyPageContent> = {
         title: "Review",
         items: [
           "Admins and moderators may review reported content, account context, report details, and relevant public activity.",
+          "For external or embedded content, moderators can review how it appears on thia.lol and the linked destination, but third-party services remain responsible for their own hosting and enforcement.",
           "DMs are not treated as public posts, but they may be reviewed when reported, legally required, or needed for safety or security.",
           "Moderators may dismiss a report, mark it reviewed with notes, or take enforcement action.",
         ],
@@ -402,6 +468,7 @@ const policies: Record<string, PolicyPageContent> = {
         title: "Possible actions",
         items: [
           "Remove or hide content.",
+          "Remove, hide, or disable profile modules, embeds, external links, integration cards, uploaded backgrounds, or gallery items.",
           "Restrict, suspend, or close an account.",
           "Take room moderation actions such as removing content from a room, limiting participation, or enforcing room rules when those tools exist.",
           "Preserve information for safety, legal, or security review.",

@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode, Ref } from "react";
 import { motion } from "motion/react";
+import type { MotionStyle } from "motion/react";
 import { cn } from "../../lib/classNames";
 import { defaultProfileLayoutPreset } from "../../lib/profileLayoutPresets";
 import {
@@ -128,9 +129,14 @@ export function ProfileGridModule({
         "--profile-grid-row-span": String(layout.rowSpan),
       } as CSSProperties)
     : undefined;
+  const styleProps = placementStyle
+    ? { style: placementStyle as MotionStyle }
+    : {};
 
   return (
-    <div
+    <motion.div
+      layout
+      transition={{ duration: 0.22, ease: "easeOut" }}
       className={cn(
         "profile-grid-module min-h-0 min-w-0",
         profileGridModuleSizeClass(span.size),
@@ -150,10 +156,10 @@ export function ProfileGridModule({
       data-profile-module-purpose={presentation?.purpose}
       data-profile-module-span-role={presentation?.spanRole}
       data-testid={testId}
-      style={placementStyle}
+      {...styleProps}
     >
       {children}
-    </div>
+    </motion.div>
   );
 }
 
