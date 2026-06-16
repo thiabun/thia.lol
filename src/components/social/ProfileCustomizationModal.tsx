@@ -1212,7 +1212,7 @@ function ConnectionCards({
               key={connection.id}
               className={cn(
                 "min-w-0 rounded-card border p-2",
-                platformToneClass(platform.tone),
+                connectionSurfaceClass(),
               )}
             >
               <div className={cn("flex items-start justify-between gap-2", isEditing ? "mb-2" : null)}>
@@ -1323,7 +1323,7 @@ function PlatformPicker({
               type="button"
               className={cn(
                 "inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded-control border px-2 text-left text-xs font-semibold transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-                platformToneClass(platform.tone),
+                connectionSurfaceClass(),
               )}
               onClick={() => onAdd(platform.value)}
             >
@@ -2934,12 +2934,6 @@ function platformMeta(platform: ProfileConnectionPlatform) {
   };
 }
 
-function platformToneClass(tone: (typeof profileConnectionPlatforms)[number]["tone"]) {
-  return {
-    warm: "border-accent/25 bg-accent/10",
-    cool: "border-frost/25 bg-frost/10",
-    rose: "border-rose/25 bg-rose/10",
-    leaf: "border-leaf/25 bg-leaf/10",
-    neutral: "border-line bg-surface/60",
-  }[tone];
+function connectionSurfaceClass() {
+  return "border-line bg-surface/60";
 }
