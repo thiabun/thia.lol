@@ -2,7 +2,10 @@ import type { ReactNode } from "react";
 import { motion } from "motion/react";
 import { cn } from "../../lib/classNames";
 import { defaultProfileLayoutPreset } from "../../lib/profileLayoutPresets";
-import type { ProfileGridModuleSize } from "../../lib/profileModuleRegistry";
+import {
+  profileGridModuleSizeSpan,
+  type ProfileGridModuleSize,
+} from "../../lib/profileModuleRegistry";
 import type { ProfileLayoutPreset } from "../../lib/types";
 import { cardEntrance } from "../../lib/motionPresets";
 
@@ -10,7 +13,7 @@ type ProfileGridProps = {
   children: ReactNode;
   className?: string | undefined;
   layoutPreset?: ProfileLayoutPreset | undefined;
-  maxColumns?: 2 | 3;
+  maxColumns?: 2 | 5;
   testId?: string | undefined;
 };
 
@@ -18,17 +21,18 @@ export function ProfileGrid({
   children,
   className,
   layoutPreset = defaultProfileLayoutPreset,
-  maxColumns = 3,
+  maxColumns = 5,
   testId = "profile-grid",
 }: ProfileGridProps) {
   return (
     <div
       className={cn(
-        "grid min-w-0 grid-cols-1 md:grid-cols-2",
+        "grid min-w-0 grid-cols-1 md:grid-cols-2 md:auto-rows-[minmax(8rem,auto)]",
         layoutPreset === "compact" ? "gap-2" : "gap-3",
-        maxColumns === 3 ? "xl:grid-cols-3" : undefined,
+        maxColumns === 5 ? "lg:grid-cols-5" : undefined,
         className,
       )}
+      data-profile-canvas-columns={maxColumns}
       data-profile-layout-preset={layoutPreset}
       data-testid={testId}
     >
@@ -78,20 +82,24 @@ export function ProfileGridSection({
 type ProfileGridModuleProps = {
   children: ReactNode;
   className?: string | undefined;
-  size?: ProfileGridModuleSize;
+  size?: ProfileGridModuleSize | string | undefined;
   testId?: string | undefined;
 };
 
 export function ProfileGridModule({
   children,
   className,
-  size = "small",
+  size = "1x1",
   testId,
 }: ProfileGridModuleProps) {
+  const span = profileGridModuleSizeSpan(size);
+
   return (
     <div
-      className={cn("min-w-0", profileGridModuleSizeClass(size), className)}
-      data-profile-grid-size={size}
+      className={cn("min-w-0", profileGridModuleSizeClass(span.size), className)}
+      data-profile-grid-column-span={span.columns}
+      data-profile-grid-row-span={span.rows}
+      data-profile-grid-size={span.size}
       data-testid={testId}
     >
       {children}
@@ -100,16 +108,20 @@ export function ProfileGridModule({
 }
 
 function profileGridModuleSizeClass(size: ProfileGridModuleSize): string {
-  if (size === "feature") {
-    return "md:col-span-2 xl:col-span-3";
+  if (size === "3x1") {
+    return "md:col-span-2 lg:col-span-3";
   }
 
-  if (size === "wide") {
+  if (size === "2x1") {
     return "md:col-span-2";
   }
 
-  if (size === "tall") {
+  if (size === "1x2") {
     return "md:row-span-2";
+  }
+
+  if (size === "2x2") {
+    return "md:col-span-2 md:row-span-2";
   }
 
   return "";

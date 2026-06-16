@@ -5,9 +5,16 @@ import type {
   UserBadge,
 } from "./types";
 
-export type ProfileGridModuleSize = "small" | "wide" | "tall" | "feature";
+export type ProfileGridModuleSize = "1x1" | "2x1" | "1x2" | "2x2" | "3x1";
+
+export type ProfileGridModuleSpan = {
+  columns: 1 | 2 | 3;
+  rows: 1 | 2;
+  size: ProfileGridModuleSize;
+};
 
 type ProfileModuleRegistryEntry = {
+  allowedSizes: readonly ProfileGridModuleSize[];
   defaultSize: ProfileGridModuleSize;
   description: string;
   fallbackTitle: string;
@@ -15,45 +22,66 @@ type ProfileModuleRegistryEntry = {
 };
 
 const fallbackProfileModule: ProfileModuleRegistryEntry = {
-  defaultSize: "small",
+  allowedSizes: ["1x1"],
+  defaultSize: "1x1",
   description: "A compact profile module.",
   fallbackTitle: "Module",
   label: "Module",
 };
 
 export const profileModuleRegistry = {
+  profile_info: {
+    allowedSizes: ["2x2", "2x1"],
+    defaultSize: "2x2",
+    description: "Core identity, actions, stats, and essential links.",
+    fallbackTitle: "Profile info",
+    label: "Profile info",
+  },
   about: {
-    defaultSize: "wide",
+    allowedSizes: ["1x1", "2x1", "3x1"],
+    defaultSize: "2x1",
     description: "A short profile introduction.",
     fallbackTitle: "About",
     label: "About",
   },
   custom_text: {
-    defaultSize: "small",
+    allowedSizes: ["1x1", "2x1"],
+    defaultSize: "1x1",
     description: "A compact note or update.",
     fallbackTitle: "Note",
     label: "Text",
   },
   links: {
-    defaultSize: "small",
+    allowedSizes: ["1x1", "2x1"],
+    defaultSize: "1x1",
     description: "A safe list of external links.",
     fallbackTitle: "Links",
     label: "Links",
   },
   featured_badges: {
-    defaultSize: "small",
+    allowedSizes: ["1x1", "2x1"],
+    defaultSize: "1x1",
     description: "A shelf of earned visible badges.",
     fallbackTitle: "Featured badges",
     label: "Badges",
   },
-  featured: {
-    defaultSize: "wide",
-    description: "A selected post and room highlight.",
-    fallbackTitle: "Featured",
-    label: "Featured",
+  featured_post: {
+    allowedSizes: ["1x1", "2x1", "3x1"],
+    defaultSize: "2x1",
+    description: "A selected post highlight.",
+    fallbackTitle: "Featured post",
+    label: "Featured post",
+  },
+  featured_room: {
+    allowedSizes: ["1x1", "2x1", "3x1"],
+    defaultSize: "2x1",
+    description: "A selected room highlight.",
+    fallbackTitle: "Featured room",
+    label: "Featured room",
   },
   activity: {
-    defaultSize: "wide",
+    allowedSizes: ["2x1", "3x1"],
+    defaultSize: "3x1",
     description: "Feed, replies, and rooms.",
     fallbackTitle: "Activity",
     label: "Activity",
@@ -86,40 +114,107 @@ export function profileModuleGridSize(
   layoutPreset: ProfileLayoutPreset = "balanced",
   index = 0,
 ): ProfileGridModuleSize {
+  const definition = getProfileModuleDefinition(module.type);
+  const requestedSize = normalizeProfileGridModuleSize(module.config.canvasSize);
+
+  if (requestedSize && definition.allowedSizes.includes(requestedSize)) {
+    return requestedSize;
+  }
+
   if (layoutPreset === "compact") {
     return module.type === "about" ||
       module.type === "activity" ||
-      module.type === "featured"
-      ? "wide"
-      : "small";
+      module.type === "featured_post" ||
+      module.type === "featured_room"
+      ? definition.allowedSizes.includes("2x1")
+        ? "2x1"
+        : definition.defaultSize
+      : definition.defaultSize;
   }
 
   if (
     layoutPreset === "showcase" &&
     index === 0 &&
-    (module.type === "about" || module.type === "featured")
+    (module.type === "about" ||
+      module.type === "featured_post" ||
+      module.type === "featured_room")
   ) {
-    return "feature";
+    return definition.allowedSizes.includes("3x1") ? "3x1" : definition.defaultSize;
   }
 
   if (module.type === "links" && (module.config.links?.length ?? 0) > 4) {
-    return "wide";
+    return "2x1";
   }
 
   if (
     module.type === "featured_badges" &&
     (module.config.userBadgeIds?.length ?? 0) > 6
   ) {
-    return "wide";
+    return "2x1";
   }
 
-  return getProfileModuleDefinition(module.type).defaultSize;
+  return definition.defaultSize;
+}
+
+export function profileModuleGridSpan(
+  module: ProfileModule,
+  layoutPreset: ProfileLayoutPreset = "balanced",
+  index = 0,
+): ProfileGridModuleSpan {
+  return profileGridModuleSizeSpan(
+    profileModuleGridSize(module, layoutPreset, index),
+  );
+}
+
+export function normalizeProfileGridModuleSize(
+  value: unknown,
+  fallback?: ProfileGridModuleSize,
+): ProfileGridModuleSize | undefined {
+  if (
+    value === "1x1" ||
+    value === "2x1" ||
+    value === "1x2" ||
+    value === "2x2" ||
+    value === "3x1"
+  ) {
+    return value;
+  }
+
+  return fallback;
+}
+
+export function profileGridModuleSizeSpan(
+  value: unknown,
+): ProfileGridModuleSpan {
+  const size = normalizeProfileGridModuleSize(value, "1x1") ?? "1x1";
+
+  if (size === "2x1") {
+    return { columns: 2, rows: 1, size };
+  }
+
+  if (size === "1x2") {
+    return { columns: 1, rows: 2, size };
+  }
+
+  if (size === "2x2") {
+    return { columns: 2, rows: 2, size };
+  }
+
+  if (size === "3x1") {
+    return { columns: 3, rows: 1, size };
+  }
+
+  return { columns: 1, rows: 1, size };
 }
 
 export function profileModuleHasContent(
   module: ProfileModule,
   badges: UserBadge[],
 ): boolean {
+  if (module.type === "profile_info") {
+    return true;
+  }
+
   if (module.type === "links") {
     return (module.config.links ?? []).length > 0;
   }
@@ -132,7 +227,7 @@ export function profileModuleHasContent(
     return true;
   }
 
-  if (module.type === "featured") {
+  if (module.type === "featured_post" || module.type === "featured_room") {
     return true;
   }
 
@@ -176,7 +271,11 @@ export function profileModuleSummary(module: ProfileModule): string {
     return getProfileModuleDefinition(module.type).description;
   }
 
-  if (module.type === "featured") {
+  if (
+    module.type === "profile_info" ||
+    module.type === "featured_post" ||
+    module.type === "featured_room"
+  ) {
     return getProfileModuleDefinition(module.type).description;
   }
 

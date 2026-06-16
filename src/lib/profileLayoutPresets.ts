@@ -37,6 +37,8 @@ export function isProfileLayoutPreset(value: unknown): value is ProfileLayoutPre
 
 export function profileLayoutMaxColumns(
   preset: ProfileLayoutPreset,
-): 2 | 3 {
-  return preset === "compact" ? 2 : 3;
+): 5 {
+  void preset;
+
+  return 5;
 }

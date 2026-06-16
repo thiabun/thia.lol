@@ -67,7 +67,7 @@ import {
 import { ApiClientError } from "../lib/apiClient";
 import { cn } from "../lib/classNames";
 import { formatShortDate } from "../lib/dates";
-import { cardEntrance, pageEntrance } from "../lib/motionPresets";
+import { pageEntrance } from "../lib/motionPresets";
 import { formatCountWithUnit } from "../lib/pluralize";
 import { defaultProfileLayoutPreset } from "../lib/profileLayoutPresets";
 import { safeProfileImageUrl } from "../lib/profileMedia";
@@ -209,6 +209,10 @@ export function ProfilePage() {
   );
   const profileLayoutPreset =
     profile?.profileLayoutPreset ?? defaultProfileLayoutPreset;
+  const profileInfoModule = useMemo(
+    () => createSyntheticProfileInfoModule(),
+    [],
+  );
   const profileMissing =
     profileState.error instanceof ApiClientError && profileState.error.status === 404;
   const isOwnProfile =
@@ -569,18 +573,26 @@ export function ProfilePage() {
       repliesState.error ??
       roomsState.error,
   });
-  const hasFeaturedContent = Boolean(profile.featuredPost || profile.featuredRoom);
   const profileSpaceModules = publicModules.filter((module) => {
     if (module.type === "activity") {
       return showActivityModule;
     }
 
-    if (module.type === "featured") {
-      return hasFeaturedContent;
+    if (module.type === "featured_post") {
+      return Boolean(profile.featuredPost);
+    }
+
+    if (module.type === "featured_room") {
+      return Boolean(profile.featuredRoom);
+    }
+
+    if (module.type === "profile_info") {
+      return false;
     }
 
     return true;
   });
+  const profileCanvasModules = [profileInfoModule, ...profileSpaceModules];
 
   return (
     <motion.div
@@ -596,54 +608,6 @@ export function ProfilePage() {
           description={profile.bio}
           path={`/@${profile.user.handle}`}
         />
-        <ProfileHeader
-          profile={profile}
-          featuredBadges={featuredBadges}
-          followError={activeFollowError}
-          followPosting={followPosting}
-          isOwnProfile={isOwnProfile}
-          messageToHandle={
-            status === "authenticated" &&
-            !isOwnProfile &&
-            !profile.blockedByMe &&
-            profile.isMoot
-              ? profile.user.handle
-              : undefined
-          }
-          profileControlBusy={profileControlBusy}
-          profileControlError={activeProfileControlError}
-          profileControlMessage={activeProfileControlMessage}
-          onBlockToggle={
-            status === "authenticated" && !isOwnProfile
-              ? handleBlockToggle
-              : undefined
-          }
-          onFollowToggle={handleFollowToggle}
-          onEditProfile={
-            isOwnProfile ? () => void handleOpenCustomization() : undefined
-          }
-          onMuteToggle={
-            status === "authenticated" && !isOwnProfile ? handleMuteToggle : undefined
-          }
-          onOpenPanel={setActivePanel}
-          showChatHint={
-            status === "authenticated" &&
-            !isOwnProfile &&
-            !profile.blockedByMe &&
-            !profile.isMoot
-          }
-        />
-        {!isOwnProfile ? (
-          <motion.div variants={cardEntrance} custom={1} initial="hidden" animate="show">
-            <ReportForm
-              targetType="profile"
-              targetId={profile.user.id}
-              reportedUserId={profile.user.id}
-              title="Report profile"
-              explainer={`This reports @${profile.user.handle}'s profile to moderators.`}
-            />
-          </motion.div>
-        ) : null}
         {isOwnProfile && customizingProfile ? (
           <Suspense
             fallback={
@@ -693,13 +657,59 @@ export function ProfilePage() {
           isOwnProfile={isOwnProfile}
           layoutPreset={profileLayoutPreset}
           loading={modulesState.loading}
-          modules={profileSpaceModules}
+          modules={profileCanvasModules}
           renderModuleContent={(module) => {
-            if (module.type === "featured") {
+            if (module.type === "profile_info") {
               return (
-                <FeaturedModuleCard
+                <ProfileInfoModule
+                  activeFollowError={activeFollowError}
+                  activeProfileControlError={activeProfileControlError}
+                  activeProfileControlMessage={activeProfileControlMessage}
+                  featuredBadges={featuredBadges}
+                  followPosting={followPosting}
+                  isOwnProfile={isOwnProfile}
                   profile={profile}
-                  title={module.title ?? "Featured"}
+                  profileControlBusy={profileControlBusy}
+                  showChatHint={
+                    status === "authenticated" &&
+                    !isOwnProfile &&
+                    !profile.blockedByMe &&
+                    !profile.isMoot
+                  }
+                  status={status}
+                  onBlockToggle={
+                    status === "authenticated" && !isOwnProfile
+                      ? handleBlockToggle
+                      : undefined
+                  }
+                  onEditProfile={
+                    isOwnProfile ? () => void handleOpenCustomization() : undefined
+                  }
+                  onFollowToggle={handleFollowToggle}
+                  onMuteToggle={
+                    status === "authenticated" && !isOwnProfile
+                      ? handleMuteToggle
+                      : undefined
+                  }
+                  onOpenPanel={setActivePanel}
+                />
+              );
+            }
+
+            if (module.type === "featured_post" && profile.featuredPost) {
+              return (
+                <FeaturedPostModuleCard
+                  profile={profile}
+                  title={module.title ?? "Featured post"}
+                />
+              );
+            }
+
+            if (module.type === "featured_room" && profile.featuredRoom) {
+              return (
+                <FeaturedRoomModuleCard
+                  profile={profile}
+                  title={module.title ?? "Featured room"}
                 />
               );
             }
@@ -769,6 +779,21 @@ function ProfileCustomizationLoadingSheet({ onClose }: { onClose: () => void }) 
   );
 }
 
+function createSyntheticProfileInfoModule(): ProfileModule {
+  return {
+    id: -1,
+    type: "profile_info",
+    title: "Profile info",
+    config: {},
+    visibility: "public",
+    position: 0,
+    status: "active",
+    schemaVersion: 1,
+    createdAt: null,
+    updatedAt: null,
+  };
+}
+
 function mergeProfileFeed(posts: Post[], reblogs: Post[]): Post[] {
   const seen = new Set<number>();
   const feed: Post[] = [];
@@ -836,29 +861,131 @@ function eligibleFeaturedRooms(rooms: Room[], userId: number | undefined): Room[
 function ProfilePersonalBackdrop({ profile }: { profile: Profile }) {
   const imageUrl =
     safeProfileImageUrl(profile.profileBackground) ?? safeProfileImageUrl(profile.bannerUrl);
-
-  if (!imageUrl) {
-    return null;
-  }
+  const blurTreatment = defaultProfileBackgroundBlurTreatment;
 
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-x-[-0.75rem] top-[-1.25rem] z-0 h-64 overflow-hidden rounded-[1.25rem] sm:inset-x-[-1.5rem] sm:h-80"
+      className="pointer-events-none absolute inset-x-[-0.75rem] inset-y-[-1.25rem] z-0 overflow-hidden rounded-[1.25rem] sm:inset-x-[-1.5rem] sm:inset-y-[-1.5rem]"
+      data-profile-background-blur={blurTreatment}
+      data-profile-background-source={imageUrl ? "image" : "fallback"}
       data-testid="profile-personal-backdrop"
     >
-      <img
-        alt=""
-        className="size-full scale-105 object-cover opacity-[0.18] blur-xl sm:opacity-[0.2]"
-        src={imageUrl}
-      />
-      <div className="absolute inset-0 bg-gradient-to-b from-canvas/20 via-canvas/76 to-canvas" />
+      {imageUrl ? (
+        <img
+          alt=""
+          className={cn(
+            "absolute inset-0 size-full scale-105 object-cover opacity-[0.2] sm:opacity-[0.24]",
+            profileBackgroundBlurClass(blurTreatment),
+          )}
+          src={imageUrl}
+        />
+      ) : (
+        <div className="absolute inset-0 bg-page-wash" />
+      )}
+      <div className="absolute inset-0 bg-gradient-to-b from-canvas/82 via-canvas/68 to-canvas/94" />
       <div className="absolute inset-0 bg-gradient-to-r from-surface/82 via-transparent to-surface/82" />
     </div>
   );
 }
 
-function FeaturedModuleCard({
+type ProfileBackgroundBlurTreatment = "none" | "soft" | "medium" | "strong";
+
+const defaultProfileBackgroundBlurTreatment: ProfileBackgroundBlurTreatment = "medium";
+
+function profileBackgroundBlurClass(
+  treatment: ProfileBackgroundBlurTreatment,
+): string {
+  if (treatment === "soft") {
+    return "blur-sm";
+  }
+
+  if (treatment === "strong") {
+    return "blur-2xl";
+  }
+
+  if (treatment === "none") {
+    return "";
+  }
+
+  return "blur-xl";
+}
+
+type ProfileInfoModuleProps = {
+  activeFollowError?: string | undefined;
+  activeProfileControlError?: string | undefined;
+  activeProfileControlMessage?: string | undefined;
+  featuredBadges: UserBadge[];
+  followPosting: boolean;
+  isOwnProfile: boolean;
+  onBlockToggle?: (() => Promise<void> | void) | undefined;
+  onEditProfile?: (() => void) | undefined;
+  onFollowToggle: () => void;
+  onMuteToggle?: (() => Promise<void> | void) | undefined;
+  onOpenPanel: (panel: "followers" | "following" | "badges") => void;
+  profile: Profile;
+  profileControlBusy?: "block" | "mute" | undefined;
+  showChatHint: boolean;
+  status: string;
+};
+
+function ProfileInfoModule({
+  activeFollowError,
+  activeProfileControlError,
+  activeProfileControlMessage,
+  featuredBadges,
+  followPosting,
+  isOwnProfile,
+  onBlockToggle,
+  onEditProfile,
+  onFollowToggle,
+  onMuteToggle,
+  onOpenPanel,
+  profile,
+  profileControlBusy,
+  showChatHint,
+  status,
+}: ProfileInfoModuleProps) {
+  return (
+    <div className="min-w-0 space-y-3" data-testid="profile-module-profile-info">
+      <ProfileHeader
+        profile={profile}
+        featuredBadges={featuredBadges}
+        followError={activeFollowError}
+        followPosting={followPosting}
+        isOwnProfile={isOwnProfile}
+        messageToHandle={
+          status === "authenticated" &&
+          !isOwnProfile &&
+          !profile.blockedByMe &&
+          profile.isMoot
+            ? profile.user.handle
+            : undefined
+        }
+        profileControlBusy={profileControlBusy}
+        profileControlError={activeProfileControlError}
+        profileControlMessage={activeProfileControlMessage}
+        onBlockToggle={onBlockToggle}
+        onFollowToggle={onFollowToggle}
+        onEditProfile={onEditProfile}
+        onMuteToggle={onMuteToggle}
+        onOpenPanel={onOpenPanel}
+        showChatHint={showChatHint}
+      />
+      {!isOwnProfile ? (
+        <ReportForm
+          targetType="profile"
+          targetId={profile.user.id}
+          reportedUserId={profile.user.id}
+          title="Report profile"
+          explainer={`This reports @${profile.user.handle}'s profile to moderators.`}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function FeaturedPostModuleCard({
   profile,
   title,
 }: {
@@ -866,18 +993,42 @@ function FeaturedModuleCard({
   title: string;
 }) {
   const featuredPost = profile.featuredPost;
+
+  return (
+    <article
+      className="h-full min-w-0 rounded-card border border-line bg-surface/68 p-3"
+      data-testid="profile-module-featured-post"
+    >
+      <h3 className="text-sm font-semibold text-text">{title}</h3>
+      {featuredPost ? (
+        <div className="mt-3">
+          <FeaturedPostCard post={featuredPost} />
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function FeaturedRoomModuleCard({
+  profile,
+  title,
+}: {
+  profile: Profile;
+  title: string;
+}) {
   const featuredRoom = profile.featuredRoom;
 
   return (
     <article
       className="h-full min-w-0 rounded-card border border-line bg-surface/68 p-3"
-      data-testid="profile-module-featured"
+      data-testid="profile-module-featured-room"
     >
       <h3 className="text-sm font-semibold text-text">{title}</h3>
-      <div className="mt-3 grid gap-3 lg:grid-cols-2">
-        {featuredPost ? <FeaturedPostCard post={featuredPost} /> : null}
-        {featuredRoom ? <FeaturedRoomCard room={featuredRoom} /> : null}
-      </div>
+      {featuredRoom ? (
+        <div className="mt-3">
+          <FeaturedRoomCard room={featuredRoom} />
+        </div>
+      ) : null}
     </article>
   );
 }

@@ -108,10 +108,12 @@ export type ProfileBadgesResult = {
 };
 
 export type ProfileModuleType =
+  | "profile_info"
   | "about"
   | "links"
   | "featured_badges"
-  | "featured"
+  | "featured_post"
+  | "featured_room"
   | "custom_text"
   | "activity";
 
@@ -126,6 +128,7 @@ export type ProfileModuleLink = {
 
 export type ProfileModuleConfig = {
   body?: string;
+  canvasSize?: string;
   link?: ProfileModuleLink;
   links?: ProfileModuleLink[];
   userBadgeIds?: number[];

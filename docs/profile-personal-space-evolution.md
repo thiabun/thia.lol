@@ -462,13 +462,13 @@ Current implementation is static-first React backed by PHP/MySQL APIs. The profi
 
 Implemented public profile behavior:
 
-- Profile header shows avatar, display name, handle, bio, location, joined date, optional banner, optional background image treatment, structured Connections, featured badges, and only the essential social stats: Likes, Followers, and Following.
+- Profile info is the first canvas module. It shows avatar, display name, handle, bio, location, joined date, optional banner, structured Connections, featured badges, owner/visitor actions, and only the essential social stats: Likes, Followers, and Following.
 - Avatar is stored as `profiles.avatar_url`; banner/background/accent/theme fields live on `profiles` after the profile customization migration.
 - Bio and location are plain text with length validation.
 - Connections are structured JSON in `profiles.links`, with supported platform types for Website, YouTube, Twitch, TikTok, Instagram, X/Twitter, Bluesky, GitHub, Discord, and Spotify.
 - Badges use real persisted badge definitions and user grants. Up to four visible badges can be featured in the profile header.
 - Followers and Following are compact pills that open focused panels instead of full profile tabs.
-- Activity is a profile module containing Feed, Replies, and Rooms. Feed merges top-level posts and reblogs; Replies shows replies; Rooms shows public rooms associated with the profile.
+- Featured post, featured room, and Activity are profile modules. Activity contains Feed, Replies, and Rooms. Feed merges top-level posts and reblogs; Replies shows replies; Rooms shows public rooms associated with the profile.
 - Profiles can be reported by logged-in users, except self-report is hidden in the UI.
 - Follow, unfollow, block, unblock, mute, unmute, and remove-follower foundations exist. Block/mute/remove-follower depend on the pending production migration `20260611_0001_add_user_blocks_and_mutes.sql`.
 - Message affordance appears only for moot relationships and is suppressed when the current user has blocked the profile.
@@ -701,6 +701,50 @@ section:
   layout controls.
 - Featured only renders publicly when the module is active/public and at least
   one eligible featured post or room is available.
+
+### Implementation Note - 2026-06-16 Profiles v3 Modular Canvas Grid
+
+Issue [#38](https://github.com/thiabun/thia.lol/issues/38) supersedes the
+earlier three-column grid foundation with a compact 5x5-ready canvas model:
+
+- Desktop profile modules now render on a controlled five-column canvas. Tablet
+  remains two columns, and mobile remains a single ordered stack with desktop
+  spans ignored.
+- Module spans are allowlisted tokens: `1x1`, `2x1`, `1x2`, `2x2`, and `3x1`.
+  Unknown or invalid span values fall back to `1x1`; users cannot provide CSS,
+  arbitrary coordinates, or custom grid rules.
+- `profile_info` is a synthetic frontend-only canvas module and always appears
+  first. It carries the core identity surface, banner, avatar, name, handle,
+  bio, actions, Likes/Followers/Following, and essential links/badges. It is
+  not accepted by the backend module APIs and cannot be hidden or reordered in
+  this pass.
+- Featured content is split into real built-in modules:
+  `featured_post` and `featured_room`. The existing
+  `profiles.featured_post_id` and `profiles.featured_room_id` fields remain the
+  storage source, and `PATCH /api/me/profile/featured` remains the owner update
+  endpoint.
+- Legacy combined `featured` module rows are retired for rendering and ordering.
+  The API derives initial split built-in preferences from a legacy row's order
+  and visibility/status so old preferences fail safely instead of blocking the
+  new module model.
+- The full profile surface now has a page-level background treatment using the
+  existing safe `profile_background` URL, falling back to banner media and then
+  the default Sunveil/Frostveil surface. The default blur model is `medium`,
+  with readable overlays applied above uploaded media.
+- Public empty featured modules do not render. Owners continue to manage
+  featured post and room selection from the existing lazy-loaded Customize
+  Profile flow, now through separate built-in module tiles.
+
+Deferred after this pass:
+
+- Manual placement, drag-and-drop, grid coordinates, and owner-selected module
+  span controls. Future placement controls must remain preset/allowlist based
+  and keep keyboard move controls as the baseline.
+- Video or animated profile backgrounds. Those need separate media policy,
+  poster, duration, file-size, reduced-motion, mobile performance, storage, and
+  moderation planning before upload or rendering work.
+- New music, gallery, marketplace, custom theme, analytics, monetization, or
+  arbitrary embed behavior.
 
 Current limitations:
 

@@ -154,10 +154,17 @@ const moduleTypes: Array<{
     icon: BadgeCheck,
   },
   {
-    type: "featured",
-    label: getProfileModuleDefinition("featured").label,
-    description: getProfileModuleDefinition("featured").description,
+    type: "featured_post",
+    label: getProfileModuleDefinition("featured_post").label,
+    description: getProfileModuleDefinition("featured_post").description,
     icon: Pin,
+    addable: false,
+  },
+  {
+    type: "featured_room",
+    label: getProfileModuleDefinition("featured_room").label,
+    description: getProfileModuleDefinition("featured_room").description,
+    icon: Radio,
     addable: false,
   },
   {
@@ -174,6 +181,10 @@ const visibilityOptions: Array<{ value: ProfileModuleVisibility; label: string }
   { value: "hidden", label: "Hidden" },
   { value: "draft", label: "Draft" },
 ];
+
+function isFeaturedContentModule(type: ProfileModuleType): boolean {
+  return type === "featured_post" || type === "featured_room";
+}
 
 type CustomizationSection =
   | "identity"
@@ -608,7 +619,7 @@ export function ProfileCustomizationModal({
     try {
       const shouldSaveModule = selectedModule.id < 0 || selectedModuleDirty;
       const shouldSaveFeatured =
-        selectedModule.type === "featured" && featuredDirty;
+        isFeaturedContentModule(selectedModule.type) && featuredDirty;
 
       let updatedModules: ProfileModule[] | undefined;
 
@@ -642,7 +653,9 @@ export function ProfileCustomizationModal({
       setModuleDirty({});
       setOrderDirty(false);
       setModuleMessage(
-        selectedModule.type === "featured" ? "Featured module saved" : "Module saved",
+        isFeaturedContentModule(selectedModule.type)
+          ? `${moduleTypeMeta(selectedModule.type).label} module saved`
+          : "Module saved",
       );
     } catch (caught) {
       setModuleFormError(
@@ -1349,6 +1362,7 @@ type FeaturedContentEditorProps = {
   featuredRoomId: number | null;
   featuredRoomQuery: string;
   loading: boolean;
+  mode?: "post" | "room";
   postOptions: Post[];
   roomOptions: Room[];
   onClearPost: () => void;
@@ -1369,6 +1383,7 @@ function FeaturedContentEditor({
   featuredRoomId,
   featuredRoomQuery,
   loading,
+  mode = "post",
   postOptions,
   roomOptions,
   onClearPost,
@@ -1396,7 +1411,9 @@ function FeaturedContentEditor({
       <div>
         <h3 className="text-base font-semibold text-text">Featured content</h3>
         <p className="mt-1 text-sm leading-5 text-muted">
-          Highlight one public post and one public room in this module.
+          {mode === "post"
+            ? "Highlight one public post in this module."
+            : "Highlight one eligible public room in this module."}
         </p>
       </div>
 
@@ -1418,29 +1435,33 @@ function FeaturedContentEditor({
         />
       ) : null}
 
-      <div className="grid gap-3 lg:grid-cols-2">
-        <FeaturedPostPicker
-          busy={busy}
-          options={visiblePosts}
-          query={featuredPostQuery}
-          selectedPost={selectedPost}
-          selectedPostId={featuredPostId}
-          totalCount={postOptions.length}
-          onClear={onClearPost}
-          onQueryChange={onPostQueryChange}
-          onSelect={onSelectPost}
-        />
-        <FeaturedRoomPicker
-          busy={busy}
-          options={visibleRooms}
-          query={featuredRoomQuery}
-          selectedRoom={selectedRoom}
-          selectedRoomId={featuredRoomId}
-          totalCount={roomOptions.length}
-          onClear={onClearRoom}
-          onQueryChange={onRoomQueryChange}
-          onSelect={onSelectRoom}
-        />
+      <div className="grid gap-3">
+        {mode === "post" ? (
+          <FeaturedPostPicker
+            busy={busy}
+            options={visiblePosts}
+            query={featuredPostQuery}
+            selectedPost={selectedPost}
+            selectedPostId={featuredPostId}
+            totalCount={postOptions.length}
+            onClear={onClearPost}
+            onQueryChange={onPostQueryChange}
+            onSelect={onSelectPost}
+          />
+        ) : null}
+        {mode === "room" ? (
+          <FeaturedRoomPicker
+            busy={busy}
+            options={visibleRooms}
+            query={featuredRoomQuery}
+            selectedRoom={selectedRoom}
+            selectedRoomId={featuredRoomId}
+            totalCount={roomOptions.length}
+            onClear={onClearRoom}
+            onQueryChange={onRoomQueryChange}
+            onSelect={onSelectRoom}
+          />
+        ) : null}
       </div>
     </section>
   );
@@ -1841,7 +1862,8 @@ function ModulesEditorSection({
                   expanded={selectedModuleId === module.id}
                   featuredContent={featuredContent}
                   featuredDirty={
-                    selectedModuleId === module.id && module.type === "featured"
+                    selectedModuleId === module.id &&
+                    isFeaturedContentModule(module.type)
                       ? featuredDirty
                       : false
                   }
@@ -2019,7 +2041,8 @@ function ModuleTile({
   const moduleType = moduleTypeMeta(module.type);
   const Icon = moduleType.icon;
   const title = module.title || moduleType.label;
-  const isBuiltInModule = module.type === "activity" || module.type === "featured";
+  const isBuiltInModule =
+    module.type === "activity" || isFeaturedContentModule(module.type);
   const canSaveModule = module.id < 0 || selectedDirty || featuredDirty;
   const shouldReduceMotion = useReducedMotion();
 
@@ -2224,8 +2247,12 @@ function ModuleTypeFields({
     );
   }
 
-  if (module.type === "featured") {
-    return <FeaturedContentEditor {...featuredContent} />;
+  if (module.type === "featured_post") {
+    return <FeaturedContentEditor {...featuredContent} mode="post" />;
+  }
+
+  if (module.type === "featured_room") {
+    return <FeaturedContentEditor {...featuredContent} mode="room" />;
   }
 
   if (module.type === "links") {
@@ -2432,9 +2459,10 @@ function PreviewPanel({
     avatarUrl: form.avatarUrl || null,
   };
   const featuredBadges = badges.filter((badge) => badge.featuredOrder !== null).slice(0, 4);
-  const hasFeaturedPreview = Boolean(featuredPost || featuredRoom);
   const publicPreviewModules = previewModules(drafts).filter(
-    (module) => module.type !== "featured" || hasFeaturedPreview,
+    (module) =>
+      (module.type !== "featured_post" || Boolean(featuredPost)) &&
+      (module.type !== "featured_room" || Boolean(featuredRoom)),
   );
 
   return (
@@ -2546,11 +2574,15 @@ function PreviewPanel({
             maxColumns={2}
             modules={publicPreviewModules}
             renderModuleContent={(module) =>
-              module.type === "featured" ? (
-                <FeaturedPreviewModule
+              module.type === "featured_post" ? (
+                <FeaturedPostPreviewModule
                   featuredPost={featuredPost}
+                  title={module.title ?? "Featured post"}
+                />
+              ) : module.type === "featured_room" ? (
+                <FeaturedRoomPreviewModule
                   featuredRoom={featuredRoom}
-                  title={module.title ?? "Featured"}
+                  title={module.title ?? "Featured room"}
                 />
               ) : undefined
             }
@@ -2565,19 +2597,17 @@ function PreviewPanel({
   );
 }
 
-function FeaturedPreviewModule({
+function FeaturedPostPreviewModule({
   featuredPost,
-  featuredRoom,
   title,
 }: {
   featuredPost: Post | null;
-  featuredRoom: Room | null;
   title: string;
 }) {
   return (
     <article
       className="h-full min-w-0 rounded-card border border-line bg-surface/68 p-3"
-      data-testid="profile-featured-preview"
+      data-testid="profile-featured-post-preview"
     >
       <h3 className="text-sm font-semibold text-text">{title}</h3>
       <div className="mt-2 space-y-2">
@@ -2592,6 +2622,25 @@ function FeaturedPreviewModule({
             </p>
           </div>
         ) : null}
+      </div>
+    </article>
+  );
+}
+
+function FeaturedRoomPreviewModule({
+  featuredRoom,
+  title,
+}: {
+  featuredRoom: Room | null;
+  title: string;
+}) {
+  return (
+    <article
+      className="h-full min-w-0 rounded-card border border-line bg-surface/68 p-3"
+      data-testid="profile-featured-room-preview"
+    >
+      <h3 className="text-sm font-semibold text-text">{title}</h3>
+      <div className="mt-2 space-y-2">
         {featuredRoom ? (
           <div className="rounded-card border border-line bg-canvas/55 p-2.5">
             <p className="flex items-center gap-2 text-xs font-semibold uppercase text-muted">
@@ -2679,7 +2728,7 @@ function createDraftModule(type: ProfileModuleType): ProfileModule {
 }
 
 function defaultConfig(type: ProfileModuleType): ProfileModuleConfig {
-  if (type === "activity" || type === "featured") {
+  if (type === "activity" || isFeaturedContentModule(type) || type === "profile_info") {
     return {};
   }
 
@@ -2705,7 +2754,11 @@ function moduleInput(module: ProfileModule): CreateProfileModuleInput {
 }
 
 function normalizedConfig(module: ProfileModule): ProfileModuleConfig {
-  if (module.type === "activity" || module.type === "featured") {
+  if (
+    module.type === "activity" ||
+    isFeaturedContentModule(module.type) ||
+    module.type === "profile_info"
+  ) {
     return {};
   }
 
@@ -2732,7 +2785,11 @@ function validateModuleDraft(module: ProfileModule, badges: UserBadge[]): string
     return titleError;
   }
 
-  if (module.type === "activity" || module.type === "featured") {
+  if (
+    module.type === "activity" ||
+    isFeaturedContentModule(module.type) ||
+    module.type === "profile_info"
+  ) {
     return undefined;
   }
 

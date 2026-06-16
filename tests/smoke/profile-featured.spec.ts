@@ -21,8 +21,9 @@ test("visitor profile renders featured post and room through the module grid", a
     featuredPost: postOption(),
     featuredRoom: roomOption(),
     modules: [
-      featuredModule({ position: 1, title: "Pinned highlights" }),
-      aboutModule({ position: 2 }),
+      featuredPostModule({ position: 1, title: "Pinned post" }),
+      featuredRoomModule({ position: 2, title: "Pinned room" }),
+      aboutModule({ position: 3 }),
     ],
   });
   await acknowledgeCookieNotice(page);
@@ -33,22 +34,32 @@ test("visitor profile renders featured post and room through the module grid", a
 
   const modules = page.getByTestId("profile-modules");
   await expect(modules).toBeVisible();
-  await expect(modules.getByTestId("profile-grid-module-featured")).toBeVisible();
-  await expect(modules.getByTestId("profile-grid-module-featured")).toHaveAttribute(
+  await expect(modules.getByTestId("profile-grid-module-featured_post")).toBeVisible();
+  await expect(modules.getByTestId("profile-grid-module-featured_post")).toHaveAttribute(
     "data-profile-grid-size",
-    "wide",
+    "2x1",
+  );
+  await expect(modules.getByTestId("profile-grid-module-featured_room")).toBeVisible();
+  await expect(modules.getByTestId("profile-grid-module-featured_room")).toHaveAttribute(
+    "data-profile-grid-size",
+    "2x1",
   );
 
-  const featured = modules.getByTestId("profile-module-featured");
-  await expect(featured).toBeVisible();
-  await expect(featured.getByText("Pinned highlights", { exact: true })).toBeVisible();
-  await expect(featured.getByRole("heading", { name: "Featured post" })).toBeVisible();
-  await expect(featured).toContainText("A launch note worth keeping close.");
-  await expect(featured.getByRole("heading", { name: "Featured room" })).toBeVisible();
-  await expect(featured).toContainText("General");
+  const featuredPost = modules.getByTestId("profile-module-featured-post");
+  await expect(featuredPost).toBeVisible();
+  await expect(featuredPost.getByText("Pinned post", { exact: true })).toBeVisible();
+  await expect(featuredPost.getByRole("heading", { name: "Featured post" })).toBeVisible();
+  await expect(featuredPost).toContainText("A launch note worth keeping close.");
+
+  const featuredRoom = modules.getByTestId("profile-module-featured-room");
+  await expect(featuredRoom).toBeVisible();
+  await expect(featuredRoom.getByText("Pinned room", { exact: true })).toBeVisible();
+  await expect(featuredRoom.getByRole("heading", { name: "Featured room" })).toBeVisible();
+  await expect(featuredRoom).toContainText("General");
   await expectTextOrder(modules, [
-    "Pinned highlights",
+    "Pinned post",
     "A launch note worth keeping close.",
+    "Pinned room",
     "About this space",
   ]);
 });
@@ -58,13 +69,14 @@ test("visitor without featured content sees no fake featured module", async ({ p
     authenticated: false,
     featuredPost: null,
     featuredRoom: null,
-    modules: [featuredModule()],
+    modules: [featuredPostModule(), featuredRoomModule()],
   });
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
   await expect(page.getByTestId("profile-featured-content")).toHaveCount(0);
-  await expect(page.getByTestId("profile-grid-module-featured")).toHaveCount(0);
+  await expect(page.getByTestId("profile-grid-module-featured_post")).toHaveCount(0);
+  await expect(page.getByTestId("profile-grid-module-featured_room")).toHaveCount(0);
   await expect(page.getByText("Feature a post")).toHaveCount(0);
   await expect(page.getByText("Feature a room")).toHaveCount(0);
 });
@@ -74,12 +86,16 @@ test("visitor hidden featured module preference suppresses featured content", as
     authenticated: false,
     featuredPost: postOption(),
     featuredRoom: roomOption(),
-    modules: [featuredModule({ visibility: "hidden" })],
+    modules: [
+      featuredPostModule({ visibility: "hidden" }),
+      featuredRoomModule({ visibility: "hidden" }),
+    ],
   });
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await expect(page.getByTestId("profile-grid-module-featured")).toHaveCount(0);
+  await expect(page.getByTestId("profile-grid-module-featured_post")).toHaveCount(0);
+  await expect(page.getByTestId("profile-grid-module-featured_room")).toHaveCount(0);
   await expect(page.getByText("A launch note worth keeping close.")).toHaveCount(0);
   await expect(page.getByText("General")).toHaveCount(0);
 });
@@ -89,7 +105,7 @@ test("visitor featured module respects profile layout and order", async ({ page 
     authenticated: false,
     featuredPost: postOption(),
     featuredRoom: null,
-    modules: [aboutModule({ position: 1 }), featuredModule({ position: 2 })],
+    modules: [aboutModule({ position: 1 }), featuredPostModule({ position: 2 })],
     profileOverrides: { profileLayoutPreset: "showcase" },
   });
   await acknowledgeCookieNotice(page);
@@ -98,13 +114,14 @@ test("visitor featured module respects profile layout and order", async ({ page 
   const modules = page.getByTestId("profile-modules");
   const grid = modules.getByTestId("profile-module-grid");
   await expect(grid).toHaveAttribute("data-profile-layout-preset", "showcase");
-  await expect(modules.getByTestId("profile-grid-module-featured")).toHaveAttribute(
+  await expect(modules.getByTestId("profile-grid-module-featured_post")).toHaveAttribute(
     "data-profile-grid-size",
-    "wide",
+    "2x1",
   );
   await expectTextOrder(modules, [
+    "Thia",
     "About this space",
-    "Featured",
+    "Featured post",
     "A launch note worth keeping close.",
   ]);
 });
@@ -114,20 +131,30 @@ test("first featured module can lead the showcase layout", async ({ page }) => {
     authenticated: false,
     featuredPost: postOption(),
     featuredRoom: roomOption(),
-    modules: [featuredModule({ position: 1 }), aboutModule({ position: 2 })],
+    modules: [
+      featuredPostModule({ position: 1 }),
+      featuredRoomModule({ position: 2 }),
+      aboutModule({ position: 3 }),
+    ],
     profileOverrides: { profileLayoutPreset: "showcase" },
   });
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
   const modules = page.getByTestId("profile-modules");
-  await expect(modules.getByTestId("profile-grid-module-featured")).toHaveAttribute(
+  await expect(modules.getByTestId("profile-grid-module-featured_post")).toHaveAttribute(
     "data-profile-grid-size",
-    "feature",
+    "2x1",
+  );
+  await expect(modules.getByTestId("profile-grid-module-featured_room")).toHaveAttribute(
+    "data-profile-grid-size",
+    "2x1",
   );
   await expectTextOrder(modules, [
-    "Featured",
+    "Thia",
+    "Featured post",
     "A launch note worth keeping close.",
+    "Featured room",
     "About this space",
   ]);
 });
@@ -138,7 +165,7 @@ test("owner can select and clear featured content from customization", async ({ 
     authenticated: true,
     featuredPost: null,
     featuredRoom: null,
-    modules: [featuredModule()],
+    modules: [featuredPostModule({ id: 8 }), featuredRoomModule({ id: 9, position: 2 })],
     onFeaturedSave: (payload) => {
       savedPayloads.push(payload);
     },
@@ -154,11 +181,26 @@ test("owner can select and clear featured content from customization", async ({ 
   await modal.getByRole("button", { name: /Modules/ }).click();
 
   let moduleCard = modal.getByTestId("profile-module-card-8");
-  await moduleCard.getByRole("button", { name: "Edit Featured" }).click();
+  await moduleCard.getByRole("button", { name: "Edit Featured post" }).click();
   let editor = moduleCard.getByTestId("profile-featured-editor");
   await expect(editor).toBeVisible();
   await editor.getByLabel("Search posts").fill("launch");
   await editor.getByRole("button", { name: /A launch note worth keeping close/ }).click();
+  await moduleCard.getByRole("button", { name: "Save module" }).click();
+
+  await expect.poll(() => savedPayloads).toEqual([
+    {
+      featuredPostId: 101,
+      featuredRoomId: null,
+    },
+  ]);
+  await expect(
+    modal.getByTestId("profile-customization-preview").getByTestId("profile-featured-post-preview"),
+  ).toContainText("A launch note worth keeping close.");
+
+  moduleCard = modal.getByTestId("profile-module-card-9");
+  await moduleCard.getByRole("button", { name: "Edit Featured room" }).click();
+  editor = moduleCard.getByTestId("profile-featured-editor");
   await editor.getByLabel("Search rooms").fill("general");
   await editor.getByRole("button", { name: /General/ }).click();
   await moduleCard.getByRole("button", { name: "Save module" }).click();
@@ -166,28 +208,35 @@ test("owner can select and clear featured content from customization", async ({ 
   await expect.poll(() => savedPayloads).toEqual([
     {
       featuredPostId: 101,
+      featuredRoomId: null,
+    },
+    {
+      featuredPostId: 101,
       featuredRoomId: 201,
     },
   ]);
   await expect(
-    modal.getByTestId("profile-customization-preview").getByTestId("profile-featured-preview"),
-  ).toContainText("A launch note worth keeping close.");
+    modal.getByTestId("profile-customization-preview").getByTestId("profile-featured-room-preview"),
+  ).toContainText("General");
 
   moduleCard = modal.getByTestId("profile-module-card-8");
-  await moduleCard.getByRole("button", { name: "Edit Featured" }).click();
+  await moduleCard.getByRole("button", { name: "Edit Featured post" }).click();
   editor = moduleCard.getByTestId("profile-featured-editor");
-  await editor.getByRole("button", { name: "Clear" }).first().click();
-  await editor.getByRole("button", { name: "Clear" }).last().click();
+  await editor.getByRole("button", { name: "Clear" }).click();
   await moduleCard.getByRole("button", { name: "Save module" }).click();
 
   await expect.poll(() => savedPayloads).toEqual([
+    {
+      featuredPostId: 101,
+      featuredRoomId: null,
+    },
     {
       featuredPostId: 101,
       featuredRoomId: 201,
     },
     {
       featuredPostId: null,
-      featuredRoomId: null,
+      featuredRoomId: 201,
     },
   ]);
 });
@@ -198,13 +247,14 @@ test("owner empty featured state stays compact on mobile", async ({ page }) => {
     authenticated: true,
     featuredPost: null,
     featuredRoom: null,
-    modules: [featuredModule()],
+    modules: [featuredPostModule(), featuredRoomModule({ id: 9, position: 2 })],
   });
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
   await expect(page.getByTestId("profile-featured-content")).toHaveCount(0);
-  await expect(page.getByTestId("profile-grid-module-featured")).toHaveCount(0);
+  await expect(page.getByTestId("profile-grid-module-featured_post")).toHaveCount(0);
+  await expect(page.getByTestId("profile-grid-module-featured_room")).toHaveCount(0);
   await expect(page.getByText("Feature a post or room")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Customize profile" })).toBeVisible();
   const hasHorizontalOverflow = await page.evaluate(
@@ -556,7 +606,7 @@ async function expectTextOrder(locator: Locator, texts: string[]) {
   expect([...indexes].sort((a, b) => a - b)).toEqual(indexes);
 }
 
-function featuredModule(
+function featuredPostModule(
   overrides: {
     id?: number;
     position?: number;
@@ -567,11 +617,34 @@ function featuredModule(
 ) {
   return {
     id: overrides.id ?? 8,
-    type: "featured",
-    title: overrides.title ?? "Featured",
+    type: "featured_post",
+    title: overrides.title ?? "Featured post",
     config: {},
     visibility: overrides.visibility ?? "public",
     position: overrides.position ?? 1,
+    status: overrides.status ?? "active",
+    schemaVersion: 1,
+    createdAt: "2026-06-12 00:00:00",
+    updatedAt: "2026-06-12 00:00:00",
+  };
+}
+
+function featuredRoomModule(
+  overrides: {
+    id?: number;
+    position?: number;
+    status?: string;
+    title?: string | null;
+    visibility?: string;
+  } = {},
+) {
+  return {
+    id: overrides.id ?? 9,
+    type: "featured_room",
+    title: overrides.title ?? "Featured room",
+    config: {},
+    visibility: overrides.visibility ?? "public",
+    position: overrides.position ?? 2,
     status: overrides.status ?? "active",
     schemaVersion: 1,
     createdAt: "2026-06-12 00:00:00",

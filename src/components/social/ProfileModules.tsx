@@ -4,7 +4,7 @@ import { cn } from "../../lib/classNames";
 import {
   profileModuleBadges,
   profileModuleFallbackTitle,
-  profileModuleGridSize,
+  profileModuleGridSpan,
   renderableProfileModules,
 } from "../../lib/profileModuleRegistry";
 import {
@@ -56,43 +56,45 @@ export function ProfileModulesSection({
 
   return (
     <section
-      aria-label="Profile modules"
-      className="border-t border-line pt-4"
+      aria-label="Profile canvas"
+      className="min-w-0"
       data-testid="profile-modules"
     >
-      {loading ? (
-        <ApiStateNotice
-          kind="loading"
-          title="Loading modules"
-          text="Loading modules."
-        />
-      ) : null}
-
-      {!loading && error ? (
-        <ApiStateNotice
-          kind="error"
-          title="Profile modules are not available"
-          text="Try refreshing in a moment."
-        />
-      ) : null}
-
-      {!loading && !error && renderableModules.length === 0 ? (
-        <CompactStateNotice
-          icon={Sparkles}
-          title="No modules yet"
-          text="Customize profile to add modules."
-          className="border border-dashed border-line bg-canvas/45"
-        />
-      ) : null}
-
-      {!loading && !error && renderableModules.length > 0 ? (
+      {renderableModules.length > 0 ? (
         <ProfileModuleGrid
           modules={renderableModules}
           badges={badges}
           layoutPreset={layoutPreset}
           renderModuleContent={renderModuleContent}
         />
-      ) : null}
+      ) : (
+        <>
+          {loading ? (
+            <ApiStateNotice
+              kind="loading"
+              title="Loading modules"
+              text="Loading modules."
+            />
+          ) : null}
+
+          {!loading && error ? (
+            <ApiStateNotice
+              kind="error"
+              title="Profile modules are not available"
+              text="Try refreshing in a moment."
+            />
+          ) : null}
+
+          {!loading && !error ? (
+            <CompactStateNotice
+              icon={Sparkles}
+              title="No modules yet"
+              text="Customize profile to add modules."
+              className="border border-dashed border-line bg-canvas/45"
+            />
+          ) : null}
+        </>
+      )}
     </section>
   );
 }
@@ -102,7 +104,7 @@ type ProfileModuleContentRenderer = (module: ProfileModule) => ReactNode | undef
 type ProfileModuleGridProps = {
   badges: UserBadge[];
   layoutPreset?: ProfileLayoutPreset | undefined;
-  maxColumns?: 2 | 3;
+  maxColumns?: 2 | 5;
   modules: ProfileModule[];
   renderModuleContent?: ProfileModuleContentRenderer | undefined;
 };
@@ -142,7 +144,7 @@ export function ProfileModuleGrid({
       {renderableModules.map((module, index) => (
         <ProfileGridModule
           key={`${module.type}-${module.id}`}
-          size={profileModuleGridSize(module, layoutPreset, index)}
+          size={profileModuleGridSpan(module, layoutPreset, index).size}
           testId={`profile-grid-module-${module.type}`}
         >
           {renderModuleContent?.(module) ?? (
@@ -178,6 +180,14 @@ function ProfileModuleContent({ badges, module }: ProfileModuleCardProps) {
     return (
       <p className="mt-2 text-sm leading-6 text-muted">
         Feed, replies, and rooms appear here on the public profile.
+      </p>
+    );
+  }
+
+  if (module.type === "profile_info") {
+    return (
+      <p className="mt-2 text-sm leading-6 text-muted">
+        Core profile identity appears here.
       </p>
     );
   }

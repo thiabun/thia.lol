@@ -68,9 +68,17 @@ test("profile renders public modules safely", async ({ page }) => {
   await expect(section).toBeVisible();
   await expect(page.getByText("Personal space")).toHaveCount(0);
   await expect(section.getByTestId("profile-module-grid")).toBeVisible();
-  await expect(section.locator('[data-profile-grid-size="wide"]')).toHaveCount(1);
-  await expect(section.locator('[data-profile-grid-size="small"]')).toHaveCount(2);
+  await expect(section.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
+    "data-profile-grid-size",
+    "2x2",
+  );
+  await expect(section.getByTestId("profile-grid-module-about")).toHaveAttribute(
+    "data-profile-grid-size",
+    "2x1",
+  );
+  await expect(section.locator('[data-profile-grid-size="1x1"]')).toHaveCount(2);
   await expectTextOrder(section, [
+    "Thia",
     "About this space",
     "Elsewhere",
     "Badge shelf",
@@ -82,7 +90,11 @@ test("profile renders public modules safely", async ({ page }) => {
     "href",
     "https://example.com/",
   );
-  await expect(section.getByText("Founder", { exact: true })).toBeVisible();
+  await expect(
+    section
+      .getByTestId("profile-module-featured_badges")
+      .getByText("Founder", { exact: true }),
+  ).toBeVisible();
 
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -168,13 +180,38 @@ test("profile module grid keeps responsive columns bounded", async ({ page }) =>
   await page.goto("/@thia");
 
   const grid = page.getByTestId("profile-module-grid");
+  await expect(grid).toHaveAttribute("data-profile-canvas-columns", "5");
   await expectGridColumnCount(grid, 1);
 
   await page.setViewportSize({ width: 900, height: 900 });
   await expectGridColumnCount(grid, 2);
 
   await page.setViewportSize({ width: 1366, height: 900 });
-  await expectGridColumnCount(grid, 3);
+  await expectGridColumnCount(grid, 5);
+});
+
+test("profile canvas falls back safely for invalid mocked spans", async ({ page }) => {
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      {
+        ...textModule({
+          id: 4,
+          title: "Malformed span",
+          body: "Still renders compactly.",
+        }),
+        config: { body: "Still renders compactly.", canvasSize: "giant" },
+      },
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const malformed = page.getByTestId("profile-grid-module-custom_text");
+  await expect(malformed).toHaveAttribute("data-profile-grid-size", "1x1");
+  await expect(malformed).toHaveAttribute("data-profile-grid-column-span", "1");
+  await expect(malformed).toHaveAttribute("data-profile-grid-row-span", "1");
+  await expect(page.getByText("Still renders compactly.")).toBeVisible();
 });
 
 test("public modules ignore hidden and retired module records", async ({ page }) => {
@@ -229,7 +266,7 @@ test("layout presets affect the public module grid without breaking mobile", asy
 
   const grid = page.getByTestId("profile-module-grid");
   await expect(grid).toHaveAttribute("data-profile-layout-preset", "compact");
-  await expectGridColumnCount(grid, 2);
+  await expectGridColumnCount(grid, 5);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expectGridColumnCount(grid, 1);
@@ -253,8 +290,19 @@ test("showcase layout gives the first about module more presence", async ({ page
 
   const grid = page.getByTestId("profile-module-grid");
   await expect(grid).toHaveAttribute("data-profile-layout-preset", "showcase");
-  await expect(grid.locator('[data-profile-grid-size="feature"]')).toHaveCount(1);
-  await expectTextOrder(page.getByTestId("profile-modules"), ["Lead note", "Small note"]);
+  await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
+    "data-profile-grid-column-span",
+    "2",
+  );
+  await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
+    "data-profile-grid-row-span",
+    "2",
+  );
+  await expectTextOrder(page.getByTestId("profile-modules"), [
+    "Thia",
+    "Lead note",
+    "Small note",
+  ]);
 });
 
 test("visitor with no modules does not see fake module scaffolding", async ({ page }) => {
@@ -262,7 +310,8 @@ test("visitor with no modules does not see fake module scaffolding", async ({ pa
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await expect(page.getByTestId("profile-modules")).toHaveCount(0);
+  await expect(page.getByTestId("profile-modules")).toBeVisible();
+  await expect(page.getByTestId("profile-grid-module-profile_info")).toBeVisible();
   await expect(page.getByTestId("profile-owner-tools")).toHaveCount(0);
   await expect(page.getByText("No modules yet")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
@@ -276,10 +325,9 @@ test("owner empty module state is honest", async ({ page }) => {
 
   await expect(page.getByTestId("profile-owner-tools")).toHaveCount(0);
   await expect(page.getByTestId("profile-modules")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "No modules yet" })).toBeVisible();
-  await expect(
-    page.getByText("Customize profile to add modules."),
-  ).toBeVisible();
+  await expect(page.getByTestId("profile-grid-module-profile_info")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No modules yet" })).toHaveCount(0);
+  await expect(page.getByText("Customize profile to add modules.")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Customize profile" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Customize layout" })).toHaveCount(0);
 });
@@ -526,14 +574,19 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(router).toContain("profile_modules.php");
   expect(router).toContain("profile_modules_dispatch($segments, $method)");
   expect(modulesApi).toContain("const PROFILE_ACTIVITY_MODULE_TYPE = 'activity'");
-  expect(modulesApi).toContain("const PROFILE_FEATURED_MODULE_TYPE = 'featured'");
+  expect(modulesApi).toContain("const PROFILE_FEATURED_POST_MODULE_TYPE = 'featured_post'");
+  expect(modulesApi).toContain("const PROFILE_FEATURED_ROOM_MODULE_TYPE = 'featured_room'");
+  expect(modulesApi).toContain("const PROFILE_FEATURED_LEGACY_MODULE_TYPE = 'featured'");
   expect(modulesApi).toContain("PROFILE_BUILT_IN_MODULE_TYPES");
-  expect(modulesApi).toContain("ensure_profile_featured_module");
-  expect(modulesApi).toContain("profile_featured_module_payload");
+  expect(modulesApi).toContain("PROFILE_RETIRED_MODULE_TYPES");
+  expect(modulesApi).toContain("ensure_profile_featured_modules");
+  expect(modulesApi).toContain("profile_featured_post_module_payload");
+  expect(modulesApi).toContain("profile_featured_room_module_payload");
+  expect(modulesApi).toContain("profile_legacy_featured_module_record");
   expect(modulesApi).toContain("PROFILE_ACTIVITY_MODULE_TYPE]");
   expect(modulesApi).toContain("ensure_profile_activity_module");
-  expect(modulesApi).toContain("profile_module_activity_config");
-  expect(modulesApi).toContain("Featured can be hidden instead of deleted.");
+  expect(modulesApi).toContain("Featured post can be hidden instead of deleted.");
+  expect(modulesApi).toContain("Featured room can be hidden instead of deleted.");
   expect(modulesApi).toContain("Activity can be hidden instead of deleted.");
   expect(modulesApi).toContain("require_csrf_token($session)");
   expect(modulesApi).toContain("Profile module storage is not ready. Run pending migrations.");

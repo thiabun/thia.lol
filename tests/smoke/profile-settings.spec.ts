@@ -295,6 +295,14 @@ test("profile banners stay behind identity in public header and preview", async 
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
+  await expect(page.getByTestId("profile-personal-backdrop")).toHaveAttribute(
+    "data-profile-background-source",
+    "image",
+  );
+  await expect(page.getByTestId("profile-personal-backdrop")).toHaveAttribute(
+    "data-profile-background-blur",
+    "medium",
+  );
   await expect(page.getByTestId("profile-header-banner")).toBeVisible();
   await expect(page.getByTestId("profile-identity")).toContainText("Thia");
   await expect(page.getByTestId("profile-identity")).toContainText("@thia");
@@ -396,6 +404,22 @@ test("profile layout renders identity, essential social stats, activity module, 
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
+  await expect(page.getByTestId("profile-personal-backdrop")).toHaveAttribute(
+    "data-profile-background-source",
+    "fallback",
+  );
+  await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
+    "data-profile-grid-size",
+    "2x2",
+  );
+  await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
+    "data-profile-grid-column-span",
+    "2",
+  );
+  await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
+    "data-profile-grid-row-span",
+    "2",
+  );
   await expect(page.getByTestId("profile-header")).toBeVisible();
   await expect(page.getByTestId("profile-identity")).toContainText("Thia");
   await expect(page.getByTestId("profile-identity")).toContainText("@thia");
