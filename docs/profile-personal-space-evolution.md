@@ -704,14 +704,15 @@ section:
 ### Implementation Note - 2026-06-16 Profiles v3 Modular Canvas Grid
 
 Issue [#38](https://github.com/thiabun/thia.lol/issues/38) supersedes the
-earlier three-column grid foundation with a compact 5x5-ready canvas model:
+earlier three-column grid foundation with a compact 6x9-ready canvas model:
 
-- Desktop profile modules now render on a controlled five-column canvas. Tablet
+- Desktop profile modules now render on a controlled six-column canvas. Tablet
   remains two columns, and mobile remains a single ordered stack with desktop
   spans ignored.
-- Module spans are allowlisted tokens: `1x1`, `2x1`, `1x2`, `2x2`, and `3x1`.
-  Unknown or invalid span values fall back to `1x1`; users cannot provide CSS,
-  arbitrary coordinates, or custom grid rules.
+- Module spans are allowlisted tokens up to `3x3`: `1x1`, `2x1`, `3x1`,
+  `1x2`, `2x2`, `3x2`, `1x3`, `2x3`, and `3x3`. Unknown or invalid span values
+  fall back to `1x1`; users cannot provide CSS, arbitrary coordinates, or custom
+  grid rules.
 - Activity is explicitly bounded so it cannot become a feed page inside the
   grid. Its row span is clamped to at most three canvas rows, the module shell
   has a max height tied to three grid rows on desktop, and only the activity
@@ -719,9 +720,10 @@ earlier three-column grid foundation with a compact 5x5-ready canvas model:
   outside that scroll area, while mobile uses a viewport-bounded max height.
 - `profile_info` is a synthetic frontend-only canvas module and always appears
   first. It carries the core identity surface, banner, avatar, name, handle,
-  bio, actions, Likes/Followers/Following, and essential links/badges. It is
-  not accepted by the backend module APIs and cannot be hidden or reordered in
-  this pass.
+  bio, actions, Likes/Followers/Following, and essential links/badges. It uses a
+  `3x3` span when a safe banner is present and `3x2` without a banner. It is not
+  accepted by the backend module APIs and cannot be hidden or reordered in this
+  pass.
 - Featured content is split into real built-in modules:
   `featured_post` and `featured_room`. The existing
   `profiles.featured_post_id` and `profiles.featured_room_id` fields remain the
@@ -777,7 +779,8 @@ arbitrary embeds, or new schema:
 - Featured post and Featured room remain standalone built-in modules backed by
   `profiles.featured_post_id` and `profiles.featured_room_id`. Removing either
   module from the canvas hides the module preference; it does not delete or clear
-  the original post or room.
+  the original post or room. Featured post cards include compact media previews
+  when the selected post has safe uploaded media.
 - Connections uses the existing `links` module type with stronger presentation:
   platform-aware labels/icons where available, compact domain/handle previews,
   safe external-link behavior, and HTTPS/server-side URL validation.
@@ -798,7 +801,7 @@ arbitrary embeds, or new schema:
 - Iframes and embeds are not enabled in P2. Module config validation still
   rejects unsupported embed/iframe/script-like fields and no public renderer
   executes user-provided HTML, CSS, JavaScript, or arbitrary iframe markup.
-- The canvas remains a controlled five-column desktop grid with a nine-row
+- The canvas remains a controlled six-column desktop grid with a nine-row
   budget convention and allowlisted spans up to `3x3`. Mobile remains a single
   ordered stack. Activity remains capped at three grid rows with internal body
   scrolling when content overflows.

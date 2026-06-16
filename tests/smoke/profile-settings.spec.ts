@@ -309,6 +309,14 @@ test("profile banners stay behind identity in public header and preview", async 
     "medium",
   );
   await expect(page.getByTestId("profile-header-banner")).toBeVisible();
+  await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
+    "data-profile-grid-size",
+    "3x3",
+  );
+  await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
+    "data-profile-grid-row-span",
+    "3",
+  );
   await expect(page.getByTestId("profile-identity")).toContainText("Thia");
   await expect(page.getByTestId("profile-identity")).toContainText("@thia");
   await expectElementAtPointBelongsTo(

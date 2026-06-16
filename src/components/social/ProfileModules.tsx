@@ -114,7 +114,7 @@ type ProfileModuleContentRenderer = (module: ProfileModule) => ReactNode | undef
 type ProfileModuleGridProps = {
   badges: UserBadge[];
   layoutPreset?: ProfileLayoutPreset | undefined;
-  maxColumns?: 2 | 5;
+  maxColumns?: 2 | 6;
   modules: ProfileModule[];
   renderModuleContent?: ProfileModuleContentRenderer | undefined;
 };

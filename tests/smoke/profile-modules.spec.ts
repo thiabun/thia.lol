@@ -358,14 +358,14 @@ test("profile module grid keeps responsive columns bounded", async ({ page }) =>
   await page.goto("/@thia");
 
   const grid = page.getByTestId("profile-module-grid");
-  await expect(grid).toHaveAttribute("data-profile-canvas-columns", "5");
+  await expect(grid).toHaveAttribute("data-profile-canvas-columns", "6");
   await expectGridColumnCount(grid, 1);
 
   await page.setViewportSize({ width: 900, height: 900 });
   await expectGridColumnCount(grid, 2);
 
   await page.setViewportSize({ width: 1366, height: 900 });
-  await expectGridColumnCount(grid, 5);
+  await expectGridColumnCount(grid, 6);
 });
 
 test("profile canvas falls back safely for invalid mocked spans", async ({ page }) => {
@@ -444,7 +444,7 @@ test("layout presets affect the public module grid without breaking mobile", asy
 
   const grid = page.getByTestId("profile-module-grid");
   await expect(grid).toHaveAttribute("data-profile-layout-preset", "compact");
-  await expectGridColumnCount(grid, 5);
+  await expectGridColumnCount(grid, 6);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expectGridColumnCount(grid, 1);

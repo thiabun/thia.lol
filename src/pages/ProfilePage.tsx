@@ -212,8 +212,8 @@ export function ProfilePage() {
   const profileLayoutPreset =
     profile?.profileLayoutPreset ?? defaultProfileLayoutPreset;
   const profileInfoModule = useMemo(
-    () => createSyntheticProfileInfoModule(),
-    [],
+    () => createSyntheticProfileInfoModule(profile),
+    [profile],
   );
   const profileMissing =
     profileState.error instanceof ApiClientError && profileState.error.status === 404;
@@ -802,12 +802,14 @@ function ProfileCustomizationLoadingSheet({ onClose }: { onClose: () => void }) 
   );
 }
 
-function createSyntheticProfileInfoModule(): ProfileModule {
+function createSyntheticProfileInfoModule(profile: Profile | undefined): ProfileModule {
   return {
     id: -1,
     type: "profile_info",
     title: "Profile info",
-    config: {},
+    config: {
+      hasBanner: Boolean(safeProfileImageUrl(profile?.bannerUrl)),
+    },
     visibility: "public",
     position: 0,
     status: "active",
@@ -1068,6 +1070,21 @@ function FeaturedPostCard({ post }: { post: Post }) {
       <p className="mt-2 line-clamp-3 break-words text-sm leading-6 text-text">
         {post.body}
       </p>
+      {post.mediaUrl && post.mediaUrl !== "/ambient-veil.webp" ? (
+        <div
+          className="mt-3 overflow-hidden rounded-card border border-line bg-canvas/70"
+          data-testid="profile-featured-post-media"
+        >
+          <img
+            alt=""
+            className="block max-h-44 w-full object-contain"
+            decoding="async"
+            loading="lazy"
+            src={post.mediaUrl}
+            data-testid="profile-featured-post-media-image"
+          />
+        </div>
+      ) : null}
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
         <span className="inline-flex items-center gap-1.5">
           <Reply aria-hidden="true" size={13} />

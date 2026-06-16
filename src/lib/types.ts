@@ -139,6 +139,7 @@ export type ProfileModuleConfig = {
   body?: string;
   canvasSize?: string;
   description?: string;
+  hasBanner?: boolean;
   label?: string;
   link?: ProfileModuleLink;
   links?: ProfileModuleLink[];

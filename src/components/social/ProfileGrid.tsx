@@ -13,7 +13,7 @@ type ProfileGridProps = {
   children: ReactNode;
   className?: string | undefined;
   layoutPreset?: ProfileLayoutPreset | undefined;
-  maxColumns?: 2 | 5;
+  maxColumns?: 2 | 6;
   maxRows?: 9;
   testId?: string | undefined;
 };
@@ -22,7 +22,7 @@ export function ProfileGrid({
   children,
   className,
   layoutPreset = defaultProfileLayoutPreset,
-  maxColumns = 5,
+  maxColumns = 6,
   maxRows = 9,
   testId = "profile-grid",
 }: ProfileGridProps) {
@@ -37,7 +37,7 @@ export function ProfileGrid({
       className={cn(
         "grid min-w-0 grid-cols-1 md:grid-cols-2 md:auto-rows-[minmax(var(--profile-grid-row-size),auto)]",
         layoutPreset === "compact" ? "gap-2" : "gap-3",
-        maxColumns === 5 ? "lg:grid-cols-5" : undefined,
+        maxColumns === 6 ? "lg:grid-cols-6" : undefined,
         className,
       )}
       data-profile-canvas-columns={maxColumns}

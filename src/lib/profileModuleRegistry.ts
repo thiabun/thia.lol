@@ -42,7 +42,7 @@ const fallbackProfileModule: ProfileModuleRegistryEntry = {
 
 export const profileModuleRegistry = {
   profile_info: {
-    allowedSizes: ["3x2", "2x2", "2x1"],
+    allowedSizes: ["3x3", "3x2", "2x2", "2x1"],
     defaultSize: "3x2",
     description: "Core identity, actions, stats, and essential links.",
     fallbackTitle: "Profile info",
@@ -151,6 +151,10 @@ export function profileModuleGridSize(
 
   if (requestedSize && definition.allowedSizes.includes(requestedSize)) {
     return requestedSize;
+  }
+
+  if (module.type === "profile_info") {
+    return module.config.hasBanner ? "3x3" : "3x2";
   }
 
   if (layoutPreset === "compact") {

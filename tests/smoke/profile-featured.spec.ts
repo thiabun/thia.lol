@@ -18,7 +18,9 @@ test.beforeEach(async ({ context }) => {
 test("visitor profile renders featured post and room through the module grid", async ({ page }) => {
   await mockFeaturedProfile(page, {
     authenticated: false,
-    featuredPost: postOption(),
+    featuredPost: postOption({
+      mediaUrl: "/uploads/media/2026/06/featured-post.webp",
+    }),
     featuredRoom: roomOption(),
     modules: [
       featuredPostModule({ position: 1, title: "Pinned post" }),
@@ -50,6 +52,10 @@ test("visitor profile renders featured post and room through the module grid", a
   await expect(featuredPost.getByText("Pinned post", { exact: true })).toBeVisible();
   await expect(featuredPost.getByRole("heading", { name: "Featured post" })).toBeVisible();
   await expect(featuredPost).toContainText("A launch note worth keeping close.");
+  await expect(featuredPost.getByTestId("profile-featured-post-media-image")).toHaveAttribute(
+    "src",
+    "/uploads/media/2026/06/featured-post.webp",
+  );
 
   const featuredRoom = modules.getByTestId("profile-module-featured-room");
   await expect(featuredRoom).toBeVisible();
@@ -547,6 +553,7 @@ function postOptionShape() {
     rebloggedAt: null,
     visibility: "public",
     status: "published",
+    mediaUrl: null,
     deletedAt: null,
     socialContext: {
       authorRelationship: "self",
