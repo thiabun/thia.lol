@@ -9,7 +9,10 @@ const PROFILE_ACTIVITY_MODULE_TYPE = 'activity';
 const PROFILE_FEATURED_LEGACY_MODULE_TYPE = 'featured';
 const PROFILE_FEATURED_POST_MODULE_TYPE = 'featured_post';
 const PROFILE_FEATURED_ROOM_MODULE_TYPE = 'featured_room';
-const PROFILE_MODULE_TYPES = ['about', 'links', 'featured_badges', 'custom_text', PROFILE_FEATURED_POST_MODULE_TYPE, PROFILE_FEATURED_ROOM_MODULE_TYPE, PROFILE_ACTIVITY_MODULE_TYPE];
+const PROFILE_GALLERY_MEDIA_MODULE_TYPE = 'gallery_media';
+const PROFILE_CREATOR_LIVE_MODULE_TYPE = 'creator_live';
+const PROFILE_MUSIC_MODULE_TYPE = 'music';
+const PROFILE_MODULE_TYPES = ['about', 'links', 'featured_badges', 'custom_text', PROFILE_GALLERY_MEDIA_MODULE_TYPE, PROFILE_CREATOR_LIVE_MODULE_TYPE, PROFILE_MUSIC_MODULE_TYPE, PROFILE_FEATURED_POST_MODULE_TYPE, PROFILE_FEATURED_ROOM_MODULE_TYPE, PROFILE_ACTIVITY_MODULE_TYPE];
 const PROFILE_BUILT_IN_MODULE_TYPES = [PROFILE_FEATURED_POST_MODULE_TYPE, PROFILE_FEATURED_ROOM_MODULE_TYPE, PROFILE_ACTIVITY_MODULE_TYPE];
 const PROFILE_RETIRED_MODULE_TYPES = [PROFILE_FEATURED_LEGACY_MODULE_TYPE];
 const PROFILE_MODULE_VISIBILITIES = ['public', 'hidden', 'draft'];
@@ -18,9 +21,16 @@ const PROFILE_MODULE_SCHEMA_VERSION = 1;
 const PROFILE_MODULE_MAX_PER_PROFILE = 8;
 const PROFILE_MODULE_TITLE_MAX = 80;
 const PROFILE_MODULE_TEXT_MAX = 500;
+const PROFILE_MODULE_STATUS_TEXT_MAX = 120;
+const PROFILE_MODULE_SHORT_TEXT_MAX = 180;
 const PROFILE_MODULE_LINKS_MAX = 10;
 const PROFILE_MODULE_LINK_LABEL_MAX = 60;
 const PROFILE_MODULE_FEATURED_BADGES_MAX = 12;
+const PROFILE_MODULE_GALLERY_MEDIA_MAX = 6;
+const PROFILE_MODULE_GALLERY_CAPTION_MAX = 80;
+const PROFILE_MODULE_LINK_PLATFORMS = ['website', 'youtube', 'twitch', 'tiktok', 'instagram', 'x', 'bluesky', 'github', 'discord', 'spotify', 'custom'];
+const PROFILE_MODULE_CREATOR_PLATFORMS = ['website', 'youtube', 'twitch', 'tiktok', 'instagram', 'x', 'bluesky', 'github', 'discord', 'custom'];
+const PROFILE_MODULE_MUSIC_PLATFORMS = ['spotify', 'apple_music', 'youtube_music', 'soundcloud', 'bandcamp', 'custom'];
 
 function profile_modules_dispatch(array $segments, string $method): void
 {
@@ -279,7 +289,16 @@ function profile_modules_delete(string $rawModuleId): void
     }
 
     if (profile_module_type_is_built_in((string) $module['type'])) {
-        json_error(profile_module_delete_message((string) $module['type']), 422);
+        db_query(
+            "UPDATE profile_modules
+             SET status = 'active',
+                 visibility = 'hidden',
+                 updated_at = CURRENT_TIMESTAMP()
+             WHERE id = :id",
+            ['id' => $moduleId]
+        );
+
+        json_success(profile_modules_for_owner($userId));
     }
 
     db_query(
@@ -291,10 +310,7 @@ function profile_modules_delete(string $rawModuleId): void
         ['id' => $moduleId]
     );
 
-    json_success([
-        'id' => $moduleId,
-        'deleted' => true,
-    ]);
+    json_success(profile_modules_for_owner($userId));
 }
 
 function profile_modules_order_update(): void
@@ -451,9 +467,9 @@ function profile_module_type_label(string $type): string
 function profile_module_delete_message(string $type): string
 {
     return match ($type) {
-        PROFILE_FEATURED_POST_MODULE_TYPE => 'Featured post can be hidden instead of deleted.',
-        PROFILE_FEATURED_ROOM_MODULE_TYPE => 'Featured room can be hidden instead of deleted.',
-        PROFILE_ACTIVITY_MODULE_TYPE => 'Activity can be hidden instead of deleted.',
+        PROFILE_FEATURED_POST_MODULE_TYPE => 'Featured post was hidden from the profile canvas.',
+        PROFILE_FEATURED_ROOM_MODULE_TYPE => 'Featured room was hidden from the profile canvas.',
+        PROFILE_ACTIVITY_MODULE_TYPE => 'Activity was hidden from the profile canvas.',
         default => 'Module can be hidden instead of deleted.',
     };
 }
@@ -881,6 +897,9 @@ function profile_module_config(string $type, mixed $value, int $userId): array
         'custom_text' => profile_module_custom_text_config($value),
         'links' => profile_module_links_config($value),
         'featured_badges' => profile_module_featured_badges_config($value, $userId),
+        PROFILE_GALLERY_MEDIA_MODULE_TYPE => profile_module_gallery_media_config($value),
+        PROFILE_CREATOR_LIVE_MODULE_TYPE => profile_module_creator_live_config($value),
+        PROFILE_MUSIC_MODULE_TYPE => profile_module_music_config($value),
         default => json_error('Choose a supported module type.', 422),
     };
 }
@@ -909,11 +928,30 @@ function profile_module_featured_room_config(array $config): array
 
 function profile_module_about_config(array $config): array
 {
-    profile_module_reject_unknown_keys($config, ['body']);
+    profile_module_reject_unknown_keys($config, ['body', 'statusText', 'workingOn']);
 
-    return [
-        'body' => profile_module_text($config['body'] ?? null, PROFILE_MODULE_TEXT_MAX, 'About text'),
-    ];
+    $normalized = [];
+    $body = profile_module_optional_text($config['body'] ?? null, PROFILE_MODULE_TEXT_MAX, 'About text');
+    $statusText = profile_module_optional_text($config['statusText'] ?? null, PROFILE_MODULE_STATUS_TEXT_MAX, 'Status text');
+    $workingOn = profile_module_optional_text($config['workingOn'] ?? null, PROFILE_MODULE_STATUS_TEXT_MAX, 'Working on text');
+
+    if ($body !== null) {
+        $normalized['body'] = $body;
+    }
+
+    if ($statusText !== null) {
+        $normalized['statusText'] = $statusText;
+    }
+
+    if ($workingOn !== null) {
+        $normalized['workingOn'] = $workingOn;
+    }
+
+    if ($normalized === []) {
+        json_error('About module needs intro, status, or working-on text.', 422);
+    }
+
+    return $normalized;
 }
 
 function profile_module_custom_text_config(array $config): array
@@ -963,6 +1001,83 @@ function profile_module_links_config(array $config): array
     }
 
     return ['links' => $links];
+}
+
+function profile_module_gallery_media_config(array $config): array
+{
+    profile_module_reject_unknown_keys($config, ['mediaItems']);
+
+    if (!array_key_exists('mediaItems', $config) || !is_array($config['mediaItems']) || !array_is_list($config['mediaItems'])) {
+        json_error('Gallery media must be an array.', 422);
+    }
+
+    if (count($config['mediaItems']) > PROFILE_MODULE_GALLERY_MEDIA_MAX) {
+        json_error('Gallery modules can show up to 6 media items.', 422);
+    }
+
+    $mediaItems = [];
+    $seen = [];
+
+    foreach ($config['mediaItems'] as $item) {
+        $mediaItem = profile_module_gallery_media_item($item);
+
+        if (isset($seen[$mediaItem['url']])) {
+            continue;
+        }
+
+        $seen[$mediaItem['url']] = true;
+        $mediaItems[] = $mediaItem;
+    }
+
+    if ($mediaItems === []) {
+        json_error('Choose at least one gallery image.', 422);
+    }
+
+    return ['mediaItems' => $mediaItems];
+}
+
+function profile_module_creator_live_config(array $config): array
+{
+    profile_module_reject_unknown_keys($config, ['platform', 'label', 'url', 'description']);
+
+    $url = profile_module_url($config['url'] ?? null, 'Creator link');
+    $platform = profile_module_platform(
+        $config['platform'] ?? null,
+        PROFILE_MODULE_CREATOR_PLATFORMS,
+        profile_module_infer_link_platform($url, PROFILE_MODULE_CREATOR_PLATFORMS)
+    );
+
+    profile_module_validate_url_platform($url, $platform, 'Creator link');
+
+    return profile_module_link_card_config(
+        $platform,
+        $url,
+        $config['label'] ?? null,
+        $config['description'] ?? null,
+        'Creator title'
+    );
+}
+
+function profile_module_music_config(array $config): array
+{
+    profile_module_reject_unknown_keys($config, ['platform', 'label', 'url', 'description']);
+
+    $url = profile_module_url($config['url'] ?? null, 'Music link');
+    $platform = profile_module_platform(
+        $config['platform'] ?? null,
+        PROFILE_MODULE_MUSIC_PLATFORMS,
+        profile_module_infer_music_platform($url)
+    );
+
+    profile_module_validate_url_platform($url, $platform, 'Music link');
+
+    return profile_module_link_card_config(
+        $platform,
+        $url,
+        $config['label'] ?? null,
+        $config['description'] ?? null,
+        'Music title'
+    );
 }
 
 function profile_module_featured_badges_config(array $config, int $userId): array
@@ -1061,18 +1176,182 @@ function profile_module_visible_user_badge_ids(int $userId, mixed $values): arra
     ));
 }
 
+function profile_module_gallery_media_item(mixed $value): array
+{
+    if (!is_array($value) || array_is_list($value)) {
+        json_error('Gallery media item must be an object.', 422);
+    }
+
+    profile_module_reject_unknown_keys($value, ['url', 'caption']);
+
+    $mediaItem = [
+        'url' => profile_module_uploaded_media_url($value['url'] ?? null, 'Gallery image'),
+    ];
+    $caption = profile_module_optional_text($value['caption'] ?? null, PROFILE_MODULE_GALLERY_CAPTION_MAX, 'Gallery caption');
+
+    if ($caption !== null) {
+        $mediaItem['caption'] = $caption;
+    }
+
+    return $mediaItem;
+}
+
+function profile_module_uploaded_media_url(mixed $value, string $label): string
+{
+    if (!is_string($value)) {
+        json_error("{$label} must be an uploaded image URL.", 422);
+    }
+
+    $trimmed = trim($value);
+
+    if (preg_match('#^/uploads/media/[0-9]{4}/[0-9]{2}/[a-z0-9_-]+\.webp$#', $trimmed) !== 1) {
+        json_error("{$label} must come from the image upload endpoint.", 422);
+    }
+
+    return $trimmed;
+}
+
+function profile_module_link_card_config(
+    string $platform,
+    string $url,
+    mixed $label,
+    mixed $description,
+    string $labelName
+): array {
+    $normalized = [
+        'platform' => $platform,
+        'label' => profile_module_text($label, PROFILE_MODULE_LINK_LABEL_MAX, $labelName),
+        'url' => $url,
+    ];
+    $descriptionText = profile_module_optional_text($description, PROFILE_MODULE_SHORT_TEXT_MAX, 'Card description');
+
+    if ($descriptionText !== null) {
+        $normalized['description'] = $descriptionText;
+    }
+
+    return $normalized;
+}
+
 function profile_module_link(mixed $value): array
 {
     if (!is_array($value) || array_is_list($value)) {
         json_error('Link must be an object.', 422);
     }
 
-    profile_module_reject_unknown_keys($value, ['label', 'url']);
+    profile_module_reject_unknown_keys($value, ['label', 'url', 'platform']);
+
+    $url = profile_module_url($value['url'] ?? null, 'Link URL');
+    $platform = profile_module_platform(
+        $value['platform'] ?? null,
+        PROFILE_MODULE_LINK_PLATFORMS,
+        profile_module_infer_link_platform($url, PROFILE_MODULE_LINK_PLATFORMS)
+    );
+
+    profile_module_validate_url_platform($url, $platform, 'Link URL');
 
     return [
         'label' => profile_module_text($value['label'] ?? null, PROFILE_MODULE_LINK_LABEL_MAX, 'Link label'),
-        'url' => profile_module_url($value['url'] ?? null, 'Link URL'),
+        'platform' => $platform,
+        'url' => $url,
     ];
+}
+
+function profile_module_platform(mixed $value, array $allowedPlatforms, string $fallback): string
+{
+    if ($value === null || $value === '') {
+        return $fallback;
+    }
+
+    if (!is_string($value)) {
+        json_error('Platform is invalid.', 422);
+    }
+
+    $platform = strtolower(trim($value));
+
+    if ($platform === 'twitter') {
+        $platform = 'x';
+    }
+
+    if (!in_array($platform, $allowedPlatforms, true)) {
+        json_error('Choose a supported platform.', 422);
+    }
+
+    return $platform;
+}
+
+function profile_module_infer_link_platform(string $url, array $allowedPlatforms): string
+{
+    $host = profile_module_url_host($url);
+    $platform = match (true) {
+        in_array($host, ['youtube.com', 'www.youtube.com', 'youtu.be'], true) => 'youtube',
+        in_array($host, ['twitch.tv', 'www.twitch.tv'], true) => 'twitch',
+        in_array($host, ['tiktok.com', 'www.tiktok.com'], true) => 'tiktok',
+        in_array($host, ['instagram.com', 'www.instagram.com'], true) => 'instagram',
+        in_array($host, ['x.com', 'www.x.com', 'twitter.com', 'www.twitter.com'], true) => 'x',
+        in_array($host, ['bsky.app', 'www.bsky.app'], true) => 'bluesky',
+        in_array($host, ['github.com', 'www.github.com'], true) => 'github',
+        in_array($host, ['discord.gg', 'www.discord.gg', 'discord.com', 'www.discord.com'], true) => 'discord',
+        $host === 'open.spotify.com' => 'spotify',
+        default => 'custom',
+    };
+
+    return in_array($platform, $allowedPlatforms, true) ? $platform : 'custom';
+}
+
+function profile_module_infer_music_platform(string $url): string
+{
+    $host = profile_module_url_host($url);
+
+    return match (true) {
+        $host === 'open.spotify.com' => 'spotify',
+        in_array($host, ['music.apple.com', 'itunes.apple.com'], true) => 'apple_music',
+        in_array($host, ['music.youtube.com', 'youtube.com', 'www.youtube.com', 'youtu.be'], true) => 'youtube_music',
+        in_array($host, ['soundcloud.com', 'www.soundcloud.com'], true) => 'soundcloud',
+        str_ends_with($host, '.bandcamp.com') || $host === 'bandcamp.com' || $host === 'www.bandcamp.com' => 'bandcamp',
+        default => 'custom',
+    };
+}
+
+function profile_module_validate_url_platform(string $url, string $platform, string $label): void
+{
+    if ($platform === 'custom' || $platform === 'website') {
+        return;
+    }
+
+    $host = profile_module_url_host($url);
+    $allowedHosts = match ($platform) {
+        'youtube', 'youtube_music' => ['youtube.com', 'www.youtube.com', 'youtu.be', 'music.youtube.com'],
+        'twitch' => ['twitch.tv', 'www.twitch.tv'],
+        'tiktok' => ['tiktok.com', 'www.tiktok.com'],
+        'instagram' => ['instagram.com', 'www.instagram.com'],
+        'x' => ['x.com', 'www.x.com', 'twitter.com', 'www.twitter.com'],
+        'bluesky' => ['bsky.app', 'www.bsky.app'],
+        'github' => ['github.com', 'www.github.com'],
+        'discord' => ['discord.gg', 'www.discord.gg', 'discord.com', 'www.discord.com'],
+        'spotify' => ['open.spotify.com'],
+        'apple_music' => ['music.apple.com', 'itunes.apple.com'],
+        'soundcloud' => ['soundcloud.com', 'www.soundcloud.com'],
+        'bandcamp' => ['bandcamp.com', 'www.bandcamp.com'],
+        default => [],
+    };
+
+    if (
+        $platform === 'bandcamp'
+        && (str_ends_with($host, '.bandcamp.com') || in_array($host, $allowedHosts, true))
+    ) {
+        return;
+    }
+
+    if (!in_array($host, $allowedHosts, true)) {
+        json_error("{$label} does not match the selected platform.", 422);
+    }
+}
+
+function profile_module_url_host(string $url): string
+{
+    $parts = parse_url($url);
+
+    return is_array($parts) ? strtolower((string) ($parts['host'] ?? '')) : '';
 }
 
 function profile_module_type(mixed $value): string
@@ -1185,6 +1464,33 @@ function profile_module_text(mixed $value, int $maxLength, string $label): strin
 
     if ($trimmed === '') {
         json_error("{$label} is required.", 422);
+    }
+
+    if (profile_module_text_length($trimmed) > $maxLength) {
+        json_error("{$label} is too long.", 422);
+    }
+
+    if (profile_module_text_is_unsafe($trimmed)) {
+        json_error("{$label} must be plain text.", 422);
+    }
+
+    return $trimmed;
+}
+
+function profile_module_optional_text(mixed $value, int $maxLength, string $label): ?string
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    if (!is_string($value)) {
+        json_error("{$label} is invalid.", 422);
+    }
+
+    $trimmed = trim(preg_replace('/\s+/', ' ', $value) ?? $value);
+
+    if ($trimmed === '') {
+        return null;
     }
 
     if (profile_module_text_length($trimmed) > $maxLength) {

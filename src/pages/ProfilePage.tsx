@@ -15,8 +15,9 @@ import {
   Users,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { lazy, Suspense, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useOutletContext, useParams } from "react-router";
+import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
 import { PostCard } from "../components/social/PostCard";
 import { ProfileHeader } from "../components/social/ProfileHeader";
@@ -95,6 +96,7 @@ const ProfileCustomizationModal = lazy(() =>
 export function ProfilePage() {
   const { handle, profileHandle } = useParams();
   const navigate = useNavigate();
+  const { setTopBarAction } = useOutletContext<AppShellOutletContext>();
   const { refreshSession, runWithAuth, status, user } = useAuth();
   const [activeTab, setActiveTab] = useState<ProfileTab>("feed");
   const [customizingProfileHandle, setCustomizingProfileHandle] = useState<string | undefined>();
@@ -195,7 +197,7 @@ export function ProfilePage() {
     () => mergeProfileFeed(postsState.data ?? [], reblogsState.data ?? []),
     [postsState.data, reblogsState.data],
   );
-  const profileRooms = roomsState.data ?? [];
+  const profileRooms = useMemo(() => roomsState.data ?? [], [roomsState.data]);
   const profileBadgesResult =
     badgesOverride?.handle === normalizedHandle ? badgesOverride.result : badgesState.data;
   const profileBadges = profileBadgesResult?.badges ?? [];
@@ -425,9 +427,9 @@ export function ProfilePage() {
     return updated;
   }
 
-  async function handleOpenCustomization(
+  const handleOpenCustomization = useCallback(async (
     initialSection: ProfileCustomizationInitialSection = "identity",
-  ) {
+  ) => {
     setModuleEditorLoading(true);
     setModuleEditorError(undefined);
     setCustomizationInitialSection(initialSection);
@@ -461,7 +463,30 @@ export function ProfilePage() {
       setModuleEditorLoading(false);
       setCustomizingProfileHandle(normalizedHandle);
     }
-  }
+  }, [normalizedHandle, postsState.data, profileRooms, user]);
+
+  useEffect(() => {
+    if (!isOwnProfile || !profile) {
+      setTopBarAction(undefined);
+      return undefined;
+    }
+
+    setTopBarAction(
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        className="min-h-10 px-2 sm:px-3"
+        aria-label="Customize profile"
+        icon={<Sparkles aria-hidden="true" size={16} />}
+        onClick={() => void handleOpenCustomization()}
+      >
+        <span className="hidden sm:inline">Customize profile</span>
+      </Button>,
+    );
+
+    return () => setTopBarAction(undefined);
+  }, [handleOpenCustomization, isOwnProfile, profile, setTopBarAction]);
 
   async function handleCreateModule(
     input: CreateProfileModuleInput,
@@ -486,14 +511,15 @@ export function ProfilePage() {
     return modules;
   }
 
-  async function handleDeleteModule(moduleId: number): Promise<void> {
-    await runWithAuth((csrfToken) => deleteProfileModule(moduleId, csrfToken), {
+  async function handleDeleteModule(moduleId: number): Promise<ProfileModule[]> {
+    const modules = await runWithAuth((csrfToken) => deleteProfileModule(moduleId, csrfToken), {
       retryOnCsrf: true,
     });
     setModulesOverride({
       handle: normalizedHandle,
-      modules: ownerModules.filter((module) => module.id !== moduleId),
+      modules,
     });
+    return modules;
   }
 
   async function handleReorderModules(moduleIds: number[]): Promise<ProfileModule[]> {
@@ -681,9 +707,6 @@ export function ProfilePage() {
                     status === "authenticated" && !isOwnProfile
                       ? handleBlockToggle
                       : undefined
-                  }
-                  onEditProfile={
-                    isOwnProfile ? () => void handleOpenCustomization() : undefined
                   }
                   onFollowToggle={handleFollowToggle}
                   onMuteToggle={
@@ -919,7 +942,6 @@ type ProfileInfoModuleProps = {
   followPosting: boolean;
   isOwnProfile: boolean;
   onBlockToggle?: (() => Promise<void> | void) | undefined;
-  onEditProfile?: (() => void) | undefined;
   onFollowToggle: () => void;
   onMuteToggle?: (() => Promise<void> | void) | undefined;
   onOpenPanel: (panel: "followers" | "following" | "badges") => void;
@@ -937,7 +959,6 @@ function ProfileInfoModule({
   followPosting,
   isOwnProfile,
   onBlockToggle,
-  onEditProfile,
   onFollowToggle,
   onMuteToggle,
   onOpenPanel,
@@ -967,7 +988,6 @@ function ProfileInfoModule({
         profileControlMessage={activeProfileControlMessage}
         onBlockToggle={onBlockToggle}
         onFollowToggle={onFollowToggle}
-        onEditProfile={onEditProfile}
         onMuteToggle={onMuteToggle}
         onOpenPanel={onOpenPanel}
         showChatHint={showChatHint}

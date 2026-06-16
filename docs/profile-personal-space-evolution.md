@@ -769,6 +769,48 @@ editor with the modular canvas direction:
 - Public profiles remain header plus module grid, with no fixed Featured
   section, setup prompt, layout action, or "Personal space" label.
 
+### Implementation Note - 2026-06-16 Profiles V3 P2 Expressive Modules
+
+Profiles V3 P2 expands the module catalog without adding a page builder,
+arbitrary embeds, or new schema:
+
+- Featured post and Featured room remain standalone built-in modules backed by
+  `profiles.featured_post_id` and `profiles.featured_room_id`. Removing either
+  module from the canvas hides the module preference; it does not delete or clear
+  the original post or room.
+- Connections uses the existing `links` module type with stronger presentation:
+  platform-aware labels/icons where available, compact domain/handle previews,
+  safe external-link behavior, and HTTPS/server-side URL validation.
+- Badge Showcase continues to use `featured_badges` and only renders selected,
+  visible, earned badge grants.
+- About/Status continues to use the existing `about` module type and now
+  supports compact intro, status, and "working on" text.
+- Gallery/Media ships as a foundation module, `gallery_media`, that renders a
+  small selected image grid from existing uploaded WebP media URLs only. It does
+  not add a media library, gallery manager, new upload behavior, external
+  hotlink gallery, video, lightbox, or autoplay.
+- Creator/Live ships as `creator_live`, a static link-first card for a creator
+  platform/channel plus short status text. Live polling, API integrations,
+  embedded players, chat, trackers, and third-party scripts are deferred.
+- Music ships as `music`, a compact link-first card for a song, playlist, or
+  profile link. Playback, rich metadata, provider APIs, embeds, and autoplay are
+  deferred.
+- Iframes and embeds are not enabled in P2. Module config validation still
+  rejects unsupported embed/iframe/script-like fields and no public renderer
+  executes user-provided HTML, CSS, JavaScript, or arbitrary iframe markup.
+- The canvas remains a controlled five-column desktop grid with a nine-row
+  budget convention and allowlisted spans up to `3x3`. Mobile remains a single
+  ordered stack. Activity remains capped at three grid rows with internal body
+  scrolling when content overflows.
+
+Deferred to P3:
+
+- Rich music playback, Spotify/Apple/YouTube metadata, oEmbed or iframe cards,
+  Twitch/YouTube live status polling, embedded players, external API keys,
+  cached integration metadata, a full gallery/media manager, video modules,
+  drag-and-drop placement, custom HTML/CSS/JS, analytics, monetization, ads, and
+  unrestricted iframes.
+
 Current limitations:
 
 - Profiles now have a minimal module foundation and owner editor/preview for v1 modules, but no integrations, embeds, or module-level report target.

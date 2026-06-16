@@ -41,7 +41,6 @@ type ProfileHeaderProps = {
   profileControlMessage?: string | undefined;
   onBlockToggle?: (() => Promise<void> | void) | undefined;
   onFollowToggle?: () => void;
-  onEditProfile?: (() => void) | undefined;
   onMuteToggle?: (() => Promise<void> | void) | undefined;
   onOpenPanel?: (panel: "followers" | "following" | "badges") => void;
   featuredBadges?: UserBadge[] | undefined;
@@ -58,7 +57,6 @@ export function ProfileHeader({
   profileControlError,
   profileControlMessage,
   onBlockToggle,
-  onEditProfile,
   onFollowToggle,
   onMuteToggle,
   onOpenPanel,
@@ -153,17 +151,7 @@ export function ProfileHeader({
               </div>
             </div>
             <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-              {isOwnProfile ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  className="shadow-none"
-                  onClick={onEditProfile}
-                >
-                  Customize profile
-                </Button>
-              ) : (
+              {!isOwnProfile ? (
                 <>
                   {messageToHandle && !directActionsDisabled ? (
                     <ButtonLink
@@ -251,7 +239,7 @@ export function ProfileHeader({
                     </div>
                   ) : null}
                 </>
-              )}
+              ) : null}
             </div>
           </div>
           <ProfileStatusMessages

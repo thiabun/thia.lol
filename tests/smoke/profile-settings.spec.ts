@@ -415,11 +415,11 @@ test("profile layout renders identity, essential social stats, activity module, 
   );
   await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
     "data-profile-grid-size",
-    "2x2",
+    "3x2",
   );
   await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
     "data-profile-grid-column-span",
-    "2",
+    "3",
   );
   await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
     "data-profile-grid-row-span",

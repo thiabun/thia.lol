@@ -17,6 +17,7 @@ import type {
   ProfileLayoutPreset,
   ProfileModule,
   ProfileModuleConfig,
+  ProfileModuleMediaItem,
   ProfileModuleStatus,
   ProfileModuleType,
   ProfileModuleVisibility,
@@ -529,11 +530,11 @@ export function updateProfileModule(
 export function deleteProfileModule(
   moduleId: number,
   csrfToken: string,
-): Promise<{ id: number; deleted: boolean }> {
-  return apiDelete<{ id: number; deleted: boolean }>(
+): Promise<ProfileModule[]> {
+  return apiDelete<ApiProfileModule[]>(
     `/me/profile/modules/${moduleId}`,
     csrfToken,
-  );
+  ).then((items) => items.filter(isApiProfileModule).map(normalizeProfileModule));
 }
 
 export function updateProfileModuleOrder(
@@ -1202,6 +1203,11 @@ function normalizeProfileModuleConfig(config: ProfileModuleConfig): ProfileModul
   const links = Array.isArray(config.links)
     ? config.links.map(normalizeProfileModuleLink).filter(isProfileModuleLink)
     : undefined;
+  const mediaItems = Array.isArray(config.mediaItems)
+    ? config.mediaItems
+        .map(normalizeProfileModuleMediaItem)
+        .filter(isProfileModuleMediaItem)
+    : undefined;
   const userBadgeIds = Array.isArray(config.userBadgeIds)
     ? config.userBadgeIds.filter((id): id is number => Number.isInteger(id) && id > 0)
     : undefined;
@@ -1210,12 +1216,48 @@ function normalizeProfileModuleConfig(config: ProfileModuleConfig): ProfileModul
     normalized.body = config.body;
   }
 
+  if (typeof config.statusText === "string") {
+    normalized.statusText = config.statusText;
+  }
+
+  if (typeof config.workingOn === "string") {
+    normalized.workingOn = config.workingOn;
+  }
+
+  if (typeof config.description === "string") {
+    normalized.description = config.description;
+  }
+
+  if (typeof config.label === "string") {
+    normalized.label = config.label;
+  }
+
+  if (typeof config.platform === "string") {
+    normalized.platform = config.platform;
+  }
+
+  if (typeof config.url === "string") {
+    const safeUrl = normalizeProfileModuleExternalUrl(config.url);
+
+    if (safeUrl) {
+      normalized.url = safeUrl;
+    }
+  }
+
+  if (typeof config.canvasSize === "string") {
+    normalized.canvasSize = config.canvasSize;
+  }
+
   if (link) {
     normalized.link = link;
   }
 
   if (links) {
     normalized.links = links;
+  }
+
+  if (mediaItems) {
+    normalized.mediaItems = mediaItems;
   }
 
   if (userBadgeIds) {
@@ -1232,9 +1274,16 @@ function normalizeProfileModuleLink(
     return undefined;
   }
 
+  const safeUrl = normalizeProfileModuleExternalUrl(link.url);
+
+  if (!safeUrl) {
+    return undefined;
+  }
+
   return {
     label: link.label,
-    url: link.url,
+    ...(typeof link.platform === "string" ? { platform: link.platform } : {}),
+    url: safeUrl,
   };
 }
 
@@ -1242,6 +1291,47 @@ function isProfileModuleLink(
   link: ProfileModuleConfig["link"],
 ): link is NonNullable<ProfileModuleConfig["link"]> {
   return link !== undefined;
+}
+
+function normalizeProfileModuleMediaItem(
+  item: ProfileModuleMediaItem,
+): ProfileModuleMediaItem | undefined {
+  if (!item || typeof item.url !== "string") {
+    return undefined;
+  }
+
+  if (!isUploadedProfileModuleMediaUrl(item.url)) {
+    return undefined;
+  }
+
+  return {
+    ...(typeof item.caption === "string" ? { caption: item.caption } : {}),
+    url: item.url,
+  };
+}
+
+function isProfileModuleMediaItem(
+  item: ProfileModuleMediaItem | undefined,
+): item is ProfileModuleMediaItem {
+  return item !== undefined;
+}
+
+function normalizeProfileModuleExternalUrl(value: string): string | undefined {
+  try {
+    const url = new URL(value);
+
+    if (url.protocol !== "https:" || url.username || url.password) {
+      return undefined;
+    }
+
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function isUploadedProfileModuleMediaUrl(value: string): boolean {
+  return /^\/uploads\/media\/[0-9]{4}\/[0-9]{2}\/[a-z0-9_-]+\.webp$/.test(value);
 }
 
 function normalizeUserBadge(userBadge: ApiUserBadge): UserBadge {

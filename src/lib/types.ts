@@ -114,6 +114,9 @@ export type ProfileModuleType =
   | "featured_badges"
   | "featured_post"
   | "featured_room"
+  | "gallery_media"
+  | "creator_live"
+  | "music"
   | "custom_text"
   | "activity";
 
@@ -123,15 +126,28 @@ export type ProfileModuleStatus = "active" | "hidden" | "deleted";
 
 export type ProfileModuleLink = {
   label: string;
+  platform?: string;
+  url: string;
+};
+
+export type ProfileModuleMediaItem = {
+  caption?: string;
   url: string;
 };
 
 export type ProfileModuleConfig = {
   body?: string;
   canvasSize?: string;
+  description?: string;
+  label?: string;
   link?: ProfileModuleLink;
   links?: ProfileModuleLink[];
+  mediaItems?: ProfileModuleMediaItem[];
+  platform?: string;
+  statusText?: string;
   userBadgeIds?: number[];
+  url?: string;
+  workingOn?: string;
 };
 
 export type ProfileModule = {

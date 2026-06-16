@@ -9,12 +9,14 @@ import {
   Edit3,
   Eye,
   EyeOff,
+  Image as ImageIcon,
   ImagePlus,
   LayoutGrid,
   Link as LinkIcon,
   LoaderCircle,
   MapPin,
   MessageCircle,
+  Music2,
   Pin,
   Plus,
   Radio,
@@ -83,6 +85,9 @@ const maxBodyLength = 500;
 const maxLinks = 10;
 const maxLinkLabelLength = 60;
 const maxFeaturedBadges = 12;
+const maxGalleryItems = 6;
+const maxGalleryCaptionLength = 80;
+const maxShortModuleTextLength = 180;
 
 const sections: Array<{
   id: CustomizationSection;
@@ -143,6 +148,24 @@ const moduleTypes: Array<{
     icon: BadgeCheck,
   },
   {
+    type: "gallery_media",
+    label: getProfileModuleDefinition("gallery_media").label,
+    description: getProfileModuleDefinition("gallery_media").description,
+    icon: ImageIcon,
+  },
+  {
+    type: "creator_live",
+    label: getProfileModuleDefinition("creator_live").label,
+    description: getProfileModuleDefinition("creator_live").description,
+    icon: Radio,
+  },
+  {
+    type: "music",
+    label: getProfileModuleDefinition("music").label,
+    description: getProfileModuleDefinition("music").description,
+    icon: Music2,
+  },
+  {
     type: "featured_post",
     label: getProfileModuleDefinition("featured_post").label,
     description: getProfileModuleDefinition("featured_post").description,
@@ -171,8 +194,52 @@ const visibilityOptions: Array<{ value: ProfileModuleVisibility; label: string }
   { value: "draft", label: "Draft" },
 ];
 
+const linkModulePlatformOptions = [
+  { value: "custom", label: "Custom" },
+  { value: "website", label: "Website" },
+  { value: "youtube", label: "YouTube" },
+  { value: "twitch", label: "Twitch" },
+  { value: "tiktok", label: "TikTok" },
+  { value: "instagram", label: "Instagram" },
+  { value: "x", label: "X / Twitter" },
+  { value: "bluesky", label: "Bluesky" },
+  { value: "github", label: "GitHub" },
+  { value: "discord", label: "Discord" },
+  { value: "spotify", label: "Spotify" },
+];
+
+const creatorPlatformOptions = [
+  { value: "custom", label: "Custom" },
+  { value: "website", label: "Website" },
+  { value: "youtube", label: "YouTube" },
+  { value: "twitch", label: "Twitch" },
+  { value: "tiktok", label: "TikTok" },
+  { value: "instagram", label: "Instagram" },
+  { value: "x", label: "X / Twitter" },
+  { value: "bluesky", label: "Bluesky" },
+  { value: "github", label: "GitHub" },
+  { value: "discord", label: "Discord" },
+];
+
+const musicPlatformOptions = [
+  { value: "custom", label: "Custom" },
+  { value: "spotify", label: "Spotify" },
+  { value: "apple_music", label: "Apple Music" },
+  { value: "youtube_music", label: "YouTube Music" },
+  { value: "soundcloud", label: "SoundCloud" },
+  { value: "bandcamp", label: "Bandcamp" },
+];
+
 function isFeaturedContentModule(type: ProfileModuleType): boolean {
   return type === "featured_post" || type === "featured_room";
+}
+
+function isBuiltInModuleType(type: ProfileModuleType): boolean {
+  return type === "activity" || isFeaturedContentModule(type);
+}
+
+function canRemoveModuleFromEditor(type: ProfileModuleType): boolean {
+  return type !== "activity" && type !== "profile_info";
 }
 
 type CustomizationSection =
@@ -213,7 +280,7 @@ type ProfileCustomizationModalProps = {
   modules: ProfileModule[];
   onClose: () => void;
   onCreateModule: (input: CreateProfileModuleInput) => Promise<ProfileModule[]>;
-  onDeleteModule: (moduleId: number) => Promise<void>;
+  onDeleteModule: (moduleId: number) => Promise<ProfileModule[]>;
   onReorderModules: (moduleIds: number[]) => Promise<ProfileModule[]>;
   onSaveFeaturedContent: (input: UpdateProfileFeaturedInput) => Promise<Profile>;
   onSaveProfile: (input: UpdateProfileInput) => Promise<Profile>;
@@ -661,7 +728,12 @@ export function ProfileCustomizationModal({
       return;
     }
 
-    if (!window.confirm(`Delete ${targetModule.title || moduleTypeMeta(targetModule.type).label}?`)) {
+    const targetTitle = targetModule.title || moduleTypeMeta(targetModule.type).label;
+    const prompt = isBuiltInModuleType(targetModule.type)
+      ? `Hide ${targetTitle} from the profile canvas?`
+      : `Delete ${targetTitle}?`;
+
+    if (!window.confirm(prompt)) {
       return;
     }
 
@@ -670,20 +742,20 @@ export function ProfileCustomizationModal({
     setModuleFormError(undefined);
 
     try {
-      const nextDrafts = drafts.filter((module) => module.id !== targetModule.id);
-
       if (targetModule.id > 0) {
-        await onDeleteModule(targetModule.id);
+        const updated = await onDeleteModule(targetModule.id);
+        setDrafts(updated);
+      } else {
+        setDrafts(drafts.filter((module) => module.id !== targetModule.id));
       }
 
-      setDrafts(nextDrafts);
       setSelectedModuleId((current) => (current === targetModule.id ? undefined : current));
       setModuleDirty((current) => {
         const next = { ...current };
         delete next[targetModule.id];
         return next;
       });
-      setModuleMessage("Module deleted");
+      setModuleMessage(isBuiltInModuleType(targetModule.type) ? "Module hidden" : "Module deleted");
     } catch (caught) {
       setModuleFormError(
         caught instanceof Error ? caught.message : "Module could not be deleted.",
@@ -2010,8 +2082,7 @@ function ModuleTile({
   const moduleType = moduleTypeMeta(module.type);
   const Icon = moduleType.icon;
   const title = module.title || moduleType.label;
-  const isBuiltInModule =
-    module.type === "activity" || isFeaturedContentModule(module.type);
+  const canRemoveModule = canRemoveModuleFromEditor(module.type);
   const canSaveModule = module.id < 0 || selectedDirty || featuredDirty;
   const shouldReduceMotion = useReducedMotion();
 
@@ -2078,13 +2149,17 @@ function ModuleTile({
             icon={<Edit3 aria-hidden="true" size={15} />}
             onClick={onSelect}
           />
-          {!isBuiltInModule ? (
+          {canRemoveModule ? (
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              aria-label={`Delete ${title}`}
-              title="Delete"
+              aria-label={
+                isBuiltInModuleType(module.type)
+                  ? `Remove ${title} from canvas`
+                  : `Delete ${title}`
+              }
+              title={isBuiltInModuleType(module.type) ? "Remove from canvas" : "Delete"}
               disabled={busy !== undefined}
               icon={<Trash2 aria-hidden="true" size={15} />}
               onClick={onDelete}
@@ -2219,6 +2294,65 @@ function ModuleTypeFields({
     return <FeaturedContentEditor {...featuredContent} mode="room" />;
   }
 
+  if (module.type === "about") {
+    return (
+      <div className="grid gap-2.5">
+        <TextareaField
+          id="module-about-body"
+          label="Intro"
+          density="compact"
+          rows={3}
+          maxLength={maxBodyLength}
+          className="min-h-20"
+          value={module.config.body ?? ""}
+          onChange={(event) =>
+            onChange((current) => ({
+              ...current,
+              config: {
+                ...current.config,
+                body: event.currentTarget.value,
+              },
+            }))
+          }
+        />
+        <div className="grid gap-2 sm:grid-cols-2">
+          <TextField
+            id="module-about-status"
+            label="Status"
+            density="compact"
+            maxLength={120}
+            value={module.config.statusText ?? ""}
+            onChange={(event) =>
+              onChange((current) => ({
+                ...current,
+                config: {
+                  ...current.config,
+                  statusText: event.currentTarget.value,
+                },
+              }))
+            }
+          />
+          <TextField
+            id="module-about-working-on"
+            label="Working on"
+            density="compact"
+            maxLength={120}
+            value={module.config.workingOn ?? ""}
+            onChange={(event) =>
+              onChange((current) => ({
+                ...current,
+                config: {
+                  ...current.config,
+                  workingOn: event.currentTarget.value,
+                },
+              }))
+            }
+          />
+        </div>
+      </div>
+    );
+  }
+
   if (module.type === "links") {
     const links = module.config.links ?? [];
 
@@ -2236,8 +2370,11 @@ function ModuleTypeFields({
               onChange((current) => ({
                 ...current,
                 config: {
-                  ...current.config,
-                  links: [...(current.config.links ?? []), { label: "", url: "" }],
+                ...current.config,
+                  links: [
+                    ...(current.config.links ?? []),
+                    { label: "", platform: "custom", url: "" },
+                  ],
                 },
               }))
             }
@@ -2253,8 +2390,27 @@ function ModuleTypeFields({
         {links.map((link, index) => (
           <div
             key={index}
-            className="grid gap-2 rounded-card border border-line bg-surface p-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto]"
+            className="grid gap-2 rounded-card border border-line bg-surface p-2 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,1.3fr)_auto]"
           >
+            <SelectField
+              id={`module-link-platform-${index}`}
+              label={`Link ${index + 1} platform`}
+              density="compact"
+              value={link.platform ?? "custom"}
+              options={linkModulePlatformOptions}
+              onChange={(event) =>
+                onChange((current) => ({
+                  ...current,
+                  config: {
+                    ...current.config,
+                    links: updateLink(current.config.links ?? [], index, {
+                      ...link,
+                      platform: event.currentTarget.value,
+                    }),
+                  },
+                }))
+              }
+            />
             <TextField
               id={`module-link-label-${index}`}
               label={`Link ${index + 1} label`}
@@ -2369,6 +2525,229 @@ function ModuleTypeFields({
           </div>
         )}
       </fieldset>
+    );
+  }
+
+  if (module.type === "gallery_media") {
+    const mediaItems = module.config.mediaItems ?? [];
+    const mediaOptions = galleryMediaOptions(featuredContent.postOptions);
+
+    return (
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between gap-3">
+          <h5 className="text-sm font-semibold text-text">Gallery images</h5>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            icon={<Plus aria-hidden="true" size={15} />}
+            disabled={mediaItems.length >= maxGalleryItems}
+            onClick={() =>
+              onChange((current) => ({
+                ...current,
+                config: {
+                  ...current.config,
+                  mediaItems: [...(current.config.mediaItems ?? []), { url: "" }],
+                },
+              }))
+            }
+          >
+            Add URL
+          </Button>
+        </div>
+        {mediaOptions.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {mediaOptions.map((option) => (
+              <Button
+                key={option.url}
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={
+                  mediaItems.length >= maxGalleryItems ||
+                  mediaItems.some((item) => item.url === option.url)
+                }
+                icon={<ImageIcon aria-hidden="true" size={14} />}
+                onClick={() =>
+                  onChange((current) => ({
+                    ...current,
+                    config: {
+                      ...current.config,
+                      mediaItems: [
+                        ...(current.config.mediaItems ?? []),
+                        { caption: option.caption, url: option.url },
+                      ].slice(0, maxGalleryItems),
+                    },
+                  }))
+                }
+              >
+                Add from post
+              </Button>
+            ))}
+          </div>
+        ) : null}
+        {mediaItems.length === 0 ? (
+          <p className="rounded-card border border-dashed border-line bg-canvas/45 p-2 text-sm text-muted">
+            Add uploaded images from posts or paste a safe upload URL.
+          </p>
+        ) : null}
+        <div className="grid gap-2">
+          {mediaItems.map((item, index) => (
+            <div
+              key={index}
+              className="grid gap-2 rounded-card border border-line bg-surface p-2 sm:grid-cols-[4rem_minmax(0,1.4fr)_minmax(0,1fr)_auto]"
+            >
+              <div className="grid size-16 place-items-center overflow-hidden rounded-card border border-line bg-canvas/60 text-muted">
+                {uploadedMediaUrlError(item.url) ? (
+                  <ImageIcon aria-hidden="true" size={18} />
+                ) : (
+                  <img alt="" className="size-full object-cover" src={item.url} />
+                )}
+              </div>
+              <TextField
+                id={`module-gallery-url-${index}`}
+                label={`Image ${index + 1} URL`}
+                density="compact"
+                value={item.url}
+                onChange={(event) =>
+                  onChange((current) => ({
+                    ...current,
+                    config: {
+                      ...current.config,
+                      mediaItems: updateMediaItem(
+                        current.config.mediaItems ?? [],
+                        index,
+                        {
+                          ...item,
+                          url: event.currentTarget.value,
+                        },
+                      ),
+                    },
+                  }))
+                }
+              />
+              <TextField
+                id={`module-gallery-caption-${index}`}
+                label={`Image ${index + 1} caption`}
+                density="compact"
+                maxLength={maxGalleryCaptionLength}
+                value={item.caption ?? ""}
+                onChange={(event) =>
+                  onChange((current) => ({
+                    ...current,
+                    config: {
+                      ...current.config,
+                      mediaItems: updateMediaItem(
+                        current.config.mediaItems ?? [],
+                        index,
+                        {
+                          ...item,
+                          caption: event.currentTarget.value,
+                        },
+                      ),
+                    },
+                  }))
+                }
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="self-end"
+                onClick={() =>
+                  onChange((current) => ({
+                    ...current,
+                    config: {
+                      ...current.config,
+                      mediaItems: (current.config.mediaItems ?? []).filter(
+                        (_, itemIndex) => itemIndex !== index,
+                      ),
+                    },
+                  }))
+                }
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (module.type === "creator_live" || module.type === "music") {
+    const platformOptions =
+      module.type === "music" ? musicPlatformOptions : creatorPlatformOptions;
+
+    return (
+      <div className="grid gap-2.5">
+        <div className="grid gap-2 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+          <SelectField
+            id={`module-${module.type}-platform`}
+            label="Platform"
+            density="compact"
+            value={module.config.platform ?? "custom"}
+            options={platformOptions}
+            onChange={(event) =>
+              onChange((current) => ({
+                ...current,
+                config: {
+                  ...current.config,
+                  platform: event.currentTarget.value,
+                },
+              }))
+            }
+          />
+          <TextField
+            id={`module-${module.type}-label`}
+            label="Title"
+            density="compact"
+            maxLength={maxLinkLabelLength}
+            value={module.config.label ?? ""}
+            onChange={(event) =>
+              onChange((current) => ({
+                ...current,
+                config: {
+                  ...current.config,
+                  label: event.currentTarget.value,
+                },
+              }))
+            }
+          />
+        </div>
+        <TextField
+          id={`module-${module.type}-url`}
+          label="Link"
+          density="compact"
+          value={module.config.url ?? ""}
+          onChange={(event) =>
+            onChange((current) => ({
+              ...current,
+              config: {
+                ...current.config,
+                url: event.currentTarget.value,
+              },
+            }))
+          }
+        />
+        <TextareaField
+          id={`module-${module.type}-description`}
+          label="Short note"
+          density="compact"
+          rows={2}
+          maxLength={maxShortModuleTextLength}
+          value={module.config.description ?? ""}
+          onChange={(event) =>
+            onChange((current) => ({
+              ...current,
+              config: {
+                ...current.config,
+                description: event.currentTarget.value,
+              },
+            }))
+          }
+        />
+      </div>
     );
   }
 
@@ -2694,11 +3073,23 @@ function defaultConfig(type: ProfileModuleType): ProfileModuleConfig {
   }
 
   if (type === "links") {
-    return { links: [{ label: "", url: "" }] };
+    return { links: [{ label: "", platform: "custom", url: "" }] };
   }
 
   if (type === "featured_badges") {
     return { userBadgeIds: [] };
+  }
+
+  if (type === "gallery_media") {
+    return { mediaItems: [] };
+  }
+
+  if (type === "creator_live") {
+    return { platform: "custom", label: "", url: "", description: "" };
+  }
+
+  if (type === "music") {
+    return { platform: "custom", label: "", url: "", description: "" };
   }
 
   return { body: "" };
@@ -2727,6 +3118,7 @@ function normalizedConfig(module: ProfileModule): ProfileModuleConfig {
     return {
       links: (module.config.links ?? []).map((link) => ({
         label: link.label.trim(),
+        platform: link.platform ?? "custom",
         url: link.url.trim(),
       })),
     };
@@ -2734,6 +3126,38 @@ function normalizedConfig(module: ProfileModule): ProfileModuleConfig {
 
   if (module.type === "featured_badges") {
     return { userBadgeIds: module.config.userBadgeIds ?? [] };
+  }
+
+  if (module.type === "gallery_media") {
+    return {
+      mediaItems: (module.config.mediaItems ?? []).map((item) => ({
+        ...(item.caption?.trim() ? { caption: item.caption.trim() } : {}),
+        url: item.url.trim(),
+      })),
+    };
+  }
+
+  if (module.type === "creator_live" || module.type === "music") {
+    return {
+      ...(module.config.description?.trim()
+        ? { description: module.config.description.trim() }
+        : {}),
+      label: (module.config.label ?? "").trim(),
+      platform: module.config.platform ?? "custom",
+      url: (module.config.url ?? "").trim(),
+    };
+  }
+
+  if (module.type === "about") {
+    return {
+      ...(module.config.body?.trim() ? { body: module.config.body.trim() } : {}),
+      ...(module.config.statusText?.trim()
+        ? { statusText: module.config.statusText.trim() }
+        : {}),
+      ...(module.config.workingOn?.trim()
+        ? { workingOn: module.config.workingOn.trim() }
+        : {}),
+    };
   }
 
   return { body: (module.config.body ?? "").trim() };
@@ -2751,6 +3175,38 @@ function validateModuleDraft(module: ProfileModule, badges: UserBadge[]): string
     isFeaturedContentModule(module.type) ||
     module.type === "profile_info"
   ) {
+    return undefined;
+  }
+
+  if (module.type === "about") {
+    const bodyError = optionalPlainTextError(
+      module.config.body ?? "",
+      maxBodyLength,
+      "Intro",
+    );
+    const statusError = optionalPlainTextError(
+      module.config.statusText ?? "",
+      120,
+      "Status",
+    );
+    const workingOnError = optionalPlainTextError(
+      module.config.workingOn ?? "",
+      120,
+      "Working on",
+    );
+
+    if (bodyError || statusError || workingOnError) {
+      return bodyError ?? statusError ?? workingOnError;
+    }
+
+    if (
+      !(module.config.body ?? "").trim() &&
+      !(module.config.statusText ?? "").trim() &&
+      !(module.config.workingOn ?? "").trim()
+    ) {
+      return "Add intro, status, or working-on text.";
+    }
+
     return undefined;
   }
 
@@ -2796,6 +3252,53 @@ function validateModuleDraft(module: ProfileModule, badges: UserBadge[]): string
 
     if (selectedIds.some((id) => !availableIds.has(id))) {
       return "Choose only badges earned by this profile.";
+    }
+
+    return undefined;
+  }
+
+  if (module.type === "gallery_media") {
+    const mediaItems = module.config.mediaItems ?? [];
+
+    if (mediaItems.length === 0) {
+      return "Choose at least one gallery image.";
+    }
+
+    if (mediaItems.length > maxGalleryItems) {
+      return "Gallery modules can show up to 6 images.";
+    }
+
+    for (const item of mediaItems) {
+      const mediaUrlError = uploadedMediaUrlError(item.url);
+      const captionError = optionalPlainTextError(
+        item.caption ?? "",
+        maxGalleryCaptionLength,
+        "Caption",
+      );
+
+      if (mediaUrlError || captionError) {
+        return mediaUrlError ?? captionError;
+      }
+    }
+
+    return undefined;
+  }
+
+  if (module.type === "creator_live" || module.type === "music") {
+    const labelError = requiredPlainTextError(
+      module.config.label ?? "",
+      maxLinkLabelLength,
+      "Title",
+    );
+    const descriptionError = optionalPlainTextError(
+      module.config.description ?? "",
+      maxShortModuleTextLength,
+      "Description",
+    );
+    const urlError = safeUrlError(module.config.url ?? "");
+
+    if (labelError || descriptionError || urlError) {
+      return labelError ?? descriptionError ?? urlError;
     }
 
     return undefined;
@@ -2872,12 +3375,53 @@ function safeUrlError(value: string): string | undefined {
   return undefined;
 }
 
+function uploadedMediaUrlError(value: string): string | undefined {
+  const trimmed = value.trim();
+
+  if (trimmed === "") {
+    return "Gallery image URL is required.";
+  }
+
+  if (!/^\/uploads\/media\/[0-9]{4}\/[0-9]{2}\/[a-z0-9_-]+\.webp$/.test(trimmed)) {
+    return "Gallery images must come from the image upload endpoint.";
+  }
+
+  return undefined;
+}
+
 function updateLink(
   links: NonNullable<ProfileModuleConfig["links"]>,
   index: number,
   nextLink: NonNullable<ProfileModuleConfig["links"]>[number],
 ) {
   return links.map((link, linkIndex) => (linkIndex === index ? nextLink : link));
+}
+
+function updateMediaItem(
+  mediaItems: NonNullable<ProfileModuleConfig["mediaItems"]>,
+  index: number,
+  nextItem: NonNullable<ProfileModuleConfig["mediaItems"]>[number],
+) {
+  return mediaItems.map((item, itemIndex) => (itemIndex === index ? nextItem : item));
+}
+
+function galleryMediaOptions(posts: Post[]): Array<{ caption: string; url: string }> {
+  const options: Array<{ caption: string; url: string }> = [];
+  const seen = new Set<string>();
+
+  for (const post of posts) {
+    if (!post.mediaUrl || uploadedMediaUrlError(post.mediaUrl) || seen.has(post.mediaUrl)) {
+      continue;
+    }
+
+    seen.add(post.mediaUrl);
+    options.push({
+      caption: post.body.length > 48 ? `${post.body.slice(0, 45)}...` : post.body,
+      url: post.mediaUrl,
+    });
+  }
+
+  return options.slice(0, maxGalleryItems);
 }
 
 function nextBadgeIds(current: number[], id: number, checked: boolean): number[] {

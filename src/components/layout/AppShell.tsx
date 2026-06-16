@@ -64,6 +64,7 @@ const cookieNoticeStorageKey = "thia_cookie_notice_ack";
 
 export type AppShellOutletContext = {
   openPostComposer: (roomSlug?: string) => void;
+  setTopBarAction: (action: ReactNode | undefined) => void;
 };
 
 export function AppShell() {
@@ -76,6 +77,7 @@ export function AppShell() {
   const [composerRooms, setComposerRooms] = useState<Room[]>([]);
   const [composerRoomsLoaded, setComposerRoomsLoaded] = useState(false);
   const [composerKey, setComposerKey] = useState(0);
+  const [topBarAction, setTopBarAction] = useState<ReactNode | undefined>();
   const [notificationUnreadCount, setNotificationUnreadCount] = useState<
     number | undefined
   >();
@@ -191,10 +193,15 @@ export function AppShell() {
         navItems={publicNavItems}
         notificationUnreadCount={notificationUnreadCount}
         showNotifications={status === "authenticated"}
+        topBarAction={topBarAction}
       />
       <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 sm:px-6 lg:px-8">
         <main className="flex-1 pb-6 pt-5 lg:pb-16">
-          <Outlet context={{ openPostComposer } satisfies AppShellOutletContext} />
+          <Outlet
+            context={
+              { openPostComposer, setTopBarAction } satisfies AppShellOutletContext
+            }
+          />
         </main>
         <MobileDock
           navItems={publicNavItems}
@@ -245,10 +252,12 @@ function SiteHeader({
   navItems,
   notificationUnreadCount,
   showNotifications,
+  topBarAction,
 }: {
   navItems: NavItemProps[];
   notificationUnreadCount: number | undefined;
   showNotifications: boolean;
+  topBarAction?: ReactNode | undefined;
 }) {
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-canvas/78 backdrop-blur-veil">
@@ -276,6 +285,7 @@ function SiteHeader({
         </nav>
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
+          {topBarAction ? <div className="shrink-0">{topBarAction}</div> : null}
           <ButtonLink
             to="/search"
             variant="secondary"

@@ -14,6 +14,7 @@ type ProfileGridProps = {
   className?: string | undefined;
   layoutPreset?: ProfileLayoutPreset | undefined;
   maxColumns?: 2 | 5;
+  maxRows?: 9;
   testId?: string | undefined;
 };
 
@@ -22,11 +23,13 @@ export function ProfileGrid({
   className,
   layoutPreset = defaultProfileLayoutPreset,
   maxColumns = 5,
+  maxRows = 9,
   testId = "profile-grid",
 }: ProfileGridProps) {
   const gridStyle = {
     "--profile-grid-gap": layoutPreset === "compact" ? "0.5rem" : "0.75rem",
     "--profile-grid-row-size": "8rem",
+    "--profile-grid-row-budget": String(maxRows),
   } as CSSProperties;
 
   return (
@@ -38,6 +41,7 @@ export function ProfileGrid({
         className,
       )}
       data-profile-canvas-columns={maxColumns}
+      data-profile-canvas-rows={maxRows}
       data-profile-layout-preset={layoutPreset}
       data-testid={testId}
       style={gridStyle}
@@ -118,6 +122,14 @@ function profileGridModuleSizeClass(size: ProfileGridModuleSize): string {
     return "md:col-span-2 lg:col-span-3";
   }
 
+  if (size === "3x2") {
+    return "md:col-span-2 md:row-span-2 lg:col-span-3";
+  }
+
+  if (size === "3x3") {
+    return "md:col-span-2 md:row-span-3 lg:col-span-3";
+  }
+
   if (size === "2x1") {
     return "md:col-span-2";
   }
@@ -126,8 +138,16 @@ function profileGridModuleSizeClass(size: ProfileGridModuleSize): string {
     return "md:row-span-2";
   }
 
+  if (size === "1x3") {
+    return "md:row-span-3";
+  }
+
   if (size === "2x2") {
     return "md:col-span-2 md:row-span-2";
+  }
+
+  if (size === "2x3") {
+    return "md:col-span-2 md:row-span-3";
   }
 
   return "";

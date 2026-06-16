@@ -37,7 +37,7 @@ test("visitor profile renders featured post and room through the module grid", a
   await expect(modules.getByTestId("profile-grid-module-featured_post")).toBeVisible();
   await expect(modules.getByTestId("profile-grid-module-featured_post")).toHaveAttribute(
     "data-profile-grid-size",
-    "2x1",
+    "3x2",
   );
   await expect(modules.getByTestId("profile-grid-module-featured_room")).toBeVisible();
   await expect(modules.getByTestId("profile-grid-module-featured_room")).toHaveAttribute(
@@ -116,7 +116,7 @@ test("visitor featured module respects profile layout and order", async ({ page 
   await expect(grid).toHaveAttribute("data-profile-layout-preset", "showcase");
   await expect(modules.getByTestId("profile-grid-module-featured_post")).toHaveAttribute(
     "data-profile-grid-size",
-    "2x1",
+    "3x2",
   );
   await expectTextOrder(modules, [
     "Thia",
@@ -144,7 +144,7 @@ test("first featured module can lead the showcase layout", async ({ page }) => {
   const modules = page.getByTestId("profile-modules");
   await expect(modules.getByTestId("profile-grid-module-featured_post")).toHaveAttribute(
     "data-profile-grid-size",
-    "2x1",
+    "3x2",
   );
   await expect(modules.getByTestId("profile-grid-module-featured_room")).toHaveAttribute(
     "data-profile-grid-size",
@@ -173,10 +173,7 @@ test("owner can select and clear featured content from customization", async ({ 
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await page
-    .getByTestId("profile-header")
-    .getByRole("button", { name: "Customize profile" })
-    .click();
+  await page.getByRole("button", { name: "Customize profile" }).click();
   const modal = page.getByTestId("profile-customization-modal");
   await modal.getByRole("button", { name: /Modules/ }).click();
 

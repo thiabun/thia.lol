@@ -70,13 +70,24 @@ test("profile renders public modules safely", async ({ page }) => {
   await expect(section.getByTestId("profile-module-grid")).toBeVisible();
   await expect(section.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
     "data-profile-grid-size",
-    "2x2",
+    "3x2",
+  );
+  await expect(section.getByTestId("profile-module-grid")).toHaveAttribute(
+    "data-profile-canvas-rows",
+    "9",
   );
   await expect(section.getByTestId("profile-grid-module-about")).toHaveAttribute(
     "data-profile-grid-size",
     "2x1",
   );
-  await expect(section.locator('[data-profile-grid-size="1x1"]')).toHaveCount(2);
+  await expect(section.getByTestId("profile-grid-module-links")).toHaveAttribute(
+    "data-profile-grid-size",
+    "2x1",
+  );
+  await expect(section.getByTestId("profile-grid-module-featured_badges")).toHaveAttribute(
+    "data-profile-grid-size",
+    "2x1",
+  );
   await expectTextOrder(section, [
     "Thia",
     "About this space",
@@ -100,6 +111,110 @@ test("profile renders public modules safely", async ({ page }) => {
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
   expect(hasHorizontalOverflow).toBe(false);
+});
+
+test("P2 expressive modules render compact link-first cards", async ({ page }) => {
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      aboutModule({
+        id: 1,
+        title: "About / status",
+        body: "Building thia.lol in compact slices.",
+        position: 1,
+      }),
+      {
+        ...aboutModule({
+          id: 7,
+          title: "Now",
+          body: "Current profile mood.",
+          position: 2,
+        }),
+        config: {
+          body: "Current profile mood.",
+          statusText: "Frostveil focus",
+          workingOn: "Expressive profile modules",
+        },
+      },
+      linksModule({
+        id: 2,
+        position: 3,
+        links: [
+          {
+            label: "GitHub",
+            platform: "github",
+            url: "https://github.com/thiabun",
+          },
+          {
+            label: "Personal site",
+            platform: "custom",
+            url: "https://example.com/about",
+          },
+        ],
+      }),
+      galleryModule({ id: 3, position: 4 }),
+      creatorModule({ id: 4, position: 5 }),
+      musicModule({ id: 5, position: 6 }),
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const modules = page.getByTestId("profile-modules");
+  await expect(modules.getByText("Frostveil focus")).toBeVisible();
+  await expect(modules.getByText("Expressive profile modules")).toBeVisible();
+  await expect(modules.getByTestId("connection-icon-github")).toBeVisible();
+  await expect(modules.getByRole("link", { name: /GitHub/ })).toHaveAttribute(
+    "href",
+    "https://github.com/thiabun",
+  );
+  await expect(modules.getByRole("link", { name: /Personal site/ })).toContainText(
+    "example.com/about",
+  );
+  await expect(modules.getByTestId("profile-grid-module-gallery_media")).toHaveAttribute(
+    "data-profile-grid-size",
+    "2x2",
+  );
+  await expect(modules.locator('img[src="/uploads/media/2026/06/profile-gallery-one.webp"]')).toBeVisible();
+  await expect(modules.getByRole("link", { name: /Find me on Twitch/ })).toHaveAttribute(
+    "href",
+    "https://www.twitch.tv/thiabun",
+  );
+  await expect(modules.getByRole("link", { name: /Focus playlist/ })).toHaveAttribute(
+    "href",
+    "https://open.spotify.com/playlist/profile-test",
+  );
+  await expect(modules.locator("iframe")).toHaveCount(0);
+  await expect(modules.locator("audio, video")).toHaveCount(0);
+});
+
+test("unsafe public module URLs are ignored before rendering", async ({ page }) => {
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      linksModule({
+        links: [
+          { label: "Unsafe", platform: "custom", url: "javascript:alert(1)" },
+          { label: "Safe", platform: "custom", url: "https://example.com/" },
+        ],
+      }),
+      {
+        ...galleryModule(),
+        config: {
+          mediaItems: [
+            { caption: "Bad", url: "https://example.com/not-an-upload.webp" },
+          ],
+        },
+      },
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const modules = page.getByTestId("profile-modules");
+  await expect(modules.getByRole("link", { name: /Safe/ })).toBeVisible();
+  await expect(modules.getByText("Unsafe")).toHaveCount(0);
+  await expect(modules.getByTestId("profile-grid-module-gallery_media")).toHaveCount(0);
 });
 
 test("activity renders through the module grid without a duplicate fixed section", async ({
@@ -283,8 +398,8 @@ test("public modules ignore hidden and retired module records", async ({ page })
     modules: [
       {
         id: 9,
-        type: "music",
-        title: "Retired music",
+        type: "unsafe_embed",
+        title: "Unsupported embed",
         config: { body: "This should not render" },
         visibility: "public",
         position: 1,
@@ -307,7 +422,7 @@ test("public modules ignore hidden and retired module records", async ({ page })
   const section = page.getByTestId("profile-modules");
   await expect(section).toBeVisible();
   await expectTextOrder(section, ["Visible first", "Visible second"]);
-  await expect(section.getByText("Retired music")).toHaveCount(0);
+  await expect(section.getByText("Unsupported embed")).toHaveCount(0);
   await expect(section.getByText("This should not render")).toHaveCount(0);
   await expect(section.getByText("Hidden note")).toHaveCount(0);
   await expect(section.getByText("Hidden body")).toHaveCount(0);
@@ -355,7 +470,7 @@ test("showcase layout gives the first about module more presence", async ({ page
   await expect(grid).toHaveAttribute("data-profile-layout-preset", "showcase");
   await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
     "data-profile-grid-column-span",
-    "2",
+    "3",
   );
   await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
     "data-profile-grid-row-span",
@@ -389,10 +504,25 @@ test("owner empty module state is honest", async ({ page }) => {
   await expect(page.getByTestId("profile-owner-tools")).toHaveCount(0);
   await expect(page.getByTestId("profile-modules")).toBeVisible();
   await expect(page.getByTestId("profile-grid-module-profile_info")).toBeVisible();
+  await expect(
+    page.getByTestId("profile-header").getByRole("button", { name: "Customize profile" }),
+  ).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "No modules yet" })).toHaveCount(0);
   await expect(page.getByText("Customize profile to add modules.")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Customize profile" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Customize layout" })).toHaveCount(0);
+});
+
+test("top-bar Customize profile opens the owner editor", async ({ page }) => {
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [aboutModule({ body: "Saved profile note" })],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByRole("button", { name: "Customize profile" }).click();
+  await expect(page.getByTestId("profile-customization-modal")).toBeVisible();
 });
 
 test("owner editor lists modules and previews plain text", async ({ page }) => {
@@ -422,7 +552,9 @@ test("owner editor lists modules and previews plain text", async ({ page }) => {
     "aria-expanded",
     "true",
   );
-  await editor.getByLabel("Body").fill("Literal <strong>plain</strong> preview");
+  await editor.getByRole("textbox", { name: "Intro" }).fill(
+    "Literal <strong>plain</strong> preview",
+  );
   const preview = modal.getByTestId("profile-module-preview");
   await expect(preview).toContainText("Literal <strong>plain</strong> preview");
   await expect(preview.locator("strong")).toHaveCount(0);
@@ -500,6 +632,38 @@ test("owner can hide and reorder the built-in activity module", async ({ page })
   });
 });
 
+test("owner can remove featured post module from the canvas without clearing content", async ({
+  page,
+}) => {
+  const deletedIds: number[] = [];
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [featuredPostModule({ id: 8 })],
+    onDelete: (id) => {
+      deletedIds.push(id);
+    },
+    profileOverrides: {
+      featuredPostId: 42,
+      featuredPost: postFixture({ body: "Still selected as featured content." }),
+    },
+  });
+  page.on("dialog", (dialog) => void dialog.accept());
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expect(page.getByText("Still selected as featured content.")).toBeVisible();
+  await page.getByRole("button", { name: "Customize profile" }).click();
+  const modal = page.getByTestId("profile-customization-modal");
+  await modal.getByRole("button", { name: /Modules/ }).click();
+  await modal.getByRole("button", { name: "Remove Featured post from canvas" }).click();
+
+  await expect.poll(() => deletedIds).toEqual([8]);
+  await expect(modal.getByText("Module hidden")).toBeVisible();
+  await expect(
+    modal.getByTestId("profile-module-card-8").getByText("Hidden"),
+  ).toBeVisible();
+});
+
 test("owner can add and save an about module", async ({ page }) => {
   let createdPayload: Record<string, unknown> | undefined;
   await mockProfileModules(page, {
@@ -519,7 +683,7 @@ test("owner can add and save an about module", async ({ page }) => {
   await editor.getByRole("button", { name: "About" }).click();
   await expect(editor.getByTestId("profile-module-expanded")).toBeVisible();
   await editor.getByLabel("Title").fill("My intro");
-  await editor.getByLabel("Body").fill("A safe public intro.");
+  await editor.getByRole("textbox", { name: "Intro" }).fill("A safe public intro.");
   await editor.getByRole("button", { name: "Draft" }).click();
   await editor.getByRole("button", { name: "Save module" }).click();
 
@@ -552,7 +716,7 @@ test("links editor rejects unsafe URL before save", async ({ page }) => {
   const modal = page.getByTestId("profile-customization-modal");
   await modal.getByRole("button", { name: /Modules/ }).click();
   const editor = modal.getByTestId("profile-module-editor");
-  await editor.getByRole("button", { name: "Links" }).click();
+  await editor.getByRole("button", { name: "Connections" }).click();
   await expect(editor.getByTestId("profile-module-expanded")).toBeVisible();
   await editor.getByLabel("Link 1 label").fill("Bad link");
   await editor.getByLabel("Link 1 URL").fill("javascript:alert(1)");
@@ -640,6 +804,9 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(modulesApi).toContain("const PROFILE_ACTIVITY_MODULE_TYPE = 'activity'");
   expect(modulesApi).toContain("const PROFILE_FEATURED_POST_MODULE_TYPE = 'featured_post'");
   expect(modulesApi).toContain("const PROFILE_FEATURED_ROOM_MODULE_TYPE = 'featured_room'");
+  expect(modulesApi).toContain("const PROFILE_GALLERY_MEDIA_MODULE_TYPE = 'gallery_media'");
+  expect(modulesApi).toContain("const PROFILE_CREATOR_LIVE_MODULE_TYPE = 'creator_live'");
+  expect(modulesApi).toContain("const PROFILE_MUSIC_MODULE_TYPE = 'music'");
   expect(modulesApi).toContain("const PROFILE_FEATURED_LEGACY_MODULE_TYPE = 'featured'");
   expect(modulesApi).toContain("PROFILE_BUILT_IN_MODULE_TYPES");
   expect(modulesApi).toContain("PROFILE_RETIRED_MODULE_TYPES");
@@ -649,9 +816,10 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(modulesApi).toContain("profile_legacy_featured_module_record");
   expect(modulesApi).toContain("PROFILE_ACTIVITY_MODULE_TYPE]");
   expect(modulesApi).toContain("ensure_profile_activity_module");
-  expect(modulesApi).toContain("Featured post can be hidden instead of deleted.");
-  expect(modulesApi).toContain("Featured room can be hidden instead of deleted.");
-  expect(modulesApi).toContain("Activity can be hidden instead of deleted.");
+  expect(modulesApi).toContain("visibility = 'hidden'");
+  expect(modulesApi).toContain("profile_module_gallery_media_config");
+  expect(modulesApi).toContain("profile_module_music_config");
+  expect(modulesApi).toContain("profile_module_validate_url_platform");
   expect(modulesApi).toContain("require_csrf_token($session)");
   expect(modulesApi).toContain("Profile module storage is not ready. Run pending migrations.");
   expect(modulesApi).toContain("profile_module_reject_unknown_keys");
@@ -860,11 +1028,19 @@ async function mockProfileModules(
 
     if (route.request().method() === "DELETE") {
       options.onDelete?.(id);
-      ownerModules = ownerModules.filter((module) => module.id !== id);
+      ownerModules = ownerModules.flatMap((module) => {
+        if (module.id !== id) {
+          return [module];
+        }
+
+        return isBuiltInTestModule(module.type)
+          ? [{ ...module, visibility: "hidden", status: "active" }]
+          : [];
+      });
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ ok: true, data: { id, deleted: true } }),
+        body: JSON.stringify({ ok: true, data: ownerModules }),
       });
       return;
     }
@@ -1100,6 +1276,102 @@ function textModule(
   };
 }
 
+function linksModule(
+  overrides: {
+    id?: number;
+    position?: number;
+    title?: string;
+    links?: Array<Record<string, unknown>>;
+  } = {},
+) {
+  return {
+    id: overrides.id ?? 3,
+    type: "links",
+    title: overrides.title ?? "Connections",
+    config: {
+      links: overrides.links ?? [
+        {
+          label: "GitHub",
+          platform: "github",
+          url: "https://github.com/thiabun",
+        },
+      ],
+    },
+    visibility: "public",
+    position: overrides.position ?? 1,
+    status: "active",
+    schemaVersion: 1,
+    createdAt: "2026-06-12 00:00:00",
+    updatedAt: "2026-06-12 00:00:00",
+  };
+}
+
+function galleryModule(overrides: { id?: number; position?: number } = {}) {
+  return {
+    id: overrides.id ?? 4,
+    type: "gallery_media",
+    title: "Gallery",
+    config: {
+      mediaItems: [
+        {
+          caption: "Studio corner",
+          url: "/uploads/media/2026/06/profile-gallery-one.webp",
+        },
+        {
+          caption: "Room sketch",
+          url: "/uploads/media/2026/06/profile-gallery-two.webp",
+        },
+      ],
+    },
+    visibility: "public",
+    position: overrides.position ?? 1,
+    status: "active",
+    schemaVersion: 1,
+    createdAt: "2026-06-12 00:00:00",
+    updatedAt: "2026-06-12 00:00:00",
+  };
+}
+
+function creatorModule(overrides: { id?: number; position?: number } = {}) {
+  return {
+    id: overrides.id ?? 5,
+    type: "creator_live",
+    title: "Creator",
+    config: {
+      description: "Streams and build notes live here.",
+      label: "Find me on Twitch",
+      platform: "twitch",
+      url: "https://www.twitch.tv/thiabun",
+    },
+    visibility: "public",
+    position: overrides.position ?? 1,
+    status: "active",
+    schemaVersion: 1,
+    createdAt: "2026-06-12 00:00:00",
+    updatedAt: "2026-06-12 00:00:00",
+  };
+}
+
+function musicModule(overrides: { id?: number; position?: number } = {}) {
+  return {
+    id: overrides.id ?? 6,
+    type: "music",
+    title: "Music",
+    config: {
+      description: "Current writing playlist.",
+      label: "Focus playlist",
+      platform: "spotify",
+      url: "https://open.spotify.com/playlist/profile-test",
+    },
+    visibility: "public",
+    position: overrides.position ?? 1,
+    status: "active",
+    schemaVersion: 1,
+    createdAt: "2026-06-12 00:00:00",
+    updatedAt: "2026-06-12 00:00:00",
+  };
+}
+
 function activityModule(
   overrides: {
     id?: number;
@@ -1119,6 +1391,32 @@ function activityModule(
     createdAt: "2026-06-12 00:00:00",
     updatedAt: "2026-06-12 00:00:00",
   };
+}
+
+function featuredPostModule(
+  overrides: {
+    id?: number;
+    position?: number;
+    title?: string | null;
+    visibility?: string;
+  } = {},
+) {
+  return {
+    id: overrides.id ?? 8,
+    type: "featured_post",
+    title: overrides.title ?? "Featured post",
+    config: {},
+    visibility: overrides.visibility ?? "public",
+    position: overrides.position ?? 1,
+    status: "active",
+    schemaVersion: 1,
+    createdAt: "2026-06-12 00:00:00",
+    updatedAt: "2026-06-12 00:00:00",
+  };
+}
+
+function isBuiltInTestModule(type: unknown): boolean {
+  return type === "activity" || type === "featured_post" || type === "featured_room";
 }
 
 function postFixture(overrides: Record<string, unknown> = {}) {

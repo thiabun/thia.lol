@@ -5,7 +5,16 @@ import type {
   UserBadge,
 } from "./types";
 
-export type ProfileGridModuleSize = "1x1" | "2x1" | "1x2" | "2x2" | "3x1";
+export type ProfileGridModuleSize =
+  | "1x1"
+  | "2x1"
+  | "3x1"
+  | "1x2"
+  | "2x2"
+  | "3x2"
+  | "1x3"
+  | "2x3"
+  | "3x3";
 
 export type ProfileGridModuleSpan = {
   columns: 1 | 2 | 3;
@@ -33,8 +42,8 @@ const fallbackProfileModule: ProfileModuleRegistryEntry = {
 
 export const profileModuleRegistry = {
   profile_info: {
-    allowedSizes: ["2x2", "2x1"],
-    defaultSize: "2x2",
+    allowedSizes: ["3x2", "2x2", "2x1"],
+    defaultSize: "3x2",
     description: "Core identity, actions, stats, and essential links.",
     fallbackTitle: "Profile info",
     label: "Profile info",
@@ -55,21 +64,21 @@ export const profileModuleRegistry = {
   },
   links: {
     allowedSizes: ["1x1", "2x1"],
-    defaultSize: "1x1",
-    description: "A safe list of external links.",
-    fallbackTitle: "Links",
-    label: "Links",
+    defaultSize: "2x1",
+    description: "Platform-aware safe links and connections.",
+    fallbackTitle: "Connections",
+    label: "Connections",
   },
   featured_badges: {
     allowedSizes: ["1x1", "2x1"],
-    defaultSize: "1x1",
+    defaultSize: "2x1",
     description: "A shelf of earned visible badges.",
-    fallbackTitle: "Featured badges",
+    fallbackTitle: "Badge showcase",
     label: "Badges",
   },
   featured_post: {
-    allowedSizes: ["1x1", "2x1", "3x1"],
-    defaultSize: "2x1",
+    allowedSizes: ["2x1", "3x1", "2x2", "3x2"],
+    defaultSize: "3x2",
     description: "A selected post highlight.",
     fallbackTitle: "Featured post",
     label: "Featured post",
@@ -81,9 +90,30 @@ export const profileModuleRegistry = {
     fallbackTitle: "Featured room",
     label: "Featured room",
   },
+  gallery_media: {
+    allowedSizes: ["1x1", "2x1", "2x2", "3x2"],
+    defaultSize: "2x2",
+    description: "A compact strip of selected uploaded media.",
+    fallbackTitle: "Gallery",
+    label: "Gallery",
+  },
+  creator_live: {
+    allowedSizes: ["1x1", "2x1", "2x2"],
+    defaultSize: "2x1",
+    description: "A static creator or channel card.",
+    fallbackTitle: "Creator",
+    label: "Creator",
+  },
+  music: {
+    allowedSizes: ["1x1", "2x1"],
+    defaultSize: "2x1",
+    description: "A link-first music card.",
+    fallbackTitle: "Music",
+    label: "Music",
+  },
   activity: {
-    allowedSizes: ["2x1", "3x1"],
-    defaultSize: "3x1",
+    allowedSizes: ["2x2", "3x2", "3x3"],
+    defaultSize: "3x3",
     description: "Feed, replies, and rooms.",
     fallbackTitle: "Activity",
     label: "Activity",
@@ -137,9 +167,15 @@ export function profileModuleGridSize(
   if (
     layoutPreset === "showcase" &&
     index === 0 &&
-    (module.type === "about" ||
-      module.type === "featured_post" ||
-      module.type === "featured_room")
+    module.type === "featured_post"
+  ) {
+    return definition.allowedSizes.includes("3x2") ? "3x2" : definition.defaultSize;
+  }
+
+  if (
+    layoutPreset === "showcase" &&
+    index === 0 &&
+    module.type === "about"
   ) {
     return definition.allowedSizes.includes("3x1") ? "3x1" : definition.defaultSize;
   }
@@ -191,9 +227,13 @@ export function normalizeProfileGridModuleSize(
   if (
     value === "1x1" ||
     value === "2x1" ||
+    value === "3x1" ||
     value === "1x2" ||
     value === "2x2" ||
-    value === "3x1"
+    value === "3x2" ||
+    value === "1x3" ||
+    value === "2x3" ||
+    value === "3x3"
   ) {
     return value;
   }
@@ -220,6 +260,22 @@ export function profileGridModuleSizeSpan(
 
   if (size === "3x1") {
     return { columns: 3, rows: 1, size };
+  }
+
+  if (size === "3x2") {
+    return { columns: 3, rows: 2, size };
+  }
+
+  if (size === "1x3") {
+    return { columns: 1, rows: 3, size };
+  }
+
+  if (size === "2x3") {
+    return { columns: 2, rows: 3, size };
+  }
+
+  if (size === "3x3") {
+    return { columns: 3, rows: 3, size };
   }
 
   return { columns: 1, rows: 1, size };
@@ -249,8 +305,24 @@ export function profileModuleHasContent(
     return (module.config.links ?? []).length > 0;
   }
 
+  if (module.type === "about") {
+    return Boolean(
+      module.config.body?.trim() ||
+        module.config.statusText?.trim() ||
+        module.config.workingOn?.trim(),
+    );
+  }
+
   if (module.type === "featured_badges") {
     return profileModuleBadges(module, badges).length > 0;
+  }
+
+  if (module.type === "gallery_media") {
+    return (module.config.mediaItems ?? []).length > 0;
+  }
+
+  if (module.type === "creator_live" || module.type === "music") {
+    return Boolean(module.config.url?.trim());
   }
 
   if (module.type === "activity") {
@@ -297,6 +369,15 @@ export function profileModuleSummary(module: ProfileModule): string {
     return count === 1 ? "1 selected badge" : `${count} selected badges`;
   }
 
+  if (module.type === "gallery_media") {
+    const count = module.config.mediaItems?.length ?? 0;
+    return count === 1 ? "1 media item" : `${count} media items`;
+  }
+
+  if (module.type === "creator_live" || module.type === "music") {
+    return module.config.description?.trim() || module.config.url || getProfileModuleDefinition(module.type).description;
+  }
+
   if (module.type === "activity") {
     return getProfileModuleDefinition(module.type).description;
   }
@@ -309,7 +390,12 @@ export function profileModuleSummary(module: ProfileModule): string {
     return getProfileModuleDefinition(module.type).description;
   }
 
-  const body = (module.config.body ?? "").trim();
+  const body = (
+    module.config.statusText ??
+    module.config.workingOn ??
+    module.config.body ??
+    ""
+  ).trim();
 
   if (!body) {
     return getProfileModuleDefinition(module.type).description;
