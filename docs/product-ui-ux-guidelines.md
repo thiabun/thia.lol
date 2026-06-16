@@ -386,6 +386,26 @@ Profile surfaces should support richer personal spaces over time, but every new
 block should answer a product question: what does this help visitors understand
 about this member?
 
+### Profile Modules As Glanceable Surfaces
+
+Use Apple's widget guidance as inspiration for profile modules: modules should
+be glanceable, personalized, single-purpose, adaptive to size, and honest about
+freshness. They are not iOS widgets, and they should not copy platform chrome.
+
+Rules:
+
+- One module, one clear purpose.
+- Put the most relevant content or action first.
+- Hide public empty modules; owners get compact edit-mode empty states.
+- Larger spans must add real media, activity, metadata, or controls.
+- `1x1` and `2x1` modules carry one idea; `3x1` adds one supporting detail;
+  `2x2` and `3x2` are for richer previews; `3x3` is reserved for identity or
+  high-value activity.
+- Live/recent labels require API-backed timestamps. Plain links and embeds stay
+  static link cards.
+- Module shells should keep padding, title treatment, focus states, and
+  internal overflow consistent. Avoid nested decorative cards.
+
 ## Empty, Loading, And Error States
 
 State surfaces should be calm, specific, and proportional to the context.

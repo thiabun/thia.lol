@@ -205,6 +205,40 @@ the profile renderer constrained.
   overlay/blur system. Reduced-motion users get the poster/static fallback.
 - Embedded provider media must not be forced to autoplay through query params.
 
+### Module Design Rubric
+
+Profile modules should apply the useful parts of
+[Apple's widget guidance](https://developer.apple.com/design/human-interface-guidelines/widgets/)
+as a web profile rubric, not as literal iOS widget cloning. Apple frames widgets
+as timely, glanceable, personalized content with specific functionality; Apple
+Support also describes widgets as
+[quick at-a-glance information surfaces](https://support.apple.com/guide/iphone/add-edit-and-remove-widgets-iphb8f1bf206/ios).
+On `thia.lol`, that translates to modules that are compact, purposeful,
+adaptive to size, and honest about data freshness.
+
+Every module must answer one clear purpose:
+
+- What does this help a visitor understand or do?
+- What is the most relevant content, shown first?
+- What can be removed without losing meaning?
+- Does a larger span add real information, controls, or media context?
+- Is freshness real, timestamped, and API-backed, or is this just a static
+  link/card?
+
+Span behavior should stay predictable:
+
+- `1x1` and `2x1`: one idea, one primary action or fact.
+- `3x1`: compact summary with one supporting detail.
+- `2x2` and `3x2`: richer preview only when media, activity, or metadata
+  benefits from the space.
+- `3x3`: reserved for identity or high-value activity; never decorative
+  expansion.
+
+Public profiles should hide empty modules instead of showing setup clutter.
+Owners can see compact actionable empty states in edit mode. Larger module
+variants should add useful context rather than scaling text, stretching media,
+or filling space with extra chrome.
+
 ### Background And Banner Model
 
 The current single "banner" idea is not enough for Profiles v3. Profile media

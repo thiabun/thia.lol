@@ -196,6 +196,23 @@ The following are not allowed:
 - Limit featured modules. A recommended first limit is 1 or 2 featured modules.
 - Keep module titles short and module bodies bounded by type-specific limits.
 - Profile modules must not overlap the primary navigation, mobile bottom nav, footer, report form, or action menus.
+- Profile modules follow a widget-like rubric: one clear purpose, most relevant
+  content first, no filler chrome, and no public empty-state clutter.
+- Module presentation metadata (`purpose`, `density`, `freshness`,
+  `primaryAction`, and `emptyPolicy`) is frontend registry metadata unless a
+  future editor needs it persisted. Do not add database columns for this rubric
+  alone.
+- Grid spans express content value, not decoration: `1x1` and `2x1` are for one
+  idea/action, `3x1` is a compact summary, `2x2` and `3x2` are for richer
+  media/activity/metadata previews, and `3x3` is reserved for identity or
+  high-value activity.
+- Larger module variants must add useful context or controls. They must not
+  merely scale type, stretch media, or create blank decorative space.
+- Integration modules may show live/recent labels only when the state is
+  API-backed and timestamped. Static links and embeds should be labeled as
+  static provider cards.
+- Module shells should use stable dimensions, restrained titles, visible focus
+  states, internal overflow where needed, and no nested decorative cards.
 
 ### Media
 

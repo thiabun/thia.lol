@@ -10,10 +10,16 @@ import {
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { cn } from "../../lib/classNames";
 import {
+  getProfileModuleDefinition,
   profileModuleBadges,
   profileModuleFallbackTitle,
   profileModuleGridSpan,
+  profileModuleSizeHasRoomForDetails,
+  profileModuleSizeIsCompact,
+  profileModuleSpanRole,
   renderableProfileModules,
+  type ProfileGridModuleSize,
+  type ProfileModuleSpanRole,
 } from "../../lib/profileModuleRegistry";
 import {
   defaultProfileLayoutPreset,
@@ -104,8 +110,8 @@ export function ProfileModulesSection({
           {!loading && !error ? (
             <CompactStateNotice
               icon={Sparkles}
-              title="No modules yet"
-              text="Profile customization is being rebuilt for P3."
+              title="Blank canvas"
+              text="Add a module when this profile needs another clear signal."
               className="border border-dashed border-line bg-canvas/45"
             />
           ) : null}
@@ -114,8 +120,6 @@ export function ProfileModulesSection({
     </section>
   );
 }
-
-type ProfileModuleContentRenderer = (module: ProfileModule) => ReactNode | undefined;
 
 type ProfileModuleGridProps = {
   badges: UserBadge[];
@@ -236,6 +240,8 @@ export function ProfileModuleGrid({
     >
       {renderableModules.map((module, index) => {
         const span = profileModuleGridSpan(module, layoutPreset, index);
+        const definition = getProfileModuleDefinition(module.type);
+        const spanRole = profileModuleSpanRole(span.size);
         const safeLayout =
           module.layout &&
           module.layout.colSpan === span.columns &&
@@ -257,6 +263,15 @@ export function ProfileModuleGrid({
                 : undefined,
             )}
             layout={safeLayout}
+            presentation={{
+              compact: profileModuleSizeIsCompact(span.size),
+              density: definition.density,
+              emptyPolicy: definition.emptyPolicy,
+              freshness: definition.freshness,
+              primaryAction: definition.primaryAction,
+              purpose: definition.purpose,
+              spanRole,
+            }}
             size={span.size}
             testId={`profile-grid-module-${module.type}`}
           >
@@ -280,8 +295,8 @@ export function ProfileModuleGrid({
                 <Move aria-hidden="true" size={15} />
               </button>
             ) : null}
-            {renderModuleContent?.(module) ?? (
-              <ProfileModuleCard module={module} badges={badges} />
+            {renderModuleContent?.(module, span.size) ?? (
+              <ProfileModuleCard module={module} badges={badges} size={span.size} />
             )}
           </ProfileGridModule>
         );
@@ -311,29 +326,67 @@ function profileCanvasLayoutFromPoint(
   };
 }
 
+type ProfileModuleContentRenderer = (
+  module: ProfileModule,
+  size: ProfileGridModuleSize,
+) => ReactNode | undefined;
+
 type ProfileModuleCardProps = {
   badges: UserBadge[];
   module: ProfileModule;
+  size?: ProfileGridModuleSize | undefined;
 };
 
-export function ProfileModuleCard({ badges, module }: ProfileModuleCardProps) {
+export function ProfileModuleCard({ badges, module, size = "1x1" }: ProfileModuleCardProps) {
   const title = module.title ?? profileModuleFallbackTitle(module.type);
+  const definition = getProfileModuleDefinition(module.type);
+  const compact = profileModuleSizeIsCompact(size);
+  const hasDetails = profileModuleSizeHasRoomForDetails(size);
+  const spanRole = profileModuleSpanRole(size);
 
   return (
     <article
-      className="h-full min-w-0 rounded-card border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
+      className="grid h-full min-h-0 min-w-0 grid-rows-[auto_1fr] gap-2 overflow-hidden rounded-card border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil focus-within:border-line-strong"
+      data-profile-module-action={definition.primaryAction}
+      data-profile-module-compact={String(compact)}
+      data-profile-module-density={definition.density}
+      data-profile-module-empty-policy={definition.emptyPolicy}
+      data-profile-module-freshness={definition.freshness}
+      data-profile-module-purpose={definition.purpose}
+      data-profile-module-shell="true"
+      data-profile-module-span-role={spanRole}
       data-testid={`profile-module-${module.type}`}
     >
-      <h3 className="text-sm font-semibold text-text">{title}</h3>
-      <ProfileModuleContent module={module} badges={badges} />
+      <header className="min-w-0">
+        <h3 className="truncate text-sm font-semibold text-text">{title}</h3>
+      </header>
+      <div className="min-h-0 min-w-0 overflow-hidden">
+        <ProfileModuleContent
+          module={module}
+          badges={badges}
+          compact={compact}
+          hasDetails={hasDetails}
+          spanRole={spanRole}
+        />
+      </div>
     </article>
   );
 }
 
-function ProfileModuleContent({ badges, module }: ProfileModuleCardProps) {
+function ProfileModuleContent({
+  badges,
+  compact,
+  hasDetails,
+  module,
+  spanRole,
+}: ProfileModuleCardProps & {
+  compact: boolean;
+  hasDetails: boolean;
+  spanRole: ProfileModuleSpanRole;
+}) {
   if (module.type === "activity") {
     return (
-      <p className="mt-2 text-sm leading-6 text-muted">
+      <p className="text-sm leading-6 text-muted">
         Feed, replies, and rooms appear here on the public profile.
       </p>
     );
@@ -341,31 +394,48 @@ function ProfileModuleContent({ badges, module }: ProfileModuleCardProps) {
 
   if (module.type === "profile_info") {
     return (
-      <p className="mt-2 text-sm leading-6 text-muted">
+      <p className="text-sm leading-6 text-muted">
         Core profile identity appears here.
       </p>
     );
   }
 
   if (module.type === "links") {
+    const links = module.config.links ?? [];
+    const visibleLinks = compact ? links.slice(0, 4) : links;
+    const hiddenCount = Math.max(0, links.length - visibleLinks.length);
+
     return (
-      <div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2">
-        {(module.config.links ?? []).map((link) => (
+      <div
+        className="grid max-h-full min-w-0 gap-2 overflow-y-auto pr-1 sm:grid-cols-2"
+        data-profile-module-visible-links={visibleLinks.length}
+      >
+        {visibleLinks.map((link) => (
           <ProfileModuleLinkCard
             key={`${link.label}-${link.url}`}
             link={link}
           />
         ))}
+        {hiddenCount > 0 ? (
+          <span className="inline-flex min-h-10 items-center rounded-card border border-dashed border-line bg-canvas/45 px-3 text-sm font-semibold text-muted">
+            +{hiddenCount} more
+          </span>
+        ) : null}
       </div>
     );
   }
 
   if (module.type === "featured_badges") {
     const selectedBadges = profileModuleBadges(module, badges);
+    const visibleBadges = compact ? selectedBadges.slice(0, 4) : selectedBadges;
+    const hiddenCount = Math.max(0, selectedBadges.length - visibleBadges.length);
 
     return (
-      <div className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2">
-        {selectedBadges.map((userBadge) => (
+      <div
+        className="grid max-h-full min-w-0 gap-2 overflow-y-auto pr-1 sm:grid-cols-2"
+        data-profile-module-visible-badges={visibleBadges.length}
+      >
+        {visibleBadges.map((userBadge) => (
           <span
             key={userBadge.id}
             className={cn(
@@ -378,16 +448,28 @@ function ProfileModuleContent({ badges, module }: ProfileModuleCardProps) {
             <span className="min-w-0 truncate">{userBadge.badge.name}</span>
           </span>
         ))}
+        {hiddenCount > 0 ? (
+          <span className="inline-flex items-center rounded-control border border-dashed border-line bg-canvas/45 px-3 py-2 text-sm font-semibold text-muted">
+            +{hiddenCount} more
+          </span>
+        ) : null}
       </div>
     );
   }
 
   if (module.type === "gallery_media") {
     const mediaItems = module.config.mediaItems ?? [];
+    const visibleMediaItems = compact ? mediaItems.slice(0, 2) : mediaItems;
 
     return (
-      <div className="mt-3 grid max-h-72 min-w-0 grid-cols-2 gap-2 overflow-y-auto pr-1">
-        {mediaItems.map((item) => (
+      <div
+        className={cn(
+          "grid max-h-full min-w-0 gap-2 overflow-y-auto pr-1",
+          spanRole === "glance" ? "grid-cols-1" : "grid-cols-2",
+        )}
+        data-profile-module-visible-media={visibleMediaItems.length}
+      >
+        {visibleMediaItems.map((item) => (
           <figure
             key={item.url}
             className="min-w-0 overflow-hidden rounded-card border border-line bg-canvas/55"
@@ -399,7 +481,7 @@ function ProfileModuleContent({ badges, module }: ProfileModuleCardProps) {
               loading="lazy"
               src={item.url}
             />
-            {item.caption ? (
+            {item.caption && hasDetails ? (
               <figcaption className="truncate px-2 py-1.5 text-xs text-muted">
                 {item.caption}
               </figcaption>
@@ -431,17 +513,29 @@ function ProfileModuleContent({ badges, module }: ProfileModuleCardProps) {
   }
 
   return (
-    <div className="mt-2 space-y-2">
+    <div className="max-h-full space-y-2 overflow-y-auto pr-1">
       {module.config.body ? (
-        <p className="break-words text-sm leading-6 text-muted">{module.config.body}</p>
+        <p
+          className={cn(
+            "break-words text-sm leading-6 text-muted",
+            compact ? "line-clamp-2" : "line-clamp-4",
+          )}
+        >
+          {module.config.body}
+        </p>
       ) : null}
       {module.config.statusText ? (
-        <p className="rounded-card bg-canvas/55 px-3 py-2 text-sm leading-5 text-text">
+        <p className="line-clamp-2 rounded-card bg-canvas/55 px-3 py-2 text-sm leading-5 text-text">
           {module.config.statusText}
         </p>
       ) : null}
       {module.config.workingOn ? (
-        <p className="text-sm leading-6 text-muted">
+        <p
+          className={cn(
+            "text-sm leading-6 text-muted",
+            compact ? "line-clamp-1" : "line-clamp-2",
+          )}
+        >
           <span className="font-semibold text-text">Working on:</span>{" "}
           {module.config.workingOn}
         </p>
@@ -523,7 +617,7 @@ function ProfileModuleStaticCard({
 
   return (
     <a
-      className="mt-3 flex min-w-0 items-center gap-3 rounded-card border border-line bg-canvas/55 p-3 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      className="flex min-w-0 items-center gap-3 rounded-card border border-line bg-canvas/55 p-3 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       href={url}
       rel="noopener noreferrer"
       target="_blank"
@@ -563,10 +657,13 @@ function ProfileIntegrationRichCard({
   const metadata = integration.metadata;
   const title = metadata.title ?? module.config.label ?? fallbackLabel;
   const subtitle = integrationLabel(integration);
-  const fetchedAt = metadata.liveFetchedAt ?? metadata.recentFetchedAt;
+  const fetchedAt =
+    integration.apiBacked && (metadata.live || metadata.recentLabel)
+      ? metadata.liveFetchedAt ?? metadata.recentFetchedAt
+      : undefined;
 
   return (
-    <div className="mt-3 overflow-hidden rounded-card border border-line bg-canvas/55">
+    <div className="overflow-hidden rounded-card border border-line bg-canvas/55">
       <a
         className="flex min-w-0 items-center gap-3 p-3 transition duration-fluid ease-fluid hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         href={integration.sourceUrl}
@@ -621,11 +718,19 @@ function ProfileIntegrationRichCard({
 }
 
 function integrationLabel(integration: ProfileIntegrationCard): string {
-  if (integration.metadata.live && integration.metadata.liveFetchedAt) {
+  if (
+    integration.apiBacked &&
+    integration.metadata.live &&
+    integration.metadata.liveFetchedAt
+  ) {
     return `Live now on ${platformDisplayName(integration.provider)}`;
   }
 
-  if (integration.metadata.recentLabel && integration.metadata.recentFetchedAt) {
+  if (
+    integration.apiBacked &&
+    integration.metadata.recentLabel &&
+    integration.metadata.recentFetchedAt
+  ) {
     return `${integration.metadata.recentLabel} · ${platformDisplayName(integration.provider)}`;
   }
 

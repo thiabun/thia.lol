@@ -22,22 +22,59 @@ export type ProfileGridModuleSpan = {
   size: ProfileGridModuleSize;
 };
 
+export type ProfileModulePurpose =
+  | "identity"
+  | "status"
+  | "navigation"
+  | "showcase"
+  | "media"
+  | "activity"
+  | "integration";
+
+export type ProfileModuleDensity = "glance" | "summary" | "rich";
+
+export type ProfileModuleFreshness = "static" | "recent" | "live" | "cached";
+
+export type ProfileModulePrimaryAction =
+  | "none"
+  | "profile"
+  | "open"
+  | "navigate"
+  | "inspect";
+
+export type ProfileModuleEmptyPolicy =
+  | "always-render"
+  | "hide-public"
+  | "owner-compact";
+
+export type ProfileModuleSpanRole = "glance" | "summary" | "rich" | "hero";
+
 export const PROFILE_ACTIVITY_MAX_ROW_SPAN = 3;
 
-type ProfileModuleRegistryEntry = {
+export type ProfileModuleRegistryEntry = {
   allowedSizes: readonly ProfileGridModuleSize[];
   defaultSize: ProfileGridModuleSize;
   description: string;
+  density: ProfileModuleDensity;
+  emptyPolicy: ProfileModuleEmptyPolicy;
   fallbackTitle: string;
+  freshness: ProfileModuleFreshness;
   label: string;
+  primaryAction: ProfileModulePrimaryAction;
+  purpose: ProfileModulePurpose;
 };
 
 const fallbackProfileModule: ProfileModuleRegistryEntry = {
   allowedSizes: ["1x1"],
   defaultSize: "1x1",
   description: "A compact profile module.",
+  density: "glance",
+  emptyPolicy: "hide-public",
   fallbackTitle: "Module",
+  freshness: "static",
   label: "Module",
+  primaryAction: "none",
+  purpose: "status",
 };
 
 export const profileModuleRegistry = {
@@ -45,78 +82,133 @@ export const profileModuleRegistry = {
     allowedSizes: ["3x3", "3x2", "2x2", "2x1"],
     defaultSize: "3x2",
     description: "Core identity, actions, stats, and essential links.",
+    density: "rich",
+    emptyPolicy: "always-render",
     fallbackTitle: "Profile info",
+    freshness: "static",
     label: "Profile info",
+    primaryAction: "profile",
+    purpose: "identity",
   },
   about: {
     allowedSizes: ["1x1", "2x1", "3x1"],
     defaultSize: "2x1",
     description: "A short profile introduction.",
+    density: "summary",
+    emptyPolicy: "hide-public",
     fallbackTitle: "About",
+    freshness: "static",
     label: "About",
+    primaryAction: "inspect",
+    purpose: "status",
   },
   custom_text: {
     allowedSizes: ["1x1", "2x1"],
     defaultSize: "1x1",
     description: "A compact note or update.",
+    density: "glance",
+    emptyPolicy: "hide-public",
     fallbackTitle: "Note",
+    freshness: "static",
     label: "Text",
+    primaryAction: "none",
+    purpose: "status",
   },
   links: {
     allowedSizes: ["1x1", "2x1"],
     defaultSize: "2x1",
     description: "Platform-aware safe links and connections.",
+    density: "summary",
+    emptyPolicy: "hide-public",
     fallbackTitle: "Connections",
+    freshness: "static",
     label: "Connections",
+    primaryAction: "open",
+    purpose: "navigation",
   },
   featured_badges: {
     allowedSizes: ["1x1", "2x1"],
     defaultSize: "2x1",
     description: "A shelf of earned visible badges.",
+    density: "summary",
+    emptyPolicy: "hide-public",
     fallbackTitle: "Badge showcase",
+    freshness: "static",
     label: "Badges",
+    primaryAction: "inspect",
+    purpose: "showcase",
   },
   featured_post: {
     allowedSizes: ["2x1", "3x1", "2x2", "3x2"],
     defaultSize: "3x2",
     description: "A selected post highlight.",
+    density: "rich",
+    emptyPolicy: "hide-public",
     fallbackTitle: "Featured post",
+    freshness: "recent",
     label: "Featured post",
+    primaryAction: "navigate",
+    purpose: "activity",
   },
   featured_room: {
     allowedSizes: ["1x1", "2x1", "3x1"],
     defaultSize: "2x1",
     description: "A selected room highlight.",
+    density: "summary",
+    emptyPolicy: "hide-public",
     fallbackTitle: "Featured room",
+    freshness: "static",
     label: "Featured room",
+    primaryAction: "navigate",
+    purpose: "navigation",
   },
   gallery_media: {
     allowedSizes: ["1x1", "2x1", "2x2", "3x2"],
     defaultSize: "2x2",
     description: "A compact strip of selected uploaded media.",
+    density: "rich",
+    emptyPolicy: "hide-public",
     fallbackTitle: "Gallery",
+    freshness: "static",
     label: "Gallery",
+    primaryAction: "inspect",
+    purpose: "media",
   },
   creator_live: {
     allowedSizes: ["1x1", "2x1", "2x2"],
     defaultSize: "2x1",
     description: "A static creator or channel card.",
+    density: "summary",
+    emptyPolicy: "hide-public",
     fallbackTitle: "Creator",
+    freshness: "cached",
     label: "Creator",
+    primaryAction: "open",
+    purpose: "integration",
   },
   music: {
     allowedSizes: ["1x1", "2x1"],
     defaultSize: "2x1",
     description: "A link-first music card.",
+    density: "summary",
+    emptyPolicy: "hide-public",
     fallbackTitle: "Music",
+    freshness: "cached",
     label: "Music",
+    primaryAction: "open",
+    purpose: "integration",
   },
   activity: {
     allowedSizes: ["2x2", "3x2", "3x3"],
     defaultSize: "3x3",
     description: "Feed, replies, and rooms.",
+    density: "rich",
+    emptyPolicy: "hide-public",
     fallbackTitle: "Activity",
+    freshness: "recent",
     label: "Activity",
+    primaryAction: "navigate",
+    purpose: "activity",
   },
 } satisfies Record<ProfileModuleType, ProfileModuleRegistryEntry>;
 
@@ -226,6 +318,38 @@ export function profileModuleGridSpan(
   }
 
   return span;
+}
+
+export function profileModuleSpanRole(
+  size: ProfileGridModuleSize | undefined,
+): ProfileModuleSpanRole {
+  if (size === "3x3") {
+    return "hero";
+  }
+
+  if (size === "2x2" || size === "3x2" || size === "1x3" || size === "2x3") {
+    return "rich";
+  }
+
+  if (size === "3x1") {
+    return "summary";
+  }
+
+  return "glance";
+}
+
+export function profileModuleSizeIsCompact(
+  size: ProfileGridModuleSize | undefined,
+): boolean {
+  return profileModuleSpanRole(size) === "glance";
+}
+
+export function profileModuleSizeHasRoomForDetails(
+  size: ProfileGridModuleSize | undefined,
+): boolean {
+  const spanRole = profileModuleSpanRole(size);
+
+  return spanRole === "summary" || spanRole === "rich" || spanRole === "hero";
 }
 
 export function clampProfileGridModuleSpan(

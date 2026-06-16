@@ -80,9 +80,25 @@ test("profile renders public modules safely", async ({ page }) => {
     "data-profile-grid-size",
     "2x1",
   );
+  await expect(section.getByTestId("profile-grid-module-about")).toHaveAttribute(
+    "data-profile-module-purpose",
+    "status",
+  );
+  await expect(section.getByTestId("profile-grid-module-about")).toHaveAttribute(
+    "data-profile-module-span-role",
+    "glance",
+  );
+  await expect(section.getByTestId("profile-module-about")).toHaveAttribute(
+    "data-profile-module-shell",
+    "true",
+  );
   await expect(section.getByTestId("profile-grid-module-links")).toHaveAttribute(
     "data-profile-grid-size",
     "2x1",
+  );
+  await expect(section.getByTestId("profile-grid-module-links")).toHaveAttribute(
+    "data-profile-module-action",
+    "open",
   );
   await expect(section.getByTestId("profile-grid-module-featured_badges")).toHaveAttribute(
     "data-profile-grid-size",
@@ -175,7 +191,12 @@ test("P2 expressive modules render compact link-first cards", async ({ page }) =
     "data-profile-grid-size",
     "2x2",
   );
+  await expect(modules.getByTestId("profile-grid-module-gallery_media")).toHaveAttribute(
+    "data-profile-module-span-role",
+    "rich",
+  );
   await expect(modules.locator('img[src="/uploads/media/2026/06/profile-gallery-one.webp"]')).toBeVisible();
+  await expect(modules.getByText("Studio corner")).toBeVisible();
   await expect(modules.getByRole("link", { name: /Find me on Twitch/ })).toHaveAttribute(
     "href",
     "https://www.twitch.tv/thiabun",
@@ -186,6 +207,65 @@ test("P2 expressive modules render compact link-first cards", async ({ page }) =
   );
   await expect(modules.locator("iframe")).toHaveCount(0);
   await expect(modules.locator("audio, video")).toHaveCount(0);
+});
+
+test("module shells keep compact content glanceable without public overflow", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      {
+        ...aboutModule({
+          id: 1,
+          title: "Short signal",
+          body: "This is intentionally long enough to need compact clamping inside a small module surface so it stays glanceable.",
+          position: 1,
+        }),
+        config: {
+          body: "This is intentionally long enough to need compact clamping inside a small module surface so it stays glanceable.",
+          canvasSize: "1x1",
+          statusText: "Status stays bounded.",
+          workingOn: "A compact module design rubric.",
+        },
+      },
+      linksModule({
+        id: 2,
+        position: 2,
+        links: [
+          { label: "Site", platform: "website", url: "https://example.com/" },
+          { label: "GitHub", platform: "github", url: "https://github.com/thiabun" },
+          { label: "YouTube", platform: "youtube", url: "https://www.youtube.com/@thia" },
+          { label: "Twitch", platform: "twitch", url: "https://www.twitch.tv/thiabun" },
+          { label: "Music", platform: "spotify", url: "https://open.spotify.com/playlist/profile-test" },
+        ],
+      }),
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const about = page.getByTestId("profile-grid-module-about");
+  await expect(about).toHaveAttribute("data-profile-grid-size", "1x1");
+  await expect(about).toHaveAttribute("data-profile-module-compact", "true");
+  await expect(about).toHaveAttribute("data-profile-module-density", "summary");
+  await expect(page.getByTestId("profile-module-about")).toHaveAttribute(
+    "data-profile-module-empty-policy",
+    "hide-public",
+  );
+
+  const links = page.getByTestId("profile-module-links");
+  await expect(links.locator("[data-profile-module-visible-links]")).toHaveAttribute(
+    "data-profile-module-visible-links",
+    "4",
+  );
+  await expect(links.getByText("+1 more")).toBeVisible();
+
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  );
+  expect(hasHorizontalOverflow).toBe(false);
 });
 
 test("unsafe public module URLs are ignored before rendering", async ({ page }) => {
@@ -455,7 +535,7 @@ test("video background and allowlisted rich integrations render safely", async (
               height: 152,
               allow: "encrypted-media; fullscreen; clipboard-write",
             },
-            apiBacked: false,
+            apiBacked: true,
             fetchedAt: "2026-06-16T10:00:00Z",
             stale: false,
           },
@@ -512,6 +592,76 @@ test("video background and allowlisted rich integrations render safely", async (
   await expect(page.getByText("Recently updated · Spotify")).toBeVisible();
   await expect(page.getByText("Public repository metadata.")).toBeVisible();
   await expect(page.getByTestId("profile-integration-embed-github")).toHaveCount(0);
+});
+
+test("integration modules do not fake live or recent labels without API backing", async ({
+  page,
+}) => {
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      {
+        ...musicModule({ id: 6, position: 1 }),
+        config: {
+          description: "A static playlist link.",
+          label: "Static playlist",
+          platform: "spotify",
+          url: "https://open.spotify.com/playlist/profile-test",
+          integration: {
+            provider: "spotify",
+            resourceType: "playlist",
+            resourceId: "profile-test",
+            resourceKey: "spotify:playlist:profile-test",
+            sourceUrl: "https://open.spotify.com/playlist/profile-test",
+            metadata: {
+              title: "Static playlist",
+              recentLabel: "Recently updated",
+              recentFetchedAt: "2026-06-16T10:00:00Z",
+            },
+            embed: null,
+            apiBacked: false,
+            fetchedAt: "2026-06-16T10:00:00Z",
+            stale: false,
+          },
+        },
+      },
+      {
+        ...creatorModule({ id: 5, position: 2 }),
+        config: {
+          description: "Fetched stream state.",
+          label: "Thia live",
+          platform: "twitch",
+          url: "https://www.twitch.tv/thiabun",
+          integration: {
+            provider: "twitch",
+            resourceType: "channel",
+            resourceId: "thiabun",
+            resourceKey: "twitch:channel:thiabun",
+            sourceUrl: "https://www.twitch.tv/thiabun",
+            metadata: {
+              title: "Thia live",
+              live: true,
+              liveFetchedAt: "2026-06-16T10:00:00Z",
+            },
+            embed: null,
+            apiBacked: true,
+            fetchedAt: "2026-06-16T10:00:00Z",
+            stale: false,
+          },
+        },
+      },
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expect(page.getByTestId("profile-grid-module-music")).toHaveAttribute(
+    "data-profile-module-freshness",
+    "cached",
+  );
+  await expect(page.getByText("Spotify link")).toBeVisible();
+  await expect(page.getByText("Recently updated · Spotify")).toHaveCount(0);
+  await expect(page.getByText("Live now on Twitch")).toBeVisible();
 });
 
 test("public logged-out users do not see canvas edit controls", async ({ page }) => {
@@ -943,6 +1093,9 @@ test("profile module API guardrails are present by inspection", async () => {
   const uploadsApi = readFileSync("api/uploads.php", "utf8");
   const configExample = readFileSync("backend/config/config.example.php", "utf8");
   const moduleRegistry = readFileSync("src/lib/profileModuleRegistry.ts", "utf8");
+  const profileEvolution = readFileSync("docs/profile-personal-space-evolution.md", "utf8");
+  const safetyRules = readFileSync("docs/profile-customization-safety-rules.md", "utf8");
+  const productGuidelines = readFileSync("docs/product-ui-ux-guidelines.md", "utf8");
   const schema = readFileSync("backend/database/schema.sql", "utf8");
   const migration = readFileSync(
     "backend/database/migrations/20260612_0001_add_profile_modules.sql",
@@ -1024,9 +1177,21 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(configExample).toContain("'twitch'");
   expect(configExample).toContain("'github'");
   expect(moduleRegistry).toContain("export const PROFILE_ACTIVITY_MAX_ROW_SPAN = 3");
+  expect(moduleRegistry).toContain("export type ProfileModulePurpose");
+  expect(moduleRegistry).toContain("export type ProfileModuleDensity");
+  expect(moduleRegistry).toContain("export type ProfileModuleFreshness");
+  expect(moduleRegistry).toContain("export type ProfileModuleEmptyPolicy");
+  expect(moduleRegistry).toContain("profileModuleSpanRole");
+  expect(moduleRegistry).toContain("profileModuleSizeHasRoomForDetails");
   expect(moduleRegistry).toContain(
     "clampProfileGridModuleSpan(span, PROFILE_ACTIVITY_MAX_ROW_SPAN)",
   );
+  expect(profileEvolution).toContain("Module Design Rubric");
+  expect(profileEvolution).toContain("1x1` and `2x1`: one idea");
+  expect(safetyRules).toContain("Module presentation metadata");
+  expect(safetyRules).toContain("API-backed and timestamped");
+  expect(productGuidelines).toContain("Profile Modules As Glanceable Surfaces");
+  expect(productGuidelines).toContain("Live/recent labels require API-backed timestamps");
   expect(schema).toContain("CREATE TABLE IF NOT EXISTS profile_modules");
   expect(schema).toContain("CREATE TABLE IF NOT EXISTS profile_integration_accounts");
   expect(schema).toContain("CREATE TABLE IF NOT EXISTS profile_integration_oauth_states");

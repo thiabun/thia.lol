@@ -96,6 +96,17 @@ type ProfileGridModuleProps = {
   children: ReactNode;
   className?: string | undefined;
   layout?: ProfileModuleLayout | null | undefined;
+  presentation?:
+    | {
+        compact: boolean;
+        density: string;
+        emptyPolicy: string;
+        freshness: string;
+        primaryAction: string;
+        purpose: string;
+        spanRole: string;
+      }
+    | undefined;
   size?: ProfileGridModuleSize | string | undefined;
   testId?: string | undefined;
 };
@@ -104,6 +115,7 @@ export function ProfileGridModule({
   children,
   className,
   layout,
+  presentation,
   size = "1x1",
   testId,
 }: ProfileGridModuleProps) {
@@ -120,7 +132,7 @@ export function ProfileGridModule({
   return (
     <div
       className={cn(
-        "profile-grid-module min-w-0",
+        "profile-grid-module min-h-0 min-w-0",
         profileGridModuleSizeClass(span.size),
         className,
       )}
@@ -128,6 +140,15 @@ export function ProfileGridModule({
       data-profile-grid-column-span={span.columns}
       data-profile-grid-row-span={span.rows}
       data-profile-grid-size={span.size}
+      data-profile-module-action={presentation?.primaryAction}
+      data-profile-module-compact={
+        presentation ? String(presentation.compact) : undefined
+      }
+      data-profile-module-density={presentation?.density}
+      data-profile-module-empty-policy={presentation?.emptyPolicy}
+      data-profile-module-freshness={presentation?.freshness}
+      data-profile-module-purpose={presentation?.purpose}
+      data-profile-module-span-role={presentation?.spanRole}
       data-testid={testId}
       style={placementStyle}
     >
