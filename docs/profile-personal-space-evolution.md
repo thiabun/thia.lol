@@ -712,6 +712,11 @@ earlier three-column grid foundation with a compact 5x5-ready canvas model:
 - Module spans are allowlisted tokens: `1x1`, `2x1`, `1x2`, `2x2`, and `3x1`.
   Unknown or invalid span values fall back to `1x1`; users cannot provide CSS,
   arbitrary coordinates, or custom grid rules.
+- Activity is explicitly bounded so it cannot become a feed page inside the
+  grid. Its row span is clamped to at most three canvas rows, the module shell
+  has a max height tied to three grid rows on desktop, and only the activity
+  body scrolls internally. The module title and Feed/Replies/Rooms tabs remain
+  outside that scroll area, while mobile uses a viewport-bounded max height.
 - `profile_info` is a synthetic frontend-only canvas module and always appears
   first. It carries the core identity surface, banner, avatar, name, handle,
   bio, actions, Likes/Followers/Following, and essential links/badges. It is

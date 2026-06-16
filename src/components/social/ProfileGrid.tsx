@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { motion } from "motion/react";
 import { cn } from "../../lib/classNames";
 import { defaultProfileLayoutPreset } from "../../lib/profileLayoutPresets";
@@ -24,10 +24,15 @@ export function ProfileGrid({
   maxColumns = 5,
   testId = "profile-grid",
 }: ProfileGridProps) {
+  const gridStyle = {
+    "--profile-grid-gap": layoutPreset === "compact" ? "0.5rem" : "0.75rem",
+    "--profile-grid-row-size": "8rem",
+  } as CSSProperties;
+
   return (
     <div
       className={cn(
-        "grid min-w-0 grid-cols-1 md:grid-cols-2 md:auto-rows-[minmax(8rem,auto)]",
+        "grid min-w-0 grid-cols-1 md:grid-cols-2 md:auto-rows-[minmax(var(--profile-grid-row-size),auto)]",
         layoutPreset === "compact" ? "gap-2" : "gap-3",
         maxColumns === 5 ? "lg:grid-cols-5" : undefined,
         className,
@@ -35,6 +40,7 @@ export function ProfileGrid({
       data-profile-canvas-columns={maxColumns}
       data-profile-layout-preset={layoutPreset}
       data-testid={testId}
+      style={gridStyle}
     >
       {children}
     </div>

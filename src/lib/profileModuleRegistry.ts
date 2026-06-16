@@ -9,9 +9,11 @@ export type ProfileGridModuleSize = "1x1" | "2x1" | "1x2" | "2x2" | "3x1";
 
 export type ProfileGridModuleSpan = {
   columns: 1 | 2 | 3;
-  rows: 1 | 2;
+  rows: 1 | 2 | 3;
   size: ProfileGridModuleSize;
 };
+
+export const PROFILE_ACTIVITY_MAX_ROW_SPAN = 3;
 
 type ProfileModuleRegistryEntry = {
   allowedSizes: readonly ProfileGridModuleSize[];
@@ -161,9 +163,25 @@ export function profileModuleGridSpan(
   layoutPreset: ProfileLayoutPreset = "balanced",
   index = 0,
 ): ProfileGridModuleSpan {
-  return profileGridModuleSizeSpan(
+  const span = profileGridModuleSizeSpan(
     profileModuleGridSize(module, layoutPreset, index),
   );
+
+  if (module.type === "activity") {
+    return clampProfileGridModuleSpan(span, PROFILE_ACTIVITY_MAX_ROW_SPAN);
+  }
+
+  return span;
+}
+
+export function clampProfileGridModuleSpan(
+  span: ProfileGridModuleSpan,
+  maxRows: ProfileGridModuleSpan["rows"],
+): ProfileGridModuleSpan {
+  return {
+    ...span,
+    rows: normalizeProfileGridRowSpan(Math.min(span.rows, maxRows)),
+  };
 }
 
 export function normalizeProfileGridModuleSize(
@@ -205,6 +223,18 @@ export function profileGridModuleSizeSpan(
   }
 
   return { columns: 1, rows: 1, size };
+}
+
+function normalizeProfileGridRowSpan(value: number): ProfileGridModuleSpan["rows"] {
+  if (value <= 1) {
+    return 1;
+  }
+
+  if (value <= 2) {
+    return 2;
+  }
+
+  return 3;
 }
 
 export function profileModuleHasContent(

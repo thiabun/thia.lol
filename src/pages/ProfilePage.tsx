@@ -1198,7 +1198,11 @@ function ProfileActivityModule({
   title,
 }: ProfileActivityModuleProps) {
   return (
-    <div className="min-w-0 space-y-3" data-testid="profile-module-activity">
+    <div
+      className="flex h-full max-h-[min(38rem,75dvh)] min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-card border border-line bg-surface/68 p-3 md:max-h-[calc(var(--profile-grid-row-size)+var(--profile-grid-row-size)+var(--profile-grid-row-size)+var(--profile-grid-gap)+var(--profile-grid-gap))]"
+      data-profile-activity-max-rows="3"
+      data-testid="profile-module-activity"
+    >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h3 className="text-sm font-semibold text-text">{title}</h3>
         <div
@@ -1228,7 +1232,11 @@ function ProfileActivityModule({
         </div>
       </div>
 
-      <div data-testid="profile-activity">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1"
+        data-profile-activity-scroll="internal"
+        data-testid="profile-activity"
+      >
         {activeTab === "feed" ? (
           <ProfilePostList
             emptyCompact

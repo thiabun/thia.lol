@@ -136,6 +136,69 @@ test("activity renders through the module grid without a duplicate fixed section
   ).toBeVisible();
 });
 
+test("activity keeps long feeds inside an internal scroll area", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [activityModule({ id: 9, title: "Latest activity", position: 1 })],
+    profilePosts: Array.from({ length: 14 }, (_, index) =>
+      postFixture({
+        id: 100 + index,
+        body: `Long activity item ${index + 1}.`,
+      }),
+    ),
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const module = page.getByTestId("profile-module-activity");
+  const body = page.getByTestId("profile-activity");
+  const tabs = page.getByTestId("profile-activity-tabs");
+  await expect(module).toHaveAttribute("data-profile-activity-max-rows", "3");
+  await expect(body).toHaveAttribute("data-profile-activity-scroll", "internal");
+  await expect(tabs.getByRole("tab", { name: /Feed/ })).toBeVisible();
+  await expect(page.getByText("Long activity item 14.")).toBeVisible();
+
+  const metrics = await page.evaluate(() => {
+    const moduleElement = document.querySelector<HTMLElement>(
+      '[data-testid="profile-module-activity"]',
+    );
+    const bodyElement = document.querySelector<HTMLElement>(
+      '[data-testid="profile-activity"]',
+    );
+    const tabsElement = document.querySelector<HTMLElement>(
+      '[data-testid="profile-activity-tabs"]',
+    );
+
+    if (!moduleElement || !bodyElement || !tabsElement) {
+      throw new Error("Activity module elements were not rendered.");
+    }
+
+    const moduleRect = moduleElement.getBoundingClientRect();
+    const tabsRect = tabsElement.getBoundingClientRect();
+
+    return {
+      bodyClientHeight: bodyElement.clientHeight,
+      bodyOverflowY: window.getComputedStyle(bodyElement).overflowY,
+      bodyScrollHeight: bodyElement.scrollHeight,
+      documentScrollHeight: document.documentElement.scrollHeight,
+      moduleHeight: moduleRect.height,
+      moduleMaxHeight: Number.parseFloat(window.getComputedStyle(moduleElement).maxHeight),
+      tabsBottom: tabsRect.bottom,
+      tabsTop: tabsRect.top,
+      moduleBottom: moduleRect.bottom,
+      moduleTop: moduleRect.top,
+    };
+  });
+
+  expect(metrics.bodyOverflowY).toBe("auto");
+  expect(metrics.bodyScrollHeight).toBeGreaterThan(metrics.bodyClientHeight + 100);
+  expect(metrics.moduleHeight).toBeLessThanOrEqual(metrics.moduleMaxHeight + 2);
+  expect(metrics.tabsTop).toBeGreaterThanOrEqual(metrics.moduleTop);
+  expect(metrics.tabsBottom).toBeLessThanOrEqual(metrics.moduleBottom);
+  expect(metrics.documentScrollHeight).toBeLessThan(metrics.bodyScrollHeight + 1_600);
+});
+
 test("activity respects hidden module preferences", async ({ page }) => {
   await mockProfileModules(page, {
     authenticated: false,
@@ -561,6 +624,7 @@ test("profile module API guardrails are present by inspection", async () => {
   const router = readFileSync("api/index.php", "utf8");
   const profileApi = readFileSync("api/profile.php", "utf8");
   const modulesApi = readFileSync("api/profile_modules.php", "utf8");
+  const moduleRegistry = readFileSync("src/lib/profileModuleRegistry.ts", "utf8");
   const schema = readFileSync("backend/database/schema.sql", "utf8");
   const migration = readFileSync(
     "backend/database/migrations/20260612_0001_add_profile_modules.sql",
@@ -598,6 +662,10 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(modulesApi).toContain("profile_module_type_is_supported");
   expect(profileApi).toContain("const PROFILE_LAYOUT_PRESETS = ['balanced', 'compact', 'showcase']");
   expect(profileApi).toContain("validate_profile_layout_preset");
+  expect(moduleRegistry).toContain("export const PROFILE_ACTIVITY_MAX_ROW_SPAN = 3");
+  expect(moduleRegistry).toContain(
+    "clampProfileGridModuleSpan(span, PROFILE_ACTIVITY_MAX_ROW_SPAN)",
+  );
   expect(schema).toContain("CREATE TABLE IF NOT EXISTS profile_modules");
   expect(schema).toContain("profile_layout_preset VARCHAR(20) NOT NULL DEFAULT 'balanced'");
   expect(migration).toContain("KEY profile_modules_user_position_idx (user_id, position)");
