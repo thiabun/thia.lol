@@ -33,20 +33,24 @@ test("profile connections normalize, save, and render", async ({ page }) => {
   const modal = page.getByTestId("profile-customization-modal");
   await expect(modal).toBeVisible();
   const modalBox = await modal.boundingBox();
-  expect(modalBox?.width ?? 0).toBeLessThanOrEqual(1154);
+  expect(modalBox?.width ?? 0).toBeLessThanOrEqual(1040);
   await expect(modal.getByRole("heading", { name: "Identity" })).toBeVisible();
-  await expect(modal.getByRole("button", { name: /Appearance/ })).toBeVisible();
-  await expect(modal.getByRole("button", { name: /Connections/ })).toBeVisible();
+  await expect(modal.getByRole("heading", { name: "Connections" })).toBeVisible();
+  await expect(modal.getByRole("button", { name: /Look/ })).toBeVisible();
+  await expect(modal.getByRole("button", { name: /Connections/ })).toHaveCount(0);
   await expect(modal.getByRole("button", { name: /Modules/ })).toBeVisible();
-  await expect(modal.getByRole("button", { name: /Preview/ })).toHaveCount(0);
+  await expect(modal.getByRole("button", { name: /Preview/ })).toBeVisible();
   await expect(modal.getByTestId("profile-customization-preview")).toBeVisible();
   await modal.getByRole("textbox", { name: "Display name" }).fill("Thia Studio");
   await expect(modal.getByTestId("profile-customization-preview")).toContainText(
     "Thia Studio",
   );
-  await modal.getByRole("button", { name: /Appearance/ }).click();
-  await expect(modal.getByRole("heading", { name: "Appearance" })).toBeVisible();
-  await modal.getByRole("button", { name: /Connections/ }).click();
+  await modal.getByRole("button", { name: /Look/ }).click();
+  await expect(modal.getByRole("heading", { name: "Look" })).toBeVisible();
+  await expect(modal.getByText("Change avatar").first()).toBeVisible();
+  await expect(modal.getByText("Change banner").first()).toBeVisible();
+  await expect(modal.getByText("Change background").first()).toBeVisible();
+  await modal.getByRole("button", { name: /Identity/ }).click();
   await expect(modal.getByRole("heading", { name: "Connections" })).toBeVisible();
   await expect(modal.getByLabel("Accent")).toHaveCount(0);
   await expect(modal.getByLabel("Theme")).toHaveCount(0);
@@ -118,7 +122,7 @@ test("valid connection cards collapse into compact summaries", async ({ page }) 
   await page.getByRole("button", { name: "Customize profile" }).click();
   const modal = page.getByTestId("profile-customization-modal");
   await expect(modal).toBeVisible();
-  await modal.getByRole("button", { name: /Connections/ }).click();
+  await modal.getByRole("button", { name: /Identity/ }).click();
 
   await expect(modal.getByText("https://thia.lol/")).toBeVisible();
   await expect(modal.getByText("thiachannel")).toBeVisible();
@@ -188,7 +192,7 @@ test("profile connections show platform-aware validation errors", async ({ page 
   await page.getByRole("button", { name: "Customize profile" }).click();
   const modal = page.getByTestId("profile-customization-modal");
   await expect(modal).toBeVisible();
-  await modal.getByRole("button", { name: /Connections/ }).click();
+  await modal.getByRole("button", { name: /Identity/ }).click();
 
   await modal.getByRole("button", { name: "Add connection" }).click();
   await modal.getByRole("textbox", { name: "Website" }).fill("thia.lol");
@@ -248,9 +252,10 @@ test("mobile edit profile modal has no horizontal overflow", async ({ page }) =>
   await expect(modal).toBeVisible();
   await modal.getByRole("button", { name: /Identity/ }).click();
   await expect(modal.getByRole("heading", { name: "Identity" })).toBeVisible();
-  await modal.getByRole("button", { name: /Appearance/ }).click();
-  await expect(modal.getByRole("heading", { name: "Appearance" })).toBeVisible();
-  await modal.getByRole("button", { name: /Connections/ }).click();
+  await expect(modal.getByRole("heading", { name: "Connections" })).toBeVisible();
+  await modal.getByRole("button", { name: /Look/ }).click();
+  await expect(modal.getByRole("heading", { name: "Look" })).toBeVisible();
+  await modal.getByRole("button", { name: /Identity/ }).click();
   await expect(modal.getByRole("heading", { name: "Connections" })).toBeVisible();
   await modal.getByRole("button", { name: /Modules/ }).click();
   await expect(modal.getByTestId("profile-layout-editor")).toBeVisible();

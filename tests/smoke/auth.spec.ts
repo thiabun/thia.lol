@@ -139,7 +139,7 @@ test.describe("authenticated smoke", () => {
     const dialog = page.getByRole("dialog", { name: "Customize profile" });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByLabel("Display name")).toBeVisible();
-    await dialog.getByRole("button", { name: /Appearance/ }).click();
+    await dialog.getByRole("button", { name: /Look/ }).click();
     await expect(dialog.getByText("Change avatar").first()).toBeVisible();
     await expect(dialog.getByText("Change banner").first()).toBeVisible();
     await expect(dialog.getByText("Image must be 10 MB or smaller")).toHaveCount(3);

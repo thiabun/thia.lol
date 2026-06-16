@@ -87,37 +87,26 @@ const maxFeaturedBadges = 12;
 const sections: Array<{
   id: CustomizationSection;
   label: string;
-  description: string;
   icon: LucideIcon;
 }> = [
   {
     id: "identity",
     label: "Identity",
-    description: "Name, bio, and location.",
     icon: UserRound,
   },
   {
-    id: "appearance",
-    label: "Appearance",
-    description: "Avatar, banner, and background.",
+    id: "look",
+    label: "Look",
     icon: ImagePlus,
-  },
-  {
-    id: "connections",
-    label: "Connections",
-    description: "Platform-aware profile links.",
-    icon: LinkIcon,
   },
   {
     id: "modules",
     label: "Modules",
-    description: "Personal-space blocks.",
     icon: Sparkles,
   },
   {
     id: "preview",
     label: "Preview",
-    description: "Public-facing draft view.",
     icon: Eye,
   },
 ];
@@ -188,8 +177,7 @@ function isFeaturedContentModule(type: ProfileModuleType): boolean {
 
 type CustomizationSection =
   | "identity"
-  | "appearance"
-  | "connections"
+  | "look"
   | "modules"
   | "preview";
 
@@ -456,7 +444,7 @@ export function ProfileCustomizationModal({
         return next;
       });
       setProfileMessage("Fix the highlighted connections before saving.");
-      setActiveSection("connections");
+      setActiveSection("identity");
       return;
     }
 
@@ -752,12 +740,12 @@ export function ProfileCustomizationModal({
           aria-modal="true"
           aria-labelledby={titleId}
           data-testid="profile-customization-modal"
-          className="flex h-dvh w-full flex-col overflow-hidden bg-surface shadow-lift sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-5xl sm:rounded-panel sm:border sm:border-line xl:max-w-6xl"
+          className="flex h-dvh w-full flex-col overflow-hidden bg-surface shadow-lift sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-4xl sm:rounded-panel sm:border sm:border-line xl:max-w-5xl"
           variants={modalPanel}
         >
-          <div className="flex shrink-0 items-start justify-between gap-3 border-b border-line bg-surface/95 px-3 py-2.5 backdrop-blur-veil sm:px-4">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line bg-surface/95 px-3 py-2 backdrop-blur-veil">
             <div className="min-w-0">
-              <h2 id={titleId} className="text-lg font-semibold text-text">
+              <h2 id={titleId} className="text-base font-semibold text-text">
                 Customize profile
               </h2>
             </div>
@@ -773,11 +761,11 @@ export function ProfileCustomizationModal({
             />
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4 sm:py-4">
-            <div className="grid min-w-0 gap-4 lg:grid-cols-[9rem_minmax(0,1fr)] xl:grid-cols-[9rem_minmax(0,1fr)_minmax(18rem,22rem)]">
+          <div className="min-h-0 flex-1 overflow-y-auto px-2.5 py-2.5 sm:px-3 sm:py-3">
+            <div className="min-w-0 space-y-3">
               <nav
                 aria-label="Customization sections"
-                className="-mx-3 flex gap-1.5 overflow-x-auto px-3 pb-1 lg:mx-0 lg:block lg:space-y-1.5 lg:overflow-visible lg:px-0 lg:pb-0"
+                className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1"
               >
                 {sections.map((section) => (
                   <SectionButton
@@ -789,7 +777,15 @@ export function ProfileCustomizationModal({
                 ))}
               </nav>
 
-              <div className="min-w-0 space-y-4">
+              <div
+                className={cn(
+                  "grid min-w-0 gap-3",
+                  activeSection === "preview"
+                    ? "lg:grid-cols-1"
+                    : "lg:grid-cols-[minmax(0,1fr)_minmax(15rem,18rem)]",
+                )}
+              >
+                <div className="min-w-0 space-y-3">
                 <div className={activeSection === "identity" ? "block" : "hidden"}>
                   <EditorSection title="Identity">
                     <div className="grid gap-3 sm:grid-cols-2">
@@ -823,18 +819,44 @@ export function ProfileCustomizationModal({
                       id="profile-bio"
                       label="Bio"
                       density="compact"
-                      rows={3}
-                      className="min-h-20"
+                      rows={2}
+                      className="min-h-16"
                       maxLength={500}
                       value={form.bio}
                       disabled={busy}
                       onChange={(event) => updateForm("bio", event.currentTarget.value)}
                     />
+                    <div className="space-y-2.5 border-t border-line/70 pt-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <h4 className="text-sm font-semibold text-text">Connections</h4>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          disabled={busy || form.connections.length >= maxProfileConnections}
+                          icon={<Plus aria-hidden="true" size={15} />}
+                          onClick={() => addConnection()}
+                        >
+                          Add connection
+                        </Button>
+                      </div>
+                      <ConnectionCards
+                        busy={busy}
+                        connections={form.connections}
+                        editingIds={editingConnectionIds}
+                        errors={connectionErrors}
+                        onAdd={addConnection}
+                        onEdit={editConnection}
+                        onFinishEdit={finishConnectionEdit}
+                        onRemove={removeConnection}
+                        onUpdate={updateConnection}
+                      />
+                    </div>
                   </EditorSection>
                 </div>
 
-              <div className={activeSection === "appearance" ? "block" : "hidden"}>
-                <EditorSection title="Appearance">
+              <div className={activeSection === "look" ? "block" : "hidden"}>
+                <EditorSection title="Look">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <ImageUploadControl
                       id="profile-avatar-upload"
@@ -862,36 +884,6 @@ export function ProfileCustomizationModal({
                       }
                     />
                   </div>
-                </EditorSection>
-              </div>
-
-              <div className={activeSection === "connections" ? "block" : "hidden"}>
-                <EditorSection
-                  title="Connections"
-                  action={
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      disabled={busy || form.connections.length >= maxProfileConnections}
-                      icon={<Plus aria-hidden="true" size={15} />}
-                      onClick={() => addConnection()}
-                    >
-                      Add connection
-                    </Button>
-                  }
-                >
-                  <ConnectionCards
-                    busy={busy}
-                    connections={form.connections}
-                    editingIds={editingConnectionIds}
-                    errors={connectionErrors}
-                    onAdd={addConnection}
-                    onEdit={editConnection}
-                    onFinishEdit={finishConnectionEdit}
-                    onRemove={removeConnection}
-                    onUpdate={updateConnection}
-                  />
                 </EditorSection>
               </div>
 
@@ -967,7 +959,7 @@ export function ProfileCustomizationModal({
                 />
               </div>
 
-              <div className={activeSection === "preview" ? "block xl:hidden" : "hidden"}>
+              <div className={activeSection === "preview" ? "block" : "hidden"}>
                 <PreviewPanel
                   badges={badges}
                   connections={validPreviewConnections}
@@ -987,8 +979,7 @@ export function ProfileCustomizationModal({
                 </ModalSheetStatus>
               ) : null}
 
-              {activeSection !== "modules" &&
-              activeSection !== "preview" ? (
+              {activeSection !== "modules" ? (
                 <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                   <Button
                     type="button"
@@ -1012,7 +1003,8 @@ export function ProfileCustomizationModal({
               ) : null}
             </div>
 
-              <div className="hidden min-w-0 xl:block">
+              {activeSection !== "preview" ? (
+              <div className="hidden min-w-0 lg:block">
                 <div className="sticky top-0">
                   <PreviewPanel
                     badges={badges}
@@ -1027,7 +1019,9 @@ export function ProfileCustomizationModal({
                   />
                 </div>
               </div>
+              ) : null}
             </div>
+          </div>
           </div>
         </motion.div>
       </motion.div>
@@ -1049,17 +1043,16 @@ function SectionButton({ active, onClick, section }: SectionButtonProps) {
       type="button"
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex min-w-max shrink-0 items-center gap-1.5 rounded-control px-2.5 py-2 text-left transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus lg:w-full lg:min-w-0",
-        section.id === "preview" ? "xl:hidden" : null,
+        "flex min-h-8 min-w-max shrink-0 items-center gap-1.5 rounded-control px-2.5 py-1.5 text-left transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
         active
-          ? "bg-surface text-text shadow-soft"
-          : "bg-transparent hover:bg-canvas/55",
+          ? "bg-canvas text-text shadow-soft"
+          : "bg-transparent text-muted hover:bg-canvas/55 hover:text-text",
       )}
       onClick={onClick}
     >
-      <Icon aria-hidden="true" className="shrink-0 text-muted" size={15} />
+      <Icon aria-hidden="true" className="shrink-0" size={14} />
       <span className="min-w-0">
-        <span className="block truncate text-xs font-semibold text-text">
+        <span className="block truncate text-xs font-semibold">
           {section.label}
         </span>
       </span>
@@ -1077,14 +1070,14 @@ type EditorSectionProps = {
 function EditorSection({ action, children, description, title }: EditorSectionProps) {
   return (
     <section
-      className="space-y-4"
+      className="space-y-3"
       aria-label={title}
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h3 className="text-base font-semibold text-text">{title}</h3>
+          <h3 className="text-sm font-semibold text-text">{title}</h3>
           {description ? (
-            <p className="mt-1 text-sm leading-5 text-muted">{description}</p>
+            <p className="mt-1 text-xs leading-5 text-muted">{description}</p>
           ) : null}
         </div>
         {action ? <div className="shrink-0">{action}</div> : null}
@@ -1113,18 +1106,18 @@ function ImageUploadControl({
 }: ImageUploadControlProps) {
   return (
     <div className={wide ? "sm:col-span-2" : undefined}>
-      <div className="mb-2 flex items-center gap-2 text-sm font-medium text-text">
-        <ImagePlus aria-hidden="true" size={15} />
+      <div className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-text">
+        <ImagePlus aria-hidden="true" size={14} />
         {label}
       </div>
-      <div className="flex min-w-0 items-center gap-3 rounded-card bg-canvas/45 p-2.5">
+      <div className="flex min-w-0 items-center gap-2.5 rounded-card bg-canvas/40 p-2">
         {imageUrl ? (
           <img
             alt=""
             className={
               wide
-                ? "h-16 w-28 shrink-0 rounded-card object-cover"
-                : "size-16 shrink-0 rounded-full object-cover"
+                ? "h-12 w-20 shrink-0 rounded-card object-cover"
+                : "size-12 shrink-0 rounded-full object-cover"
             }
             src={imageUrl}
           />
@@ -1132,19 +1125,19 @@ function ImageUploadControl({
           <div
             className={
               wide
-                ? "grid h-16 w-28 shrink-0 place-items-center rounded-card border border-dashed border-line bg-surface-strong text-muted"
-                : "grid size-16 shrink-0 place-items-center rounded-full border border-dashed border-line bg-surface-strong text-muted"
+                ? "grid h-12 w-20 shrink-0 place-items-center rounded-card border border-dashed border-line bg-surface-strong text-muted"
+                : "grid size-12 shrink-0 place-items-center rounded-full border border-dashed border-line bg-surface-strong text-muted"
             }
           >
-            <ImagePlus aria-hidden="true" size={18} />
+            <ImagePlus aria-hidden="true" size={16} />
           </div>
         )}
         <div className="min-w-0 flex-1">
           <label
-            className="inline-flex min-h-9 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-surface px-3 text-sm font-medium text-text shadow-soft transition duration-fluid hover:border-line-strong focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus"
+            className="inline-flex min-h-8 cursor-pointer items-center justify-center gap-1.5 rounded-control border border-line bg-surface px-2.5 text-xs font-semibold text-text shadow-soft transition duration-fluid hover:border-line-strong focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus"
             htmlFor={id}
           >
-            <ImagePlus aria-hidden="true" size={15} />
+            <ImagePlus aria-hidden="true" size={14} />
             {uploading ? "Uploading" : label}
           </label>
           <input
@@ -1155,7 +1148,7 @@ function ImageUploadControl({
             disabled={uploading}
             onChange={onChange}
           />
-          <p className="mt-1.5 text-xs leading-5 text-muted">
+          <p className="mt-1 text-xs leading-5 text-muted">
             Image must be 10 MB or smaller.
           </p>
         </div>
@@ -1193,8 +1186,8 @@ function ConnectionCards({
 }: ConnectionCardsProps) {
   if (connections.length === 0) {
     return (
-      <div className="space-y-3">
-        <p className="rounded-card border border-dashed border-line bg-surface/70 p-2.5 text-sm text-muted">
+      <div className="space-y-2.5">
+        <p className="rounded-card border border-dashed border-line bg-surface/65 p-2 text-sm text-muted">
           No connections yet. Choose a platform to add a profile link.
         </p>
         <PlatformPicker onAdd={onAdd} />
@@ -1203,8 +1196,8 @@ function ConnectionCards({
   }
 
   return (
-    <div className="space-y-3">
-      <div className="grid gap-2.5 sm:grid-cols-2">
+    <div className="space-y-2.5">
+      <div className="grid gap-2">
         {connections.map((connection) => {
           const platform = platformMeta(connection.platform);
           const validated = validateProfileConnectionDraft(
@@ -1218,14 +1211,14 @@ function ConnectionCards({
             <div
               key={connection.id}
               className={cn(
-                "min-w-0 rounded-card border p-2.5",
+                "min-w-0 rounded-card border p-2",
                 platformToneClass(platform.tone),
               )}
             >
-              <div className={cn("flex items-start justify-between gap-2.5", isEditing ? "mb-2.5" : null)}>
+              <div className={cn("flex items-start justify-between gap-2", isEditing ? "mb-2" : null)}>
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className="grid size-8 shrink-0 place-items-center rounded-full border border-line bg-surface/80 text-text">
-                    <ProfileConnectionIcon platform={connection.platform} size={16} />
+                  <span className="grid size-7 shrink-0 place-items-center rounded-full border border-line bg-surface/80 text-text">
+                    <ProfileConnectionIcon platform={connection.platform} size={15} />
                   </span>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-text">
@@ -1264,31 +1257,33 @@ function ConnectionCards({
                 </div>
               </div>
               {isEditing ? (
-                <div className="grid gap-2.5">
-                  <SelectField
-                    id={`profile-connection-platform-${connection.id}`}
-                    label="Platform"
-                    density="compact"
-                    value={connection.platform}
-                    disabled={busy}
-                    options={profileConnectionPlatforms}
-                    onChange={(event) =>
-                      onUpdate(connection.id, "platform", event.currentTarget.value)
-                    }
-                  />
-                  <TextField
-                    id={`profile-connection-value-${connection.id}`}
-                    label={connectionPlatformLabel(connection.platform)}
-                    density="compact"
-                    value={connection.value}
-                    placeholder={platform.placeholder}
-                    maxLength={300}
-                    disabled={busy}
-                    onChange={(event) =>
-                      onUpdate(connection.id, "value", event.currentTarget.value)
-                    }
-                  />
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div className="grid gap-2">
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)]">
+                    <SelectField
+                      id={`profile-connection-platform-${connection.id}`}
+                      label="Platform"
+                      density="compact"
+                      value={connection.platform}
+                      disabled={busy}
+                      options={profileConnectionPlatforms}
+                      onChange={(event) =>
+                        onUpdate(connection.id, "platform", event.currentTarget.value)
+                      }
+                    />
+                    <TextField
+                      id={`profile-connection-value-${connection.id}`}
+                      label={connectionPlatformLabel(connection.platform)}
+                      density="compact"
+                      value={connection.value}
+                      placeholder={platform.placeholder}
+                      maxLength={300}
+                      disabled={busy}
+                      onChange={(event) =>
+                        onUpdate(connection.id, "value", event.currentTarget.value)
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <p className="min-w-0 text-xs leading-5 text-muted">
                       {errors[connection.id] ?? connectionPlatformHelp(connection.platform)}
                     </p>
@@ -1319,31 +1314,25 @@ function PlatformPicker({
   onAdd: (platform: ProfileConnectionPlatform) => void;
 }) {
   return (
-    <div>
-      <h4 className="text-sm font-semibold text-text">Add by platform</h4>
-      <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div>
+      <h4 className="sr-only">Add by platform</h4>
+      <div className="flex flex-wrap gap-1.5">
         {profileConnectionPlatforms.map((platform) => (
             <button
               key={platform.value}
               type="button"
               className={cn(
-                "flex min-w-0 items-start gap-2.5 rounded-card border p-2.5 text-left transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+                "inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded-control border px-2 text-left text-xs font-semibold transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
                 platformToneClass(platform.tone),
               )}
               onClick={() => onAdd(platform.value)}
             >
               <ProfileConnectionIcon
-                className="mt-0.5"
                 platform={platform.value}
-                size={17}
+                size={14}
               />
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-semibold text-text">
-                  {platform.label}
-                </span>
-                <span className="mt-0.5 block text-xs leading-5 text-muted">
-                  {platform.help}
-                </span>
+              <span className="truncate text-text">
+                {platform.label}
               </span>
             </button>
           ))}
@@ -1405,18 +1394,9 @@ function FeaturedContentEditor({
   return (
     <section
       aria-label="Featured content"
-      className="space-y-4"
+      className="space-y-3"
       data-testid="profile-featured-editor"
     >
-      <div>
-        <h3 className="text-base font-semibold text-text">Featured content</h3>
-        <p className="mt-1 text-sm leading-5 text-muted">
-          {mode === "post"
-            ? "Highlight one public post in this module."
-            : "Highlight one eligible public room in this module."}
-        </p>
-      </div>
-
       {loading ? (
         <CompactStateNotice
           icon={LoaderCircle}
@@ -1491,11 +1471,11 @@ function FeaturedPostPicker({
   onSelect,
 }: FeaturedPostPickerProps) {
   return (
-    <div className="min-w-0 rounded-card border border-line bg-surface/60 p-3">
+    <div className="min-w-0 rounded-card border border-line bg-surface/60 p-2.5">
       <div className="flex min-w-0 items-start justify-between gap-2.5">
         <div className="min-w-0">
           <h4 className="flex items-center gap-2 text-sm font-semibold text-text">
-            <MessageCircle aria-hidden="true" size={16} />
+            <MessageCircle aria-hidden="true" size={15} />
             Featured post
           </h4>
           {selectedPost ? (
@@ -1522,20 +1502,20 @@ function FeaturedPostPicker({
         label="Search posts"
         density="compact"
         icon={Search}
-        className="mt-3"
+        className="mt-2.5"
         value={query}
         disabled={busy || totalCount === 0}
         onChange={(event) => onQueryChange(event.currentTarget.value)}
       />
 
-      <div className="mt-2.5 space-y-2" data-testid="featured-post-options">
+      <div className="mt-2 space-y-1.5" data-testid="featured-post-options">
         {totalCount === 0 ? (
-          <p className="rounded-card border border-dashed border-line bg-canvas/45 p-2.5 text-sm text-muted">
+          <p className="rounded-card border border-dashed border-line bg-canvas/45 p-2 text-sm text-muted">
             No public posts are available to feature.
           </p>
         ) : null}
         {totalCount > 0 && options.length === 0 ? (
-          <p className="rounded-card border border-dashed border-line bg-canvas/45 p-2.5 text-sm text-muted">
+          <p className="rounded-card border border-dashed border-line bg-canvas/45 p-2 text-sm text-muted">
             No posts match that search.
           </p>
         ) : null}
@@ -1545,7 +1525,7 @@ function FeaturedPostPicker({
             type="button"
             aria-pressed={selectedPostId === post.id}
             className={cn(
-              "block w-full rounded-card border p-2.5 text-left transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+              "block w-full rounded-card border p-2 text-left transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
               selectedPostId === post.id
                 ? "border-accent/50 bg-accent/12"
                 : "border-line bg-canvas/45 hover:border-line-strong",
@@ -1590,11 +1570,11 @@ function FeaturedRoomPicker({
   onSelect,
 }: FeaturedRoomPickerProps) {
   return (
-    <div className="min-w-0 rounded-card border border-line bg-surface/60 p-3">
+    <div className="min-w-0 rounded-card border border-line bg-surface/60 p-2.5">
       <div className="flex min-w-0 items-start justify-between gap-2.5">
         <div className="min-w-0">
           <h4 className="flex items-center gap-2 text-sm font-semibold text-text">
-            <Radio aria-hidden="true" size={16} />
+            <Radio aria-hidden="true" size={15} />
             Featured room
           </h4>
           {selectedRoom ? (
@@ -1621,20 +1601,20 @@ function FeaturedRoomPicker({
         label="Search rooms"
         density="compact"
         icon={Search}
-        className="mt-3"
+        className="mt-2.5"
         value={query}
         disabled={busy || totalCount === 0}
         onChange={(event) => onQueryChange(event.currentTarget.value)}
       />
 
-      <div className="mt-2.5 space-y-2" data-testid="featured-room-options">
+      <div className="mt-2 space-y-1.5" data-testid="featured-room-options">
         {totalCount === 0 ? (
-          <p className="rounded-card border border-dashed border-line bg-canvas/45 p-2.5 text-sm text-muted">
+          <p className="rounded-card border border-dashed border-line bg-canvas/45 p-2 text-sm text-muted">
             No eligible rooms are available to feature.
           </p>
         ) : null}
         {totalCount > 0 && options.length === 0 ? (
-          <p className="rounded-card border border-dashed border-line bg-canvas/45 p-2.5 text-sm text-muted">
+          <p className="rounded-card border border-dashed border-line bg-canvas/45 p-2 text-sm text-muted">
             No rooms match that search.
           </p>
         ) : null}
@@ -1644,7 +1624,7 @@ function FeaturedRoomPicker({
             type="button"
             aria-pressed={selectedRoomId === room.id}
             className={cn(
-              "block w-full rounded-card border p-2.5 text-left transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+              "block w-full rounded-card border p-2 text-left transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
               selectedRoomId === room.id
                 ? "border-accent/50 bg-accent/12"
                 : "border-line bg-canvas/45 hover:border-line-strong",
@@ -1771,15 +1751,10 @@ function ModulesEditorSection({
   return (
     <section
       aria-label="Modules"
-      className="space-y-4"
+      className="space-y-3"
       data-testid="profile-module-editor"
     >
-      <div>
-        <h3 className="text-base font-semibold text-text">Modules</h3>
-        <p className="mt-1 text-sm leading-5 text-muted">
-          Build the personal-space blocks that appear before the profile feed.
-        </p>
-      </div>
+      <h3 className="text-sm font-semibold text-text">Modules</h3>
 
       {loading ? (
         <CompactStateNotice
@@ -1800,7 +1775,7 @@ function ModulesEditorSection({
       ) : null}
 
       {!loading ? (
-        <div className="min-w-0 space-y-5">
+        <div className="min-w-0 space-y-4">
           <LayoutPresetControl
             disabled={editorBusy}
             dirty={layoutDirty}
@@ -1812,12 +1787,9 @@ function ModulesEditorSection({
           />
 
           <section>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h4 className="text-sm font-semibold text-text">Your modules</h4>
-                <p className="mt-1 text-xs leading-5 text-muted">
-                  Expand a block to edit it. Drag-free ordering stays keyboard friendly.
-                </p>
               </div>
               <Button
                 type="button"
@@ -1848,7 +1820,7 @@ function ModulesEditorSection({
                 <CompactStateNotice
                   icon={Sparkles}
                   title="No modules yet"
-                  text="Pick a block below to start shaping this space."
+                  text="Add a block below."
                   className="border border-dashed border-line bg-canvas/45"
                 />
               ) : null}
@@ -1883,8 +1855,8 @@ function ModulesEditorSection({
           </section>
 
           <section>
-            <h4 className="text-sm font-semibold text-text">Add a building block</h4>
-            <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2">
+            <h4 className="text-sm font-semibold text-text">Add module</h4>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
               {moduleTypes.filter((moduleType) => moduleType.addable !== false).map((moduleType) => {
                 const Icon = moduleType.icon;
 
@@ -1892,17 +1864,17 @@ function ModulesEditorSection({
                   <button
                     key={moduleType.type}
                     type="button"
-                    className="group flex min-w-0 items-start gap-2.5 rounded-card border border-line bg-surface/55 p-3 text-left shadow-soft transition duration-fluid ease-fluid hover:-translate-y-0.5 hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:hover:translate-y-0"
+                    className="group flex min-w-0 items-center gap-2 rounded-card border border-line bg-surface/55 p-2 text-left shadow-soft transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                     onClick={() => onAddModule(moduleType.type)}
                   >
-                    <span className="grid size-8 shrink-0 place-items-center rounded-full bg-accent/15 text-text transition group-hover:bg-accent/25">
-                      <Icon aria-hidden="true" size={16} />
+                    <span className="grid size-7 shrink-0 place-items-center rounded-full bg-accent/15 text-text transition group-hover:bg-accent/25">
+                      <Icon aria-hidden="true" size={15} />
                     </span>
                     <span className="min-w-0">
                       <span className="block text-sm font-semibold text-text">
                         {moduleType.label}
                       </span>
-                      <span className="mt-0.5 block text-xs leading-5 text-muted">
+                      <span className="mt-0.5 block truncate text-xs text-muted">
                         {moduleType.description}
                       </span>
                     </span>
@@ -1939,18 +1911,15 @@ function LayoutPresetControl({
   return (
     <section
       aria-label="Layout preset"
-      className="rounded-card border border-line bg-surface/62 p-3"
+      className="space-y-2.5 rounded-card bg-canvas/45 p-2.5"
       data-testid="profile-layout-editor"
     >
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h4 className="flex items-center gap-2 text-sm font-semibold text-text">
-            <LayoutGrid aria-hidden="true" size={16} />
+            <LayoutGrid aria-hidden="true" size={15} />
             Layout
           </h4>
-          <p className="mt-1 text-xs leading-5 text-muted">
-            Pick how personal-space cards flow on larger screens.
-          </p>
         </div>
         <Button
           type="button"
@@ -1965,7 +1934,7 @@ function LayoutPresetControl({
       </div>
 
       <div
-        className="mt-3 grid gap-2 sm:grid-cols-3"
+        className="grid gap-1 rounded-control bg-surface/70 p-1 sm:grid-cols-3"
         data-testid="profile-layout-presets"
       >
         {profileLayoutPresetOptions.map((option) => (
@@ -1974,18 +1943,18 @@ function LayoutPresetControl({
             type="button"
             aria-pressed={value === option.value}
             className={cn(
-              "min-w-0 rounded-card border p-2.5 text-left transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+              "min-w-0 rounded-control px-2 py-1.5 text-left transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
               value === option.value
-                ? "border-accent/55 bg-accent/12"
-                : "border-line bg-canvas/45 hover:border-line-strong",
+                ? "bg-surface text-text shadow-soft"
+                : "text-muted hover:bg-canvas/55 hover:text-text",
             )}
             disabled={disabled}
             onClick={() => onChange(option.value)}
           >
-            <span className="block truncate text-sm font-semibold text-text">
+            <span className="block truncate text-sm font-semibold">
               {option.label}
             </span>
-            <span className="mt-0.5 block text-xs leading-5 text-muted">
+            <span className="block truncate text-xs">
               {option.description}
             </span>
           </button>
@@ -1993,7 +1962,7 @@ function LayoutPresetControl({
       </div>
 
       {message ? (
-        <div className="mt-3">
+        <div>
           <ModalSheetStatus tone={message === "Layout saved" ? "success" : "error"}>
             {message}
           </ModalSheetStatus>
@@ -2049,31 +2018,31 @@ function ModuleTile({
   return (
     <article
       className={cn(
-        "min-w-0 rounded-card bg-surface/72 p-3 shadow-soft transition duration-fluid ease-fluid",
-        expanded ? "ring-1 ring-line-strong" : "hover:bg-surface",
+        "min-w-0 rounded-card border border-line/70 bg-surface/68 p-2.5 shadow-soft transition duration-fluid ease-fluid",
+        expanded ? "border-line-strong bg-surface" : "hover:border-line-strong hover:bg-surface",
       )}
       data-testid={`profile-module-card-${module.id}`}
     >
-      <div className="flex min-w-0 flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <button
           type="button"
-          className="flex min-w-0 flex-1 items-start gap-2.5 rounded-card text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          className="flex min-w-0 flex-1 items-start gap-2 rounded-card text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
           aria-expanded={expanded}
           data-testid={`profile-module-toggle-${module.id}`}
           onClick={onSelect}
         >
-          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-canvas/75 text-text">
-            <Icon aria-hidden="true" size={16} />
+          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-canvas/75 text-text">
+            <Icon aria-hidden="true" size={15} />
           </span>
           <span className="min-w-0">
             <span className="flex min-w-0 flex-wrap items-center gap-2">
               <span className="truncate text-sm font-semibold text-text">{title}</span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-canvas/70 px-2 py-0.5 text-[0.72rem] font-semibold text-muted">
+              <span className="inline-flex items-center gap-1 rounded-full bg-canvas/70 px-1.5 py-0.5 text-[0.68rem] font-semibold text-muted">
                 {visibilityIcon(module.visibility)}
                 {visibilityLabel(module.visibility)}
               </span>
             </span>
-            <span className="mt-0.5 block break-words text-xs leading-5 text-muted">
+            <span className="mt-0.5 block truncate text-xs text-muted">
               {profileModuleSummary(module)}
             </span>
           </span>
@@ -2127,7 +2096,7 @@ function ModuleTile({
       <AnimatePresence initial={false}>
         {expanded ? (
           <motion.form
-            className="mt-3 space-y-3 overflow-hidden border-t border-line/70 pt-3"
+            className="mt-2.5 space-y-2.5 overflow-hidden border-t border-line/70 pt-2.5"
             data-testid="profile-module-expanded"
             initial={shouldReduceMotion ? false : { opacity: 0, height: 0 }}
             animate={
@@ -2137,7 +2106,7 @@ function ModuleTile({
             transition={{ duration: shouldReduceMotion ? 0 : 0.18, ease: "easeOut" }}
             onSubmit={onSave}
           >
-            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="grid gap-2.5 sm:grid-cols-[minmax(0,1fr)_auto]">
               <TextField
                 id={`module-title-${module.id}`}
                 label="Title"
@@ -2169,12 +2138,7 @@ function ModuleTile({
               onChange={onUpdate}
             />
 
-            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <span className="min-w-0 text-xs leading-5 text-muted">
-                {module.visibility === "public"
-                  ? "Public modules render on your profile after saving."
-                  : "Hidden and draft modules stay out of public view."}
-              </span>
+            <div className="flex flex-wrap items-center justify-end gap-2 text-sm">
               <Button
                 type="submit"
                 size="sm"
@@ -2241,7 +2205,7 @@ function ModuleTypeFields({
 }: ModuleTypeFieldsProps) {
   if (module.type === "activity") {
     return (
-      <div className="mt-3 rounded-card border border-line bg-canvas/45 p-2.5 text-sm leading-5 text-muted">
+      <div className="rounded-card border border-line bg-canvas/45 p-2 text-sm leading-5 text-muted">
         Feed, replies, and rooms use the existing profile activity sources.
       </div>
     );
@@ -2259,7 +2223,7 @@ function ModuleTypeFields({
     const links = module.config.links ?? [];
 
     return (
-      <div className="mt-3 space-y-2.5">
+      <div className="space-y-2.5">
         <div className="flex items-center justify-between gap-3">
           <h5 className="text-sm font-semibold text-text">Links</h5>
           <Button
@@ -2282,14 +2246,14 @@ function ModuleTypeFields({
           </Button>
         </div>
         {links.length === 0 ? (
-          <p className="rounded-card border border-dashed border-line bg-canvas/45 p-2.5 text-sm text-muted">
+          <p className="rounded-card border border-dashed border-line bg-canvas/45 p-2 text-sm text-muted">
             Add at least one safe HTTPS link.
           </p>
         ) : null}
         {links.map((link, index) => (
           <div
             key={index}
-            className="grid gap-2.5 rounded-card border border-line bg-surface p-2.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto]"
+            className="grid gap-2 rounded-card border border-line bg-surface p-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto]"
           >
             <TextField
               id={`module-link-label-${index}`}
@@ -2357,18 +2321,18 @@ function ModuleTypeFields({
     const selectedIds = new Set(module.config.userBadgeIds ?? []);
 
     return (
-      <fieldset className="mt-3">
+      <fieldset>
         <legend className="text-sm font-semibold text-text">Earned badges</legend>
         {badges.length === 0 ? (
-          <p className="mt-2.5 rounded-card border border-dashed border-line bg-canvas/45 p-2.5 text-sm text-muted">
+          <p className="mt-2 rounded-card border border-dashed border-line bg-canvas/45 p-2 text-sm text-muted">
             No earned badges are available for this module.
           </p>
         ) : (
-          <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
             {badges.map((userBadge) => (
               <label
                 key={userBadge.id}
-                className="flex min-w-0 items-start gap-2.5 rounded-card border border-line bg-surface p-2.5 text-sm"
+                className="flex min-w-0 items-start gap-2 rounded-card border border-line bg-surface p-2 text-sm"
               >
                 <input
                   type="checkbox"
@@ -2413,9 +2377,9 @@ function ModuleTypeFields({
       id="module-body"
       label="Body"
       density="compact"
-      rows={4}
+      rows={3}
       maxLength={maxBodyLength}
-      className="mt-3 min-h-24"
+      className="min-h-20"
       value={module.config.body ?? ""}
       onChange={(event) =>
         onChange((current) => ({
@@ -2468,21 +2432,18 @@ function PreviewPanel({
   return (
     <section
       aria-label="Profile preview"
-      className="min-w-0 rounded-card border border-line-strong bg-surface p-3 shadow-soft"
+      className="min-w-0 rounded-card border border-line bg-surface/80 p-2.5 shadow-soft"
       data-testid={testId}
     >
-      <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-text">Preview</h3>
-          <p className="mt-0.5 text-xs leading-5 text-muted">
-            Draft changes render here before public save.
-          </p>
         </div>
-        <Badge tone="cool">Owner preview</Badge>
+        <Badge tone="cool">Draft</Badge>
       </div>
-      <div className="overflow-hidden rounded-card border border-line bg-surface shadow-soft">
+      <div className="overflow-hidden rounded-card bg-canvas/35">
         <div
-          className="isolate relative h-20 bg-surface-strong"
+          className="isolate relative h-14 bg-surface-strong"
           data-testid="profile-preview-banner"
         >
           {form.profileBackground ? (
@@ -2503,55 +2464,55 @@ function PreviewPanel({
           )}
           <div className="absolute inset-x-0 bottom-0 z-10 h-12 bg-gradient-to-t from-surface via-surface/70 to-transparent" />
         </div>
-        <div className="relative z-10 px-3 pb-3">
+        <div className="relative z-10 px-2.5 pb-2.5">
           <div
-            className="relative z-10 -mt-7 flex items-end gap-2.5"
+            className="relative z-10 -mt-6 flex items-end gap-2"
             data-testid="profile-preview-identity"
           >
             <Avatar
               user={previewUser}
               size="lg"
-              className="size-14 border-[3px] border-surface text-base shadow-lift"
+              className="size-12 border-[3px] border-surface text-sm shadow-lift"
             />
             <div className="min-w-0 pb-1">
-              <h4 className="truncate text-base font-semibold text-text">
+              <h4 className="truncate text-sm font-semibold text-text">
                 {form.displayName || profile.user.displayName}
               </h4>
-              <p className="break-all text-sm text-muted">@{profile.user.handle}</p>
+              <p className="break-all text-xs text-muted">@{profile.user.handle}</p>
             </div>
           </div>
           {form.bio ? (
-            <p className="mt-3 line-clamp-4 whitespace-pre-wrap break-words text-sm leading-5 text-text">
+            <p className="mt-2 line-clamp-3 whitespace-pre-wrap break-words text-sm leading-5 text-text">
               {form.bio}
             </p>
           ) : null}
           {form.location ? (
-            <p className="mt-2 flex items-center gap-2 text-sm text-muted">
-              <MapPin aria-hidden="true" size={15} />
+            <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted">
+              <MapPin aria-hidden="true" size={14} />
               <span className="min-w-0 truncate">{form.location}</span>
             </p>
           ) : null}
           {connections.length > 0 ? (
-            <div className="mt-3 flex min-w-0 flex-wrap gap-1.5">
+            <div className="mt-2 flex min-w-0 flex-wrap gap-1">
               {connections.map((connection) => (
                   <span
                     key={`${connection.platform}-${connection.value}`}
-                    className="inline-flex min-w-0 items-center gap-1.5 rounded-control border border-line bg-canvas/65 px-2 py-1 text-xs font-semibold text-text"
+                    className="inline-flex min-w-0 items-center gap-1 rounded-control border border-line bg-surface/70 px-1.5 py-0.5 text-xs font-semibold text-text"
                   >
-                    <ProfileConnectionIcon platform={connection.platform} size={14} />
+                    <ProfileConnectionIcon platform={connection.platform} size={13} />
                     <span className="truncate">{connectionPlatformLabel(connection.platform)}</span>
                   </span>
                 ))}
             </div>
           ) : null}
           {featuredBadges.length > 0 ? (
-            <div className="mt-3 flex min-w-0 flex-wrap gap-1.5">
+            <div className="mt-2 flex min-w-0 flex-wrap gap-1">
               {featuredBadges.map((userBadge) => (
                 <span
                   key={userBadge.id}
-                  className="inline-flex min-w-0 items-center gap-1.5 rounded-control border border-line bg-surface-strong px-2 py-1 text-xs font-semibold text-text"
+                  className="inline-flex min-w-0 items-center gap-1 rounded-control border border-line bg-surface-strong px-1.5 py-0.5 text-xs font-semibold text-text"
                 >
-                  <BadgeCheck aria-hidden="true" size={14} />
+                  <BadgeCheck aria-hidden="true" size={13} />
                   <span className="truncate">{userBadge.badge.name}</span>
                 </span>
               ))}
@@ -2560,7 +2521,7 @@ function PreviewPanel({
         </div>
       </div>
       <div
-        className="mt-3"
+        className="mt-2.5"
         data-testid={
           testId === "profile-customization-preview"
             ? "profile-module-preview"
@@ -2588,7 +2549,7 @@ function PreviewPanel({
             }
           />
         ) : (
-          <p className="rounded-card border border-dashed border-line bg-canvas/45 p-2.5 text-xs leading-5 text-muted">
+          <p className="rounded-card border border-dashed border-line bg-canvas/45 p-2 text-xs leading-5 text-muted">
             No public modules in this draft.
           </p>
         )}
@@ -2606,18 +2567,18 @@ function FeaturedPostPreviewModule({
 }) {
   return (
     <article
-      className="h-full min-w-0 rounded-card border border-line bg-surface/68 p-3"
+      className="h-full min-w-0 rounded-card border border-line bg-surface/68 p-2.5"
       data-testid="profile-featured-post-preview"
     >
       <h3 className="text-sm font-semibold text-text">{title}</h3>
-      <div className="mt-2 space-y-2">
+      <div className="mt-1.5 space-y-1.5">
         {featuredPost ? (
-          <div className="rounded-card border border-line bg-canvas/55 p-2.5">
-            <p className="flex items-center gap-2 text-xs font-semibold uppercase text-muted">
+          <div className="rounded-card bg-canvas/55 p-2">
+            <p className="flex items-center gap-1.5 text-xs font-semibold uppercase text-muted">
               <MessageCircle aria-hidden="true" size={14} />
               Featured post
             </p>
-            <p className="mt-1.5 line-clamp-3 text-sm leading-5 text-text">
+            <p className="mt-1 line-clamp-3 text-sm leading-5 text-text">
               {postOptionText(featuredPost)}
             </p>
           </div>
@@ -2636,18 +2597,18 @@ function FeaturedRoomPreviewModule({
 }) {
   return (
     <article
-      className="h-full min-w-0 rounded-card border border-line bg-surface/68 p-3"
+      className="h-full min-w-0 rounded-card border border-line bg-surface/68 p-2.5"
       data-testid="profile-featured-room-preview"
     >
       <h3 className="text-sm font-semibold text-text">{title}</h3>
-      <div className="mt-2 space-y-2">
+      <div className="mt-1.5 space-y-1.5">
         {featuredRoom ? (
-          <div className="rounded-card border border-line bg-canvas/55 p-2.5">
-            <p className="flex items-center gap-2 text-xs font-semibold uppercase text-muted">
+          <div className="rounded-card bg-canvas/55 p-2">
+            <p className="flex items-center gap-1.5 text-xs font-semibold uppercase text-muted">
               <Radio aria-hidden="true" size={14} />
               Featured room
             </p>
-            <p className="mt-1.5 truncate text-sm font-semibold text-text">
+            <p className="mt-1 truncate text-sm font-semibold text-text">
               {featuredRoom.name}
             </p>
             <p className="mt-1 truncate text-xs text-muted">/{featuredRoom.slug}</p>

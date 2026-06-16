@@ -42,12 +42,12 @@ The first experience layer should keep functionality practical: edit current pro
 
 ## Editing Sections
 
-The customization surface should organize existing behavior into five sections:
+The customization surface should organize existing behavior into compact
+intent-based sections:
 
-- Identity: display name, bio, location, and future identity fields if approved.
-- Appearance: avatar, banner, and profile background image. Accent/theme controls stay hidden until presets visibly affect public rendering through tested, contrast-safe mappings.
-- Connections: platform cards, platform-aware validation, handle-to-link generation where supported, and clearer empty states.
-- Modules: current v1 personal-space modules, ordering, visibility, save/delete behavior, and module preview.
+- Identity: display name, bio, location, and structured Connections.
+- Look: avatar, banner, and profile background image. Accent/theme controls stay hidden until presets visibly affect public rendering through tested, contrast-safe mappings.
+- Modules: current v1 modules, layout preset, ordering, visibility, save/delete behavior, and module-native featured post/room selection.
 - Preview: desktop and mobile-oriented previews of the public profile using current safe data only.
 
 ## Preview System
@@ -127,30 +127,32 @@ Future integrations belong in Modules or Connections, not in fake global switche
 
 ## Initial Implementation Slice
 
-Issue #26 implements the first safe slice:
+Issue #26 implemented the first safe slice:
 
 - One owner-only `Customize profile` entry point.
-- A modal with Identity, Appearance, Connections, Modules, and Preview sections.
+- A modal with Identity, Look, Modules, and Preview sections.
 - A persistent desktop preview and reachable mobile preview.
-- Platform-aware Connection cards.
+- Platform-aware Connection rows inside Identity.
 - Existing profile save, image upload, and module endpoints only.
 
 It intentionally does not add new schema, integrations, broad themes, arbitrary styling, or new module types.
 
-## Implementation Note - 2026-06-16 Compact Pass
+## Implementation Note - 2026-06-16 Customization Overhaul
 
-Issue #37 tightens the first owner editor into a compact Profiles v3 flow
-without changing profile fields, modules, or backend contracts:
+Issue #37 now treats the compact pass as a full Profiles v3 customization UI/UX
+overhaul without changing profile fields, modules, or backend contracts:
 
-- Desktop customization is narrower, with smaller shell padding and a compact
-  side preview.
+- Desktop customization is narrower, with smaller shell padding, a compact top
+  navigation row, and a smaller side preview where space allows.
 - Mobile keeps the editor full-height, with horizontally scrollable compact
-  section tabs and no horizontal page overflow.
-- Identity, Appearance, Connections, Featured, Modules, and Preview remain
-  reachable in the same flow.
-- Profile fields, upload rows, featured pickers, module tiles, layout presets,
-  and preview cards use denser spacing so routine edits feel like profile
-  adjustment rather than a dashboard.
+  navigation and no horizontal page overflow.
+- Identity now owns Connections so routine profile information lives together.
+- Look owns only current supported media slots: avatar, banner, and profile
+  background.
+- Featured post and Featured room selection live inside their normal module
+  tiles in Modules, alongside visibility, order, and layout controls.
+- Preview remains reachable as its own section and as a compact desktop side
+  panel without becoming a second public profile page.
 - Layout customization now lives inside the Modules section of `Customize
   profile`; the public profile no longer shows a separate `Customize layout`
   action.

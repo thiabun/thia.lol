@@ -102,9 +102,8 @@ the richer personal-space direction:
 - The profile page communicates information, but it does not yet create the
   stronger sense of vibe and ownership that richer profile products show.
 - Earlier Customize Profile passes still felt bulky for routine edits; issue
-  #37 tightened the editor shell, tabs, forms, module controls, and preview
-  while keeping identity, appearance, Connections, featured content, modules,
-  layout controls, and preview in one flow.
+  #37 now groups editing around Identity, Look, Modules, and Preview so the
+  owner flow feels like profile adjustment rather than a dashboard.
 - Theme and background controls are limited and not yet expressive enough to
   support clear owner-selected page mood.
 - Modules exist, but the catalog is still early and not expressive enough for
@@ -475,7 +474,7 @@ Implemented public profile behavior:
 
 Implemented owner edit behavior:
 
-- The edit modal supports display name, bio, location, avatar upload, banner upload, profile background upload, accent token, theme token, and structured Connections.
+- The edit modal supports display name, bio, location, structured Connections, avatar upload, banner upload, profile background upload, module layout, module visibility/order, and module-native Featured post/room selection. Stored accent/theme values remain hidden until they have visible, tested rendering behavior.
 - Upload controls use the authenticated image upload path and WebP conversion rules.
 - Profile saves use `PATCH /api/me/profile` with CSRF protection and server-side validation.
 - Legacy string links are still normalized for backward compatibility.
@@ -745,6 +744,25 @@ Deferred after this pass:
   moderation planning before upload or rendering work.
 - New music, gallery, marketplace, custom theme, analytics, monetization, or
   arbitrary embed behavior.
+
+### Implementation Note - 2026-06-16 Profile Customization UI/UX Overhaul
+
+Issue [#37](https://github.com/thiabun/thia.lol/issues/37) now aligns the owner
+editor with the modular canvas direction:
+
+- The customization editor uses compact intent groups: Identity, Look, Modules,
+  and Preview.
+- Connections are edited inside Identity with the same platform-aware
+  validation instead of living as a separate top-level destination.
+- Look is limited to current supported media slots: avatar, banner, and profile
+  background. Accent/theme controls remain hidden until they visibly affect the
+  public profile through tested, contrast-safe presets.
+- Modules owns layout preset, module visibility, keyboard ordering, add/edit
+  flows, and the separate Featured post and Featured room module settings.
+- The desktop preview is smaller and supportive; the Preview section remains
+  reachable without turning the editor into a second public profile page.
+- Public profiles remain header plus module grid, with no fixed Featured
+  section, setup prompt, layout action, or "Personal space" label.
 
 Current limitations:
 

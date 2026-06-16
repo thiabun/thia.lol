@@ -44,7 +44,7 @@ Current profile customization fields:
 Current frontend behavior:
 
 - Profile accent/theme values may exist in storage for compatibility, but controls are hidden until presets visibly affect public rendering through tested, contrast-safe mappings.
-- The active customization surface is organized around Identity, Appearance, Connections, Modules, and Preview.
+- The active customization surface is organized around Identity, Look, Modules, and Preview. Connections are edited inside Identity, while Featured post and Featured room are edited inside their normal module tiles.
 
 Current profile text and media constraints:
 
