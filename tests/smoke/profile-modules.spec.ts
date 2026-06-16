@@ -718,13 +718,61 @@ test("links editor rejects unsafe URL before save", async ({ page }) => {
   const editor = modal.getByTestId("profile-module-editor");
   await editor.getByRole("button", { name: "Connections" }).click();
   await expect(editor.getByTestId("profile-module-expanded")).toBeVisible();
-  await editor.getByLabel("Link 1 label").fill("Bad link");
-  await editor.getByLabel("Link 1 URL").fill("javascript:alert(1)");
+  await expect(editor.getByRole("combobox")).toHaveCount(0);
+  await editor.getByRole("button", { name: "Website" }).click();
+  await editor.getByRole("textbox", { name: "Label" }).fill("Bad link");
+  await editor.getByRole("textbox", { name: "HTTPS link" }).fill("javascript:alert(1)");
   await editor.getByRole("button", { name: "Save module" }).click();
 
   await expect(editor.getByText("Link URL is invalid.")).toBeVisible();
   await expect(editor.getByTestId("profile-module-expanded")).toBeVisible();
   expect(created).toBe(false);
+});
+
+test("owner can add a connections module with platform buttons", async ({ page }) => {
+  let createdPayload: Record<string, unknown> | undefined;
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+    onCreate: (payload) => {
+      createdPayload = payload;
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByRole("button", { name: "Customize profile" }).click();
+  const modal = page.getByTestId("profile-customization-modal");
+  await modal.getByRole("button", { name: /Modules/ }).click();
+  const editor = modal.getByTestId("profile-module-editor");
+  await editor.getByRole("button", { name: "Connections" }).click();
+  const expanded = editor.getByTestId("profile-module-expanded");
+  await expect(expanded).toBeVisible();
+  await expect(expanded.getByRole("combobox")).toHaveCount(0);
+  await expanded.getByRole("button", { name: "GitHub" }).click();
+  await expect(expanded.getByTestId("connection-icon-github").first()).toBeVisible();
+  await expanded.getByRole("textbox", { name: "HTTPS link" }).fill(
+    "https://github.com/thiabun",
+  );
+  await expanded.getByRole("button", { name: "Platform" }).click();
+  await expect(expanded.getByRole("menu")).toBeVisible();
+  await expanded.getByRole("menuitem", { name: /GitHub/ }).click();
+  await editor.getByRole("button", { name: "Save module" }).click();
+
+  await expect.poll(() => createdPayload).toMatchObject({
+    type: "links",
+    title: null,
+    visibility: "public",
+    config: {
+      links: [
+        {
+          label: "GitHub",
+          platform: "github",
+          url: "https://github.com/thiabun",
+        },
+      ],
+    },
+  });
 });
 
 test("owner can delete and reorder modules with confirmation", async ({ page }) => {

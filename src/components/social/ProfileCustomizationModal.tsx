@@ -1,11 +1,13 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
-import { useId, useMemo, useState } from "react";
+import { useId, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
   BadgeCheck,
   BookOpen,
+  Check,
+  ChevronDown,
   Edit3,
   Eye,
   EyeOff,
@@ -44,14 +46,7 @@ import {
   defaultProfileLayoutPreset,
   profileLayoutPresetOptions,
 } from "../../lib/profileLayoutPresets";
-import {
-  connectionPlatformHelp,
-  connectionPlatformLabel,
-  formatProfileConnectionValue,
-  maxProfileConnections,
-  profileConnectionPlatforms,
-  validateProfileConnectionDraft,
-} from "../../lib/profileConnections";
+import { profileConnectionPlatforms } from "../../lib/profileConnections";
 import {
   getProfileModuleDefinition,
   profileModuleSummary,
@@ -59,7 +54,6 @@ import {
 import type {
   Profile,
   ProfileConnectionPlatform,
-  ProfileExternalConnection,
   ProfileLayoutPreset,
   ProfileModule,
   ProfileModuleConfig,
@@ -72,7 +66,7 @@ import type {
 import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
-import { SelectField, TextareaField, TextField } from "../ui/Field";
+import { TextareaField, TextField } from "../ui/Field";
 import { ModalSheetStatus } from "../ui/ModalSheet";
 import { CompactStateNotice } from "../ui/RouteState";
 import { ProfileConnectionIcon } from "./ProfileConnectionIcon";
@@ -194,40 +188,31 @@ const visibilityOptions: Array<{ value: ProfileModuleVisibility; label: string }
   { value: "draft", label: "Draft" },
 ];
 
-const linkModulePlatformOptions = [
-  { value: "custom", label: "Custom" },
-  { value: "website", label: "Website" },
-  { value: "youtube", label: "YouTube" },
-  { value: "twitch", label: "Twitch" },
-  { value: "tiktok", label: "TikTok" },
-  { value: "instagram", label: "Instagram" },
-  { value: "x", label: "X / Twitter" },
-  { value: "bluesky", label: "Bluesky" },
-  { value: "github", label: "GitHub" },
-  { value: "discord", label: "Discord" },
-  { value: "spotify", label: "Spotify" },
+const linkModulePlatformOptions: ModulePlatformOption[] = [
+  { value: "custom", label: "Custom", help: "Any safe HTTPS link." },
+  ...profileConnectionPlatforms.map((platform) => ({
+    value: platform.value,
+    label: platform.label,
+    help: platform.help,
+  })),
 ];
 
-const creatorPlatformOptions = [
-  { value: "custom", label: "Custom" },
-  { value: "website", label: "Website" },
-  { value: "youtube", label: "YouTube" },
-  { value: "twitch", label: "Twitch" },
-  { value: "tiktok", label: "TikTok" },
-  { value: "instagram", label: "Instagram" },
-  { value: "x", label: "X / Twitter" },
-  { value: "bluesky", label: "Bluesky" },
-  { value: "github", label: "GitHub" },
-  { value: "discord", label: "Discord" },
+const creatorPlatformOptions: ModulePlatformOption[] = [
+  { value: "custom", label: "Custom", help: "Any safe creator link." },
+  ...profileConnectionPlatforms.map((platform) => ({
+    value: platform.value,
+    label: platform.label,
+    help: platform.help,
+  })),
 ];
 
-const musicPlatformOptions = [
-  { value: "custom", label: "Custom" },
-  { value: "spotify", label: "Spotify" },
-  { value: "apple_music", label: "Apple Music" },
-  { value: "youtube_music", label: "YouTube Music" },
-  { value: "soundcloud", label: "SoundCloud" },
-  { value: "bandcamp", label: "Bandcamp" },
+const musicPlatformOptions: ModulePlatformOption[] = [
+  { value: "custom", label: "Custom", help: "Any safe music link." },
+  { value: "spotify", label: "Spotify", help: "Profile, playlist, album, or song." },
+  { value: "apple_music", label: "Apple Music", help: "Profile, playlist, album, or song." },
+  { value: "youtube_music", label: "YouTube Music", help: "Track, playlist, or channel." },
+  { value: "soundcloud", label: "SoundCloud", help: "Track, playlist, or profile." },
+  { value: "bandcamp", label: "Bandcamp", help: "Artist, album, or track." },
 ];
 
 function isFeaturedContentModule(type: ProfileModuleType): boolean {
@@ -250,12 +235,6 @@ type CustomizationSection =
 
 type UploadSlot = "avatar" | "banner" | "profile_background";
 
-type DraftConnection = {
-  id: string;
-  platform: ProfileConnectionPlatform;
-  value: string;
-};
-
 type ProfileFormState = {
   displayName: string;
   bio: string;
@@ -263,7 +242,6 @@ type ProfileFormState = {
   avatarUrl: string;
   bannerUrl: string;
   profileBackground: string;
-  connections: DraftConnection[];
 };
 
 type DirtyMap = Record<number, boolean>;
@@ -326,10 +304,6 @@ export function ProfileCustomizationModal({
   );
   const [featuredPostQuery, setFeaturedPostQuery] = useState("");
   const [featuredRoomQuery, setFeaturedRoomQuery] = useState("");
-  const [connectionErrors, setConnectionErrors] = useState<Record<string, string>>({});
-  const [editingConnectionIds, setEditingConnectionIds] = useState<Set<string>>(
-    () => new Set(),
-  );
   const [drafts, setDrafts] = useState<ProfileModule[]>(modules);
   const [layoutPreset, setLayoutPreset] = useState<ProfileLayoutPreset>(
     () => profile.profileLayoutPreset ?? defaultProfileLayoutPreset,
@@ -369,11 +343,6 @@ export function ProfileCustomizationModal({
   const previewFeaturedRoom =
     featuredRoomOptions.find((room) => room.id === featuredRoomId) ??
     (profile.featuredRoom?.id === featuredRoomId ? profile.featuredRoom : null);
-  const validPreviewConnections = useMemo(
-    () => normalizedConnections(form.connections).connections,
-    [form.connections],
-  );
-
   function requestClose() {
     if (
       (hasUnsavedModules || layoutDirty || featuredDirty) &&
@@ -390,131 +359,7 @@ export function ProfileCustomizationModal({
     setProfileMessage(undefined);
   }
 
-  function updateConnection(
-    id: string,
-    field: keyof Omit<DraftConnection, "id">,
-    value: string,
-  ) {
-    setEditingConnectionIds((current) => new Set(current).add(id));
-    setConnectionErrors((current) => {
-      if (!current[id]) {
-        return current;
-      }
-
-      const next = { ...current };
-      delete next[id];
-      return next;
-    });
-    setForm((current) => ({
-      ...current,
-      connections: current.connections.map((connection) =>
-        connection.id === id ? { ...connection, [field]: value } : connection,
-      ),
-    }));
-    setProfileMessage(undefined);
-  }
-
-  function addConnection(platform: ProfileConnectionPlatform = "website") {
-    const id = crypto.randomUUID();
-    setForm((current) => ({
-      ...current,
-      connections: [
-        ...current.connections,
-        {
-          id,
-          platform,
-          value: "",
-        },
-      ],
-    }));
-    setEditingConnectionIds((current) => new Set(current).add(id));
-    setProfileMessage(undefined);
-  }
-
-  function removeConnection(id: string) {
-    setEditingConnectionIds((current) => {
-      const next = new Set(current);
-      next.delete(id);
-      return next;
-    });
-    setConnectionErrors((current) => {
-      if (!current[id]) {
-        return current;
-      }
-
-      const next = { ...current };
-      delete next[id];
-      return next;
-    });
-    setForm((current) => ({
-      ...current,
-      connections: current.connections.filter((connection) => connection.id !== id),
-    }));
-    setProfileMessage(undefined);
-  }
-
-  function editConnection(id: string) {
-    setEditingConnectionIds((current) => new Set(current).add(id));
-  }
-
-  function finishConnectionEdit(id: string) {
-    const connection = form.connections.find((item) => item.id === id);
-
-    if (!connection) {
-      return;
-    }
-
-    if (!connection.value.trim()) {
-      removeConnection(id);
-      return;
-    }
-
-    const validated = validateProfileConnectionDraft(
-      connection.platform,
-      connection.value,
-    );
-
-    if ("error" in validated) {
-      const error = validated.error ?? "Connection value is invalid.";
-      setConnectionErrors((current) => ({
-        ...current,
-        [id]: error,
-      }));
-      setEditingConnectionIds((current) => new Set(current).add(id));
-      return;
-    }
-
-    setConnectionErrors((current) => {
-      if (!current[id]) {
-        return current;
-      }
-
-      const next = { ...current };
-      delete next[id];
-      return next;
-    });
-    setEditingConnectionIds((current) => {
-      const next = new Set(current);
-      next.delete(id);
-      return next;
-    });
-  }
-
   async function handleProfileSave() {
-    const links = normalizedConnections(form.connections);
-    setConnectionErrors(links.errors);
-
-    if (Object.keys(links.errors).length > 0) {
-      setEditingConnectionIds((current) => {
-        const next = new Set(current);
-        Object.keys(links.errors).forEach((id) => next.add(id));
-        return next;
-      });
-      setProfileMessage("Fix the highlighted connections before saving.");
-      setActiveSection("identity");
-      return;
-    }
-
     setSavingProfile(true);
     setProfileMessage(undefined);
 
@@ -526,11 +371,9 @@ export function ProfileCustomizationModal({
         avatarUrl: form.avatarUrl || null,
         bannerUrl: form.bannerUrl || null,
         profileBackground: form.profileBackground || null,
-        links: links.connections,
       });
 
       setForm(profileToForm(updated));
-      setEditingConnectionIds(new Set());
       setProfileMessage("Profile updated");
     } catch (error) {
       setProfileMessage(
@@ -898,32 +741,6 @@ export function ProfileCustomizationModal({
                       disabled={busy}
                       onChange={(event) => updateForm("bio", event.currentTarget.value)}
                     />
-                    <div className="space-y-2.5 border-t border-line/70 pt-3">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <h4 className="text-sm font-semibold text-text">Connections</h4>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          disabled={busy || form.connections.length >= maxProfileConnections}
-                          icon={<Plus aria-hidden="true" size={15} />}
-                          onClick={() => addConnection()}
-                        >
-                          Add connection
-                        </Button>
-                      </div>
-                      <ConnectionCards
-                        busy={busy}
-                        connections={form.connections}
-                        editingIds={editingConnectionIds}
-                        errors={connectionErrors}
-                        onAdd={addConnection}
-                        onEdit={editConnection}
-                        onFinishEdit={finishConnectionEdit}
-                        onRemove={removeConnection}
-                        onUpdate={updateConnection}
-                      />
-                    </div>
                   </EditorSection>
                 </div>
 
@@ -1034,7 +851,6 @@ export function ProfileCustomizationModal({
               <div className={activeSection === "preview" ? "block" : "hidden"}>
                 <PreviewPanel
                   badges={badges}
-                  connections={validPreviewConnections}
                   drafts={drafts}
                   featuredPost={previewFeaturedPost}
                   featuredRoom={previewFeaturedRoom}
@@ -1080,7 +896,6 @@ export function ProfileCustomizationModal({
                 <div className="sticky top-0">
                   <PreviewPanel
                     badges={badges}
-                    connections={validPreviewConnections}
                     drafts={drafts}
                     featuredPost={previewFeaturedPost}
                     featuredRoom={previewFeaturedRoom}
@@ -1229,188 +1044,300 @@ function ImageUploadControl({
   );
 }
 
-type ConnectionCardsProps = {
-  busy: boolean;
-  connections: DraftConnection[];
-  editingIds: Set<string>;
-  errors: Record<string, string>;
-  onAdd: (platform: ProfileConnectionPlatform) => void;
-  onEdit: (id: string) => void;
-  onFinishEdit: (id: string) => void;
-  onRemove: (id: string) => void;
-  onUpdate: (
-    id: string,
-    field: keyof Omit<DraftConnection, "id">,
-    value: string,
-  ) => void;
+type ModulePlatformOption = {
+  value: string;
+  label: string;
+  help?: string | undefined;
 };
 
-function ConnectionCards({
-  busy,
-  connections,
-  editingIds,
-  errors,
-  onAdd,
-  onEdit,
-  onFinishEdit,
-  onRemove,
-  onUpdate,
-}: ConnectionCardsProps) {
-  if (connections.length === 0) {
-    return (
-      <div className="space-y-2.5">
-        <p className="rounded-card border border-dashed border-line bg-surface/65 p-2 text-sm text-muted">
-          No connections yet. Choose a platform to add a profile link.
-        </p>
-        <PlatformPicker onAdd={onAdd} />
-      </div>
-    );
-  }
+type ModuleLink = NonNullable<ProfileModuleConfig["links"]>[number];
 
+function ConnectionsModuleFields({
+  links,
+  onChange,
+}: {
+  links: ModuleLink[];
+  onChange: (links: ModuleLink[]) => void;
+}) {
   return (
-    <div className="space-y-2.5">
-      <div className="grid gap-2">
-        {connections.map((connection) => {
-          const platform = platformMeta(connection.platform);
-          const validated = validateProfileConnectionDraft(
-            connection.platform,
-            connection.value,
-          );
-          const isValid = !("error" in validated);
-          const isEditing = editingIds.has(connection.id) || !isValid;
-
-          return (
-            <div
-              key={connection.id}
-              className={cn(
-                "min-w-0 rounded-card border p-2",
-                connectionSurfaceClass(),
-              )}
-            >
-              <div className={cn("flex items-start justify-between gap-2", isEditing ? "mb-2" : null)}>
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="grid size-7 shrink-0 place-items-center rounded-full border border-line bg-surface/80 text-text">
-                    <ProfileConnectionIcon platform={connection.platform} size={15} />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-text">
-                      {platform.label}
-                    </p>
-                    <p className="truncate text-xs text-muted">
-                      {isValid
-                        ? formatProfileConnectionValue(validated.connection)
-                        : connection.value.trim() || platform.help}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  {!isEditing ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Edit ${platform.label} connection`}
-                      title="Edit connection"
-                      disabled={busy}
-                      icon={<Edit3 aria-hidden="true" size={15} />}
-                      onClick={() => onEdit(connection.id)}
-                    />
-                  ) : null}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Remove ${platform.label} connection`}
-                    title="Remove connection"
-                    disabled={busy}
-                    icon={<Trash2 aria-hidden="true" size={16} />}
-                    onClick={() => onRemove(connection.id)}
-                  />
-                </div>
-              </div>
-              {isEditing ? (
-                <div className="grid gap-2">
-                  <div className="grid gap-2 sm:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)]">
-                    <SelectField
-                      id={`profile-connection-platform-${connection.id}`}
-                      label="Platform"
-                      density="compact"
-                      value={connection.platform}
-                      disabled={busy}
-                      options={profileConnectionPlatforms}
-                      onChange={(event) =>
-                        onUpdate(connection.id, "platform", event.currentTarget.value)
-                      }
-                    />
-                    <TextField
-                      id={`profile-connection-value-${connection.id}`}
-                      label={connectionPlatformLabel(connection.platform)}
-                      density="compact"
-                      value={connection.value}
-                      placeholder={platform.placeholder}
-                      maxLength={300}
-                      disabled={busy}
-                      onChange={(event) =>
-                        onUpdate(connection.id, "value", event.currentTarget.value)
-                      }
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="min-w-0 text-xs leading-5 text-muted">
-                      {errors[connection.id] ?? connectionPlatformHelp(connection.platform)}
-                    </p>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => onFinishEdit(connection.id)}
-                    >
-                      {connection.value.trim() ? "Done" : "Cancel"}
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
+    <div className="space-y-3" data-testid="connections-module-editor">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h5 className="text-sm font-semibold text-text">Connections</h5>
+          <p className="mt-0.5 text-xs leading-5 text-muted">
+            Add platform cards that render as the public Connections module.
+          </p>
+        </div>
+        <span className="inline-flex min-h-8 items-center rounded-full border border-line bg-canvas/55 px-2.5 text-xs font-semibold text-muted">
+          {links.length}/{maxLinks}
+        </span>
       </div>
-      {connections.length < maxProfileConnections ? <PlatformPicker onAdd={onAdd} /> : null}
+
+      {links.length === 0 ? (
+        <div className="rounded-card border border-dashed border-line bg-canvas/45 p-2.5">
+          <p className="text-sm text-muted">Choose a platform to start.</p>
+        </div>
+      ) : null}
+
+      <div className="grid gap-2">
+        {links.map((link, index) => (
+          <ConnectionModuleLinkCard
+            key={index}
+            index={index}
+            link={link}
+            onRemove={() => onChange(links.filter((_, linkIndex) => linkIndex !== index))}
+            onUpdate={(nextLink) => onChange(updateLink(links, index, nextLink))}
+          />
+        ))}
+      </div>
+
+      {links.length < maxLinks ? (
+        <PlatformPillPicker
+          label="Add connection"
+          options={linkModulePlatformOptions}
+          onSelect={(platform) => onChange([...links, defaultModuleLink(platform)])}
+        />
+      ) : null}
     </div>
   );
 }
 
-function PlatformPicker({
-  onAdd,
+function ConnectionModuleLinkCard({
+  index,
+  link,
+  onRemove,
+  onUpdate,
 }: {
-  onAdd: (platform: ProfileConnectionPlatform) => void;
+  index: number;
+  link: ModuleLink;
+  onRemove: () => void;
+  onUpdate: (link: ModuleLink) => void;
+}) {
+  const platform = link.platform ?? "custom";
+  const option = modulePlatformOption(linkModulePlatformOptions, platform);
+  const preview = link.url.trim() ? moduleLinkPreview(link.url) : option.help;
+
+  return (
+    <div className="min-w-0 rounded-card border border-line/75 bg-surface/72 p-2.5 shadow-soft">
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="grid size-8 shrink-0 place-items-center rounded-full border border-line bg-canvas/75 text-text">
+            <ModulePlatformIcon platform={platform} size={15} />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-text">
+              {link.label.trim() || option.label}
+            </p>
+            <p className="truncate text-xs text-muted">
+              {option.label}
+              {preview ? ` · ${preview}` : ""}
+            </p>
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={`Remove connection ${index + 1}`}
+          title="Remove connection"
+          icon={<Trash2 aria-hidden="true" size={15} />}
+          onClick={onRemove}
+        />
+      </div>
+
+      <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,0.85fr)_minmax(0,1fr)]">
+        <ModulePlatformMenu
+          id={`module-link-platform-${index}`}
+          label="Platform"
+          value={platform}
+          options={linkModulePlatformOptions}
+          onChange={(nextPlatform) =>
+            onUpdate({
+              ...link,
+              platform: nextPlatform,
+              label: link.label.trim()
+                ? link.label
+                : defaultModuleLink(nextPlatform).label,
+            })
+          }
+        />
+        <TextField
+          id={`module-link-label-${index}`}
+          label="Label"
+          density="compact"
+          maxLength={maxLinkLabelLength}
+          value={link.label}
+          placeholder={option.label}
+          onChange={(event) =>
+            onUpdate({
+              ...link,
+              label: event.currentTarget.value,
+            })
+          }
+        />
+      </div>
+      <TextField
+        id={`module-link-url-${index}`}
+        label="HTTPS link"
+        density="compact"
+        className="mt-2"
+        value={link.url}
+        placeholder="https://example.com"
+        onChange={(event) =>
+          onUpdate({
+            ...link,
+            url: event.currentTarget.value,
+          })
+        }
+      />
+    </div>
+  );
+}
+
+function PlatformPillPicker({
+  label,
+  options,
+  onSelect,
+}: {
+  label: string;
+  options: ModulePlatformOption[];
+  onSelect: (value: string) => void;
 }) {
   return (
-      <div>
-      <h4 className="sr-only">Add by platform</h4>
+    <div>
+      <h6 className="mb-1.5 text-xs font-semibold uppercase text-muted">{label}</h6>
       <div className="flex flex-wrap gap-1.5">
-        {profileConnectionPlatforms.map((platform) => (
-            <button
-              key={platform.value}
-              type="button"
-              className={cn(
-                "inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded-control border px-2 text-left text-xs font-semibold transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-                connectionSurfaceClass(),
-              )}
-              onClick={() => onAdd(platform.value)}
-            >
-              <ProfileConnectionIcon
-                platform={platform.value}
-                size={14}
-              />
-              <span className="truncate text-text">
-                {platform.label}
-              </span>
-            </button>
-          ))}
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={cn(
+              "inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded-control border px-2 text-left text-xs font-semibold transition duration-fluid ease-fluid hover:-translate-y-0.5 hover:border-line-strong hover:shadow-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:hover:translate-y-0",
+              connectionSurfaceClass(),
+            )}
+            onClick={() => onSelect(option.value)}
+          >
+            <ModulePlatformIcon platform={option.value} size={14} />
+            <span className="truncate text-text">{option.label}</span>
+          </button>
+        ))}
       </div>
     </div>
   );
+}
+
+function ModulePlatformMenu({
+  iconKind = "connection",
+  id,
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  iconKind?: "connection" | "creator_live" | "music";
+  id: string;
+  label: string;
+  options: ModulePlatformOption[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = modulePlatformOption(options, value);
+
+  return (
+    <div className="relative min-w-0">
+      <span className="mb-2 block text-sm font-medium text-text" id={`${id}-label`}>
+        {label}
+      </span>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-labelledby={`${id}-label`}
+        className="flex min-h-10 w-full min-w-0 items-center gap-2 rounded-card border border-line bg-canvas/55 px-3 text-left text-sm text-text shadow-inner-soft transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className="grid size-7 shrink-0 place-items-center rounded-full border border-line bg-surface/80 text-text">
+          <ModulePlatformIcon platform={selected.value} kind={iconKind} size={15} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-semibold">{selected.label}</span>
+          {selected.help ? (
+            <span className="block truncate text-xs text-muted">{selected.help}</span>
+          ) : null}
+        </span>
+        <ChevronDown
+          aria-hidden="true"
+          className={cn(
+            "shrink-0 text-muted transition duration-fluid",
+            open ? "rotate-180" : undefined,
+          )}
+          size={16}
+        />
+      </button>
+
+      <AnimatePresence>
+        {open ? (
+          <motion.div
+            role="menu"
+            className="absolute left-0 right-0 z-30 mt-1 max-h-64 overflow-y-auto rounded-card border border-line bg-surface p-1.5 shadow-lift"
+            initial={{ opacity: 0, y: -4, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.98 }}
+            transition={{ duration: 0.14, ease: "easeOut" }}
+          >
+            {options.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                role="menuitem"
+                className={cn(
+                  "flex min-h-9 w-full min-w-0 items-center gap-2 rounded-control px-2 text-left text-sm transition duration-fluid ease-fluid hover:bg-canvas/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+                  option.value === selected.value ? "bg-canvas/65 text-text" : "text-muted",
+                )}
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+              >
+                <ModulePlatformIcon platform={option.value} kind={iconKind} size={14} />
+                <span className="min-w-0 flex-1 truncate font-semibold">
+                  {option.label}
+                </span>
+                {option.value === selected.value ? (
+                  <Check aria-hidden="true" className="shrink-0 text-leaf-ink" size={14} />
+                ) : null}
+              </button>
+            ))}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function ModulePlatformIcon({
+  kind = "connection",
+  platform,
+  size,
+}: {
+  kind?: "connection" | "creator_live" | "music";
+  platform: string;
+  size: number;
+}) {
+  if (isProfileConnectionPlatform(platform)) {
+    return <ProfileConnectionIcon platform={platform} size={size} />;
+  }
+
+  if (kind === "music") {
+    return <Music2 aria-hidden="true" size={size} />;
+  }
+
+  if (kind === "creator_live") {
+    return <Radio aria-hidden="true" size={size} />;
+  }
+
+  return <LinkIcon aria-hidden="true" size={size} />;
 }
 
 type FeaturedContentEditorProps = {
@@ -1823,10 +1750,15 @@ function ModulesEditorSection({
   return (
     <section
       aria-label="Modules"
-      className="space-y-3"
+      className="space-y-3 rounded-card border border-line/70 bg-surface/48 p-2.5 shadow-soft"
       data-testid="profile-module-editor"
     >
-      <h3 className="text-sm font-semibold text-text">Modules</h3>
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="grid size-8 shrink-0 place-items-center rounded-full border border-line bg-canvas/70 text-text">
+          <Sparkles aria-hidden="true" size={15} />
+        </span>
+        <h3 className="text-sm font-semibold text-text">Modules</h3>
+      </div>
 
       {loading ? (
         <CompactStateNotice
@@ -1858,7 +1790,7 @@ function ModulesEditorSection({
             onSave={onSaveLayout}
           />
 
-          <section>
+          <section className="rounded-card border border-line/70 bg-canvas/30 p-2.5">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h4 className="text-sm font-semibold text-text">Your modules</h4>
@@ -1887,7 +1819,7 @@ function ModulesEditorSection({
                 <ModalSheetStatus tone="success">{message}</ModalSheetStatus>
               </motion.div>
             ) : null}
-            <div className="mt-3 space-y-2.5" data-testid="profile-module-list">
+            <div className="mt-3 space-y-2" data-testid="profile-module-list">
               {drafts.length === 0 ? (
                 <CompactStateNotice
                   icon={Sparkles}
@@ -1926,7 +1858,7 @@ function ModulesEditorSection({
             </div>
           </section>
 
-          <section>
+          <section className="rounded-card border border-line/70 bg-canvas/30 p-2.5">
             <h4 className="text-sm font-semibold text-text">Add module</h4>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
               {moduleTypes.filter((moduleType) => moduleType.addable !== false).map((moduleType) => {
@@ -1936,10 +1868,13 @@ function ModulesEditorSection({
                   <button
                     key={moduleType.type}
                     type="button"
-                    className="group flex min-w-0 items-center gap-2 rounded-card border border-line bg-surface/55 p-2 text-left shadow-soft transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                    className={cn(
+                      "group flex min-w-0 items-center gap-2 rounded-card border p-2 text-left shadow-soft transition duration-fluid ease-fluid hover:-translate-y-0.5 hover:border-line-strong hover:shadow-lift focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:hover:translate-y-0",
+                      connectionSurfaceClass(),
+                    )}
                     onClick={() => onAddModule(moduleType.type)}
                   >
-                    <span className="grid size-7 shrink-0 place-items-center rounded-full bg-accent/15 text-text transition group-hover:bg-accent/25">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-full border border-line bg-surface/80 text-text transition group-hover:bg-canvas/80">
                       <Icon aria-hidden="true" size={15} />
                     </span>
                     <span className="min-w-0">
@@ -1983,7 +1918,7 @@ function LayoutPresetControl({
   return (
     <section
       aria-label="Layout preset"
-      className="space-y-2.5 rounded-card bg-canvas/45 p-2.5"
+      className="space-y-2.5 rounded-card border border-line/70 bg-surface/62 p-2.5 shadow-soft"
       data-testid="profile-layout-editor"
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -2006,7 +1941,7 @@ function LayoutPresetControl({
       </div>
 
       <div
-        className="grid gap-1 rounded-control bg-surface/70 p-1 sm:grid-cols-3"
+        className="grid gap-1 rounded-control border border-line/70 bg-canvas/55 p-1 sm:grid-cols-3"
         data-testid="profile-layout-presets"
       >
         {profileLayoutPresetOptions.map((option) => (
@@ -2018,7 +1953,7 @@ function LayoutPresetControl({
               "min-w-0 rounded-control px-2 py-1.5 text-left transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
               value === option.value
                 ? "bg-surface text-text shadow-soft"
-                : "text-muted hover:bg-canvas/55 hover:text-text",
+                : "text-muted hover:bg-surface/70 hover:text-text",
             )}
             disabled={disabled}
             onClick={() => onChange(option.value)}
@@ -2090,7 +2025,9 @@ function ModuleTile({
     <article
       className={cn(
         "min-w-0 rounded-card border border-line/70 bg-surface/68 p-2.5 shadow-soft transition duration-fluid ease-fluid",
-        expanded ? "border-line-strong bg-surface" : "hover:border-line-strong hover:bg-surface",
+        expanded
+          ? "border-line-strong bg-surface shadow-lift"
+          : "hover:-translate-y-0.5 hover:border-line-strong hover:bg-surface hover:shadow-lift motion-reduce:hover:translate-y-0",
       )}
       data-testid={`profile-module-card-${module.id}`}
     >
@@ -2102,13 +2039,13 @@ function ModuleTile({
           data-testid={`profile-module-toggle-${module.id}`}
           onClick={onSelect}
         >
-          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-canvas/75 text-text">
+          <span className="grid size-8 shrink-0 place-items-center rounded-full border border-line bg-canvas/75 text-text">
             <Icon aria-hidden="true" size={15} />
           </span>
           <span className="min-w-0">
             <span className="flex min-w-0 flex-wrap items-center gap-2">
               <span className="truncate text-sm font-semibold text-text">{title}</span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-canvas/70 px-1.5 py-0.5 text-[0.68rem] font-semibold text-muted">
+              <span className="inline-flex items-center gap-1 rounded-full border border-line/70 bg-canvas/70 px-1.5 py-0.5 text-[0.68rem] font-semibold text-muted">
                 {visibilityIcon(module.visibility)}
                 {visibilityLabel(module.visibility)}
               </span>
@@ -2357,119 +2294,18 @@ function ModuleTypeFields({
     const links = module.config.links ?? [];
 
     return (
-      <div className="space-y-2.5">
-        <div className="flex items-center justify-between gap-3">
-          <h5 className="text-sm font-semibold text-text">Links</h5>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            icon={<Plus aria-hidden="true" size={15} />}
-            disabled={links.length >= maxLinks}
-            onClick={() =>
-              onChange((current) => ({
-                ...current,
-                config: {
-                ...current.config,
-                  links: [
-                    ...(current.config.links ?? []),
-                    { label: "", platform: "custom", url: "" },
-                  ],
-                },
-              }))
-            }
-          >
-            Add link
-          </Button>
-        </div>
-        {links.length === 0 ? (
-          <p className="rounded-card border border-dashed border-line bg-canvas/45 p-2 text-sm text-muted">
-            Add at least one safe HTTPS link.
-          </p>
-        ) : null}
-        {links.map((link, index) => (
-          <div
-            key={index}
-            className="grid gap-2 rounded-card border border-line bg-surface p-2 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,1.3fr)_auto]"
-          >
-            <SelectField
-              id={`module-link-platform-${index}`}
-              label={`Link ${index + 1} platform`}
-              density="compact"
-              value={link.platform ?? "custom"}
-              options={linkModulePlatformOptions}
-              onChange={(event) =>
-                onChange((current) => ({
-                  ...current,
-                  config: {
-                    ...current.config,
-                    links: updateLink(current.config.links ?? [], index, {
-                      ...link,
-                      platform: event.currentTarget.value,
-                    }),
-                  },
-                }))
-              }
-            />
-            <TextField
-              id={`module-link-label-${index}`}
-              label={`Link ${index + 1} label`}
-              density="compact"
-              maxLength={maxLinkLabelLength}
-              value={link.label}
-              onChange={(event) =>
-                onChange((current) => ({
-                  ...current,
-                  config: {
-                    ...current.config,
-                    links: updateLink(current.config.links ?? [], index, {
-                      ...link,
-                      label: event.currentTarget.value,
-                    }),
-                  },
-                }))
-              }
-            />
-            <TextField
-              id={`module-link-url-${index}`}
-              label={`Link ${index + 1} URL`}
-              density="compact"
-              value={link.url}
-              onChange={(event) =>
-                onChange((current) => ({
-                  ...current,
-                  config: {
-                    ...current.config,
-                    links: updateLink(current.config.links ?? [], index, {
-                      ...link,
-                      url: event.currentTarget.value,
-                    }),
-                  },
-                }))
-              }
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="self-end"
-              onClick={() =>
-                onChange((current) => ({
-                  ...current,
-                  config: {
-                    ...current.config,
-                    links: (current.config.links ?? []).filter(
-                      (_, linkIndex) => linkIndex !== index,
-                    ),
-                  },
-                }))
-              }
-            >
-              Remove
-            </Button>
-          </div>
-        ))}
-      </div>
+      <ConnectionsModuleFields
+        links={links}
+        onChange={(nextLinks) =>
+          onChange((current) => ({
+            ...current,
+            config: {
+              ...current.config,
+              links: nextLinks,
+            },
+          }))
+        }
+      />
     );
   }
 
@@ -2682,18 +2518,18 @@ function ModuleTypeFields({
     return (
       <div className="grid gap-2.5">
         <div className="grid gap-2 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-          <SelectField
+          <ModulePlatformMenu
             id={`module-${module.type}-platform`}
             label="Platform"
-            density="compact"
             value={module.config.platform ?? "custom"}
             options={platformOptions}
-            onChange={(event) =>
+            iconKind={module.type}
+            onChange={(platform) =>
               onChange((current) => ({
                 ...current,
                 config: {
                   ...current.config,
-                  platform: event.currentTarget.value,
+                  platform,
                 },
               }))
             }
@@ -2775,7 +2611,6 @@ function ModuleTypeFields({
 
 type PreviewPanelProps = {
   badges: UserBadge[];
-  connections: ProfileExternalConnection[];
   drafts: ProfileModule[];
   featuredPost: Post | null;
   featuredRoom: Room | null;
@@ -2787,7 +2622,6 @@ type PreviewPanelProps = {
 
 function PreviewPanel({
   badges,
-  connections,
   drafts,
   featuredPost,
   featuredRoom,
@@ -2870,19 +2704,6 @@ function PreviewPanel({
               <MapPin aria-hidden="true" size={14} />
               <span className="min-w-0 truncate">{form.location}</span>
             </p>
-          ) : null}
-          {connections.length > 0 ? (
-            <div className="mt-2 flex min-w-0 flex-wrap gap-1">
-              {connections.map((connection) => (
-                  <span
-                    key={`${connection.platform}-${connection.value}`}
-                    className="inline-flex min-w-0 items-center gap-1 rounded-control border border-line bg-surface/70 px-1.5 py-0.5 text-xs font-semibold text-text"
-                  >
-                    <ProfileConnectionIcon platform={connection.platform} size={13} />
-                    <span className="truncate">{connectionPlatformLabel(connection.platform)}</span>
-                  </span>
-                ))}
-            </div>
           ) : null}
           {featuredBadges.length > 0 ? (
             <div className="mt-2 flex min-w-0 flex-wrap gap-1">
@@ -3006,11 +2827,6 @@ function profileToForm(profile: Profile): ProfileFormState {
     avatarUrl: profile.user.avatarUrl ?? "",
     bannerUrl: profile.bannerUrl ?? "",
     profileBackground: profile.profileBackground ?? "",
-    connections: profile.links.map((connection) => ({
-      id: crypto.randomUUID(),
-      platform: connection.platform,
-      value: connection.value || connection.url || "",
-    })),
   };
 }
 
@@ -3024,32 +2840,6 @@ function uploadFieldName(slot: UploadSlot): keyof ProfileFormState {
   }
 
   return "profileBackground";
-}
-
-function normalizedConnections(
-  connections: DraftConnection[],
-): { connections: ProfileExternalConnection[]; errors: Record<string, string> } {
-  const normalized: ProfileExternalConnection[] = [];
-  const errors: Record<string, string> = {};
-
-  for (const connection of connections) {
-    const validated = validateProfileConnectionDraft(
-      connection.platform,
-      connection.value,
-    );
-
-    if ("error" in validated) {
-      errors[connection.id] = validated.error;
-      continue;
-    }
-
-    normalized.push(validated.connection);
-  }
-
-  return {
-    connections: normalized.slice(0, maxProfileConnections),
-    errors,
-  };
 }
 
 function createDraftModule(type: ProfileModuleType): ProfileModule {
@@ -3073,7 +2863,7 @@ function defaultConfig(type: ProfileModuleType): ProfileModuleConfig {
   }
 
   if (type === "links") {
-    return { links: [{ label: "", platform: "custom", url: "" }] };
+    return { links: [] };
   }
 
   if (type === "featured_badges") {
@@ -3468,16 +3258,47 @@ function visibilityIcon(visibility: ProfileModuleVisibility) {
   return <EyeOff aria-hidden="true" className="text-muted" size={16} />;
 }
 
-function platformMeta(platform: ProfileConnectionPlatform) {
-  return profileConnectionPlatforms.find((item) => item.value === platform) ?? {
-    value: "website" as const,
-    label: "Website",
-    help: "Use a full https:// URL.",
-    placeholder: "https://example.com",
-    tone: "warm" as const,
+function connectionSurfaceClass() {
+  return "border-line bg-surface/60";
+}
+
+function defaultModuleLink(platform: string): ModuleLink {
+  const option = modulePlatformOption(linkModulePlatformOptions, platform);
+
+  return {
+    label: platform === "custom" ? "" : option.label,
+    platform,
+    url: "",
   };
 }
 
-function connectionSurfaceClass() {
-  return "border-line bg-surface/60";
+function modulePlatformOption(
+  options: ModulePlatformOption[],
+  value: string,
+): ModulePlatformOption {
+  return (
+    options.find((option) => option.value === value) ??
+    options[0] ?? { value: "custom", label: "Custom" }
+  );
+}
+
+function isProfileConnectionPlatform(value: string): value is ProfileConnectionPlatform {
+  return profileConnectionPlatforms.some((platform) => platform.value === value);
+}
+
+function moduleLinkPreview(value: string): string {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.replace(/^www\./, "");
+    const path = url.pathname.replace(/\/$/, "");
+
+    if (!path || path === "/") {
+      return host;
+    }
+
+    const leaf = path.split("/").filter(Boolean).at(-1);
+    return leaf ? `${host}/${leaf}` : host;
+  } catch {
+    return "";
+  }
 }

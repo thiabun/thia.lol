@@ -759,13 +759,17 @@ editor with the modular canvas direction:
 
 - The customization editor uses compact intent groups: Identity, Look, Modules,
   and Preview.
-- Connections are edited inside Identity with the same platform-aware
-  validation instead of living as a separate top-level destination.
+- Connections are edited as the `links` module inside Modules, not inside
+  Identity. Identity keeps name, bio/status-adjacent basics, location, and media
+  slots while external destinations remain module-owned.
 - Look is limited to current supported media slots: avatar, banner, and profile
   background. Accent/theme controls remain hidden until they visibly affect the
   public profile through tested, contrast-safe presets.
 - Modules owns layout preset, module visibility, keyboard ordering, add/edit
   flows, and the separate Featured post and Featured room module settings.
+- The Modules tab uses card-like module rows, icon platform buttons, segmented
+  visibility controls, and custom platform menus for social/creator/music
+  choices instead of native select-heavy forms.
 - The desktop preview is smaller and supportive; the Preview section remains
   reachable without turning the editor into a second public profile page.
 - Public profiles remain header plus module grid, with no fixed Featured
@@ -829,7 +833,10 @@ Current limitations:
 - Hidden-badge API support exists through badge visibility, but a full user-facing hidden-badge management UI is deferred.
 - Block and mute reduce exposure where practical, but the product must not claim that blocking hides public content everywhere.
 - External integrations are currently links, not live integrations or embeds. There are no API keys, webhook flows, iframe embeds, OAuth flows, or live external status cards.
-- Connections are validated by platform during profile editing: website and Spotify use explicit HTTPS URLs, while supported social platforms use safe handles and/or profile URLs according to the platform rules.
+- Connections are configured through the `links` module editor. P2 stores
+  explicit HTTPS URLs in module config with platform labels/icons; legacy
+  `profiles.links` support remains guarded for old profile data but is no
+  longer the primary owner editing surface.
 
 ## Product Vision
 

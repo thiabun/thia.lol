@@ -15,13 +15,18 @@ test.beforeEach(async ({ context }) => {
   });
 });
 
-test("profile connections normalize, save, and render", async ({ page }) => {
-  let profileLinks: unknown[] = [];
+test("identity editing leaves connections to the module editor", async ({ page }) => {
   let savedPayload: Record<string, unknown> | undefined;
 
-  await mockOwnProfile(page, () => profileLinks, (payload) => {
+  await mockOwnProfile(page, () => [
+    {
+      platform: "github",
+      label: "GitHub",
+      value: "thiabun",
+      url: "https://github.com/thiabun",
+    },
+  ], (payload) => {
     savedPayload = payload;
-    profileLinks = Array.isArray(payload.links) ? payload.links : [];
   });
 
   await acknowledgeCookieNotice(page);
@@ -35,9 +40,9 @@ test("profile connections normalize, save, and render", async ({ page }) => {
   const modalBox = await modal.boundingBox();
   expect(modalBox?.width ?? 0).toBeLessThanOrEqual(1040);
   await expect(modal.getByRole("heading", { name: "Identity" })).toBeVisible();
-  await expect(modal.getByRole("heading", { name: "Connections" })).toBeVisible();
+  await expect(modal.getByRole("heading", { name: "Connections" })).toHaveCount(0);
+  await expect(modal.getByRole("button", { name: "Add connection" })).toHaveCount(0);
   await expect(modal.getByRole("button", { name: /Look/ })).toBeVisible();
-  await expect(modal.getByRole("button", { name: /Connections/ })).toHaveCount(0);
   await expect(modal.getByRole("button", { name: /Modules/ })).toBeVisible();
   await expect(modal.getByRole("button", { name: /Preview/ })).toBeVisible();
   await expect(modal.getByTestId("profile-customization-preview")).toBeVisible();
@@ -51,193 +56,17 @@ test("profile connections normalize, save, and render", async ({ page }) => {
   await expect(modal.getByText("Change banner").first()).toBeVisible();
   await expect(modal.getByText("Change background").first()).toBeVisible();
   await modal.getByRole("button", { name: /Identity/ }).click();
-  await expect(modal.getByRole("heading", { name: "Connections" })).toBeVisible();
+  await expect(modal.getByRole("heading", { name: "Connections" })).toHaveCount(0);
   await expect(modal.getByLabel("Accent")).toHaveCount(0);
   await expect(modal.getByLabel("Theme")).toHaveCount(0);
   await expect(modal.getByLabel("Traits")).toHaveCount(0);
-  for (const [platform, iconName] of Object.entries({
-    website: "lucide",
-    twitch: "simple-icons:twitch",
-    instagram: "simple-icons:instagram",
-    bluesky: "simple-icons:bluesky",
-    youtube: "simple-icons:youtube",
-    tiktok: "simple-icons:tiktok",
-    x: "simple-icons:x",
-    github: "simple-icons:github",
-    discord: "simple-icons:discord",
-    spotify: "simple-icons:spotify",
-  })) {
-    const icon = modal.getByTestId(`connection-icon-${platform}`).first();
-    await expect(icon).toBeVisible();
-
-    if (platform === "website") {
-      await expect(icon).toHaveAttribute("data-icon-source", "lucide");
-    } else {
-      await expect(icon).toHaveAttribute("data-icon-source", "simple-icons");
-      await expect(icon).toHaveAttribute("data-icon", iconName);
-    }
-  }
-
-  await modal.getByRole("button", { name: "Add connection" }).click();
-  await modal.getByRole("combobox", { name: "Platform" }).last().selectOption("github");
-  await modal.getByRole("textbox", { name: "GitHub" }).fill("thiabun");
-  await expect(modal.getByTestId("profile-customization-preview")).toContainText("GitHub");
-  await expect(modal.getByTestId("connection-icon-github").first()).toBeVisible();
   await modal.getByRole("button", { name: "Save profile" }).click();
 
   await expect.poll(() => savedPayload).toBeTruthy();
-  expect(savedPayload?.links).toMatchObject([
-    {
-      platform: "github",
-      label: "GitHub",
-      value: "thiabun",
-      url: "https://github.com/thiabun",
-    },
-  ]);
-  await expect(page.getByRole("link", { name: /GitHub/ })).toBeVisible();
-  await expect(page.getByTestId("connection-icon-github").first()).toHaveAttribute(
-    "data-icon",
-    "simple-icons:github",
-  );
-});
-
-test("valid connection cards collapse into compact summaries", async ({ page }) => {
-  await mockOwnProfile(page, () => [
-    {
-      platform: "website",
-      label: "thia.lol",
-      value: "https://thia.lol/",
-      url: "https://thia.lol/",
-    },
-    {
-      platform: "twitch",
-      label: "Twitch",
-      value: "thiachannel",
-      url: "https://www.twitch.tv/thiachannel",
-    },
-  ]);
-
-  await acknowledgeCookieNotice(page);
-  await page.goto("/@thia");
-  await page.getByRole("button", { name: "Customize profile" }).click();
-  const modal = page.getByTestId("profile-customization-modal");
-  await expect(modal).toBeVisible();
-  await modal.getByRole("button", { name: /Identity/ }).click();
-
-  await expect(modal.getByText("https://thia.lol/")).toBeVisible();
-  await expect(modal.getByText("thiachannel")).toBeVisible();
-  await expect(modal.getByTestId("connection-icon-website").first()).toHaveAttribute(
-    "data-icon-source",
-    "lucide",
-  );
-  await expect(modal.getByTestId("connection-icon-twitch").first()).toHaveAttribute(
-    "data-icon",
-    "simple-icons:twitch",
-  );
-  await expect(modal.getByText("Connection 1")).toHaveCount(0);
-  await expect(modal.getByText("Connection 2")).toHaveCount(0);
-  await expect(modal.getByRole("textbox", { name: "Website" })).toHaveCount(0);
-  await expect(modal.getByRole("textbox", { name: "Twitch" })).toHaveCount(0);
-
-  await modal.getByRole("button", { name: "Edit Website connection" }).click();
-  await expect(modal.getByRole("textbox", { name: "Website" })).toBeVisible();
-  await modal.getByRole("button", { name: "Done" }).click();
-  await expect(modal.getByRole("textbox", { name: "Website" })).toHaveCount(0);
-
-  await modal.getByRole("button", { name: "Edit Twitch connection" }).click();
-  await modal.getByRole("textbox", { name: "Twitch" }).fill("");
-  await modal.getByRole("button", { name: "Save profile" }).click();
-  await expect(modal.getByText("Twitch value is required.")).toBeVisible();
-  await expect(modal.getByRole("textbox", { name: "Twitch" })).toBeVisible();
-
-  await modal.getByRole("button", { name: "Remove Twitch connection" }).click();
-  await expect(modal.getByText("thiachannel")).toHaveCount(0);
-});
-
-test("legacy string profile links normalize before save", async ({ page }) => {
-  let profileLinks: unknown[] = ["thia.lol"];
-  let savedPayload: Record<string, unknown> | undefined;
-
-  await mockOwnProfile(page, () => profileLinks, (payload) => {
-    savedPayload = payload;
-    profileLinks = Array.isArray(payload.links) ? payload.links : [];
-  });
-
-  await acknowledgeCookieNotice(page);
-  await page.goto("/@thia");
-  await page.getByRole("button", { name: "Customize profile" }).click();
-  await page.getByRole("button", { name: "Save profile" }).click();
-
-  await expect.poll(() => savedPayload).toBeTruthy();
-  expect(savedPayload?.links).toMatchObject([
-    {
-      platform: "website",
-      label: "thia.lol",
-      value: "https://thia.lol/",
-      url: "https://thia.lol/",
-    },
-  ]);
-  await expect(page.getByRole("link", { name: "thia.lol", exact: true })).toBeVisible();
-});
-
-test("profile connections show platform-aware validation errors", async ({ page }) => {
-  let savedPayload: Record<string, unknown> | undefined;
-
-  await mockOwnProfile(page, () => [], (payload) => {
-    savedPayload = payload;
-  });
-
-  await acknowledgeCookieNotice(page);
-  await page.goto("/@thia");
-  await page.getByRole("button", { name: "Customize profile" }).click();
-  const modal = page.getByTestId("profile-customization-modal");
-  await expect(modal).toBeVisible();
-  await modal.getByRole("button", { name: /Identity/ }).click();
-
-  await modal.getByRole("button", { name: "Add connection" }).click();
-  await modal.getByRole("textbox", { name: "Website" }).fill("thia.lol");
-  await modal.getByRole("button", { name: "Save profile" }).click();
-  await expect(modal.getByText("Website requires a full https:// URL.")).toBeVisible();
-  expect(savedPayload).toBeUndefined();
-
-  await modal.getByRole("textbox", { name: "Website" }).fill("https://thia.lol/");
-  await modal.getByRole("button", { name: "Add connection" }).click();
-  await modal.getByRole("combobox", { name: "Platform" }).last().selectOption("spotify");
-  await modal.getByRole("textbox", { name: "Spotify" }).fill("thia");
-  await modal.getByRole("button", { name: "Save profile" }).click();
-  await expect(modal.getByText("Spotify requires an open.spotify.com URL.")).toBeVisible();
-  expect(savedPayload).toBeUndefined();
-
-  await modal.getByRole("textbox", { name: "Spotify" }).fill(
-    "https://open.spotify.com/artist/123",
-  );
-  await modal.getByRole("button", { name: "Add connection" }).click();
-  await modal.getByRole("combobox", { name: "Platform" }).last().selectOption("twitch");
-  await modal.getByRole("button", { name: "Save profile" }).click();
-  await expect(modal.getByText("Twitch value is required.")).toBeVisible();
-  expect(savedPayload).toBeUndefined();
-
-  await modal.getByRole("textbox", { name: "Twitch" }).fill("thia");
-  await modal.getByRole("button", { name: "Save profile" }).click();
-
-  await expect.poll(() => savedPayload).toBeTruthy();
-  expect(savedPayload?.links).toMatchObject([
-    {
-      platform: "website",
-      value: "https://thia.lol/",
-      url: "https://thia.lol/",
-    },
-    {
-      platform: "spotify",
-      value: "https://open.spotify.com/artist/123",
-      url: "https://open.spotify.com/artist/123",
-    },
-    {
-      platform: "twitch",
-      value: "thia",
-      url: "https://www.twitch.tv/thia",
-    },
-  ]);
+  expect(savedPayload).not.toHaveProperty("links");
+  await modal.getByRole("button", { name: /Modules/ }).click();
+  await expect(modal.getByTestId("profile-module-editor")).toBeVisible();
+  await expect(modal.getByRole("button", { name: "Connections" })).toBeVisible();
 });
 
 test("mobile edit profile modal has no horizontal overflow", async ({ page }) => {
@@ -252,11 +81,11 @@ test("mobile edit profile modal has no horizontal overflow", async ({ page }) =>
   await expect(modal).toBeVisible();
   await modal.getByRole("button", { name: /Identity/ }).click();
   await expect(modal.getByRole("heading", { name: "Identity" })).toBeVisible();
-  await expect(modal.getByRole("heading", { name: "Connections" })).toBeVisible();
+  await expect(modal.getByRole("heading", { name: "Connections" })).toHaveCount(0);
   await modal.getByRole("button", { name: /Look/ }).click();
   await expect(modal.getByRole("heading", { name: "Look" })).toBeVisible();
   await modal.getByRole("button", { name: /Identity/ }).click();
-  await expect(modal.getByRole("heading", { name: "Connections" })).toBeVisible();
+  await expect(modal.getByRole("heading", { name: "Connections" })).toHaveCount(0);
   await modal.getByRole("button", { name: /Modules/ }).click();
   await expect(modal.getByTestId("profile-layout-editor")).toBeVisible();
   await expect(modal.getByRole("button", { name: /Preview/ })).toBeVisible();
