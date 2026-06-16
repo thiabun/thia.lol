@@ -216,6 +216,34 @@ function profile_update_statement_for_body(
         );
     }
 
+    if (array_key_exists('profileBackgroundVideo', $body) || array_key_exists('profile_background_video_url', $body)) {
+        $profileBackgroundVideo = validate_profile_video_url(
+            profile_body_value($body, 'profileBackgroundVideo', 'profile_background_video_url'),
+            'Profile background video'
+        );
+        add_profile_customization_update(
+            $updates,
+            $params,
+            $hasCustomizationColumns && profile_update_background_video_columns_exist(),
+            'profile_background_video_url',
+            $profileBackgroundVideo
+        );
+    }
+
+    if (array_key_exists('profileBackgroundVideoPoster', $body) || array_key_exists('profile_background_video_poster_url', $body)) {
+        $profileBackgroundVideoPoster = validate_profile_image_url(
+            profile_body_value($body, 'profileBackgroundVideoPoster', 'profile_background_video_poster_url'),
+            'Profile background video poster'
+        );
+        add_profile_customization_update(
+            $updates,
+            $params,
+            $hasCustomizationColumns && profile_update_background_video_columns_exist(),
+            'profile_background_video_poster_url',
+            $profileBackgroundVideoPoster
+        );
+    }
+
     if (array_key_exists('profileAccent', $body) || array_key_exists('profile_accent', $body)) {
         $profileAccent = validate_profile_token(
             profile_body_value($body, 'profileAccent', 'profile_accent'),
@@ -449,6 +477,8 @@ function profile_update_failed_on_missing_customization_column(PDOException $exc
             str_contains($message, 'banner_url')
             || str_contains($message, 'profile_accent')
             || str_contains($message, 'profile_background')
+            || str_contains($message, 'profile_background_video_url')
+            || str_contains($message, 'profile_background_video_poster_url')
             || str_contains($message, 'profile_theme')
             || str_contains($message, 'profile_layout_preset')
         );
@@ -603,6 +633,39 @@ function validate_profile_image_url(mixed $value, string $label): ?string
     }
 
     json_error("{$label} image URL is invalid.", 422);
+}
+
+function validate_profile_video_url(mixed $value, string $label): ?string
+{
+    if ($value === null) {
+        return null;
+    }
+
+    if (!is_string($value)) {
+        json_error("{$label} is invalid.", 422);
+    }
+
+    $trimmed = trim($value);
+
+    if ($trimmed === '') {
+        return null;
+    }
+
+    if (profile_text_length($trimmed) > 500) {
+        json_error("{$label} URL is too long.", 422);
+    }
+
+    if (preg_match('#^/uploads/media/[0-9]{4}/[0-9]{2}/profile_background-[a-z0-9_-]+\.(?:mp4|webm)$#', $trimmed) === 1) {
+        return $trimmed;
+    }
+
+    json_error("{$label} must come from the video upload endpoint.", 422);
+}
+
+function profile_update_background_video_columns_exist(): bool
+{
+    return database_column_exists('profiles', 'profile_background_video_url')
+        && database_column_exists('profiles', 'profile_background_video_poster_url');
 }
 
 function validate_profile_token(mixed $value, string $label): ?string

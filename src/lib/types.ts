@@ -20,6 +20,8 @@ export type Profile = {
   bannerUrl?: string | null;
   profileAccent?: string | null;
   profileBackground?: string | null;
+  profileBackgroundVideo?: string | null;
+  profileBackgroundVideoPoster?: string | null;
   profileBackgroundBlur: ProfileBackgroundBlur;
   profileTheme?: string | null;
   profileLayoutPreset: ProfileLayoutPreset;
@@ -139,11 +141,46 @@ export type ProfileModuleMediaItem = {
   url: string;
 };
 
+export type ProfileIntegrationEmbed = {
+  allow?: string;
+  height?: number;
+  src: string;
+  title: string;
+  type: "iframe";
+};
+
+export type ProfileIntegrationCard = {
+  apiBacked: boolean;
+  embed: ProfileIntegrationEmbed | null;
+  expiresAt?: string | null;
+  fetchedAt?: string | null;
+  lastError?: string | null;
+  metadata: {
+    description?: string | null;
+    imageUrl?: string | null;
+    live?: boolean;
+    liveFetchedAt?: string | null;
+    recentFetchedAt?: string | null;
+    recentLabel?: string | null;
+    stats?: Record<string, string | number | null>;
+    subtitle?: string | null;
+    title?: string | null;
+  };
+  provider: "spotify" | "apple_music" | "youtube" | "twitch" | "github";
+  resourceId: string;
+  resourceKey: string;
+  resourceType: string;
+  sourceUrl: string;
+  stale?: boolean;
+  staleAt?: string | null;
+};
+
 export type ProfileModuleConfig = {
   body?: string;
   canvasSize?: string;
   description?: string;
   hasBanner?: boolean;
+  integration?: ProfileIntegrationCard;
   label?: string;
   link?: ProfileModuleLink;
   links?: ProfileModuleLink[];

@@ -22,7 +22,10 @@ Profiles are already one of the strongest identity surfaces on `thia.lol`, but t
 
 The long-term goal is a curated personal space. A profile should be able to act as a social profile, personal website, blog homepage, creator hub, identity page, and showcase for rooms or projects. It should do that while keeping `thia.lol` as the primary product identity and while keeping Thia's profile, for example `/@thia`, as a founder/member space rather than the whole platform.
 
-This document is planning only. It does not implement frontend redesigns, API changes, migrations, integrations, embeds, analytics, ads, private accounts, or paid profile features.
+This document is product direction and implementation context. It does not
+replace GitHub Issues, code review, migrations, or verification, but completed
+profile work should be reflected here when it changes the direction of the
+system.
 
 Implementation should prefer real, maintainable product behavior over
 frontend-only pretend features. Avoiding backend or database work is not a
@@ -152,17 +155,55 @@ product value and safety order, not a promise that every capability ships.
 - Creator/live module as a static or link-first card before any live status.
 - Compact music player module as a user-initiated link/card first.
 
-#### P3 - Integrations And Rich Media
+#### P3A - Canvas Editing Completion
 
-- Spotify and Apple Music song/playlist cards, starting with safe URL cards.
-- YouTube channel/video cards, starting with safe URL cards.
-- Twitch channel/live cards, starting with a channel link or static card.
-- API-backed metadata only after key ownership, caching, privacy, quota, and
-  fallback rules are documented.
-- Embeds only after host allowlists, sandbox/loading behavior, cookie/consent
-  impact, moderation limits, and performance budgets are approved.
-- Video or animated background support only after reduced-motion, mobile
-  performance, file size, mute, poster, and fallback behavior are specified.
+P3A makes the modular profile canvas a real editable surface.
+
+- The profile canvas remains a 6 x 9 desktop grid.
+- Desktop owners can move modules with native pointer drag in the canvas.
+- Keyboard/select controls remain the accessible fallback and the mobile editing
+  path.
+- Client and server both use collision push behavior: the selected/anchored
+  module claims its requested slot first, visible colliding modules are pushed
+  row-major to the next valid fit, and hidden modules do not occupy cells.
+- `PATCH /api/me/profile/canvas` persists normalized layout with
+  `anchorModuleId`, returns the pushed result, and fails atomically if the
+  visible canvas cannot fit inside 6 x 9.
+- `profile_info` is the only protected identity anchor.
+- Featured post, featured room, and activity are normal modules for visibility
+  and deletion. Deleting featured post or featured room modules clears
+  `profiles.featured_post_id` or `profiles.featured_room_id`.
+- Deleted featured/activity defaults are not silently recreated.
+- Mobile public profiles ignore exact desktop placement and stack modules in a
+  readable order.
+
+#### P3B - Integrations And Rich Media
+
+P3B adds the first real integration and rich-media infrastructure while keeping
+the profile renderer constrained.
+
+- Server-only provider config lives in `config/config.php`; missing credentials
+  disable integrations gracefully rather than exposing fake connected states.
+- OAuth tokens are stored encrypted with
+  `security.integration_encryption_key`; provider secrets and tokens are never
+  client-side or committed.
+- OAuth state uses hashed state values and encrypted PKCE verifier storage where
+  needed.
+- Metadata cards use an on-demand TTL cache. If refresh fails, the profile can
+  show the last good cached card; if no cache exists, it falls back to a compact
+  outbound link card.
+- Spotify, Apple Music, YouTube, Twitch, and GitHub URLs are normalized by
+  provider/resource id.
+- Inline embeds are generated only from allowlisted provider IDs and URLs. The
+  platform never stores or renders user-supplied iframe HTML.
+- GitHub renders as a rich card, not an iframe.
+- Live/recent labels require a real fetched timestamp and age.
+- Uploaded profile background video is restricted to profile backgrounds,
+  MP4/WebM, randomized filenames, MIME sniffing, and no PHP-executable
+  extensions.
+- Background video renders muted, looped, playsInline, and behind the same
+  overlay/blur system. Reduced-motion users get the poster/static fallback.
+- Embedded provider media must not be forced to autoplay through query params.
 
 ### Background And Banner Model
 

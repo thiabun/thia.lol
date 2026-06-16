@@ -55,6 +55,7 @@ public_html/api/migrations/20260612_0001_add_profile_modules.sql
 public_html/api/migrations/20260613_0001_add_profile_featured_content.sql
 public_html/api/migrations/20260615_0001_add_profile_layout_preset.sql
 public_html/api/migrations/20260616_0001_add_profile_canvas_layout.sql
+public_html/api/migrations/20260616_0002_add_profile_integrations_and_video_backgrounds.sql
 ```
 
 Also make sure the server config has a migration token set in:
@@ -100,6 +101,7 @@ Look for the relevant migration file or files. For example:
 20260611_0001_add_user_blocks_and_mutes.sql
 20260612_0001_add_profile_modules.sql
 20260613_0001_add_profile_featured_content.sql
+20260616_0002_add_profile_integrations_and_video_backgrounds.sql
 ```
 
 If a required migration says `applied: false`, it is pending and ready to run.
@@ -135,6 +137,7 @@ Run the status command again and confirm every required migration reports
 20260611_0001_add_user_blocks_and_mutes.sql -> applied: true
 20260612_0001_add_profile_modules.sql -> applied: true
 20260613_0001_add_profile_featured_content.sql -> applied: true
+20260616_0002_add_profile_integrations_and_video_backgrounds.sql -> applied: true
 ```
 
 ## Step 5: test the feature

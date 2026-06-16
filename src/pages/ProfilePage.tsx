@@ -11,6 +11,7 @@ import {
   Heart,
   LayoutGrid,
   MessageCircle,
+  Plus,
   Radio,
   Repeat2,
   Reply,
@@ -19,6 +20,7 @@ import {
   Shield,
   Sparkles,
   Star,
+  Trash2,
   X,
   UserCheck,
   Users,
@@ -41,6 +43,8 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { ModalSheet } from "../components/ui/ModalSheet";
 import {
   blockProfile,
+  createProfileModule,
+  deleteProfileModule,
   followProfile,
   getProfile,
   getProfileBadges,
@@ -59,6 +63,7 @@ import {
   unmuteProfile,
   updateProfileCanvas,
   updateFeaturedBadges,
+  type CreateProfileModuleInput,
   type FollowRelationship,
 } from "../lib/api";
 import { ApiClientError } from "../lib/apiClient";
@@ -85,6 +90,7 @@ import type {
   ProfileLayoutPreset,
   ProfileModule,
   ProfileModuleLayout,
+  ProfileModuleType,
   Room,
   UserBadge,
 } from "../lib/types";
@@ -432,6 +438,7 @@ export function ProfilePage() {
           updateProfileCanvas(
             {
               canvasVersion: 1,
+              anchorModuleId: selectedCanvasModuleId ?? null,
               backgroundBlur: draftBackgroundBlur,
               modules: draftModules
                 .filter((module) => module.id > 0)
@@ -487,7 +494,7 @@ export function ProfilePage() {
     }
 
     setDraftModules((modules) =>
-      prepareProfileCanvasModules(
+      pushProfileCanvasModules(
         profile,
         modules.map((module) =>
           module.id === moduleId
@@ -495,10 +502,11 @@ export function ProfilePage() {
                 ...module,
                 visibility: visible ? "public" : "hidden",
                 status: "active",
-              }
+            }
             : module,
         ),
         profileLayoutPreset,
+        moduleId,
       ),
     );
   }
@@ -512,15 +520,97 @@ export function ProfilePage() {
     }
 
     setDraftModules((modules) =>
-      modules.map((module) =>
-        module.id === moduleId
-          ? {
-              ...module,
-              layout,
-            }
-          : module,
+      pushProfileCanvasModules(
+        profile,
+        modules.map((module) =>
+          module.id === moduleId
+            ? {
+                ...module,
+                layout,
+              }
+            : module,
+        ),
+        profileLayoutPreset,
+        moduleId,
       ),
     );
+  }
+
+  async function handleAddCanvasModule(input: CreateProfileModuleInput) {
+    if (!profile || !canvasEditing || canvasSaving) {
+      return;
+    }
+
+    setCanvasSaving(true);
+    setCanvasError(undefined);
+
+    try {
+      const modules = await runWithAuth(
+        (csrfToken) => createProfileModule(input, csrfToken),
+        { retryOnCsrf: true },
+      );
+      const normalizedModules = prepareProfileCanvasModules(
+        profile,
+        modules,
+        profileLayoutPreset,
+      );
+      const newestModule = normalizedModules.reduce<ProfileModule | undefined>(
+        (current, module) =>
+          !current || module.id > current.id ? module : current,
+        undefined,
+      );
+
+      setDraftModules(normalizedModules);
+      setModulesOverride({ handle: normalizedHandle, modules: normalizedModules });
+      setSelectedCanvasModuleId(newestModule?.id);
+    } catch (error) {
+      setCanvasError(
+        error instanceof Error ? error.message : "Could not add profile module.",
+      );
+    } finally {
+      setCanvasSaving(false);
+    }
+  }
+
+  async function handleDeleteCanvasModule(module: ProfileModule) {
+    if (!profile || !canvasEditing || canvasSaving || module.type === "profile_info") {
+      return;
+    }
+
+    setCanvasSaving(true);
+    setCanvasError(undefined);
+
+    try {
+      const modules = await runWithAuth(
+        (csrfToken) => deleteProfileModule(module.id, csrfToken),
+        { retryOnCsrf: true },
+      );
+      const nextProfile = {
+        ...profile,
+        ...(module.type === "featured_post"
+          ? { featuredPostId: null, featuredPost: null }
+          : {}),
+        ...(module.type === "featured_room"
+          ? { featuredRoomId: null, featuredRoom: null }
+          : {}),
+      };
+      const normalizedModules = prepareProfileCanvasModules(
+        nextProfile,
+        modules,
+        profileLayoutPreset,
+      );
+
+      setProfileOverride(nextProfile);
+      setDraftModules(normalizedModules);
+      setModulesOverride({ handle: normalizedHandle, modules: normalizedModules });
+      setSelectedCanvasModuleId(normalizedModules[0]?.id);
+    } catch (error) {
+      setCanvasError(
+        error instanceof Error ? error.message : "Could not delete profile module.",
+      );
+    } finally {
+      setCanvasSaving(false);
+    }
   }
 
   useEffect(() => {
@@ -639,8 +729,11 @@ export function ProfilePage() {
             error={canvasError}
             modules={draftModules}
             selectedModule={selectedCanvasModule}
+            userBadges={profileBadges}
+            onAddModule={(input) => void handleAddCanvasModule(input)}
             onBackgroundBlurChange={setDraftBackgroundBlur}
             onCancel={handleCancelCanvasEdit}
+            onDeleteModule={(module) => void handleDeleteCanvasModule(module)}
             onEdit={() => void handleStartCanvasEdit()}
             onLayoutChange={handleCanvasModuleLayoutChange}
             onSave={() => void handleSaveCanvasEdit()}
@@ -654,6 +747,7 @@ export function ProfilePage() {
             canvasEditing
               ? {
                   selectedModuleId: selectedCanvasModuleId,
+                  onMoveModule: handleCanvasModuleLayoutChange,
                   onSelectModule: handleSelectCanvasModule,
                 }
               : undefined
@@ -855,6 +949,67 @@ function prepareProfileCanvasModules(
   });
 }
 
+function pushProfileCanvasModules(
+  profile: Profile,
+  modules: ProfileModule[],
+  layoutPreset: ProfileLayoutPreset,
+  anchorModuleId?: number,
+): ProfileModule[] {
+  const normalized = modules.map((module) =>
+    module.type === "profile_info" ? normalizeProfileInfoModule(profile, module) : module,
+  );
+  const anchor = normalized.find((module) => module.id === anchorModuleId);
+  const visibleModules = normalized
+    .filter((module) => module.visibility === "public" || module.type === "profile_info")
+    .sort((first, second) => {
+      if (anchor) {
+        if (first.id === anchor.id && second.id !== anchor.id) {
+          return -1;
+        }
+
+        if (second.id === anchor.id && first.id !== anchor.id) {
+          return 1;
+        }
+      }
+
+      return profileCanvasModuleSort(first, second);
+    });
+  const hiddenModules = normalized.filter(
+    (module) => module.visibility !== "public" && module.type !== "profile_info",
+  );
+  const occupied = new Set<string>();
+  const placed = new Map<number, ProfileModule>();
+
+  visibleModules.forEach((module, index) => {
+    const span = profileModuleGridSpan(module, layoutPreset, index);
+    const requestedLayout = clampProfileModuleLayout({
+      column: module.layout?.column ?? 1,
+      row: module.layout?.row ?? 1,
+      colSpan: span.columns,
+      rowSpan: span.rows,
+    });
+    const layout = profileModuleLayoutFits(requestedLayout, occupied)
+      ? requestedLayout
+      : findProfileModuleNextLayout(requestedLayout, occupied);
+
+    if (!layout) {
+      placed.set(module.id, { ...module, layout: requestedLayout });
+      return;
+    }
+
+    occupyProfileModuleLayout(layout, occupied);
+    placed.set(module.id, { ...module, layout });
+  });
+
+  hiddenModules.forEach((module) => {
+    placed.set(module.id, module);
+  });
+
+  return normalized
+    .map((module) => placed.get(module.id) ?? module)
+    .sort(profileCanvasModuleSort);
+}
+
 function profileModuleCanvasInput(
   module: ProfileModule,
   profile: Profile,
@@ -910,6 +1065,31 @@ function findProfileModuleDefaultLayout(
     colSpan,
     rowSpan,
   };
+}
+
+function findProfileModuleNextLayout(
+  requestedLayout: ProfileModuleLayout,
+  occupied: Set<string>,
+): ProfileModuleLayout | undefined {
+  const startIndex = (requestedLayout.row - 1) * 6 + (requestedLayout.column - 1);
+  const totalCells = 54;
+
+  for (let offset = 0; offset < totalCells; offset += 1) {
+    const index = (startIndex + offset) % totalCells;
+    const row = Math.floor(index / 6) + 1;
+    const column = (index % 6) + 1;
+    const candidate = clampProfileModuleLayout({
+      ...requestedLayout,
+      column,
+      row,
+    });
+
+    if (profileModuleLayoutFits(candidate, occupied)) {
+      return candidate;
+    }
+  }
+
+  return undefined;
 }
 
 function profileModuleLayoutFits(
@@ -974,20 +1154,172 @@ function profileCanvasModuleSort(first: ProfileModule, second: ProfileModule): n
   return first.position - second.position;
 }
 
+type ProfileCanvasAddEntry =
+  | "about"
+  | "custom_text"
+  | "links"
+  | "featured_badges"
+  | "gallery_media"
+  | "creator_live"
+  | "music"
+  | "github_project"
+  | "featured_post"
+  | "featured_room"
+  | "activity";
+
+type ProfileCanvasAddDraft = {
+  body: string;
+  entry: ProfileCanvasAddEntry;
+  label: string;
+  title: string;
+  url: string;
+};
+
+const profileCanvasAddEntries: { label: string; value: ProfileCanvasAddEntry }[] = [
+  { label: "About", value: "about" },
+  { label: "Text", value: "custom_text" },
+  { label: "Links", value: "links" },
+  { label: "Badges", value: "featured_badges" },
+  { label: "Gallery", value: "gallery_media" },
+  { label: "Creator", value: "creator_live" },
+  { label: "Music", value: "music" },
+  { label: "GitHub project", value: "github_project" },
+  { label: "Featured post", value: "featured_post" },
+  { label: "Featured room", value: "featured_room" },
+  { label: "Activity", value: "activity" },
+];
+
+function profileCanvasAddInput(
+  draft: ProfileCanvasAddDraft,
+  userBadges: UserBadge[],
+): CreateProfileModuleInput | undefined {
+  const label = draft.label.trim();
+  const body = draft.body.trim();
+  const title = draft.title.trim() || null;
+  const url = draft.url.trim();
+  const base = {
+    status: "active" as const,
+    title,
+    visibility: "public" as const,
+  };
+
+  if (draft.entry === "about") {
+    return body ? { ...base, type: "about", config: { body } } : undefined;
+  }
+
+  if (draft.entry === "custom_text") {
+    return body ? { ...base, type: "custom_text", config: { body } } : undefined;
+  }
+
+  if (draft.entry === "links") {
+    return profileCanvasAddUrlIsReady(url)
+      ? {
+          ...base,
+          type: "links",
+          config: { links: [{ label: label || "Link", url }] },
+        }
+      : undefined;
+  }
+
+  if (draft.entry === "featured_badges") {
+    const badgeId = userBadges.find((userBadge) => userBadge.isVisible)?.id;
+    return badgeId
+      ? { ...base, type: "featured_badges", config: { userBadgeIds: [badgeId] } }
+      : undefined;
+  }
+
+  if (draft.entry === "gallery_media") {
+    return /^\/uploads\/media\/[0-9]{4}\/[0-9]{2}\/[a-z0-9_-]+\.webp$/.test(url)
+      ? {
+          ...base,
+          type: "gallery_media",
+          config: {
+            mediaItems: [label ? { caption: label, url } : { url }],
+          },
+        }
+      : undefined;
+  }
+
+  if (draft.entry === "creator_live") {
+    return profileCanvasAddUrlIsReady(url)
+      ? {
+          ...base,
+          type: "creator_live",
+          config: { label: label || "Creator link", url },
+        }
+      : undefined;
+  }
+
+  if (draft.entry === "github_project") {
+    return profileCanvasAddUrlIsReady(url)
+      ? {
+          ...base,
+          type: "creator_live",
+          config: { platform: "github", label: label || "GitHub project", url },
+        }
+      : undefined;
+  }
+
+  if (draft.entry === "music") {
+    return profileCanvasAddUrlIsReady(url)
+      ? {
+          ...base,
+          type: "music",
+          config: { label: label || "Music", url },
+        }
+      : undefined;
+  }
+
+  if (
+    draft.entry === "featured_post" ||
+    draft.entry === "featured_room" ||
+    draft.entry === "activity"
+  ) {
+    return { ...base, type: draft.entry as ProfileModuleType, config: {} };
+  }
+
+  return undefined;
+}
+
+function profileCanvasAddUrlIsReady(value: string): boolean {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function profileCanvasAddEntryNeedsUrl(entry: ProfileCanvasAddEntry): boolean {
+  return (
+    entry === "links" ||
+    entry === "gallery_media" ||
+    entry === "creator_live" ||
+    entry === "music" ||
+    entry === "github_project"
+  );
+}
+
+function profileCanvasAddEntryNeedsBody(entry: ProfileCanvasAddEntry): boolean {
+  return entry === "about" || entry === "custom_text";
+}
+
 type ProfileCanvasEditorToolbarProps = {
   backgroundBlur: ProfileBackgroundBlur;
   busy: boolean;
   editing: boolean;
   error?: string | undefined;
   modules: ProfileModule[];
+  onAddModule: (input: CreateProfileModuleInput) => void;
   onBackgroundBlurChange: (blur: ProfileBackgroundBlur) => void;
   onCancel: () => void;
+  onDeleteModule: (module: ProfileModule) => void;
   onEdit: () => void;
   onLayoutChange: (moduleId: number, layout: ProfileModuleLayout) => void;
   onSave: () => void;
   onSelectModule: (moduleId: number) => void;
   onVisibilityChange: (moduleId: number, visible: boolean) => void;
   selectedModule?: ProfileModule | undefined;
+  userBadges: UserBadge[];
 };
 
 function ProfileCanvasEditorToolbar({
@@ -996,15 +1328,26 @@ function ProfileCanvasEditorToolbar({
   editing,
   error,
   modules,
+  onAddModule,
   onBackgroundBlurChange,
   onCancel,
+  onDeleteModule,
   onEdit,
   onLayoutChange,
   onSave,
   onSelectModule,
   onVisibilityChange,
   selectedModule,
+  userBadges,
 }: ProfileCanvasEditorToolbarProps) {
+  const [addDraft, setAddDraft] = useState<ProfileCanvasAddDraft>({
+    body: "",
+    entry: "about",
+    label: "",
+    title: "",
+    url: "",
+  });
+
   if (!editing) {
     return (
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
@@ -1042,6 +1385,8 @@ function ProfileCanvasEditorToolbar({
     : undefined;
   const canHide = selectedModule?.type !== "profile_info";
   const selectedVisible = selectedModule?.visibility === "public";
+  const addConfig = profileCanvasAddInput(addDraft, userBadges);
+  const canDelete = selectedModule && selectedModule.type !== "profile_info";
 
   function updateLayout(patch: Partial<ProfileModuleLayout>) {
     if (!selectedModule) {
@@ -1226,6 +1571,17 @@ function ProfileCanvasEditorToolbar({
             type="button"
             size="sm"
             variant="secondary"
+            disabled={!canDelete || busy}
+            data-testid="profile-canvas-delete-module-button"
+            icon={<Trash2 aria-hidden="true" size={16} />}
+            onClick={() => (selectedModule ? onDeleteModule(selectedModule) : undefined)}
+          >
+            Delete
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
             disabled={busy}
             icon={<X aria-hidden="true" size={16} />}
             onClick={onCancel}
@@ -1241,6 +1597,84 @@ function ProfileCanvasEditorToolbar({
             onClick={onSave}
           >
             {busy ? "Saving" : "Save"}
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 border-t border-line/70 pt-3 sm:grid-cols-[0.9fr_1fr_1fr_auto]">
+        <label className="min-w-0 text-xs font-semibold uppercase text-muted">
+          Add
+          <select
+            className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/70 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            value={addDraft.entry}
+            data-testid="profile-canvas-add-type-select"
+            onChange={(event) =>
+              setAddDraft((draft) => ({
+                ...draft,
+                entry: event.target.value as ProfileCanvasAddEntry,
+              }))
+            }
+          >
+            {profileCanvasAddEntries
+              .filter((entry) => entry.value !== "featured_badges" || userBadges.length > 0)
+              .map((entry) => (
+                <option key={entry.value} value={entry.value}>
+                  {entry.label}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label className="min-w-0 text-xs font-semibold uppercase text-muted">
+          Label
+          <input
+            className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/70 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            value={addDraft.label}
+            data-testid="profile-canvas-add-label-input"
+            onChange={(event) =>
+              setAddDraft((draft) => ({ ...draft, label: event.target.value }))
+            }
+            placeholder="Optional"
+          />
+        </label>
+        {profileCanvasAddEntryNeedsUrl(addDraft.entry) ? (
+          <label className="min-w-0 text-xs font-semibold uppercase text-muted">
+            URL
+            <input
+              className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/70 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              value={addDraft.url}
+              data-testid="profile-canvas-add-url-input"
+              onChange={(event) =>
+                setAddDraft((draft) => ({ ...draft, url: event.target.value }))
+              }
+              placeholder="https://..."
+            />
+          </label>
+        ) : (
+          <label className="min-w-0 text-xs font-semibold uppercase text-muted">
+            Text
+            <input
+              className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/70 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              value={addDraft.body}
+              data-testid="profile-canvas-add-body-input"
+              onChange={(event) =>
+                setAddDraft((draft) => ({ ...draft, body: event.target.value }))
+              }
+              placeholder={
+                profileCanvasAddEntryNeedsBody(addDraft.entry) ? "Required" : "Optional"
+              }
+            />
+          </label>
+        )}
+        <div className="flex items-end">
+          <Button
+            type="button"
+            size="sm"
+            disabled={!addConfig || busy}
+            data-testid="profile-canvas-add-module-button"
+            icon={<Plus aria-hidden="true" size={16} />}
+            onClick={() => (addConfig ? onAddModule(addConfig) : undefined)}
+          >
+            Add
           </Button>
         </div>
       </div>
@@ -1362,7 +1796,10 @@ function mergeFollowState(
 }
 
 function ProfilePersonalBackdrop({ profile }: { profile: Profile }) {
-  const imageUrl = safeProfileImageUrl(profile.profileBackground);
+  const videoUrl = safeProfileVideoUrl(profile.profileBackgroundVideo);
+  const imageUrl = safeProfileImageUrl(
+    profile.profileBackgroundVideoPoster ?? profile.profileBackground,
+  );
   const blurTreatment = profile.profileBackgroundBlur;
 
   return (
@@ -1370,14 +1807,32 @@ function ProfilePersonalBackdrop({ profile }: { profile: Profile }) {
       aria-hidden="true"
       className="pointer-events-none absolute left-1/2 top-[-1.25rem] bottom-[-2rem] z-0 min-h-dvh w-screen -translate-x-1/2 overflow-hidden sm:top-[-1.5rem]"
       data-profile-background-blur={blurTreatment}
-      data-profile-background-source={imageUrl ? "image" : "fallback"}
+      data-profile-background-source={videoUrl ? "video" : imageUrl ? "image" : "fallback"}
       data-testid="profile-personal-backdrop"
     >
+      {videoUrl ? (
+        <video
+          aria-hidden="true"
+          className={cn(
+            "absolute inset-0 size-full scale-105 object-cover opacity-[0.3] saturate-[0.9] motion-reduce:hidden",
+            profileBackgroundBlurClass(blurTreatment),
+          )}
+          autoPlay
+          loop
+          muted
+          playsInline
+          poster={imageUrl}
+          preload="metadata"
+        >
+          <source src={videoUrl} type={videoUrl.endsWith(".webm") ? "video/webm" : "video/mp4"} />
+        </video>
+      ) : null}
       {imageUrl ? (
         <img
           alt=""
           className={cn(
             "absolute inset-0 size-full scale-105 object-cover opacity-[0.34] saturate-[0.9]",
+            videoUrl ? "motion-safe:hidden" : undefined,
             profileBackgroundBlurClass(blurTreatment),
           )}
           decoding="async"
@@ -1391,6 +1846,15 @@ function ProfilePersonalBackdrop({ profile }: { profile: Profile }) {
       <div className="absolute inset-0 bg-gradient-to-r from-surface/64 via-transparent to-surface/64" />
     </div>
   );
+}
+
+function safeProfileVideoUrl(value: string | null | undefined): string | undefined {
+  return typeof value === "string" &&
+    /^\/uploads\/media\/[0-9]{4}\/[0-9]{2}\/profile_background-[a-z0-9_-]+\.(?:mp4|webm)$/.test(
+      value,
+    )
+    ? value
+    : undefined;
 }
 
 function profileBackgroundBlurClass(

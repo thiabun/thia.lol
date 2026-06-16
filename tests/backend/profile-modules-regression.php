@@ -279,9 +279,24 @@ assert_php_rejected(
     'profile_canvas_module_placement(["id" => 1, "column" => 1, "row" => 1, "colSpan" => 3, "rowSpan" => 3], ["id" => 1, "type" => "music"], true);',
     'Canvas span is not allowed for this module.'
 );
+
+$pushedPlacements = profile_canvas_push_collisions(
+    [
+        ['id' => 1, 'type' => 'about', 'column' => 1, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 2, 'type' => 'links', 'column' => 2, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 3, 'type' => 'music', 'column' => 1, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => false],
+    ],
+    1
+);
+assert_true($pushedPlacements[0]['id'] === 1, 'anchor module should stay first');
+assert_true($pushedPlacements[0]['column'] === 1 && $pushedPlacements[0]['row'] === 1, 'anchor layout should be kept');
+assert_true($pushedPlacements[1]['id'] === 2, 'colliding visible module should remain visible');
+assert_true($pushedPlacements[1]['column'] === 3 && $pushedPlacements[1]['row'] === 1, 'colliding module should push row-major');
+assert_true($pushedPlacements[2]['id'] === 3 && $pushedPlacements[2]['visible'] === false, 'hidden module should not occupy cells');
+
 assert_php_rejected(
-    'profile_canvas_reject_collisions([["id" => 1, "type" => "about", "column" => 1, "row" => 1, "colSpan" => 2, "rowSpan" => 1, "visible" => true], ["id" => 2, "type" => "links", "column" => 2, "row" => 1, "colSpan" => 2, "rowSpan" => 1, "visible" => true]]);',
-    'Canvas modules cannot overlap.'
+    '$items = []; for ($i = 1; $i <= 7; $i++) { $items[] = ["id" => $i, "type" => "profile_info", "column" => 1, "row" => 1, "colSpan" => 3, "rowSpan" => 3, "visible" => true]; } profile_canvas_push_collisions($items, 1);',
+    'Canvas layout does not fit the 6 by 9 grid.'
 );
 
 echo "profile modules regression ok\n";

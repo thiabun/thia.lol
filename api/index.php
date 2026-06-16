@@ -10,6 +10,7 @@ require_once __DIR__ . '/rooms.php';
 require_once __DIR__ . '/uploads.php';
 require_once __DIR__ . '/profile.php';
 require_once __DIR__ . '/profile_modules.php';
+require_once __DIR__ . '/integrations.php';
 require_once __DIR__ . '/follows.php';
 require_once __DIR__ . '/notifications.php';
 require_once __DIR__ . '/chat.php';
@@ -74,6 +75,10 @@ try {
         uploads_dispatch($segments, $method);
     }
 
+    if (($segments[0] ?? null) === 'integrations') {
+        integrations_dispatch($segments, $method);
+    }
+
     if (($segments[0] ?? null) === 'badges') {
         badges_dispatch($segments, $method);
     }
@@ -88,6 +93,10 @@ try {
         && in_array($segments[2] ?? null, ['modules', 'module-order', 'canvas'], true)
     ) {
         profile_modules_dispatch($segments, $method);
+    }
+
+    if (($segments[0] ?? null) === 'me' && ($segments[1] ?? null) === 'integrations') {
+        integrations_dispatch($segments, $method);
     }
 
     if (($segments[0] ?? null) === 'me') {

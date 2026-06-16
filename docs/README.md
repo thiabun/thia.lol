@@ -45,7 +45,7 @@ paragraphs.
 | `docs/deployment-automation.md` | cPanel/GitHub Actions/Web Disk deployment workflow and server-only file preservation. |
 | `docs/thia-migration-runner-guide.md` | Practical live migration runner steps and production migration checks. |
 | `docs/migration-runner.md` | Migration runner implementation brief and migration authoring rules. |
-| `docs/media-uploads.md` | Image upload limits, conversion, cPanel storage, and deploy preservation. |
+| `docs/media-uploads.md` | Image upload limits, profile background video limits, conversion, cPanel storage, and deploy preservation. |
 | `docs/admin-setup.md` | One-time admin activation procedure and setup-token handling. |
 | `docs/auth-session-diagnostics.md` | Production auth/session diagnostics and migration-token protected checks. |
 | `docs/codex-handoff.md` | Standard Codex work packet and backend/deploy handoff expectations. |

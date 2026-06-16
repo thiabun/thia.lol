@@ -418,6 +418,102 @@ test("full-page profile background and glass grid render safely", async ({ page 
   expect(metrics.gridBackground).not.toBe("rgba(0, 0, 0, 0)");
 });
 
+test("video background and allowlisted rich integrations render safely", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: false,
+    profileOverrides: {
+      profileBackgroundVideo: "/uploads/media/2026/06/profile_background-loop.mp4",
+      profileBackgroundVideoPoster: "/uploads/media/2026/06/profile-video-poster.webp",
+    },
+    modules: [
+      {
+        ...musicModule({ id: 6, position: 2 }),
+        config: {
+          description: "Current writing playlist.",
+          label: "Focus playlist",
+          platform: "spotify",
+          url: "https://open.spotify.com/playlist/profile-test",
+          integration: {
+            provider: "spotify",
+            resourceType: "playlist",
+            resourceId: "profile-test",
+            resourceKey: "spotify:playlist:profile-test",
+            sourceUrl: "https://open.spotify.com/playlist/profile-test",
+            metadata: {
+              title: "Focus playlist",
+              subtitle: "Spotify playlist",
+              recentLabel: "Recently updated",
+              recentFetchedAt: "2026-06-16T10:00:00Z",
+            },
+            embed: {
+              type: "iframe",
+              src: "https://open.spotify.com/embed/playlist/profile-test",
+              title: "Spotify player",
+              height: 152,
+              allow: "encrypted-media; fullscreen; clipboard-write",
+            },
+            apiBacked: false,
+            fetchedAt: "2026-06-16T10:00:00Z",
+            stale: false,
+          },
+        },
+      },
+      {
+        ...creatorModule({ id: 5, position: 3 }),
+        config: {
+          description: "Source and release notes.",
+          label: "GitHub project",
+          platform: "github",
+          url: "https://github.com/thiabun/thia.lol",
+          integration: {
+            provider: "github",
+            resourceType: "repo",
+            resourceId: "thiabun/thia.lol",
+            resourceKey: "github:repo:thiabun/thia.lol",
+            sourceUrl: "https://github.com/thiabun/thia.lol",
+            metadata: {
+              title: "thiabun/thia.lol",
+              subtitle: "GitHub project",
+              description: "Public repository metadata.",
+            },
+            embed: null,
+            apiBacked: true,
+            fetchedAt: "2026-06-16T10:00:00Z",
+            stale: false,
+          },
+        },
+      },
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const backdrop = page.getByTestId("profile-personal-backdrop");
+  await expect(backdrop).toHaveAttribute("data-profile-background-source", "video");
+  await expect(
+    backdrop.locator('source[src="/uploads/media/2026/06/profile_background-loop.mp4"]'),
+  ).toHaveAttribute("type", "video/mp4");
+  await expect(
+    backdrop.locator('img[src="/uploads/media/2026/06/profile-video-poster.webp"]'),
+  ).toBeAttached();
+
+  const spotifyEmbed = page.getByTestId("profile-integration-embed-spotify");
+  await expect(spotifyEmbed).toHaveAttribute(
+    "src",
+    "https://open.spotify.com/embed/playlist/profile-test",
+  );
+  await expect(spotifyEmbed).toHaveAttribute(
+    "sandbox",
+    /allow-scripts allow-same-origin/,
+  );
+  await expect(page.getByText("Recently updated · Spotify")).toBeVisible();
+  await expect(page.getByText("Public repository metadata.")).toBeVisible();
+  await expect(page.getByTestId("profile-integration-embed-github")).toHaveCount(0);
+});
+
 test("public logged-out users do not see canvas edit controls", async ({ page }) => {
   await mockProfileModules(page, {
     authenticated: false,
@@ -474,6 +570,138 @@ test("owner edits background blur, module placement, and visibility", async ({
     "heavy",
   );
   await expect(page.getByText("Move me.")).toHaveCount(0);
+});
+
+test("owner drags a canvas module and save includes pushed placement", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  let savedPayload: Record<string, unknown> | undefined;
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      {
+        ...aboutModule({ id: 1, title: "About", body: "Drag target.", position: 2 }),
+        layout: { column: 4, row: 1, colSpan: 2, rowSpan: 1 },
+      },
+      {
+        ...linksModule({ id: 2, title: "Links", position: 3 }),
+        layout: { column: 1, row: 1, colSpan: 2, rowSpan: 1 },
+      },
+    ],
+    onCanvasSave: (payload) => {
+      savedPayload = payload;
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-canvas-edit-button").click();
+  const grid = page.getByTestId("profile-module-grid");
+  const gridBox = await grid.boundingBox();
+  const handleBox = await page.getByTestId("profile-canvas-drag-handle-1").boundingBox();
+
+  if (!gridBox || !handleBox) {
+    throw new Error("Canvas grid or drag handle did not render.");
+  }
+
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(gridBox.x + gridBox.width * 0.1, gridBox.y + gridBox.height * 0.1, {
+    steps: 6,
+  });
+  await page.mouse.up();
+
+  await expect(page.getByTestId("profile-canvas-module-select")).toHaveValue("1");
+  await page.getByTestId("profile-canvas-save-button").click();
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
+
+  expect(savedPayload?.anchorModuleId).toBe(1);
+  const savedModules = savedPayload?.modules as Array<Record<string, unknown>>;
+  const aboutPlacement = savedModules.find((module) => module.id === 1);
+  expect(aboutPlacement).toMatchObject({
+    column: 1,
+    row: 1,
+    visible: true,
+  });
+  expectNoOverlappingPlacements(savedModules);
+});
+
+test("owner adds modules and deletes featured modules from the canvas editor", async ({
+  page,
+}) => {
+  const createdPayloads: Array<Record<string, unknown>> = [];
+  const deletedIds: number[] = [];
+  const featuredPost = postFixture({ id: 42, body: "Pinned post can be removed." });
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      {
+        id: 20,
+        type: "featured_post",
+        title: "Featured post",
+        config: {},
+        visibility: "public",
+        position: 2,
+        status: "active",
+        schemaVersion: 1,
+        createdAt: "2026-06-12 00:00:00",
+        updatedAt: "2026-06-12 00:00:00",
+      },
+      {
+        id: 21,
+        type: "featured_room",
+        title: "Featured room",
+        config: {},
+        visibility: "public",
+        position: 3,
+        status: "active",
+        schemaVersion: 1,
+        createdAt: "2026-06-12 00:00:00",
+        updatedAt: "2026-06-12 00:00:00",
+      },
+    ],
+    onCreate: (payload) => {
+      createdPayloads.push(payload);
+    },
+    onDelete: (id) => {
+      deletedIds.push(id);
+    },
+    profileOverrides: {
+      featuredPost,
+      featuredPostId: 42,
+      featuredRoom: featuredPost.room,
+      featuredRoomId: 1,
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-canvas-edit-button").click();
+  await page.getByTestId("profile-canvas-add-type-select").selectOption("custom_text");
+  await page.getByTestId("profile-canvas-add-label-input").fill("Studio note");
+  await page.getByTestId("profile-canvas-add-body-input").fill("Canvas-added note");
+  await page.getByTestId("profile-canvas-add-module-button").click();
+
+  expect(createdPayloads.at(-1)).toMatchObject({
+    type: "custom_text",
+    visibility: "public",
+    status: "active",
+    config: { body: "Canvas-added note" },
+  });
+  await expect(page.getByText("Canvas-added note")).toBeVisible();
+
+  await page.getByTestId("profile-canvas-module-select").selectOption("20");
+  await page.getByTestId("profile-canvas-delete-module-button").click();
+  expect(deletedIds).toContain(20);
+  await expect(page.getByText("Pinned post can be removed.")).toHaveCount(0);
+
+  await page.getByTestId("profile-canvas-module-select").selectOption("21");
+  await page.getByTestId("profile-canvas-delete-module-button").click();
+  expect(deletedIds).toContain(21);
+  await expect(page.getByText("General")).toHaveCount(0);
 });
 
 test("mobile stack ignores saved desktop placement", async ({ page }) => {
@@ -660,6 +888,7 @@ test("owner empty module state is honest", async ({ page }) => {
   await expect(page.getByTestId("profile-owner-tools")).toHaveCount(0);
   await expect(page.getByTestId("profile-modules")).toBeVisible();
   await expect(page.getByTestId("profile-grid-module-profile_info")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-edit-button")).toBeVisible();
   await expect(
     page.getByTestId("profile-header").getByRole("button", { name: "Customize profile" }),
   ).toHaveCount(0);
@@ -670,7 +899,9 @@ test("owner empty module state is honest", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Customize layout" })).toHaveCount(0);
 });
 
-test("owner customization modal is removed until P3", async ({ page }) => {
+test("owner customization uses inline canvas editing instead of the retired modal", async ({
+  page,
+}) => {
   await mockProfileModules(page, {
     authenticated: true,
     modules: [aboutModule({ body: "Saved profile note" })],
@@ -678,6 +909,7 @@ test("owner customization modal is removed until P3", async ({ page }) => {
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
+  await expect(page.getByTestId("profile-canvas-edit-button")).toBeVisible();
   await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Customize layout" })).toHaveCount(0);
   await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
@@ -685,7 +917,7 @@ test("owner customization modal is removed until P3", async ({ page }) => {
   await expect(page.getByText("Saved profile note")).toBeVisible();
 });
 
-test("mobile profile modules stay stable without module editor", async ({ page }) => {
+test("mobile profile modules stay stable with compact canvas editing", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockProfileModules(page, {
     authenticated: true,
@@ -696,6 +928,7 @@ test("mobile profile modules stay stable without module editor", async ({ page }
 
   await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
   await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
+  await expect(page.getByTestId("profile-canvas-edit-button")).toBeVisible();
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
@@ -704,8 +937,11 @@ test("mobile profile modules stay stable without module editor", async ({ page }
 
 test("profile module API guardrails are present by inspection", async () => {
   const router = readFileSync("api/index.php", "utf8");
+  const integrationsApi = readFileSync("api/integrations.php", "utf8");
   const profileApi = readFileSync("api/profile.php", "utf8");
   const modulesApi = readFileSync("api/profile_modules.php", "utf8");
+  const uploadsApi = readFileSync("api/uploads.php", "utf8");
+  const configExample = readFileSync("backend/config/config.example.php", "utf8");
   const moduleRegistry = readFileSync("src/lib/profileModuleRegistry.ts", "utf8");
   const schema = readFileSync("backend/database/schema.sql", "utf8");
   const migration = readFileSync(
@@ -720,9 +956,15 @@ test("profile module API guardrails are present by inspection", async () => {
     "backend/database/migrations/20260616_0001_add_profile_canvas_layout.sql",
     "utf8",
   );
+  const integrationsMigration = readFileSync(
+    "backend/database/migrations/20260616_0002_add_profile_integrations_and_video_backgrounds.sql",
+    "utf8",
+  );
 
   expect(router).toContain("profile_modules.php");
+  expect(router).toContain("integrations.php");
   expect(router).toContain("profile_modules_dispatch($segments, $method)");
+  expect(router).toContain("integrations_dispatch($segments, $method)");
   expect(router).toContain("'canvas'");
   expect(modulesApi).toContain("const PROFILE_INFO_MODULE_TYPE = 'profile_info'");
   expect(modulesApi).toContain("const PROFILE_ACTIVITY_MODULE_TYPE = 'activity'");
@@ -733,16 +975,15 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(modulesApi).toContain("const PROFILE_MUSIC_MODULE_TYPE = 'music'");
   expect(modulesApi).toContain("const PROFILE_FEATURED_LEGACY_MODULE_TYPE = 'featured'");
   expect(modulesApi).toContain("PROFILE_BUILT_IN_MODULE_TYPES");
+  expect(modulesApi).toContain("PROFILE_PROTECTED_MODULE_TYPES = [PROFILE_INFO_MODULE_TYPE]");
+  expect(modulesApi).toContain("PROFILE_SINGLETON_MODULE_TYPES");
   expect(modulesApi).toContain("PROFILE_RETIRED_MODULE_TYPES");
-  expect(modulesApi).toContain("ensure_profile_featured_modules");
-  expect(modulesApi).toContain("profile_featured_post_module_payload");
-  expect(modulesApi).toContain("profile_featured_room_module_payload");
-  expect(modulesApi).toContain("profile_legacy_featured_module_record");
-  expect(modulesApi).toContain("PROFILE_ACTIVITY_MODULE_TYPE]");
-  expect(modulesApi).toContain("ensure_profile_activity_module");
+  expect(modulesApi).toContain("ensure_profile_canvas_builtin_modules");
+  expect(modulesApi).toContain("ensure_profile_info_module");
   expect(modulesApi).toContain("visibility = 'hidden'");
   expect(modulesApi).toContain("profile_module_gallery_media_config");
   expect(modulesApi).toContain("profile_module_music_config");
+  expect(modulesApi).toContain("profile_integration_card_for_module");
   expect(modulesApi).toContain("profile_module_validate_url_platform");
   expect(modulesApi).toContain("require_csrf_token($session)");
   expect(modulesApi).toContain("Profile module storage is not ready. Run pending migrations.");
@@ -750,26 +991,59 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(modulesApi).toContain("profile_module_text_is_unsafe");
   expect(modulesApi).toContain("profile_canvas_update");
   expect(modulesApi).toContain("profile_canvas_background_blur");
-  expect(modulesApi).toContain("profile_canvas_reject_collisions");
+  expect(modulesApi).toContain("anchorModuleId");
+  expect(modulesApi).toContain("profile_canvas_push_collisions");
+  expect(modulesApi).toContain("Canvas layout does not fit the 6 by 9 grid.");
   expect(modulesApi).toContain("profile_canvas_span_allowed");
   expect(modulesApi).toContain("Module type cannot be changed.");
   expect(modulesApi).toContain("visibility = :visibility");
   expect(modulesApi).toContain("status = 'deleted'");
+  expect(modulesApi).toContain("featured_post_id = NULL");
+  expect(modulesApi).toContain("featured_room_id = NULL");
   expect(modulesApi).toContain("profile_module_type_is_supported");
   expect(profileApi).toContain("const PROFILE_LAYOUT_PRESETS = ['balanced', 'compact', 'showcase']");
   expect(profileApi).toContain("validate_profile_layout_preset");
+  expect(profileApi).toContain("validate_profile_video_url");
+  expect(profileApi).toContain("profile_background_video_url");
+  expect(uploadsApi).toContain("uploads_video_create");
+  expect(uploadsApi).toContain("VIDEO_UPLOAD_MAX_BYTES");
+  expect(uploadsApi).toContain("profile_background");
+  expect(integrationsApi).toContain("profile_integration_encrypt");
+  expect(integrationsApi).toContain("profile_integrations_oauth_start");
+  expect(integrationsApi).toContain("profile_integrations_oauth_callback");
+  expect(integrationsApi).toContain("profile_integrations_metadata_resolve");
+  expect(integrationsApi).toContain("profile_integration_card_for_module");
+  expect(integrationsApi).toContain("sodium_crypto_secretbox");
+  expect(integrationsApi).toContain("https://www.youtube-nocookie.com/embed/");
+  expect(integrationsApi).toContain("embed_parent");
+  expect(integrationsApi).toContain("parent=' . rawurlencode($parent)");
+  expect(configExample).toContain("integration_encryption_key");
+  expect(configExample).toContain("'spotify'");
+  expect(configExample).toContain("'apple_music'");
+  expect(configExample).toContain("'youtube'");
+  expect(configExample).toContain("'twitch'");
+  expect(configExample).toContain("'github'");
   expect(moduleRegistry).toContain("export const PROFILE_ACTIVITY_MAX_ROW_SPAN = 3");
   expect(moduleRegistry).toContain(
     "clampProfileGridModuleSpan(span, PROFILE_ACTIVITY_MAX_ROW_SPAN)",
   );
   expect(schema).toContain("CREATE TABLE IF NOT EXISTS profile_modules");
+  expect(schema).toContain("CREATE TABLE IF NOT EXISTS profile_integration_accounts");
+  expect(schema).toContain("CREATE TABLE IF NOT EXISTS profile_integration_oauth_states");
+  expect(schema).toContain("CREATE TABLE IF NOT EXISTS profile_integration_metadata_cache");
   expect(schema).toContain("profile_layout_preset VARCHAR(20) NOT NULL DEFAULT 'balanced'");
   expect(schema).toContain("profile_background_blur VARCHAR(20) NOT NULL DEFAULT 'medium'");
+  expect(schema).toContain("profile_background_video_url VARCHAR(500) NULL");
+  expect(schema).toContain("profile_background_video_poster_url VARCHAR(500) NULL");
   expect(schema).toContain("grid_column TINYINT UNSIGNED NULL");
   expect(migration).toContain("KEY profile_modules_user_position_idx (user_id, position)");
   expect(layoutMigration).toContain("ADD COLUMN profile_layout_preset VARCHAR(20) NOT NULL DEFAULT ''balanced''");
   expect(canvasMigration).toContain("ADD COLUMN profile_background_blur VARCHAR(20) NOT NULL DEFAULT ''medium''");
   expect(canvasMigration).toContain("ADD COLUMN grid_row_span TINYINT UNSIGNED NULL");
+  expect(integrationsMigration).toContain("profile_integration_accounts");
+  expect(integrationsMigration).toContain("profile_integration_oauth_states");
+  expect(integrationsMigration).toContain("profile_integration_metadata_cache");
+  expect(integrationsMigration).toContain("profile_background_video_url");
 });
 
 test("profile module validation passes backend regression fixture", async () => {
@@ -778,6 +1052,14 @@ test("profile module validation passes backend regression fixture", async () => 
   });
 
   expect(output).toContain("profile modules regression ok");
+});
+
+test("profile integration validation passes backend regression fixture", async () => {
+  const output = execFileSync("php", ["tests/backend/profile-integrations-regression.php"], {
+    encoding: "utf8",
+  });
+
+  expect(output).toContain("profile integrations regression ok");
 });
 
 async function mockProfileModules(
@@ -934,8 +1216,12 @@ async function mockProfileModules(
     const placements = Array.isArray(payload.modules)
       ? (payload.modules as Array<Record<string, unknown>>)
       : [];
+    const normalizedPlacements = pushMockCanvasPlacements(
+      placements,
+      typeof payload.anchorModuleId === "number" ? payload.anchorModuleId : undefined,
+    );
     ownerModules = ownerModules.map((module) => {
-      const placement = placements.find((item) => item.id === module.id);
+      const placement = normalizedPlacements.find((item) => item.id === module.id);
 
       if (!placement) {
         return module;
@@ -1022,15 +1308,22 @@ async function mockProfileModules(
 
     if (route.request().method() === "DELETE") {
       options.onDelete?.(id);
+      const moduleToDelete = ownerModules.find((module) => module.id === id);
       ownerModules = ownerModules.flatMap((module) => {
         if (module.id !== id) {
           return [module];
         }
 
-        return isBuiltInTestModule(module.type)
+        return module.type === "profile_info"
           ? [{ ...module, visibility: "hidden", status: "active" }]
           : [];
       });
+      if (moduleToDelete?.type === "featured_post") {
+        profileOverrides = { ...profileOverrides, featuredPostId: null, featuredPost: null };
+      }
+      if (moduleToDelete?.type === "featured_room") {
+        profileOverrides = { ...profileOverrides, featuredRoomId: null, featuredRoom: null };
+      }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -1139,18 +1432,6 @@ function ensureTestBuiltInModules(modules: Array<Record<string, unknown>>) {
     result.unshift(profileInfoModule());
   }
 
-  if (!result.some((module) => module.type === "featured_post")) {
-    result.push(builtInModule(9002, "featured_post", "Featured post", result.length + 1));
-  }
-
-  if (!result.some((module) => module.type === "featured_room")) {
-    result.push(builtInModule(9003, "featured_room", "Featured room", result.length + 1));
-  }
-
-  if (!result.some((module) => module.type === "activity")) {
-    result.push(builtInModule(9004, "activity", "Activity", result.length + 1));
-  }
-
   return result.map((module, index) => ({
     ...module,
     position: typeof module.position === "number" ? module.position : index,
@@ -1176,6 +1457,118 @@ function sortModulesByLayout(modules: Array<Record<string, unknown>>) {
       return Number(first.position ?? 0) - Number(second.position ?? 0);
     })
     .map((module, index) => ({ ...module, position: index + 1 }));
+}
+
+function pushMockCanvasPlacements(
+  placements: Array<Record<string, unknown>>,
+  anchorModuleId?: number,
+) {
+  const visible = placements
+    .filter((placement) => placement.visible !== false)
+    .sort((first, second) => {
+      if (anchorModuleId !== undefined) {
+        if (first.id === anchorModuleId && second.id !== anchorModuleId) {
+          return -1;
+        }
+
+        if (second.id === anchorModuleId && first.id !== anchorModuleId) {
+          return 1;
+        }
+      }
+
+      return Number(first.row ?? 1) - Number(second.row ?? 1) ||
+        Number(first.column ?? 1) - Number(second.column ?? 1);
+    });
+  const hidden = placements.filter((placement) => placement.visible === false);
+  const occupied = new Set<string>();
+
+  return [
+    ...visible.map((placement) => {
+      const colSpan = Number(placement.colSpan ?? 1);
+      const rowSpan = Number(placement.rowSpan ?? 1);
+      const requested = {
+        ...placement,
+        column: Math.max(1, Math.min(6 - colSpan + 1, Number(placement.column ?? 1))),
+        row: Math.max(1, Math.min(9 - rowSpan + 1, Number(placement.row ?? 1))),
+        colSpan,
+        rowSpan,
+      };
+      const layout = mockLayoutFits(requested, occupied)
+        ? requested
+        : mockNextLayout(requested, occupied);
+
+      if (!layout) {
+        return requested;
+      }
+
+      occupyMockLayout(layout, occupied);
+      return layout;
+    }),
+    ...hidden,
+  ];
+}
+
+function mockNextLayout(
+  placement: Record<string, unknown>,
+  occupied: Set<string>,
+) {
+  const colSpan = Number(placement.colSpan ?? 1);
+  const rowSpan = Number(placement.rowSpan ?? 1);
+  const startIndex =
+    (Number(placement.row ?? 1) - 1) * 6 + (Number(placement.column ?? 1) - 1);
+
+  for (let offset = 0; offset < 54; offset += 1) {
+    const index = (startIndex + offset) % 54;
+    const candidate = {
+      ...placement,
+      column: Math.max(1, Math.min(6 - colSpan + 1, (index % 6) + 1)),
+      row: Math.max(1, Math.min(9 - rowSpan + 1, Math.floor(index / 6) + 1)),
+      colSpan,
+      rowSpan,
+    };
+
+    if (mockLayoutFits(candidate, occupied)) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
+function mockLayoutFits(
+  placement: Record<string, unknown>,
+  occupied: Set<string>,
+) {
+  const column = Number(placement.column ?? 1);
+  const row = Number(placement.row ?? 1);
+  const colSpan = Number(placement.colSpan ?? 1);
+  const rowSpan = Number(placement.rowSpan ?? 1);
+
+  for (let y = row; y < row + rowSpan; y += 1) {
+    for (let x = column; x < column + colSpan; x += 1) {
+      if (occupied.has(`${x}:${y}`)) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+function occupyMockLayout(
+  placement: Record<string, unknown>,
+  occupied: Set<string>,
+) {
+  const column = Number(placement.column ?? 1);
+  const row = Number(placement.row ?? 1);
+  const colSpan = Number(placement.colSpan ?? 1);
+  const rowSpan = Number(placement.rowSpan ?? 1);
+
+  for (let y = row; y < row + rowSpan; y += 1) {
+    for (let x = column; x < column + colSpan; x += 1) {
+      occupied.add(`${x}:${y}`);
+    }
+  }
 }
 
 async function acknowledgeCookieNotice(page: Page) {
@@ -1209,6 +1602,29 @@ async function expectTextOrder(locator: Locator, texts: string[]) {
   expect([...indexes].sort((a, b) => a - b)).toEqual(indexes);
 }
 
+function expectNoOverlappingPlacements(modules: Array<Record<string, unknown>>) {
+  const occupied = new Set<string>();
+
+  for (const module of modules) {
+    if (module.visible === false) {
+      continue;
+    }
+
+    const column = Number(module.column ?? 1);
+    const row = Number(module.row ?? 1);
+    const colSpan = Number(module.colSpan ?? 1);
+    const rowSpan = Number(module.rowSpan ?? 1);
+
+    for (let y = row; y < row + rowSpan; y += 1) {
+      for (let x = column; x < column + colSpan; x += 1) {
+        const key = `${x}:${y}`;
+        expect(occupied.has(key)).toBe(false);
+        occupied.add(key);
+      }
+    }
+  }
+}
+
 function profileBody(overrides: Record<string, unknown> = {}) {
   return {
     user: {
@@ -1224,6 +1640,8 @@ function profileBody(overrides: Record<string, unknown> = {}) {
     bannerUrl: null,
     profileAccent: null,
     profileBackground: null,
+    profileBackgroundVideo: null,
+    profileBackgroundVideoPoster: null,
     profileBackgroundBlur: "medium",
     profileTheme: null,
     profileLayoutPreset: "balanced",
@@ -1282,26 +1700,6 @@ function profileInfoModule() {
     config: {},
     visibility: "public",
     position: 0,
-    status: "active",
-    schemaVersion: 1,
-    createdAt: "2026-06-12 00:00:00",
-    updatedAt: "2026-06-12 00:00:00",
-  };
-}
-
-function builtInModule(
-  id: number,
-  type: string,
-  title: string,
-  position: number,
-) {
-  return {
-    id,
-    type,
-    title,
-    config: {},
-    visibility: "public",
-    position,
     status: "active",
     schemaVersion: 1,
     createdAt: "2026-06-12 00:00:00",
@@ -1468,15 +1866,6 @@ function activityModule(
     createdAt: "2026-06-12 00:00:00",
     updatedAt: "2026-06-12 00:00:00",
   };
-}
-
-function isBuiltInTestModule(type: unknown): boolean {
-  return (
-    type === "profile_info" ||
-    type === "activity" ||
-    type === "featured_post" ||
-    type === "featured_room"
-  );
 }
 
 function postFixture(overrides: Record<string, unknown> = {}) {

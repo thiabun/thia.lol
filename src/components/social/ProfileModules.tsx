@@ -7,7 +7,7 @@ import {
   Radio,
   Sparkles,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { cn } from "../../lib/classNames";
 import {
   profileModuleBadges,
@@ -22,7 +22,9 @@ import {
 import type {
   BadgeRarity,
   ProfileLayoutPreset,
+  ProfileIntegrationCard,
   ProfileModule,
+  ProfileModuleLayout,
   ProfileModuleLink,
   ProfileConnectionPlatform,
   UserBadge,
@@ -126,6 +128,7 @@ type ProfileModuleGridProps = {
 
 type ProfileModuleGridEditing = {
   selectedModuleId?: number | undefined;
+  onMoveModule: (moduleId: number, layout: ProfileModuleLayout) => void;
   onSelectModule: (module: ProfileModule) => void;
 };
 
@@ -139,6 +142,56 @@ export function ProfileModuleGrid({
 }: ProfileModuleGridProps) {
   const renderableModules = renderableProfileModules(modules, badges);
   const resolvedMaxColumns = maxColumns ?? profileLayoutMaxColumns(layoutPreset);
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const [dragState, setDragState] = useState<
+    | {
+        moduleId: number;
+        colSpan: number;
+        rowSpan: number;
+      }
+    | undefined
+  >();
+
+  useEffect(() => {
+    if (!dragState || !editing) {
+      return undefined;
+    }
+
+    const activeDragState = dragState;
+    const activeEditing = editing;
+
+    function handlePointerMove(event: globalThis.PointerEvent) {
+      const grid = gridRef.current;
+
+      if (!grid || window.innerWidth < 1024) {
+        return;
+      }
+
+      const layout = profileCanvasLayoutFromPoint(
+        grid,
+        event.clientX,
+        event.clientY,
+        activeDragState.colSpan,
+        activeDragState.rowSpan,
+      );
+
+      activeEditing.onMoveModule(activeDragState.moduleId, layout);
+    }
+
+    function handlePointerUp() {
+      setDragState(undefined);
+    }
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp, { once: true });
+    window.addEventListener("pointercancel", handlePointerUp, { once: true });
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+    };
+  }, [dragState, editing]);
 
   if (renderableModules.length === 0) {
     return (
@@ -156,8 +209,27 @@ export function ProfileModuleGrid({
     );
   }
 
+  function handleModuleDragStart(
+    event: PointerEvent<HTMLButtonElement>,
+    module: ProfileModule,
+    layout: ProfileModuleLayout,
+  ) {
+    if (!editing || event.button !== 0 || window.innerWidth < 1024) {
+      return;
+    }
+
+    event.preventDefault();
+    editing.onSelectModule(module);
+    setDragState({
+      moduleId: module.id,
+      colSpan: layout.colSpan,
+      rowSpan: layout.rowSpan,
+    });
+  }
+
   return (
     <ProfileGrid
+      gridRef={gridRef}
       layoutPreset={layoutPreset}
       maxColumns={resolvedMaxColumns}
       testId="profile-module-grid"
@@ -191,10 +263,19 @@ export function ProfileModuleGrid({
             {editing ? (
               <button
                 type="button"
-                className="absolute right-2 top-2 z-20 grid size-8 place-items-center rounded-control border border-line bg-surface/90 text-text shadow-soft backdrop-blur-veil transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                className="absolute right-2 top-2 z-20 grid size-8 cursor-grab place-items-center rounded-control border border-line bg-surface/90 text-text shadow-soft backdrop-blur-veil transition duration-fluid ease-fluid hover:border-line-strong active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                 aria-label={`Select ${profileModuleFallbackTitle(module.type)} module`}
                 title={`Select ${profileModuleFallbackTitle(module.type)}`}
+                data-testid={`profile-canvas-drag-handle-${module.id}`}
                 onClick={() => editing.onSelectModule(module)}
+                onPointerDown={(event) =>
+                  handleModuleDragStart(event, module, safeLayout ?? {
+                    column: 1,
+                    row: 1,
+                    colSpan: span.columns,
+                    rowSpan: span.rows,
+                  })
+                }
               >
                 <Move aria-hidden="true" size={15} />
               </button>
@@ -207,6 +288,27 @@ export function ProfileModuleGrid({
       })}
     </ProfileGrid>
   );
+}
+
+function profileCanvasLayoutFromPoint(
+  grid: HTMLDivElement,
+  clientX: number,
+  clientY: number,
+  colSpan: number,
+  rowSpan: number,
+): ProfileModuleLayout {
+  const rect = grid.getBoundingClientRect();
+  const columnWidth = rect.width / 6;
+  const rowHeight = Math.max(1, rect.height / 9);
+  const rawColumn = Math.floor((clientX - rect.left) / columnWidth) + 1;
+  const rawRow = Math.floor((clientY - rect.top) / rowHeight) + 1;
+
+  return {
+    column: Math.min(6 - colSpan + 1, Math.max(1, rawColumn)),
+    row: Math.min(9 - rowSpan + 1, Math.max(1, rawRow)),
+    colSpan,
+    rowSpan,
+  };
 }
 
 type ProfileModuleCardProps = {
@@ -408,6 +510,17 @@ function ProfileModuleStaticCard({
     return null;
   }
 
+  if (module.config.integration) {
+    return (
+      <ProfileIntegrationRichCard
+        fallbackLabel={fallbackLabel}
+        icon={icon}
+        integration={module.config.integration}
+        module={module}
+      />
+    );
+  }
+
   return (
     <a
       className="mt-3 flex min-w-0 items-center gap-3 rounded-card border border-line bg-canvas/55 p-3 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
@@ -434,6 +547,113 @@ function ProfileModuleStaticCard({
       <ExternalLink aria-hidden="true" size={15} className="shrink-0 text-muted" />
     </a>
   );
+}
+
+function ProfileIntegrationRichCard({
+  fallbackLabel,
+  icon,
+  integration,
+  module,
+}: {
+  fallbackLabel: string;
+  icon: ReactNode;
+  integration: ProfileIntegrationCard;
+  module: ProfileModule;
+}) {
+  const metadata = integration.metadata;
+  const title = metadata.title ?? module.config.label ?? fallbackLabel;
+  const subtitle = integrationLabel(integration);
+  const fetchedAt = metadata.liveFetchedAt ?? metadata.recentFetchedAt;
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-card border border-line bg-canvas/55">
+      <a
+        className="flex min-w-0 items-center gap-3 p-3 transition duration-fluid ease-fluid hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        href={integration.sourceUrl}
+        rel="noopener noreferrer"
+        target="_blank"
+      >
+        <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-card border border-line bg-surface/80 text-text">
+          {metadata.imageUrl ? (
+            <img
+              alt=""
+              className="size-full object-cover"
+              decoding="async"
+              loading="lazy"
+              src={metadata.imageUrl}
+            />
+          ) : (
+            icon
+          )}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold text-text">
+            {title}
+          </span>
+          <span className="mt-0.5 block truncate text-xs text-muted">
+            {subtitle}
+            {fetchedAt ? ` · ${formatIntegrationAge(fetchedAt)}` : ""}
+          </span>
+          {metadata.description ? (
+            <span className="mt-1 line-clamp-2 block text-sm leading-5 text-muted">
+              {metadata.description}
+            </span>
+          ) : null}
+        </span>
+        <ExternalLink aria-hidden="true" size={15} className="shrink-0 text-muted" />
+      </a>
+      {integration.embed ? (
+        <iframe
+          className="block w-full border-t border-line bg-surface"
+          title={integration.embed.title}
+          src={integration.embed.src}
+          height={integration.embed.height ?? 180}
+          loading="lazy"
+          referrerPolicy="strict-origin-when-cross-origin"
+          allow={integration.embed.allow}
+          sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+          allowFullScreen
+          data-testid={`profile-integration-embed-${integration.provider}`}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function integrationLabel(integration: ProfileIntegrationCard): string {
+  if (integration.metadata.live && integration.metadata.liveFetchedAt) {
+    return `Live now on ${platformDisplayName(integration.provider)}`;
+  }
+
+  if (integration.metadata.recentLabel && integration.metadata.recentFetchedAt) {
+    return `${integration.metadata.recentLabel} · ${platformDisplayName(integration.provider)}`;
+  }
+
+  if (integration.apiBacked) {
+    return platformDisplayName(integration.provider);
+  }
+
+  return `${platformDisplayName(integration.provider)} link`;
+}
+
+function formatIntegrationAge(value: string): string {
+  const timestamp = Date.parse(value);
+
+  if (!Number.isFinite(timestamp)) {
+    return "";
+  }
+
+  const minutes = Math.max(0, Math.round((Date.now() - timestamp) / 60000));
+
+  if (minutes < 1) {
+    return "now";
+  }
+
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+
+  return `${Math.round(minutes / 60)}h ago`;
 }
 
 const knownConnectionPlatforms = new Set<ProfileConnectionPlatform>([

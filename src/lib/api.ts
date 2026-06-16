@@ -15,6 +15,7 @@ import type {
   ProfileConnection,
   ProfileExternalConnection,
   ProfileBackgroundBlur,
+  ProfileIntegrationCard,
   ProfileLayoutPreset,
   ProfileModule,
   ProfileModuleConfig,
@@ -62,6 +63,8 @@ type ApiProfile = Omit<
   featuredRoomId?: number | null;
   featuredPost?: ApiPost | null;
   featuredRoom?: ApiRoom | null;
+  profileBackgroundVideo?: string | null;
+  profileBackgroundVideoPoster?: string | null;
   profileBackgroundBlur?: string | null;
   profileLayoutPreset?: string | null;
   profileCanvasVersion?: number | string | null;
@@ -135,6 +138,8 @@ export type ImageUploadPurpose =
   | "room_icon"
   | "room_banner";
 
+export type VideoUploadPurpose = "profile_background";
+
 export type UploadedImage = {
   url: string;
   width: number;
@@ -145,6 +150,14 @@ export type UploadedImage = {
   purpose: ImageUploadPurpose;
 };
 
+export type UploadedVideo = {
+  url: string;
+  mime: "video/mp4" | "video/webm";
+  type: "video/mp4" | "video/webm";
+  size: number;
+  purpose: VideoUploadPurpose;
+};
+
 export type UpdateProfileInput = {
   displayName?: string;
   bio?: string | null;
@@ -152,6 +165,8 @@ export type UpdateProfileInput = {
   avatarUrl?: string | null;
   bannerUrl?: string | null;
   profileBackground?: string | null;
+  profileBackgroundVideo?: string | null;
+  profileBackgroundVideoPoster?: string | null;
   profileAccent?: string | null;
   profileTheme?: string | null;
   profileLayoutPreset?: ProfileLayoutPreset;
@@ -166,6 +181,7 @@ export type UpdateProfileCanvasModuleInput = ProfileModuleLayout & {
 
 export type UpdateProfileCanvasInput = {
   canvasVersion: 1;
+  anchorModuleId?: number | null;
   backgroundBlur?: ProfileBackgroundBlur;
   modules?: UpdateProfileCanvasModuleInput[];
 };
@@ -189,6 +205,45 @@ export type UpdateProfileModuleInput = {
   config?: ProfileModuleConfig;
   visibility?: ProfileModuleVisibility;
   status?: ProfileModuleStatus;
+};
+
+export type ProfileIntegrationProvider =
+  | "spotify"
+  | "apple_music"
+  | "youtube"
+  | "twitch"
+  | "github";
+
+export type ProfileIntegrationProviderStatus = {
+  provider: ProfileIntegrationProvider;
+  configured: boolean;
+  oauthEnabled: boolean;
+};
+
+export type ProfileIntegrationAccount = {
+  provider: ProfileIntegrationProvider;
+  providerAccountId: string;
+  providerHandle?: string | null;
+  displayName?: string | null;
+  avatarUrl?: string | null;
+  scopes: string[];
+  tokenExpiresAt?: string | null;
+  connectedAt?: string | null;
+  refreshedAt?: string | null;
+  revokedAt?: string | null;
+  lastError?: string | null;
+  errorAt?: string | null;
+};
+
+export type ProfileIntegrationsResult = {
+  providers: ProfileIntegrationProviderStatus[];
+  accounts: ProfileIntegrationAccount[];
+};
+
+export type StartProfileIntegrationResult = {
+  provider: ProfileIntegrationProvider;
+  authorizationUrl: string;
+  stateExpiresIn: number;
 };
 
 export type RoomInput = {
@@ -586,6 +641,59 @@ export function updateProfileCanvas(
   }));
 }
 
+export function getMyProfileIntegrations(): Promise<ProfileIntegrationsResult> {
+  return apiGet<ProfileIntegrationsResult>("/me/integrations").then(
+    normalizeProfileIntegrationsResult,
+  );
+}
+
+export function startProfileIntegration(
+  provider: ProfileIntegrationProvider,
+  csrfToken: string,
+  redirectPath = "/settings",
+): Promise<StartProfileIntegrationResult> {
+  return apiPost<StartProfileIntegrationResult>(
+    `/me/integrations/${provider}/start`,
+    { redirectPath },
+    csrfToken,
+  ).then((result) => ({
+    provider: normalizeProfileIntegrationProvider(result.provider) ?? provider,
+    authorizationUrl:
+      typeof result.authorizationUrl === "string" ? result.authorizationUrl : "",
+    stateExpiresIn:
+      typeof result.stateExpiresIn === "number" ? result.stateExpiresIn : 0,
+  }));
+}
+
+export function disconnectProfileIntegration(
+  provider: ProfileIntegrationProvider,
+  csrfToken: string,
+): Promise<ProfileIntegrationsResult> {
+  return apiDelete<ProfileIntegrationsResult>(
+    `/me/integrations/${provider}`,
+    csrfToken,
+  ).then(normalizeProfileIntegrationsResult);
+}
+
+export function resolveProfileIntegrationMetadata(
+  input: { url: string; provider?: ProfileIntegrationProvider },
+  csrfToken: string,
+): Promise<ProfileIntegrationCard> {
+  return apiPost<ProfileIntegrationCard>(
+    "/me/integrations/metadata/resolve",
+    input,
+    csrfToken,
+  ).then((result) => {
+    const card = normalizeProfileIntegrationCard(result);
+
+    if (!card) {
+      throw new Error("Integration metadata response was invalid.");
+    }
+
+    return card;
+  });
+}
+
 export function getProfilePosts(handle: string): Promise<Post[]> {
   const normalized = handle.replace(/^@/, "").toLowerCase();
 
@@ -759,6 +867,18 @@ export function uploadImage(
   formData.set("purpose", purpose);
 
   return apiUpload<UploadedImage>("/uploads/image", formData, csrfToken);
+}
+
+export function uploadVideo(
+  file: File,
+  purpose: VideoUploadPurpose,
+  csrfToken: string,
+): Promise<UploadedVideo> {
+  const formData = new FormData();
+  formData.set("file", file);
+  formData.set("purpose", purpose);
+
+  return apiUpload<UploadedVideo>("/uploads/video", formData, csrfToken);
 }
 
 export function updateMyProfile(
@@ -1138,6 +1258,12 @@ function normalizeProfile(profile: ApiProfile): Profile {
     bannerUrl: profile.bannerUrl ?? null,
     profileAccent: profile.profileAccent ?? null,
     profileBackground: profile.profileBackground ?? null,
+    profileBackgroundVideo: normalizeUploadedProfileVideoUrl(
+      profile.profileBackgroundVideo,
+    ),
+    profileBackgroundVideoPoster: normalizeUploadedProfileImageUrl(
+      profile.profileBackgroundVideoPoster,
+    ),
     profileBackgroundBlur: normalizeProfileBackgroundBlur(
       profile.profileBackgroundBlur,
     ),
@@ -1301,6 +1427,7 @@ function normalizeProfileModuleConfig(config: ProfileModuleConfig): ProfileModul
   const userBadgeIds = Array.isArray(config.userBadgeIds)
     ? config.userBadgeIds.filter((id): id is number => Number.isInteger(id) && id > 0)
     : undefined;
+  const integration = normalizeProfileIntegrationCard(config.integration);
 
   if (typeof config.body === "string") {
     normalized.body = config.body;
@@ -1352,6 +1479,10 @@ function normalizeProfileModuleConfig(config: ProfileModuleConfig): ProfileModul
 
   if (userBadgeIds) {
     normalized.userBadgeIds = userBadgeIds;
+  }
+
+  if (integration) {
+    normalized.integration = integration;
   }
 
   return normalized;
@@ -1422,6 +1553,226 @@ function normalizeProfileModuleExternalUrl(value: string): string | undefined {
 
 function isUploadedProfileModuleMediaUrl(value: string): boolean {
   return /^\/uploads\/media\/[0-9]{4}\/[0-9]{2}\/[a-z0-9_-]+\.webp$/.test(value);
+}
+
+function normalizeUploadedProfileImageUrl(value: unknown): string | null {
+  return typeof value === "string" && isUploadedProfileModuleMediaUrl(value)
+    ? value
+    : null;
+}
+
+function normalizeUploadedProfileVideoUrl(value: unknown): string | null {
+  return typeof value === "string" &&
+    /^\/uploads\/media\/[0-9]{4}\/[0-9]{2}\/profile_background-[a-z0-9_-]+\.(?:mp4|webm)$/.test(
+      value,
+    )
+    ? value
+    : null;
+}
+
+function normalizeProfileIntegrationsResult(
+  result: ProfileIntegrationsResult,
+): ProfileIntegrationsResult {
+  return {
+    providers: Array.isArray(result.providers)
+      ? result.providers
+          .map(normalizeProfileIntegrationProviderStatus)
+          .filter(isProfileIntegrationProviderStatus)
+      : [],
+    accounts: Array.isArray(result.accounts)
+      ? result.accounts
+          .map(normalizeProfileIntegrationAccount)
+          .filter(isProfileIntegrationAccount)
+      : [],
+  };
+}
+
+function normalizeProfileIntegrationProviderStatus(
+  value: ProfileIntegrationProviderStatus,
+): ProfileIntegrationProviderStatus | undefined {
+  const provider = normalizeProfileIntegrationProvider(value.provider);
+
+  if (!provider) {
+    return undefined;
+  }
+
+  return {
+    provider,
+    configured: Boolean(value.configured),
+    oauthEnabled: Boolean(value.oauthEnabled),
+  };
+}
+
+function isProfileIntegrationProviderStatus(
+  value: ProfileIntegrationProviderStatus | undefined,
+): value is ProfileIntegrationProviderStatus {
+  return value !== undefined;
+}
+
+function normalizeProfileIntegrationAccount(
+  value: ProfileIntegrationAccount,
+): ProfileIntegrationAccount | undefined {
+  const provider = normalizeProfileIntegrationProvider(value.provider);
+
+  if (!provider || typeof value.providerAccountId !== "string") {
+    return undefined;
+  }
+
+  return {
+    provider,
+    providerAccountId: value.providerAccountId,
+    providerHandle:
+      typeof value.providerHandle === "string" ? value.providerHandle : null,
+    displayName: typeof value.displayName === "string" ? value.displayName : null,
+    avatarUrl: typeof value.avatarUrl === "string" ? value.avatarUrl : null,
+    scopes: Array.isArray(value.scopes)
+      ? value.scopes.filter((scope): scope is string => typeof scope === "string")
+      : [],
+    tokenExpiresAt:
+      typeof value.tokenExpiresAt === "string" ? value.tokenExpiresAt : null,
+    connectedAt: typeof value.connectedAt === "string" ? value.connectedAt : null,
+    refreshedAt: typeof value.refreshedAt === "string" ? value.refreshedAt : null,
+    revokedAt: typeof value.revokedAt === "string" ? value.revokedAt : null,
+    lastError: typeof value.lastError === "string" ? value.lastError : null,
+    errorAt: typeof value.errorAt === "string" ? value.errorAt : null,
+  };
+}
+
+function isProfileIntegrationAccount(
+  value: ProfileIntegrationAccount | undefined,
+): value is ProfileIntegrationAccount {
+  return value !== undefined;
+}
+
+function normalizeProfileIntegrationProvider(
+  value: unknown,
+): ProfileIntegrationProvider | undefined {
+  return value === "spotify" ||
+    value === "apple_music" ||
+    value === "youtube" ||
+    value === "twitch" ||
+    value === "github"
+    ? value
+    : undefined;
+}
+
+function normalizeProfileIntegrationCard(
+  value: unknown,
+): ProfileIntegrationCard | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const card = value as ProfileIntegrationCard;
+  const provider = normalizeProfileIntegrationProvider(card.provider);
+  const sourceUrl =
+    typeof card.sourceUrl === "string"
+      ? normalizeProfileModuleExternalUrl(card.sourceUrl)
+      : undefined;
+
+  if (
+    !provider ||
+    !sourceUrl ||
+    typeof card.resourceId !== "string" ||
+    typeof card.resourceKey !== "string" ||
+    typeof card.resourceType !== "string"
+  ) {
+    return undefined;
+  }
+
+  return {
+    provider,
+    resourceType: card.resourceType,
+    resourceId: card.resourceId,
+    resourceKey: card.resourceKey,
+    sourceUrl,
+    metadata: normalizeProfileIntegrationMetadata(card.metadata),
+    embed: normalizeProfileIntegrationEmbed(card.embed) ?? null,
+    apiBacked: Boolean(card.apiBacked),
+    fetchedAt: typeof card.fetchedAt === "string" ? card.fetchedAt : null,
+    expiresAt: typeof card.expiresAt === "string" ? card.expiresAt : null,
+    staleAt: typeof card.staleAt === "string" ? card.staleAt : null,
+    stale: Boolean(card.stale),
+    lastError: typeof card.lastError === "string" ? card.lastError : null,
+  };
+}
+
+function normalizeProfileIntegrationMetadata(
+  value: ProfileIntegrationCard["metadata"],
+): ProfileIntegrationCard["metadata"] {
+  const metadata =
+    value && typeof value === "object"
+      ? value
+      : ({} as ProfileIntegrationCard["metadata"]);
+
+  return {
+    title: typeof metadata.title === "string" ? metadata.title : null,
+    subtitle: typeof metadata.subtitle === "string" ? metadata.subtitle : null,
+    description:
+      typeof metadata.description === "string" ? metadata.description : null,
+    imageUrl:
+      typeof metadata.imageUrl === "string" &&
+      normalizeProfileModuleExternalUrl(metadata.imageUrl)
+        ? metadata.imageUrl
+        : null,
+    live: Boolean(metadata.live),
+    liveFetchedAt:
+      typeof metadata.liveFetchedAt === "string" ? metadata.liveFetchedAt : null,
+    recentLabel:
+      typeof metadata.recentLabel === "string" ? metadata.recentLabel : null,
+    recentFetchedAt:
+      typeof metadata.recentFetchedAt === "string"
+        ? metadata.recentFetchedAt
+        : null,
+    stats:
+      metadata.stats && typeof metadata.stats === "object"
+        ? metadata.stats
+        : {},
+  };
+}
+
+function normalizeProfileIntegrationEmbed(
+  value: ProfileIntegrationCard["embed"] | undefined,
+): ProfileIntegrationCard["embed"] {
+  if (!value || value.type !== "iframe" || typeof value.src !== "string") {
+    return null;
+  }
+
+  const safeSrc = normalizeProfileIntegrationEmbedSrc(value.src);
+
+  if (!safeSrc || typeof value.title !== "string") {
+    return null;
+  }
+
+  return {
+    type: "iframe",
+    src: safeSrc,
+    title: value.title,
+    ...(typeof value.allow === "string" ? { allow: value.allow } : {}),
+    ...(typeof value.height === "number"
+      ? { height: Math.min(360, Math.max(120, value.height)) }
+      : {}),
+  };
+}
+
+function normalizeProfileIntegrationEmbedSrc(value: string): string | undefined {
+  try {
+    const url = new URL(value);
+    const allowedHosts = new Set([
+      "open.spotify.com",
+      "embed.music.apple.com",
+      "www.youtube-nocookie.com",
+      "player.twitch.tv",
+    ]);
+
+    if (url.protocol !== "https:" || !allowedHosts.has(url.hostname)) {
+      return undefined;
+    }
+
+    return url.toString();
+  } catch {
+    return undefined;
+  }
 }
 
 function normalizeUserBadge(userBadge: ApiUserBadge): UserBadge {

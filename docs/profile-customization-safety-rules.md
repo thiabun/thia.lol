@@ -12,7 +12,12 @@ Date: 2026-06-12
 
 Profiles are moving toward curated personal spaces: identity pages, social profiles, personal websites, creator hubs, and possible blog surfaces. That direction needs guardrails while the module system grows, because customization can break readability, moderation, performance, accessibility, and user trust if it is treated as unlimited page building.
 
-This document defines the safety framework for profile customization and profile modules. The first module foundation exists for safe text, links, and badge showcase modules; embeds, integrations, arbitrary themes, privacy controls, analytics, ads, and blog posts remain out of scope.
+This document defines the safety framework for profile customization and profile
+modules. The module foundation now includes a constrained canvas editor, richer
+module catalog, allowlisted provider card infrastructure, generated embeds, and
+restricted profile background video. Arbitrary themes, privacy controls,
+analytics, ads, blog posts, custom CSS/HTML/JavaScript, and user-supplied iframe
+HTML remain out of scope.
 
 The current profile implementation already supports constrained identity customization: avatar, banner, profile background image, accent token, theme token, structured Connections, featured badges, followers/following/moot panels, and Feed / Replies / Rooms tabs. Future work should build on that constrained model instead of adding arbitrary CSS, HTML, JavaScript, or unsupported controls.
 
@@ -36,16 +41,20 @@ Current profile customization fields:
 - `profiles.avatar_url`
 - `profiles.banner_url`
 - `profiles.profile_background`
+- `profiles.profile_background_blur`
+- `profiles.profile_background_video_url`
+- `profiles.profile_background_video_poster_url`
 - `profiles.profile_accent`
 - `profiles.profile_theme`
+- `profiles.profile_layout_preset`
 - `profiles.links`
 - featured badge ordering through `user_badges.featured_order`
 
 Current frontend behavior:
 
 - Profile accent/theme values may exist in storage for compatibility, but controls are hidden until presets visibly affect public rendering through tested, contrast-safe mappings.
-- The previous `Customize profile` modal has been removed. There is no active
-  frontend customization editor until the P3 rebuild.
+- The previous `Customize profile` modal has been removed. Owner customization
+  now uses inline canvas editing on the profile page.
 - Public profiles continue to render persisted identity, media, modules,
   featured content, badges, and links through constrained public components.
 
@@ -56,6 +65,8 @@ Current profile text and media constraints:
 - Location: optional, maximum 120 characters.
 - Connections: maximum 10, each input maximum 300 characters.
 - Profile images: JPEG, PNG, or WebP uploads, maximum 10 MB, converted to WebP.
+- Profile background video: MP4 or WebM upload, maximum 30 MB, restricted to the
+  `profile_background` purpose.
 - Upload purposes include `avatar`, `banner`, and `profile_background`.
 - Upload resize targets are 512x512 for avatars, 1600x600 for banners, and 1920x1080 for profile backgrounds.
 
@@ -85,8 +96,16 @@ Current backend behavior:
 - Profile modules use `profile_modules` after migration `20260612_0001_add_profile_modules.sql`.
 - Public module reads return only public active modules for active users.
 - Owner module mutations require authentication and CSRF.
-- First-pass module types are `about`, `links`, `featured_badges`, and `custom_text`.
+- Supported module types include `profile_info`, `about`, `links`,
+  `featured_badges`, `custom_text`, `featured_post`, `featured_room`,
+  `gallery_media`, `creator_live`, `music`, and `activity`.
 - Module config validation rejects unknown keys, unsafe text, unsafe URLs, arbitrary embeds, and arbitrary HTML/CSS/JS.
+- Canvas layout uses a constrained 6 x 9 grid. Server validation clamps bounds,
+  validates spans, ignores hidden modules for occupancy, and uses collision push
+  instead of freeform pixel positioning.
+- `profile_info` is the only protected module. Featured post, featured room,
+  and activity modules can be deleted like normal modules; deleting featured
+  post/room modules also clears the selected featured profile references.
 
 Future implementation should keep this baseline and tighten it where needed. In particular, future API work should move profile accent/theme handling from generic token validation to explicit allowlists before those values affect more UI.
 
@@ -97,6 +116,8 @@ Allowed now or likely allowed later, subject to validation:
 - Avatar image.
 - Banner image.
 - Profile background image with controlled opacity/crop/treatment.
+- Profile background video with muted playback, poster/static fallback, and
+  controlled blur/overlay treatment.
 - Featured badges from real earned and visible badges.
 - Profile accent or preset from a known allowlist.
 - Profile theme treatment from a known allowlist.
@@ -106,8 +127,10 @@ Allowed now or likely allowed later, subject to validation:
 - Featured modules, with a small count limit.
 - Featured posts and featured rooms using real eligible public content.
 - Safe external links through the existing Connection model or future module-specific URL validation.
-- Curated media embeds only when a specific integration is approved, allowlisted, lazy-loaded, and honestly described.
-- Profile layout presets if later added, as constrained templates that preserve mobile stacking and action visibility.
+- Curated media embeds only when generated from normalized provider/resource IDs
+  through an approved allowlist, lazy-loaded, and honestly described.
+- Profile layout presets as constrained templates that preserve mobile stacking
+  and action visibility.
 
 Allowed customization must never hide these profile controls or contexts:
 
@@ -132,8 +155,10 @@ The following are not allowed:
 - Arbitrary HTML.
 - Custom JavaScript.
 - Script embeds.
-- User-supplied iframe embeds unless a specific integration is reviewed and allowlisted later.
-- Autoplay media.
+- User-supplied iframe HTML, arbitrary embed code, or arbitrary embed URLs.
+- Autoplay audio or audible/interactive autoplay video. Muted decorative
+  profile background video is allowed only through the restricted background
+  video pipeline.
 - Unreadable color combinations.
 - Flashing, strobing, or rapidly pulsing visuals.
 - Deceptive UI that imitates system dialogs, site navigation, login forms, warnings, or moderation notices.
@@ -187,8 +212,11 @@ The following are not allowed:
 - No flashing or strobing.
 - Avoid infinite decorative loops in profile customization.
 - Respect `prefers-reduced-motion`.
-- Autoplay audio or video is not allowed.
-- Embeds, if later approved, must be lazy-loaded and static until the user chooses to interact where practical.
+- Autoplay audio is not allowed.
+- Muted profile background video may autoplay only as decorative background
+  media and must respect reduced motion through a poster/static fallback.
+- Embeds must be generated from provider allowlists, lazy-loaded, and should not
+  be forced to autoplay.
 
 ### Mobile Rules
 
@@ -261,11 +289,11 @@ Future modules must be known types with bounded settings. A module is not a free
 Required metadata for each future module:
 
 - `id`
-- `owner_user_id`
-- `module_type`
+- `user_id`
+- `type`
 - `title`
 - `visibility`
-- `sort_order`
+- `position`
 - `config_json`
 - `schema_version`
 - `status`
@@ -274,10 +302,10 @@ Required metadata for each future module:
 
 Optional metadata when needed:
 
-- `moderation_status`
-- `moderation_reason`
-- `reviewed_by`
-- `reviewed_at`
+- `grid_column`
+- `grid_row`
+- `grid_col_span`
+- `grid_row_span`
 - `deleted_at`
 - `featured_order`
 
@@ -334,52 +362,56 @@ Performance budgets for first modules:
 
 ## Integration Safety Rules
 
-All integrations start link-first. Embeds and API-backed cards require a separate product and privacy decision.
+Integrations remain constrained even when they are richer than plain links.
+Embeds are allowed only when generated by the server/client from normalized
+provider/resource IDs and an explicit host/path allowlist.
 
 General integration rules:
 
-- Link-first before embed-first.
+- Link-first fallback before embed-only behavior.
 - API keys, OAuth secrets, webhook secrets, and service tokens must never be stored client-side.
 - Do not add integrations without clear user-facing copy about what is shown and what is not.
 - Do not claim live status unless live status is API-backed and verified.
 - Embeds require an explicit allowlist of host, path shape, sandbox behavior, loading behavior, and fallback state.
-- Embeds must be lazy-loaded and should not autoplay.
+- Embeds must be lazy-loaded and must not be rendered from user-supplied iframe HTML.
 - Third-party content must have a fallback state when blocked, unavailable, region-limited, deleted, or rate-limited.
 - Integrated content must remain reportable through the profile or a module-level report path.
 - Admin summaries must not execute third-party embeds.
 
 Integration-specific guidance:
 
-- Twitch: link to channel first. Do not show live/offline status unless API-backed. Chat embeds are high risk and should not ship before moderation, privacy, tracking, and performance review.
-- Spotify: current Connections allow `open.spotify.com` links. Playlist/song cards should be static link cards first. Embeds require privacy and performance review.
-- Apple Music: link card first. Embeds require host allowlist, regional fallback, and privacy review.
-- YouTube: current Connections allow YouTube links. Latest-video or channel cards require API quota, moderation, and fallback decisions. Embeds must use explicit allowlists and lazy loading.
-- GitHub: repository/project cards should use public URLs only. Do not require OAuth in the first version. Never imply access to private repositories.
+- Twitch: generated embeds must include the configured parent domain. Do not show live/offline status unless API-backed and timestamped. Chat embeds are high risk and should not ship before moderation, privacy, tracking, and performance review.
+- Spotify: current Connections allow `open.spotify.com` links. Playlist/song embeds may be generated from normalized Spotify URLs; API-backed current/recent state requires OAuth and timestamped metadata.
+- Apple Music: generated embeds must use allowlisted Apple Music embed URLs. Catalog metadata requires developer-token config; user-token/MusicKit behavior needs provider-specific handling.
+- YouTube: current Connections allow YouTube links. Generated video embeds must use YouTube no-cookie embed URLs. Latest-video or channel cards require API quota, moderation, and fallback decisions.
+- GitHub: repository/project cards should use public URLs and public REST metadata. Do not iframe GitHub. Never imply access to private repositories.
 - Discord: safe invite URL or display value only. Do not embed Discord chat.
 - Bluesky, X / Twitter, TikTok, Instagram: link-only in first passes. Embeds require separate privacy, tracking, moderation, and performance review.
 
 ## Data Model Guardrails
 
-Do not add a `profile_modules` migration until the module system issue is explicitly approved. When it is approved, use an idempotent migration and update `backend/database/schema.sql`.
+The current profile module table is migration-backed and should remain the
+source of truth for module lifecycle and grid placement. Additive schema changes
+are acceptable when they are idempotent, documented, and reflected in
+`backend/database/schema.sql`.
 
-Recommended future table shape:
+Current module table shape:
 
 ```sql
 CREATE TABLE profile_modules (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  owner_user_id BIGINT UNSIGNED NOT NULL,
-  module_type VARCHAR(50) NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  type VARCHAR(50) NOT NULL,
   title VARCHAR(80) NULL,
-  visibility ENUM('public', 'hidden', 'draft') NOT NULL DEFAULT 'public',
-  sort_order INT UNSIGNED NOT NULL,
   config_json JSON NOT NULL,
+  visibility VARCHAR(20) NOT NULL DEFAULT 'public',
+  position INT UNSIGNED NOT NULL DEFAULT 1,
+  grid_column TINYINT UNSIGNED NULL,
+  grid_row TINYINT UNSIGNED NULL,
+  grid_col_span TINYINT UNSIGNED NULL,
+  grid_row_span TINYINT UNSIGNED NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'active',
   schema_version INT UNSIGNED NOT NULL DEFAULT 1,
-  status ENUM('active', 'hidden', 'removed', 'deleted') NOT NULL DEFAULT 'active',
-  moderation_status VARCHAR(40) NULL,
-  moderation_reason VARCHAR(255) NULL,
-  reviewed_by BIGINT UNSIGNED NULL,
-  reviewed_at DATETIME NULL,
-  deleted_at DATETIME NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -387,10 +419,10 @@ CREATE TABLE profile_modules (
 
 Recommended constraints and indexes:
 
-- Foreign key `owner_user_id` to `users.id` with `ON DELETE CASCADE`.
-- Foreign key `reviewed_by` to `users.id` with `ON DELETE SET NULL`.
-- Index `(owner_user_id, visibility, status, sort_order)`.
-- Index `(module_type)`.
+- Foreign key `user_id` to `users.id` with `ON DELETE CASCADE`.
+- Index `(user_id, visibility, status)`.
+- Index `(user_id, position)`.
+- Index `(type)`.
 - Unique order per owner for active non-deleted modules where database support permits it; otherwise enforce in transactions.
 - Maximum module count enforced at write time.
 - Module type allowlist enforced at write time.
@@ -399,6 +431,8 @@ Recommended constraints and indexes:
 - Media references should point to uploaded media URLs or future media-library rows owned by the same user.
 - Safe URL storage should use normalized HTTPS URLs and type-specific host allowlists.
 - Owner isolation must prevent selecting another user's hidden/draft posts, private rooms, media, or badge grants.
+- Grid placement must remain column/row/span based. Do not introduce freeform
+  pixel positions or arbitrary CSS placement.
 
 Module config JSON guardrails:
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read.php';
+require_once __DIR__ . '/integrations.php';
 
 const PROFILE_INFO_MODULE_TYPE = 'profile_info';
 const PROFILE_ACTIVITY_MODULE_TYPE = 'activity';
@@ -15,6 +16,8 @@ const PROFILE_CREATOR_LIVE_MODULE_TYPE = 'creator_live';
 const PROFILE_MUSIC_MODULE_TYPE = 'music';
 const PROFILE_MODULE_TYPES = [PROFILE_INFO_MODULE_TYPE, 'about', 'links', 'featured_badges', 'custom_text', PROFILE_GALLERY_MEDIA_MODULE_TYPE, PROFILE_CREATOR_LIVE_MODULE_TYPE, PROFILE_MUSIC_MODULE_TYPE, PROFILE_FEATURED_POST_MODULE_TYPE, PROFILE_FEATURED_ROOM_MODULE_TYPE, PROFILE_ACTIVITY_MODULE_TYPE];
 const PROFILE_BUILT_IN_MODULE_TYPES = [PROFILE_INFO_MODULE_TYPE, PROFILE_FEATURED_POST_MODULE_TYPE, PROFILE_FEATURED_ROOM_MODULE_TYPE, PROFILE_ACTIVITY_MODULE_TYPE];
+const PROFILE_PROTECTED_MODULE_TYPES = [PROFILE_INFO_MODULE_TYPE];
+const PROFILE_SINGLETON_MODULE_TYPES = [PROFILE_INFO_MODULE_TYPE, PROFILE_FEATURED_POST_MODULE_TYPE, PROFILE_FEATURED_ROOM_MODULE_TYPE, PROFILE_ACTIVITY_MODULE_TYPE];
 const PROFILE_RETIRED_MODULE_TYPES = [PROFILE_FEATURED_LEGACY_MODULE_TYPE];
 const PROFILE_MODULE_VISIBILITIES = ['public', 'hidden', 'draft'];
 const PROFILE_MODULE_STATUSES = ['active', 'hidden', 'deleted'];
@@ -132,28 +135,9 @@ function profile_modules_public_index(string $handle): void
 
     $userId = (int) $profile['user_id'];
     $modules = profile_modules_payload($statement->fetchAll(), true);
-    $legacyFeaturedModule = profile_legacy_featured_module_record($userId);
 
     if (!profile_modules_payload_contains_type($modules, PROFILE_INFO_MODULE_TYPE)) {
         $modules[] = profile_info_module_payload(0);
-    }
-
-    if (!profile_featured_post_module_preference_exists($userId) && profile_legacy_featured_module_allows_public_default($legacyFeaturedModule)) {
-        $modules[] = profile_featured_post_module_payload(
-            profile_legacy_featured_module_position($legacyFeaturedModule, 1)
-        );
-    }
-
-    if (!profile_featured_room_module_preference_exists($userId) && profile_legacy_featured_module_allows_public_default($legacyFeaturedModule)) {
-        $modules[] = profile_featured_room_module_payload(
-            profile_legacy_featured_module_position($legacyFeaturedModule, 1) + 1
-        );
-    }
-
-    if (!profile_activity_module_preference_exists($userId)) {
-        $modules[] = profile_activity_module_payload(
-            max(3, profile_modules_next_position($userId))
-        );
     }
 
     profile_modules_sort_payload($modules);
@@ -190,7 +174,7 @@ function profile_modules_create(): void
     $visibility = profile_module_visibility($body['visibility'] ?? 'public');
     $status = profile_module_status($body['status'] ?? 'active');
 
-    if (profile_module_type_is_built_in($type) && profile_builtin_module_preference_exists($userId, $type)) {
+    if (profile_module_type_is_singleton($type) && profile_singleton_module_preference_exists($userId, $type)) {
         json_error(profile_module_type_label($type) . ' module already exists.', 422);
     }
 
@@ -322,31 +306,30 @@ function profile_modules_delete(string $rawModuleId): void
         json_error('You cannot delete this profile module.', 403);
     }
 
-    if ((string) $module['type'] === PROFILE_INFO_MODULE_TYPE) {
+    if (profile_module_type_is_protected((string) $module['type'])) {
         json_error('Profile info cannot be deleted.', 422);
     }
 
-    if (profile_module_type_is_built_in((string) $module['type'])) {
+    $pdo = db();
+    $pdo->beginTransaction();
+
+    try {
         db_query(
             "UPDATE profile_modules
-             SET status = 'active',
+             SET status = 'deleted',
                  visibility = 'hidden',
                  updated_at = CURRENT_TIMESTAMP()
              WHERE id = :id",
             ['id' => $moduleId]
         );
 
-        json_success(profile_modules_for_owner($userId));
-    }
+        profile_module_apply_delete_side_effects((string) $module['type'], $userId);
 
-    db_query(
-        "UPDATE profile_modules
-         SET status = 'deleted',
-             visibility = 'hidden',
-             updated_at = CURRENT_TIMESTAMP()
-         WHERE id = :id",
-        ['id' => $moduleId]
-    );
+        $pdo->commit();
+    } catch (Throwable $exception) {
+        $pdo->rollBack();
+        throw $exception;
+    }
 
     json_success(profile_modules_for_owner($userId));
 }
@@ -419,7 +402,7 @@ function profile_canvas_update(): void
 
     $body = request_json_body();
     profile_module_require_object($body, 'JSON body');
-    profile_module_reject_unknown_keys($body, ['canvasVersion', 'backgroundBlur', 'modules']);
+    profile_module_reject_unknown_keys($body, ['canvasVersion', 'backgroundBlur', 'modules', 'anchorModuleId']);
 
     $hasBlur = array_key_exists('backgroundBlur', $body);
     $hasModules = array_key_exists('modules', $body);
@@ -433,8 +416,11 @@ function profile_canvas_update(): void
     $backgroundBlur = $hasBlur
         ? profile_canvas_background_blur($body['backgroundBlur'])
         : null;
+    $anchorModuleId = $hasModules
+        ? profile_canvas_anchor_module_id($body['anchorModuleId'] ?? null)
+        : null;
     $placements = $hasModules
-        ? profile_canvas_module_placements($body['modules'], $userId)
+        ? profile_canvas_module_placements($body['modules'], $userId, $anchorModuleId)
         : null;
 
     $pdo = db();
@@ -560,7 +546,16 @@ function profile_canvas_background_blur(mixed $value): string
     return $blur;
 }
 
-function profile_canvas_module_placements(mixed $value, int $userId): array
+function profile_canvas_anchor_module_id(mixed $value): ?int
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    return profile_module_id($value);
+}
+
+function profile_canvas_module_placements(mixed $value, int $userId, ?int $anchorModuleId): array
 {
     if (!is_array($value) || !array_is_list($value)) {
         json_error('Canvas modules must be an array.', 422);
@@ -570,6 +565,10 @@ function profile_canvas_module_placements(mixed $value, int $userId): array
 
     if (count($value) !== count($records)) {
         json_error('Canvas layout must include every profile module.', 422);
+    }
+
+    if ($anchorModuleId !== null && !isset($records[$anchorModuleId])) {
+        json_error('Canvas anchor module is unavailable.', 422);
     }
 
     $placements = [];
@@ -604,7 +603,7 @@ function profile_canvas_module_placements(mixed $value, int $userId): array
         $seen[$id] = true;
     }
 
-    profile_canvas_reject_collisions($placements);
+    $placements = profile_canvas_push_collisions($placements, $anchorModuleId);
 
     usort(
         $placements,
@@ -748,25 +747,120 @@ function profile_canvas_allowed_sizes(string $type): array
     };
 }
 
-function profile_canvas_reject_collisions(array $placements): void
+function profile_canvas_push_collisions(array $placements, ?int $anchorModuleId): array
 {
-    $occupied = [];
+    $visible = [];
+    $hidden = [];
 
     foreach ($placements as $placement) {
-        if (!$placement['visible']) {
-            continue;
+        if ($placement['visible']) {
+            $visible[] = $placement;
+        } else {
+            $hidden[] = $placement;
         }
+    }
 
-        for ($row = $placement['row']; $row < $placement['row'] + $placement['rowSpan']; $row++) {
-            for ($column = $placement['column']; $column < $placement['column'] + $placement['colSpan']; $column++) {
-                $key = "{$column}:{$row}";
-
-                if (isset($occupied[$key])) {
-                    json_error('Canvas modules cannot overlap.', 422);
+    usort(
+        $visible,
+        static function (array $first, array $second) use ($anchorModuleId): int {
+            if ($anchorModuleId !== null) {
+                if ($first['id'] === $anchorModuleId && $second['id'] !== $anchorModuleId) {
+                    return -1;
                 }
 
-                $occupied[$key] = true;
+                if ($second['id'] === $anchorModuleId && $first['id'] !== $anchorModuleId) {
+                    return 1;
+                }
             }
+
+            $rowCompare = $first['row'] <=> $second['row'];
+
+            if ($rowCompare !== 0) {
+                return $rowCompare;
+            }
+
+            $columnCompare = $first['column'] <=> $second['column'];
+
+            if ($columnCompare !== 0) {
+                return $columnCompare;
+            }
+
+            return profile_module_default_sort_order($first['type']) <=> profile_module_default_sort_order($second['type']);
+        }
+    );
+
+    $occupied = [];
+    $pushed = [];
+
+    foreach ($visible as $placement) {
+        $layout = profile_canvas_layout_fits($placement, $occupied)
+            ? $placement
+            : profile_canvas_next_available_layout($placement, $occupied);
+
+        if ($layout === null) {
+            json_error('Canvas layout does not fit the 6 by 9 grid.', 422);
+        }
+
+        profile_canvas_occupy_layout($layout, $occupied);
+        $pushed[] = $layout;
+    }
+
+    return array_merge($pushed, $hidden);
+}
+
+function profile_canvas_next_available_layout(array $placement, array $occupied): ?array
+{
+    $startIndex = (($placement['row'] - 1) * PROFILE_CANVAS_COLUMNS) + ($placement['column'] - 1);
+    $totalCells = PROFILE_CANVAS_COLUMNS * PROFILE_CANVAS_ROWS;
+
+    for ($offset = 0; $offset < $totalCells; $offset++) {
+        $index = ($startIndex + $offset) % $totalCells;
+        $row = intdiv($index, PROFILE_CANVAS_COLUMNS) + 1;
+        $column = ($index % PROFILE_CANVAS_COLUMNS) + 1;
+
+        $candidate = [
+            ...$placement,
+            'column' => $column,
+            'row' => $row,
+        ];
+        $candidate['column'] = min($candidate['column'], PROFILE_CANVAS_COLUMNS - $candidate['colSpan'] + 1);
+        $candidate['row'] = min($candidate['row'], PROFILE_CANVAS_ROWS - $candidate['rowSpan'] + 1);
+
+        if (profile_canvas_layout_fits($candidate, $occupied)) {
+            return $candidate;
+        }
+    }
+
+    return null;
+}
+
+function profile_canvas_layout_fits(array $placement, array $occupied): bool
+{
+    if (
+        $placement['column'] < 1
+        || $placement['row'] < 1
+        || $placement['column'] + $placement['colSpan'] - 1 > PROFILE_CANVAS_COLUMNS
+        || $placement['row'] + $placement['rowSpan'] - 1 > PROFILE_CANVAS_ROWS
+    ) {
+        return false;
+    }
+
+    for ($row = $placement['row']; $row < $placement['row'] + $placement['rowSpan']; $row++) {
+        for ($column = $placement['column']; $column < $placement['column'] + $placement['colSpan']; $column++) {
+            if (isset($occupied["{$column}:{$row}"])) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+function profile_canvas_occupy_layout(array $placement, array &$occupied): void
+{
+    for ($row = $placement['row']; $row < $placement['row'] + $placement['rowSpan']; $row++) {
+        for ($column = $placement['column']; $column < $placement['column'] + $placement['colSpan']; $column++) {
+            $occupied["{$column}:{$row}"] = true;
         }
     }
 }
@@ -825,8 +919,6 @@ function profile_modules_for_owner(int $userId): array
 function ensure_profile_canvas_builtin_modules(int $userId): void
 {
     ensure_profile_info_module($userId);
-    ensure_profile_featured_modules($userId);
-    ensure_profile_activity_module($userId);
 }
 
 function profile_modules_payload(array $rows, bool $public): array
@@ -937,6 +1029,16 @@ function profile_module_type_is_built_in(string $type): bool
     return in_array($type, PROFILE_BUILT_IN_MODULE_TYPES, true);
 }
 
+function profile_module_type_is_protected(string $type): bool
+{
+    return in_array($type, PROFILE_PROTECTED_MODULE_TYPES, true);
+}
+
+function profile_module_type_is_singleton(string $type): bool
+{
+    return in_array($type, PROFILE_SINGLETON_MODULE_TYPES, true);
+}
+
 function profile_module_type_label(string $type): string
 {
     return match ($type) {
@@ -952,22 +1054,55 @@ function profile_module_delete_message(string $type): string
 {
     return match ($type) {
         PROFILE_INFO_MODULE_TYPE => 'Profile info stays visible as the identity anchor.',
-        PROFILE_FEATURED_POST_MODULE_TYPE => 'Featured post was hidden from the profile canvas.',
-        PROFILE_FEATURED_ROOM_MODULE_TYPE => 'Featured room was hidden from the profile canvas.',
-        PROFILE_ACTIVITY_MODULE_TYPE => 'Activity was hidden from the profile canvas.',
-        default => 'Module can be hidden instead of deleted.',
+        PROFILE_FEATURED_POST_MODULE_TYPE => 'Featured post was removed from the profile canvas.',
+        PROFILE_FEATURED_ROOM_MODULE_TYPE => 'Featured room was removed from the profile canvas.',
+        PROFILE_ACTIVITY_MODULE_TYPE => 'Activity was removed from the profile canvas.',
+        default => 'Module was removed from the profile canvas.',
     };
+}
+
+function profile_module_apply_delete_side_effects(string $type, int $userId): void
+{
+    if ($type === PROFILE_FEATURED_POST_MODULE_TYPE) {
+        db_query(
+            'UPDATE profiles
+             SET featured_post_id = NULL,
+                 updated_at = CURRENT_TIMESTAMP()
+             WHERE user_id = :user_id',
+            ['user_id' => $userId]
+        );
+    }
+
+    if ($type === PROFILE_FEATURED_ROOM_MODULE_TYPE) {
+        db_query(
+            'UPDATE profiles
+             SET featured_room_id = NULL,
+                 updated_at = CURRENT_TIMESTAMP()
+             WHERE user_id = :user_id',
+            ['user_id' => $userId]
+        );
+    }
 }
 
 function profile_module_output_config(string $type, array $config, int $userId): array
 {
-    if ($type !== 'featured_badges') {
+    if ($type === PROFILE_CREATOR_LIVE_MODULE_TYPE || $type === PROFILE_MUSIC_MODULE_TYPE) {
+        $integration = profile_integration_card_for_module($config, $userId);
+
+        if ($integration !== null) {
+            $config['integration'] = $integration;
+        }
+
         return $config;
     }
 
-    return [
-        'userBadgeIds' => profile_module_visible_user_badge_ids($userId, $config['userBadgeIds'] ?? []),
-    ];
+    if ($type === 'featured_badges') {
+        return [
+            'userBadgeIds' => profile_module_visible_user_badge_ids($userId, $config['userBadgeIds'] ?? []),
+        ];
+    }
+
+    return $config;
 }
 
 function profile_module_json(string $value): array
@@ -1003,18 +1138,13 @@ function profile_modules_active_count(int $userId): int
          WHERE user_id = :user_id
            AND status <> :deleted_status
            AND type <> :profile_info_type
-           AND type <> :featured_post_type
-           AND type <> :featured_room_type
            AND type <> :legacy_featured_type
-           AND type <> :activity_type',
+           ',
         [
             'user_id' => $userId,
             'deleted_status' => 'deleted',
             'profile_info_type' => PROFILE_INFO_MODULE_TYPE,
-            'featured_post_type' => PROFILE_FEATURED_POST_MODULE_TYPE,
-            'featured_room_type' => PROFILE_FEATURED_ROOM_MODULE_TYPE,
             'legacy_featured_type' => PROFILE_FEATURED_LEGACY_MODULE_TYPE,
-            'activity_type' => PROFILE_ACTIVITY_MODULE_TYPE,
         ]
     );
     $row = $statement->fetch();
@@ -1039,27 +1169,12 @@ function profile_modules_next_position(int $userId): int
     return is_array($row) ? max(1, (int) ($row['next_position'] ?? 1)) : 1;
 }
 
-function profile_activity_module_preference_exists(int $userId): bool
-{
-    return profile_builtin_module_preference_exists($userId, PROFILE_ACTIVITY_MODULE_TYPE);
-}
-
 function profile_info_module_preference_exists(int $userId): bool
 {
-    return profile_builtin_module_preference_exists($userId, PROFILE_INFO_MODULE_TYPE);
+    return profile_singleton_module_preference_exists($userId, PROFILE_INFO_MODULE_TYPE);
 }
 
-function profile_featured_post_module_preference_exists(int $userId): bool
-{
-    return profile_builtin_module_preference_exists($userId, PROFILE_FEATURED_POST_MODULE_TYPE);
-}
-
-function profile_featured_room_module_preference_exists(int $userId): bool
-{
-    return profile_builtin_module_preference_exists($userId, PROFILE_FEATURED_ROOM_MODULE_TYPE);
-}
-
-function profile_builtin_module_preference_exists(int $userId, string $type): bool
+function profile_singleton_module_preference_exists(int $userId, string $type): bool
 {
     $statement = db_query(
         'SELECT id
@@ -1098,64 +1213,6 @@ function profile_builtin_module_position(int $userId, string $type): ?int
     return is_array($row) ? max(1, (int) ($row['position'] ?? 1)) : null;
 }
 
-function profile_legacy_featured_module_record(int $userId): ?array
-{
-    $statement = db_query(
-        'SELECT *
-         FROM profile_modules
-         WHERE user_id = :user_id
-           AND type = :module_type
-           AND status <> :deleted_status
-         ORDER BY position ASC, id ASC
-         LIMIT 1',
-        [
-            'user_id' => $userId,
-            'module_type' => PROFILE_FEATURED_LEGACY_MODULE_TYPE,
-            'deleted_status' => 'deleted',
-        ]
-    );
-    $row = $statement->fetch();
-
-    return is_array($row) ? $row : null;
-}
-
-function profile_legacy_featured_module_position(?array $legacyModule, int $fallback): int
-{
-    if ($legacyModule === null) {
-        return $fallback;
-    }
-
-    return max(1, (int) ($legacyModule['position'] ?? $fallback));
-}
-
-function profile_legacy_featured_module_allows_public_default(?array $legacyModule): bool
-{
-    if ($legacyModule === null) {
-        return true;
-    }
-
-    return ($legacyModule['visibility'] ?? 'public') === 'public'
-        && ($legacyModule['status'] ?? 'active') === 'active';
-}
-
-function profile_legacy_featured_module_visibility(?array $legacyModule): string
-{
-    $visibility = $legacyModule['visibility'] ?? null;
-
-    return is_string($visibility) && in_array($visibility, PROFILE_MODULE_VISIBILITIES, true)
-        ? $visibility
-        : 'public';
-}
-
-function profile_legacy_featured_module_status(?array $legacyModule): string
-{
-    $status = $legacyModule['status'] ?? null;
-
-    return is_string($status) && in_array($status, PROFILE_MODULE_STATUSES, true) && $status !== 'deleted'
-        ? $status
-        : 'active';
-}
-
 function ensure_profile_info_module(int $userId): void
 {
     if (profile_info_module_preference_exists($userId)) {
@@ -1169,51 +1226,6 @@ function ensure_profile_info_module(int $userId): void
         'public',
         'active'
     );
-}
-
-function ensure_profile_featured_modules(int $userId): void
-{
-    $hasPost = profile_featured_post_module_preference_exists($userId);
-    $hasRoom = profile_featured_room_module_preference_exists($userId);
-
-    if ($hasPost && $hasRoom) {
-        return;
-    }
-
-    $legacyModule = profile_legacy_featured_module_record($userId);
-    $basePosition = profile_legacy_featured_module_position($legacyModule, 1);
-    $visibility = profile_legacy_featured_module_visibility($legacyModule);
-    $status = profile_legacy_featured_module_status($legacyModule);
-    $pdo = db();
-    $pdo->beginTransaction();
-
-    try {
-        if (!$hasPost) {
-            profile_insert_builtin_module_at(
-                $userId,
-                PROFILE_FEATURED_POST_MODULE_TYPE,
-                $basePosition,
-                $visibility,
-                $status
-            );
-        }
-
-        if (!$hasRoom) {
-            $postPosition = profile_builtin_module_position($userId, PROFILE_FEATURED_POST_MODULE_TYPE);
-            profile_insert_builtin_module_at(
-                $userId,
-                PROFILE_FEATURED_ROOM_MODULE_TYPE,
-                ($postPosition ?? $basePosition) + 1,
-                $visibility,
-                $status
-            );
-        }
-
-        $pdo->commit();
-    } catch (Throwable $exception) {
-        $pdo->rollBack();
-        throw $exception;
-    }
 }
 
 function profile_insert_builtin_module_at(
@@ -1256,86 +1268,12 @@ function profile_insert_builtin_module_at(
     );
 }
 
-function ensure_profile_activity_module(int $userId): void
-{
-    if (profile_activity_module_preference_exists($userId)) {
-        return;
-    }
-
-    db_query(
-        'INSERT INTO profile_modules
-            (user_id, type, title, config_json, visibility, position, status, schema_version)
-         VALUES
-            (:user_id, :type, NULL, :config_json, :visibility, :position, :status, :schema_version)',
-        [
-            'user_id' => $userId,
-            'type' => PROFILE_ACTIVITY_MODULE_TYPE,
-            'config_json' => '{}',
-            'visibility' => 'public',
-            'position' => profile_modules_next_position($userId),
-            'status' => 'active',
-            'schema_version' => PROFILE_MODULE_SCHEMA_VERSION,
-        ]
-    );
-}
-
-function profile_activity_module_payload(int $position): array
-{
-    return [
-        'id' => 0,
-        'type' => PROFILE_ACTIVITY_MODULE_TYPE,
-        'title' => null,
-        'config' => [],
-        'visibility' => 'public',
-        'position' => $position,
-        'layout' => null,
-        'status' => 'active',
-        'schemaVersion' => PROFILE_MODULE_SCHEMA_VERSION,
-        'createdAt' => null,
-        'updatedAt' => null,
-    ];
-}
-
 function profile_info_module_payload(int $position): array
 {
     return [
         'id' => 0,
         'type' => PROFILE_INFO_MODULE_TYPE,
         'title' => 'Profile info',
-        'config' => [],
-        'visibility' => 'public',
-        'position' => $position,
-        'layout' => null,
-        'status' => 'active',
-        'schemaVersion' => PROFILE_MODULE_SCHEMA_VERSION,
-        'createdAt' => null,
-        'updatedAt' => null,
-    ];
-}
-
-function profile_featured_post_module_payload(int $position): array
-{
-    return [
-        'id' => 0,
-        'type' => PROFILE_FEATURED_POST_MODULE_TYPE,
-        'title' => null,
-        'config' => [],
-        'visibility' => 'public',
-        'position' => $position,
-        'layout' => null,
-        'status' => 'active',
-        'schemaVersion' => PROFILE_MODULE_SCHEMA_VERSION,
-        'createdAt' => null,
-        'updatedAt' => null,
-    ];
-}
-
-function profile_featured_room_module_payload(int $position): array
-{
-    return [
-        'id' => 0,
-        'type' => PROFILE_FEATURED_ROOM_MODULE_TYPE,
-        'title' => null,
         'config' => [],
         'visibility' => 'public',
         'position' => $position,

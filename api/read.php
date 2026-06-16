@@ -107,6 +107,8 @@ function profile_payload(array $row, ?array $stats = null, ?array $social = null
         'bannerUrl' => $row['banner_url'] ?? null,
         'profileAccent' => $row['profile_accent'] ?? null,
         'profileBackground' => $row['profile_background'] ?? null,
+        'profileBackgroundVideo' => $row['profile_background_video_url'] ?? null,
+        'profileBackgroundVideoPoster' => $row['profile_background_video_poster_url'] ?? null,
         'profileBackgroundBlur' => profile_background_blur($row['profile_background_blur'] ?? null),
         'profileTheme' => $row['profile_theme'] ?? null,
         'profileLayoutPreset' => profile_layout_preset($row['profile_layout_preset'] ?? null),
@@ -438,11 +440,17 @@ function profile_customization_select_sql(string $alias): string
     $canvasVersionSelect = profile_canvas_version_column_exists()
         ? "{$alias}.profile_canvas_version,"
         : "1 AS profile_canvas_version,";
+    $backgroundVideoSelect = profile_background_video_columns_exist()
+        ? "{$alias}.profile_background_video_url,
+            {$alias}.profile_background_video_poster_url,"
+        : "NULL AS profile_background_video_url,
+            NULL AS profile_background_video_poster_url,";
 
     if (profile_customization_columns_exist()) {
         return "{$alias}.banner_url,
             {$alias}.profile_accent,
             {$alias}.profile_background,
+            {$backgroundVideoSelect}
             {$backgroundBlurSelect}
             {$alias}.profile_theme,
             {$layoutSelect}
@@ -452,6 +460,8 @@ function profile_customization_select_sql(string $alias): string
     return "NULL AS banner_url,
             NULL AS profile_accent,
             NULL AS profile_background,
+            NULL AS profile_background_video_url,
+            NULL AS profile_background_video_poster_url,
             NULL AS profile_background_blur,
             NULL AS profile_theme,
             {$layoutSelect}
@@ -471,6 +481,12 @@ function profile_background_blur_column_exists(): bool
 function profile_canvas_version_column_exists(): bool
 {
     return database_column_exists('profiles', 'profile_canvas_version');
+}
+
+function profile_background_video_columns_exist(): bool
+{
+    return database_column_exists('profiles', 'profile_background_video_url')
+        && database_column_exists('profiles', 'profile_background_video_poster_url');
 }
 
 function profile_featured_select_sql(string $alias): string
