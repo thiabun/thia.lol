@@ -101,9 +101,9 @@ the richer personal-space direction:
   weight.
 - The profile page communicates information, but it does not yet create the
   stronger sense of vibe and ownership that richer profile products show.
-- Earlier Customize Profile passes still felt bulky for routine edits; issue
-  #37 now groups editing around Identity, Look, Modules, and Preview so the
-  owner flow feels like profile adjustment rather than a dashboard.
+- Earlier Customize Profile passes still felt bulky for routine edits; the
+  owner editor has been removed so P3 can restart around a cleaner, modular,
+  preview-first customization surface.
 - Theme and background controls are limited and not yet expressive enough to
   support clear owner-selected page mood.
 - Modules exist, but the catalog is still early and not expressive enough for
@@ -438,9 +438,9 @@ Do not create these until Thia approves the split. Suggested first issues:
 - `[P1] Profile layout compacting implementation`: reduce card/stat/chip bloat,
   introduce compact identity card direction, and preserve Feed/Replies/Rooms,
   actions, reports, badges, and Connections.
-- `[P1] Profile customization modal v3 redesign`: compact the editor around
-  Identity, Theme, Background, Modules, Connections, Music, and
-  Safety/visibility with a stronger preview-first flow.
+- `[P3] Profile customization rebuild`: design a new editor from scratch around
+  identity, appearance, modules, media, Connections, creator cards, and
+  safety/visibility with a preview-first flow.
 - `[P2] Theme token storage and rendering plan`: define allowlisted accent,
   surface, text, focus, overlay, and card treatment tokens with contrast tests.
 - `[P2] Profile module expansion v3`: add featured post, featured room, richer
@@ -457,7 +457,7 @@ Do not create these until Thia approves the split. Suggested first issues:
 
 ## Current Profile State
 
-Current implementation is static-first React backed by PHP/MySQL APIs. The profile surface is centered on `src/pages/ProfilePage.tsx`, `src/components/social/ProfileHeader.tsx`, `src/components/social/ProfileCustomizationModal.tsx`, `src/lib/profileConnections.ts`, `api/profile.php`, `api/follows.php`, `api/read.php`, `api/badges.php`, and `backend/database/schema.sql`.
+Current implementation is static-first React backed by PHP/MySQL APIs. The profile surface is centered on `src/pages/ProfilePage.tsx`, `src/components/social/ProfileHeader.tsx`, `src/components/social/ProfileModules.tsx`, `src/lib/profileConnections.ts`, `api/profile.php`, `api/follows.php`, `api/read.php`, `api/badges.php`, and `backend/database/schema.sql`.
 
 Implemented public profile behavior:
 
@@ -752,26 +752,21 @@ Deferred after this pass:
 - New music, gallery, marketplace, custom theme, analytics, monetization, or
   arbitrary embed behavior.
 
-### Implementation Note - 2026-06-16 Profile Customization UI/UX Overhaul
+### Implementation Note - 2026-06-16 Profile Customization Reset
 
-Issue [#37](https://github.com/thiabun/thia.lol/issues/37) now aligns the owner
-editor with the modular canvas direction:
+The previous owner-facing `Customize profile` modal has been removed. Profiles
+continue to render persisted identity, media, featured content, badges, links,
+and modules, but there is no live frontend editor for those settings until the
+P3 customization rebuild.
 
-- The customization editor uses compact intent groups: Identity, Look, Modules,
-  and Preview.
-- Connections are edited as the `links` module inside Modules, not inside
-  Identity. Identity keeps name, bio/status-adjacent basics, location, and media
-  slots while external destinations remain module-owned.
-- Look is limited to current supported media slots: avatar, banner, and profile
-  background. Accent/theme controls remain hidden until they visibly affect the
-  public profile through tested, contrast-safe presets.
-- Modules owns layout preset, module visibility, keyboard ordering, add/edit
-  flows, and the separate Featured post and Featured room module settings.
-- The Modules tab uses card-like module rows, icon platform buttons, segmented
-  visibility controls, and custom platform menus for social/creator/music
-  choices instead of native select-heavy forms.
-- The desktop preview is smaller and supportive; the Preview section remains
-  reachable without turning the editor into a second public profile page.
+P3 should start from a clean surface instead of iterating on the removed modal:
+
+- Connections should remain module-owned through the `links` module, not a
+  duplicate Identity section.
+- Appearance and media controls need purpose-built, polished controls rather
+  than native form-heavy rows.
+- Module management should use custom buttons, menus, compact cards, and a real
+  preview path.
 - Public profiles remain header plus module grid, with no fixed Featured
   section, setup prompt, layout action, or "Personal space" label.
 

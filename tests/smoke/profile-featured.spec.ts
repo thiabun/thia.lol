@@ -165,83 +165,20 @@ test("first featured module can lead the showcase layout", async ({ page }) => {
   ]);
 });
 
-test("owner can select and clear featured content from customization", async ({ page }) => {
-  const savedPayloads: Array<Record<string, unknown>> = [];
+test("owner featured content renders without the removed customization modal", async ({ page }) => {
   await mockFeaturedProfile(page, {
     authenticated: true,
-    featuredPost: null,
-    featuredRoom: null,
+    featuredPost: postOption({ body: "A launch note worth keeping close." }),
+    featuredRoom: roomOption({ name: "General" }),
     modules: [featuredPostModule({ id: 8 }), featuredRoomModule({ id: 9, position: 2 })],
-    onFeaturedSave: (payload) => {
-      savedPayloads.push(payload);
-    },
   });
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await page.getByRole("button", { name: "Customize profile" }).click();
-  const modal = page.getByTestId("profile-customization-modal");
-  await modal.getByRole("button", { name: /Modules/ }).click();
-
-  let moduleCard = modal.getByTestId("profile-module-card-8");
-  await moduleCard.getByRole("button", { name: "Edit Featured post" }).click();
-  let editor = moduleCard.getByTestId("profile-featured-editor");
-  await expect(editor).toBeVisible();
-  await editor.getByLabel("Search posts").fill("launch");
-  await editor.getByRole("button", { name: /A launch note worth keeping close/ }).click();
-  await moduleCard.getByRole("button", { name: "Save module" }).click();
-
-  await expect.poll(() => savedPayloads).toEqual([
-    {
-      featuredPostId: 101,
-      featuredRoomId: null,
-    },
-  ]);
-  await expect(
-    modal.getByTestId("profile-customization-preview").getByTestId("profile-featured-post-preview"),
-  ).toContainText("A launch note worth keeping close.");
-
-  moduleCard = modal.getByTestId("profile-module-card-9");
-  await moduleCard.getByRole("button", { name: "Edit Featured room" }).click();
-  editor = moduleCard.getByTestId("profile-featured-editor");
-  await editor.getByLabel("Search rooms").fill("general");
-  await editor.getByRole("button", { name: /General/ }).click();
-  await moduleCard.getByRole("button", { name: "Save module" }).click();
-
-  await expect.poll(() => savedPayloads).toEqual([
-    {
-      featuredPostId: 101,
-      featuredRoomId: null,
-    },
-    {
-      featuredPostId: 101,
-      featuredRoomId: 201,
-    },
-  ]);
-  await expect(
-    modal.getByTestId("profile-customization-preview").getByTestId("profile-featured-room-preview"),
-  ).toContainText("General");
-
-  moduleCard = modal.getByTestId("profile-module-card-8");
-  await moduleCard.getByRole("button", { name: "Edit Featured post" }).click();
-  editor = moduleCard.getByTestId("profile-featured-editor");
-  await editor.getByRole("button", { name: "Clear" }).click();
-  await moduleCard.getByRole("button", { name: "Save module" }).click();
-
-  await expect.poll(() => savedPayloads).toEqual([
-    {
-      featuredPostId: 101,
-      featuredRoomId: null,
-    },
-    {
-      featuredPostId: 101,
-      featuredRoomId: 201,
-    },
-    {
-      featuredPostId: null,
-      featuredRoomId: 201,
-    },
-  ]);
+  await expect(page.getByText("A launch note worth keeping close.")).toBeVisible();
+  await expect(page.getByTestId("profile-module-featured-room")).toContainText("General");
+  await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
+  await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
 });
 
 test("owner empty featured state stays compact on mobile", async ({ page }) => {
@@ -259,7 +196,7 @@ test("owner empty featured state stays compact on mobile", async ({ page }) => {
   await expect(page.getByTestId("profile-grid-module-featured_post")).toHaveCount(0);
   await expect(page.getByTestId("profile-grid-module-featured_room")).toHaveCount(0);
   await expect(page.getByText("Feature a post or room")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Customize profile" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );

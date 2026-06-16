@@ -81,7 +81,7 @@ test.describe("authenticated smoke", () => {
         name: session.data?.user?.displayName ?? "",
       }),
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: "Customize profile" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
 
     await expect(page.getByTestId("profile-grid-module-activity")).toBeVisible();
     const tabs = page.getByTestId("profile-activity-tabs");
@@ -126,7 +126,7 @@ test.describe("authenticated smoke", () => {
     expect(destinationBox!.x).toBeLessThan(imageUploadBox!.x);
   });
 
-  test("profile edit opens with real image upload controls", async ({ page }) => {
+  test("profile customization entry point is offline for the P3 rebuild", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     const session = await loginWithEnv(page);
     const handle = session.data?.user?.handle;
@@ -134,15 +134,7 @@ test.describe("authenticated smoke", () => {
     expect(handle).toEqual(expect.any(String));
 
     await page.goto(`/@${handle}`);
-    await page.getByRole("button", { name: "Customize profile" }).click();
-
-    const dialog = page.getByRole("dialog", { name: "Customize profile" });
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByLabel("Display name")).toBeVisible();
-    await dialog.getByRole("button", { name: /Look/ }).click();
-    await expect(dialog.getByText("Change avatar").first()).toBeVisible();
-    await expect(dialog.getByText("Change banner").first()).toBeVisible();
-    await expect(dialog.getByText("Image must be 10 MB or smaller")).toHaveCount(3);
-    await expect(dialog.getByText(/video/i)).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "Customize profile" })).toHaveCount(0);
   });
 });

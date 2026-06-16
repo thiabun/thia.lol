@@ -99,7 +99,7 @@ export function ProfileModulesSection({
             <CompactStateNotice
               icon={Sparkles}
               title="No modules yet"
-              text="Customize profile to add modules."
+              text="Profile customization is being rebuilt for P3."
               className="border border-dashed border-line bg-canvas/45"
             />
           ) : null}

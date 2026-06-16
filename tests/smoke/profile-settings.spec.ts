@@ -15,9 +15,7 @@ test.beforeEach(async ({ context }) => {
   });
 });
 
-test("identity editing leaves connections to the module editor", async ({ page }) => {
-  let savedPayload: Record<string, unknown> | undefined;
-
+test("profile customization editor is offline until the P3 rebuild", async ({ page }) => {
   await mockOwnProfile(page, () => [
     {
       platform: "github",
@@ -25,102 +23,32 @@ test("identity editing leaves connections to the module editor", async ({ page }
       value: "thiabun",
       url: "https://github.com/thiabun",
     },
-  ], (payload) => {
-    savedPayload = payload;
-  });
+  ]);
 
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
-  await expect(page.getByRole("button", { name: "Customize profile" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Edit personal space" })).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Customize profile" }).click();
-  const modal = page.getByTestId("profile-customization-modal");
-  await expect(modal).toBeVisible();
-  const modalBox = await modal.boundingBox();
-  expect(modalBox?.width ?? 0).toBeLessThanOrEqual(1040);
-  await expect(modal.getByRole("heading", { name: "Identity" })).toBeVisible();
-  await expect(modal.getByRole("heading", { name: "Connections" })).toHaveCount(0);
-  await expect(modal.getByRole("button", { name: "Add connection" })).toHaveCount(0);
-  await expect(modal.getByRole("button", { name: /Look/ })).toBeVisible();
-  await expect(modal.getByRole("button", { name: /Modules/ })).toBeVisible();
-  await expect(modal.getByRole("button", { name: /Preview/ })).toBeVisible();
-  await expect(modal.getByTestId("profile-customization-preview")).toBeVisible();
-  await modal.getByRole("textbox", { name: "Display name" }).fill("Thia Studio");
-  await expect(modal.getByTestId("profile-customization-preview")).toContainText(
-    "Thia Studio",
-  );
-  await modal.getByRole("button", { name: /Look/ }).click();
-  await expect(modal.getByRole("heading", { name: "Look" })).toBeVisible();
-  await expect(modal.getByText("Change avatar").first()).toBeVisible();
-  await expect(modal.getByText("Change banner").first()).toBeVisible();
-  await expect(modal.getByText("Change background").first()).toBeVisible();
-  await modal.getByRole("button", { name: /Identity/ }).click();
-  await expect(modal.getByRole("heading", { name: "Connections" })).toHaveCount(0);
-  await expect(modal.getByLabel("Accent")).toHaveCount(0);
-  await expect(modal.getByLabel("Theme")).toHaveCount(0);
-  await expect(modal.getByLabel("Traits")).toHaveCount(0);
-  await modal.getByRole("button", { name: "Save profile" }).click();
-
-  await expect.poll(() => savedPayload).toBeTruthy();
-  expect(savedPayload).not.toHaveProperty("links");
-  await modal.getByRole("button", { name: /Modules/ }).click();
-  await expect(modal.getByTestId("profile-module-editor")).toBeVisible();
-  await expect(modal.getByRole("button", { name: "Connections" })).toBeVisible();
+  await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /GitHub/ })).toBeVisible();
 });
 
-test("mobile edit profile modal has no horizontal overflow", async ({ page }) => {
+test("mobile profile stays stable without customization editor", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockOwnProfile(page, () => []);
 
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
-  await page.getByRole("button", { name: "Customize profile" }).click();
 
-  const modal = page.getByTestId("profile-customization-modal");
-  await expect(modal).toBeVisible();
-  await modal.getByRole("button", { name: /Identity/ }).click();
-  await expect(modal.getByRole("heading", { name: "Identity" })).toBeVisible();
-  await expect(modal.getByRole("heading", { name: "Connections" })).toHaveCount(0);
-  await modal.getByRole("button", { name: /Look/ }).click();
-  await expect(modal.getByRole("heading", { name: "Look" })).toBeVisible();
-  await modal.getByRole("button", { name: /Identity/ }).click();
-  await expect(modal.getByRole("heading", { name: "Connections" })).toHaveCount(0);
-  await modal.getByRole("button", { name: /Modules/ }).click();
-  await expect(modal.getByTestId("profile-layout-editor")).toBeVisible();
-  await expect(modal.getByRole("button", { name: /Preview/ })).toBeVisible();
-  await modal.getByRole("button", { name: /Preview/ }).click();
-  await expect(modal.getByTestId("profile-customization-preview-mobile")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
+  await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
   expect(hasHorizontalOverflow).toBe(false);
 });
 
-test("profile customization cancel closes without saving identity edits", async ({ page }) => {
-  let savedPayload: Record<string, unknown> | undefined;
-
-  await mockOwnProfile(page, () => [], (payload) => {
-    savedPayload = payload;
-  });
-
-  await acknowledgeCookieNotice(page);
-  await page.goto("/@thia");
-  await page.getByRole("button", { name: "Customize profile" }).click();
-  const modal = page.getByTestId("profile-customization-modal");
-  await modal.getByRole("textbox", { name: "Display name" }).fill("Unsaved Thia");
-  await expect(modal.getByTestId("profile-customization-preview")).toContainText(
-    "Unsaved Thia",
-  );
-  await modal.getByRole("button", { name: "Cancel" }).click();
-
-  await expect(modal).toHaveCount(0);
-  expect(savedPayload).toBeUndefined();
-  await expect(page.getByTestId("profile-identity")).toContainText("Thia");
-  await expect(page.getByTestId("profile-identity")).not.toContainText("Unsaved Thia");
-});
-
-test("profile banners stay behind identity in public header and preview", async ({ page }) => {
+test("profile banners stay behind identity in public header", async ({ page }) => {
   await mockOwnProfile(page, () => [], undefined, {
     bannerUrl: "/uploads/media/2026/06/profile-test.webp",
     profileBackground: "/uploads/media/2026/06/profile-test.webp",
@@ -152,18 +80,6 @@ test("profile banners stay behind identity in public header and preview", async 
     page,
     page.getByTestId("profile-identity"),
     "profile-identity",
-  );
-
-  await page.getByRole("button", { name: "Customize profile" }).click();
-  const modal = page.getByTestId("profile-customization-modal");
-  const desktopPreview = modal.getByTestId("profile-customization-preview");
-  await expect(desktopPreview.getByTestId("profile-preview-banner")).toBeVisible();
-  await expect(desktopPreview.getByTestId("profile-preview-identity")).toContainText("Thia");
-  await expect(desktopPreview.getByTestId("profile-preview-identity")).toContainText("@thia");
-  await expectElementAtPointBelongsTo(
-    page,
-    desktopPreview.getByTestId("profile-preview-identity"),
-    "profile-preview-identity",
   );
 });
 

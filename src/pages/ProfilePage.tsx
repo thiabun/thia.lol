@@ -15,7 +15,7 @@ import {
   Users,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useOutletContext, useParams } from "react-router";
 import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
@@ -32,11 +32,7 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { ModalSheet } from "../components/ui/ModalSheet";
 import {
   blockProfile,
-  createProfileModule,
-  deleteProfileModule,
   followProfile,
-  getRooms,
-  getMyProfileModules,
   getProfile,
   getProfileBadges,
   getProfileFollowers,
@@ -52,18 +48,7 @@ import {
   unfollowProfile,
   unmuteProfile,
   updateFeaturedBadges,
-  updateMyProfile,
-  updateProfileFeaturedContent,
-  updateProfileModule,
-  updateProfileModuleOrder,
-  uploadImage,
-  type CreateProfileModuleInput,
   type FollowRelationship,
-  type ImageUploadPurpose,
-  type UpdateProfileFeaturedInput,
-  type UpdateProfileModuleInput,
-  type UpdateProfileInput,
-  type UploadedImage,
 } from "../lib/api";
 import { ApiClientError } from "../lib/apiClient";
 import { cn } from "../lib/classNames";
@@ -85,39 +70,15 @@ import { useAuth } from "../lib/useAuth";
 
 type ProfileTab = "feed" | "replies" | "rooms";
 type ProfilePanel = "followers" | "following" | "badges";
-type ProfileCustomizationInitialSection = "identity" | "modules";
-
-const ProfileCustomizationModal = lazy(() =>
-  import("../components/social/ProfileCustomizationModal").then((module) => ({
-    default: module.ProfileCustomizationModal,
-  })),
-);
 
 export function ProfilePage() {
   const { handle, profileHandle } = useParams();
   const navigate = useNavigate();
   const { setTopBarAction } = useOutletContext<AppShellOutletContext>();
-  const { refreshSession, runWithAuth, status, user } = useAuth();
+  const { runWithAuth, status, user } = useAuth();
   const [activeTab, setActiveTab] = useState<ProfileTab>("feed");
-  const [customizingProfileHandle, setCustomizingProfileHandle] = useState<string | undefined>();
-  const [customizationInitialSection, setCustomizationInitialSection] =
-    useState<ProfileCustomizationInitialSection>("identity");
-  const [moduleEditorLoading, setModuleEditorLoading] = useState(false);
-  const [moduleEditorError, setModuleEditorError] = useState<string | undefined>();
-  const [featuredOptionState, setFeaturedOptionState] = useState<
-    | {
-        handle: string;
-        posts: Post[];
-        rooms: Room[];
-        error?: string | undefined;
-      }
-    | undefined
-  >();
   const [activePanel, setActivePanel] = useState<ProfilePanel | undefined>();
   const [profileOverride, setProfileOverride] = useState<Profile | undefined>();
-  const [modulesOverride, setModulesOverride] = useState<
-    { handle: string; modules: ProfileModule[] } | undefined
-  >();
   const [badgesOverride, setBadgesOverride] = useState<
     { handle: string; result: Awaited<ReturnType<typeof getProfileBadges>> } | undefined
   >();
@@ -202,10 +163,7 @@ export function ProfilePage() {
     badgesOverride?.handle === normalizedHandle ? badgesOverride.result : badgesState.data;
   const profileBadges = profileBadgesResult?.badges ?? [];
   const featuredBadges = profileBadgesResult?.featuredBadges ?? [];
-  const ownerModules =
-    modulesOverride?.handle === normalizedHandle
-      ? modulesOverride.modules
-      : modulesState.data ?? [];
+  const ownerModules = modulesState.data ?? [];
   const publicModules = ownerModules.filter(
     (module) => module.visibility === "public" && module.status === "active",
   );
@@ -221,7 +179,6 @@ export function ProfilePage() {
     status === "authenticated" &&
     Boolean(user) &&
     user?.handle.toLowerCase() === normalizedHandle;
-  const customizingProfile = customizingProfileHandle === normalizedHandle;
 
   async function handleFollowToggle() {
     if (!profile || isOwnProfile || profile.blockedByMe || followPosting) {
@@ -379,32 +336,6 @@ export function ProfilePage() {
     return result.removedFollower;
   }
 
-  async function handleProfileSave(input: UpdateProfileInput): Promise<Profile> {
-    const updated = await runWithAuth(
-      (csrfToken) => updateMyProfile(input, csrfToken),
-      { retryOnCsrf: true },
-    );
-
-    setProfileOverride(updated);
-
-    try {
-      await refreshSession();
-    } catch {
-      // The visible profile is already refreshed; auth profile data can retry later.
-    }
-
-    return updated;
-  }
-
-  async function handleProfileImageUpload(
-    file: File,
-    purpose: ImageUploadPurpose,
-  ): Promise<UploadedImage> {
-    return runWithAuth((csrfToken) => uploadImage(file, purpose, csrfToken), {
-      retryOnCsrf: true,
-    });
-  }
-
   async function handleFeaturedBadgesChange(featuredBadgeIds: number[]) {
     const updated = await runWithAuth(
       (csrfToken) => updateFeaturedBadges({ featuredBadgeIds }, csrfToken),
@@ -414,122 +345,10 @@ export function ProfilePage() {
     setBadgesOverride({ handle: normalizedHandle, result: updated });
   }
 
-  async function handleFeaturedContentSave(
-    input: UpdateProfileFeaturedInput,
-  ): Promise<Profile> {
-    const updated = await runWithAuth(
-      (csrfToken) => updateProfileFeaturedContent(input, csrfToken),
-      { retryOnCsrf: true },
-    );
-
-    setProfileOverride(updated);
-
-    return updated;
-  }
-
-  const handleOpenCustomization = useCallback(async (
-    initialSection: ProfileCustomizationInitialSection = "identity",
-  ) => {
-    setModuleEditorLoading(true);
-    setModuleEditorError(undefined);
-    setCustomizationInitialSection(initialSection);
-
-    try {
-      const [modules, eligiblePosts, rooms] = await Promise.all([
-        getMyProfileModules(),
-        getProfilePosts(normalizedHandle),
-        getRooms(),
-      ]);
-      setModulesOverride({ handle: normalizedHandle, modules });
-      setFeaturedOptionState({
-        handle: normalizedHandle,
-        posts: eligiblePosts,
-        rooms: eligibleFeaturedRooms(rooms, user?.id),
-      });
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Profile customization options could not be loaded.";
-
-      setModuleEditorError(message);
-      setFeaturedOptionState({
-        handle: normalizedHandle,
-        posts: postsState.data ?? [],
-        rooms: eligibleFeaturedRooms(profileRooms, user?.id),
-        error: message,
-      });
-    } finally {
-      setModuleEditorLoading(false);
-      setCustomizingProfileHandle(normalizedHandle);
-    }
-  }, [normalizedHandle, postsState.data, profileRooms, user]);
-
   useEffect(() => {
-    if (!isOwnProfile || !profile) {
-      setTopBarAction(undefined);
-      return undefined;
-    }
-
-    setTopBarAction(
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        className="min-h-10 px-2 sm:px-3"
-        aria-label="Customize profile"
-        icon={<Sparkles aria-hidden="true" size={16} />}
-        onClick={() => void handleOpenCustomization()}
-      >
-        <span className="hidden sm:inline">Customize profile</span>
-      </Button>,
-    );
-
+    setTopBarAction(undefined);
     return () => setTopBarAction(undefined);
-  }, [handleOpenCustomization, isOwnProfile, profile, setTopBarAction]);
-
-  async function handleCreateModule(
-    input: CreateProfileModuleInput,
-  ): Promise<ProfileModule[]> {
-    const modules = await runWithAuth(
-      (csrfToken) => createProfileModule(input, csrfToken),
-      { retryOnCsrf: true },
-    );
-    setModulesOverride({ handle: normalizedHandle, modules });
-    return modules;
-  }
-
-  async function handleUpdateModule(
-    moduleId: number,
-    input: UpdateProfileModuleInput,
-  ): Promise<ProfileModule[]> {
-    const modules = await runWithAuth(
-      (csrfToken) => updateProfileModule(moduleId, input, csrfToken),
-      { retryOnCsrf: true },
-    );
-    setModulesOverride({ handle: normalizedHandle, modules });
-    return modules;
-  }
-
-  async function handleDeleteModule(moduleId: number): Promise<ProfileModule[]> {
-    const modules = await runWithAuth((csrfToken) => deleteProfileModule(moduleId, csrfToken), {
-      retryOnCsrf: true,
-    });
-    setModulesOverride({
-      handle: normalizedHandle,
-      modules,
-    });
-    return modules;
-  }
-
-  async function handleReorderModules(moduleIds: number[]): Promise<ProfileModule[]> {
-    const modules = await runWithAuth(
-      (csrfToken) => updateProfileModuleOrder(moduleIds, csrfToken),
-      { retryOnCsrf: true },
-    );
-    setModulesOverride({ handle: normalizedHandle, modules });
-    return modules;
-  }
+  }, [setTopBarAction]);
 
   if (profileMissing) {
     return (
@@ -634,49 +453,6 @@ export function ProfilePage() {
           description={profile.bio}
           path={`/@${profile.user.handle}`}
         />
-        {isOwnProfile && customizingProfile ? (
-          <Suspense
-            fallback={
-              <ProfileCustomizationLoadingSheet
-                onClose={() => setCustomizingProfileHandle(undefined)}
-              />
-            }
-          >
-            <ProfileCustomizationModal
-              key={`${profile.user.handle}-${profile.updatedAt ?? ""}`}
-              badges={profileBadges}
-              featuredOptionsError={
-                featuredOptionState?.handle === normalizedHandle
-                  ? featuredOptionState.error
-                  : undefined
-              }
-              featuredOptionsLoading={moduleEditorLoading}
-              featuredPostOptions={
-                featuredOptionState?.handle === normalizedHandle
-                  ? featuredOptionState.posts
-                  : postsState.data ?? []
-              }
-              featuredRoomOptions={
-                featuredOptionState?.handle === normalizedHandle
-                  ? featuredOptionState.rooms
-                  : eligibleFeaturedRooms(profileRooms, user?.id)
-              }
-              initialSection={customizationInitialSection}
-              moduleError={moduleEditorError}
-              moduleLoading={moduleEditorLoading}
-              modules={ownerModules}
-              profile={profile}
-              onClose={() => setCustomizingProfileHandle(undefined)}
-              onCreateModule={handleCreateModule}
-              onDeleteModule={handleDeleteModule}
-              onReorderModules={handleReorderModules}
-              onSaveFeaturedContent={handleFeaturedContentSave}
-              onSaveProfile={handleProfileSave}
-              onUpdateModule={handleUpdateModule}
-              onUpload={handleProfileImageUpload}
-            />
-          </Suspense>
-        ) : null}
         <ProfileModulesSection
           badges={profileBadges}
           error={modulesState.error}
@@ -783,25 +559,6 @@ export function ProfilePage() {
   );
 }
 
-function ProfileCustomizationLoadingSheet({ onClose }: { onClose: () => void }) {
-  return (
-    <ModalSheet
-      open
-      onClose={onClose}
-      title="Profile editor"
-      closeLabel="Close profile editor"
-      size="lg"
-      mobile="full"
-    >
-      <ApiStateNotice
-        kind="loading"
-        title="Opening profile editor"
-        text="Loading editor."
-      />
-    </ModalSheet>
-  );
-}
-
 function createSyntheticProfileInfoModule(profile: Profile | undefined): ProfileModule {
   return {
     id: -1,
@@ -862,25 +619,6 @@ function mergeFollowState(
       moots: mootCount,
     },
   };
-}
-
-function eligibleFeaturedRooms(rooms: Room[], userId: number | undefined): Room[] {
-  return rooms.filter((room) => {
-    if (room.visibility && room.visibility !== "public") {
-      return false;
-    }
-
-    if (userId !== undefined && room.createdBy === userId) {
-      return true;
-    }
-
-    return (
-      room.joinedByMe === true ||
-      room.myRoomRole === "owner" ||
-      room.myRoomRole === "moderator" ||
-      room.myRoomRole === "member"
-    );
-  });
 }
 
 function ProfilePersonalBackdrop({ profile }: { profile: Profile }) {

@@ -509,11 +509,12 @@ test("owner empty module state is honest", async ({ page }) => {
   ).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "No modules yet" })).toHaveCount(0);
   await expect(page.getByText("Customize profile to add modules.")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Customize profile" })).toBeVisible();
+  await expect(page.getByText("Profile customization is being rebuilt for P3.")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Customize layout" })).toHaveCount(0);
 });
 
-test("top-bar Customize profile opens the owner editor", async ({ page }) => {
+test("owner customization modal is removed until P3", async ({ page }) => {
   await mockProfileModules(page, {
     authenticated: true,
     modules: [aboutModule({ body: "Saved profile note" })],
@@ -521,294 +522,14 @@ test("top-bar Customize profile opens the owner editor", async ({ page }) => {
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await page.getByRole("button", { name: "Customize profile" }).click();
-  await expect(page.getByTestId("profile-customization-modal")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Customize layout" })).toHaveCount(0);
+  await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
+  await expect(page.getByTestId("profile-module-editor")).toHaveCount(0);
+  await expect(page.getByText("Saved profile note")).toBeVisible();
 });
 
-test("owner editor lists modules and previews plain text", async ({ page }) => {
-  await mockProfileModules(page, {
-    authenticated: true,
-    modules: [aboutModule({ body: "Saved profile note" })],
-  });
-  await acknowledgeCookieNotice(page);
-  await page.goto("/@thia");
-
-  await page.getByRole("button", { name: "Customize profile" }).click();
-  const modal = page.getByTestId("profile-customization-modal");
-  await modal.getByRole("button", { name: /Modules/ }).click();
-  const editor = modal.getByTestId("profile-module-editor");
-  await expect(editor).toBeVisible();
-  await expect(editor.getByTestId("profile-module-list")).toContainText("About this space");
-  await expect(editor.getByTestId("profile-module-expanded")).toHaveCount(0);
-
-  const moduleCard = editor.getByTestId("profile-module-card-1");
-  await expect(moduleCard.getByTestId("profile-module-toggle-1")).toHaveAttribute(
-    "aria-expanded",
-    "false",
-  );
-  await moduleCard.getByRole("button", { name: "Edit About this space" }).click();
-  await expect(moduleCard.getByTestId("profile-module-expanded")).toBeVisible();
-  await expect(moduleCard.getByTestId("profile-module-toggle-1")).toHaveAttribute(
-    "aria-expanded",
-    "true",
-  );
-  await editor.getByRole("textbox", { name: "Intro" }).fill(
-    "Literal <strong>plain</strong> preview",
-  );
-  const preview = modal.getByTestId("profile-module-preview");
-  await expect(preview).toContainText("Literal <strong>plain</strong> preview");
-  await expect(preview.locator("strong")).toHaveCount(0);
-});
-
-test("owner can save a layout preset from module customization", async ({ page }) => {
-  let savedProfilePayload: Record<string, unknown> | undefined;
-  await mockProfileModules(page, {
-    authenticated: true,
-    modules: [aboutModule({ body: "Saved profile note" })],
-    onProfileSave: (payload) => {
-      savedProfilePayload = payload;
-    },
-  });
-  await acknowledgeCookieNotice(page);
-  await page.goto("/@thia");
-
-  await page.getByRole("button", { name: "Customize profile" }).click();
-  const modal = page.getByTestId("profile-customization-modal");
-  await modal.getByRole("button", { name: /Modules/ }).click();
-  const editor = modal.getByTestId("profile-module-editor");
-  await expect(editor).toBeVisible();
-  await editor.getByRole("button", { name: /Compact/ }).click();
-  await editor.getByRole("button", { name: "Save layout" }).click();
-
-  await expect.poll(() => savedProfilePayload).toEqual({
-    profileLayoutPreset: "compact",
-  });
-  await expect(editor.getByText("Layout saved")).toBeVisible();
-  await expect(
-    modal.getByTestId("profile-module-preview").getByTestId("profile-module-grid"),
-  ).toHaveAttribute("data-profile-layout-preset", "compact");
-});
-
-test("owner can hide and reorder the built-in activity module", async ({ page }) => {
-  let orderedIds: number[] | undefined;
-  let activityUpdate: Record<string, unknown> | undefined;
-  await mockProfileModules(page, {
-    authenticated: true,
-    modules: [
-      activityModule({ id: 9, title: "Activity", position: 1 }),
-      aboutModule({ id: 1, title: "About", body: "Saved profile note", position: 2 }),
-    ],
-    onOrder: (ids) => {
-      orderedIds = ids;
-    },
-    onUpdate: (id, payload) => {
-      if (id === 9) {
-        activityUpdate = payload;
-      }
-    },
-  });
-  await acknowledgeCookieNotice(page);
-  await page.goto("/@thia");
-
-  await page.getByRole("button", { name: "Customize profile" }).click();
-  const modal = page.getByTestId("profile-customization-modal");
-  await modal.getByRole("button", { name: /Modules/ }).click();
-  const editor = modal.getByTestId("profile-module-editor");
-  await expect(editor.getByText("Activity")).toBeVisible();
-  await expect(editor.getByRole("button", { name: "Delete Activity" })).toHaveCount(0);
-
-  await editor.getByRole("button", { name: "Move Activity down" }).click();
-  await editor.getByRole("button", { name: "Save order" }).click();
-  await expect.poll(() => orderedIds).toEqual([1, 9]);
-
-  const activityCard = editor.getByTestId("profile-module-card-9");
-  await activityCard.getByRole("button", { name: "Edit Activity" }).click();
-  await activityCard.getByRole("button", { name: "Hidden" }).click();
-  await activityCard.getByRole("button", { name: "Save module" }).click();
-
-  await expect.poll(() => activityUpdate).toMatchObject({
-    visibility: "hidden",
-    config: {},
-  });
-});
-
-test("owner can remove featured post module from the canvas without clearing content", async ({
-  page,
-}) => {
-  const deletedIds: number[] = [];
-  await mockProfileModules(page, {
-    authenticated: true,
-    modules: [featuredPostModule({ id: 8 })],
-    onDelete: (id) => {
-      deletedIds.push(id);
-    },
-    profileOverrides: {
-      featuredPostId: 42,
-      featuredPost: postFixture({ body: "Still selected as featured content." }),
-    },
-  });
-  page.on("dialog", (dialog) => void dialog.accept());
-  await acknowledgeCookieNotice(page);
-  await page.goto("/@thia");
-
-  await expect(page.getByText("Still selected as featured content.")).toBeVisible();
-  await page.getByRole("button", { name: "Customize profile" }).click();
-  const modal = page.getByTestId("profile-customization-modal");
-  await modal.getByRole("button", { name: /Modules/ }).click();
-  await modal.getByRole("button", { name: "Remove Featured post from canvas" }).click();
-
-  await expect.poll(() => deletedIds).toEqual([8]);
-  await expect(modal.getByText("Module hidden")).toBeVisible();
-  await expect(
-    modal.getByTestId("profile-module-card-8").getByText("Hidden"),
-  ).toBeVisible();
-});
-
-test("owner can add and save an about module", async ({ page }) => {
-  let createdPayload: Record<string, unknown> | undefined;
-  await mockProfileModules(page, {
-    authenticated: true,
-    modules: [],
-    onCreate: (payload) => {
-      createdPayload = payload;
-    },
-  });
-  await acknowledgeCookieNotice(page);
-  await page.goto("/@thia");
-
-  await page.getByRole("button", { name: "Customize profile" }).click();
-  const modal = page.getByTestId("profile-customization-modal");
-  await modal.getByRole("button", { name: /Modules/ }).click();
-  const editor = modal.getByTestId("profile-module-editor");
-  await editor.getByRole("button", { name: "About" }).click();
-  await expect(editor.getByTestId("profile-module-expanded")).toBeVisible();
-  await editor.getByLabel("Title").fill("My intro");
-  await editor.getByRole("textbox", { name: "Intro" }).fill("A safe public intro.");
-  await editor.getByRole("button", { name: "Draft" }).click();
-  await editor.getByRole("button", { name: "Save module" }).click();
-
-  await expect.poll(() => createdPayload).toBeTruthy();
-  expect(createdPayload).toMatchObject({
-    type: "about",
-    title: "My intro",
-    visibility: "draft",
-    status: "active",
-    config: { body: "A safe public intro." },
-  });
-  await expect(editor.getByText("Module saved")).toBeVisible();
-  await expect(editor.getByTestId("profile-module-expanded")).toHaveCount(0);
-  await expect(editor.getByText("My intro")).toBeVisible();
-});
-
-test("links editor rejects unsafe URL before save", async ({ page }) => {
-  let created = false;
-  await mockProfileModules(page, {
-    authenticated: true,
-    modules: [],
-    onCreate: () => {
-      created = true;
-    },
-  });
-  await acknowledgeCookieNotice(page);
-  await page.goto("/@thia");
-
-  await page.getByRole("button", { name: "Customize profile" }).click();
-  const modal = page.getByTestId("profile-customization-modal");
-  await modal.getByRole("button", { name: /Modules/ }).click();
-  const editor = modal.getByTestId("profile-module-editor");
-  await editor.getByRole("button", { name: "Connections" }).click();
-  await expect(editor.getByTestId("profile-module-expanded")).toBeVisible();
-  await expect(editor.getByRole("combobox")).toHaveCount(0);
-  await editor.getByRole("button", { name: "Website" }).click();
-  await editor.getByRole("textbox", { name: "Label" }).fill("Bad link");
-  await editor.getByRole("textbox", { name: "HTTPS link" }).fill("javascript:alert(1)");
-  await editor.getByRole("button", { name: "Save module" }).click();
-
-  await expect(editor.getByText("Link URL is invalid.")).toBeVisible();
-  await expect(editor.getByTestId("profile-module-expanded")).toBeVisible();
-  expect(created).toBe(false);
-});
-
-test("owner can add a connections module with platform buttons", async ({ page }) => {
-  let createdPayload: Record<string, unknown> | undefined;
-  await mockProfileModules(page, {
-    authenticated: true,
-    modules: [],
-    onCreate: (payload) => {
-      createdPayload = payload;
-    },
-  });
-  await acknowledgeCookieNotice(page);
-  await page.goto("/@thia");
-
-  await page.getByRole("button", { name: "Customize profile" }).click();
-  const modal = page.getByTestId("profile-customization-modal");
-  await modal.getByRole("button", { name: /Modules/ }).click();
-  const editor = modal.getByTestId("profile-module-editor");
-  await editor.getByRole("button", { name: "Connections" }).click();
-  const expanded = editor.getByTestId("profile-module-expanded");
-  await expect(expanded).toBeVisible();
-  await expect(expanded.getByRole("combobox")).toHaveCount(0);
-  await expanded.getByRole("button", { name: "GitHub" }).click();
-  await expect(expanded.getByTestId("connection-icon-github").first()).toBeVisible();
-  await expanded.getByRole("textbox", { name: "HTTPS link" }).fill(
-    "https://github.com/thiabun",
-  );
-  await expanded.getByRole("button", { name: "Platform" }).click();
-  await expect(expanded.getByRole("menu")).toBeVisible();
-  await expanded.getByRole("menuitem", { name: /GitHub/ }).click();
-  await editor.getByRole("button", { name: "Save module" }).click();
-
-  await expect.poll(() => createdPayload).toMatchObject({
-    type: "links",
-    title: null,
-    visibility: "public",
-    config: {
-      links: [
-        {
-          label: "GitHub",
-          platform: "github",
-          url: "https://github.com/thiabun",
-        },
-      ],
-    },
-  });
-});
-
-test("owner can delete and reorder modules with confirmation", async ({ page }) => {
-  const deletedIds: number[] = [];
-  let orderedIds: number[] | undefined;
-  await mockProfileModules(page, {
-    authenticated: true,
-    modules: [
-      aboutModule({ id: 1, title: "First", body: "First body", position: 1 }),
-      aboutModule({ id: 2, title: "Second", body: "Second body", position: 2 }),
-    ],
-    onDelete: (id) => {
-      deletedIds.push(id);
-    },
-    onOrder: (ids) => {
-      orderedIds = ids;
-    },
-  });
-  page.on("dialog", (dialog) => void dialog.accept());
-  await acknowledgeCookieNotice(page);
-  await page.goto("/@thia");
-
-  await page.getByRole("button", { name: "Customize profile" }).click();
-  const modal = page.getByTestId("profile-customization-modal");
-  await modal.getByRole("button", { name: /Modules/ }).click();
-  const editor = modal.getByTestId("profile-module-editor");
-  await editor.getByRole("button", { name: "Move Second up" }).click();
-  await editor.getByRole("button", { name: "Save order" }).click();
-
-  await expect.poll(() => orderedIds).toEqual([2, 1]);
-
-  await editor.getByRole("button", { name: "Delete Second" }).click();
-  await expect.poll(() => deletedIds).toEqual([2]);
-});
-
-test("mobile module editor and preview do not overflow", async ({ page }) => {
+test("mobile profile modules stay stable without module editor", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockProfileModules(page, {
     authenticated: true,
@@ -816,16 +537,9 @@ test("mobile module editor and preview do not overflow", async ({ page }) => {
   });
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
-  await page.getByRole("button", { name: "Customize profile" }).click();
-  const modal = page.getByTestId("profile-customization-modal");
-  await modal.getByRole("button", { name: /Modules/ }).click();
 
-  await expect(page.getByTestId("profile-module-editor")).toBeVisible();
-  const modalBox = await modal.boundingBox();
-  expect(modalBox?.x).toBeLessThanOrEqual(1);
-  expect(modalBox?.y).toBeLessThanOrEqual(1);
-  expect(Math.round(modalBox?.width ?? 0)).toBe(390);
-  expect(Math.round(modalBox?.height ?? 0)).toBeGreaterThanOrEqual(840);
+  await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
+  await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
@@ -1433,28 +1147,6 @@ function activityModule(
     title: overrides.title ?? "Activity",
     config: {},
     visibility: "public",
-    position: overrides.position ?? 1,
-    status: "active",
-    schemaVersion: 1,
-    createdAt: "2026-06-12 00:00:00",
-    updatedAt: "2026-06-12 00:00:00",
-  };
-}
-
-function featuredPostModule(
-  overrides: {
-    id?: number;
-    position?: number;
-    title?: string | null;
-    visibility?: string;
-  } = {},
-) {
-  return {
-    id: overrides.id ?? 8,
-    type: "featured_post",
-    title: overrides.title ?? "Featured post",
-    config: {},
-    visibility: overrides.visibility ?? "public",
     position: overrides.position ?? 1,
     status: "active",
     schemaVersion: 1,

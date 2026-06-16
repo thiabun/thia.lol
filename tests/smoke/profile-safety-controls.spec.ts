@@ -134,7 +134,7 @@ test("profile safety actions are not shown on your own profile", async ({ page }
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await expect(page.getByRole("button", { name: "Customize profile" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
   await expect(page.getByTestId("profile-actions-button")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Block/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Mute/ })).toHaveCount(0);

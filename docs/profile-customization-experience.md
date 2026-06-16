@@ -118,7 +118,7 @@ Future integrations belong in Modules or Connections, not in fake global switche
 
 ## Recommended Implementation Phases
 
-1. Unified customization modal: merge profile editing and module editing entry points, add persistent preview, and redesign Connections as platform cards using existing APIs.
+1. P3 customization rebuild: create a new editor from scratch instead of reviving the removed modal, with module-first Connections and a polished preview-first workflow.
 2. Preview maturity: add mobile/desktop preview toggles and better unsaved-state messaging without changing public APIs.
 3. Appearance presets spec: define visible, contrast-safe accent/surface/background treatment presets before restoring theme controls.
 4. Featured content maturity: edit post and room selection from the Featured module in Modules, alongside visibility, order, and layout preferences.
@@ -127,32 +127,21 @@ Future integrations belong in Modules or Connections, not in fake global switche
 
 ## Initial Implementation Slice
 
-Issue #26 implemented the first safe slice:
+Issue #26 implemented the first safe slice, which has since been retired from
+the active frontend while P3 customization is redesigned:
 
-- One owner-only `Customize profile` entry point.
-- A modal with Identity, Look, Modules, and Preview sections.
-- A persistent desktop preview and reachable mobile preview.
-- Platform-aware Connection rows inside Identity.
+- The previous owner-only `Customize profile` entry point and modal are removed.
+- Public profiles still render persisted identity, media, modules, featured
+  content, badges, and links.
+- P3 should build a new editor surface with custom buttons, menus, compact
+  cards, and module-first Connections.
 - Existing profile save, image upload, and module endpoints only.
 
 It intentionally does not add new schema, integrations, broad themes, arbitrary styling, or new module types.
 
 ## Implementation Note - 2026-06-16 Customization Overhaul
 
-Issue #37 now treats the compact pass as a full Profiles v3 customization UI/UX
-overhaul without changing profile fields, modules, or backend contracts:
-
-- Desktop customization is narrower, with smaller shell padding, a compact top
-  navigation row, and a smaller side preview where space allows.
-- Mobile keeps the editor full-height, with horizontally scrollable compact
-  navigation and no horizontal page overflow.
-- Identity now owns Connections so routine profile information lives together.
-- Look owns only current supported media slots: avatar, banner, and profile
-  background.
-- Featured post and Featured room selection live inside their normal module
-  tiles in Modules, alongside visibility, order, and layout controls.
-- Preview remains reachable as its own section and as a compact desktop side
-  panel without becoming a second public profile page.
-- Layout customization now lives inside the Modules section of `Customize
-  profile`; the public profile no longer shows a separate `Customize layout`
-  action.
+Issue #37 is superseded by the P3 customization rebuild. Do not reuse the
+removed modal as the baseline. The next editor should be designed around the
+modular canvas, link-first expressive modules, custom controls, and a preview
+path that feels native to the profile surface.

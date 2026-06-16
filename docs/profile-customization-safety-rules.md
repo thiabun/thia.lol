@@ -44,7 +44,10 @@ Current profile customization fields:
 Current frontend behavior:
 
 - Profile accent/theme values may exist in storage for compatibility, but controls are hidden until presets visibly affect public rendering through tested, contrast-safe mappings.
-- The active customization surface is organized around Identity, Look, Modules, and Preview. Connections are edited inside Identity, while Featured post and Featured room are edited inside their normal module tiles.
+- The previous `Customize profile` modal has been removed. There is no active
+  frontend customization editor until the P3 rebuild.
+- Public profiles continue to render persisted identity, media, modules,
+  featured content, badges, and links through constrained public components.
 
 Current profile text and media constraints:
 

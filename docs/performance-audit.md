@@ -40,9 +40,9 @@ Measured before changes with `npm run build`.
 
 ### Route And Modal Loading
 
-- `ProfileCustomizationModal` is now lazy-loaded from `ProfilePage` only when
-  the profile owner opens customization. This isolates the large owner editor
-  from normal profile visitors.
+- The retired profile customization modal has been removed from `ProfilePage`.
+  P3 customization should introduce a new owner editor with its own bundle
+  boundary instead of reviving the old chunk.
 - `RoomEditModal` is now lazy-loaded from `RoomsPage` and `RoomPage` only after
   create/edit actions.
 - `PostComposerModal` is now lazy-loaded from `AppShell` after the first Post
@@ -84,16 +84,15 @@ Measured after changes with `npm run build`.
 | Chunk or asset | Raw | Gzip | Finding |
 | --- | ---: | ---: | --- |
 | `react-vendor-*.js` | 181.79 kB | 57.20 kB | Largest remaining chunk; framework code, expected and cacheable. |
-| `motion-vendor-*.js` | 129.08 kB | 42.08 kB | Motion is used broadly by shell, routes, buttons, cards, and sheets. |
-| `index-*.css` | 72.18 kB | 11.73 kB | Stable stylesheet size; no committed raster assets were found. |
-| `index-*.js` | 54.89 kB | 17.71 kB | App entry is much smaller after route/editor/vendor split. |
-| `ProfileCustomizationModal-*.js` | 44.64 kB | 11.59 kB | Owner-only editor is isolated behind explicit customization action. |
+| `motion-vendor-*.js` | 129.06 kB | 42.07 kB | Motion is used broadly by shell, routes, buttons, cards, and sheets. |
+| `index-*.css` | 76.32 kB | 12.06 kB | Stable stylesheet size; no committed raster assets were found. |
+| `index-*.js` | 58.65 kB | 18.84 kB | App entry remains separated from profile route code. |
 | `router-vendor-*.js` | 42.25 kB | 15.08 kB | Router code is separated and cacheable. |
-| `ProfilePage-*.js` | 36.17 kB | 10.28 kB | Profile route no longer carries owner-only customization editor. |
+| `ProfilePage-*.js` | 50.75 kB | 13.61 kB | Profile route no longer carries owner-only customization editor. |
 | `AdminPage-*.js` | 23.46 kB | 6.09 kB | Admin remains isolated to `/admin`. |
 | `LegalPage-*.js` | 23.42 kB | 7.99 kB | Legal remains isolated to legal routes. |
-| `PostCard-*.js` | 22.87 kB | 6.68 kB | Still the largest shared social component chunk. |
-| `ChatPage-*.js` | 18.29 kB | 5.57 kB | Chat remains isolated to `/chat`. |
+| `PostCard-*.js` | 22.86 kB | 6.65 kB | Still the largest shared social component chunk. |
+| `ChatPage-*.js` | 18.29 kB | 5.58 kB | Chat remains isolated to `/chat`. |
 
 The largest route-specific improvement was `ProfilePage`: 94.09 kB raw /
 25.74 kB gzip before, 36.17 kB raw / 10.28 kB gzip after.
