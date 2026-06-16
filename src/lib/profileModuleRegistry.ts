@@ -137,6 +137,12 @@ export function getProfileModuleDefinition(
   return profileModuleRegistry[type] ?? fallbackProfileModule;
 }
 
+export function profileModuleAllowedSizes(
+  type: ProfileModuleType,
+): readonly ProfileGridModuleSize[] {
+  return getProfileModuleDefinition(type).allowedSizes;
+}
+
 export function profileModuleFallbackTitle(type: ProfileModuleType): string {
   return getProfileModuleDefinition(type).fallbackTitle;
 }
@@ -147,6 +153,14 @@ export function profileModuleGridSize(
   index = 0,
 ): ProfileGridModuleSize {
   const definition = getProfileModuleDefinition(module.type);
+  const layoutSize = module.layout
+    ? profileGridModuleSpanSize(module.layout.colSpan, module.layout.rowSpan)
+    : undefined;
+
+  if (layoutSize && definition.allowedSizes.includes(layoutSize)) {
+    return layoutSize;
+  }
+
   const requestedSize = normalizeProfileGridModuleSize(module.config.canvasSize);
 
   if (requestedSize && definition.allowedSizes.includes(requestedSize)) {
@@ -283,6 +297,15 @@ export function profileGridModuleSizeSpan(
   }
 
   return { columns: 1, rows: 1, size };
+}
+
+export function profileGridModuleSpanSize(
+  columns: number,
+  rows: number,
+): ProfileGridModuleSize | undefined {
+  const size = `${columns}x${rows}`;
+
+  return normalizeProfileGridModuleSize(size);
 }
 
 function normalizeProfileGridRowSpan(value: number): ProfileGridModuleSpan["rows"] {

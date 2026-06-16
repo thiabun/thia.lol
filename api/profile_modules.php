@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read.php';
 
+const PROFILE_INFO_MODULE_TYPE = 'profile_info';
 const PROFILE_ACTIVITY_MODULE_TYPE = 'activity';
 const PROFILE_FEATURED_LEGACY_MODULE_TYPE = 'featured';
 const PROFILE_FEATURED_POST_MODULE_TYPE = 'featured_post';
@@ -12,12 +13,16 @@ const PROFILE_FEATURED_ROOM_MODULE_TYPE = 'featured_room';
 const PROFILE_GALLERY_MEDIA_MODULE_TYPE = 'gallery_media';
 const PROFILE_CREATOR_LIVE_MODULE_TYPE = 'creator_live';
 const PROFILE_MUSIC_MODULE_TYPE = 'music';
-const PROFILE_MODULE_TYPES = ['about', 'links', 'featured_badges', 'custom_text', PROFILE_GALLERY_MEDIA_MODULE_TYPE, PROFILE_CREATOR_LIVE_MODULE_TYPE, PROFILE_MUSIC_MODULE_TYPE, PROFILE_FEATURED_POST_MODULE_TYPE, PROFILE_FEATURED_ROOM_MODULE_TYPE, PROFILE_ACTIVITY_MODULE_TYPE];
-const PROFILE_BUILT_IN_MODULE_TYPES = [PROFILE_FEATURED_POST_MODULE_TYPE, PROFILE_FEATURED_ROOM_MODULE_TYPE, PROFILE_ACTIVITY_MODULE_TYPE];
+const PROFILE_MODULE_TYPES = [PROFILE_INFO_MODULE_TYPE, 'about', 'links', 'featured_badges', 'custom_text', PROFILE_GALLERY_MEDIA_MODULE_TYPE, PROFILE_CREATOR_LIVE_MODULE_TYPE, PROFILE_MUSIC_MODULE_TYPE, PROFILE_FEATURED_POST_MODULE_TYPE, PROFILE_FEATURED_ROOM_MODULE_TYPE, PROFILE_ACTIVITY_MODULE_TYPE];
+const PROFILE_BUILT_IN_MODULE_TYPES = [PROFILE_INFO_MODULE_TYPE, PROFILE_FEATURED_POST_MODULE_TYPE, PROFILE_FEATURED_ROOM_MODULE_TYPE, PROFILE_ACTIVITY_MODULE_TYPE];
 const PROFILE_RETIRED_MODULE_TYPES = [PROFILE_FEATURED_LEGACY_MODULE_TYPE];
 const PROFILE_MODULE_VISIBILITIES = ['public', 'hidden', 'draft'];
 const PROFILE_MODULE_STATUSES = ['active', 'hidden', 'deleted'];
 const PROFILE_MODULE_SCHEMA_VERSION = 1;
+const PROFILE_CANVAS_VERSION = 1;
+const PROFILE_CANVAS_COLUMNS = 6;
+const PROFILE_CANVAS_ROWS = 9;
+const PROFILE_BACKGROUND_BLUR_LEVELS = ['none', 'soft', 'medium', 'heavy'];
 const PROFILE_MODULE_MAX_PER_PROFILE = 8;
 const PROFILE_MODULE_TITLE_MAX = 80;
 const PROFILE_MODULE_TEXT_MAX = 500;
@@ -75,6 +80,19 @@ function profile_modules_dispatch(array $segments, string $method): void
     if (
         ($segments[0] ?? null) === 'me'
         && ($segments[1] ?? null) === 'profile'
+        && ($segments[2] ?? null) === 'canvas'
+        && count($segments) === 3
+    ) {
+        if ($method === 'PATCH') {
+            profile_canvas_update();
+        }
+
+        json_error('Method not allowed.', 405);
+    }
+
+    if (
+        ($segments[0] ?? null) === 'me'
+        && ($segments[1] ?? null) === 'profile'
         && ($segments[2] ?? null) === 'module-order'
         && count($segments) === 3
     ) {
@@ -115,6 +133,10 @@ function profile_modules_public_index(string $handle): void
     $userId = (int) $profile['user_id'];
     $modules = profile_modules_payload($statement->fetchAll(), true);
     $legacyFeaturedModule = profile_legacy_featured_module_record($userId);
+
+    if (!profile_modules_payload_contains_type($modules, PROFILE_INFO_MODULE_TYPE)) {
+        $modules[] = profile_info_module_payload(0);
+    }
 
     if (!profile_featured_post_module_preference_exists($userId) && profile_legacy_featured_module_allows_public_default($legacyFeaturedModule)) {
         $modules[] = profile_featured_post_module_payload(
@@ -174,6 +196,10 @@ function profile_modules_create(): void
 
     if ($status === 'deleted') {
         json_error('New modules cannot be created as deleted.', 422);
+    }
+
+    if ($type === PROFILE_INFO_MODULE_TYPE && ($visibility !== 'public' || $status !== 'active')) {
+        json_error('Profile info cannot be hidden.', 422);
     }
 
     $config = profile_module_config($type, $body['config'] ?? null, $userId);
@@ -245,11 +271,19 @@ function profile_modules_update(string $rawModuleId): void
     }
 
     if (array_key_exists('visibility', $body)) {
+        if ((string) $module['type'] === PROFILE_INFO_MODULE_TYPE && profile_module_visibility($body['visibility']) !== 'public') {
+            json_error('Profile info cannot be hidden.', 422);
+        }
+
         $updates[] = 'visibility = :visibility';
         $params['visibility'] = profile_module_visibility($body['visibility']);
     }
 
     if (array_key_exists('status', $body)) {
+        if ((string) $module['type'] === PROFILE_INFO_MODULE_TYPE && profile_module_status($body['status']) !== 'active') {
+            json_error('Profile info cannot be hidden.', 422);
+        }
+
         $updates[] = 'status = :status';
         $params['status'] = profile_module_status($body['status']);
     }
@@ -286,6 +320,10 @@ function profile_modules_delete(string $rawModuleId): void
 
     if ((int) $module['user_id'] !== $userId) {
         json_error('You cannot delete this profile module.', 403);
+    }
+
+    if ((string) $module['type'] === PROFILE_INFO_MODULE_TYPE) {
+        json_error('Profile info cannot be deleted.', 422);
     }
 
     if (profile_module_type_is_built_in((string) $module['type'])) {
@@ -369,10 +407,85 @@ function profile_modules_order_update(): void
     json_success(profile_modules_for_owner($userId));
 }
 
+function profile_canvas_update(): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+    require_profile_modules_storage();
+    require_profile_canvas_storage();
+
+    $userId = (int) $session['user_id'];
+    ensure_profile_canvas_builtin_modules($userId);
+
+    $body = request_json_body();
+    profile_module_require_object($body, 'JSON body');
+    profile_module_reject_unknown_keys($body, ['canvasVersion', 'backgroundBlur', 'modules']);
+
+    $hasBlur = array_key_exists('backgroundBlur', $body);
+    $hasModules = array_key_exists('modules', $body);
+
+    if (!$hasBlur && !$hasModules) {
+        json_error('No canvas updates were provided.', 422);
+    }
+
+    profile_canvas_request_version($body['canvasVersion'] ?? PROFILE_CANVAS_VERSION);
+
+    $backgroundBlur = $hasBlur
+        ? profile_canvas_background_blur($body['backgroundBlur'])
+        : null;
+    $placements = $hasModules
+        ? profile_canvas_module_placements($body['modules'], $userId)
+        : null;
+
+    $pdo = db();
+    $pdo->beginTransaction();
+
+    try {
+        if ($backgroundBlur !== null) {
+            db_query(
+                'UPDATE profiles
+                 SET profile_background_blur = :profile_background_blur,
+                     profile_canvas_version = :profile_canvas_version,
+                     updated_at = CURRENT_TIMESTAMP()
+                 WHERE user_id = :user_id',
+                [
+                    'profile_background_blur' => $backgroundBlur,
+                    'profile_canvas_version' => PROFILE_CANVAS_VERSION,
+                    'user_id' => $userId,
+                ]
+            );
+        }
+
+        if (is_array($placements)) {
+            profile_canvas_apply_module_placements($placements, $userId);
+        }
+
+        $pdo->commit();
+    } catch (Throwable $exception) {
+        $pdo->rollBack();
+        throw $exception;
+    }
+
+    $preferences = profile_canvas_profile_preferences($userId);
+
+    json_success([
+        'backgroundBlur' => $preferences['backgroundBlur'],
+        'canvasVersion' => $preferences['canvasVersion'],
+        'modules' => profile_modules_for_owner($userId),
+    ]);
+}
+
 function require_profile_modules_storage(): void
 {
     if (!profile_modules_storage_exists()) {
         json_error('Profile module storage is not ready. Run pending migrations.', 503);
+    }
+}
+
+function require_profile_canvas_storage(): void
+{
+    if (!profile_canvas_storage_exists()) {
+        json_error('Profile canvas storage is not ready. Run pending migrations.', 503);
     }
 }
 
@@ -381,10 +494,318 @@ function profile_modules_storage_exists(): bool
     return database_table_exists('profile_modules');
 }
 
+function profile_canvas_storage_exists(): bool
+{
+    return database_column_exists('profiles', 'profile_background_blur')
+        && database_column_exists('profiles', 'profile_canvas_version')
+        && database_column_exists('profile_modules', 'grid_column')
+        && database_column_exists('profile_modules', 'grid_row')
+        && database_column_exists('profile_modules', 'grid_col_span')
+        && database_column_exists('profile_modules', 'grid_row_span');
+}
+
+function profile_canvas_profile_preferences(int $userId): array
+{
+    $statement = db_query(
+        'SELECT profile_background_blur, profile_canvas_version
+         FROM profiles
+         WHERE user_id = :user_id
+         LIMIT 1',
+        ['user_id' => $userId]
+    );
+    $row = $statement->fetch();
+
+    return [
+        'backgroundBlur' => is_array($row)
+            ? profile_canvas_background_blur($row['profile_background_blur'] ?? null)
+            : 'medium',
+        'canvasVersion' => is_array($row)
+            ? profile_canvas_output_version($row['profile_canvas_version'] ?? null)
+            : PROFILE_CANVAS_VERSION,
+    ];
+}
+
+function profile_canvas_request_version(mixed $value): int
+{
+    if (is_int($value) && $value === PROFILE_CANVAS_VERSION) {
+        return PROFILE_CANVAS_VERSION;
+    }
+
+    if (is_string($value) && $value === (string) PROFILE_CANVAS_VERSION) {
+        return PROFILE_CANVAS_VERSION;
+    }
+
+    json_error('Profile canvas version is not supported.', 422);
+}
+
+function profile_canvas_output_version(mixed $value): int
+{
+    return (int) $value === PROFILE_CANVAS_VERSION
+        ? PROFILE_CANVAS_VERSION
+        : PROFILE_CANVAS_VERSION;
+}
+
+function profile_canvas_background_blur(mixed $value): string
+{
+    if (!is_string($value)) {
+        json_error('Choose a supported background blur.', 422);
+    }
+
+    $blur = strtolower(trim($value));
+
+    if (!in_array($blur, PROFILE_BACKGROUND_BLUR_LEVELS, true)) {
+        json_error('Choose a supported background blur.', 422);
+    }
+
+    return $blur;
+}
+
+function profile_canvas_module_placements(mixed $value, int $userId): array
+{
+    if (!is_array($value) || !array_is_list($value)) {
+        json_error('Canvas modules must be an array.', 422);
+    }
+
+    $records = profile_canvas_owner_module_records($userId);
+
+    if (count($value) !== count($records)) {
+        json_error('Canvas layout must include every profile module.', 422);
+    }
+
+    $placements = [];
+    $seen = [];
+
+    foreach ($value as $item) {
+        if (!is_array($item) || array_is_list($item)) {
+            json_error('Canvas module placement must be an object.', 422);
+        }
+
+        profile_module_reject_unknown_keys($item, ['id', 'column', 'row', 'colSpan', 'rowSpan', 'visible']);
+
+        $id = profile_module_id($item['id'] ?? null);
+
+        if (isset($seen[$id])) {
+            json_error('Canvas layout cannot contain duplicate modules.', 422);
+        }
+
+        if (!isset($records[$id])) {
+            json_error('Canvas layout contains unavailable modules.', 422);
+        }
+
+        $record = $records[$id];
+        $type = (string) $record['type'];
+        $visible = profile_canvas_visibility($item['visible'] ?? true);
+
+        if ($type === PROFILE_INFO_MODULE_TYPE && !$visible) {
+            json_error('Profile info cannot be hidden.', 422);
+        }
+
+        $placements[] = profile_canvas_module_placement($item, $record, $visible);
+        $seen[$id] = true;
+    }
+
+    profile_canvas_reject_collisions($placements);
+
+    usort(
+        $placements,
+        static function (array $first, array $second): int {
+            $visibleCompare = (int) (!$first['visible']) <=> (int) (!$second['visible']);
+
+            if ($visibleCompare !== 0) {
+                return $visibleCompare;
+            }
+
+            $rowCompare = $first['row'] <=> $second['row'];
+
+            if ($rowCompare !== 0) {
+                return $rowCompare;
+            }
+
+            $columnCompare = $first['column'] <=> $second['column'];
+
+            if ($columnCompare !== 0) {
+                return $columnCompare;
+            }
+
+            return profile_module_default_sort_order($first['type']) <=> profile_module_default_sort_order($second['type']);
+        }
+    );
+
+    return $placements;
+}
+
+function profile_canvas_owner_module_records(int $userId): array
+{
+    $statement = db_query(
+        'SELECT id, type, visibility, status
+         FROM profile_modules
+         WHERE user_id = :user_id
+           AND status <> :deleted_status
+         ORDER BY position ASC, id ASC',
+        [
+            'user_id' => $userId,
+            'deleted_status' => 'deleted',
+        ]
+    );
+
+    $records = [];
+
+    foreach ($statement->fetchAll() as $row) {
+        if (!profile_module_type_is_supported($row['type'] ?? null)) {
+            continue;
+        }
+
+        $records[(int) $row['id']] = $row;
+    }
+
+    return $records;
+}
+
+function profile_canvas_module_placement(array $item, array $record, bool $visible): array
+{
+    $type = (string) $record['type'];
+    $colSpan = profile_canvas_span_value($item['colSpan'] ?? null, 'Column span');
+    $rowSpan = profile_canvas_span_value($item['rowSpan'] ?? null, 'Row span');
+
+    if (!profile_canvas_span_allowed($type, $colSpan, $rowSpan)) {
+        json_error('Canvas span is not allowed for this module.', 422);
+    }
+
+    $column = profile_canvas_position_value($item['column'] ?? null, 'Column', PROFILE_CANVAS_COLUMNS);
+    $row = profile_canvas_position_value($item['row'] ?? null, 'Row', PROFILE_CANVAS_ROWS);
+    $column = min($column, PROFILE_CANVAS_COLUMNS - $colSpan + 1);
+    $row = min($row, PROFILE_CANVAS_ROWS - $rowSpan + 1);
+
+    return [
+        'id' => (int) $record['id'],
+        'type' => $type,
+        'column' => max(1, $column),
+        'row' => max(1, $row),
+        'colSpan' => $colSpan,
+        'rowSpan' => $rowSpan,
+        'visible' => $visible,
+    ];
+}
+
+function profile_canvas_visibility(mixed $value): bool
+{
+    if (is_bool($value)) {
+        return $value;
+    }
+
+    json_error('Canvas module visibility is invalid.', 422);
+}
+
+function profile_canvas_span_value(mixed $value, string $label): int
+{
+    $number = profile_canvas_int_value($value, $label);
+
+    return max(1, min(3, $number));
+}
+
+function profile_canvas_position_value(mixed $value, string $label, int $max): int
+{
+    $number = profile_canvas_int_value($value, $label);
+
+    return max(1, min($max, $number));
+}
+
+function profile_canvas_int_value(mixed $value, string $label): int
+{
+    if (is_int($value)) {
+        return $value;
+    }
+
+    if (is_string($value) && preg_match('/^-?[0-9]+$/', $value) === 1) {
+        return (int) $value;
+    }
+
+    json_error("{$label} is invalid.", 422);
+}
+
+function profile_canvas_span_allowed(string $type, int $colSpan, int $rowSpan): bool
+{
+    $size = "{$colSpan}x{$rowSpan}";
+
+    return in_array($size, profile_canvas_allowed_sizes($type), true);
+}
+
+function profile_canvas_allowed_sizes(string $type): array
+{
+    return match ($type) {
+        PROFILE_INFO_MODULE_TYPE => ['3x3', '3x2', '2x2', '2x1'],
+        'about' => ['1x1', '2x1', '3x1'],
+        'custom_text' => ['1x1', '2x1'],
+        'links' => ['1x1', '2x1'],
+        'featured_badges' => ['1x1', '2x1'],
+        PROFILE_FEATURED_POST_MODULE_TYPE => ['2x1', '3x1', '2x2', '3x2'],
+        PROFILE_FEATURED_ROOM_MODULE_TYPE => ['1x1', '2x1', '3x1'],
+        PROFILE_GALLERY_MEDIA_MODULE_TYPE => ['1x1', '2x1', '2x2', '3x2'],
+        PROFILE_CREATOR_LIVE_MODULE_TYPE => ['1x1', '2x1', '2x2'],
+        PROFILE_MUSIC_MODULE_TYPE => ['1x1', '2x1'],
+        PROFILE_ACTIVITY_MODULE_TYPE => ['2x2', '3x2', '3x3'],
+        default => ['1x1'],
+    };
+}
+
+function profile_canvas_reject_collisions(array $placements): void
+{
+    $occupied = [];
+
+    foreach ($placements as $placement) {
+        if (!$placement['visible']) {
+            continue;
+        }
+
+        for ($row = $placement['row']; $row < $placement['row'] + $placement['rowSpan']; $row++) {
+            for ($column = $placement['column']; $column < $placement['column'] + $placement['colSpan']; $column++) {
+                $key = "{$column}:{$row}";
+
+                if (isset($occupied[$key])) {
+                    json_error('Canvas modules cannot overlap.', 422);
+                }
+
+                $occupied[$key] = true;
+            }
+        }
+    }
+}
+
+function profile_canvas_apply_module_placements(array $placements, int $userId): void
+{
+    foreach ($placements as $index => $placement) {
+        db_query(
+            'UPDATE profile_modules
+             SET position = :position,
+                 grid_column = :grid_column,
+                 grid_row = :grid_row,
+                 grid_col_span = :grid_col_span,
+                 grid_row_span = :grid_row_span,
+                 visibility = :visibility,
+                 status = :status,
+                 updated_at = CURRENT_TIMESTAMP()
+             WHERE id = :id
+               AND user_id = :user_id
+               AND status <> :deleted_status',
+            [
+                'position' => $index + 1,
+                'grid_column' => $placement['column'],
+                'grid_row' => $placement['row'],
+                'grid_col_span' => $placement['colSpan'],
+                'grid_row_span' => $placement['rowSpan'],
+                'visibility' => $placement['visible'] ? 'public' : 'hidden',
+                'status' => 'active',
+                'id' => $placement['id'],
+                'user_id' => $userId,
+                'deleted_status' => 'deleted',
+            ]
+        );
+    }
+}
+
 function profile_modules_for_owner(int $userId): array
 {
-    ensure_profile_featured_modules($userId);
-    ensure_profile_activity_module($userId);
+    ensure_profile_canvas_builtin_modules($userId);
 
     $statement = db_query(
         'SELECT *
@@ -401,6 +822,13 @@ function profile_modules_for_owner(int $userId): array
     return profile_modules_payload($statement->fetchAll(), false);
 }
 
+function ensure_profile_canvas_builtin_modules(int $userId): void
+{
+    ensure_profile_info_module($userId);
+    ensure_profile_featured_modules($userId);
+    ensure_profile_activity_module($userId);
+}
+
 function profile_modules_payload(array $rows, bool $public): array
 {
     $modules = [];
@@ -414,6 +842,17 @@ function profile_modules_payload(array $rows, bool $public): array
     }
 
     return $modules;
+}
+
+function profile_modules_payload_contains_type(array $modules, string $type): bool
+{
+    foreach ($modules as $module) {
+        if (($module['type'] ?? null) === $type) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function profile_module_payload(array $row, bool $public): ?array
@@ -432,11 +871,55 @@ function profile_module_payload(array $row, bool $public): ?array
         'config' => $config,
         'visibility' => (string) $row['visibility'],
         'position' => (int) $row['position'],
+        'layout' => profile_module_layout_payload($row),
         'status' => (string) $row['status'],
         'schemaVersion' => (int) $row['schema_version'],
         'createdAt' => $row['created_at'] ?? null,
         'updatedAt' => $row['updated_at'] ?? null,
     ];
+}
+
+function profile_module_layout_payload(array $row): ?array
+{
+    $type = (string) ($row['type'] ?? '');
+    $column = profile_module_saved_grid_value($row['grid_column'] ?? null);
+    $rowNumber = profile_module_saved_grid_value($row['grid_row'] ?? null);
+    $colSpan = profile_module_saved_grid_value($row['grid_col_span'] ?? null);
+    $rowSpan = profile_module_saved_grid_value($row['grid_row_span'] ?? null);
+
+    if ($column === null || $rowNumber === null || $colSpan === null || $rowSpan === null) {
+        return null;
+    }
+
+    $colSpan = max(1, min(3, $colSpan));
+    $rowSpan = max(1, min(3, $rowSpan));
+
+    if (!profile_canvas_span_allowed($type, $colSpan, $rowSpan)) {
+        return null;
+    }
+
+    $column = max(1, min(PROFILE_CANVAS_COLUMNS - $colSpan + 1, $column));
+    $rowNumber = max(1, min(PROFILE_CANVAS_ROWS - $rowSpan + 1, $rowNumber));
+
+    return [
+        'column' => $column,
+        'row' => $rowNumber,
+        'colSpan' => $colSpan,
+        'rowSpan' => $rowSpan,
+    ];
+}
+
+function profile_module_saved_grid_value(mixed $value): ?int
+{
+    if (is_int($value)) {
+        return $value;
+    }
+
+    if (is_string($value) && preg_match('/^[0-9]+$/', $value) === 1) {
+        return (int) $value;
+    }
+
+    return null;
 }
 
 function profile_module_type_is_supported(mixed $value): bool
@@ -457,6 +940,7 @@ function profile_module_type_is_built_in(string $type): bool
 function profile_module_type_label(string $type): string
 {
     return match ($type) {
+        PROFILE_INFO_MODULE_TYPE => 'Profile info',
         PROFILE_FEATURED_POST_MODULE_TYPE => 'Featured post',
         PROFILE_FEATURED_ROOM_MODULE_TYPE => 'Featured room',
         PROFILE_ACTIVITY_MODULE_TYPE => 'Activity',
@@ -467,6 +951,7 @@ function profile_module_type_label(string $type): string
 function profile_module_delete_message(string $type): string
 {
     return match ($type) {
+        PROFILE_INFO_MODULE_TYPE => 'Profile info stays visible as the identity anchor.',
         PROFILE_FEATURED_POST_MODULE_TYPE => 'Featured post was hidden from the profile canvas.',
         PROFILE_FEATURED_ROOM_MODULE_TYPE => 'Featured room was hidden from the profile canvas.',
         PROFILE_ACTIVITY_MODULE_TYPE => 'Activity was hidden from the profile canvas.',
@@ -517,6 +1002,7 @@ function profile_modules_active_count(int $userId): int
          FROM profile_modules
          WHERE user_id = :user_id
            AND status <> :deleted_status
+           AND type <> :profile_info_type
            AND type <> :featured_post_type
            AND type <> :featured_room_type
            AND type <> :legacy_featured_type
@@ -524,6 +1010,7 @@ function profile_modules_active_count(int $userId): int
         [
             'user_id' => $userId,
             'deleted_status' => 'deleted',
+            'profile_info_type' => PROFILE_INFO_MODULE_TYPE,
             'featured_post_type' => PROFILE_FEATURED_POST_MODULE_TYPE,
             'featured_room_type' => PROFILE_FEATURED_ROOM_MODULE_TYPE,
             'legacy_featured_type' => PROFILE_FEATURED_LEGACY_MODULE_TYPE,
@@ -555,6 +1042,11 @@ function profile_modules_next_position(int $userId): int
 function profile_activity_module_preference_exists(int $userId): bool
 {
     return profile_builtin_module_preference_exists($userId, PROFILE_ACTIVITY_MODULE_TYPE);
+}
+
+function profile_info_module_preference_exists(int $userId): bool
+{
+    return profile_builtin_module_preference_exists($userId, PROFILE_INFO_MODULE_TYPE);
 }
 
 function profile_featured_post_module_preference_exists(int $userId): bool
@@ -662,6 +1154,21 @@ function profile_legacy_featured_module_status(?array $legacyModule): string
     return is_string($status) && in_array($status, PROFILE_MODULE_STATUSES, true) && $status !== 'deleted'
         ? $status
         : 'active';
+}
+
+function ensure_profile_info_module(int $userId): void
+{
+    if (profile_info_module_preference_exists($userId)) {
+        return;
+    }
+
+    profile_insert_builtin_module_at(
+        $userId,
+        PROFILE_INFO_MODULE_TYPE,
+        1,
+        'public',
+        'active'
+    );
 }
 
 function ensure_profile_featured_modules(int $userId): void
@@ -781,6 +1288,24 @@ function profile_activity_module_payload(int $position): array
         'config' => [],
         'visibility' => 'public',
         'position' => $position,
+        'layout' => null,
+        'status' => 'active',
+        'schemaVersion' => PROFILE_MODULE_SCHEMA_VERSION,
+        'createdAt' => null,
+        'updatedAt' => null,
+    ];
+}
+
+function profile_info_module_payload(int $position): array
+{
+    return [
+        'id' => 0,
+        'type' => PROFILE_INFO_MODULE_TYPE,
+        'title' => 'Profile info',
+        'config' => [],
+        'visibility' => 'public',
+        'position' => $position,
+        'layout' => null,
         'status' => 'active',
         'schemaVersion' => PROFILE_MODULE_SCHEMA_VERSION,
         'createdAt' => null,
@@ -797,6 +1322,7 @@ function profile_featured_post_module_payload(int $position): array
         'config' => [],
         'visibility' => 'public',
         'position' => $position,
+        'layout' => null,
         'status' => 'active',
         'schemaVersion' => PROFILE_MODULE_SCHEMA_VERSION,
         'createdAt' => null,
@@ -813,6 +1339,7 @@ function profile_featured_room_module_payload(int $position): array
         'config' => [],
         'visibility' => 'public',
         'position' => $position,
+        'layout' => null,
         'status' => 'active',
         'schemaVersion' => PROFILE_MODULE_SCHEMA_VERSION,
         'createdAt' => null,
@@ -846,6 +1373,7 @@ function profile_modules_sort_payload(array &$modules): void
 function profile_module_default_sort_order(string $type): int
 {
     return match ($type) {
+        PROFILE_INFO_MODULE_TYPE => -1,
         PROFILE_FEATURED_POST_MODULE_TYPE => 0,
         PROFILE_FEATURED_ROOM_MODULE_TYPE => 1,
         PROFILE_ACTIVITY_MODULE_TYPE => 3,

@@ -107,8 +107,10 @@ function profile_payload(array $row, ?array $stats = null, ?array $social = null
         'bannerUrl' => $row['banner_url'] ?? null,
         'profileAccent' => $row['profile_accent'] ?? null,
         'profileBackground' => $row['profile_background'] ?? null,
+        'profileBackgroundBlur' => profile_background_blur($row['profile_background_blur'] ?? null),
         'profileTheme' => $row['profile_theme'] ?? null,
         'profileLayoutPreset' => profile_layout_preset($row['profile_layout_preset'] ?? null),
+        'profileCanvasVersion' => profile_canvas_version($row['profile_canvas_version'] ?? null),
         'featuredPostId' => profile_featured_nullable_id($row['featured_post_id'] ?? null),
         'featuredRoomId' => profile_featured_nullable_id($row['featured_room_id'] ?? null),
         'links' => json_array_value($row['links'] ?? null),
@@ -172,6 +174,26 @@ function profile_layout_preset(mixed $value): string
     return in_array($preset, ['balanced', 'compact', 'showcase'], true)
         ? $preset
         : 'balanced';
+}
+
+function profile_background_blur(mixed $value): string
+{
+    if (!is_string($value)) {
+        return 'medium';
+    }
+
+    $blur = strtolower(trim($value));
+
+    return in_array($blur, ['none', 'soft', 'medium', 'heavy'], true)
+        ? $blur
+        : 'medium';
+}
+
+function profile_canvas_version(mixed $value): int
+{
+    $version = (int) $value;
+
+    return $version === 1 ? 1 : 1;
 }
 
 function room_payload(array $row): array
@@ -410,25 +432,45 @@ function profile_customization_select_sql(string $alias): string
     $layoutSelect = profile_layout_preset_column_exists()
         ? "{$alias}.profile_layout_preset,"
         : "NULL AS profile_layout_preset,";
+    $backgroundBlurSelect = profile_background_blur_column_exists()
+        ? "{$alias}.profile_background_blur,"
+        : "NULL AS profile_background_blur,";
+    $canvasVersionSelect = profile_canvas_version_column_exists()
+        ? "{$alias}.profile_canvas_version,"
+        : "1 AS profile_canvas_version,";
 
     if (profile_customization_columns_exist()) {
         return "{$alias}.banner_url,
             {$alias}.profile_accent,
             {$alias}.profile_background,
+            {$backgroundBlurSelect}
             {$alias}.profile_theme,
-            {$layoutSelect}";
+            {$layoutSelect}
+            {$canvasVersionSelect}";
     }
 
     return "NULL AS banner_url,
             NULL AS profile_accent,
             NULL AS profile_background,
+            NULL AS profile_background_blur,
             NULL AS profile_theme,
-            {$layoutSelect}";
+            {$layoutSelect}
+            {$canvasVersionSelect}";
 }
 
 function profile_layout_preset_column_exists(): bool
 {
     return database_column_exists('profiles', 'profile_layout_preset');
+}
+
+function profile_background_blur_column_exists(): bool
+{
+    return database_column_exists('profiles', 'profile_background_blur');
+}
+
+function profile_canvas_version_column_exists(): bool
+{
+    return database_column_exists('profiles', 'profile_canvas_version');
 }
 
 function profile_featured_select_sql(string $alias): string

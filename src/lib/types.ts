@@ -2,6 +2,8 @@ export type ThemeName = "sunveil" | "frostveil";
 
 export type ProfileLayoutPreset = "balanced" | "compact" | "showcase";
 
+export type ProfileBackgroundBlur = "none" | "soft" | "medium" | "heavy";
+
 export type User = {
   id: number;
   handle: string;
@@ -18,8 +20,10 @@ export type Profile = {
   bannerUrl?: string | null;
   profileAccent?: string | null;
   profileBackground?: string | null;
+  profileBackgroundBlur: ProfileBackgroundBlur;
   profileTheme?: string | null;
   profileLayoutPreset: ProfileLayoutPreset;
+  profileCanvasVersion: 1;
   featuredPostId?: number | null;
   featuredRoomId?: number | null;
   featuredPost?: Post | null;
@@ -151,6 +155,13 @@ export type ProfileModuleConfig = {
   workingOn?: string;
 };
 
+export type ProfileModuleLayout = {
+  column: number;
+  row: number;
+  colSpan: number;
+  rowSpan: number;
+};
+
 export type ProfileModule = {
   id: number;
   type: ProfileModuleType;
@@ -158,6 +169,7 @@ export type ProfileModule = {
   config: ProfileModuleConfig;
   visibility: ProfileModuleVisibility;
   position: number;
+  layout?: ProfileModuleLayout | null;
   status: ProfileModuleStatus;
   schemaVersion: number;
   createdAt?: string | null;

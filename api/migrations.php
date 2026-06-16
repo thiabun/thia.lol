@@ -230,7 +230,7 @@ function apply_migration_file(array $file): void
         db()->beginTransaction();
 
         foreach ($statements as $statement) {
-            db()->exec($statement);
+            execute_migration_statement($statement);
         }
 
         db_query(
@@ -255,6 +255,15 @@ function apply_migration_file(array $file): void
                 'filename' => $migration,
             ],
         ]);
+    }
+}
+
+function execute_migration_statement(string $statement): void
+{
+    $result = db()->query($statement);
+
+    if ($result instanceof PDOStatement) {
+        $result->closeCursor();
     }
 }
 

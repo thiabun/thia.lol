@@ -104,7 +104,7 @@ export function ProfileHeader({
   return (
     <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
       <motion.section
-        className="relative overflow-hidden rounded-panel border border-line-strong bg-surface/86 shadow-soft backdrop-blur-veil"
+        className="relative overflow-hidden rounded-panel border border-line-strong bg-surface/68 shadow-soft backdrop-blur-veil"
         data-testid="profile-header"
       >
         <ProfileHeaderBackdrop backgroundUrl={backgroundUrl} />

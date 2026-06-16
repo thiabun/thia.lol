@@ -3,6 +3,7 @@ import {
   ExternalLink,
   Globe,
   Music2,
+  Move,
   Radio,
   Sparkles,
 } from "lucide-react";
@@ -38,6 +39,7 @@ type ProfileModulesSectionProps = {
   layoutPreset?: ProfileLayoutPreset | undefined;
   loading: boolean;
   modules: ProfileModule[];
+  editing?: ProfileModuleGridEditing | undefined;
   renderModuleContent?: ProfileModuleContentRenderer | undefined;
 };
 
@@ -48,6 +50,7 @@ export function ProfileModulesSection({
   layoutPreset = defaultProfileLayoutPreset,
   loading,
   modules,
+  editing,
   renderModuleContent,
 }: ProfileModulesSectionProps) {
   const renderableModules = renderableProfileModules(modules, badges);
@@ -74,6 +77,7 @@ export function ProfileModulesSection({
         <ProfileModuleGrid
           modules={renderableModules}
           badges={badges}
+          editing={editing}
           layoutPreset={layoutPreset}
           renderModuleContent={renderModuleContent}
         />
@@ -113,14 +117,21 @@ type ProfileModuleContentRenderer = (module: ProfileModule) => ReactNode | undef
 
 type ProfileModuleGridProps = {
   badges: UserBadge[];
+  editing?: ProfileModuleGridEditing | undefined;
   layoutPreset?: ProfileLayoutPreset | undefined;
   maxColumns?: 2 | 6;
   modules: ProfileModule[];
   renderModuleContent?: ProfileModuleContentRenderer | undefined;
 };
 
+type ProfileModuleGridEditing = {
+  selectedModuleId?: number | undefined;
+  onSelectModule: (module: ProfileModule) => void;
+};
+
 export function ProfileModuleGrid({
   badges,
+  editing,
   layoutPreset = defaultProfileLayoutPreset,
   maxColumns,
   modules,
@@ -151,17 +162,49 @@ export function ProfileModuleGrid({
       maxColumns={resolvedMaxColumns}
       testId="profile-module-grid"
     >
-      {renderableModules.map((module, index) => (
-        <ProfileGridModule
-          key={`${module.type}-${module.id}`}
-          size={profileModuleGridSpan(module, layoutPreset, index).size}
-          testId={`profile-grid-module-${module.type}`}
-        >
-          {renderModuleContent?.(module) ?? (
-            <ProfileModuleCard module={module} badges={badges} />
-          )}
-        </ProfileGridModule>
-      ))}
+      {renderableModules.map((module, index) => {
+        const span = profileModuleGridSpan(module, layoutPreset, index);
+        const safeLayout =
+          module.layout &&
+          module.layout.colSpan === span.columns &&
+          module.layout.rowSpan === span.rows
+            ? module.layout
+            : null;
+
+        return (
+          <ProfileGridModule
+            key={`${module.type}-${module.id}`}
+            className={cn(
+              "relative",
+              editing
+                ? "rounded-card transition duration-fluid ease-fluid"
+                : undefined,
+              editing && module.visibility !== "public" ? "opacity-55" : undefined,
+              editing?.selectedModuleId === module.id
+                ? "ring-2 ring-focus ring-offset-2 ring-offset-canvas"
+                : undefined,
+            )}
+            layout={safeLayout}
+            size={span.size}
+            testId={`profile-grid-module-${module.type}`}
+          >
+            {editing ? (
+              <button
+                type="button"
+                className="absolute right-2 top-2 z-20 grid size-8 place-items-center rounded-control border border-line bg-surface/90 text-text shadow-soft backdrop-blur-veil transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                aria-label={`Select ${profileModuleFallbackTitle(module.type)} module`}
+                title={`Select ${profileModuleFallbackTitle(module.type)}`}
+                onClick={() => editing.onSelectModule(module)}
+              >
+                <Move aria-hidden="true" size={15} />
+              </button>
+            ) : null}
+            {renderModuleContent?.(module) ?? (
+              <ProfileModuleCard module={module} badges={badges} />
+            )}
+          </ProfileGridModule>
+        );
+      })}
     </ProfileGrid>
   );
 }
@@ -176,7 +219,7 @@ export function ProfileModuleCard({ badges, module }: ProfileModuleCardProps) {
 
   return (
     <article
-      className="h-full min-w-0 rounded-card border border-line bg-surface/68 p-3"
+      className="h-full min-w-0 rounded-card border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
       data-testid={`profile-module-${module.type}`}
     >
       <h3 className="text-sm font-semibold text-text">{title}</h3>

@@ -24,6 +24,17 @@ The long-term goal is a curated personal space. A profile should be able to act 
 
 This document is planning only. It does not implement frontend redesigns, API changes, migrations, integrations, embeds, analytics, ads, private accounts, or paid profile features.
 
+Implementation should prefer real, maintainable product behavior over
+frontend-only pretend features. Avoiding backend or database work is not a
+product principle. Scoped API and schema changes are acceptable when they are
+migrated, validated, tested, documented, and compatible with the existing
+cPanel/PHP/MySQL deployment model.
+
+Bugs are expected to be found and fixed through small, verifiable passes. Fear
+of bugs should not block necessary profile architecture, but profile work must
+still avoid reckless rewrites, auth/session churn, secrets exposure, arbitrary
+user code, silent production migrations, and unsupported integrations.
+
 ## Profiles v3 - Personal Spaces
 
 Issue [#18](https://github.com/thiabun/thia.lol/issues/18) defines Profiles v3
@@ -718,12 +729,13 @@ earlier three-column grid foundation with a compact 6x9-ready canvas model:
   has a max height tied to three grid rows on desktop, and only the activity
   body scrolls internally. The module title and Feed/Replies/Rooms tabs remain
   outside that scroll area, while mobile uses a viewport-bounded max height.
-- `profile_info` is a synthetic frontend-only canvas module and always appears
-  first. It carries the core identity surface, banner, avatar, name, handle,
-  bio, actions, Likes/Followers/Following, and essential links/badges. It uses a
-  `3x3` span when a safe banner is present and `3x2` without a banner. It is not
-  accepted by the backend module APIs and cannot be hidden or reordered in this
-  pass.
+- `profile_info` started as a synthetic frontend canvas module. Profiles V3 P3
+  promotes it to a protected built-in module preference when owners load the
+  canvas editor, while public reads still add a safe fallback identity module if
+  no stored row exists. It carries the core identity surface, banner, avatar,
+  name, handle, bio, actions, Likes/Followers/Following, and essential
+  links/badges. It uses a `3x3` span when a safe banner is present and `3x2`
+  without a banner by default. It cannot be hidden or deleted.
 - Featured content is split into real built-in modules:
   `featured_post` and `featured_room`. The existing
   `profiles.featured_post_id` and `profiles.featured_room_id` fields remain the
@@ -734,18 +746,15 @@ earlier three-column grid foundation with a compact 6x9-ready canvas model:
   and visibility/status so old preferences fail safely instead of blocking the
   new module model.
 - The full profile surface now has a page-level background treatment using the
-  existing safe `profile_background` URL, falling back to banner media and then
-  the default Sunveil/Frostveil surface. The default blur model is `medium`,
-  with readable overlays applied above uploaded media.
+  existing safe `profile_background` URL. It no longer treats banner media as a
+  fake page background. The default blur model is `medium`, with readable
+  overlays applied above uploaded media.
 - Public empty featured modules do not render. Owners continue to manage
   featured post and room selection from the existing lazy-loaded Customize
   Profile flow, now through separate built-in module tiles.
 
 Deferred after this pass:
 
-- Manual placement, drag-and-drop, grid coordinates, and owner-selected module
-  span controls. Future placement controls must remain preset/allowlist based
-  and keep keyboard move controls as the baseline.
 - Video or animated profile backgrounds. Those need separate media policy,
   poster, duration, file-size, reduced-motion, mobile performance, storage, and
   moderation planning before upload or rendering work.
@@ -769,6 +778,32 @@ P3 should start from a clean surface instead of iterating on the removed modal:
   preview path.
 - Public profiles remain header plus module grid, with no fixed Featured
   section, setup prompt, layout action, or "Personal space" label.
+
+### Implementation Note - 2026-06-16 Profiles V3 P3 Canvas Persistence
+
+Profiles V3 P3 adds real persistence for the modular profile canvas:
+
+- `backend/database/migrations/20260616_0001_add_profile_canvas_layout.sql`
+  adds `profiles.profile_background_blur`,
+  `profiles.profile_canvas_version`, and bounded grid placement columns on
+  `profile_modules`.
+- `PATCH /api/me/profile/canvas` saves the owner-selected background blur and
+  module placement with auth, CSRF, ownership checks, module allowlists, canvas
+  version validation, and server-side span/coordinate validation.
+- Blur is allowlisted to `none`, `soft`, `medium`, and `heavy`; arbitrary CSS
+  values are rejected.
+- Module coordinates are clamped into the 6x9 grid. Spans must match the
+  module-specific allowlist. Visible module collisions are rejected rather than
+  silently overlapping.
+- Mobile ignores exact grid coordinates and stacks by normalized module order.
+- Invalid saved coordinates or retired module rows are ignored or safely
+  normalized on read instead of breaking public profiles.
+- Owner customization is now an inline canvas edit mode with preview, save, and
+  cancel. It does not revive the retired large customization modal.
+
+The first P3 editor uses direct row/column/span controls and keyboard-friendly
+nudge buttons instead of a drag dependency. Full drag-and-drop can be added
+later only if it preserves the same grid constraints and accessibility fallback.
 
 ### Implementation Note - 2026-06-16 Profiles V3 P2 Expressive Modules
 

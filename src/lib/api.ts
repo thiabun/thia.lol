@@ -14,9 +14,11 @@ import type {
   ProfileBadgesResult,
   ProfileConnection,
   ProfileExternalConnection,
+  ProfileBackgroundBlur,
   ProfileLayoutPreset,
   ProfileModule,
   ProfileModuleConfig,
+  ProfileModuleLayout,
   ProfileModuleMediaItem,
   ProfileModuleStatus,
   ProfileModuleType,
@@ -51,7 +53,7 @@ type ApiRoom = Room & {
 
 type ApiProfile = Omit<
   Profile,
-  "featuredPost" | "featuredRoom" | "profileLayoutPreset"
+  "featuredPost" | "featuredRoom" | "profileBackgroundBlur" | "profileLayoutPreset" | "profileCanvasVersion"
 > & {
   avatarUrl?: string | null;
   createdAt?: string;
@@ -60,7 +62,9 @@ type ApiProfile = Omit<
   featuredRoomId?: number | null;
   featuredPost?: ApiPost | null;
   featuredRoom?: ApiRoom | null;
+  profileBackgroundBlur?: string | null;
   profileLayoutPreset?: string | null;
+  profileCanvasVersion?: number | string | null;
   links?: unknown[];
   isBlocked?: boolean;
   isMuted?: boolean;
@@ -153,6 +157,23 @@ export type UpdateProfileInput = {
   profileLayoutPreset?: ProfileLayoutPreset;
   links?: ProfileExternalConnection[];
   traits?: string[];
+};
+
+export type UpdateProfileCanvasModuleInput = ProfileModuleLayout & {
+  id: number;
+  visible: boolean;
+};
+
+export type UpdateProfileCanvasInput = {
+  canvasVersion: 1;
+  backgroundBlur?: ProfileBackgroundBlur;
+  modules?: UpdateProfileCanvasModuleInput[];
+};
+
+export type UpdateProfileCanvasResult = {
+  backgroundBlur: ProfileBackgroundBlur;
+  canvasVersion: 1;
+  modules: ProfileModule[];
 };
 
 export type CreateProfileModuleInput = {
@@ -546,6 +567,23 @@ export function updateProfileModuleOrder(
     { moduleIds },
     csrfToken,
   ).then((items) => items.filter(isApiProfileModule).map(normalizeProfileModule));
+}
+
+export function updateProfileCanvas(
+  input: UpdateProfileCanvasInput,
+  csrfToken: string,
+): Promise<UpdateProfileCanvasResult> {
+  return apiPatch<{
+    backgroundBlur?: string | null;
+    canvasVersion?: number | string | null;
+    modules?: ApiProfileModule[];
+  }>("/me/profile/canvas", input, csrfToken).then((result) => ({
+    backgroundBlur: normalizeProfileBackgroundBlur(result.backgroundBlur),
+    canvasVersion: 1,
+    modules: Array.isArray(result.modules)
+      ? result.modules.filter(isApiProfileModule).map(normalizeProfileModule)
+      : [],
+  }));
 }
 
 export function getProfilePosts(handle: string): Promise<Post[]> {
@@ -1100,8 +1138,12 @@ function normalizeProfile(profile: ApiProfile): Profile {
     bannerUrl: profile.bannerUrl ?? null,
     profileAccent: profile.profileAccent ?? null,
     profileBackground: profile.profileBackground ?? null,
+    profileBackgroundBlur: normalizeProfileBackgroundBlur(
+      profile.profileBackgroundBlur,
+    ),
     profileTheme: profile.profileTheme ?? null,
     profileLayoutPreset: normalizeProfileLayoutPreset(profile.profileLayoutPreset),
+    profileCanvasVersion: 1,
     featuredPostId: profile.featuredPostId ?? profile.featuredPost?.id ?? null,
     featuredRoomId: profile.featuredRoomId ?? profile.featuredRoom?.id ?? null,
     featuredPost: profile.featuredPost ? normalizePost(profile.featuredPost) : null,
@@ -1178,6 +1220,17 @@ function normalizeProfileBadgesResult(
   };
 }
 
+function normalizeProfileBackgroundBlur(
+  value: unknown,
+): ProfileBackgroundBlur {
+  return value === "none" ||
+    value === "soft" ||
+    value === "medium" ||
+    value === "heavy"
+    ? value
+    : "medium";
+}
+
 function normalizeProfileModule(module: ApiProfileModule): ProfileModule {
   return {
     id: module.id,
@@ -1186,6 +1239,7 @@ function normalizeProfileModule(module: ApiProfileModule): ProfileModule {
     config: normalizeProfileModuleConfig(module.config),
     visibility: module.visibility,
     position: module.position,
+    layout: normalizeProfileModuleLayout(module.layout),
     status: module.status,
     schemaVersion: module.schemaVersion ?? 1,
     createdAt: module.createdAt ?? null,
@@ -1195,6 +1249,42 @@ function normalizeProfileModule(module: ApiProfileModule): ProfileModule {
 
 function isApiProfileModule(module: ApiProfileModule): boolean {
   return isProfileModuleType(module.type);
+}
+
+function normalizeProfileModuleLayout(
+  layout: ProfileModule["layout"] | undefined,
+): ProfileModuleLayout | null {
+  if (!layout || typeof layout !== "object") {
+    return null;
+  }
+
+  const column = normalizeCanvasInteger(layout.column);
+  const row = normalizeCanvasInteger(layout.row);
+  const colSpan = normalizeCanvasInteger(layout.colSpan);
+  const rowSpan = normalizeCanvasInteger(layout.rowSpan);
+
+  if (!column || !row || !colSpan || !rowSpan) {
+    return null;
+  }
+
+  return {
+    column: Math.min(6, Math.max(1, column)),
+    row: Math.min(9, Math.max(1, row)),
+    colSpan: Math.min(3, Math.max(1, colSpan)),
+    rowSpan: Math.min(3, Math.max(1, rowSpan)),
+  };
+}
+
+function normalizeCanvasInteger(value: unknown): number | undefined {
+  if (Number.isInteger(value)) {
+    return value as number;
+  }
+
+  if (typeof value === "string" && /^-?\d+$/.test(value)) {
+    return Number.parseInt(value, 10);
+  }
+
+  return undefined;
 }
 
 function normalizeProfileModuleConfig(config: ProfileModuleConfig): ProfileModuleConfig {

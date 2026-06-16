@@ -25,6 +25,13 @@ schema_migrations
 
 Each migration should run once. If a migration is already applied with the same checksum, it is skipped. If the checksum changed, the runner stops instead of guessing. Good, because databases should not improvise.
 
+Local development note: committed source migrations live under
+`backend/database/migrations/`, but the PHP runner reads the deployed/runtime
+copy under `api/migrations/` or `public_html/api/migrations/`. If a local API
+returns a storage-readiness error and `api/migrations/` is missing, copy or
+otherwise expose the committed SQL files to the runner path before claiming the
+local endpoint works. Do not run production migrations from local automation.
+
 ## Before running it
 
 Make sure the latest code is deployed.
@@ -46,6 +53,8 @@ public_html/api/migrations/20260610_0010_add_room_soft_delete.sql
 public_html/api/migrations/20260611_0001_add_user_blocks_and_mutes.sql
 public_html/api/migrations/20260612_0001_add_profile_modules.sql
 public_html/api/migrations/20260613_0001_add_profile_featured_content.sql
+public_html/api/migrations/20260615_0001_add_profile_layout_preset.sql
+public_html/api/migrations/20260616_0001_add_profile_canvas_layout.sql
 ```
 
 Also make sure the server config has a migration token set in:

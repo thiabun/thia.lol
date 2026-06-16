@@ -3,19 +3,28 @@ import {
   Award,
   Bug,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Eye,
+  EyeOff,
   Heart,
+  LayoutGrid,
   MessageCircle,
   Radio,
   Repeat2,
   Reply,
+  Save,
+  Settings2,
   Shield,
   Sparkles,
   Star,
+  X,
   UserCheck,
   Users,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useOutletContext, useParams } from "react-router";
 import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
@@ -38,6 +47,7 @@ import {
   getProfileFollowers,
   getProfileFollowing,
   getProfileModules,
+  getMyProfileModules,
   getProfilePosts,
   getProfileReblogs,
   getProfileReplies,
@@ -47,6 +57,7 @@ import {
   unblockProfile,
   unfollowProfile,
   unmuteProfile,
+  updateProfileCanvas,
   updateFeaturedBadges,
   type FollowRelationship,
 } from "../lib/api";
@@ -56,12 +67,24 @@ import { formatShortDate } from "../lib/dates";
 import { pageEntrance } from "../lib/motionPresets";
 import { formatCountWithUnit } from "../lib/pluralize";
 import { defaultProfileLayoutPreset } from "../lib/profileLayoutPresets";
+import {
+  getProfileModuleDefinition,
+  profileGridModuleSizeSpan,
+  profileGridModuleSpanSize,
+  profileModuleAllowedSizes,
+  profileModuleFallbackTitle,
+  profileModuleGridSpan,
+  type ProfileGridModuleSize,
+} from "../lib/profileModuleRegistry";
 import { safeProfileImageUrl } from "../lib/profileMedia";
 import type {
   BadgeDefinition,
   Post,
   Profile,
+  ProfileBackgroundBlur,
+  ProfileLayoutPreset,
   ProfileModule,
+  ProfileModuleLayout,
   Room,
   UserBadge,
 } from "../lib/types";
@@ -81,6 +104,19 @@ export function ProfilePage() {
   const [profileOverride, setProfileOverride] = useState<Profile | undefined>();
   const [badgesOverride, setBadgesOverride] = useState<
     { handle: string; result: Awaited<ReturnType<typeof getProfileBadges>> } | undefined
+  >();
+  const [modulesOverride, setModulesOverride] = useState<
+    { handle: string; modules: ProfileModule[] } | undefined
+  >();
+  const [canvasEditing, setCanvasEditing] = useState(false);
+  const [canvasLoading, setCanvasLoading] = useState(false);
+  const [canvasSaving, setCanvasSaving] = useState(false);
+  const [canvasError, setCanvasError] = useState<string | undefined>();
+  const [draftModules, setDraftModules] = useState<ProfileModule[]>([]);
+  const [draftBackgroundBlur, setDraftBackgroundBlur] =
+    useState<ProfileBackgroundBlur>("medium");
+  const [selectedCanvasModuleId, setSelectedCanvasModuleId] = useState<
+    number | undefined
   >();
   const [followState, setFollowState] = useState<
     { handle: string; relationship: FollowRelationship } | undefined
@@ -163,16 +199,16 @@ export function ProfilePage() {
     badgesOverride?.handle === normalizedHandle ? badgesOverride.result : badgesState.data;
   const profileBadges = profileBadgesResult?.badges ?? [];
   const featuredBadges = profileBadgesResult?.featuredBadges ?? [];
-  const ownerModules = modulesState.data ?? [];
-  const publicModules = ownerModules.filter(
+  const loadedModules =
+    modulesOverride?.handle === normalizedHandle
+      ? modulesOverride.modules
+      : modulesState.data ?? [];
+  const displayModules = canvasEditing ? draftModules : loadedModules;
+  const publicModules = displayModules.filter(
     (module) => module.visibility === "public" && module.status === "active",
   );
   const profileLayoutPreset =
     profile?.profileLayoutPreset ?? defaultProfileLayoutPreset;
-  const profileInfoModule = useMemo(
-    () => createSyntheticProfileInfoModule(profile),
-    [profile],
-  );
   const profileMissing =
     profileState.error instanceof ApiClientError && profileState.error.status === 404;
   const isOwnProfile =
@@ -345,6 +381,148 @@ export function ProfilePage() {
     setBadgesOverride({ handle: normalizedHandle, result: updated });
   }
 
+  async function handleStartCanvasEdit() {
+    if (!profile || !isOwnProfile || canvasLoading) {
+      return;
+    }
+
+    setCanvasLoading(true);
+    setCanvasError(undefined);
+
+    try {
+      const modules = await getMyProfileModules();
+      const preparedModules = prepareProfileCanvasModules(
+        profile,
+        modules,
+        profileLayoutPreset,
+      );
+
+      setDraftModules(preparedModules);
+      setDraftBackgroundBlur(profile.profileBackgroundBlur);
+      setSelectedCanvasModuleId(preparedModules[0]?.id);
+      setCanvasEditing(true);
+    } catch (error) {
+      setCanvasError(
+        error instanceof Error ? error.message : "Could not load canvas editor.",
+      );
+    } finally {
+      setCanvasLoading(false);
+    }
+  }
+
+  function handleCancelCanvasEdit() {
+    setCanvasEditing(false);
+    setCanvasError(undefined);
+    setDraftModules([]);
+    setSelectedCanvasModuleId(undefined);
+    setDraftBackgroundBlur(profile?.profileBackgroundBlur ?? "medium");
+  }
+
+  async function handleSaveCanvasEdit() {
+    if (!profile || !canvasEditing || canvasSaving) {
+      return;
+    }
+
+    setCanvasSaving(true);
+    setCanvasError(undefined);
+
+    try {
+      const result = await runWithAuth(
+        (csrfToken) =>
+          updateProfileCanvas(
+            {
+              canvasVersion: 1,
+              backgroundBlur: draftBackgroundBlur,
+              modules: draftModules
+                .filter((module) => module.id > 0)
+                .map((module) =>
+                  profileModuleCanvasInput(
+                    module,
+                    profile,
+                    profileLayoutPreset,
+                    draftModules.indexOf(module),
+                  ),
+                ),
+            },
+            csrfToken,
+          ),
+        { retryOnCsrf: true },
+      );
+
+      const normalizedModules = prepareProfileCanvasModules(
+        { ...profile, profileBackgroundBlur: result.backgroundBlur },
+        result.modules,
+        profileLayoutPreset,
+      );
+
+      setModulesOverride({
+        handle: normalizedHandle,
+        modules: normalizedModules,
+      });
+      setProfileOverride({
+        ...profile,
+        profileBackgroundBlur: result.backgroundBlur,
+        profileCanvasVersion: result.canvasVersion,
+      });
+      setDraftModules(normalizedModules);
+      setDraftBackgroundBlur(result.backgroundBlur);
+      setCanvasEditing(false);
+      setSelectedCanvasModuleId(undefined);
+    } catch (error) {
+      setCanvasError(
+        error instanceof Error ? error.message : "Could not save canvas layout.",
+      );
+    } finally {
+      setCanvasSaving(false);
+    }
+  }
+
+  function handleSelectCanvasModule(module: ProfileModule) {
+    setSelectedCanvasModuleId(module.id);
+  }
+
+  function handleCanvasModuleVisibilityChange(moduleId: number, visible: boolean) {
+    if (!profile) {
+      return;
+    }
+
+    setDraftModules((modules) =>
+      prepareProfileCanvasModules(
+        profile,
+        modules.map((module) =>
+          module.id === moduleId
+            ? {
+                ...module,
+                visibility: visible ? "public" : "hidden",
+                status: "active",
+              }
+            : module,
+        ),
+        profileLayoutPreset,
+      ),
+    );
+  }
+
+  function handleCanvasModuleLayoutChange(
+    moduleId: number,
+    layout: ProfileModuleLayout,
+  ) {
+    if (!profile) {
+      return;
+    }
+
+    setDraftModules((modules) =>
+      modules.map((module) =>
+        module.id === moduleId
+          ? {
+              ...module,
+              layout,
+            }
+          : module,
+      ),
+    );
+  }
+
   useEffect(() => {
     setTopBarAction(undefined);
     return () => setTopBarAction(undefined);
@@ -418,26 +596,26 @@ export function ProfilePage() {
       repliesState.error ??
       roomsState.error,
   });
-  const profileSpaceModules = publicModules.filter((module) => {
+  const visibleCanvasModules = canvasEditing ? displayModules : publicModules;
+  const profileSpaceModules = visibleCanvasModules.filter((module) => {
     if (module.type === "activity") {
       return showActivityModule;
     }
 
     if (module.type === "featured_post") {
-      return Boolean(profile.featuredPost);
+      return canvasEditing || Boolean(profile.featuredPost);
     }
 
     if (module.type === "featured_room") {
-      return Boolean(profile.featuredRoom);
-    }
-
-    if (module.type === "profile_info") {
-      return false;
+      return canvasEditing || Boolean(profile.featuredRoom);
     }
 
     return true;
   });
-  const profileCanvasModules = [profileInfoModule, ...profileSpaceModules];
+  const profileCanvasModules = resolveProfileCanvasModules(profile, profileSpaceModules);
+  const selectedCanvasModule = draftModules.find(
+    (module) => module.id === selectedCanvasModuleId,
+  );
 
   return (
     <motion.div
@@ -453,8 +631,33 @@ export function ProfilePage() {
           description={profile.bio}
           path={`/@${profile.user.handle}`}
         />
+        {isOwnProfile ? (
+          <ProfileCanvasEditorToolbar
+            backgroundBlur={draftBackgroundBlur}
+            busy={canvasLoading || canvasSaving}
+            editing={canvasEditing}
+            error={canvasError}
+            modules={draftModules}
+            selectedModule={selectedCanvasModule}
+            onBackgroundBlurChange={setDraftBackgroundBlur}
+            onCancel={handleCancelCanvasEdit}
+            onEdit={() => void handleStartCanvasEdit()}
+            onLayoutChange={handleCanvasModuleLayoutChange}
+            onSave={() => void handleSaveCanvasEdit()}
+            onSelectModule={setSelectedCanvasModuleId}
+            onVisibilityChange={handleCanvasModuleVisibilityChange}
+          />
+        ) : null}
         <ProfileModulesSection
           badges={profileBadges}
+          editing={
+            canvasEditing
+              ? {
+                  selectedModuleId: selectedCanvasModuleId,
+                  onSelectModule: handleSelectCanvasModule,
+                }
+              : undefined
+          }
           error={modulesState.error}
           isOwnProfile={isOwnProfile}
           layoutPreset={profileLayoutPreset}
@@ -559,6 +762,44 @@ export function ProfilePage() {
   );
 }
 
+function resolveProfileCanvasModules(
+  profile: Profile,
+  modules: ProfileModule[],
+): ProfileModule[] {
+  const normalizedModules = modules
+    .filter((module) => module.status === "active")
+    .map((module) =>
+      module.type === "profile_info"
+        ? normalizeProfileInfoModule(profile, module)
+        : module,
+    );
+
+  if (normalizedModules.some((module) => module.type === "profile_info")) {
+    return normalizedModules.sort(profileCanvasModuleSort);
+  }
+
+  return [
+    createSyntheticProfileInfoModule(profile),
+    ...normalizedModules.sort(profileCanvasModuleSort),
+  ];
+}
+
+function normalizeProfileInfoModule(
+  profile: Profile,
+  module: ProfileModule,
+): ProfileModule {
+  return {
+    ...module,
+    title: module.title ?? "Profile info",
+    config: {
+      ...module.config,
+      hasBanner: Boolean(safeProfileImageUrl(profile.bannerUrl)),
+    },
+    visibility: "public",
+    status: "active",
+  };
+}
+
 function createSyntheticProfileInfoModule(profile: Profile | undefined): ProfileModule {
   return {
     id: -1,
@@ -574,6 +815,505 @@ function createSyntheticProfileInfoModule(profile: Profile | undefined): Profile
     createdAt: null,
     updatedAt: null,
   };
+}
+
+function prepareProfileCanvasModules(
+  profile: Profile,
+  modules: ProfileModule[],
+  layoutPreset: ProfileLayoutPreset,
+): ProfileModule[] {
+  const normalized = resolveProfileCanvasModules(profile, modules);
+  const occupied = new Set<string>();
+
+  return normalized.map((module, index) => {
+    const withProfileInfo =
+      module.type === "profile_info"
+        ? normalizeProfileInfoModule(profile, module)
+        : module;
+    const existingLayout = profileModuleLayoutFits(
+      withProfileInfo.layout,
+      occupied,
+    )
+      ? withProfileInfo.layout
+      : undefined;
+    const layout =
+      existingLayout ??
+      findProfileModuleDefaultLayout(
+        withProfileInfo,
+        profile,
+        layoutPreset,
+        index,
+        occupied,
+      );
+
+    occupyProfileModuleLayout(layout, occupied);
+
+    return {
+      ...withProfileInfo,
+      layout,
+    };
+  });
+}
+
+function profileModuleCanvasInput(
+  module: ProfileModule,
+  profile: Profile,
+  layoutPreset: ProfileLayoutPreset,
+  index: number,
+) {
+  const layout =
+    module.layout ??
+    findProfileModuleDefaultLayout(
+      module,
+      profile,
+      layoutPreset,
+      index,
+      new Set<string>(),
+    );
+
+  return {
+    id: module.id,
+    column: layout.column,
+    row: layout.row,
+    colSpan: layout.colSpan,
+    rowSpan: layout.rowSpan,
+    visible: module.type === "profile_info" || module.visibility === "public",
+  };
+}
+
+function findProfileModuleDefaultLayout(
+  module: ProfileModule,
+  profile: Profile,
+  layoutPreset: ProfileLayoutPreset,
+  index: number,
+  occupied: Set<string>,
+): ProfileModuleLayout {
+  const profileInfoAwareModule =
+    module.type === "profile_info" ? normalizeProfileInfoModule(profile, module) : module;
+  const span = profileModuleGridSpan(profileInfoAwareModule, layoutPreset, index);
+  const colSpan = span.columns;
+  const rowSpan = span.rows;
+
+  for (let row = 1; row <= 9 - rowSpan + 1; row++) {
+    for (let column = 1; column <= 6 - colSpan + 1; column++) {
+      const layout = { column, row, colSpan, rowSpan };
+
+      if (profileModuleLayoutFits(layout, occupied)) {
+        return layout;
+      }
+    }
+  }
+
+  return {
+    column: 1,
+    row: 1,
+    colSpan,
+    rowSpan,
+  };
+}
+
+function profileModuleLayoutFits(
+  layout: ProfileModuleLayout | null | undefined,
+  occupied: Set<string>,
+): layout is ProfileModuleLayout {
+  if (!layout) {
+    return false;
+  }
+
+  if (
+    layout.column < 1 ||
+    layout.row < 1 ||
+    layout.colSpan < 1 ||
+    layout.rowSpan < 1 ||
+    layout.column + layout.colSpan - 1 > 6 ||
+    layout.row + layout.rowSpan - 1 > 9
+  ) {
+    return false;
+  }
+
+  for (let row = layout.row; row < layout.row + layout.rowSpan; row++) {
+    for (let column = layout.column; column < layout.column + layout.colSpan; column++) {
+      if (occupied.has(`${column}:${row}`)) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+function occupyProfileModuleLayout(
+  layout: ProfileModuleLayout,
+  occupied: Set<string>,
+) {
+  for (let row = layout.row; row < layout.row + layout.rowSpan; row++) {
+    for (let column = layout.column; column < layout.column + layout.colSpan; column++) {
+      occupied.add(`${column}:${row}`);
+    }
+  }
+}
+
+function profileCanvasModuleSort(first: ProfileModule, second: ProfileModule): number {
+  const firstLayout = first.layout;
+  const secondLayout = second.layout;
+
+  if (firstLayout && secondLayout) {
+    const rowCompare = firstLayout.row - secondLayout.row;
+
+    if (rowCompare !== 0) {
+      return rowCompare;
+    }
+
+    const columnCompare = firstLayout.column - secondLayout.column;
+
+    if (columnCompare !== 0) {
+      return columnCompare;
+    }
+  }
+
+  return first.position - second.position;
+}
+
+type ProfileCanvasEditorToolbarProps = {
+  backgroundBlur: ProfileBackgroundBlur;
+  busy: boolean;
+  editing: boolean;
+  error?: string | undefined;
+  modules: ProfileModule[];
+  onBackgroundBlurChange: (blur: ProfileBackgroundBlur) => void;
+  onCancel: () => void;
+  onEdit: () => void;
+  onLayoutChange: (moduleId: number, layout: ProfileModuleLayout) => void;
+  onSave: () => void;
+  onSelectModule: (moduleId: number) => void;
+  onVisibilityChange: (moduleId: number, visible: boolean) => void;
+  selectedModule?: ProfileModule | undefined;
+};
+
+function ProfileCanvasEditorToolbar({
+  backgroundBlur,
+  busy,
+  editing,
+  error,
+  modules,
+  onBackgroundBlurChange,
+  onCancel,
+  onEdit,
+  onLayoutChange,
+  onSave,
+  onSelectModule,
+  onVisibilityChange,
+  selectedModule,
+}: ProfileCanvasEditorToolbarProps) {
+  if (!editing) {
+    return (
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+        {error ? (
+          <p className="text-sm font-medium text-rose-ink" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={busy}
+          data-testid="profile-canvas-edit-button"
+          icon={<Settings2 aria-hidden="true" size={16} />}
+          onClick={onEdit}
+        >
+          {busy ? "Opening" : "Edit canvas"}
+        </Button>
+      </div>
+    );
+  }
+
+  const selectedLayout = selectedModule?.layout ?? {
+    column: 1,
+    row: 1,
+    colSpan: 1,
+    rowSpan: 1,
+  };
+  const selectedSize =
+    profileGridModuleSpanSize(selectedLayout.colSpan, selectedLayout.rowSpan) ??
+    "1x1";
+  const selectedDefinition = selectedModule
+    ? getProfileModuleDefinition(selectedModule.type)
+    : undefined;
+  const canHide = selectedModule?.type !== "profile_info";
+  const selectedVisible = selectedModule?.visibility === "public";
+
+  function updateLayout(patch: Partial<ProfileModuleLayout>) {
+    if (!selectedModule) {
+      return;
+    }
+
+    const nextLayout = clampProfileModuleLayout({
+      ...selectedLayout,
+      ...patch,
+    });
+
+    onLayoutChange(selectedModule.id, nextLayout);
+  }
+
+  function updateSpan(size: ProfileGridModuleSize) {
+    const span = profileGridModuleSizeSpan(size);
+    updateLayout({
+      colSpan: span.columns,
+      rowSpan: span.rows,
+    });
+  }
+
+  return (
+    <section
+      aria-label="Profile canvas editor"
+      className="rounded-panel border border-line bg-surface/72 p-3 shadow-soft backdrop-blur-veil"
+      data-testid="profile-canvas-editor"
+    >
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2 lg:grid-cols-[1.1fr_0.8fr_0.9fr_0.9fr]">
+          <label className="min-w-0 text-xs font-semibold uppercase text-muted">
+            Module
+            <select
+              className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/70 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              value={selectedModule?.id ?? ""}
+              onChange={(event) => onSelectModule(Number(event.target.value))}
+              data-testid="profile-canvas-module-select"
+            >
+              {modules.map((module) => (
+                <option key={module.id} value={module.id}>
+                  {module.title ?? profileModuleFallbackTitle(module.type)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="min-w-0 text-xs font-semibold uppercase text-muted">
+            Blur
+            <select
+              className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/70 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              value={backgroundBlur}
+              onChange={(event) =>
+                onBackgroundBlurChange(event.target.value as ProfileBackgroundBlur)
+              }
+              data-testid="profile-background-blur-select"
+            >
+              <option value="none">None</option>
+              <option value="soft">Soft</option>
+              <option value="medium">Medium</option>
+              <option value="heavy">Heavy</option>
+            </select>
+          </label>
+
+          <label className="min-w-0 text-xs font-semibold uppercase text-muted">
+            Span
+            <select
+              className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/70 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              value={selectedSize}
+              onChange={(event) =>
+                updateSpan(event.target.value as ProfileGridModuleSize)
+              }
+              data-testid="profile-canvas-span-select"
+              disabled={!selectedModule}
+            >
+              {(selectedModule
+                ? profileModuleAllowedSizes(selectedModule.type)
+                : (["1x1"] as const)
+              ).map((size) => (
+                <option key={size} value={size}>
+                  {sizeLabel(size)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className="min-w-0 text-xs font-semibold uppercase text-muted">
+              Col
+              <select
+                className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/70 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                value={selectedLayout.column}
+                onChange={(event) =>
+                  updateLayout({ column: Number(event.target.value) })
+                }
+                data-testid="profile-canvas-column-select"
+                disabled={!selectedModule}
+              >
+                {numberOptions(6 - selectedLayout.colSpan + 1).map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="min-w-0 text-xs font-semibold uppercase text-muted">
+              Row
+              <select
+                className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/70 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                value={selectedLayout.row}
+                onChange={(event) =>
+                  updateLayout({ row: Number(event.target.value) })
+                }
+                data-testid="profile-canvas-row-select"
+                disabled={!selectedModule}
+              >
+                {numberOptions(9 - selectedLayout.rowSpan + 1).map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-control border border-line bg-canvas/55 p-1">
+            <CanvasIconButton
+              label="Move up"
+              disabled={!selectedModule || selectedLayout.row <= 1}
+              icon={<ChevronUp aria-hidden="true" size={15} />}
+              onClick={() => updateLayout({ row: selectedLayout.row - 1 })}
+            />
+            <CanvasIconButton
+              label="Move left"
+              disabled={!selectedModule || selectedLayout.column <= 1}
+              icon={<ChevronLeft aria-hidden="true" size={15} />}
+              onClick={() => updateLayout({ column: selectedLayout.column - 1 })}
+            />
+            <CanvasIconButton
+              label="Move right"
+              disabled={
+                !selectedModule ||
+                selectedLayout.column >= 6 - selectedLayout.colSpan + 1
+              }
+              icon={<ChevronRight aria-hidden="true" size={15} />}
+              onClick={() => updateLayout({ column: selectedLayout.column + 1 })}
+            />
+            <CanvasIconButton
+              label="Move down"
+              disabled={
+                !selectedModule ||
+                selectedLayout.row >= 9 - selectedLayout.rowSpan + 1
+              }
+              icon={<ChevronDownIcon />}
+              onClick={() => updateLayout({ row: selectedLayout.row + 1 })}
+            />
+          </div>
+
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={!selectedModule || !canHide}
+            data-testid="profile-canvas-visibility-button"
+            icon={
+              selectedVisible ? (
+                <Eye aria-hidden="true" size={16} />
+              ) : (
+                <EyeOff aria-hidden="true" size={16} />
+              )
+            }
+            onClick={() =>
+              selectedModule
+                ? onVisibilityChange(selectedModule.id, !selectedVisible)
+                : undefined
+            }
+          >
+            {selectedVisible ? "Shown" : "Hidden"}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={busy}
+            icon={<X aria-hidden="true" size={16} />}
+            onClick={onCancel}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={busy}
+            data-testid="profile-canvas-save-button"
+            icon={<Save aria-hidden="true" size={16} />}
+            onClick={onSave}
+          >
+            {busy ? "Saving" : "Save"}
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+        <span className="inline-flex items-center gap-1.5">
+          <LayoutGrid aria-hidden="true" size={14} />
+          6 x 9
+        </span>
+        {selectedDefinition ? <span>{selectedDefinition.label}</span> : null}
+        {error ? (
+          <span className="font-medium text-rose-ink" role="alert">
+            {error}
+          </span>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function CanvasIconButton({
+  disabled,
+  icon,
+  label,
+  onClick,
+}: {
+  disabled?: boolean;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="grid size-8 place-items-center rounded-control text-text transition duration-fluid ease-fluid hover:bg-surface focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-45"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {icon}
+    </button>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <span className="grid size-[15px] place-items-center">
+      <ChevronUp aria-hidden="true" size={15} className="rotate-180" />
+    </span>
+  );
+}
+
+function clampProfileModuleLayout(layout: ProfileModuleLayout): ProfileModuleLayout {
+  const colSpan = Math.max(1, Math.min(3, layout.colSpan));
+  const rowSpan = Math.max(1, Math.min(3, layout.rowSpan));
+
+  return {
+    column: Math.max(1, Math.min(6 - colSpan + 1, layout.column)),
+    row: Math.max(1, Math.min(9 - rowSpan + 1, layout.row)),
+    colSpan,
+    rowSpan,
+  };
+}
+
+function numberOptions(max: number): number[] {
+  return Array.from({ length: Math.max(1, max) }, (_, index) => index + 1);
+}
+
+function sizeLabel(size: ProfileGridModuleSize): string {
+  const span = profileGridModuleSizeSpan(size);
+
+  return `${span.columns} x ${span.rows}`;
 }
 
 function mergeProfileFeed(posts: Post[], reblogs: Post[]): Post[] {
@@ -622,14 +1362,13 @@ function mergeFollowState(
 }
 
 function ProfilePersonalBackdrop({ profile }: { profile: Profile }) {
-  const imageUrl =
-    safeProfileImageUrl(profile.profileBackground) ?? safeProfileImageUrl(profile.bannerUrl);
-  const blurTreatment = defaultProfileBackgroundBlurTreatment;
+  const imageUrl = safeProfileImageUrl(profile.profileBackground);
+  const blurTreatment = profile.profileBackgroundBlur;
 
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-x-[-0.75rem] inset-y-[-1.25rem] z-0 overflow-hidden rounded-[1.25rem] sm:inset-x-[-1.5rem] sm:inset-y-[-1.5rem]"
+      className="pointer-events-none absolute left-1/2 top-[-1.25rem] bottom-[-2rem] z-0 min-h-dvh w-screen -translate-x-1/2 overflow-hidden sm:top-[-1.5rem]"
       data-profile-background-blur={blurTreatment}
       data-profile-background-source={imageUrl ? "image" : "fallback"}
       data-testid="profile-personal-backdrop"
@@ -638,32 +1377,30 @@ function ProfilePersonalBackdrop({ profile }: { profile: Profile }) {
         <img
           alt=""
           className={cn(
-            "absolute inset-0 size-full scale-105 object-cover opacity-[0.2] sm:opacity-[0.24]",
+            "absolute inset-0 size-full scale-105 object-cover opacity-[0.34] saturate-[0.9]",
             profileBackgroundBlurClass(blurTreatment),
           )}
+          decoding="async"
           src={imageUrl}
         />
       ) : (
         <div className="absolute inset-0 bg-page-wash" />
       )}
-      <div className="absolute inset-0 bg-gradient-to-b from-canvas/82 via-canvas/68 to-canvas/94" />
-      <div className="absolute inset-0 bg-gradient-to-r from-surface/82 via-transparent to-surface/82" />
+      <div className="absolute inset-0 bg-canvas/52" />
+      <div className="absolute inset-0 bg-gradient-to-b from-canvas/76 via-canvas/48 to-canvas/86" />
+      <div className="absolute inset-0 bg-gradient-to-r from-surface/64 via-transparent to-surface/64" />
     </div>
   );
 }
 
-type ProfileBackgroundBlurTreatment = "none" | "soft" | "medium" | "strong";
-
-const defaultProfileBackgroundBlurTreatment: ProfileBackgroundBlurTreatment = "medium";
-
 function profileBackgroundBlurClass(
-  treatment: ProfileBackgroundBlurTreatment,
+  treatment: ProfileBackgroundBlur,
 ): string {
   if (treatment === "soft") {
     return "blur-sm";
   }
 
-  if (treatment === "strong") {
+  if (treatment === "heavy") {
     return "blur-2xl";
   }
 
@@ -756,7 +1493,7 @@ function FeaturedPostModuleCard({
 
   return (
     <article
-      className="h-full min-w-0 rounded-card border border-line bg-surface/68 p-3"
+      className="h-full min-w-0 rounded-card border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
       data-testid="profile-module-featured-post"
     >
       <h3 className="text-sm font-semibold text-text">{title}</h3>
@@ -764,7 +1501,9 @@ function FeaturedPostModuleCard({
         <div className="mt-3">
           <FeaturedPostCard post={featuredPost} />
         </div>
-      ) : null}
+      ) : (
+        <p className="mt-2 text-sm leading-6 text-muted">No featured post.</p>
+      )}
     </article>
   );
 }
@@ -780,7 +1519,7 @@ function FeaturedRoomModuleCard({
 
   return (
     <article
-      className="h-full min-w-0 rounded-card border border-line bg-surface/68 p-3"
+      className="h-full min-w-0 rounded-card border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
       data-testid="profile-module-featured-room"
     >
       <h3 className="text-sm font-semibold text-text">{title}</h3>
@@ -788,7 +1527,9 @@ function FeaturedRoomModuleCard({
         <div className="mt-3">
           <FeaturedRoomCard room={featuredRoom} />
         </div>
-      ) : null}
+      ) : (
+        <p className="mt-2 text-sm leading-6 text-muted">No featured room.</p>
+      )}
     </article>
   );
 }
@@ -974,7 +1715,7 @@ function ProfileActivityModule({
 }: ProfileActivityModuleProps) {
   return (
     <div
-      className="flex h-full max-h-[min(38rem,75dvh)] min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-card border border-line bg-surface/68 p-3 md:max-h-[calc(var(--profile-grid-row-size)+var(--profile-grid-row-size)+var(--profile-grid-row-size)+var(--profile-grid-gap)+var(--profile-grid-gap))]"
+      className="flex h-full max-h-[min(38rem,75dvh)] min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-card border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil md:max-h-[calc(var(--profile-grid-row-size)+var(--profile-grid-row-size)+var(--profile-grid-row-size)+var(--profile-grid-gap)+var(--profile-grid-gap))]"
       data-profile-activity-max-rows="3"
       data-testid="profile-module-activity"
     >

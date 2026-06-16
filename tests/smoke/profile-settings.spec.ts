@@ -15,7 +15,7 @@ test.beforeEach(async ({ context }) => {
   });
 });
 
-test("profile customization editor is offline until the P3 rebuild", async ({ page }) => {
+test("profile canvas editor replaces the retired customization modal", async ({ page }) => {
   await mockOwnProfile(page, () => [
     {
       platform: "github",
@@ -29,11 +29,12 @@ test("profile customization editor is offline until the P3 rebuild", async ({ pa
   await page.goto("/@thia");
   await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Edit personal space" })).toHaveCount(0);
+  await expect(page.getByTestId("profile-canvas-edit-button")).toBeVisible();
   await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
   await expect(page.getByRole("link", { name: /GitHub/ })).toBeVisible();
 });
 
-test("mobile profile stays stable without customization editor", async ({ page }) => {
+test("mobile profile stays stable with compact canvas entry", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockOwnProfile(page, () => []);
 
@@ -41,6 +42,7 @@ test("mobile profile stays stable without customization editor", async ({ page }
   await page.goto("/@thia");
 
   await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
+  await expect(page.getByTestId("profile-canvas-edit-button")).toBeVisible();
   await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -318,7 +320,7 @@ async function mockOwnProfile(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: [activityModule()] }),
+      body: JSON.stringify({ ok: true, data: [profileInfoModule(), activityModule()] }),
     });
   });
 
@@ -326,7 +328,7 @@ async function mockOwnProfile(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: [activityModule()] }),
+      body: JSON.stringify({ ok: true, data: [profileInfoModule(), activityModule()] }),
     });
   });
 
@@ -404,7 +406,10 @@ function profileBody(links: unknown[], overrides: Partial<ProfileBody> = {}): Pr
     bannerUrl: null,
     profileAccent: null,
     profileBackground: null,
+    profileBackgroundBlur: "medium",
     profileTheme: null,
+    profileLayoutPreset: "balanced",
+    profileCanvasVersion: 1,
     links,
     traits: [],
     stats: {
@@ -450,7 +455,10 @@ type ProfileBody = {
   bannerUrl: string | null;
   profileAccent: string | null;
   profileBackground: string | null;
+  profileBackgroundBlur: "none" | "soft" | "medium" | "heavy";
   profileTheme: string | null;
+  profileLayoutPreset: "balanced" | "compact" | "showcase";
+  profileCanvasVersion: 1;
   links: unknown[];
   traits: unknown[];
   stats: {
@@ -471,6 +479,21 @@ type ProfileBody = {
   createdAt: string;
   updatedAt: string;
 };
+
+function profileInfoModule() {
+  return {
+    id: 1,
+    type: "profile_info",
+    title: "Profile info",
+    config: {},
+    visibility: "public",
+    position: 0,
+    status: "active",
+    schemaVersion: 1,
+    createdAt: "2026-06-12 00:00:00",
+    updatedAt: "2026-06-12 00:00:00",
+  };
+}
 
 function activityModule() {
   return {

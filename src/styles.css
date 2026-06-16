@@ -140,6 +140,22 @@ textarea {
     linear-gradient(180deg, var(--app-canvas), var(--app-canvas-soft));
 }
 
+@media (min-width: 1024px) {
+  .profile-grid-canvas[data-profile-canvas-columns="6"] {
+    grid-template-rows: repeat(
+      var(--profile-grid-row-budget),
+      minmax(var(--profile-grid-row-size), auto)
+    );
+  }
+
+  .profile-grid-canvas[data-profile-canvas-columns="6"]
+    > .profile-grid-module[data-profile-grid-placement="manual"] {
+    grid-column: var(--profile-grid-column) / span
+      var(--profile-grid-column-span);
+    grid-row: var(--profile-grid-row) / span var(--profile-grid-row-span);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

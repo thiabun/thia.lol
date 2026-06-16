@@ -6,7 +6,7 @@ import {
   profileGridModuleSizeSpan,
   type ProfileGridModuleSize,
 } from "../../lib/profileModuleRegistry";
-import type { ProfileLayoutPreset } from "../../lib/types";
+import type { ProfileLayoutPreset, ProfileModuleLayout } from "../../lib/types";
 import { cardEntrance } from "../../lib/motionPresets";
 
 type ProfileGridProps = {
@@ -35,7 +35,7 @@ export function ProfileGrid({
   return (
     <div
       className={cn(
-        "grid min-w-0 grid-cols-1 md:grid-cols-2 md:auto-rows-[minmax(var(--profile-grid-row-size),auto)]",
+        "profile-grid-canvas grid min-w-0 grid-cols-1 rounded-panel border border-line bg-surface/34 p-2 shadow-soft backdrop-blur-veil md:grid-cols-2 md:auto-rows-[minmax(var(--profile-grid-row-size),auto)]",
         layoutPreset === "compact" ? "gap-2" : "gap-3",
         maxColumns === 6 ? "lg:grid-cols-6" : undefined,
         className,
@@ -92,6 +92,7 @@ export function ProfileGridSection({
 type ProfileGridModuleProps = {
   children: ReactNode;
   className?: string | undefined;
+  layout?: ProfileModuleLayout | null | undefined;
   size?: ProfileGridModuleSize | string | undefined;
   testId?: string | undefined;
 };
@@ -99,18 +100,33 @@ type ProfileGridModuleProps = {
 export function ProfileGridModule({
   children,
   className,
+  layout,
   size = "1x1",
   testId,
 }: ProfileGridModuleProps) {
   const span = profileGridModuleSizeSpan(size);
+  const placementStyle = layout
+    ? ({
+        "--profile-grid-column": String(layout.column),
+        "--profile-grid-row": String(layout.row),
+        "--profile-grid-column-span": String(layout.colSpan),
+        "--profile-grid-row-span": String(layout.rowSpan),
+      } as CSSProperties)
+    : undefined;
 
   return (
     <div
-      className={cn("min-w-0", profileGridModuleSizeClass(span.size), className)}
+      className={cn(
+        "profile-grid-module min-w-0",
+        profileGridModuleSizeClass(span.size),
+        className,
+      )}
+      data-profile-grid-placement={layout ? "manual" : "auto"}
       data-profile-grid-column-span={span.columns}
       data-profile-grid-row-span={span.rows}
       data-profile-grid-size={span.size}
       data-testid={testId}
+      style={placementStyle}
     >
       {children}
     </div>
