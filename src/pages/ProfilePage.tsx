@@ -59,6 +59,7 @@ import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
+import { ImageCropModal } from "../components/ui/ImageCropModal";
 import { ModalSheet } from "../components/ui/ModalSheet";
 import {
   blockProfile,
@@ -94,6 +95,7 @@ import {
   uploadVideo,
   type CreateProfileModuleInput,
   type FollowRelationship,
+  type ImageUploadPurpose,
   type ProfileIntegrationAccount,
   type ProfileIntegrationProvider,
   type ProfileIntegrationProviderStatus,
@@ -102,6 +104,7 @@ import {
 import { ApiClientError } from "../lib/apiClient";
 import { cn } from "../lib/classNames";
 import { formatShortDate } from "../lib/dates";
+import { validateImageCropFile } from "../lib/imageCrop";
 import { pageEntrance } from "../lib/motionPresets";
 import { formatCountWithUnit } from "../lib/pluralize";
 import {
@@ -179,6 +182,16 @@ export function ProfilePage() {
   const [draftProfile, setDraftProfile] = useState<Profile | undefined>();
   const [profileDraftUploading, setProfileDraftUploading] = useState<
     "backgroundImage" | "backgroundVideo" | "avatar" | "banner" | undefined
+  >();
+  const [pendingProfileImageCrop, setPendingProfileImageCrop] = useState<
+    | {
+        file: File;
+        purpose: Extract<
+          ImageUploadPurpose,
+          "avatar" | "banner" | "profile_background"
+        >;
+      }
+    | undefined
   >();
   const [selectedCanvasModuleId, setSelectedCanvasModuleId] = useState<
     number | undefined
@@ -860,6 +873,21 @@ export function ProfilePage() {
     });
   }
 
+  function handleProfileImageDraftSelection(
+    file: File,
+    purpose: Extract<ImageUploadPurpose, "avatar" | "banner" | "profile_background">,
+  ) {
+    const validationError = validateImageCropFile(file);
+
+    if (validationError) {
+      setCanvasError(validationError);
+      return;
+    }
+
+    setCanvasError(undefined);
+    setPendingProfileImageCrop({ file, purpose });
+  }
+
   async function handleProfileImageDraftUpload(
     file: File,
     purpose: "avatar" | "banner" | "profile_background",
@@ -911,6 +939,7 @@ export function ProfilePage() {
       setCanvasError(
         error instanceof Error ? error.message : "Could not upload this image.",
       );
+      throw error;
     } finally {
       setProfileDraftUploading(undefined);
     }
@@ -1317,7 +1346,7 @@ export function ProfilePage() {
                     }))
                   }
                   onImageUpload={(file) =>
-                    void handleProfileImageDraftUpload(file, "profile_background")
+                    handleProfileImageDraftSelection(file, "profile_background")
                   }
                   onVideoUpload={(file) => void handleProfileVideoDraftUpload(file)}
                 />
@@ -1354,9 +1383,7 @@ export function ProfilePage() {
                         handleCanvasModuleLayoutChange(module.id, layout)
                       }
                       onProfileDraftChange={handleDraftProfileChange}
-                      onProfileImageUpload={(file, purpose) =>
-                        void handleProfileImageDraftUpload(file, purpose)
-                      }
+                      onProfileImageUpload={handleProfileImageDraftSelection}
                       onResolveIntegration={handleResolveIntegrationMetadata}
                       onVisibilityChange={(visible) =>
                         handleCanvasModuleVisibilityChange(module.id, visible)
@@ -1480,6 +1507,24 @@ export function ProfilePage() {
           onContinue={handleContinueToProfileMusic}
         />
       ) : null}
+      <ImageCropModal
+        open={Boolean(pendingProfileImageCrop)}
+        file={pendingProfileImageCrop?.file}
+        purpose={pendingProfileImageCrop?.purpose ?? "avatar"}
+        busy={Boolean(profileDraftUploading)}
+        onClose={() => setPendingProfileImageCrop(undefined)}
+        onApply={async (croppedFile) => {
+          if (!pendingProfileImageCrop) {
+            return;
+          }
+
+          await handleProfileImageDraftUpload(
+            croppedFile,
+            pendingProfileImageCrop.purpose,
+          );
+          setPendingProfileImageCrop(undefined);
+        }}
+      />
     </motion.div>
   );
 }

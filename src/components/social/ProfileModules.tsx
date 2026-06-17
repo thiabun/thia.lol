@@ -28,6 +28,7 @@ import {
   profileModuleSizeHasRoomForDetails,
   profileModuleSizeIsCompact,
   profileModuleSpanRole,
+  profileGridModuleSizeSpan,
   renderableProfileModules,
   type ProfileGridModuleSize,
   type ProfileModuleSpanRole,
@@ -505,7 +506,7 @@ export function ProfileModuleCard({
     >
       {editing ? (
         <header className="min-w-0">
-        <h3 className="truncate text-sm font-semibold text-text">{title}</h3>
+          <h3 className="truncate text-sm font-semibold text-text">{title}</h3>
         </header>
       ) : null}
       <div className="min-h-0 min-w-0 overflow-hidden">
@@ -515,6 +516,7 @@ export function ProfileModuleCard({
           badges={badges}
           compact={compact}
           hasDetails={hasDetails}
+          size={size}
           spanRole={spanRole}
         />
       </div>
@@ -528,6 +530,7 @@ function ProfileModuleContent({
   hasDetails,
   musicAutoplayRequestId = 0,
   module,
+  size,
   spanRole,
 }: ProfileModuleCardProps & {
   compact: boolean;
@@ -681,6 +684,7 @@ function ProfileModuleContent({
       <ProfileModuleStaticCard
         icon={<Radio aria-hidden="true" size={17} />}
         module={module}
+        size={size}
         fallbackLabel="Creator channel"
       />
     );
@@ -692,6 +696,7 @@ function ProfileModuleContent({
         icon={<Music2 aria-hidden="true" size={17} />}
         musicAutoplayRequestId={musicAutoplayRequestId}
         module={module}
+        size={size}
         fallbackLabel="Music link"
       />
     );
@@ -841,11 +846,13 @@ function ProfileModuleStaticCard({
   icon,
   musicAutoplayRequestId = 0,
   module,
+  size,
 }: {
   fallbackLabel: string;
   icon: ReactNode;
   musicAutoplayRequestId?: number | undefined;
   module: ProfileModule;
+  size?: ProfileGridModuleSize | undefined;
 }) {
   const url = module.config.url;
 
@@ -861,6 +868,7 @@ function ProfileModuleStaticCard({
         integration={module.config.integration}
         autoplayRequestId={musicAutoplayRequestId}
         module={module}
+        size={size}
       />
     );
   }
@@ -899,12 +907,14 @@ function ProfileIntegrationRichCard({
   icon,
   integration,
   module,
+  size,
 }: {
   autoplayRequestId?: number | undefined;
   fallbackLabel: string;
   icon: ReactNode;
   integration: ProfileIntegrationCard;
   module: ProfileModule;
+  size?: ProfileGridModuleSize | undefined;
 }) {
   const metadata = integration.metadata;
   const title = metadata.title ?? module.config.label ?? fallbackLabel;
@@ -936,6 +946,7 @@ function ProfileIntegrationRichCard({
         icon={icon}
         integration={integration}
         module={module}
+        size={size}
       />
     );
   }
@@ -1108,12 +1119,14 @@ function SpotifyMusicPlayer({
   icon,
   integration,
   module,
+  size = "2x1",
 }: {
   autoplayRequestId: number;
   fallbackLabel: string;
   icon: ReactNode;
   integration: ProfileIntegrationCard;
   module: ProfileModule;
+  size?: ProfileGridModuleSize | undefined;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<SpotifyEmbedController | undefined>(undefined);
@@ -1136,6 +1149,9 @@ function SpotifyMusicPlayer({
       : undefined;
   const playerTitle = integration.embed?.title ?? `${title} on Spotify`;
   const playerHeight = profileIntegrationEmbedHeight(integration);
+  const playerSpan = profileGridModuleSizeSpan(size);
+  const compactPlayer = playerSpan.columns === 1 && playerSpan.rows === 1;
+  const richPlayer = playerSpan.rows >= 2;
   const uri = spotifyIntegrationUri(integration);
 
   useEffect(() => {
@@ -1287,73 +1303,135 @@ function SpotifyMusicPlayer({
 
   return (
     <div
-      className="overflow-hidden rounded-card border border-line bg-canvas/55"
+      className="flex h-full min-h-0 overflow-hidden rounded-card border border-line bg-canvas/55"
+      data-profile-spotify-layout={
+        compactPlayer ? "compact" : richPlayer ? "rich" : "row"
+      }
       data-testid="profile-spotify-custom-player"
     >
-      <div className="relative isolate min-h-32 overflow-hidden p-3">
+      <div
+        className={cn(
+          "relative isolate flex h-full min-h-0 w-full overflow-hidden",
+          compactPlayer
+            ? "flex-col justify-end p-2"
+            : richPlayer
+              ? "flex-col gap-3 p-3 sm:p-4"
+              : "items-center gap-3 p-3",
+        )}
+      >
         {metadata.imageUrl ? (
           <img
             alt=""
             aria-hidden="true"
-            className="absolute inset-0 -z-20 size-full object-cover opacity-20 blur-2xl"
+            className={cn(
+              "absolute inset-0 -z-20 size-full object-cover blur-2xl",
+              compactPlayer ? "opacity-35" : "opacity-20",
+            )}
             decoding="async"
             loading="lazy"
             src={metadata.imageUrl}
           />
         ) : null}
-        <div className="absolute inset-0 -z-10 bg-canvas/72" />
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-card border border-line bg-surface/70 text-text shadow-soft">
-            {metadata.imageUrl ? (
-              <img
-                alt=""
-                className="size-full object-cover"
-                decoding="async"
-                loading="lazy"
-                src={metadata.imageUrl}
-                data-testid="profile-spotify-artwork"
-              />
-            ) : (
-              icon
+        <div
+          className={cn(
+            "absolute inset-0 -z-10",
+            compactPlayer ? "bg-canvas/48" : "bg-canvas/72",
+          )}
+        />
+        <div
+          className={cn(
+            "min-w-0",
+            compactPlayer
+              ? "contents"
+              : richPlayer
+                ? "flex min-h-0 flex-1 items-center gap-4"
+                : "flex min-w-0 flex-1 items-center gap-3",
+          )}
+        >
+          <span
+            className={cn(
+              "grid shrink-0 place-items-center overflow-hidden border border-line bg-surface/70 text-text shadow-soft",
+              compactPlayer
+                ? "absolute inset-0 -z-10 size-full rounded-card opacity-80"
+                : richPlayer
+                  ? "size-24 rounded-card sm:size-28 lg:size-32"
+                  : "size-16 rounded-card",
             )}
+            data-testid="profile-spotify-artwork-frame"
+          >
+            <SpotifyArtwork
+              fallbackIcon={icon}
+              imageUrl={metadata.imageUrl ?? undefined}
+            />
           </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-semibold text-text">
+          <span
+            className={cn(
+              "min-w-0",
+              compactPlayer ? "relative z-10" : "flex-1",
+            )}
+          >
+            <span
+              className={cn(
+                "block truncate font-semibold text-text",
+                compactPlayer ? "text-xs drop-shadow-sm" : "text-sm",
+              )}
+            >
               {title}
             </span>
-            <span className="mt-0.5 block truncate text-xs text-muted">
-              {subtitle}
-              {fetchedAt ? ` · ${formatIntegrationAge(fetchedAt)}` : ""}
-            </span>
-            {description ? (
-              <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted">
+            {!compactPlayer ? (
+              <span className="mt-0.5 block truncate text-xs text-muted">
+                {subtitle}
+                {fetchedAt ? ` · ${formatIntegrationAge(fetchedAt)}` : ""}
+              </span>
+            ) : null}
+            {!compactPlayer && description ? (
+              <span
+                className={cn(
+                  "mt-1 block text-xs leading-5 text-muted",
+                  richPlayer ? "line-clamp-3" : "line-clamp-1",
+                )}
+              >
                 {description}
               </span>
             ) : null}
           </span>
-          <a
-            className="grid size-9 shrink-0 place-items-center rounded-card border border-line bg-canvas/65 text-muted transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-            href={integration.sourceUrl}
-            rel="noopener noreferrer"
-            target="_blank"
-            aria-label="Open in Spotify"
-          >
-            <ExternalLink aria-hidden="true" size={16} />
-          </a>
+          {!compactPlayer ? (
+            <a
+              className="grid size-9 shrink-0 place-items-center rounded-card border border-line bg-canvas/65 text-muted transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              href={integration.sourceUrl}
+              rel="noopener noreferrer"
+              target="_blank"
+              aria-label="Open in Spotify"
+            >
+              <ExternalLink aria-hidden="true" size={16} />
+            </a>
+          ) : null}
         </div>
-        <div className="mt-4 flex items-center gap-3">
+        <div
+          className={cn(
+            "relative z-10 flex min-w-0 items-center gap-3",
+            compactPlayer
+              ? "mt-2"
+              : richPlayer
+                ? "mt-auto"
+                : "w-[42%] min-w-36 max-w-72",
+          )}
+        >
           <button
             type="button"
-            className="grid size-11 shrink-0 place-items-center rounded-full border border-line bg-accent text-accent-contrast shadow-soft transition duration-fluid ease-fluid hover:-translate-y-0.5 hover:shadow-lift focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0"
+            className={cn(
+              "grid shrink-0 place-items-center rounded-full border border-line bg-accent text-accent-contrast shadow-soft transition duration-fluid ease-fluid hover:-translate-y-0.5 hover:shadow-lift focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0",
+              compactPlayer ? "size-9" : "size-11",
+            )}
             onClick={handlePlaybackToggle}
             disabled={fallback || !controllerReady}
             aria-label={playing ? "Pause Spotify music" : "Play Spotify music"}
             data-testid="profile-spotify-play-button"
           >
             {playing ? (
-              <Pause aria-hidden="true" size={18} />
+              <Pause aria-hidden="true" size={compactPlayer ? 15 : 18} />
             ) : (
-              <Play aria-hidden="true" size={18} />
+              <Play aria-hidden="true" size={compactPlayer ? 15 : 18} />
             )}
           </button>
           <div className="min-w-0 flex-1">
@@ -1370,7 +1448,9 @@ function SpotifyMusicPlayer({
               />
             </div>
             <div className="mt-1 flex items-center justify-between gap-3 text-[0.7rem] font-semibold uppercase text-muted">
-              <span className="truncate">{integrationLabel(integration)}</span>
+              {!compactPlayer ? (
+                <span className="truncate">{integrationLabel(integration)}</span>
+              ) : null}
               <span data-testid="profile-spotify-progress-time">{progressLabel}</span>
             </div>
           </div>
@@ -1384,6 +1464,29 @@ function SpotifyMusicPlayer({
         </div>
       </div>
     </div>
+  );
+}
+
+function SpotifyArtwork({
+  fallbackIcon,
+  imageUrl,
+}: {
+  fallbackIcon: ReactNode;
+  imageUrl?: string | undefined;
+}) {
+  if (!imageUrl) {
+    return <>{fallbackIcon}</>;
+  }
+
+  return (
+    <img
+      alt=""
+      className="size-full object-cover"
+      decoding="async"
+      loading="lazy"
+      src={imageUrl}
+      data-testid="profile-spotify-artwork"
+    />
   );
 }
 

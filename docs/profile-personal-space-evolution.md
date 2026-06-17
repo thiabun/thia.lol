@@ -962,6 +962,12 @@ interaction model:
 - Public and non-edit module chrome should stay light: the grid provides the
   shared glass surface, while individual module title bars and opaque module
   shells appear only when they clarify editing or a content-specific fallback.
+- The raw span set remains in use until a later semantic-label pass maps sizes
+  to names such as small, medium, and large. A 2026-06-17 mocked size audit
+  renders every currently allowed module/span one at a time and checks for
+  visible content plus no horizontal page overflow. No sizes were removed in
+  this pass; small Profile Info and compact Featured content spans should still
+  get visual review before they receive friendly labels.
 - Connections owns custom links, platform links, lightweight provider links,
   and legacy `profiles.links`. Rich provider cards can remain standalone
   `music` or `creator_live` modules when they need more space.
@@ -969,6 +975,10 @@ interaction model:
 - Background image, muted looping video background where supported, reset, and
   "Background clarity" blur controls live in a compact Background popover
   attached to the live canvas surface, outside the module menu.
+- Image uploads now open a custom crop/zoom modal before upload across profile
+  avatar, banner, background, post/reply media, room icon, and room banner. Crops
+  are baked into the uploaded image file in this pass; no crop metadata or
+  migration is added.
 - Integration provider status should distinguish link support, metadata support,
   OAuth support, and safe missing-config diagnostics by key name only. Provider
   logos should use branded icons where available.
@@ -977,7 +987,10 @@ interaction model:
   separate unresponsive card-suggestion step.
 - `music` modules are configured locally after selection. Spotify can start the
   OAuth flow, while Spotify, Apple Music, and YouTube Music URLs can resolve to
-  validated rich embeds without storing user-supplied iframe HTML.
+  validated rich embeds without storing user-supplied iframe HTML. Spotify
+  player rendering is span-aware: `1x1` uses an artwork-forward mini player,
+  `2x1` and `3x1` use a horizontal player, and `3x2` uses a richer layout that
+  fills the module height.
 - `creator_live` modules are configured locally after selection. Twitch supports
   status, stream, and stream-plus-chat display modes with size floors of `1x1`,
   `3x2`, and `4x3`; stream-plus-chat can expand through `5x3` to `6x5`, keeps

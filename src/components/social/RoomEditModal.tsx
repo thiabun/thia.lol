@@ -14,17 +14,16 @@ import {
 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { SelectField, TextareaField, TextField } from "../ui/Field";
+import { ImageCropModal } from "../ui/ImageCropModal";
 import { ModalSheet, ModalSheetStatus } from "../ui/ModalSheet";
 import { UserIdentityLink } from "./UserProfileLink";
+import { validateImageCropFile } from "../../lib/imageCrop";
 import type {
   ImageUploadPurpose,
   RoomInput,
   UploadedImage,
 } from "../../lib/api";
 import type { Room, RoomMember } from "../../lib/types";
-
-const maxUploadBytes = 10 * 1024 * 1024;
-const acceptedTypes = ["image/jpeg", "image/png", "image/webp"];
 
 type RoomEditModalProps = {
   mode: "create" | "edit";
@@ -71,6 +70,9 @@ export function RoomEditModal({
   const [form, setForm] = useState<FormState>(() => roomToForm(room));
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState<UploadSlot | undefined>();
+  const [pendingImageCrop, setPendingImageCrop] = useState<
+    { file: File; slot: UploadSlot } | undefined
+  >();
   const [message, setMessage] = useState<string | undefined>();
   const [moderatorHandle, setModeratorHandle] = useState("");
   const [moderatorPending, setModeratorPending] = useState<string | undefined>();
@@ -81,6 +83,11 @@ export function RoomEditModal({
   const moderators = members.filter((member) => member.role === "moderator");
   const owner = members.find((member) => member.role === "owner");
   const messageTone = message === "Images are converted to WebP" ? "success" : "error";
+
+  function closeEditor() {
+    setPendingImageCrop(undefined);
+    onClose();
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -105,7 +112,7 @@ export function RoomEditModal({
 
       setForm(roomToForm(saved));
       setMessage(mode === "create" ? "Room created" : "Room updated");
-      onClose();
+      closeEditor();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Room could not be saved.");
     } finally {
@@ -124,25 +131,36 @@ export function RoomEditModal({
       return;
     }
 
-    if (file.size > maxUploadBytes) {
-      setMessage("Image must be 10 MB or smaller");
+    const validationError = validateImageCropFile(file);
+
+    if (validationError) {
+      setMessage(validationError);
       return;
     }
 
-    if (!acceptedTypes.includes(file.type)) {
-      setMessage("Unsupported image type. Use JPEG, PNG, or WebP.");
+    setMessage(undefined);
+    setPendingImageCrop({ file, slot });
+  }
+
+  async function uploadCroppedImage(file: File) {
+    if (!pendingImageCrop) {
       return;
     }
 
+    const slot = pendingImageCrop.slot;
     setUploading(slot);
     setMessage(undefined);
 
     try {
       const uploaded = await onUpload(file, slot);
       updateForm(slot === "room_icon" ? "iconUrl" : "bannerUrl", uploaded.url);
+      setPendingImageCrop(undefined);
       setMessage("Images are converted to WebP");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Image could not be uploaded.");
+      const message =
+        error instanceof Error ? error.message : "Image could not be uploaded.";
+      setMessage(message);
+      throw error;
     } finally {
       setUploading(undefined);
     }
@@ -216,212 +234,218 @@ export function RoomEditModal({
   }
 
   return (
-    <ModalSheet
-      open={open}
-      onClose={onClose}
-      title={mode === "create" ? "Create room" : "Edit room"}
-      closeLabel="Close room editor"
-      testId="room-edit-modal"
-      size="lg"
-      mobile="full"
-      busy={busy}
-      footer={
-        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-          <Button
-            type="button"
-            variant="secondary"
+    <>
+      <ModalSheet
+        open={open}
+        onClose={closeEditor}
+        title={mode === "create" ? "Create room" : "Edit room"}
+        closeLabel="Close room editor"
+        testId="room-edit-modal"
+        size="lg"
+        mobile="full"
+        busy={busy}
+        footer={
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={busy}
+              onClick={closeEditor}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form={formId}
+              disabled={busy}
+              icon={<Save aria-hidden="true" size={17} />}
+            >
+              {saving ? "Saving" : mode === "create" ? "Create room" : "Save changes"}
+            </Button>
+          </div>
+        }
+      >
+        <form id={formId} className="space-y-5" onSubmit={handleSubmit}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <ImageUploadControl
+              id="room-icon-upload"
+              imageUrl={form.iconUrl}
+              label="Change icon"
+              uploading={uploading === "room_icon"}
+              onChange={(event) => void handleImageChange(event, "room_icon")}
+            />
+            <ImageUploadControl
+              id="room-banner-upload"
+              imageUrl={form.bannerUrl}
+              label="Change banner"
+              wide
+              uploading={uploading === "room_banner"}
+              onChange={(event) => void handleImageChange(event, "room_banner")}
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <TextField
+              id="room-name"
+              label="Name"
+              icon={Radio}
+              maxLength={80}
+              required
+              value={form.name}
+              disabled={busy}
+              onChange={(event) => updateName(event.currentTarget.value)}
+            />
+            <TextField
+              id="room-slug"
+              label="Slug"
+              icon={Hash}
+              maxLength={80}
+              required={mode === "create"}
+              disabled={busy || mode === "edit"}
+              value={form.slug}
+              onChange={(event) =>
+                updateForm("slug", event.currentTarget.value.toLowerCase())
+              }
+            />
+          </div>
+
+          <TextareaField
+            id="room-summary"
+            label="Summary"
+            className="min-h-28"
+            maxLength={500}
+            required
+            value={form.summary}
             disabled={busy}
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            form={formId}
+            onChange={(event) => updateForm("summary", event.currentTarget.value)}
+          />
+
+          <SelectField
+            id="room-accent"
+            label="Accent"
+            icon={Palette}
+            value={form.accent}
             disabled={busy}
-            icon={<Save aria-hidden="true" size={17} />}
-          >
-            {saving ? "Saving" : mode === "create" ? "Create room" : "Save changes"}
-          </Button>
-        </div>
-      }
-    >
-      <form id={formId} className="space-y-5" onSubmit={handleSubmit}>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <ImageUploadControl
-                  id="room-icon-upload"
-                  imageUrl={form.iconUrl}
-                  label="Change icon"
-                  uploading={uploading === "room_icon"}
-                  onChange={(event) => void handleImageChange(event, "room_icon")}
-                />
-                <ImageUploadControl
-                  id="room-banner-upload"
-                  imageUrl={form.bannerUrl}
-                  label="Change banner"
-                  wide
-                  uploading={uploading === "room_banner"}
-                  onChange={(event) => void handleImageChange(event, "room_banner")}
-                />
+            options={[
+              { value: "var(--accent-sun)", label: "Sunveil" },
+              { value: "var(--accent-frost)", label: "Frostveil" },
+              { value: "var(--accent-leaf)", label: "Leaf" },
+              { value: "var(--accent-rose)", label: "Rose" },
+              { value: "var(--app-accent)", label: "Default" },
+            ]}
+            onChange={(event) => updateForm("accent", event.currentTarget.value)}
+          />
+
+          <TextareaField
+            id="room-rules"
+            label="Room rules"
+            icon={ScrollText}
+            className="min-h-32"
+            maxLength={3000}
+            value={form.rules}
+            disabled={busy}
+            onChange={(event) => updateForm("rules", event.currentTarget.value)}
+          />
+
+          {mode === "edit" ? (
+            <section className="space-y-3 rounded-card border border-line bg-canvas/45 p-4">
+              <div className="flex items-center gap-2">
+                <Shield aria-hidden="true" size={17} className="text-muted" />
+                <h3 className="text-sm font-semibold text-text">Moderators</h3>
               </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <TextField
-                  id="room-name"
-                  label="Name"
-                  icon={Radio}
-                  maxLength={80}
-                  required
-                  value={form.name}
-                  disabled={busy}
-                  onChange={(event) => updateName(event.currentTarget.value)}
+              {owner ? <RoomMemberSettingsRow member={owner} /> : null}
+              {moderators.map((member) => (
+                <RoomMemberSettingsRow
+                  key={member.id}
+                  member={member}
+                  pending={moderatorPending === member.user.handle}
+                  canRemove={canManageModerators}
+                  onRemove={() => void handleRemoveModerator(member.user.handle)}
                 />
-                <TextField
-                  id="room-slug"
-                  label="Slug"
-                  icon={Hash}
-                  maxLength={80}
-                  required={mode === "create"}
-                  disabled={busy || mode === "edit"}
-                  value={form.slug}
-                  onChange={(event) =>
-                    updateForm("slug", event.currentTarget.value.toLowerCase())
-                  }
-                />
-              </div>
-
-              <TextareaField
-                id="room-summary"
-                label="Summary"
-                className="min-h-28"
-                maxLength={500}
-                required
-                value={form.summary}
-                disabled={busy}
-                onChange={(event) => updateForm("summary", event.currentTarget.value)}
-              />
-
-              <SelectField
-                id="room-accent"
-                label="Accent"
-                icon={Palette}
-                value={form.accent}
-                disabled={busy}
-                options={[
-                  { value: "var(--accent-sun)", label: "Sunveil" },
-                  { value: "var(--accent-frost)", label: "Frostveil" },
-                  { value: "var(--accent-leaf)", label: "Leaf" },
-                  { value: "var(--accent-rose)", label: "Rose" },
-                  { value: "var(--app-accent)", label: "Default" },
-                ]}
-                onChange={(event) => updateForm("accent", event.currentTarget.value)}
-              />
-
-              <TextareaField
-                id="room-rules"
-                label="Room rules"
-                icon={ScrollText}
-                className="min-h-32"
-                maxLength={3000}
-                value={form.rules}
-                disabled={busy}
-                onChange={(event) => updateForm("rules", event.currentTarget.value)}
-              />
-
-              {mode === "edit" ? (
-                <section className="space-y-3 rounded-card border border-line bg-canvas/45 p-4">
-                  <div className="flex items-center gap-2">
-                    <Shield aria-hidden="true" size={17} className="text-muted" />
-                    <h3 className="text-sm font-semibold text-text">Moderators</h3>
-                  </div>
-                  {owner ? (
-                    <RoomMemberSettingsRow member={owner} />
-                  ) : null}
-                  {moderators.map((member) => (
-                    <RoomMemberSettingsRow
-                      key={member.id}
-                      member={member}
-                      pending={moderatorPending === member.user.handle}
-                      canRemove={canManageModerators}
-                      onRemove={() => void handleRemoveModerator(member.user.handle)}
-                    />
-                  ))}
-                  {moderators.length === 0 ? (
-                    <p className="text-sm text-muted">No room moderators yet.</p>
-                  ) : null}
-
-                  {canManageModerators ? (
-                    <div className="grid gap-3 border-t border-line pt-3 sm:grid-cols-[1fr_auto]">
-                      <TextField
-                        id="room-moderator-handle"
-                        label="Add moderator by handle"
-                        value={moderatorHandle}
-                        maxLength={40}
-                        disabled={busy || moderatorPending !== undefined}
-                        onChange={(event) =>
-                          setModeratorHandle(event.currentTarget.value)
-                        }
-                      />
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        className="self-end"
-                        disabled={
-                          busy ||
-                          moderatorPending !== undefined ||
-                          moderatorHandle.trim() === ""
-                        }
-                        icon={<Plus aria-hidden="true" size={15} />}
-                        onClick={() => void handleAddModerator()}
-                      >
-                        {moderatorPending === "add" ? "Adding" : "Add"}
-                      </Button>
-                    </div>
-                  ) : null}
-
-                  {moderatorMessage ? (
-                    <ModalSheetStatus tone={moderatorStatusTone(moderatorMessage)}>
-                      {moderatorMessage}
-                    </ModalSheetStatus>
-                  ) : null}
-                </section>
+              ))}
+              {moderators.length === 0 ? (
+                <p className="text-sm text-muted">No room moderators yet.</p>
               ) : null}
 
-              {mode === "edit" && canDeleteRoom ? (
-                <section className="space-y-3 rounded-card border border-rose/35 bg-rose/10 p-4">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle aria-hidden="true" size={17} className="text-rose" />
-                    <h3 className="text-sm font-semibold text-rose-ink">Delete room</h3>
-                  </div>
-                  <p className="text-sm leading-6 text-rose-ink">
-                    This hides the room from public pages and keeps posts, memberships,
-                    and moderation history for review.
-                  </p>
+              {canManageModerators ? (
+                <div className="grid gap-3 border-t border-line pt-3 sm:grid-cols-[1fr_auto]">
                   <TextField
-                    id="room-delete-confirm"
-                    label={`Type /${room?.slug ?? "room"} to confirm`}
-                    value={deleteConfirm}
-                    disabled={busy}
-                    onChange={(event) => setDeleteConfirm(event.currentTarget.value)}
+                    id="room-moderator-handle"
+                    label="Add moderator by handle"
+                    value={moderatorHandle}
+                    maxLength={40}
+                    disabled={busy || moderatorPending !== undefined}
+                    onChange={(event) => setModeratorHandle(event.currentTarget.value)}
                   />
                   <Button
                     type="button"
                     variant="secondary"
-                    className="border-rose/40 bg-rose/15 text-rose-ink hover:border-rose/60"
-                    disabled={busy || deleteConfirm !== `/${room?.slug ?? ""}`}
-                    icon={<Trash2 aria-hidden="true" size={16} />}
-                    onClick={() => void handleDeleteRoom()}
+                    className="self-end"
+                    disabled={
+                      busy ||
+                      moderatorPending !== undefined ||
+                      moderatorHandle.trim() === ""
+                    }
+                    icon={<Plus aria-hidden="true" size={15} />}
+                    onClick={() => void handleAddModerator()}
                   >
-                    {deletePending ? "Deleting" : "Delete room"}
+                    {moderatorPending === "add" ? "Adding" : "Add"}
                   </Button>
-                </section>
+                </div>
               ) : null}
 
-              {message ? (
-                <ModalSheetStatus tone={messageTone}>{message}</ModalSheetStatus>
+              {moderatorMessage ? (
+                <ModalSheetStatus tone={moderatorStatusTone(moderatorMessage)}>
+                  {moderatorMessage}
+                </ModalSheetStatus>
               ) : null}
-      </form>
-    </ModalSheet>
+            </section>
+          ) : null}
+
+          {mode === "edit" && canDeleteRoom ? (
+            <section className="space-y-3 rounded-card border border-rose/35 bg-rose/10 p-4">
+              <div className="flex items-center gap-2">
+                <AlertTriangle aria-hidden="true" size={17} className="text-rose" />
+                <h3 className="text-sm font-semibold text-rose-ink">Delete room</h3>
+              </div>
+              <p className="text-sm leading-6 text-rose-ink">
+                This hides the room from public pages and keeps posts, memberships,
+                and moderation history for review.
+              </p>
+              <TextField
+                id="room-delete-confirm"
+                label={`Type /${room?.slug ?? "room"} to confirm`}
+                value={deleteConfirm}
+                disabled={busy}
+                onChange={(event) => setDeleteConfirm(event.currentTarget.value)}
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                className="border-rose/40 bg-rose/15 text-rose-ink hover:border-rose/60"
+                disabled={busy || deleteConfirm !== `/${room?.slug ?? ""}`}
+                icon={<Trash2 aria-hidden="true" size={16} />}
+                onClick={() => void handleDeleteRoom()}
+              >
+                {deletePending ? "Deleting" : "Delete room"}
+              </Button>
+            </section>
+          ) : null}
+
+          {message ? (
+            <ModalSheetStatus tone={messageTone}>{message}</ModalSheetStatus>
+          ) : null}
+        </form>
+      </ModalSheet>
+      <ImageCropModal
+        open={Boolean(pendingImageCrop)}
+        file={pendingImageCrop?.file}
+        purpose={pendingImageCrop?.slot ?? "room_icon"}
+        busy={Boolean(uploading)}
+        onClose={() => setPendingImageCrop(undefined)}
+        onApply={uploadCroppedImage}
+      />
+    </>
   );
 }
 

@@ -2,9 +2,11 @@ import type { ChangeEvent, FormEvent } from "react";
 import { useCallback, useId, useRef, useState } from "react";
 import { ChevronDown, ImagePlus, Radio, Send, Trash2 } from "lucide-react";
 import { Button } from "../ui/Button";
+import { ImageCropModal } from "../ui/ImageCropModal";
 import { ModalSheet, ModalSheetStatus } from "../ui/ModalSheet";
 import { createPost, uploadImage } from "../../lib/api";
 import type { CreatePostInput } from "../../lib/api";
+import { validateImageCropFile } from "../../lib/imageCrop";
 import type { Post, Room } from "../../lib/types";
 
 type PostComposerModalProps = {
@@ -15,9 +17,6 @@ type PostComposerModalProps = {
   open: boolean;
   rooms: Room[];
 };
-
-const maxUploadBytes = 10 * 1024 * 1024;
-const acceptedImageTypes = ["image/jpeg", "image/png", "image/webp"];
 
 export function PostComposerModal({
   csrfToken,
@@ -32,6 +31,7 @@ export function PostComposerModal({
   const [body, setBody] = useState("");
   const [roomSlug, setRoomSlug] = useState(initialRoomSlug ?? "");
   const [mediaUrl, setMediaUrl] = useState<string | undefined>();
+  const [pendingImageCrop, setPendingImageCrop] = useState<File | undefined>();
   const [uploadingImage, setUploadingImage] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | undefined>();
@@ -55,6 +55,7 @@ export function PostComposerModal({
     setBody("");
     setRoomSlug("");
     setMediaUrl(undefined);
+    setPendingImageCrop(undefined);
     setUploadingImage(false);
     setMessage(undefined);
     setSubmitting(false);
@@ -107,14 +108,21 @@ export function PostComposerModal({
       return;
     }
 
-    if (file.size > maxUploadBytes) {
-      setMessage("Image must be 10 MB or smaller.");
+    const validationError = validateImageCropFile(file);
+
+    if (validationError) {
+      setMessage(validationError);
       return;
     }
 
-    if (!acceptedImageTypes.includes(file.type)) {
-      setMessage("Unsupported image type. Use JPEG, PNG, or WebP.");
-      return;
+    setMessage(undefined);
+    setPendingImageCrop(file);
+  }
+
+  async function uploadCroppedImage(file: File) {
+    if (!csrfToken) {
+      setMessage("Sign in again before uploading.");
+      throw new Error("Sign in again before uploading.");
     }
 
     setUploadingImage(true);
@@ -124,27 +132,32 @@ export function PostComposerModal({
       const uploaded = await uploadImage(file, "post_media", csrfToken);
       setMediaUrl(uploaded.url);
       setMessage(undefined);
+      setPendingImageCrop(undefined);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Image could not be uploaded.");
+      const message =
+        error instanceof Error ? error.message : "Image could not be uploaded.";
+      setMessage(message);
+      throw error;
     } finally {
       setUploadingImage(false);
     }
   }
 
   return (
-    <ModalSheet
-      open={open}
-      onClose={closeComposer}
-      title="New post"
-      closeLabel="Close post composer"
-      testId="composer-modal"
-      size="md"
-      mobile="full"
-      busy={submitting || uploadingImage}
-      initialFocusRef={textareaRef}
-      bodyClassName="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-5 sm:py-4"
-      footerClassName="shrink-0 border-t border-line bg-surface px-4 py-3 sm:px-5"
-      footer={
+    <>
+      <ModalSheet
+        open={open}
+        onClose={closeComposer}
+        title="New post"
+        closeLabel="Close post composer"
+        testId="composer-modal"
+        size="md"
+        mobile="full"
+        busy={submitting || uploadingImage}
+        initialFocusRef={textareaRef}
+        bodyClassName="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-5 sm:py-4"
+        footerClassName="shrink-0 border-t border-line bg-surface px-4 py-3 sm:px-5"
+        footer={
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
             <label
@@ -240,9 +253,9 @@ export function PostComposerModal({
             </Button>
           </div>
         </div>
-      }
-    >
-      <form id={formId} className="space-y-3" onSubmit={handleSubmit}>
+        }
+      >
+        <form id={formId} className="space-y-3" onSubmit={handleSubmit}>
         <label htmlFor="post-composer-body" className="sr-only">
           Post
         </label>
@@ -270,7 +283,16 @@ export function PostComposerModal({
         ) : null}
 
         {message ? <ModalSheetStatus tone="error">{message}</ModalSheetStatus> : null}
-      </form>
-    </ModalSheet>
+        </form>
+      </ModalSheet>
+      <ImageCropModal
+        open={Boolean(pendingImageCrop)}
+        file={pendingImageCrop}
+        purpose="post_media"
+        busy={uploadingImage}
+        onClose={() => setPendingImageCrop(undefined)}
+        onApply={uploadCroppedImage}
+      />
+    </>
   );
 }

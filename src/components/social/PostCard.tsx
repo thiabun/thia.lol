@@ -24,6 +24,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Avatar } from "../ui/Avatar";
 import { Button, ButtonLink } from "../ui/Button";
 import { TextareaField } from "../ui/Field";
+import { ImageCropModal } from "../ui/ImageCropModal";
 import { ModalSheet } from "../ui/ModalSheet";
 import { Panel } from "../ui/Panel";
 import { CompactStateNotice } from "../ui/RouteState";
@@ -40,6 +41,7 @@ import {
   uploadImage,
 } from "../../lib/api";
 import { cn } from "../../lib/classNames";
+import { validateImageCropFile } from "../../lib/imageCrop";
 import {
   buttonHover,
   buttonTap,
@@ -559,9 +561,6 @@ function ReactionControls({
   );
 }
 
-const maxUploadBytes = 10 * 1024 * 1024;
-const acceptedImageTypes = ["image/jpeg", "image/png", "image/webp"];
-
 type CommentButtonProps = {
   count: number;
   onClick: () => void;
@@ -609,6 +608,7 @@ function ReplyComposer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [body, setBody] = useState("");
   const [mediaUrl, setMediaUrl] = useState<string | undefined>();
+  const [pendingImageCrop, setPendingImageCrop] = useState<File | undefined>();
   const [uploadingImage, setUploadingImage] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | undefined>();
@@ -660,6 +660,7 @@ function ReplyComposer({
 
       setBody("");
       setMediaUrl(undefined);
+      setPendingImageCrop(undefined);
       onCreated(reply);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Reply could not be posted.");
@@ -681,14 +682,21 @@ function ReplyComposer({
       return;
     }
 
-    if (file.size > maxUploadBytes) {
-      setMessage("Image must be 10 MB or smaller.");
+    const validationError = validateImageCropFile(file);
+
+    if (validationError) {
+      setMessage(validationError);
       return;
     }
 
-    if (!acceptedImageTypes.includes(file.type)) {
-      setMessage("Unsupported image type. Use JPEG, PNG, or WebP.");
-      return;
+    setMessage(undefined);
+    setPendingImageCrop(file);
+  }
+
+  async function uploadCroppedImage(file: File) {
+    if (!csrfToken) {
+      setMessage("Log in to upload an image.");
+      throw new Error("Log in to upload an image.");
     }
 
     setUploadingImage(true);
@@ -700,23 +708,28 @@ function ReplyComposer({
         { retryOnCsrf: true },
       );
       setMediaUrl(uploaded.url);
+      setPendingImageCrop(undefined);
       setMessage("Image attached.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Image could not be uploaded.");
+      const message =
+        error instanceof Error ? error.message : "Image could not be uploaded.";
+      setMessage(message);
+      throw error;
     } finally {
       setUploadingImage(false);
     }
   }
 
   return (
-    <form
-      className={cn(
-        "rounded-card border border-line bg-canvas/45 p-3 shadow-inner-soft",
-        className,
-      )}
-      data-testid="reply-composer"
-      onSubmit={(event) => void handleSubmit(event)}
-    >
+    <>
+      <form
+        className={cn(
+          "rounded-card border border-line bg-canvas/45 p-3 shadow-inner-soft",
+          className,
+        )}
+        data-testid="reply-composer"
+        onSubmit={(event) => void handleSubmit(event)}
+      >
       <TextareaField
         ref={textareaRef}
         id={`reply-composer-${parentPostId}`}
@@ -797,7 +810,16 @@ function ReplyComposer({
           </Button>
         </div>
       </div>
-    </form>
+      </form>
+      <ImageCropModal
+        open={Boolean(pendingImageCrop)}
+        file={pendingImageCrop}
+        purpose="post_media"
+        busy={uploadingImage}
+        onClose={() => setPendingImageCrop(undefined)}
+        onApply={uploadCroppedImage}
+      />
+    </>
   );
 }
 

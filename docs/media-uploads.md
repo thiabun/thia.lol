@@ -37,6 +37,19 @@ Do not store uploads in `src/`, `dist/`, `backend/`, or `api/`. Do not commit up
 
 Uploads go through `/api/uploads/image` and are converted to WebP before storage. The endpoint uses PHP GD for cPanel compatibility and returns a clean error if WebP conversion is not available.
 
+Before upload, the frontend opens a custom crop/zoom modal for current image
+surfaces: profile avatar, profile banner, profile background, post/reply media,
+room icon, and room banner. The crop is baked into the image file sent to the
+existing upload endpoint; no crop metadata is stored in this pass.
+
+Client crop defaults:
+
+- avatar and room icon: locked square crop
+- profile banner and room banner: locked 8:3 crop
+- profile background: locked 16:9 crop
+- post and reply media: original aspect by default, with square, portrait, and
+  landscape presets
+
 Processing rules:
 
 - avatar: square crop to 512x512

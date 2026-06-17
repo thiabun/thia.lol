@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { Buffer } from "node:buffer";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
@@ -645,6 +646,128 @@ test("video background and allowlisted rich integrations render safely", async (
   await expect(page.getByTestId("profile-integration-embed-github")).toHaveCount(0);
 });
 
+test("Spotify music player fills each allowed music module span", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 1000 });
+  await mockSpotifyIframeApi(page);
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      musicModuleWithSize({ id: 61, row: 1, size: "1x1" }),
+      musicModuleWithSize({ id: 62, row: 1, size: "2x1", column: 2 }),
+      musicModuleWithSize({ id: 63, row: 1, size: "3x1", column: 4 }),
+      musicModuleWithSize({ id: 64, row: 2, size: "3x2" }),
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expect(page.getByTestId("profile-spotify-custom-player")).toHaveCount(4);
+  const metrics = await page
+    .getByTestId("profile-module-grid")
+    .evaluate(() =>
+      Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="profile-grid-module-music"]',
+        ),
+      ).map((module) => {
+        const player = module.querySelector<HTMLElement>(
+          '[data-testid="profile-spotify-custom-player"]',
+        );
+        const artwork = module.querySelector<HTMLElement>(
+          '[data-testid="profile-spotify-artwork-frame"]',
+        );
+
+        if (!player || !artwork) {
+          throw new Error("Music player did not render.");
+        }
+
+        const moduleRect = module.getBoundingClientRect();
+        const playerRect = player.getBoundingClientRect();
+        const artworkRect = artwork.getBoundingClientRect();
+
+        return {
+          artworkHeight: Math.round(artworkRect.height),
+          heightCoverage: playerRect.height / moduleRect.height,
+          layout: player.dataset.profileSpotifyLayout,
+          size: module.dataset.profileGridSize,
+          widthCoverage: playerRect.width / moduleRect.width,
+        };
+      }),
+    );
+
+  expect(metrics).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ layout: "compact", size: "1x1" }),
+      expect.objectContaining({ layout: "row", size: "2x1" }),
+      expect.objectContaining({ layout: "row", size: "3x1" }),
+      expect.objectContaining({ layout: "rich", size: "3x2" }),
+    ]),
+  );
+
+  for (const metric of metrics) {
+    expect(metric.heightCoverage).toBeGreaterThanOrEqual(0.94);
+    expect(metric.widthCoverage).toBeGreaterThanOrEqual(0.94);
+    expect(metric.artworkHeight).toBeGreaterThanOrEqual(
+      metric.size === "1x1" ? 90 : metric.size === "3x2" ? 96 : 56,
+    );
+  }
+});
+
+test("allowed module sizes smoke render one at a time without overflow", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1366, height: 1100 });
+  await acknowledgeCookieNotice(page);
+
+  for (const auditCase of profileModuleSizeAuditCases()) {
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+    await mockProfileModules(page, auditCase.mock);
+    await page.goto(`/@thia?sizeAudit=${auditCase.type}-${auditCase.size}`);
+
+    const module = page.getByTestId(`profile-grid-module-${auditCase.type}`);
+    await expect(module).toBeVisible();
+    await expect(module).toHaveAttribute("data-profile-grid-size", auditCase.size);
+
+    const metrics = await module.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const meaningfulContent = Array.from(
+        element.querySelectorAll<HTMLElement>(
+          'a,button,img,iframe,[data-profile-module-visible-links],[data-profile-module-visible-badges],[data-profile-module-visible-media],[data-testid="profile-header"],[data-testid="profile-activity"],[data-testid="profile-spotify-custom-player"]',
+        ),
+      ).filter((item) => {
+        const itemRect = item.getBoundingClientRect();
+        const styles = window.getComputedStyle(item);
+
+        return (
+          itemRect.width > 0 &&
+          itemRect.height > 0 &&
+          styles.visibility !== "hidden" &&
+          styles.display !== "none"
+        );
+      });
+
+      return {
+        documentOverflowX:
+          document.documentElement.scrollWidth >
+          document.documentElement.clientWidth + 1,
+        height: Math.round(rect.height),
+        hasVisibleContent:
+          meaningfulContent.length > 0 ||
+          (element.textContent?.trim().length ?? 0) > 0,
+        width: Math.round(rect.width),
+      };
+    });
+
+    expect(metrics.documentOverflowX).toBe(false);
+    expect(metrics.hasVisibleContent).toBe(true);
+    expect(metrics.height).toBeGreaterThan(80);
+    expect(metrics.width).toBeGreaterThan(80);
+  }
+});
+
 test("public visitor continues before Spotify profile music starts", async ({
   page,
 }) => {
@@ -1085,6 +1208,83 @@ test("owner edits background blur, module placement, and visibility", async ({
     "heavy",
   );
   await expect(page.getByText("Move me.")).toHaveCount(0);
+});
+
+test("owner crops a profile background image before upload", async ({ page }) => {
+  let uploadedPurpose: string | undefined;
+  let savedProfilePayload: Record<string, unknown> | undefined;
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [aboutModule({ id: 1, title: "About", body: "Crop background." })],
+    onImageUpload: (purpose) => {
+      uploadedPurpose = purpose;
+    },
+    onProfileSave: (payload) => {
+      savedProfilePayload = payload;
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-canvas-edit-button").click();
+  await page.getByTestId("profile-canvas-background-trigger").click();
+  await page
+    .getByTestId("profile-background-image-input")
+    .setInputFiles(samplePngFile("profile-background.png"));
+
+  await expect(page.getByTestId("image-crop-modal")).toBeVisible();
+  await expect(page.getByText("Landscape crop")).toBeVisible();
+  await expect(page.getByTestId("image-crop-aspect-square")).toHaveCount(0);
+
+  const preview = page.getByTestId("image-crop-preview");
+  await expect(preview).toBeVisible();
+  await page.getByTestId("image-crop-zoom").fill("1.6");
+  await expect(preview).toHaveCSS("transform", /matrix/);
+
+  await page.getByRole("button", { name: "Apply crop" }).click();
+  await expect(page.getByTestId("image-crop-modal")).toHaveCount(0);
+  expect(uploadedPurpose).toBe("profile_background");
+  await expect(
+    page
+      .getByTestId("profile-personal-backdrop")
+      .locator('img[src="/uploads/media/2026/06/profile_background-cropped.webp"]'),
+  ).toBeVisible();
+
+  await page.getByTestId("profile-canvas-save-button").click();
+  expect(savedProfilePayload?.profileBackground).toBe(
+    "/uploads/media/2026/06/profile_background-cropped.webp",
+  );
+});
+
+test("image crop modal is wired to current image upload surfaces", () => {
+  const cropModal = readFileSync("src/components/ui/ImageCropModal.tsx", "utf8");
+  const profilePage = readFileSync("src/pages/ProfilePage.tsx", "utf8");
+  const postComposer = readFileSync(
+    "src/components/social/PostComposerModal.tsx",
+    "utf8",
+  );
+  const postCard = readFileSync("src/components/social/PostCard.tsx", "utf8");
+  const roomEditor = readFileSync(
+    "src/components/social/RoomEditModal.tsx",
+    "utf8",
+  );
+
+  for (const purpose of [
+    "avatar",
+    "banner",
+    "profile_background",
+    "post_media",
+    "room_icon",
+    "room_banner",
+  ]) {
+    expect(cropModal).toContain(purpose);
+  }
+
+  for (const source of [profilePage, postComposer, postCard, roomEditor]) {
+    expect(source).toContain("ImageCropModal");
+    expect(source).toContain("validateImageCropFile");
+  }
 });
 
 test("owner edits profile info inside the selected module", async ({ page }) => {
@@ -2204,6 +2404,7 @@ async function mockProfileModules(
     onCreate?: (payload: Record<string, unknown>) => void;
     onCanvasSave?: (payload: Record<string, unknown>) => void;
     onDelete?: (id: number) => void;
+    onImageUpload?: (purpose: string) => void;
     onOrder?: (ids: number[]) => void;
     onProfileSave?: (payload: Record<string, unknown>) => void;
     onUpdate?: (id: number, payload: Record<string, unknown>) => void;
@@ -2288,6 +2489,39 @@ async function mockProfileModules(
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+
+  await page.route("**/api/uploads/image", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fulfill({
+        status: 405,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: false, error: "Method not allowed." }),
+      });
+      return;
+    }
+
+    const postData = route.request().postData() ?? "";
+    const purpose =
+      postData.match(/name="purpose"\r\n\r\n([^\r\n]+)/)?.[1] ?? "post_media";
+    options.onImageUpload?.(purpose);
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          url: `/uploads/media/2026/06/${purpose}-cropped.webp`,
+          width: purpose === "avatar" || purpose === "room_icon" ? 512 : 1600,
+          height: purpose === "avatar" || purpose === "room_icon" ? 512 : 900,
+          mime: "image/webp",
+          type: "image/webp",
+          size: 2048,
+          purpose,
+        },
+      }),
     });
   });
 
@@ -2994,6 +3228,274 @@ function expectNoOverlappingPlacements(modules: Array<Record<string, unknown>>) 
       }
     }
   }
+}
+
+type ProfileModuleSizeAuditType =
+  | "profile_info"
+  | "about"
+  | "custom_text"
+  | "links"
+  | "featured_badges"
+  | "featured_post"
+  | "featured_room"
+  | "gallery_media"
+  | "creator_live"
+  | "music"
+  | "activity";
+
+type ProfileModuleSizeAuditMock = Parameters<typeof mockProfileModules>[1];
+
+const profileModuleSizeAuditMatrix: Array<{
+  sizes: string[];
+  type: ProfileModuleSizeAuditType;
+}> = [
+  { type: "profile_info", sizes: ["2x1", "2x2", "3x2", "3x3", "4x3", "6x3"] },
+  { type: "about", sizes: ["1x1", "2x1", "3x1"] },
+  { type: "custom_text", sizes: ["1x1", "2x1"] },
+  { type: "links", sizes: ["1x1", "2x1", "3x1", "2x2"] },
+  { type: "featured_badges", sizes: ["1x1", "2x1"] },
+  { type: "featured_post", sizes: ["2x1", "3x1", "2x2", "3x2"] },
+  { type: "featured_room", sizes: ["1x1", "2x1", "3x1"] },
+  { type: "gallery_media", sizes: ["1x1", "2x1", "2x2", "3x2", "3x3"] },
+  {
+    type: "creator_live",
+    sizes: ["1x1", "2x1", "2x2", "3x2", "3x3", "4x3", "5x3", "6x5"],
+  },
+  { type: "music", sizes: ["1x1", "2x1", "3x1", "3x2"] },
+  { type: "activity", sizes: ["2x2", "3x2", "3x3", "3x4", "3x6"] },
+];
+
+function profileModuleSizeAuditCases(): Array<{
+  mock: ProfileModuleSizeAuditMock;
+  size: string;
+  type: ProfileModuleSizeAuditType;
+}> {
+  return profileModuleSizeAuditMatrix.flatMap(({ sizes, type }, groupIndex) =>
+    sizes.map((size, sizeIndex) => ({
+      mock: profileModuleSizeAuditMock(type, size, groupIndex * 20 + sizeIndex + 1),
+      size,
+      type,
+    })),
+  );
+}
+
+function profileModuleSizeAuditMock(
+  type: ProfileModuleSizeAuditType,
+  size: string,
+  id: number,
+): ProfileModuleSizeAuditMock {
+  const featuredPost = postFixture({ id: 42, body: "Pinned post preview." });
+  const module = profileModuleSizeAuditModule(type, size, id);
+
+  return {
+    authenticated: true,
+    modules: [module],
+    profileOverrides: {
+      ...(type === "featured_post"
+        ? { featuredPost, featuredPostId: 42 }
+        : {}),
+      ...(type === "featured_room"
+        ? { featuredRoom: featuredPost.room, featuredRoomId: 1 }
+        : {}),
+    },
+    profilePosts:
+      type === "activity"
+        ? [
+            postFixture({ id: 100, body: "Activity size audit post." }),
+            postFixture({ id: 101, body: "Second activity item." }),
+          ]
+        : undefined,
+  };
+}
+
+function profileModuleSizeAuditModule(
+  type: ProfileModuleSizeAuditType,
+  size: string,
+  id: number,
+): Record<string, unknown> {
+  const row = type === "profile_info" ? 1 : 4;
+
+  if (type === "profile_info") {
+    return withAuditLayout(profileInfoModule(), size, row);
+  }
+
+  if (type === "about") {
+    return withAuditLayout(
+      aboutModule({
+        id,
+        body: "A concise intro with enough text to exercise wrapping.",
+      }),
+      size,
+      row,
+    );
+  }
+
+  if (type === "custom_text") {
+    return withAuditLayout(
+      textModule({
+        id,
+        body: "A short note with a clear point.",
+      }),
+      size,
+      row,
+    );
+  }
+
+  if (type === "links") {
+    return withAuditLayout(
+      linksModule({
+        id,
+        links: [
+          { label: "GitHub", platform: "github", url: "https://github.com/thiabun" },
+          { label: "Twitch", platform: "twitch", url: "https://www.twitch.tv/thiabun" },
+          { label: "YouTube", platform: "youtube", url: "https://www.youtube.com/@thia" },
+        ],
+      }),
+      size,
+      row,
+    );
+  }
+
+  if (type === "featured_badges") {
+    return withAuditLayout(
+      {
+        id,
+        type: "featured_badges",
+        title: "Badges",
+        config: { userBadgeIds: [1] },
+        visibility: "public",
+        position: 1,
+        status: "active",
+        schemaVersion: 1,
+        createdAt: "2026-06-12 00:00:00",
+        updatedAt: "2026-06-12 00:00:00",
+      },
+      size,
+      row,
+    );
+  }
+
+  if (type === "featured_post") {
+    return withAuditLayout(
+      {
+        id,
+        type: "featured_post",
+        title: "Featured post",
+        config: {},
+        visibility: "public",
+        position: 1,
+        status: "active",
+        schemaVersion: 1,
+        createdAt: "2026-06-12 00:00:00",
+        updatedAt: "2026-06-12 00:00:00",
+      },
+      size,
+      row,
+    );
+  }
+
+  if (type === "featured_room") {
+    return withAuditLayout(
+      {
+        id,
+        type: "featured_room",
+        title: "Featured room",
+        config: {},
+        visibility: "public",
+        position: 1,
+        status: "active",
+        schemaVersion: 1,
+        createdAt: "2026-06-12 00:00:00",
+        updatedAt: "2026-06-12 00:00:00",
+      },
+      size,
+      row,
+    );
+  }
+
+  if (type === "gallery_media") {
+    return withAuditLayout(galleryModule({ id }), size, row);
+  }
+
+  if (type === "creator_live") {
+    const module = ["4x3", "5x3", "6x5"].includes(size)
+      ? twitchStreamChatModule({ id })
+      : creatorModule({ id });
+
+    return withAuditLayout(module, size, row);
+  }
+
+  if (type === "music") {
+    return withAuditLayout(musicModule({ id }), size, row);
+  }
+
+  return withAuditLayout(activityModule({ id }), size, row);
+}
+
+function musicModuleWithSize({
+  column = 1,
+  id,
+  row,
+  size,
+}: {
+  column?: number;
+  id: number;
+  row: number;
+  size: string;
+}) {
+  return withAuditLayout(
+    spotifyEmbedMusicModule({ id, position: id }),
+    size,
+    row,
+    column,
+  );
+}
+
+function withAuditLayout(
+  module: Record<string, unknown>,
+  size: string,
+  row: number,
+  column = 1,
+) {
+  const span = profileModuleSizeAuditSpan(size);
+  const config =
+    module.config && typeof module.config === "object" && !Array.isArray(module.config)
+      ? { ...(module.config as Record<string, unknown>), canvasSize: size }
+      : { canvasSize: size };
+
+  return {
+    ...module,
+    config,
+    layout: {
+      column,
+      row,
+      colSpan: span.colSpan,
+      rowSpan: span.rowSpan,
+    },
+  };
+}
+
+function profileModuleSizeAuditSpan(size: string): {
+  colSpan: number;
+  rowSpan: number;
+} {
+  const [columns, rows] = size.split("x").map(Number);
+
+  return {
+    colSpan: Number.isFinite(columns) ? columns : 1,
+    rowSpan: Number.isFinite(rows) ? rows : 1,
+  };
+}
+
+function samplePngFile(name: string) {
+  return {
+    name,
+    mimeType: "image/png",
+    buffer: Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+      "base64",
+    ),
+  };
 }
 
 function profileBody(overrides: Record<string, unknown> = {}) {
