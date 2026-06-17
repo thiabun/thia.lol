@@ -1208,6 +1208,7 @@ test("owner uses OAuth-first integrations from the editor panel", async ({
   page,
 }) => {
   const createdPayloads: Array<Record<string, unknown>> = [];
+  const updatedPayloads: Array<{ id: number; payload: Record<string, unknown> }> = [];
   let oauthStartPayload: Record<string, unknown> | undefined;
 
   await mockProfileModules(page, {
@@ -1215,6 +1216,9 @@ test("owner uses OAuth-first integrations from the editor panel", async ({
     modules: [],
     onCreate: (payload) => {
       createdPayloads.push(payload);
+    },
+    onUpdate: (id, payload) => {
+      updatedPayloads.push({ id, payload });
     },
   });
   await page.route("**/api/me/integrations", async (route) => {
@@ -1289,71 +1293,41 @@ test("owner uses OAuth-first integrations from the editor panel", async ({
       }),
     });
   });
-  await page.route("**/api/me/integrations/github/suggestions", async (route) => {
+  await page.route("**/api/me/integrations/metadata/resolve", async (route) => {
+    const payload = (await route.request().postDataJSON()) as Record<string, unknown>;
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         ok: true,
         data: {
-          provider: "github",
-          status: {
-            provider: "github",
-            configured: true,
-            oauthEnabled: true,
-            linkSupported: true,
-            metadataEnabled: true,
-            missingConfigKeys: [],
+          provider: payload.provider ?? "twitch",
+          resourceType: "channel",
+          resourceId: "thiabun",
+          resourceKey: `${payload.provider ?? "twitch"}:channel:thiabun`,
+          sourceUrl: payload.url,
+          apiBacked: true,
+          fetchedAt: "2026-06-17T00:00:00Z",
+          expiresAt: "2026-06-17T01:00:00Z",
+          staleAt: "2026-06-18T00:00:00Z",
+          metadata: {
+            title: "thiabun",
+            subtitle: "Twitch",
+            description: "Live channel.",
+            imageUrl: null,
+            live: false,
+            liveFetchedAt: null,
+            recentLabel: null,
+            recentFetchedAt: null,
+            stats: {},
           },
-          account: {
-            provider: "github",
-            providerAccountId: "thiabun",
-            providerHandle: "thiabun",
-            displayName: "thiabun",
-            avatarUrl: null,
-            scopes: ["read:user"],
-            tokenExpiresAt: null,
-            connectedAt: "2026-06-17T00:00:00Z",
-            refreshedAt: null,
-            revokedAt: null,
-            lastError: null,
-            errorAt: null,
+          embed: {
+            type: "iframe",
+            src: "https://player.twitch.tv/?channel=thiabun&parent=thia.lol&muted=true",
+            title: "Twitch embed",
+            allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+            height: 220,
           },
-          items: [
-            {
-              id: "github-repo-thia-lol",
-              label: "thia.lol",
-              description: "Public repository metadata.",
-              sourceUrl: "https://github.com/thiabun/thia.lol",
-              moduleType: "creator_live",
-              moduleTitle: null,
-              card: {
-                provider: "github",
-                resourceType: "repository",
-                resourceId: "thiabun/thia.lol",
-                resourceKey: "github:repo:thiabun/thia.lol",
-                sourceUrl: "https://github.com/thiabun/thia.lol",
-                apiBacked: true,
-                fetchedAt: "2026-06-17T00:00:00Z",
-                expiresAt: "2026-06-17T01:00:00Z",
-                staleAt: "2026-06-18T00:00:00Z",
-                metadata: {
-                  title: "thia.lol",
-                  subtitle: "GitHub",
-                  description: "Public repository metadata.",
-                  imageUrl: null,
-                  live: false,
-                  liveFetchedAt: null,
-                  recentLabel: null,
-                  recentFetchedAt: null,
-                  stats: {},
-                },
-                embed: null,
-              },
-            },
-          ],
-          message: null,
-          generatedAt: "2026-06-17T00:00:00Z",
         },
       }),
     });
@@ -1394,12 +1368,8 @@ test("owner uses OAuth-first integrations from the editor panel", async ({
   await expect(page.getByTestId("profile-integration-card-twitch")).toContainText(
     "OAuth setup needed",
   );
-  await page.getByTestId("profile-integration-suggestions-github").click();
-  const githubSuggestion = page.getByTestId(
-    "profile-integration-suggestion-github-github-repo-thia-lol",
-  );
-  await expect(githubSuggestion).toBeVisible();
-  await githubSuggestion.click();
+  await expect(page.getByText("Add cards")).toHaveCount(0);
+  await page.getByTestId("profile-integration-add-module-github").click();
 
   expect(createdPayloads.at(-1)).toMatchObject({
     type: "creator_live",
@@ -1407,16 +1377,149 @@ test("owner uses OAuth-first integrations from the editor panel", async ({
     status: "active",
     config: {
       platform: "github",
-      label: "thia.lol",
-      url: "https://github.com/thiabun/thia.lol",
-      description: "Public repository metadata.",
+      sourceMode: "github",
+      displayMode: "project",
+      label: "thiabun",
+      url: "https://github.com/thiabun",
     },
   });
 
+  const creatorModule = page.getByTestId("profile-grid-module-creator_live");
+  await expect(creatorModule.getByTestId("profile-creator-config")).toBeVisible();
+  await creatorModule.getByTestId("profile-creator-provider-twitch").click();
+  await creatorModule.getByTestId("profile-creator-mode-stream_chat").click();
+  await expect(creatorModule).toHaveAttribute("data-profile-grid-size", "3x5");
+  await creatorModule.getByTestId("profile-creator-url-input").fill("https://www.twitch.tv/thiabun");
+  await creatorModule.getByTestId("profile-creator-preview-button").click();
+  await expect(creatorModule.getByTestId("profile-integration-preview-summary")).toContainText(
+    "thiabun",
+  );
+  await page.getByTestId("profile-canvas-save-button").click();
+  await expect
+    .poll(() => updatedPayloads.at(-1)?.payload.config)
+    .toMatchObject({
+      platform: "twitch",
+      sourceMode: "twitch",
+      displayMode: "stream_chat",
+      label: "thiabun",
+      url: "https://www.twitch.tv/thiabun",
+      description: "Live channel.",
+    });
+  expect(updatedPayloads.at(-1)?.payload.config).not.toHaveProperty("integration");
+
+  await page.getByTestId("profile-canvas-edit-button").click();
   await page.getByTestId("profile-integration-connect-spotify").click();
   expect(oauthStartPayload).toMatchObject({
     redirectPath: "/@thia?editCanvas=1",
   });
+});
+
+test("owner configures a music module from a resolved provider URL", async ({
+  page,
+}) => {
+  const updatedPayloads: Array<{ id: number; payload: Record<string, unknown> }> = [];
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      {
+        ...musicModule({ id: 30 }),
+        config: {
+          platform: "spotify",
+          sourceMode: "spotify",
+        },
+      },
+    ],
+    onUpdate: (id, payload) => {
+      updatedPayloads.push({ id, payload });
+    },
+  });
+  await page.route("**/api/me/integrations", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          providers: [
+            {
+              provider: "spotify",
+              configured: true,
+              oauthEnabled: true,
+              linkSupported: true,
+              metadataEnabled: true,
+              missingConfigKeys: [],
+            },
+          ],
+          accounts: [],
+        },
+      }),
+    });
+  });
+  await page.route("**/api/me/integrations/metadata/resolve", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          provider: "spotify",
+          resourceType: "playlist",
+          resourceId: "profile-test",
+          resourceKey: "spotify:playlist:profile-test",
+          sourceUrl: "https://open.spotify.com/playlist/profile-test",
+          apiBacked: true,
+          fetchedAt: "2026-06-17T00:00:00Z",
+          expiresAt: "2026-06-17T01:00:00Z",
+          staleAt: "2026-06-18T00:00:00Z",
+          metadata: {
+            title: "Focus playlist",
+            subtitle: "Spotify",
+            description: "No autoplay.",
+            imageUrl: null,
+            live: false,
+            liveFetchedAt: null,
+            recentLabel: null,
+            recentFetchedAt: null,
+            stats: {},
+          },
+          embed: {
+            type: "iframe",
+            src: "https://open.spotify.com/embed/playlist/profile-test",
+            title: "Spotify embed",
+            allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+            height: 152,
+          },
+        },
+      }),
+    });
+  });
+
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+  await page.getByTestId("profile-canvas-edit-button").click();
+  const music = page.getByTestId("profile-grid-module-music");
+  await music.click();
+  await expect(music.getByTestId("profile-music-config")).toBeVisible();
+  await expect(music.getByTestId("profile-music-connect-spotify")).toBeVisible();
+  await music.getByTestId("profile-music-url-input").fill("https://open.spotify.com/playlist/profile-test");
+  await music.getByTestId("profile-music-preview-button").click();
+  await expect(music.getByTestId("profile-integration-preview-summary")).toContainText(
+    "Focus playlist",
+  );
+  await page.getByTestId("profile-canvas-save-button").click();
+
+  await expect
+    .poll(() => updatedPayloads.at(-1)?.payload.config)
+    .toMatchObject({
+      platform: "spotify",
+      sourceMode: "spotify",
+      displayMode: "embed",
+      label: "Focus playlist",
+      url: "https://open.spotify.com/playlist/profile-test",
+      description: "No autoplay.",
+    });
+  expect(updatedPayloads.at(-1)?.payload.config).not.toHaveProperty("integration");
 });
 
 test("mobile stack ignores saved desktop placement", async ({ page }) => {

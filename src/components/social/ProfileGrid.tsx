@@ -201,6 +201,10 @@ function profileGridModuleSizeClass(size: ProfileGridModuleSize): string {
     return "md:col-span-2 md:row-span-4 lg:col-span-3";
   }
 
+  if (size === "3x5") {
+    return "md:col-span-2 md:row-span-5 lg:col-span-3";
+  }
+
   if (size === "3x6") {
     return "md:col-span-2 md:row-span-6 lg:col-span-3";
   }

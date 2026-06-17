@@ -138,7 +138,7 @@ Connections should feel platform-aware instead of generic rows.
 - Legacy `profiles.links` should render through Connections and should not
   duplicate inside Profile Info or the profile header. Owner migration can
   materialize legacy links into module config after a successful save.
-- Use platform cards with icons, platform labels, helper text, and validation messages.
+- Use platform cards with icons, concise labels, and validation messages.
 - Keep platform-specific validation aligned with current frontend/backend rules.
 - Generate links from handles where supported, such as GitHub, Twitch, TikTok, Instagram, X/Twitter, Bluesky, and YouTube handles.
 - Require explicit safe URLs for URL-only platforms such as Website and Spotify.
@@ -149,13 +149,14 @@ Connections should feel platform-aware instead of generic rows.
 
 The editor should distinguish capability levels without exposing secrets:
 
-- `Links ready`: the provider can be used as a safe outbound link or generated
+- Link support: the provider can be used as a safe outbound link or generated
   embed/link card without OAuth.
-- `Metadata ready`: server-side non-secret API configuration is present for
+- Metadata support: server-side non-secret API configuration is present for
   metadata refresh.
-- `OAuth ready`: provider OAuth client configuration is present.
-- `Links ready - metadata key missing` or `Links ready - OAuth not configured`:
-  link cards still work, but server config is incomplete.
+- OAuth support: provider OAuth client configuration is present and the editor
+  can show `Connect`.
+- Missing config diagnostics: link cards may still work, but server config is
+  incomplete.
 
 Provider secrets and tokens must never be printed, committed, or sent to the
 browser. Missing config diagnostics may name missing keys, but never values.
@@ -212,15 +213,20 @@ global switches.
 - Successful OAuth connections should also create or update a lightweight
   Connections entry when a safe provider profile URL can be derived.
 - `Disconnect` revokes the local connection state.
-- `Use link` accepts allowlisted provider URLs and resolves metadata through the
-  server before creating modules.
-- Suggestions are API-backed where available. If a provider is missing config,
-  missing OAuth, or failing, the UI should degrade to pasted URLs and compact
-  outbound cards.
+- Connected providers expose `Add music` or `Add creator`, creating the
+  appropriate module and selecting it for local configuration.
+- Selected `music` and `creator_live` modules accept allowlisted provider URLs
+  and resolve metadata through the server before saving module config.
+- If a provider is missing config, missing OAuth, or failing, the UI should still
+  allow safe URL-based module configuration where that provider supports links.
 - Spotify and Apple Music create `music` modules. YouTube, Twitch, and GitHub
   create `creator_live` modules. Apple Music user-token auth is deferred; this
   pass supports Apple Music URLs, generated embeds, and configured
   developer-token metadata only.
+- Twitch creator modules support status, stream, and stream-plus-chat modes with
+  size floors of `1x1`, `3x2`, and `3x5`. YouTube supports video and playlist
+  URLs plus a connected-channel latest-upload mode. GitHub supports public
+  project cards.
 - The platform never stores or renders user-supplied iframe HTML. Embeds are
   generated from normalized provider/resource ids only.
 

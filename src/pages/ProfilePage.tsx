@@ -65,7 +65,6 @@ import {
   getMyProfileIntegrations,
   getProfile,
   getProfileBadges,
-  getProfileIntegrationSuggestions,
   getProfileFollowers,
   getProfileFollowing,
   getProfileModules,
@@ -76,6 +75,7 @@ import {
   getProfileRooms,
   muteProfile,
   removeProfileFollower,
+  resolveProfileIntegrationMetadata,
   restoreProfileModule,
   startProfileIntegration,
   unblockProfile,
@@ -93,7 +93,6 @@ import {
   type ProfileIntegrationAccount,
   type ProfileIntegrationProvider,
   type ProfileIntegrationProviderStatus,
-  type ProfileIntegrationSuggestion,
   type ProfileIntegrationsResult,
 } from "../lib/api";
 import { ApiClientError } from "../lib/apiClient";
@@ -179,9 +178,6 @@ export function ProfilePage() {
   >();
   const [profileIntegrations, setProfileIntegrations] =
     useState<ProfileIntegrationsResult | undefined>();
-  const [integrationSuggestions, setIntegrationSuggestions] = useState<
-    Partial<Record<ProfileIntegrationProvider, ProfileIntegrationSuggestion[]>>
-  >({});
   const [integrationBusy, setIntegrationBusy] = useState<
     ProfileIntegrationProvider | "metadata" | undefined
   >();
@@ -477,7 +473,6 @@ export function ProfilePage() {
       setDraftModules(preparedModules);
       setDeletedDraftModules(deletedModules);
       setProfileIntegrations(integrations);
-      setIntegrationSuggestions({});
       setIntegrationMessage(undefined);
       setDraftBackgroundBlur(profile.profileBackgroundBlur);
       setDraftProfile(profile);
@@ -570,7 +565,7 @@ export function ProfilePage() {
                 title: null,
                 visibility: module.visibility,
                 status: "active",
-                config: module.config,
+                config: profileModulePersistentConfig(module.config),
               },
               csrfToken,
             );
@@ -606,7 +601,7 @@ export function ProfilePage() {
               .map((module) =>
                 updateProfileModule(
                   module.id,
-                  { config: module.config },
+                  { config: profileModulePersistentConfig(module.config) },
                   csrfToken,
                 ),
               ),
@@ -1054,7 +1049,6 @@ export function ProfilePage() {
       );
 
       setProfileIntegrations(result);
-      setIntegrationSuggestions((items) => ({ ...items, [provider]: [] }));
     } catch (error) {
       setIntegrationMessage(
         error instanceof Error
@@ -1066,31 +1060,14 @@ export function ProfilePage() {
     }
   }
 
-  async function handleLoadIntegrationSuggestions(provider: ProfileIntegrationProvider) {
-    if (integrationBusy) {
-      return;
-    }
-
-    setIntegrationBusy(provider);
-    setIntegrationMessage(undefined);
-
-    try {
-      const result = await getProfileIntegrationSuggestions(provider);
-
-      setIntegrationSuggestions((items) => ({
-        ...items,
-        [provider]: result.items,
-      }));
-      setIntegrationMessage(result.message ?? undefined);
-    } catch (error) {
-      setIntegrationMessage(
-        error instanceof Error
-          ? error.message
-          : "Could not load integration suggestions.",
-      );
-    } finally {
-      setIntegrationBusy(undefined);
-    }
+  async function handleResolveIntegrationMetadata(input: {
+    provider?: ProfileIntegrationProvider;
+    url: string;
+  }): Promise<ProfileIntegrationCard> {
+    return runWithAuth(
+      (csrfToken) => resolveProfileIntegrationMetadata(input, csrfToken),
+      { retryOnCsrf: true },
+    );
   }
 
   useEffect(() => {
@@ -1219,7 +1196,6 @@ export function ProfilePage() {
             error={canvasError}
             integrationBusy={integrationBusy}
             integrationMessage={integrationMessage}
-            integrationSuggestions={integrationSuggestions}
             integrations={profileIntegrations}
             modules={draftModules}
             removedModules={deletedDraftModules}
@@ -1231,9 +1207,6 @@ export function ProfilePage() {
               void handleDisconnectIntegration(provider)
             }
             onEdit={() => void handleStartCanvasEdit()}
-            onLoadIntegrationSuggestions={(provider) =>
-              void handleLoadIntegrationSuggestions(provider)
-            }
             onRestoreModule={(module) => void handleRestoreCanvasModule(module)}
             onSave={() => void handleSaveCanvasEdit()}
           />
@@ -1279,6 +1252,8 @@ export function ProfilePage() {
                     <ProfileSelectedModuleControls
                       busy={canvasSaving || Boolean(profileDraftUploading)}
                       feed={profileFeed}
+                      integrationBusy={integrationBusy}
+                      integrations={profileIntegrations}
                       module={module}
                       profile={renderedProfile}
                       rooms={profileRooms}
@@ -1287,6 +1262,9 @@ export function ProfilePage() {
                         handleCanvasModuleConfigChange(module.id, config)
                       }
                       onDeleteModule={() => void handleDeleteCanvasModule(module)}
+                      onConnectIntegration={(provider) =>
+                        void handleConnectIntegration(provider)
+                      }
                       onLayoutChange={(layout) =>
                         handleCanvasModuleLayoutChange(module.id, layout)
                       }
@@ -1294,6 +1272,7 @@ export function ProfilePage() {
                       onProfileImageUpload={(file, purpose) =>
                         void handleProfileImageDraftUpload(file, purpose)
                       }
+                      onResolveIntegration={handleResolveIntegrationMetadata}
                       onVisibilityChange={(visible) =>
                         handleCanvasModuleVisibilityChange(module.id, visible)
                       }
@@ -2040,9 +2019,6 @@ type ProfileCanvasEditorToolbarProps = {
   error?: string | undefined;
   integrationBusy?: ProfileIntegrationProvider | "metadata" | undefined;
   integrationMessage?: string | undefined;
-  integrationSuggestions: Partial<
-    Record<ProfileIntegrationProvider, ProfileIntegrationSuggestion[]>
-  >;
   integrations?: ProfileIntegrationsResult | undefined;
   modules: ProfileModule[];
   removedModules: ProfileModule[];
@@ -2051,7 +2027,6 @@ type ProfileCanvasEditorToolbarProps = {
   onConnectIntegration: (provider: ProfileIntegrationProvider) => void;
   onDisconnectIntegration: (provider: ProfileIntegrationProvider) => void;
   onEdit: () => void;
-  onLoadIntegrationSuggestions: (provider: ProfileIntegrationProvider) => void;
   onRestoreModule: (module: ProfileModule) => void;
   onSave: () => void;
   userBadges: UserBadge[];
@@ -2119,7 +2094,6 @@ function ProfileCanvasEditorToolbar({
   error,
   integrationBusy,
   integrationMessage,
-  integrationSuggestions,
   integrations,
   modules,
   onAddModule,
@@ -2127,7 +2101,6 @@ function ProfileCanvasEditorToolbar({
   onConnectIntegration,
   onDisconnectIntegration,
   onEdit,
-  onLoadIntegrationSuggestions,
   onRestoreModule,
   onSave,
   removedModules,
@@ -2180,25 +2153,6 @@ function ProfileCanvasEditorToolbar({
   const providerStatuses = profileIntegrationProviders.map((provider) =>
     profileIntegrationStatus(provider, integrations?.providers),
   );
-
-  function addSuggestion(suggestion: ProfileIntegrationSuggestion) {
-    const input = suggestion.card
-      ? profileCanvasModuleInputFromIntegration(suggestion.card)
-      : undefined;
-
-    onAddModule(input ?? {
-      type: suggestion.moduleType,
-      title: suggestion.moduleTitle ?? null,
-      visibility: "public",
-      status: "active",
-      config: {
-        platform: integrationPlatformFromProvider(suggestion.card?.provider),
-        label: suggestion.label,
-        url: suggestion.sourceUrl,
-        ...(suggestion.description ? { description: suggestion.description } : {}),
-      },
-    });
-  }
 
   return (
     <section
@@ -2298,7 +2252,14 @@ function ProfileCanvasEditorToolbar({
               {providerStatuses.map((providerStatus) => {
                 const account = profileIntegrationAccount(providerStatus.provider, integrations?.accounts);
                 const connected = Boolean(account && !account.revokedAt);
-                const suggestions = integrationSuggestions[providerStatus.provider] ?? [];
+                const canAddModule =
+                  connected ||
+                  providerStatus.provider === "apple_music" ||
+                  (!providerStatus.oauthEnabled && Boolean(providerStatus.linkSupported));
+                const addModuleLabel =
+                  profileCanvasIntegrationModuleType(providerStatus.provider) === "music"
+                    ? "Add music"
+                    : "Add creator";
 
                 return (
                   <article
@@ -2353,10 +2314,17 @@ function ProfileCanvasEditorToolbar({
                             size="sm"
                             variant="secondary"
                             disabled={busy || integrationBusy === providerStatus.provider}
-                            data-testid={`profile-integration-suggestions-${providerStatus.provider}`}
-                            onClick={() => onLoadIntegrationSuggestions(providerStatus.provider)}
+                            data-testid={`profile-integration-add-module-${providerStatus.provider}`}
+                            onClick={() =>
+                              onAddModule(
+                                profileCanvasModuleInputFromProvider(
+                                  providerStatus.provider,
+                                  account,
+                                ),
+                              )
+                            }
                           >
-                            Add cards
+                            {addModuleLabel}
                           </Button>
                           <Button
                             type="button"
@@ -2369,30 +2337,26 @@ function ProfileCanvasEditorToolbar({
                           </Button>
                         </>
                       ) : null}
+                      {!connected && canAddModule ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          disabled={busy}
+                          data-testid={`profile-integration-add-module-${providerStatus.provider}`}
+                          onClick={() =>
+                            onAddModule(
+                              profileCanvasModuleInputFromProvider(
+                                providerStatus.provider,
+                                account,
+                              ),
+                            )
+                          }
+                        >
+                          {addModuleLabel}
+                        </Button>
+                      ) : null}
                     </div>
-                    {suggestions.length > 0 ? (
-                      <div className="mt-3 space-y-2">
-                        {suggestions.slice(0, 3).map((suggestion) => (
-                          <button
-                            key={suggestion.id}
-                            type="button"
-                            className="flex w-full min-w-0 items-center gap-2 rounded-card border border-line bg-surface/58 p-2 text-left transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus"
-                            data-testid={`profile-integration-suggestion-${providerStatus.provider}-${suggestion.id}`}
-                            onClick={() => addSuggestion(suggestion)}
-                          >
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-sm font-semibold text-text">
-                                {suggestion.label}
-                              </span>
-                              <span className="block truncate text-xs text-muted">
-                                {suggestion.description || "Add card"}
-                              </span>
-                            </span>
-                            <Plus aria-hidden="true" size={15} className="shrink-0" />
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
                   </article>
                 );
               })}
@@ -2488,12 +2452,16 @@ function ProfileCanvasEditorToolbar({
 function ProfileSelectedModuleControls({
   busy,
   feed,
+  integrationBusy,
+  integrations,
   module,
+  onConnectIntegration,
   onConfigChange,
   onDeleteModule,
   onLayoutChange,
   onProfileDraftChange,
   onProfileImageUpload,
+  onResolveIntegration,
   onVisibilityChange,
   profile,
   rooms,
@@ -2501,7 +2469,10 @@ function ProfileSelectedModuleControls({
 }: {
   busy: boolean;
   feed: Post[];
+  integrationBusy?: ProfileIntegrationProvider | "metadata" | undefined;
+  integrations?: ProfileIntegrationsResult | undefined;
   module: ProfileModule;
+  onConnectIntegration: (provider: ProfileIntegrationProvider) => void;
   onConfigChange: (config: ProfileModuleConfig) => void;
   onDeleteModule: () => void;
   onLayoutChange: (layout: ProfileModuleLayout) => void;
@@ -2510,6 +2481,10 @@ function ProfileSelectedModuleControls({
     file: File,
     purpose: "avatar" | "banner" | "profile_background",
   ) => void;
+  onResolveIntegration: (input: {
+    provider?: ProfileIntegrationProvider;
+    url: string;
+  }) => Promise<ProfileIntegrationCard>;
   onVisibilityChange: (visible: boolean) => void;
   profile: Profile;
   rooms: Room[];
@@ -2658,10 +2633,13 @@ function ProfileSelectedModuleControls({
           connectionPlatform={connectionPlatform}
           connectionValue={connectionValue}
           feed={feed}
+          integrationBusy={integrationBusy}
+          integrations={integrations}
           module={module}
           profile={profile}
           rooms={rooms}
           onAddConnection={addConnection}
+          onConnectIntegration={onConnectIntegration}
           onConfigChange={onConfigChange}
           onConnectionFormOpenChange={setConnectionFormOpen}
           onConnectionPlatformChange={setConnectionPlatform}
@@ -2669,6 +2647,9 @@ function ProfileSelectedModuleControls({
           onProfileDraftChange={onProfileDraftChange}
           onProfileImageUpload={onProfileImageUpload}
           onRemoveConnection={removeConnection}
+          onResolveIntegration={onResolveIntegration}
+          onSizeChange={updateSpan}
+          selectedSize={selectedSize}
         />
       </div>
     </article>
@@ -2681,8 +2662,11 @@ function ProfileSelectedModuleContentControls({
   connectionPlatform,
   connectionValue,
   feed,
+  integrationBusy,
+  integrations,
   module,
   onAddConnection,
+  onConnectIntegration,
   onConfigChange,
   onConnectionFormOpenChange,
   onConnectionPlatformChange,
@@ -2690,16 +2674,22 @@ function ProfileSelectedModuleContentControls({
   onProfileDraftChange,
   onProfileImageUpload,
   onRemoveConnection,
+  onResolveIntegration,
+  onSizeChange,
   profile,
   rooms,
+  selectedSize,
 }: {
   connectionError?: string | undefined;
   connectionFormOpen: boolean;
   connectionPlatform: ProfileConnectionPlatform;
   connectionValue: string;
   feed: Post[];
+  integrationBusy?: ProfileIntegrationProvider | "metadata" | undefined;
+  integrations?: ProfileIntegrationsResult | undefined;
   module: ProfileModule;
   onAddConnection: () => void;
+  onConnectIntegration: (provider: ProfileIntegrationProvider) => void;
   onConfigChange: (config: ProfileModuleConfig) => void;
   onConnectionFormOpenChange: (open: boolean) => void;
   onConnectionPlatformChange: (platform: ProfileConnectionPlatform) => void;
@@ -2710,8 +2700,14 @@ function ProfileSelectedModuleContentControls({
     purpose: "avatar" | "banner" | "profile_background",
   ) => void;
   onRemoveConnection: (link: ProfileModuleLink) => void;
+  onResolveIntegration: (input: {
+    provider?: ProfileIntegrationProvider;
+    url: string;
+  }) => Promise<ProfileIntegrationCard>;
+  onSizeChange: (size: ProfileGridModuleSize) => void;
   profile: Profile;
   rooms: Room[];
+  selectedSize: ProfileGridModuleSize;
 }) {
   if (module.type === "profile_info") {
     return (
@@ -2901,6 +2897,36 @@ function ProfileSelectedModuleContentControls({
     );
   }
 
+  if (module.type === "music") {
+    return (
+      <ProfileMusicModuleConfigControls
+        key={module.id}
+        integrationBusy={integrationBusy}
+        integrations={integrations}
+        module={module}
+        onConfigChange={onConfigChange}
+        onConnectIntegration={onConnectIntegration}
+        onResolveIntegration={onResolveIntegration}
+      />
+    );
+  }
+
+  if (module.type === "creator_live") {
+    return (
+      <ProfileCreatorModuleConfigControls
+        key={module.id}
+        integrationBusy={integrationBusy}
+        integrations={integrations}
+        module={module}
+        selectedSize={selectedSize}
+        onConfigChange={onConfigChange}
+        onConnectIntegration={onConnectIntegration}
+        onResolveIntegration={onResolveIntegration}
+        onSizeChange={onSizeChange}
+      />
+    );
+  }
+
   if (module.type === "featured_post") {
     return (
       <label className="mt-3 block text-xs font-semibold uppercase text-muted">
@@ -2962,6 +2988,379 @@ function ProfileSelectedModuleContentControls({
   }
 
   return null;
+}
+
+function ProfileMusicModuleConfigControls({
+  integrationBusy,
+  integrations,
+  module,
+  onConfigChange,
+  onConnectIntegration,
+  onResolveIntegration,
+}: {
+  integrationBusy?: ProfileIntegrationProvider | "metadata" | undefined;
+  integrations?: ProfileIntegrationsResult | undefined;
+  module: ProfileModule;
+  onConfigChange: (config: ProfileModuleConfig) => void;
+  onConnectIntegration: (provider: ProfileIntegrationProvider) => void;
+  onResolveIntegration: (input: {
+    provider?: ProfileIntegrationProvider;
+    url: string;
+  }) => Promise<ProfileIntegrationCard>;
+}) {
+  const selectedProvider = profileMusicProviderFromConfig(module.config);
+  const [url, setUrl] = useState(module.config.url ?? "");
+  const [preview, setPreview] = useState<ProfileIntegrationCard | undefined>(
+    module.config.integration,
+  );
+  const [error, setError] = useState<string | undefined>();
+  const [resolving, setResolving] = useState(false);
+  const spotifyStatus = profileIntegrationStatus("spotify", integrations?.providers);
+  const spotifyAccount = profileIntegrationAccount("spotify", integrations?.accounts);
+  const spotifyConnected = Boolean(spotifyAccount && !spotifyAccount.revokedAt);
+
+  async function resolveUrl() {
+    const trimmed = url.trim();
+
+    if (!trimmed) {
+      setError("Paste a song or playlist URL.");
+      return;
+    }
+
+    setResolving(true);
+    setError(undefined);
+
+    try {
+      const card = await onResolveIntegration({
+        provider: selectedProvider,
+        url: trimmed,
+      });
+
+      setPreview(card);
+      onConfigChange({
+        ...profileModulePersistentConfig(module.config),
+        displayMode: "embed",
+        label: card.metadata.title ?? integrationProviderLabel(card.provider),
+        platform: profileMusicPlatformFromProvider(card.provider),
+        sourceMode: profileMusicSourceModeFromProvider(card.provider),
+        url: card.sourceUrl,
+        ...(card.metadata.description
+          ? { description: card.metadata.description }
+          : {}),
+      });
+    } catch (metadataError) {
+      setError(
+        metadataError instanceof Error
+          ? metadataError.message
+          : "Could not preview that link.",
+      );
+    } finally {
+      setResolving(false);
+    }
+  }
+
+  function selectProvider(provider: Extract<ProfileIntegrationProvider, "spotify" | "apple_music" | "youtube">) {
+    onConfigChange({
+      ...profileModulePersistentConfig(module.config),
+      displayMode: "embed",
+      platform: profileMusicPlatformFromProvider(provider),
+      sourceMode: profileMusicSourceModeFromProvider(provider),
+    });
+  }
+
+  return (
+    <div className="mt-3 space-y-3" data-testid="profile-music-config">
+      <div className="flex flex-wrap gap-1" aria-label="Music source">
+        {musicModuleProviderOptions.map((option) => (
+          <button
+            key={option.provider}
+            type="button"
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-control border border-line bg-canvas/55 px-2 text-xs font-semibold text-muted transition hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-accent aria-pressed:text-accent-ink"
+            aria-pressed={selectedProvider === option.provider}
+            data-testid={`profile-music-provider-${option.provider}`}
+            onClick={() => selectProvider(option.provider)}
+          >
+            {profileIntegrationIcon(option.provider)}
+            <span>{option.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {selectedProvider === "spotify" && !spotifyConnected && spotifyStatus.oauthEnabled ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={integrationBusy === "spotify"}
+          data-testid="profile-music-connect-spotify"
+          onClick={() => onConnectIntegration("spotify")}
+        >
+          Connect Spotify
+        </Button>
+      ) : null}
+
+      <label className="block text-xs font-semibold uppercase text-muted">
+        Song or playlist URL
+        <div className="mt-1 grid gap-2 sm:grid-cols-[1fr_auto]">
+          <input
+            className="h-9 w-full rounded-control border border-line bg-canvas/55 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
+            value={url}
+            data-testid="profile-music-url-input"
+            onChange={(event) => setUrl(event.target.value)}
+            placeholder={musicModuleUrlPlaceholder(selectedProvider)}
+          />
+          <Button
+            type="button"
+            size="sm"
+            disabled={resolving}
+            data-testid="profile-music-preview-button"
+            onClick={() => void resolveUrl()}
+          >
+            {resolving ? "Checking" : "Use"}
+          </Button>
+        </div>
+      </label>
+
+      {preview ? (
+        <ProfileIntegrationPreviewSummary card={preview} />
+      ) : null}
+      {error ? (
+        <p className="text-xs font-semibold text-rose-ink" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function ProfileCreatorModuleConfigControls({
+  integrationBusy,
+  integrations,
+  module,
+  onConfigChange,
+  onConnectIntegration,
+  onResolveIntegration,
+  onSizeChange,
+  selectedSize,
+}: {
+  integrationBusy?: ProfileIntegrationProvider | "metadata" | undefined;
+  integrations?: ProfileIntegrationsResult | undefined;
+  module: ProfileModule;
+  onConfigChange: (config: ProfileModuleConfig) => void;
+  onConnectIntegration: (provider: ProfileIntegrationProvider) => void;
+  onResolveIntegration: (input: {
+    provider?: ProfileIntegrationProvider;
+    url: string;
+  }) => Promise<ProfileIntegrationCard>;
+  onSizeChange: (size: ProfileGridModuleSize) => void;
+  selectedSize: ProfileGridModuleSize;
+}) {
+  const selectedProvider = profileCreatorProviderFromConfig(module.config);
+  const selectedMode =
+    module.config.displayMode ?? profileCreatorDefaultDisplayMode(selectedProvider);
+  const [url, setUrl] = useState(module.config.url ?? "");
+  const [preview, setPreview] = useState<ProfileIntegrationCard | undefined>(
+    module.config.integration,
+  );
+  const [error, setError] = useState<string | undefined>();
+  const [resolving, setResolving] = useState(false);
+  const providerStatus = profileIntegrationStatus(selectedProvider, integrations?.providers);
+  const account = profileIntegrationAccount(selectedProvider, integrations?.accounts);
+  const connected = Boolean(account && !account.revokedAt);
+  const accountUrl = account ? profileIntegrationAccountUrl(account) : undefined;
+  const modeOptions = creatorModuleModeOptions(selectedProvider);
+
+  function selectProvider(provider: Extract<ProfileIntegrationProvider, "youtube" | "twitch" | "github">) {
+    const nextMode = profileCreatorDefaultDisplayMode(provider);
+
+    onConfigChange({
+      ...profileModulePersistentConfig(module.config),
+      displayMode: nextMode,
+      platform: integrationPlatformFromProvider(provider),
+      sourceMode: profileIntegrationSourceMode(provider),
+    });
+  }
+
+  function selectMode(mode: string, minSize?: ProfileGridModuleSize) {
+    onConfigChange({
+      ...profileModulePersistentConfig(module.config),
+      displayMode: mode,
+      platform: integrationPlatformFromProvider(selectedProvider),
+      sourceMode: profileIntegrationSourceMode(selectedProvider),
+    });
+
+    if (minSize && !profileGridSizeAtLeast(selectedSize, minSize)) {
+      onSizeChange(minSize);
+    }
+  }
+
+  function useConnectedAccount() {
+    if (!accountUrl || !account) {
+      return;
+    }
+
+    setUrl(accountUrl);
+    onConfigChange({
+      ...profileModulePersistentConfig(module.config),
+      displayMode: selectedMode,
+      label: account.displayName ?? account.providerHandle ?? integrationProviderLabel(account.provider),
+      platform: integrationPlatformFromProvider(account.provider),
+      sourceMode: profileIntegrationSourceMode(account.provider),
+      url: accountUrl,
+    });
+  }
+
+  async function resolveUrl() {
+    const trimmed = url.trim();
+
+    if (!trimmed) {
+      setError("Paste a supported source URL.");
+      return;
+    }
+
+    setResolving(true);
+    setError(undefined);
+
+    try {
+      const card = await onResolveIntegration({
+        provider: selectedProvider,
+        url: trimmed,
+      });
+
+      setPreview(card);
+      onConfigChange({
+        ...profileModulePersistentConfig(module.config),
+        displayMode: selectedMode,
+        label: card.metadata.title ?? integrationProviderLabel(card.provider),
+        platform: integrationPlatformFromProvider(card.provider),
+        sourceMode: profileIntegrationSourceMode(card.provider),
+        url: card.sourceUrl,
+        ...(card.metadata.description
+          ? { description: card.metadata.description }
+          : {}),
+      });
+    } catch (metadataError) {
+      setError(
+        metadataError instanceof Error
+          ? metadataError.message
+          : "Could not preview that source.",
+      );
+    } finally {
+      setResolving(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-3" data-testid="profile-creator-config">
+      <div className="flex flex-wrap gap-1" aria-label="Creator source">
+        {creatorModuleProviderOptions.map((option) => (
+          <button
+            key={option.provider}
+            type="button"
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-control border border-line bg-canvas/55 px-2 text-xs font-semibold text-muted transition hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-accent aria-pressed:text-accent-ink"
+            aria-pressed={selectedProvider === option.provider}
+            data-testid={`profile-creator-provider-${option.provider}`}
+            onClick={() => selectProvider(option.provider)}
+          >
+            {profileIntegrationIcon(option.provider)}
+            <span>{option.label}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-1" aria-label="Creator display">
+        {modeOptions.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className="rounded-control border border-line bg-canvas/55 px-2 py-1 text-xs font-semibold text-muted transition hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-surface aria-pressed:text-text"
+            aria-pressed={selectedMode === option.value}
+            data-testid={`profile-creator-mode-${option.value}`}
+            onClick={() => selectMode(option.value, option.minSize)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      {!connected && providerStatus.oauthEnabled ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={integrationBusy === selectedProvider}
+          data-testid={`profile-creator-connect-${selectedProvider}`}
+          onClick={() => onConnectIntegration(selectedProvider)}
+        >
+          Connect {integrationProviderLabel(selectedProvider)}
+        </Button>
+      ) : null}
+
+      {connected && accountUrl ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          data-testid={`profile-creator-use-connected-${selectedProvider}`}
+          onClick={useConnectedAccount}
+        >
+          Use connected account
+        </Button>
+      ) : null}
+
+      <label className="block text-xs font-semibold uppercase text-muted">
+        Source URL
+        <div className="mt-1 grid gap-2 sm:grid-cols-[1fr_auto]">
+          <input
+            className="h-9 w-full rounded-control border border-line bg-canvas/55 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
+            value={url}
+            data-testid="profile-creator-url-input"
+            onChange={(event) => setUrl(event.target.value)}
+            placeholder={creatorModuleUrlPlaceholder(selectedProvider, selectedMode)}
+          />
+          <Button
+            type="button"
+            size="sm"
+            disabled={resolving}
+            data-testid="profile-creator-preview-button"
+            onClick={() => void resolveUrl()}
+          >
+            {resolving ? "Checking" : "Use"}
+          </Button>
+        </div>
+      </label>
+
+      {preview ? (
+        <ProfileIntegrationPreviewSummary card={preview} />
+      ) : null}
+      {error ? (
+        <p className="text-xs font-semibold text-rose-ink" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function ProfileIntegrationPreviewSummary({
+  card,
+}: {
+  card: ProfileIntegrationCard;
+}) {
+  return (
+    <div
+      className="rounded-card border border-line bg-canvas/45 px-3 py-2 text-sm"
+      data-testid="profile-integration-preview-summary"
+    >
+      <p className="truncate font-semibold text-text">
+        {card.metadata.title ?? integrationProviderLabel(card.provider)}
+      </p>
+      <p className="truncate text-xs text-muted">
+        {integrationProviderLabel(card.provider)}
+        {card.resourceType ? ` · ${card.resourceType}` : ""}
+      </p>
+    </div>
+  );
 }
 
 function ProfileCanvasBackgroundControls({
@@ -3351,6 +3750,99 @@ function integrationPlatformFromProvider(
   return provider ?? "website";
 }
 
+function profileCanvasIntegrationModuleType(
+  provider: ProfileIntegrationProvider,
+): Extract<ProfileModuleType, "creator_live" | "music"> {
+  return provider === "spotify" || provider === "apple_music" ? "music" : "creator_live";
+}
+
+function profileCanvasModuleInputFromProvider(
+  provider: ProfileIntegrationProvider,
+  account: ProfileIntegrationAccount | undefined,
+): CreateProfileModuleInput {
+  const type = profileCanvasIntegrationModuleType(provider);
+  const url =
+    type === "creator_live" && account
+      ? profileIntegrationAccountUrl(account)
+      : undefined;
+  const label =
+    account?.displayName ||
+    account?.providerHandle ||
+    integrationProviderLabel(provider);
+
+  return {
+    type,
+    title: null,
+    visibility: "public",
+    status: "active",
+    config: {
+      platform: integrationPlatformFromProvider(provider),
+      sourceMode: profileIntegrationSourceMode(provider),
+      ...(type === "music" ? { displayMode: "embed" } : {}),
+      ...(type === "creator_live"
+        ? { displayMode: profileCreatorDefaultDisplayMode(provider) }
+        : {}),
+      ...(label ? { label } : {}),
+      ...(url ? { url } : {}),
+    },
+  };
+}
+
+function profileIntegrationSourceMode(provider: ProfileIntegrationProvider): string {
+  if (provider === "apple_music") {
+    return "apple_music";
+  }
+
+  return provider;
+}
+
+function profileCreatorDefaultDisplayMode(provider: ProfileIntegrationProvider): string {
+  if (provider === "twitch") {
+    return "stream_status";
+  }
+
+  if (provider === "youtube") {
+    return "latest_video";
+  }
+
+  if (provider === "github") {
+    return "project";
+  }
+
+  return "link";
+}
+
+function profileIntegrationAccountUrl(
+  account: ProfileIntegrationAccount,
+): string | undefined {
+  const handle = account.providerHandle?.replace(/^@/, "").trim();
+  const accountId = account.providerAccountId.trim();
+
+  if (account.provider === "spotify" && accountId) {
+    return `https://open.spotify.com/user/${encodeURIComponent(accountId)}`;
+  }
+
+  if (account.provider === "twitch" && handle) {
+    return `https://www.twitch.tv/${encodeURIComponent(handle)}`;
+  }
+
+  if (account.provider === "youtube") {
+    if (account.providerHandle?.startsWith("@")) {
+      return `https://www.youtube.com/${account.providerHandle}`;
+    }
+
+    if (accountId) {
+      return `https://www.youtube.com/channel/${encodeURIComponent(accountId)}`;
+    }
+  }
+
+  if (account.provider === "github" && handle) {
+    return `https://github.com/${encodeURIComponent(handle)}`;
+  }
+
+  return undefined;
+}
+
 function profileIntegrationStatusText(status: ProfileIntegrationProviderStatus): string {
   if (status.oauthEnabled) {
     return "Ready to connect";
@@ -3393,31 +3885,135 @@ function profileIntegrationIcon(provider: ProfileIntegrationProvider): ReactNode
   return <SiGithub aria-hidden="true" className={className} size={20} />;
 }
 
-function profileCanvasModuleInputFromIntegration(
-  card: ProfileIntegrationCard,
-): CreateProfileModuleInput | undefined {
-  const type =
-    card.provider === "spotify" || card.provider === "apple_music"
-      ? "music"
-      : "creator_live";
-  const label =
-    card.metadata.title ?? integrationProviderLabel(card.provider);
+const musicModuleProviderOptions: {
+  label: string;
+  provider: Extract<ProfileIntegrationProvider, "spotify" | "apple_music" | "youtube">;
+}[] = [
+  { label: "Spotify", provider: "spotify" },
+  { label: "Apple Music", provider: "apple_music" },
+  { label: "YouTube", provider: "youtube" },
+];
 
-  return {
-    type,
-    title: null,
-    visibility: "public",
-    status: "active",
-    config: {
-      integration: card,
-      platform: integrationPlatformFromProvider(card.provider),
-      label,
-      url: card.sourceUrl,
-      ...(card.metadata.description
-        ? { description: card.metadata.description }
-        : {}),
-    },
-  };
+const creatorModuleProviderOptions: {
+  label: string;
+  provider: Extract<ProfileIntegrationProvider, "youtube" | "twitch" | "github">;
+}[] = [
+  { label: "Twitch", provider: "twitch" },
+  { label: "YouTube", provider: "youtube" },
+  { label: "GitHub", provider: "github" },
+];
+
+function profileMusicProviderFromConfig(
+  config: ProfileModuleConfig,
+): Extract<ProfileIntegrationProvider, "spotify" | "apple_music" | "youtube"> {
+  if (config.platform === "apple_music") {
+    return "apple_music";
+  }
+
+  if (config.platform === "youtube" || config.platform === "youtube_music") {
+    return "youtube";
+  }
+
+  return "spotify";
+}
+
+function profileCreatorProviderFromConfig(
+  config: ProfileModuleConfig,
+): Extract<ProfileIntegrationProvider, "youtube" | "twitch" | "github"> {
+  if (config.platform === "youtube") {
+    return "youtube";
+  }
+
+  if (config.platform === "github") {
+    return "github";
+  }
+
+  return "twitch";
+}
+
+function profileMusicPlatformFromProvider(
+  provider: ProfileIntegrationProvider,
+): string {
+  if (provider === "youtube") {
+    return "youtube_music";
+  }
+
+  return provider;
+}
+
+function profileMusicSourceModeFromProvider(
+  provider: ProfileIntegrationProvider,
+): string {
+  if (provider === "youtube") {
+    return "youtube_music";
+  }
+
+  return profileIntegrationSourceMode(provider);
+}
+
+function creatorModuleModeOptions(
+  provider: Extract<ProfileIntegrationProvider, "youtube" | "twitch" | "github">,
+): { label: string; minSize?: ProfileGridModuleSize; value: string }[] {
+  if (provider === "twitch") {
+    return [
+      { label: "Status", minSize: "1x1", value: "stream_status" },
+      { label: "Stream", minSize: "3x2", value: "stream" },
+      { label: "Stream + chat", minSize: "3x5", value: "stream_chat" },
+    ];
+  }
+
+  if (provider === "youtube") {
+    return [
+      { label: "Latest upload", minSize: "2x1", value: "latest_video" },
+      { label: "Video", minSize: "3x2", value: "video" },
+      { label: "Playlist", minSize: "3x2", value: "playlist" },
+    ];
+  }
+
+  return [{ label: "Project", minSize: "2x1", value: "project" }];
+}
+
+function profileGridSizeAtLeast(
+  currentSize: ProfileGridModuleSize,
+  minimumSize: ProfileGridModuleSize,
+): boolean {
+  const current = profileGridModuleSizeSpan(currentSize);
+  const minimum = profileGridModuleSizeSpan(minimumSize);
+
+  return current.columns >= minimum.columns && current.rows >= minimum.rows;
+}
+
+function musicModuleUrlPlaceholder(
+  provider: Extract<ProfileIntegrationProvider, "spotify" | "apple_music" | "youtube">,
+): string {
+  if (provider === "apple_music") {
+    return "https://music.apple.com/...";
+  }
+
+  if (provider === "youtube") {
+    return "https://music.youtube.com/...";
+  }
+
+  return "https://open.spotify.com/...";
+}
+
+function creatorModuleUrlPlaceholder(
+  provider: Extract<ProfileIntegrationProvider, "youtube" | "twitch" | "github">,
+  mode: string,
+): string {
+  if (provider === "youtube" && mode === "playlist") {
+    return "https://www.youtube.com/playlist?list=...";
+  }
+
+  if (provider === "youtube") {
+    return "https://www.youtube.com/watch?v=...";
+  }
+
+  if (provider === "github") {
+    return "https://github.com/owner/repo";
+  }
+
+  return "https://www.twitch.tv/channel";
 }
 
 function FileTextIcon() {
@@ -3426,6 +4022,16 @@ function FileTextIcon() {
       T
     </span>
   );
+}
+
+function profileModulePersistentConfig(
+  config: ProfileModuleConfig,
+): ProfileModuleConfig {
+  const persistentConfig = { ...config };
+
+  delete persistentConfig.integration;
+
+  return persistentConfig;
 }
 
 function clampProfileModuleLayout(layout: ProfileModuleLayout): ProfileModuleLayout {

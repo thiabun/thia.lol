@@ -22,11 +22,12 @@ export type ProfileGridModuleSize =
   | "4x3"
   | "6x3"
   | "3x4"
+  | "3x5"
   | "3x6";
 
 export type ProfileGridModuleSpan = {
   columns: 1 | 2 | 3 | 4 | 6;
-  rows: 1 | 2 | 3 | 4 | 6;
+  rows: 1 | 2 | 3 | 4 | 5 | 6;
   size: ProfileGridModuleSize;
 };
 
@@ -183,7 +184,7 @@ export const profileModuleRegistry = {
     purpose: "media",
   },
   creator_live: {
-    allowedSizes: ["1x1", "2x1", "2x2"],
+    allowedSizes: ["1x1", "2x1", "2x2", "3x2", "3x3", "3x5"],
     defaultSize: "2x1",
     description: "A static creator or channel card.",
     density: "summary",
@@ -195,7 +196,7 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   music: {
-    allowedSizes: ["1x1", "2x1"],
+    allowedSizes: ["1x1", "2x1", "3x1", "3x2"],
     defaultSize: "2x1",
     description: "A link-first music card.",
     density: "summary",
@@ -331,7 +332,14 @@ export function profileModuleGridSpan(
 export function profileModuleSpanRole(
   size: ProfileGridModuleSize | undefined,
 ): ProfileModuleSpanRole {
-  if (size === "3x3" || size === "4x3" || size === "6x3" || size === "3x4" || size === "3x6") {
+  if (
+    size === "3x3" ||
+    size === "4x3" ||
+    size === "6x3" ||
+    size === "3x4" ||
+    size === "3x5" ||
+    size === "3x6"
+  ) {
     return "hero";
   }
 
@@ -391,6 +399,7 @@ export function normalizeProfileGridModuleSize(
     value === "4x3" ||
     value === "6x3" ||
     value === "3x4" ||
+    value === "3x5" ||
     value === "3x6"
   ) {
     return value;
@@ -464,6 +473,10 @@ export function profileGridModuleSizeSpan(
     return { columns: 3, rows: 4, size };
   }
 
+  if (size === "3x5") {
+    return { columns: 3, rows: 5, size };
+  }
+
   if (size === "3x6") {
     return { columns: 3, rows: 6, size };
   }
@@ -495,6 +508,10 @@ function normalizeProfileGridRowSpan(value: number): ProfileGridModuleSpan["rows
 
   if (value <= 4) {
     return 4;
+  }
+
+  if (value <= 5) {
+    return 5;
   }
 
   return 6;

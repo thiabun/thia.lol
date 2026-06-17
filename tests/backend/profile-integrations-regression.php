@@ -48,6 +48,11 @@ $youtube = profile_integration_normalize_url('https://youtu.be/video123', null);
 assert_true($youtube['provider'] === 'youtube', 'youtube provider mismatch');
 assert_true($youtube['resourceType'] === 'video', 'youtube type mismatch');
 
+$youtubePlaylist = profile_integration_normalize_url('https://www.youtube.com/playlist?list=PLabc123', null);
+assert_true($youtubePlaylist['provider'] === 'youtube', 'youtube playlist provider mismatch');
+assert_true($youtubePlaylist['resourceType'] === 'playlist', 'youtube playlist type mismatch');
+assert_true(str_contains(profile_integration_embed_payload($youtubePlaylist)['src'], 'videoseries'), 'youtube playlist embed mismatch');
+
 $twitch = profile_integration_normalize_url('https://www.twitch.tv/thiabun', null);
 assert_true($twitch['provider'] === 'twitch', 'twitch provider mismatch');
 assert_true($twitch['resourceType'] === 'channel', 'twitch type mismatch');

@@ -112,11 +112,15 @@ $creator = profile_module_config(
         'label' => 'Find me live',
         'url' => 'https://www.twitch.tv/thiabun',
         'description' => 'Streams and build notes.',
+        'displayMode' => 'stream_chat',
+        'sourceMode' => 'twitch',
     ],
     123
 );
 assert_true($creator['platform'] === 'twitch', 'creator platform mismatch');
 assert_true($creator['label'] === 'Find me live', 'creator label mismatch');
+assert_true($creator['displayMode'] === 'stream_chat', 'creator display mode mismatch');
+assert_true($creator['sourceMode'] === 'twitch', 'creator source mode mismatch');
 
 $music = profile_module_config(
     'music',
@@ -125,11 +129,15 @@ $music = profile_module_config(
         'label' => 'Focus playlist',
         'url' => 'https://open.spotify.com/playlist/profile-test',
         'description' => 'No autoplay.',
+        'displayMode' => 'embed',
+        'sourceMode' => 'spotify',
     ],
     123
 );
 assert_true($music['platform'] === 'spotify', 'music platform mismatch');
 assert_true($music['url'] === 'https://open.spotify.com/playlist/profile-test', 'music URL mismatch');
+assert_true($music['displayMode'] === 'embed', 'music display mode mismatch');
+assert_true($music['sourceMode'] === 'spotify', 'music source mode mismatch');
 
 $emptyAbout = profile_module_config('about', [], 123);
 assert_true($emptyAbout === [], 'empty about module should be valid for owner placement');
@@ -329,6 +337,25 @@ $largeActivityPlacement = profile_canvas_module_placement(
 assert_true($largeActivityPlacement['colSpan'] === 3, 'activity should allow 3 columns');
 assert_true($largeActivityPlacement['rowSpan'] === 6, 'activity should allow 6 rows');
 assert_true($largeActivityPlacement['row'] === 4, 'large activity row should clamp inside the canvas');
+
+$streamChatPlacement = profile_canvas_module_placement(
+    [
+        'id' => 13,
+        'column' => 4,
+        'row' => 8,
+        'colSpan' => 3,
+        'rowSpan' => 5,
+    ],
+    [
+        'id' => 13,
+        'type' => 'creator_live',
+    ],
+    true
+);
+assert_true($streamChatPlacement['colSpan'] === 3, 'creator stream chat should allow 3 columns');
+assert_true($streamChatPlacement['rowSpan'] === 5, 'creator stream chat should allow 5 rows');
+assert_true($streamChatPlacement['row'] === 5, 'creator stream chat row should clamp inside the canvas');
+
 assert_true(profile_canvas_background_blur('none') === 'none', 'none blur mismatch');
 assert_true(profile_canvas_background_blur('heavy') === 'heavy', 'heavy blur mismatch');
 

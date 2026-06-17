@@ -179,6 +179,7 @@ export type ProfileModuleConfig = {
   body?: string;
   canvasSize?: string;
   description?: string;
+  displayMode?: string;
   hasBanner?: boolean;
   integration?: ProfileIntegrationCard;
   label?: string;
@@ -188,6 +189,7 @@ export type ProfileModuleConfig = {
   platform?: string;
   restoreFeaturedPostId?: number;
   restoreFeaturedRoomId?: number;
+  sourceMode?: string;
   statusText?: string;
   userBadgeIds?: number[];
   url?: string;

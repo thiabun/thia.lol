@@ -840,9 +840,20 @@ function ProfileIntegrationRichCard({
     integration.apiBacked && (metadata.live || metadata.recentLabel)
       ? metadata.liveFetchedAt ?? metadata.recentFetchedAt
       : undefined;
+  const displayMode = module.config.displayMode;
+  const showPrimaryEmbed = Boolean(
+    integration.embed && displayMode !== "stream_status",
+  );
+  const twitchChatSrc =
+    displayMode === "stream_chat" ? twitchChatEmbedSrc(integration) : undefined;
 
   return (
-    <div className="overflow-hidden rounded-card border border-line bg-canvas/55">
+    <div
+      className={cn(
+        "overflow-hidden rounded-card border border-line bg-canvas/55",
+        twitchChatSrc ? "flex h-full min-h-0 flex-col" : undefined,
+      )}
+    >
       <a
         className="flex min-w-0 items-center gap-3 p-3 transition duration-fluid ease-fluid hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         href={integration.sourceUrl}
@@ -878,12 +889,17 @@ function ProfileIntegrationRichCard({
         </span>
         <ExternalLink aria-hidden="true" size={15} className="shrink-0 text-muted" />
       </a>
-      {integration.embed ? (
+      {showPrimaryEmbed && integration.embed ? (
         <iframe
-          className="block w-full border-t border-line bg-surface"
+          className={cn(
+            "block w-full border-t border-line bg-surface",
+            twitchChatSrc ? "min-h-0 flex-1" : undefined,
+          )}
           title={integration.embed.title}
           src={integration.embed.src}
-          height={integration.embed.height ?? 180}
+          height={
+            twitchChatSrc ? 260 : integration.embed.height ?? 180
+          }
           loading="lazy"
           referrerPolicy="strict-origin-when-cross-origin"
           allow={integration.embed.allow}
@@ -892,8 +908,35 @@ function ProfileIntegrationRichCard({
           data-testid={`profile-integration-embed-${integration.provider}`}
         />
       ) : null}
+      {twitchChatSrc ? (
+        <iframe
+          className="block min-h-0 flex-1 border-t border-line bg-surface"
+          title="Twitch chat"
+          src={twitchChatSrc}
+          height={320}
+          loading="lazy"
+          referrerPolicy="strict-origin-when-cross-origin"
+          sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+          data-testid="profile-integration-embed-twitch-chat"
+        />
+      ) : null}
     </div>
   );
+}
+
+function twitchChatEmbedSrc(integration: ProfileIntegrationCard): string | undefined {
+  if (integration.provider !== "twitch" || integration.resourceType !== "channel") {
+    return undefined;
+  }
+
+  const parent =
+    typeof window === "undefined" || !window.location.hostname
+      ? "thia.lol"
+      : window.location.hostname;
+
+  return `https://www.twitch.tv/embed/${encodeURIComponent(
+    integration.resourceId,
+  )}/chat?parent=${encodeURIComponent(parent)}&darkpopout`;
 }
 
 function integrationLabel(integration: ProfileIntegrationCard): string {

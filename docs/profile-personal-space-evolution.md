@@ -230,14 +230,15 @@ the profile renderer constrained.
 - Spotify, Apple Music, YouTube, Twitch, and GitHub URLs are normalized by
   provider/resource id.
 - OAuth and rich integration controls belong inside the canvas editor. Provider
-  cards should show configured/unconfigured state, connected identity,
-  connect/disconnect actions, suggestions where API-backed, and a plain link
-  fallback where OAuth or provider config is unavailable.
+  cards should show configured/unconfigured state, connected identity, and
+  connect/disconnect actions. Connected providers add the appropriate module
+  type, then the selected module owns source/display configuration.
 - Apple Music in this pass is URL/link/embed/metadata support only. MusicKit
   user-token authorization is deferred.
-- Rich card creation starts from an allowlisted provider URL or a server-derived
-  provider suggestion. Spotify and Apple Music create `music` modules; YouTube,
-  Twitch, and GitHub create `creator_live` modules.
+- Rich card creation starts from an allowlisted provider URL inside the selected
+  module, or from a connected provider creating the appropriate empty module.
+  Spotify and Apple Music create `music` modules; YouTube, Twitch, and GitHub
+  create `creator_live` modules.
 - Inline embeds are generated only from allowlisted provider IDs and URLs. The
   platform never stores or renders user-supplied iframe HTML.
 - GitHub renders as a rich card, not an iframe.
@@ -945,9 +946,19 @@ interaction model:
 - Background image, muted looping video background where supported, reset, and
   "Background clarity" blur controls live in a compact Background popover
   attached to the live canvas surface, outside the module menu.
-- Integration provider status should distinguish `Links ready`, `Metadata
-  ready`, `OAuth ready`, and safe missing-config diagnostics by key name only.
-  Provider logos should use branded icons where available.
+- Integration provider status should distinguish link support, metadata support,
+  OAuth support, and safe missing-config diagnostics by key name only. Provider
+  logos should use branded icons where available.
+- The Integrations panel should use `Connect` for OAuth-capable providers and
+  `Add music` / `Add creator` for module creation. It should not expose a
+  separate unresponsive card-suggestion step.
+- `music` modules are configured locally after selection. Spotify can start the
+  OAuth flow, while Spotify, Apple Music, and YouTube Music URLs can resolve to
+  validated rich embeds without storing user-supplied iframe HTML.
+- `creator_live` modules are configured locally after selection. Twitch supports
+  status, stream, and stream-plus-chat display modes with size floors of `1x1`,
+  `3x2`, and `3x5`; YouTube supports latest/video/playlist source modes; GitHub
+  supports public project cards.
 - Theme editing and custom color profile overrides are deferred to a separate
   planning pass with contrast, recovery, and migration strategy.
 - Onboarding, settings IA, analytics/tracking consent, and ads consent are

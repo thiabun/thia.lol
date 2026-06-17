@@ -822,8 +822,8 @@ function profile_canvas_allowed_sizes(string $type): array
         PROFILE_FEATURED_POST_MODULE_TYPE => ['2x1', '3x1', '2x2', '3x2'],
         PROFILE_FEATURED_ROOM_MODULE_TYPE => ['1x1', '2x1', '3x1'],
         PROFILE_GALLERY_MEDIA_MODULE_TYPE => ['1x1', '2x1', '2x2', '3x2', '3x3'],
-        PROFILE_CREATOR_LIVE_MODULE_TYPE => ['1x1', '2x1', '2x2'],
-        PROFILE_MUSIC_MODULE_TYPE => ['1x1', '2x1'],
+        PROFILE_CREATOR_LIVE_MODULE_TYPE => ['1x1', '2x1', '2x2', '3x2', '3x3', '3x5'],
+        PROFILE_MUSIC_MODULE_TYPE => ['1x1', '2x1', '3x1', '3x2'],
         PROFILE_ACTIVITY_MODULE_TYPE => ['2x2', '3x2', '3x3', '3x4', '3x6'],
         default => ['1x1'],
     };
@@ -1866,7 +1866,17 @@ function profile_module_gallery_media_config(array $config): array
 
 function profile_module_creator_live_config(array $config): array
 {
-    profile_module_reject_unknown_keys($config, ['platform', 'label', 'url', 'description']);
+    profile_module_reject_unknown_keys($config, ['platform', 'label', 'url', 'description', 'displayMode', 'sourceMode']);
+    $displayMode = profile_module_optional_choice(
+        $config['displayMode'] ?? null,
+        ['stream_status', 'stream', 'stream_chat', 'latest_video', 'playlist', 'video', 'project', 'link'],
+        'Display mode'
+    );
+    $sourceMode = profile_module_optional_choice(
+        $config['sourceMode'] ?? null,
+        ['twitch', 'youtube', 'github', 'link'],
+        'Source mode'
+    );
 
     if (
         !array_key_exists('url', $config) ||
@@ -1890,6 +1900,14 @@ function profile_module_creator_live_config(array $config): array
             $normalized['description'] = $description;
         }
 
+        if ($displayMode !== null) {
+            $normalized['displayMode'] = $displayMode;
+        }
+
+        if ($sourceMode !== null) {
+            $normalized['sourceMode'] = $sourceMode;
+        }
+
         return $normalized;
     }
 
@@ -1902,18 +1920,38 @@ function profile_module_creator_live_config(array $config): array
 
     profile_module_validate_url_platform($url, $platform, 'Creator link');
 
-    return profile_module_link_card_config(
+    $normalized = profile_module_link_card_config(
         $platform,
         $url,
         $config['label'] ?? null,
         $config['description'] ?? null,
         'Creator title'
     );
+
+    if ($displayMode !== null) {
+        $normalized['displayMode'] = $displayMode;
+    }
+
+    if ($sourceMode !== null) {
+        $normalized['sourceMode'] = $sourceMode;
+    }
+
+    return $normalized;
 }
 
 function profile_module_music_config(array $config): array
 {
-    profile_module_reject_unknown_keys($config, ['platform', 'label', 'url', 'description']);
+    profile_module_reject_unknown_keys($config, ['platform', 'label', 'url', 'description', 'displayMode', 'sourceMode']);
+    $displayMode = profile_module_optional_choice(
+        $config['displayMode'] ?? null,
+        ['embed', 'link', 'now_playing'],
+        'Display mode'
+    );
+    $sourceMode = profile_module_optional_choice(
+        $config['sourceMode'] ?? null,
+        ['spotify', 'apple_music', 'youtube_music', 'link'],
+        'Source mode'
+    );
 
     if (
         !array_key_exists('url', $config) ||
@@ -1937,6 +1975,14 @@ function profile_module_music_config(array $config): array
             $normalized['description'] = $description;
         }
 
+        if ($displayMode !== null) {
+            $normalized['displayMode'] = $displayMode;
+        }
+
+        if ($sourceMode !== null) {
+            $normalized['sourceMode'] = $sourceMode;
+        }
+
         return $normalized;
     }
 
@@ -1949,13 +1995,23 @@ function profile_module_music_config(array $config): array
 
     profile_module_validate_url_platform($url, $platform, 'Music link');
 
-    return profile_module_link_card_config(
+    $normalized = profile_module_link_card_config(
         $platform,
         $url,
         $config['label'] ?? null,
         $config['description'] ?? null,
         'Music title'
     );
+
+    if ($displayMode !== null) {
+        $normalized['displayMode'] = $displayMode;
+    }
+
+    if ($sourceMode !== null) {
+        $normalized['sourceMode'] = $sourceMode;
+    }
+
+    return $normalized;
 }
 
 function profile_module_featured_badges_config(array $config, int $userId): array
@@ -2380,6 +2436,25 @@ function profile_module_optional_text(mixed $value, int $maxLength, string $labe
     }
 
     return $trimmed;
+}
+
+function profile_module_optional_choice(mixed $value, array $allowedValues, string $label): ?string
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    if (!is_string($value)) {
+        json_error("{$label} is invalid.", 422);
+    }
+
+    $normalized = strtolower(trim($value));
+
+    if (!in_array($normalized, $allowedValues, true)) {
+        json_error("Choose a supported {$label}.", 422);
+    }
+
+    return $normalized;
 }
 
 function profile_module_text_is_unsafe(string $value): bool

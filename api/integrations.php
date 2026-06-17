@@ -854,8 +854,13 @@ function profile_integration_normalize_url(string $rawUrl, ?string $preferredPro
         $resourceType = str_contains($path, '/playlist/') ? 'playlist' : (str_contains($path, '/album/') ? 'album' : 'song');
         $resourceId = profile_integration_last_identifier($url);
     } elseif ($provider === 'youtube' && in_array($host, ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be', 'music.youtube.com'], true)) {
-        $resourceType = 'video';
-        $resourceId = $host === 'youtu.be' ? ($segments[0] ?? '') : profile_integration_query_value($url, 'v');
+        $playlistId = profile_integration_query_value($url, 'list');
+        $resourceType = $playlistId !== '' && (($segments[0] ?? '') === 'playlist')
+            ? 'playlist'
+            : 'video';
+        $resourceId = $resourceType === 'playlist'
+            ? $playlistId
+            : ($host === 'youtu.be' ? ($segments[0] ?? '') : profile_integration_query_value($url, 'v'));
 
         if ($resourceId === '' && isset($segments[0]) && str_starts_with($segments[0], '@')) {
             $resourceType = 'channel';
@@ -993,9 +998,11 @@ function profile_integration_embed_payload(array $normalized): ?array
     $src = match ($normalized['provider']) {
         'spotify' => 'https://open.spotify.com/embed/' . rawurlencode($normalized['resourceType']) . '/' . rawurlencode($normalized['resourceId']),
         'apple_music' => 'https://embed.music.apple.com/us/' . rawurlencode($normalized['resourceType']) . '/' . rawurlencode($normalized['resourceId']),
-        'youtube' => $normalized['resourceType'] === 'video'
-            ? 'https://www.youtube-nocookie.com/embed/' . rawurlencode($normalized['resourceId'])
-            : null,
+        'youtube' => match ($normalized['resourceType']) {
+            'video' => 'https://www.youtube-nocookie.com/embed/' . rawurlencode($normalized['resourceId']),
+            'playlist' => 'https://www.youtube-nocookie.com/embed/videoseries?list=' . rawurlencode($normalized['resourceId']),
+            default => null,
+        },
         'twitch' => profile_integration_twitch_embed_src($normalized),
         default => null,
     };

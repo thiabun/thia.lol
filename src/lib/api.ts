@@ -1488,6 +1488,10 @@ function normalizeProfileModuleConfig(config: ProfileModuleConfig): ProfileModul
     normalized.description = config.description;
   }
 
+  if (typeof config.displayMode === "string") {
+    normalized.displayMode = config.displayMode;
+  }
+
   if (typeof config.label === "string") {
     normalized.label = config.label;
   }
@@ -1506,6 +1510,10 @@ function normalizeProfileModuleConfig(config: ProfileModuleConfig): ProfileModul
 
   if (typeof config.canvasSize === "string") {
     normalized.canvasSize = config.canvasSize;
+  }
+
+  if (typeof config.sourceMode === "string") {
+    normalized.sourceMode = config.sourceMode;
   }
 
   const restoreFeaturedPostId = config.restoreFeaturedPostId;
