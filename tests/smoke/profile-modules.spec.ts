@@ -881,6 +881,7 @@ test("owner edits background blur, module placement, and visibility", async ({
 
 test("owner edits profile info inside the selected module", async ({ page }) => {
   let savedProfile: Record<string, unknown> | undefined;
+  const multilineBio = "Edited inside the profile module.\nWith a second line.";
 
   await mockProfileModules(page, {
     authenticated: true,
@@ -901,13 +902,18 @@ test("owner edits profile info inside the selected module", async ({ page }) => 
   ).toBeVisible();
 
   await page.getByTestId("profile-info-display-name-input").fill("Thia Canvas");
-  await page.getByTestId("profile-info-bio-input").fill("Edited inside the profile module.");
+  await page.getByTestId("profile-info-bio-input").fill(multilineBio);
   await page.getByTestId("profile-canvas-save-button").click();
 
   expect(savedProfile).toMatchObject({
     displayName: "Thia Canvas",
-    bio: "Edited inside the profile module.",
+    bio: multilineBio,
   });
+  await expect(page.getByTestId("profile-bio")).toHaveText(multilineBio);
+  const bioWhiteSpace = await page
+    .getByTestId("profile-bio")
+    .evaluate((element) => window.getComputedStyle(element).whiteSpace);
+  expect(bioWhiteSpace).toBe("pre-wrap");
 });
 
 test("owner can use larger profile info and activity spans", async ({ page }) => {

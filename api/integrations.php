@@ -3,11 +3,14 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read.php';
 
 const PROFILE_INTEGRATION_PROVIDERS = ['spotify', 'apple_music', 'youtube', 'twitch', 'github'];
 const PROFILE_INTEGRATION_TTL_SECONDS = 3600;
 const PROFILE_INTEGRATION_STALE_SECONDS = 86400;
 const PROFILE_INTEGRATION_OAUTH_STATE_SECONDS = 600;
+const PROFILE_INTEGRATION_ENCRYPTION_KEY_BYTES = 32;
+const PROFILE_INTEGRATION_OPENSSL_PREFIX = 'openssl:';
 
 function integrations_dispatch(array $segments, string $method): void
 {
@@ -282,7 +285,15 @@ function profile_integrations_storage_exists(): bool
 {
     return database_table_exists('profile_integration_accounts')
         && database_table_exists('profile_integration_oauth_states')
-        && database_table_exists('profile_integration_metadata_cache');
+        && database_table_exists('profile_integration_metadata_cache')
+        && database_column_exists('profile_integration_accounts', 'access_token_cipher')
+        && database_column_exists('profile_integration_accounts', 'refresh_token_cipher')
+        && database_column_exists('profile_integration_accounts', 'provider_account_id')
+        && database_column_exists('profile_integration_accounts', 'scopes_json')
+        && database_column_exists('profile_integration_oauth_states', 'code_verifier_cipher')
+        && database_column_exists('profile_integration_oauth_states', 'redirect_path')
+        && database_column_exists('profile_integration_metadata_cache', 'metadata_json')
+        && database_column_exists('profile_integration_metadata_cache', 'embed_json');
 }
 
 function profile_integration_provider(string $value): string
@@ -1416,12 +1427,38 @@ function profile_integration_encryption_key(): ?string
     $trimmed = trim($value);
     $decoded = base64_decode($trimmed, true);
 
-    if (is_string($decoded) && strlen($decoded) === SODIUM_CRYPTO_SECRETBOX_KEYBYTES) {
+    if (is_string($decoded) && strlen($decoded) === PROFILE_INTEGRATION_ENCRYPTION_KEY_BYTES) {
         return $decoded;
     }
 
-    if (strlen($trimmed) >= SODIUM_CRYPTO_SECRETBOX_KEYBYTES) {
-        return substr($trimmed, 0, SODIUM_CRYPTO_SECRETBOX_KEYBYTES);
+    if (strlen($trimmed) >= PROFILE_INTEGRATION_ENCRYPTION_KEY_BYTES) {
+        return substr($trimmed, 0, PROFILE_INTEGRATION_ENCRYPTION_KEY_BYTES);
+    }
+
+    return null;
+}
+
+function profile_integration_crypto_method(): ?string
+{
+    if (
+        defined('SODIUM_CRYPTO_SECRETBOX_KEYBYTES')
+        && defined('SODIUM_CRYPTO_SECRETBOX_NONCEBYTES')
+        && function_exists('sodium_crypto_secretbox')
+        && function_exists('sodium_crypto_secretbox_open')
+    ) {
+        return 'sodium';
+    }
+
+    if (
+        function_exists('openssl_encrypt')
+        && function_exists('openssl_decrypt')
+        && function_exists('openssl_get_cipher_methods')
+    ) {
+        $methods = array_map('strtolower', openssl_get_cipher_methods(true));
+
+        if (in_array('aes-256-gcm', $methods, true)) {
+            return 'openssl';
+        }
     }
 
     return null;
@@ -1435,12 +1472,21 @@ function profile_integration_require_encryption_key(): string
         json_error('Integration encryption is not configured.', 503);
     }
 
+    if (profile_integration_crypto_method() === null) {
+        json_error('Integration encryption is not available on this server. Enable PHP Sodium or OpenSSL.', 503);
+    }
+
     return $key;
 }
 
 function profile_integration_encrypt(string $value): string
 {
     $key = profile_integration_require_encryption_key();
+
+    if (profile_integration_crypto_method() === 'openssl') {
+        return PROFILE_INTEGRATION_OPENSSL_PREFIX . profile_integration_encrypt_openssl($value, $key);
+    }
+
     $nonce = random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
     $cipher = sodium_crypto_secretbox($value, $nonce, $key);
 
@@ -1450,6 +1496,15 @@ function profile_integration_encrypt(string $value): string
 function profile_integration_decrypt(string $value): string
 {
     $key = profile_integration_require_encryption_key();
+
+    if (str_starts_with($value, PROFILE_INTEGRATION_OPENSSL_PREFIX)) {
+        return profile_integration_decrypt_openssl(substr($value, strlen(PROFILE_INTEGRATION_OPENSSL_PREFIX)), $key);
+    }
+
+    if (profile_integration_crypto_method() !== 'sodium') {
+        json_error('Stored integration token requires PHP Sodium to decrypt.', 500);
+    }
+
     $decoded = base64_decode($value, true);
 
     if (!is_string($decoded) || strlen($decoded) <= SODIUM_CRYPTO_SECRETBOX_NONCEBYTES) {
@@ -1459,6 +1514,39 @@ function profile_integration_decrypt(string $value): string
     $nonce = substr($decoded, 0, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
     $cipher = substr($decoded, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
     $plain = sodium_crypto_secretbox_open($cipher, $nonce, $key);
+
+    if (!is_string($plain)) {
+        json_error('Stored integration token could not be decrypted.', 500);
+    }
+
+    return $plain;
+}
+
+function profile_integration_encrypt_openssl(string $value, string $key): string
+{
+    $nonce = random_bytes(12);
+    $tag = '';
+    $cipher = openssl_encrypt($value, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $nonce, $tag);
+
+    if (!is_string($cipher) || $tag === '') {
+        json_error('Integration encryption failed.', 500);
+    }
+
+    return base64_encode($nonce . $tag . $cipher);
+}
+
+function profile_integration_decrypt_openssl(string $value, string $key): string
+{
+    $decoded = base64_decode($value, true);
+
+    if (!is_string($decoded) || strlen($decoded) <= 28) {
+        json_error('Stored integration token is invalid.', 500);
+    }
+
+    $nonce = substr($decoded, 0, 12);
+    $tag = substr($decoded, 12, 16);
+    $cipher = substr($decoded, 28);
+    $plain = openssl_decrypt($cipher, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $nonce, $tag);
 
     if (!is_string($plain)) {
         json_error('Stored integration token could not be decrypted.', 500);

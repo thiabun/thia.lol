@@ -40,6 +40,12 @@ assert_true(in_array('avatar_url = :avatar_url', $withoutCustomization['updates'
 assert_true(!in_array('banner_url = :banner_url', $withoutCustomization['updates'], true), 'banner_url should be omitted without customization columns');
 assert_true(!array_key_exists('banner_url', $withoutCustomization['params']), 'banner_url param should be omitted without customization columns');
 
+$multilineBioPayload = [
+    'bio' => "Line one\r\nLine two\n\nLine four",
+];
+$multilineBio = profile_update_statement_for_body($multilineBioPayload, 123, true, true);
+assert_true($multilineBio['params']['bio'] === "Line one\nLine two\n\nLine four", 'multiline bio should preserve normalized line breaks');
+
 $snakeCasePayload = [
     'display_name' => 'Thia',
     'avatar_url' => null,

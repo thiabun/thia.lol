@@ -181,7 +181,7 @@ function profile_update_statement_for_body(
 
     if (array_key_exists('bio', $body)) {
         $updates[] = 'bio = :bio';
-        $params['bio'] = validate_profile_nullable_text($body['bio'], 500, 'Bio');
+        $params['bio'] = validate_profile_bio($body['bio']);
     }
 
     if (array_key_exists('location', $body)) {
@@ -595,6 +595,34 @@ function validate_profile_nullable_text(mixed $value, int $max, string $label): 
 
     if (profile_text_length($trimmed) > $max) {
         json_error("{$label} is too long.", 422);
+    }
+
+    return $trimmed;
+}
+
+function validate_profile_bio(mixed $value): ?string
+{
+    if ($value === null) {
+        return null;
+    }
+
+    if (!is_string($value)) {
+        json_error('Bio is invalid.', 422);
+    }
+
+    $normalized = str_replace(["\r\n", "\r"], "\n", $value);
+    $trimmed = trim($normalized);
+
+    if ($trimmed === '') {
+        return null;
+    }
+
+    if (preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $trimmed) === 1) {
+        json_error('Bio is invalid.', 422);
+    }
+
+    if (profile_text_length($trimmed) > 500) {
+        json_error('Bio is too long.', 422);
     }
 
     return $trimmed;

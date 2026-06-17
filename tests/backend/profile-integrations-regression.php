@@ -84,6 +84,11 @@ $cipher = profile_integration_encrypt('secret-token');
 assert_true($cipher !== 'secret-token', 'token should be encrypted');
 assert_true(profile_integration_decrypt($cipher) === 'secret-token', 'token decrypt mismatch');
 
+$opensslCipher = profile_integration_encrypt_openssl('fallback-token', str_repeat('o', 32));
+assert_true(profile_integration_decrypt_openssl($opensslCipher, str_repeat('o', 32)) === 'fallback-token', 'openssl token decrypt mismatch');
+assert_true(str_contains($integrationSource, "database_column_exists('profile_integration_oauth_states', 'code_verifier_cipher')"), 'integration storage guard should verify oauth state columns');
+assert_true(str_contains($integrationSource, 'profile_integration_crypto_method'), 'integration crypto fallback should exist');
+
 assert_true(validate_profile_video_url('/uploads/media/2026/06/profile_background-abc123.mp4', 'Profile video') === '/uploads/media/2026/06/profile_background-abc123.mp4', 'video URL should validate');
 
 assert_php_rejected_with_config(

@@ -287,7 +287,10 @@ export function ProfileHeader({
           />
           {profile.bio ? (
             <motion.div className="mt-3" variants={sectionItem}>
-              <p className="max-w-3xl text-pretty text-sm leading-6 text-text">
+              <p
+                className="max-w-3xl whitespace-pre-wrap break-words text-sm leading-6 text-text"
+                data-testid="profile-bio"
+              >
                 {profile.bio}
               </p>
             </motion.div>
