@@ -194,6 +194,14 @@ test("P2 expressive modules render compact link-first cards", async ({ page }) =
     "data-profile-module-span-role",
     "rich",
   );
+  const gallerySurface = modules
+    .getByTestId("profile-grid-module-gallery_media")
+    .getByTestId("profile-module-gallery_media");
+  await expect(gallerySurface).toBeVisible();
+  const galleryBackground = await gallerySurface.evaluate(
+    (element) => window.getComputedStyle(element).backgroundColor,
+  );
+  expect(galleryBackground).not.toBe("rgba(0, 0, 0, 0)");
   await expect(modules.locator('img[src="/uploads/media/2026/06/profile-gallery-one.webp"]')).toBeVisible();
   await expect(modules.getByText("Studio corner")).toBeVisible();
   await expect(modules.getByRole("link", { name: /Find me on Twitch/ })).toHaveAttribute(
@@ -315,6 +323,14 @@ test("activity renders through the module grid without a duplicate fixed section
   await expect(section).toBeVisible();
   await expect(section.getByTestId("profile-grid-module-activity")).toBeVisible();
   await expect(section.getByTestId("profile-module-activity")).toBeVisible();
+  await expect(section.getByTestId("profile-module-activity")).toHaveAttribute(
+    "data-profile-activity-surface",
+    "public",
+  );
+  const activityBackground = await section
+    .getByTestId("profile-module-activity")
+    .evaluate((element) => window.getComputedStyle(element).backgroundColor);
+  expect(activityBackground).not.toBe("rgba(0, 0, 0, 0)");
   await expect(section.getByRole("heading", { name: "Latest activity" })).toHaveCount(0);
 
   const tabs = section.getByTestId("profile-activity-tabs");
@@ -335,7 +351,21 @@ test("activity keeps long feeds inside an internal scroll area", async ({ page }
   await page.setViewportSize({ width: 1366, height: 900 });
   await mockProfileModules(page, {
     authenticated: false,
-    modules: [activityModule({ id: 9, title: "Latest activity", position: 1 })],
+    modules: [
+      {
+        ...activityModule({ id: 9, title: "Latest activity", position: 1 }),
+        layout: { column: 1, row: 4, colSpan: 3, rowSpan: 3 },
+      },
+      {
+        ...aboutModule({
+          id: 10,
+          title: "Neighbor",
+          body: "This module should keep its own row height.",
+          position: 2,
+        }),
+        layout: { column: 4, row: 4, colSpan: 2, rowSpan: 1 },
+      },
+    ],
     profilePosts: Array.from({ length: 14 }, (_, index) =>
       postFixture({
         id: 100 + index,
@@ -352,7 +382,7 @@ test("activity keeps long feeds inside an internal scroll area", async ({ page }
   await expect(module).toHaveAttribute("data-profile-activity-max-rows", "3");
   await expect(body).toHaveAttribute("data-profile-activity-scroll", "internal");
   await expect(tabs.getByRole("tab", { name: /Feed/ })).toBeVisible();
-  await expect(page.getByText("Long activity item 14.")).toBeVisible();
+  await expect(page.getByText("Long activity item 14.")).toHaveCount(1);
 
   const metrics = await page.evaluate(() => {
     const moduleElement = document.querySelector<HTMLElement>(
@@ -364,13 +394,17 @@ test("activity keeps long feeds inside an internal scroll area", async ({ page }
     const tabsElement = document.querySelector<HTMLElement>(
       '[data-testid="profile-activity-tabs"]',
     );
+    const neighborElement = document.querySelector<HTMLElement>(
+      '[data-testid="profile-grid-module-about"]',
+    );
 
-    if (!moduleElement || !bodyElement || !tabsElement) {
+    if (!moduleElement || !bodyElement || !tabsElement || !neighborElement) {
       throw new Error("Activity module elements were not rendered.");
     }
 
     const moduleRect = moduleElement.getBoundingClientRect();
     const tabsRect = tabsElement.getBoundingClientRect();
+    const neighborRect = neighborElement.getBoundingClientRect();
 
     return {
       bodyClientHeight: bodyElement.clientHeight,
@@ -378,7 +412,8 @@ test("activity keeps long feeds inside an internal scroll area", async ({ page }
       bodyScrollHeight: bodyElement.scrollHeight,
       documentScrollHeight: document.documentElement.scrollHeight,
       moduleHeight: moduleRect.height,
-      moduleMaxHeight: Number.parseFloat(window.getComputedStyle(moduleElement).maxHeight),
+      moduleBackground: window.getComputedStyle(moduleElement).backgroundColor,
+      neighborHeight: neighborRect.height,
       tabsBottom: tabsRect.bottom,
       tabsTop: tabsRect.top,
       moduleBottom: moduleRect.bottom,
@@ -388,7 +423,9 @@ test("activity keeps long feeds inside an internal scroll area", async ({ page }
 
   expect(metrics.bodyOverflowY).toBe("auto");
   expect(metrics.bodyScrollHeight).toBeGreaterThan(metrics.bodyClientHeight + 100);
-  expect(metrics.moduleHeight).toBeLessThanOrEqual(metrics.moduleMaxHeight + 2);
+  expect(metrics.moduleBackground).not.toBe("rgba(0, 0, 0, 0)");
+  expect(metrics.moduleHeight).toBeLessThan(430);
+  expect(metrics.neighborHeight).toBeLessThan(170);
   expect(metrics.tabsTop).toBeGreaterThanOrEqual(metrics.moduleTop);
   expect(metrics.tabsBottom).toBeLessThanOrEqual(metrics.moduleBottom);
   expect(metrics.documentScrollHeight).toBeLessThan(metrics.bodyScrollHeight + 1_600);

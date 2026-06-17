@@ -962,6 +962,12 @@ interaction model:
 - Public and non-edit module chrome should stay light: the grid provides the
   shared glass surface, while individual module title bars and opaque module
   shells appear only when they clarify editing or a content-specific fallback.
+  Dense content modules can still earn a subtle contained surface: Activity and
+  Gallery keep a glass background publicly so scrollable feeds and image mosaics
+  remain readable over profile backgrounds.
+- Desktop canvas rows are fixed to the grid row unit instead of growing with
+  module content. Activity feed/reply overflow must stay inside the module's
+  internal scroller so neighboring modules keep their selected spans.
 - The raw span set remains in use until a later semantic-label pass maps sizes
   to names such as small, medium, and large. A 2026-06-17 mocked size audit
   renders every currently allowed module/span one at a time and checks for

@@ -485,6 +485,7 @@ export function ProfileModuleCard({
   const compact = profileModuleSizeIsCompact(size);
   const hasDetails = profileModuleSizeHasRoomForDetails(size);
   const spanRole = profileModuleSpanRole(size);
+  const publicSurface = module.type === "gallery_media";
 
   return (
     <article
@@ -492,7 +493,9 @@ export function ProfileModuleCard({
         "grid h-full min-h-0 min-w-0 overflow-hidden rounded-card focus-within:border-line-strong",
         editing
           ? "grid-rows-[auto_1fr] gap-2 border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
-          : "grid-rows-[1fr] border border-transparent bg-transparent p-0 shadow-none",
+          : publicSurface
+            ? "grid-rows-[1fr] border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
+            : "grid-rows-[1fr] border border-transparent bg-transparent p-0 shadow-none",
       )}
       data-profile-module-action={definition.primaryAction}
       data-profile-module-compact={String(compact)}

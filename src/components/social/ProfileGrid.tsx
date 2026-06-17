@@ -41,7 +41,7 @@ export function ProfileGrid({
     <div
       ref={gridRef}
       className={cn(
-        "profile-grid-canvas grid min-w-0 grid-cols-1 rounded-panel border border-line bg-surface/34 p-2 shadow-soft backdrop-blur-veil md:grid-cols-2 md:auto-rows-[minmax(var(--profile-grid-row-size),auto)]",
+        "profile-grid-canvas grid min-w-0 grid-cols-1 rounded-panel border border-line bg-surface/34 p-2 shadow-soft backdrop-blur-veil md:grid-cols-2 md:[grid-auto-rows:var(--profile-grid-row-size)]",
         layoutPreset === "compact" ? "gap-2" : "gap-3",
         maxColumns === 6 ? "lg:grid-cols-6" : undefined,
         className,
@@ -151,7 +151,7 @@ export function ProfileGridModule({
         scale: { duration: 0.16, ease: "easeOut" },
       }}
       className={cn(
-        "profile-grid-module relative min-h-0 min-w-0 scroll-mt-24 transform-gpu",
+        "profile-grid-module relative min-h-0 min-w-0 scroll-mt-24 transform-gpu md:h-full",
         profileGridModuleSizeClass(span.size),
         className,
       )}

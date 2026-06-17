@@ -33,6 +33,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -4863,17 +4864,26 @@ function ProfileActivityModule({
   title,
 }: ProfileActivityModuleProps) {
   const activityRows = profileGridModuleSizeSpan(size).rows;
+  const activityMaxHeight = `calc(${activityRows} * var(--profile-grid-row-size) + ${
+    Math.max(0, activityRows - 1)
+  } * var(--profile-grid-gap))`;
+  const activityStyle = {
+    "--profile-activity-row-span": String(activityRows),
+    maxHeight: activityMaxHeight,
+  } as CSSProperties;
 
   return (
     <div
       className={cn(
-        "flex h-full max-h-[min(52rem,78dvh)] min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-card",
+        "flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-card",
         editing
           ? "border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
-          : "border border-transparent bg-transparent p-0 shadow-none",
+          : "border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil",
       )}
       data-profile-activity-max-rows={activityRows}
+      data-profile-activity-surface={editing ? "editing" : "public"}
       data-testid="profile-module-activity"
+      style={activityStyle}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         {editing ? <h3 className="text-sm font-semibold text-text">{title}</h3> : null}
