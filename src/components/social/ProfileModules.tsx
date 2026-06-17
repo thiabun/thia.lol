@@ -39,6 +39,7 @@ import {
 } from "../../lib/profileLayoutPresets";
 import type {
   BadgeRarity,
+  ProfileCanvasMovementContext,
   ProfileLayoutPreset,
   ProfileIntegrationCard,
   ProfileModule,
@@ -159,7 +160,11 @@ type ProfileModuleGridProps = {
 type ProfileModuleGridEditing = {
   selectedModuleId?: number | undefined;
   onDeselectModule: () => void;
-  onMoveModule: (moduleId: number, layout: ProfileModuleLayout) => void;
+  onMoveModule: (
+    moduleId: number,
+    layout: ProfileModuleLayout,
+    movementContext?: ProfileCanvasMovementContext,
+  ) => void;
   onSelectModule: (module: ProfileModule) => void;
   renderSelectedControls?: (
     module: ProfileModule,
@@ -187,7 +192,10 @@ export function ProfileModuleGrid({
     | {
         moduleId: number;
         colSpan: number;
+        pointerOffsetX: number;
+        pointerOffsetY: number;
         rowSpan: number;
+        startLayout: ProfileModuleLayout;
       }
     | undefined
   >();
@@ -213,6 +221,8 @@ export function ProfileModuleGrid({
         event.clientY,
         activeDragState.colSpan,
         activeDragState.rowSpan,
+        activeDragState.pointerOffsetX,
+        activeDragState.pointerOffsetY,
       );
 
       if (
@@ -223,7 +233,17 @@ export function ProfileModuleGrid({
       }
 
       lastDragLayoutRef.current = layout;
-      activeEditing.onMoveModule(activeDragState.moduleId, layout);
+      activeEditing.onMoveModule(activeDragState.moduleId, layout, {
+        anchorModuleId: activeDragState.moduleId,
+        from: {
+          column: activeDragState.startLayout.column,
+          row: activeDragState.startLayout.row,
+        },
+        to: {
+          column: layout.column,
+          row: layout.row,
+        },
+      });
     }
 
     function handlePointerUp() {
@@ -267,7 +287,7 @@ export function ProfileModuleGrid({
     module: ProfileModule,
     layout: ProfileModuleLayout,
   ) {
-    if (!editing || event.button !== 0 || window.innerWidth < 1024) {
+    if (!editing || event.button !== 0 || window.innerWidth < 1024 || module.pinned) {
       return;
     }
 
@@ -275,10 +295,17 @@ export function ProfileModuleGrid({
     suppressModuleClickRef.current = true;
     editing.onSelectModule(module);
     lastDragLayoutRef.current = layout;
+    const moduleElement = event.currentTarget.closest<HTMLElement>(
+      '[data-profile-grid-module="true"]',
+    );
+    const moduleRect = moduleElement?.getBoundingClientRect();
     setDragState({
       moduleId: module.id,
       colSpan: layout.colSpan,
+      pointerOffsetX: moduleRect ? event.clientX - moduleRect.left : 0,
+      pointerOffsetY: moduleRect ? event.clientY - moduleRect.top : 0,
       rowSpan: layout.rowSpan,
+      startLayout: layout,
     });
   }
 
@@ -352,6 +379,7 @@ export function ProfileModuleGrid({
                 ? "rounded-card transition-[filter,opacity,box-shadow] duration-fluid ease-fluid"
                 : undefined,
               editing && module.visibility !== "public" ? "opacity-55" : undefined,
+              editing && module.pinned ? "outline outline-1 outline-line-strong" : undefined,
               editing && dragState?.moduleId === module.id
                 ? "z-20 scale-[1.012] opacity-85 drop-shadow-2xl"
                 : undefined,
@@ -361,6 +389,7 @@ export function ProfileModuleGrid({
             )}
             layout={safeLayout}
             dragging={editing && dragState?.moduleId === module.id}
+            pinned={module.pinned}
             presentation={{
               compact: profileModuleSizeIsCompact(span.size),
               density: definition.density,
@@ -387,11 +416,21 @@ export function ProfileModuleGrid({
               <button
                 type="button"
                 className={cn(
-                  "absolute right-2 top-2 z-20 grid size-8 cursor-grab place-items-center rounded-control border border-line bg-surface/90 text-text shadow-soft backdrop-blur-veil transition duration-fluid ease-fluid hover:border-line-strong active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+                  "absolute right-2 top-2 z-20 grid size-8 place-items-center rounded-control border border-line bg-surface/90 text-text shadow-soft backdrop-blur-veil transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-60",
+                  module.pinned ? "cursor-not-allowed" : "cursor-grab active:cursor-grabbing",
                   selected ? "ring-1 ring-focus/35" : undefined,
                 )}
-                aria-label={`Drag ${profileModuleFallbackTitle(module.type)} module`}
-                title={`Drag ${profileModuleFallbackTitle(module.type)}`}
+                aria-label={
+                  module.pinned
+                    ? `${profileModuleFallbackTitle(module.type)} module is pinned`
+                    : `Drag ${profileModuleFallbackTitle(module.type)} module`
+                }
+                title={
+                  module.pinned
+                    ? `${profileModuleFallbackTitle(module.type)} is pinned`
+                    : `Drag ${profileModuleFallbackTitle(module.type)}`
+                }
+                disabled={module.pinned}
                 data-profile-edit-control="true"
                 data-testid={`profile-canvas-drag-handle-${module.id}`}
                 onClick={() => editing.onSelectModule(module)}
@@ -442,12 +481,30 @@ function profileCanvasLayoutFromPoint(
   clientY: number,
   colSpan: number,
   rowSpan: number,
+  pointerOffsetX: number,
+  pointerOffsetY: number,
 ): ProfileModuleLayout {
   const rect = grid.getBoundingClientRect();
-  const columnWidth = rect.width / PROFILE_CANVAS_COLUMNS;
-  const rowHeight = Math.max(1, rect.height / PROFILE_CANVAS_ROWS);
-  const rawColumn = Math.floor((clientX - rect.left) / columnWidth) + 1;
-  const rawRow = Math.floor((clientY - rect.top) / rowHeight) + 1;
+  const styles = window.getComputedStyle(grid);
+  const paddingLeft = Number.parseFloat(styles.paddingLeft) || 0;
+  const paddingTop = Number.parseFloat(styles.paddingTop) || 0;
+  const paddingRight = Number.parseFloat(styles.paddingRight) || 0;
+  const columnGap = Number.parseFloat(styles.columnGap) || 0;
+  const rowGap = Number.parseFloat(styles.rowGap) || columnGap;
+  const activeColumns =
+    Number.parseInt(styles.getPropertyValue("--profile-grid-active-columns"), 10) ||
+    PROFILE_CANVAS_COLUMNS;
+  const contentWidth = Math.max(1, grid.clientWidth - paddingLeft - paddingRight);
+  const cellSize = Math.max(
+    1,
+    (contentWidth - columnGap * (activeColumns - 1)) / activeColumns,
+  );
+  const stepX = cellSize + columnGap;
+  const stepY = cellSize + rowGap;
+  const moduleLeft = clientX - pointerOffsetX;
+  const moduleTop = clientY - pointerOffsetY;
+  const rawColumn = Math.round((moduleLeft - rect.left - paddingLeft) / stepX) + 1;
+  const rawRow = Math.round((moduleTop - rect.top - paddingTop) / stepY) + 1;
 
   return {
     column: Math.min(

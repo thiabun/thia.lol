@@ -55,7 +55,7 @@ Current frontend behavior:
 - Profile accent/theme values may exist in storage for compatibility, but controls are hidden until presets visibly affect public rendering through tested, contrast-safe mappings.
 - The previous `Customize profile` modal has been removed. Owner customization
   now uses inline canvas editing on the profile page through a translucent
-  left panel on desktop and a compact bottom sheet on mobile.
+  left panel on desktop and a compact stacked editor on mobile.
 - In Edit Canvas mode, selecting a module replaces its display content with
   size, visibility, remove, and supported content controls. Direct position
   controls are deferred to a future accessibility toggle.
@@ -106,16 +106,17 @@ Current backend behavior:
   `featured_badges`, `custom_text`, `featured_post`, `featured_room`,
   `gallery_media`, `creator_live`, `music`, and `activity`.
 - Module config validation rejects unknown keys, unsafe text, unsafe URLs, arbitrary embeds, and arbitrary HTML/CSS/JS.
-- Canvas layout uses a constrained 6 x 12 grid. Server validation clamps bounds,
-  validates spans, ignores hidden modules for occupancy, and uses sideways-first
-  collision push instead of freeform pixel positioning.
+- Canvas layout uses a constrained 6 x 12 grid with square desktop cells. Server
+  validation clamps bounds, validates spans, ignores hidden/deleted modules for
+  occupancy, keeps pinned modules fixed, and uses directional half-overlap
+  collision solving instead of freeform pixel positioning.
 - `profile_info` is the only protected module. Featured post, featured room,
   and activity modules can be deleted like normal modules; deleting featured
   post/room modules also clears the selected featured profile references.
-- Soft-deleted modules preserve title, config, and grid placement where
-  possible. Restore reactivates the module, makes it visible, and collision
-  pushes active modules into a valid fit. Hidden and deleted modules must not
-  occupy grid cells.
+- Soft-deleted modules preserve title, config, grid placement, and pin state
+  where possible. Restore reactivates the module, makes it visible, and fits
+  active modules into a valid non-overlapping canvas. Hidden and deleted modules
+  must not occupy grid cells.
 - Deleting featured post or room modules must not delete the underlying post or
   room. Restore may reselect a saved featured id only if it is still eligible.
 - New editor flows use product-defined module names instead of arbitrary manual

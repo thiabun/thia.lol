@@ -58,7 +58,7 @@ The active P3 editor is an owner-only inline canvas editor:
 
 - Desktop: a compact translucent panel sits on the left side of the live
   profile. The canvas remains visible and editable to the right.
-- Mobile: the same actions compress into a bottom sheet. Exact desktop
+- Mobile: the same actions compress into a stacked editor. Exact desktop
   placement is still ignored for public mobile layout.
 - The panel categories are Essentials, Featured, Media, Integrations, and
   Removed.
@@ -67,8 +67,10 @@ The active P3 editor is an owner-only inline canvas editor:
 - Clicking or tapping a module in Edit Canvas mode selects it. The selected
   module shows a clear ring and replaces its display content with size,
   visibility, remove, and module-specific content controls.
-- Drag is the primary placement system in this pass. Direct position controls
-  are deferred to a future accessibility toggle in the settings surface.
+- Drag is the primary desktop placement system in this pass. Direct position
+  controls are deferred to a future accessibility toggle in the settings surface.
+- Module pinning is persistent layout state. Pinned modules cannot be dragged or
+  displaced until unpinned.
 - Manual module label editing is no longer part of the product surface.
   Product-defined module names and platform-derived connection labels keep the
   canvas scannable. Legacy `title` and `config.label` data can still render for
@@ -105,11 +107,14 @@ the module returns with a compact owner state to choose content again.
 Canvas movement should feel predictable and reversible:
 
 - The moved or selected module is the anchor and claims its requested slot.
-- Visible modules that collide try same-row sideways movement first, preferring
-  right when possible and then left. Only after same-row fits fail do they move
-  downward, scanning nearby columns before farther columns.
-- There is no wrap-to-top behavior. If no downward fit exists, save fails
-  atomically.
+- The canvas uses square cells, so a saved `3x2` module renders at a 3:2 ratio.
+  Module content must fit inside that shell; feed/text/media modules can scroll
+  internally.
+- Visible modules that collide move only after the anchor overlaps more than
+  half of them on the active movement axis. Colliders first try the opposite
+  direction of the drag vector, then nearby perpendicular slots, then nearest-row
+  fallback including upward movement where valid.
+- There is no wrap-to-top behavior. If no fit exists, save fails atomically.
 - Hidden and deleted modules do not occupy cells.
 - If no 6 x 12 fit exists, save fails atomically.
 - Drag feedback should show a ghost or highlighted module, target cell

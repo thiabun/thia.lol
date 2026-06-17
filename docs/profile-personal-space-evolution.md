@@ -159,18 +159,23 @@ product value and safety order, not a promise that every capability ships.
 
 P3A makes the modular profile canvas a real editable surface.
 
-- The profile canvas remains a 6 x 12 desktop grid.
-- Desktop owners can move modules with native pointer drag in the canvas.
+- The profile canvas is a 6 x 12 desktop grid with square cells. A `3x2`
+  module renders as a 3:2 rectangle; content cannot stretch the grid tracks.
+- Desktop owners can move unpinned modules with native pointer drag in the
+  canvas.
 - Visible position-map controls are not part of the normal editing flow. A
   future settings pass can expose direct position controls behind an
   accessibility toggle; this pass keeps drag as the primary placement model.
-- Client and server both use collision push behavior: the selected/anchored
-  module claims its requested slot first, visible colliding modules try
-  same-row sideways movement before moving downward, and hidden modules do not
-  occupy cells.
+- Client and server both use directional collision behavior: the selected or
+  dragged module is the anchor, pinned modules are fixed obstacles, and visible
+  colliders move only after the anchor overlaps more than half of them on the
+  active movement axis.
+- Colliders first try the opposite direction of the drag vector, then nearby
+  perpendicular slots, then nearest-row fallback including upward movement when
+  that is the best valid fit. Hidden and deleted modules do not occupy cells.
 - `PATCH /api/me/profile/canvas` persists normalized layout with
-  `anchorModuleId`, returns the pushed result, and fails atomically if the
-  visible canvas cannot fit inside 6 x 12.
+  `anchorModuleId`, optional `movementContext`, `pinned`, and normalized module
+  placement. It fails atomically if the visible canvas cannot fit inside 6 x 12.
 - `profile_info` is the only protected identity anchor.
 - Featured post, featured room, and activity are normal modules for visibility
   and deletion. Deleting featured post or featured room modules clears
@@ -184,8 +189,9 @@ P3A makes the modular profile canvas a real editable surface.
   compact translucent left panel with categories, module cards, search,
   suggestions, integrations, and removed modules. Background uses a compact
   popover trigger attached to the live canvas surface, outside the module menu.
-  Mobile uses the same compact actions as a bottom sheet and public mobile
-  layout still ignores exact desktop placement.
+  Mobile uses a stacked editor with span previews and content controls instead
+  of the desktop coordinate grid. Public mobile layout still ignores exact
+  desktop placement.
 - The panel categories are Essentials, Featured, Media, Integrations, and
   Removed. Add, remove, restore, connect, use-link, and add-card actions should
   live in this canvas editor instead of a separate settings dashboard.
@@ -196,10 +202,8 @@ P3A makes the modular profile canvas a real editable surface.
 - `profile_info` can use `4x3` and `6x3` spans when owners want a larger
   identity anchor. Activity can use `3x4` and `3x6` spans while keeping its
   internal scroll area for overflow.
-- Collision push is sideways-first and intent-preserving: the anchored module
-  claims its requested slot, visible colliders try same-row right then left
-  before moving downward, hidden or deleted modules do not occupy cells, and
-  save fails atomically if the 6 x 12 canvas cannot fit the visible layout.
+- Modules can be pinned as layout state. Pinned modules cannot be dragged until
+  unpinned and cannot be displaced by collisions.
 - Manual owner-edited module labels are retired from new editor flows. Legacy
   titles/labels may still render safely for compatibility.
 - Connections is the unified home for custom links, platform links, lightweight
@@ -700,7 +704,7 @@ Grid architecture:
 - `ProfileGridSection` owns the compact section shell used by profile-space
   surfaces.
 - `ProfileGrid` owns the responsive grid: one column on mobile, two columns on
-  tablet, and at most three columns on wide desktop.
+  tablet, and six square columns on wide desktop.
 - `ProfileGridModule` owns module span metadata through a small size contract,
   while module cards keep their own content and safety rendering.
 - Featured post/room cards and existing profile modules now render through
@@ -709,12 +713,13 @@ Grid architecture:
 
 Module sizing model:
 
-- `small`: default one-column module for compact links, badges, and short notes.
-- `wide`: spans the tablet row and takes more desktop space for modules that
-  need readable text width, such as About or longer link/badge shelves.
-- `tall`: reserved for future modules that need vertical emphasis without
-  becoming masonry.
-- `feature`: reserved for primary highlights that should lead the grid.
+- Module sizes are stored as allowlisted raw spans such as `1x1`, `3x2`, and
+  `6x5` until the size-label pass is ready.
+- Each desktop span maps to square grid cells; the outer module shell must keep
+  its exact ratio.
+- Activity, Gallery, and text/feed-like modules can scroll internally when
+  content is too dense. Non-scroll modules must hide, reflow, or simplify
+  content instead of stretching the grid.
 
 Module registry foundation:
 
@@ -726,14 +731,13 @@ Module registry foundation:
 - Existing registry-backed module types are `about`, `custom_text`, `links`,
   `featured_badges`, `featured`, and `activity`.
 
-Future drag/drop considerations:
+Current drag/drop constraints:
 
-- Drag-and-drop should attach to persisted module order, not invent visual-only
-  layout positions.
-- Keyboard-safe up/down ordering remains the baseline interaction until a
-  drag/drop library is explicitly approved.
-- Any future drag/drop implementation must preserve mobile single-column order,
-  public safety action visibility, and bounded desktop columns.
+- Drag-and-drop persists constrained grid placement, not freeform pixel
+  positions.
+- Dragging is desktop-first. Mobile editing uses a stacked module editor.
+- Pinned modules remain fixed obstacles. Unpinned modules can move around or past
+  pinned modules when a valid non-overlapping slot exists.
 
 Future persistence requirements:
 
@@ -928,12 +932,12 @@ Profiles V3 P3 adds real persistence for the modular profile canvas:
   values are rejected.
 - Module coordinates are clamped into the 6x12 grid. Spans must match the
   module-specific allowlist. Visible module collisions use the shared
-  sideways-first push algorithm rather than silently overlapping.
+  directional, pin-aware solver rather than silently overlapping.
 - Mobile ignores exact grid coordinates and stacks by normalized module order.
 - Invalid saved coordinates or retired module rows are ignored or safely
   normalized on read instead of breaking public profiles.
 - Owner customization is now an inline canvas edit mode with a desktop left
-  panel, mobile bottom sheet, preview, save, and cancel. It does not revive the
+  panel, mobile stacked editor, preview, save, and cancel. It does not revive the
   retired large customization modal.
 - Module editing is local to the selected module where possible: size,
   visibility, profile info, Connections, text, and featured content selection
@@ -950,13 +954,15 @@ interaction model:
 
 - Desktop editing uses a compact left panel for module library, removed
   modules, integration status, background media, and Done/Cancel. Mobile uses a
-  bottom sheet.
+  stacked editor.
 - Selected modules expose local controls in or attached to the module. Public
   link navigation is suppressed while editing unless the owner explicitly uses a
   preview/open-link control.
-- Collision resolution is sideways-first: visible colliders try same-row right,
-  then same-row left, then downward rows by nearby columns. There is no
-  wrap-to-top fallback. Client draft normalization must use the same 6 x 12
+- Collision resolution is directional and pin-aware: the anchor claims the
+  requested valid target, pinned modules stay fixed, colliders move after
+  half-overlap on the active axis, and the solver tries the opposite drag
+  direction before nearby perpendicular and nearest-row fallback. There is no
+  wrap-to-top behavior. Client draft normalization must use the same 6 x 12
   bounds as the server so large lower-row modules do not jump when editing
   starts.
 - Public and non-edit module chrome should stay light: the grid provides the
@@ -965,9 +971,10 @@ interaction model:
   Dense content modules can still earn a subtle contained surface: Activity and
   Gallery keep a glass background publicly so scrollable feeds and image mosaics
   remain readable over profile backgrounds.
-- Desktop canvas rows are fixed to the grid row unit instead of growing with
-  module content. Activity feed/reply overflow must stay inside the module's
-  internal scroller so neighboring modules keep their selected spans.
+- Desktop canvas rows are measured from the live six-column canvas width and
+  fixed to a square grid row unit instead of growing with module content.
+  Activity feed/reply overflow must stay inside the module's internal scroller
+  so neighboring modules keep their selected spans.
 - The raw span set remains in use until a later semantic-label pass maps sizes
   to names such as small, medium, and large. A 2026-06-17 mocked size audit
   renders every currently allowed module/span one at a time and checks for
@@ -1038,10 +1045,10 @@ arbitrary embeds, or new schema:
 - Iframes and embeds are not enabled in P2. Module config validation still
   rejects unsupported embed/iframe/script-like fields and no public renderer
   executes user-provided HTML, CSS, JavaScript, or arbitrary iframe markup.
-- The canvas remains a controlled six-column desktop grid with a nine-row
-  budget convention and allowlisted spans up to `3x3`. Mobile remains a single
-  ordered stack. Activity remains capped at three grid rows with internal body
-  scrolling when content overflows.
+- The current canvas is a controlled six-column, twelve-row desktop grid with
+  square cells and allowlisted spans up to `6x5` for rich creator layouts.
+  Mobile remains a single ordered stack. Activity can use taller spans while
+  keeping internal body scrolling when content overflows.
 
 Deferred to P3:
 

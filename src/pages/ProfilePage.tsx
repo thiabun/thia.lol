@@ -10,6 +10,7 @@ import {
   Link2,
   MessageCircle,
   Music2,
+  Pin,
   Plus,
   Radio,
   Repeat2,
@@ -128,6 +129,7 @@ import type {
   Post,
   Profile,
   ProfileBackgroundBlur,
+  ProfileCanvasMovementContext,
   ProfileConnectionPlatform,
   ProfileExternalConnection,
   ProfileIntegrationCard,
@@ -196,6 +198,9 @@ export function ProfilePage() {
   >();
   const [selectedCanvasModuleId, setSelectedCanvasModuleId] = useState<
     number | undefined
+  >();
+  const [canvasMovementContext, setCanvasMovementContext] = useState<
+    ProfileCanvasMovementContext | undefined
   >();
   const [profileIntegrations, setProfileIntegrations] =
     useState<ProfileIntegrationsResult | undefined>();
@@ -576,6 +581,7 @@ export function ProfilePage() {
       setDraftBackgroundBlur(profile.profileBackgroundBlur);
       setDraftProfile(profile);
       setSelectedCanvasModuleId(undefined);
+      setCanvasMovementContext(undefined);
       setCanvasEditing(true);
     } catch (error) {
       setCanvasError(
@@ -624,6 +630,7 @@ export function ProfilePage() {
     setDraftModules([]);
     setDeletedDraftModules([]);
     setSelectedCanvasModuleId(undefined);
+    setCanvasMovementContext(undefined);
     setDraftBackgroundBlur(profile?.profileBackgroundBlur ?? "medium");
     setDraftProfile(undefined);
     setProfileDraftUploading(undefined);
@@ -748,6 +755,7 @@ export function ProfilePage() {
               canvasVersion: 1,
               anchorModuleId: anchorModuleIdForSave,
               backgroundBlur: draftBackgroundBlur,
+              movementContext: canvasMovementContext ?? null,
               modules: modulesForSave
                 .filter((module) => module.id > 0)
                 .map((module) =>
@@ -787,6 +795,7 @@ export function ProfilePage() {
       setDraftBackgroundBlur(canvas.backgroundBlur);
       setCanvasEditing(false);
       setSelectedCanvasModuleId(undefined);
+      setCanvasMovementContext(undefined);
       setDraftProfile(undefined);
     } catch (error) {
       setCanvasError(
@@ -822,17 +831,20 @@ export function ProfilePage() {
         moduleId,
       ),
     );
+    setCanvasMovementContext(undefined);
   }
 
   function handleCanvasModuleLayoutChange(
     moduleId: number,
     layout: ProfileModuleLayout,
+    movementContext?: ProfileCanvasMovementContext,
   ) {
     if (!profile) {
       return;
     }
 
     setSelectedCanvasModuleId(moduleId);
+    setCanvasMovementContext(movementContext);
     setDraftModules((modules) =>
       pushProfileCanvasModules(
         profile,
@@ -846,6 +858,30 @@ export function ProfilePage() {
         ),
         profileLayoutPreset,
         moduleId,
+        movementContext,
+      ),
+    );
+  }
+
+  function handleCanvasModulePinnedChange(moduleId: number, pinned: boolean) {
+    if (!profile) {
+      return;
+    }
+
+    setCanvasMovementContext(undefined);
+    setDraftModules((modules) =>
+      pushProfileCanvasModules(
+        profile,
+        modules.map((module) =>
+          module.id === moduleId
+            ? {
+                ...module,
+                pinned,
+              }
+            : module,
+        ),
+        profileLayoutPreset,
+        undefined,
       ),
     );
   }
@@ -1383,6 +1419,9 @@ export function ProfilePage() {
                       onLayoutChange={(layout) =>
                         handleCanvasModuleLayoutChange(module.id, layout)
                       }
+                      onPinnedChange={(pinned) =>
+                        handleCanvasModulePinnedChange(module.id, pinned)
+                      }
                       onProfileDraftChange={handleDraftProfileChange}
                       onProfileImageUpload={handleProfileImageDraftSelection}
                       onResolveIntegration={handleResolveIntegrationMetadata}
@@ -1743,6 +1782,7 @@ function upsertProfileModuleLinks(
       },
       visibility: "public",
       position: 2,
+      pinned: false,
       layout: null,
       status: "active",
       schemaVersion: 1,
@@ -1883,6 +1923,7 @@ function createSyntheticProfileInfoModule(profile: Profile | undefined): Profile
     },
     visibility: "public",
     position: 0,
+    pinned: false,
     status: "active",
     schemaVersion: 1,
     createdAt: null,
@@ -1936,51 +1977,97 @@ function pushProfileCanvasModules(
   modules: ProfileModule[],
   layoutPreset: ProfileLayoutPreset,
   anchorModuleId?: number,
+  movementContext?: ProfileCanvasMovementContext,
 ): ProfileModule[] {
   const normalized = modules.map((module) =>
     module.type === "profile_info" ? normalizeProfileInfoModule(profile, module) : module,
   );
-  const anchor = normalized.find((module) => module.id === anchorModuleId);
   const visibleModules = normalized
     .filter((module) => module.visibility === "public" || module.type === "profile_info")
-    .sort((first, second) => {
-      if (anchor) {
-        if (first.id === anchor.id && second.id !== anchor.id) {
-          return -1;
-        }
+    .map((module, index) => profileCanvasModuleWithRequestedLayout(module, layoutPreset, index))
+    .sort(profileCanvasModuleSort);
+  const hiddenModules = normalized.filter(
+    (module) => module.visibility !== "public" && module.type !== "profile_info",
+  );
+  const anchor = visibleModules.find((module) => module.id === anchorModuleId);
+  const occupied = new Set<string>();
+  const placed = new Map<number, ProfileModule>();
+  let anchorLayout: ProfileModuleLayout | undefined;
 
-        if (second.id === anchor.id && first.id !== anchor.id) {
-          return 1;
+  visibleModules.forEach((module) => {
+    if (!module.pinned || !module.layout) {
+      return;
+    }
+
+    if (!profileModuleLayoutFits(module.layout, occupied)) {
+      placed.set(module.id, module);
+      return;
+    }
+
+    occupyProfileModuleLayout(module.layout, occupied);
+    placed.set(module.id, module);
+  });
+
+  if (anchor && !placed.has(anchor.id) && anchor.layout) {
+    const layout = findProfileCanvasAnchorLayout(
+      anchor,
+      visibleModules,
+      occupied,
+      movementContext,
+    );
+
+    anchorLayout = layout ?? anchor.layout;
+
+    if (layout) {
+      occupyProfileModuleLayout(layout, occupied);
+    }
+
+    placed.set(anchor.id, { ...anchor, layout: anchorLayout });
+  }
+
+  const movableModules = visibleModules
+    .filter((module) => !placed.has(module.id))
+    .sort((first, second) => {
+      if (anchorLayout && movementContext) {
+        const firstIntent = profileCanvasDisplacementIntent(
+          anchorLayout,
+          first.layout,
+          movementContext,
+        );
+        const secondIntent = profileCanvasDisplacementIntent(
+          anchorLayout,
+          second.layout,
+          movementContext,
+        );
+
+        if (Boolean(firstIntent) !== Boolean(secondIntent)) {
+          return firstIntent ? -1 : 1;
         }
       }
 
       return profileCanvasModuleSort(first, second);
     });
-  const hiddenModules = normalized.filter(
-    (module) => module.visibility !== "public" && module.type !== "profile_info",
-  );
-  const occupied = new Set<string>();
-  const placed = new Map<number, ProfileModule>();
 
-  visibleModules.forEach((module, index) => {
-    const span = profileModuleGridSpan(module, layoutPreset, index);
-    const requestedLayout = clampProfileModuleLayout({
-      column: module.layout?.column ?? 1,
-      row: module.layout?.row ?? 1,
-      colSpan: span.columns,
-      rowSpan: span.rows,
-    });
-    const layout = profileModuleLayoutFits(requestedLayout, occupied)
-      ? requestedLayout
-      : findProfileModuleNextLayout(requestedLayout, occupied);
+  movableModules.forEach((module) => {
+    const requestedLayout = module.layout;
 
-    if (!layout) {
-      placed.set(module.id, { ...module, layout: requestedLayout });
+    if (!requestedLayout) {
+      placed.set(module.id, module);
       return;
     }
 
-    occupyProfileModuleLayout(layout, occupied);
-    placed.set(module.id, { ...module, layout });
+    const intent = anchorLayout && movementContext
+      ? profileCanvasDisplacementIntent(anchorLayout, requestedLayout, movementContext)
+      : undefined;
+    const layout = profileModuleLayoutFits(requestedLayout, occupied)
+      ? requestedLayout
+      : findProfileModuleNextLayout(requestedLayout, occupied, intent);
+
+    if (layout) {
+      occupyProfileModuleLayout(layout, occupied);
+    }
+
+    placed.set(module.id, { ...module, layout: layout ?? requestedLayout });
   });
 
   hiddenModules.forEach((module) => {
@@ -1990,6 +2077,25 @@ function pushProfileCanvasModules(
   return normalized
     .map((module) => placed.get(module.id) ?? module)
     .sort(profileCanvasModuleSort);
+}
+
+function profileCanvasModuleWithRequestedLayout(
+  module: ProfileModule,
+  layoutPreset: ProfileLayoutPreset,
+  index: number,
+): ProfileModule {
+  const span = profileModuleGridSpan(module, layoutPreset, index);
+  const layout = clampProfileModuleLayout({
+    column: module.layout?.column ?? 1,
+    row: module.layout?.row ?? 1,
+    colSpan: span.columns,
+    rowSpan: span.rows,
+  });
+
+  return {
+    ...module,
+    layout,
+  };
 }
 
 function profileModuleCanvasInput(
@@ -2014,6 +2120,7 @@ function profileModuleCanvasInput(
     row: layout.row,
     colSpan: layout.colSpan,
     rowSpan: layout.rowSpan,
+    pinned: module.pinned === true,
     visible: module.type === "profile_info" || module.visibility === "public",
   };
 }
@@ -2049,34 +2156,266 @@ function findProfileModuleDefaultLayout(
   };
 }
 
+function findProfileCanvasAnchorLayout(
+  anchor: ProfileModule,
+  visibleModules: ProfileModule[],
+  fixedOccupied: Set<string>,
+  movementContext?: ProfileCanvasMovementContext,
+): ProfileModuleLayout | undefined {
+  const targetLayout = anchor.layout;
+
+  if (!targetLayout) {
+    return undefined;
+  }
+
+  if (!movementContext) {
+    return profileModuleLayoutFits(targetLayout, fixedOccupied)
+      ? targetLayout
+      : findProfileModuleNextLayout(targetLayout, fixedOccupied);
+  }
+
+  if (!profileModuleLayoutFits(targetLayout, fixedOccupied)) {
+    return findProfileModuleNextLayout(
+      targetLayout,
+      fixedOccupied,
+      profileCanvasAnchorIntent(movementContext),
+    );
+  }
+
+  if (!profileCanvasAnchorCrossedCollisionHalf(targetLayout, visibleModules, movementContext)) {
+    const fromLayout = clampProfileModuleLayout({
+      ...targetLayout,
+      column: movementContext.from.column,
+      row: movementContext.from.row,
+    });
+
+    if (profileModuleLayoutFits(fromLayout, fixedOccupied)) {
+      return fromLayout;
+    }
+  }
+
+  return targetLayout;
+}
+
+function profileCanvasAnchorCrossedCollisionHalf(
+  anchorLayout: ProfileModuleLayout,
+  visibleModules: ProfileModule[],
+  movementContext: ProfileCanvasMovementContext,
+): boolean {
+  for (const module of visibleModules) {
+    if (
+      !module.layout ||
+      module.id === movementContext.anchorModuleId ||
+      module.pinned ||
+      module.visibility !== "public"
+    ) {
+      continue;
+    }
+
+    if (!profileModuleLayoutsIntersect(anchorLayout, module.layout)) {
+      continue;
+    }
+
+    if (!profileCanvasDisplacementIntent(anchorLayout, module.layout, movementContext)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function profileCanvasAnchorIntent(
+  movementContext: ProfileCanvasMovementContext,
+): ProfileCanvasMoveIntent | undefined {
+  const deltaColumn = movementContext.to.column - movementContext.from.column;
+  const deltaRow = movementContext.to.row - movementContext.from.row;
+
+  if (Math.abs(deltaColumn) >= Math.abs(deltaRow) && deltaColumn !== 0) {
+    return { dx: deltaColumn > 0 ? 1 : -1, dy: 0 };
+  }
+
+  if (deltaRow !== 0) {
+    return { dx: 0, dy: deltaRow > 0 ? 1 : -1 };
+  }
+
+  return undefined;
+}
+
+type ProfileCanvasMoveIntent = {
+  dx: -1 | 0 | 1;
+  dy: -1 | 0 | 1;
+};
+
+function profileCanvasDisplacementIntent(
+  anchorLayout: ProfileModuleLayout,
+  layout: ProfileModuleLayout | null | undefined,
+  movementContext: ProfileCanvasMovementContext,
+): ProfileCanvasMoveIntent | undefined {
+  if (!layout || !profileModuleLayoutsIntersect(anchorLayout, layout)) {
+    return undefined;
+  }
+
+  const deltaColumn = movementContext.to.column - movementContext.from.column;
+  const deltaRow = movementContext.to.row - movementContext.from.row;
+
+  if (Math.abs(deltaColumn) >= Math.abs(deltaRow) && deltaColumn !== 0) {
+    const overlap = profileModuleAxisOverlap(anchorLayout, layout, "column");
+
+    if (overlap * 2 <= layout.colSpan) {
+      return undefined;
+    }
+
+    return { dx: deltaColumn > 0 ? -1 : 1, dy: 0 };
+  }
+
+  if (deltaRow !== 0) {
+    const overlap = profileModuleAxisOverlap(anchorLayout, layout, "row");
+
+    if (overlap * 2 <= layout.rowSpan) {
+      return undefined;
+    }
+
+    return { dx: 0, dy: deltaRow > 0 ? -1 : 1 };
+  }
+
+  return undefined;
+}
+
+function profileModuleLayoutsIntersect(
+  first: ProfileModuleLayout,
+  second: ProfileModuleLayout,
+): boolean {
+  return (
+    first.column < second.column + second.colSpan &&
+    first.column + first.colSpan > second.column &&
+    first.row < second.row + second.rowSpan &&
+    first.row + first.rowSpan > second.row
+  );
+}
+
+function profileModuleAxisOverlap(
+  first: ProfileModuleLayout,
+  second: ProfileModuleLayout,
+  axis: "column" | "row",
+): number {
+  if (axis === "column") {
+    const start = Math.max(first.column, second.column);
+    const end = Math.min(first.column + first.colSpan - 1, second.column + second.colSpan - 1);
+
+    return Math.max(0, end - start + 1);
+  }
+
+  const start = Math.max(first.row, second.row);
+  const end = Math.min(first.row + first.rowSpan - 1, second.row + second.rowSpan - 1);
+
+  return Math.max(0, end - start + 1);
+}
+
 function findProfileModuleNextLayout(
   requestedLayout: ProfileModuleLayout,
   occupied: Set<string>,
+  intent?: ProfileCanvasMoveIntent,
 ): ProfileModuleLayout | undefined {
   const maxColumn = PROFILE_CANVAS_COLUMNS - requestedLayout.colSpan + 1;
   const maxRow = PROFILE_CANVAS_ROWS - requestedLayout.rowSpan + 1;
   const baseColumn = Math.min(maxColumn, Math.max(1, requestedLayout.column));
   const baseRow = Math.min(maxRow, Math.max(1, requestedLayout.row));
+  const candidates = [
+    ...(intent
+      ? profileCanvasDirectionalCandidates(baseColumn, baseRow, maxColumn, maxRow, intent)
+      : []),
+    ...profileCanvasNearestCandidates(baseColumn, baseRow, maxColumn, maxRow),
+  ];
+  const seen = new Set<string>();
 
-  for (const column of profileCanvasSameRowSidewaysColumns(baseColumn, maxColumn)) {
-    const candidate = { ...requestedLayout, column, row: baseRow };
+  for (const candidatePoint of candidates) {
+    const key = `${candidatePoint.column}:${candidatePoint.row}`;
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+
+    const candidate = {
+      ...requestedLayout,
+      column: candidatePoint.column,
+      row: candidatePoint.row,
+    };
 
     if (profileModuleLayoutFits(candidate, occupied)) {
       return candidate;
     }
   }
 
-  for (let row = baseRow + 1; row <= maxRow; row += 1) {
-    for (const column of profileCanvasNearbyColumns(baseColumn, maxColumn)) {
-      const candidate = { ...requestedLayout, column, row };
+  return undefined;
+}
 
-      if (profileModuleLayoutFits(candidate, occupied)) {
-        return candidate;
+function profileCanvasDirectionalCandidates(
+  baseColumn: number,
+  baseRow: number,
+  maxColumn: number,
+  maxRow: number,
+  intent: ProfileCanvasMoveIntent,
+): { column: number; row: number }[] {
+  const candidates: { column: number; row: number }[] = [];
+
+  if (intent.dx !== 0) {
+    for (
+      let column = baseColumn + intent.dx;
+      column >= 1 && column <= maxColumn;
+      column += intent.dx
+    ) {
+      candidates.push({ column, row: baseRow });
+    }
+
+    for (const row of profileCanvasNearbyRows(baseRow, maxRow)) {
+      if (row !== baseRow) {
+        candidates.push({ column: baseColumn, row });
       }
     }
   }
 
-  return undefined;
+  if (intent.dy !== 0) {
+    for (
+      let row = baseRow + intent.dy;
+      row >= 1 && row <= maxRow;
+      row += intent.dy
+    ) {
+      candidates.push({ column: baseColumn, row });
+    }
+
+    for (const column of profileCanvasNearbyColumns(baseColumn, maxColumn)) {
+      if (column !== baseColumn) {
+        candidates.push({ column, row: baseRow });
+      }
+    }
+  }
+
+  return candidates;
+}
+
+function profileCanvasNearestCandidates(
+  baseColumn: number,
+  baseRow: number,
+  maxColumn: number,
+  maxRow: number,
+): { column: number; row: number }[] {
+  const candidates = profileCanvasSameRowSidewaysColumns(baseColumn, maxColumn).map(
+    (column) => ({ column, row: baseRow }),
+  );
+
+  for (const row of profileCanvasNearbyRows(baseRow, maxRow)) {
+    if (row === baseRow) {
+      continue;
+    }
+
+    for (const column of profileCanvasNearbyColumns(baseColumn, maxColumn)) {
+      candidates.push({ column, row });
+    }
+  }
+
+  return candidates;
 }
 
 function profileCanvasSameRowSidewaysColumns(
@@ -2085,12 +2424,17 @@ function profileCanvasSameRowSidewaysColumns(
 ): number[] {
   const columns: number[] = [];
 
-  for (let column = baseColumn + 1; column <= maxColumn; column += 1) {
-    columns.push(column);
-  }
+  for (let distance = 1; distance <= maxColumn; distance += 1) {
+    const right = baseColumn + distance;
+    const left = baseColumn - distance;
 
-  for (let column = baseColumn - 1; column >= 1; column -= 1) {
-    columns.push(column);
+    if (right <= maxColumn) {
+      columns.push(right);
+    }
+
+    if (left >= 1) {
+      columns.push(left);
+    }
   }
 
   return columns;
@@ -2113,6 +2457,25 @@ function profileCanvasNearbyColumns(baseColumn: number, maxColumn: number): numb
   }
 
   return [...new Set(columns)];
+}
+
+function profileCanvasNearbyRows(baseRow: number, maxRow: number): number[] {
+  const rows = [baseRow];
+
+  for (let distance = 1; distance <= maxRow; distance += 1) {
+    const down = baseRow + distance;
+    const up = baseRow - distance;
+
+    if (down <= maxRow) {
+      rows.push(down);
+    }
+
+    if (up >= 1) {
+      rows.push(up);
+    }
+  }
+
+  return [...new Set(rows)];
 }
 
 function profileModuleLayoutFits(
@@ -2422,6 +2785,7 @@ function ProfileCanvasEditorToolbar({
           : "sticky top-20 hidden max-h-[calc(100dvh-6rem)] max-w-none lg:flex",
       )}
       data-testid="profile-canvas-editor"
+      data-profile-canvas-edit-mode={useMobilePanel ? "stacked" : "grid"}
       data-profile-canvas-panel="left"
     >
       <div className="flex shrink-0 flex-col border-b border-line/70 p-3">
@@ -2754,6 +3118,7 @@ function ProfileSelectedModuleControls({
   onConfigChange,
   onDeleteModule,
   onLayoutChange,
+  onPinnedChange,
   onProfileDraftChange,
   onProfileImageUpload,
   onResolveIntegration,
@@ -2771,6 +3136,7 @@ function ProfileSelectedModuleControls({
   onConfigChange: (config: ProfileModuleConfig) => void;
   onDeleteModule: () => void;
   onLayoutChange: (layout: ProfileModuleLayout) => void;
+  onPinnedChange: (pinned: boolean) => void;
   onProfileDraftChange: (updater: (profile: Profile) => Profile) => void;
   onProfileImageUpload: (
     file: File,
@@ -2800,6 +3166,7 @@ function ProfileSelectedModuleControls({
     profileGridModuleSpanSize(layout.colSpan, layout.rowSpan) ?? size;
   const canDelete = module.type !== "profile_info";
   const visible = module.visibility === "public";
+  const pinned = module.pinned === true;
 
   function updateSpan(nextSize: ProfileGridModuleSize) {
     const span = profileGridModuleSizeSpan(nextSize);
@@ -2862,6 +3229,27 @@ function ProfileSelectedModuleControls({
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs font-semibold uppercase text-muted">Size</p>
             <div className="relative z-30 flex shrink-0 gap-1">
+              <button
+                type="button"
+                className="grid size-8 place-items-center rounded-control border border-line bg-canvas/55 text-muted transition hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-accent aria-pressed:text-accent-ink"
+                aria-label={pinned ? "Unpin module" : "Pin module"}
+                aria-pressed={pinned}
+                title={pinned ? "Unpin module" : "Pin module"}
+                data-profile-edit-control="true"
+                data-testid="profile-canvas-pin-module-button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onPinnedChange(!pinned);
+                }}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onPinnedChange(!pinned);
+                }}
+              >
+                <Pin aria-hidden="true" size={15} />
+              </button>
               <button
                 type="button"
                 className="grid size-8 place-items-center rounded-control border border-line bg-canvas/55 text-muted transition hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-50"

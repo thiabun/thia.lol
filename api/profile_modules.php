@@ -484,7 +484,7 @@ function profile_canvas_update(): void
 
     $body = request_json_body();
     profile_module_require_object($body, 'JSON body');
-    profile_module_reject_unknown_keys($body, ['canvasVersion', 'backgroundBlur', 'modules', 'anchorModuleId']);
+    profile_module_reject_unknown_keys($body, ['canvasVersion', 'backgroundBlur', 'modules', 'anchorModuleId', 'movementContext']);
 
     $hasBlur = array_key_exists('backgroundBlur', $body);
     $hasModules = array_key_exists('modules', $body);
@@ -501,8 +501,11 @@ function profile_canvas_update(): void
     $anchorModuleId = $hasModules
         ? profile_canvas_anchor_module_id($body['anchorModuleId'] ?? null)
         : null;
+    $movementContext = $hasModules
+        ? profile_canvas_movement_context($body['movementContext'] ?? null, $anchorModuleId)
+        : null;
     $placements = $hasModules
-        ? profile_canvas_module_placements($body['modules'], $userId, $anchorModuleId)
+        ? profile_canvas_module_placements($body['modules'], $userId, $anchorModuleId, $movementContext)
         : null;
 
     $pdo = db();
@@ -569,7 +572,8 @@ function profile_canvas_storage_exists(): bool
         && database_column_exists('profile_modules', 'grid_column')
         && database_column_exists('profile_modules', 'grid_row')
         && database_column_exists('profile_modules', 'grid_col_span')
-        && database_column_exists('profile_modules', 'grid_row_span');
+        && database_column_exists('profile_modules', 'grid_row_span')
+        && database_column_exists('profile_modules', 'grid_pinned');
 }
 
 function profile_canvas_profile_preferences(int $userId): array
@@ -637,7 +641,49 @@ function profile_canvas_anchor_module_id(mixed $value): ?int
     return profile_module_id($value);
 }
 
-function profile_canvas_module_placements(mixed $value, int $userId, ?int $anchorModuleId): array
+function profile_canvas_movement_context(mixed $value, ?int $anchorModuleId): ?array
+{
+    if ($value === null) {
+        return null;
+    }
+
+    if (!is_array($value) || array_is_list($value)) {
+        json_error('Canvas movement context must be an object.', 422);
+    }
+
+    profile_module_reject_unknown_keys($value, ['anchorModuleId', 'from', 'to']);
+    $contextAnchorModuleId = profile_canvas_anchor_module_id($value['anchorModuleId'] ?? null);
+
+    if ($contextAnchorModuleId === null) {
+        json_error('Canvas movement context anchor is invalid.', 422);
+    }
+
+    if ($anchorModuleId !== null && $contextAnchorModuleId !== $anchorModuleId) {
+        json_error('Canvas movement context anchor does not match the canvas anchor.', 422);
+    }
+
+    return [
+        'anchorModuleId' => $contextAnchorModuleId,
+        'from' => profile_canvas_movement_point($value['from'] ?? null, 'from'),
+        'to' => profile_canvas_movement_point($value['to'] ?? null, 'to'),
+    ];
+}
+
+function profile_canvas_movement_point(mixed $value, string $label): array
+{
+    if (!is_array($value) || array_is_list($value)) {
+        json_error("Canvas movement {$label} point is invalid.", 422);
+    }
+
+    profile_module_reject_unknown_keys($value, ['column', 'row']);
+
+    return [
+        'column' => profile_canvas_position_value($value['column'] ?? null, 'Column', PROFILE_CANVAS_COLUMNS),
+        'row' => profile_canvas_position_value($value['row'] ?? null, 'Row', PROFILE_CANVAS_ROWS),
+    ];
+}
+
+function profile_canvas_module_placements(mixed $value, int $userId, ?int $anchorModuleId, ?array $movementContext = null): array
 {
     if (!is_array($value) || !array_is_list($value)) {
         json_error('Canvas modules must be an array.', 422);
@@ -661,7 +707,7 @@ function profile_canvas_module_placements(mixed $value, int $userId, ?int $ancho
             json_error('Canvas module placement must be an object.', 422);
         }
 
-        profile_module_reject_unknown_keys($item, ['id', 'column', 'row', 'colSpan', 'rowSpan', 'visible']);
+        profile_module_reject_unknown_keys($item, ['id', 'column', 'row', 'colSpan', 'rowSpan', 'visible', 'pinned']);
 
         $id = profile_module_id($item['id'] ?? null);
 
@@ -676,16 +722,17 @@ function profile_canvas_module_placements(mixed $value, int $userId, ?int $ancho
         $record = $records[$id];
         $type = (string) $record['type'];
         $visible = profile_canvas_visibility($item['visible'] ?? true);
+        $pinned = profile_canvas_pinned($item['pinned'] ?? false);
 
         if ($type === PROFILE_INFO_MODULE_TYPE && !$visible) {
             json_error('Profile info cannot be hidden.', 422);
         }
 
-        $placements[] = profile_canvas_module_placement($item, $record, $visible);
+        $placements[] = profile_canvas_module_placement($item, $record, $visible, $pinned);
         $seen[$id] = true;
     }
 
-    $placements = profile_canvas_push_collisions($placements, $anchorModuleId);
+    $placements = profile_canvas_push_collisions($placements, $anchorModuleId, $movementContext);
 
     usort(
         $placements,
@@ -718,7 +765,7 @@ function profile_canvas_module_placements(mixed $value, int $userId, ?int $ancho
 function profile_canvas_owner_module_records(int $userId): array
 {
     $statement = db_query(
-        'SELECT id, type, visibility, status, position, grid_column, grid_row, grid_col_span, grid_row_span
+        'SELECT id, type, visibility, status, position, grid_column, grid_row, grid_col_span, grid_row_span, grid_pinned
          FROM profile_modules
          WHERE user_id = :user_id
            AND status <> :deleted_status
@@ -742,7 +789,7 @@ function profile_canvas_owner_module_records(int $userId): array
     return $records;
 }
 
-function profile_canvas_module_placement(array $item, array $record, bool $visible): array
+function profile_canvas_module_placement(array $item, array $record, bool $visible, bool $pinned = false): array
 {
     $type = (string) $record['type'];
     $colSpan = profile_canvas_span_value($item['colSpan'] ?? null, 'Column span');
@@ -766,6 +813,7 @@ function profile_canvas_module_placement(array $item, array $record, bool $visib
         'colSpan' => $colSpan,
         'rowSpan' => $rowSpan,
         'visible' => $visible,
+        'pinned' => $pinned,
     ];
 }
 
@@ -776,6 +824,15 @@ function profile_canvas_visibility(mixed $value): bool
     }
 
     json_error('Canvas module visibility is invalid.', 422);
+}
+
+function profile_canvas_pinned(mixed $value): bool
+{
+    if (is_bool($value)) {
+        return $value;
+    }
+
+    json_error('Canvas module pin state is invalid.', 422);
 }
 
 function profile_canvas_span_value(mixed $value, string $label): int
@@ -839,12 +896,14 @@ function profile_canvas_normalize_span(string $type, int $colSpan, int $rowSpan)
     return [$colSpan, $rowSpan];
 }
 
-function profile_canvas_push_collisions(array $placements, ?int $anchorModuleId): array
+function profile_canvas_push_collisions(array $placements, ?int $anchorModuleId, ?array $movementContext = null): array
 {
     $visible = [];
     $hidden = [];
 
     foreach ($placements as $placement) {
+        $placement['pinned'] = profile_module_grid_pinned($placement['pinned'] ?? false);
+
         if ($placement['visible']) {
             $visible[] = $placement;
         } else {
@@ -852,42 +911,89 @@ function profile_canvas_push_collisions(array $placements, ?int $anchorModuleId)
         }
     }
 
+    $anchor = null;
+
+    foreach ($visible as $placement) {
+        if ($anchorModuleId !== null && $placement['id'] === $anchorModuleId) {
+            $anchor = $placement;
+            break;
+        }
+    }
+
+    if ($anchor !== null && $movementContext !== null && $anchor['pinned']) {
+        json_error('Pinned modules must be unpinned before moving.', 422);
+    }
+
     usort(
         $visible,
-        static function (array $first, array $second) use ($anchorModuleId): int {
-            if ($anchorModuleId !== null) {
-                if ($first['id'] === $anchorModuleId && $second['id'] !== $anchorModuleId) {
-                    return -1;
-                }
-
-                if ($second['id'] === $anchorModuleId && $first['id'] !== $anchorModuleId) {
-                    return 1;
-                }
-            }
-
-            $rowCompare = $first['row'] <=> $second['row'];
-
-            if ($rowCompare !== 0) {
-                return $rowCompare;
-            }
-
-            $columnCompare = $first['column'] <=> $second['column'];
-
-            if ($columnCompare !== 0) {
-                return $columnCompare;
-            }
-
-            return profile_module_default_sort_order($first['type']) <=> profile_module_default_sort_order($second['type']);
-        }
+        static fn (array $first, array $second): int => profile_canvas_placement_sort($first, $second)
     );
 
     $occupied = [];
     $pushed = [];
+    $placedIds = [];
 
     foreach ($visible as $placement) {
+        if (!$placement['pinned']) {
+            continue;
+        }
+
+        if (!profile_canvas_layout_fits($placement, $occupied)) {
+            json_error('Pinned canvas modules overlap. Unpin or move one module before saving.', 422);
+        }
+
+        profile_canvas_occupy_layout($placement, $occupied);
+        $pushed[] = $placement;
+        $placedIds[$placement['id']] = true;
+    }
+
+    $anchorLayout = null;
+
+    if ($anchor !== null && !isset($placedIds[$anchor['id']])) {
+        $anchorLayout = profile_canvas_anchor_layout(
+            $anchor,
+            $visible,
+            $occupied,
+            $movementContext
+        );
+
+        if ($anchorLayout === null) {
+            json_error('Canvas layout does not fit the 6 by 12 grid.', 422);
+        }
+
+        profile_canvas_occupy_layout($anchorLayout, $occupied);
+        $pushed[] = $anchorLayout;
+        $placedIds[$anchor['id']] = true;
+    }
+
+    $movable = array_values(array_filter(
+        $visible,
+        static fn (array $placement): bool => !isset($placedIds[$placement['id']])
+    ));
+
+    usort(
+        $movable,
+        static function (array $first, array $second) use ($anchorLayout, $movementContext): int {
+            if ($anchorLayout !== null && $movementContext !== null) {
+                $firstIntent = profile_canvas_displacement_intent($anchorLayout, $first, $movementContext);
+                $secondIntent = profile_canvas_displacement_intent($anchorLayout, $second, $movementContext);
+
+                if (($firstIntent !== null) !== ($secondIntent !== null)) {
+                    return $firstIntent !== null ? -1 : 1;
+                }
+            }
+
+            return profile_canvas_placement_sort($first, $second);
+        }
+    );
+
+    foreach ($movable as $placement) {
+        $intent = $anchorLayout !== null && $movementContext !== null
+            ? profile_canvas_displacement_intent($anchorLayout, $placement, $movementContext)
+            : null;
         $layout = profile_canvas_layout_fits($placement, $occupied)
             ? $placement
-            : profile_canvas_next_available_layout($placement, $occupied);
+            : profile_canvas_next_available_layout($placement, $occupied, $intent);
 
         if ($layout === null) {
             json_error('Canvas layout does not fit the 6 by 12 grid.', 422);
@@ -900,18 +1006,187 @@ function profile_canvas_push_collisions(array $placements, ?int $anchorModuleId)
     return array_merge($pushed, $hidden);
 }
 
-function profile_canvas_next_available_layout(array $placement, array $occupied): ?array
+function profile_canvas_placement_sort(array $first, array $second): int
+{
+    $rowCompare = $first['row'] <=> $second['row'];
+
+    if ($rowCompare !== 0) {
+        return $rowCompare;
+    }
+
+    $columnCompare = $first['column'] <=> $second['column'];
+
+    if ($columnCompare !== 0) {
+        return $columnCompare;
+    }
+
+    return profile_module_default_sort_order($first['type']) <=> profile_module_default_sort_order($second['type']);
+}
+
+function profile_canvas_anchor_layout(array $anchor, array $visible, array $fixedOccupied, ?array $movementContext): ?array
+{
+    if ($movementContext === null) {
+        return profile_canvas_layout_fits($anchor, $fixedOccupied)
+            ? $anchor
+            : profile_canvas_next_available_layout($anchor, $fixedOccupied);
+    }
+
+    $intent = profile_canvas_anchor_intent($movementContext);
+    $targetLayout = $anchor;
+
+    if (!profile_canvas_layout_fits($targetLayout, $fixedOccupied)) {
+        return profile_canvas_next_available_layout($targetLayout, $fixedOccupied, $intent);
+    }
+
+    if (!profile_canvas_anchor_crossed_collision_half($targetLayout, $visible, $movementContext)) {
+        $fromLayout = [
+            ...$targetLayout,
+            'column' => min(
+                PROFILE_CANVAS_COLUMNS - $targetLayout['colSpan'] + 1,
+                max(1, (int) $movementContext['from']['column'])
+            ),
+            'row' => min(
+                PROFILE_CANVAS_ROWS - $targetLayout['rowSpan'] + 1,
+                max(1, (int) $movementContext['from']['row'])
+            ),
+        ];
+
+        if (profile_canvas_layout_fits($fromLayout, $fixedOccupied)) {
+            return $fromLayout;
+        }
+    }
+
+    return $targetLayout;
+}
+
+function profile_canvas_anchor_crossed_collision_half(array $anchor, array $visible, array $movementContext): bool
+{
+    foreach ($visible as $placement) {
+        if ($placement['id'] === $anchor['id'] || !$placement['visible'] || $placement['pinned']) {
+            continue;
+        }
+
+        if (!profile_canvas_layout_intersects($anchor, $placement)) {
+            continue;
+        }
+
+        if (profile_canvas_displacement_intent($anchor, $placement, $movementContext) === null) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function profile_canvas_anchor_intent(array $movementContext): ?array
+{
+    $deltaColumn = (int) $movementContext['to']['column'] - (int) $movementContext['from']['column'];
+    $deltaRow = (int) $movementContext['to']['row'] - (int) $movementContext['from']['row'];
+
+    if (abs($deltaColumn) >= abs($deltaRow) && $deltaColumn !== 0) {
+        return ['dx' => $deltaColumn > 0 ? 1 : -1, 'dy' => 0];
+    }
+
+    if ($deltaRow !== 0) {
+        return ['dx' => 0, 'dy' => $deltaRow > 0 ? 1 : -1];
+    }
+
+    return null;
+}
+
+function profile_canvas_displacement_intent(array $anchor, array $placement, array $movementContext): ?array
+{
+    if (!profile_canvas_layout_intersects($anchor, $placement)) {
+        return null;
+    }
+
+    $deltaColumn = (int) $movementContext['to']['column'] - (int) $movementContext['from']['column'];
+    $deltaRow = (int) $movementContext['to']['row'] - (int) $movementContext['from']['row'];
+
+    if (abs($deltaColumn) >= abs($deltaRow) && $deltaColumn !== 0) {
+        $overlap = profile_canvas_axis_overlap($anchor, $placement, 'column');
+
+        if ($overlap * 2 <= $placement['colSpan']) {
+            return null;
+        }
+
+        return ['dx' => $deltaColumn > 0 ? -1 : 1, 'dy' => 0];
+    }
+
+    if ($deltaRow !== 0) {
+        $overlap = profile_canvas_axis_overlap($anchor, $placement, 'row');
+
+        if ($overlap * 2 <= $placement['rowSpan']) {
+            return null;
+        }
+
+        return ['dx' => 0, 'dy' => $deltaRow > 0 ? -1 : 1];
+    }
+
+    return null;
+}
+
+function profile_canvas_axis_overlap(array $first, array $second, string $axis): int
+{
+    if ($axis === 'column') {
+        $start = max($first['column'], $second['column']);
+        $end = min(
+            $first['column'] + $first['colSpan'] - 1,
+            $second['column'] + $second['colSpan'] - 1
+        );
+
+        return max(0, $end - $start + 1);
+    }
+
+    $start = max($first['row'], $second['row']);
+    $end = min(
+        $first['row'] + $first['rowSpan'] - 1,
+        $second['row'] + $second['rowSpan'] - 1
+    );
+
+    return max(0, $end - $start + 1);
+}
+
+function profile_canvas_layout_intersects(array $first, array $second): bool
+{
+    return $first['column'] < $second['column'] + $second['colSpan']
+        && $first['column'] + $first['colSpan'] > $second['column']
+        && $first['row'] < $second['row'] + $second['rowSpan']
+        && $first['row'] + $first['rowSpan'] > $second['row'];
+}
+
+function profile_canvas_next_available_layout(array $placement, array $occupied, ?array $intent = null): ?array
 {
     $maxColumn = PROFILE_CANVAS_COLUMNS - $placement['colSpan'] + 1;
     $maxRow = PROFILE_CANVAS_ROWS - $placement['rowSpan'] + 1;
     $baseColumn = min(max(1, (int) $placement['column']), $maxColumn);
     $baseRow = min(max(1, (int) $placement['row']), $maxRow);
+    $candidates = [];
 
-    foreach (profile_canvas_same_row_sideways_columns($baseColumn, $maxColumn) as $column) {
+    if ($intent !== null) {
+        foreach (profile_canvas_directional_candidates($baseColumn, $baseRow, $maxColumn, $maxRow, $intent) as $candidate) {
+            $candidates[] = $candidate;
+        }
+    }
+
+    foreach (profile_canvas_nearest_candidates($baseColumn, $baseRow, $maxColumn, $maxRow) as $candidate) {
+        $candidates[] = $candidate;
+    }
+
+    $seen = [];
+
+    foreach ($candidates as $candidatePoint) {
+        $key = "{$candidatePoint['column']}:{$candidatePoint['row']}";
+
+        if (isset($seen[$key])) {
+            continue;
+        }
+
+        $seen[$key] = true;
         $candidate = [
             ...$placement,
-            'column' => $column,
-            'row' => $baseRow,
+            'column' => $candidatePoint['column'],
+            'row' => $candidatePoint['row'],
         ];
 
         if (profile_canvas_layout_fits($candidate, $occupied)) {
@@ -919,33 +1194,82 @@ function profile_canvas_next_available_layout(array $placement, array $occupied)
         }
     }
 
-    for ($row = $baseRow + 1; $row <= $maxRow; $row++) {
-        foreach (profile_canvas_nearby_columns($baseColumn, $maxColumn) as $column) {
-            $candidate = [
-                ...$placement,
-                'column' => $column,
-                'row' => $row,
-            ];
+    return null;
+}
 
-            if (profile_canvas_layout_fits($candidate, $occupied)) {
-                return $candidate;
+function profile_canvas_directional_candidates(int $baseColumn, int $baseRow, int $maxColumn, int $maxRow, array $intent): array
+{
+    $candidates = [];
+    $dx = (int) ($intent['dx'] ?? 0);
+    $dy = (int) ($intent['dy'] ?? 0);
+
+    if ($dx !== 0) {
+        for ($column = $baseColumn + $dx; $column >= 1 && $column <= $maxColumn; $column += $dx) {
+            $candidates[] = ['column' => $column, 'row' => $baseRow];
+        }
+
+        foreach (profile_canvas_nearby_rows($baseRow, $maxRow) as $row) {
+            if ($row === $baseRow) {
+                continue;
             }
+
+            $candidates[] = ['column' => $baseColumn, 'row' => $row];
         }
     }
 
-    return null;
+    if ($dy !== 0) {
+        for ($row = $baseRow + $dy; $row >= 1 && $row <= $maxRow; $row += $dy) {
+            $candidates[] = ['column' => $baseColumn, 'row' => $row];
+        }
+
+        foreach (profile_canvas_nearby_columns($baseColumn, $maxColumn) as $column) {
+            if ($column === $baseColumn) {
+                continue;
+            }
+
+            $candidates[] = ['column' => $column, 'row' => $baseRow];
+        }
+    }
+
+    return $candidates;
+}
+
+function profile_canvas_nearest_candidates(int $baseColumn, int $baseRow, int $maxColumn, int $maxRow): array
+{
+    $candidates = [];
+
+    foreach (profile_canvas_same_row_sideways_columns($baseColumn, $maxColumn) as $column) {
+        $candidates[] = ['column' => $column, 'row' => $baseRow];
+    }
+
+    foreach (profile_canvas_nearby_rows($baseRow, $maxRow) as $row) {
+        if ($row === $baseRow) {
+            continue;
+        }
+
+        foreach (profile_canvas_nearby_columns($baseColumn, $maxColumn) as $column) {
+            $candidates[] = ['column' => $column, 'row' => $row];
+        }
+    }
+
+    return $candidates;
 }
 
 function profile_canvas_same_row_sideways_columns(int $baseColumn, int $maxColumn): array
 {
     $columns = [];
 
-    for ($column = $baseColumn + 1; $column <= $maxColumn; $column++) {
-        $columns[] = $column;
-    }
+    for ($distance = 1; $distance <= $maxColumn; $distance++) {
+        $right = $baseColumn + $distance;
+        $left = $baseColumn - $distance;
 
-    for ($column = $baseColumn - 1; $column >= 1; $column--) {
-        $columns[] = $column;
+        if ($right <= $maxColumn) {
+            $columns[] = $right;
+        }
+
+        if ($left >= 1) {
+            $columns[] = $left;
+        }
     }
 
     return $columns;
@@ -969,6 +1293,26 @@ function profile_canvas_nearby_columns(int $baseColumn, int $maxColumn): array
     }
 
     return array_values(array_unique($columns));
+}
+
+function profile_canvas_nearby_rows(int $baseRow, int $maxRow): array
+{
+    $rows = [$baseRow];
+
+    for ($distance = 1; $distance <= $maxRow; $distance++) {
+        $down = $baseRow + $distance;
+        $up = $baseRow - $distance;
+
+        if ($down <= $maxRow) {
+            $rows[] = $down;
+        }
+
+        if ($up >= 1) {
+            $rows[] = $up;
+        }
+    }
+
+    return array_values(array_unique($rows));
 }
 
 function profile_canvas_layout_fits(array $placement, array $occupied): bool
@@ -1012,6 +1356,7 @@ function profile_canvas_apply_module_placements(array $placements, int $userId):
                  grid_row = :grid_row,
                  grid_col_span = :grid_col_span,
                  grid_row_span = :grid_row_span,
+                 grid_pinned = :grid_pinned,
                  visibility = :visibility,
                  status = :status,
                  updated_at = CURRENT_TIMESTAMP()
@@ -1024,6 +1369,7 @@ function profile_canvas_apply_module_placements(array $placements, int $userId):
                 'grid_row' => $placement['row'],
                 'grid_col_span' => $placement['colSpan'],
                 'grid_row_span' => $placement['rowSpan'],
+                'grid_pinned' => $placement['pinned'] ? 1 : 0,
                 'visibility' => $placement['visible'] ? 'public' : 'hidden',
                 'status' => 'active',
                 'id' => $placement['id'],
@@ -1090,6 +1436,7 @@ function profile_canvas_existing_module_placement(array $record, int $index): ar
         'colSpan' => $span['colSpan'],
         'rowSpan' => $span['rowSpan'],
         'visible' => $type === PROFILE_INFO_MODULE_TYPE || (string) $record['visibility'] === 'public',
+        'pinned' => profile_module_grid_pinned($record['grid_pinned'] ?? null),
     ];
 }
 
@@ -1215,6 +1562,7 @@ function profile_module_payload(array $row, bool $public): ?array
         'config' => $config,
         'visibility' => (string) $row['visibility'],
         'position' => (int) $row['position'],
+        'pinned' => profile_module_grid_pinned($row['grid_pinned'] ?? null),
         'layout' => profile_module_layout_payload($row),
         'status' => (string) $row['status'],
         'schemaVersion' => (int) $row['schema_version'],
@@ -1265,6 +1613,23 @@ function profile_module_saved_grid_value(mixed $value): ?int
     }
 
     return null;
+}
+
+function profile_module_grid_pinned(mixed $value): bool
+{
+    if (is_bool($value)) {
+        return $value;
+    }
+
+    if (is_int($value)) {
+        return $value === 1;
+    }
+
+    if (is_string($value)) {
+        return $value === '1';
+    }
+
+    return false;
 }
 
 function profile_module_type_is_supported(mixed $value): bool
@@ -1655,6 +2020,7 @@ function profile_info_module_payload(int $position): array
         'config' => [],
         'visibility' => 'public',
         'position' => $position,
+        'pinned' => false,
         'layout' => null,
         'status' => 'active',
         'schemaVersion' => PROFILE_MODULE_SCHEMA_VERSION,

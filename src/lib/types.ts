@@ -203,6 +203,12 @@ export type ProfileModuleLayout = {
   rowSpan: number;
 };
 
+export type ProfileCanvasMovementContext = {
+  anchorModuleId: number;
+  from: Pick<ProfileModuleLayout, "column" | "row">;
+  to: Pick<ProfileModuleLayout, "column" | "row">;
+};
+
 export type ProfileModule = {
   id: number;
   type: ProfileModuleType;
@@ -210,6 +216,7 @@ export type ProfileModule = {
   config: ProfileModuleConfig;
   visibility: ProfileModuleVisibility;
   position: number;
+  pinned: boolean;
   layout?: ProfileModuleLayout | null;
   status: ProfileModuleStatus;
   schemaVersion: number;

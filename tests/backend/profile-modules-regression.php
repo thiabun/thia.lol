@@ -421,6 +421,15 @@ assert_php_rejected(
     'profile_canvas_module_placement(["id" => 1, "column" => 1, "row" => 1, "colSpan" => 3, "rowSpan" => 3], ["id" => 1, "type" => "music"], true);',
     'Canvas span is not allowed for this module.'
 );
+assert_true(profile_canvas_pinned(true) === true, 'boolean pinned state should be accepted');
+assert_php_rejected(
+    'profile_canvas_pinned("yes");',
+    'Canvas module pin state is invalid.'
+);
+assert_php_rejected(
+    'profile_canvas_movement_context(["anchorModuleId" => 2, "from" => ["column" => 1, "row" => 1], "to" => ["column" => 2, "row" => 1]], 1);',
+    'Canvas movement context anchor does not match the canvas anchor.'
+);
 
 $pushedPlacements = profile_canvas_push_collisions(
     [
@@ -459,9 +468,58 @@ $downwardPushPlacements = profile_canvas_push_collisions(
 $downwardPushedModule = array_values(array_filter($downwardPushPlacements, fn (array $placement): bool => $placement['id'] === 2))[0];
 assert_true($downwardPushedModule['column'] === 5 && $downwardPushedModule['row'] === 2, 'colliding module should move downward only after same-row fits fail');
 
+$directionalPushPlacements = profile_canvas_push_collisions(
+    [
+        ['id' => 1, 'type' => 'about', 'column' => 3, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 2, 'type' => 'links', 'column' => 3, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+    ],
+    1,
+    ['anchorModuleId' => 1, 'from' => ['column' => 2, 'row' => 1], 'to' => ['column' => 3, 'row' => 1]]
+);
+$directionalPushedModule = array_values(array_filter($directionalPushPlacements, fn (array $placement): bool => $placement['id'] === 2))[0];
+assert_true($directionalPushedModule['column'] === 1 && $directionalPushedModule['row'] === 1, 'collider should move opposite the drag direction after half overlap');
+
+$halfOverlapPlacements = profile_canvas_push_collisions(
+    [
+        ['id' => 1, 'type' => 'about', 'column' => 3, 'row' => 1, 'colSpan' => 1, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 2, 'type' => 'links', 'column' => 3, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+    ],
+    1,
+    ['anchorModuleId' => 1, 'from' => ['column' => 2, 'row' => 1], 'to' => ['column' => 3, 'row' => 1]]
+);
+$halfOverlapAnchor = array_values(array_filter($halfOverlapPlacements, fn (array $placement): bool => $placement['id'] === 1))[0];
+assert_true($halfOverlapAnchor['column'] === 2, 'anchor should not displace a collider before crossing half of it');
+
+$pinnedPlacements = profile_canvas_push_collisions(
+    [
+        ['id' => 1, 'type' => 'about', 'column' => 3, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 2, 'type' => 'links', 'column' => 3, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true, 'pinned' => true],
+    ],
+    1,
+    ['anchorModuleId' => 1, 'from' => ['column' => 2, 'row' => 1], 'to' => ['column' => 3, 'row' => 1]]
+);
+$pinnedModule = array_values(array_filter($pinnedPlacements, fn (array $placement): bool => $placement['id'] === 2))[0];
+$pinnedAnchor = array_values(array_filter($pinnedPlacements, fn (array $placement): bool => $placement['id'] === 1))[0];
+assert_true($pinnedModule['column'] === 3 && $pinnedModule['pinned'] === true, 'pinned module should remain fixed');
+assert_true($pinnedAnchor['column'] === 5, 'dragged module should settle past a pinned obstacle when room exists');
+
+$upwardPushPlacements = profile_canvas_push_collisions(
+    [
+        ['id' => 1, 'type' => 'about', 'column' => 5, 'row' => 12, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 2, 'type' => 'links', 'column' => 5, 'row' => 12, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 3, 'type' => 'music', 'column' => 1, 'row' => 12, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 4, 'type' => 'creator_live', 'column' => 3, 'row' => 12, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+    ],
+    1
+);
+$upwardPushedModule = array_values(array_filter($upwardPushPlacements, fn (array $placement): bool => $placement['id'] === 2))[0];
+assert_true($upwardPushedModule['column'] === 5 && $upwardPushedModule['row'] === 11, 'colliding module should move upward when downward space is unavailable');
+
 assert_php_rejected(
     '$items = []; for ($i = 1; $i <= 9; $i++) { $items[] = ["id" => $i, "type" => "profile_info", "column" => 1, "row" => 1, "colSpan" => 3, "rowSpan" => 3, "visible" => true]; } profile_canvas_push_collisions($items, 1);',
     'Canvas layout does not fit the 6 by 12 grid.'
 );
+
+assert_true(str_contains($profileModulesSource, 'grid_pinned'), 'profile module API should persist pinned layout state');
 
 echo "profile modules regression ok\n";

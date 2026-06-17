@@ -16,6 +16,7 @@ import type {
   ProfileExternalConnection,
   ProfileBackgroundBlur,
   ProfileIntegrationCard,
+  ProfileCanvasMovementContext,
   ProfileLayoutPreset,
   ProfileModule,
   ProfileModuleConfig,
@@ -176,6 +177,7 @@ export type UpdateProfileInput = {
 
 export type UpdateProfileCanvasModuleInput = ProfileModuleLayout & {
   id: number;
+  pinned?: boolean;
   visible: boolean;
 };
 
@@ -184,6 +186,7 @@ export type UpdateProfileCanvasInput = {
   anchorModuleId?: number | null;
   backgroundBlur?: ProfileBackgroundBlur;
   modules?: UpdateProfileCanvasModuleInput[];
+  movementContext?: ProfileCanvasMovementContext | null;
 };
 
 export type UpdateProfileCanvasResult = {
@@ -1408,6 +1411,7 @@ function normalizeProfileModule(module: ApiProfileModule): ProfileModule {
     config: normalizeProfileModuleConfig(module.config),
     visibility: module.visibility,
     position: module.position,
+    pinned: module.pinned === true,
     layout: normalizeProfileModuleLayout(module.layout),
     status: module.status,
     schemaVersion: module.schemaVersion ?? 1,

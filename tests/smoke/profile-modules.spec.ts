@@ -383,6 +383,10 @@ test("activity keeps long feeds inside an internal scroll area", async ({ page }
   await expect(body).toHaveAttribute("data-profile-activity-scroll", "internal");
   await expect(tabs.getByRole("tab", { name: /Feed/ })).toBeVisible();
   await expect(page.getByText("Long activity item 14.")).toHaveCount(1);
+  await expectModuleAspectRatio(
+    page.getByTestId("profile-grid-module-activity"),
+    3 / 3,
+  );
 
   const metrics = await page.evaluate(() => {
     const moduleElement = document.querySelector<HTMLElement>(
@@ -424,8 +428,8 @@ test("activity keeps long feeds inside an internal scroll area", async ({ page }
   expect(metrics.bodyOverflowY).toBe("auto");
   expect(metrics.bodyScrollHeight).toBeGreaterThan(metrics.bodyClientHeight + 100);
   expect(metrics.moduleBackground).not.toBe("rgba(0, 0, 0, 0)");
-  expect(metrics.moduleHeight).toBeLessThan(430);
-  expect(metrics.neighborHeight).toBeLessThan(170);
+  expect(metrics.moduleHeight).toBeLessThan(540);
+  expect(metrics.neighborHeight).toBeLessThan(190);
   expect(metrics.tabsTop).toBeGreaterThanOrEqual(metrics.moduleTop);
   expect(metrics.tabsBottom).toBeLessThanOrEqual(metrics.moduleBottom);
   expect(metrics.documentScrollHeight).toBeLessThan(metrics.bodyScrollHeight + 1_600);
@@ -752,6 +756,36 @@ test("Spotify music player fills each allowed music module span", async ({
   }
 });
 
+test("desktop module spans render with square-cell geometry", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 1100 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      withAuditLayout(profileInfoModule(), "4x3", 1),
+      withAuditLayout(
+        activityModule({ id: 9, position: 2 }),
+        "3x2",
+        4,
+        1,
+      ),
+      withAuditLayout(twitchStreamChatModule({ id: 5, row: 6 }), "6x5", 6),
+    ],
+    profilePosts: Array.from({ length: 8 }, (_, index) =>
+      postFixture({ id: 500 + index, body: `Geometry post ${index + 1}.` }),
+    ),
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expectModuleAspectRatio(page.getByTestId("profile-grid-module-profile_info"), 4 / 3);
+  await expectModuleAspectRatio(page.getByTestId("profile-grid-module-activity"), 3 / 2);
+  await expectModuleAspectRatio(page.getByTestId("profile-grid-module-creator_live"), 6 / 5);
+  await expect(page.getByTestId("profile-activity")).toHaveAttribute(
+    "data-profile-activity-scroll",
+    "internal",
+  );
+});
+
 test("allowed module sizes smoke render one at a time without overflow", async ({
   page,
 }) => {
@@ -1059,6 +1093,10 @@ test("owner editor preserves lower-row 6x5 creator modules on entry", async ({
 
   await page.getByTestId("profile-canvas-edit-button").click();
   await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveAttribute(
+    "data-profile-canvas-edit-mode",
+    "grid",
+  );
   await expect(creator).toHaveCSS("--profile-grid-row", "8");
   await expect(creator).not.toHaveAttribute("data-profile-module-dragging", "true");
 
@@ -1075,6 +1113,50 @@ test("owner editor preserves lower-row 6x5 creator modules on entry", async ({
     visible: true,
   });
   expectNoOverlappingPlacements(savedModules);
+});
+
+test("pinned modules stay fixed and cannot be dragged", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  let savedPayload: Record<string, unknown> | undefined;
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      {
+        ...aboutModule({ id: 1, title: "Pinned about", body: "Pinned in place." }),
+        layout: { column: 1, row: 4, colSpan: 2, rowSpan: 1 },
+        pinned: true,
+      },
+      {
+        ...linksModule({ id: 2, title: "Links", position: 2 }),
+        layout: { column: 3, row: 4, colSpan: 2, rowSpan: 1 },
+      },
+    ],
+    onCanvasSave: (payload) => {
+      savedPayload = payload;
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-canvas-edit-button").click();
+  const pinnedModule = page.getByTestId("profile-grid-module-about");
+  await pinnedModule.click();
+  await expect(pinnedModule).toHaveAttribute("data-profile-module-pinned", "true");
+  await expect(page.getByTestId("profile-canvas-drag-handle-1")).toBeDisabled();
+  await expect(page.getByTestId("profile-canvas-pin-module-button")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+
+  await page.getByTestId("profile-canvas-save-button").click();
+  await expect.poll(() => savedPayload).toBeDefined();
+  const savedModules = savedPayload?.modules as Array<Record<string, unknown>>;
+  expect(savedModules.find((module) => module.id === 1)).toMatchObject({
+    column: 1,
+    pinned: true,
+    row: 4,
+  });
 });
 
 test("public logged-out users do not see canvas edit controls", async ({ page }) => {
@@ -2268,6 +2350,7 @@ test("mobile profile modules stay stable with compact canvas editing", async ({ 
   await page.getByTestId("profile-canvas-edit-button").click();
   const editor = page.getByTestId("profile-canvas-editor");
   await expect(editor).toBeVisible();
+  await expect(editor).toHaveAttribute("data-profile-canvas-edit-mode", "stacked");
   await expect(page.getByTestId("profile-canvas-save-button-mobile")).toBeVisible();
   await expect(page.getByTestId("profile-canvas-save-button")).toBeHidden();
   await expect(editor).toHaveCSS("position", "fixed");
@@ -2672,6 +2755,7 @@ async function mockProfileModules(
           colSpan: placement.colSpan,
           rowSpan: placement.rowSpan,
         },
+        pinned: placement.pinned === true,
         visibility: placement.visible === false ? "hidden" : "public",
         status: "active",
       };
@@ -2894,6 +2978,7 @@ function moduleFromPayload(
     title: payload.title ?? base.title ?? null,
     visibility: payload.visibility ?? base.visibility ?? "public",
     status: payload.status ?? base.status ?? "active",
+    pinned: payload.pinned ?? base.pinned ?? false,
     config: payload.config ?? base.config ?? {},
   };
 }
@@ -2907,6 +2992,7 @@ function ensureTestBuiltInModules(modules: Array<Record<string, unknown>>) {
 
   return result.map((module, index) => ({
     ...module,
+    pinned: module.pinned === true,
     position: typeof module.position === "number" ? module.position : index,
   }));
 }
@@ -2939,6 +3025,14 @@ function pushMockCanvasPlacements(
   const visible = placements
     .filter((placement) => placement.visible !== false)
     .sort((first, second) => {
+      if (first.pinned === true && second.pinned !== true) {
+        return -1;
+      }
+
+      if (second.pinned === true && first.pinned !== true) {
+        return 1;
+      }
+
       if (anchorModuleId !== undefined) {
         if (first.id === anchorModuleId && second.id !== anchorModuleId) {
           return -1;
@@ -3228,6 +3322,27 @@ async function expectGridColumnCount(locator: Locator, expectedCount: number) {
       }),
     )
     .toBe(expectedCount);
+}
+
+async function expectModuleAspectRatio(locator: Locator, expectedRatio: number) {
+  await expect
+    .poll(async () =>
+      locator.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+
+        return rect.height > 0 ? rect.width / rect.height : 0;
+      }),
+    )
+    .toBeGreaterThan(expectedRatio - 0.08);
+  await expect
+    .poll(async () =>
+      locator.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+
+        return rect.height > 0 ? rect.width / rect.height : 0;
+      }),
+    )
+    .toBeLessThan(expectedRatio + 0.08);
 }
 
 async function expectTextOrder(locator: Locator, texts: string[]) {
