@@ -38,10 +38,6 @@ const pngAssets = [
     height: 320,
     width: 720,
   }],
-  [sourceFiles.appIcon, "favicon-32x32.png", {
-    height: 32,
-    width: 32,
-  }],
   [sourceFiles.appIcon, "apple-touch-icon.png", {
     height: 180,
     width: 180,
@@ -60,6 +56,7 @@ for (const [sourceName, outputName, size] of pngAssets) {
   await writePng(sourceName, outputName, size);
 }
 
+await writeSquirclePng(sourceFiles.appIcon, "favicon-32x32.png", 32);
 await writeOpenGraphImage();
 await writeManifest();
 
@@ -84,6 +81,50 @@ async function writePng(sourceName, outputName, size) {
     .toFile(outputPath);
 
   generated.push(path.relative(repoRoot, outputPath));
+}
+
+async function writeSquirclePng(sourceName, outputName, size) {
+  const outputPath = path.join(publicDir, outputName);
+  const iconBuffer = await sharp(path.join(sourceDir, sourceName))
+    .rotate()
+    .resize({
+      height: size,
+      width: size,
+      fit: "cover",
+      withoutEnlargement: false,
+    })
+    .png()
+    .toBuffer();
+
+  await fs.mkdir(path.dirname(outputPath), { recursive: true });
+  await sharp(iconBuffer)
+    .composite([{ input: squircleMask(size), blend: "dest-in" }])
+    .png({ adaptiveFiltering: true, compressionLevel: 9 })
+    .toFile(outputPath);
+
+  generated.push(path.relative(repoRoot, outputPath));
+}
+
+function squircleMask(size) {
+  const center = size / 2;
+  const radius = center - 0.25;
+  const exponent = 0.5;
+  const steps = 96;
+  const points = [];
+
+  for (let index = 0; index < steps; index += 1) {
+    const angle = (index / steps) * Math.PI * 2;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const x = center + radius * Math.sign(cos) * Math.abs(cos) ** exponent;
+    const y = center + radius * Math.sign(sin) * Math.abs(sin) ** exponent;
+
+    points.push(`${x.toFixed(3)},${y.toFixed(3)}`);
+  }
+
+  return Buffer.from(
+    `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg"><polygon points="${points.join(" ")}" fill="#fff"/></svg>`,
+  );
 }
 
 async function writeOpenGraphImage() {

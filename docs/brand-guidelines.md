@@ -23,6 +23,8 @@ Use the bunny mark and `thia.lol` wordmark as the core identity system:
   docs, and spacious surfaces.
 - Bunny mark: compact identity for favicons, app icons, small header spaces,
   and avatar-like brand contexts.
+- Favicon: pink bunny mark cropped to a squircle so it reads clearly in browser
+  tab chrome.
 - T mark: supporting shorthand asset only. Do not use it as the default site
   identity when the bunny mark fits.
 
