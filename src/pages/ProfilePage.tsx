@@ -1582,14 +1582,6 @@ function profileModuleLinkFromConnection(
   };
 }
 
-function profileModuleLinkFromUrl(url: string): ProfileModuleLink {
-  return {
-    label: moduleLinkLabelFromUrl(url),
-    platform: profileModulePlatformFromUrl(url),
-    url,
-  };
-}
-
 function moduleLinkLabelFromUrl(url: string): string {
   try {
     const parsed = new URL(url);
@@ -1599,32 +1591,6 @@ function moduleLinkLabelFromUrl(url: string): string {
   } catch {
     return "Link";
   }
-}
-
-function profileModulePlatformFromUrl(url: string): string {
-  try {
-    const hostname = new URL(url).hostname.replace(/^www\./, "").toLowerCase();
-
-    if (hostname === "github.com") {
-      return "github";
-    }
-
-    if (hostname === "youtube.com" || hostname === "youtu.be") {
-      return "youtube";
-    }
-
-    if (hostname === "twitch.tv") {
-      return "twitch";
-    }
-
-    if (hostname === "open.spotify.com") {
-      return "spotify";
-    }
-  } catch {
-    return "website";
-  }
-
-  return "website";
 }
 
 function dedupeProfileModuleLinks(links: ProfileModuleLink[]): ProfileModuleLink[] {
@@ -1988,14 +1954,6 @@ type ProfileCanvasAddEntry =
   | "featured_room"
   | "activity";
 
-type ProfileCanvasAddDraft = {
-  body: string;
-  entry: ProfileCanvasAddEntry;
-  label: string;
-  title: string;
-  url: string;
-};
-
 const profileCanvasAddEntries: { label: string; value: ProfileCanvasAddEntry }[] = [
   { label: "About", value: "about" },
   { label: "Text", value: "custom_text" },
@@ -2011,115 +1969,69 @@ const profileCanvasAddEntries: { label: string; value: ProfileCanvasAddEntry }[]
 ];
 
 function profileCanvasAddInput(
-  draft: ProfileCanvasAddDraft,
+  entry: ProfileCanvasAddEntry,
   userBadges: UserBadge[],
 ): CreateProfileModuleInput | undefined {
-  const body = draft.body.trim();
-  const url = draft.url.trim();
   const base = {
     status: "active" as const,
     title: null,
     visibility: "public" as const,
   };
 
-  if (draft.entry === "about") {
-    return body ? { ...base, type: "about", config: { body } } : undefined;
+  if (entry === "about") {
+    return { ...base, type: "about", config: {} };
   }
 
-  if (draft.entry === "custom_text") {
-    return body ? { ...base, type: "custom_text", config: { body } } : undefined;
+  if (entry === "custom_text") {
+    return { ...base, type: "custom_text", config: { body: "" } };
   }
 
-  if (draft.entry === "links") {
-    return profileCanvasAddUrlIsReady(url)
-      ? {
-          ...base,
-          type: "links",
-          config: { links: [profileModuleLinkFromUrl(url)] },
-        }
-      : undefined;
+  if (entry === "links") {
+    return {
+      ...base,
+      type: "links",
+      config: { links: [] },
+    };
   }
 
-  if (draft.entry === "featured_badges") {
+  if (entry === "featured_badges") {
     const badgeId = userBadges.find((userBadge) => userBadge.isVisible)?.id;
-    return badgeId
-      ? { ...base, type: "featured_badges", config: { userBadgeIds: [badgeId] } }
-      : undefined;
+    return {
+      ...base,
+      type: "featured_badges",
+      config: { userBadgeIds: badgeId ? [badgeId] : [] },
+    };
   }
 
-  if (draft.entry === "gallery_media") {
-    return /^\/uploads\/media\/[0-9]{4}\/[0-9]{2}\/[a-z0-9_-]+\.webp$/.test(url)
-      ? {
-          ...base,
-          type: "gallery_media",
-          config: {
-            mediaItems: [{ url }],
-          },
-        }
-      : undefined;
+  if (entry === "gallery_media") {
+    return {
+      ...base,
+      type: "gallery_media",
+      config: { mediaItems: [] },
+    };
   }
 
-  if (draft.entry === "creator_live") {
-    return profileCanvasAddUrlIsReady(url)
-      ? {
-          ...base,
-          type: "creator_live",
-          config: { url },
-        }
-      : undefined;
+  if (entry === "creator_live") {
+    return { ...base, type: "creator_live", config: {} };
   }
 
-  if (draft.entry === "github_project") {
-    return profileCanvasAddUrlIsReady(url)
-      ? {
-          ...base,
-          type: "creator_live",
-          config: { platform: "github", url },
-        }
-      : undefined;
+  if (entry === "github_project") {
+    return { ...base, type: "creator_live", config: { platform: "github" } };
   }
 
-  if (draft.entry === "music") {
-    return profileCanvasAddUrlIsReady(url)
-      ? {
-          ...base,
-          type: "music",
-          config: { url },
-        }
-      : undefined;
+  if (entry === "music") {
+    return { ...base, type: "music", config: {} };
   }
 
   if (
-    draft.entry === "featured_post" ||
-    draft.entry === "featured_room" ||
-    draft.entry === "activity"
+    entry === "featured_post" ||
+    entry === "featured_room" ||
+    entry === "activity"
   ) {
-    return { ...base, type: draft.entry as ProfileModuleType, config: {} };
+    return { ...base, type: entry as ProfileModuleType, config: {} };
   }
 
   return undefined;
-}
-
-function profileCanvasAddUrlIsReady(value: string): boolean {
-  try {
-    return new URL(value).protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-function profileCanvasAddEntryNeedsUrl(entry: ProfileCanvasAddEntry): boolean {
-  return (
-    entry === "links" ||
-    entry === "gallery_media" ||
-    entry === "creator_live" ||
-    entry === "music" ||
-    entry === "github_project"
-  );
-}
-
-function profileCanvasAddEntryNeedsBody(entry: ProfileCanvasAddEntry): boolean {
-  return entry === "about" || entry === "custom_text";
 }
 
 type ProfileCanvasEditorToolbarProps = {
@@ -2223,13 +2135,6 @@ function ProfileCanvasEditorToolbar({
 }: ProfileCanvasEditorToolbarProps) {
   const [activeCategory, setActiveCategory] =
     useState<ProfileCanvasDockCategory>("integrations");
-  const [addDraft, setAddDraft] = useState<ProfileCanvasAddDraft>({
-    body: "",
-    entry: "about",
-    label: "",
-    title: "",
-    url: "",
-  });
   const [moduleSearch, setModuleSearch] = useState("");
 
   if (!editing) {
@@ -2255,7 +2160,6 @@ function ProfileCanvasEditorToolbar({
     );
   }
 
-  const addConfig = profileCanvasAddInput(addDraft, userBadges);
   const activeModuleTypes = new Set(modules.map((module) => module.type));
   const normalizedSearch = moduleSearch.trim().toLowerCase();
   const categoryEntries =
@@ -2276,17 +2180,6 @@ function ProfileCanvasEditorToolbar({
   const providerStatuses = profileIntegrationProviders.map((provider) =>
     profileIntegrationStatus(provider, integrations?.providers),
   );
-
-  function updateAddEntry(entry: ProfileCanvasAddEntry) {
-    setAddDraft((draft) => ({
-      ...draft,
-      body: "",
-      entry,
-      label: "",
-      title: "",
-      url: "",
-    }));
-  }
 
   function addSuggestion(suggestion: ProfileIntegrationSuggestion) {
     const input = suggestion.card
@@ -2552,105 +2445,26 @@ function ProfileCanvasEditorToolbar({
               ) : null}
               {visibleEntries.map((entry) => {
                 const existing = profileCanvasEntryActiveModule(entry, modules);
-                const needsDetails =
-                  profileCanvasAddEntryNeedsUrl(entry) || profileCanvasAddEntryNeedsBody(entry);
-                const selectedForDraft = addDraft.entry === entry;
-                const canAdd = selectedForDraft && addConfig;
                 const singletonExists = existing && profileCanvasEntryIsSingleton(entry);
+                const addInput = profileCanvasAddInput(entry, userBadges);
 
                 return (
                   <ProfileDockModuleCard
                     key={entry}
-                    actionLabel={singletonExists ? "On canvas" : needsDetails && !canAdd ? "Details" : "Add"}
-                    active={selectedForDraft}
-                    disabled={busy || Boolean(singletonExists)}
+                    actionLabel={singletonExists ? "On canvas" : "Add"}
+                    disabled={busy || Boolean(singletonExists) || !addInput}
                     icon={profileCanvasEntryIcon(entry)}
                     meta={profileCanvasEntryPurpose(entry)}
                     title={profileCanvasAddEntryLabel(entry)}
                     onAction={() => {
-                      const nextDraft: ProfileCanvasAddDraft = {
-                        body: "",
-                        entry,
-                        label: "",
-                        title: "",
-                        url: "",
-                      };
-
-                      updateAddEntry(entry);
-
-                      if (!needsDetails) {
-                        const nextConfig = profileCanvasAddInput(nextDraft, userBadges);
-
-                        if (nextConfig) {
-                          onAddModule(nextConfig);
-                        }
+                      if (addInput) {
+                        onAddModule(addInput);
                       }
                     }}
                     testId={`profile-canvas-add-module-${entry}`}
                   />
                 );
               })}
-            </div>
-
-            <div className="mt-3 rounded-card border border-line bg-canvas/45 p-3">
-              <div className="grid gap-2 sm:grid-cols-[0.9fr_1fr_auto]">
-                <label className="min-w-0 text-xs font-semibold uppercase text-muted">
-                  Module
-                  <select
-                    className="mt-1 h-10 w-full rounded-control border border-line bg-surface/68 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
-                    value={addDraft.entry}
-                    data-testid="profile-canvas-add-type-select"
-                    onChange={(event) => updateAddEntry(event.target.value as ProfileCanvasAddEntry)}
-                  >
-                    {profileCanvasAddEntries
-                      .filter((entry) => entry.value !== "featured_badges" || userBadges.length > 0)
-                      .map((entry) => (
-                        <option key={entry.value} value={entry.value}>
-                          {entry.label}
-                        </option>
-                    ))}
-                  </select>
-                </label>
-                {profileCanvasAddEntryNeedsUrl(addDraft.entry) ? (
-                  <label className="min-w-0 text-xs font-semibold uppercase text-muted">
-                    URL
-                    <input
-                      className="mt-1 h-10 w-full rounded-control border border-line bg-surface/68 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
-                      value={addDraft.url}
-                      data-testid="profile-canvas-add-url-input"
-                      onChange={(event) =>
-                        setAddDraft((draft) => ({ ...draft, url: event.target.value }))
-                      }
-                      placeholder="https://..."
-                    />
-                  </label>
-                ) : (
-                  <label className="min-w-0 text-xs font-semibold uppercase text-muted">
-                    Text
-                    <input
-                      className="mt-1 h-10 w-full rounded-control border border-line bg-surface/68 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
-                      value={addDraft.body}
-                      data-testid="profile-canvas-add-body-input"
-                      onChange={(event) =>
-                        setAddDraft((draft) => ({ ...draft, body: event.target.value }))
-                      }
-                      placeholder={profileCanvasAddEntryNeedsBody(addDraft.entry) ? "Required" : "Optional"}
-                    />
-                  </label>
-                )}
-                <div className="flex items-end">
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={!addConfig || busy}
-                    data-testid="profile-canvas-add-module-button"
-                    icon={<Plus aria-hidden="true" size={16} />}
-                    onClick={() => (addConfig ? onAddModule(addConfig) : undefined)}
-                  >
-                    Add
-                  </Button>
-                </div>
-              </div>
             </div>
           </>
         )}

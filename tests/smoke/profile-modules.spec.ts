@@ -1138,19 +1138,38 @@ test("owner adds modules and deletes featured modules from the canvas editor", a
 
   await page.getByTestId("profile-canvas-edit-button").click();
   await page.getByTestId("profile-canvas-category-media").click();
-  await page.getByTestId("profile-canvas-add-type-select").selectOption("custom_text");
   await expect(page.getByTestId("profile-canvas-add-label-input")).toHaveCount(0);
-  await page.getByTestId("profile-canvas-add-body-input").fill("Canvas-added note");
-  await page.getByTestId("profile-canvas-add-module-button").click();
+  await expect(page.getByTestId("profile-canvas-add-type-select")).toHaveCount(0);
+  await expect(page.getByTestId("profile-canvas-add-body-input")).toHaveCount(0);
+  await expect(
+    page
+      .getByTestId("profile-canvas-add-module-custom_text")
+      .getByRole("button", { name: "Add" }),
+  ).toBeVisible();
+  await page
+    .getByTestId("profile-canvas-add-module-custom_text")
+    .getByRole("button", { name: "Add" })
+    .click();
 
   expect(createdPayloads.at(-1)).toMatchObject({
     type: "custom_text",
     visibility: "public",
     status: "active",
-    config: { body: "Canvas-added note" },
+    config: { body: "" },
   });
+  const textModule = page.getByTestId("profile-grid-module-custom_text");
+  await expect(textModule.getByTestId("profile-selected-module-controls")).toBeVisible();
+  await page.getByTestId("profile-module-grid").dispatchEvent("click");
+  await expect(textModule.getByText("Select to add text")).toBeVisible();
+  await textModule.click();
+  await expect(textModule.getByTestId("profile-selected-module-controls")).toBeVisible();
+  await textModule.getByTestId("profile-module-body-input").fill("Canvas-added note");
+  await expect(textModule.getByTestId("profile-module-body-input")).toHaveValue(
+    "Canvas-added note",
+  );
+  await page.getByTestId("profile-module-grid").dispatchEvent("click");
   await expect(
-    page.getByTestId("profile-grid-module-custom_text").getByText("Canvas-added note").first(),
+    textModule.getByText("Canvas-added note").first(),
   ).toBeVisible();
 
   await page.getByTestId("profile-grid-module-featured_post").click();

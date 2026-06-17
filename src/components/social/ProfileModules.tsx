@@ -22,6 +22,7 @@ import {
   profileModuleBadges,
   profileModuleFallbackTitle,
   profileModuleGridSpan,
+  profileModuleHasContent,
   profileModuleSizeHasRoomForDetails,
   profileModuleSizeIsCompact,
   profileModuleSpanRole,
@@ -482,6 +483,10 @@ function ProfileModuleContent({
     );
   }
 
+  if (!profileModuleHasContent(module, badges)) {
+    return <ProfileModuleEmptyPrompt module={module} />;
+  }
+
   if (module.type === "links") {
     const links = module.config.links ?? [];
     const visibleLinks = compact ? links.slice(0, 6) : links;
@@ -664,6 +669,46 @@ function ProfileModuleContent({
       ) : null}
     </div>
   );
+}
+
+function ProfileModuleEmptyPrompt({ module }: { module: ProfileModule }) {
+  return (
+    <div className="flex h-full min-h-0 items-center rounded-card border border-dashed border-line bg-canvas/38 px-3 py-2 text-sm font-semibold text-muted">
+      <span className="line-clamp-2">{profileModuleEmptyPrompt(module.type)}</span>
+    </div>
+  );
+}
+
+function profileModuleEmptyPrompt(type: ProfileModule["type"]): string {
+  if (type === "links") {
+    return "Select to add connections";
+  }
+
+  if (type === "about") {
+    return "Select to add an intro";
+  }
+
+  if (type === "custom_text") {
+    return "Select to add text";
+  }
+
+  if (type === "featured_badges") {
+    return "Select to add badges";
+  }
+
+  if (type === "gallery_media") {
+    return "Select to add media";
+  }
+
+  if (type === "creator_live") {
+    return "Select to add a creator link";
+  }
+
+  if (type === "music") {
+    return "Select to add music";
+  }
+
+  return `Select to edit ${profileModuleFallbackTitle(type).toLowerCase()}`;
 }
 
 function ProfileModuleLinkCard({ link }: { link: ProfileModuleLink }) {

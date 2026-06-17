@@ -1717,7 +1717,7 @@ function profile_module_config(string $type, mixed $value, int $userId): array
         return profile_module_builtin_config($value);
     }
 
-    if (!is_array($value) || array_is_list($value)) {
+    if (!is_array($value) || ($value !== [] && array_is_list($value))) {
         json_error('Module config must be an object.', 422);
     }
 
@@ -1776,10 +1776,6 @@ function profile_module_about_config(array $config): array
         $normalized['workingOn'] = $workingOn;
     }
 
-    if ($normalized === []) {
-        json_error('About module needs intro, status, or working-on text.', 422);
-    }
-
     return $normalized;
 }
 
@@ -1787,9 +1783,12 @@ function profile_module_custom_text_config(array $config): array
 {
     profile_module_reject_unknown_keys($config, ['body', 'link']);
 
-    $normalized = [
-        'body' => profile_module_text($config['body'] ?? null, PROFILE_MODULE_TEXT_MAX, 'Module text'),
-    ];
+    $normalized = [];
+    $body = profile_module_optional_text($config['body'] ?? null, PROFILE_MODULE_TEXT_MAX, 'Module text');
+
+    if ($body !== null) {
+        $normalized['body'] = $body;
+    }
 
     if (array_key_exists('link', $config) && $config['link'] !== null) {
         $normalized['link'] = profile_module_link($config['link']);
@@ -1801,6 +1800,10 @@ function profile_module_custom_text_config(array $config): array
 function profile_module_links_config(array $config): array
 {
     profile_module_reject_unknown_keys($config, ['links']);
+
+    if (!array_key_exists('links', $config)) {
+        return ['links' => []];
+    }
 
     if (!array_key_exists('links', $config) || !is_array($config['links']) || !array_is_list($config['links'])) {
         json_error('Links must be an array.', 422);
@@ -1825,16 +1828,16 @@ function profile_module_links_config(array $config): array
         $links[] = $link;
     }
 
-    if ($links === []) {
-        json_error('At least one link is required.', 422);
-    }
-
     return ['links' => $links];
 }
 
 function profile_module_gallery_media_config(array $config): array
 {
     profile_module_reject_unknown_keys($config, ['mediaItems']);
+
+    if (!array_key_exists('mediaItems', $config)) {
+        return ['mediaItems' => []];
+    }
 
     if (!array_key_exists('mediaItems', $config) || !is_array($config['mediaItems']) || !array_is_list($config['mediaItems'])) {
         json_error('Gallery media must be an array.', 422);
@@ -1858,16 +1861,37 @@ function profile_module_gallery_media_config(array $config): array
         $mediaItems[] = $mediaItem;
     }
 
-    if ($mediaItems === []) {
-        json_error('Choose at least one gallery image.', 422);
-    }
-
     return ['mediaItems' => $mediaItems];
 }
 
 function profile_module_creator_live_config(array $config): array
 {
     profile_module_reject_unknown_keys($config, ['platform', 'label', 'url', 'description']);
+
+    if (
+        !array_key_exists('url', $config) ||
+        $config['url'] === null ||
+        (is_string($config['url']) && trim($config['url']) === '')
+    ) {
+        $normalized = [];
+        $platform = profile_module_platform($config['platform'] ?? null, PROFILE_MODULE_CREATOR_PLATFORMS, 'custom');
+        $label = profile_module_optional_text($config['label'] ?? null, PROFILE_MODULE_LINK_LABEL_MAX, 'Creator title');
+        $description = profile_module_optional_text($config['description'] ?? null, PROFILE_MODULE_SHORT_TEXT_MAX, 'Card description');
+
+        if (array_key_exists('platform', $config)) {
+            $normalized['platform'] = $platform;
+        }
+
+        if ($label !== null) {
+            $normalized['label'] = $label;
+        }
+
+        if ($description !== null) {
+            $normalized['description'] = $description;
+        }
+
+        return $normalized;
+    }
 
     $url = profile_module_url($config['url'] ?? null, 'Creator link');
     $platform = profile_module_platform(
@@ -1890,6 +1914,31 @@ function profile_module_creator_live_config(array $config): array
 function profile_module_music_config(array $config): array
 {
     profile_module_reject_unknown_keys($config, ['platform', 'label', 'url', 'description']);
+
+    if (
+        !array_key_exists('url', $config) ||
+        $config['url'] === null ||
+        (is_string($config['url']) && trim($config['url']) === '')
+    ) {
+        $normalized = [];
+        $platform = profile_module_platform($config['platform'] ?? null, PROFILE_MODULE_MUSIC_PLATFORMS, 'custom');
+        $label = profile_module_optional_text($config['label'] ?? null, PROFILE_MODULE_LINK_LABEL_MAX, 'Music title');
+        $description = profile_module_optional_text($config['description'] ?? null, PROFILE_MODULE_SHORT_TEXT_MAX, 'Card description');
+
+        if (array_key_exists('platform', $config)) {
+            $normalized['platform'] = $platform;
+        }
+
+        if ($label !== null) {
+            $normalized['label'] = $label;
+        }
+
+        if ($description !== null) {
+            $normalized['description'] = $description;
+        }
+
+        return $normalized;
+    }
 
     $url = profile_module_url($config['url'] ?? null, 'Music link');
     $platform = profile_module_platform(

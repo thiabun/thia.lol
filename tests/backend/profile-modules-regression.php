@@ -130,6 +130,25 @@ $music = profile_module_config(
 );
 assert_true($music['platform'] === 'spotify', 'music platform mismatch');
 assert_true($music['url'] === 'https://open.spotify.com/playlist/profile-test', 'music URL mismatch');
+
+$emptyAbout = profile_module_config('about', [], 123);
+assert_true($emptyAbout === [], 'empty about module should be valid for owner placement');
+
+$emptyCustomText = profile_module_config('custom_text', [], 123);
+assert_true($emptyCustomText === [], 'empty text module should be valid for owner placement');
+
+$emptyLinks = profile_module_config('links', ['links' => []], 123);
+assert_true($emptyLinks === ['links' => []], 'empty links module should be valid for owner placement');
+
+$emptyGallery = profile_module_config('gallery_media', ['mediaItems' => []], 123);
+assert_true($emptyGallery === ['mediaItems' => []], 'empty gallery module should be valid for owner placement');
+
+$emptyCreator = profile_module_config('creator_live', ['platform' => 'github'], 123);
+assert_true($emptyCreator === ['platform' => 'github'], 'empty creator module should preserve safe platform hint');
+
+$emptyMusic = profile_module_config('music', [], 123);
+assert_true($emptyMusic === [], 'empty music module should be valid for owner placement');
+
 assert_true(is_string($profileModulesSource), 'profile modules source should be readable');
 assert_true(str_contains($profileModulesSource, 'function profile_modules_restore'), 'restore endpoint should exist');
 assert_true(str_contains($profileModulesSource, 'includeDeleted'), 'includeDeleted editor library read should exist');
