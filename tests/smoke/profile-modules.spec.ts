@@ -470,6 +470,10 @@ test("full-page profile background and glass grid render safely", async ({ page 
   await expect(
     backdrop.locator('img[src="/uploads/media/2026/06/profile-background.webp"]'),
   ).toBeVisible();
+  const heavyFilter = await backdrop
+    .locator('img[src="/uploads/media/2026/06/profile-background.webp"]')
+    .evaluate((image) => window.getComputedStyle(image).filter);
+  expect(heavyFilter).toContain("blur(42px)");
   await expect(page.getByTestId("profile-module-grid")).toBeVisible();
 
   const metrics = await page.evaluate(() => {
@@ -518,7 +522,7 @@ test("no-blur profile background remains visibly present", async ({ page }) => {
   await expect(backdrop).toHaveAttribute("data-profile-background-blur", "none");
   await expect(backdrop).toHaveAttribute("data-profile-background-visibility", "clear");
 
-  const backgroundOpacity = await page.evaluate(() => {
+  const backgroundStyle = await page.evaluate(() => {
     const image = document.querySelector<HTMLImageElement>(
       '[data-testid="profile-personal-backdrop"] img',
     );
@@ -527,10 +531,16 @@ test("no-blur profile background remains visibly present", async ({ page }) => {
       throw new Error("Profile background image did not render.");
     }
 
-    return Number(window.getComputedStyle(image).opacity);
+    const styles = window.getComputedStyle(image);
+
+    return {
+      filter: styles.filter,
+      opacity: Number(styles.opacity),
+    };
   });
 
-  expect(backgroundOpacity).toBeGreaterThanOrEqual(0.8);
+  expect(backgroundStyle.filter).not.toContain("blur(");
+  expect(backgroundStyle.opacity).toBeGreaterThanOrEqual(0.8);
 });
 
 test("video background and allowlisted rich integrations render safely", async ({
@@ -770,6 +780,10 @@ test("owner edits background blur, module placement, and visibility", async ({
 
   await mockProfileModules(page, {
     authenticated: true,
+    profileOverrides: {
+      profileBackground: "/uploads/media/2026/06/profile-background-clear.webp",
+      profileBackgroundBlur: "none",
+    },
     modules: [
       {
         ...aboutModule({ id: 1, title: "About", body: "Move me.", position: 2 }),
@@ -805,9 +819,22 @@ test("owner edits background blur, module placement, and visibility", async ({
   await expect(page.getByTestId("profile-canvas-background-popover")).toBeVisible();
   await expect(page.getByText("Background clarity")).toBeVisible();
   await expect(page.getByTestId("profile-canvas-add-label-input")).toHaveCount(0);
+  await expect(page.getByTestId("profile-personal-backdrop")).toHaveAttribute(
+    "data-profile-background-blur",
+    "none",
+  );
 
   await page.getByTestId("profile-background-blur-heavy").click();
   await expect(page.getByTestId("profile-canvas-background-popover")).toHaveCount(0);
+  await expect(page.getByTestId("profile-personal-backdrop")).toHaveAttribute(
+    "data-profile-background-blur",
+    "heavy",
+  );
+  const previewFilter = await page
+    .getByTestId("profile-personal-backdrop")
+    .locator("img")
+    .evaluate((image) => window.getComputedStyle(image).filter);
+  expect(previewFilter).toContain("blur(42px)");
   await page.getByTestId("profile-grid-module-about").click();
   const aboutEdit = page
     .getByTestId("profile-grid-module-about")

@@ -1151,6 +1151,10 @@ export function ProfilePage() {
   }
 
   const renderedProfile = workingProfile ?? profile;
+  const backgroundPreviewProfile =
+    canvasEditing && renderedProfile
+      ? { ...renderedProfile, profileBackgroundBlur: draftBackgroundBlur }
+      : renderedProfile;
   const showActivityModule = shouldRenderProfileActivityModule({
     feed: profileFeed,
     isOwnProfile,
@@ -1194,7 +1198,7 @@ export function ProfilePage() {
       initial="hidden"
       animate="show"
     >
-      <ProfilePersonalBackdrop profile={renderedProfile} />
+      <ProfilePersonalBackdrop profile={backgroundPreviewProfile} />
       <div
         className={cn(
           "relative z-10 space-y-4 sm:space-y-5",
@@ -3743,18 +3747,18 @@ function profileBackgroundBlurClass(
   treatment: ProfileBackgroundBlur,
 ): string {
   if (treatment === "soft") {
-    return "blur-sm";
+    return "blur-[3px]";
   }
 
   if (treatment === "heavy") {
-    return "blur-2xl";
+    return "blur-[42px]";
   }
 
   if (treatment === "none") {
     return "";
   }
 
-  return "blur-xl";
+  return "blur-[18px]";
 }
 
 function profileBackgroundVisibility(
