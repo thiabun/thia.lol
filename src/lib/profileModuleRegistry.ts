@@ -23,6 +23,7 @@ export type ProfileGridModuleSize =
   | "5x3"
   | "6x3"
   | "3x4"
+  | "6x5"
   | "3x6";
 
 export type ProfileGridModuleSpan = {
@@ -184,7 +185,7 @@ export const profileModuleRegistry = {
     purpose: "media",
   },
   creator_live: {
-    allowedSizes: ["1x1", "2x1", "2x2", "3x2", "3x3", "5x3"],
+    allowedSizes: ["1x1", "2x1", "2x2", "3x2", "3x3", "4x3", "5x3", "6x5"],
     defaultSize: "2x1",
     description: "A static creator or channel card.",
     density: "summary",
@@ -338,6 +339,7 @@ export function profileModuleSpanRole(
     size === "5x3" ||
     size === "6x3" ||
     size === "3x4" ||
+    size === "6x5" ||
     size === "3x6"
   ) {
     return "hero";
@@ -404,6 +406,7 @@ export function normalizeProfileGridModuleSize(
     value === "5x3" ||
     value === "6x3" ||
     value === "3x4" ||
+    value === "6x5" ||
     value === "3x6"
   ) {
     return value;
@@ -479,6 +482,10 @@ export function profileGridModuleSizeSpan(
 
   if (size === "3x4") {
     return { columns: 3, rows: 4, size };
+  }
+
+  if (size === "6x5") {
+    return { columns: 6, rows: 5, size };
   }
 
   if (size === "3x6") {

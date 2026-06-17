@@ -4200,7 +4200,7 @@ function creatorModuleModeOptions(
     return [
       { label: "Status", minSize: "1x1", value: "stream_status" },
       { label: "Stream", minSize: "3x2", value: "stream" },
-      { label: "Stream + chat", minSize: "5x3", value: "stream_chat" },
+      { label: "Stream + chat", minSize: "4x3", value: "stream_chat" },
     ];
   }
 

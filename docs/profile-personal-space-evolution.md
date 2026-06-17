@@ -284,8 +284,10 @@ Span behavior should stay predictable:
 - `3x1`: compact summary with one supporting detail.
 - `2x2` and `3x2`: richer preview only when media, activity, or metadata
   benefits from the space.
-- `3x3`, `4x3`, and `6x3`: reserved for identity layouts that use the space.
-- `3x4` and `3x6`: reserved for activity layouts with internal scrolling.
+- `3x3`, `4x3`, and `6x3`: reserved for identity layouts or rich creator
+  embeds that use the space.
+- `3x4`, `3x6`, and `6x5`: reserved for activity layouts with internal
+  scrolling or stream-plus-chat creator embeds that earn the height.
 
 Public profiles should hide empty modules instead of showing setup clutter.
 Owners can see compact actionable empty states in edit mode. Larger module
@@ -973,9 +975,10 @@ interaction model:
   validated rich embeds without storing user-supplied iframe HTML.
 - `creator_live` modules are configured locally after selection. Twitch supports
   status, stream, and stream-plus-chat display modes with size floors of `1x1`,
-  `3x2`, and `5x3`; stream-plus-chat keeps stream on the left and chat on the
-  right. YouTube supports latest/video/playlist source modes; GitHub supports
-  public project cards.
+  `3x2`, and `4x3`; stream-plus-chat can expand through `5x3` to `6x5`, keeps
+  stream on the left and chat on the right, and hides the link/info shell when
+  the embed is available. YouTube supports latest/video/playlist source modes;
+  GitHub supports public project cards.
 - Theme editing and custom color profile overrides are deferred to a separate
   planning pass with contrast, recovery, and migration strategy.
 - Onboarding, settings IA, analytics/tracking consent, and ads consent are

@@ -374,6 +374,42 @@ $legacyStreamChatPlacement = profile_canvas_module_placement(
 assert_true($legacyStreamChatPlacement['colSpan'] === 5, 'legacy creator stream chat should normalize to 5 columns');
 assert_true($legacyStreamChatPlacement['rowSpan'] === 3, 'legacy creator stream chat should normalize to 3 rows');
 
+$largeStreamChatPlacement = profile_canvas_module_placement(
+    [
+        'id' => 15,
+        'column' => 3,
+        'row' => 8,
+        'colSpan' => 6,
+        'rowSpan' => 5,
+    ],
+    [
+        'id' => 15,
+        'type' => 'creator_live',
+    ],
+    true
+);
+assert_true($largeStreamChatPlacement['colSpan'] === 6, 'creator stream chat should allow 6 columns');
+assert_true($largeStreamChatPlacement['rowSpan'] === 5, 'creator stream chat should allow 5 rows');
+assert_true($largeStreamChatPlacement['column'] === 1, 'large creator stream chat column should clamp inside the canvas');
+assert_true($largeStreamChatPlacement['row'] === 5, 'large creator stream chat row should clamp inside the canvas');
+
+$mediumStreamChatPlacement = profile_canvas_module_placement(
+    [
+        'id' => 16,
+        'column' => 1,
+        'row' => 1,
+        'colSpan' => 4,
+        'rowSpan' => 3,
+    ],
+    [
+        'id' => 16,
+        'type' => 'creator_live',
+    ],
+    true
+);
+assert_true($mediumStreamChatPlacement['colSpan'] === 4, 'creator stream chat should allow 4 columns');
+assert_true($mediumStreamChatPlacement['rowSpan'] === 3, 'creator stream chat should allow 3 rows');
+
 assert_true(profile_canvas_background_blur('none') === 'none', 'none blur mismatch');
 assert_true(profile_canvas_background_blur('heavy') === 'heavy', 'heavy blur mismatch');
 

@@ -228,8 +228,9 @@ The following are not allowed:
 - Grid spans express content value, not decoration: `1x1` and `2x1` are for one
   idea/action, `3x1` is a compact summary, `2x2` and `3x2` are for richer
   media/activity/metadata previews, `4x3` and `6x3` are identity-focused
-  profile info variants, and `3x4`/`3x6` are reserved for activity that earns
-  the extra height.
+  profile info variants or rich creator embeds, and `3x4`/`3x6`/`6x5` are
+  reserved for activity or stream-plus-chat creator embeds that earn the extra
+  height.
 - Larger module variants must add useful context or controls. They must not
   merely scale type, stretch media, or create blank decorative space.
 - Integration modules may show live/recent labels only when the state is

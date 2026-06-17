@@ -417,7 +417,8 @@ Rules:
 - Larger spans must add real media, activity, metadata, or controls.
 - `1x1` and `2x1` modules carry one idea; `3x1` adds one supporting detail;
   `2x2` and `3x2` are for richer previews; `4x3` and `6x3` are for larger
-  identity layouts; `3x4` and `3x6` are for activity that earns the height.
+  identity layouts or rich creator embeds; `3x4`, `3x6`, and `6x5` are for
+  activity or stream-plus-chat creator embeds that earn the height.
 - Live/recent labels require API-backed timestamps. Plain links and embeds stay
   static link cards.
 - Module shells should keep padding, title treatment, focus states, and

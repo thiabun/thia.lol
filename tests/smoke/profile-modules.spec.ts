@@ -857,6 +857,23 @@ test("integration modules do not fake live or recent labels without API backing"
   await expect(page.getByText("Live now on Twitch")).toBeVisible();
 });
 
+test("Twitch stream chat fills the creator module when embed metadata is available", async ({
+  page,
+}) => {
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [twitchStreamChatModule()],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const creator = page.getByTestId("profile-grid-module-creator_live");
+  await expect(creator).toHaveAttribute("data-profile-grid-size", "6x5");
+  await expect(creator.getByTestId("profile-integration-embed-twitch")).toBeVisible();
+  await expect(creator.getByTestId("profile-integration-embed-twitch-chat")).toBeVisible();
+  await expect(creator.getByRole("link")).toHaveCount(0);
+});
+
 test("public logged-out users do not see canvas edit controls", async ({ page }) => {
   await mockProfileModules(page, {
     authenticated: false,
@@ -1536,7 +1553,11 @@ test("owner uses OAuth-first integrations from the editor panel", async ({
   await expect(creatorModule.getByTestId("profile-creator-config")).toBeVisible();
   await creatorModule.getByTestId("profile-creator-provider-twitch").click();
   await creatorModule.getByTestId("profile-creator-mode-stream_chat").click();
-  await expect(creatorModule).toHaveAttribute("data-profile-grid-size", "5x3");
+  await expect(creatorModule).toHaveAttribute("data-profile-grid-size", "4x3");
+  await expect(creatorModule.getByTestId("profile-canvas-size-5x3")).toBeVisible();
+  await expect(creatorModule.getByTestId("profile-canvas-size-6x5")).toBeVisible();
+  await creatorModule.getByTestId("profile-canvas-size-6x5").click();
+  await expect(creatorModule).toHaveAttribute("data-profile-grid-size", "6x5");
   await creatorModule.getByTestId("profile-creator-url-input").fill("https://www.twitch.tv/thiabun");
   await creatorModule.getByTestId("profile-creator-preview-button").click();
   await expect(creatorModule.getByTestId("profile-integration-preview-summary")).toContainText(
@@ -3181,6 +3202,45 @@ function spotifyEmbedMusicModule(overrides: { id?: number; position?: number } =
           title: "Spotify player",
           height: 80,
           allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+        },
+        apiBacked: true,
+        fetchedAt: "2026-06-16T10:00:00Z",
+        stale: false,
+      },
+    },
+  };
+}
+
+function twitchStreamChatModule(
+  overrides: { id?: number; position?: number } = {},
+) {
+  return {
+    ...creatorModule(overrides),
+    layout: { column: 1, row: 1, colSpan: 6, rowSpan: 5 },
+    config: {
+      description: "Live channel.",
+      displayMode: "stream_chat",
+      label: "Thia live",
+      platform: "twitch",
+      sourceMode: "twitch",
+      url: "https://www.twitch.tv/thiabun",
+      integration: {
+        provider: "twitch",
+        resourceType: "channel",
+        resourceId: "thiabun",
+        resourceKey: "twitch:channel:thiabun",
+        sourceUrl: "https://www.twitch.tv/thiabun",
+        metadata: {
+          title: "Thia live",
+          subtitle: "Twitch",
+          imageUrl: null,
+        },
+        embed: {
+          type: "iframe",
+          src: "https://player.twitch.tv/?channel=thiabun&parent=localhost",
+          title: "Twitch stream",
+          height: 360,
+          allow: "autoplay; fullscreen; picture-in-picture",
         },
         apiBacked: true,
         fetchedAt: "2026-06-16T10:00:00Z",

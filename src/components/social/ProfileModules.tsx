@@ -900,11 +900,45 @@ function ProfileIntegrationRichCard({
     );
   }
 
+  if (showTwitchStreamChat && primaryEmbed && primaryEmbedSrc && twitchChatSrc) {
+    return (
+      <div className="h-full min-h-0 overflow-hidden rounded-card border border-line bg-canvas/55">
+        <div className="grid h-full min-h-0 md:grid-cols-5">
+          <iframe
+            className="block h-full min-h-[220px] w-full bg-transparent md:col-span-3"
+            title={primaryEmbed.title}
+            src={primaryEmbedSrc}
+            height={360}
+            loading="lazy"
+            referrerPolicy="strict-origin-when-cross-origin"
+            allow={primaryEmbed.allow}
+            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+            allowFullScreen
+            data-profile-embed-provider={integration.provider}
+            data-testid={`profile-integration-embed-${integration.provider}`}
+          />
+          <iframe
+            className="block h-full min-h-[220px] w-full border-t border-line bg-surface md:col-span-2 md:border-l md:border-t-0"
+            title="Twitch chat"
+            src={twitchChatSrc}
+            height={360}
+            loading="lazy"
+            referrerPolicy="strict-origin-when-cross-origin"
+            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+            data-testid="profile-integration-embed-twitch-chat"
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
         "overflow-hidden rounded-card border border-line bg-canvas/55",
-        twitchChatSrc ? "flex h-full min-h-0 flex-col" : undefined,
+        twitchChatSrc && showPrimaryEmbed
+          ? "flex h-full min-h-0 flex-col"
+          : undefined,
       )}
     >
       <a
@@ -942,33 +976,7 @@ function ProfileIntegrationRichCard({
         </span>
         <ExternalLink aria-hidden="true" size={15} className="shrink-0 text-muted" />
       </a>
-      {showTwitchStreamChat && primaryEmbed ? (
-        <div className="grid min-h-0 flex-1 border-t border-line md:grid-cols-5">
-          <iframe
-            className="block h-full min-h-[220px] w-full bg-transparent md:col-span-3"
-            title={primaryEmbed.title}
-            src={primaryEmbedSrc}
-            height={260}
-            loading="lazy"
-            referrerPolicy="strict-origin-when-cross-origin"
-            allow={primaryEmbed.allow}
-            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
-            allowFullScreen
-            data-profile-embed-provider={integration.provider}
-            data-testid={`profile-integration-embed-${integration.provider}`}
-          />
-          <iframe
-            className="block h-full min-h-[220px] w-full border-t border-line bg-surface md:col-span-2 md:border-l md:border-t-0"
-            title="Twitch chat"
-            src={twitchChatSrc}
-            height={260}
-            loading="lazy"
-            referrerPolicy="strict-origin-when-cross-origin"
-            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
-            data-testid="profile-integration-embed-twitch-chat"
-          />
-        </div>
-      ) : showPrimaryEmbed && primaryEmbed ? (
+      {showPrimaryEmbed && primaryEmbed ? (
         <iframe
           className={cn(
             "block w-full border-t border-line bg-transparent",
@@ -984,18 +992,6 @@ function ProfileIntegrationRichCard({
           allowFullScreen
           data-profile-embed-provider={integration.provider}
           data-testid={`profile-integration-embed-${integration.provider}`}
-        />
-      ) : null}
-      {twitchChatSrc && !showTwitchStreamChat ? (
-        <iframe
-          className="block min-h-0 flex-1 border-t border-line bg-surface"
-          title="Twitch chat"
-          src={twitchChatSrc}
-          height={320}
-          loading="lazy"
-          referrerPolicy="strict-origin-when-cross-origin"
-          sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
-          data-testid="profile-integration-embed-twitch-chat"
         />
       ) : null}
     </div>

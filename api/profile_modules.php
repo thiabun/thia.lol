@@ -823,7 +823,7 @@ function profile_canvas_allowed_sizes(string $type): array
         PROFILE_FEATURED_POST_MODULE_TYPE => ['2x1', '3x1', '2x2', '3x2'],
         PROFILE_FEATURED_ROOM_MODULE_TYPE => ['1x1', '2x1', '3x1'],
         PROFILE_GALLERY_MEDIA_MODULE_TYPE => ['1x1', '2x1', '2x2', '3x2', '3x3'],
-        PROFILE_CREATOR_LIVE_MODULE_TYPE => ['1x1', '2x1', '2x2', '3x2', '3x3', '5x3'],
+        PROFILE_CREATOR_LIVE_MODULE_TYPE => ['1x1', '2x1', '2x2', '3x2', '3x3', '4x3', '5x3', '6x5'],
         PROFILE_MUSIC_MODULE_TYPE => ['1x1', '2x1', '3x1', '3x2'],
         PROFILE_ACTIVITY_MODULE_TYPE => ['2x2', '3x2', '3x3', '3x4', '3x6'],
         default => ['1x1'],
