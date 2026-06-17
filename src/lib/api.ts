@@ -1439,8 +1439,8 @@ function normalizeProfileModuleLayout(
   return {
     column: Math.min(6, Math.max(1, column)),
     row: Math.min(9, Math.max(1, row)),
-    colSpan: Math.min(3, Math.max(1, colSpan)),
-    rowSpan: Math.min(3, Math.max(1, rowSpan)),
+    colSpan: Math.min(6, Math.max(1, colSpan)),
+    rowSpan: Math.min(6, Math.max(1, rowSpan)),
   };
 }
 

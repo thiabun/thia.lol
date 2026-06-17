@@ -706,14 +706,26 @@ test("owner edits background blur, module placement, and visibility", async ({
     "left",
   );
   await expect(page.getByTestId("profile-canvas-background-controls")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-background-trigger")).toBeVisible();
+  await expect(page.getByText("Background clarity")).toHaveCount(0);
+  await page.getByTestId("profile-canvas-background-trigger").click();
+  await expect(page.getByTestId("profile-canvas-background-popover")).toBeVisible();
   await expect(page.getByText("Background clarity")).toBeVisible();
   await expect(page.getByTestId("profile-canvas-add-label-input")).toHaveCount(0);
 
   await page.getByTestId("profile-background-blur-heavy").click();
   await page.getByTestId("profile-grid-module-about").click();
-  await expect(page.getByTestId("profile-selected-module-controls")).toBeVisible();
-  await page.getByTestId("profile-canvas-position-1-3").click();
-  await page.getByTestId("profile-canvas-visibility-button").click();
+  const aboutEdit = page
+    .getByTestId("profile-grid-module-about")
+    .getByTestId("profile-selected-module-controls");
+  await expect(
+    aboutEdit,
+  ).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-position-grid")).toHaveCount(0);
+  await aboutEdit.getByTestId("profile-canvas-visibility-button").click();
+  await expect(
+    aboutEdit.getByRole("button", { name: "Show module" }),
+  ).toBeVisible();
   await page.getByTestId("profile-canvas-save-button").click();
 
   await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
@@ -723,7 +735,6 @@ test("owner edits background blur, module placement, and visibility", async ({
   const savedModules = savedPayload?.modules as Array<Record<string, unknown>>;
   const aboutPlacement = savedModules.find((module) => module.id === 1);
   expect(aboutPlacement).toMatchObject({
-    row: 3,
     visible: false,
   });
   await expect(page.getByTestId("profile-personal-backdrop")).toHaveAttribute(
@@ -748,15 +759,70 @@ test("owner edits profile info inside the selected module", async ({ page }) => 
 
   await page.getByTestId("profile-canvas-edit-button").click();
   await page.getByTestId("profile-grid-module-profile_info").click();
-  await expect(page.getByTestId("profile-selected-module-controls")).toBeVisible();
+  await expect(
+    page
+      .getByTestId("profile-grid-module-profile_info")
+      .getByTestId("profile-selected-module-controls"),
+  ).toBeVisible();
 
   await page.getByTestId("profile-info-display-name-input").fill("Thia Canvas");
-  await page.getByTestId("profile-info-bio-input").fill("Edited inside the profile widget.");
+  await page.getByTestId("profile-info-bio-input").fill("Edited inside the profile module.");
   await page.getByTestId("profile-canvas-save-button").click();
 
   expect(savedProfile).toMatchObject({
     displayName: "Thia Canvas",
-    bio: "Edited inside the profile widget.",
+    bio: "Edited inside the profile module.",
+  });
+});
+
+test("owner can use larger profile info and activity spans", async ({ page }) => {
+  let savedPayload: Record<string, unknown> | undefined;
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      {
+        ...profileInfoModule(),
+        layout: { column: 1, row: 1, colSpan: 3, rowSpan: 3 },
+      },
+      {
+        ...activityModule({ id: 9, position: 2 }),
+        layout: { column: 4, row: 1, colSpan: 3, rowSpan: 3 },
+      },
+    ],
+    onCanvasSave: (payload) => {
+      savedPayload = payload;
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-canvas-edit-button").click();
+  await page.getByTestId("profile-grid-module-profile_info").click();
+  const profileInfoEdit = page
+    .getByTestId("profile-grid-module-profile_info")
+    .getByTestId("profile-selected-module-controls");
+  await expect(profileInfoEdit.getByTestId("profile-canvas-size-4x3")).toBeVisible();
+  await profileInfoEdit.getByTestId("profile-canvas-size-6x3").click();
+
+  await page.getByTestId("profile-grid-module-activity").click();
+  const activityEdit = page
+    .getByTestId("profile-grid-module-activity")
+    .getByTestId("profile-selected-module-controls");
+  await expect(activityEdit.getByTestId("profile-canvas-size-3x4")).toBeVisible();
+  await activityEdit.getByTestId("profile-canvas-size-3x6").click();
+  await page.getByTestId("profile-canvas-save-button").click();
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
+  await expect.poll(() => savedPayload).toBeDefined();
+
+  const savedModules = savedPayload?.modules as Array<Record<string, unknown>>;
+  expect(savedModules.find((module) => module.id === 9001)).toMatchObject({
+    colSpan: 6,
+    rowSpan: 3,
+  });
+  expect(savedModules.find((module) => module.id === 9)).toMatchObject({
+    colSpan: 3,
+    rowSpan: 6,
   });
 });
 
@@ -783,9 +849,14 @@ test("owner edits connections inside the selected module", async ({ page }) => {
 
   await page.getByTestId("profile-canvas-edit-button").click();
   await page.getByTestId("profile-grid-module-links").click();
-  await expect(page.getByTestId("profile-selected-module-controls")).toBeVisible();
+  await expect(
+    page
+      .getByTestId("profile-grid-module-links")
+      .getByTestId("profile-selected-module-controls"),
+  ).toBeVisible();
 
-  await page.getByTestId("profile-connection-platform-select").selectOption("twitch");
+  await page.getByTestId("profile-connection-add-open-button").click();
+  await page.getByTestId("profile-connection-platform-twitch").click();
   await page.getByTestId("profile-connection-value-input").fill("thiabun");
   await page.getByTestId("profile-connection-add-button").click();
   await page.getByTestId("profile-canvas-save-button").click();
@@ -825,7 +896,11 @@ test("owner drags a canvas module and save includes pushed placement", async ({
 
   await page.getByTestId("profile-canvas-edit-button").click();
   await page.getByTestId("profile-grid-module-about").click();
-  await expect(page.getByTestId("profile-selected-module-controls")).toBeVisible();
+  await expect(
+    page
+      .getByTestId("profile-grid-module-about")
+      .getByTestId("profile-selected-module-controls"),
+  ).toBeVisible();
   const grid = page.getByTestId("profile-module-grid");
   const gridBox = await grid.boundingBox();
   const handleBox = await page.getByTestId("profile-canvas-drag-handle-1").boundingBox();
@@ -845,8 +920,8 @@ test("owner drags a canvas module and save includes pushed placement", async ({
   const pointerTarget = {
     button: 0,
     buttons: 1,
-    clientX: gridBox.x + gridBox.width * 0.1,
-    clientY: gridBox.y + gridBox.height * 0.1,
+    clientX: gridBox.x + gridBox.width / 12,
+    clientY: gridBox.y + 2,
     pointerId: 1,
     pointerType: "mouse",
   };
@@ -943,14 +1018,24 @@ test("owner adds modules and deletes featured modules from the canvas editor", a
   ).toBeVisible();
 
   await page.getByTestId("profile-grid-module-featured_post").click();
-  await expect(page.getByTestId("profile-selected-module-controls")).toBeVisible();
-  await page.getByTestId("profile-canvas-delete-module-button").click();
-  expect(deletedIds).toContain(20);
+  await expect(
+    page
+      .getByTestId("profile-grid-module-featured_post")
+      .getByTestId("profile-selected-module-controls"),
+  ).toBeVisible();
+  await page
+    .getByTestId("profile-grid-module-featured_post")
+    .getByTestId("profile-canvas-delete-module-button")
+    .click();
+  await expect.poll(() => deletedIds).toContain(20);
   await expect(page.getByText("Pinned post can be removed.")).toHaveCount(0);
 
   await page.getByTestId("profile-grid-module-featured_room").click();
-  await page.getByTestId("profile-canvas-delete-module-button").click();
-  expect(deletedIds).toContain(21);
+  await page
+    .getByTestId("profile-grid-module-featured_room")
+    .getByTestId("profile-canvas-delete-module-button")
+    .click();
+  await expect.poll(() => deletedIds).toContain(21);
   await expect(page.getByText("General")).toHaveCount(0);
 
   await page.getByTestId("profile-canvas-category-removed").click();
@@ -1499,7 +1584,7 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(configExample).toContain("'youtube'");
   expect(configExample).toContain("'twitch'");
   expect(configExample).toContain("'github'");
-  expect(moduleRegistry).toContain("export const PROFILE_ACTIVITY_MAX_ROW_SPAN = 3");
+  expect(moduleRegistry).toContain("export const PROFILE_ACTIVITY_MAX_ROW_SPAN = 6");
   expect(moduleRegistry).toContain("export type ProfileModulePurpose");
   expect(moduleRegistry).toContain("export type ProfileModuleDensity");
   expect(moduleRegistry).toContain("export type ProfileModuleFreshness");

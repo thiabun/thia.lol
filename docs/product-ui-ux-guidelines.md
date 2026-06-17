@@ -388,9 +388,9 @@ about this member?
 
 ### Profile Modules As Glanceable Surfaces
 
-Use Apple's widget guidance as inspiration for profile modules: modules should
-be glanceable, personalized, single-purpose, adaptive to size, and honest about
-freshness. They are not iOS widgets, and they should not copy platform chrome.
+Use a glanceable module rubric for profile modules: modules should be
+personalized, single-purpose, adaptive to size, and honest about freshness.
+They should not copy platform chrome.
 
 Rules:
 
@@ -399,8 +399,8 @@ Rules:
 - Hide public empty modules; owners get compact edit-mode empty states.
 - Larger spans must add real media, activity, metadata, or controls.
 - `1x1` and `2x1` modules carry one idea; `3x1` adds one supporting detail;
-  `2x2` and `3x2` are for richer previews; `3x3` is reserved for identity or
-  high-value activity.
+  `2x2` and `3x2` are for richer previews; `4x3` and `6x3` are for larger
+  identity layouts; `3x4` and `3x6` are for activity that earns the height.
 - Live/recent labels require API-backed timestamps. Plain links and embeds stay
   static link cards.
 - Module shells should keep padding, title treatment, focus states, and

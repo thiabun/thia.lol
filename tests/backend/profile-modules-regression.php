@@ -275,6 +275,41 @@ $clampedPlacement = profile_canvas_module_placement(
 );
 assert_true($clampedPlacement['column'] === 4, 'placement column should clamp');
 assert_true($clampedPlacement['row'] === 7, 'placement row should clamp');
+
+$largeProfileInfoPlacement = profile_canvas_module_placement(
+    [
+        'id' => 11,
+        'column' => 1,
+        'row' => 1,
+        'colSpan' => 6,
+        'rowSpan' => 3,
+    ],
+    [
+        'id' => 11,
+        'type' => 'profile_info',
+    ],
+    true
+);
+assert_true($largeProfileInfoPlacement['colSpan'] === 6, 'profile info should allow 6 columns');
+assert_true($largeProfileInfoPlacement['rowSpan'] === 3, 'profile info should allow 3 rows');
+
+$largeActivityPlacement = profile_canvas_module_placement(
+    [
+        'id' => 12,
+        'column' => 4,
+        'row' => 9,
+        'colSpan' => 3,
+        'rowSpan' => 6,
+    ],
+    [
+        'id' => 12,
+        'type' => 'activity',
+    ],
+    true
+);
+assert_true($largeActivityPlacement['colSpan'] === 3, 'activity should allow 3 columns');
+assert_true($largeActivityPlacement['rowSpan'] === 6, 'activity should allow 6 rows');
+assert_true($largeActivityPlacement['row'] === 4, 'large activity row should clamp inside the canvas');
 assert_true(profile_canvas_background_blur('none') === 'none', 'none blur mismatch');
 assert_true(profile_canvas_background_blur('heavy') === 'heavy', 'heavy blur mismatch');
 

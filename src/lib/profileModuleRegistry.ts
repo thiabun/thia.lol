@@ -9,16 +9,24 @@ export type ProfileGridModuleSize =
   | "1x1"
   | "2x1"
   | "3x1"
+  | "4x1"
+  | "6x1"
   | "1x2"
   | "2x2"
   | "3x2"
+  | "4x2"
+  | "6x2"
   | "1x3"
   | "2x3"
-  | "3x3";
+  | "3x3"
+  | "4x3"
+  | "6x3"
+  | "3x4"
+  | "3x6";
 
 export type ProfileGridModuleSpan = {
-  columns: 1 | 2 | 3;
-  rows: 1 | 2 | 3;
+  columns: 1 | 2 | 3 | 4 | 6;
+  rows: 1 | 2 | 3 | 4 | 6;
   size: ProfileGridModuleSize;
 };
 
@@ -49,7 +57,7 @@ export type ProfileModuleEmptyPolicy =
 
 export type ProfileModuleSpanRole = "glance" | "summary" | "rich" | "hero";
 
-export const PROFILE_ACTIVITY_MAX_ROW_SPAN = 3;
+export const PROFILE_ACTIVITY_MAX_ROW_SPAN = 6;
 
 export type ProfileModuleRegistryEntry = {
   allowedSizes: readonly ProfileGridModuleSize[];
@@ -79,7 +87,7 @@ const fallbackProfileModule: ProfileModuleRegistryEntry = {
 
 export const profileModuleRegistry = {
   profile_info: {
-    allowedSizes: ["3x3", "3x2", "2x2", "2x1"],
+    allowedSizes: ["3x3", "4x3", "6x3", "3x2", "2x2", "2x1"],
     defaultSize: "3x2",
     description: "Core identity, actions, stats, and essential links.",
     density: "rich",
@@ -199,7 +207,7 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   activity: {
-    allowedSizes: ["2x2", "3x2", "3x3"],
+    allowedSizes: ["2x2", "3x2", "3x3", "3x4", "3x6"],
     defaultSize: "3x3",
     description: "Feed, replies, and rooms.",
     density: "rich",
@@ -323,7 +331,7 @@ export function profileModuleGridSpan(
 export function profileModuleSpanRole(
   size: ProfileGridModuleSize | undefined,
 ): ProfileModuleSpanRole {
-  if (size === "3x3") {
+  if (size === "3x3" || size === "4x3" || size === "6x3" || size === "3x4" || size === "3x6") {
     return "hero";
   }
 
@@ -370,12 +378,20 @@ export function normalizeProfileGridModuleSize(
     value === "1x1" ||
     value === "2x1" ||
     value === "3x1" ||
+    value === "4x1" ||
+    value === "6x1" ||
     value === "1x2" ||
     value === "2x2" ||
     value === "3x2" ||
+    value === "4x2" ||
+    value === "6x2" ||
     value === "1x3" ||
     value === "2x3" ||
-    value === "3x3"
+    value === "3x3" ||
+    value === "4x3" ||
+    value === "6x3" ||
+    value === "3x4" ||
+    value === "3x6"
   ) {
     return value;
   }
@@ -396,6 +412,14 @@ export function profileGridModuleSizeSpan(
     return { columns: 1, rows: 2, size };
   }
 
+  if (size === "4x1") {
+    return { columns: 4, rows: 1, size };
+  }
+
+  if (size === "6x1") {
+    return { columns: 6, rows: 1, size };
+  }
+
   if (size === "2x2") {
     return { columns: 2, rows: 2, size };
   }
@@ -408,6 +432,14 @@ export function profileGridModuleSizeSpan(
     return { columns: 3, rows: 2, size };
   }
 
+  if (size === "4x2") {
+    return { columns: 4, rows: 2, size };
+  }
+
+  if (size === "6x2") {
+    return { columns: 6, rows: 2, size };
+  }
+
   if (size === "1x3") {
     return { columns: 1, rows: 3, size };
   }
@@ -418,6 +450,22 @@ export function profileGridModuleSizeSpan(
 
   if (size === "3x3") {
     return { columns: 3, rows: 3, size };
+  }
+
+  if (size === "4x3") {
+    return { columns: 4, rows: 3, size };
+  }
+
+  if (size === "6x3") {
+    return { columns: 6, rows: 3, size };
+  }
+
+  if (size === "3x4") {
+    return { columns: 3, rows: 4, size };
+  }
+
+  if (size === "3x6") {
+    return { columns: 3, rows: 6, size };
   }
 
   return { columns: 1, rows: 1, size };
@@ -441,7 +489,15 @@ function normalizeProfileGridRowSpan(value: number): ProfileGridModuleSpan["rows
     return 2;
   }
 
-  return 3;
+  if (value <= 3) {
+    return 3;
+  }
+
+  if (value <= 4) {
+    return 4;
+  }
+
+  return 6;
 }
 
 export function profileModuleHasContent(

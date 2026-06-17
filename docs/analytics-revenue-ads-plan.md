@@ -170,7 +170,7 @@ Current state:
 - This issue does not change cookie behavior.
 
 Any future implementation that adds analytics, ads, sponsorship tracking,
-payment processor embeds, third-party widgets, or optional identifiers must
+payment processor embeds, third-party embedded tools, or optional identifiers must
 settle the following before code lands:
 
 - Privacy policy updates describing what data is collected, why, who receives

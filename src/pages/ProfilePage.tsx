@@ -4,7 +4,6 @@ import {
   BadgeCheck,
   Bug,
   CalendarDays,
-  Check,
   Eye,
   Heart,
   ImagePlus,
@@ -28,12 +27,26 @@ import {
   Video,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link, useNavigate, useOutletContext, useParams } from "react-router";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useOutletContext,
+  useParams,
+} from "react-router";
 import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
 import { PostCard } from "../components/social/PostCard";
 import { ProfileHeader } from "../components/social/ProfileHeader";
+import { ProfileConnectionIcon } from "../components/social/ProfileConnectionIcon";
 import { ProfileModulesSection } from "../components/social/ProfileModules";
 import { ReportForm } from "../components/social/ReportForm";
 import { RoomCard } from "../components/social/RoomCard";
@@ -137,8 +150,10 @@ type ProfilePanel = "followers" | "following" | "badges";
 export function ProfilePage() {
   const { handle, profileHandle } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { setTopBarAction } = useOutletContext<AppShellOutletContext>();
   const { runWithAuth, status, user } = useAuth();
+  const canvasEditReturnHandledRef = useRef(false);
   const [activeTab, setActiveTab] = useState<ProfileTab>("feed");
   const [activePanel, setActivePanel] = useState<ProfilePanel | undefined>();
   const [profileOverride, setProfileOverride] = useState<Profile | undefined>();
@@ -439,7 +454,7 @@ export function ProfilePage() {
     setBadgesOverride({ handle: normalizedHandle, result: updated });
   }
 
-  async function handleStartCanvasEdit() {
+  const handleStartCanvasEdit = useCallback(async () => {
     if (!profile || !isOwnProfile || canvasLoading) {
       return;
     }
@@ -456,7 +471,10 @@ export function ProfilePage() {
       const deletedModules = modules.filter((module) => module.status === "deleted");
       const preparedModules = prepareProfileCanvasModules(
         profile,
-        activeModules,
+        mergeIntegrationAccountsIntoConnectionModules(
+          activeModules,
+          integrations?.accounts,
+        ),
         profileLayoutPreset,
       );
 
@@ -477,7 +495,39 @@ export function ProfilePage() {
     } finally {
       setCanvasLoading(false);
     }
-  }
+  }, [canvasLoading, isOwnProfile, profile, profileLayoutPreset]);
+
+  useEffect(() => {
+    if (
+      canvasEditReturnHandledRef.current ||
+      canvasEditing ||
+      canvasLoading ||
+      !profile ||
+      !isOwnProfile
+    ) {
+      return;
+    }
+
+    const params = new URLSearchParams(location.search);
+
+    if (params.get("editCanvas") !== "1") {
+      return;
+    }
+
+    canvasEditReturnHandledRef.current = true;
+    const timer = window.setTimeout(() => {
+      void handleStartCanvasEdit();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    canvasEditing,
+    canvasLoading,
+    handleStartCanvasEdit,
+    isOwnProfile,
+    location.search,
+    profile,
+  ]);
 
   function handleCancelCanvasEdit() {
     setCanvasEditing(false);
@@ -503,8 +553,61 @@ export function ProfilePage() {
     try {
       const { profile: savedProfile, canvas } = await runWithAuth(
         async (csrfToken) => {
+          let modulesForSave = draftModules;
+          let anchorModuleIdForSave = selectedCanvasModuleId ?? null;
+
+          for (const module of modulesForSave) {
+            if (
+              module.id >= 0 ||
+              module.type === "profile_info" ||
+              module.status !== "active"
+            ) {
+              continue;
+            }
+
+            const existingIds = new Set(
+              modulesForSave
+                .filter((item) => item.id > 0)
+                .map((item) => item.id),
+            );
+            const createdModules = await createProfileModule(
+              {
+                type: module.type,
+                title: null,
+                visibility: module.visibility,
+                status: "active",
+                config: module.config,
+              },
+              csrfToken,
+            );
+            const createdModule = createdModules
+              .filter(
+                (item) => item.type === module.type && !existingIds.has(item.id),
+              )
+              .sort((first, second) => second.id - first.id)[0];
+
+            if (!createdModule) {
+              throw new Error("Could not persist this module.");
+            }
+
+            modulesForSave = modulesForSave.map((item) =>
+              item.id === module.id
+                ? {
+                    ...createdModule,
+                    config: module.config,
+                    layout: module.layout ?? null,
+                    visibility: module.visibility,
+                  }
+                : item,
+            );
+
+            if (anchorModuleIdForSave === module.id) {
+              anchorModuleIdForSave = createdModule.id;
+            }
+          }
+
           await Promise.all(
-            draftModules
+            modulesForSave
               .filter((module) => module.id > 0 && module.type !== "profile_info")
               .map((module) =>
                 updateProfileModule(
@@ -515,6 +618,11 @@ export function ProfilePage() {
               ),
           );
 
+          const shouldClearLegacyProfileLinks =
+            profile.links.length > 0 &&
+            modulesForSave.some(
+              (module) => module.id > 0 && module.type === "links",
+            );
           let updatedProfile = draftProfile
             ? await updateMyProfile(
                 {
@@ -527,7 +635,7 @@ export function ProfilePage() {
                   profileBackgroundVideo: draftProfile.profileBackgroundVideo ?? null,
                   profileBackgroundVideoPoster:
                     draftProfile.profileBackgroundVideoPoster ?? null,
-                  links: draftProfile.links,
+                  links: shouldClearLegacyProfileLinks ? [] : draftProfile.links,
                 },
                 csrfToken,
               )
@@ -550,16 +658,16 @@ export function ProfilePage() {
           const updatedCanvas = await updateProfileCanvas(
             {
               canvasVersion: 1,
-              anchorModuleId: selectedCanvasModuleId ?? null,
+              anchorModuleId: anchorModuleIdForSave,
               backgroundBlur: draftBackgroundBlur,
-              modules: draftModules
+              modules: modulesForSave
                 .filter((module) => module.id > 0)
                 .map((module) =>
                   profileModuleCanvasInput(
                     module,
                     profile,
                     profileLayoutPreset,
-                    draftModules.indexOf(module),
+                    modulesForSave.indexOf(module),
                   ),
                 ),
             },
@@ -800,6 +908,20 @@ export function ProfilePage() {
 
   async function handleDeleteCanvasModule(module: ProfileModule) {
     if (!profile || !canvasEditing || canvasSaving || module.type === "profile_info") {
+      return;
+    }
+
+    if (module.id < 0) {
+      setDraftModules((modules) => modules.filter((item) => item.id !== module.id));
+      setSelectedCanvasModuleId(undefined);
+
+      if (module.type === "links") {
+        handleDraftProfileChange((current) => ({
+          ...current,
+          links: [],
+        }));
+      }
+
       return;
     }
 
@@ -1126,7 +1248,7 @@ export function ProfilePage() {
         className={cn(
           "relative z-10 space-y-4 sm:space-y-5",
           canvasEditing
-            ? "lg:grid lg:grid-cols-[18rem_minmax(0,1fr)] lg:items-start lg:gap-5 lg:space-y-0"
+            ? "lg:grid lg:grid-cols-[23rem_minmax(0,1fr)] lg:items-start lg:gap-5 lg:space-y-0"
             : undefined,
         )}
       >
@@ -1224,7 +1346,7 @@ export function ProfilePage() {
           layoutPreset={profileLayoutPreset}
           loading={modulesState.loading}
           modules={profileCanvasModules}
-          renderModuleContent={(module) => {
+          renderModuleContent={(module, size) => {
             if (module.type === "profile_info") {
               return (
                 <ProfileInfoModule
@@ -1236,6 +1358,7 @@ export function ProfilePage() {
                   isOwnProfile={isOwnProfile}
                   profile={renderedProfile}
                   profileControlBusy={profileControlBusy}
+                  size={size}
                   showChatHint={
                     status === "authenticated" &&
                     !isOwnProfile &&
@@ -1291,6 +1414,7 @@ export function ProfilePage() {
                 rooms={profileRooms}
                 roomsError={roomsState.error}
                 roomsLoading={roomsState.loading}
+                size={size}
                 title={module.title ?? "Activity"}
                 onTabChange={setActiveTab}
               />
@@ -1346,6 +1470,8 @@ function resolveProfileCanvasModules(
   ];
 }
 
+const syntheticConnectionsModuleId = -2;
+
 function mergeProfileLinksIntoConnectionModules(
   profile: Profile,
   modules: ProfileModule[],
@@ -1354,7 +1480,37 @@ function mergeProfileLinksIntoConnectionModules(
     return modules;
   }
 
-  const legacyLinks = profile.links.map(profileModuleLinkFromConnection);
+  return upsertProfileModuleLinks(
+    modules,
+    profile.links.map(profileModuleLinkFromConnection),
+  );
+}
+
+function mergeIntegrationAccountsIntoConnectionModules(
+  modules: ProfileModule[],
+  accounts: ProfileIntegrationAccount[] | undefined,
+): ProfileModule[] {
+  const accountLinks =
+    accounts
+      ?.filter((account) => !account.revokedAt)
+      .map(profileModuleLinkFromIntegrationAccount)
+      .filter(isProfileModuleLink) ?? [];
+
+  if (accountLinks.length === 0) {
+    return modules;
+  }
+
+  return upsertProfileModuleLinks(modules, accountLinks);
+}
+
+function upsertProfileModuleLinks(
+  modules: ProfileModule[],
+  links: ProfileModuleLink[],
+): ProfileModule[] {
+  if (links.length === 0) {
+    return modules;
+  }
+
   let hasConnectionsModule = false;
   const mergedModules = modules.map((module) => {
     if (module.type !== "links") {
@@ -1368,7 +1524,7 @@ function mergeProfileLinksIntoConnectionModules(
       config: {
         ...module.config,
         links: dedupeProfileModuleLinks([
-          ...legacyLinks,
+          ...links,
           ...(module.config.links ?? []),
         ]),
       },
@@ -1382,11 +1538,11 @@ function mergeProfileLinksIntoConnectionModules(
   return [
     ...mergedModules,
     {
-      id: -2,
+      id: syntheticConnectionsModuleId,
       type: "links",
       title: "Connections",
       config: {
-        links: dedupeProfileModuleLinks(legacyLinks),
+        links: dedupeProfileModuleLinks(links),
       },
       visibility: "public",
       position: 2,
@@ -1395,6 +1551,64 @@ function mergeProfileLinksIntoConnectionModules(
       schemaVersion: 1,
     },
   ];
+}
+
+function profileModuleLinkFromIntegrationAccount(
+  account: ProfileIntegrationAccount,
+): ProfileModuleLink | undefined {
+  if (account.provider === "spotify") {
+    const accountId = account.providerAccountId.trim();
+
+    if (!accountId) {
+      return undefined;
+    }
+
+    return {
+      label: account.displayName || account.providerHandle || "Spotify",
+      platform: "spotify",
+      url: `https://open.spotify.com/user/${encodeURIComponent(accountId)}`,
+    };
+  }
+
+  const platform = integrationConnectionPlatform(account.provider);
+
+  if (!platform) {
+    return undefined;
+  }
+
+  const value =
+    account.providerHandle?.trim() ||
+    (account.provider === "youtube" && account.providerAccountId.trim()
+      ? `https://www.youtube.com/channel/${account.providerAccountId.trim()}`
+      : account.providerAccountId.trim());
+  const result = validateProfileConnectionDraft(platform, value);
+
+  if ("error" in result) {
+    return undefined;
+  }
+
+  const link = profileModuleLinkFromConnection(result.connection);
+
+  return {
+    ...link,
+    label: account.displayName || account.providerHandle || link.label,
+  };
+}
+
+function integrationConnectionPlatform(
+  provider: ProfileIntegrationProvider,
+): ProfileConnectionPlatform | undefined {
+  if (provider === "github" || provider === "twitch" || provider === "youtube") {
+    return provider;
+  }
+
+  return undefined;
+}
+
+function isProfileModuleLink(
+  link: ProfileModuleLink | undefined,
+): link is ProfileModuleLink {
+  return Boolean(link);
 }
 
 function profileModuleLinkFromConnection(
@@ -1518,7 +1732,10 @@ function prepareProfileCanvasModules(
   modules: ProfileModule[],
   layoutPreset: ProfileLayoutPreset,
 ): ProfileModule[] {
-  const normalized = resolveProfileCanvasModules(profile, modules);
+  const normalized = resolveProfileCanvasModules(
+    profile,
+    mergeProfileLinksIntoConnectionModules(profile, modules),
+  );
   const occupied = new Set<string>();
 
   return normalized.map((module, index) => {
@@ -1992,32 +2209,32 @@ type ProfileCanvasDockCategory =
   | "removed";
 
 const profileCanvasDockCategories: {
-  description: string;
+  icon: ReactNode;
   label: string;
   value: ProfileCanvasDockCategory;
 }[] = [
   {
-    description: "Identity, intro, links, badges, and activity.",
+    icon: <UserCheck aria-hidden="true" size={15} />,
     label: "Essentials",
     value: "essentials",
   },
   {
-    description: "Pinned post and room modules.",
+    icon: <Star aria-hidden="true" size={15} />,
     label: "Featured",
     value: "featured",
   },
   {
-    description: "Gallery, creator, and music cards.",
+    icon: <ImagePlus aria-hidden="true" size={15} />,
     label: "Media",
     value: "media",
   },
   {
-    description: "Spotify, Apple Music, YouTube, Twitch, and GitHub.",
+    icon: <Radio aria-hidden="true" size={15} />,
     label: "Integrations",
     value: "integrations",
   },
   {
-    description: "Modules removed from this canvas.",
+    icon: <Undo2 aria-hidden="true" size={15} />,
     label: "Removed",
     value: "removed",
   },
@@ -2193,21 +2410,19 @@ function ProfileCanvasEditorToolbar({
           </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-1 lg:grid-cols-1" role="tablist" aria-label="Module categories">
+        <div className="mt-3 grid grid-cols-2 gap-1" role="tablist" aria-label="Module categories">
           {profileCanvasDockCategories.map((category) => (
             <button
               key={category.value}
               type="button"
               role="tab"
               aria-selected={activeCategory === category.value}
-              className="min-w-0 rounded-card px-3 py-2 text-left text-sm font-semibold text-muted transition duration-fluid ease-fluid hover:bg-canvas/55 hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-selected:bg-canvas/70 aria-selected:text-text"
+              className="inline-flex min-w-0 items-center gap-2 rounded-card px-3 py-2 text-left text-sm font-semibold text-muted transition duration-fluid ease-fluid hover:bg-canvas/55 hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-selected:bg-canvas/70 aria-selected:text-text"
               data-testid={`profile-canvas-category-${category.value}`}
               onClick={() => setActiveCategory(category.value)}
             >
+              {category.icon}
               <span className="block truncate">{category.label}</span>
-              <span className="hidden truncate text-xs font-medium text-muted lg:block">
-                {category.description}
-              </span>
             </button>
           ))}
         </div>
@@ -2446,7 +2661,7 @@ function ProfileCanvasEditorToolbar({
               ))
             ) : (
               <p className="rounded-card border border-dashed border-line bg-canvas/45 p-4 text-sm text-muted">
-                Removed modules will appear here with their previous title, settings, and layout where possible.
+                Removed modules appear here.
               </p>
             )}
           </div>
@@ -2584,11 +2799,11 @@ function ProfileCanvasEditorToolbar({
             <span className="font-semibold text-text">
               {selectedModule.title ?? profileModuleFallbackTitle(selectedModule.type)}
             </span>{" "}
-            is selected. Edit it directly on the canvas.
+            is selected.
           </p>
         ) : (
           <p className="mt-2 rounded-card border border-dashed border-line bg-canvas/45 p-3 text-sm text-muted">
-            Choose a module on the canvas to edit it.
+            Choose a module.
           </p>
         )}
         {error ? (
@@ -2638,6 +2853,7 @@ function ProfileSelectedModuleControls({
     useState<ProfileConnectionPlatform>("website");
   const [connectionValue, setConnectionValue] = useState("");
   const [connectionError, setConnectionError] = useState<string | undefined>();
+  const [connectionFormOpen, setConnectionFormOpen] = useState(false);
   const layout = module.layout ?? {
     column: 1,
     row: 1,
@@ -2661,16 +2877,6 @@ function ProfileSelectedModuleControls({
     );
   }
 
-  function updatePosition(column: number, row: number) {
-    onLayoutChange(
-      clampProfileModuleLayout({
-        ...layout,
-        column,
-        row,
-      }),
-    );
-  }
-
   function addConnection() {
     const result = validateProfileConnectionDraft(connectionPlatform, connectionValue);
 
@@ -2681,6 +2887,7 @@ function ProfileSelectedModuleControls({
 
     setConnectionError(undefined);
     setConnectionValue("");
+    setConnectionFormOpen(false);
     onConfigChange({
       ...module.config,
       links: dedupeProfileModuleLinks([
@@ -2698,45 +2905,71 @@ function ProfileSelectedModuleControls({
   }
 
   return (
-    <div
-      className="absolute left-0 right-0 top-full z-30 mt-2 max-h-[min(32rem,calc(100dvh-7rem))] scroll-mt-28 overflow-y-auto rounded-card border border-line-strong bg-surface/92 p-3 text-sm shadow-lift backdrop-blur-veil"
+    <article
+      className="grid h-full min-h-0 min-w-0 grid-rows-[auto_1fr] overflow-hidden rounded-card border border-line-strong bg-surface/82 p-3 text-sm shadow-lift backdrop-blur-veil"
       data-profile-edit-control="true"
       data-testid="profile-selected-module-controls"
-      role="group"
+      data-profile-module-edit-surface="true"
+      role="region"
       aria-label={`Edit ${profileModuleFallbackTitle(module.type)} module`}
     >
-      <div className="flex items-start justify-between gap-3">
+      <header className="min-w-0">
         <div className="min-w-0">
           <p className="truncate font-semibold text-text">
             {module.title ?? profileModuleFallbackTitle(module.type)}
           </p>
-          <p className="text-xs text-muted">Selected widget</p>
         </div>
-        <div className="flex shrink-0 gap-1">
-          <button
-            type="button"
-            className="rounded-control border border-line bg-canvas/55 px-2 py-1 text-xs font-semibold text-muted transition hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-50"
-            disabled={module.type === "profile_info"}
-            data-testid="profile-canvas-visibility-button"
-            onClick={() => onVisibilityChange(!visible)}
-          >
-            {visible ? "Shown" : "Hidden"}
-          </button>
-          <button
-            type="button"
-            className="rounded-control border border-line bg-canvas/55 px-2 py-1 text-xs font-semibold text-muted transition hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-50"
-            disabled={!canDelete || busy}
-            data-testid="profile-canvas-delete-module-button"
-            onClick={onDeleteModule}
-          >
-            Remove
-          </button>
-        </div>
-      </div>
+      </header>
 
-      <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_auto]">
+      <div className="mt-3 min-h-0 overflow-y-auto pr-1">
         <div>
-          <p className="text-xs font-semibold uppercase text-muted">Size</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase text-muted">Size</p>
+            <div className="relative z-30 flex shrink-0 gap-1">
+              <button
+                type="button"
+                className="grid size-8 place-items-center rounded-control border border-line bg-canvas/55 text-muted transition hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-50"
+                aria-label={visible ? "Hide module" : "Show module"}
+                title={visible ? "Hide module" : "Show module"}
+                disabled={module.type === "profile_info"}
+                data-profile-edit-control="true"
+                data-testid="profile-canvas-visibility-button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onVisibilityChange(!visible);
+                }}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onVisibilityChange(!visible);
+                }}
+              >
+                <Eye aria-hidden="true" size={15} />
+              </button>
+              <button
+                type="button"
+                className="grid size-8 place-items-center rounded-control border border-line bg-canvas/55 text-muted transition hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-50"
+                aria-label="Remove module"
+                title="Remove module"
+                disabled={!canDelete || busy}
+                data-profile-edit-control="true"
+                data-testid="profile-canvas-delete-module-button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onDeleteModule();
+                }}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onDeleteModule();
+                }}
+              >
+                <X aria-hidden="true" size={15} />
+              </button>
+            </div>
+          </div>
           <div className="mt-1 flex flex-wrap gap-1">
             {profileModuleAllowedSizes(module.type).map((allowedSize) => (
               <button
@@ -2753,68 +2986,39 @@ function ProfileSelectedModuleControls({
           </div>
         </div>
 
-        <div>
-          <p className="text-xs font-semibold uppercase text-muted">Position</p>
-          <div
-            className="mt-1 grid grid-cols-6 gap-1"
-            role="grid"
-            aria-label="Canvas position"
-            data-testid="profile-canvas-position-grid"
-          >
-            {Array.from({ length: 54 }, (_, index) => {
-              const column = (index % 6) + 1;
-              const row = Math.floor(index / 6) + 1;
-              const active = layout.column === column && layout.row === row;
-              const invalid =
-                column + layout.colSpan - 1 > 6 || row + layout.rowSpan - 1 > 9;
-
-              return (
-                <button
-                  key={`${column}:${row}`}
-                  type="button"
-                  className="size-5 rounded-[4px] border border-line bg-canvas/55 text-[0.6rem] font-semibold text-muted transition hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-accent aria-pressed:text-accent-ink disabled:opacity-25"
-                  aria-label={`Place at column ${column}, row ${row}`}
-                  aria-pressed={active}
-                  disabled={invalid}
-                  data-testid={`profile-canvas-position-${column}-${row}`}
-                  onClick={() => updatePosition(column, row)}
-                >
-                  {active ? <Check aria-hidden="true" size={11} /> : null}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <ProfileSelectedModuleContentControls
+          connectionError={connectionError}
+          connectionFormOpen={connectionFormOpen}
+          connectionPlatform={connectionPlatform}
+          connectionValue={connectionValue}
+          feed={feed}
+          module={module}
+          profile={profile}
+          rooms={rooms}
+          onAddConnection={addConnection}
+          onConfigChange={onConfigChange}
+          onConnectionFormOpenChange={setConnectionFormOpen}
+          onConnectionPlatformChange={setConnectionPlatform}
+          onConnectionValueChange={setConnectionValue}
+          onProfileDraftChange={onProfileDraftChange}
+          onProfileImageUpload={onProfileImageUpload}
+          onRemoveConnection={removeConnection}
+        />
       </div>
-
-      <ProfileSelectedModuleContentControls
-        connectionError={connectionError}
-        connectionPlatform={connectionPlatform}
-        connectionValue={connectionValue}
-        feed={feed}
-        module={module}
-        profile={profile}
-        rooms={rooms}
-        onAddConnection={addConnection}
-        onConfigChange={onConfigChange}
-        onConnectionPlatformChange={setConnectionPlatform}
-        onConnectionValueChange={setConnectionValue}
-        onProfileDraftChange={onProfileDraftChange}
-        onProfileImageUpload={onProfileImageUpload}
-        onRemoveConnection={removeConnection}
-      />
-    </div>
+    </article>
   );
 }
 
 function ProfileSelectedModuleContentControls({
   connectionError,
+  connectionFormOpen,
   connectionPlatform,
   connectionValue,
   feed,
   module,
   onAddConnection,
   onConfigChange,
+  onConnectionFormOpenChange,
   onConnectionPlatformChange,
   onConnectionValueChange,
   onProfileDraftChange,
@@ -2824,12 +3028,14 @@ function ProfileSelectedModuleContentControls({
   rooms,
 }: {
   connectionError?: string | undefined;
+  connectionFormOpen: boolean;
   connectionPlatform: ProfileConnectionPlatform;
   connectionValue: string;
   feed: Post[];
   module: ProfileModule;
   onAddConnection: () => void;
   onConfigChange: (config: ProfileModuleConfig) => void;
+  onConnectionFormOpenChange: (open: boolean) => void;
   onConnectionPlatformChange: (platform: ProfileConnectionPlatform) => void;
   onConnectionValueChange: (value: string) => void;
   onProfileDraftChange: (updater: (profile: Profile) => Profile) => void;
@@ -2945,45 +3151,62 @@ function ProfileSelectedModuleContentControls({
             </span>
           ))}
         </div>
-        <div className="grid gap-2 sm:grid-cols-[0.8fr_1fr_auto]">
-          <label className="text-xs font-semibold uppercase text-muted">
-            Platform
-            <select
-              className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/55 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
-              value={connectionPlatform}
-              data-testid="profile-connection-platform-select"
-              onChange={(event) =>
-                onConnectionPlatformChange(event.target.value as ProfileConnectionPlatform)
-              }
-            >
+        <button
+          type="button"
+          className="inline-flex min-h-9 items-center rounded-control border border-line bg-canvas/55 px-3 text-sm font-semibold text-text transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus"
+          data-testid="profile-connection-add-open-button"
+          onClick={() => onConnectionFormOpenChange(!connectionFormOpen)}
+        >
+          Add connection +
+        </button>
+        {connectionFormOpen ? (
+          <div
+            className="rounded-card border border-line bg-canvas/45 p-2"
+            data-testid="profile-connection-add-popover"
+          >
+            <div className="flex flex-wrap gap-1" aria-label="Connection platform">
               {profileConnectionPlatforms.map((platform) => (
-                <option key={platform.value} value={platform.value}>
-                  {platform.label}
-                </option>
+                <button
+                  key={platform.value}
+                  type="button"
+                  className="inline-flex min-h-9 items-center gap-1.5 rounded-control border border-line bg-surface/62 px-2 text-xs font-semibold text-muted transition hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-accent aria-pressed:text-accent-ink"
+                  aria-label={platform.label}
+                  aria-pressed={connectionPlatform === platform.value}
+                  data-testid={`profile-connection-platform-${platform.value}`}
+                  onClick={() => onConnectionPlatformChange(platform.value)}
+                >
+                  <ProfileConnectionIcon platform={platform.value} size={15} />
+                  <span className="max-w-20 truncate">{platform.label}</span>
+                </button>
               ))}
-            </select>
-          </label>
-          <label className="text-xs font-semibold uppercase text-muted">
-            Handle or link
-            <input
-              className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/55 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
-              value={connectionValue}
-              data-testid="profile-connection-value-input"
-              onChange={(event) => onConnectionValueChange(event.target.value)}
-              placeholder={connectionPlatformLabel(connectionPlatform)}
-            />
-          </label>
-          <div className="flex items-end">
-            <button
-              type="button"
-              className="min-h-9 rounded-control bg-accent px-3 text-sm font-semibold text-accent-ink focus-visible:outline-2 focus-visible:outline-focus"
-              data-testid="profile-connection-add-button"
-              onClick={onAddConnection}
-            >
-              Add
-            </button>
+            </div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
+              <label className="text-xs font-semibold uppercase text-muted">
+                Handle or URL
+                <input
+                  className="mt-1 h-9 w-full rounded-control border border-line bg-surface/68 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
+                  value={connectionValue}
+                  data-testid="profile-connection-value-input"
+                  onChange={(event) => onConnectionValueChange(event.target.value)}
+                  placeholder={connectionPlatformLabel(connectionPlatform)}
+                />
+              </label>
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  className="min-h-9 rounded-control bg-accent px-3 text-sm font-semibold text-accent-ink focus-visible:outline-2 focus-visible:outline-focus"
+                  data-testid="profile-connection-add-button"
+                  onClick={onAddConnection}
+                >
+                  Add
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
+        ) : null}
+        {connectionFormOpen ? null : links.length === 0 ? (
+          <p className="text-xs text-muted">No connections yet.</p>
+        ) : null}
         {connectionError ? (
           <p className="text-xs font-semibold text-rose-ink" role="alert">
             {connectionError}
@@ -3092,106 +3315,148 @@ function ProfileCanvasBackgroundControls({
   profile: Profile;
   uploading?: "backgroundImage" | "backgroundVideo" | "avatar" | "banner" | undefined;
 }) {
+  const [open, setOpen] = useState(false);
   const hasBackground = Boolean(profile.profileBackground || profile.profileBackgroundVideo);
+  const backgroundState = profile.profileBackgroundVideo
+    ? "Video"
+    : profile.profileBackground
+      ? "Image"
+      : "None";
 
   return (
     <div
-      className="rounded-card border border-line bg-canvas/45 p-3"
+      className="relative"
       data-testid="profile-canvas-background-controls"
     >
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase text-muted">Background</p>
-          <p className="mt-0.5 text-sm text-muted">
-            Set the page image or muted looping video behind the canvas.
-          </p>
-        </div>
-        <ImagePlus aria-hidden="true" size={18} className="shrink-0 text-muted" />
-      </div>
-      <div className="mt-3 grid gap-2">
-        <label
-          className="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-control border border-line bg-surface/68 px-3 text-sm font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-within:outline-2 focus-within:outline-focus"
-          data-profile-edit-control="true"
-        >
-          {uploading === "backgroundImage" ? "Uploading image" : "Choose image"}
-          <input
-            className="sr-only"
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            data-testid="profile-background-image-input"
-            disabled={Boolean(uploading)}
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
+      <button
+        type="button"
+        className="flex min-h-11 w-full items-center gap-3 rounded-control border border-line bg-canvas/50 px-3 text-left transition duration-fluid ease-fluid hover:border-line-strong hover:bg-canvas/70 focus-visible:outline-2 focus-visible:outline-focus"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        data-profile-edit-control="true"
+        data-testid="profile-canvas-background-trigger"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className="grid size-8 shrink-0 place-items-center rounded-card border border-line bg-surface/70 text-text">
+          <ImagePlus aria-hidden="true" size={17} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold text-text">
+            Background
+          </span>
+          <span className="block truncate text-xs text-muted">
+            {backgroundState} · {blurLabel(backgroundBlur)}
+          </span>
+        </span>
+      </button>
 
-              if (file) {
-                onImageUpload(file);
-              }
-
-              event.currentTarget.value = "";
-            }}
-          />
-        </label>
-        <label
-          className="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-control border border-line bg-surface/68 px-3 text-sm font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-within:outline-2 focus-within:outline-focus"
-          data-profile-edit-control="true"
-        >
-          {uploading === "backgroundVideo" ? "Uploading video" : "Choose video"}
-          <input
-            className="sr-only"
-            type="file"
-            accept="video/mp4,video/webm"
-            data-testid="profile-background-video-input"
-            disabled={Boolean(uploading)}
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
-
-              if (file) {
-                onVideoUpload(file);
-              }
-
-              event.currentTarget.value = "";
-            }}
-          />
-        </label>
-        <button
-          type="button"
-          className="min-h-10 rounded-control border border-line bg-canvas/55 px-3 text-sm font-semibold text-muted transition duration-fluid ease-fluid hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-50"
-          data-profile-edit-control="true"
-          disabled={!hasBackground || Boolean(uploading)}
-          onClick={onClear}
-        >
-          Clear background
-        </button>
-      </div>
-      <div className="mt-3">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-semibold uppercase text-muted">
-            Background clarity
-          </p>
-          <span className="text-xs text-muted">{blurLabel(backgroundBlur)}</span>
-        </div>
-        <p className="mt-1 text-xs leading-5 text-muted">
-          Blur softens the media behind modules; None keeps it sharpest.
-        </p>
+      {open ? (
         <div
-          className="mt-2 grid grid-cols-4 gap-1 rounded-control border border-line bg-canvas/50 p-1"
-          aria-label="Background blur"
+          className="absolute left-0 right-0 top-full z-20 mt-2 rounded-card border border-line bg-surface/95 p-3 shadow-lift backdrop-blur-veil"
+          role="dialog"
+          aria-label="Background settings"
+          data-testid="profile-canvas-background-popover"
         >
-          {(["none", "soft", "medium", "heavy"] as const).map((blur) => (
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-text">Background</p>
+              <p className="text-xs text-muted">Media and clarity</p>
+            </div>
             <button
-              key={blur}
               type="button"
-              className="rounded-control px-2 py-1.5 text-xs font-semibold text-muted transition duration-fluid ease-fluid hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-surface aria-pressed:text-text"
-              aria-pressed={backgroundBlur === blur}
+              className="grid size-8 shrink-0 place-items-center rounded-control border border-line bg-canvas/55 text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
+              aria-label="Close background settings"
               data-profile-edit-control="true"
-              data-testid={`profile-background-blur-${blur}`}
-              onClick={() => onBackgroundBlurChange(blur)}
+              onClick={() => setOpen(false)}
             >
-              {blurLabel(blur)}
+              <X aria-hidden="true" size={15} />
             </button>
-          ))}
+          </div>
+          <div className="mt-3 grid gap-2">
+            <label
+              className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-surface/68 px-3 text-sm font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-within:outline-2 focus-within:outline-focus"
+              data-profile-edit-control="true"
+            >
+              <ImagePlus aria-hidden="true" size={16} />
+              {uploading === "backgroundImage" ? "Uploading image" : "Choose image"}
+              <input
+                className="sr-only"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                data-testid="profile-background-image-input"
+                disabled={Boolean(uploading)}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+
+                  if (file) {
+                    onImageUpload(file);
+                  }
+
+                  event.currentTarget.value = "";
+                }}
+              />
+            </label>
+            <label
+              className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-surface/68 px-3 text-sm font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-within:outline-2 focus-within:outline-focus"
+              data-profile-edit-control="true"
+            >
+              <Video aria-hidden="true" size={16} />
+              {uploading === "backgroundVideo" ? "Uploading video" : "Choose video"}
+              <input
+                className="sr-only"
+                type="file"
+                accept="video/mp4,video/webm"
+                data-testid="profile-background-video-input"
+                disabled={Boolean(uploading)}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+
+                  if (file) {
+                    onVideoUpload(file);
+                  }
+
+                  event.currentTarget.value = "";
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="min-h-10 rounded-control border border-line bg-canvas/55 px-3 text-sm font-semibold text-muted transition duration-fluid ease-fluid hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-50"
+              data-profile-edit-control="true"
+              disabled={!hasBackground || Boolean(uploading)}
+              onClick={onClear}
+            >
+              Clear background
+            </button>
+          </div>
+          <div className="mt-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase text-muted">
+                Background clarity
+              </p>
+              <span className="text-xs text-muted">{blurLabel(backgroundBlur)}</span>
+            </div>
+            <div
+              className="mt-2 grid grid-cols-4 gap-1 rounded-control border border-line bg-canvas/50 p-1"
+              aria-label="Background blur"
+            >
+              {(["none", "soft", "medium", "heavy"] as const).map((blur) => (
+                <button
+                  key={blur}
+                  type="button"
+                  className="rounded-control px-2 py-1.5 text-xs font-semibold text-muted transition duration-fluid ease-fluid hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-surface aria-pressed:text-text"
+                  aria-pressed={backgroundBlur === blur}
+                  data-profile-edit-control="true"
+                  data-testid={`profile-background-blur-${blur}`}
+                  onClick={() => onBackgroundBlurChange(blur)}
+                >
+                  {blurLabel(blur)}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -3218,37 +3483,33 @@ function ProfileDockModuleCard({
   return (
     <article
       className={cn(
-        "flex min-h-28 min-w-0 flex-col rounded-card border bg-canvas/48 p-3 transition duration-fluid ease-fluid",
+        "flex min-w-0 items-center gap-2 rounded-card border bg-canvas/48 p-2.5 transition duration-fluid ease-fluid",
         active ? "border-line-strong bg-surface/70" : "border-line",
       )}
       data-testid={testId}
     >
-      <div className="flex min-w-0 items-start gap-2">
-        <span className="grid size-10 shrink-0 place-items-center rounded-card border border-line bg-surface/78 text-text">
-          {icon}
-        </span>
-        <div className="min-w-0 flex-1">
-          <h3 className="truncate text-sm font-semibold text-text">{title}</h3>
-          <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted">{meta}</p>
-        </div>
+      <span className="grid size-9 shrink-0 place-items-center rounded-card border border-line bg-surface/78 text-text">
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <h3 className="truncate text-sm font-semibold text-text">{title}</h3>
+        <p className="truncate text-xs text-muted">{meta}</p>
       </div>
-      <div className="mt-auto pt-3">
-        <button
-          type="button"
-          className="inline-flex h-8 items-center gap-1.5 rounded-control border border-line bg-surface/70 px-2.5 text-xs font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55"
-          disabled={disabled}
-          onClick={onAction}
-        >
-          {actionLabel === "Restore" ? (
-            <Undo2 aria-hidden="true" size={14} />
-          ) : actionLabel === "On canvas" ? (
-            <Eye aria-hidden="true" size={14} />
-          ) : (
-            <Plus aria-hidden="true" size={14} />
-          )}
-          {actionLabel}
-        </button>
-      </div>
+      <button
+        type="button"
+        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-control border border-line bg-surface/70 px-2.5 text-xs font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55"
+        disabled={disabled}
+        onClick={onAction}
+      >
+        {actionLabel === "Restore" ? (
+          <Undo2 aria-hidden="true" size={14} />
+        ) : actionLabel === "On canvas" ? (
+          <Eye aria-hidden="true" size={14} />
+        ) : (
+          <Plus aria-hidden="true" size={14} />
+        )}
+        {actionLabel}
+      </button>
     </article>
   );
 }
@@ -3490,8 +3751,8 @@ function FileTextIcon() {
 }
 
 function clampProfileModuleLayout(layout: ProfileModuleLayout): ProfileModuleLayout {
-  const colSpan = Math.max(1, Math.min(3, layout.colSpan));
-  const rowSpan = Math.max(1, Math.min(3, layout.rowSpan));
+  const colSpan = Math.max(1, Math.min(6, layout.colSpan));
+  const rowSpan = Math.max(1, Math.min(6, layout.rowSpan));
 
   return {
     column: Math.max(1, Math.min(6 - colSpan + 1, layout.column)),
@@ -3654,6 +3915,7 @@ type ProfileInfoModuleProps = {
   profile: Profile;
   profileControlBusy?: "block" | "mute" | undefined;
   showChatHint: boolean;
+  size: ProfileGridModuleSize;
   status: string;
 };
 
@@ -3671,10 +3933,17 @@ function ProfileInfoModule({
   profile,
   profileControlBusy,
   showChatHint,
+  size,
   status,
 }: ProfileInfoModuleProps) {
+  const span = profileGridModuleSizeSpan(size);
   return (
-    <div className="min-w-0 space-y-3" data-testid="profile-module-profile-info">
+    <div
+      className="h-full min-w-0 space-y-3"
+      data-profile-info-columns={span.columns}
+      data-profile-info-rows={span.rows}
+      data-testid="profile-module-profile-info"
+    >
       <ProfileHeader
         profile={profile}
         featuredBadges={featuredBadges}
@@ -3924,6 +4193,7 @@ type ProfileActivityModuleProps = {
   rooms: Room[];
   roomsError: unknown;
   roomsLoading: boolean;
+  size: ProfileGridModuleSize;
   title: string;
 };
 
@@ -3940,12 +4210,15 @@ function ProfileActivityModule({
   rooms,
   roomsError,
   roomsLoading,
+  size,
   title,
 }: ProfileActivityModuleProps) {
+  const activityRows = profileGridModuleSizeSpan(size).rows;
+
   return (
     <div
-      className="flex h-full max-h-[min(38rem,75dvh)] min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-card border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil md:max-h-[calc(var(--profile-grid-row-size)+var(--profile-grid-row-size)+var(--profile-grid-row-size)+var(--profile-grid-gap)+var(--profile-grid-gap))]"
-      data-profile-activity-max-rows="3"
+      className="flex h-full max-h-[min(52rem,78dvh)] min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-card border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
+      data-profile-activity-max-rows={activityRows}
       data-testid="profile-module-activity"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

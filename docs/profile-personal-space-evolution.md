@@ -161,8 +161,9 @@ P3A makes the modular profile canvas a real editable surface.
 
 - The profile canvas remains a 6 x 9 desktop grid.
 - Desktop owners can move modules with native pointer drag in the canvas.
-- Keyboard/select controls remain the accessible fallback and the mobile editing
-  path.
+- Visible position-map controls are not part of the normal editing flow. A
+  future settings pass can expose direct position controls behind an
+  accessibility toggle; this pass keeps drag as the primary placement model.
 - Client and server both use collision push behavior: the selected/anchored
   module claims its requested slot first, visible colliding modules try
   same-row sideways movement before moving downward, and hidden modules do not
@@ -181,15 +182,19 @@ P3A makes the modular profile canvas a real editable surface.
   placement where possible.
 - The editor model keeps the live profile canvas visible. Desktop uses a
   compact translucent left panel with categories, module cards, search,
-  suggestions, integrations, removed modules, and background controls. Mobile
-  uses the same compact actions as a bottom sheet and public mobile layout
-  still ignores exact desktop placement.
+  suggestions, integrations, removed modules, and a Background popover trigger.
+  Mobile uses the same compact actions as a bottom sheet and public mobile
+  layout still ignores exact desktop placement.
 - The panel categories are Essentials, Featured, Media, Integrations, and
   Removed. Add, remove, restore, connect, use-link, and add-card actions should
   live in this canvas editor instead of a separate settings dashboard.
 - Clicking or tapping a module in Edit Canvas mode selects it. The selected
-  module shows local controls for size, visibility, direct 6 x 9 placement,
-  removal, and supported module content editing.
+  module replaces its display content with local controls for size, visibility,
+  removal, and supported module content editing. Saving or cancelling returns
+  modules to their normal display state.
+- `profile_info` can use `4x3` and `6x3` spans when owners want a larger
+  identity anchor. Activity can use `3x4` and `3x6` spans while keeping its
+  internal scroll area for overflow.
 - Collision push is sideways-first and intent-preserving: the anchored module
   claims its requested slot, visible colliders try same-row right then left
   before moving downward, hidden or deleted modules do not occupy cells, and
@@ -199,6 +204,10 @@ P3A makes the modular profile canvas a real editable surface.
 - Connections is the unified home for custom links, platform links, lightweight
   integration/provider links, and legacy `profiles.links`; Profile Info stays
   focused on identity.
+- Successful OAuth connections for supported providers should materialize as a
+  lightweight Connections entry when a safe profile URL can be derived, while
+  rich media cards remain addable as standalone `music` or `creator_live`
+  modules.
 - Mobile public profiles ignore exact desktop placement and stack modules in a
   readable order.
 
@@ -219,7 +228,7 @@ the profile renderer constrained.
   outbound link card.
 - Spotify, Apple Music, YouTube, Twitch, and GitHub URLs are normalized by
   provider/resource id.
-- OAuth and rich integration controls belong inside the canvas dock. Provider
+- OAuth and rich integration controls belong inside the canvas editor. Provider
   cards should show configured/unconfigured state, connected identity,
   connect/disconnect actions, suggestions where API-backed, and a plain link
   fallback where OAuth or provider config is unavailable.
@@ -241,14 +250,10 @@ the profile renderer constrained.
 
 ### Module Design Rubric
 
-Profile modules should apply the useful parts of
-[Apple's widget guidance](https://developer.apple.com/design/human-interface-guidelines/widgets/)
-as a web profile rubric, not as literal iOS widget cloning. Apple frames widgets
-as timely, glanceable, personalized content with specific functionality; Apple
-Support also describes widgets as
-[quick at-a-glance information surfaces](https://support.apple.com/guide/iphone/add-edit-and-remove-widgets-iphb8f1bf206/ios).
-On `thia.lol`, that translates to modules that are compact, purposeful,
-adaptive to size, and honest about data freshness.
+Profile modules should follow a web-native rubric: compact, purposeful,
+adaptive to size, and honest about data freshness. The editor can borrow
+familiar personal-canvas interaction patterns without copying another platform
+or naming model.
 
 Every module must answer one clear purpose:
 
@@ -265,8 +270,8 @@ Span behavior should stay predictable:
 - `3x1`: compact summary with one supporting detail.
 - `2x2` and `3x2`: richer preview only when media, activity, or metadata
   benefits from the space.
-- `3x3`: reserved for identity or high-value activity; never decorative
-  expansion.
+- `3x3`, `4x3`, and `6x3`: reserved for identity layouts that use the space.
+- `3x4` and `3x6`: reserved for activity layouts with internal scrolling.
 
 Public profiles should hide empty modules instead of showing setup clutter.
 Owners can see compact actionable empty states in edit mode. Larger module
@@ -911,11 +916,12 @@ Profiles V3 P3 adds real persistence for the modular profile canvas:
   panel, mobile bottom sheet, preview, save, and cancel. It does not revive the
   retired large customization modal.
 - Module editing is local to the selected module where possible: size,
-  visibility, direct placement, profile info, Connections, text, featured
-  content selection, and supported background controls are not sent to a generic
-  dashboard.
-- Pointer drag is supported on desktop, with direct placement controls as the
-  keyboard and mobile fallback.
+  visibility, profile info, Connections, text, and featured content selection
+  are not sent to a generic dashboard. Background media and clarity live in the
+  compact Background popover opened from the editor panel.
+- Pointer drag is the primary placement system in this pass. Direct position
+  controls are deferred to a future accessibility toggle in the settings
+  surface.
 
 ### Implementation Note - 2026-06-17 Canvas Editor Refinement
 
@@ -936,7 +942,8 @@ interaction model:
   `music` or `creator_live` modules when they need more space.
 - Profile Info remains identity-first and no longer duplicates legacy links.
 - Background image, muted looping video background where supported, reset, and
-  "Background clarity" blur controls live inside Edit Canvas.
+  "Background clarity" blur controls live in a compact Background popover
+  opened from Edit Canvas.
 - Integration provider status should distinguish `Links ready`, `Metadata
   ready`, `OAuth ready`, and safe missing-config diagnostics by key name only.
   Provider logos should use branded icons where available.

@@ -56,8 +56,9 @@ Current frontend behavior:
 - The previous `Customize profile` modal has been removed. Owner customization
   now uses inline canvas editing on the profile page through a translucent
   left panel on desktop and a compact bottom sheet on mobile.
-- In Edit Canvas mode, selecting a module exposes size, visibility, position,
-  and supported content controls in or directly attached to that module.
+- In Edit Canvas mode, selecting a module replaces its display content with
+  size, visibility, remove, and supported content controls. Direct position
+  controls are deferred to a future accessibility toggle.
 - Public profiles continue to render persisted identity, media, modules,
   featured content, badges, and links through constrained public components.
 
@@ -146,7 +147,7 @@ Allowed now or likely allowed later, subject to validation:
 - Safe external links through the existing Connection model or future module-specific URL validation.
 - Curated media embeds only when generated from normalized provider/resource IDs
   through an approved allowlist, lazy-loaded, and honestly described.
-- OAuth and rich-card controls belong inside the profile canvas dock. Provider
+- OAuth and rich-card controls belong inside the profile canvas editor. Provider
   cards must show missing server config, disconnected state, connected identity,
   and provider/API failures honestly.
 - Profile layout presets as constrained templates that preserve mobile stacking
@@ -218,7 +219,7 @@ The following are not allowed:
 - Limit featured modules. A recommended first limit is 1 or 2 featured modules.
 - Keep product-defined module titles short and module bodies bounded by type-specific limits.
 - Profile modules must not overlap the primary navigation, mobile bottom nav, footer, report form, or action menus.
-- Profile modules follow a widget-like rubric: one clear purpose, most relevant
+- Profile modules follow a glanceable rubric: one clear purpose, most relevant
   content first, no filler chrome, and no public empty-state clutter.
 - Module presentation metadata (`purpose`, `density`, `freshness`,
   `primaryAction`, and `emptyPolicy`) is frontend registry metadata unless a
@@ -226,8 +227,9 @@ The following are not allowed:
   alone.
 - Grid spans express content value, not decoration: `1x1` and `2x1` are for one
   idea/action, `3x1` is a compact summary, `2x2` and `3x2` are for richer
-  media/activity/metadata previews, and `3x3` is reserved for identity or
-  high-value activity.
+  media/activity/metadata previews, `4x3` and `6x3` are identity-focused
+  profile info variants, and `3x4`/`3x6` are reserved for activity that earns
+  the extra height.
 - Larger module variants must add useful context or controls. They must not
   merely scale type, stretch media, or create blank decorative space.
 - Integration modules may show live/recent labels only when the state is

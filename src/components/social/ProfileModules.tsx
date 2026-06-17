@@ -292,6 +292,10 @@ export function ProfileModuleGrid({
         const span = profileModuleGridSpan(module, layoutPreset, index);
         const definition = getProfileModuleDefinition(module.type);
         const spanRole = profileModuleSpanRole(span.size);
+        const selected = editing?.selectedModuleId === module.id;
+        const selectedContent = selected
+          ? editing?.renderSelectedControls?.(module, span.size)
+          : undefined;
         const safeLayout =
           module.layout &&
           module.layout.colSpan === span.columns &&
@@ -311,7 +315,7 @@ export function ProfileModuleGrid({
               editing && dragState?.moduleId === module.id
                 ? "z-20 scale-[1.01] opacity-80 shadow-lift"
                 : undefined,
-              editing?.selectedModuleId === module.id
+              selected
                 ? "ring-2 ring-focus ring-offset-2 ring-offset-canvas"
                 : undefined,
             )}
@@ -325,6 +329,7 @@ export function ProfileModuleGrid({
               purpose: definition.purpose,
               spanRole,
             }}
+            selected={selected}
             size={span.size}
             testId={`profile-grid-module-${module.type}`}
             onClickCapture={
@@ -340,7 +345,10 @@ export function ProfileModuleGrid({
             {editing ? (
               <button
                 type="button"
-                className="absolute right-2 top-2 z-20 grid size-8 cursor-grab place-items-center rounded-control border border-line bg-surface/90 text-text shadow-soft backdrop-blur-veil transition duration-fluid ease-fluid hover:border-line-strong active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                className={cn(
+                  "absolute top-2 z-20 grid size-8 cursor-grab place-items-center rounded-control border border-line bg-surface/90 text-text shadow-soft backdrop-blur-veil transition duration-fluid ease-fluid hover:border-line-strong active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+                  selected ? "left-2" : "right-2",
+                )}
                 aria-label={`Drag ${profileModuleFallbackTitle(module.type)} module`}
                 title={`Drag ${profileModuleFallbackTitle(module.type)}`}
                 data-profile-edit-control="true"
@@ -358,12 +366,10 @@ export function ProfileModuleGrid({
                 <Move aria-hidden="true" size={15} />
               </button>
             ) : null}
-            {renderModuleContent?.(module, span.size) ?? (
-              <ProfileModuleCard module={module} badges={badges} size={span.size} />
-            )}
-            {editing?.selectedModuleId === module.id
-              ? editing.renderSelectedControls?.(module, span.size)
-              : null}
+            {selectedContent ??
+              renderModuleContent?.(module, span.size) ?? (
+                <ProfileModuleCard module={module} badges={badges} size={span.size} />
+              )}
           </ProfileGridModule>
         );
       })}

@@ -781,7 +781,7 @@ function profile_canvas_span_value(mixed $value, string $label): int
 {
     $number = profile_canvas_int_value($value, $label);
 
-    return max(1, min(3, $number));
+    return max(1, min(6, $number));
 }
 
 function profile_canvas_position_value(mixed $value, string $label, int $max): int
@@ -814,7 +814,7 @@ function profile_canvas_span_allowed(string $type, int $colSpan, int $rowSpan): 
 function profile_canvas_allowed_sizes(string $type): array
 {
     return match ($type) {
-        PROFILE_INFO_MODULE_TYPE => ['3x3', '3x2', '2x2', '2x1'],
+        PROFILE_INFO_MODULE_TYPE => ['3x3', '4x3', '6x3', '3x2', '2x2', '2x1'],
         'about' => ['1x1', '2x1', '3x1'],
         'custom_text' => ['1x1', '2x1'],
         'links' => ['1x1', '2x1', '3x1', '2x2'],
@@ -824,7 +824,7 @@ function profile_canvas_allowed_sizes(string $type): array
         PROFILE_GALLERY_MEDIA_MODULE_TYPE => ['1x1', '2x1', '2x2', '3x2', '3x3'],
         PROFILE_CREATOR_LIVE_MODULE_TYPE => ['1x1', '2x1', '2x2'],
         PROFILE_MUSIC_MODULE_TYPE => ['1x1', '2x1'],
-        PROFILE_ACTIVITY_MODULE_TYPE => ['2x2', '3x2', '3x3'],
+        PROFILE_ACTIVITY_MODULE_TYPE => ['2x2', '3x2', '3x3', '3x4', '3x6'],
         default => ['1x1'],
     };
 }
@@ -1221,8 +1221,8 @@ function profile_module_layout_payload(array $row): ?array
         return null;
     }
 
-    $colSpan = max(1, min(3, $colSpan));
-    $rowSpan = max(1, min(3, $rowSpan));
+    $colSpan = max(1, min(6, $colSpan));
+    $rowSpan = max(1, min(6, $rowSpan));
 
     if (!profile_canvas_span_allowed($type, $colSpan, $rowSpan)) {
         return null;

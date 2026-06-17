@@ -30,7 +30,7 @@ The profile editor should feel like:
 - A creator workspace.
 - An identity editor.
 - A personal space designer.
-- Adding widgets to a desktop or arranging apps on a home screen.
+- Arranging modules on a personal canvas.
 
 It should not feel like:
 
@@ -65,17 +65,17 @@ The active P3 editor is an owner-only inline canvas editor:
 - Module cards show purpose, size behavior, connection/metadata state where
   relevant, and direct Add or Restore actions.
 - Clicking or tapping a module in Edit Canvas mode selects it. The selected
-  module shows a clear ring and exposes size, visibility, remove, direct
-  position, and module-specific content controls in an attached tray/popover.
-- Drag is an enhancement. Keyboard users must be able to select modules and use
-  direct 6 x 9 placement plus segmented size controls without dragging.
+  module shows a clear ring and replaces its display content with size,
+  visibility, remove, and module-specific content controls.
+- Drag is the primary placement system in this pass. Direct position controls
+  are deferred to a future accessibility toggle in the settings surface.
 - Manual module label editing is no longer part of the product surface.
   Product-defined module names and platform-derived connection labels keep the
   canvas scannable. Legacy `title` and `config.label` data can still render for
   backward compatibility.
 - Background image, muted looping video background, poster/static fallback where
-  supported, reset, and "Background clarity" blur controls live inside the
-  Edit Canvas panel.
+  supported, reset, and "Background clarity" blur controls live in a compact
+  Background popover opened from the Edit Canvas panel.
 - Save is a single primary Done action. Cancel exits without persisting draft
   layout changes.
 
@@ -201,13 +201,15 @@ Motion should make customization feel fluid without distracting from editing.
 
 ## Integration Placement
 
-Integrations belong in the canvas dock, not in a settings dashboard or fake
+Integrations belong in the canvas editor, not in a settings dashboard or fake
 global switches.
 
 - Provider cards show configured/unconfigured state and connected account
   identity when OAuth is available and connected.
 - `Connect` starts the CSRF-protected OAuth flow and returns to the profile
   editor with success/error query state.
+- Successful OAuth connections should also create or update a lightweight
+  Connections entry when a safe provider profile URL can be derived.
 - `Disconnect` revokes the local connection state.
 - `Use link` accepts allowlisted provider URLs and resolves metadata through the
   server before creating modules.

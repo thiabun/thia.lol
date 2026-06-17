@@ -108,6 +108,7 @@ type ProfileGridModuleProps = {
         spanRole: string;
       }
     | undefined;
+  selected?: boolean | undefined;
   size?: ProfileGridModuleSize | string | undefined;
   testId?: string | undefined;
   onClickCapture?: MouseEventHandler<HTMLDivElement> | undefined;
@@ -118,6 +119,7 @@ export function ProfileGridModule({
   className,
   layout,
   presentation,
+  selected = false,
   size = "1x1",
   testId,
   onClickCapture,
@@ -140,7 +142,7 @@ export function ProfileGridModule({
       layout
       transition={{ duration: 0.22, ease: "easeOut" }}
       className={cn(
-        "profile-grid-module relative min-h-0 min-w-0",
+        "profile-grid-module relative min-h-0 min-w-0 scroll-mt-24",
         profileGridModuleSizeClass(span.size),
         className,
       )}
@@ -156,6 +158,7 @@ export function ProfileGridModule({
       data-profile-module-empty-policy={presentation?.emptyPolicy}
       data-profile-module-freshness={presentation?.freshness}
       data-profile-module-purpose={presentation?.purpose}
+      data-profile-module-selected={selected ? "true" : undefined}
       data-profile-module-span-role={presentation?.spanRole}
       data-testid={testId}
       onClickCapture={onClickCapture}
@@ -167,6 +170,38 @@ export function ProfileGridModule({
 }
 
 function profileGridModuleSizeClass(size: ProfileGridModuleSize): string {
+  if (size === "6x1") {
+    return "md:col-span-2 lg:col-span-6";
+  }
+
+  if (size === "6x2") {
+    return "md:col-span-2 md:row-span-2 lg:col-span-6";
+  }
+
+  if (size === "6x3") {
+    return "md:col-span-2 md:row-span-3 lg:col-span-6";
+  }
+
+  if (size === "4x1") {
+    return "md:col-span-2 lg:col-span-4";
+  }
+
+  if (size === "4x2") {
+    return "md:col-span-2 md:row-span-2 lg:col-span-4";
+  }
+
+  if (size === "4x3") {
+    return "md:col-span-2 md:row-span-3 lg:col-span-4";
+  }
+
+  if (size === "3x4") {
+    return "md:col-span-2 md:row-span-4 lg:col-span-3";
+  }
+
+  if (size === "3x6") {
+    return "md:col-span-2 md:row-span-6 lg:col-span-3";
+  }
+
   if (size === "3x1") {
     return "md:col-span-2 lg:col-span-3";
   }
