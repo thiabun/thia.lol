@@ -815,6 +815,15 @@ test("owner edits background blur, module placement, and visibility", async ({
   await expect(
     aboutEdit,
   ).toBeVisible();
+  const aboutModuleBox = await page.getByTestId("profile-grid-module-about").boundingBox();
+  const dragHandleBox = await page
+    .getByTestId("profile-canvas-drag-handle-1")
+    .boundingBox();
+  expect(aboutModuleBox).not.toBeNull();
+  expect(dragHandleBox).not.toBeNull();
+  expect(dragHandleBox!.x).toBeGreaterThan(
+    aboutModuleBox!.x + aboutModuleBox!.width / 2,
+  );
   await expect(page.getByTestId("profile-canvas-position-grid")).toHaveCount(0);
   await aboutEdit.getByTestId("profile-canvas-visibility-button").click();
   await expect(

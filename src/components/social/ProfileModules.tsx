@@ -356,8 +356,8 @@ export function ProfileModuleGrid({
               <button
                 type="button"
                 className={cn(
-                  "absolute top-2 z-20 grid size-8 cursor-grab place-items-center rounded-control border border-line bg-surface/90 text-text shadow-soft backdrop-blur-veil transition duration-fluid ease-fluid hover:border-line-strong active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-                  selected ? "left-2" : "right-2",
+                  "absolute right-2 top-2 z-20 grid size-8 cursor-grab place-items-center rounded-control border border-line bg-surface/90 text-text shadow-soft backdrop-blur-veil transition duration-fluid ease-fluid hover:border-line-strong active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+                  selected ? "ring-1 ring-focus/35" : undefined,
                 )}
                 aria-label={`Drag ${profileModuleFallbackTitle(module.type)} module`}
                 title={`Drag ${profileModuleFallbackTitle(module.type)}`}

@@ -2877,7 +2877,7 @@ function ProfileSelectedModuleControls({
       role="region"
       aria-label={`Edit ${profileModuleFallbackTitle(module.type)} module`}
     >
-      <header className="min-w-0">
+      <header className="min-w-0 pr-10">
         <div className="min-w-0">
           <p className="truncate font-semibold text-text">
             {module.title ?? profileModuleFallbackTitle(module.type)}
