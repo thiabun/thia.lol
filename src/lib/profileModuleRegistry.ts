@@ -20,13 +20,13 @@ export type ProfileGridModuleSize =
   | "2x3"
   | "3x3"
   | "4x3"
+  | "5x3"
   | "6x3"
   | "3x4"
-  | "3x5"
   | "3x6";
 
 export type ProfileGridModuleSpan = {
-  columns: 1 | 2 | 3 | 4 | 6;
+  columns: 1 | 2 | 3 | 4 | 5 | 6;
   rows: 1 | 2 | 3 | 4 | 5 | 6;
   size: ProfileGridModuleSize;
 };
@@ -184,7 +184,7 @@ export const profileModuleRegistry = {
     purpose: "media",
   },
   creator_live: {
-    allowedSizes: ["1x1", "2x1", "2x2", "3x2", "3x3", "3x5"],
+    allowedSizes: ["1x1", "2x1", "2x2", "3x2", "3x3", "5x3"],
     defaultSize: "2x1",
     description: "A static creator or channel card.",
     density: "summary",
@@ -335,9 +335,9 @@ export function profileModuleSpanRole(
   if (
     size === "3x3" ||
     size === "4x3" ||
+    size === "5x3" ||
     size === "6x3" ||
     size === "3x4" ||
-    size === "3x5" ||
     size === "3x6"
   ) {
     return "hero";
@@ -382,6 +382,10 @@ export function normalizeProfileGridModuleSize(
   value: unknown,
   fallback?: ProfileGridModuleSize,
 ): ProfileGridModuleSize | undefined {
+  if (value === "3x5") {
+    return "5x3";
+  }
+
   if (
     value === "1x1" ||
     value === "2x1" ||
@@ -397,9 +401,9 @@ export function normalizeProfileGridModuleSize(
     value === "2x3" ||
     value === "3x3" ||
     value === "4x3" ||
+    value === "5x3" ||
     value === "6x3" ||
     value === "3x4" ||
-    value === "3x5" ||
     value === "3x6"
   ) {
     return value;
@@ -465,16 +469,16 @@ export function profileGridModuleSizeSpan(
     return { columns: 4, rows: 3, size };
   }
 
+  if (size === "5x3") {
+    return { columns: 5, rows: 3, size };
+  }
+
   if (size === "6x3") {
     return { columns: 6, rows: 3, size };
   }
 
   if (size === "3x4") {
     return { columns: 3, rows: 4, size };
-  }
-
-  if (size === "3x5") {
-    return { columns: 3, rows: 5, size };
   }
 
   if (size === "3x6") {

@@ -874,17 +874,21 @@ function ProfileIntegrationRichCard({
       ? metadata.liveFetchedAt ?? metadata.recentFetchedAt
       : undefined;
   const displayMode = module.config.displayMode;
+  const primaryEmbed = integration.embed;
   const showPrimaryEmbed = Boolean(
-    integration.embed && displayMode !== "stream_status",
+    primaryEmbed && displayMode !== "stream_status",
   );
-  const primaryEmbedSrc = integration.embed
+  const primaryEmbedSrc = primaryEmbed
     ? profileIntegrationEmbedSrc(integration)
     : undefined;
   const primaryEmbedHeight = profileIntegrationEmbedHeight(integration);
   const twitchChatSrc =
     displayMode === "stream_chat" ? twitchChatEmbedSrc(integration) : undefined;
+  const showTwitchStreamChat = Boolean(
+    twitchChatSrc && showPrimaryEmbed && primaryEmbed,
+  );
 
-  if (showPrimaryEmbed && integration.embed && integration.provider === "spotify") {
+  if (showPrimaryEmbed && primaryEmbed && integration.provider === "spotify") {
     return (
       <SpotifyMusicPlayer
         autoplayRequestId={autoplayRequestId}
@@ -938,25 +942,51 @@ function ProfileIntegrationRichCard({
         </span>
         <ExternalLink aria-hidden="true" size={15} className="shrink-0 text-muted" />
       </a>
-      {showPrimaryEmbed && integration.embed ? (
+      {showTwitchStreamChat && primaryEmbed ? (
+        <div className="grid min-h-0 flex-1 border-t border-line md:grid-cols-5">
+          <iframe
+            className="block h-full min-h-[220px] w-full bg-transparent md:col-span-3"
+            title={primaryEmbed.title}
+            src={primaryEmbedSrc}
+            height={260}
+            loading="lazy"
+            referrerPolicy="strict-origin-when-cross-origin"
+            allow={primaryEmbed.allow}
+            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+            allowFullScreen
+            data-profile-embed-provider={integration.provider}
+            data-testid={`profile-integration-embed-${integration.provider}`}
+          />
+          <iframe
+            className="block h-full min-h-[220px] w-full border-t border-line bg-surface md:col-span-2 md:border-l md:border-t-0"
+            title="Twitch chat"
+            src={twitchChatSrc}
+            height={260}
+            loading="lazy"
+            referrerPolicy="strict-origin-when-cross-origin"
+            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+            data-testid="profile-integration-embed-twitch-chat"
+          />
+        </div>
+      ) : showPrimaryEmbed && primaryEmbed ? (
         <iframe
           className={cn(
             "block w-full border-t border-line bg-transparent",
             twitchChatSrc ? "min-h-0 flex-1" : undefined,
           )}
-          title={integration.embed.title}
+          title={primaryEmbed.title}
           src={primaryEmbedSrc}
           height={twitchChatSrc ? 260 : primaryEmbedHeight}
           loading="lazy"
           referrerPolicy="strict-origin-when-cross-origin"
-          allow={integration.embed.allow}
+          allow={primaryEmbed.allow}
           sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
           allowFullScreen
           data-profile-embed-provider={integration.provider}
           data-testid={`profile-integration-embed-${integration.provider}`}
         />
       ) : null}
-      {twitchChatSrc ? (
+      {twitchChatSrc && !showTwitchStreamChat ? (
         <iframe
           className="block min-h-0 flex-1 border-t border-line bg-surface"
           title="Twitch chat"

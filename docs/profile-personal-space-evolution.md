@@ -973,8 +973,9 @@ interaction model:
   validated rich embeds without storing user-supplied iframe HTML.
 - `creator_live` modules are configured locally after selection. Twitch supports
   status, stream, and stream-plus-chat display modes with size floors of `1x1`,
-  `3x2`, and `3x5`; YouTube supports latest/video/playlist source modes; GitHub
-  supports public project cards.
+  `3x2`, and `5x3`; stream-plus-chat keeps stream on the left and chat on the
+  right. YouTube supports latest/video/playlist source modes; GitHub supports
+  public project cards.
 - Theme editing and custom color profile overrides are deferred to a separate
   planning pass with contrast, recovery, and migration strategy.
 - Onboarding, settings IA, analytics/tracking consent, and ads consent are

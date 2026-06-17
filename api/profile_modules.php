@@ -747,6 +747,7 @@ function profile_canvas_module_placement(array $item, array $record, bool $visib
     $type = (string) $record['type'];
     $colSpan = profile_canvas_span_value($item['colSpan'] ?? null, 'Column span');
     $rowSpan = profile_canvas_span_value($item['rowSpan'] ?? null, 'Row span');
+    [$colSpan, $rowSpan] = profile_canvas_normalize_span($type, $colSpan, $rowSpan);
 
     if (!profile_canvas_span_allowed($type, $colSpan, $rowSpan)) {
         json_error('Canvas span is not allowed for this module.', 422);
@@ -822,11 +823,20 @@ function profile_canvas_allowed_sizes(string $type): array
         PROFILE_FEATURED_POST_MODULE_TYPE => ['2x1', '3x1', '2x2', '3x2'],
         PROFILE_FEATURED_ROOM_MODULE_TYPE => ['1x1', '2x1', '3x1'],
         PROFILE_GALLERY_MEDIA_MODULE_TYPE => ['1x1', '2x1', '2x2', '3x2', '3x3'],
-        PROFILE_CREATOR_LIVE_MODULE_TYPE => ['1x1', '2x1', '2x2', '3x2', '3x3', '3x5'],
+        PROFILE_CREATOR_LIVE_MODULE_TYPE => ['1x1', '2x1', '2x2', '3x2', '3x3', '5x3'],
         PROFILE_MUSIC_MODULE_TYPE => ['1x1', '2x1', '3x1', '3x2'],
         PROFILE_ACTIVITY_MODULE_TYPE => ['2x2', '3x2', '3x3', '3x4', '3x6'],
         default => ['1x1'],
     };
+}
+
+function profile_canvas_normalize_span(string $type, int $colSpan, int $rowSpan): array
+{
+    if ($type === PROFILE_CREATOR_LIVE_MODULE_TYPE && $colSpan === 3 && $rowSpan === 5) {
+        return [5, 3];
+    }
+
+    return [$colSpan, $rowSpan];
 }
 
 function profile_canvas_push_collisions(array $placements, ?int $anchorModuleId): array
@@ -1089,6 +1099,10 @@ function profile_canvas_existing_span(array $record, int $index): array
     $colSpan = profile_module_saved_grid_value($record['grid_col_span'] ?? null);
     $rowSpan = profile_module_saved_grid_value($record['grid_row_span'] ?? null);
 
+    if ($colSpan !== null && $rowSpan !== null) {
+        [$colSpan, $rowSpan] = profile_canvas_normalize_span($type, $colSpan, $rowSpan);
+    }
+
     if ($colSpan !== null && $rowSpan !== null && profile_canvas_span_allowed($type, $colSpan, $rowSpan)) {
         return [
             'colSpan' => $colSpan,
@@ -1223,6 +1237,7 @@ function profile_module_layout_payload(array $row): ?array
 
     $colSpan = max(1, min(6, $colSpan));
     $rowSpan = max(1, min(6, $rowSpan));
+    [$colSpan, $rowSpan] = profile_canvas_normalize_span($type, $colSpan, $rowSpan);
 
     if (!profile_canvas_span_allowed($type, $colSpan, $rowSpan)) {
         return null;

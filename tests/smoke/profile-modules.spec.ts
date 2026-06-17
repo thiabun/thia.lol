@@ -1536,7 +1536,7 @@ test("owner uses OAuth-first integrations from the editor panel", async ({
   await expect(creatorModule.getByTestId("profile-creator-config")).toBeVisible();
   await creatorModule.getByTestId("profile-creator-provider-twitch").click();
   await creatorModule.getByTestId("profile-creator-mode-stream_chat").click();
-  await expect(creatorModule).toHaveAttribute("data-profile-grid-size", "3x5");
+  await expect(creatorModule).toHaveAttribute("data-profile-grid-size", "5x3");
   await creatorModule.getByTestId("profile-creator-url-input").fill("https://www.twitch.tv/thiabun");
   await creatorModule.getByTestId("profile-creator-preview-button").click();
   await expect(creatorModule.getByTestId("profile-integration-preview-summary")).toContainText(

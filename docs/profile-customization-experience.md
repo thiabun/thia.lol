@@ -233,9 +233,9 @@ global switches.
   pass supports Apple Music URLs, generated embeds, and configured
   developer-token metadata only.
 - Twitch creator modules support status, stream, and stream-plus-chat modes with
-  size floors of `1x1`, `3x2`, and `3x5`. YouTube supports video and playlist
-  URLs plus a connected-channel latest-upload mode. GitHub supports public
-  project cards.
+  size floors of `1x1`, `3x2`, and `5x3`, with stream-plus-chat arranged as
+  stream left and chat right. YouTube supports video and playlist URLs plus a
+  connected-channel latest-upload mode. GitHub supports public project cards.
 - The platform never stores or renders user-supplied iframe HTML. Embeds are
   generated from normalized provider/resource ids only.
 
