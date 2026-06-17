@@ -17,6 +17,7 @@ const sourceFiles = {
   lockupSunveil: "thia-lockup-sunveil.png",
   markFrostveil: "thia-mark-frostveil-alpha.png",
   markSunveil: "thia-mark-sunveil-alpha.png",
+  openGraph: "thia-og-source.png",
 };
 
 await fs.mkdir(publicBrandDir, { recursive: true });
@@ -57,7 +58,7 @@ for (const [sourceName, outputName, size] of pngAssets) {
 }
 
 await writeSquirclePng(sourceFiles.appIcon, "favicon-32x32.png", 32);
-await writeOpenGraphImage();
+await writeOpenGraphImages();
 await writeManifest();
 
 console.log(
@@ -127,9 +128,8 @@ function squircleMask(size) {
   );
 }
 
-async function writeOpenGraphImage() {
-  const outputPath = path.join(publicBrandDir, "thia-og.png");
-  const lockupBuffer = await sharp(path.join(sourceDir, sourceFiles.lockupFrostveil))
+async function writeOpenGraphImages() {
+  const cardBuffer = await sharp(path.join(sourceDir, sourceFiles.openGraph))
     .rotate()
     .resize({
       background: transparent,
@@ -140,19 +140,23 @@ async function writeOpenGraphImage() {
     .png()
     .toBuffer();
 
-  await sharp({
-    create: {
-      background: "#05070b",
-      channels: 4,
-      height: 630,
-      width: 1200,
-    },
-  })
-    .composite([{ input: lockupBuffer, left: 60, top: 30 }])
-    .png({ adaptiveFiltering: true, compressionLevel: 9 })
-    .toFile(outputPath);
+  for (const fileName of ["thia-social-preview.png", "thia-og.png"]) {
+    const outputPath = path.join(publicBrandDir, fileName);
 
-  generated.push(path.relative(repoRoot, outputPath));
+    await sharp({
+      create: {
+        background: "#05070b",
+        channels: 4,
+        height: 630,
+        width: 1200,
+      },
+    })
+      .composite([{ input: cardBuffer, left: 60, top: 30 }])
+      .png({ adaptiveFiltering: true, compressionLevel: 9 })
+      .toFile(outputPath);
+
+    generated.push(path.relative(repoRoot, outputPath));
+  }
 }
 
 async function writeManifest() {

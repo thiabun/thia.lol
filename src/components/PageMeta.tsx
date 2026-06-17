@@ -4,7 +4,7 @@ import { useTheme } from "../lib/useTheme";
 
 const siteOrigin = "https://thia.lol";
 const siteName = "thia.lol";
-const defaultImagePath = "/brand/thia-og.png";
+const defaultImagePath = "/brand/thia-social-preview.png";
 const defaultImageAlt = "thia.lol bunny mark and wordmark.";
 
 type PageMetaProps = {
