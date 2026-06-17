@@ -115,7 +115,7 @@ export const profileModuleRegistry = {
     purpose: "status",
   },
   links: {
-    allowedSizes: ["1x1", "2x1"],
+    allowedSizes: ["1x1", "2x1", "3x1", "2x2"],
     defaultSize: "2x1",
     description: "Platform-aware safe links and connections.",
     density: "summary",
@@ -163,7 +163,7 @@ export const profileModuleRegistry = {
     purpose: "navigation",
   },
   gallery_media: {
-    allowedSizes: ["1x1", "2x1", "2x2", "3x2"],
+    allowedSizes: ["1x1", "2x1", "2x2", "3x2", "3x3"],
     defaultSize: "2x2",
     description: "A compact strip of selected uploaded media.",
     density: "rich",

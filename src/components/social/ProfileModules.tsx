@@ -7,10 +7,18 @@ import {
   Radio,
   Sparkles,
 } from "lucide-react";
-import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type PointerEvent,
+  type ReactNode,
+} from "react";
 import { cn } from "../../lib/classNames";
 import {
   getProfileModuleDefinition,
+  isProfileModuleType,
   profileModuleBadges,
   profileModuleFallbackTitle,
   profileModuleGridSpan,
@@ -61,7 +69,9 @@ export function ProfileModulesSection({
   editing,
   renderModuleContent,
 }: ProfileModulesSectionProps) {
-  const renderableModules = renderableProfileModules(modules, badges);
+  const renderableModules = editing
+    ? modules.filter((module) => isProfileModuleType(module.type))
+    : renderableProfileModules(modules, badges);
 
   if (loading && !isOwnProfile) {
     return null;
@@ -134,6 +144,10 @@ type ProfileModuleGridEditing = {
   selectedModuleId?: number | undefined;
   onMoveModule: (moduleId: number, layout: ProfileModuleLayout) => void;
   onSelectModule: (module: ProfileModule) => void;
+  renderSelectedControls?: (
+    module: ProfileModule,
+    size: ProfileGridModuleSize,
+  ) => ReactNode;
 };
 
 export function ProfileModuleGrid({
@@ -144,9 +158,12 @@ export function ProfileModuleGrid({
   modules,
   renderModuleContent,
 }: ProfileModuleGridProps) {
-  const renderableModules = renderableProfileModules(modules, badges);
+  const renderableModules = editing
+    ? modules.filter((module) => isProfileModuleType(module.type))
+    : renderableProfileModules(modules, badges);
   const resolvedMaxColumns = maxColumns ?? profileLayoutMaxColumns(layoutPreset);
   const gridRef = useRef<HTMLDivElement | null>(null);
+  const suppressModuleClickRef = useRef(false);
   const [dragState, setDragState] = useState<
     | {
         moduleId: number;
@@ -184,6 +201,10 @@ export function ProfileModuleGrid({
 
     function handlePointerUp() {
       setDragState(undefined);
+      suppressModuleClickRef.current = true;
+      window.setTimeout(() => {
+        suppressModuleClickRef.current = false;
+      }, 350);
     }
 
     window.addEventListener("pointermove", handlePointerMove);
@@ -223,12 +244,41 @@ export function ProfileModuleGrid({
     }
 
     event.preventDefault();
+    suppressModuleClickRef.current = true;
     editing.onSelectModule(module);
     setDragState({
       moduleId: module.id,
       colSpan: layout.colSpan,
       rowSpan: layout.rowSpan,
     });
+  }
+
+  function handleEditingModuleClick(
+    event: MouseEvent<HTMLDivElement>,
+    module: ProfileModule,
+  ) {
+    if (!editing) {
+      return;
+    }
+
+    if (suppressModuleClickRef.current) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    const target = event.target;
+
+    if (
+      target instanceof HTMLElement &&
+      target.closest('[data-profile-edit-control="true"]')
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    editing.onSelectModule(module);
   }
 
   return (
@@ -277,6 +327,9 @@ export function ProfileModuleGrid({
             }}
             size={span.size}
             testId={`profile-grid-module-${module.type}`}
+            onClickCapture={
+              editing ? (event) => handleEditingModuleClick(event, module) : undefined
+            }
           >
             {editing && dragState?.moduleId === module.id ? (
               <div
@@ -288,8 +341,9 @@ export function ProfileModuleGrid({
               <button
                 type="button"
                 className="absolute right-2 top-2 z-20 grid size-8 cursor-grab place-items-center rounded-control border border-line bg-surface/90 text-text shadow-soft backdrop-blur-veil transition duration-fluid ease-fluid hover:border-line-strong active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-                aria-label={`Select ${profileModuleFallbackTitle(module.type)} module`}
-                title={`Select ${profileModuleFallbackTitle(module.type)}`}
+                aria-label={`Drag ${profileModuleFallbackTitle(module.type)} module`}
+                title={`Drag ${profileModuleFallbackTitle(module.type)}`}
+                data-profile-edit-control="true"
                 data-testid={`profile-canvas-drag-handle-${module.id}`}
                 onClick={() => editing.onSelectModule(module)}
                 onPointerDown={(event) =>
@@ -307,6 +361,9 @@ export function ProfileModuleGrid({
             {renderModuleContent?.(module, span.size) ?? (
               <ProfileModuleCard module={module} badges={badges} size={span.size} />
             )}
+            {editing?.selectedModuleId === module.id
+              ? editing.renderSelectedControls?.(module, span.size)
+              : null}
           </ProfileGridModule>
         );
       })}
@@ -411,13 +468,39 @@ function ProfileModuleContent({
 
   if (module.type === "links") {
     const links = module.config.links ?? [];
-    const visibleLinks = compact ? links.slice(0, 4) : links;
+    const visibleLinks = compact ? links.slice(0, 6) : links;
     const hiddenCount = Math.max(0, links.length - visibleLinks.length);
+
+    if (compact) {
+      return (
+        <div
+          className="flex max-h-full min-w-0 flex-wrap content-start gap-2 overflow-hidden"
+          data-profile-module-visible-links={visibleLinks.length}
+          data-profile-connections-compact="icons"
+        >
+          {visibleLinks.map((link) => (
+            <ProfileModuleConnectionIconOnly
+              key={`${link.label}-${link.url}`}
+              link={link}
+            />
+          ))}
+          {hiddenCount > 0 ? (
+            <span className="grid size-9 shrink-0 place-items-center rounded-full border border-dashed border-line bg-canvas/45 text-xs font-semibold text-muted">
+              +{hiddenCount}
+            </span>
+          ) : null}
+        </div>
+      );
+    }
 
     return (
       <div
-        className="grid max-h-full min-w-0 gap-2 overflow-y-auto pr-1 sm:grid-cols-2"
+        className={cn(
+          "grid max-h-full min-w-0 gap-2 overflow-y-auto pr-1",
+          spanRole === "rich" || spanRole === "hero" ? "sm:grid-cols-2" : "grid-cols-1",
+        )}
         data-profile-module-visible-links={visibleLinks.length}
+        data-profile-connections-compact="rows"
       >
         {visibleLinks.map((link) => (
           <ProfileModuleLinkCard
@@ -474,7 +557,11 @@ function ProfileModuleContent({
       <div
         className={cn(
           "grid max-h-full min-w-0 gap-2 overflow-y-auto pr-1",
-          spanRole === "glance" ? "grid-cols-1" : "grid-cols-2",
+          spanRole === "glance"
+            ? "grid-cols-1"
+            : spanRole === "hero"
+              ? "grid-cols-3"
+              : "grid-cols-2",
         )}
         data-profile-module-visible-media={visibleMediaItems.length}
       >
@@ -594,6 +681,28 @@ function ProfileModuleLinkCard({ link }: { link: ProfileModuleLink }) {
         size={14}
         className="shrink-0 text-muted transition duration-fluid group-hover:text-text"
       />
+    </a>
+  );
+}
+
+function ProfileModuleConnectionIconOnly({ link }: { link: ProfileModuleLink }) {
+  const platform = normalizeModuleConnectionPlatform(link.platform);
+  const label = link.label || moduleLinkPlatformLabel(link);
+
+  return (
+    <a
+      className="grid size-9 shrink-0 place-items-center rounded-full border border-line bg-canvas/55 text-text transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      href={link.url}
+      rel="noopener noreferrer"
+      target="_blank"
+      aria-label={label}
+      title={label}
+    >
+      {platform ? (
+        <ProfileConnectionIcon platform={platform} size={16} />
+      ) : (
+        <Globe aria-hidden="true" size={16} />
+      )}
     </a>
   );
 }

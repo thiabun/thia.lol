@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode, Ref } from "react";
+import type { CSSProperties, MouseEventHandler, ReactNode, Ref } from "react";
 import { motion } from "motion/react";
 import type { MotionStyle } from "motion/react";
 import { cn } from "../../lib/classNames";
@@ -110,6 +110,7 @@ type ProfileGridModuleProps = {
     | undefined;
   size?: ProfileGridModuleSize | string | undefined;
   testId?: string | undefined;
+  onClickCapture?: MouseEventHandler<HTMLDivElement> | undefined;
 };
 
 export function ProfileGridModule({
@@ -119,6 +120,7 @@ export function ProfileGridModule({
   presentation,
   size = "1x1",
   testId,
+  onClickCapture,
 }: ProfileGridModuleProps) {
   const span = profileGridModuleSizeSpan(size);
   const placementStyle = layout
@@ -138,7 +140,7 @@ export function ProfileGridModule({
       layout
       transition={{ duration: 0.22, ease: "easeOut" }}
       className={cn(
-        "profile-grid-module min-h-0 min-w-0",
+        "profile-grid-module relative min-h-0 min-w-0",
         profileGridModuleSizeClass(span.size),
         className,
       )}
@@ -156,6 +158,7 @@ export function ProfileGridModule({
       data-profile-module-purpose={presentation?.purpose}
       data-profile-module-span-role={presentation?.spanRole}
       data-testid={testId}
+      onClickCapture={onClickCapture}
       {...styleProps}
     >
       {children}

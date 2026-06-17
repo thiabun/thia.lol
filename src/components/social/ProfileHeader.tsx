@@ -65,7 +65,6 @@ export function ProfileHeader({
 }: ProfileHeaderProps) {
   const [actionsOpen, setActionsOpen] = useState(false);
   const [confirmBlockOpen, setConfirmBlockOpen] = useState(false);
-  const links = profile.links;
   const bannerUrl = safeProfileImageUrl(profile.bannerUrl);
   const backgroundUrl = safeProfileImageUrl(profile.profileBackground);
   const followLabel = profile.isFollowing ? "Following" : "Follow";
@@ -262,7 +261,7 @@ export function ProfileHeader({
             onOpenPanel={onOpenPanel}
             profile={profile}
           />
-          <ProfileSignalStrip featuredBadges={featuredBadges} links={links} />
+          <ProfileSignalStrip featuredBadges={featuredBadges} links={[]} />
         </motion.div>
       </motion.section>
       <ModalSheet

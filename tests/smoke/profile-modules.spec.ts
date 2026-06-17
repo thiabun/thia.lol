@@ -184,8 +184,9 @@ test("P2 expressive modules render compact link-first cards", async ({ page }) =
     "href",
     "https://github.com/thiabun",
   );
-  await expect(modules.getByRole("link", { name: /Personal site/ })).toContainText(
-    "example.com/about",
+  await expect(modules.getByRole("link", { name: /Personal site/ })).toHaveAttribute(
+    "href",
+    "https://example.com/about",
   );
   await expect(modules.getByTestId("profile-grid-module-gallery_media")).toHaveAttribute(
     "data-profile-grid-size",
@@ -258,9 +259,10 @@ test("module shells keep compact content glanceable without public overflow", as
   const links = page.getByTestId("profile-module-links");
   await expect(links.locator("[data-profile-module-visible-links]")).toHaveAttribute(
     "data-profile-module-visible-links",
-    "4",
+    "5",
   );
-  await expect(links.getByText("+1 more")).toBeVisible();
+  await expect(links.locator('[data-profile-connections-compact="icons"]')).toBeVisible();
+  await expect(links.getByText("+1 more")).toHaveCount(0);
 
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -699,10 +701,18 @@ test("owner edits background blur, module placement, and visibility", async ({
 
   await page.getByTestId("profile-canvas-edit-button").click();
   await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveAttribute(
+    "data-profile-canvas-panel",
+    "left",
+  );
+  await expect(page.getByTestId("profile-canvas-background-controls")).toBeVisible();
+  await expect(page.getByText("Background clarity")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-add-label-input")).toHaveCount(0);
 
   await page.getByTestId("profile-background-blur-heavy").click();
-  await page.getByTestId("profile-canvas-drag-handle-1").click();
-  await page.getByRole("button", { name: "Move down" }).click();
+  await page.getByTestId("profile-grid-module-about").click();
+  await expect(page.getByTestId("profile-selected-module-controls")).toBeVisible();
+  await page.getByTestId("profile-canvas-position-1-3").click();
   await page.getByTestId("profile-canvas-visibility-button").click();
   await page.getByTestId("profile-canvas-save-button").click();
 
@@ -713,6 +723,7 @@ test("owner edits background blur, module placement, and visibility", async ({
   const savedModules = savedPayload?.modules as Array<Record<string, unknown>>;
   const aboutPlacement = savedModules.find((module) => module.id === 1);
   expect(aboutPlacement).toMatchObject({
+    row: 3,
     visible: false,
   });
   await expect(page.getByTestId("profile-personal-backdrop")).toHaveAttribute(
@@ -720,6 +731,71 @@ test("owner edits background blur, module placement, and visibility", async ({
     "heavy",
   );
   await expect(page.getByText("Move me.")).toHaveCount(0);
+});
+
+test("owner edits profile info inside the selected module", async ({ page }) => {
+  let savedProfile: Record<string, unknown> | undefined;
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+    onProfileSave: (payload) => {
+      savedProfile = payload;
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-canvas-edit-button").click();
+  await page.getByTestId("profile-grid-module-profile_info").click();
+  await expect(page.getByTestId("profile-selected-module-controls")).toBeVisible();
+
+  await page.getByTestId("profile-info-display-name-input").fill("Thia Canvas");
+  await page.getByTestId("profile-info-bio-input").fill("Edited inside the profile widget.");
+  await page.getByTestId("profile-canvas-save-button").click();
+
+  expect(savedProfile).toMatchObject({
+    displayName: "Thia Canvas",
+    bio: "Edited inside the profile widget.",
+  });
+});
+
+test("owner edits connections inside the selected module", async ({ page }) => {
+  let updatedLinks: Array<Record<string, unknown>> = [];
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      {
+        ...linksModule({ id: 2, title: "Connections", position: 2, links: [] }),
+        layout: { column: 1, row: 2, colSpan: 2, rowSpan: 1 },
+      },
+    ],
+    onUpdate: (id, payload) => {
+      if (id === 2) {
+        const config = payload.config as Record<string, unknown> | undefined;
+        updatedLinks = (config?.links as Array<Record<string, unknown>> | undefined) ?? [];
+      }
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-canvas-edit-button").click();
+  await page.getByTestId("profile-grid-module-links").click();
+  await expect(page.getByTestId("profile-selected-module-controls")).toBeVisible();
+
+  await page.getByTestId("profile-connection-platform-select").selectOption("twitch");
+  await page.getByTestId("profile-connection-value-input").fill("thiabun");
+  await page.getByTestId("profile-connection-add-button").click();
+  await page.getByTestId("profile-canvas-save-button").click();
+
+  expect(updatedLinks).toContainEqual(
+    expect.objectContaining({
+      platform: "twitch",
+      url: "https://www.twitch.tv/thiabun",
+    }),
+  );
 });
 
 test("owner drags a canvas module and save includes pushed placement", async ({
@@ -748,6 +824,8 @@ test("owner drags a canvas module and save includes pushed placement", async ({
   await page.goto("/@thia");
 
   await page.getByTestId("profile-canvas-edit-button").click();
+  await page.getByTestId("profile-grid-module-about").click();
+  await expect(page.getByTestId("profile-selected-module-controls")).toBeVisible();
   const grid = page.getByTestId("profile-module-grid");
   const gridBox = await grid.boundingBox();
   const handleBox = await page.getByTestId("profile-canvas-drag-handle-1").boundingBox();
@@ -756,12 +834,32 @@ test("owner drags a canvas module and save includes pushed placement", async ({
     throw new Error("Canvas grid or drag handle did not render.");
   }
 
-  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(gridBox.x + gridBox.width * 0.1, gridBox.y + gridBox.height * 0.1, {
-    steps: 6,
+  const pointerStart = {
+    button: 0,
+    buttons: 1,
+    clientX: handleBox.x + handleBox.width / 2,
+    clientY: handleBox.y + handleBox.height / 2,
+    pointerId: 1,
+    pointerType: "mouse",
+  };
+  const pointerTarget = {
+    button: 0,
+    buttons: 1,
+    clientX: gridBox.x + gridBox.width * 0.1,
+    clientY: gridBox.y + gridBox.height * 0.1,
+    pointerId: 1,
+    pointerType: "mouse",
+  };
+
+  await page.getByTestId("profile-canvas-drag-handle-1").dispatchEvent(
+    "pointerdown",
+    pointerStart,
+  );
+  await page.dispatchEvent("body", "pointermove", pointerTarget);
+  await page.dispatchEvent("body", "pointerup", {
+    ...pointerTarget,
+    buttons: 0,
   });
-  await page.mouse.up();
 
   await page.getByTestId("profile-canvas-save-button").click();
   await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
@@ -830,7 +928,7 @@ test("owner adds modules and deletes featured modules from the canvas editor", a
 
   await page.getByTestId("profile-canvas-edit-button").click();
   await page.getByTestId("profile-canvas-add-type-select").selectOption("custom_text");
-  await page.getByTestId("profile-canvas-add-label-input").fill("Studio note");
+  await expect(page.getByTestId("profile-canvas-add-label-input")).toHaveCount(0);
   await page.getByTestId("profile-canvas-add-body-input").fill("Canvas-added note");
   await page.getByTestId("profile-canvas-add-module-button").click();
 
@@ -840,14 +938,17 @@ test("owner adds modules and deletes featured modules from the canvas editor", a
     status: "active",
     config: { body: "Canvas-added note" },
   });
-  await expect(page.getByText("Canvas-added note")).toBeVisible();
+  await expect(
+    page.getByTestId("profile-grid-module-custom_text").getByText("Canvas-added note").first(),
+  ).toBeVisible();
 
-  await page.getByTestId("profile-canvas-drag-handle-20").click();
+  await page.getByTestId("profile-grid-module-featured_post").click();
+  await expect(page.getByTestId("profile-selected-module-controls")).toBeVisible();
   await page.getByTestId("profile-canvas-delete-module-button").click();
   expect(deletedIds).toContain(20);
   await expect(page.getByText("Pinned post can be removed.")).toHaveCount(0);
 
-  await page.getByTestId("profile-canvas-drag-handle-21").click();
+  await page.getByTestId("profile-grid-module-featured_room").click();
   await page.getByTestId("profile-canvas-delete-module-button").click();
   expect(deletedIds).toContain(21);
   await expect(page.getByText("General")).toHaveCount(0);
@@ -857,7 +958,7 @@ test("owner adds modules and deletes featured modules from the canvas editor", a
   await expect(page.getByTestId("profile-grid-module-featured_post")).toBeVisible();
 });
 
-test("owner creates a rich integration card from the widget dock", async ({
+test("owner creates a rich integration card from the editor panel", async ({
   page,
 }) => {
   const createdPayloads: Array<Record<string, unknown>> = [];
@@ -877,11 +978,49 @@ test("owner creates a rich integration card from the widget dock", async ({
         ok: true,
         data: {
           providers: [
-            { provider: "spotify", configured: true, oauthEnabled: true },
-            { provider: "apple_music", configured: true, oauthEnabled: false },
-            { provider: "youtube", configured: false, oauthEnabled: false },
-            { provider: "twitch", configured: false, oauthEnabled: false },
-            { provider: "github", configured: true, oauthEnabled: true },
+            {
+              provider: "spotify",
+              configured: true,
+              oauthEnabled: true,
+              linkSupported: true,
+              metadataEnabled: true,
+              missingConfigKeys: [],
+            },
+            {
+              provider: "apple_music",
+              configured: true,
+              oauthEnabled: false,
+              linkSupported: true,
+              metadataEnabled: true,
+              missingConfigKeys: [],
+            },
+            {
+              provider: "youtube",
+              configured: false,
+              oauthEnabled: false,
+              linkSupported: true,
+              metadataEnabled: false,
+              missingConfigKeys: ["integrations.youtube.api_key"],
+            },
+            {
+              provider: "twitch",
+              configured: false,
+              oauthEnabled: false,
+              linkSupported: true,
+              metadataEnabled: false,
+              missingConfigKeys: [
+                "integrations.twitch.client_id",
+                "integrations.twitch.client_secret",
+              ],
+            },
+            {
+              provider: "github",
+              configured: true,
+              oauthEnabled: true,
+              linkSupported: true,
+              metadataEnabled: true,
+              missingConfigKeys: [],
+            },
           ],
           accounts: [],
         },
@@ -931,6 +1070,13 @@ test("owner creates a rich integration card from the widget dock", async ({
 
   await page.getByTestId("profile-canvas-edit-button").click();
   await page.getByTestId("profile-canvas-category-integrations").click();
+  await expect(page.getByTestId("profile-integration-logo-spotify")).toBeVisible();
+  await expect(page.getByTestId("profile-integration-card-youtube")).toContainText(
+    "Links ready · metadata key missing",
+  );
+  await expect(page.getByTestId("profile-integration-card-twitch")).toContainText(
+    "Links ready · OAuth not configured",
+  );
   await page
     .getByTestId("profile-integration-url-input")
     .fill("https://open.spotify.com/playlist/focus");
@@ -973,6 +1119,75 @@ test("mobile stack ignores saved desktop placement", async ({ page }) => {
   const grid = page.getByTestId("profile-module-grid");
   await expectGridColumnCount(grid, 1);
   await expect(page.getByText("Still stacks.")).toBeVisible();
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  );
+  expect(hasHorizontalOverflow).toBe(false);
+});
+
+test("legacy profile links render through Connections instead of Profile Info", async ({
+  page,
+}) => {
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [],
+    profileOverrides: {
+      links: [
+        {
+          platform: "twitch",
+          label: "Twitch legacy",
+          value: "thiabun",
+          url: "https://www.twitch.tv/thiabun",
+        },
+      ],
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expect(page.getByTestId("profile-grid-module-links")).toBeVisible();
+  await expect(
+    page.getByTestId("profile-modules").getByRole("link", { name: "Twitch" }),
+  ).toHaveAttribute("href", "https://www.twitch.tv/thiabun");
+  await expect(page.getByTestId("profile-header").getByText("Twitch legacy")).toHaveCount(0);
+});
+
+test("compact Connections renders icon-only without horizontal overflow", async ({
+  page,
+}) => {
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      {
+        ...linksModule({
+          id: 2,
+          links: [
+            {
+              label: "GitHub",
+              platform: "github",
+              url: "https://github.com/thiabun",
+            },
+            {
+              label: "Twitch",
+              platform: "twitch",
+              url: "https://www.twitch.tv/thiabun",
+            },
+            {
+              label: "YouTube",
+              platform: "youtube",
+              url: "https://www.youtube.com/@thiabun",
+            },
+          ],
+        }),
+        layout: { column: 1, row: 2, colSpan: 1, rowSpan: 1 },
+      },
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expect(page.locator('[data-profile-connections-compact="icons"]')).toBeVisible();
+  await expect(page.locator('[data-profile-connections-compact="rows"]')).toHaveCount(0);
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
@@ -1176,6 +1391,10 @@ test("mobile profile modules stay stable with compact canvas editing", async ({ 
   await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
   await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
   await expect(page.getByTestId("profile-canvas-edit-button")).toBeVisible();
+  await page.getByTestId("profile-canvas-edit-button").click();
+  await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-save-button-mobile")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-save-button")).toBeHidden();
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
@@ -1451,6 +1670,38 @@ async function mockProfileModules(
       profileOverrides = {
         ...profileOverrides,
         profileLayoutPreset: payload.profileLayoutPreset,
+      };
+    }
+
+    if (typeof payload.displayName === "string") {
+      profileOverrides = {
+        ...profileOverrides,
+        user: {
+          ...(profileBody(profileOverrides).user as Record<string, unknown>),
+          displayName: payload.displayName,
+        },
+      };
+    }
+
+    if (typeof payload.bio === "string") {
+      profileOverrides = { ...profileOverrides, bio: payload.bio };
+    }
+
+    if (typeof payload.location === "string") {
+      profileOverrides = { ...profileOverrides, location: payload.location };
+    }
+
+    if (typeof payload.profileBackground === "string" || payload.profileBackground === null) {
+      profileOverrides = { ...profileOverrides, profileBackground: payload.profileBackground };
+    }
+
+    if (
+      typeof payload.profileBackgroundVideo === "string" ||
+      payload.profileBackgroundVideo === null
+    ) {
+      profileOverrides = {
+        ...profileOverrides,
+        profileBackgroundVideo: payload.profileBackgroundVideo,
       };
     }
 
@@ -1819,15 +2070,16 @@ function mockNextLayout(
 ) {
   const colSpan = Number(placement.colSpan ?? 1);
   const rowSpan = Number(placement.rowSpan ?? 1);
-  const startIndex =
-    (Number(placement.row ?? 1) - 1) * 6 + (Number(placement.column ?? 1) - 1);
+  const maxColumn = 6 - colSpan + 1;
+  const maxRow = 9 - rowSpan + 1;
+  const baseColumn = Math.max(1, Math.min(maxColumn, Number(placement.column ?? 1)));
+  const baseRow = Math.max(1, Math.min(maxRow, Number(placement.row ?? 1)));
 
-  for (let offset = 0; offset < 54; offset += 1) {
-    const index = (startIndex + offset) % 54;
+  for (const column of mockSameRowSidewaysColumns(baseColumn, maxColumn)) {
     const candidate = {
       ...placement,
-      column: Math.max(1, Math.min(6 - colSpan + 1, (index % 6) + 1)),
-      row: Math.max(1, Math.min(9 - rowSpan + 1, Math.floor(index / 6) + 1)),
+      column,
+      row: baseRow,
       colSpan,
       rowSpan,
     };
@@ -1837,7 +2089,56 @@ function mockNextLayout(
     }
   }
 
+  for (let row = baseRow + 1; row <= maxRow; row += 1) {
+    for (const column of mockNearbyColumns(baseColumn, maxColumn)) {
+      const candidate = {
+        ...placement,
+        column,
+        row,
+        colSpan,
+        rowSpan,
+      };
+
+      if (mockLayoutFits(candidate, occupied)) {
+        return candidate;
+      }
+    }
+  }
+
   return undefined;
+}
+
+function mockSameRowSidewaysColumns(baseColumn: number, maxColumn: number) {
+  const columns: number[] = [];
+
+  for (let column = baseColumn + 1; column <= maxColumn; column += 1) {
+    columns.push(column);
+  }
+
+  for (let column = baseColumn - 1; column >= 1; column -= 1) {
+    columns.push(column);
+  }
+
+  return columns;
+}
+
+function mockNearbyColumns(baseColumn: number, maxColumn: number) {
+  const columns = [baseColumn];
+
+  for (let distance = 1; distance < maxColumn; distance += 1) {
+    const right = baseColumn + distance;
+    const left = baseColumn - distance;
+
+    if (right <= maxColumn) {
+      columns.push(right);
+    }
+
+    if (left >= 1) {
+      columns.push(left);
+    }
+  }
+
+  return columns;
 }
 
 function mockLayoutFits(

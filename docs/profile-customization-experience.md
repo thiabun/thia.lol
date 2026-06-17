@@ -52,21 +52,30 @@ intent-based sections:
 - Modules: current v1 modules, layout preset, ordering, visibility, save/delete behavior, and module-native featured post/room selection.
 - Preview: desktop and mobile-oriented previews of the public profile using current safe data only.
 
-## Canvas Dock Model
+## Canvas Editor Model
 
 The active P3 editor is an owner-only inline canvas editor:
 
-- Desktop: a translucent widget dock sits over the live profile. The profile
-  canvas remains visible and editable behind it.
-- Mobile: the dock compresses into a bottom sheet. Exact desktop placement is
-  still ignored for public mobile layout.
-- The dock categories are Essentials, Featured, Media, Integrations, and
+- Desktop: a compact translucent panel sits on the left side of the live
+  profile. The canvas remains visible and editable to the right.
+- Mobile: the same actions compress into a bottom sheet. Exact desktop
+  placement is still ignored for public mobile layout.
+- The panel categories are Essentials, Featured, Media, Integrations, and
   Removed.
 - Module cards show purpose, size behavior, connection/metadata state where
   relevant, and direct Add or Restore actions.
-- The selected-module inspector uses custom controls: segmented size buttons,
-  icon nudge controls, show/hide, remove, and module-specific actions where
-  supported. Avoid visible raw grid selects as the primary UI.
+- Clicking or tapping a module in Edit Canvas mode selects it. The selected
+  module shows a clear ring and exposes size, visibility, remove, direct
+  position, and module-specific content controls in an attached tray/popover.
+- Drag is an enhancement. Keyboard users must be able to select modules and use
+  direct 6 x 9 placement plus segmented size controls without dragging.
+- Manual module label editing is no longer part of the product surface.
+  Product-defined module names and platform-derived connection labels keep the
+  canvas scannable. Legacy `title` and `config.label` data can still render for
+  backward compatibility.
+- Background image, muted looping video background, poster/static fallback where
+  supported, reset, and "Background clarity" blur controls live inside the
+  Edit Canvas panel.
 - Save is a single primary Done action. Cancel exits without persisting draft
   layout changes.
 
@@ -95,7 +104,11 @@ the module returns with a compact owner state to choose content again.
 Canvas movement should feel predictable and reversible:
 
 - The moved or selected module is the anchor and claims its requested slot.
-- Visible modules that collide are pushed row-major to the next valid fit.
+- Visible modules that collide try same-row sideways movement first, preferring
+  right when possible and then left. Only after same-row fits fail do they move
+  downward, scanning nearby columns before farther columns.
+- There is no wrap-to-top behavior. If no downward fit exists, save fails
+  atomically.
 - Hidden and deleted modules do not occupy cells.
 - If no 6 x 9 fit exists, save fails atomically.
 - Drag feedback should show a ghost or highlighted module, target cell
@@ -117,12 +130,40 @@ Preview must render user text as text nodes, not HTML, and must not imply unsupp
 
 Connections should feel platform-aware instead of generic rows.
 
+- Connections is the unified home for custom links, platform links, and
+  lightweight integration/provider links. Rich Spotify, Apple Music, YouTube,
+  Twitch, and GitHub cards can still remain standalone `music` or
+  `creator_live` modules when they need more space.
+- Legacy `profiles.links` should render through Connections and should not
+  duplicate inside Profile Info or the profile header. Owner migration can
+  materialize legacy links into module config after a successful save.
 - Use platform cards with icons, platform labels, helper text, and validation messages.
 - Keep platform-specific validation aligned with current frontend/backend rules.
 - Generate links from handles where supported, such as GitHub, Twitch, TikTok, Instagram, X/Twitter, Bluesky, and YouTube handles.
 - Require explicit safe URLs for URL-only platforms such as Website and Spotify.
 - Keep Discord limited to safe display values or supported invite URLs.
 - Keep empty states useful: suggest adding a platform, not fake integrations.
+
+## Integration Status
+
+The editor should distinguish capability levels without exposing secrets:
+
+- `Links ready`: the provider can be used as a safe outbound link or generated
+  embed/link card without OAuth.
+- `Metadata ready`: server-side non-secret API configuration is present for
+  metadata refresh.
+- `OAuth ready`: provider OAuth client configuration is present.
+- `Links ready - metadata key missing` or `Links ready - OAuth not configured`:
+  link cards still work, but server config is incomplete.
+
+Provider secrets and tokens must never be printed, committed, or sent to the
+browser. Missing config diagnostics may name missing keys, but never values.
+
+## Follow-Up Priorities
+
+Onboarding, settings IA, analytics/tracking consent, and ads consent are
+separate planning priorities. Do not hide those decisions inside the canvas
+editor implementation.
 
 ## Theme System Direction
 

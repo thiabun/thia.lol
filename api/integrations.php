@@ -327,6 +327,9 @@ function profile_integration_provider_public_status(string $provider): array
         'provider' => $provider,
         'configured' => profile_integration_provider_configured($provider, $config),
         'oauthEnabled' => profile_integration_provider_oauth_enabled($provider, $config),
+        'linkSupported' => true,
+        'metadataEnabled' => profile_integration_provider_metadata_enabled($provider, $config),
+        'missingConfigKeys' => profile_integration_provider_missing_config_keys($provider, $config),
     ];
 }
 
@@ -347,6 +350,37 @@ function profile_integration_provider_oauth_enabled(string $provider, array $con
 
     return (string) ($config['client_id'] ?? '') !== ''
         && (string) ($config['client_secret'] ?? '') !== '';
+}
+
+function profile_integration_provider_metadata_enabled(string $provider, array $config): bool
+{
+    return match ($provider) {
+        'spotify', 'twitch' => (string) ($config['client_id'] ?? '') !== ''
+            && (string) ($config['client_secret'] ?? '') !== '',
+        'youtube' => (string) ($config['api_key'] ?? '') !== '',
+        'github' => true,
+        'apple_music' => (string) ($config['developer_token'] ?? '') !== '',
+        default => false,
+    };
+}
+
+function profile_integration_provider_missing_config_keys(string $provider, array $config): array
+{
+    $requiredKeys = match ($provider) {
+        'spotify', 'twitch', 'github' => ['client_id', 'client_secret'],
+        'youtube' => ['client_id', 'client_secret', 'api_key'],
+        'apple_music' => ['developer_token'],
+        default => [],
+    };
+    $missing = [];
+
+    foreach ($requiredKeys as $key) {
+        if ((string) ($config[$key] ?? '') === '') {
+            $missing[] = $key;
+        }
+    }
+
+    return $missing;
 }
 
 function profile_integration_accounts_for_user(int $userId): array

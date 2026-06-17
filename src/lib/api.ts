@@ -218,6 +218,9 @@ export type ProfileIntegrationProviderStatus = {
   provider: ProfileIntegrationProvider;
   configured: boolean;
   oauthEnabled: boolean;
+  linkSupported?: boolean;
+  metadataEnabled?: boolean;
+  missingConfigKeys?: string[];
 };
 
 export type ProfileIntegrationAccount = {
@@ -1659,6 +1662,14 @@ function normalizeProfileIntegrationProviderStatus(
     provider,
     configured: Boolean(value.configured),
     oauthEnabled: Boolean(value.oauthEnabled),
+    linkSupported:
+      typeof value.linkSupported === "boolean" ? value.linkSupported : true,
+    metadataEnabled: Boolean(value.metadataEnabled),
+    missingConfigKeys: Array.isArray(value.missingConfigKeys)
+      ? value.missingConfigKeys.filter(
+          (key): key is string => typeof key === "string" && key.trim() !== "",
+        )
+      : [],
   };
 }
 

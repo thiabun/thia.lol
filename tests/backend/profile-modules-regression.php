@@ -298,8 +298,31 @@ $pushedPlacements = profile_canvas_push_collisions(
 assert_true($pushedPlacements[0]['id'] === 1, 'anchor module should stay first');
 assert_true($pushedPlacements[0]['column'] === 1 && $pushedPlacements[0]['row'] === 1, 'anchor layout should be kept');
 assert_true($pushedPlacements[1]['id'] === 2, 'colliding visible module should remain visible');
-assert_true($pushedPlacements[1]['column'] === 3 && $pushedPlacements[1]['row'] === 1, 'colliding module should push row-major');
+assert_true($pushedPlacements[1]['column'] === 3 && $pushedPlacements[1]['row'] === 1, 'colliding module should push sideways first');
 assert_true($pushedPlacements[2]['id'] === 3 && $pushedPlacements[2]['visible'] === false, 'hidden module should not occupy cells');
+
+$leftPushPlacements = profile_canvas_push_collisions(
+    [
+        ['id' => 1, 'type' => 'about', 'column' => 5, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 2, 'type' => 'links', 'column' => 4, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 3, 'type' => 'music', 'column' => 1, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+    ],
+    1
+);
+$leftPushedModule = array_values(array_filter($leftPushPlacements, fn (array $placement): bool => $placement['id'] === 2))[0];
+assert_true($leftPushedModule['column'] === 3 && $leftPushedModule['row'] === 1, 'colliding module should try left on the same row when right is unavailable');
+
+$downwardPushPlacements = profile_canvas_push_collisions(
+    [
+        ['id' => 1, 'type' => 'about', 'column' => 5, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 2, 'type' => 'links', 'column' => 5, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 3, 'type' => 'music', 'column' => 1, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 4, 'type' => 'creator_live', 'column' => 3, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+    ],
+    1
+);
+$downwardPushedModule = array_values(array_filter($downwardPushPlacements, fn (array $placement): bool => $placement['id'] === 2))[0];
+assert_true($downwardPushedModule['column'] === 5 && $downwardPushedModule['row'] === 2, 'colliding module should move downward only after same-row fits fail');
 
 assert_php_rejected(
     '$items = []; for ($i = 1; $i <= 7; $i++) { $items[] = ["id" => $i, "type" => "profile_info", "column" => 1, "row" => 1, "colSpan" => 3, "rowSpan" => 3, "visible" => true]; } profile_canvas_push_collisions($items, 1);',

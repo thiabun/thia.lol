@@ -164,8 +164,9 @@ P3A makes the modular profile canvas a real editable surface.
 - Keyboard/select controls remain the accessible fallback and the mobile editing
   path.
 - Client and server both use collision push behavior: the selected/anchored
-  module claims its requested slot first, visible colliding modules are pushed
-  row-major to the next valid fit, and hidden modules do not occupy cells.
+  module claims its requested slot first, visible colliding modules try
+  same-row sideways movement before moving downward, and hidden modules do not
+  occupy cells.
 - `PATCH /api/me/profile/canvas` persists normalized layout with
   `anchorModuleId`, returns the pushed result, and fails atomically if the
   visible canvas cannot fit inside 6 x 9.
@@ -178,17 +179,26 @@ P3A makes the modular profile canvas a real editable surface.
   module from public and default owner reads, but the editor can request
   `includeDeleted=1` and restore the prior title, config, and saved grid
   placement where possible.
-- The editor model is a widget dock over the live profile canvas. Desktop uses a
-  translucent bottom dock with categories, module cards, search, suggestions,
-  and a selected-module inspector. Mobile uses the same compact actions as a
-  bottom sheet and public mobile layout still ignores exact desktop placement.
-- The dock categories are Essentials, Featured, Media, Integrations, and
+- The editor model keeps the live profile canvas visible. Desktop uses a
+  compact translucent left panel with categories, module cards, search,
+  suggestions, integrations, removed modules, and background controls. Mobile
+  uses the same compact actions as a bottom sheet and public mobile layout
+  still ignores exact desktop placement.
+- The panel categories are Essentials, Featured, Media, Integrations, and
   Removed. Add, remove, restore, connect, use-link, and add-card actions should
   live in this canvas editor instead of a separate settings dashboard.
-- Collision push is row-major and intent-preserving: the anchored module claims
-  its requested slot, visible colliders move to the next valid fit, hidden or
-  deleted modules do not occupy cells, and save fails atomically if the 6 x 9
-  canvas cannot fit the visible layout.
+- Clicking or tapping a module in Edit Canvas mode selects it. The selected
+  module shows local controls for size, visibility, direct 6 x 9 placement,
+  removal, and supported module content editing.
+- Collision push is sideways-first and intent-preserving: the anchored module
+  claims its requested slot, visible colliders try same-row right then left
+  before moving downward, hidden or deleted modules do not occupy cells, and
+  save fails atomically if the 6 x 9 canvas cannot fit the visible layout.
+- Manual owner-edited module labels are retired from new editor flows. Legacy
+  titles/labels may still render safely for compatibility.
+- Connections is the unified home for custom links, platform links, lightweight
+  integration/provider links, and legacy `profiles.links`; Profile Info stays
+  focused on identity.
 - Mobile public profiles ignore exact desktop placement and stack modules in a
   readable order.
 
@@ -683,9 +693,9 @@ Module sizing model:
 
 Module registry foundation:
 
-- `profileModuleRegistry` is the first shared registry for module label,
-  description, fallback title, default size, content checks, badge filtering,
-  and summaries.
+- `profileModuleRegistry` is the first shared registry for product-defined
+  module names, descriptions, fallback titles, default size, content checks,
+  badge filtering, and summaries.
 - Public rendering and owner preview both use this registry, reducing the risk
   that a future module renders differently in preview and on the public profile.
 - Existing registry-backed module types are `about`, `custom_text`, `links`,
@@ -892,17 +902,48 @@ Profiles V3 P3 adds real persistence for the modular profile canvas:
 - Blur is allowlisted to `none`, `soft`, `medium`, and `heavy`; arbitrary CSS
   values are rejected.
 - Module coordinates are clamped into the 6x9 grid. Spans must match the
-  module-specific allowlist. Visible module collisions are rejected rather than
-  silently overlapping.
+  module-specific allowlist. Visible module collisions use the shared
+  sideways-first push algorithm rather than silently overlapping.
 - Mobile ignores exact grid coordinates and stacks by normalized module order.
 - Invalid saved coordinates or retired module rows are ignored or safely
   normalized on read instead of breaking public profiles.
-- Owner customization is now an inline canvas edit mode with preview, save, and
-  cancel. It does not revive the retired large customization modal.
+- Owner customization is now an inline canvas edit mode with a desktop left
+  panel, mobile bottom sheet, preview, save, and cancel. It does not revive the
+  retired large customization modal.
+- Module editing is local to the selected module where possible: size,
+  visibility, direct placement, profile info, Connections, text, featured
+  content selection, and supported background controls are not sent to a generic
+  dashboard.
+- Pointer drag is supported on desktop, with direct placement controls as the
+  keyboard and mobile fallback.
 
-The first P3 editor uses direct row/column/span controls and keyboard-friendly
-nudge buttons instead of a drag dependency. Full drag-and-drop can be added
-later only if it preserves the same grid constraints and accessibility fallback.
+### Implementation Note - 2026-06-17 Canvas Editor Refinement
+
+The P3 editor refinement keeps the canvas-first architecture and tightens the
+interaction model:
+
+- Desktop editing uses a compact left panel for module library, removed
+  modules, integration status, background media, and Done/Cancel. Mobile uses a
+  bottom sheet.
+- Selected modules expose local controls in or attached to the module. Public
+  link navigation is suppressed while editing unless the owner explicitly uses a
+  preview/open-link control.
+- Collision resolution is sideways-first: visible colliders try same-row right,
+  then same-row left, then downward rows by nearby columns. There is no
+  wrap-to-top fallback.
+- Connections owns custom links, platform links, lightweight provider links,
+  and legacy `profiles.links`. Rich provider cards can remain standalone
+  `music` or `creator_live` modules when they need more space.
+- Profile Info remains identity-first and no longer duplicates legacy links.
+- Background image, muted looping video background where supported, reset, and
+  "Background clarity" blur controls live inside Edit Canvas.
+- Integration provider status should distinguish `Links ready`, `Metadata
+  ready`, `OAuth ready`, and safe missing-config diagnostics by key name only.
+  Provider logos should use branded icons where available.
+- Theme editing and custom color profile overrides are deferred to a separate
+  planning pass with contrast, recovery, and migration strategy.
+- Onboarding, settings IA, analytics/tracking consent, and ads consent are
+  follow-up priorities and should not be hidden inside the canvas editor.
 
 ### Implementation Note - 2026-06-16 Profiles V3 P2 Expressive Modules
 
@@ -1086,13 +1127,13 @@ The module system should be introduced after a profile layout refresh, not bolte
 
 | Module | Purpose | User-facing behavior | Configuration | Privacy/safety | Storage needs | Phase |
 | --- | --- | --- | --- | --- | --- | --- |
-| About | Give the profile a richer self-introduction than the short bio. | Renders a concise text block near the top of the personal space. | Title, body, optional visibility. | Plain text only; length limits; no HTML. | `profile_modules.settings_json` with text fields. | v1 |
-| Links / Connections | Present structured external links with platform labels. | Reuses current Connections as a module or header section. | Choose which saved Connections to show, ordering, optional title. | HTTPS validation; safe Discord display; no script URLs. | Could reference `profiles.links` initially, later module settings for order. | v1 |
-| Featured Post | Highlight one public post or reply. | Shows a compact post card with author context and normal safety actions. | Select one own public post; optional title. | Must respect post visibility, deleted/hidden/removed state, block filters. | Module setting with `post_id`; optional future `profile_featured_content`. | v1 |
-| Featured Room | Highlight one room the user owns or belongs to. | Shows room card or compact room panel. | Select eligible public room; optional title. | Hide deleted/private rooms; respect room moderation. | Module setting with `room_id`. | v1 |
+| About | Give the profile a richer self-introduction than the short bio. | Renders a concise text block near the top of the personal space. | Body and optional visibility; product-defined module name. | Plain text only; length limits; no HTML. | `profile_modules.settings_json` with text fields. | v1 |
+| Links / Connections | Present structured external links with platform labels. | Renders module-owned links plus de-duped legacy profile links. | Choose saved Connections and ordering; labels derive from platform, handle, metadata, or hostname. | HTTPS validation; safe Discord display; no script URLs. | Module settings with safe fallback to `profiles.links`. | v1 |
+| Featured Post | Highlight one public post or reply. | Shows a compact post card with author context and normal safety actions. | Select one own public post. | Must respect post visibility, deleted/hidden/removed state, block filters. | Module setting with `post_id`; optional future `profile_featured_content`. | v1 |
+| Featured Room | Highlight one room the user owns or belongs to. | Shows room card or compact room panel. | Select eligible public room. | Hide deleted/private rooms; respect room moderation. | Module setting with `room_id`. | v1 |
 | Badge Showcase | Show selected badges beyond header featured badges. | Curated badge strip/grid with explanations. | Choose badges, order, compact or detailed view. | Only visible badges; hidden/revoked badges never render. | Module references `user_badges` ids or badge ids. | v1 |
-| Custom Text | Add a small personal note, update, or announcement. | Text card in the module stack. | Title, body, optional link button. | Plain text, length limits, report through profile. | Module settings JSON. | v1 |
-| Room Showcase | Show rooms as communities the member owns or participates in. | Grid/list of selected public rooms. | Select rooms, ordering, title. | Public rooms only in v1; no private room leakage. | Module settings with room ids. | v1 |
+| Custom Text | Add a small personal note, update, or announcement. | Text card in the module stack. | Body and optional safe link button; product-defined module name. | Plain text, length limits, report through profile. | Module settings JSON. | v1 |
+| Room Showcase | Show rooms as communities the member owns or participates in. | Grid/list of selected public rooms. | Select rooms and ordering. | Public rooms only in v1; no private room leakage. | Module settings with room ids. | v1 |
 | Blog / Journal | Support long-form profile updates. | Shows latest entries or pinned entries on the profile. | Entry selection, archive link, display mode. | Needs moderation, visibility, reporting, content limits. | Future `posts.post_type = 'blog'` or separate `profile_entries`. | v2 |
 | Project Showcase | Present creator projects, apps, writing, art, servers, or releases. | Cards with title, description, image, link, status. | Up to a small number of projects, safe URLs, optional image. | Link safety, no misleading claims, no unsafe embeds. | Module settings JSON or future `profile_projects`. | v2 |
 | Gallery | Show selected uploaded images/media. | Responsive gallery with thumbnails and captions. | Select uploaded media, captions, ordering. | Moderation and takedown implications; no external hotlink gallery in v1. | Future media library references. | v2 |
@@ -1135,7 +1176,7 @@ Recommended validation:
 
 - Store only known module types.
 - Validate each module type against an allowlist of settings keys.
-- Enforce title/body/link/media length limits.
+- Enforce legacy title/body/link/media length limits.
 - Enforce maximum module count, for example 8 active modules in the first implementation.
 - Enforce a small number of featured modules.
 - Normalize and validate URLs at write time.
@@ -1318,7 +1359,7 @@ Keep route style consistent with current profile APIs: public profile reads unde
 - Auth: required.
 - CSRF: required.
 - Behavior: creates a module for the current user.
-- Validation: known `moduleType`, title length, settings schema per module type, module count limit, URL/media/content validation.
+- Validation: known `moduleType`, legacy title length where accepted for compatibility, settings schema per module type, module count limit, URL/media/content validation.
 - Response: created module plus full normalized module list.
 - Safety: reject HTML/script-like text; reject unknown settings keys; prevent modules referencing other users' private or unavailable content.
 - Storage readiness: return `503` if `profile_modules` is missing.

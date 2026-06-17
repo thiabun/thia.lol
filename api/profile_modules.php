@@ -817,11 +817,11 @@ function profile_canvas_allowed_sizes(string $type): array
         PROFILE_INFO_MODULE_TYPE => ['3x3', '3x2', '2x2', '2x1'],
         'about' => ['1x1', '2x1', '3x1'],
         'custom_text' => ['1x1', '2x1'],
-        'links' => ['1x1', '2x1'],
+        'links' => ['1x1', '2x1', '3x1', '2x2'],
         'featured_badges' => ['1x1', '2x1'],
         PROFILE_FEATURED_POST_MODULE_TYPE => ['2x1', '3x1', '2x2', '3x2'],
         PROFILE_FEATURED_ROOM_MODULE_TYPE => ['1x1', '2x1', '3x1'],
-        PROFILE_GALLERY_MEDIA_MODULE_TYPE => ['1x1', '2x1', '2x2', '3x2'],
+        PROFILE_GALLERY_MEDIA_MODULE_TYPE => ['1x1', '2x1', '2x2', '3x2', '3x3'],
         PROFILE_CREATOR_LIVE_MODULE_TYPE => ['1x1', '2x1', '2x2'],
         PROFILE_MUSIC_MODULE_TYPE => ['1x1', '2x1'],
         PROFILE_ACTIVITY_MODULE_TYPE => ['2x2', '3x2', '3x3'],
@@ -892,28 +892,73 @@ function profile_canvas_push_collisions(array $placements, ?int $anchorModuleId)
 
 function profile_canvas_next_available_layout(array $placement, array $occupied): ?array
 {
-    $startIndex = (($placement['row'] - 1) * PROFILE_CANVAS_COLUMNS) + ($placement['column'] - 1);
-    $totalCells = PROFILE_CANVAS_COLUMNS * PROFILE_CANVAS_ROWS;
+    $maxColumn = PROFILE_CANVAS_COLUMNS - $placement['colSpan'] + 1;
+    $maxRow = PROFILE_CANVAS_ROWS - $placement['rowSpan'] + 1;
+    $baseColumn = min(max(1, (int) $placement['column']), $maxColumn);
+    $baseRow = min(max(1, (int) $placement['row']), $maxRow);
 
-    for ($offset = 0; $offset < $totalCells; $offset++) {
-        $index = ($startIndex + $offset) % $totalCells;
-        $row = intdiv($index, PROFILE_CANVAS_COLUMNS) + 1;
-        $column = ($index % PROFILE_CANVAS_COLUMNS) + 1;
-
+    foreach (profile_canvas_same_row_sideways_columns($baseColumn, $maxColumn) as $column) {
         $candidate = [
             ...$placement,
             'column' => $column,
-            'row' => $row,
+            'row' => $baseRow,
         ];
-        $candidate['column'] = min($candidate['column'], PROFILE_CANVAS_COLUMNS - $candidate['colSpan'] + 1);
-        $candidate['row'] = min($candidate['row'], PROFILE_CANVAS_ROWS - $candidate['rowSpan'] + 1);
 
         if (profile_canvas_layout_fits($candidate, $occupied)) {
             return $candidate;
         }
     }
 
+    for ($row = $baseRow + 1; $row <= $maxRow; $row++) {
+        foreach (profile_canvas_nearby_columns($baseColumn, $maxColumn) as $column) {
+            $candidate = [
+                ...$placement,
+                'column' => $column,
+                'row' => $row,
+            ];
+
+            if (profile_canvas_layout_fits($candidate, $occupied)) {
+                return $candidate;
+            }
+        }
+    }
+
     return null;
+}
+
+function profile_canvas_same_row_sideways_columns(int $baseColumn, int $maxColumn): array
+{
+    $columns = [];
+
+    for ($column = $baseColumn + 1; $column <= $maxColumn; $column++) {
+        $columns[] = $column;
+    }
+
+    for ($column = $baseColumn - 1; $column >= 1; $column--) {
+        $columns[] = $column;
+    }
+
+    return $columns;
+}
+
+function profile_canvas_nearby_columns(int $baseColumn, int $maxColumn): array
+{
+    $columns = [$baseColumn];
+
+    for ($distance = 1; $distance <= $maxColumn; $distance++) {
+        $right = $baseColumn + $distance;
+        $left = $baseColumn - $distance;
+
+        if ($right <= $maxColumn) {
+            $columns[] = $right;
+        }
+
+        if ($left >= 1) {
+            $columns[] = $left;
+        }
+    }
+
+    return array_values(array_unique($columns));
 }
 
 function profile_canvas_layout_fits(array $placement, array $occupied): bool

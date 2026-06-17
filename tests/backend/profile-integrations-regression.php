@@ -67,6 +67,19 @@ assert_true(str_contains($integrationSource, 'function profile_integrations_prov
 assert_true(str_contains($integrationSource, 'function profile_integration_redirect_to_app'), 'OAuth callback should redirect back to app');
 assert_true(str_contains($integrationSource, 'Apple Music'), 'Apple Music support should remain explicit');
 
+$spotifyStatus = profile_integration_provider_public_status('spotify');
+assert_true($spotifyStatus['linkSupported'] === true, 'spotify links should be supported without OAuth');
+assert_true($spotifyStatus['configured'] === false, 'spotify should not report configured without client credentials');
+assert_true($spotifyStatus['oauthEnabled'] === false, 'spotify oauth should be disabled without client credentials');
+assert_true($spotifyStatus['metadataEnabled'] === false, 'spotify metadata should be disabled without client credentials');
+assert_true(in_array('client_id', $spotifyStatus['missingConfigKeys'], true), 'spotify status should report missing client id by name only');
+assert_true(in_array('client_secret', $spotifyStatus['missingConfigKeys'], true), 'spotify status should report missing client secret by name only');
+
+$twitchStatus = profile_integration_provider_public_status('twitch');
+assert_true($twitchStatus['linkSupported'] === true, 'twitch links should be supported without OAuth');
+assert_true($twitchStatus['metadataEnabled'] === false, 'twitch metadata should be disabled without client credentials');
+assert_true(!in_array('embed_parent', $twitchStatus['missingConfigKeys'], true), 'twitch embed parent should be recognized when configured');
+
 $cipher = profile_integration_encrypt('secret-token');
 assert_true($cipher !== 'secret-token', 'token should be encrypted');
 assert_true(profile_integration_decrypt($cipher) === 'secret-token', 'token decrypt mismatch');

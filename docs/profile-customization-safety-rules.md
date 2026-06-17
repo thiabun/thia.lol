@@ -55,7 +55,9 @@ Current frontend behavior:
 - Profile accent/theme values may exist in storage for compatibility, but controls are hidden until presets visibly affect public rendering through tested, contrast-safe mappings.
 - The previous `Customize profile` modal has been removed. Owner customization
   now uses inline canvas editing on the profile page through a translucent
-  widget dock on desktop and a compact bottom sheet on mobile.
+  left panel on desktop and a compact bottom sheet on mobile.
+- In Edit Canvas mode, selecting a module exposes size, visibility, position,
+  and supported content controls in or directly attached to that module.
 - Public profiles continue to render persisted identity, media, modules,
   featured content, badges, and links through constrained public components.
 
@@ -104,8 +106,8 @@ Current backend behavior:
   `gallery_media`, `creator_live`, `music`, and `activity`.
 - Module config validation rejects unknown keys, unsafe text, unsafe URLs, arbitrary embeds, and arbitrary HTML/CSS/JS.
 - Canvas layout uses a constrained 6 x 9 grid. Server validation clamps bounds,
-  validates spans, ignores hidden modules for occupancy, and uses collision push
-  instead of freeform pixel positioning.
+  validates spans, ignores hidden modules for occupancy, and uses sideways-first
+  collision push instead of freeform pixel positioning.
 - `profile_info` is the only protected module. Featured post, featured room,
   and activity modules can be deleted like normal modules; deleting featured
   post/room modules also clears the selected featured profile references.
@@ -115,6 +117,12 @@ Current backend behavior:
   occupy grid cells.
 - Deleting featured post or room modules must not delete the underlying post or
   room. Restore may reselect a saved featured id only if it is still eligible.
+- New editor flows use product-defined module names instead of arbitrary manual
+  module labels. Legacy titles and labels may render as plain text for backward
+  compatibility, but generic label editing should not be exposed.
+- Legacy `profiles.links` should render through Connections, de-duplicated
+  against module-owned links, instead of duplicating in Profile Info or the
+  profile header.
 
 Future implementation should keep this baseline and tighten it where needed. In particular, future API work should move profile accent/theme handling from generic token validation to explicit allowlists before those values affect more UI.
 
@@ -199,7 +207,7 @@ The following are not allowed:
 - Accent/theme profile controls should stay hidden unless a selected preset visibly affects the profile through a documented, tested, contrast-safe mapping.
 - User-selected background media must not sit directly behind text without a product-controlled overlay, blur, opacity, or surface treatment.
 - Profile content must render as text nodes, not raw HTML.
-- Long handles, URLs, display names, and module titles must wrap or truncate without breaking layout.
+- Long handles, URLs, display names, and product-defined module titles must wrap or truncate without breaking layout.
 - Connection editors must validate values by platform before save. URL-only connections require explicit HTTPS URLs, and handle-based connections must reject empty, HTML-like, or script-like values.
 
 ### Density And Layout
@@ -208,7 +216,7 @@ The following are not allowed:
 - Avoid turning every section into a separate floating card. Use cards for repeated items, modules, and modals.
 - Limit active profile modules in the first module release. A recommended first limit is 8 public or draft modules per profile.
 - Limit featured modules. A recommended first limit is 1 or 2 featured modules.
-- Keep module titles short and module bodies bounded by type-specific limits.
+- Keep product-defined module titles short and module bodies bounded by type-specific limits.
 - Profile modules must not overlap the primary navigation, mobile bottom nav, footer, report form, or action menus.
 - Profile modules follow a widget-like rubric: one clear purpose, most relevant
   content first, no filler chrome, and no public empty-state clutter.
@@ -267,7 +275,7 @@ The following are not allowed:
 
 ### Text
 
-- Display names, bios, locations, module titles, module body text, captions, and link labels must be plain text.
+- Display names, bios, locations, legacy module titles, module body text, captions, and link labels must be plain text.
 - Reject control characters and script-like input.
 - Enforce max lengths server-side and client-side.
 - Normalize whitespace.
@@ -276,7 +284,8 @@ The following are not allowed:
 
 Recommended first module text limits:
 
-- Module title: 80 characters.
+- Legacy module title: 80 characters. New editor flows should not expose a
+  generic manual title/label field.
 - Short module body: 500 characters.
 - Long-form module body, if ever added: separate product decision and stronger moderation path required.
 - Button/link label: 40 characters.
@@ -361,7 +370,8 @@ Each module type must define:
 
 - Allowed fields.
 - Required fields.
-- Maximum title length.
+- Maximum legacy title length, if legacy titles are still accepted for
+  compatibility.
 - Maximum body length.
 - Maximum media count.
 - Allowed media purposes.
@@ -378,13 +388,13 @@ Recommended first module catalog constraints:
 
 | Module | Allowed fields | Suggested limits | URLs / embeds | Report behavior | Fallback |
 | --- | --- | --- | --- | --- | --- |
-| About | title, body | title 80, body 500 | no URLs unless rendered as safe text | profile report first | hide empty body |
-| Connections | title, selected connection ids/order | title 80, max 10 links | existing Connection rules, no embeds | profile report first | hide empty list |
-| Featured Post | title, post id | title 80, one public eligible post | no external embeds | report post and profile | hide if post unavailable |
-| Featured Room | title, room id | title 80, one public eligible room | no external embeds | report room and profile | hide if room unavailable |
-| Badge Showcase | title, badge grant ids/order | title 80, max 12 visible badges | no URLs/embeds | profile report first | hide empty list |
-| Custom Text | title, body, optional safe link | title 80, body 500, one link | HTTPS allowlist by type, no embeds | profile report first | hide empty body |
-| Room Showcase | title, room ids/order | title 80, max 6 public rooms | no external embeds | report room and profile | hide unavailable rooms |
+| About | body, legacy title compatibility | legacy title 80, body 500 | no URLs unless rendered as safe text | profile report first | hide empty body |
+| Connections | links/order, legacy title compatibility | legacy title 80, max 10 links | existing Connection rules, no embeds | profile report first | hide empty list |
+| Featured Post | post id, legacy title compatibility | legacy title 80, one public eligible post | no external embeds | report post and profile | hide if post unavailable |
+| Featured Room | room id, legacy title compatibility | legacy title 80, one public eligible room | no external embeds | report room and profile | hide if room unavailable |
+| Badge Showcase | badge grant ids/order, legacy title compatibility | legacy title 80, max 12 visible badges | no URLs/embeds | profile report first | hide empty list |
+| Custom Text | body, optional safe link, legacy title compatibility | legacy title 80, body 500, one link | HTTPS allowlist by type, no embeds | profile report first | hide empty body |
+| Room Showcase | room ids/order, legacy title compatibility | legacy title 80, max 6 public rooms | no external embeds | report room and profile | hide unavailable rooms |
 
 Performance budgets for first modules:
 
