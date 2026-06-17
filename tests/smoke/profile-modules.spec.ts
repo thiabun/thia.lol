@@ -1061,6 +1061,10 @@ test("Twitch stream chat fills the creator module when embed metadata is availab
   const creator = page.getByTestId("profile-grid-module-creator_live");
   await expect(creator).toHaveAttribute("data-profile-grid-size", "6x5");
   await expect(creator.getByTestId("profile-integration-embed-twitch")).toBeVisible();
+  await expect(creator.getByTestId("profile-integration-embed-twitch")).toHaveAttribute(
+    "src",
+    /autoplay=false/,
+  );
   await expect(creator.getByTestId("profile-integration-embed-twitch-chat")).toBeVisible();
   await expect(creator.getByRole("link")).toHaveCount(0);
 });
@@ -1098,6 +1102,8 @@ test("owner editor preserves lower-row 6x5 creator modules on entry", async ({
     "grid",
   );
   await expect(creator).toHaveCSS("--profile-grid-row", "8");
+  await expect(creator.getByTestId("profile-twitch-edit-preview")).toBeVisible();
+  await expect(creator.locator("iframe")).toHaveCount(0);
   await expect(creator).not.toHaveAttribute("data-profile-module-dragging", "true");
 
   await page.getByTestId("profile-canvas-save-button").click();
@@ -1850,7 +1856,7 @@ test("owner uses OAuth-first integrations from the editor panel", async ({
           },
           embed: {
             type: "iframe",
-            src: "https://player.twitch.tv/?channel=thiabun&parent=thia.lol&muted=true",
+            src: "https://player.twitch.tv/?channel=thiabun&parent=thia.lol&muted=true&autoplay=false",
             title: "Twitch embed",
             allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
             height: 220,
@@ -3934,7 +3940,7 @@ function twitchStreamChatModule(
         },
         embed: {
           type: "iframe",
-          src: "https://player.twitch.tv/?channel=thiabun&parent=localhost",
+          src: "https://player.twitch.tv/?channel=thiabun&parent=localhost&muted=true&autoplay=false",
           title: "Twitch stream",
           height: 360,
           allow: "autoplay; fullscreen; picture-in-picture",

@@ -1038,11 +1038,11 @@ function profile_integration_twitch_embed_src(array $normalized): ?string
     $parent = (string) (profile_integration_provider_config('twitch')['embed_parent'] ?? 'thia.lol');
 
     if ($normalized['resourceType'] === 'channel') {
-        return 'https://player.twitch.tv/?channel=' . rawurlencode($normalized['resourceId']) . '&parent=' . rawurlencode($parent) . '&muted=true';
+        return 'https://player.twitch.tv/?channel=' . rawurlencode($normalized['resourceId']) . '&parent=' . rawurlencode($parent) . '&muted=true&autoplay=false';
     }
 
     if ($normalized['resourceType'] === 'video') {
-        return 'https://player.twitch.tv/?video=v' . rawurlencode(ltrim($normalized['resourceId'], 'v')) . '&parent=' . rawurlencode($parent) . '&muted=true';
+        return 'https://player.twitch.tv/?video=v' . rawurlencode(ltrim($normalized['resourceId'], 'v')) . '&parent=' . rawurlencode($parent) . '&muted=true&autoplay=false';
     }
 
     return null;

@@ -69,6 +69,7 @@ assert_true(profile_integration_provider_oauth_enabled('apple_music', ['develope
 
 $twitchCard = profile_integration_generated_card('https://twitch.tv/thiabun', null);
 assert_true(str_contains($twitchCard['embed']['src'], 'parent=thia.lol'), 'twitch embed must include parent');
+assert_true(str_contains($twitchCard['embed']['src'], 'autoplay=false'), 'twitch embed must disable autoplay explicitly');
 assert_true(is_string($integrationSource), 'integration source should be readable');
 assert_true(str_contains($integrationSource, 'function profile_integrations_provider_suggestions'), 'provider suggestions endpoint should exist');
 assert_true(str_contains($integrationSource, 'function profile_integration_redirect_to_app'), 'OAuth callback should redirect back to app');
