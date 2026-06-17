@@ -14,7 +14,8 @@ Date: 2026-06-15
 3. This index, to choose the right supporting docs.
 4. `docs/public-readiness-v2-plan.md`: Public Readiness v2 orientation and issue map.
 5. `docs/product-ui-ux-guidelines.md`: current product UI/UX rules from issue [#14](https://github.com/thiabun/thia.lol/issues/14), with the implemented overhaul tracked in [#32](https://github.com/thiabun/thia.lol/issues/32).
-6. Relevant operational references for deploy, migration, upload, smoke, auth, safety, or legal context.
+6. `docs/brand-guidelines.md`: active logo, favicon, app icon, Open Graph image, and brand usage rules.
+7. Relevant operational references for deploy, migration, upload, smoke, auth, safety, or legal context.
 
 Do not use historical roadmap documents as current task queues. Remaining active
 work belongs in GitHub Issues and the project workflow, not scattered roadmap
@@ -26,6 +27,7 @@ paragraphs.
 | --- | --- |
 | `docs/public-readiness-v2-plan.md` | Public Readiness v2 orientation, issue links, docs classification, and project-board/label guidance. |
 | `docs/product-ui-ux-guidelines.md` | Canonical UI/UX rules, component inventory, and future Codex UI checklist. |
+| `docs/brand-guidelines.md` | Canonical bunny mark, wordmark, favicon, app icon, social preview, and pink-variant usage. |
 | `docs/platform-ui-modernization.md` | Current UI modernization direction and bug-reporting/product-shell guidance. |
 | `docs/product-audit-and-roadmap.md` | Product architecture, feature inventory, legal/compliance guardrails, and historical roadmap context. |
 | `docs/performance-audit.md` | Issue #6 bundle audit, measured chunk state, loading cleanup, asset review, and remaining performance risks. |

@@ -4,6 +4,8 @@ import { useTheme } from "../lib/useTheme";
 
 const siteOrigin = "https://thia.lol";
 const siteName = "thia.lol";
+const defaultImagePath = "/brand/thia-og.png";
+const defaultImageAlt = "thia.lol bunny mark and wordmark.";
 
 type PageMetaProps = {
   title: string;
@@ -33,11 +35,15 @@ export function PageMeta({ title, description, path }: PageMetaProps) {
     setMeta("property", "og:title", fullTitle);
     setMeta("property", "og:description", description);
     setMeta("property", "og:url", canonicalUrl);
-    removeMeta("property", "og:image");
-    setMeta("name", "twitter:card", "summary");
+    setMeta("property", "og:image", new URL(defaultImagePath, siteOrigin).toString());
+    setMeta("property", "og:image:width", "1200");
+    setMeta("property", "og:image:height", "630");
+    setMeta("property", "og:image:alt", defaultImageAlt);
+    setMeta("name", "twitter:card", "summary_large_image");
     setMeta("name", "twitter:title", fullTitle);
     setMeta("name", "twitter:description", description);
-    removeMeta("name", "twitter:image");
+    setMeta("name", "twitter:image", new URL(defaultImagePath, siteOrigin).toString());
+    setMeta("name", "twitter:image:alt", defaultImageAlt);
     setCanonical(canonicalUrl);
   }, [description, location.pathname, path, theme, title]);
 
@@ -56,12 +62,6 @@ function setMeta(attribute: "name" | "property", key: string, content: string) {
   }
 
   element.content = content;
-}
-
-function removeMeta(attribute: "name" | "property", key: string) {
-  document.head
-    .querySelectorAll<HTMLMetaElement>(`meta[${attribute}="${key}"]`)
-    .forEach((element) => element.remove());
 }
 
 function setCanonical(url: string) {

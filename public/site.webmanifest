@@ -1,0 +1,21 @@
+{
+  "name": "thia.lol",
+  "short_name": "thia.lol",
+  "description": "A calm, fluid social platform for rooms, posts, profiles, and shared presence.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fff4df",
+  "theme_color": "#f48ca2",
+  "icons": [
+    {
+      "src": "/brand/thia-app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/brand/thia-app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

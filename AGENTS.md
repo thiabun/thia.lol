@@ -175,6 +175,8 @@ Design language:
 
 - Light mode: `Sunveil`, warm solarised soft yellow, calm, skin-lit, fluid.
 - Dark mode: `Frostveil`, cool solarised blue, moonlit, icy, quiet.
+- Brand identity: minimal bunny mark plus `thia.lol` wordmark.
+- Pink variant: allowed for brand/social/app-icon assets, not a third selectable theme unless explicitly requested.
 - Motion should feel springy, liquid, and alive, but not distracting.
 
 Build the platform like a living place, not a pile of unrelated widgets.

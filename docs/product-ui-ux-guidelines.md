@@ -101,6 +101,23 @@ Avoid turning whole pages into a single yellow, blue, beige, slate, or purple
 wash. Important controls and content should remain legible before they feel
 atmospheric.
 
+## Brand Identity
+
+The primary brand system is the minimal bunny mark plus `thia.lol` wordmark.
+The bunny subtly hides a `T` in its nose and mouth, which makes the mark
+distinct without needing extra explanation in the UI.
+
+Use the brand compactly:
+
+- Header: bunny mark plus wordmark, once.
+- Favicons/app icons: bunny mark, with the pink variant allowed.
+- Social previews and docs: horizontal lockups are appropriate.
+- Routine product surfaces: do not repeat the bunny as decoration.
+
+The pink background variant is a brand/social/app-icon asset, not a selectable
+product theme. Sunveil and Frostveil remain the only app themes unless a future
+issue explicitly changes the theme model.
+
 ## Core Rules
 
 ### 1. Compact By Default

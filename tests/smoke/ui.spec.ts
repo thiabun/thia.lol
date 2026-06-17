@@ -40,6 +40,7 @@ test("desktop primary nav shows platform sections without Admin", async ({ page 
   await page.goto("/");
 
   await expect(page.getByLabel("thia.lol home")).toBeVisible();
+  await expect(page.getByTestId("brand-logo")).toBeVisible();
   await expect(page.getByText("social app")).toHaveCount(0);
 
   const nav = page.getByTestId("desktop-nav");
@@ -101,6 +102,7 @@ test("mobile header, account menu, and bottom nav fit the viewport", async ({
   await page.goto("/");
 
   await expect(page.getByLabel("thia.lol home")).toBeVisible();
+  await expect(page.getByTestId("brand-logo")).toBeVisible();
   await expect(page.getByText("social app")).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
 

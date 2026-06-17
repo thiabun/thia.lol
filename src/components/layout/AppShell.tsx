@@ -19,6 +19,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from "react-router";
+import { BrandLogo } from "../BrandLogo";
 import { ThemeToggle } from "../ThemeToggle";
 import { Button, ButtonLink } from "../ui/Button";
 import { getNotifications, getRooms } from "../../lib/api";
@@ -264,14 +265,10 @@ function SiteHeader({
       <div className="mx-auto flex min-h-16 w-full max-w-7xl items-center gap-2 px-4 sm:gap-3 sm:px-6 lg:px-8">
         <NavLink
           to="/"
-          className="flex min-w-0 shrink items-center rounded-md px-1 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          className="flex min-w-0 shrink-0 items-center rounded-md px-1 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
           aria-label="thia.lol home"
         >
-          <span className="min-w-0">
-            <span className="block truncate text-base font-semibold leading-none tracking-normal text-text">
-              thia.lol
-            </span>
-          </span>
+          <BrandLogo />
         </NavLink>
 
         <nav
