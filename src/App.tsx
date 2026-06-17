@@ -114,8 +114,9 @@ function RouteLoading() {
     <div className="grid min-h-dvh place-items-center bg-canvas px-4 py-8 text-sm text-muted">
       <div className="inline-flex items-center gap-3" role="status">
         <BrandMark
-          className="rounded-card shadow-soft"
+          className="shadow-soft"
           data-testid="route-loading-brand"
+          shape="circle"
           size="md"
           variant="pink"
         />

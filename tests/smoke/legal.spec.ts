@@ -25,7 +25,7 @@ test("public legal and trust pages load", async ({ page }) => {
     ).toBeVisible();
 
     if (legalPage.path === "/legal") {
-      await expect(page.getByTestId("legal-brand-lockup")).toBeVisible();
+      await expect(page.getByTestId("legal-brand-logo-main")).toBeVisible();
     } else {
       await expect(page.getByTestId("policy-brand-mark")).toBeVisible();
     }

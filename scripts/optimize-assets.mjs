@@ -15,9 +15,12 @@ const sourceFiles = {
   appIcon: "thia-mark-pink-square.png",
   lockupFrostveil: "thia-lockup-glow.png",
   lockupSunveil: "thia-lockup-sunveil.png",
+  logoMain: "logo-main.png",
   markFrostveil: "thia-mark-frostveil-alpha.png",
+  markFrostveilSquare: "thia-mark-frostveil-square.png",
   markPink: "thia-mark-pink-square.png",
   markSunveil: "thia-mark-sunveil-alpha.png",
+  markSunveilSquare: "thia-mark-sunveil-square.png",
   tMarkFrostveil: "thia-t-frostveil-square.png",
   tMarkSunveil: "thia-t-sunveil-square.png",
 };
@@ -32,6 +35,10 @@ const pngAssets = [
   [sourceFiles.markFrostveil, "brand/thia-mark-frostveil-96.png", {
     height: 96,
     width: 96,
+  }],
+  [sourceFiles.logoMain, "brand/thia-logo-main-256.png", {
+    height: 256,
+    width: 256,
   }],
   [sourceFiles.markPink, "brand/thia-mark-pink-96.png", {
     height: 96,
@@ -72,6 +79,32 @@ for (const [sourceName, outputName, size] of pngAssets) {
 }
 
 await writeSquirclePng(sourceFiles.appIcon, "favicon-32x32.png", 32);
+await writeSquirclePng(
+  sourceFiles.markSunveilSquare,
+  "brand/thia-mark-sunveil-squircle-96.png",
+  96,
+);
+await writeSquirclePng(
+  sourceFiles.markFrostveilSquare,
+  "brand/thia-mark-frostveil-squircle-96.png",
+  96,
+);
+await writeSquirclePng(
+  sourceFiles.markPink,
+  "brand/thia-mark-pink-squircle-96.png",
+  96,
+);
+await writeCirclePng(
+  sourceFiles.markSunveilSquare,
+  "brand/thia-mark-sunveil-circle-96.png",
+  96,
+);
+await writeCirclePng(
+  sourceFiles.markFrostveilSquare,
+  "brand/thia-mark-frostveil-circle-96.png",
+  96,
+);
+await writeCirclePng(sourceFiles.markPink, "brand/thia-mark-pink-circle-96.png", 96);
 await writeOpenGraphImage();
 await writeManifest();
 
@@ -120,6 +153,28 @@ async function writeSquirclePng(sourceName, outputName, size) {
   generated.push(path.relative(repoRoot, outputPath));
 }
 
+async function writeCirclePng(sourceName, outputName, size) {
+  const outputPath = path.join(publicDir, outputName);
+  const iconBuffer = await sharp(path.join(sourceDir, sourceName))
+    .rotate()
+    .resize({
+      height: size,
+      width: size,
+      fit: "cover",
+      withoutEnlargement: false,
+    })
+    .png()
+    .toBuffer();
+
+  await fs.mkdir(path.dirname(outputPath), { recursive: true });
+  await sharp(iconBuffer)
+    .composite([{ input: circleMask(size), blend: "dest-in" }])
+    .png({ adaptiveFiltering: true, compressionLevel: 9 })
+    .toFile(outputPath);
+
+  generated.push(path.relative(repoRoot, outputPath));
+}
+
 function squircleMask(size) {
   const center = size / 2;
   const radius = center - 0.25;
@@ -139,6 +194,15 @@ function squircleMask(size) {
 
   return Buffer.from(
     `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg"><polygon points="${points.join(" ")}" fill="#fff"/></svg>`,
+  );
+}
+
+function circleMask(size) {
+  const center = size / 2;
+  const radius = center - 0.25;
+
+  return Buffer.from(
+    `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg"><circle cx="${center}" cy="${center}" r="${radius}" fill="#fff"/></svg>`,
   );
 }
 

@@ -111,12 +111,13 @@ Use the brand compactly:
 
 - Header: bunny mark plus wordmark, once.
 - Footer: compact bunny/wordmark treatment near legal and copyright context.
-- Auth and legal entry points: one restrained lockup or T mark where it builds
-  trust and orientation.
-- Cookie and loading states: one small brand marker is acceptable when it does
-  not compete with the action or message.
+- Auth and legal entry points: one restrained `logo-main` image or contained
+  bunny mark where it builds trust and orientation.
+- Cookie and loading states: one small circle or squircle bunny mark is
+  acceptable when it does not compete with the action or message.
 - Favicons/app icons: bunny mark, with the pink variant allowed.
-- Social previews and docs: horizontal lockups are appropriate.
+- Social previews and docs: horizontal lockups are appropriate, but avoid them
+  in compact in-app surfaces outside the top bar.
 - Routine product surfaces: do not repeat the bunny as decoration across feeds,
   post cards, profile modules, rooms, or repeated list items.
 
