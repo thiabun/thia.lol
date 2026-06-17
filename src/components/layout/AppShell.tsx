@@ -1,6 +1,5 @@
 import {
   Bell,
-  Cookie,
   Compass,
   FileText,
   Home,
@@ -19,7 +18,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from "react-router";
-import { BrandLogo } from "../BrandLogo";
+import { BrandLogo, BrandMark } from "../BrandLogo";
 import { ThemeToggle } from "../ThemeToggle";
 import { Button, ButtonLink } from "../ui/Button";
 import { getNotifications, getRooms } from "../../lib/api";
@@ -579,15 +578,27 @@ function SiteFooter() {
       data-testid="site-footer"
     >
       <div className="flex flex-col gap-4 border-t border-line py-4 text-xs text-muted sm:flex-row sm:items-start sm:justify-between">
-        <div className="max-w-3xl space-y-1 leading-5">
-          <p>
-            © 2026 Thia Markussen. Alle rettigheter forbeholdt / All rights
-            reserved.
-          </p>
-          <p>
-            Beskyttet etter norsk opphavsrett og internasjonal opphavsrett /
-            Protected under Norwegian and international copyright law.
-          </p>
+        <div className="max-w-3xl space-y-3 leading-5">
+          <div
+            className="inline-flex items-center gap-2 text-text"
+            data-testid="site-footer-brand"
+          >
+            <BrandMark className="rounded-full" size="sm" />
+            <span className="text-sm font-semibold leading-none tracking-normal">
+              <span>thia</span>
+              <span className="text-rose">.lol</span>
+            </span>
+          </div>
+          <div className="space-y-1">
+            <p>
+              © 2026 Thia Markussen. Alle rettigheter forbeholdt / All rights
+              reserved.
+            </p>
+            <p>
+              Beskyttet etter norsk opphavsrett og internasjonal opphavsrett /
+              Protected under Norwegian and international copyright law.
+            </p>
+          </div>
         </div>
         <div className="space-y-2 sm:max-w-sm sm:text-right">
           <nav
@@ -648,7 +659,12 @@ function CookieNotice() {
       data-testid="cookie-notice"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-        <Cookie aria-hidden="true" className="mt-0.5 shrink-0 text-muted" size={18} />
+        <BrandMark
+          className="rounded-card shadow-soft"
+          data-testid="cookie-brand-mark"
+          size="sm"
+          variant="t"
+        />
         <p className="leading-6">
           thia.lol uses necessary cookies for sign-in and security. No analytics or
           marketing cookies are currently used.

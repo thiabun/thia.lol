@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import type { FormEvent } from "react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
+import { BrandLockup } from "../components/BrandLogo";
 import { PageMeta } from "../components/PageMeta";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
@@ -74,6 +75,10 @@ export function AuthPage({ mode }: AuthPageProps) {
       >
         <Panel className="w-full overflow-hidden">
           <form className="p-5 sm:p-6" onSubmit={handleSubmit}>
+            <BrandLockup
+              className="mb-5 h-12 w-auto max-w-[11rem]"
+              data-testid="auth-brand-lockup"
+            />
             <Badge tone={isRegister ? "warm" : "cool"}>
               {isRegister ? "create account" : "sign in"}
             </Badge>

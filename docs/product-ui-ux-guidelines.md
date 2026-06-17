@@ -110,9 +110,15 @@ distinct without needing extra explanation in the UI.
 Use the brand compactly:
 
 - Header: bunny mark plus wordmark, once.
+- Footer: compact bunny/wordmark treatment near legal and copyright context.
+- Auth and legal entry points: one restrained lockup or T mark where it builds
+  trust and orientation.
+- Cookie and loading states: one small brand marker is acceptable when it does
+  not compete with the action or message.
 - Favicons/app icons: bunny mark, with the pink variant allowed.
 - Social previews and docs: horizontal lockups are appropriate.
-- Routine product surfaces: do not repeat the bunny as decoration.
+- Routine product surfaces: do not repeat the bunny as decoration across feeds,
+  post cards, profile modules, rooms, or repeated list items.
 
 The pink background variant is a brand/social/app-icon asset, not a selectable
 product theme. Sunveil and Frostveil remain the only app themes unless a future

@@ -16,7 +16,10 @@ const sourceFiles = {
   lockupFrostveil: "thia-lockup-glow.png",
   lockupSunveil: "thia-lockup-sunveil.png",
   markFrostveil: "thia-mark-frostveil-alpha.png",
+  markPink: "thia-mark-pink-square.png",
   markSunveil: "thia-mark-sunveil-alpha.png",
+  tMarkFrostveil: "thia-t-frostveil-square.png",
+  tMarkSunveil: "thia-t-sunveil-square.png",
 };
 
 await fs.mkdir(publicBrandDir, { recursive: true });
@@ -27,6 +30,18 @@ const pngAssets = [
     width: 96,
   }],
   [sourceFiles.markFrostveil, "brand/thia-mark-frostveil-96.png", {
+    height: 96,
+    width: 96,
+  }],
+  [sourceFiles.markPink, "brand/thia-mark-pink-96.png", {
+    height: 96,
+    width: 96,
+  }],
+  [sourceFiles.tMarkSunveil, "brand/thia-t-sunveil-96.png", {
+    height: 96,
+    width: 96,
+  }],
+  [sourceFiles.tMarkFrostveil, "brand/thia-t-frostveil-96.png", {
     height: 96,
     width: 96,
   }],
