@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { getTestCredentialsFromConfig } from "../test-config";
 
 export type AuthMeResponse = {
   ok: boolean;
@@ -17,10 +18,7 @@ export type AuthMeResponse = {
 };
 
 export function getTestCredentials() {
-  return {
-    email: process.env.THIA_TEST_EMAIL,
-    password: process.env.THIA_TEST_PASSWORD,
-  };
+  return getTestCredentialsFromConfig(process.env, currentWorkerAccountIndex());
 }
 
 export function skipWithoutCredentials() {
@@ -28,7 +26,7 @@ export function skipWithoutCredentials() {
 
   test.skip(
     !email || !password,
-    "Set THIA_TEST_EMAIL and THIA_TEST_PASSWORD to run authenticated smoke tests.",
+    "Set THIA_TEST_EMAIL and THIA_TEST_PASSWORD or enable the smoke test config to run authenticated smoke tests.",
   );
 }
 
@@ -67,4 +65,12 @@ export async function loginWithEnv(page: Page): Promise<AuthMeResponse> {
   expect(authMe.data?.user?.email).toBe(email);
 
   return authMe;
+}
+
+function currentWorkerAccountIndex() {
+  try {
+    return test.info().parallelIndex;
+  } catch {
+    return 0;
+  }
 }

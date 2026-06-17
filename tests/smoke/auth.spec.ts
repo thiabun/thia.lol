@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { fetchAuthMe, loginWithEnv, skipWithoutCredentials } from "../helpers/auth";
+import {
+  fetchAuthMe,
+  getTestCredentials,
+  loginWithEnv,
+  skipWithoutCredentials,
+} from "../helpers/auth";
 
 test.describe("authenticated smoke", () => {
   test.beforeEach(() => {
@@ -8,6 +13,7 @@ test.describe("authenticated smoke", () => {
 
   test("auth persists across repeated /api/auth/me calls", async ({ page }) => {
     await loginWithEnv(page);
+    const { email } = getTestCredentials();
 
     const checks = [];
 
@@ -17,7 +23,7 @@ test.describe("authenticated smoke", () => {
 
     for (const check of checks) {
       expect(check.ok).toBe(true);
-      expect(check.data?.user?.email).toBe(process.env.THIA_TEST_EMAIL);
+      expect(check.data?.user?.email).toBe(email);
       expect(check.data?.csrfToken).toEqual(expect.any(String));
     }
   });
