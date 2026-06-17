@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import type { FormEvent } from "react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
+import { BrandLockup } from "../components/BrandLogo";
 import { PageMeta } from "../components/PageMeta";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
@@ -74,6 +75,10 @@ export function AuthPage({ mode }: AuthPageProps) {
       >
         <Panel className="w-full overflow-hidden">
           <form className="p-5 sm:p-6" onSubmit={handleSubmit}>
+            <BrandLockup
+              className="mb-5 h-12 w-auto max-w-[11rem]"
+              data-testid="auth-brand-lockup"
+            />
             <Badge tone={isRegister ? "warm" : "cool"}>
               {isRegister ? "create account" : "sign in"}
             </Badge>
@@ -169,6 +174,32 @@ export function AuthPage({ mode }: AuthPageProps) {
             <Button type="submit" className="mt-6 w-full" disabled={submitting}>
               {submitting ? "Working..." : isRegister ? "Create account" : "Sign in"}
             </Button>
+
+            <p className="mt-4 text-center text-xs leading-5 text-muted">
+              By {isRegister ? "creating an account" : "signing in"}, you agree to
+              the{" "}
+              <Link
+                to="/terms"
+                className="font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline"
+              >
+                Terms of Service
+              </Link>
+              ,{" "}
+              <Link
+                to="/privacy"
+                className="font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline"
+              >
+                Privacy Policy
+              </Link>
+              , and{" "}
+              <Link
+                to="/community-guidelines"
+                className="font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline"
+              >
+                Community Guidelines
+              </Link>
+              .
+            </p>
 
             <p className="mt-5 text-center text-sm text-muted">
               {isRegister ? "Already have an account?" : "New here?"}{" "}

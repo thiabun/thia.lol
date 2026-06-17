@@ -1,6 +1,7 @@
 import { MotionConfig } from "motion/react";
 import { Navigate, Route, Routes, useLocation, useParams } from "react-router";
 import { lazy, Suspense, useEffect } from "react";
+import { BrandMark } from "./components/BrandLogo";
 import { AppShell } from "./components/layout/AppShell";
 
 const AdminPage = lazy(() =>
@@ -110,8 +111,16 @@ export default function App() {
 
 function RouteLoading() {
   return (
-    <div className="min-h-dvh bg-canvas px-4 py-8 text-sm text-muted">
-      Loading thia.lol.
+    <div className="grid min-h-dvh place-items-center bg-canvas px-4 py-8 text-sm text-muted">
+      <div className="inline-flex items-center gap-3" role="status">
+        <BrandMark
+          className="rounded-card shadow-soft"
+          data-testid="route-loading-brand"
+          size="md"
+          variant="pink"
+        />
+        <span>Loading thia.lol.</span>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { ArrowRight, FileText, Mail } from "lucide-react";
 import { Link, Navigate } from "react-router";
 import { motion } from "motion/react";
+import { BrandLockup, BrandMark } from "../components/BrandLogo";
 import { PageMeta } from "../components/PageMeta";
 import { Badge } from "../components/ui/Badge";
 import { Panel } from "../components/ui/Panel";
@@ -513,15 +514,23 @@ export function LegalIndexPage() {
         path="/legal"
       />
       <Panel className="p-5 sm:p-7">
-        <Badge tone="warm">legal</Badge>
-        <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text sm:text-4xl">
-          Legal and trust
-        </h1>
-        <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
-          thia.lol is a social platform for member posts, rooms, and chat. These
-          pages explain the rules, privacy basics, copyright contact, and
-          moderation process.
-        </p>
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <Badge tone="warm">legal</Badge>
+            <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text sm:text-4xl">
+              Legal and trust
+            </h1>
+            <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
+              thia.lol is a social platform for member posts, rooms, and chat. These
+              pages explain the rules, privacy basics, copyright contact, and
+              moderation process.
+            </p>
+          </div>
+          <BrandLockup
+            className="h-14 w-auto max-w-[11rem] sm:h-16 sm:max-w-[13rem]"
+            data-testid="legal-brand-lockup"
+          />
+        </div>
         <div className="mt-5 rounded-card border border-line bg-canvas/45 p-4">
           <div className="flex items-start gap-3">
             <Mail aria-hidden="true" className="mt-1 text-muted" size={18} />
@@ -596,14 +605,24 @@ function PolicyPage({ slug }: { slug: keyof typeof policies }) {
         path={`/${slug}`}
       />
       <Panel className="p-5 sm:p-7">
-        <Badge tone="warm">{policy.label}</Badge>
-        <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text sm:text-4xl">
-          {policy.title}
-        </h1>
-        <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
-          {policy.description}
-        </p>
-        <p className="mt-4 text-sm text-muted">Last updated: {policy.updated}</p>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <Badge tone="warm">{policy.label}</Badge>
+            <h1 className="mt-4 text-3xl font-semibold tracking-normal text-text sm:text-4xl">
+              {policy.title}
+            </h1>
+            <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
+              {policy.description}
+            </p>
+            <p className="mt-4 text-sm text-muted">Last updated: {policy.updated}</p>
+          </div>
+          <BrandMark
+            className="order-first rounded-card shadow-soft sm:order-none"
+            data-testid="policy-brand-mark"
+            size="lg"
+            variant="t"
+          />
+        </div>
       </Panel>
 
       <Panel className="divide-y divide-line overflow-hidden">

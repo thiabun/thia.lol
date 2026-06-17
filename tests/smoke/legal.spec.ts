@@ -23,6 +23,12 @@ test("public legal and trust pages load", async ({ page }) => {
     await expect(
       page.getByRole("heading", { name: legalPage.heading, level: 1 }),
     ).toBeVisible();
+
+    if (legalPage.path === "/legal") {
+      await expect(page.getByTestId("legal-brand-lockup")).toBeVisible();
+    } else {
+      await expect(page.getByTestId("policy-brand-mark")).toBeVisible();
+    }
   }
 });
 
@@ -47,6 +53,9 @@ test("footer and account menu expose legal links discreetly", async ({ page }) =
   );
 
   const footerLinks = page.getByTestId("legal-footer-links");
+  const footerBrand = page.getByTestId("site-footer-brand");
+  await expect(footerBrand).toBeVisible();
+  await expect(footerBrand).toContainText("thia.lol");
   await expect(footerLinks).toBeVisible();
 
   for (const label of [
@@ -82,6 +91,7 @@ test("cookie notice explains necessary cookies and can be dismissed", async ({
 
   const notice = page.getByTestId("cookie-notice");
   await expect(notice).toBeVisible();
+  await expect(page.getByTestId("cookie-brand-mark")).toBeVisible();
   await expect(notice).toContainText("necessary cookies");
   await expect(notice).toContainText("No analytics or marketing cookies");
   await expect(notice.getByRole("link", { name: "Cookie policy" })).toBeVisible();

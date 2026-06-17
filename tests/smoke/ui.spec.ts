@@ -201,6 +201,26 @@ test("mobile bottom nav releases before the footer", async ({ page }) => {
   expect(boxes.viewportBottomGap!).toBeLessThanOrEqual(32);
 });
 
+test("auth pages show compact brand identity without horizontal overflow", async ({
+  page,
+}) => {
+  await mockPublicShell(page);
+  await acknowledgeCookieNotice(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  for (const path of ["/login", "/register"]) {
+    await page.goto(path);
+
+    await expect(page.getByTestId("auth-brand-lockup")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Terms of Service" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Privacy Policy" })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Community Guidelines" }),
+    ).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  }
+});
+
 test("mobile primary nav shows one Post affordance and no Admin", async ({ page }) => {
   await mockPublicShell(page);
   await acknowledgeCookieNotice(page);

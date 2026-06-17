@@ -20,16 +20,34 @@ secondary member profile, for example `/@thia`.
 Use the bunny mark and `thia.lol` wordmark as the core identity system:
 
 - Horizontal lockup: primary brand asset for larger previews, social cards,
-  docs, and spacious surfaces.
+  docs, auth panels, legal index intros, and other spacious trust surfaces.
 - Bunny mark: compact identity for favicons, app icons, small header spaces,
-  and avatar-like brand contexts.
+  footers, and avatar-like brand contexts.
 - Favicon: pink bunny mark cropped to a squircle so it reads clearly in browser
   tab chrome.
-- T mark: supporting shorthand asset only. Do not use it as the default site
-  identity when the bunny mark fits.
+- T mark: supporting shorthand asset for constrained utility surfaces such as
+  cookie notices, policy intros, and small brand accents. Do not use it as the
+  default site identity when the bunny mark or lockup fits.
 
 The header should stay compact. Use the bunny mark plus wordmark once in the
 top bar and do not repeat brand marks across routine content cards.
+
+## Product Placement
+
+Use brand assets where they clarify product identity or add trust at natural
+entry and exit points:
+
+- Header: compact bunny mark plus `thia.lol` wordmark.
+- Footer: compact bunny/wordmark treatment near copyright and legal links.
+- Auth: restrained lockup at the top of sign-in and account creation panels.
+- Legal: lockup on the legal index, and one compact T mark on policy intros.
+- Cookie notice: one small T mark as a brand-aware utility marker.
+- Loading: one small pink bunny mark beside the route loading message.
+- Social/app previews: use the prepared lockup, app icon, and Open Graph image.
+
+Do not add bunny marks to feeds, post cards, profile modules, repeated room
+cards, empty states, or decorative backgrounds unless a future product decision
+explicitly calls for that surface.
 
 ## Theme Usage
 
@@ -59,6 +77,17 @@ public/favicon-32x32.png
 public/apple-touch-icon.png
 public/site.webmanifest
 ```
+
+Runtime product assets currently include:
+
+- `/brand/thia-mark-sunveil-96.png`
+- `/brand/thia-mark-frostveil-96.png`
+- `/brand/thia-mark-pink-96.png`
+- `/brand/thia-t-sunveil-96.png`
+- `/brand/thia-t-frostveil-96.png`
+- `/brand/thia-lockup-sunveil.png`
+- `/brand/thia-lockup-frostveil.png`
+- `/brand/thia-og.png`
 
 Regenerate public assets with:
 
