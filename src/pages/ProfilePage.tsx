@@ -3819,12 +3819,7 @@ function ProfilePersonalBackdrop({ profile }: { profile: Profile }) {
     profile.profileBackgroundVideoPoster ?? profile.profileBackground,
   );
   const blurTreatment = profile.profileBackgroundBlur;
-  const mediaOpacity = blurTreatment === "none" ? "opacity-[0.48]" : "opacity-[0.36]";
-  const baseOverlay = blurTreatment === "none" ? "bg-canvas/34" : "bg-canvas/52";
-  const verticalOverlay =
-    blurTreatment === "none"
-      ? "from-canvas/62 via-canvas/30 to-canvas/76"
-      : "from-canvas/76 via-canvas/48 to-canvas/86";
+  const visibility = profileBackgroundVisibility(blurTreatment);
 
   return (
     <div
@@ -3832,14 +3827,15 @@ function ProfilePersonalBackdrop({ profile }: { profile: Profile }) {
       className="pointer-events-none absolute left-1/2 top-[-1.25rem] bottom-[-2rem] z-0 min-h-dvh w-screen -translate-x-1/2 overflow-hidden sm:top-[-1.5rem]"
       data-profile-background-blur={blurTreatment}
       data-profile-background-source={videoUrl ? "video" : imageUrl ? "image" : "fallback"}
+      data-profile-background-visibility={visibility.name}
       data-testid="profile-personal-backdrop"
     >
       {videoUrl ? (
         <video
           aria-hidden="true"
           className={cn(
-            "absolute inset-0 size-full scale-105 object-cover saturate-[0.92] motion-reduce:hidden",
-            mediaOpacity,
+            "absolute inset-0 size-full scale-105 object-cover saturate-[1.04] motion-reduce:hidden",
+            visibility.mediaOpacity,
             profileBackgroundBlurClass(blurTreatment),
           )}
           autoPlay
@@ -3856,8 +3852,8 @@ function ProfilePersonalBackdrop({ profile }: { profile: Profile }) {
         <img
           alt=""
           className={cn(
-            "absolute inset-0 size-full scale-105 object-cover saturate-[0.92]",
-            mediaOpacity,
+            "absolute inset-0 size-full scale-105 object-cover saturate-[1.04]",
+            visibility.mediaOpacity,
             videoUrl ? "motion-safe:hidden" : undefined,
             profileBackgroundBlurClass(blurTreatment),
           )}
@@ -3867,9 +3863,9 @@ function ProfilePersonalBackdrop({ profile }: { profile: Profile }) {
       ) : (
         <div className="absolute inset-0 bg-page-wash" />
       )}
-      <div className={cn("absolute inset-0", baseOverlay)} />
-      <div className={cn("absolute inset-0 bg-gradient-to-b", verticalOverlay)} />
-      <div className="absolute inset-0 bg-gradient-to-r from-surface/64 via-transparent to-surface/64" />
+      <div className={cn("absolute inset-0", visibility.baseOverlay)} />
+      <div className={cn("absolute inset-0 bg-gradient-to-b", visibility.verticalOverlay)} />
+      <div className={cn("absolute inset-0 bg-gradient-to-r via-transparent", visibility.sideVignette)} />
     </div>
   );
 }
@@ -3899,6 +3895,54 @@ function profileBackgroundBlurClass(
   }
 
   return "blur-xl";
+}
+
+function profileBackgroundVisibility(
+  treatment: ProfileBackgroundBlur,
+): {
+  baseOverlay: string;
+  mediaOpacity: string;
+  name: "clear" | "soft" | "muted" | "veiled";
+  sideVignette: string;
+  verticalOverlay: string;
+} {
+  if (treatment === "none") {
+    return {
+      baseOverlay: "bg-canvas/10",
+      mediaOpacity: "opacity-[0.84]",
+      name: "clear",
+      sideVignette: "from-surface/18 to-surface/18",
+      verticalOverlay: "from-canvas/28 via-canvas/5 to-canvas/42",
+    };
+  }
+
+  if (treatment === "soft") {
+    return {
+      baseOverlay: "bg-canvas/18",
+      mediaOpacity: "opacity-[0.72]",
+      name: "soft",
+      sideVignette: "from-surface/28 to-surface/28",
+      verticalOverlay: "from-canvas/40 via-canvas/12 to-canvas/54",
+    };
+  }
+
+  if (treatment === "heavy") {
+    return {
+      baseOverlay: "bg-canvas/42",
+      mediaOpacity: "opacity-[0.46]",
+      name: "veiled",
+      sideVignette: "from-surface/54 to-surface/54",
+      verticalOverlay: "from-canvas/68 via-canvas/40 to-canvas/80",
+    };
+  }
+
+  return {
+    baseOverlay: "bg-canvas/28",
+    mediaOpacity: "opacity-[0.6]",
+    name: "muted",
+    sideVignette: "from-surface/40 to-surface/40",
+    verticalOverlay: "from-canvas/52 via-canvas/22 to-canvas/66",
+  };
 }
 
 type ProfileInfoModuleProps = {

@@ -466,6 +466,7 @@ test("full-page profile background and glass grid render safely", async ({ page 
   const backdrop = page.getByTestId("profile-personal-backdrop");
   await expect(backdrop).toHaveAttribute("data-profile-background-source", "image");
   await expect(backdrop).toHaveAttribute("data-profile-background-blur", "heavy");
+  await expect(backdrop).toHaveAttribute("data-profile-background-visibility", "veiled");
   await expect(
     backdrop.locator('img[src="/uploads/media/2026/06/profile-background.webp"]'),
   ).toBeVisible();
@@ -498,6 +499,38 @@ test("full-page profile background and glass grid render safely", async ({ page 
   expect(metrics.backdropWidth).toBeGreaterThanOrEqual(metrics.viewportWidth);
   expect(metrics.backdropHeight).toBeGreaterThanOrEqual(metrics.viewportHeight);
   expect(metrics.gridBackground).not.toBe("rgba(0, 0, 0, 0)");
+});
+
+test("no-blur profile background remains visibly present", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: false,
+    profileOverrides: {
+      profileBackground: "/uploads/media/2026/06/profile-background-clear.webp",
+      profileBackgroundBlur: "none",
+    },
+    modules: [aboutModule({ title: "About", body: "Clear background." })],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const backdrop = page.getByTestId("profile-personal-backdrop");
+  await expect(backdrop).toHaveAttribute("data-profile-background-blur", "none");
+  await expect(backdrop).toHaveAttribute("data-profile-background-visibility", "clear");
+
+  const backgroundOpacity = await page.evaluate(() => {
+    const image = document.querySelector<HTMLImageElement>(
+      '[data-testid="profile-personal-backdrop"] img',
+    );
+
+    if (!image) {
+      throw new Error("Profile background image did not render.");
+    }
+
+    return Number(window.getComputedStyle(image).opacity);
+  });
+
+  expect(backgroundOpacity).toBeGreaterThanOrEqual(0.8);
 });
 
 test("video background and allowlisted rich integrations render safely", async ({
