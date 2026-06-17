@@ -1110,6 +1110,7 @@ test("owner adds modules and deletes featured modules from the canvas editor", a
   await page.goto("/@thia");
 
   await page.getByTestId("profile-canvas-edit-button").click();
+  await page.getByTestId("profile-canvas-category-media").click();
   await page.getByTestId("profile-canvas-add-type-select").selectOption("custom_text");
   await expect(page.getByTestId("profile-canvas-add-label-input")).toHaveCount(0);
   await page.getByTestId("profile-canvas-add-body-input").fill("Canvas-added note");
@@ -1151,10 +1152,11 @@ test("owner adds modules and deletes featured modules from the canvas editor", a
   await expect(page.getByTestId("profile-grid-module-featured_post")).toBeVisible();
 });
 
-test("owner creates a rich integration card from the editor panel", async ({
+test("owner uses OAuth-first integrations from the editor panel", async ({
   page,
 }) => {
   const createdPayloads: Array<Record<string, unknown>> = [];
+  let oauthStartPayload: Record<string, unknown> | undefined;
 
   await mockProfileModules(page, {
     authenticated: true,
@@ -1215,12 +1217,100 @@ test("owner creates a rich integration card from the editor panel", async ({
               missingConfigKeys: [],
             },
           ],
-          accounts: [],
+          accounts: [
+            {
+              provider: "github",
+              providerAccountId: "thiabun",
+              providerHandle: "thiabun",
+              displayName: "thiabun",
+              avatarUrl: null,
+              scopes: ["read:user"],
+              tokenExpiresAt: null,
+              connectedAt: "2026-06-17T00:00:00Z",
+              refreshedAt: null,
+              revokedAt: null,
+              lastError: null,
+              errorAt: null,
+            },
+          ],
         },
       }),
     });
   });
-  await page.route("**/api/me/integrations/metadata/resolve", async (route) => {
+  await page.route("**/api/me/integrations/github/suggestions", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          provider: "github",
+          status: {
+            provider: "github",
+            configured: true,
+            oauthEnabled: true,
+            linkSupported: true,
+            metadataEnabled: true,
+            missingConfigKeys: [],
+          },
+          account: {
+            provider: "github",
+            providerAccountId: "thiabun",
+            providerHandle: "thiabun",
+            displayName: "thiabun",
+            avatarUrl: null,
+            scopes: ["read:user"],
+            tokenExpiresAt: null,
+            connectedAt: "2026-06-17T00:00:00Z",
+            refreshedAt: null,
+            revokedAt: null,
+            lastError: null,
+            errorAt: null,
+          },
+          items: [
+            {
+              id: "github-repo-thia-lol",
+              label: "thia.lol",
+              description: "Public repository metadata.",
+              sourceUrl: "https://github.com/thiabun/thia.lol",
+              moduleType: "creator_live",
+              moduleTitle: null,
+              card: {
+                provider: "github",
+                resourceType: "repository",
+                resourceId: "thiabun/thia.lol",
+                resourceKey: "github:repo:thiabun/thia.lol",
+                sourceUrl: "https://github.com/thiabun/thia.lol",
+                apiBacked: true,
+                fetchedAt: "2026-06-17T00:00:00Z",
+                expiresAt: "2026-06-17T01:00:00Z",
+                staleAt: "2026-06-18T00:00:00Z",
+                metadata: {
+                  title: "thia.lol",
+                  subtitle: "GitHub",
+                  description: "Public repository metadata.",
+                  imageUrl: null,
+                  live: false,
+                  liveFetchedAt: null,
+                  recentLabel: null,
+                  recentFetchedAt: null,
+                  stats: {},
+                },
+                embed: null,
+              },
+            },
+          ],
+          message: null,
+          generatedAt: "2026-06-17T00:00:00Z",
+        },
+      }),
+    });
+  });
+  await page.route("**/api/me/integrations/spotify/start", async (route) => {
+    oauthStartPayload = (await route.request().postDataJSON()) as Record<
+      string,
+      unknown
+    >;
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -1228,32 +1318,8 @@ test("owner creates a rich integration card from the editor panel", async ({
         ok: true,
         data: {
           provider: "spotify",
-          resourceType: "playlist",
-          resourceId: "focus",
-          resourceKey: "spotify:playlist:focus",
-          sourceUrl: "https://open.spotify.com/playlist/focus",
-          apiBacked: true,
-          fetchedAt: "2026-06-17T00:00:00Z",
-          expiresAt: "2026-06-17T01:00:00Z",
-          staleAt: "2026-06-18T00:00:00Z",
-          metadata: {
-            title: "Focus playlist",
-            subtitle: "Spotify",
-            description: "No autoplay.",
-            imageUrl: null,
-            live: false,
-            liveFetchedAt: null,
-            recentLabel: null,
-            recentFetchedAt: null,
-            stats: {},
-          },
-          embed: {
-            type: "iframe",
-            src: "https://open.spotify.com/embed/playlist/focus",
-            title: "Spotify embed",
-            allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
-            height: 152,
-          },
+          authorizationUrl: "/@thia?editCanvas=1&integration=spotify",
+          stateExpiresIn: 600,
         },
       }),
     });
@@ -1262,31 +1328,42 @@ test("owner creates a rich integration card from the editor panel", async ({
   await page.goto("/@thia");
 
   await page.getByTestId("profile-canvas-edit-button").click();
-  await page.getByTestId("profile-canvas-category-integrations").click();
+  await expect(page.getByTestId("profile-canvas-category-integrations")).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(page.getByTestId("profile-integration-logo-spotify")).toBeVisible();
+  await expect(page.getByText("Links ready")).toHaveCount(0);
+  await expect(page.getByText("Use link")).toHaveCount(0);
+  await expect(page.getByTestId("profile-integration-url-input")).toHaveCount(0);
   await expect(page.getByTestId("profile-integration-card-youtube")).toContainText(
-    "Links ready · metadata key missing",
+    "OAuth setup needed",
   );
   await expect(page.getByTestId("profile-integration-card-twitch")).toContainText(
-    "Links ready · OAuth not configured",
+    "OAuth setup needed",
   );
-  await page
-    .getByTestId("profile-integration-url-input")
-    .fill("https://open.spotify.com/playlist/focus");
-  await page.getByTestId("profile-integration-preview-button").click();
-  await expect(page.getByText("Focus playlist")).toBeVisible();
-  await page.getByTestId("profile-integration-add-card-button").click();
+  await page.getByTestId("profile-integration-suggestions-github").click();
+  const githubSuggestion = page.getByTestId(
+    "profile-integration-suggestion-github-github-repo-thia-lol",
+  );
+  await expect(githubSuggestion).toBeVisible();
+  await githubSuggestion.click();
 
   expect(createdPayloads.at(-1)).toMatchObject({
-    type: "music",
+    type: "creator_live",
     visibility: "public",
     status: "active",
     config: {
-      platform: "spotify",
-      label: "Focus playlist",
-      url: "https://open.spotify.com/playlist/focus",
-      description: "No autoplay.",
+      platform: "github",
+      label: "thia.lol",
+      url: "https://github.com/thiabun/thia.lol",
+      description: "Public repository metadata.",
     },
+  });
+
+  await page.getByTestId("profile-integration-connect-spotify").click();
+  expect(oauthStartPayload).toMatchObject({
+    redirectPath: "/@thia?editCanvas=1",
   });
 });
 

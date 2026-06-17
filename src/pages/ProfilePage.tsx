@@ -76,7 +76,6 @@ import {
   getProfileRooms,
   muteProfile,
   removeProfileFollower,
-  resolveProfileIntegrationMetadata,
   restoreProfileModule,
   startProfileIntegration,
   unblockProfile,
@@ -183,9 +182,6 @@ export function ProfilePage() {
   const [integrationSuggestions, setIntegrationSuggestions] = useState<
     Partial<Record<ProfileIntegrationProvider, ProfileIntegrationSuggestion[]>>
   >({});
-  const [integrationUrlPreview, setIntegrationUrlPreview] = useState<
-    ProfileIntegrationCard | undefined
-  >();
   const [integrationBusy, setIntegrationBusy] = useState<
     ProfileIntegrationProvider | "metadata" | undefined
   >();
@@ -482,7 +478,6 @@ export function ProfilePage() {
       setDeletedDraftModules(deletedModules);
       setProfileIntegrations(integrations);
       setIntegrationSuggestions({});
-      setIntegrationUrlPreview(undefined);
       setIntegrationMessage(undefined);
       setDraftBackgroundBlur(profile.profileBackgroundBlur);
       setDraftProfile(profile);
@@ -538,7 +533,6 @@ export function ProfilePage() {
     setDraftBackgroundBlur(profile?.profileBackgroundBlur ?? "medium");
     setDraftProfile(undefined);
     setProfileDraftUploading(undefined);
-    setIntegrationUrlPreview(undefined);
     setIntegrationMessage(undefined);
   }
 
@@ -1099,45 +1093,6 @@ export function ProfilePage() {
     }
   }
 
-  async function handleResolveIntegrationUrl(url: string, provider?: ProfileIntegrationProvider) {
-    if (!profile || integrationBusy) {
-      return;
-    }
-
-    setIntegrationBusy("metadata");
-    setIntegrationMessage(undefined);
-    setIntegrationUrlPreview(undefined);
-
-    try {
-      const card = await runWithAuth(
-        (csrfToken) =>
-          resolveProfileIntegrationMetadata(
-            { url, ...(provider ? { provider } : {}) },
-            csrfToken,
-          ),
-        { retryOnCsrf: true },
-      );
-
-      setIntegrationUrlPreview(card);
-    } catch (error) {
-      setIntegrationMessage(
-        error instanceof Error
-          ? error.message
-          : "Could not preview this integration URL.",
-      );
-    } finally {
-      setIntegrationBusy(undefined);
-    }
-  }
-
-  function handleAddIntegrationCard(card: ProfileIntegrationCard) {
-    const input = profileCanvasModuleInputFromIntegration(card);
-
-    if (input) {
-      void handleAddCanvasModule(input);
-    }
-  }
-
   useEffect(() => {
     setTopBarAction(undefined);
     return () => setTopBarAction(undefined);
@@ -1260,13 +1215,11 @@ export function ProfilePage() {
             error={canvasError}
             integrationBusy={integrationBusy}
             integrationMessage={integrationMessage}
-            integrationPreview={integrationUrlPreview}
             integrationSuggestions={integrationSuggestions}
             integrations={profileIntegrations}
             modules={draftModules}
             removedModules={deletedDraftModules}
             userBadges={profileBadges}
-            onAddIntegrationCard={handleAddIntegrationCard}
             onAddModule={(input) => void handleAddCanvasModule(input)}
             onCancel={handleCancelCanvasEdit}
             onConnectIntegration={(provider) => void handleConnectIntegration(provider)}
@@ -1276,9 +1229,6 @@ export function ProfilePage() {
             onEdit={() => void handleStartCanvasEdit()}
             onLoadIntegrationSuggestions={(provider) =>
               void handleLoadIntegrationSuggestions(provider)
-            }
-            onResolveIntegrationUrl={(url, provider) =>
-              void handleResolveIntegrationUrl(url, provider)
             }
             onRestoreModule={(module) => void handleRestoreCanvasModule(module)}
             onSave={() => void handleSaveCanvasEdit()}
@@ -2174,24 +2124,18 @@ type ProfileCanvasEditorToolbarProps = {
   error?: string | undefined;
   integrationBusy?: ProfileIntegrationProvider | "metadata" | undefined;
   integrationMessage?: string | undefined;
-  integrationPreview?: ProfileIntegrationCard | undefined;
   integrationSuggestions: Partial<
     Record<ProfileIntegrationProvider, ProfileIntegrationSuggestion[]>
   >;
   integrations?: ProfileIntegrationsResult | undefined;
   modules: ProfileModule[];
   removedModules: ProfileModule[];
-  onAddIntegrationCard: (card: ProfileIntegrationCard) => void;
   onAddModule: (input: CreateProfileModuleInput) => void;
   onCancel: () => void;
   onConnectIntegration: (provider: ProfileIntegrationProvider) => void;
   onDisconnectIntegration: (provider: ProfileIntegrationProvider) => void;
   onEdit: () => void;
   onLoadIntegrationSuggestions: (provider: ProfileIntegrationProvider) => void;
-  onResolveIntegrationUrl: (
-    url: string,
-    provider?: ProfileIntegrationProvider,
-  ) => void;
   onRestoreModule: (module: ProfileModule) => void;
   onSave: () => void;
   userBadges: UserBadge[];
@@ -2210,6 +2154,11 @@ const profileCanvasDockCategories: {
   value: ProfileCanvasDockCategory;
 }[] = [
   {
+    icon: <Radio aria-hidden="true" size={15} />,
+    label: "Integrations",
+    value: "integrations",
+  },
+  {
     icon: <UserCheck aria-hidden="true" size={15} />,
     label: "Essentials",
     value: "essentials",
@@ -2223,11 +2172,6 @@ const profileCanvasDockCategories: {
     icon: <ImagePlus aria-hidden="true" size={15} />,
     label: "Media",
     value: "media",
-  },
-  {
-    icon: <Radio aria-hidden="true" size={15} />,
-    label: "Integrations",
-    value: "integrations",
   },
   {
     icon: <Undo2 aria-hidden="true" size={15} />,
@@ -2259,25 +2203,22 @@ function ProfileCanvasEditorToolbar({
   error,
   integrationBusy,
   integrationMessage,
-  integrationPreview,
   integrationSuggestions,
   integrations,
   modules,
-  onAddIntegrationCard,
   onAddModule,
   onCancel,
   onConnectIntegration,
   onDisconnectIntegration,
   onEdit,
   onLoadIntegrationSuggestions,
-  onResolveIntegrationUrl,
   onRestoreModule,
   onSave,
   removedModules,
   userBadges,
 }: ProfileCanvasEditorToolbarProps) {
   const [activeCategory, setActiveCategory] =
-    useState<ProfileCanvasDockCategory>("essentials");
+    useState<ProfileCanvasDockCategory>("integrations");
   const [addDraft, setAddDraft] = useState<ProfileCanvasAddDraft>({
     body: "",
     entry: "about",
@@ -2286,9 +2227,6 @@ function ProfileCanvasEditorToolbar({
     url: "",
   });
   const [moduleSearch, setModuleSearch] = useState("");
-  const [integrationUrl, setIntegrationUrl] = useState("");
-  const [integrationProvider, setIntegrationProvider] =
-    useState<ProfileIntegrationProvider | undefined>();
 
   if (!editing) {
     return (
@@ -2347,7 +2285,11 @@ function ProfileCanvasEditorToolbar({
   }
 
   function addSuggestion(suggestion: ProfileIntegrationSuggestion) {
-    onAddModule({
+    const input = suggestion.card
+      ? profileCanvasModuleInputFromIntegration(suggestion.card)
+      : undefined;
+
+    onAddModule(input ?? {
       type: suggestion.moduleType,
       title: suggestion.moduleTitle ?? null,
       visibility: "public",
@@ -2486,12 +2428,22 @@ function ProfileCanvasEditorToolbar({
                       </div>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      {providerStatus.oauthEnabled && !connected ? (
+                      {!connected ? (
                         <Button
                           type="button"
                           size="sm"
                           variant="secondary"
-                          disabled={busy || integrationBusy === providerStatus.provider}
+                          disabled={
+                            busy ||
+                            integrationBusy === providerStatus.provider ||
+                            !providerStatus.oauthEnabled
+                          }
+                          title={
+                            providerStatus.oauthEnabled
+                              ? `Connect ${integrationProviderLabel(providerStatus.provider)}`
+                              : profileIntegrationStatusText(providerStatus)
+                          }
+                          data-testid={`profile-integration-connect-${providerStatus.provider}`}
                           onClick={() => onConnectIntegration(providerStatus.provider)}
                         >
                           Connect
@@ -2504,9 +2456,10 @@ function ProfileCanvasEditorToolbar({
                             size="sm"
                             variant="secondary"
                             disabled={busy || integrationBusy === providerStatus.provider}
+                            data-testid={`profile-integration-suggestions-${providerStatus.provider}`}
                             onClick={() => onLoadIntegrationSuggestions(providerStatus.provider)}
                           >
-                            Suggestions
+                            Add cards
                           </Button>
                           <Button
                             type="button"
@@ -2527,6 +2480,7 @@ function ProfileCanvasEditorToolbar({
                             key={suggestion.id}
                             type="button"
                             className="flex w-full min-w-0 items-center gap-2 rounded-card border border-line bg-surface/58 p-2 text-left transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus"
+                            data-testid={`profile-integration-suggestion-${providerStatus.provider}-${suggestion.id}`}
                             onClick={() => addSuggestion(suggestion)}
                           >
                             <span className="min-w-0 flex-1">
@@ -2547,81 +2501,11 @@ function ProfileCanvasEditorToolbar({
               })}
             </div>
 
-            <div className="rounded-card border border-line bg-canvas/48 p-3">
-              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                <label className="min-w-0">
-                  <span className="text-xs font-semibold uppercase text-muted">
-                    Use link
-                  </span>
-                  <input
-                    className="mt-1 h-10 w-full rounded-control border border-line bg-surface/68 px-3 text-sm font-medium text-text placeholder:text-muted focus-visible:outline-2 focus-visible:outline-focus"
-                    value={integrationUrl}
-                    data-testid="profile-integration-url-input"
-                    onChange={(event) => setIntegrationUrl(event.target.value)}
-                    placeholder="Paste Spotify, Apple Music, YouTube, Twitch, or GitHub URL"
-                  />
-                </label>
-                <div className="flex items-end gap-2">
-                  <select
-                    className="h-10 rounded-control border border-line bg-surface/68 px-2 text-sm font-semibold text-text focus-visible:outline-2 focus-visible:outline-focus"
-                    value={integrationProvider ?? ""}
-                    aria-label="Preferred provider"
-                    onChange={(event) =>
-                      setIntegrationProvider(
-                        event.target.value
-                          ? (event.target.value as ProfileIntegrationProvider)
-                          : undefined,
-                      )
-                    }
-                  >
-                    <option value="">Auto</option>
-                    {profileIntegrationProviders.map((provider) => (
-                      <option key={provider} value={provider}>
-                        {integrationProviderLabel(provider)}
-                      </option>
-                    ))}
-                  </select>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    disabled={!profileCanvasAddUrlIsReady(integrationUrl) || integrationBusy === "metadata"}
-                    data-testid="profile-integration-preview-button"
-                    onClick={() => onResolveIntegrationUrl(integrationUrl, integrationProvider)}
-                  >
-                    Preview
-                  </Button>
-                </div>
-              </div>
-              {integrationPreview ? (
-                <div className="mt-3 flex min-w-0 items-center gap-3 rounded-card border border-line bg-surface/62 p-3">
-                  <span className="grid size-10 shrink-0 place-items-center rounded-card border border-line bg-canvas/60 text-text">
-                    {profileIntegrationIcon(integrationPreview.provider)}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-text">
-                      {integrationPreview.metadata.title ?? integrationProviderLabel(integrationPreview.provider)}
-                    </p>
-                    <p className="truncate text-xs text-muted">
-                      {integrationPreview.apiBacked ? "API metadata" : "Static link card"}
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    data-testid="profile-integration-add-card-button"
-                    onClick={() => onAddIntegrationCard(integrationPreview)}
-                  >
-                    Add card
-                  </Button>
-                </div>
-              ) : null}
-              {integrationMessage ? (
-                <p className="mt-2 text-sm font-medium text-muted" role="status">
-                  {integrationMessage}
-                </p>
-              ) : null}
-            </div>
+            {integrationMessage ? (
+              <p className="rounded-card border border-line bg-canvas/48 p-3 text-sm font-medium text-muted" role="status">
+                {integrationMessage}
+              </p>
+            ) : null}
           </div>
         ) : activeCategory === "removed" ? (
           <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
@@ -3628,9 +3512,19 @@ function profileIntegrationAccount(
 }
 
 function integrationProviderLabel(provider: ProfileIntegrationProvider): string {
-  return provider === "apple_music"
-    ? "Apple Music"
-    : provider[0]!.toUpperCase() + provider.slice(1);
+  if (provider === "apple_music") {
+    return "Apple Music";
+  }
+
+  if (provider === "youtube") {
+    return "YouTube";
+  }
+
+  if (provider === "github") {
+    return "GitHub";
+  }
+
+  return provider[0]!.toUpperCase() + provider.slice(1);
 }
 
 function integrationPlatformFromProvider(
@@ -3641,28 +3535,22 @@ function integrationPlatformFromProvider(
 
 function profileIntegrationStatusText(status: ProfileIntegrationProviderStatus): string {
   if (status.oauthEnabled) {
-    return "OAuth ready";
+    return "Ready to connect";
+  }
+
+  if (status.provider === "apple_music") {
+    return "OAuth not available";
+  }
+
+  if ((status.missingConfigKeys ?? []).length > 0) {
+    return "OAuth setup needed";
   }
 
   if (status.metadataEnabled) {
-    return "Metadata ready";
+    return "Metadata only";
   }
 
-  if (status.linkSupported) {
-    const missing = status.missingConfigKeys ?? [];
-
-    if (missing.some((key) => key === "api_key" || key.endsWith(".api_key"))) {
-      return "Links ready · metadata key missing";
-    }
-
-    if (missing.length > 0) {
-      return "Links ready · OAuth not configured";
-    }
-
-    return "Links ready";
-  }
-
-  return "Server config needed";
+  return "OAuth unavailable";
 }
 
 function profileIntegrationIcon(provider: ProfileIntegrationProvider): ReactNode {
