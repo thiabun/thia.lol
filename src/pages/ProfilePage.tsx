@@ -7,7 +7,6 @@ import {
   Eye,
   Heart,
   ImagePlus,
-  LayoutGrid,
   Link2,
   MessageCircle,
   Music2,
@@ -20,6 +19,7 @@ import {
   Shield,
   Sparkles,
   Star,
+  Trash2,
   Undo2,
   X,
   UserCheck,
@@ -1232,10 +1232,6 @@ export function ProfilePage() {
     renderedProfile,
     mergeProfileLinksIntoConnectionModules(renderedProfile, profileSpaceModules),
   );
-  const selectedCanvasModule = draftModules.find(
-    (module) => module.id === selectedCanvasModuleId,
-  );
-
   return (
     <motion.div
       className={cn("relative mx-auto", canvasEditing ? "max-w-7xl" : "max-w-5xl")}
@@ -1269,7 +1265,6 @@ export function ProfilePage() {
             integrations={profileIntegrations}
             modules={draftModules}
             removedModules={deletedDraftModules}
-            selectedModule={selectedCanvasModule}
             userBadges={profileBadges}
             onAddIntegrationCard={handleAddIntegrationCard}
             onAddModule={(input) => void handleAddCanvasModule(input)}
@@ -1323,6 +1318,7 @@ export function ProfilePage() {
             canvasEditing
               ? {
                   selectedModuleId: selectedCanvasModuleId,
+                  onDeselectModule: () => setSelectedCanvasModuleId(undefined),
                   onMoveModule: handleCanvasModuleLayoutChange,
                   onSelectModule: handleSelectCanvasModule,
                   renderSelectedControls: (module, size) => (
@@ -2198,7 +2194,6 @@ type ProfileCanvasEditorToolbarProps = {
   ) => void;
   onRestoreModule: (module: ProfileModule) => void;
   onSave: () => void;
-  selectedModule?: ProfileModule | undefined;
   userBadges: UserBadge[];
 };
 
@@ -2279,7 +2274,6 @@ function ProfileCanvasEditorToolbar({
   onRestoreModule,
   onSave,
   removedModules,
-  selectedModule,
   userBadges,
 }: ProfileCanvasEditorToolbarProps) {
   const [activeCategory, setActiveCategory] =
@@ -2773,33 +2767,18 @@ function ProfileCanvasEditorToolbar({
           </>
         )}
       </div>
-
-      <div className="shrink-0 border-t border-line/70 p-3">
-        <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted">
-          <LayoutGrid aria-hidden="true" size={14} />
-          6 x 9 canvas
+      {(error || activeModuleTypes.size === 0) ? (
+        <div className="shrink-0 border-t border-line/70 p-3">
+          {error ? (
+            <p className="text-sm font-medium text-rose-ink" role="alert">
+              {error}
+            </p>
+          ) : null}
+          {activeModuleTypes.size === 0 ? (
+            <p className="text-xs text-muted">Add a module to start shaping this space.</p>
+          ) : null}
         </div>
-        {selectedModule ? (
-          <p className="mt-2 rounded-card border border-line bg-canvas/45 p-3 text-sm text-muted">
-            <span className="font-semibold text-text">
-              {selectedModule.title ?? profileModuleFallbackTitle(selectedModule.type)}
-            </span>{" "}
-            is selected.
-          </p>
-        ) : (
-          <p className="mt-2 rounded-card border border-dashed border-line bg-canvas/45 p-3 text-sm text-muted">
-            Choose a module.
-          </p>
-        )}
-        {error ? (
-          <p className="mt-3 text-sm font-medium text-rose-ink" role="alert">
-            {error}
-          </p>
-        ) : null}
-        {activeModuleTypes.size === 0 ? (
-          <p className="mt-3 text-xs text-muted">Add a module to start shaping this space.</p>
-        ) : null}
-      </div>
+      ) : null}
     </section>
   );
 }
@@ -2951,7 +2930,7 @@ function ProfileSelectedModuleControls({
                   onDeleteModule();
                 }}
               >
-                <X aria-hidden="true" size={15} />
+                <Trash2 aria-hidden="true" size={15} />
               </button>
             </div>
           </div>

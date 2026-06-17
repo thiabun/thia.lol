@@ -17,6 +17,7 @@ type ProfileGridProps = {
   maxColumns?: 2 | 6;
   maxRows?: 9;
   gridRef?: Ref<HTMLDivElement> | undefined;
+  onClick?: MouseEventHandler<HTMLDivElement> | undefined;
   testId?: string | undefined;
 };
 
@@ -27,6 +28,7 @@ export function ProfileGrid({
   maxColumns = 6,
   maxRows = 9,
   gridRef,
+  onClick,
   testId = "profile-grid",
 }: ProfileGridProps) {
   const gridStyle = {
@@ -48,6 +50,7 @@ export function ProfileGrid({
       data-profile-canvas-rows={maxRows}
       data-profile-layout-preset={layoutPreset}
       data-testid={testId}
+      onClick={onClick}
       style={gridStyle}
     >
       {children}

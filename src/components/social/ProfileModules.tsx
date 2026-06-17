@@ -142,6 +142,7 @@ type ProfileModuleGridProps = {
 
 type ProfileModuleGridEditing = {
   selectedModuleId?: number | undefined;
+  onDeselectModule: () => void;
   onMoveModule: (moduleId: number, layout: ProfileModuleLayout) => void;
   onSelectModule: (module: ProfileModule) => void;
   renderSelectedControls?: (
@@ -281,11 +282,20 @@ export function ProfileModuleGrid({
     editing.onSelectModule(module);
   }
 
+  function handleGridClick(event: MouseEvent<HTMLDivElement>) {
+    if (!editing || event.target !== event.currentTarget) {
+      return;
+    }
+
+    editing.onDeselectModule();
+  }
+
   return (
     <ProfileGrid
       gridRef={gridRef}
       layoutPreset={layoutPreset}
       maxColumns={resolvedMaxColumns}
+      onClick={handleGridClick}
       testId="profile-module-grid"
     >
       {renderableModules.map((module, index) => {

@@ -799,6 +799,8 @@ test("owner edits background blur, module placement, and visibility", async ({
   await expect(page.getByTestId("profile-canvas-background-controls")).toBeVisible();
   await expect(page.getByTestId("profile-canvas-background-trigger")).toBeVisible();
   await expect(page.getByText("Background clarity")).toHaveCount(0);
+  await expect(page.getByText("6 x 9 canvas")).toHaveCount(0);
+  await expect(page.getByText(/is selected\./)).toHaveCount(0);
   await page.getByTestId("profile-canvas-background-trigger").click();
   await expect(page.getByTestId("profile-canvas-background-popover")).toBeVisible();
   await expect(page.getByText("Background clarity")).toBeVisible();
@@ -818,6 +820,11 @@ test("owner edits background blur, module placement, and visibility", async ({
   await expect(
     aboutEdit.getByRole("button", { name: "Show module" }),
   ).toBeVisible();
+  await page.getByTestId("profile-module-grid").dispatchEvent("click", {
+    bubbles: true,
+    cancelable: true,
+  });
+  await expect(aboutEdit).toHaveCount(0);
   await page.getByTestId("profile-canvas-save-button").click();
 
   await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
