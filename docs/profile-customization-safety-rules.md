@@ -106,7 +106,7 @@ Current backend behavior:
   `featured_badges`, `custom_text`, `featured_post`, `featured_room`,
   `gallery_media`, `creator_live`, `music`, and `activity`.
 - Module config validation rejects unknown keys, unsafe text, unsafe URLs, arbitrary embeds, and arbitrary HTML/CSS/JS.
-- Canvas layout uses a constrained 6 x 9 grid. Server validation clamps bounds,
+- Canvas layout uses a constrained 6 x 12 grid. Server validation clamps bounds,
   validates spans, ignores hidden modules for occupancy, and uses sideways-first
   collision push instead of freeform pixel positioning.
 - `profile_info` is the only protected module. Featured post, featured room,

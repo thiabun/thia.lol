@@ -15,7 +15,7 @@ type ProfileGridProps = {
   className?: string | undefined;
   layoutPreset?: ProfileLayoutPreset | undefined;
   maxColumns?: 2 | 6;
-  maxRows?: 9;
+  maxRows?: 12;
   gridRef?: Ref<HTMLDivElement> | undefined;
   onClick?: MouseEventHandler<HTMLDivElement> | undefined;
   testId?: string | undefined;
@@ -26,7 +26,7 @@ export function ProfileGrid({
   className,
   layoutPreset = defaultProfileLayoutPreset,
   maxColumns = 6,
-  maxRows = 9,
+  maxRows = 12,
   gridRef,
   onClick,
   testId = "profile-grid",

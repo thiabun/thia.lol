@@ -2001,7 +2001,7 @@ function findProfileModuleNextLayout(
   occupied: Set<string>,
 ): ProfileModuleLayout | undefined {
   const maxColumn = 6 - requestedLayout.colSpan + 1;
-  const maxRow = 9 - requestedLayout.rowSpan + 1;
+  const maxRow = 12 - requestedLayout.rowSpan + 1;
   const baseColumn = Math.min(maxColumn, Math.max(1, requestedLayout.column));
   const baseRow = Math.min(maxRow, Math.max(1, requestedLayout.row));
 
@@ -4282,7 +4282,7 @@ function clampProfileModuleLayout(layout: ProfileModuleLayout): ProfileModuleLay
 
   return {
     column: Math.max(1, Math.min(6 - colSpan + 1, layout.column)),
-    row: Math.max(1, Math.min(9 - rowSpan + 1, layout.row)),
+    row: Math.max(1, Math.min(12 - rowSpan + 1, layout.row)),
     colSpan,
     rowSpan,
   };

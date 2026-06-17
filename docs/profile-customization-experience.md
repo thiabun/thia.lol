@@ -111,7 +111,7 @@ Canvas movement should feel predictable and reversible:
 - There is no wrap-to-top behavior. If no downward fit exists, save fails
   atomically.
 - Hidden and deleted modules do not occupy cells.
-- If no 6 x 9 fit exists, save fails atomically.
+- If no 6 x 12 fit exists, save fails atomically.
 - Drag feedback should show a ghost or highlighted module, target cell
   affordance, and displaced-module movement through restrained layout
   animation. Respect `prefers-reduced-motion`.

@@ -25,7 +25,7 @@ const PROFILE_MODULE_STATUSES = ['active', 'hidden', 'deleted'];
 const PROFILE_MODULE_SCHEMA_VERSION = 1;
 const PROFILE_CANVAS_VERSION = 1;
 const PROFILE_CANVAS_COLUMNS = 6;
-const PROFILE_CANVAS_ROWS = 9;
+const PROFILE_CANVAS_ROWS = 12;
 const PROFILE_BACKGROUND_BLUR_LEVELS = ['none', 'soft', 'medium', 'heavy'];
 const PROFILE_MODULE_MAX_PER_PROFILE = 8;
 const PROFILE_MODULE_TITLE_MAX = 80;
@@ -890,7 +890,7 @@ function profile_canvas_push_collisions(array $placements, ?int $anchorModuleId)
             : profile_canvas_next_available_layout($placement, $occupied);
 
         if ($layout === null) {
-            json_error('Canvas layout does not fit the 6 by 9 grid.', 422);
+            json_error('Canvas layout does not fit the 6 by 12 grid.', 422);
         }
 
         profile_canvas_occupy_layout($layout, $occupied);

@@ -416,13 +416,13 @@ function profileCanvasLayoutFromPoint(
 ): ProfileModuleLayout {
   const rect = grid.getBoundingClientRect();
   const columnWidth = rect.width / 6;
-  const rowHeight = Math.max(1, rect.height / 9);
+  const rowHeight = Math.max(1, rect.height / 12);
   const rawColumn = Math.floor((clientX - rect.left) / columnWidth) + 1;
   const rawRow = Math.floor((clientY - rect.top) / rowHeight) + 1;
 
   return {
     column: Math.min(6 - colSpan + 1, Math.max(1, rawColumn)),
-    row: Math.min(9 - rowSpan + 1, Math.max(1, rawRow)),
+    row: Math.min(12 - rowSpan + 1, Math.max(1, rawRow)),
     colSpan,
     rowSpan,
   };

@@ -242,7 +242,7 @@ $layoutPayload = profile_module_payload(
     false
 );
 assert_true($layoutPayload['layout']['column'] === 4, 'layout column should clamp into 6 columns');
-assert_true($layoutPayload['layout']['row'] === 7, 'layout row should clamp into 9 rows');
+assert_true($layoutPayload['layout']['row'] === 10, 'layout row should clamp into 12 rows');
 
 $invalidLayoutPayload = profile_module_payload(
     [
@@ -301,7 +301,7 @@ $clampedPlacement = profile_canvas_module_placement(
     true
 );
 assert_true($clampedPlacement['column'] === 4, 'placement column should clamp');
-assert_true($clampedPlacement['row'] === 7, 'placement row should clamp');
+assert_true($clampedPlacement['row'] === 10, 'placement row should clamp');
 
 $largeProfileInfoPlacement = profile_canvas_module_placement(
     [
@@ -336,7 +336,7 @@ $largeActivityPlacement = profile_canvas_module_placement(
 );
 assert_true($largeActivityPlacement['colSpan'] === 3, 'activity should allow 3 columns');
 assert_true($largeActivityPlacement['rowSpan'] === 6, 'activity should allow 6 rows');
-assert_true($largeActivityPlacement['row'] === 4, 'large activity row should clamp inside the canvas');
+assert_true($largeActivityPlacement['row'] === 7, 'large activity row should clamp inside the canvas');
 
 $streamChatPlacement = profile_canvas_module_placement(
     [
@@ -355,7 +355,7 @@ $streamChatPlacement = profile_canvas_module_placement(
 assert_true($streamChatPlacement['colSpan'] === 5, 'creator stream chat should allow 5 columns');
 assert_true($streamChatPlacement['rowSpan'] === 3, 'creator stream chat should allow 3 rows');
 assert_true($streamChatPlacement['column'] === 2, 'creator stream chat column should clamp inside the canvas');
-assert_true($streamChatPlacement['row'] === 7, 'creator stream chat row should clamp inside the canvas');
+assert_true($streamChatPlacement['row'] === 8, 'creator stream chat row should fit inside the canvas');
 
 $legacyStreamChatPlacement = profile_canvas_module_placement(
     [
@@ -391,7 +391,7 @@ $largeStreamChatPlacement = profile_canvas_module_placement(
 assert_true($largeStreamChatPlacement['colSpan'] === 6, 'creator stream chat should allow 6 columns');
 assert_true($largeStreamChatPlacement['rowSpan'] === 5, 'creator stream chat should allow 5 rows');
 assert_true($largeStreamChatPlacement['column'] === 1, 'large creator stream chat column should clamp inside the canvas');
-assert_true($largeStreamChatPlacement['row'] === 5, 'large creator stream chat row should clamp inside the canvas');
+assert_true($largeStreamChatPlacement['row'] === 8, 'large creator stream chat row should fit inside the canvas');
 
 $mediumStreamChatPlacement = profile_canvas_module_placement(
     [
@@ -460,8 +460,8 @@ $downwardPushedModule = array_values(array_filter($downwardPushPlacements, fn (a
 assert_true($downwardPushedModule['column'] === 5 && $downwardPushedModule['row'] === 2, 'colliding module should move downward only after same-row fits fail');
 
 assert_php_rejected(
-    '$items = []; for ($i = 1; $i <= 7; $i++) { $items[] = ["id" => $i, "type" => "profile_info", "column" => 1, "row" => 1, "colSpan" => 3, "rowSpan" => 3, "visible" => true]; } profile_canvas_push_collisions($items, 1);',
-    'Canvas layout does not fit the 6 by 9 grid.'
+    '$items = []; for ($i = 1; $i <= 9; $i++) { $items[] = ["id" => $i, "type" => "profile_info", "column" => 1, "row" => 1, "colSpan" => 3, "rowSpan" => 3, "visible" => true]; } profile_canvas_push_collisions($items, 1);',
+    'Canvas layout does not fit the 6 by 12 grid.'
 );
 
 echo "profile modules regression ok\n";

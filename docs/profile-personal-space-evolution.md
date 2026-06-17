@@ -159,7 +159,7 @@ product value and safety order, not a promise that every capability ships.
 
 P3A makes the modular profile canvas a real editable surface.
 
-- The profile canvas remains a 6 x 9 desktop grid.
+- The profile canvas remains a 6 x 12 desktop grid.
 - Desktop owners can move modules with native pointer drag in the canvas.
 - Visible position-map controls are not part of the normal editing flow. A
   future settings pass can expose direct position controls behind an
@@ -170,7 +170,7 @@ P3A makes the modular profile canvas a real editable surface.
   occupy cells.
 - `PATCH /api/me/profile/canvas` persists normalized layout with
   `anchorModuleId`, returns the pushed result, and fails atomically if the
-  visible canvas cannot fit inside 6 x 9.
+  visible canvas cannot fit inside 6 x 12.
 - `profile_info` is the only protected identity anchor.
 - Featured post, featured room, and activity are normal modules for visibility
   and deletion. Deleting featured post or featured room modules clears
@@ -199,7 +199,7 @@ P3A makes the modular profile canvas a real editable surface.
 - Collision push is sideways-first and intent-preserving: the anchored module
   claims its requested slot, visible colliders try same-row right then left
   before moving downward, hidden or deleted modules do not occupy cells, and
-  save fails atomically if the 6 x 9 canvas cannot fit the visible layout.
+  save fails atomically if the 6 x 12 canvas cannot fit the visible layout.
 - Manual owner-edited module labels are retired from new editor flows. Legacy
   titles/labels may still render safely for compatibility.
 - Connections is the unified home for custom links, platform links, lightweight
@@ -849,7 +849,7 @@ section:
 ### Implementation Note - 2026-06-16 Profiles v3 Modular Canvas Grid
 
 Issue [#38](https://github.com/thiabun/thia.lol/issues/38) supersedes the
-earlier three-column grid foundation with a compact 6x9-ready canvas model:
+earlier three-column grid foundation with a compact 6x12-ready canvas model:
 
 - Desktop profile modules now render on a controlled six-column canvas. Tablet
   remains two columns, and mobile remains a single ordered stack with desktop
@@ -926,7 +926,7 @@ Profiles V3 P3 adds real persistence for the modular profile canvas:
   version validation, and server-side span/coordinate validation.
 - Blur is allowlisted to `none`, `soft`, `medium`, and `heavy`; arbitrary CSS
   values are rejected.
-- Module coordinates are clamped into the 6x9 grid. Spans must match the
+- Module coordinates are clamped into the 6x12 grid. Spans must match the
   module-specific allowlist. Visible module collisions use the shared
   sideways-first push algorithm rather than silently overlapping.
 - Mobile ignores exact grid coordinates and stacks by normalized module order.

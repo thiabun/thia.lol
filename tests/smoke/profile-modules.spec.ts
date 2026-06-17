@@ -74,7 +74,7 @@ test("profile renders public modules safely", async ({ page }) => {
   );
   await expect(section.getByTestId("profile-module-grid")).toHaveAttribute(
     "data-profile-canvas-rows",
-    "9",
+    "12",
   );
   await expect(section.getByTestId("profile-grid-module-about")).toHaveAttribute(
     "data-profile-grid-size",
@@ -978,7 +978,7 @@ test("owner edits background blur, module placement, and visibility", async ({
   await expect(page.getByTestId("profile-canvas-background-controls")).toBeVisible();
   await expect(page.getByTestId("profile-canvas-background-trigger")).toBeVisible();
   await expect(page.getByText("Background clarity")).toHaveCount(0);
-  await expect(page.getByText("6 x 9 canvas")).toHaveCount(0);
+  await expect(page.getByText("6 x 12 canvas")).toHaveCount(0);
   await expect(page.getByText(/is selected\./)).toHaveCount(0);
   await page.getByTestId("profile-canvas-background-trigger").click();
   await expect(page.getByTestId("profile-canvas-background-popover")).toBeVisible();
@@ -2070,7 +2070,7 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(modulesApi).toContain("profile_canvas_background_blur");
   expect(modulesApi).toContain("anchorModuleId");
   expect(modulesApi).toContain("profile_canvas_push_collisions");
-  expect(modulesApi).toContain("Canvas layout does not fit the 6 by 9 grid.");
+  expect(modulesApi).toContain("Canvas layout does not fit the 6 by 12 grid.");
   expect(modulesApi).toContain("profile_canvas_span_allowed");
   expect(modulesApi).toContain("Module type cannot be changed.");
   expect(modulesApi).toContain("visibility = :visibility");
@@ -2648,7 +2648,7 @@ function pushMockCanvasPlacements(
       const requested = {
         ...placement,
         column: Math.max(1, Math.min(6 - colSpan + 1, Number(placement.column ?? 1))),
-        row: Math.max(1, Math.min(9 - rowSpan + 1, Number(placement.row ?? 1))),
+        row: Math.max(1, Math.min(12 - rowSpan + 1, Number(placement.row ?? 1))),
         colSpan,
         rowSpan,
       };
@@ -2674,7 +2674,7 @@ function mockNextLayout(
   const colSpan = Number(placement.colSpan ?? 1);
   const rowSpan = Number(placement.rowSpan ?? 1);
   const maxColumn = 6 - colSpan + 1;
-  const maxRow = 9 - rowSpan + 1;
+  const maxRow = 12 - rowSpan + 1;
   const baseColumn = Math.max(1, Math.min(maxColumn, Number(placement.column ?? 1)));
   const baseRow = Math.max(1, Math.min(maxRow, Number(placement.row ?? 1)));
 
