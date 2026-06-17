@@ -47,7 +47,10 @@ import { PageMeta } from "../components/PageMeta";
 import { PostCard } from "../components/social/PostCard";
 import { ProfileHeader } from "../components/social/ProfileHeader";
 import { ProfileConnectionIcon } from "../components/social/ProfileConnectionIcon";
-import { ProfileModulesSection } from "../components/social/ProfileModules";
+import {
+  ProfileModulesSection,
+  type ProfileMusicAutoplayRequest,
+} from "../components/social/ProfileModules";
 import { ReportForm } from "../components/social/ReportForm";
 import { RoomCard } from "../components/social/RoomCard";
 import { UserIdentityLink } from "../components/social/UserProfileLink";
@@ -182,6 +185,11 @@ export function ProfilePage() {
     ProfileIntegrationProvider | "metadata" | undefined
   >();
   const [integrationMessage, setIntegrationMessage] = useState<string | undefined>();
+  const [
+    musicAutoplayDismissedProfileId,
+    setMusicAutoplayDismissedProfileId,
+  ] = useState<number | undefined>(undefined);
+  const [musicAutoplayRequestId, setMusicAutoplayRequestId] = useState(0);
   const [followState, setFollowState] = useState<
     { handle: string; relationship: FollowRelationship } | undefined
   >();
@@ -280,6 +288,66 @@ export function ProfilePage() {
     status === "authenticated" &&
     Boolean(user) &&
     user?.handle.toLowerCase() === normalizedHandle;
+  const musicAutoplayTarget = useMemo(() => {
+    if (!profile || canvasEditing || status === "loading" || isOwnProfile) {
+      return undefined;
+    }
+
+    return firstSpotifyMusicAutoplayModule(
+      resolveProfileCanvasModules(
+        profile,
+        mergeProfileLinksIntoConnectionModules(profile, publicModules),
+      ),
+    );
+  }, [canvasEditing, isOwnProfile, profile, publicModules, status]);
+  const musicAutoplayConsentKey = profile && musicAutoplayTarget
+    ? profileMusicAutoplayConsentKey(profile.user.id)
+    : undefined;
+  const musicAutoplayTargetId = musicAutoplayTarget?.id;
+  const musicAutoplayStoredConsent =
+    profile && musicAutoplayConsentKey
+      ? readProfileMusicAutoplayConsent(
+          musicAutoplayConsentKey,
+          profile.user.id,
+          profile.user.handle,
+        )
+      : false;
+  const musicAutoplayAllowed = Boolean(
+    profile &&
+    musicAutoplayTargetId !== undefined &&
+    (musicAutoplayStoredConsent ||
+      musicAutoplayDismissedProfileId === profile.user.id),
+  );
+  const musicAutoplayRequestIdForTarget =
+    musicAutoplayRequestId > 0
+      ? musicAutoplayRequestId
+      : musicAutoplayStoredConsent
+        ? 1
+        : 0;
+  const musicAutoplayRequest: ProfileMusicAutoplayRequest | undefined =
+    musicAutoplayAllowed &&
+    musicAutoplayTargetId !== undefined &&
+    musicAutoplayRequestIdForTarget > 0
+      ? {
+          requestId: musicAutoplayRequestIdForTarget,
+          targetModuleId: musicAutoplayTargetId,
+        }
+      : undefined;
+
+  function handleContinueToProfileMusic() {
+    if (!profile || !musicAutoplayConsentKey) {
+      return;
+    }
+
+    writeProfileMusicAutoplayConsent(musicAutoplayConsentKey, {
+      grantedAt: new Date().toISOString(),
+      handle: profile.user.handle,
+      profileId: profile.user.id,
+      provider: "spotify",
+    });
+    setMusicAutoplayDismissedProfileId(profile.user.id);
+    setMusicAutoplayRequestId((requestId) => requestId + 1);
+  }
 
   async function handleFollowToggle() {
     if (!profile || isOwnProfile || profile.blockedByMe || followPosting) {
@@ -1285,6 +1353,7 @@ export function ProfilePage() {
           isOwnProfile={isOwnProfile}
           layoutPreset={profileLayoutPreset}
           loading={modulesState.loading}
+          musicAutoplay={musicAutoplayRequest}
           modules={profileCanvasModules}
           renderModuleContent={(module, size) => {
             if (module.type === "profile_info") {
@@ -1384,8 +1453,129 @@ export function ProfilePage() {
       ) : null}
         </div>
       </div>
+      {musicAutoplayTarget && !musicAutoplayAllowed ? (
+        <ProfileMusicContinueOverlay
+          profile={renderedProfile}
+          onContinue={handleContinueToProfileMusic}
+        />
+      ) : null}
     </motion.div>
   );
+}
+
+function ProfileMusicContinueOverlay({
+  onContinue,
+  profile,
+}: {
+  onContinue: () => void;
+  profile: Profile;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-canvas/72 p-4 backdrop-blur-xl"
+      data-testid="profile-music-continue-overlay"
+    >
+      <div className="w-full max-w-sm rounded-panel border border-line bg-surface/86 p-4 text-center shadow-lift backdrop-blur-veil">
+        <span className="mx-auto grid size-11 place-items-center rounded-card border border-line bg-canvas/70 text-text">
+          <Music2 aria-hidden="true" size={22} />
+        </span>
+        <p className="mt-3 text-xs font-semibold uppercase text-muted">
+          @{profile.user.handle}
+        </p>
+        <h2 className="mt-1 text-xl font-semibold text-text">Continue to profile</h2>
+        <p className="mt-2 text-sm leading-6 text-muted">
+          Spotify music may start after you continue. Spotify content is embedded on this profile.
+        </p>
+        <Button
+          type="button"
+          className="mt-4 w-full justify-center"
+          data-testid="profile-music-continue-button"
+          onClick={onContinue}
+        >
+          Continue to profile
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+type ProfileMusicAutoplayConsent = {
+  grantedAt: string;
+  handle: string;
+  profileId: number;
+  provider: "spotify";
+};
+
+function firstSpotifyMusicAutoplayModule(
+  modules: ProfileModule[],
+): ProfileModule | undefined {
+  const firstMusicModule = modules.find(
+    (module) =>
+      module.type === "music" &&
+      module.visibility === "public" &&
+      module.status === "active",
+  );
+
+  if (!firstMusicModule) {
+    return undefined;
+  }
+
+  const integration = firstMusicModule.config.integration;
+
+  return integration?.provider === "spotify" &&
+    Boolean(integration.embed) &&
+    ["track", "album", "playlist"].includes(integration.resourceType)
+    ? firstMusicModule
+    : undefined;
+}
+
+function profileMusicAutoplayConsentKey(profileId: number): string {
+  return `thia.profile.musicAutoplayConsent.v1:${profileId}`;
+}
+
+function readProfileMusicAutoplayConsent(
+  key: string,
+  profileId: number,
+  handle: string,
+): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    const value = window.localStorage.getItem(key);
+
+    if (!value) {
+      return false;
+    }
+
+    const parsed = JSON.parse(value) as Partial<ProfileMusicAutoplayConsent>;
+
+    return (
+      parsed.profileId === profileId &&
+      parsed.handle === handle &&
+      parsed.provider === "spotify" &&
+      typeof parsed.grantedAt === "string" &&
+      parsed.grantedAt.length > 0
+    );
+  } catch {
+    return false;
+  }
+}
+
+function writeProfileMusicAutoplayConsent(
+  key: string,
+  consent: ProfileMusicAutoplayConsent,
+) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(key, JSON.stringify(consent));
+  } catch {
+    // If localStorage is unavailable, the current click still counts for this view.
+  }
 }
 
 function resolveProfileCanvasModules(

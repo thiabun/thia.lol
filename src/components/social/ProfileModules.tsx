@@ -55,9 +55,15 @@ type ProfileModulesSectionProps = {
   isOwnProfile: boolean;
   layoutPreset?: ProfileLayoutPreset | undefined;
   loading: boolean;
+  musicAutoplay?: ProfileMusicAutoplayRequest | undefined;
   modules: ProfileModule[];
   editing?: ProfileModuleGridEditing | undefined;
   renderModuleContent?: ProfileModuleContentRenderer | undefined;
+};
+
+export type ProfileMusicAutoplayRequest = {
+  requestId: number;
+  targetModuleId: number;
 };
 
 export function ProfileModulesSection({
@@ -66,6 +72,7 @@ export function ProfileModulesSection({
   isOwnProfile,
   layoutPreset = defaultProfileLayoutPreset,
   loading,
+  musicAutoplay,
   modules,
   editing,
   renderModuleContent,
@@ -98,6 +105,7 @@ export function ProfileModulesSection({
           badges={badges}
           editing={editing}
           layoutPreset={layoutPreset}
+          musicAutoplay={musicAutoplay}
           renderModuleContent={renderModuleContent}
         />
       ) : (
@@ -137,6 +145,7 @@ type ProfileModuleGridProps = {
   editing?: ProfileModuleGridEditing | undefined;
   layoutPreset?: ProfileLayoutPreset | undefined;
   maxColumns?: 2 | 6;
+  musicAutoplay?: ProfileMusicAutoplayRequest | undefined;
   modules: ProfileModule[];
   renderModuleContent?: ProfileModuleContentRenderer | undefined;
 };
@@ -157,6 +166,7 @@ export function ProfileModuleGrid({
   editing,
   layoutPreset = defaultProfileLayoutPreset,
   maxColumns,
+  musicAutoplay,
   modules,
   renderModuleContent,
 }: ProfileModuleGridProps) {
@@ -307,6 +317,8 @@ export function ProfileModuleGrid({
         const selectedContent = selected
           ? editing?.renderSelectedControls?.(module, span.size)
           : undefined;
+        const musicAutoplayRequestId =
+          musicAutoplay?.targetModuleId === module.id ? musicAutoplay.requestId : 0;
         const safeLayout =
           module.layout &&
           module.layout.colSpan === span.columns &&
@@ -379,7 +391,12 @@ export function ProfileModuleGrid({
             ) : null}
             {selectedContent ??
               renderModuleContent?.(module, span.size) ?? (
-                <ProfileModuleCard module={module} badges={badges} size={span.size} />
+                <ProfileModuleCard
+                  module={module}
+                  badges={badges}
+                  musicAutoplayRequestId={musicAutoplayRequestId}
+                  size={span.size}
+                />
               )}
           </ProfileGridModule>
         );
@@ -416,11 +433,17 @@ type ProfileModuleContentRenderer = (
 
 type ProfileModuleCardProps = {
   badges: UserBadge[];
+  musicAutoplayRequestId?: number | undefined;
   module: ProfileModule;
   size?: ProfileGridModuleSize | undefined;
 };
 
-export function ProfileModuleCard({ badges, module, size = "1x1" }: ProfileModuleCardProps) {
+export function ProfileModuleCard({
+  badges,
+  musicAutoplayRequestId = 0,
+  module,
+  size = "1x1",
+}: ProfileModuleCardProps) {
   const title = module.title ?? profileModuleFallbackTitle(module.type);
   const definition = getProfileModuleDefinition(module.type);
   const compact = profileModuleSizeIsCompact(size);
@@ -446,6 +469,7 @@ export function ProfileModuleCard({ badges, module, size = "1x1" }: ProfileModul
       <div className="min-h-0 min-w-0 overflow-hidden">
         <ProfileModuleContent
           module={module}
+          musicAutoplayRequestId={musicAutoplayRequestId}
           badges={badges}
           compact={compact}
           hasDetails={hasDetails}
@@ -460,6 +484,7 @@ function ProfileModuleContent({
   badges,
   compact,
   hasDetails,
+  musicAutoplayRequestId = 0,
   module,
   spanRole,
 }: ProfileModuleCardProps & {
@@ -623,6 +648,7 @@ function ProfileModuleContent({
     return (
       <ProfileModuleStaticCard
         icon={<Music2 aria-hidden="true" size={17} />}
+        musicAutoplayRequestId={musicAutoplayRequestId}
         module={module}
         fallbackLabel="Music link"
       />
@@ -771,10 +797,12 @@ function ProfileModuleConnectionIconOnly({ link }: { link: ProfileModuleLink }) 
 function ProfileModuleStaticCard({
   fallbackLabel,
   icon,
+  musicAutoplayRequestId = 0,
   module,
 }: {
   fallbackLabel: string;
   icon: ReactNode;
+  musicAutoplayRequestId?: number | undefined;
   module: ProfileModule;
 }) {
   const url = module.config.url;
@@ -789,6 +817,7 @@ function ProfileModuleStaticCard({
         fallbackLabel={fallbackLabel}
         icon={icon}
         integration={module.config.integration}
+        autoplayRequestId={musicAutoplayRequestId}
         module={module}
       />
     );
@@ -823,11 +852,13 @@ function ProfileModuleStaticCard({
 }
 
 function ProfileIntegrationRichCard({
+  autoplayRequestId = 0,
   fallbackLabel,
   icon,
   integration,
   module,
 }: {
+  autoplayRequestId?: number | undefined;
   fallbackLabel: string;
   icon: ReactNode;
   integration: ProfileIntegrationCard;
@@ -894,22 +925,31 @@ function ProfileIntegrationRichCard({
         <ExternalLink aria-hidden="true" size={15} className="shrink-0 text-muted" />
       </a>
       {showPrimaryEmbed && integration.embed ? (
-        <iframe
-          className={cn(
-            "block w-full border-t border-line bg-transparent",
-            twitchChatSrc ? "min-h-0 flex-1" : undefined,
-          )}
-          title={integration.embed.title}
-          src={primaryEmbedSrc}
-          height={twitchChatSrc ? 260 : primaryEmbedHeight}
-          loading="lazy"
-          referrerPolicy="strict-origin-when-cross-origin"
-          allow={integration.embed.allow}
-          sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
-          allowFullScreen
-          data-profile-embed-provider={integration.provider}
-          data-testid={`profile-integration-embed-${integration.provider}`}
-        />
+        integration.provider === "spotify" ? (
+          <SpotifyEmbedPlayer
+            autoplayRequestId={autoplayRequestId}
+            height={primaryEmbedHeight}
+            integration={integration}
+            title={integration.embed.title}
+          />
+        ) : (
+          <iframe
+            className={cn(
+              "block w-full border-t border-line bg-transparent",
+              twitchChatSrc ? "min-h-0 flex-1" : undefined,
+            )}
+            title={integration.embed.title}
+            src={primaryEmbedSrc}
+            height={twitchChatSrc ? 260 : primaryEmbedHeight}
+            loading="lazy"
+            referrerPolicy="strict-origin-when-cross-origin"
+            allow={integration.embed.allow}
+            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+            allowFullScreen
+            data-profile-embed-provider={integration.provider}
+            data-testid={`profile-integration-embed-${integration.provider}`}
+          />
+        )
       ) : null}
       {twitchChatSrc ? (
         <iframe
@@ -925,6 +965,258 @@ function ProfileIntegrationRichCard({
       ) : null}
     </div>
   );
+}
+
+type SpotifyIframeApi = {
+  createController: (
+    element: HTMLElement,
+    options: {
+      height: string;
+      theme?: "0" | "1";
+      uri: string;
+      width: string;
+    },
+    callback: (controller: SpotifyEmbedController) => void,
+  ) => void;
+};
+
+type SpotifyEmbedController = {
+  destroy?: () => void;
+  play?: () => Promise<void> | void;
+  resume?: () => Promise<void> | void;
+  togglePlay?: () => Promise<void> | void;
+};
+
+declare global {
+  interface Window {
+    __thiaSpotifyIframeApi?: SpotifyIframeApi | undefined;
+    onSpotifyIframeApiReady?: ((api: SpotifyIframeApi) => void) | undefined;
+  }
+}
+
+let spotifyIframeApiPromise: Promise<SpotifyIframeApi> | undefined;
+
+function SpotifyEmbedPlayer({
+  autoplayRequestId,
+  height,
+  integration,
+  title,
+}: {
+  autoplayRequestId: number;
+  height: number;
+  integration: ProfileIntegrationCard;
+  title: string;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const controllerRef = useRef<SpotifyEmbedController | undefined>(undefined);
+  const lastAutoplayRequestRef = useRef(0);
+  const [controllerReadyVersion, setControllerReadyVersion] = useState(0);
+  const [fallback, setFallback] = useState(false);
+  const uri = spotifyIntegrationUri(integration);
+
+  useEffect(() => {
+    const container = containerRef.current;
+
+    if (!container || !uri) {
+      setFallback(true);
+      return undefined;
+    }
+
+    let canceled = false;
+    setFallback(false);
+    controllerRef.current = undefined;
+    container.replaceChildren();
+
+    loadSpotifyIframeApi()
+      .then((api) => {
+        if (canceled) {
+          return;
+        }
+
+        api.createController(
+          container,
+          {
+            height: String(height),
+            theme: "0",
+            uri,
+            width: "100%",
+          },
+          (controller) => {
+            if (canceled) {
+              controller.destroy?.();
+              return;
+            }
+
+            controllerRef.current = controller;
+            decorateSpotifyEmbedIframe(container, integration, height, title);
+            setControllerReadyVersion((version) => version + 1);
+          },
+        );
+      })
+      .catch(() => {
+        if (!canceled) {
+          setFallback(true);
+        }
+      });
+
+    return () => {
+      canceled = true;
+      controllerRef.current?.destroy?.();
+      controllerRef.current = undefined;
+      container.replaceChildren();
+    };
+  }, [height, integration, title, uri]);
+
+  useEffect(() => {
+    const controller = controllerRef.current;
+
+    if (
+      !controller ||
+      autoplayRequestId <= 0 ||
+      lastAutoplayRequestRef.current === autoplayRequestId
+    ) {
+      return;
+    }
+
+    lastAutoplayRequestRef.current = autoplayRequestId;
+    void playSpotifyEmbed(controller);
+  }, [autoplayRequestId, controllerReadyVersion]);
+
+  return (
+    <div
+      className="border-t border-line bg-transparent"
+      data-testid="profile-spotify-embed-player"
+    >
+      <div ref={containerRef} />
+      {fallback ? (
+        <iframe
+          className="block w-full bg-transparent"
+          title={title}
+          src={profileIntegrationEmbedSrc(integration)}
+          height={height}
+          loading="lazy"
+          referrerPolicy="strict-origin-when-cross-origin"
+          allow={integration.embed?.allow}
+          sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+          allowFullScreen
+          data-profile-embed-provider="spotify"
+          data-testid="profile-integration-embed-spotify"
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function loadSpotifyIframeApi(): Promise<SpotifyIframeApi> {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return Promise.reject(new Error("Spotify embeds require a browser."));
+  }
+
+  if (window.__thiaSpotifyIframeApi) {
+    return Promise.resolve(window.__thiaSpotifyIframeApi);
+  }
+
+  if (spotifyIframeApiPromise) {
+    return spotifyIframeApiPromise;
+  }
+
+  const promise = new Promise<SpotifyIframeApi>((resolve, reject) => {
+    const existingCallback = window.onSpotifyIframeApiReady;
+    const timeout = window.setTimeout(() => {
+      reject(new Error("Spotify embed API did not load."));
+    }, 10000);
+
+    window.onSpotifyIframeApiReady = (api) => {
+      window.clearTimeout(timeout);
+      window.__thiaSpotifyIframeApi = api;
+      existingCallback?.(api);
+      resolve(api);
+    };
+
+    const existingScript = document.querySelector<HTMLScriptElement>(
+      'script[data-thia-spotify-iframe-api="true"]',
+    );
+
+    if (existingScript) {
+      existingScript.addEventListener("error", () => {
+        window.clearTimeout(timeout);
+        reject(new Error("Spotify embed API failed to load."));
+      }, { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.async = true;
+    script.dataset.thiaSpotifyIframeApi = "true";
+    script.src = "https://open.spotify.com/embed/iframe-api/v1";
+    script.addEventListener("error", () => {
+      window.clearTimeout(timeout);
+      reject(new Error("Spotify embed API failed to load."));
+    }, { once: true });
+    document.body.appendChild(script);
+  }).catch((error) => {
+    spotifyIframeApiPromise = undefined;
+    throw error;
+  });
+  spotifyIframeApiPromise = promise;
+
+  return promise;
+}
+
+function decorateSpotifyEmbedIframe(
+  container: HTMLElement,
+  integration: ProfileIntegrationCard,
+  height: number,
+  title: string,
+) {
+  window.requestAnimationFrame(() => {
+    const iframe = container.querySelector("iframe");
+
+    if (!iframe) {
+      return;
+    }
+
+    iframe.className = "block w-full bg-transparent";
+    iframe.dataset.profileEmbedProvider = integration.provider;
+    iframe.dataset.testid = `profile-integration-embed-${integration.provider}`;
+    iframe.height = String(height);
+    iframe.loading = "lazy";
+    iframe.referrerPolicy = "strict-origin-when-cross-origin";
+    iframe.title = title;
+    iframe.setAttribute(
+      "allow",
+      integration.embed?.allow ?? "autoplay; encrypted-media; picture-in-picture; fullscreen",
+    );
+  });
+}
+
+async function playSpotifyEmbed(controller: SpotifyEmbedController) {
+  try {
+    if (controller.play) {
+      await controller.play();
+      return;
+    }
+
+    if (controller.resume) {
+      await controller.resume();
+      return;
+    }
+
+    await controller.togglePlay?.();
+  } catch {
+    // Browser/provider autoplay policy can still block this even after consent.
+  }
+}
+
+function spotifyIntegrationUri(integration: ProfileIntegrationCard): string | undefined {
+  if (
+    integration.provider !== "spotify" ||
+    !["track", "album", "playlist"].includes(integration.resourceType)
+  ) {
+    return undefined;
+  }
+
+  return `spotify:${integration.resourceType}:${integration.resourceId}`;
 }
 
 function profileIntegrationEmbedSrc(integration: ProfileIntegrationCard): string {

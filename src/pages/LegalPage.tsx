@@ -103,6 +103,7 @@ const policies: Record<string, PolicyPageContent> = {
           "Uploads must follow the same rules as text posts. Do not upload illegal, infringing, deceptive, abusive, or non-consensual material.",
           "Image backgrounds, video backgrounds, gallery modules, rich cards, creator modules, and music modules must remain readable, lawful, and safe.",
           "Image uploads may be resized, converted, stripped of metadata, or removed to operate the service and keep it safe. Video background uploads may be limited by file type, size, purpose, and playback safety.",
+          "Music playback on public profiles may ask visitors to continue first. If a visitor continues, the browser may try to start the embedded provider player, but playback can still be blocked by browser or provider rules.",
         ],
       },
       {
@@ -175,7 +176,7 @@ const policies: Record<string, PolicyPageContent> = {
           "Uploads, including the image or video file you provide, public media URLs, dimensions or MIME/type metadata, purpose, and storage metadata needed to display and manage uploaded media.",
           "Integration data when you connect or use providers, such as provider name, provider account id or handle, display name, avatar URL, granted scopes, token expiry, connection status, revoked/error timestamps, normalized provider URLs, cached metadata, generated embed metadata, and fetch timestamps.",
           "Logs and security data, such as IP address, user agent, request time, authentication events, rate-limit records, error diagnostics, and moderation records.",
-          "Cookies, session data, CSRF/security tokens, and local preference records used for sign-in, security, theme, and cookie notice choices.",
+          "Cookies, session data, CSRF/security tokens, and local preference records used for sign-in, security, theme, cookie notice choices, and per-profile music continue choices.",
         ],
       },
       {
@@ -187,6 +188,7 @@ const policies: Record<string, PolicyPageContent> = {
           "To moderate content, review reports, enforce rules, protect users, and maintain admin/moderation records.",
           "To personalize basic feeds and recommendations using explainable factors such as recency, follows, moots, rooms, replies, likes, and moderation status.",
           "To call supported third-party APIs on demand for OAuth, provider account identity, and metadata refresh where a provider is configured and the feature is used.",
+          "To remember device-local choices such as continuing into a profile with Spotify music so the same profile does not need to show the blocking music overlay on every visit.",
           "To comply with applicable legal obligations, respond to valid requests, preserve records when needed, and protect rights and safety.",
         ],
       },
@@ -207,6 +209,7 @@ const policies: Record<string, PolicyPageContent> = {
           "Inline embeds are generated only for allowlisted providers from normalized provider/resource ids. User-supplied iframe HTML is not stored or rendered.",
           "When an embed is rendered, your browser may connect directly to the provider, such as Spotify, Apple, YouTube, Twitch, or GitHub-linked resources.",
           "Those third parties may receive technical data such as IP address, user agent, page/referrer context, cookies they control, and interaction data according to their own policies.",
+          "Profiles with visible Spotify music may show a Continue to profile overlay. Pressing it stores a local per-profile consent record on that browser and may try to start Spotify playback. Stored consent is a thia.lol product choice, not a guarantee that the browser or Spotify will allow autoplay.",
           "If provider metadata refresh fails, thia.lol may show the last good cached card. If no cache exists, it may show a compact outbound link card.",
         ],
       },
@@ -281,6 +284,7 @@ const policies: Record<string, PolicyPageContent> = {
         items: [
           "Theme preference may be stored locally so the site can remember Sunveil or Frostveil.",
           "Cookie notice acknowledgement may be stored in your browser so the same notice is not shown every visit.",
+          "When you press Continue to profile on a public profile with Spotify music, thia.lol may store a local per-profile record so that profile can open directly next time and try playback without showing the same overlay again.",
           "These preferences are not used for advertising.",
         ],
       },
@@ -292,6 +296,7 @@ const policies: Record<string, PolicyPageContent> = {
         title: "Third-party embeds",
         items: [
           "Profile embeds and rich provider cards may load third-party content only after the profile/module renders the provider surface.",
+          "Spotify music embeds may already be present on a profile before you press Continue to profile; pressing Continue only controls thia.lol's blocking overlay and playback attempt.",
           "Third-party providers may set or read cookies they control, receive technical request data, or apply their own tracking rules according to their policies.",
           "thia.lol does not control provider cookies. You can use browser privacy controls, provider account controls, or avoid interacting with embeds if you do not want that provider loading.",
         ],

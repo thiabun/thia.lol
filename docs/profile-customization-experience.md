@@ -217,6 +217,11 @@ global switches.
   appropriate module and selecting it for local configuration.
 - Selected `music` and `creator_live` modules accept allowlisted provider URLs
   and resolve metadata through the server before saving module config.
+- Spotify music modules can use a profile-level Continue overlay for public
+  visitors. The first Continue stores device-local consent for that profile and
+  may try to start the Spotify embed; later visits can skip the overlay, but
+  playback remains best-effort because the browser or Spotify can still block
+  audible autoplay.
 - If a provider is missing config, missing OAuth, or failing, the UI should still
   allow safe URL-based module configuration where that provider supports links.
 - Spotify and Apple Music create `music` modules. YouTube, Twitch, and GitHub

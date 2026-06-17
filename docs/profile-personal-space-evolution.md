@@ -243,12 +243,19 @@ the profile renderer constrained.
   platform never stores or renders user-supplied iframe HTML.
 - GitHub renders as a rich card, not an iframe.
 - Live/recent labels require a real fetched timestamp and age.
+- Visible Spotify music modules may show a public-visitor Continue overlay.
+  Pressing Continue stores device-local, per-profile consent and may try to
+  start the Spotify embed. Stored consent skips the overlay on later visits, but
+  playback remains best-effort because browser and Spotify policies can still
+  block audible autoplay.
 - Uploaded profile background video is restricted to profile backgrounds,
   MP4/WebM, randomized filenames, MIME sniffing, and no PHP-executable
   extensions.
 - Background video renders muted, looped, playsInline, and behind the same
   overlay/blur system. Reduced-motion users get the poster/static fallback.
 - Embedded provider media must not be forced to autoplay through query params.
+  Music playback is allowed only after direct visitor action or a stored
+  per-profile local consent record.
 
 ### Module Design Rubric
 
@@ -338,7 +345,11 @@ hostile to visitors.
 Rules:
 
 - No autoplay audio by default.
-- Audio playback must be user-initiated.
+- Audio playback must be visitor-initiated, except that a stored local
+  per-profile music consent can let the site try playback on later visits.
+- Stored music consent is product consent, not guaranteed browser autoplay
+  permission. If the browser or provider blocks playback, the profile should
+  open normally and leave the player visible for manual use.
 - A compact music player can show title, artist/source, cover image, progress
   only when real, and play/pause controls only when playback is actually
   supported.
@@ -1137,7 +1148,12 @@ Personal space rules:
 
 - Modules must have bounded content, known types, validation, and visibility controls.
 - Modules should degrade cleanly when an API or external service is unavailable.
-- Modules should not autoplay media or load heavy third-party embeds by default.
+- Modules should not autoplay media by default. Spotify music can attempt
+  playback only after the visitor presses Continue or has stored local consent
+  for that profile.
+- Third-party embeds must be disclosed in policy text. Spotify profile music
+  embeds may load before Continue because the overlay gates profile entry and
+  playback, not the provider iframe request.
 - Modules must remain reportable through profile reporting at first; module-level reporting can come later if modules become independently moderated objects.
 
 ## Module System Proposal
@@ -1156,7 +1172,7 @@ The module system should be introduced after a profile layout refresh, not bolte
 | Blog / Journal | Support long-form profile updates. | Shows latest entries or pinned entries on the profile. | Entry selection, archive link, display mode. | Needs moderation, visibility, reporting, content limits. | Future `posts.post_type = 'blog'` or separate `profile_entries`. | v2 |
 | Project Showcase | Present creator projects, apps, writing, art, servers, or releases. | Cards with title, description, image, link, status. | Up to a small number of projects, safe URLs, optional image. | Link safety, no misleading claims, no unsafe embeds. | Module settings JSON or future `profile_projects`. | v2 |
 | Gallery | Show selected uploaded images/media. | Responsive gallery with thumbnails and captions. | Select uploaded media, captions, ordering. | Moderation and takedown implications; no external hotlink gallery in v1. | Future media library references. | v2 |
-| Music | Show a favorite song, playlist, or now-playing style card. | Static card or link-first music panel. | Platform, URL, display title, optional note. | No autoplay; no invasive tracking; no fake live status. | Module settings with validated music URL. | v2/later |
+| Music | Show a favorite song, playlist, or now-playing style card. | Static card, link-first panel, or Spotify embed when configured. Public visitors may see a Continue overlay before playback is attempted. | Platform, URL, display title, optional note. | No autoplay without explicit visitor action or stored local profile consent; no invasive tracking; no fake live status. | Module settings with validated music URL. | v2/later |
 | Spotify Playlist | Highlight Spotify playlist/song. | Link card first; possible oEmbed/embed later only after decision. | Spotify URL, display mode. | Third-party tracking, API/key, embed performance, age/content concerns. | Validated URL; optional cached metadata later. | later |
 | Apple Music Playlist/Song | Highlight Apple Music content. | Link card first; possible embed later. | Apple Music URL, display mode. | Third-party tracking, region availability, content ratings. | Validated URL; optional cached metadata later. | later |
 | Twitch Live/Status | Show stream presence. | Link/status card first; embed only after privacy/performance review. | Channel, display mode, optional chat link. | Chat embeds are high risk; moderation and tracking concerns. | Validated channel; optional cached status if API-backed. | later |
@@ -1252,7 +1268,8 @@ Integration rules:
 - Never present a card as live unless it is actually API-backed.
 - Never require API keys in committed config.
 - Never add third-party scripts without a privacy/cookie policy review.
-- Never autoplay audio or video.
+- Never autoplay audio or video without a direct visitor action or a stored
+  per-profile local music consent record. Video backgrounds remain muted.
 - Prefer user-clicked outbound links for Public Readiness V2.
 - Cache metadata server-side only after deciding retention, refresh frequency, and failure behavior.
 
@@ -1267,7 +1284,9 @@ Profile evolution must respect the existing safety baseline:
 - Hidden badges: hidden or revoked badges must not render in any showcase, header, or module.
 - Profile moderation: suspended users should not appear as active public profiles.
 - Safe external links: all external URLs should be normalized and validated; HTML/script-like input should be rejected.
-- Embed safety: no autoplay, no script embeds, no arbitrary iframe input, and no unreviewed third-party tracking.
+- Embed safety: no arbitrary iframe input, no script embeds from user content,
+  no unreviewed third-party tracking, and no audible autoplay except the
+  Spotify profile music consent path described above.
 - Adult/public-testing concerns: off-platform media and stream modules must not imply `thia.lol` can moderate all third-party content.
 - Privacy claims: do not claim private profiles, private modules, full content hiding, encryption, or legal compliance until those features exist and have been reviewed.
 
@@ -1543,8 +1562,12 @@ Public vs owner view:
 ### Phase 5 - External Integrations
 
 - Goal: add carefully validated external cards.
-- Scope: link-first music/video/stream/project cards with safe URL validation.
-- Out of scope: autoplay, chat embeds, arbitrary iframes, OAuth, third-party scripts without review.
+- Scope: link-first music/video/stream/project cards with safe URL validation,
+  then reviewed provider embeds/OAuth once privacy and cookie language is
+  updated.
+- Out of scope: arbitrary iframes, unreviewed third-party scripts, chat embeds,
+  and any audible autoplay that has not gone through the explicit
+  per-profile consent path.
 - Risk: medium/high because privacy, tracking, and content moderation become harder.
 - Codex suitability: medium for link cards; low for unscoped OAuth/live embeds.
 - Likely files touched: module validation, frontend module renderers, policy docs if embeds/scripts are added.

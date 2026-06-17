@@ -547,6 +547,7 @@ test("video background and allowlisted rich integrations render safely", async (
   page,
 }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
+  await mockSpotifyIframeApi(page);
   await mockProfileModules(page, {
     authenticated: false,
     profileOverrides: {
@@ -633,12 +634,148 @@ test("video background and allowlisted rich integrations render safely", async (
   await expect(spotifyEmbed).toHaveAttribute("height", "80");
   await expect(spotifyEmbed).toHaveAttribute("data-profile-embed-provider", "spotify");
   await expect(spotifyEmbed).toHaveAttribute(
-    "sandbox",
-    /allow-scripts allow-same-origin/,
+    "allow",
+    /encrypted-media/,
   );
   await expect(page.getByText("Recently updated · Spotify")).toBeVisible();
   await expect(page.getByText("Public repository metadata.")).toBeVisible();
   await expect(page.getByTestId("profile-integration-embed-github")).toHaveCount(0);
+});
+
+test("public visitor continues before Spotify profile music starts", async ({
+  page,
+}) => {
+  await mockSpotifyIframeApi(page);
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [spotifyEmbedMusicModule()],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const overlay = page.getByTestId("profile-music-continue-overlay");
+  await expect(overlay).toBeVisible();
+  await expect(page.getByTestId("profile-integration-embed-spotify")).toBeVisible();
+  await expect.poll(() => spotifyPlayCalls(page)).toBe(0);
+
+  const button = page.getByTestId("profile-music-continue-button");
+  await button.focus();
+  await page.keyboard.press("Enter");
+
+  await expect(overlay).toHaveCount(0);
+  await expect.poll(() => spotifyPlayCalls(page)).toBe(1);
+  const stored = await page.evaluate(() =>
+    window.localStorage.getItem("thia.profile.musicAutoplayConsent.v1:1"),
+  );
+
+  expect(stored).not.toBeNull();
+  expect(JSON.parse(stored ?? "{}")).toMatchObject({
+    handle: "thia",
+    profileId: 1,
+    provider: "spotify",
+  });
+});
+
+test("stored Spotify music consent skips the continue overlay", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "thia.profile.musicAutoplayConsent.v1:1",
+      JSON.stringify({
+        grantedAt: "2026-06-17T00:00:00.000Z",
+        handle: "thia",
+        profileId: 1,
+        provider: "spotify",
+      }),
+    );
+  });
+  await mockSpotifyIframeApi(page);
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [spotifyEmbedMusicModule()],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expect(page.getByTestId("profile-music-continue-overlay")).toHaveCount(0);
+  await expect(page.getByTestId("profile-integration-embed-spotify")).toBeVisible();
+  await expect.poll(() => spotifyPlayCalls(page)).toBe(1);
+});
+
+test("invalid Spotify music consent falls back to the continue overlay", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("thia.profile.musicAutoplayConsent.v1:1", "{bad");
+  });
+  await mockSpotifyIframeApi(page);
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [spotifyEmbedMusicModule()],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expect(page.getByTestId("profile-music-continue-overlay")).toBeVisible();
+  await expect.poll(() => spotifyPlayCalls(page)).toBe(0);
+});
+
+test("profile music continue overlay excludes owners and non-Spotify embeds", async ({
+  page,
+}) => {
+  await mockSpotifyIframeApi(page);
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [spotifyEmbedMusicModule()],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+  await expect(page.getByTestId("profile-music-continue-overlay")).toHaveCount(0);
+  await expect.poll(() => spotifyPlayCalls(page)).toBe(0);
+
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [appleMusicEmbedModule()],
+  });
+  await page.goto("/@thia");
+  await expect(page.getByTestId("profile-music-continue-overlay")).toHaveCount(0);
+});
+
+test("profile music continue overlay only follows the first visible music module", async ({
+  page,
+}) => {
+  await mockSpotifyIframeApi(page);
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      appleMusicEmbedModule({ id: 21, position: 1 }),
+      spotifyEmbedMusicModule({ id: 22, position: 2 }),
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expect(page.getByTestId("profile-music-continue-overlay")).toHaveCount(0);
+  await expect(page.getByTestId("profile-integration-embed-spotify")).toBeVisible();
+  await expect.poll(() => spotifyPlayCalls(page)).toBe(0);
+});
+
+test("Spotify playback failure still opens the profile", async ({ page }) => {
+  await mockSpotifyIframeApi(page, { rejectPlay: true });
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [spotifyEmbedMusicModule()],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-music-continue-button").click();
+
+  await expect(page.getByTestId("profile-music-continue-overlay")).toHaveCount(0);
+  await expect(page.getByTestId("profile-integration-embed-spotify")).toBeVisible();
+  await expect.poll(() => spotifyPlayCalls(page)).toBe(1);
 });
 
 test("integration modules do not fake live or recent labels without API backing", async ({
@@ -2610,6 +2747,50 @@ async function acknowledgeCookieNotice(page: Page) {
   });
 }
 
+async function mockSpotifyIframeApi(
+  page: Page,
+  options: { rejectPlay?: boolean } = {},
+) {
+  await page.addInitScript(() => {
+    Object.assign(window, {
+      __spotifyPlayCalls: 0,
+    });
+  });
+  await page.route("https://open.spotify.com/embed/iframe-api/v1", async (route) => {
+    await route.fulfill({
+      contentType: "application/javascript",
+      status: 200,
+      body: `
+        window.onSpotifyIframeApiReady({
+          createController: function(element, options, callback) {
+            window.__spotifyControllerOptions = (window.__spotifyControllerOptions || []).concat(options);
+            var parts = String(options.uri || "").split(":");
+            var iframe = document.createElement("iframe");
+            iframe.src = "https://open.spotify.com/embed/" + parts[1] + "/" + parts[2] + "?theme=0";
+            iframe.height = options.height;
+            element.appendChild(iframe);
+            callback({
+              destroy: function() {},
+              play: function() {
+                window.__spotifyPlayCalls = (window.__spotifyPlayCalls || 0) + 1;
+                ${options.rejectPlay ? "return Promise.reject(new Error('blocked'));" : "return Promise.resolve();"}
+              }
+            });
+          }
+        });
+      `,
+    });
+  });
+}
+
+async function spotifyPlayCalls(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const testWindow = window as Window & { __spotifyPlayCalls?: number };
+
+    return Number(testWindow.__spotifyPlayCalls ?? 0);
+  });
+}
+
 async function expectGridColumnCount(locator: Locator, expectedCount: number) {
   await expect
     .poll(async () =>
@@ -2877,6 +3058,75 @@ function musicModule(overrides: { id?: number; position?: number } = {}) {
     schemaVersion: 1,
     createdAt: "2026-06-12 00:00:00",
     updatedAt: "2026-06-12 00:00:00",
+  };
+}
+
+function spotifyEmbedMusicModule(overrides: { id?: number; position?: number } = {}) {
+  return {
+    ...musicModule(overrides),
+    config: {
+      description: "Current writing song.",
+      displayMode: "embed",
+      label: "Focus track",
+      platform: "spotify",
+      sourceMode: "spotify",
+      url: "https://open.spotify.com/track/profile-test",
+      integration: {
+        provider: "spotify",
+        resourceType: "track",
+        resourceId: "profile-test",
+        resourceKey: "spotify:track:profile-test",
+        sourceUrl: "https://open.spotify.com/track/profile-test",
+        metadata: {
+          title: "Focus track",
+          subtitle: "Spotify track",
+        },
+        embed: {
+          type: "iframe",
+          src: "https://open.spotify.com/embed/track/profile-test",
+          title: "Spotify player",
+          height: 80,
+          allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+        },
+        apiBacked: true,
+        fetchedAt: "2026-06-16T10:00:00Z",
+        stale: false,
+      },
+    },
+  };
+}
+
+function appleMusicEmbedModule(overrides: { id?: number; position?: number } = {}) {
+  return {
+    ...musicModule(overrides),
+    config: {
+      displayMode: "embed",
+      label: "Apple song",
+      platform: "apple_music",
+      sourceMode: "apple_music",
+      url: "https://music.apple.com/us/album/example/1",
+      integration: {
+        provider: "apple_music",
+        resourceType: "song",
+        resourceId: "1",
+        resourceKey: "apple_music:song:1",
+        sourceUrl: "https://music.apple.com/us/album/example/1",
+        metadata: {
+          title: "Apple song",
+          subtitle: "Apple Music",
+        },
+        embed: {
+          type: "iframe",
+          src: "https://embed.music.apple.com/us/song/1",
+          title: "Apple Music embed",
+          height: 152,
+          allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+        },
+        apiBacked: false,
+        fetchedAt: "2026-06-16T10:00:00Z",
+        stale: false,
+      },
+    },
   };
 }
 

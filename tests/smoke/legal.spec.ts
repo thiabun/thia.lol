@@ -125,6 +125,8 @@ test("cookie policy does not claim analytics are active", async ({ page }) => {
   );
   expect(bodyText).toContain("Third-party embeds");
   expect(bodyText).toContain("thia.lol does not control provider cookies.");
+  expect(bodyText).toContain("Spotify music embeds may already be present");
+  expect(bodyText).toContain("Continue to profile");
   expect(bodyText).not.toContain("Analytics cookies help us");
   expect(bodyText).not.toContain("Marketing cookies help us");
 });
@@ -144,6 +146,8 @@ test("privacy and terms explain integrations, embeds, and rich media", async ({
   expect(privacyText).toContain("Metadata cache records");
   expect(privacyText).toContain("User-supplied iframe HTML is not stored or rendered.");
   expect(privacyText).toContain("Provider passwords are never requested or stored");
+  expect(privacyText).toContain("per-profile consent record");
+  expect(privacyText).toContain("not a guarantee that the browser or Spotify will allow autoplay");
 
   await page.goto("/terms");
   await expect(
@@ -156,6 +160,7 @@ test("privacy and terms explain integrations, embeds, and rich media", async ({
   expect(termsText).toContain("video backgrounds");
   expect(termsText).toContain("Removing a profile module removes it from the canvas");
   expect(termsText).toContain("The platform does not allow arbitrary user-supplied iframe HTML.");
+  expect(termsText).toContain("Music playback on public profiles may ask visitors to continue first");
 });
 
 test("guidelines and moderation cover external profile content", async ({
