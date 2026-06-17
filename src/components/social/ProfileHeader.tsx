@@ -32,6 +32,7 @@ import { ProfileConnectionIcon } from "./ProfileConnectionIcon";
 
 type ProfileHeaderProps = {
   profile: Profile;
+  chrome?: boolean | undefined;
   followError?: string | undefined;
   followPosting?: boolean;
   isOwnProfile?: boolean;
@@ -51,6 +52,7 @@ type ProfileHeaderProps = {
 };
 
 export function ProfileHeader({
+  chrome = true,
   followError,
   followPosting = false,
   isOwnProfile = false,
@@ -118,21 +120,24 @@ export function ProfileHeader({
     >
       <motion.section
         className={cn(
-          "relative overflow-hidden rounded-panel border border-line-strong bg-surface/68 shadow-soft backdrop-blur-veil",
+          "relative overflow-hidden rounded-panel border",
+          chrome
+            ? "border-line-strong bg-surface/68 shadow-soft backdrop-blur-veil"
+            : "border-transparent bg-transparent shadow-none",
           roomyProfileInfo ? "flex h-full min-h-0 flex-col" : undefined,
         )}
         data-testid="profile-header"
       >
-        <ProfileHeaderBackdrop backgroundUrl={backgroundUrl} />
+        {chrome ? <ProfileHeaderBackdrop backgroundUrl={backgroundUrl} /> : null}
         {bannerUrl ? (
           <ProfileBanner
             expanded={roomyProfileInfo}
             src={bannerUrl}
             wide={wideProfileInfo}
           />
-        ) : (
+        ) : chrome ? (
           <ProfileTopAccent />
-        )}
+        ) : null}
         <motion.div
           className={cn(
             "relative z-10 p-4 sm:p-5",

@@ -8,7 +8,7 @@ import {
   type ProfileGridModuleSize,
 } from "../../lib/profileModuleRegistry";
 import type { ProfileLayoutPreset, ProfileModuleLayout } from "../../lib/types";
-import { cardEntrance } from "../../lib/motionPresets";
+import { cardEntrance, softSpring } from "../../lib/motionPresets";
 
 type ProfileGridProps = {
   children: ReactNode;
@@ -99,6 +99,7 @@ export function ProfileGridSection({
 type ProfileGridModuleProps = {
   children: ReactNode;
   className?: string | undefined;
+  dragging?: boolean | undefined;
   layout?: ProfileModuleLayout | null | undefined;
   presentation?:
     | {
@@ -120,6 +121,7 @@ type ProfileGridModuleProps = {
 export function ProfileGridModule({
   children,
   className,
+  dragging = false,
   layout,
   presentation,
   selected = false,
@@ -143,9 +145,13 @@ export function ProfileGridModule({
   return (
     <motion.div
       layout
-      transition={{ duration: 0.22, ease: "easeOut" }}
+      transition={{
+        layout: softSpring,
+        opacity: { duration: 0.16, ease: "easeOut" },
+        scale: { duration: 0.16, ease: "easeOut" },
+      }}
       className={cn(
-        "profile-grid-module relative min-h-0 min-w-0 scroll-mt-24",
+        "profile-grid-module relative min-h-0 min-w-0 scroll-mt-24 transform-gpu",
         profileGridModuleSizeClass(span.size),
         className,
       )}
@@ -153,6 +159,7 @@ export function ProfileGridModule({
       data-profile-grid-column-span={span.columns}
       data-profile-grid-row-span={span.rows}
       data-profile-grid-size={span.size}
+      data-profile-module-dragging={dragging ? "true" : undefined}
       data-profile-module-action={presentation?.primaryAction}
       data-profile-module-compact={
         presentation ? String(presentation.compact) : undefined

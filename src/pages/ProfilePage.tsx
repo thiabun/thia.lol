@@ -146,6 +146,9 @@ import {
   SiYoutube,
 } from "react-icons/si";
 
+const PROFILE_CANVAS_COLUMNS = 6;
+const PROFILE_CANVAS_ROWS = 12;
+
 type ProfileTab = "feed" | "replies" | "rooms";
 type ProfilePanel = "followers" | "following" | "badges";
 
@@ -1376,6 +1379,7 @@ export function ProfilePage() {
                   activeFollowError={activeFollowError}
                   activeProfileControlError={activeProfileControlError}
                   activeProfileControlMessage={activeProfileControlMessage}
+                  editing={canvasEditing}
                   featuredBadges={featuredBadges}
                   followPosting={followPosting}
                   isOwnProfile={isOwnProfile}
@@ -1408,6 +1412,7 @@ export function ProfilePage() {
             if (module.type === "featured_post" && renderedProfile.featuredPost) {
               return (
                 <FeaturedPostModuleCard
+                  editing={canvasEditing}
                   profile={renderedProfile}
                   title={module.title ?? "Featured post"}
                 />
@@ -1417,6 +1422,7 @@ export function ProfilePage() {
             if (module.type === "featured_room" && renderedProfile.featuredRoom) {
               return (
                 <FeaturedRoomModuleCard
+                  editing={canvasEditing}
                   profile={renderedProfile}
                   title={module.title ?? "Featured room"}
                 />
@@ -1427,6 +1433,7 @@ export function ProfilePage() {
               return (
               <ProfileActivityModule
                 activeTab={activeTab}
+                editing={canvasEditing}
                 feed={profileFeed}
                 feedError={postsState.error ?? reblogsState.error}
                 feedLoading={postsState.loading || reblogsState.loading}
@@ -1978,8 +1985,8 @@ function findProfileModuleDefaultLayout(
   const colSpan = span.columns;
   const rowSpan = span.rows;
 
-  for (let row = 1; row <= 9 - rowSpan + 1; row++) {
-    for (let column = 1; column <= 6 - colSpan + 1; column++) {
+  for (let row = 1; row <= PROFILE_CANVAS_ROWS - rowSpan + 1; row++) {
+    for (let column = 1; column <= PROFILE_CANVAS_COLUMNS - colSpan + 1; column++) {
       const layout = { column, row, colSpan, rowSpan };
 
       if (profileModuleLayoutFits(layout, occupied)) {
@@ -2000,8 +2007,8 @@ function findProfileModuleNextLayout(
   requestedLayout: ProfileModuleLayout,
   occupied: Set<string>,
 ): ProfileModuleLayout | undefined {
-  const maxColumn = 6 - requestedLayout.colSpan + 1;
-  const maxRow = 12 - requestedLayout.rowSpan + 1;
+  const maxColumn = PROFILE_CANVAS_COLUMNS - requestedLayout.colSpan + 1;
+  const maxRow = PROFILE_CANVAS_ROWS - requestedLayout.rowSpan + 1;
   const baseColumn = Math.min(maxColumn, Math.max(1, requestedLayout.column));
   const baseRow = Math.min(maxRow, Math.max(1, requestedLayout.row));
 
@@ -2075,8 +2082,8 @@ function profileModuleLayoutFits(
     layout.row < 1 ||
     layout.colSpan < 1 ||
     layout.rowSpan < 1 ||
-    layout.column + layout.colSpan - 1 > 6 ||
-    layout.row + layout.rowSpan - 1 > 9
+    layout.column + layout.colSpan - 1 > PROFILE_CANVAS_COLUMNS ||
+    layout.row + layout.rowSpan - 1 > PROFILE_CANVAS_ROWS
   ) {
     return false;
   }
@@ -4277,12 +4284,15 @@ function profileModulePersistentConfig(
 }
 
 function clampProfileModuleLayout(layout: ProfileModuleLayout): ProfileModuleLayout {
-  const colSpan = Math.max(1, Math.min(6, layout.colSpan));
+  const colSpan = Math.max(1, Math.min(PROFILE_CANVAS_COLUMNS, layout.colSpan));
   const rowSpan = Math.max(1, Math.min(6, layout.rowSpan));
 
   return {
-    column: Math.max(1, Math.min(6 - colSpan + 1, layout.column)),
-    row: Math.max(1, Math.min(12 - rowSpan + 1, layout.row)),
+    column: Math.max(
+      1,
+      Math.min(PROFILE_CANVAS_COLUMNS - colSpan + 1, layout.column),
+    ),
+    row: Math.max(1, Math.min(PROFILE_CANVAS_ROWS - rowSpan + 1, layout.row)),
     colSpan,
     rowSpan,
   };
@@ -4475,6 +4485,7 @@ type ProfileInfoModuleProps = {
   activeFollowError?: string | undefined;
   activeProfileControlError?: string | undefined;
   activeProfileControlMessage?: string | undefined;
+  editing?: boolean | undefined;
   featuredBadges: UserBadge[];
   followPosting: boolean;
   isOwnProfile: boolean;
@@ -4493,6 +4504,7 @@ function ProfileInfoModule({
   activeFollowError,
   activeProfileControlError,
   activeProfileControlMessage,
+  editing = false,
   featuredBadges,
   followPosting,
   isOwnProfile,
@@ -4537,6 +4549,7 @@ function ProfileInfoModule({
         onOpenPanel={onOpenPanel}
         profileInfoColumns={span.columns}
         profileInfoRows={span.rows}
+        chrome={editing}
         reportAction={
           !isOwnProfile ? (
             <ReportForm
@@ -4556,9 +4569,11 @@ function ProfileInfoModule({
 }
 
 function FeaturedPostModuleCard({
+  editing = false,
   profile,
   title,
 }: {
+  editing?: boolean | undefined;
   profile: Profile;
   title: string;
 }) {
@@ -4566,12 +4581,17 @@ function FeaturedPostModuleCard({
 
   return (
     <article
-      className="h-full min-w-0 rounded-card border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
+      className={cn(
+        "h-full min-w-0 overflow-hidden rounded-card",
+        editing
+          ? "border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
+          : "border border-transparent bg-transparent p-0 shadow-none",
+      )}
       data-testid="profile-module-featured-post"
     >
-      <h3 className="text-sm font-semibold text-text">{title}</h3>
+      {editing ? <h3 className="text-sm font-semibold text-text">{title}</h3> : null}
       {featuredPost ? (
-        <div className="mt-3">
+        <div className={editing ? "mt-3" : "h-full min-h-0"}>
           <FeaturedPostCard post={featuredPost} />
         </div>
       ) : (
@@ -4582,9 +4602,11 @@ function FeaturedPostModuleCard({
 }
 
 function FeaturedRoomModuleCard({
+  editing = false,
   profile,
   title,
 }: {
+  editing?: boolean | undefined;
   profile: Profile;
   title: string;
 }) {
@@ -4592,12 +4614,17 @@ function FeaturedRoomModuleCard({
 
   return (
     <article
-      className="h-full min-w-0 rounded-card border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
+      className={cn(
+        "h-full min-w-0 overflow-hidden rounded-card",
+        editing
+          ? "border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
+          : "border border-transparent bg-transparent p-0 shadow-none",
+      )}
       data-testid="profile-module-featured-room"
     >
-      <h3 className="text-sm font-semibold text-text">{title}</h3>
+      {editing ? <h3 className="text-sm font-semibold text-text">{title}</h3> : null}
       {featuredRoom ? (
-        <div className="mt-3">
+        <div className={editing ? "mt-3" : "h-full min-h-0"}>
           <FeaturedRoomCard room={featuredRoom} />
         </div>
       ) : (
@@ -4757,6 +4784,7 @@ function shouldRenderProfileActivityModule({
 
 type ProfileActivityModuleProps = {
   activeTab: ProfileTab;
+  editing?: boolean | undefined;
   feed: Post[];
   feedError: unknown;
   feedLoading: boolean;
@@ -4774,6 +4802,7 @@ type ProfileActivityModuleProps = {
 
 function ProfileActivityModule({
   activeTab,
+  editing = false,
   feed,
   feedError,
   feedLoading,
@@ -4792,12 +4821,17 @@ function ProfileActivityModule({
 
   return (
     <div
-      className="flex h-full max-h-[min(52rem,78dvh)] min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-card border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
+      className={cn(
+        "flex h-full max-h-[min(52rem,78dvh)] min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-card",
+        editing
+          ? "border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
+          : "border border-transparent bg-transparent p-0 shadow-none",
+      )}
       data-profile-activity-max-rows={activityRows}
       data-testid="profile-module-activity"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="text-sm font-semibold text-text">{title}</h3>
+        {editing ? <h3 className="text-sm font-semibold text-text">{title}</h3> : null}
         <div
           aria-label="Profile sections"
           className="flex gap-1 overflow-x-auto rounded-control bg-canvas/55 p-1 sm:justify-end"

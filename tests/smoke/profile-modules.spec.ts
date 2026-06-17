@@ -104,13 +104,10 @@ test("profile renders public modules safely", async ({ page }) => {
     "data-profile-grid-size",
     "2x1",
   );
-  await expectTextOrder(section, [
-    "Thia",
-    "About this space",
-    "Elsewhere",
-    "Badge shelf",
-  ]);
-  await expect(section.getByRole("heading", { name: "About this space" })).toBeVisible();
+  await expectTextOrder(section, ["Thia", "Literal <strong>plain</strong> text"]);
+  await expect(section.getByRole("heading", { name: "About this space" })).toHaveCount(0);
+  await expect(section.getByRole("heading", { name: "Elsewhere" })).toHaveCount(0);
+  await expect(section.getByRole("heading", { name: "Badge shelf" })).toHaveCount(0);
   await expect(section).toContainText("Literal <strong>plain</strong> text");
   await expect(section.locator("strong")).toHaveCount(0);
   await expect(section.getByRole("link", { name: "Personal site" })).toHaveAttribute(
@@ -317,7 +314,7 @@ test("activity renders through the module grid without a duplicate fixed section
   await expect(section).toBeVisible();
   await expect(section.getByTestId("profile-grid-module-activity")).toBeVisible();
   await expect(section.getByTestId("profile-module-activity")).toBeVisible();
-  await expect(section.getByRole("heading", { name: "Latest activity" })).toBeVisible();
+  await expect(section.getByRole("heading", { name: "Latest activity" })).toHaveCount(0);
 
   const tabs = section.getByTestId("profile-activity-tabs");
   await expect(tabs.getByRole("tab", { name: /Feed/ })).toBeVisible();
@@ -872,6 +869,52 @@ test("Twitch stream chat fills the creator module when embed metadata is availab
   await expect(creator.getByTestId("profile-integration-embed-twitch")).toBeVisible();
   await expect(creator.getByTestId("profile-integration-embed-twitch-chat")).toBeVisible();
   await expect(creator.getByRole("link")).toHaveCount(0);
+});
+
+test("owner editor preserves lower-row 6x5 creator modules on entry", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 1100 });
+  let savedPayload: Record<string, unknown> | undefined;
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      {
+        ...aboutModule({ id: 1, title: "About", body: "Stays above.", position: 1 }),
+        layout: { column: 1, row: 1, colSpan: 2, rowSpan: 1 },
+      },
+      twitchStreamChatModule({ id: 5, position: 2, row: 8 }),
+    ],
+    onCanvasSave: (payload) => {
+      savedPayload = payload;
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const creator = page.getByTestId("profile-grid-module-creator_live");
+  await expect(creator).toHaveAttribute("data-profile-grid-size", "6x5");
+  await expect(creator).toHaveCSS("--profile-grid-row", "8");
+
+  await page.getByTestId("profile-canvas-edit-button").click();
+  await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
+  await expect(creator).toHaveCSS("--profile-grid-row", "8");
+  await expect(creator).not.toHaveAttribute("data-profile-module-dragging", "true");
+
+  await page.getByTestId("profile-canvas-save-button").click();
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
+
+  const savedModules = savedPayload?.modules as Array<Record<string, unknown>>;
+  const creatorPlacement = savedModules.find((module) => module.id === 5);
+  expect(creatorPlacement).toMatchObject({
+    column: 1,
+    colSpan: 6,
+    row: 8,
+    rowSpan: 5,
+    visible: true,
+  });
+  expectNoOverlappingPlacements(savedModules);
 });
 
 test("public logged-out users do not see canvas edit controls", async ({ page }) => {
@@ -3212,11 +3255,11 @@ function spotifyEmbedMusicModule(overrides: { id?: number; position?: number } =
 }
 
 function twitchStreamChatModule(
-  overrides: { id?: number; position?: number } = {},
+  overrides: { id?: number; position?: number; row?: number } = {},
 ) {
   return {
     ...creatorModule(overrides),
-    layout: { column: 1, row: 1, colSpan: 6, rowSpan: 5 },
+    layout: { column: 1, row: overrides.row ?? 1, colSpan: 6, rowSpan: 5 },
     config: {
       description: "Live channel.",
       displayMode: "stream_chat",

@@ -956,7 +956,12 @@ interaction model:
   preview/open-link control.
 - Collision resolution is sideways-first: visible colliders try same-row right,
   then same-row left, then downward rows by nearby columns. There is no
-  wrap-to-top fallback.
+  wrap-to-top fallback. Client draft normalization must use the same 6 x 12
+  bounds as the server so large lower-row modules do not jump when editing
+  starts.
+- Public and non-edit module chrome should stay light: the grid provides the
+  shared glass surface, while individual module title bars and opaque module
+  shells appear only when they clarify editing or a content-specific fallback.
 - Connections owns custom links, platform links, lightweight provider links,
   and legacy `profiles.links`. Rich provider cards can remain standalone
   `music` or `creator_live` modules when they need more space.

@@ -51,6 +51,9 @@ import { CompactStateNotice } from "../ui/RouteState";
 import { ProfileGrid, ProfileGridModule } from "./ProfileGrid";
 import { ProfileConnectionIcon } from "./ProfileConnectionIcon";
 
+const PROFILE_CANVAS_COLUMNS = 6;
+const PROFILE_CANVAS_ROWS = 12;
+
 type ProfileModulesSectionProps = {
   badges: UserBadge[];
   error: unknown;
@@ -177,6 +180,7 @@ export function ProfileModuleGrid({
     : renderableProfileModules(modules, badges);
   const resolvedMaxColumns = maxColumns ?? profileLayoutMaxColumns(layoutPreset);
   const gridRef = useRef<HTMLDivElement | null>(null);
+  const lastDragLayoutRef = useRef<ProfileModuleLayout | undefined>(undefined);
   const suppressModuleClickRef = useRef(false);
   const [dragState, setDragState] = useState<
     | {
@@ -210,11 +214,20 @@ export function ProfileModuleGrid({
         activeDragState.rowSpan,
       );
 
+      if (
+        lastDragLayoutRef.current &&
+        profileCanvasLayoutsMatch(lastDragLayoutRef.current, layout)
+      ) {
+        return;
+      }
+
+      lastDragLayoutRef.current = layout;
       activeEditing.onMoveModule(activeDragState.moduleId, layout);
     }
 
     function handlePointerUp() {
       setDragState(undefined);
+      lastDragLayoutRef.current = undefined;
       suppressModuleClickRef.current = true;
       window.setTimeout(() => {
         suppressModuleClickRef.current = false;
@@ -260,6 +273,7 @@ export function ProfileModuleGrid({
     event.preventDefault();
     suppressModuleClickRef.current = true;
     editing.onSelectModule(module);
+    lastDragLayoutRef.current = layout;
     setDragState({
       moduleId: module.id,
       colSpan: layout.colSpan,
@@ -334,17 +348,18 @@ export function ProfileModuleGrid({
             className={cn(
               "relative",
               editing
-                ? "rounded-card transition duration-fluid ease-fluid"
+                ? "rounded-card transition-[filter,opacity,box-shadow] duration-fluid ease-fluid"
                 : undefined,
               editing && module.visibility !== "public" ? "opacity-55" : undefined,
               editing && dragState?.moduleId === module.id
-                ? "z-20 scale-[1.01] opacity-80 shadow-lift"
+                ? "z-20 scale-[1.012] opacity-85 drop-shadow-2xl"
                 : undefined,
               selected
                 ? "ring-2 ring-focus ring-offset-2 ring-offset-canvas"
                 : undefined,
             )}
             layout={safeLayout}
+            dragging={editing && dragState?.moduleId === module.id}
             presentation={{
               compact: profileModuleSizeIsCompact(span.size),
               density: definition.density,
@@ -396,6 +411,7 @@ export function ProfileModuleGrid({
                 <ProfileModuleCard
                   module={module}
                   badges={badges}
+                  editing={Boolean(editing)}
                   musicAutoplayRequestId={musicAutoplayRequestId}
                   size={span.size}
                 />
@@ -407,6 +423,18 @@ export function ProfileModuleGrid({
   );
 }
 
+function profileCanvasLayoutsMatch(
+  first: ProfileModuleLayout,
+  second: ProfileModuleLayout,
+): boolean {
+  return (
+    first.column === second.column &&
+    first.row === second.row &&
+    first.colSpan === second.colSpan &&
+    first.rowSpan === second.rowSpan
+  );
+}
+
 function profileCanvasLayoutFromPoint(
   grid: HTMLDivElement,
   clientX: number,
@@ -415,14 +443,17 @@ function profileCanvasLayoutFromPoint(
   rowSpan: number,
 ): ProfileModuleLayout {
   const rect = grid.getBoundingClientRect();
-  const columnWidth = rect.width / 6;
-  const rowHeight = Math.max(1, rect.height / 12);
+  const columnWidth = rect.width / PROFILE_CANVAS_COLUMNS;
+  const rowHeight = Math.max(1, rect.height / PROFILE_CANVAS_ROWS);
   const rawColumn = Math.floor((clientX - rect.left) / columnWidth) + 1;
   const rawRow = Math.floor((clientY - rect.top) / rowHeight) + 1;
 
   return {
-    column: Math.min(6 - colSpan + 1, Math.max(1, rawColumn)),
-    row: Math.min(12 - rowSpan + 1, Math.max(1, rawRow)),
+    column: Math.min(
+      PROFILE_CANVAS_COLUMNS - colSpan + 1,
+      Math.max(1, rawColumn),
+    ),
+    row: Math.min(PROFILE_CANVAS_ROWS - rowSpan + 1, Math.max(1, rawRow)),
     colSpan,
     rowSpan,
   };
@@ -435,6 +466,7 @@ type ProfileModuleContentRenderer = (
 
 type ProfileModuleCardProps = {
   badges: UserBadge[];
+  editing?: boolean | undefined;
   musicAutoplayRequestId?: number | undefined;
   module: ProfileModule;
   size?: ProfileGridModuleSize | undefined;
@@ -442,6 +474,7 @@ type ProfileModuleCardProps = {
 
 export function ProfileModuleCard({
   badges,
+  editing = false,
   musicAutoplayRequestId = 0,
   module,
   size = "1x1",
@@ -454,7 +487,12 @@ export function ProfileModuleCard({
 
   return (
     <article
-      className="grid h-full min-h-0 min-w-0 grid-rows-[auto_1fr] gap-2 overflow-hidden rounded-card border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil focus-within:border-line-strong"
+      className={cn(
+        "grid h-full min-h-0 min-w-0 overflow-hidden rounded-card focus-within:border-line-strong",
+        editing
+          ? "grid-rows-[auto_1fr] gap-2 border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
+          : "grid-rows-[1fr] border border-transparent bg-transparent p-0 shadow-none",
+      )}
       data-profile-module-action={definition.primaryAction}
       data-profile-module-compact={String(compact)}
       data-profile-module-density={definition.density}
@@ -465,9 +503,11 @@ export function ProfileModuleCard({
       data-profile-module-span-role={spanRole}
       data-testid={`profile-module-${module.type}`}
     >
-      <header className="min-w-0">
+      {editing ? (
+        <header className="min-w-0">
         <h3 className="truncate text-sm font-semibold text-text">{title}</h3>
-      </header>
+        </header>
+      ) : null}
       <div className="min-h-0 min-w-0 overflow-hidden">
         <ProfileModuleContent
           module={module}
