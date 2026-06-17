@@ -996,7 +996,7 @@ function profile_integration_provider_label(string $provider): string
 function profile_integration_embed_payload(array $normalized): ?array
 {
     $src = match ($normalized['provider']) {
-        'spotify' => 'https://open.spotify.com/embed/' . rawurlencode($normalized['resourceType']) . '/' . rawurlencode($normalized['resourceId']),
+        'spotify' => 'https://open.spotify.com/embed/' . rawurlencode($normalized['resourceType']) . '/' . rawurlencode($normalized['resourceId']) . '?theme=0',
         'apple_music' => 'https://embed.music.apple.com/us/' . rawurlencode($normalized['resourceType']) . '/' . rawurlencode($normalized['resourceId']),
         'youtube' => match ($normalized['resourceType']) {
             'video' => 'https://www.youtube-nocookie.com/embed/' . rawurlencode($normalized['resourceId']),

@@ -844,6 +844,10 @@ function ProfileIntegrationRichCard({
   const showPrimaryEmbed = Boolean(
     integration.embed && displayMode !== "stream_status",
   );
+  const primaryEmbedSrc = integration.embed
+    ? profileIntegrationEmbedSrc(integration)
+    : undefined;
+  const primaryEmbedHeight = profileIntegrationEmbedHeight(integration);
   const twitchChatSrc =
     displayMode === "stream_chat" ? twitchChatEmbedSrc(integration) : undefined;
 
@@ -892,19 +896,18 @@ function ProfileIntegrationRichCard({
       {showPrimaryEmbed && integration.embed ? (
         <iframe
           className={cn(
-            "block w-full border-t border-line bg-surface",
+            "block w-full border-t border-line bg-transparent",
             twitchChatSrc ? "min-h-0 flex-1" : undefined,
           )}
           title={integration.embed.title}
-          src={integration.embed.src}
-          height={
-            twitchChatSrc ? 260 : integration.embed.height ?? 180
-          }
+          src={primaryEmbedSrc}
+          height={twitchChatSrc ? 260 : primaryEmbedHeight}
           loading="lazy"
           referrerPolicy="strict-origin-when-cross-origin"
           allow={integration.embed.allow}
           sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
           allowFullScreen
+          data-profile-embed-provider={integration.provider}
           data-testid={`profile-integration-embed-${integration.provider}`}
         />
       ) : null}
@@ -922,6 +925,39 @@ function ProfileIntegrationRichCard({
       ) : null}
     </div>
   );
+}
+
+function profileIntegrationEmbedSrc(integration: ProfileIntegrationCard): string {
+  const src = integration.embed?.src ?? integration.sourceUrl;
+
+  if (integration.provider !== "spotify") {
+    return src;
+  }
+
+  try {
+    const url = new URL(src);
+
+    if (url.hostname === "open.spotify.com" && url.pathname.startsWith("/embed/")) {
+      url.searchParams.set("theme", "0");
+      return url.toString();
+    }
+  } catch {
+    return src;
+  }
+
+  return src;
+}
+
+function profileIntegrationEmbedHeight(integration: ProfileIntegrationCard): number {
+  if (integration.provider === "spotify") {
+    return 152;
+  }
+
+  if (integration.provider === "apple_music") {
+    return 152;
+  }
+
+  return integration.embed?.height ?? 180;
 }
 
 function twitchChatEmbedSrc(integration: ProfileIntegrationCard): string | undefined {

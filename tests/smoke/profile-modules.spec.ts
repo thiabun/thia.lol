@@ -628,8 +628,10 @@ test("video background and allowlisted rich integrations render safely", async (
   const spotifyEmbed = page.getByTestId("profile-integration-embed-spotify");
   await expect(spotifyEmbed).toHaveAttribute(
     "src",
-    "https://open.spotify.com/embed/playlist/profile-test",
+    "https://open.spotify.com/embed/playlist/profile-test?theme=0",
   );
+  await expect(spotifyEmbed).toHaveAttribute("height", "152");
+  await expect(spotifyEmbed).toHaveAttribute("data-profile-embed-provider", "spotify");
   await expect(spotifyEmbed).toHaveAttribute(
     "sandbox",
     /allow-scripts allow-same-origin/,
