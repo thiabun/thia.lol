@@ -175,6 +175,32 @@ export function AuthPage({ mode }: AuthPageProps) {
               {submitting ? "Working..." : isRegister ? "Create account" : "Sign in"}
             </Button>
 
+            <p className="mt-4 text-center text-xs leading-5 text-muted">
+              By {isRegister ? "creating an account" : "signing in"}, you agree to
+              the{" "}
+              <Link
+                to="/terms"
+                className="font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline"
+              >
+                Terms of Service
+              </Link>
+              ,{" "}
+              <Link
+                to="/privacy"
+                className="font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline"
+              >
+                Privacy Policy
+              </Link>
+              , and{" "}
+              <Link
+                to="/community-guidelines"
+                className="font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline"
+              >
+                Community Guidelines
+              </Link>
+              .
+            </p>
+
             <p className="mt-5 text-center text-sm text-muted">
               {isRegister ? "Already have an account?" : "New here?"}{" "}
               <Link

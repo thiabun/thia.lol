@@ -212,6 +212,11 @@ test("auth pages show compact brand identity without horizontal overflow", async
     await page.goto(path);
 
     await expect(page.getByTestId("auth-brand-lockup")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Terms of Service" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Privacy Policy" })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Community Guidelines" }),
+    ).toBeVisible();
     await expectNoHorizontalOverflow(page);
   }
 });
