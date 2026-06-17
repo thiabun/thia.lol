@@ -583,7 +583,7 @@ function SiteFooter() {
             className="inline-flex items-center gap-2 text-text"
             data-testid="site-footer-brand"
           >
-            <BrandMark className="rounded-full" size="sm" />
+            <BrandMark shape="circle" size="sm" />
             <span className="text-sm font-semibold leading-none tracking-normal">
               <span>thia</span>
               <span className="text-rose">.lol</span>
@@ -660,10 +660,11 @@ function CookieNotice() {
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
         <BrandMark
-          className="rounded-card shadow-soft"
+          className="shadow-soft"
           data-testid="cookie-brand-mark"
+          shape="squircle"
           size="sm"
-          variant="t"
+          variant="pink"
         />
         <p className="leading-6">
           thia.lol uses necessary cookies for sign-in and security. No analytics or

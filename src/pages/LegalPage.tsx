@@ -1,7 +1,7 @@
 import { ArrowRight, FileText, Mail } from "lucide-react";
 import { Link, Navigate } from "react-router";
 import { motion } from "motion/react";
-import { BrandLockup, BrandMark } from "../components/BrandLogo";
+import { BrandLogoMain, BrandMark } from "../components/BrandLogo";
 import { PageMeta } from "../components/PageMeta";
 import { Badge } from "../components/ui/Badge";
 import { Panel } from "../components/ui/Panel";
@@ -526,10 +526,7 @@ export function LegalIndexPage() {
               moderation process.
             </p>
           </div>
-          <BrandLockup
-            className="h-14 w-auto max-w-[11rem] sm:h-16 sm:max-w-[13rem]"
-            data-testid="legal-brand-lockup"
-          />
+          <BrandLogoMain data-testid="legal-brand-logo-main" size="lg" />
         </div>
         <div className="mt-5 rounded-card border border-line bg-canvas/45 p-4">
           <div className="flex items-start gap-3">
@@ -617,10 +614,10 @@ function PolicyPage({ slug }: { slug: keyof typeof policies }) {
             <p className="mt-4 text-sm text-muted">Last updated: {policy.updated}</p>
           </div>
           <BrandMark
-            className="order-first rounded-card shadow-soft sm:order-none"
+            className="order-first shadow-soft sm:order-none"
             data-testid="policy-brand-mark"
+            shape="squircle"
             size="lg"
-            variant="t"
           />
         </div>
       </Panel>
