@@ -557,25 +557,25 @@ test("video background and allowlisted rich integrations render safely", async (
       {
         ...musicModule({ id: 6, position: 2 }),
         config: {
-          description: "Current writing playlist.",
-          label: "Focus playlist",
+          description: "Current writing song.",
+          label: "Focus track",
           platform: "spotify",
-          url: "https://open.spotify.com/playlist/profile-test",
+          url: "https://open.spotify.com/track/profile-test",
           integration: {
             provider: "spotify",
-            resourceType: "playlist",
+            resourceType: "track",
             resourceId: "profile-test",
-            resourceKey: "spotify:playlist:profile-test",
-            sourceUrl: "https://open.spotify.com/playlist/profile-test",
+            resourceKey: "spotify:track:profile-test",
+            sourceUrl: "https://open.spotify.com/track/profile-test",
             metadata: {
-              title: "Focus playlist",
-              subtitle: "Spotify playlist",
+              title: "Focus track",
+              subtitle: "Spotify track",
               recentLabel: "Recently updated",
               recentFetchedAt: "2026-06-16T10:00:00Z",
             },
             embed: {
               type: "iframe",
-              src: "https://open.spotify.com/embed/playlist/profile-test",
+              src: "https://open.spotify.com/embed/track/profile-test",
               title: "Spotify player",
               height: 152,
               allow: "encrypted-media; fullscreen; clipboard-write",
@@ -628,9 +628,9 @@ test("video background and allowlisted rich integrations render safely", async (
   const spotifyEmbed = page.getByTestId("profile-integration-embed-spotify");
   await expect(spotifyEmbed).toHaveAttribute(
     "src",
-    "https://open.spotify.com/embed/playlist/profile-test?theme=0",
+    "https://open.spotify.com/embed/track/profile-test?theme=0",
   );
-  await expect(spotifyEmbed).toHaveAttribute("height", "152");
+  await expect(spotifyEmbed).toHaveAttribute("height", "80");
   await expect(spotifyEmbed).toHaveAttribute("data-profile-embed-provider", "spotify");
   await expect(spotifyEmbed).toHaveAttribute(
     "sandbox",

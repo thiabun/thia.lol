@@ -63,6 +63,8 @@ assert_true($github['embed'] === null, 'github should not generate iframe embeds
 
 $spotifyCard = profile_integration_generated_card('https://open.spotify.com/playlist/playlist123', null);
 assert_true($spotifyCard['embed']['src'] === 'https://open.spotify.com/embed/playlist/playlist123?theme=0', 'spotify embed src mismatch');
+$spotifyTrackCard = profile_integration_generated_card('https://open.spotify.com/track/track123', null);
+assert_true($spotifyTrackCard['embed']['height'] === 80, 'spotify track embed height mismatch');
 assert_true(profile_integration_provider_oauth_enabled('apple_music', ['developer_token' => 'developer-token']) === false, 'Apple Music should not expose OAuth start in this pass');
 
 $twitchCard = profile_integration_generated_card('https://twitch.tv/thiabun', null);

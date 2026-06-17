@@ -950,6 +950,10 @@ function profileIntegrationEmbedSrc(integration: ProfileIntegrationCard): string
 
 function profileIntegrationEmbedHeight(integration: ProfileIntegrationCard): number {
   if (integration.provider === "spotify") {
+    if (integration.resourceType === "track") {
+      return 80;
+    }
+
     return 152;
   }
 

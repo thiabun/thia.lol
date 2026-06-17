@@ -1016,8 +1016,21 @@ function profile_integration_embed_payload(array $normalized): ?array
         'src' => $src,
         'title' => profile_integration_provider_label($normalized['provider']) . ' embed',
         'allow' => 'autoplay; encrypted-media; picture-in-picture; fullscreen',
-        'height' => in_array($normalized['provider'], ['spotify', 'apple_music'], true) ? 152 : 220,
+        'height' => profile_integration_embed_height($normalized),
     ];
+}
+
+function profile_integration_embed_height(array $normalized): int
+{
+    if ($normalized['provider'] === 'spotify') {
+        return $normalized['resourceType'] === 'track' ? 80 : 152;
+    }
+
+    if ($normalized['provider'] === 'apple_music') {
+        return 152;
+    }
+
+    return 220;
 }
 
 function profile_integration_twitch_embed_src(array $normalized): ?string
