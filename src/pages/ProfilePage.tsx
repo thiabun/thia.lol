@@ -1259,7 +1259,6 @@ export function ProfilePage() {
         />
         {isOwnProfile ? (
           <ProfileCanvasEditorToolbar
-            backgroundBlur={draftBackgroundBlur}
             busy={canvasLoading || canvasSaving}
             editing={canvasEditing}
             error={canvasError}
@@ -1269,14 +1268,11 @@ export function ProfilePage() {
             integrationSuggestions={integrationSuggestions}
             integrations={profileIntegrations}
             modules={draftModules}
-            profile={renderedProfile}
-            profileUploading={profileDraftUploading}
             removedModules={deletedDraftModules}
             selectedModule={selectedCanvasModule}
             userBadges={profileBadges}
             onAddIntegrationCard={handleAddIntegrationCard}
             onAddModule={(input) => void handleAddCanvasModule(input)}
-            onBackgroundBlurChange={setDraftBackgroundBlur}
             onCancel={handleCancelCanvasEdit}
             onConnectIntegration={(provider) => void handleConnectIntegration(provider)}
             onDisconnectIntegration={(provider) =>
@@ -1291,22 +1287,37 @@ export function ProfilePage() {
             }
             onRestoreModule={(module) => void handleRestoreCanvasModule(module)}
             onSave={() => void handleSaveCanvasEdit()}
-            onProfileImageUpload={(file, purpose) =>
-              void handleProfileImageDraftUpload(file, purpose)
-            }
-            onProfileVideoUpload={(file) => void handleProfileVideoDraftUpload(file)}
-            onProfileBackgroundClear={() =>
-              handleDraftProfileChange((current) => ({
-                ...current,
-                profileBackground: null,
-                profileBackgroundVideo: null,
-                profileBackgroundVideoPoster: null,
-              }))
-            }
           />
         ) : null}
         <div className="min-w-0 space-y-4 sm:space-y-5">
-        <ProfileModulesSection
+          {canvasEditing ? (
+            <div
+              className="relative z-30 flex justify-end"
+              data-testid="profile-canvas-background-surface"
+            >
+              <div className="w-full max-w-sm">
+                <ProfileCanvasBackgroundControls
+                  backgroundBlur={draftBackgroundBlur}
+                  profile={renderedProfile}
+                  uploading={profileDraftUploading}
+                  onBackgroundBlurChange={setDraftBackgroundBlur}
+                  onClear={() =>
+                    handleDraftProfileChange((current) => ({
+                      ...current,
+                      profileBackground: null,
+                      profileBackgroundVideo: null,
+                      profileBackgroundVideoPoster: null,
+                    }))
+                  }
+                  onImageUpload={(file) =>
+                    void handleProfileImageDraftUpload(file, "profile_background")
+                  }
+                  onVideoUpload={(file) => void handleProfileVideoDraftUpload(file)}
+                />
+              </div>
+            </div>
+          ) : null}
+          <ProfileModulesSection
           badges={profileBadges}
           editing={
             canvasEditing
@@ -2162,7 +2173,6 @@ function profileCanvasAddEntryNeedsBody(entry: ProfileCanvasAddEntry): boolean {
 }
 
 type ProfileCanvasEditorToolbarProps = {
-  backgroundBlur: ProfileBackgroundBlur;
   busy: boolean;
   editing: boolean;
   error?: string | undefined;
@@ -2174,12 +2184,9 @@ type ProfileCanvasEditorToolbarProps = {
   >;
   integrations?: ProfileIntegrationsResult | undefined;
   modules: ProfileModule[];
-  profile: Profile;
-  profileUploading?: "backgroundImage" | "backgroundVideo" | "avatar" | "banner" | undefined;
   removedModules: ProfileModule[];
   onAddIntegrationCard: (card: ProfileIntegrationCard) => void;
   onAddModule: (input: CreateProfileModuleInput) => void;
-  onBackgroundBlurChange: (blur: ProfileBackgroundBlur) => void;
   onCancel: () => void;
   onConnectIntegration: (provider: ProfileIntegrationProvider) => void;
   onDisconnectIntegration: (provider: ProfileIntegrationProvider) => void;
@@ -2191,12 +2198,6 @@ type ProfileCanvasEditorToolbarProps = {
   ) => void;
   onRestoreModule: (module: ProfileModule) => void;
   onSave: () => void;
-  onProfileImageUpload: (
-    file: File,
-    purpose: "avatar" | "banner" | "profile_background",
-  ) => void;
-  onProfileVideoUpload: (file: File) => void;
-  onProfileBackgroundClear: () => void;
   selectedModule?: ProfileModule | undefined;
   userBadges: UserBadge[];
 };
@@ -2258,7 +2259,6 @@ const profileIntegrationProviders: ProfileIntegrationProvider[] = [
 ];
 
 function ProfileCanvasEditorToolbar({
-  backgroundBlur,
   busy,
   editing,
   error,
@@ -2268,11 +2268,8 @@ function ProfileCanvasEditorToolbar({
   integrationSuggestions,
   integrations,
   modules,
-  profile,
-  profileUploading,
   onAddIntegrationCard,
   onAddModule,
-  onBackgroundBlurChange,
   onCancel,
   onConnectIntegration,
   onDisconnectIntegration,
@@ -2281,9 +2278,6 @@ function ProfileCanvasEditorToolbar({
   onResolveIntegrationUrl,
   onRestoreModule,
   onSave,
-  onProfileImageUpload,
-  onProfileVideoUpload,
-  onProfileBackgroundClear,
   removedModules,
   selectedModule,
   userBadges,
@@ -2463,15 +2457,6 @@ function ProfileCanvasEditorToolbar({
               data-testid="profile-canvas-module-search"
             />
           </label>
-          <ProfileCanvasBackgroundControls
-            backgroundBlur={backgroundBlur}
-            profile={profile}
-            uploading={profileUploading}
-            onBackgroundBlurChange={onBackgroundBlurChange}
-            onClear={onProfileBackgroundClear}
-            onImageUpload={(file) => onProfileImageUpload(file, "profile_background")}
-            onVideoUpload={onProfileVideoUpload}
-          />
         </div>
 
         {activeCategory === "integrations" ? (
@@ -3390,6 +3375,7 @@ function ProfileCanvasBackgroundControls({
 
                   if (file) {
                     onImageUpload(file);
+                    setOpen(false);
                   }
 
                   event.currentTarget.value = "";
@@ -3413,6 +3399,7 @@ function ProfileCanvasBackgroundControls({
 
                   if (file) {
                     onVideoUpload(file);
+                    setOpen(false);
                   }
 
                   event.currentTarget.value = "";
@@ -3424,7 +3411,10 @@ function ProfileCanvasBackgroundControls({
               className="min-h-10 rounded-control border border-line bg-canvas/55 px-3 text-sm font-semibold text-muted transition duration-fluid ease-fluid hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-50"
               data-profile-edit-control="true"
               disabled={!hasBackground || Boolean(uploading)}
-              onClick={onClear}
+              onClick={() => {
+                onClear();
+                setOpen(false);
+              }}
             >
               Clear background
             </button>
@@ -3448,7 +3438,10 @@ function ProfileCanvasBackgroundControls({
                   aria-pressed={backgroundBlur === blur}
                   data-profile-edit-control="true"
                   data-testid={`profile-background-blur-${blur}`}
-                  onClick={() => onBackgroundBlurChange(blur)}
+                  onClick={() => {
+                    onBackgroundBlurChange(blur);
+                    setOpen(false);
+                  }}
                 >
                   {blurLabel(blur)}
                 </button>

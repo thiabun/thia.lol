@@ -75,7 +75,8 @@ The active P3 editor is an owner-only inline canvas editor:
   backward compatibility.
 - Background image, muted looping video background, poster/static fallback where
   supported, reset, and "Background clarity" blur controls live in a compact
-  Background popover opened from the Edit Canvas panel.
+  Background popover attached to the live canvas surface, outside the module
+  menu.
 - Save is a single primary Done action. Cancel exits without persisting draft
   layout changes.
 

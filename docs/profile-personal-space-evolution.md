@@ -182,7 +182,8 @@ P3A makes the modular profile canvas a real editable surface.
   placement where possible.
 - The editor model keeps the live profile canvas visible. Desktop uses a
   compact translucent left panel with categories, module cards, search,
-  suggestions, integrations, removed modules, and a Background popover trigger.
+  suggestions, integrations, and removed modules. Background uses a compact
+  popover trigger attached to the live canvas surface, outside the module menu.
   Mobile uses the same compact actions as a bottom sheet and public mobile
   layout still ignores exact desktop placement.
 - The panel categories are Essentials, Featured, Media, Integrations, and
@@ -917,8 +918,8 @@ Profiles V3 P3 adds real persistence for the modular profile canvas:
   retired large customization modal.
 - Module editing is local to the selected module where possible: size,
   visibility, profile info, Connections, text, and featured content selection
-  are not sent to a generic dashboard. Background media and clarity live in the
-  compact Background popover opened from the editor panel.
+  are not sent to a generic dashboard. Background media and clarity live in a
+  compact Background popover attached to the live canvas surface.
 - Pointer drag is the primary placement system in this pass. Direct position
   controls are deferred to a future accessibility toggle in the settings
   surface.
@@ -943,7 +944,7 @@ interaction model:
 - Profile Info remains identity-first and no longer duplicates legacy links.
 - Background image, muted looping video background where supported, reset, and
   "Background clarity" blur controls live in a compact Background popover
-  opened from Edit Canvas.
+  attached to the live canvas surface, outside the module menu.
 - Integration provider status should distinguish `Links ready`, `Metadata
   ready`, `OAuth ready`, and safe missing-config diagnostics by key name only.
   Provider logos should use branded icons where available.

@@ -738,6 +738,12 @@ test("owner edits background blur, module placement, and visibility", async ({
     "data-profile-canvas-panel",
     "left",
   );
+  await expect(
+    page
+      .getByTestId("profile-canvas-dock")
+      .getByTestId("profile-canvas-background-controls"),
+  ).toHaveCount(0);
+  await expect(page.getByTestId("profile-canvas-background-surface")).toBeVisible();
   await expect(page.getByTestId("profile-canvas-background-controls")).toBeVisible();
   await expect(page.getByTestId("profile-canvas-background-trigger")).toBeVisible();
   await expect(page.getByText("Background clarity")).toHaveCount(0);
@@ -747,6 +753,7 @@ test("owner edits background blur, module placement, and visibility", async ({
   await expect(page.getByTestId("profile-canvas-add-label-input")).toHaveCount(0);
 
   await page.getByTestId("profile-background-blur-heavy").click();
+  await expect(page.getByTestId("profile-canvas-background-popover")).toHaveCount(0);
   await page.getByTestId("profile-grid-module-about").click();
   const aboutEdit = page
     .getByTestId("profile-grid-module-about")
