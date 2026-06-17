@@ -4,6 +4,8 @@ import {
   Globe,
   Music2,
   Move,
+  Pause,
+  Play,
   Radio,
   Sparkles,
 } from "lucide-react";
@@ -882,6 +884,18 @@ function ProfileIntegrationRichCard({
   const twitchChatSrc =
     displayMode === "stream_chat" ? twitchChatEmbedSrc(integration) : undefined;
 
+  if (showPrimaryEmbed && integration.embed && integration.provider === "spotify") {
+    return (
+      <SpotifyMusicPlayer
+        autoplayRequestId={autoplayRequestId}
+        fallbackLabel={fallbackLabel}
+        icon={icon}
+        integration={integration}
+        module={module}
+      />
+    );
+  }
+
   return (
     <div
       className={cn(
@@ -925,31 +939,22 @@ function ProfileIntegrationRichCard({
         <ExternalLink aria-hidden="true" size={15} className="shrink-0 text-muted" />
       </a>
       {showPrimaryEmbed && integration.embed ? (
-        integration.provider === "spotify" ? (
-          <SpotifyEmbedPlayer
-            autoplayRequestId={autoplayRequestId}
-            height={primaryEmbedHeight}
-            integration={integration}
-            title={integration.embed.title}
-          />
-        ) : (
-          <iframe
-            className={cn(
-              "block w-full border-t border-line bg-transparent",
-              twitchChatSrc ? "min-h-0 flex-1" : undefined,
-            )}
-            title={integration.embed.title}
-            src={primaryEmbedSrc}
-            height={twitchChatSrc ? 260 : primaryEmbedHeight}
-            loading="lazy"
-            referrerPolicy="strict-origin-when-cross-origin"
-            allow={integration.embed.allow}
-            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
-            allowFullScreen
-            data-profile-embed-provider={integration.provider}
-            data-testid={`profile-integration-embed-${integration.provider}`}
-          />
-        )
+        <iframe
+          className={cn(
+            "block w-full border-t border-line bg-transparent",
+            twitchChatSrc ? "min-h-0 flex-1" : undefined,
+          )}
+          title={integration.embed.title}
+          src={primaryEmbedSrc}
+          height={twitchChatSrc ? 260 : primaryEmbedHeight}
+          loading="lazy"
+          referrerPolicy="strict-origin-when-cross-origin"
+          allow={integration.embed.allow}
+          sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+          allowFullScreen
+          data-profile-embed-provider={integration.provider}
+          data-testid={`profile-integration-embed-${integration.provider}`}
+        />
       ) : null}
       {twitchChatSrc ? (
         <iframe
@@ -982,6 +987,7 @@ type SpotifyIframeApi = {
 
 type SpotifyEmbedController = {
   destroy?: () => void;
+  pause?: () => Promise<void> | void;
   play?: () => Promise<void> | void;
   resume?: () => Promise<void> | void;
   togglePlay?: () => Promise<void> | void;
@@ -996,22 +1002,36 @@ declare global {
 
 let spotifyIframeApiPromise: Promise<SpotifyIframeApi> | undefined;
 
-function SpotifyEmbedPlayer({
+function SpotifyMusicPlayer({
   autoplayRequestId,
-  height,
+  fallbackLabel,
+  icon,
   integration,
-  title,
+  module,
 }: {
   autoplayRequestId: number;
-  height: number;
+  fallbackLabel: string;
+  icon: ReactNode;
   integration: ProfileIntegrationCard;
-  title: string;
+  module: ProfileModule;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<SpotifyEmbedController | undefined>(undefined);
   const lastAutoplayRequestRef = useRef(0);
+  const [controllerReady, setControllerReady] = useState(false);
   const [controllerReadyVersion, setControllerReadyVersion] = useState(0);
+  const [playing, setPlaying] = useState(false);
   const [fallback, setFallback] = useState(false);
+  const metadata = integration.metadata;
+  const title = metadata.title ?? module.config.label ?? fallbackLabel;
+  const subtitle = metadata.subtitle ?? platformDisplayName(integration.provider);
+  const description = metadata.description ?? module.config.description;
+  const fetchedAt =
+    integration.apiBacked && (metadata.live || metadata.recentLabel)
+      ? metadata.liveFetchedAt ?? metadata.recentFetchedAt
+      : undefined;
+  const playerTitle = integration.embed?.title ?? `${title} on Spotify`;
+  const playerHeight = profileIntegrationEmbedHeight(integration);
   const uri = spotifyIntegrationUri(integration);
 
   useEffect(() => {
@@ -1024,6 +1044,8 @@ function SpotifyEmbedPlayer({
 
     let canceled = false;
     setFallback(false);
+    setControllerReady(false);
+    setPlaying(false);
     controllerRef.current = undefined;
     container.replaceChildren();
 
@@ -1036,7 +1058,7 @@ function SpotifyEmbedPlayer({
         api.createController(
           container,
           {
-            height: String(height),
+            height: String(playerHeight),
             theme: "0",
             uri,
             width: "100%",
@@ -1048,7 +1070,8 @@ function SpotifyEmbedPlayer({
             }
 
             controllerRef.current = controller;
-            decorateSpotifyEmbedIframe(container, integration, height, title);
+            decorateSpotifyEmbedIframe(container, integration, playerHeight, playerTitle);
+            setControllerReady(true);
             setControllerReadyVersion((version) => version + 1);
           },
         );
@@ -1063,9 +1086,10 @@ function SpotifyEmbedPlayer({
       canceled = true;
       controllerRef.current?.destroy?.();
       controllerRef.current = undefined;
+      setControllerReady(false);
       container.replaceChildren();
     };
-  }, [height, integration, title, uri]);
+  }, [integration, playerHeight, playerTitle, uri]);
 
   useEffect(() => {
     const controller = controllerRef.current;
@@ -1079,30 +1103,121 @@ function SpotifyEmbedPlayer({
     }
 
     lastAutoplayRequestRef.current = autoplayRequestId;
-    void playSpotifyEmbed(controller);
+    void playSpotifyEmbed(controller).then((played) => {
+      if (played) {
+        setPlaying(true);
+      }
+    });
   }, [autoplayRequestId, controllerReadyVersion]);
+
+  async function handlePlaybackToggle() {
+    const controller = controllerRef.current;
+
+    if (!controller) {
+      return;
+    }
+
+    const nextPlaying = await toggleSpotifyPlayback(controller, playing);
+
+    if (nextPlaying !== undefined) {
+      setPlaying(nextPlaying);
+    }
+  }
 
   return (
     <div
-      className="border-t border-line bg-transparent"
-      data-testid="profile-spotify-embed-player"
+      className="overflow-hidden rounded-card border border-line bg-canvas/55"
+      data-testid="profile-spotify-custom-player"
     >
-      <div ref={containerRef} />
-      {fallback ? (
-        <iframe
-          className="block w-full bg-transparent"
-          title={title}
-          src={profileIntegrationEmbedSrc(integration)}
-          height={height}
-          loading="lazy"
-          referrerPolicy="strict-origin-when-cross-origin"
-          allow={integration.embed?.allow}
-          sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
-          allowFullScreen
-          data-profile-embed-provider="spotify"
-          data-testid="profile-integration-embed-spotify"
-        />
-      ) : null}
+      <div className="relative isolate min-h-32 overflow-hidden p-3">
+        {metadata.imageUrl ? (
+          <img
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 -z-20 size-full object-cover opacity-20 blur-2xl"
+            decoding="async"
+            loading="lazy"
+            src={metadata.imageUrl}
+          />
+        ) : null}
+        <div className="absolute inset-0 -z-10 bg-canvas/72" />
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-card border border-line bg-surface/70 text-text shadow-soft">
+            {metadata.imageUrl ? (
+              <img
+                alt=""
+                className="size-full object-cover"
+                decoding="async"
+                loading="lazy"
+                src={metadata.imageUrl}
+                data-testid="profile-spotify-artwork"
+              />
+            ) : (
+              icon
+            )}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold text-text">
+              {title}
+            </span>
+            <span className="mt-0.5 block truncate text-xs text-muted">
+              {subtitle}
+              {fetchedAt ? ` · ${formatIntegrationAge(fetchedAt)}` : ""}
+            </span>
+            {description ? (
+              <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted">
+                {description}
+              </span>
+            ) : null}
+          </span>
+          <a
+            className="grid size-9 shrink-0 place-items-center rounded-card border border-line bg-canvas/65 text-muted transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            href={integration.sourceUrl}
+            rel="noopener noreferrer"
+            target="_blank"
+            aria-label="Open in Spotify"
+          >
+            <ExternalLink aria-hidden="true" size={16} />
+          </a>
+        </div>
+        <div className="mt-4 flex items-center gap-3">
+          <button
+            type="button"
+            className="grid size-11 shrink-0 place-items-center rounded-full border border-line bg-accent text-accent-contrast shadow-soft transition duration-fluid ease-fluid hover:-translate-y-0.5 hover:shadow-lift focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0"
+            onClick={handlePlaybackToggle}
+            disabled={fallback || !controllerReady}
+            aria-label={playing ? "Pause Spotify music" : "Play Spotify music"}
+            data-testid="profile-spotify-play-button"
+          >
+            {playing ? (
+              <Pause aria-hidden="true" size={18} />
+            ) : (
+              <Play aria-hidden="true" size={18} />
+            )}
+          </button>
+          <div className="min-w-0 flex-1">
+            <div className="h-1.5 overflow-hidden rounded-full bg-line">
+              <div
+                className={cn(
+                  "h-full rounded-full bg-accent transition-[width] duration-fluid ease-fluid",
+                  playing ? "w-2/3" : "w-1/4",
+                )}
+              />
+            </div>
+            <div className="mt-1 flex items-center justify-between gap-3 text-[0.7rem] font-semibold uppercase text-muted">
+              <span className="truncate">{integrationLabel(integration)}</span>
+              <span>{fallback ? "Open to play" : playing ? "Playing" : "Ready"}</span>
+            </div>
+          </div>
+        </div>
+        <div
+          className="pointer-events-none absolute size-px overflow-hidden opacity-0"
+          aria-hidden="true"
+          data-testid="profile-spotify-provider-frame"
+        >
+          <div ref={containerRef} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -1187,24 +1302,52 @@ function decorateSpotifyEmbedIframe(
       "allow",
       integration.embed?.allow ?? "autoplay; encrypted-media; picture-in-picture; fullscreen",
     );
+    iframe.setAttribute(
+      "sandbox",
+      "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms",
+    );
+    iframe.allowFullscreen = true;
   });
 }
 
-async function playSpotifyEmbed(controller: SpotifyEmbedController) {
+async function playSpotifyEmbed(controller: SpotifyEmbedController): Promise<boolean> {
   try {
     if (controller.play) {
       await controller.play();
-      return;
+      return true;
     }
 
     if (controller.resume) {
       await controller.resume();
-      return;
+      return true;
     }
 
     await controller.togglePlay?.();
+    return true;
   } catch {
     // Browser/provider autoplay policy can still block this even after consent.
+    return false;
+  }
+}
+
+async function toggleSpotifyPlayback(
+  controller: SpotifyEmbedController,
+  playing: boolean,
+): Promise<boolean | undefined> {
+  try {
+    if (playing && controller.pause) {
+      await controller.pause();
+      return false;
+    }
+
+    if (controller.togglePlay) {
+      await controller.togglePlay();
+      return !playing;
+    }
+
+    return (await playSpotifyEmbed(controller)) ? true : undefined;
+  } catch {
+    return undefined;
   }
 }
 

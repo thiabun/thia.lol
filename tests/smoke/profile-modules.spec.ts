@@ -571,6 +571,7 @@ test("video background and allowlisted rich integrations render safely", async (
             metadata: {
               title: "Focus track",
               subtitle: "Spotify track",
+              imageUrl: "https://i.scdn.co/image/focus-track",
               recentLabel: "Recently updated",
               recentFetchedAt: "2026-06-16T10:00:00Z",
             },
@@ -626,6 +627,7 @@ test("video background and allowlisted rich integrations render safely", async (
     backdrop.locator('img[src="/uploads/media/2026/06/profile-video-poster.webp"]'),
   ).toBeAttached();
 
+  await expectSpotifyCustomPlayer(page);
   const spotifyEmbed = page.getByTestId("profile-integration-embed-spotify");
   await expect(spotifyEmbed).toHaveAttribute(
     "src",
@@ -636,6 +638,10 @@ test("video background and allowlisted rich integrations render safely", async (
   await expect(spotifyEmbed).toHaveAttribute(
     "allow",
     /encrypted-media/,
+  );
+  await expect(page.getByTestId("profile-spotify-artwork")).toHaveAttribute(
+    "src",
+    "https://i.scdn.co/image/focus-track",
   );
   await expect(page.getByText("Recently updated · Spotify")).toBeVisible();
   await expect(page.getByText("Public repository metadata.")).toBeVisible();
@@ -655,7 +661,7 @@ test("public visitor continues before Spotify profile music starts", async ({
 
   const overlay = page.getByTestId("profile-music-continue-overlay");
   await expect(overlay).toBeVisible();
-  await expect(page.getByTestId("profile-integration-embed-spotify")).toBeVisible();
+  await expectSpotifyCustomPlayer(page);
   await expect.poll(() => spotifyPlayCalls(page)).toBe(0);
 
   const button = page.getByTestId("profile-music-continue-button");
@@ -699,7 +705,7 @@ test("stored Spotify music consent skips the continue overlay", async ({
   await page.goto("/@thia");
 
   await expect(page.getByTestId("profile-music-continue-overlay")).toHaveCount(0);
-  await expect(page.getByTestId("profile-integration-embed-spotify")).toBeVisible();
+  await expectSpotifyCustomPlayer(page);
   await expect.poll(() => spotifyPlayCalls(page)).toBe(1);
 });
 
@@ -758,7 +764,7 @@ test("profile music continue overlay only follows the first visible music module
   await page.goto("/@thia");
 
   await expect(page.getByTestId("profile-music-continue-overlay")).toHaveCount(0);
-  await expect(page.getByTestId("profile-integration-embed-spotify")).toBeVisible();
+  await expectSpotifyCustomPlayer(page);
   await expect.poll(() => spotifyPlayCalls(page)).toBe(0);
 });
 
@@ -774,7 +780,7 @@ test("Spotify playback failure still opens the profile", async ({ page }) => {
   await page.getByTestId("profile-music-continue-button").click();
 
   await expect(page.getByTestId("profile-music-continue-overlay")).toHaveCount(0);
-  await expect(page.getByTestId("profile-integration-embed-spotify")).toBeVisible();
+  await expectSpotifyCustomPlayer(page);
   await expect.poll(() => spotifyPlayCalls(page)).toBe(1);
 });
 
@@ -2771,9 +2777,16 @@ async function mockSpotifyIframeApi(
             element.appendChild(iframe);
             callback({
               destroy: function() {},
+              pause: function() {
+                return Promise.resolve();
+              },
               play: function() {
                 window.__spotifyPlayCalls = (window.__spotifyPlayCalls || 0) + 1;
                 ${options.rejectPlay ? "return Promise.reject(new Error('blocked'));" : "return Promise.resolve();"}
+              },
+              togglePlay: function() {
+                window.__spotifyPlayCalls = (window.__spotifyPlayCalls || 0) + 1;
+                return Promise.resolve();
               }
             });
           }
@@ -2781,6 +2794,17 @@ async function mockSpotifyIframeApi(
       `,
     });
   });
+}
+
+async function expectSpotifyCustomPlayer(page: Page) {
+  const player = page.getByTestId("profile-spotify-custom-player");
+
+  await expect(player).toBeVisible();
+  await expect(player.getByText("Focus track")).toBeVisible();
+  await expect(player.getByText("Spotify track")).toBeVisible();
+  await expect(page.getByTestId("profile-spotify-play-button")).toBeVisible();
+  await expect(page.getByTestId("profile-spotify-play-button")).toBeEnabled();
+  await expect(page.getByTestId("profile-integration-embed-spotify")).toBeAttached();
 }
 
 async function spotifyPlayCalls(page: Page): Promise<number> {
@@ -3080,6 +3104,7 @@ function spotifyEmbedMusicModule(overrides: { id?: number; position?: number } =
         metadata: {
           title: "Focus track",
           subtitle: "Spotify track",
+          imageUrl: "https://i.scdn.co/image/focus-track",
         },
         embed: {
           type: "iframe",

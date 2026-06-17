@@ -248,6 +248,11 @@ the profile renderer constrained.
   start the Spotify embed. Stored consent skips the overlay on later visits, but
   playback remains best-effort because browser and Spotify policies can still
   block audible autoplay.
+- Spotify music modules should render through a thia.lol-owned player shell
+  using normalized metadata such as title, artist/subtitle, description, and
+  album artwork. Spotify remains the playback provider through the official
+  embed controller; thia.lol must not re-host, extract, or stream Spotify audio
+  as if it were local media.
 - Uploaded profile background video is restricted to profile backgrounds,
   MP4/WebM, randomized filenames, MIME sniffing, and no PHP-executable
   extensions.
@@ -1172,7 +1177,7 @@ The module system should be introduced after a profile layout refresh, not bolte
 | Blog / Journal | Support long-form profile updates. | Shows latest entries or pinned entries on the profile. | Entry selection, archive link, display mode. | Needs moderation, visibility, reporting, content limits. | Future `posts.post_type = 'blog'` or separate `profile_entries`. | v2 |
 | Project Showcase | Present creator projects, apps, writing, art, servers, or releases. | Cards with title, description, image, link, status. | Up to a small number of projects, safe URLs, optional image. | Link safety, no misleading claims, no unsafe embeds. | Module settings JSON or future `profile_projects`. | v2 |
 | Gallery | Show selected uploaded images/media. | Responsive gallery with thumbnails and captions. | Select uploaded media, captions, ordering. | Moderation and takedown implications; no external hotlink gallery in v1. | Future media library references. | v2 |
-| Music | Show a favorite song, playlist, or now-playing style card. | Static card, link-first panel, or Spotify embed when configured. Public visitors may see a Continue overlay before playback is attempted. | Platform, URL, display title, optional note. | No autoplay without explicit visitor action or stored local profile consent; no invasive tracking; no fake live status. | Module settings with validated music URL. | v2/later |
+| Music | Show a favorite song, playlist, or now-playing style card. | Static card, link-first panel, or custom thia.lol player shell for Spotify metadata/artwork when configured. Public visitors may see a Continue overlay before playback is attempted. | Platform, URL, display title, optional note. | No autoplay without explicit visitor action or stored local profile consent; no invasive tracking; no fake live status; provider audio remains provider-controlled. | Module settings with validated music URL. | v2/later |
 | Spotify Playlist | Highlight Spotify playlist/song. | Link card first; possible oEmbed/embed later only after decision. | Spotify URL, display mode. | Third-party tracking, API/key, embed performance, age/content concerns. | Validated URL; optional cached metadata later. | later |
 | Apple Music Playlist/Song | Highlight Apple Music content. | Link card first; possible embed later. | Apple Music URL, display mode. | Third-party tracking, region availability, content ratings. | Validated URL; optional cached metadata later. | later |
 | Twitch Live/Status | Show stream presence. | Link/status card first; embed only after privacy/performance review. | Channel, display mode, optional chat link. | Chat embeds are high risk; moderation and tracking concerns. | Validated channel; optional cached status if API-backed. | later |

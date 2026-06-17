@@ -222,6 +222,10 @@ global switches.
   may try to start the Spotify embed; later visits can skip the overlay, but
   playback remains best-effort because the browser or Spotify can still block
   audible autoplay.
+- Spotify music display should use thia.lol's custom player shell for artwork,
+  title, subtitle/artist, description, and compact controls. Spotify still owns
+  the actual playback through its embed controller; do not build local Spotify
+  audio streaming or hide that provider relationship from users.
 - If a provider is missing config, missing OAuth, or failing, the UI should still
   allow safe URL-based module configuration where that provider supports links.
 - Spotify and Apple Music create `music` modules. YouTube, Twitch, and GitHub
