@@ -1965,9 +1965,18 @@ test("mobile profile modules stay stable with compact canvas editing", async ({ 
   await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
   await expect(page.getByTestId("profile-canvas-edit-button")).toBeVisible();
   await page.getByTestId("profile-canvas-edit-button").click();
-  await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
+  const editor = page.getByTestId("profile-canvas-editor");
+  await expect(editor).toBeVisible();
   await expect(page.getByTestId("profile-canvas-save-button-mobile")).toBeVisible();
   await expect(page.getByTestId("profile-canvas-save-button")).toBeHidden();
+  await expect(editor).toHaveCSS("position", "fixed");
+  await expect(page.getByTestId("mobile-nav")).toBeHidden();
+  await expect
+    .poll(() =>
+      editor.evaluate((element) => element.parentElement === document.body),
+    )
+    .toBe(true);
+
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );

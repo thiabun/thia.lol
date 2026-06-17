@@ -35,6 +35,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   Link,
   useLocation,
@@ -206,6 +207,19 @@ export function ProfilePage() {
   const [profileControlError, setProfileControlError] = useState<
     { handle: string; message: string } | undefined
   >();
+
+  useEffect(() => {
+    if (typeof document === "undefined" || !canvasEditing) {
+      return undefined;
+    }
+
+    document.body.dataset.profileCanvasEditing = "true";
+
+    return () => {
+      delete document.body.dataset.profileCanvasEditing;
+    };
+  }, [canvasEditing]);
+
   const normalizedHandle = (handle ?? profileHandle ?? "thia")
     .replace(/^@/, "")
     .toLowerCase();
@@ -2299,6 +2313,7 @@ function ProfileCanvasEditorToolbar({
   const [activeCategory, setActiveCategory] =
     useState<ProfileCanvasDockCategory>("integrations");
   const [moduleSearch, setModuleSearch] = useState("");
+  const useMobilePanel = useProfileCanvasMobilePanel();
 
   if (!editing) {
     return (
@@ -2344,10 +2359,15 @@ function ProfileCanvasEditorToolbar({
     profileIntegrationStatus(provider, integrations?.providers),
   );
 
-  return (
+  const editorPanel = (
     <section
       aria-label="Profile canvas editor"
-      className="fixed inset-x-3 bottom-3 z-40 mx-auto flex max-h-[82dvh] max-w-xl flex-col overflow-hidden rounded-panel border border-line bg-surface/78 shadow-lift backdrop-blur-veil lg:sticky lg:inset-auto lg:top-20 lg:mx-0 lg:max-h-[calc(100dvh-6rem)] lg:max-w-none"
+      className={cn(
+        "mx-auto flex flex-col overflow-hidden rounded-panel border border-line bg-surface/78 shadow-lift backdrop-blur-veil",
+        useMobilePanel
+          ? "fixed inset-x-3 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-[70] max-h-[calc(100dvh-7rem)] max-w-xl"
+          : "sticky top-20 hidden max-h-[calc(100dvh-6rem)] max-w-none lg:flex",
+      )}
       data-testid="profile-canvas-editor"
       data-profile-canvas-panel="left"
     >
@@ -2637,6 +2657,38 @@ function ProfileCanvasEditorToolbar({
       ) : null}
     </section>
   );
+
+  if (useMobilePanel && typeof document !== "undefined") {
+    return createPortal(editorPanel, document.body);
+  }
+
+  return editorPanel;
+}
+
+function useProfileCanvasMobilePanel(): boolean {
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    return window.matchMedia("(max-width: 1023px)").matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const query = window.matchMedia("(max-width: 1023px)");
+    const update = () => setMatches(query.matches);
+
+    update();
+    query.addEventListener("change", update);
+
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  return matches;
 }
 
 function ProfileSelectedModuleControls({

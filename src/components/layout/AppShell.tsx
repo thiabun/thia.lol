@@ -530,6 +530,7 @@ function MobileDock({
       transition={snappySpring}
       className="sticky bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30 mx-auto mb-[calc(0.75rem+env(safe-area-inset-bottom))] grid w-full max-w-md grid-cols-5 items-center gap-0.5 rounded-[1.35rem] border border-line/80 bg-surface/82 px-2 py-1.5 shadow-[0_16px_44px_oklch(0_0_0_/_0.13)] backdrop-blur-veil lg:hidden"
       aria-label="Primary"
+      data-app-mobile-nav="true"
       data-testid="mobile-nav"
     >
       {mobileNavItems.map(({ to, label, icon: Icon }, index) => (

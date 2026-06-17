@@ -124,6 +124,10 @@ textarea {
   color: var(--app-text);
 }
 
+body[data-profile-canvas-editing="true"] [data-app-mobile-nav="true"] {
+  display: none;
+}
+
 @utility bg-page-wash {
   background:
     linear-gradient(
