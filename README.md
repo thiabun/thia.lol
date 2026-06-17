@@ -162,7 +162,7 @@ npm run test:e2e
 npm run test:smoke
 ```
 
-API-backed smoke tests require a real API target. If local `/api` proxy requests fail because no PHP API is running, that smoke test is blocked, not passed. Either run a local PHP API with config/database access, or test against a deployed base URL with test credentials.
+API-backed smoke tests require a real API target. If local `/api` proxy requests fail because no PHP API is running, that smoke test is blocked, not passed. `npm run test:smoke` uses the committed disposable smoke config in `tests/test-config.ts` by default. You can still override it with environment variables for another deployed target.
 
 Example production smoke shape:
 

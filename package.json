@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:smoke": "PLAYWRIGHT_NO_WEBSERVER=1 playwright test tests/smoke",
+    "test:smoke": "THIA_USE_TEST_CONFIG=1 PLAYWRIGHT_NO_WEBSERVER=1 playwright test tests/smoke",
     "typecheck": "tsc -b --pretty",
     "lint": "eslint ."
   },

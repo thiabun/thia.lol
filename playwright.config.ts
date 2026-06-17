@@ -1,4 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
+import { applySmokeTestConfigToEnv } from "./tests/test-config";
+
+applySmokeTestConfigToEnv();
 
 const baseURL = process.env.THIA_BASE_URL ?? "http://localhost:5173";
 const shouldStartWebServer =
