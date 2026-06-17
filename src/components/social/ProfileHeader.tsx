@@ -13,7 +13,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
 import { Button, ButtonLink } from "../ui/Button";
@@ -44,6 +44,9 @@ type ProfileHeaderProps = {
   onMuteToggle?: (() => Promise<void> | void) | undefined;
   onOpenPanel?: (panel: "followers" | "following" | "badges") => void;
   featuredBadges?: UserBadge[] | undefined;
+  profileInfoColumns?: number | undefined;
+  profileInfoRows?: number | undefined;
+  reportAction?: ReactNode;
   showChatHint?: boolean;
 };
 
@@ -61,6 +64,9 @@ export function ProfileHeader({
   onMuteToggle,
   onOpenPanel,
   profile,
+  profileInfoColumns = 3,
+  profileInfoRows = 2,
+  reportAction,
   showChatHint = false,
 }: ProfileHeaderProps) {
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -70,6 +76,8 @@ export function ProfileHeader({
   const followLabel = profile.isFollowing ? "Following" : "Follow";
   const showProfileControls = !isOwnProfile && Boolean(onBlockToggle || onMuteToggle);
   const directActionsDisabled = profile.blockedByMe === true;
+  const roomyProfileInfo = profileInfoRows >= 3;
+  const wideProfileInfo = profileInfoColumns >= 4;
 
   async function handleBlockAction() {
     setActionsOpen(false);
@@ -101,15 +109,36 @@ export function ProfileHeader({
   }
 
   return (
-    <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
+    <motion.div
+      className={roomyProfileInfo ? "h-full min-h-0" : undefined}
+      variants={cardEntrance}
+      custom={0}
+      initial="hidden"
+      animate="show"
+    >
       <motion.section
-        className="relative overflow-hidden rounded-panel border border-line-strong bg-surface/68 shadow-soft backdrop-blur-veil"
+        className={cn(
+          "relative overflow-hidden rounded-panel border border-line-strong bg-surface/68 shadow-soft backdrop-blur-veil",
+          roomyProfileInfo ? "flex h-full min-h-0 flex-col" : undefined,
+        )}
         data-testid="profile-header"
       >
         <ProfileHeaderBackdrop backgroundUrl={backgroundUrl} />
-        {bannerUrl ? <ProfileBanner src={bannerUrl} /> : <ProfileTopAccent />}
+        {bannerUrl ? (
+          <ProfileBanner
+            expanded={roomyProfileInfo}
+            src={bannerUrl}
+            wide={wideProfileInfo}
+          />
+        ) : (
+          <ProfileTopAccent />
+        )}
         <motion.div
-          className={cn("relative z-10 p-4 sm:p-5", bannerUrl ? "pt-0" : undefined)}
+          className={cn(
+            "relative z-10 p-4 sm:p-5",
+            bannerUrl ? (roomyProfileInfo ? "pt-3" : "pt-0") : undefined,
+            roomyProfileInfo ? "flex min-h-0 flex-1 flex-col" : undefined,
+          )}
           variants={staggerChildren}
           initial="hidden"
           animate="show"
@@ -117,20 +146,27 @@ export function ProfileHeader({
           <div
             className={cn(
               "relative z-10 flex flex-col gap-3 sm:flex-row sm:justify-between",
-              bannerUrl ? "-mt-8 sm:-mt-10 sm:items-start" : "sm:items-center",
+              bannerUrl
+                ? roomyProfileInfo
+                  ? "sm:items-start"
+                  : "-mt-8 sm:-mt-10 sm:items-start"
+                : "sm:items-center",
             )}
           >
             <div
               className={cn(
                 "relative z-10 flex min-w-0 gap-3",
-                bannerUrl ? "items-end" : "items-center",
+                bannerUrl && !roomyProfileInfo ? "items-end" : "items-center",
               )}
               data-testid="profile-identity"
             >
               <Avatar
                 user={profile.user}
                 size="lg"
-                className="size-16 border-[3px] border-surface text-lg shadow-soft ring-1 ring-line/70 sm:size-20"
+                className={cn(
+                  "size-16 border-[3px] border-surface text-lg shadow-soft ring-1 ring-line/70 sm:size-20",
+                  wideProfileInfo ? "sm:size-24" : undefined,
+                )}
               />
               <div className="min-w-0 pb-0.5">
                 <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -262,6 +298,17 @@ export function ProfileHeader({
             profile={profile}
           />
           <ProfileSignalStrip featuredBadges={featuredBadges} links={[]} />
+          {reportAction ? (
+            <motion.div
+              className={cn(
+                "flex justify-end",
+                roomyProfileInfo ? "mt-auto pt-3" : "mt-3",
+              )}
+              variants={sectionItem}
+            >
+              {reportAction}
+            </motion.div>
+          ) : null}
         </motion.div>
       </motion.section>
       <ModalSheet
@@ -321,10 +368,26 @@ function ProfileHeaderBackdrop({
   );
 }
 
-function ProfileBanner({ src }: { src: string }) {
+function ProfileBanner({
+  expanded,
+  src,
+  wide,
+}: {
+  expanded: boolean;
+  src: string;
+  wide: boolean;
+}) {
   return (
     <div
-      className="relative z-0 h-20 overflow-hidden bg-canvas/60 sm:h-24 md:h-28"
+      className={cn(
+        "relative z-0 overflow-hidden bg-canvas/60",
+        expanded
+          ? wide
+            ? "h-32 sm:h-36 md:h-40"
+            : "h-28 sm:h-32 md:h-36"
+          : "h-20 sm:h-24 md:h-28",
+      )}
+      data-profile-banner-treatment="clear"
       data-testid="profile-header-banner"
     >
       <img
@@ -332,7 +395,6 @@ function ProfileBanner({ src }: { src: string }) {
         className="h-full w-full object-cover object-center"
         src={src}
       />
-      <div className="absolute inset-0 bg-gradient-to-t from-surface/88 via-surface/20 to-transparent" />
       <div className="absolute inset-x-0 bottom-0 h-px bg-line/80" />
     </div>
   );

@@ -711,6 +711,58 @@ test("public logged-out users do not see canvas edit controls", async ({ page })
   await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
 });
 
+test("profile info banner fills large module space cleanly", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: false,
+    profileOverrides: {
+      bannerUrl: "/uploads/media/2026/06/profile-banner.webp",
+    },
+    modules: [
+      {
+        ...profileInfoModule(),
+        layout: { column: 1, row: 1, colSpan: 6, rowSpan: 3 },
+      },
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const module = page.getByTestId("profile-grid-module-profile_info");
+  const info = module.getByTestId("profile-module-profile-info");
+  const banner = module.getByTestId("profile-header-banner");
+
+  await expect(info).toHaveAttribute("data-profile-info-columns", "6");
+  await expect(info).toHaveAttribute("data-profile-info-rows", "3");
+  await expect(banner).toHaveAttribute("data-profile-banner-treatment", "clear");
+  await expect(module.getByRole("button", { name: "Report" })).toBeVisible();
+
+  const metrics = await page.evaluate(() => {
+    const moduleElement = document.querySelector<HTMLElement>(
+      '[data-testid="profile-grid-module-profile_info"]',
+    );
+    const headerElement = document.querySelector<HTMLElement>(
+      '[data-testid="profile-grid-module-profile_info"] [data-testid="profile-header"]',
+    );
+    const bannerElement = document.querySelector<HTMLElement>(
+      '[data-testid="profile-grid-module-profile_info"] [data-testid="profile-header-banner"]',
+    );
+
+    if (!moduleElement || !headerElement || !bannerElement) {
+      throw new Error("Profile info module, header, or banner did not render.");
+    }
+
+    return {
+      bannerHeight: Math.round(bannerElement.getBoundingClientRect().height),
+      headerHeight: Math.round(headerElement.getBoundingClientRect().height),
+      moduleHeight: Math.round(moduleElement.getBoundingClientRect().height),
+    };
+  });
+
+  expect(metrics.headerHeight).toBeGreaterThanOrEqual(metrics.moduleHeight * 0.92);
+  expect(metrics.bannerHeight).toBeGreaterThanOrEqual(150);
+});
+
 test("owner edits background blur, module placement, and visibility", async ({
   page,
 }) => {

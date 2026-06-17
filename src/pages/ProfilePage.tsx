@@ -3976,7 +3976,7 @@ function ProfileInfoModule({
   const span = profileGridModuleSizeSpan(size);
   return (
     <div
-      className="h-full min-w-0 space-y-3"
+      className="h-full min-w-0"
       data-profile-info-columns={span.columns}
       data-profile-info-rows={span.rows}
       data-testid="profile-module-profile-info"
@@ -4002,17 +4002,22 @@ function ProfileInfoModule({
         onFollowToggle={onFollowToggle}
         onMuteToggle={onMuteToggle}
         onOpenPanel={onOpenPanel}
+        profileInfoColumns={span.columns}
+        profileInfoRows={span.rows}
+        reportAction={
+          !isOwnProfile ? (
+            <ReportForm
+              targetType="profile"
+              targetId={profile.user.id}
+              reportedUserId={profile.user.id}
+              title="Report profile"
+              explainer={`This reports @${profile.user.handle}'s profile to moderators.`}
+              triggerClassName="min-h-8 px-2.5 text-xs"
+            />
+          ) : undefined
+        }
         showChatHint={showChatHint}
       />
-      {!isOwnProfile ? (
-        <ReportForm
-          targetType="profile"
-          targetId={profile.user.id}
-          reportedUserId={profile.user.id}
-          title="Report profile"
-          explainer={`This reports @${profile.user.handle}'s profile to moderators.`}
-        />
-      ) : null}
     </div>
   );
 }
