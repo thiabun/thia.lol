@@ -670,6 +670,7 @@ test("public visitor continues before Spotify profile music starts", async ({
 
   await expect(overlay).toHaveCount(0);
   await expect.poll(() => spotifyPlayCalls(page)).toBe(1);
+  await expectSpotifyProgress(page, { max: 38, min: 33 }, /1:0\d \/ 3:00/);
   const stored = await page.evaluate(() =>
     window.localStorage.getItem("thia.profile.musicAutoplayConsent.v1:1"),
   );
@@ -707,6 +708,7 @@ test("stored Spotify music consent skips the continue overlay", async ({
   await expect(page.getByTestId("profile-music-continue-overlay")).toHaveCount(0);
   await expectSpotifyCustomPlayer(page);
   await expect.poll(() => spotifyPlayCalls(page)).toBe(1);
+  await expectSpotifyProgress(page, { max: 38, min: 33 }, /1:0\d \/ 3:00/);
 });
 
 test("invalid Spotify music consent falls back to the continue overlay", async ({
@@ -782,6 +784,7 @@ test("Spotify playback failure still opens the profile", async ({ page }) => {
   await expect(page.getByTestId("profile-music-continue-overlay")).toHaveCount(0);
   await expectSpotifyCustomPlayer(page);
   await expect.poll(() => spotifyPlayCalls(page)).toBe(1);
+  await expectSpotifyProgress(page, 0, "Ready");
 });
 
 test("integration modules do not fake live or recent labels without API backing", async ({
@@ -2770,22 +2773,55 @@ async function mockSpotifyIframeApi(
         window.onSpotifyIframeApiReady({
           createController: function(element, options, callback) {
             window.__spotifyControllerOptions = (window.__spotifyControllerOptions || []).concat(options);
+            var listeners = {};
+            var currentPosition = 60000;
+            var duration = 180000;
+            function addListener(event, listener) {
+              listeners[event] = listeners[event] || [];
+              listeners[event].push(listener);
+            }
+            function removeListener(event, listener) {
+              listeners[event] = (listeners[event] || []).filter(function(item) {
+                return item !== listener;
+              });
+            }
+            function emitProgress(isPaused) {
+              (listeners.playback_update || []).forEach(function(listener) {
+                listener({
+                  data: {
+                    duration: duration,
+                    isBuffering: false,
+                    isPaused: isPaused,
+                    playingURI: options.uri,
+                    position: currentPosition
+                  }
+                });
+              });
+            }
             var parts = String(options.uri || "").split(":");
             var iframe = document.createElement("iframe");
             iframe.src = "https://open.spotify.com/embed/" + parts[1] + "/" + parts[2] + "?theme=0";
             iframe.height = options.height;
             element.appendChild(iframe);
             callback({
+              addListener: addListener,
               destroy: function() {},
               pause: function() {
+                emitProgress(true);
                 return Promise.resolve();
               },
               play: function() {
                 window.__spotifyPlayCalls = (window.__spotifyPlayCalls || 0) + 1;
-                ${options.rejectPlay ? "return Promise.reject(new Error('blocked'));" : "return Promise.resolve();"}
+                ${
+                  options.rejectPlay
+                    ? "return Promise.reject(new Error('blocked'));"
+                    : "emitProgress(false); return Promise.resolve();"
+                }
               },
+              removeListener: removeListener,
               togglePlay: function() {
                 window.__spotifyPlayCalls = (window.__spotifyPlayCalls || 0) + 1;
+                emitProgress(false);
                 return Promise.resolve();
               }
             });
@@ -2805,6 +2841,30 @@ async function expectSpotifyCustomPlayer(page: Page) {
   await expect(page.getByTestId("profile-spotify-play-button")).toBeVisible();
   await expect(page.getByTestId("profile-spotify-play-button")).toBeEnabled();
   await expect(page.getByTestId("profile-integration-embed-spotify")).toBeAttached();
+}
+
+async function expectSpotifyProgress(
+  page: Page,
+  expectedPercent: number | { max: number; min: number },
+  expectedText: string | RegExp,
+) {
+  const progress = page.getByTestId("profile-spotify-progress-bar");
+  const expectedRange =
+    typeof expectedPercent === "number"
+      ? { max: expectedPercent, min: expectedPercent }
+      : expectedPercent;
+
+  await expect
+    .poll(async () => {
+      const value = Number(await progress.getAttribute("aria-valuenow"));
+
+      return value >= expectedRange.min && value <= expectedRange.max;
+    })
+    .toBe(true);
+  await expect(progress).toHaveCSS("width", /.+/);
+  await expect(page.getByTestId("profile-spotify-progress-time")).toHaveText(
+    expectedText,
+  );
 }
 
 async function spotifyPlayCalls(page: Page): Promise<number> {

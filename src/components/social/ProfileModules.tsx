@@ -986,11 +986,45 @@ type SpotifyIframeApi = {
 };
 
 type SpotifyEmbedController = {
+  addListener?: (
+    event: "playback_started" | "playback_update",
+    listener: (event: SpotifyPlaybackEvent) => void,
+  ) => void;
   destroy?: () => void;
   pause?: () => Promise<void> | void;
   play?: () => Promise<void> | void;
+  removeListener?: (
+    event: "playback_started" | "playback_update",
+    listener: (event: SpotifyPlaybackEvent) => void,
+  ) => void;
   resume?: () => Promise<void> | void;
   togglePlay?: () => Promise<void> | void;
+};
+
+type SpotifyPlaybackEvent = {
+  data?: {
+    duration?: number;
+    isBuffering?: boolean;
+    isPaused?: boolean;
+    playingURI?: string;
+    position?: number;
+  };
+};
+
+type SpotifyPlaybackProgress = {
+  duration: number;
+  isBuffering: boolean;
+  isPaused: boolean;
+  known: boolean;
+  position: number;
+};
+
+const emptySpotifyPlaybackProgress: SpotifyPlaybackProgress = {
+  duration: 0,
+  isBuffering: false,
+  isPaused: true,
+  known: false,
+  position: 0,
 };
 
 declare global {
@@ -1018,8 +1052,12 @@ function SpotifyMusicPlayer({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<SpotifyEmbedController | undefined>(undefined);
   const lastAutoplayRequestRef = useRef(0);
+  const removePlaybackListenersRef = useRef<(() => void) | undefined>(undefined);
   const [controllerReady, setControllerReady] = useState(false);
   const [controllerReadyVersion, setControllerReadyVersion] = useState(0);
+  const [playbackProgress, setPlaybackProgress] = useState<SpotifyPlaybackProgress>(
+    emptySpotifyPlaybackProgress,
+  );
   const [playing, setPlaying] = useState(false);
   const [fallback, setFallback] = useState(false);
   const metadata = integration.metadata;
@@ -1046,6 +1084,9 @@ function SpotifyMusicPlayer({
     setFallback(false);
     setControllerReady(false);
     setPlaying(false);
+    setPlaybackProgress(emptySpotifyPlaybackProgress);
+    removePlaybackListenersRef.current?.();
+    removePlaybackListenersRef.current = undefined;
     controllerRef.current = undefined;
     container.replaceChildren();
 
@@ -1070,6 +1111,17 @@ function SpotifyMusicPlayer({
             }
 
             controllerRef.current = controller;
+            removePlaybackListenersRef.current = attachSpotifyPlaybackListeners(
+              controller,
+              (progress) => {
+                if (canceled) {
+                  return;
+                }
+
+                setPlaybackProgress(progress);
+                setPlaying(!progress.isPaused && !progress.isBuffering);
+              },
+            );
             decorateSpotifyEmbedIframe(container, integration, playerHeight, playerTitle);
             setControllerReady(true);
             setControllerReadyVersion((version) => version + 1);
@@ -1084,12 +1136,41 @@ function SpotifyMusicPlayer({
 
     return () => {
       canceled = true;
+      removePlaybackListenersRef.current?.();
+      removePlaybackListenersRef.current = undefined;
       controllerRef.current?.destroy?.();
       controllerRef.current = undefined;
       setControllerReady(false);
       container.replaceChildren();
     };
   }, [integration, playerHeight, playerTitle, uri]);
+
+  useEffect(() => {
+    if (!playing || !playbackProgress.known || playbackProgress.duration <= 0) {
+      return undefined;
+    }
+
+    const interval = window.setInterval(() => {
+      setPlaybackProgress((progress) => {
+        if (
+          progress.isPaused ||
+          progress.isBuffering ||
+          !progress.known ||
+          progress.duration <= 0 ||
+          progress.position >= progress.duration
+        ) {
+          return progress;
+        }
+
+        return {
+          ...progress,
+          position: Math.min(progress.duration, progress.position + 1000),
+        };
+      });
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [playbackProgress.duration, playbackProgress.known, playing]);
 
   useEffect(() => {
     const controller = controllerRef.current;
@@ -1123,6 +1204,20 @@ function SpotifyMusicPlayer({
       setPlaying(nextPlaying);
     }
   }
+
+  const progressPercent = spotifyPlaybackProgressPercent(playbackProgress);
+  const statusText = fallback
+    ? "Open to play"
+    : playbackProgress.isBuffering
+      ? "Buffering"
+      : playing
+        ? "Playing"
+        : "Ready";
+  const progressLabel = playbackProgress.known
+    ? `${formatSpotifyPlaybackTime(playbackProgress.position)} / ${formatSpotifyPlaybackTime(
+        playbackProgress.duration,
+      )}`
+    : statusText;
 
   return (
     <div
@@ -1198,15 +1293,19 @@ function SpotifyMusicPlayer({
           <div className="min-w-0 flex-1">
             <div className="h-1.5 overflow-hidden rounded-full bg-line">
               <div
-                className={cn(
-                  "h-full rounded-full bg-accent transition-[width] duration-fluid ease-fluid",
-                  playing ? "w-2/3" : "w-1/4",
-                )}
+                className="h-full rounded-full bg-accent transition-[width] duration-fluid ease-fluid"
+                data-testid="profile-spotify-progress-bar"
+                role="progressbar"
+                aria-label="Spotify playback progress"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(progressPercent)}
+                style={{ width: `${progressPercent}%` }}
               />
             </div>
             <div className="mt-1 flex items-center justify-between gap-3 text-[0.7rem] font-semibold uppercase text-muted">
               <span className="truncate">{integrationLabel(integration)}</span>
-              <span>{fallback ? "Open to play" : playing ? "Playing" : "Ready"}</span>
+              <span data-testid="profile-spotify-progress-time">{progressLabel}</span>
             </div>
           </div>
         </div>
@@ -1308,6 +1407,64 @@ function decorateSpotifyEmbedIframe(
     );
     iframe.allowFullscreen = true;
   });
+}
+
+function attachSpotifyPlaybackListeners(
+  controller: SpotifyEmbedController,
+  onProgress: (progress: SpotifyPlaybackProgress) => void,
+): () => void {
+  if (!controller.addListener) {
+    return () => {};
+  }
+
+  const handlePlaybackUpdate = (event: SpotifyPlaybackEvent) => {
+    onProgress(spotifyPlaybackProgressFromEvent(event));
+  };
+
+  controller.addListener("playback_update", handlePlaybackUpdate);
+
+  return () => {
+    controller.removeListener?.("playback_update", handlePlaybackUpdate);
+  };
+}
+
+function spotifyPlaybackProgressFromEvent(
+  event: SpotifyPlaybackEvent,
+): SpotifyPlaybackProgress {
+  const rawDuration = event.data?.duration;
+  const duration =
+    typeof rawDuration === "number" && Number.isFinite(rawDuration)
+      ? Math.max(0, rawDuration)
+      : 0;
+  const rawPosition = event.data?.position;
+  const position =
+    typeof rawPosition === "number" && Number.isFinite(rawPosition)
+      ? Math.min(duration, Math.max(0, rawPosition))
+      : 0;
+
+  return {
+    duration,
+    isBuffering: event.data?.isBuffering === true,
+    isPaused: event.data?.isPaused !== false,
+    known: duration > 0,
+    position,
+  };
+}
+
+function spotifyPlaybackProgressPercent(progress: SpotifyPlaybackProgress): number {
+  if (!progress.known || progress.duration <= 0) {
+    return 0;
+  }
+
+  return Math.min(100, Math.max(0, (progress.position / progress.duration) * 100));
+}
+
+function formatSpotifyPlaybackTime(value: number): string {
+  const totalSeconds = Math.max(0, Math.floor(value / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
 async function playSpotifyEmbed(controller: SpotifyEmbedController): Promise<boolean> {
