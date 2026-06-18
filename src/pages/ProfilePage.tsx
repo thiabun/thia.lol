@@ -6,14 +6,20 @@ import {
   Heart,
   ImagePlus,
   MessageCircle,
+  MoreHorizontal,
   Music2,
+  Pin,
+  PinOff,
+  Plus,
   Radio,
   Repeat2,
   Reply,
+  Save,
   Settings2,
   Shield,
   Sparkles,
   Star,
+  Trash2,
   X,
   UserCheck,
   Users,
@@ -27,6 +33,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
 import {
   Link,
@@ -38,8 +45,10 @@ import {
 import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
 import { PostCard } from "../components/social/PostCard";
+import { ProfileGrid, ProfileGridModule } from "../components/social/ProfileGrid";
 import { ProfileHeader } from "../components/social/ProfileHeader";
 import {
+  ProfileModuleCard,
   ProfileModulesSection,
   type ProfileMusicAutoplayRequest,
 } from "../components/social/ProfileModules";
@@ -64,18 +73,25 @@ import {
   getProfileReblogs,
   getProfileReplies,
   getProfileRooms,
+  getProfileCanvasDraft,
   muteProfile,
   removeProfileFollower,
+  startProfileIntegration,
   unblockProfile,
   unfollowProfile,
   unmuteProfile,
+  commitProfileCanvasDraft,
+  discardProfileCanvasDraft,
   updateProfileCanvas,
+  updateProfileCanvasDraft,
   updateFeaturedBadges,
   updateMyProfile,
   uploadImage,
   uploadVideo,
   type FollowRelationship,
   type ImageUploadPurpose,
+  type ProfileCanvasDraftState,
+  type ProfileIntegrationProvider,
   type UpdateProfileInput,
 } from "../lib/api";
 import { ApiClientError } from "../lib/apiClient";
@@ -86,8 +102,18 @@ import { pageEntrance } from "../lib/motionPresets";
 import { formatCountWithUnit } from "../lib/pluralize";
 import { defaultProfileLayoutPreset } from "../lib/profileLayoutPresets";
 import {
+  PROFILE_CANVAS_DESKTOP_COLUMNS,
+  PROFILE_CANVAS_DESKTOP_ROWS,
+  PROFILE_CANVAS_MAX_MODULE_ROWS,
+  PROFILE_CANVAS_PROFILE_INFO_COLUMNS,
+  PROFILE_CANVAS_VERSION,
+  getProfileModuleDefinition,
+  profileModuleAllowedSizes,
+  profileModuleCatalog,
+  profileModuleFallbackTitle,
   profileGridModuleSizeSpan,
   profileGridModuleSpanSize,
+  profileModuleSizeLabel,
   type ProfileGridModuleSize,
 } from "../lib/profileModuleRegistry";
 import { safeProfileImageUrl } from "../lib/profileMedia";
@@ -105,13 +131,19 @@ import type {
 } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
-const PROFILE_CANVAS_COLUMNS = 6;
-const PROFILE_CANVAS_ROWS = 12;
+const PROFILE_CANVAS_COLUMNS = PROFILE_CANVAS_DESKTOP_COLUMNS;
+const PROFILE_CANVAS_ROWS = PROFILE_CANVAS_DESKTOP_ROWS;
 const PROFILE_CONTENT_AUTOSAVE_DELAY_MS = 650;
 
 type ProfileTab = "feed" | "replies" | "rooms";
 type ProfilePanel = "followers" | "following" | "badges";
 type ProfileContentAutosaveState = "idle" | "pending" | "saving" | "saved" | "error";
+type ProfileCanvasDraftAutosaveState =
+  | "idle"
+  | "pending"
+  | "saving"
+  | "saved"
+  | "error";
 
 function profileContentAutosaveInput(
   draft: Profile,
@@ -170,6 +202,9 @@ export function ProfilePage() {
   const { runWithAuth, status, user } = useAuth();
   const profileEditReturnHandledRef = useRef(false);
   const profileContentAutosaveRequestRef = useRef(0);
+  const profileCanvasDraftAutosaveRequestRef = useRef(0);
+  const profileCanvasDraftAutosaveTimerRef = useRef<number | undefined>(undefined);
+  const nextDraftModuleIdRef = useRef(-1000);
   const [activeTab, setActiveTab] = useState<ProfileTab>("feed");
   const [activePanel, setActivePanel] = useState<ProfilePanel | undefined>();
   const [profileOverride, setProfileOverride] = useState<Profile | undefined>();
@@ -180,9 +215,17 @@ export function ProfilePage() {
   const [canvasLoading, setCanvasLoading] = useState(false);
   const [canvasSaving, setCanvasSaving] = useState(false);
   const [canvasError, setCanvasError] = useState<string | undefined>();
+  const [canvasDraft, setCanvasDraft] = useState<ProfileCanvasDraftState | undefined>();
+  const [canvasDraftAutosaveState, setCanvasDraftAutosaveState] =
+    useState<ProfileCanvasDraftAutosaveState>("idle");
+  const [canvasDraftAutosaveError, setCanvasDraftAutosaveError] =
+    useState<string | undefined>();
   const [draftBackgroundBlur, setDraftBackgroundBlur] =
     useState<ProfileBackgroundBlur>("medium");
   const [draftProfile, setDraftProfile] = useState<Profile | undefined>();
+  const [modulesOverride, setModulesOverride] = useState<
+    { handle: string; modules: ProfileModule[] } | undefined
+  >();
   const [profileContentAutosaveState, setProfileContentAutosaveState] =
     useState<ProfileContentAutosaveState>("idle");
   const [profileContentAutosaveError, setProfileContentAutosaveError] =
@@ -300,7 +343,10 @@ export function ProfilePage() {
     badgesOverride?.handle === normalizedHandle ? badgesOverride.result : badgesState.data;
   const profileBadges = profileBadgesResult?.badges ?? [];
   const featuredBadges = profileBadgesResult?.featuredBadges ?? [];
-  const loadedModules = modulesState.data ?? [];
+  const loadedModules =
+    modulesOverride?.handle === normalizedHandle
+      ? modulesOverride.modules
+      : modulesState.data ?? [];
   const publicModules = loadedModules.filter(
     (module) => module.visibility === "public" && module.status === "active",
   );
@@ -538,19 +584,36 @@ export function ProfilePage() {
     setBadgesOverride({ handle: normalizedHandle, result: updated });
   }
 
-  const handleStartCanvasEdit = useCallback(() => {
+  const handleStartCanvasEdit = useCallback(async () => {
     if (!profile || !isOwnProfile || canvasLoading) {
       return;
     }
 
     setCanvasLoading(true);
     setCanvasError(undefined);
-    setDraftBackgroundBlur(profile.profileBackgroundBlur);
-    setDraftProfile(profile);
-    setProfileContentAutosaveState("idle");
-    setProfileContentAutosaveError(undefined);
-    setCanvasEditing(true);
-    setCanvasLoading(false);
+
+    try {
+      const draft = await getProfileCanvasDraft();
+
+      setCanvasDraft(draft);
+      setDraftBackgroundBlur(draft.backgroundBlur);
+      setDraftProfile({
+        ...profile,
+        profileBackgroundBlur: draft.backgroundBlur,
+        profileCanvasVersion: draft.canvasVersion,
+      });
+      setProfileContentAutosaveState("idle");
+      setProfileContentAutosaveError(undefined);
+      setCanvasDraftAutosaveState("idle");
+      setCanvasDraftAutosaveError(undefined);
+      setCanvasEditing(true);
+    } catch (error) {
+      setCanvasError(
+        error instanceof Error ? error.message : "Could not open the canvas editor.",
+      );
+    } finally {
+      setCanvasLoading(false);
+    }
   }, [canvasLoading, isOwnProfile, profile]);
 
   useEffect(() => {
@@ -572,7 +635,7 @@ export function ProfilePage() {
 
     profileEditReturnHandledRef.current = true;
     const timer = window.setTimeout(() => {
-      handleStartCanvasEdit();
+      void handleStartCanvasEdit();
     }, 0);
 
     return () => window.clearTimeout(timer);
@@ -648,14 +711,169 @@ export function ProfilePage() {
     runWithAuth,
   ]);
 
-  function handleCancelCanvasEdit() {
+  useEffect(() => {
+    return () => {
+      if (profileCanvasDraftAutosaveTimerRef.current !== undefined) {
+        window.clearTimeout(profileCanvasDraftAutosaveTimerRef.current);
+      }
+    };
+  }, []);
+
+  function queueCanvasDraftAutosave(nextDraft: ProfileCanvasDraftState) {
+    setCanvasDraft(nextDraft);
+    setDraftBackgroundBlur(nextDraft.backgroundBlur);
+    setCanvasDraftAutosaveState("pending");
+    setCanvasDraftAutosaveError(undefined);
+
+    if (profileCanvasDraftAutosaveTimerRef.current !== undefined) {
+      window.clearTimeout(profileCanvasDraftAutosaveTimerRef.current);
+    }
+
+    const requestId = profileCanvasDraftAutosaveRequestRef.current + 1;
+    profileCanvasDraftAutosaveRequestRef.current = requestId;
+
+    profileCanvasDraftAutosaveTimerRef.current = window.setTimeout(() => {
+      setCanvasDraftAutosaveState("saving");
+
+      void runWithAuth(
+        (csrfToken) =>
+          updateProfileCanvasDraft(
+            {
+              backgroundBlur: nextDraft.backgroundBlur,
+              canvasGlass: nextDraft.canvasGlass,
+              canvasVersion: PROFILE_CANVAS_VERSION,
+              modules: nextDraft.modules,
+              selectedModuleId: nextDraft.selectedModuleId ?? null,
+            },
+            csrfToken,
+          ),
+        { retryOnCsrf: true },
+      )
+        .then((savedDraft) => {
+          if (profileCanvasDraftAutosaveRequestRef.current !== requestId) {
+            return;
+          }
+
+          setCanvasDraft(savedDraft);
+          setDraftBackgroundBlur(savedDraft.backgroundBlur);
+          setCanvasDraftAutosaveState("saved");
+          setCanvasDraftAutosaveError(undefined);
+        })
+        .catch((error) => {
+          if (profileCanvasDraftAutosaveRequestRef.current !== requestId) {
+            return;
+          }
+
+          setCanvasDraftAutosaveState("error");
+          setCanvasDraftAutosaveError(
+            error instanceof Error
+              ? error.message
+              : "Canvas draft could not save automatically.",
+          );
+        });
+    }, PROFILE_CONTENT_AUTOSAVE_DELAY_MS);
+  }
+
+  async function saveCanvasDraftImmediately(
+    nextDraft: ProfileCanvasDraftState,
+  ): Promise<ProfileCanvasDraftState> {
+    if (profileCanvasDraftAutosaveTimerRef.current !== undefined) {
+      window.clearTimeout(profileCanvasDraftAutosaveTimerRef.current);
+      profileCanvasDraftAutosaveTimerRef.current = undefined;
+    }
+
+    const requestId = profileCanvasDraftAutosaveRequestRef.current + 1;
+    profileCanvasDraftAutosaveRequestRef.current = requestId;
+    setCanvasDraftAutosaveState("saving");
+    setCanvasDraftAutosaveError(undefined);
+
+    const savedDraft = await runWithAuth(
+      (csrfToken) =>
+        updateProfileCanvasDraft(
+          {
+            backgroundBlur: nextDraft.backgroundBlur,
+            canvasGlass: nextDraft.canvasGlass,
+            canvasVersion: PROFILE_CANVAS_VERSION,
+            modules: nextDraft.modules,
+            selectedModuleId: nextDraft.selectedModuleId ?? null,
+          },
+          csrfToken,
+        ),
+      { retryOnCsrf: true },
+    );
+
+    if (profileCanvasDraftAutosaveRequestRef.current === requestId) {
+      setCanvasDraft(savedDraft);
+      setDraftBackgroundBlur(savedDraft.backgroundBlur);
+      setCanvasDraftAutosaveState("saved");
+    }
+
+    return savedDraft;
+  }
+
+  async function handleSaveCanvasEdit() {
+    if (!profile || !canvasDraft || canvasSaving) {
+      return;
+    }
+
+    setCanvasSaving(true);
+    setCanvasError(undefined);
+
+    try {
+      await saveCanvasDraftImmediately(canvasDraft);
+      const saved = await runWithAuth(
+        (csrfToken) => commitProfileCanvasDraft(csrfToken),
+        { retryOnCsrf: true },
+      );
+
+      setModulesOverride({ handle: normalizedHandle, modules: saved.modules });
+      setProfileOverride({
+        ...profile,
+        profileBackgroundBlur: saved.backgroundBlur,
+        profileCanvasVersion: saved.canvasVersion,
+      });
+      setDraftBackgroundBlur(saved.backgroundBlur);
+      setCanvasDraft(undefined);
+      setCanvasEditing(false);
+      setCanvasDraftAutosaveState("idle");
+      setCanvasDraftAutosaveError(undefined);
+    } catch (error) {
+      setCanvasError(
+        error instanceof Error ? error.message : "Could not save canvas changes.",
+      );
+    } finally {
+      setCanvasSaving(false);
+    }
+  }
+
+  async function handleCancelCanvasEdit() {
+    if (profileCanvasDraftAutosaveTimerRef.current !== undefined) {
+      window.clearTimeout(profileCanvasDraftAutosaveTimerRef.current);
+      profileCanvasDraftAutosaveTimerRef.current = undefined;
+    }
+
+    if (canvasDraft) {
+      try {
+        await runWithAuth((csrfToken) => discardProfileCanvasDraft(csrfToken), {
+          retryOnCsrf: true,
+        });
+      } catch (error) {
+        setCanvasError(
+          error instanceof Error ? error.message : "Could not discard canvas draft.",
+        );
+      }
+    }
+
     setCanvasEditing(false);
     setCanvasError(undefined);
+    setCanvasDraft(undefined);
     setDraftBackgroundBlur(profile?.profileBackgroundBlur ?? "medium");
     setDraftProfile(undefined);
     setProfileDraftUploading(undefined);
     setProfileContentAutosaveState("idle");
     setProfileContentAutosaveError(undefined);
+    setCanvasDraftAutosaveState("idle");
+    setCanvasDraftAutosaveError(undefined);
   }
 
   function handleDraftProfileChange(updater: (profile: Profile) => Profile) {
@@ -831,7 +1049,7 @@ export function ProfilePage() {
         (csrfToken) =>
           updateProfileCanvas(
             {
-              canvasVersion: 1,
+              canvasVersion: PROFILE_CANVAS_VERSION,
               backgroundBlur: blur,
             },
             csrfToken,
@@ -864,6 +1082,64 @@ export function ProfilePage() {
       );
     } finally {
       setCanvasSaving(false);
+    }
+  }
+
+  function handleCanvasDraftChange(
+    updater: (draft: ProfileCanvasDraftState) => ProfileCanvasDraftState,
+  ) {
+    if (!canvasDraft) {
+      return;
+    }
+
+    queueCanvasDraftAutosave(updater(canvasDraft));
+  }
+
+  function handleDraftBackgroundBlurChange(blur: ProfileBackgroundBlur) {
+    handleCanvasDraftChange((draft) => ({
+      ...draft,
+      backgroundBlur: blur,
+    }));
+  }
+
+  function handleDraftCanvasGlassChange(canvasGlass: number) {
+    handleCanvasDraftChange((draft) => ({
+      ...draft,
+      canvasGlass: Math.min(92, Math.max(22, Math.round(canvasGlass))),
+    }));
+  }
+
+  async function handleCanvasProviderConnect(provider: ProfileIntegrationProvider) {
+    if (!profile) {
+      return;
+    }
+
+    setCanvasError(undefined);
+
+    try {
+      if (canvasDraft) {
+        await saveCanvasDraftImmediately(canvasDraft);
+      }
+
+      const result = await runWithAuth(
+        (csrfToken) =>
+          startProfileIntegration(
+            provider,
+            csrfToken,
+            `/@${profile.user.handle}?editCanvas=1`,
+          ),
+        { retryOnCsrf: true },
+      );
+
+      if (result.authorizationUrl) {
+        window.location.assign(result.authorizationUrl);
+      }
+    } catch (error) {
+      setCanvasError(
+        error instanceof Error
+          ? error.message
+          : "Could not start provider connection.",
+      );
     }
   }
 
@@ -987,6 +1263,91 @@ export function ProfilePage() {
     renderedProfile,
     mergeProfileLinksIntoConnectionModules(renderedProfile, profileSpaceModules),
   );
+  function renderProfileModuleContent(
+    module: ProfileModule,
+    size: ProfileGridModuleSize,
+    editing: boolean,
+  ) {
+    if (module.type === "profile_info") {
+      return (
+        <ProfileInfoModule
+          activeFollowError={activeFollowError}
+          activeProfileControlError={activeProfileControlError}
+          activeProfileControlMessage={activeProfileControlMessage}
+          editing={editing}
+          featuredBadges={featuredBadges}
+          followPosting={followPosting}
+          isOwnProfile={isOwnProfile}
+          profile={renderedProfile}
+          profileControlBusy={profileControlBusy}
+          size={size}
+          showChatHint={
+            status === "authenticated" &&
+            !isOwnProfile &&
+            !renderedProfile.blockedByMe &&
+            !renderedProfile.isMoot
+          }
+          status={status}
+          onBlockToggle={
+            status === "authenticated" && !isOwnProfile
+              ? handleBlockToggle
+              : undefined
+          }
+          onFollowToggle={handleFollowToggle}
+          onMuteToggle={
+            status === "authenticated" && !isOwnProfile
+              ? handleMuteToggle
+              : undefined
+          }
+          onOpenPanel={setActivePanel}
+        />
+      );
+    }
+
+    if (module.type === "featured_post" && renderedProfile.featuredPost) {
+      return (
+        <FeaturedPostModuleCard
+          editing={editing}
+          profile={renderedProfile}
+          title={module.title ?? "Featured post"}
+        />
+      );
+    }
+
+    if (module.type === "featured_room" && renderedProfile.featuredRoom) {
+      return (
+        <FeaturedRoomModuleCard
+          editing={editing}
+          profile={renderedProfile}
+          title={module.title ?? "Featured room"}
+        />
+      );
+    }
+
+    if (module.type === "activity") {
+      return (
+        <ProfileActivityModule
+          activeTab={activeTab}
+          editing={editing}
+          feed={profileFeed}
+          feedError={postsState.error ?? reblogsState.error}
+          feedLoading={postsState.loading || reblogsState.loading}
+          profile={renderedProfile}
+          replies={profileReplies}
+          repliesError={repliesState.error}
+          repliesLoading={repliesState.loading}
+          rooms={profileRooms}
+          roomsError={roomsState.error}
+          roomsLoading={roomsState.loading}
+          size={size}
+          title={module.title ?? "Activity"}
+          onTabChange={setActiveTab}
+        />
+      );
+    }
+
+    return undefined;
+  }
   return (
     <motion.div
       className="relative mx-auto max-w-5xl"
@@ -1001,116 +1362,66 @@ export function ProfilePage() {
           description={renderedProfile.bio}
           path={`/@${renderedProfile.user.handle}`}
         />
-        {isOwnProfile ? (
+        {isOwnProfile && !canvasEditing ? (
           <ProfileTransitionEditor
             autosaveError={profileContentAutosaveError}
             autosaveState={profileContentAutosaveState}
             backgroundBlur={draftBackgroundBlur}
             busy={canvasLoading || canvasSaving}
-            editing={canvasEditing}
+            editing={false}
             error={canvasError}
             profile={renderedProfile}
             uploading={profileDraftUploading}
             onBackgroundBlurChange={(blur) => void handleBackgroundBlurChange(blur)}
-            onCancel={handleCancelCanvasEdit}
+            onCancel={() => void handleCancelCanvasEdit()}
             onClearBackground={() => void handleClearProfileBackgroundDraft()}
-            onEdit={handleStartCanvasEdit}
+            onEdit={() => void handleStartCanvasEdit()}
             onImageUpload={handleProfileImageDraftSelection}
             onProfileDraftChange={handleDraftProfileChange}
             onVideoUpload={(file) => void handleProfileVideoDraftUpload(file)}
           />
         ) : null}
         <div className="min-w-0 space-y-4 sm:space-y-5">
-          <ProfileModulesSection
-          badges={profileBadges}
-          error={modulesState.error}
-          isOwnProfile={isOwnProfile}
-          layoutPreset={profileLayoutPreset}
-          loading={modulesState.loading}
-          musicAutoplay={musicAutoplayRequest}
-          modules={profileCanvasModules}
-          renderModuleContent={(module, size) => {
-            if (module.type === "profile_info") {
-              return (
-                <ProfileInfoModule
-                  activeFollowError={activeFollowError}
-                  activeProfileControlError={activeProfileControlError}
-                  activeProfileControlMessage={activeProfileControlMessage}
-                  editing={false}
-                  featuredBadges={featuredBadges}
-                  followPosting={followPosting}
-                  isOwnProfile={isOwnProfile}
-                  profile={renderedProfile}
-                  profileControlBusy={profileControlBusy}
-                  size={size}
-                  showChatHint={
-                    status === "authenticated" &&
-                    !isOwnProfile &&
-                    !renderedProfile.blockedByMe &&
-                    !renderedProfile.isMoot
-                  }
-                  status={status}
-                  onBlockToggle={
-                    status === "authenticated" && !isOwnProfile
-                      ? handleBlockToggle
-                      : undefined
-                  }
-                  onFollowToggle={handleFollowToggle}
-                  onMuteToggle={
-                    status === "authenticated" && !isOwnProfile
-                      ? handleMuteToggle
-                      : undefined
-                  }
-                  onOpenPanel={setActivePanel}
-                />
-              );
-            }
-
-            if (module.type === "featured_post" && renderedProfile.featuredPost) {
-              return (
-                <FeaturedPostModuleCard
-                  editing={false}
-                  profile={renderedProfile}
-                  title={module.title ?? "Featured post"}
-                />
-              );
-            }
-
-            if (module.type === "featured_room" && renderedProfile.featuredRoom) {
-              return (
-                <FeaturedRoomModuleCard
-                  editing={false}
-                  profile={renderedProfile}
-                  title={module.title ?? "Featured room"}
-                />
-              );
-            }
-
-            if (module.type === "activity") {
-              return (
-              <ProfileActivityModule
-                activeTab={activeTab}
-                editing={false}
-                feed={profileFeed}
-                feedError={postsState.error ?? reblogsState.error}
-                feedLoading={postsState.loading || reblogsState.loading}
-                profile={renderedProfile}
-                replies={profileReplies}
-                repliesError={repliesState.error}
-                repliesLoading={repliesState.loading}
-                rooms={profileRooms}
-                roomsError={roomsState.error}
-                roomsLoading={roomsState.loading}
-                size={size}
-                title={module.title ?? "Activity"}
-                onTabChange={setActiveTab}
-              />
-              );
-            }
-
-            return undefined;
-          }}
-        />
+          {canvasEditing && canvasDraft ? (
+            <ProfileDirectCanvasEditor
+              autosaveError={canvasDraftAutosaveError}
+              autosaveState={canvasDraftAutosaveState}
+              busy={canvasSaving}
+              draft={canvasDraft}
+              error={canvasError}
+              modules={canvasDraft.modules}
+              profile={renderedProfile}
+              uploading={profileDraftUploading}
+              onBackgroundBlurChange={handleDraftBackgroundBlurChange}
+              onCancel={() => void handleCancelCanvasEdit()}
+              onCanvasGlassChange={handleDraftCanvasGlassChange}
+              onChange={handleCanvasDraftChange}
+              onClearBackground={() => void handleClearProfileBackgroundDraft()}
+              onConnectProvider={(provider) =>
+                void handleCanvasProviderConnect(provider)
+              }
+              onImageUpload={handleProfileImageDraftSelection}
+              onNewDraftModuleId={() => nextDraftModuleIdRef.current--}
+              onRenderModuleContent={(module, size) =>
+                renderProfileModuleContent(module, size, true)
+              }
+              onSave={() => void handleSaveCanvasEdit()}
+              onVideoUpload={(file) => void handleProfileVideoDraftUpload(file)}
+            />
+          ) : (
+            <ProfileModulesSection
+              badges={profileBadges}
+              error={modulesState.error}
+              isOwnProfile={isOwnProfile}
+              layoutPreset={profileLayoutPreset}
+              loading={modulesState.loading}
+              musicAutoplay={musicAutoplayRequest}
+              modules={profileCanvasModules}
+              renderModuleContent={(module, size) =>
+                renderProfileModuleContent(module, size, false)
+              }
+            />
+          )}
       {activePanel ? (
         <ProfileFocusedPanel
           badges={profileBadges}
@@ -1912,9 +2223,1029 @@ function blurLabel(blur: ProfileBackgroundBlur): string {
   return blur === "none" ? "None" : blur[0]!.toUpperCase() + blur.slice(1);
 }
 
+function profileCanvasCells(): CanvasPoint[] {
+  const cells: CanvasPoint[] = [];
+
+  for (let row = 1; row <= PROFILE_CANVAS_ROWS; row += 1) {
+    for (let column = 1; column <= PROFILE_CANVAS_COLUMNS; column += 1) {
+      cells.push({ column, row });
+    }
+  }
+
+  return cells;
+}
+
+function profileCanvasRectFromPoints(
+  first: CanvasPoint,
+  second: CanvasPoint,
+): ProfileModuleLayout {
+  const column = Math.min(first.column, second.column);
+  const row = Math.min(first.row, second.row);
+  const colSpan = Math.abs(first.column - second.column) + 1;
+  const rowSpan = Math.abs(first.row - second.row) + 1;
+
+  return {
+    column,
+    row,
+    colSpan,
+    rowSpan,
+  };
+}
+
+function profileCanvasPointInRect(
+  point: CanvasPoint,
+  rect: ProfileModuleLayout,
+): boolean {
+  return (
+    point.column >= rect.column &&
+    point.column < rect.column + rect.colSpan &&
+    point.row >= rect.row &&
+    point.row < rect.row + rect.rowSpan
+  );
+}
+
+function profileCanvasSortDraftModules(modules: ProfileModule[]): ProfileModule[] {
+  return [...modules].sort((first, second) => {
+    const firstLayout = first.layout;
+    const secondLayout = second.layout;
+
+    if (firstLayout && secondLayout) {
+      return (
+        firstLayout.row - secondLayout.row ||
+        firstLayout.column - secondLayout.column ||
+        first.position - second.position
+      );
+    }
+
+    return first.position - second.position;
+  });
+}
+
+function profileCanvasDefaultClientLayout(
+  module: ProfileModule,
+  index: number,
+): ProfileModuleLayout {
+  const span = profileGridModuleSizeSpan(
+    module.config.canvasSize ?? getProfileModuleDefinition(module.type).defaultSize,
+  );
+
+  return {
+    column: module.type === "profile_info" ? 3 : 1,
+    row: module.type === "profile_info" ? 1 : index + 1,
+    colSpan: span.columns,
+    rowSpan: span.rows,
+  };
+}
+
+function profileCanvasLayoutFromPointer(
+  grid: HTMLDivElement,
+  clientX: number,
+  clientY: number,
+  colSpan: number,
+  rowSpan: number,
+  pointerOffsetX: number,
+  pointerOffsetY: number,
+): ProfileModuleLayout {
+  const rect = grid.getBoundingClientRect();
+  const styles = window.getComputedStyle(grid);
+  const paddingLeft = Number.parseFloat(styles.paddingLeft) || 0;
+  const paddingTop = Number.parseFloat(styles.paddingTop) || 0;
+  const paddingRight = Number.parseFloat(styles.paddingRight) || 0;
+  const columnGap = Number.parseFloat(styles.columnGap) || 0;
+  const rowGap = Number.parseFloat(styles.rowGap) || columnGap;
+  const contentWidth = Math.max(1, grid.clientWidth - paddingLeft - paddingRight);
+  const cellSize = Math.max(
+    1,
+    (contentWidth - columnGap * (PROFILE_CANVAS_COLUMNS - 1)) /
+      PROFILE_CANVAS_COLUMNS,
+  );
+  const stepX = cellSize + columnGap;
+  const stepY = cellSize + rowGap;
+  const moduleLeft = clientX - pointerOffsetX;
+  const moduleTop = clientY - pointerOffsetY;
+  const rawColumn = Math.round((moduleLeft - rect.left - paddingLeft) / stepX) + 1;
+  const rawRow = Math.round((moduleTop - rect.top - paddingTop) / stepY) + 1;
+
+  return {
+    column: Math.min(
+      PROFILE_CANVAS_COLUMNS - colSpan + 1,
+      Math.max(1, rawColumn),
+    ),
+    row: Math.min(PROFILE_CANVAS_ROWS - rowSpan + 1, Math.max(1, rawRow)),
+    colSpan,
+    rowSpan,
+  };
+}
+
+function profileCanvasBestSizeForSelection(
+  type: ProfileModule["type"],
+  selection: ProfileModuleLayout,
+): ProfileGridModuleSize | undefined {
+  const selectionSize = profileGridModuleSpanSize(
+    Math.min(PROFILE_CANVAS_PROFILE_INFO_COLUMNS, selection.colSpan),
+    Math.min(PROFILE_CANVAS_MAX_MODULE_ROWS, selection.rowSpan),
+  );
+  const allowedSizes = profileModuleAllowedSizes(type);
+
+  if (selectionSize && allowedSizes.includes(selectionSize)) {
+    return selectionSize;
+  }
+
+  return [...allowedSizes]
+    .filter((size) => {
+      const span = profileGridModuleSizeSpan(size);
+      return span.columns <= selection.colSpan && span.rows <= selection.rowSpan;
+    })
+    .sort((first, second) => {
+      const firstSpan = profileGridModuleSizeSpan(first);
+      const secondSpan = profileGridModuleSizeSpan(second);
+      return (
+        secondSpan.columns * secondSpan.rows -
+          firstSpan.columns * firstSpan.rows ||
+        secondSpan.columns - firstSpan.columns ||
+        secondSpan.rows - firstSpan.rows
+      );
+    })[0];
+}
+
+function profileCanvasDefaultConfigForModule(
+  type: ProfileModule["type"],
+  size: ProfileGridModuleSize,
+): ProfileModule["config"] {
+  const definition = getProfileModuleDefinition(type);
+  const base = { canvasSize: size, configured: false };
+
+  if (type === "connections" || type === "links") {
+    return { ...base, links: [] };
+  }
+
+  if (type === "badge_display" || type === "featured_badges") {
+    return { ...base, userBadgeIds: [] };
+  }
+
+  if (definition.category === "images") {
+    return { ...base, mediaItems: [] };
+  }
+
+  if (definition.category === "video") {
+    return {
+      ...base,
+      platform: type.startsWith("youtube") ? "youtube" : "twitch",
+      sourceMode: type.startsWith("youtube") ? "youtube" : "twitch",
+    };
+  }
+
+  if (definition.category === "music") {
+    const provider = type.startsWith("apple")
+      ? "apple_music"
+      : type.startsWith("youtube")
+        ? "youtube_music"
+        : "spotify";
+
+    return { ...base, platform: provider, sourceMode: provider };
+  }
+
+  if (type === "github_repo") {
+    return { ...base, platform: "github", sourceMode: "github", displayMode: "project" };
+  }
+
+  return base;
+}
+
+function profileCanvasProviderForModule(
+  type: ProfileModule["type"],
+): ProfileIntegrationProvider | undefined {
+  if (type === "github_repo") {
+    return "github";
+  }
+
+  if (type === "twitch_channel") {
+    return "twitch";
+  }
+
+  if (type.startsWith("youtube_")) {
+    return "youtube";
+  }
+
+  if (type.startsWith("spotify_")) {
+    return "spotify";
+  }
+
+  if (type.startsWith("apple_music_")) {
+    return "apple_music";
+  }
+
+  return undefined;
+}
+
+function profileCanvasResolveDraftCollisions(
+  modules: ProfileModule[],
+  anchorModuleId?: number,
+): ProfileModule[] {
+  const occupied = new Set<string>();
+  const result = new Map<number, ProfileModule>();
+  const active = [...modules]
+    .filter((module) => module.status !== "deleted")
+    .sort((first, second) => {
+      if (first.pinned !== second.pinned) {
+        return first.pinned ? -1 : 1;
+      }
+
+      if (anchorModuleId !== undefined) {
+        if (first.id === anchorModuleId && second.id !== anchorModuleId) {
+          return -1;
+        }
+
+        if (second.id === anchorModuleId && first.id !== anchorModuleId) {
+          return 1;
+        }
+      }
+
+      const firstLayout = first.layout ?? profileCanvasDefaultClientLayout(first, 0);
+      const secondLayout = second.layout ?? profileCanvasDefaultClientLayout(second, 0);
+
+      return firstLayout.row - secondLayout.row || firstLayout.column - secondLayout.column;
+    });
+
+  active.forEach((module, index) => {
+    const requested = profileCanvasClampLayout(
+      module.layout ?? profileCanvasDefaultClientLayout(module, index),
+    );
+    const layout = profileCanvasLayoutFits(requested, occupied)
+      ? requested
+      : profileCanvasNextAvailableLayout(requested, occupied) ?? requested;
+
+    profileCanvasOccupyLayout(layout, occupied);
+    result.set(module.id, { ...module, layout });
+  });
+
+  return modules.map((module) => result.get(module.id) ?? module);
+}
+
+function profileCanvasCanResizeModule(
+  module: ProfileModule,
+  modules: ProfileModule[],
+  size: ProfileGridModuleSize,
+): boolean {
+  if (!module.layout) {
+    return false;
+  }
+
+  const span = profileGridModuleSizeSpan(size);
+  const resolved = profileCanvasResolveDraftCollisions(
+    modules.map((item) =>
+      item.id === module.id
+        ? {
+            ...item,
+            layout: {
+              ...module.layout!,
+              colSpan: span.columns,
+              rowSpan: span.rows,
+            },
+          }
+        : item,
+    ),
+    module.id,
+  );
+  const updated = resolved.find((item) => item.id === module.id);
+
+  return (
+    updated?.layout?.colSpan === span.columns &&
+    updated.layout.rowSpan === span.rows
+  );
+}
+
+function profileCanvasClampLayout(layout: ProfileModuleLayout): ProfileModuleLayout {
+  const colSpan = Math.min(PROFILE_CANVAS_PROFILE_INFO_COLUMNS, Math.max(1, layout.colSpan));
+  const rowSpan = Math.min(PROFILE_CANVAS_MAX_MODULE_ROWS, Math.max(1, layout.rowSpan));
+
+  return {
+    column: Math.min(PROFILE_CANVAS_COLUMNS - colSpan + 1, Math.max(1, layout.column)),
+    row: Math.min(PROFILE_CANVAS_ROWS - rowSpan + 1, Math.max(1, layout.row)),
+    colSpan,
+    rowSpan,
+  };
+}
+
+function profileCanvasLayoutFits(
+  layout: ProfileModuleLayout,
+  occupied: Set<string>,
+): boolean {
+  if (
+    layout.column < 1 ||
+    layout.row < 1 ||
+    layout.column + layout.colSpan - 1 > PROFILE_CANVAS_COLUMNS ||
+    layout.row + layout.rowSpan - 1 > PROFILE_CANVAS_ROWS
+  ) {
+    return false;
+  }
+
+  for (let row = layout.row; row < layout.row + layout.rowSpan; row += 1) {
+    for (
+      let column = layout.column;
+      column < layout.column + layout.colSpan;
+      column += 1
+    ) {
+      if (occupied.has(`${column}:${row}`)) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+function profileCanvasOccupyLayout(
+  layout: ProfileModuleLayout,
+  occupied: Set<string>,
+) {
+  for (let row = layout.row; row < layout.row + layout.rowSpan; row += 1) {
+    for (
+      let column = layout.column;
+      column < layout.column + layout.colSpan;
+      column += 1
+    ) {
+      occupied.add(`${column}:${row}`);
+    }
+  }
+}
+
+function profileCanvasNextAvailableLayout(
+  layout: ProfileModuleLayout,
+  occupied: Set<string>,
+): ProfileModuleLayout | undefined {
+  const maxColumn = PROFILE_CANVAS_COLUMNS - layout.colSpan + 1;
+  const maxRow = PROFILE_CANVAS_ROWS - layout.rowSpan + 1;
+
+  for (let row = 1; row <= maxRow; row += 1) {
+    for (let column = 1; column <= maxColumn; column += 1) {
+      const candidate = { ...layout, column, row };
+
+      if (profileCanvasLayoutFits(candidate, occupied)) {
+        return candidate;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+type ProfileDirectCanvasEditorProps = {
+  autosaveError?: string | undefined;
+  autosaveState: ProfileCanvasDraftAutosaveState;
+  busy: boolean;
+  draft: ProfileCanvasDraftState;
+  error?: string | undefined;
+  modules: ProfileModule[];
+  onBackgroundBlurChange: (blur: ProfileBackgroundBlur) => void;
+  onCancel: () => void;
+  onCanvasGlassChange: (canvasGlass: number) => void;
+  onChange: (updater: (draft: ProfileCanvasDraftState) => ProfileCanvasDraftState) => void;
+  onClearBackground: () => void;
+  onConnectProvider: (provider: ProfileIntegrationProvider) => void;
+  onImageUpload: (
+    file: File,
+    purpose: "avatar" | "banner" | "profile_background",
+  ) => void;
+  onNewDraftModuleId: () => number;
+  onRenderModuleContent: (
+    module: ProfileModule,
+    size: ProfileGridModuleSize,
+  ) => ReactNode | undefined;
+  onSave: () => void;
+  onVideoUpload: (file: File) => void;
+  profile: Profile;
+  uploading?: "backgroundImage" | "backgroundVideo" | "avatar" | "banner" | undefined;
+};
+
+type CanvasPoint = { column: number; row: number };
+
+function ProfileDirectCanvasEditor({
+  autosaveError,
+  autosaveState,
+  busy,
+  draft,
+  error,
+  modules,
+  onBackgroundBlurChange,
+  onCancel,
+  onCanvasGlassChange,
+  onChange,
+  onClearBackground,
+  onConnectProvider,
+  onImageUpload,
+  onNewDraftModuleId,
+  onRenderModuleContent,
+  onSave,
+  onVideoUpload,
+  profile,
+  uploading,
+}: ProfileDirectCanvasEditorProps) {
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const [selectionStart, setSelectionStart] = useState<CanvasPoint | undefined>();
+  const [selectionHover, setSelectionHover] = useState<CanvasPoint | undefined>();
+  const [pickerModuleId, setPickerModuleId] = useState<number | undefined>();
+  const [settingsModuleId, setSettingsModuleId] = useState<number | undefined>();
+  const [dragState, setDragState] = useState<
+    | {
+        moduleId: number;
+        pointerOffsetX: number;
+        pointerOffsetY: number;
+        startLayout: ProfileModuleLayout;
+      }
+    | undefined
+  >();
+  const sortedModules = profileCanvasSortDraftModules(
+    modules.filter((module) => module.status !== "deleted"),
+  );
+  const pickerModule = sortedModules.find((module) => module.id === pickerModuleId);
+  const settingsModule = sortedModules.find((module) => module.id === settingsModuleId);
+  const autosaveMessage =
+    autosaveState === "error"
+      ? autosaveError ?? "Canvas draft could not save."
+      : autosaveState === "saving"
+        ? "Saving draft..."
+        : autosaveState === "pending"
+          ? "Draft pending..."
+          : autosaveState === "saved"
+            ? "Draft saved."
+            : "Draft autosaves.";
+  const updateDraftModules = useCallback(
+    (updater: (currentModules: ProfileModule[]) => ProfileModule[]) => {
+      onChange((currentDraft) => ({
+        ...currentDraft,
+        modules: updater(currentDraft.modules),
+      }));
+    },
+    [onChange],
+  );
+
+  useEffect(() => {
+    if (!dragState) {
+      return undefined;
+    }
+
+    const activeDragState = dragState;
+
+    function handlePointerMove(event: globalThis.PointerEvent) {
+      const grid = gridRef.current;
+
+      if (!grid) {
+        return;
+      }
+
+      const nextLayout = profileCanvasLayoutFromPointer(
+        grid,
+        event.clientX,
+        event.clientY,
+        activeDragState.startLayout.colSpan,
+        activeDragState.startLayout.rowSpan,
+        activeDragState.pointerOffsetX,
+        activeDragState.pointerOffsetY,
+      );
+
+      updateDraftModules((currentModules) =>
+        profileCanvasResolveDraftCollisions(
+          currentModules.map((module) =>
+            module.id === activeDragState.moduleId
+              ? { ...module, layout: nextLayout }
+              : module,
+          ),
+          activeDragState.moduleId,
+        ),
+      );
+    }
+
+    function handlePointerUp() {
+      setDragState(undefined);
+    }
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp, { once: true });
+    window.addEventListener("pointercancel", handlePointerUp, { once: true });
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+    };
+  }, [dragState, modules, updateDraftModules]);
+
+  function handleCellClick(point: CanvasPoint) {
+    if (!selectionStart) {
+      setSelectionStart(point);
+      setSelectionHover(point);
+      return;
+    }
+
+    const rect = profileCanvasRectFromPoints(selectionStart, point);
+    const id = onNewDraftModuleId();
+    const colSpan = Math.min(PROFILE_CANVAS_MAX_MODULE_ROWS, rect.colSpan);
+    const rowSpan = Math.min(PROFILE_CANVAS_MAX_MODULE_ROWS, rect.rowSpan);
+    const size = profileGridModuleSpanSize(colSpan, rowSpan) ?? "1x1";
+    const blankModule: ProfileModule = {
+      id,
+      type: "uploaded_image",
+      title: null,
+      config: { canvasSize: size, configured: false },
+      visibility: "draft",
+      position: modules.length + 1,
+      pinned: false,
+      layout: {
+        column: rect.column,
+        row: rect.row,
+        colSpan,
+        rowSpan,
+      },
+      status: "active",
+      schemaVersion: 1,
+      createdAt: null,
+      updatedAt: null,
+    };
+
+    updateDraftModules((currentModules) =>
+      profileCanvasResolveDraftCollisions([...currentModules, blankModule], id),
+    );
+    setPickerModuleId(id);
+    setSelectionStart(undefined);
+    setSelectionHover(undefined);
+  }
+
+  function handleChooseModule(type: ProfileModule["type"]) {
+    const module = pickerModule;
+
+    if (!module?.layout) {
+      return;
+    }
+
+    const size = profileCanvasBestSizeForSelection(type, module.layout);
+
+    if (!size) {
+      return;
+    }
+
+    const span = profileGridModuleSizeSpan(size);
+
+    updateDraftModules((currentModules) =>
+      profileCanvasResolveDraftCollisions(
+        currentModules.map((item) =>
+          item.id === module.id
+            ? {
+                ...item,
+                type,
+                title: null,
+                config: profileCanvasDefaultConfigForModule(type, size),
+                visibility: "draft",
+                layout: {
+                  ...item.layout!,
+                  colSpan: span.columns,
+                  rowSpan: span.rows,
+                },
+              }
+            : item,
+        ),
+        module.id,
+      ),
+    );
+    setPickerModuleId(undefined);
+    setSettingsModuleId(module.id);
+  }
+
+  function handleModuleSize(module: ProfileModule, size: ProfileGridModuleSize) {
+    const span = profileGridModuleSizeSpan(size);
+
+    updateDraftModules((currentModules) =>
+      profileCanvasResolveDraftCollisions(
+        currentModules.map((item) =>
+          item.id === module.id && item.layout
+            ? {
+                ...item,
+                config: { ...item.config, canvasSize: size },
+                layout: {
+                  ...item.layout,
+                  colSpan: span.columns,
+                  rowSpan: span.rows,
+                },
+              }
+            : item,
+        ),
+        module.id,
+      ),
+    );
+  }
+
+  function handleRemoveModule(module: ProfileModule) {
+    updateDraftModules((currentModules) =>
+      module.id < 0
+        ? currentModules.filter((item) => item.id !== module.id)
+        : currentModules.map((item) =>
+            item.id === module.id
+              ? { ...item, status: "deleted", visibility: "hidden" }
+              : item,
+          ),
+    );
+    setSettingsModuleId(undefined);
+  }
+
+  const selectionRect =
+    selectionStart && selectionHover
+      ? profileCanvasRectFromPoints(selectionStart, selectionHover)
+      : undefined;
+
+  return (
+    <section
+      className="space-y-3"
+      data-testid="profile-canvas-editor"
+      aria-label="Profile canvas editor"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <ProfileCanvasBackgroundControls
+            backgroundBlur={draft.backgroundBlur}
+            profile={profile}
+            uploading={uploading}
+            onBackgroundBlurChange={onBackgroundBlurChange}
+            onClear={onClearBackground}
+            onImageUpload={(file) => onImageUpload(file, "profile_background")}
+            onVideoUpload={onVideoUpload}
+          />
+          <label className="flex min-h-11 items-center gap-3 rounded-control border border-line bg-surface/72 px-3 text-sm font-semibold text-text shadow-soft backdrop-blur-veil">
+            <span>Glass</span>
+            <input
+              className="w-28 accent-[var(--app-accent)]"
+              type="range"
+              min={22}
+              max={92}
+              value={draft.canvasGlass}
+              data-testid="profile-canvas-glass-slider"
+              onChange={(event) =>
+                onCanvasGlassChange(Number(event.currentTarget.value))
+              }
+            />
+          </label>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <p
+            className={cn(
+              "text-xs font-semibold",
+              autosaveState === "error" ? "text-rose-ink" : "text-muted",
+            )}
+            role={autosaveState === "error" ? "alert" : "status"}
+          >
+            {autosaveMessage}
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={busy}
+            icon={<X aria-hidden="true" size={16} />}
+            onClick={onCancel}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={busy}
+            icon={<Save aria-hidden="true" size={16} />}
+            data-testid="profile-canvas-save-button"
+            onClick={onSave}
+          >
+            Save
+          </Button>
+        </div>
+      </div>
+      {error ? (
+        <p
+          className="rounded-card border border-rose/30 bg-rose/12 p-3 text-sm font-medium text-rose-ink"
+          role="alert"
+        >
+          {error}
+        </p>
+      ) : null}
+      <ProfileGrid
+        gridRef={gridRef}
+        className="relative overflow-hidden"
+        maxColumns={PROFILE_CANVAS_COLUMNS}
+        maxRows={PROFILE_CANVAS_ROWS}
+        testId="profile-canvas-direct-grid"
+      >
+        <div
+          className="pointer-events-auto absolute inset-2 z-0 grid gap-3"
+          style={{
+            gridTemplateColumns: `repeat(${PROFILE_CANVAS_COLUMNS}, minmax(0, 1fr))`,
+            gridTemplateRows: `repeat(${PROFILE_CANVAS_ROWS}, minmax(0, 1fr))`,
+          }}
+          aria-hidden="true"
+        >
+          {profileCanvasCells().map((point) => {
+            const selected = selectionStart &&
+              point.column === selectionStart.column &&
+              point.row === selectionStart.row;
+            const inPreview = selectionRect
+              ? profileCanvasPointInRect(point, selectionRect)
+              : false;
+
+            return (
+              <button
+                key={`${point.column}:${point.row}`}
+                type="button"
+                className={cn(
+                  "min-h-0 rounded-card border border-line/55 bg-surface/20 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface/42 focus-visible:outline-2 focus-visible:outline-focus",
+                  selected ? "border-focus bg-focus/30" : undefined,
+                  inPreview && !selected ? "border-focus/70 bg-focus/15" : undefined,
+                )}
+                data-testid={`profile-canvas-cell-${point.column}-${point.row}`}
+                onClick={() => handleCellClick(point)}
+                onMouseEnter={() => {
+                  if (selectionStart) {
+                    setSelectionHover(point);
+                  }
+                }}
+              />
+            );
+          })}
+        </div>
+        {sortedModules.map((module) => {
+          const layout = module.layout ?? profileCanvasDefaultClientLayout(module, 0);
+          const size =
+            profileGridModuleSpanSize(layout.colSpan, layout.rowSpan) ??
+            getProfileModuleDefinition(module.type).defaultSize;
+          const unconfigured =
+            module.visibility === "draft" || module.config.configured === false;
+
+          return (
+            <ProfileGridModule
+              key={module.id}
+              className={cn(
+                "z-10 rounded-card transition duration-fluid ease-fluid",
+                unconfigured ? "backdrop-blur-veil" : undefined,
+                module.pinned ? "outline outline-1 outline-line-strong" : undefined,
+              )}
+              layout={layout}
+              pinned={module.pinned}
+              size={size}
+              testId={`profile-canvas-module-${module.id}`}
+            >
+              <div
+                className={cn(
+                  "relative h-full min-h-0 cursor-grab rounded-card active:cursor-grabbing",
+                  unconfigured ? "blur-[1px]" : undefined,
+                )}
+                onPointerDown={(event) => {
+                  const target = event.target;
+
+                  if (
+                    module.pinned ||
+                    event.button !== 0 ||
+                    (target instanceof HTMLElement &&
+                      target.closest('[data-profile-edit-control="true"]'))
+                  ) {
+                    return;
+                  }
+
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  setDragState({
+                    moduleId: module.id,
+                    pointerOffsetX: event.clientX - rect.left,
+                    pointerOffsetY: event.clientY - rect.top,
+                    startLayout: layout,
+                  });
+                }}
+              >
+                {unconfigured ? (
+                  <button
+                    type="button"
+                    className="grid h-full min-h-0 w-full place-items-center rounded-card border border-dashed border-line-strong bg-surface/62 p-4 text-center shadow-soft backdrop-blur-veil focus-visible:outline-2 focus-visible:outline-focus"
+                    data-profile-edit-control="true"
+                    data-testid={`profile-canvas-add-module-${module.id}`}
+                    onClick={() => setPickerModuleId(module.id)}
+                  >
+                    <span>
+                      <span className="mx-auto grid size-11 place-items-center rounded-full border border-line bg-canvas/80 text-accent-strong">
+                        <Plus aria-hidden="true" size={22} />
+                      </span>
+                      <span className="mt-3 block text-sm font-semibold text-text">
+                        Click to add module
+                      </span>
+                    </span>
+                  </button>
+                ) : (
+                  onRenderModuleContent(module, size) ?? (
+                    <ProfileModuleCard
+                      module={module}
+                      badges={[]}
+                      editing
+                      size={size}
+                    />
+                  )
+                )}
+              </div>
+              <button
+                type="button"
+                className="absolute right-2 top-2 z-30 grid size-8 place-items-center rounded-control border border-line bg-surface/92 text-text shadow-soft backdrop-blur-veil transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus"
+                aria-label={`Edit ${profileModuleFallbackTitle(module.type)}`}
+                title={`Edit ${profileModuleFallbackTitle(module.type)}`}
+                data-profile-edit-control="true"
+                data-testid={`profile-canvas-edit-module-${module.id}`}
+                onClick={() => setSettingsModuleId(module.id)}
+              >
+                <MoreHorizontal aria-hidden="true" size={16} />
+              </button>
+            </ProfileGridModule>
+          );
+        })}
+      </ProfileGrid>
+      <ModulePickerModal
+        module={pickerModule}
+        onChoose={handleChooseModule}
+        onClose={() => setPickerModuleId(undefined)}
+      />
+      <ModuleSettingsModal
+        module={settingsModule}
+        modules={sortedModules}
+        onClose={() => setSettingsModuleId(undefined)}
+        onRemove={handleRemoveModule}
+        onConnectProvider={onConnectProvider}
+        onSize={handleModuleSize}
+        onTogglePin={(module) =>
+          updateDraftModules((currentModules) =>
+            currentModules.map((item) =>
+              item.id === module.id ? { ...item, pinned: !item.pinned } : item,
+            ),
+          )
+        }
+      />
+    </section>
+  );
+}
+
+function ModulePickerModal({
+  module,
+  onChoose,
+  onClose,
+}: {
+  module: ProfileModule | undefined;
+  onChoose: (type: ProfileModule["type"]) => void;
+  onClose: () => void;
+}) {
+  return (
+    <ModalSheet
+      open={Boolean(module)}
+      onClose={onClose}
+      title="Add module"
+      description="Choose a tool that fits the selected space."
+      size="lg"
+      testId="profile-module-picker"
+    >
+      {module?.layout ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {profileModuleCatalog.map((item) => {
+            const enabled = Boolean(
+              profileCanvasBestSizeForSelection(item.type, module.layout!),
+            );
+
+            return (
+              <button
+                key={item.type}
+                type="button"
+                className={cn(
+                  "min-h-28 rounded-card border border-line bg-canvas/45 p-3 text-left transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
+                  !enabled ? "cursor-not-allowed opacity-50 blur-[1px]" : undefined,
+                )}
+                disabled={!enabled}
+                data-testid={`profile-module-picker-${item.type}`}
+                onClick={() => onChoose(item.type)}
+              >
+                <span className="block text-sm font-semibold text-text">
+                  {item.label}
+                </span>
+                <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted">
+                  {enabled ? item.description : "Selection too small"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </ModalSheet>
+  );
+}
+
+function ModuleSettingsModal({
+  module,
+  modules,
+  onClose,
+  onConnectProvider,
+  onRemove,
+  onSize,
+  onTogglePin,
+}: {
+  module: ProfileModule | undefined;
+  modules: ProfileModule[];
+  onClose: () => void;
+  onConnectProvider: (provider: ProfileIntegrationProvider) => void;
+  onRemove: (module: ProfileModule) => void;
+  onSize: (module: ProfileModule, size: ProfileGridModuleSize) => void;
+  onTogglePin: (module: ProfileModule) => void;
+}) {
+  const definition = module ? getProfileModuleDefinition(module.type) : undefined;
+  const provider = module ? profileCanvasProviderForModule(module.type) : undefined;
+
+  return (
+    <ModalSheet
+      open={Boolean(module)}
+      onClose={onClose}
+      title={module ? profileModuleFallbackTitle(module.type) : "Module settings"}
+      description={definition?.description}
+      size="md"
+      testId="profile-module-settings"
+      footer={
+        module ? (
+          <div className="flex items-center justify-between gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              icon={module.pinned ? <PinOff aria-hidden="true" size={16} /> : <Pin aria-hidden="true" size={16} />}
+              onClick={() => onTogglePin(module)}
+            >
+              {module.pinned ? "Unpin" : "Pin"}
+            </Button>
+            {module.type !== "profile_info" ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="border-rose/35 bg-rose/12 text-rose-ink hover:border-rose/60"
+                icon={<Trash2 aria-hidden="true" size={16} />}
+                onClick={() => onRemove(module)}
+              >
+                Remove
+              </Button>
+            ) : null}
+          </div>
+        ) : undefined
+      }
+    >
+      {module && definition ? (
+        <div className="space-y-4">
+          {definition.purpose === "integration" && provider ? (
+            <div className="rounded-card border border-line bg-canvas/45 p-3">
+              <p className="text-sm font-semibold text-text">Connect</p>
+              <p className="mt-1 text-sm leading-6 text-muted">
+                Connect only when this module needs provider data. thia.lol stores the minimum token data needed to refresh this card.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                className="mt-3"
+                variant="secondary"
+                onClick={() => onConnectProvider(provider)}
+              >
+                Connect
+              </Button>
+            </div>
+          ) : null}
+          <div>
+            <p className="text-xs font-semibold uppercase text-muted">
+              Available sizes
+            </p>
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {profileModuleAllowedSizes(module.type).map((size) => {
+                const enabled = profileCanvasCanResizeModule(module, modules, size);
+
+                return (
+                  <button
+                    key={size}
+                    type="button"
+                    className="min-h-10 rounded-control border border-line bg-canvas/45 px-3 text-sm font-semibold text-text transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-45"
+                    disabled={!enabled}
+                    data-testid={`profile-canvas-size-${size}`}
+                    onClick={() => onSize(module, size)}
+                  >
+                    {profileModuleSizeLabel(module.type, size)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </ModalSheet>
+  );
+}
+
 function clampProfileModuleLayout(layout: ProfileModuleLayout): ProfileModuleLayout {
-  const colSpan = Math.max(1, Math.min(PROFILE_CANVAS_COLUMNS, layout.colSpan));
-  const rowSpan = Math.max(1, Math.min(6, layout.rowSpan));
+  const colSpan = Math.max(
+    1,
+    Math.min(PROFILE_CANVAS_PROFILE_INFO_COLUMNS, layout.colSpan),
+  );
+  const rowSpan = Math.max(
+    1,
+    Math.min(PROFILE_CANVAS_MAX_MODULE_ROWS, layout.rowSpan),
+  );
 
   return {
     column: Math.max(

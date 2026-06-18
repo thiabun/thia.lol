@@ -193,9 +193,7 @@ function profile_background_blur(mixed $value): string
 
 function profile_canvas_version(mixed $value): int
 {
-    $version = (int) $value;
-
-    return $version === 1 ? 1 : 1;
+    return (int) $value === 2 ? 2 : 2;
 }
 
 function room_payload(array $row): array
@@ -439,7 +437,7 @@ function profile_customization_select_sql(string $alias): string
         : "NULL AS profile_background_blur,";
     $canvasVersionSelect = profile_canvas_version_column_exists()
         ? "{$alias}.profile_canvas_version,"
-        : "1 AS profile_canvas_version,";
+        : "2 AS profile_canvas_version,";
     $backgroundVideoSelect = profile_background_video_columns_exist()
         ? "{$alias}.profile_background_video_url,
             {$alias}.profile_background_video_poster_url,"

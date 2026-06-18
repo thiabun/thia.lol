@@ -35,7 +35,14 @@ import { apiDelete, apiGet, apiPatch, apiPost, apiUpload } from "./apiClient";
 import { formatRelativeTime } from "./dates";
 import { normalizeProfileLayoutPreset } from "./profileLayoutPresets";
 import { normalizeProfileConnection } from "./profileConnections";
-import { isProfileModuleType } from "./profileModuleRegistry";
+import {
+  PROFILE_CANVAS_DESKTOP_COLUMNS,
+  PROFILE_CANVAS_DESKTOP_ROWS,
+  PROFILE_CANVAS_MAX_MODULE_ROWS,
+  PROFILE_CANVAS_PROFILE_INFO_COLUMNS,
+  PROFILE_CANVAS_VERSION,
+  isProfileModuleType,
+} from "./profileModuleRegistry";
 
 type ApiRoom = Room & {
   description?: string;
@@ -182,7 +189,7 @@ export type UpdateProfileCanvasModuleInput = ProfileModuleLayout & {
 };
 
 export type UpdateProfileCanvasInput = {
-  canvasVersion: 1;
+  canvasVersion: typeof PROFILE_CANVAS_VERSION;
   anchorModuleId?: number | null;
   backgroundBlur?: ProfileBackgroundBlur;
   modules?: UpdateProfileCanvasModuleInput[];
@@ -191,8 +198,27 @@ export type UpdateProfileCanvasInput = {
 
 export type UpdateProfileCanvasResult = {
   backgroundBlur: ProfileBackgroundBlur;
-  canvasVersion: 1;
+  canvasVersion: typeof PROFILE_CANVAS_VERSION;
   modules: ProfileModule[];
+};
+
+export type ProfileCanvasDraftModule = ProfileModule & {
+  draftId?: string;
+};
+
+export type ProfileCanvasDraftState = {
+  backgroundBlur: ProfileBackgroundBlur;
+  canvasGlass: number;
+  canvasVersion: typeof PROFILE_CANVAS_VERSION;
+  modules: ProfileCanvasDraftModule[];
+  selectedModuleId?: number | string | null;
+  updatedAt?: string | null;
+};
+
+export type UpdateProfileCanvasDraftInput = Partial<
+  Pick<ProfileCanvasDraftState, "backgroundBlur" | "canvasGlass" | "modules" | "selectedModuleId">
+> & {
+  canvasVersion: typeof PROFILE_CANVAS_VERSION;
 };
 
 export type CreateProfileModuleInput = {
@@ -251,7 +277,7 @@ export type ProfileIntegrationSuggestion = {
   label: string;
   description: string;
   sourceUrl: string;
-  moduleType: Extract<ProfileModuleType, "creator_live" | "music">;
+  moduleType: ProfileModuleType;
   moduleTitle?: string | null;
   card?: ProfileIntegrationCard | null;
 };
@@ -672,11 +698,53 @@ export function updateProfileCanvas(
     modules?: ApiProfileModule[];
   }>("/me/profile/canvas", input, csrfToken).then((result) => ({
     backgroundBlur: normalizeProfileBackgroundBlur(result.backgroundBlur),
-    canvasVersion: 1,
+    canvasVersion: PROFILE_CANVAS_VERSION,
     modules: Array.isArray(result.modules)
       ? result.modules.filter(isApiProfileModule).map(normalizeProfileModule)
       : [],
   }));
+}
+
+export function getProfileCanvasDraft(): Promise<ProfileCanvasDraftState> {
+  return apiGet<ProfileCanvasDraftState>("/me/profile/canvas-draft").then(
+    normalizeProfileCanvasDraftState,
+  );
+}
+
+export function updateProfileCanvasDraft(
+  input: UpdateProfileCanvasDraftInput,
+  csrfToken: string,
+): Promise<ProfileCanvasDraftState> {
+  return apiPatch<ProfileCanvasDraftState>(
+    "/me/profile/canvas-draft",
+    input,
+    csrfToken,
+  ).then(normalizeProfileCanvasDraftState);
+}
+
+export function commitProfileCanvasDraft(
+  csrfToken: string,
+): Promise<UpdateProfileCanvasResult> {
+  return apiPost<{
+    backgroundBlur?: string | null;
+    canvasVersion?: number | string | null;
+    modules?: ApiProfileModule[];
+  }>("/me/profile/canvas-draft/commit", {}, csrfToken).then((result) => ({
+    backgroundBlur: normalizeProfileBackgroundBlur(result.backgroundBlur),
+    canvasVersion: PROFILE_CANVAS_VERSION,
+    modules: Array.isArray(result.modules)
+      ? result.modules.filter(isApiProfileModule).map(normalizeProfileModule)
+      : [],
+  }));
+}
+
+export function discardProfileCanvasDraft(
+  csrfToken: string,
+): Promise<ProfileCanvasDraftState> {
+  return apiDelete<ProfileCanvasDraftState>(
+    "/me/profile/canvas-draft",
+    csrfToken,
+  ).then(normalizeProfileCanvasDraftState);
 }
 
 export function getMyProfileIntegrations(): Promise<ProfileIntegrationsResult> {
@@ -1315,7 +1383,10 @@ function normalizeProfile(profile: ApiProfile): Profile {
     ),
     profileTheme: profile.profileTheme ?? null,
     profileLayoutPreset: normalizeProfileLayoutPreset(profile.profileLayoutPreset),
-    profileCanvasVersion: 1,
+    profileCanvasVersion:
+      Number(profile.profileCanvasVersion) === PROFILE_CANVAS_VERSION
+        ? PROFILE_CANVAS_VERSION
+        : PROFILE_CANVAS_VERSION,
     featuredPostId: profile.featuredPostId ?? profile.featuredPost?.id ?? null,
     featuredRoomId: profile.featuredRoomId ?? profile.featuredRoom?.id ?? null,
     featuredPost: profile.featuredPost ? normalizePost(profile.featuredPost) : null,
@@ -1420,6 +1491,28 @@ function normalizeProfileModule(module: ApiProfileModule): ProfileModule {
   };
 }
 
+function normalizeProfileCanvasDraftState(
+  state: ProfileCanvasDraftState,
+): ProfileCanvasDraftState {
+  return {
+    backgroundBlur: normalizeProfileBackgroundBlur(state.backgroundBlur),
+    canvasGlass:
+      typeof state.canvasGlass === "number" && Number.isFinite(state.canvasGlass)
+        ? Math.min(92, Math.max(22, Math.round(state.canvasGlass)))
+        : 58,
+    canvasVersion: PROFILE_CANVAS_VERSION,
+    modules: Array.isArray(state.modules)
+      ? state.modules.filter(isApiProfileModule).map(normalizeProfileModule)
+      : [],
+    selectedModuleId:
+      typeof state.selectedModuleId === "number" ||
+      typeof state.selectedModuleId === "string"
+        ? state.selectedModuleId
+        : null,
+    updatedAt: typeof state.updatedAt === "string" ? state.updatedAt : null,
+  };
+}
+
 function isApiProfileModule(module: ApiProfileModule): boolean {
   return isProfileModuleType(module.type);
 }
@@ -1441,10 +1534,10 @@ function normalizeProfileModuleLayout(
   }
 
   return {
-    column: Math.min(6, Math.max(1, column)),
-    row: Math.min(12, Math.max(1, row)),
-    colSpan: Math.min(6, Math.max(1, colSpan)),
-    rowSpan: Math.min(6, Math.max(1, rowSpan)),
+    column: Math.min(PROFILE_CANVAS_DESKTOP_COLUMNS, Math.max(1, column)),
+    row: Math.min(PROFILE_CANVAS_DESKTOP_ROWS, Math.max(1, row)),
+    colSpan: Math.min(PROFILE_CANVAS_PROFILE_INFO_COLUMNS, Math.max(1, colSpan)),
+    rowSpan: Math.min(PROFILE_CANVAS_MAX_MODULE_ROWS, Math.max(1, rowSpan)),
   };
 }
 
@@ -1514,6 +1607,10 @@ function normalizeProfileModuleConfig(config: ProfileModuleConfig): ProfileModul
 
   if (typeof config.canvasSize === "string") {
     normalized.canvasSize = config.canvasSize;
+  }
+
+  if (typeof config.configured === "boolean") {
+    normalized.configured = config.configured;
   }
 
   if (typeof config.sourceMode === "string") {

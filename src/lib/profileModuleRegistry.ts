@@ -5,30 +5,24 @@ import type {
   UserBadge,
 } from "./types";
 
+export const PROFILE_CANVAS_VERSION = 2;
+export const PROFILE_CANVAS_DESKTOP_COLUMNS = 12;
+export const PROFILE_CANVAS_DESKTOP_ROWS = 16;
+export const PROFILE_CANVAS_MOBILE_COLUMNS = 6;
+export const PROFILE_CANVAS_MOBILE_ROWS = 32;
+export const PROFILE_CANVAS_MAX_MODULE_COLUMNS = 6;
+export const PROFILE_CANVAS_MAX_MODULE_ROWS = 6;
+export const PROFILE_CANVAS_PROFILE_INFO_COLUMNS = 8;
+
+type ProfileGridColumnSpan = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+type ProfileGridRowSpan = 1 | 2 | 3 | 4 | 5 | 6;
+
 export type ProfileGridModuleSize =
-  | "1x1"
-  | "2x1"
-  | "3x1"
-  | "4x1"
-  | "6x1"
-  | "1x2"
-  | "2x2"
-  | "3x2"
-  | "4x2"
-  | "6x2"
-  | "1x3"
-  | "2x3"
-  | "3x3"
-  | "4x3"
-  | "5x3"
-  | "6x3"
-  | "3x4"
-  | "6x5"
-  | "3x6";
+  `${ProfileGridColumnSpan}x${ProfileGridRowSpan}`;
 
 export type ProfileGridModuleSpan = {
-  columns: 1 | 2 | 3 | 4 | 5 | 6;
-  rows: 1 | 2 | 3 | 4 | 5 | 6;
+  columns: ProfileGridColumnSpan;
+  rows: ProfileGridRowSpan;
   size: ProfileGridModuleSize;
 };
 
@@ -59,10 +53,18 @@ export type ProfileModuleEmptyPolicy =
 
 export type ProfileModuleSpanRole = "glance" | "summary" | "rich" | "hero";
 
+export type ProfileModuleCategory =
+  | "video"
+  | "music"
+  | "images"
+  | "info"
+  | "projects";
+
 export const PROFILE_ACTIVITY_MAX_ROW_SPAN = 6;
 
 export type ProfileModuleRegistryEntry = {
   allowedSizes: readonly ProfileGridModuleSize[];
+  category: ProfileModuleCategory;
   defaultSize: ProfileGridModuleSize;
   description: string;
   density: ProfileModuleDensity;
@@ -76,6 +78,7 @@ export type ProfileModuleRegistryEntry = {
 
 const fallbackProfileModule: ProfileModuleRegistryEntry = {
   allowedSizes: ["1x1"],
+  category: "info",
   defaultSize: "1x1",
   description: "A compact profile module.",
   density: "glance",
@@ -87,10 +90,31 @@ const fallbackProfileModule: ProfileModuleRegistryEntry = {
   purpose: "status",
 };
 
+function sizes(columns: number[], rows: number[]): ProfileGridModuleSize[] {
+  const result: ProfileGridModuleSize[] = [];
+
+  columns.forEach((column) => {
+    rows.forEach((row) => {
+      const size = profileGridModuleSpanSize(column, row);
+
+      if (size) {
+        result.push(size);
+      }
+    });
+  });
+
+  return result;
+}
+
+const uploadedImageSizes = sizes([1, 2, 3, 4, 5, 6], [1, 2, 3, 4, 5, 6]);
+const gallerySlideshowSizes = sizes([2, 3, 4, 5, 6], [2, 3, 4, 5, 6]);
+const textSizes = sizes([3, 4], [2, 3, 4, 5]);
+
 export const profileModuleRegistry = {
   profile_info: {
-    allowedSizes: ["3x2", "3x3", "4x3", "6x3"],
-    defaultSize: "3x2",
+    allowedSizes: ["3x2", "3x3", "4x3", "6x3", "8x3", "8x4"],
+    category: "info",
+    defaultSize: "8x3",
     description: "Core identity, actions, stats, and essential links.",
     density: "rich",
     emptyPolicy: "always-render",
@@ -101,8 +125,9 @@ export const profileModuleRegistry = {
     purpose: "identity",
   },
   about: {
-    allowedSizes: ["1x1", "2x1", "3x1", "2x2"],
-    defaultSize: "2x1",
+    allowedSizes: textSizes,
+    category: "info",
+    defaultSize: "3x2",
     description: "A short profile introduction.",
     density: "summary",
     emptyPolicy: "hide-public",
@@ -113,8 +138,9 @@ export const profileModuleRegistry = {
     purpose: "status",
   },
   custom_text: {
-    allowedSizes: ["1x1", "2x1", "2x2", "3x2"],
-    defaultSize: "1x1",
+    allowedSizes: textSizes,
+    category: "info",
+    defaultSize: "3x2",
     description: "A compact note or update.",
     density: "glance",
     emptyPolicy: "hide-public",
@@ -124,9 +150,36 @@ export const profileModuleRegistry = {
     primaryAction: "none",
     purpose: "status",
   },
+  text: {
+    allowedSizes: textSizes,
+    category: "info",
+    defaultSize: "3x2",
+    description: "A focused text block.",
+    density: "summary",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "Text",
+    freshness: "static",
+    label: "Text",
+    primaryAction: "none",
+    purpose: "status",
+  },
   links: {
-    allowedSizes: ["1x1", "2x1", "3x1", "2x2", "3x2"],
-    defaultSize: "2x1",
+    allowedSizes: ["3x2", "4x2", "3x3", "3x4"],
+    category: "info",
+    defaultSize: "3x2",
+    description: "Platform-aware safe links and connections.",
+    density: "summary",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "Connections",
+    freshness: "static",
+    label: "Connections",
+    primaryAction: "open",
+    purpose: "navigation",
+  },
+  connections: {
+    allowedSizes: ["3x2", "4x2", "3x3", "3x4"],
+    category: "info",
+    defaultSize: "3x2",
     description: "Platform-aware safe links and connections.",
     density: "summary",
     emptyPolicy: "hide-public",
@@ -137,8 +190,9 @@ export const profileModuleRegistry = {
     purpose: "navigation",
   },
   featured_badges: {
-    allowedSizes: ["1x1", "2x1", "2x2"],
-    defaultSize: "2x1",
+    allowedSizes: ["2x2", "3x2"],
+    category: "info",
+    defaultSize: "2x2",
     description: "A shelf of earned visible badges.",
     density: "summary",
     emptyPolicy: "hide-public",
@@ -148,9 +202,23 @@ export const profileModuleRegistry = {
     primaryAction: "inspect",
     purpose: "showcase",
   },
+  badge_display: {
+    allowedSizes: ["2x2", "3x2"],
+    category: "info",
+    defaultSize: "2x2",
+    description: "A shelf of earned visible badges.",
+    density: "summary",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "Badge display",
+    freshness: "static",
+    label: "Badge display",
+    primaryAction: "inspect",
+    purpose: "showcase",
+  },
   featured_post: {
-    allowedSizes: ["2x1", "3x1", "2x2", "3x2"],
-    defaultSize: "3x2",
+    allowedSizes: ["3x4", "4x5"],
+    category: "info",
+    defaultSize: "3x4",
     description: "A selected post highlight.",
     density: "rich",
     emptyPolicy: "hide-public",
@@ -161,8 +229,9 @@ export const profileModuleRegistry = {
     purpose: "activity",
   },
   featured_room: {
-    allowedSizes: ["1x1", "2x1", "3x1", "2x2"],
-    defaultSize: "2x1",
+    allowedSizes: ["3x1", "4x2"],
+    category: "info",
+    defaultSize: "3x1",
     description: "A selected room highlight.",
     density: "summary",
     emptyPolicy: "hide-public",
@@ -172,8 +241,22 @@ export const profileModuleRegistry = {
     primaryAction: "navigate",
     purpose: "navigation",
   },
+  activity: {
+    allowedSizes: ["3x4", "4x6"],
+    category: "info",
+    defaultSize: "3x4",
+    description: "Feed, replies, and rooms.",
+    density: "rich",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "Activity",
+    freshness: "recent",
+    label: "Activity",
+    primaryAction: "navigate",
+    purpose: "activity",
+  },
   gallery_media: {
-    allowedSizes: ["1x1", "2x1", "2x2", "3x2", "3x3", "4x3"],
+    allowedSizes: gallerySlideshowSizes,
+    category: "images",
     defaultSize: "2x2",
     description: "A compact strip of selected uploaded media.",
     density: "rich",
@@ -184,9 +267,49 @@ export const profileModuleRegistry = {
     primaryAction: "inspect",
     purpose: "media",
   },
+  uploaded_image: {
+    allowedSizes: uploadedImageSizes,
+    category: "images",
+    defaultSize: "2x2",
+    description: "A single uploaded image.",
+    density: "rich",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "Image",
+    freshness: "static",
+    label: "Image",
+    primaryAction: "inspect",
+    purpose: "media",
+  },
+  gallery_slideshow: {
+    allowedSizes: gallerySlideshowSizes,
+    category: "images",
+    defaultSize: "3x3",
+    description: "A slideshow of uploaded images.",
+    density: "rich",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "Slideshow",
+    freshness: "static",
+    label: "Gallery slideshow",
+    primaryAction: "inspect",
+    purpose: "media",
+  },
+  gallery_feed: {
+    allowedSizes: ["3x6", "4x6"],
+    category: "images",
+    defaultSize: "3x6",
+    description: "A vertical feed of uploaded images.",
+    density: "rich",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "Gallery feed",
+    freshness: "static",
+    label: "Gallery feed",
+    primaryAction: "inspect",
+    purpose: "media",
+  },
   creator_live: {
-    allowedSizes: ["1x1", "2x1", "2x2", "3x2", "3x3", "4x3", "5x3", "6x5"],
-    defaultSize: "2x1",
+    allowedSizes: ["2x1", "3x2", "4x3", "5x3", "6x4"],
+    category: "video",
+    defaultSize: "3x2",
     description: "A static creator or channel card.",
     density: "summary",
     emptyPolicy: "hide-public",
@@ -196,9 +319,75 @@ export const profileModuleRegistry = {
     primaryAction: "open",
     purpose: "integration",
   },
+  twitch_channel: {
+    allowedSizes: ["2x1", "3x2", "4x3", "5x3", "6x4"],
+    category: "video",
+    defaultSize: "3x2",
+    description: "Twitch status, stream, or stream with chat.",
+    density: "rich",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "Twitch channel",
+    freshness: "live",
+    label: "Twitch channel",
+    primaryAction: "open",
+    purpose: "integration",
+  },
+  youtube_video: {
+    allowedSizes: ["3x4", "4x3", "6x4"],
+    category: "video",
+    defaultSize: "4x3",
+    description: "A featured YouTube video or Short.",
+    density: "rich",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "YouTube video",
+    freshness: "cached",
+    label: "YouTube video",
+    primaryAction: "open",
+    purpose: "integration",
+  },
+  youtube_stream: {
+    allowedSizes: ["4x3", "5x3", "6x4"],
+    category: "video",
+    defaultSize: "4x3",
+    description: "A YouTube stream card.",
+    density: "rich",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "YouTube stream",
+    freshness: "live",
+    label: "YouTube stream",
+    primaryAction: "open",
+    purpose: "integration",
+  },
+  youtube_playlist: {
+    allowedSizes: ["4x3", "5x3", "2x4", "3x6"],
+    category: "video",
+    defaultSize: "4x3",
+    description: "A YouTube playlist card.",
+    density: "rich",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "YouTube playlist",
+    freshness: "cached",
+    label: "YouTube playlist",
+    primaryAction: "open",
+    purpose: "integration",
+  },
+  uploaded_video: {
+    allowedSizes: ["4x3", "6x4", "4x6"],
+    category: "video",
+    defaultSize: "4x3",
+    description: "An uploaded video module.",
+    density: "rich",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "Video",
+    freshness: "static",
+    label: "Video upload",
+    primaryAction: "inspect",
+    purpose: "media",
+  },
   music: {
-    allowedSizes: ["1x1", "2x1", "3x1", "2x2", "3x2"],
-    defaultSize: "2x1",
+    allowedSizes: ["2x1", "3x2", "4x2", "4x3", "4x4"],
+    category: "music",
+    defaultSize: "3x2",
     description: "A link-first music card.",
     density: "summary",
     emptyPolicy: "hide-public",
@@ -208,97 +397,232 @@ export const profileModuleRegistry = {
     primaryAction: "open",
     purpose: "integration",
   },
-  activity: {
-    allowedSizes: ["2x2", "3x2", "3x3", "3x4", "3x6"],
-    defaultSize: "3x3",
-    description: "Feed, replies, and rooms.",
+  spotify_song: {
+    allowedSizes: ["2x1", "3x2", "4x2", "4x3", "4x4"],
+    category: "music",
+    defaultSize: "3x2",
+    description: "A Spotify song player.",
+    density: "summary",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "Spotify song",
+    freshness: "cached",
+    label: "Spotify song",
+    primaryAction: "open",
+    purpose: "integration",
+  },
+  apple_music_song: {
+    allowedSizes: ["2x1", "3x2", "4x2", "4x3", "4x4"],
+    category: "music",
+    defaultSize: "3x2",
+    description: "An Apple Music song player.",
+    density: "summary",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "Apple Music song",
+    freshness: "cached",
+    label: "Apple Music song",
+    primaryAction: "open",
+    purpose: "integration",
+  },
+  youtube_music_song: {
+    allowedSizes: ["2x1", "3x2", "4x2", "4x3", "4x4"],
+    category: "music",
+    defaultSize: "3x2",
+    description: "A YouTube Music song player.",
+    density: "summary",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "YouTube Music song",
+    freshness: "cached",
+    label: "YouTube Music song",
+    primaryAction: "open",
+    purpose: "integration",
+  },
+  spotify_playlist: {
+    allowedSizes: ["3x2", "4x3", "3x6", "4x6"],
+    category: "music",
+    defaultSize: "4x3",
+    description: "A Spotify playlist module.",
     density: "rich",
     emptyPolicy: "hide-public",
-    fallbackTitle: "Activity",
-    freshness: "recent",
-    label: "Activity",
-    primaryAction: "navigate",
-    purpose: "activity",
+    fallbackTitle: "Spotify playlist",
+    freshness: "cached",
+    label: "Spotify playlist",
+    primaryAction: "open",
+    purpose: "integration",
+  },
+  apple_music_playlist: {
+    allowedSizes: ["3x2", "4x3", "3x6", "4x6"],
+    category: "music",
+    defaultSize: "4x3",
+    description: "An Apple Music playlist module.",
+    density: "rich",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "Apple Music playlist",
+    freshness: "cached",
+    label: "Apple Music playlist",
+    primaryAction: "open",
+    purpose: "integration",
+  },
+  youtube_music_playlist: {
+    allowedSizes: ["3x2", "4x3", "3x6", "4x6"],
+    category: "music",
+    defaultSize: "4x3",
+    description: "A YouTube Music playlist module.",
+    density: "rich",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "YouTube Music playlist",
+    freshness: "cached",
+    label: "YouTube Music playlist",
+    primaryAction: "open",
+    purpose: "integration",
+  },
+  spotify_artist: {
+    allowedSizes: ["3x2", "4x3", "6x4"],
+    category: "music",
+    defaultSize: "4x3",
+    description: "A Spotify artist card.",
+    density: "rich",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "Spotify artist",
+    freshness: "cached",
+    label: "Spotify artist",
+    primaryAction: "open",
+    purpose: "integration",
+  },
+  apple_music_artist: {
+    allowedSizes: ["3x2", "4x3", "6x4"],
+    category: "music",
+    defaultSize: "4x3",
+    description: "An Apple Music artist card.",
+    density: "rich",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "Apple Music artist",
+    freshness: "cached",
+    label: "Apple Music artist",
+    primaryAction: "open",
+    purpose: "integration",
+  },
+  youtube_music_artist: {
+    allowedSizes: ["3x2", "4x3", "6x4"],
+    category: "music",
+    defaultSize: "4x3",
+    description: "A YouTube Music artist card.",
+    density: "rich",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "YouTube Music artist",
+    freshness: "cached",
+    label: "YouTube Music artist",
+    primaryAction: "open",
+    purpose: "integration",
+  },
+  github_repo: {
+    allowedSizes: ["3x2", "4x3", "6x4"],
+    category: "projects",
+    defaultSize: "3x2",
+    description: "A GitHub repository card.",
+    density: "rich",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "GitHub repo",
+    freshness: "cached",
+    label: "GitHub repo",
+    primaryAction: "open",
+    purpose: "integration",
   },
 } satisfies Record<ProfileModuleType, ProfileModuleRegistryEntry>;
 
-const profileModuleSizeLabels: Record<
-  ProfileModuleType,
-  Partial<Record<ProfileGridModuleSize, string>>
+export type ProfileModuleCatalogItem = {
+  category: ProfileModuleCategory;
+  description: string;
+  label: string;
+  type: ProfileModuleType;
+};
+
+export const profileModuleCatalog: ProfileModuleCatalogItem[] = (
+  [
+    "twitch_channel",
+    "youtube_video",
+    "youtube_stream",
+    "youtube_playlist",
+    "uploaded_video",
+    "spotify_song",
+    "apple_music_song",
+    "youtube_music_song",
+    "spotify_playlist",
+    "apple_music_playlist",
+    "youtube_music_playlist",
+    "spotify_artist",
+    "apple_music_artist",
+    "youtube_music_artist",
+    "uploaded_image",
+    "gallery_slideshow",
+    "gallery_feed",
+    "text",
+    "badge_display",
+    "connections",
+    "activity",
+    "featured_post",
+    "featured_room",
+    "github_repo",
+  ] as ProfileModuleType[]
+).map((type) => {
+  const definition = getProfileModuleDefinition(type);
+
+  return {
+    category: definition.category,
+    description: definition.description,
+    label: definition.label,
+    type,
+  };
+});
+
+const profileModuleSizeLabels: Partial<
+  Record<ProfileModuleType, Partial<Record<ProfileGridModuleSize, string>>>
 > = {
   profile_info: {
-    "3x2": "Small",
-    "3x3": "Medium",
     "4x3": "Large",
-    "6x3": "Full",
+    "6x3": "Wide",
+    "8x3": "Pinned",
+    "8x4": "Expanded",
   },
-  about: {
-    "1x1": "Small",
-    "2x1": "Medium",
-    "3x1": "Wide",
-    "2x2": "Large",
+  twitch_channel: {
+    "2x1": "Status",
+    "3x2": "Status",
+    "4x3": "Stream",
+    "5x3": "Stream",
+    "6x4": "Stream + chat",
   },
-  custom_text: {
-    "1x1": "Small",
-    "2x1": "Medium",
-    "2x2": "Large",
-    "3x2": "Wide",
+  youtube_video: {
+    "3x4": "Short",
+    "4x3": "Video",
+    "6x4": "Video",
   },
-  links: {
-    "1x1": "Small",
-    "2x1": "Medium",
-    "3x1": "Wide",
-    "2x2": "Large",
-    "3x2": "Showcase",
+  youtube_stream: {
+    "4x3": "Stream",
+    "5x3": "Stream",
+    "6x4": "Stream + chat",
   },
-  featured_badges: {
-    "1x1": "Small",
-    "2x1": "Medium",
-    "2x2": "Large",
+  youtube_playlist: {
+    "4x3": "Thumbnail",
+    "5x3": "Thumbnail",
+    "2x4": "Playlist",
+    "3x6": "Playlist",
   },
-  featured_post: {
-    "2x1": "Small",
-    "3x1": "Wide",
-    "2x2": "Medium",
-    "3x2": "Large",
+  uploaded_video: {
+    "4x3": "Video",
+    "6x4": "Wide",
+    "4x6": "Tall",
+  },
+  gallery_feed: {
+    "3x6": "Feed",
+    "4x6": "Wide feed",
   },
   featured_room: {
-    "1x1": "Small",
-    "2x1": "Medium",
-    "3x1": "Wide",
-    "2x2": "Large",
+    "3x1": "Compact",
+    "4x2": "Room card",
   },
-  gallery_media: {
-    "1x1": "Small",
-    "2x1": "Strip",
-    "2x2": "Medium",
-    "3x2": "Wide",
-    "3x3": "Large",
-    "4x3": "Showcase",
-  },
-  creator_live: {
-    "1x1": "Small",
-    "2x1": "Medium",
-    "2x2": "Card",
-    "3x2": "Stream",
-    "3x3": "Large",
-    "4x3": "Theater",
-    "5x3": "Wide",
-    "6x5": "Full",
-  },
-  music: {
-    "1x1": "Small",
-    "2x1": "Medium",
-    "3x1": "Wide",
-    "2x2": "Large",
-    "3x2": "Showcase",
-  },
-  activity: {
-    "2x2": "Small",
-    "3x2": "Medium",
-    "3x3": "Large",
-    "3x4": "Tall",
-    "3x6": "Full",
+  github_repo: {
+    "3x2": "Card",
+    "4x3": "Details",
+    "6x4": "Showcase",
   },
 };
 
@@ -329,7 +653,7 @@ export function profileModuleSizeLabel(
   type: ProfileModuleType,
   size: ProfileGridModuleSize,
 ): string {
-  return profileModuleSizeLabels[type]?.[size] ?? "Custom";
+  return profileModuleSizeLabels[type]?.[size] ?? `${size.replace("x", " x ")}`;
 }
 
 export function profileModuleFallbackTitle(type: ProfileModuleType): string {
@@ -341,6 +665,8 @@ export function profileModuleGridSize(
   layoutPreset: ProfileLayoutPreset = "balanced",
   index = 0,
 ): ProfileGridModuleSize {
+  void layoutPreset;
+  void index;
   const definition = getProfileModuleDefinition(module.type);
   const layoutSize = module.layout
     ? profileGridModuleSpanSize(module.layout.colSpan, module.layout.rowSpan)
@@ -354,48 +680,6 @@ export function profileModuleGridSize(
 
   if (requestedSize && definition.allowedSizes.includes(requestedSize)) {
     return requestedSize;
-  }
-
-  if (module.type === "profile_info") {
-    return module.config.hasBanner ? "3x3" : "3x2";
-  }
-
-  if (layoutPreset === "compact") {
-    return module.type === "about" ||
-      module.type === "activity" ||
-      module.type === "featured_post" ||
-      module.type === "featured_room"
-      ? definition.allowedSizes.includes("2x1")
-        ? "2x1"
-        : definition.defaultSize
-      : definition.defaultSize;
-  }
-
-  if (
-    layoutPreset === "showcase" &&
-    index === 0 &&
-    module.type === "featured_post"
-  ) {
-    return definition.allowedSizes.includes("3x2") ? "3x2" : definition.defaultSize;
-  }
-
-  if (
-    layoutPreset === "showcase" &&
-    index === 0 &&
-    module.type === "about"
-  ) {
-    return definition.allowedSizes.includes("3x1") ? "3x1" : definition.defaultSize;
-  }
-
-  if (module.type === "links" && (module.config.links?.length ?? 0) > 4) {
-    return "2x1";
-  }
-
-  if (
-    module.type === "featured_badges" &&
-    (module.config.userBadgeIds?.length ?? 0) > 6
-  ) {
-    return "2x1";
   }
 
   return definition.defaultSize;
@@ -420,23 +704,17 @@ export function profileModuleGridSpan(
 export function profileModuleSpanRole(
   size: ProfileGridModuleSize | undefined,
 ): ProfileModuleSpanRole {
-  if (
-    size === "3x3" ||
-    size === "4x3" ||
-    size === "5x3" ||
-    size === "6x3" ||
-    size === "3x4" ||
-    size === "6x5" ||
-    size === "3x6"
-  ) {
+  const span = profileGridModuleSizeSpan(size);
+
+  if (span.rows >= 4 || span.columns >= 5) {
     return "hero";
   }
 
-  if (size === "2x2" || size === "3x2" || size === "1x3" || size === "2x3") {
+  if ((span.columns >= 3 && span.rows >= 2) || span.rows >= 3) {
     return "rich";
   }
 
-  if (size === "3x1") {
+  if (span.columns >= 3) {
     return "summary";
   }
 
@@ -464,6 +742,9 @@ export function clampProfileGridModuleSpan(
   return {
     ...span,
     rows: normalizeProfileGridRowSpan(Math.min(span.rows, maxRows)),
+    size: `${span.columns}x${normalizeProfileGridRowSpan(
+      Math.min(span.rows, maxRows),
+    )}` as ProfileGridModuleSize,
   };
 }
 
@@ -471,127 +752,74 @@ export function normalizeProfileGridModuleSize(
   value: unknown,
   fallback?: ProfileGridModuleSize,
 ): ProfileGridModuleSize | undefined {
-  if (value === "3x5") {
-    return "5x3";
+  if (typeof value !== "string") {
+    return fallback;
   }
 
-  if (
-    value === "1x1" ||
-    value === "2x1" ||
-    value === "3x1" ||
-    value === "4x1" ||
-    value === "6x1" ||
-    value === "1x2" ||
-    value === "2x2" ||
-    value === "3x2" ||
-    value === "4x2" ||
-    value === "6x2" ||
-    value === "1x3" ||
-    value === "2x3" ||
-    value === "3x3" ||
-    value === "4x3" ||
-    value === "5x3" ||
-    value === "6x3" ||
-    value === "3x4" ||
-    value === "6x5" ||
-    value === "3x6"
-  ) {
-    return value;
+  const match = value.trim().match(/^([1-8])x([1-6])$/);
+
+  if (!match) {
+    return fallback;
   }
 
-  return fallback;
+  return `${match[1]}x${match[2]}` as ProfileGridModuleSize;
 }
 
 export function profileGridModuleSizeSpan(
   value: unknown,
 ): ProfileGridModuleSpan {
   const size = normalizeProfileGridModuleSize(value, "1x1") ?? "1x1";
+  const parts = size.split("x").map(Number);
+  const rawColumns = parts[0] ?? 1;
+  const rawRows = parts[1] ?? 1;
 
-  if (size === "2x1") {
-    return { columns: 2, rows: 1, size };
-  }
-
-  if (size === "1x2") {
-    return { columns: 1, rows: 2, size };
-  }
-
-  if (size === "4x1") {
-    return { columns: 4, rows: 1, size };
-  }
-
-  if (size === "6x1") {
-    return { columns: 6, rows: 1, size };
-  }
-
-  if (size === "2x2") {
-    return { columns: 2, rows: 2, size };
-  }
-
-  if (size === "3x1") {
-    return { columns: 3, rows: 1, size };
-  }
-
-  if (size === "3x2") {
-    return { columns: 3, rows: 2, size };
-  }
-
-  if (size === "4x2") {
-    return { columns: 4, rows: 2, size };
-  }
-
-  if (size === "6x2") {
-    return { columns: 6, rows: 2, size };
-  }
-
-  if (size === "1x3") {
-    return { columns: 1, rows: 3, size };
-  }
-
-  if (size === "2x3") {
-    return { columns: 2, rows: 3, size };
-  }
-
-  if (size === "3x3") {
-    return { columns: 3, rows: 3, size };
-  }
-
-  if (size === "4x3") {
-    return { columns: 4, rows: 3, size };
-  }
-
-  if (size === "5x3") {
-    return { columns: 5, rows: 3, size };
-  }
-
-  if (size === "6x3") {
-    return { columns: 6, rows: 3, size };
-  }
-
-  if (size === "3x4") {
-    return { columns: 3, rows: 4, size };
-  }
-
-  if (size === "6x5") {
-    return { columns: 6, rows: 5, size };
-  }
-
-  if (size === "3x6") {
-    return { columns: 3, rows: 6, size };
-  }
-
-  return { columns: 1, rows: 1, size };
+  return {
+    columns: normalizeProfileGridColumnSpan(rawColumns),
+    rows: normalizeProfileGridRowSpan(rawRows),
+    size,
+  };
 }
 
 export function profileGridModuleSpanSize(
   columns: number,
   rows: number,
 ): ProfileGridModuleSize | undefined {
-  const size = `${columns}x${rows}`;
-
-  return normalizeProfileGridModuleSize(size);
+  return normalizeProfileGridModuleSize(`${columns}x${rows}`);
 }
 
-function normalizeProfileGridRowSpan(value: number): ProfileGridModuleSpan["rows"] {
+function normalizeProfileGridColumnSpan(value: number): ProfileGridColumnSpan {
+  if (value <= 1) {
+    return 1;
+  }
+
+  if (value <= 2) {
+    return 2;
+  }
+
+  if (value <= 3) {
+    return 3;
+  }
+
+  if (value <= 4) {
+    return 4;
+  }
+
+  if (value <= 5) {
+    return 5;
+  }
+
+  if (value <= 6) {
+    return 6;
+  }
+
+  if (value <= 7) {
+    return 7;
+  }
+
+  return 8;
+}
+
+function normalizeProfileGridRowSpan(value: number): ProfileGridRowSpan {
   if (value <= 1) {
     return 1;
   }
@@ -619,15 +847,23 @@ export function profileModuleHasContent(
   module: ProfileModule,
   badges: UserBadge[],
 ): boolean {
-  if (module.type === "profile_info") {
+  if (module.type === "profile_info" || module.type === "activity") {
     return true;
   }
 
-  if (module.type === "links") {
+  if (module.visibility === "draft" || module.config.configured === false) {
+    return false;
+  }
+
+  if (module.type === "links" || module.type === "connections") {
     return (module.config.links ?? []).length > 0;
   }
 
-  if (module.type === "about") {
+  if (
+    module.type === "about" ||
+    module.type === "custom_text" ||
+    module.type === "text"
+  ) {
     return Boolean(
       module.config.body?.trim() ||
         module.config.statusText?.trim() ||
@@ -635,20 +871,25 @@ export function profileModuleHasContent(
     );
   }
 
-  if (module.type === "featured_badges") {
+  if (module.type === "featured_badges" || module.type === "badge_display") {
     return profileModuleBadges(module, badges).length > 0;
   }
 
-  if (module.type === "gallery_media") {
-    return (module.config.mediaItems ?? []).length > 0;
+  if (
+    module.type === "gallery_media" ||
+    module.type === "uploaded_image" ||
+    module.type === "gallery_slideshow" ||
+    module.type === "gallery_feed"
+  ) {
+    return (module.config.mediaItems ?? []).length > 0 || Boolean(module.config.url);
   }
 
-  if (module.type === "creator_live" || module.type === "music") {
-    return Boolean(module.config.url?.trim());
-  }
-
-  if (module.type === "activity") {
-    return true;
+  if (
+    module.type === "creator_live" ||
+    module.type === "music" ||
+    getProfileModuleDefinition(module.type).purpose === "integration"
+  ) {
+    return Boolean(module.config.url?.trim() || module.config.integration);
   }
 
   if (module.type === "featured_post" || module.type === "featured_room") {
@@ -681,30 +922,36 @@ export function renderableProfileModules(
 }
 
 export function profileModuleSummary(module: ProfileModule): string {
-  if (module.type === "links") {
+  if (module.type === "links" || module.type === "connections") {
     const count = module.config.links?.length ?? 0;
     return count === 1 ? "1 link" : `${count} links`;
   }
 
-  if (module.type === "featured_badges") {
+  if (module.type === "featured_badges" || module.type === "badge_display") {
     const count = module.config.userBadgeIds?.length ?? 0;
     return count === 1 ? "1 selected badge" : `${count} selected badges`;
   }
 
-  if (module.type === "gallery_media") {
+  if (
+    module.type === "gallery_media" ||
+    module.type === "uploaded_image" ||
+    module.type === "gallery_slideshow" ||
+    module.type === "gallery_feed"
+  ) {
     const count = module.config.mediaItems?.length ?? 0;
     return count === 1 ? "1 media item" : `${count} media items`;
   }
 
-  if (module.type === "creator_live" || module.type === "music") {
+  if (
+    module.type === "creator_live" ||
+    module.type === "music" ||
+    getProfileModuleDefinition(module.type).purpose === "integration"
+  ) {
     return module.config.description?.trim() || module.config.url || getProfileModuleDefinition(module.type).description;
   }
 
-  if (module.type === "activity") {
-    return getProfileModuleDefinition(module.type).description;
-  }
-
   if (
+    module.type === "activity" ||
     module.type === "profile_info" ||
     module.type === "featured_post" ||
     module.type === "featured_room"

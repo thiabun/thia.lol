@@ -21,6 +21,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { cn } from "../../lib/classNames";
 import {
   getProfileModuleDefinition,
+  PROFILE_CANVAS_DESKTOP_COLUMNS,
+  PROFILE_CANVAS_DESKTOP_ROWS,
   isProfileModuleType,
   profileModuleBadges,
   profileModuleFallbackTitle,
@@ -54,8 +56,8 @@ import { CompactStateNotice } from "../ui/RouteState";
 import { ProfileGrid, ProfileGridModule } from "./ProfileGrid";
 import { ProfileConnectionIcon } from "./ProfileConnectionIcon";
 
-const PROFILE_CANVAS_COLUMNS = 6;
-const PROFILE_CANVAS_ROWS = 12;
+const PROFILE_CANVAS_COLUMNS = PROFILE_CANVAS_DESKTOP_COLUMNS;
+const PROFILE_CANVAS_ROWS = PROFILE_CANVAS_DESKTOP_ROWS;
 
 type ProfileModulesSectionProps = {
   badges: UserBadge[];
@@ -152,7 +154,7 @@ type ProfileModuleGridProps = {
   badges: UserBadge[];
   editing?: ProfileModuleGridEditing | undefined;
   layoutPreset?: ProfileLayoutPreset | undefined;
-  maxColumns?: 2 | 6;
+  maxColumns?: 6 | 12;
   musicAutoplay?: ProfileMusicAutoplayRequest | undefined;
   modules: ProfileModule[];
   renderModuleContent?: ProfileModuleContentRenderer | undefined;
@@ -634,6 +636,8 @@ function ProfileModuleContent({
   hasDetails: boolean;
   spanRole: ProfileModuleSpanRole;
 }) {
+  const moduleCategory = getProfileModuleDefinition(module.type).category;
+
   if (module.type === "activity") {
     return (
       <p className="text-sm leading-6 text-muted">
@@ -654,7 +658,7 @@ function ProfileModuleContent({
     return <ProfileModuleEmptyPrompt module={module} />;
   }
 
-  if (module.type === "links") {
+  if (module.type === "links" || module.type === "connections") {
     const links = module.config.links ?? [];
     const visibleLinks = compact ? links.slice(0, 6) : links;
     const hiddenCount = Math.max(0, links.length - visibleLinks.length);
@@ -705,7 +709,7 @@ function ProfileModuleContent({
     );
   }
 
-  if (module.type === "featured_badges") {
+  if (module.type === "featured_badges" || module.type === "badge_display") {
     const selectedBadges = profileModuleBadges(module, badges);
     const visibleBadges = compact ? selectedBadges.slice(0, 4) : selectedBadges;
     const hiddenCount = Math.max(0, selectedBadges.length - visibleBadges.length);
@@ -737,7 +741,12 @@ function ProfileModuleContent({
     );
   }
 
-  if (module.type === "gallery_media") {
+  if (
+    module.type === "gallery_media" ||
+    module.type === "uploaded_image" ||
+    module.type === "gallery_slideshow" ||
+    module.type === "gallery_feed"
+  ) {
     const mediaItems = module.config.mediaItems ?? [];
     const visibleMediaItems = compact ? mediaItems.slice(0, 2) : mediaItems;
 
@@ -779,7 +788,11 @@ function ProfileModuleContent({
     );
   }
 
-  if (module.type === "creator_live") {
+  if (
+    module.type === "creator_live" ||
+    moduleCategory === "video" ||
+    module.type === "github_repo"
+  ) {
     return (
       <ProfileModuleStaticCard
         icon={<Radio aria-hidden="true" size={17} />}
@@ -791,7 +804,7 @@ function ProfileModuleContent({
     );
   }
 
-  if (module.type === "music") {
+  if (module.type === "music" || moduleCategory === "music") {
     return (
       <ProfileModuleStaticCard
         icon={<Music2 aria-hidden="true" size={17} />}
@@ -859,11 +872,13 @@ function ProfileModuleEmptyPrompt({ module }: { module: ProfileModule }) {
 }
 
 function profileModuleEmptyPrompt(type: ProfileModule["type"]): string {
-  if (type === "links") {
+  const definition = getProfileModuleDefinition(type);
+
+  if (type === "links" || type === "connections") {
     return "Select to add connections";
   }
 
-  if (type === "about") {
+  if (type === "about" || type === "text") {
     return "Select to add an intro";
   }
 
@@ -871,19 +886,19 @@ function profileModuleEmptyPrompt(type: ProfileModule["type"]): string {
     return "Select to add text";
   }
 
-  if (type === "featured_badges") {
+  if (type === "featured_badges" || type === "badge_display") {
     return "Select to add badges";
   }
 
-  if (type === "gallery_media") {
+  if (definition.category === "images") {
     return "Select to add media";
   }
 
-  if (type === "creator_live") {
+  if (definition.category === "video" || type === "github_repo") {
     return "Select to add a creator link";
   }
 
-  if (type === "music") {
+  if (definition.category === "music") {
     return "Select to add music";
   }
 

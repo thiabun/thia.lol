@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS profiles (
   profile_background_blur VARCHAR(20) NOT NULL DEFAULT 'medium',
   profile_theme VARCHAR(50) NULL,
   profile_layout_preset VARCHAR(20) NOT NULL DEFAULT 'balanced',
-  profile_canvas_version SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+  profile_canvas_version SMALLINT UNSIGNED NOT NULL DEFAULT 2,
+  profile_canvas_glass_opacity TINYINT UNSIGNED NOT NULL DEFAULT 58,
   links JSON NULL,
   traits JSON NULL,
   featured_post_id BIGINT UNSIGNED NULL,
@@ -157,6 +158,17 @@ CREATE TABLE IF NOT EXISTS profile_modules (
   KEY profile_modules_user_visibility_status_idx (user_id, visibility, status),
   KEY profile_modules_type_idx (type),
   CONSTRAINT profile_modules_user_id_fk
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS profile_canvas_drafts (
+  user_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+  draft_json JSON NOT NULL,
+  selected_module_id VARCHAR(64) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT profile_canvas_drafts_user_fk
     FOREIGN KEY (user_id) REFERENCES users(id)
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

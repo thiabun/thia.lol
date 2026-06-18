@@ -90,7 +90,7 @@ try {
     if (
         ($segments[0] ?? null) === 'me'
         && ($segments[1] ?? null) === 'profile'
-        && in_array($segments[2] ?? null, ['modules', 'module-order', 'canvas'], true)
+        && in_array($segments[2] ?? null, ['modules', 'module-order', 'canvas', 'canvas-draft'], true)
     ) {
         profile_modules_dispatch($segments, $method);
     }

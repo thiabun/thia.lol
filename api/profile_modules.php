@@ -15,7 +15,47 @@ const PROFILE_FEATURED_ROOM_MODULE_TYPE = 'featured_room';
 const PROFILE_GALLERY_MEDIA_MODULE_TYPE = 'gallery_media';
 const PROFILE_CREATOR_LIVE_MODULE_TYPE = 'creator_live';
 const PROFILE_MUSIC_MODULE_TYPE = 'music';
-const PROFILE_MODULE_TYPES = [PROFILE_INFO_MODULE_TYPE, 'about', 'links', 'featured_badges', 'custom_text', PROFILE_GALLERY_MEDIA_MODULE_TYPE, PROFILE_CREATOR_LIVE_MODULE_TYPE, PROFILE_MUSIC_MODULE_TYPE, PROFILE_FEATURED_POST_MODULE_TYPE, PROFILE_FEATURED_ROOM_MODULE_TYPE, PROFILE_ACTIVITY_MODULE_TYPE];
+const PROFILE_CONNECTIONS_MODULE_TYPE = 'connections';
+const PROFILE_TEXT_MODULE_TYPE = 'text';
+const PROFILE_BADGE_DISPLAY_MODULE_TYPE = 'badge_display';
+const PROFILE_GITHUB_REPO_MODULE_TYPE = 'github_repo';
+const PROFILE_VIDEO_MODULE_TYPES = ['twitch_channel', 'youtube_video', 'youtube_stream', 'youtube_playlist', 'uploaded_video'];
+const PROFILE_MUSIC_SPECIFIC_MODULE_TYPES = ['spotify_song', 'apple_music_song', 'youtube_music_song', 'spotify_playlist', 'apple_music_playlist', 'youtube_music_playlist', 'spotify_artist', 'apple_music_artist', 'youtube_music_artist'];
+const PROFILE_IMAGE_MODULE_TYPES = ['uploaded_image', 'gallery_slideshow', 'gallery_feed'];
+const PROFILE_MODULE_TYPES = [
+    PROFILE_INFO_MODULE_TYPE,
+    'about',
+    'links',
+    'featured_badges',
+    'custom_text',
+    PROFILE_GALLERY_MEDIA_MODULE_TYPE,
+    PROFILE_CREATOR_LIVE_MODULE_TYPE,
+    PROFILE_MUSIC_MODULE_TYPE,
+    PROFILE_FEATURED_POST_MODULE_TYPE,
+    PROFILE_FEATURED_ROOM_MODULE_TYPE,
+    PROFILE_ACTIVITY_MODULE_TYPE,
+    PROFILE_CONNECTIONS_MODULE_TYPE,
+    PROFILE_TEXT_MODULE_TYPE,
+    PROFILE_BADGE_DISPLAY_MODULE_TYPE,
+    PROFILE_GITHUB_REPO_MODULE_TYPE,
+    'twitch_channel',
+    'youtube_video',
+    'youtube_stream',
+    'youtube_playlist',
+    'uploaded_video',
+    'spotify_song',
+    'apple_music_song',
+    'youtube_music_song',
+    'spotify_playlist',
+    'apple_music_playlist',
+    'youtube_music_playlist',
+    'spotify_artist',
+    'apple_music_artist',
+    'youtube_music_artist',
+    'uploaded_image',
+    'gallery_slideshow',
+    'gallery_feed',
+];
 const PROFILE_BUILT_IN_MODULE_TYPES = [PROFILE_INFO_MODULE_TYPE, PROFILE_FEATURED_POST_MODULE_TYPE, PROFILE_FEATURED_ROOM_MODULE_TYPE, PROFILE_ACTIVITY_MODULE_TYPE];
 const PROFILE_PROTECTED_MODULE_TYPES = [PROFILE_INFO_MODULE_TYPE];
 const PROFILE_SINGLETON_MODULE_TYPES = [PROFILE_INFO_MODULE_TYPE, PROFILE_FEATURED_POST_MODULE_TYPE, PROFILE_FEATURED_ROOM_MODULE_TYPE, PROFILE_ACTIVITY_MODULE_TYPE];
@@ -23,11 +63,15 @@ const PROFILE_RETIRED_MODULE_TYPES = [PROFILE_FEATURED_LEGACY_MODULE_TYPE];
 const PROFILE_MODULE_VISIBILITIES = ['public', 'hidden', 'draft'];
 const PROFILE_MODULE_STATUSES = ['active', 'hidden', 'deleted'];
 const PROFILE_MODULE_SCHEMA_VERSION = 1;
-const PROFILE_CANVAS_VERSION = 1;
-const PROFILE_CANVAS_COLUMNS = 6;
-const PROFILE_CANVAS_ROWS = 12;
+const PROFILE_CANVAS_VERSION = 2;
+const PROFILE_CANVAS_COLUMNS = 12;
+const PROFILE_CANVAS_ROWS = 16;
+const PROFILE_CANVAS_MOBILE_COLUMNS = 6;
+const PROFILE_CANVAS_MOBILE_ROWS = 32;
+const PROFILE_CANVAS_MAX_MODULE_SPAN = 6;
+const PROFILE_CANVAS_PROFILE_INFO_MAX_COLUMNS = 8;
 const PROFILE_BACKGROUND_BLUR_LEVELS = ['none', 'soft', 'medium', 'heavy'];
-const PROFILE_MODULE_MAX_PER_PROFILE = 8;
+const PROFILE_MODULE_MAX_PER_PROFILE = 24;
 const PROFILE_MODULE_TITLE_MAX = 80;
 const PROFILE_MODULE_TEXT_MAX = 500;
 const PROFILE_MODULE_STATUS_TEXT_MAX = 120;
@@ -100,6 +144,36 @@ function profile_modules_dispatch(array $segments, string $method): void
         }
 
         json_error('Method not allowed.', 405);
+    }
+
+    if (
+        ($segments[0] ?? null) === 'me'
+        && ($segments[1] ?? null) === 'profile'
+        && ($segments[2] ?? null) === 'canvas-draft'
+    ) {
+        if (count($segments) === 3) {
+            if ($method === 'GET' || $method === 'HEAD') {
+                profile_canvas_draft_get();
+            }
+
+            if ($method === 'PATCH') {
+                profile_canvas_draft_update();
+            }
+
+            if ($method === 'DELETE') {
+                profile_canvas_draft_delete();
+            }
+
+            json_error('Method not allowed.', 405);
+        }
+
+        if (count($segments) === 4 && $segments[3] === 'commit') {
+            if ($method === 'POST') {
+                profile_canvas_draft_commit();
+            }
+
+            json_error('Method not allowed.', 405);
+        }
     }
 
     if (
@@ -541,9 +615,420 @@ function profile_canvas_update(): void
 
     json_success([
         'backgroundBlur' => $preferences['backgroundBlur'],
+        'canvasGlass' => $preferences['canvasGlass'],
         'canvasVersion' => $preferences['canvasVersion'],
         'modules' => profile_modules_for_owner($userId),
     ]);
+}
+
+function profile_canvas_draft_get(): void
+{
+    $session = require_authenticated_session();
+    require_profile_modules_storage();
+    require_profile_canvas_storage();
+    require_profile_canvas_draft_storage();
+
+    $userId = (int) $session['user_id'];
+    ensure_profile_canvas_builtin_modules($userId);
+
+    json_success(profile_canvas_draft_state($userId));
+}
+
+function profile_canvas_draft_update(): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+    require_profile_modules_storage();
+    require_profile_canvas_storage();
+    require_profile_canvas_draft_storage();
+
+    $userId = (int) $session['user_id'];
+    ensure_profile_canvas_builtin_modules($userId);
+
+    $body = request_json_body();
+    profile_module_require_object($body, 'JSON body');
+    profile_module_reject_unknown_keys($body, ['canvasVersion', 'backgroundBlur', 'canvasGlass', 'modules', 'selectedModuleId']);
+    profile_canvas_request_version($body['canvasVersion'] ?? PROFILE_CANVAS_VERSION);
+
+    $state = profile_canvas_draft_state($userId);
+
+    if (array_key_exists('backgroundBlur', $body)) {
+        $state['backgroundBlur'] = profile_canvas_background_blur($body['backgroundBlur']);
+    }
+
+    if (array_key_exists('canvasGlass', $body)) {
+        $state['canvasGlass'] = profile_canvas_glass_opacity($body['canvasGlass']);
+    }
+
+    if (array_key_exists('selectedModuleId', $body)) {
+        $state['selectedModuleId'] = profile_canvas_draft_selected_module_id($body['selectedModuleId']);
+    }
+
+    if (array_key_exists('modules', $body)) {
+        $state['modules'] = profile_canvas_draft_modules($body['modules'], $userId);
+    }
+
+    profile_canvas_save_draft_state($userId, $state);
+
+    json_success(profile_canvas_draft_state($userId));
+}
+
+function profile_canvas_draft_delete(): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+    require_profile_modules_storage();
+    require_profile_canvas_storage();
+    require_profile_canvas_draft_storage();
+
+    $userId = (int) $session['user_id'];
+    db_query('DELETE FROM profile_canvas_drafts WHERE user_id = :user_id', ['user_id' => $userId]);
+
+    json_success(profile_canvas_draft_default_state($userId));
+}
+
+function profile_canvas_draft_commit(): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+    require_profile_modules_storage();
+    require_profile_canvas_storage();
+    require_profile_canvas_draft_storage();
+
+    $userId = (int) $session['user_id'];
+    ensure_profile_canvas_builtin_modules($userId);
+    $state = profile_canvas_draft_state($userId);
+    $modules = profile_canvas_draft_modules($state['modules'] ?? [], $userId);
+
+    $pdo = db();
+    $pdo->beginTransaction();
+
+    try {
+        db_query(
+            'UPDATE profiles
+             SET profile_background_blur = :profile_background_blur,
+                 profile_canvas_version = :profile_canvas_version,
+                 profile_canvas_glass_opacity = :profile_canvas_glass_opacity,
+                 updated_at = CURRENT_TIMESTAMP()
+             WHERE user_id = :user_id',
+            [
+                'profile_background_blur' => $state['backgroundBlur'],
+                'profile_canvas_version' => PROFILE_CANVAS_VERSION,
+                'profile_canvas_glass_opacity' => profile_canvas_glass_opacity($state['canvasGlass'] ?? 58),
+                'user_id' => $userId,
+            ]
+        );
+
+        $placements = profile_canvas_commit_draft_modules($modules, $userId);
+        $placements = profile_canvas_push_collisions($placements, null);
+        profile_canvas_apply_module_placements($placements, $userId);
+
+        db_query('DELETE FROM profile_canvas_drafts WHERE user_id = :user_id', ['user_id' => $userId]);
+        $pdo->commit();
+    } catch (Throwable $exception) {
+        $pdo->rollBack();
+        throw $exception;
+    }
+
+    $preferences = profile_canvas_profile_preferences($userId);
+
+    json_success([
+        'backgroundBlur' => $preferences['backgroundBlur'],
+        'canvasGlass' => $preferences['canvasGlass'],
+        'canvasVersion' => $preferences['canvasVersion'],
+        'modules' => profile_modules_for_owner($userId),
+    ]);
+}
+
+function profile_canvas_commit_draft_modules(array $modules, int $userId): array
+{
+    $records = profile_canvas_owner_module_records($userId);
+    $seen = [];
+    $placements = [];
+
+    foreach ($modules as $index => $module) {
+        $draftId = profile_canvas_draft_module_id($module['id'] ?? null);
+        $type = profile_module_type($module['type'] ?? null);
+        $status = profile_module_status($module['status'] ?? 'active');
+        $visibility = profile_module_visibility($module['visibility'] ?? 'public');
+        $title = profile_module_title($module['title'] ?? null);
+        $config = profile_module_config($type, $module['config'] ?? [], $userId);
+        $pinned = profile_canvas_pinned($module['pinned'] ?? false);
+
+        if ($type === PROFILE_INFO_MODULE_TYPE) {
+            $visibility = 'public';
+            $status = 'active';
+            $pinned = true;
+        }
+
+        if ($draftId > 0 && isset($records[$draftId])) {
+            $record = $records[$draftId];
+
+            if ((string) $record['type'] !== $type) {
+                json_error('Existing module type cannot be changed.', 422);
+            }
+
+            db_query(
+                'UPDATE profile_modules
+                 SET title = :title,
+                     config_json = :config_json,
+                     visibility = :visibility,
+                     status = :status,
+                     updated_at = CURRENT_TIMESTAMP()
+                 WHERE id = :id
+                   AND user_id = :user_id',
+                [
+                    'title' => $title,
+                    'config_json' => json_encode($config, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                    'visibility' => $visibility,
+                    'status' => $status,
+                    'id' => $draftId,
+                    'user_id' => $userId,
+                ]
+            );
+
+            $moduleId = $draftId;
+        } elseif ($status !== 'deleted') {
+            if (profile_modules_active_count($userId) >= PROFILE_MODULE_MAX_PER_PROFILE) {
+                json_error('Profiles can have up to 24 modules.', 422);
+            }
+
+            db_query(
+                'INSERT INTO profile_modules
+                    (user_id, type, title, config_json, visibility, position, status, schema_version)
+                 VALUES
+                    (:user_id, :type, :title, :config_json, :visibility, :position, :status, :schema_version)',
+                [
+                    'user_id' => $userId,
+                    'type' => $type,
+                    'title' => $title,
+                    'config_json' => json_encode($config, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                    'visibility' => $visibility,
+                    'position' => $index + 1,
+                    'status' => $status,
+                    'schema_version' => PROFILE_MODULE_SCHEMA_VERSION,
+                ]
+            );
+            $moduleId = (int) db()->lastInsertId();
+        } else {
+            continue;
+        }
+
+        $seen[$moduleId] = true;
+
+        if ($status === 'deleted') {
+            continue;
+        }
+
+        $layout = is_array($module['layout'] ?? null) && !array_is_list($module['layout'])
+            ? $module['layout']
+            : profile_canvas_default_layout_for_type($type, $index);
+        $placement = profile_canvas_module_placement(
+            [
+                'id' => $moduleId,
+                'column' => $layout['column'] ?? 1,
+                'row' => $layout['row'] ?? 1,
+                'colSpan' => $layout['colSpan'] ?? 1,
+                'rowSpan' => $layout['rowSpan'] ?? 1,
+            ],
+            [
+                'id' => $moduleId,
+                'type' => $type,
+            ],
+            $visibility === 'public',
+            $pinned
+        );
+        $placements[] = $placement;
+    }
+
+    foreach ($records as $id => $record) {
+        if (isset($seen[$id]) || (string) $record['status'] === 'deleted') {
+            continue;
+        }
+
+        $placements[] = profile_canvas_existing_module_placement($record, count($placements));
+    }
+
+    return $placements;
+}
+
+function profile_canvas_default_layout_for_type(string $type, int $index): array
+{
+    $size = profile_canvas_default_size($type, $index);
+    [$colSpan, $rowSpan] = array_map('intval', explode('x', $size, 2));
+
+    return [
+        'column' => $type === PROFILE_INFO_MODULE_TYPE ? 3 : 1,
+        'row' => $type === PROFILE_INFO_MODULE_TYPE ? 1 : min(PROFILE_CANVAS_ROWS, $index + 1),
+        'colSpan' => $colSpan,
+        'rowSpan' => $rowSpan,
+    ];
+}
+
+function profile_canvas_draft_state(int $userId): array
+{
+    $row = profile_canvas_draft_row($userId);
+
+    if ($row === null) {
+        return profile_canvas_draft_default_state($userId);
+    }
+
+    $state = profile_module_json((string) $row['draft_json']);
+    $default = profile_canvas_draft_default_state($userId);
+
+    return [
+        'backgroundBlur' => profile_canvas_background_blur($state['backgroundBlur'] ?? $default['backgroundBlur']),
+        'canvasGlass' => profile_canvas_glass_opacity($state['canvasGlass'] ?? $default['canvasGlass']),
+        'canvasVersion' => PROFILE_CANVAS_VERSION,
+        'modules' => profile_canvas_draft_modules($state['modules'] ?? $default['modules'], $userId),
+        'selectedModuleId' => profile_canvas_draft_selected_module_id($state['selectedModuleId'] ?? null),
+        'updatedAt' => $row['updated_at'] ?? null,
+    ];
+}
+
+function profile_canvas_draft_default_state(int $userId): array
+{
+    $preferences = profile_canvas_profile_preferences($userId);
+
+    return [
+        'backgroundBlur' => $preferences['backgroundBlur'],
+        'canvasGlass' => $preferences['canvasGlass'],
+        'canvasVersion' => PROFILE_CANVAS_VERSION,
+        'modules' => profile_modules_for_owner($userId),
+        'selectedModuleId' => null,
+        'updatedAt' => null,
+    ];
+}
+
+function profile_canvas_draft_row(int $userId): ?array
+{
+    $statement = db_query(
+        'SELECT draft_json, updated_at
+         FROM profile_canvas_drafts
+         WHERE user_id = :user_id
+         LIMIT 1',
+        ['user_id' => $userId]
+    );
+    $row = $statement->fetch();
+
+    return is_array($row) ? $row : null;
+}
+
+function profile_canvas_save_draft_state(int $userId, array $state): void
+{
+    $state['canvasVersion'] = PROFILE_CANVAS_VERSION;
+    $payload = json_encode($state, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+    db_query(
+        'INSERT INTO profile_canvas_drafts
+            (user_id, draft_json, selected_module_id, updated_at)
+         VALUES
+            (:user_id, :draft_json, :selected_module_id, CURRENT_TIMESTAMP())
+         ON DUPLICATE KEY UPDATE
+            draft_json = VALUES(draft_json),
+            selected_module_id = VALUES(selected_module_id),
+            updated_at = CURRENT_TIMESTAMP()',
+        [
+            'user_id' => $userId,
+            'draft_json' => $payload,
+            'selected_module_id' => $state['selectedModuleId'] === null ? null : (string) $state['selectedModuleId'],
+        ]
+    );
+}
+
+function profile_canvas_draft_modules(mixed $value, int $userId): array
+{
+    if (!is_array($value) || !array_is_list($value)) {
+        json_error('Canvas draft modules must be an array.', 422);
+    }
+
+    $modules = [];
+
+    foreach ($value as $index => $item) {
+        if (!is_array($item) || array_is_list($item)) {
+            json_error('Canvas draft module must be an object.', 422);
+        }
+
+        profile_module_reject_unknown_keys($item, ['id', 'draftId', 'type', 'title', 'config', 'visibility', 'position', 'pinned', 'layout', 'status', 'schemaVersion', 'createdAt', 'updatedAt']);
+        $type = profile_module_type($item['type'] ?? null);
+        $config = profile_module_config($type, $item['config'] ?? [], $userId);
+        $layout = profile_canvas_draft_module_layout($type, $item['layout'] ?? null, $index);
+
+        $modules[] = [
+            'id' => profile_canvas_draft_module_id($item['id'] ?? null),
+            'type' => $type,
+            'title' => profile_module_title($item['title'] ?? null),
+            'config' => $config,
+            'visibility' => profile_module_visibility($item['visibility'] ?? 'public'),
+            'position' => $index + 1,
+            'pinned' => profile_canvas_pinned($item['pinned'] ?? false),
+            'layout' => $layout,
+            'status' => profile_module_status($item['status'] ?? 'active'),
+            'schemaVersion' => PROFILE_MODULE_SCHEMA_VERSION,
+            'createdAt' => $item['createdAt'] ?? null,
+            'updatedAt' => $item['updatedAt'] ?? null,
+        ];
+    }
+
+    return $modules;
+}
+
+function profile_canvas_draft_module_layout(string $type, mixed $value, int $index): array
+{
+    if (!is_array($value) || array_is_list($value)) {
+        return profile_canvas_default_layout_for_type($type, $index);
+    }
+
+    profile_module_reject_unknown_keys($value, ['column', 'row', 'colSpan', 'rowSpan']);
+
+    $placement = profile_canvas_module_placement(
+        [
+            'id' => 1,
+            'column' => $value['column'] ?? 1,
+            'row' => $value['row'] ?? 1,
+            'colSpan' => $value['colSpan'] ?? 1,
+            'rowSpan' => $value['rowSpan'] ?? 1,
+        ],
+        [
+            'id' => 1,
+            'type' => $type,
+        ],
+        true,
+        false
+    );
+
+    return [
+        'column' => $placement['column'],
+        'row' => $placement['row'],
+        'colSpan' => $placement['colSpan'],
+        'rowSpan' => $placement['rowSpan'],
+    ];
+}
+
+function profile_canvas_draft_module_id(mixed $value): int
+{
+    if (is_int($value)) {
+        return $value;
+    }
+
+    if (is_string($value) && preg_match('/^-?[0-9]+$/', $value) === 1) {
+        return (int) $value;
+    }
+
+    json_error('Canvas draft module id is invalid.', 422);
+}
+
+function profile_canvas_draft_selected_module_id(mixed $value): int|string|null
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    if (is_int($value) || is_string($value)) {
+        return $value;
+    }
+
+    json_error('Selected module is invalid.', 422);
 }
 
 function require_profile_modules_storage(): void
@@ -560,15 +1045,28 @@ function require_profile_canvas_storage(): void
     }
 }
 
+function require_profile_canvas_draft_storage(): void
+{
+    if (!profile_canvas_draft_storage_exists()) {
+        json_error('Profile canvas draft storage is not ready. Run pending migrations.', 503);
+    }
+}
+
 function profile_modules_storage_exists(): bool
 {
     return database_table_exists('profile_modules');
+}
+
+function profile_canvas_draft_storage_exists(): bool
+{
+    return database_table_exists('profile_canvas_drafts');
 }
 
 function profile_canvas_storage_exists(): bool
 {
     return database_column_exists('profiles', 'profile_background_blur')
         && database_column_exists('profiles', 'profile_canvas_version')
+        && database_column_exists('profiles', 'profile_canvas_glass_opacity')
         && database_column_exists('profile_modules', 'grid_column')
         && database_column_exists('profile_modules', 'grid_row')
         && database_column_exists('profile_modules', 'grid_col_span')
@@ -578,11 +1076,14 @@ function profile_canvas_storage_exists(): bool
 
 function profile_canvas_profile_preferences(int $userId): array
 {
+    $glassSelect = database_column_exists('profiles', 'profile_canvas_glass_opacity')
+        ? 'profile_canvas_glass_opacity'
+        : '58 AS profile_canvas_glass_opacity';
     $statement = db_query(
-        'SELECT profile_background_blur, profile_canvas_version
+        "SELECT profile_background_blur, profile_canvas_version, {$glassSelect}
          FROM profiles
          WHERE user_id = :user_id
-         LIMIT 1',
+         LIMIT 1",
         ['user_id' => $userId]
     );
     $row = $statement->fetch();
@@ -594,7 +1095,23 @@ function profile_canvas_profile_preferences(int $userId): array
         'canvasVersion' => is_array($row)
             ? profile_canvas_output_version($row['profile_canvas_version'] ?? null)
             : PROFILE_CANVAS_VERSION,
+        'canvasGlass' => is_array($row)
+            ? profile_canvas_glass_opacity($row['profile_canvas_glass_opacity'] ?? 58)
+            : 58,
     ];
+}
+
+function profile_canvas_glass_opacity(mixed $value): int
+{
+    if (is_int($value)) {
+        return max(22, min(92, $value));
+    }
+
+    if (is_string($value) && preg_match('/^[0-9]+$/', $value) === 1) {
+        return max(22, min(92, (int) $value));
+    }
+
+    json_error('Choose a supported canvas glass opacity.', 422);
 }
 
 function profile_canvas_request_version(mixed $value): int
@@ -604,6 +1121,10 @@ function profile_canvas_request_version(mixed $value): int
     }
 
     if (is_string($value) && $value === (string) PROFILE_CANVAS_VERSION) {
+        return PROFILE_CANVAS_VERSION;
+    }
+
+    if ($value === 1 || $value === '1') {
         return PROFILE_CANVAS_VERSION;
     }
 
@@ -792,8 +1313,8 @@ function profile_canvas_owner_module_records(int $userId): array
 function profile_canvas_module_placement(array $item, array $record, bool $visible, bool $pinned = false): array
 {
     $type = (string) $record['type'];
-    $colSpan = profile_canvas_span_value($item['colSpan'] ?? null, 'Column span');
-    $rowSpan = profile_canvas_span_value($item['rowSpan'] ?? null, 'Row span');
+    $colSpan = profile_canvas_int_value($item['colSpan'] ?? null, 'Column span');
+    $rowSpan = profile_canvas_int_value($item['rowSpan'] ?? null, 'Row span');
     [$colSpan, $rowSpan] = profile_canvas_normalize_span($type, $colSpan, $rowSpan);
 
     if (!profile_canvas_span_allowed($type, $colSpan, $rowSpan)) {
@@ -839,7 +1360,7 @@ function profile_canvas_span_value(mixed $value, string $label): int
 {
     $number = profile_canvas_int_value($value, $label);
 
-    return max(1, min(6, $number));
+    return max(1, min(PROFILE_CANVAS_PROFILE_INFO_MAX_COLUMNS, $number));
 }
 
 function profile_canvas_position_value(mixed $value, string $label, int $max): int
@@ -871,20 +1392,52 @@ function profile_canvas_span_allowed(string $type, int $colSpan, int $rowSpan): 
 
 function profile_canvas_allowed_sizes(string $type): array
 {
+    $uploadedImageSizes = profile_canvas_size_range(1, 6, 1, 6);
+    $gallerySlideshowSizes = profile_canvas_size_range(2, 6, 2, 6);
+    $textSizes = profile_canvas_size_range(3, 4, 2, 5);
+
     return match ($type) {
-        PROFILE_INFO_MODULE_TYPE => ['3x2', '3x3', '4x3', '6x3'],
-        'about' => ['1x1', '2x1', '3x1', '2x2'],
-        'custom_text' => ['1x1', '2x1', '2x2', '3x2'],
-        'links' => ['1x1', '2x1', '3x1', '2x2', '3x2'],
-        'featured_badges' => ['1x1', '2x1', '2x2'],
-        PROFILE_FEATURED_POST_MODULE_TYPE => ['2x1', '3x1', '2x2', '3x2'],
-        PROFILE_FEATURED_ROOM_MODULE_TYPE => ['1x1', '2x1', '3x1', '2x2'],
-        PROFILE_GALLERY_MEDIA_MODULE_TYPE => ['1x1', '2x1', '2x2', '3x2', '3x3', '4x3'],
-        PROFILE_CREATOR_LIVE_MODULE_TYPE => ['1x1', '2x1', '2x2', '3x2', '3x3', '4x3', '5x3', '6x5'],
-        PROFILE_MUSIC_MODULE_TYPE => ['1x1', '2x1', '3x1', '2x2', '3x2'],
-        PROFILE_ACTIVITY_MODULE_TYPE => ['2x2', '3x2', '3x3', '3x4', '3x6'],
+        PROFILE_INFO_MODULE_TYPE => ['3x2', '3x3', '4x3', '6x3', '8x3', '8x4'],
+        'about', 'custom_text', PROFILE_TEXT_MODULE_TYPE => $textSizes,
+        'links', PROFILE_CONNECTIONS_MODULE_TYPE => ['3x2', '4x2', '3x3', '3x4'],
+        'featured_badges', PROFILE_BADGE_DISPLAY_MODULE_TYPE => ['2x2', '3x2'],
+        PROFILE_FEATURED_POST_MODULE_TYPE => ['3x4', '4x5'],
+        PROFILE_FEATURED_ROOM_MODULE_TYPE => ['3x1', '4x2'],
+        PROFILE_GALLERY_MEDIA_MODULE_TYPE, 'gallery_slideshow' => $gallerySlideshowSizes,
+        'uploaded_image' => $uploadedImageSizes,
+        'gallery_feed' => ['3x6', '4x6'],
+        PROFILE_CREATOR_LIVE_MODULE_TYPE, 'twitch_channel' => ['2x1', '3x2', '4x3', '5x3', '6x4'],
+        'youtube_video' => ['3x4', '4x3', '6x4'],
+        'youtube_stream' => ['4x3', '5x3', '6x4'],
+        'youtube_playlist' => ['4x3', '5x3', '2x4', '3x6'],
+        'uploaded_video' => ['4x3', '6x4', '4x6'],
+        PROFILE_MUSIC_MODULE_TYPE,
+        'spotify_song',
+        'apple_music_song',
+        'youtube_music_song' => ['2x1', '3x2', '4x2', '4x3', '4x4'],
+        'spotify_playlist',
+        'apple_music_playlist',
+        'youtube_music_playlist' => ['3x2', '4x3', '3x6', '4x6'],
+        'spotify_artist',
+        'apple_music_artist',
+        'youtube_music_artist' => ['3x2', '4x3', '6x4'],
+        PROFILE_GITHUB_REPO_MODULE_TYPE => ['3x2', '4x3', '6x4'],
+        PROFILE_ACTIVITY_MODULE_TYPE => ['3x4', '4x6'],
         default => ['1x1'],
     };
+}
+
+function profile_canvas_size_range(int $minColumns, int $maxColumns, int $minRows, int $maxRows): array
+{
+    $sizes = [];
+
+    for ($column = $minColumns; $column <= $maxColumns; $column++) {
+        for ($row = $minRows; $row <= $maxRows; $row++) {
+            $sizes[] = "{$column}x{$row}";
+        }
+    }
+
+    return $sizes;
 }
 
 function profile_canvas_normalize_span(string $type, int $colSpan, int $rowSpan): array
@@ -893,7 +1446,14 @@ function profile_canvas_normalize_span(string $type, int $colSpan, int $rowSpan)
         return [5, 3];
     }
 
-    return [$colSpan, $rowSpan];
+    $maxColumns = $type === PROFILE_INFO_MODULE_TYPE
+        ? PROFILE_CANVAS_PROFILE_INFO_MAX_COLUMNS
+        : PROFILE_CANVAS_MAX_MODULE_SPAN;
+
+    return [
+        max(1, min($maxColumns, $colSpan)),
+        max(1, min(PROFILE_CANVAS_MAX_MODULE_SPAN, $rowSpan)),
+    ];
 }
 
 function profile_canvas_push_collisions(array $placements, ?int $anchorModuleId, ?array $movementContext = null): array
@@ -958,7 +1518,10 @@ function profile_canvas_push_collisions(array $placements, ?int $anchorModuleId,
         );
 
         if ($anchorLayout === null) {
-            json_error('Canvas layout does not fit the 6 by 12 grid.', 422);
+            json_error(
+                sprintf('Canvas layout does not fit the %d by %d grid.', PROFILE_CANVAS_COLUMNS, PROFILE_CANVAS_ROWS),
+                422
+            );
         }
 
         profile_canvas_occupy_layout($anchorLayout, $occupied);
@@ -996,7 +1559,10 @@ function profile_canvas_push_collisions(array $placements, ?int $anchorModuleId,
             : profile_canvas_next_available_layout($placement, $occupied, $intent);
 
         if ($layout === null) {
-            json_error('Canvas layout does not fit the 6 by 12 grid.', 422);
+            json_error(
+                sprintf('Canvas layout does not fit the %d by %d grid.', PROFILE_CANVAS_COLUMNS, PROFILE_CANVAS_ROWS),
+                422
+            );
         }
 
         profile_canvas_occupy_layout($layout, $occupied);
@@ -1469,13 +2035,34 @@ function profile_canvas_existing_span(array $record, int $index): array
 function profile_canvas_default_size(string $type, int $index): string
 {
     return match ($type) {
-        PROFILE_INFO_MODULE_TYPE => '3x2',
-        'about', 'custom_text', 'links', 'featured_badges', PROFILE_MUSIC_MODULE_TYPE => '2x1',
-        PROFILE_FEATURED_POST_MODULE_TYPE => '3x2',
-        PROFILE_FEATURED_ROOM_MODULE_TYPE => '2x1',
+        PROFILE_INFO_MODULE_TYPE => '8x3',
+        'about', 'custom_text', PROFILE_TEXT_MODULE_TYPE => '3x2',
+        'links', PROFILE_CONNECTIONS_MODULE_TYPE => '3x2',
+        'featured_badges', PROFILE_BADGE_DISPLAY_MODULE_TYPE => '2x2',
+        PROFILE_FEATURED_POST_MODULE_TYPE => '3x4',
+        PROFILE_FEATURED_ROOM_MODULE_TYPE => '3x1',
         PROFILE_GALLERY_MEDIA_MODULE_TYPE => '2x2',
-        PROFILE_CREATOR_LIVE_MODULE_TYPE => '2x1',
-        PROFILE_ACTIVITY_MODULE_TYPE => $index <= 2 ? '3x3' : '3x2',
+        'uploaded_image' => '2x2',
+        'gallery_slideshow' => '3x3',
+        'gallery_feed' => '3x6',
+        PROFILE_CREATOR_LIVE_MODULE_TYPE,
+        'twitch_channel',
+        PROFILE_GITHUB_REPO_MODULE_TYPE => '3x2',
+        'youtube_video',
+        'youtube_stream',
+        'youtube_playlist',
+        'uploaded_video' => '4x3',
+        PROFILE_MUSIC_MODULE_TYPE,
+        'spotify_song',
+        'apple_music_song',
+        'youtube_music_song' => '3x2',
+        'spotify_playlist',
+        'apple_music_playlist',
+        'youtube_music_playlist',
+        'spotify_artist',
+        'apple_music_artist',
+        'youtube_music_artist' => '4x3',
+        PROFILE_ACTIVITY_MODULE_TYPE => $index <= 2 ? '3x4' : '4x6',
         default => '1x1',
     };
 }
@@ -1583,8 +2170,6 @@ function profile_module_layout_payload(array $row): ?array
         return null;
     }
 
-    $colSpan = max(1, min(6, $colSpan));
-    $rowSpan = max(1, min(6, $rowSpan));
     [$colSpan, $rowSpan] = profile_canvas_normalize_span($type, $colSpan, $rowSpan);
 
     if (!profile_canvas_span_allowed($type, $colSpan, $rowSpan)) {
@@ -1829,7 +2414,13 @@ function profile_module_featured_room_can_restore(int $roomId, int $userId): boo
 
 function profile_module_output_config(string $type, array $config, int $userId): array
 {
-    if ($type === PROFILE_CREATOR_LIVE_MODULE_TYPE || $type === PROFILE_MUSIC_MODULE_TYPE) {
+    if (
+        $type === PROFILE_CREATOR_LIVE_MODULE_TYPE ||
+        $type === PROFILE_MUSIC_MODULE_TYPE ||
+        in_array($type, PROFILE_VIDEO_MODULE_TYPES, true) ||
+        in_array($type, PROFILE_MUSIC_SPECIFIC_MODULE_TYPES, true) ||
+        $type === PROFILE_GITHUB_REPO_MODULE_TYPE
+    ) {
         $integration = profile_integration_card_for_module($config, $userId);
 
         if ($integration !== null) {
@@ -1979,6 +2570,10 @@ function profile_insert_builtin_module_at(
     string $status
 ): void {
     $position = max(1, $position);
+    [$defaultColSpan, $defaultRowSpan] = array_map('intval', explode('x', profile_canvas_default_size($type, 0), 2));
+    $defaultColumn = $type === PROFILE_INFO_MODULE_TYPE ? 3 : 1;
+    $defaultRow = $type === PROFILE_INFO_MODULE_TYPE ? 1 : 1;
+    $defaultPinned = $type === PROFILE_INFO_MODULE_TYPE ? 1 : 0;
 
     db_query(
         'UPDATE profile_modules
@@ -1996,15 +2591,20 @@ function profile_insert_builtin_module_at(
 
     db_query(
         'INSERT INTO profile_modules
-            (user_id, type, title, config_json, visibility, position, status, schema_version)
+            (user_id, type, title, config_json, visibility, position, grid_column, grid_row, grid_col_span, grid_row_span, grid_pinned, status, schema_version)
          VALUES
-            (:user_id, :type, NULL, :config_json, :visibility, :position, :status, :schema_version)',
+            (:user_id, :type, NULL, :config_json, :visibility, :position, :grid_column, :grid_row, :grid_col_span, :grid_row_span, :grid_pinned, :status, :schema_version)',
         [
             'user_id' => $userId,
             'type' => $type,
             'config_json' => '{}',
             'visibility' => $visibility,
             'position' => $position,
+            'grid_column' => $defaultColumn,
+            'grid_row' => $defaultRow,
+            'grid_col_span' => $defaultColSpan,
+            'grid_row_span' => $defaultRowSpan,
+            'grid_pinned' => $defaultPinned,
             'status' => $status,
             'schema_version' => PROFILE_MODULE_SCHEMA_VERSION,
         ]
@@ -2020,8 +2620,13 @@ function profile_info_module_payload(int $position): array
         'config' => [],
         'visibility' => 'public',
         'position' => $position,
-        'pinned' => false,
-        'layout' => null,
+        'pinned' => true,
+        'layout' => [
+            'column' => 3,
+            'row' => 1,
+            'colSpan' => 8,
+            'rowSpan' => 3,
+        ],
         'status' => 'active',
         'schemaVersion' => PROFILE_MODULE_SCHEMA_VERSION,
         'createdAt' => null,
@@ -2090,28 +2695,86 @@ function profile_module_owner_ids(int $userId): array
 
 function profile_module_config(string $type, mixed $value, int $userId): array
 {
-    if (profile_module_type_is_built_in($type)) {
-        if (!is_array($value) || ($value !== [] && array_is_list($value))) {
-            json_error('Module config must be an object.', 422);
-        }
-
-        return profile_module_builtin_config($value);
-    }
-
     if (!is_array($value) || ($value !== [] && array_is_list($value))) {
         json_error('Module config must be an object.', 422);
     }
 
-    return match ($type) {
-        'about' => profile_module_about_config($value),
+    unset($value['integration'], $value['hasBanner']);
+
+    $configured = null;
+
+    if (array_key_exists('configured', $value)) {
+        if (!is_bool($value['configured'])) {
+            json_error('Module configured state is invalid.', 422);
+        }
+
+        $configured = $value['configured'];
+        unset($value['configured']);
+    }
+
+    $canvasSize = null;
+
+    if (array_key_exists('canvasSize', $value)) {
+        if (!is_string($value['canvasSize']) || !in_array($value['canvasSize'], profile_canvas_allowed_sizes($type), true)) {
+            json_error('Choose a supported canvas size.', 422);
+        }
+
+        $canvasSize = $value['canvasSize'];
+        unset($value['canvasSize']);
+    }
+
+    if ($configured === false) {
+        $draftConfig = ['configured' => false];
+
+        if ($canvasSize !== null) {
+            $draftConfig['canvasSize'] = $canvasSize;
+        }
+
+        return $draftConfig;
+    }
+
+    $normalized = match ($type) {
+        PROFILE_INFO_MODULE_TYPE,
+        PROFILE_FEATURED_POST_MODULE_TYPE,
+        PROFILE_FEATURED_ROOM_MODULE_TYPE,
+        PROFILE_ACTIVITY_MODULE_TYPE => profile_module_builtin_config($value),
+        'about', PROFILE_TEXT_MODULE_TYPE => profile_module_about_config($value),
         'custom_text' => profile_module_custom_text_config($value),
-        'links' => profile_module_links_config($value),
-        'featured_badges' => profile_module_featured_badges_config($value, $userId),
-        PROFILE_GALLERY_MEDIA_MODULE_TYPE => profile_module_gallery_media_config($value),
-        PROFILE_CREATOR_LIVE_MODULE_TYPE => profile_module_creator_live_config($value),
-        PROFILE_MUSIC_MODULE_TYPE => profile_module_music_config($value),
+        'links', PROFILE_CONNECTIONS_MODULE_TYPE => profile_module_links_config($value),
+        'featured_badges', PROFILE_BADGE_DISPLAY_MODULE_TYPE => profile_module_featured_badges_config($value, $userId),
+        PROFILE_GALLERY_MEDIA_MODULE_TYPE,
+        'uploaded_image',
+        'gallery_slideshow',
+        'gallery_feed' => profile_module_gallery_media_config($value),
+        PROFILE_CREATOR_LIVE_MODULE_TYPE,
+        'twitch_channel',
+        'youtube_video',
+        'youtube_stream',
+        'youtube_playlist',
+        'uploaded_video',
+        PROFILE_GITHUB_REPO_MODULE_TYPE => profile_module_creator_live_config($value),
+        PROFILE_MUSIC_MODULE_TYPE,
+        'spotify_song',
+        'apple_music_song',
+        'youtube_music_song',
+        'spotify_playlist',
+        'apple_music_playlist',
+        'youtube_music_playlist',
+        'spotify_artist',
+        'apple_music_artist',
+        'youtube_music_artist' => profile_module_music_config($value),
         default => json_error('Choose a supported module type.', 422),
     };
+
+    if ($configured !== null) {
+        $normalized['configured'] = $configured;
+    }
+
+    if ($canvasSize !== null) {
+        $normalized['canvasSize'] = $canvasSize;
+    }
+
+    return $normalized;
 }
 
 function profile_module_builtin_config(array $config): array

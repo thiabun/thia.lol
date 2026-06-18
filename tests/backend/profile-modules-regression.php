@@ -2,6 +2,12 @@
 
 declare(strict_types=1);
 
+$testConfigPath = dirname(__DIR__, 2) . '/config/test-config.php';
+
+if (getenv('THIA_CONFIG_PATH') === false && is_file($testConfigPath)) {
+    putenv('THIA_CONFIG_PATH=' . $testConfigPath);
+}
+
 require_once dirname(__DIR__, 2) . '/api/profile_modules.php';
 
 $profileModulesSource = file_get_contents(dirname(__DIR__, 2) . '/api/profile_modules.php');
@@ -162,6 +168,8 @@ assert_true(str_contains($profileModulesSource, 'function profile_modules_restor
 assert_true(str_contains($profileModulesSource, 'includeDeleted'), 'includeDeleted editor library read should exist');
 assert_true(str_contains($profileModulesSource, 'restoreFeaturedPostId'), 'featured post restore snapshot should exist');
 assert_true(str_contains($profileModulesSource, 'profile_canvas_reflow_existing_modules'), 'restore should reflow canvas placements');
+assert_true(str_contains($profileModulesSource, 'profile_canvas_draft_commit'), 'draft commit endpoint should exist');
+assert_true(str_contains($profileModulesSource, 'profile_canvas_glass_opacity'), 'canvas glass preference should persist');
 
 assert_module_config_rejected(
     'links',
@@ -225,7 +233,7 @@ $layoutPayload = profile_module_payload(
     [
         'id' => 8,
         'user_id' => 123,
-        'type' => 'activity',
+        'type' => 'text',
         'title' => 'Activity',
         'config_json' => '{}',
         'visibility' => 'public',
@@ -241,8 +249,8 @@ $layoutPayload = profile_module_payload(
     ],
     false
 );
-assert_true($layoutPayload['layout']['column'] === 4, 'layout column should clamp into 6 columns');
-assert_true($layoutPayload['layout']['row'] === 10, 'layout row should clamp into 12 rows');
+assert_true($layoutPayload['layout']['column'] === 10, 'layout column should clamp into 12 columns');
+assert_true($layoutPayload['layout']['row'] === 14, 'layout row should clamp into 16 rows');
 
 $invalidLayoutPayload = profile_module_payload(
     [
@@ -296,19 +304,19 @@ $clampedPlacement = profile_canvas_module_placement(
     ],
     [
         'id' => 8,
-        'type' => 'activity',
+        'type' => 'text',
     ],
     true
 );
-assert_true($clampedPlacement['column'] === 4, 'placement column should clamp');
-assert_true($clampedPlacement['row'] === 10, 'placement row should clamp');
+assert_true($clampedPlacement['column'] === 10, 'placement column should clamp');
+assert_true($clampedPlacement['row'] === 14, 'placement row should clamp');
 
 $largeProfileInfoPlacement = profile_canvas_module_placement(
     [
         'id' => 11,
         'column' => 1,
         'row' => 1,
-        'colSpan' => 6,
+        'colSpan' => 8,
         'rowSpan' => 3,
     ],
     [
@@ -317,15 +325,15 @@ $largeProfileInfoPlacement = profile_canvas_module_placement(
     ],
     true
 );
-assert_true($largeProfileInfoPlacement['colSpan'] === 6, 'profile info should allow 6 columns');
+assert_true($largeProfileInfoPlacement['colSpan'] === 8, 'profile info should allow the 8-column exception');
 assert_true($largeProfileInfoPlacement['rowSpan'] === 3, 'profile info should allow 3 rows');
 
 $largeActivityPlacement = profile_canvas_module_placement(
     [
         'id' => 12,
-        'column' => 4,
-        'row' => 9,
-        'colSpan' => 3,
+        'column' => 10,
+        'row' => 14,
+        'colSpan' => 4,
         'rowSpan' => 6,
     ],
     [
@@ -334,9 +342,10 @@ $largeActivityPlacement = profile_canvas_module_placement(
     ],
     true
 );
-assert_true($largeActivityPlacement['colSpan'] === 3, 'activity should allow 3 columns');
+assert_true($largeActivityPlacement['colSpan'] === 4, 'activity should allow 4 columns');
 assert_true($largeActivityPlacement['rowSpan'] === 6, 'activity should allow 6 rows');
-assert_true($largeActivityPlacement['row'] === 7, 'large activity row should clamp inside the canvas');
+assert_true($largeActivityPlacement['column'] === 9, 'large activity column should clamp inside the canvas');
+assert_true($largeActivityPlacement['row'] === 11, 'large activity row should clamp inside the canvas');
 
 $streamChatPlacement = profile_canvas_module_placement(
     [
@@ -354,7 +363,7 @@ $streamChatPlacement = profile_canvas_module_placement(
 );
 assert_true($streamChatPlacement['colSpan'] === 5, 'creator stream chat should allow 5 columns');
 assert_true($streamChatPlacement['rowSpan'] === 3, 'creator stream chat should allow 3 rows');
-assert_true($streamChatPlacement['column'] === 2, 'creator stream chat column should clamp inside the canvas');
+assert_true($streamChatPlacement['column'] === 4, 'creator stream chat column should fit inside the wider canvas');
 assert_true($streamChatPlacement['row'] === 8, 'creator stream chat row should fit inside the canvas');
 
 $legacyStreamChatPlacement = profile_canvas_module_placement(
@@ -380,7 +389,7 @@ $largeStreamChatPlacement = profile_canvas_module_placement(
         'column' => 3,
         'row' => 8,
         'colSpan' => 6,
-        'rowSpan' => 5,
+        'rowSpan' => 4,
     ],
     [
         'id' => 15,
@@ -389,8 +398,8 @@ $largeStreamChatPlacement = profile_canvas_module_placement(
     true
 );
 assert_true($largeStreamChatPlacement['colSpan'] === 6, 'creator stream chat should allow 6 columns');
-assert_true($largeStreamChatPlacement['rowSpan'] === 5, 'creator stream chat should allow 5 rows');
-assert_true($largeStreamChatPlacement['column'] === 1, 'large creator stream chat column should clamp inside the canvas');
+assert_true($largeStreamChatPlacement['rowSpan'] === 4, 'creator stream chat should allow 4 rows');
+assert_true($largeStreamChatPlacement['column'] === 3, 'large creator stream chat column should fit inside the wider canvas');
 assert_true($largeStreamChatPlacement['row'] === 8, 'large creator stream chat row should fit inside the canvas');
 
 $mediumStreamChatPlacement = profile_canvas_module_placement(
@@ -411,10 +420,16 @@ assert_true($mediumStreamChatPlacement['colSpan'] === 4, 'creator stream chat sh
 assert_true($mediumStreamChatPlacement['rowSpan'] === 3, 'creator stream chat should allow 3 rows');
 assert_true(profile_canvas_span_allowed('links', 3, 2), 'links should allow 3x2');
 assert_true(profile_canvas_span_allowed('custom_text', 3, 2), 'text should allow 3x2');
+assert_true(profile_canvas_span_allowed('text', 4, 5), 'specific text module should allow 4x5');
 assert_true(profile_canvas_span_allowed('gallery_media', 4, 3), 'gallery should allow 4x3');
-assert_true(profile_canvas_span_allowed('music', 2, 2), 'music should allow 2x2');
+assert_true(profile_canvas_span_allowed('uploaded_image', 6, 6), 'uploaded image should allow 6x6');
+assert_true(!profile_canvas_span_allowed('uploaded_image', 7, 1), 'uploaded image should reject spans wider than 6');
+assert_true(profile_canvas_span_allowed('youtube_video', 6, 4), 'YouTube video should allow 6x4');
+assert_true(profile_canvas_span_allowed('github_repo', 6, 4), 'GitHub repo should allow 6x4');
+assert_true(profile_canvas_span_allowed('music', 3, 2), 'legacy music should allow 3x2');
 assert_true(profile_canvas_span_allowed('featured_badges', 2, 2), 'badges should allow 2x2');
 assert_true(!profile_canvas_span_allowed('profile_info', 2, 2), 'profile info should hide legacy 2x2');
+assert_true(profile_canvas_span_allowed('profile_info', 8, 3), 'profile info should allow the 8x3 pinned size');
 
 assert_true(profile_canvas_background_blur('none') === 'none', 'none blur mismatch');
 assert_true(profile_canvas_background_blur('heavy') === 'heavy', 'heavy blur mismatch');
@@ -424,7 +439,7 @@ assert_php_rejected(
     'Choose a supported background blur.'
 );
 assert_php_rejected(
-    'profile_canvas_module_placement(["id" => 1, "column" => 1, "row" => 1, "colSpan" => 3, "rowSpan" => 3], ["id" => 1, "type" => "music"], true);',
+    'profile_canvas_module_placement(["id" => 1, "column" => 1, "row" => 1, "colSpan" => 2, "rowSpan" => 2], ["id" => 1, "type" => "music"], true);',
     'Canvas span is not allowed for this module.'
 );
 assert_true(profile_canvas_pinned(true) === true, 'boolean pinned state should be accepted');
@@ -439,8 +454,8 @@ assert_php_rejected(
 
 $pushedPlacements = profile_canvas_push_collisions(
     [
-        ['id' => 1, 'type' => 'about', 'column' => 1, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
-        ['id' => 2, 'type' => 'links', 'column' => 2, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 1, 'type' => 'twitch_channel', 'column' => 1, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 2, 'type' => 'spotify_song', 'column' => 2, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
         ['id' => 3, 'type' => 'music', 'column' => 1, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => false],
     ],
     1
@@ -453,8 +468,8 @@ assert_true($pushedPlacements[2]['id'] === 3 && $pushedPlacements[2]['visible'] 
 
 $leftPushPlacements = profile_canvas_push_collisions(
     [
-        ['id' => 1, 'type' => 'about', 'column' => 5, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
-        ['id' => 2, 'type' => 'links', 'column' => 4, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 1, 'type' => 'twitch_channel', 'column' => 5, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 2, 'type' => 'spotify_song', 'column' => 4, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
         ['id' => 3, 'type' => 'music', 'column' => 1, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
     ],
     1
@@ -464,10 +479,13 @@ assert_true($leftPushedModule['column'] === 3 && $leftPushedModule['row'] === 1,
 
 $downwardPushPlacements = profile_canvas_push_collisions(
     [
-        ['id' => 1, 'type' => 'about', 'column' => 5, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
-        ['id' => 2, 'type' => 'links', 'column' => 5, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
-        ['id' => 3, 'type' => 'music', 'column' => 1, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
-        ['id' => 4, 'type' => 'creator_live', 'column' => 3, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 1, 'type' => 'twitch_channel', 'column' => 5, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 2, 'type' => 'spotify_song', 'column' => 5, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 3, 'type' => 'music', 'column' => 1, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true, 'pinned' => true],
+        ['id' => 4, 'type' => 'creator_live', 'column' => 3, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true, 'pinned' => true],
+        ['id' => 5, 'type' => 'twitch_channel', 'column' => 7, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true, 'pinned' => true],
+        ['id' => 6, 'type' => 'spotify_song', 'column' => 9, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true, 'pinned' => true],
+        ['id' => 7, 'type' => 'twitch_channel', 'column' => 11, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true, 'pinned' => true],
     ],
     1
 );
@@ -476,8 +494,8 @@ assert_true($downwardPushedModule['column'] === 5 && $downwardPushedModule['row'
 
 $directionalPushPlacements = profile_canvas_push_collisions(
     [
-        ['id' => 1, 'type' => 'about', 'column' => 3, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
-        ['id' => 2, 'type' => 'links', 'column' => 3, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 1, 'type' => 'twitch_channel', 'column' => 3, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 2, 'type' => 'spotify_song', 'column' => 3, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
     ],
     1,
     ['anchorModuleId' => 1, 'from' => ['column' => 2, 'row' => 1], 'to' => ['column' => 3, 'row' => 1]]
@@ -487,8 +505,8 @@ assert_true($directionalPushedModule['column'] === 1 && $directionalPushedModule
 
 $halfOverlapPlacements = profile_canvas_push_collisions(
     [
-        ['id' => 1, 'type' => 'about', 'column' => 3, 'row' => 1, 'colSpan' => 1, 'rowSpan' => 1, 'visible' => true],
-        ['id' => 2, 'type' => 'links', 'column' => 3, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 1, 'type' => 'uploaded_image', 'column' => 3, 'row' => 1, 'colSpan' => 1, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 2, 'type' => 'twitch_channel', 'column' => 3, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
     ],
     1,
     ['anchorModuleId' => 1, 'from' => ['column' => 2, 'row' => 1], 'to' => ['column' => 3, 'row' => 1]]
@@ -498,8 +516,8 @@ assert_true($halfOverlapAnchor['column'] === 2, 'anchor should not displace a co
 
 $pinnedPlacements = profile_canvas_push_collisions(
     [
-        ['id' => 1, 'type' => 'about', 'column' => 3, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
-        ['id' => 2, 'type' => 'links', 'column' => 3, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true, 'pinned' => true],
+        ['id' => 1, 'type' => 'twitch_channel', 'column' => 3, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 2, 'type' => 'spotify_song', 'column' => 3, 'row' => 1, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true, 'pinned' => true],
     ],
     1,
     ['anchorModuleId' => 1, 'from' => ['column' => 2, 'row' => 1], 'to' => ['column' => 3, 'row' => 1]]
@@ -511,19 +529,22 @@ assert_true($pinnedAnchor['column'] === 5, 'dragged module should settle past a 
 
 $upwardPushPlacements = profile_canvas_push_collisions(
     [
-        ['id' => 1, 'type' => 'about', 'column' => 5, 'row' => 12, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
-        ['id' => 2, 'type' => 'links', 'column' => 5, 'row' => 12, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
-        ['id' => 3, 'type' => 'music', 'column' => 1, 'row' => 12, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
-        ['id' => 4, 'type' => 'creator_live', 'column' => 3, 'row' => 12, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 1, 'type' => 'twitch_channel', 'column' => 11, 'row' => 16, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 2, 'type' => 'spotify_song', 'column' => 11, 'row' => 16, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true],
+        ['id' => 3, 'type' => 'music', 'column' => 1, 'row' => 16, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true, 'pinned' => true],
+        ['id' => 4, 'type' => 'creator_live', 'column' => 3, 'row' => 16, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true, 'pinned' => true],
+        ['id' => 5, 'type' => 'twitch_channel', 'column' => 5, 'row' => 16, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true, 'pinned' => true],
+        ['id' => 6, 'type' => 'spotify_song', 'column' => 7, 'row' => 16, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true, 'pinned' => true],
+        ['id' => 7, 'type' => 'twitch_channel', 'column' => 9, 'row' => 16, 'colSpan' => 2, 'rowSpan' => 1, 'visible' => true, 'pinned' => true],
     ],
     1
 );
 $upwardPushedModule = array_values(array_filter($upwardPushPlacements, fn (array $placement): bool => $placement['id'] === 2))[0];
-assert_true($upwardPushedModule['column'] === 5 && $upwardPushedModule['row'] === 11, 'colliding module should move upward when downward space is unavailable');
+assert_true($upwardPushedModule['column'] === 11 && $upwardPushedModule['row'] === 15, 'colliding module should move upward when downward space is unavailable');
 
 assert_php_rejected(
-    '$items = []; for ($i = 1; $i <= 9; $i++) { $items[] = ["id" => $i, "type" => "profile_info", "column" => 1, "row" => 1, "colSpan" => 3, "rowSpan" => 3, "visible" => true]; } profile_canvas_push_collisions($items, 1);',
-    'Canvas layout does not fit the 6 by 12 grid.'
+    '$items = []; for ($i = 1; $i <= 65; $i++) { $items[] = ["id" => $i, "type" => "profile_info", "column" => 1, "row" => 1, "colSpan" => 3, "rowSpan" => 3, "visible" => true]; } profile_canvas_push_collisions($items, 1);',
+    'Canvas layout does not fit the 12 by 16 grid.'
 );
 
 assert_true(str_contains($profileModulesSource, 'grid_pinned'), 'profile module API should persist pinned layout state');

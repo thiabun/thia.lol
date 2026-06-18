@@ -59,6 +59,10 @@ assert_true($twitch['resourceType'] === 'channel', 'twitch type mismatch');
 
 $github = profile_integration_generated_card('https://github.com/thiabun/thia.lol', null);
 assert_true($github['provider'] === 'github', 'github provider mismatch');
+assert_true($github['resourceType'] === 'repo', 'github resource type mismatch');
+assert_true($github['resourceId'] === 'thiabun/thia.lol', 'github repo id mismatch');
+assert_true($github['resourceKey'] === 'github:repo:thiabun/thia.lol', 'github repo key mismatch');
+assert_true($github['metadata']['title'] === 'thiabun/thia.lol', 'github repo metadata title mismatch');
 assert_true($github['embed'] === null, 'github should not generate iframe embeds');
 
 $spotifyCard = profile_integration_generated_card('https://open.spotify.com/playlist/playlist123', null);

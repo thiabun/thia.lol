@@ -14,6 +14,10 @@ import type { MotionStyle } from "motion/react";
 import { cn } from "../../lib/classNames";
 import { defaultProfileLayoutPreset } from "../../lib/profileLayoutPresets";
 import {
+  PROFILE_CANVAS_DESKTOP_COLUMNS,
+  PROFILE_CANVAS_DESKTOP_ROWS,
+  PROFILE_CANVAS_MOBILE_COLUMNS,
+  PROFILE_CANVAS_MOBILE_ROWS,
   profileGridModuleSizeSpan,
   type ProfileGridModuleSize,
 } from "../../lib/profileModuleRegistry";
@@ -24,8 +28,8 @@ type ProfileGridProps = {
   children: ReactNode;
   className?: string | undefined;
   layoutPreset?: ProfileLayoutPreset | undefined;
-  maxColumns?: 2 | 6;
-  maxRows?: 12;
+  maxColumns?: 6 | 12;
+  maxRows?: 16 | 32;
   gridRef?: Ref<HTMLDivElement> | undefined;
   onClick?: MouseEventHandler<HTMLDivElement> | undefined;
   testId?: string | undefined;
@@ -35,14 +39,15 @@ export function ProfileGrid({
   children,
   className,
   layoutPreset = defaultProfileLayoutPreset,
-  maxColumns = 6,
-  maxRows = 12,
+  maxColumns = PROFILE_CANVAS_DESKTOP_COLUMNS,
+  maxRows = PROFILE_CANVAS_DESKTOP_ROWS,
   gridRef,
   onClick,
   testId = "profile-grid",
 }: ProfileGridProps) {
   const localGridRef = useRef<HTMLDivElement | null>(null);
   const [activeColumnCount, setActiveColumnCount] = useState(1);
+  const [activeRowBudget, setActiveRowBudget] = useState(maxRows);
   const [measuredCellSize, setMeasuredCellSize] = useState<number | undefined>();
   const setGridElement = useCallback(
     (element: HTMLDivElement | null) => {
@@ -62,6 +67,7 @@ export function ProfileGrid({
     const updateCellSize = () => {
       const styles = window.getComputedStyle(element);
       const activeColumns = profileGridActiveColumnCount(maxColumns);
+      const activeRows = profileGridActiveRowCount(maxRows);
       const columnGap = Number.parseFloat(styles.columnGap) || 0;
       const paddingLeft = Number.parseFloat(styles.paddingLeft) || 0;
       const paddingRight = Number.parseFloat(styles.paddingRight) || 0;
@@ -76,6 +82,9 @@ export function ProfileGrid({
 
       setActiveColumnCount((current) =>
         current === activeColumns ? current : activeColumns,
+      );
+      setActiveRowBudget((current) =>
+        current === activeRows ? current : activeRows,
       );
       setMeasuredCellSize((current) =>
         current !== undefined && Math.abs(current - nextCellSize) < 0.5
@@ -94,7 +103,7 @@ export function ProfileGrid({
       resizeObserver.disconnect();
       window.removeEventListener("resize", updateCellSize);
     };
-  }, [layoutPreset, maxColumns]);
+  }, [layoutPreset, maxColumns, maxRows]);
 
   const gridStyle = {
     "--profile-grid-gap": layoutPreset === "compact" ? "0.5rem" : "0.75rem",
@@ -105,22 +114,22 @@ export function ProfileGrid({
         ? "calc((100% - (var(--profile-grid-active-columns) - 1) * var(--profile-grid-gap)) / var(--profile-grid-active-columns))"
         : `${measuredCellSize}px`,
     "--profile-grid-row-size": "var(--profile-grid-cell-size)",
-    "--profile-grid-row-budget": String(maxRows),
+    "--profile-grid-row-budget": String(activeRowBudget),
+    gridTemplateColumns:
+      "repeat(var(--profile-grid-active-columns), minmax(0, 1fr))",
+    gridAutoRows: "var(--profile-grid-row-size)",
   } as CSSProperties;
 
   return (
     <div
       ref={setGridElement}
       className={cn(
-        "profile-grid-canvas grid min-w-0 grid-cols-1 rounded-panel border border-line bg-surface/34 p-2 shadow-soft backdrop-blur-veil md:grid-cols-2 md:[--profile-grid-active-columns:2] md:[grid-auto-rows:var(--profile-grid-row-size)]",
+        "profile-grid-canvas grid min-w-0 rounded-panel border border-line bg-surface/34 p-2 shadow-soft backdrop-blur-veil",
         layoutPreset === "compact" ? "gap-2" : "gap-3",
-        maxColumns === 6
-          ? "lg:grid-cols-6 lg:[--profile-grid-active-columns:6]"
-          : "lg:[--profile-grid-active-columns:2]",
         className,
       )}
       data-profile-canvas-columns={maxColumns}
-      data-profile-canvas-rows={maxRows}
+      data-profile-canvas-rows={activeRowBudget}
       data-profile-layout-preset={layoutPreset}
       data-testid={testId}
       onClick={onClick}
@@ -131,20 +140,28 @@ export function ProfileGrid({
   );
 }
 
-function profileGridActiveColumnCount(maxColumns: 2 | 6): number {
+function profileGridActiveColumnCount(maxColumns: 6 | 12): number {
   if (typeof window === "undefined") {
-    return 1;
+    return maxColumns;
   }
 
   if (window.matchMedia("(min-width: 1024px)").matches) {
     return maxColumns;
   }
 
-  if (window.matchMedia("(min-width: 768px)").matches) {
-    return Math.min(2, maxColumns);
+  return Math.min(PROFILE_CANVAS_MOBILE_COLUMNS, maxColumns);
+}
+
+function profileGridActiveRowCount(maxRows: 16 | 32): 16 | 32 {
+  if (typeof window === "undefined") {
+    return maxRows;
   }
 
-  return 1;
+  if (window.matchMedia("(min-width: 1024px)").matches) {
+    return maxRows;
+  }
+
+  return PROFILE_CANVAS_MOBILE_ROWS;
 }
 
 function assignProfileGridRef(
@@ -241,6 +258,9 @@ export function ProfileGridModule({
     "--profile-grid-column": String(layout?.column ?? 1),
     "--profile-grid-row": String(layout?.row ?? 1),
     "--profile-grid-column-span": String(layout?.colSpan ?? span.columns),
+    "--profile-grid-mobile-column-span": String(
+      Math.min(PROFILE_CANVAS_MOBILE_COLUMNS, layout?.colSpan ?? span.columns),
+    ),
     "--profile-grid-row-span": String(layout?.rowSpan ?? span.rows),
   } as CSSProperties;
 
@@ -284,77 +304,6 @@ export function ProfileGridModule({
 }
 
 function profileGridModuleSizeClass(size: ProfileGridModuleSize): string {
-  if (size === "6x1") {
-    return "md:col-span-2 lg:col-span-6";
-  }
-
-  if (size === "6x2") {
-    return "md:col-span-2 md:row-span-2 lg:col-span-6";
-  }
-
-  if (size === "6x3") {
-    return "md:col-span-2 md:row-span-3 lg:col-span-6";
-  }
-
-  if (size === "4x1") {
-    return "md:col-span-2 lg:col-span-4";
-  }
-
-  if (size === "4x2") {
-    return "md:col-span-2 md:row-span-2 lg:col-span-4";
-  }
-
-  if (size === "4x3") {
-    return "md:col-span-2 md:row-span-3 lg:col-span-4";
-  }
-
-  if (size === "5x3") {
-    return "md:col-span-2 md:row-span-3 lg:col-span-5";
-  }
-
-  if (size === "3x4") {
-    return "md:col-span-2 md:row-span-4 lg:col-span-3";
-  }
-
-  if (size === "6x5") {
-    return "md:col-span-2 md:row-span-5 lg:col-span-6";
-  }
-
-  if (size === "3x6") {
-    return "md:col-span-2 md:row-span-6 lg:col-span-3";
-  }
-
-  if (size === "3x1") {
-    return "md:col-span-2 lg:col-span-3";
-  }
-
-  if (size === "3x2") {
-    return "md:col-span-2 md:row-span-2 lg:col-span-3";
-  }
-
-  if (size === "3x3") {
-    return "md:col-span-2 md:row-span-3 lg:col-span-3";
-  }
-
-  if (size === "2x1") {
-    return "md:col-span-2";
-  }
-
-  if (size === "1x2") {
-    return "md:row-span-2";
-  }
-
-  if (size === "1x3") {
-    return "md:row-span-3";
-  }
-
-  if (size === "2x2") {
-    return "md:col-span-2 md:row-span-2";
-  }
-
-  if (size === "2x3") {
-    return "md:col-span-2 md:row-span-3";
-  }
-
+  void size;
   return "";
 }

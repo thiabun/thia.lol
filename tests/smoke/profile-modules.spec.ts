@@ -3,6 +3,12 @@ import { Buffer } from "node:buffer";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
+const PROFILE_CANVAS_VERSION = 2;
+const PROFILE_CANVAS_COLUMNS = 12;
+const PROFILE_CANVAS_ROWS = 16;
+const PROFILE_CANVAS_MOBILE_COLUMNS = 6;
+const PROFILE_CANVAS_MOBILE_ROWS = 32;
+
 test.beforeEach(async ({ context }) => {
   await context.route("**/api/**", async (route) => {
     await route.fulfill({
@@ -75,7 +81,7 @@ test("profile renders public modules safely", async ({ page }) => {
   );
   await expect(section.getByTestId("profile-module-grid")).toHaveAttribute(
     "data-profile-canvas-rows",
-    "12",
+    String(PROFILE_CANVAS_MOBILE_ROWS),
   );
   await expect(section.getByTestId("profile-grid-module-about")).toHaveAttribute(
     "data-profile-grid-size",
@@ -479,14 +485,17 @@ test("profile module grid keeps responsive columns bounded", async ({ page }) =>
   await page.goto("/@thia");
 
   const grid = page.getByTestId("profile-module-grid");
-  await expect(grid).toHaveAttribute("data-profile-canvas-columns", "6");
-  await expectGridColumnCount(grid, 1);
+  await expect(grid).toHaveAttribute(
+    "data-profile-canvas-columns",
+    String(PROFILE_CANVAS_COLUMNS),
+  );
+  await expectGridColumnCount(grid, PROFILE_CANVAS_MOBILE_COLUMNS);
 
   await page.setViewportSize({ width: 900, height: 900 });
-  await expectGridColumnCount(grid, 2);
+  await expectGridColumnCount(grid, PROFILE_CANVAS_MOBILE_COLUMNS);
 
   await page.setViewportSize({ width: 1366, height: 900 });
-  await expectGridColumnCount(grid, 6);
+  await expectGridColumnCount(grid, PROFILE_CANVAS_COLUMNS);
 });
 
 test("full-page profile background and glass grid render safely", async ({ page }) => {
@@ -768,7 +777,7 @@ test("desktop module spans render with square-cell geometry", async ({ page }) =
         4,
         1,
       ),
-      withAuditLayout(twitchStreamChatModule({ id: 5, row: 6 }), "6x5", 6),
+      withAuditLayout(twitchStreamChatModule({ id: 5, row: 6 }), "6x4", 6),
     ],
     profilePosts: Array.from({ length: 8 }, (_, index) =>
       postFixture({ id: 500 + index, body: `Geometry post ${index + 1}.` }),
@@ -1059,7 +1068,7 @@ test("Twitch stream chat fills the creator module when embed metadata is availab
   await page.goto("/@thia");
 
   const creator = page.getByTestId("profile-grid-module-creator_live");
-  await expect(creator).toHaveAttribute("data-profile-grid-size", "6x5");
+  await expect(creator).toHaveAttribute("data-profile-grid-size", "6x4");
   await expect(creator.getByTestId("profile-integration-embed-twitch")).toBeVisible();
   await expect(creator.getByTestId("profile-integration-embed-twitch")).toHaveAttribute(
     "src",
@@ -1069,7 +1078,7 @@ test("Twitch stream chat fills the creator module when embed metadata is availab
   await expect(creator.getByRole("link")).toHaveCount(0);
 });
 
-test("owner profile editor preserves read-only lower-row 6x5 creator modules", async ({
+test("owner direct canvas editor preserves lower-row 6x4 creator modules", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1366, height: 1100 });
@@ -1088,14 +1097,14 @@ test("owner profile editor preserves read-only lower-row 6x5 creator modules", a
   await page.goto("/@thia");
 
   const creator = page.getByTestId("profile-grid-module-creator_live");
-  await expect(creator).toHaveAttribute("data-profile-grid-size", "6x5");
+  await expect(creator).toHaveAttribute("data-profile-grid-size", "6x4");
   await expect(creator).toHaveCSS("--profile-grid-row", "8");
 
   await page.getByTestId("profile-edit-button").click();
-  await expect(page.getByTestId("profile-editor")).toBeVisible();
-  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
-  await expect(creator).toHaveCSS("--profile-grid-row", "8");
-  await expect(creator).not.toHaveAttribute("data-profile-module-dragging", "true");
+  await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
+  const editorCreator = page.getByTestId("profile-canvas-module-5");
+  await expect(editorCreator).toHaveCSS("--profile-grid-row", "8");
+  await expect(editorCreator).not.toHaveAttribute("data-profile-module-dragging", "true");
 });
 
 test.skip("retired canvas editor pin controls stay backend-only during transition", async ({ page }) => {
@@ -1206,7 +1215,7 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
   expect(metrics.bannerHeight).toBeGreaterThanOrEqual(150);
 });
 
-test("owner edits background clarity without opening retired canvas controls", async ({
+test("owner edits background clarity in the direct canvas draft", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
@@ -1233,8 +1242,7 @@ test("owner edits background clarity without opening retired canvas controls", a
   await page.goto("/@thia");
 
   await page.getByTestId("profile-edit-button").click();
-  await expect(page.getByTestId("profile-editor")).toBeVisible();
-  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
+  await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
   await expect(page.getByTestId("profile-canvas-background-controls")).toBeVisible();
   await expect(page.getByTestId("profile-canvas-background-trigger")).toBeVisible();
   await expect(page.getByText("Background clarity")).toHaveCount(0);
@@ -1260,17 +1268,112 @@ test("owner edits background clarity without opening retired canvas controls", a
     .locator("img")
     .evaluate((image) => window.getComputedStyle(image).filter);
   expect(previewFilter).toContain("blur(42px)");
-  await page.getByTestId("profile-grid-module-about").click();
   await expect(page.getByTestId("profile-selected-module-popover")).toHaveCount(0);
   await expect(page.getByTestId("profile-canvas-drag-handle-1")).toHaveCount(0);
   await expect(page.getByTestId("profile-canvas-position-grid")).toHaveCount(0);
-  expect(savedPayload?.backgroundBlur).toBe("heavy");
-  expect(savedPayload?.canvasVersion).toBe(1);
+  await expect
+    .poll(() => savedPayload?.backgroundBlur)
+    .toBe("heavy");
+  expect(savedPayload?.canvasVersion).toBe(PROFILE_CANVAS_VERSION);
   await expect(page.getByTestId("profile-personal-backdrop")).toHaveAttribute(
     "data-profile-background-blur",
     "heavy",
   );
   await expect(page.getByText("Move me.")).toBeVisible();
+});
+
+test("direct canvas point selection creates a draft module through picker and settings", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  let draftPayload: Record<string, unknown> | undefined;
+  let commitPayload: Record<string, unknown> | undefined;
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+    onCanvasDraftSave: (payload) => {
+      draftPayload = payload;
+    },
+    onCanvasSave: (payload) => {
+      commitPayload = payload;
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  const editor = page.getByTestId("profile-canvas-editor");
+  await expect(editor).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-direct-grid")).toHaveAttribute(
+    "data-profile-canvas-columns",
+    String(PROFILE_CANVAS_COLUMNS),
+  );
+  await expect(page.getByTestId("profile-canvas-direct-grid")).toHaveAttribute(
+    "data-profile-canvas-rows",
+    String(PROFILE_CANVAS_ROWS),
+  );
+
+  const startCell = page.getByTestId("profile-canvas-cell-1-4");
+  await startCell.click();
+  await expect(startCell).toHaveClass(/border-focus/);
+
+  const hoverCell = page.getByTestId("profile-canvas-cell-3-5");
+  await hoverCell.hover();
+  await expect(hoverCell).toHaveClass(/border-focus/);
+  await hoverCell.click();
+
+  const blankModule = page.locator('[data-testid^="profile-canvas-add-module-"]');
+  await expect(blankModule).toBeVisible();
+  await expect(page.getByTestId("profile-module-picker")).toBeVisible();
+  await expect(page.getByTestId("profile-module-picker-youtube_video")).toBeDisabled();
+  await expect(page.getByTestId("profile-module-picker-youtube_video")).toContainText(
+    "Selection too small",
+  );
+
+  await page.getByTestId("profile-module-picker-text").click();
+  await expect(page.getByTestId("profile-module-settings")).toBeVisible();
+  await page.getByRole("button", { name: "Pin" }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("profile-module-settings")).toHaveCount(0);
+  await page.getByTestId("profile-canvas-save-button").click();
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
+
+  await expect.poll(() => draftPayload?.canvasVersion).toBe(PROFILE_CANVAS_VERSION);
+  await expect.poll(() => commitPayload).toBeDefined();
+  const committedModules = commitPayload?.modules as Array<Record<string, unknown>>;
+  const textModule = committedModules.find((module) => module.type === "text");
+
+  expect(textModule).toMatchObject({
+    layout: {
+      column: 1,
+      row: 4,
+      colSpan: 3,
+      rowSpan: 2,
+    },
+    pinned: true,
+    visibility: "hidden",
+  });
+});
+
+test("direct canvas cancel discards an uncommitted draft module", async ({ page }) => {
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-cell-1-5").click();
+  await page.getByTestId("profile-canvas-cell-2-6").click();
+  await expect(page.locator('[data-testid^="profile-canvas-add-module-"]')).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
+
+  await page.getByTestId("profile-edit-button").click();
+  await expect(page.locator('[data-testid^="profile-canvas-add-module-"]')).toHaveCount(0);
 });
 
 test("owner crops a profile background image before upload", async ({ page }) => {
@@ -1374,7 +1477,7 @@ test("image crop modal is wired to current image upload surfaces", () => {
   }
 });
 
-test("low-resolution desktop uses compact profile editor chrome", async ({ page }) => {
+test("low-resolution desktop uses compact direct canvas chrome", async ({ page }) => {
   await page.setViewportSize({ width: 1080, height: 720 });
   await mockProfileModules(page, {
     authenticated: true,
@@ -1388,17 +1491,16 @@ test("low-resolution desktop uses compact profile editor chrome", async ({ page 
 
   await page.getByTestId("profile-edit-button").click();
 
-  const editor = page.getByTestId("profile-editor");
+  const editor = page.getByTestId("profile-canvas-editor");
   await expect(editor).toBeVisible();
-  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
-  await expectGridColumnCount(page.getByTestId("profile-module-grid"), 6);
+  await expectGridColumnCount(page.getByTestId("profile-canvas-direct-grid"), PROFILE_CANVAS_COLUMNS);
 
   const metrics = await page.evaluate(() => {
     const editorElement = document.querySelector<HTMLElement>(
-      '[data-testid="profile-editor"]',
+      '[data-testid="profile-canvas-editor"]',
     );
     const gridElement = document.querySelector<HTMLElement>(
-      '[data-testid="profile-module-grid"]',
+      '[data-testid="profile-canvas-direct-grid"]',
     );
 
     if (!editorElement || !gridElement) {
@@ -1422,7 +1524,7 @@ test("low-resolution desktop uses compact profile editor chrome", async ({ page 
   expect(metrics.hasHorizontalOverflow).toBe(false);
 });
 
-test("owner edits profile info in the profile editor with autosave", async ({ page }) => {
+test.skip("obsolete profile details panel autosave coverage", async ({ page }) => {
   let savedProfile: Record<string, unknown> | undefined;
   const multilineBio = "Edited inside the profile editor.\nWith a second line.";
 
@@ -1466,7 +1568,7 @@ test("owner edits profile info in the profile editor with autosave", async ({ pa
   expect(bioWhiteSpace).toBe("pre-wrap");
 });
 
-test("blank owner profile editor prompts editing profile details", async ({ page }) => {
+test.skip("obsolete blank profile details panel coverage", async ({ page }) => {
   await mockProfileModules(page, {
     authenticated: true,
     profileOverrides: {
@@ -1994,9 +2096,9 @@ test.skip("retired canvas integration panel stays backend-only during transition
   await creatorModule.getByTestId("profile-creator-mode-stream_chat").click();
   await expect(creatorModule).toHaveAttribute("data-profile-grid-size", "4x3");
   await expect(creatorModule.getByTestId("profile-canvas-size-5x3")).toBeVisible();
-  await expect(creatorModule.getByTestId("profile-canvas-size-6x5")).toBeVisible();
-  await creatorModule.getByTestId("profile-canvas-size-6x5").click();
-  await expect(creatorModule).toHaveAttribute("data-profile-grid-size", "6x5");
+  await expect(creatorModule.getByTestId("profile-canvas-size-6x4")).toBeVisible();
+  await creatorModule.getByTestId("profile-canvas-size-6x4").click();
+  await expect(creatorModule).toHaveAttribute("data-profile-grid-size", "6x4");
   await creatorModule.getByTestId("profile-creator-url-input").fill("https://www.twitch.tv/thiabun");
   await creatorModule.getByTestId("profile-creator-preview-button").click();
   await expect(creatorModule.getByTestId("profile-integration-preview-summary")).toContainText(
@@ -2394,7 +2496,7 @@ test("owner empty module state is honest", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Customize layout" })).toHaveCount(0);
 });
 
-test("owner customization uses the transition profile editor instead of the retired modal", async ({
+test("owner customization uses the direct canvas editor instead of the retired modal", async ({
   page,
 }) => {
   await mockProfileModules(page, {
@@ -2406,8 +2508,7 @@ test("owner customization uses the transition profile editor instead of the reti
 
   await expect(page.getByTestId("profile-edit-button")).toBeVisible();
   await page.getByTestId("profile-edit-button").click();
-  await expect(page.getByTestId("profile-editor")).toBeVisible();
-  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
+  await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
   await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Customize layout" })).toHaveCount(0);
   await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
@@ -2428,9 +2529,8 @@ test("mobile profile modules stay stable with compact profile editing", async ({
   await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
   await expect(page.getByTestId("profile-edit-button")).toBeVisible();
   await page.getByTestId("profile-edit-button").click();
-  const editor = page.getByTestId("profile-editor");
+  const editor = page.getByTestId("profile-canvas-editor");
   await expect(editor).toBeVisible();
-  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
   await expect(page.getByTestId("mobile-nav")).toBeHidden();
 
   const hasHorizontalOverflow = await page.evaluate(
@@ -2473,6 +2573,7 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(router).toContain("profile_modules_dispatch($segments, $method)");
   expect(router).toContain("integrations_dispatch($segments, $method)");
   expect(router).toContain("'canvas'");
+  expect(router).toContain("'canvas-draft'");
   expect(modulesApi).toContain("const PROFILE_INFO_MODULE_TYPE = 'profile_info'");
   expect(modulesApi).toContain("const PROFILE_ACTIVITY_MODULE_TYPE = 'activity'");
   expect(modulesApi).toContain("const PROFILE_FEATURED_POST_MODULE_TYPE = 'featured_post'");
@@ -2481,14 +2582,14 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(modulesApi).toContain("const PROFILE_CREATOR_LIVE_MODULE_TYPE = 'creator_live'");
   expect(modulesApi).toContain("const PROFILE_MUSIC_MODULE_TYPE = 'music'");
   expect(moduleRegistry).toContain(
-    'allowedSizes: ["1x1", "2x1", "3x1", "2x2", "3x2"]',
+    'allowedSizes: ["3x2", "4x2", "3x3", "3x4"]',
   );
   expect(modulesApi).toContain(
-    "'links' => ['1x1', '2x1', '3x1', '2x2', '3x2']",
+    "'links', PROFILE_CONNECTIONS_MODULE_TYPE => ['3x2', '4x2', '3x3', '3x4']",
   );
-  expect(moduleRegistry).toContain('profile_info: {\n    allowedSizes: ["3x2", "3x3", "4x3", "6x3"]');
+  expect(moduleRegistry).toContain('profile_info: {\n    allowedSizes: ["3x2", "3x3", "4x3", "6x3", "8x3", "8x4"]');
   expect(modulesApi).toContain(
-    "PROFILE_INFO_MODULE_TYPE => ['3x2', '3x3', '4x3', '6x3']",
+    "PROFILE_INFO_MODULE_TYPE => ['3x2', '3x3', '4x3', '6x3', '8x3', '8x4']",
   );
   expect(modulesApi).toContain("const PROFILE_FEATURED_LEGACY_MODULE_TYPE = 'featured'");
   expect(modulesApi).toContain("PROFILE_BUILT_IN_MODULE_TYPES");
@@ -2512,10 +2613,12 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(modulesApi).toContain("profile_module_reject_unknown_keys");
   expect(modulesApi).toContain("profile_module_text_is_unsafe");
   expect(modulesApi).toContain("profile_canvas_update");
+  expect(modulesApi).toContain("profile_canvas_draft_commit");
+  expect(modulesApi).toContain("profile_canvas_glass_opacity");
   expect(modulesApi).toContain("profile_canvas_background_blur");
   expect(modulesApi).toContain("anchorModuleId");
   expect(modulesApi).toContain("profile_canvas_push_collisions");
-  expect(modulesApi).toContain("Canvas layout does not fit the 6 by 12 grid.");
+  expect(modulesApi).toContain("Canvas layout does not fit the %d by %d grid.");
   expect(modulesApi).toContain("profile_canvas_span_allowed");
   expect(modulesApi).toContain("Module type cannot be changed.");
   expect(modulesApi).toContain("visibility = :visibility");
@@ -2605,6 +2708,7 @@ async function mockProfileModules(
     modules: unknown[];
     onCreate?: (payload: Record<string, unknown>) => void;
     onCanvasSave?: (payload: Record<string, unknown>) => void;
+    onCanvasDraftSave?: (payload: Record<string, unknown>) => void;
     onDelete?: (id: number) => void;
     onImageUpload?: (purpose: string) => void;
     onOrder?: (ids: number[]) => void;
@@ -2621,6 +2725,7 @@ async function mockProfileModules(
     [...options.modules] as Array<Record<string, unknown>>,
   );
   let profileOverrides = { ...(options.profileOverrides ?? {}) };
+  let canvasDraft = profileCanvasDraftState(ownerModules, profileOverrides);
   let nextModuleId = Math.max(
     10,
     ...ownerModules.map((module) =>
@@ -2835,7 +2940,7 @@ async function mockProfileModules(
       profileOverrides = {
         ...profileOverrides,
         profileBackgroundBlur: payload.backgroundBlur,
-        profileCanvasVersion: 1,
+        profileCanvasVersion: PROFILE_CANVAS_VERSION,
       };
     }
 
@@ -2875,10 +2980,131 @@ async function mockProfileModules(
         ok: true,
         data: {
           backgroundBlur: profileOverrides.profileBackgroundBlur ?? "medium",
-          canvasVersion: 1,
+          canvasVersion: PROFILE_CANVAS_VERSION,
           modules: ownerModules,
         },
       }),
+    });
+  });
+
+  await page.route("**/api/me/profile/canvas-draft**", async (route) => {
+    const url = new URL(route.request().url());
+    const method = route.request().method();
+
+    if (url.pathname.endsWith("/commit")) {
+      if (method !== "POST") {
+        await route.fulfill({
+          status: 405,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: false, error: "Method not allowed." }),
+        });
+        return;
+      }
+
+      const committedModules = (canvasDraft.modules as Array<Record<string, unknown>>)
+        .filter((module) => module.status !== "deleted")
+        .map((module, index) => {
+          const existingId = typeof module.id === "number" && module.id > 0
+            ? module.id
+            : nextModuleId++;
+          const config = module.config as Record<string, unknown> | undefined;
+
+          return {
+            ...module,
+            id: existingId,
+            position: index + 1,
+            visibility: config?.configured === false ? "hidden" : module.visibility ?? "public",
+            status: "active",
+          };
+        });
+
+      ownerModules = sortModulesByLayout(committedModules);
+      profileOverrides = {
+        ...profileOverrides,
+        profileBackgroundBlur: canvasDraft.backgroundBlur,
+        profileCanvasVersion: PROFILE_CANVAS_VERSION,
+      };
+      canvasDraft = profileCanvasDraftState(ownerModules, profileOverrides);
+      options.onCanvasSave?.({ ...canvasDraft, modules: ownerModules });
+
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            backgroundBlur: profileOverrides.profileBackgroundBlur ?? "medium",
+            canvasGlass: canvasDraft.canvasGlass,
+            canvasVersion: PROFILE_CANVAS_VERSION,
+            modules: ownerModules,
+          },
+        }),
+      });
+      return;
+    }
+
+    if (method === "GET") {
+      canvasDraft = profileCanvasDraftState(ownerModules, profileOverrides, canvasDraft);
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: canvasDraft }),
+      });
+      return;
+    }
+
+    if (method === "PATCH") {
+      const payload = (await route.request().postDataJSON()) as Record<string, unknown>;
+      options.onCanvasDraftSave?.(payload);
+      options.onCanvasSave?.(payload);
+      canvasDraft = {
+        ...canvasDraft,
+        backgroundBlur:
+          typeof payload.backgroundBlur === "string"
+            ? payload.backgroundBlur
+            : canvasDraft.backgroundBlur,
+        canvasGlass:
+          typeof payload.canvasGlass === "number"
+            ? payload.canvasGlass
+            : canvasDraft.canvasGlass,
+        canvasVersion: PROFILE_CANVAS_VERSION,
+        modules: Array.isArray(payload.modules)
+          ? payload.modules
+          : canvasDraft.modules,
+        selectedModuleId:
+          typeof payload.selectedModuleId === "number" ||
+          typeof payload.selectedModuleId === "string" ||
+          payload.selectedModuleId === null
+            ? payload.selectedModuleId
+            : canvasDraft.selectedModuleId,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: canvasDraft }),
+      });
+      return;
+    }
+
+    if (method === "DELETE") {
+      canvasDraft = profileCanvasDraftState(ownerModules, profileOverrides);
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: { discarded: true, canvasVersion: PROFILE_CANVAS_VERSION },
+        }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 405,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "Method not allowed." }),
     });
   });
 
@@ -3103,6 +3329,27 @@ function ensureTestBuiltInModules(modules: Array<Record<string, unknown>>) {
   }));
 }
 
+function profileCanvasDraftState(
+  modules: Array<Record<string, unknown>>,
+  profileOverrides: Record<string, unknown>,
+  previous?: Record<string, unknown>,
+) {
+  return {
+    backgroundBlur:
+      typeof profileOverrides.profileBackgroundBlur === "string"
+        ? profileOverrides.profileBackgroundBlur
+        : typeof previous?.backgroundBlur === "string"
+          ? previous.backgroundBlur
+          : "medium",
+    canvasGlass:
+      typeof previous?.canvasGlass === "number" ? previous.canvasGlass : 58,
+    canvasVersion: PROFILE_CANVAS_VERSION,
+    modules: sortModulesByLayout(modules).map((module) => ({ ...module })),
+    selectedModuleId: previous?.selectedModuleId ?? null,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 function sortModulesByLayout(modules: Array<Record<string, unknown>>) {
   return [...modules]
     .sort((first, second) => {
@@ -3161,8 +3408,14 @@ function pushMockCanvasPlacements(
       const rowSpan = Number(placement.rowSpan ?? 1);
       const requested = {
         ...placement,
-        column: Math.max(1, Math.min(6 - colSpan + 1, Number(placement.column ?? 1))),
-        row: Math.max(1, Math.min(12 - rowSpan + 1, Number(placement.row ?? 1))),
+        column: Math.max(
+          1,
+          Math.min(PROFILE_CANVAS_COLUMNS - colSpan + 1, Number(placement.column ?? 1)),
+        ),
+        row: Math.max(
+          1,
+          Math.min(PROFILE_CANVAS_ROWS - rowSpan + 1, Number(placement.row ?? 1)),
+        ),
         colSpan,
         rowSpan,
       };
@@ -3187,8 +3440,8 @@ function mockNextLayout(
 ) {
   const colSpan = Number(placement.colSpan ?? 1);
   const rowSpan = Number(placement.rowSpan ?? 1);
-  const maxColumn = 6 - colSpan + 1;
-  const maxRow = 12 - rowSpan + 1;
+  const maxColumn = PROFILE_CANVAS_COLUMNS - colSpan + 1;
+  const maxRow = PROFILE_CANVAS_ROWS - rowSpan + 1;
   const baseColumn = Math.max(1, Math.min(maxColumn, Number(placement.column ?? 1)));
   const baseRow = Math.max(1, Math.min(maxRow, Number(placement.row ?? 1)));
 
@@ -3517,7 +3770,7 @@ const profileModuleSizeAuditMatrix: Array<{
   { type: "gallery_media", sizes: ["1x1", "2x1", "2x2", "3x2", "3x3", "4x3"] },
   {
     type: "creator_live",
-    sizes: ["1x1", "2x1", "2x2", "3x2", "3x3", "4x3", "5x3", "6x5"],
+    sizes: ["1x1", "2x1", "2x2", "3x2", "3x3", "4x3", "5x3", "6x4"],
   },
   { type: "music", sizes: ["1x1", "2x1", "3x1", "2x2", "3x2"] },
   { type: "activity", sizes: ["2x2", "3x2", "3x3", "3x4", "3x6"] },
@@ -3688,7 +3941,7 @@ function profileModuleSizeAuditModule(
   }
 
   if (type === "creator_live") {
-    const module = ["4x3", "5x3", "6x5"].includes(size)
+    const module = ["4x3", "5x3", "6x4"].includes(size)
       ? twitchStreamChatModule({ id })
       : creatorModule({ id });
 
@@ -3788,7 +4041,7 @@ function profileBody(overrides: Record<string, unknown> = {}) {
     profileBackgroundBlur: "medium",
     profileTheme: null,
     profileLayoutPreset: "balanced",
-    profileCanvasVersion: 1,
+    profileCanvasVersion: PROFILE_CANVAS_VERSION,
     links: [],
     traits: [],
     stats: {
@@ -4031,7 +4284,7 @@ function twitchStreamChatModule(
 ) {
   return {
     ...creatorModule(overrides),
-    layout: { column: 1, row: overrides.row ?? 1, colSpan: 6, rowSpan: 5 },
+    layout: { column: 1, row: overrides.row ?? 1, colSpan: 6, rowSpan: 4 },
     config: {
       description: "Live channel.",
       displayMode: "stream_chat",

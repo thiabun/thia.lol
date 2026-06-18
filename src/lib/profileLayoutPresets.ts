@@ -37,8 +37,8 @@ export function isProfileLayoutPreset(value: unknown): value is ProfileLayoutPre
 
 export function profileLayoutMaxColumns(
   preset: ProfileLayoutPreset,
-): 6 {
+): 12 {
   void preset;
 
-  return 6;
+  return 12;
 }

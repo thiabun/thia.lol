@@ -25,7 +25,7 @@ export type Profile = {
   profileBackgroundBlur: ProfileBackgroundBlur;
   profileTheme?: string | null;
   profileLayoutPreset: ProfileLayoutPreset;
-  profileCanvasVersion: 1;
+  profileCanvasVersion: 1 | 2;
   featuredPostId?: number | null;
   featuredRoomId?: number | null;
   featuredPost?: Post | null;
@@ -124,7 +124,28 @@ export type ProfileModuleType =
   | "creator_live"
   | "music"
   | "custom_text"
-  | "activity";
+  | "activity"
+  | "twitch_channel"
+  | "youtube_video"
+  | "youtube_stream"
+  | "youtube_playlist"
+  | "uploaded_video"
+  | "spotify_song"
+  | "apple_music_song"
+  | "youtube_music_song"
+  | "spotify_playlist"
+  | "apple_music_playlist"
+  | "youtube_music_playlist"
+  | "spotify_artist"
+  | "apple_music_artist"
+  | "youtube_music_artist"
+  | "uploaded_image"
+  | "gallery_slideshow"
+  | "gallery_feed"
+  | "text"
+  | "badge_display"
+  | "connections"
+  | "github_repo";
 
 export type ProfileModuleVisibility = "public" | "hidden" | "draft";
 
@@ -178,6 +199,7 @@ export type ProfileIntegrationCard = {
 export type ProfileModuleConfig = {
   body?: string;
   canvasSize?: string;
+  configured?: boolean;
   description?: string;
   displayMode?: string;
   hasBanner?: boolean;

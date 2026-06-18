@@ -178,20 +178,21 @@ product value and safety order, not a promise that every capability ships.
 - Creator/live module as a static or link-first card before any live status.
 - Compact music player module as a user-initiated link/card first.
 
-#### P3A - Canvas Editing Completion
+#### P3A - Direct Canvas Editing Completion
 
-P3A made the modular profile canvas a real editable surface as an experimental
-implementation pass. As of 2026-06-18, that editor is retired from the active
-product surface while a replacement is planned. The data model, API validation,
-and public renderer remain preserved for compatibility and recovery.
+P3A makes the modular profile canvas the active editing surface. Owners edit a
+recoverable draft directly on the glass canvas, then commit with Save or discard
+with Cancel.
 
-- The profile canvas is a 6 x 12 desktop grid with square cells. A `3x2`
-  module renders as a 3:2 rectangle; content cannot stretch the grid tracks.
-- The retired editor allowed desktop owners to move unpinned modules with native
-  pointer drag in the canvas. This behavior is not currently exposed.
-- Visible position-map controls are not part of the normal editing flow. A
-  future settings pass can expose direct position controls behind an
-  accessibility toggle; this pass keeps drag as the primary placement model.
+- The profile canvas is a 12 x 16 desktop grid with square cells and a 6 x 32
+  mobile projection. A `3x2` module renders as a 3:2 rectangle; content cannot
+  stretch the grid tracks.
+- Owners create blank module envelopes by selecting two grid points. The first
+  point highlights, hover previews the merged rectangle, and the second click
+  opens the module picker for tools that fit the selected space.
+- The entire module surface is the drag handle except explicit controls. The
+  settings modal exposes pinning, removal, size choices, and provider connect
+  prompts where needed.
 - Client and server both use directional collision behavior: the selected or
   dragged module is the anchor, pinned modules are fixed obstacles, and visible
   colliders move only after the anchor overlaps more than half of them on the
@@ -199,9 +200,10 @@ and public renderer remain preserved for compatibility and recovery.
 - Colliders first try the opposite direction of the drag vector, then nearby
   perpendicular slots, then nearest-row fallback including upward movement when
   that is the best valid fit. Hidden and deleted modules do not occupy cells.
-- `PATCH /api/me/profile/canvas` persists normalized layout with
-  `anchorModuleId`, optional `movementContext`, `pinned`, and normalized module
-  placement. It fails atomically if the visible canvas cannot fit inside 6 x 12.
+- `PATCH /api/me/profile/canvas` remains for compatibility. New editor changes
+  autosave to `PATCH /api/me/profile/canvas-draft` and commit through
+  `POST /api/me/profile/canvas-draft/commit`, so module create/update/delete,
+  placement, pinning, and canvas preferences apply atomically.
 - `profile_info` is the only protected identity anchor.
 - Featured post, featured room, and activity are normal modules for visibility
   and deletion. Deleting featured post or featured room modules clears
@@ -211,13 +213,11 @@ and public renderer remain preserved for compatibility and recovery.
   module from public and default owner reads, but the editor can request
   `includeDeleted=1` and restore the prior title, config, and saved grid
   placement where possible.
-- The retired editor model kept the live profile canvas visible with a desktop
-  left panel and mobile stacked editor. These controls are not active during the
-  transition.
-- The retired panel categories were Essentials, Featured, Media, Integrations,
-  and Removed. Future work should revisit that information architecture instead
-  of copying it by default.
-- The retired module selection model exposed size, visibility, removal, and
+- The v2 picker groups tools by concrete purpose instead of broad legacy
+  buckets. Multi-feature modules are split into specific tools such as Twitch
+  Channel, YouTube Video, provider-specific music modules, Gallery Feed, and
+  GitHub Repo.
+- The module selection model exposes size, visibility, removal, and
   content controls. Future work must redesign this with mobile, keyboard access,
   recovery, and autosave clarity from the beginning.
 - `profile_info` can use `4x3` and `6x3` spans when owners want a larger
@@ -951,42 +951,37 @@ Profiles V3 P3 adds real persistence for the modular profile canvas:
   version validation, and server-side span/coordinate validation.
 - Blur is allowlisted to `none`, `soft`, `medium`, and `heavy`; arbitrary CSS
   values are rejected.
-- Module coordinates are clamped into the 6x12 grid. Spans must match the
+- Module coordinates were originally clamped into the 6x12 grid and are now
+  versioned to a 12x16 desktop grid with a 6x32 mobile projection. Spans must match the
   module-specific allowlist. Visible module collisions use the shared
   directional, pin-aware solver rather than silently overlapping.
-- Mobile ignores exact grid coordinates and stacks by normalized module order.
+- Mobile ignores exact desktop columns and reflows modules by normalized module
+  order into the 6-column projection.
 - Invalid saved coordinates or retired module rows are ignored or safely
   normalized on read instead of breaking public profiles.
-- The frontend canvas editor built on this persistence is now retired from the
-  active product surface. The persistence layer remains for public rendering,
-  recovery, migration, and future editor work.
-- The active owner surface is a compact profile identity/media editor. It does
-  not expose module placement, module selection, size controls, pin controls,
-  add/remove/restore controls, or integration setup.
-- Future module layout work must not assume drag is sufficient; accessible
-  non-drag paths, mobile editing, recovery, and autosave clarity need to be
-  designed before the editor returns.
+- The active owner surface is the direct canvas editor. It uses draft autosave
+  for placement, module choice, pinning, background media, and glass opacity,
+  then commits through the draft endpoint.
+- Future module layout work must continue adding accessible non-drag paths;
+  keyboard add/remove is supported, with full keyboard moving still planned.
 
 ### Implementation Note - 2026-06-17 Canvas Editor Refinement
 
-The P3 editor refinement was an experimental pass that tightened the
-canvas-first interaction model. As of 2026-06-18, this frontend editor is
-retired from the active product surface, but the public renderer and backend
-compatibility remain.
+The P3 editor refinement tightened the canvas-first interaction model and was
+superseded by the 2026-06-18 direct draft editor.
 
-- The retired desktop editor used a compact left panel for module library,
-  removed modules, integration status, background media, and Done/Cancel.
-  Mobile used a stacked editor.
-- The retired module selection model exposed local controls in or attached to
-  the module. Future work should revisit the interaction instead of assuming
-  this shape is final.
+- The active desktop editor keeps Save, Cancel, and autosave state above the
+  canvas, with background upload and glass opacity controls on the left.
+- The active module selection model opens a picker from a blank selected
+  envelope and uses a settings modal for pin, removal, provider connect, and
+  size eligibility.
 - Collision resolution is directional and pin-aware: the anchor claims the
   requested valid target, pinned modules stay fixed, colliders move after
   half-overlap on the active axis, and the solver tries the opposite drag
   direction before nearby perpendicular and nearest-row fallback. There is no
-  wrap-to-top behavior. Client draft normalization must use the same 6 x 12
-  bounds as the server so large lower-row modules do not jump when editing
-  starts.
+  wrap-to-top behavior. Client draft normalization must use the same 12 x 16
+  desktop bounds as the server so large lower-row modules do not jump when
+  editing starts.
 - Public and non-edit module chrome should stay light: the grid provides the
   shared glass surface, while individual module title bars and opaque module
   shells appear only when they clarify editing or a content-specific fallback.

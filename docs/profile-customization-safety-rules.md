@@ -105,18 +105,21 @@ Current backend behavior:
 - Profile customization columns are migration-aware and return a clean readiness error when missing.
 - Profile modules use `profile_modules` after migration `20260612_0001_add_profile_modules.sql`.
 - Public module reads return only public active modules for active users.
-- Owner module mutations still require authentication and CSRF for API
-  compatibility, recovery, and future migration work, but those mutation flows
-  are not exposed in the active frontend during this transition.
-- Supported module types include `profile_info`, `about`, `links`,
-  `featured_badges`, `custom_text`, `featured_post`, `featured_room`,
-  `gallery_media`, `creator_live`, `music`, and `activity`.
+- Owner module mutations still require authentication and CSRF. The active
+  frontend edits a recoverable canvas draft and commits the draft through a
+  single transaction.
+- Supported module types include legacy compatibility rows plus the v2 specific
+  catalog: `twitch_channel`, `youtube_video`, `youtube_stream`,
+  `youtube_playlist`, `uploaded_video`, provider-specific music song/playlist/
+  artist modules, `uploaded_image`, `gallery_slideshow`, `gallery_feed`,
+  `profile_info`, `text`, `badge_display`, `connections`, `activity`,
+  `featured_post`, `featured_room`, and `github_repo`.
 - Module config validation rejects unknown keys, unsafe text, unsafe URLs, arbitrary embeds, and arbitrary HTML/CSS/JS.
-- Canvas layout data uses a constrained 6 x 12 grid. Server validation clamps
-  bounds, validates spans, ignores hidden/deleted modules for occupancy, keeps
+- Canvas layout data uses a constrained 12 x 16 desktop grid with a 6 x 32
+  mobile projection. Server validation clamps bounds, validates exact
+  module-specific spans, ignores hidden/deleted modules for occupancy, keeps
   pinned modules fixed, and uses constrained collision solving instead of
-  freeform pixel positioning. This remains compatibility behavior, not an active
-  owner editing surface.
+  freeform pixel positioning.
 - `profile_info` is the only protected module. Featured post, featured room,
   and activity modules can be deleted like normal modules; deleting featured
   post/room modules also clears the selected featured profile references.
