@@ -4962,6 +4962,9 @@ function ProfileInfoModule({
   status,
 }: ProfileInfoModuleProps) {
   const span = profileGridModuleSizeSpan(size);
+  const showBlankEditPrompt =
+    editing && isOwnProfile && profileInfoNeedsEditPrompt(profile);
+
   return (
     <div
       className="h-full min-w-0"
@@ -4969,44 +4972,76 @@ function ProfileInfoModule({
       data-profile-info-rows={span.rows}
       data-testid="profile-module-profile-info"
     >
-      <ProfileHeader
-        profile={profile}
-        featuredBadges={featuredBadges}
-        followError={activeFollowError}
-        followPosting={followPosting}
-        isOwnProfile={isOwnProfile}
-        messageToHandle={
-          status === "authenticated" &&
-          !isOwnProfile &&
-          !profile.blockedByMe &&
-          profile.isMoot
-            ? profile.user.handle
-            : undefined
-        }
-        profileControlBusy={profileControlBusy}
-        profileControlError={activeProfileControlError}
-        profileControlMessage={activeProfileControlMessage}
-        onBlockToggle={onBlockToggle}
-        onFollowToggle={onFollowToggle}
-        onMuteToggle={onMuteToggle}
-        onOpenPanel={onOpenPanel}
-        profileInfoColumns={span.columns}
-        profileInfoRows={span.rows}
-        chrome={editing}
-        reportAction={
-          !isOwnProfile ? (
-            <ReportForm
-              targetType="profile"
-              targetId={profile.user.id}
-              reportedUserId={profile.user.id}
-              title="Report profile"
-              explainer={`This reports @${profile.user.handle}'s profile to moderators.`}
-              triggerClassName="min-h-8 px-2.5 text-xs"
-            />
-          ) : undefined
-        }
-        showChatHint={showChatHint}
-      />
+      {showBlankEditPrompt ? (
+        <ProfileInfoBlankEditPrompt />
+      ) : (
+        <ProfileHeader
+          profile={profile}
+          featuredBadges={featuredBadges}
+          followError={activeFollowError}
+          followPosting={followPosting}
+          isOwnProfile={isOwnProfile}
+          messageToHandle={
+            status === "authenticated" &&
+            !isOwnProfile &&
+            !profile.blockedByMe &&
+            profile.isMoot
+              ? profile.user.handle
+              : undefined
+          }
+          profileControlBusy={profileControlBusy}
+          profileControlError={activeProfileControlError}
+          profileControlMessage={activeProfileControlMessage}
+          onBlockToggle={onBlockToggle}
+          onFollowToggle={onFollowToggle}
+          onMuteToggle={onMuteToggle}
+          onOpenPanel={onOpenPanel}
+          profileInfoColumns={span.columns}
+          profileInfoRows={span.rows}
+          chrome={editing}
+          reportAction={
+            !isOwnProfile ? (
+              <ReportForm
+                targetType="profile"
+                targetId={profile.user.id}
+                reportedUserId={profile.user.id}
+                title="Report profile"
+                explainer={`This reports @${profile.user.handle}'s profile to moderators.`}
+                triggerClassName="min-h-8 px-2.5 text-xs"
+              />
+            ) : undefined
+          }
+          showChatHint={showChatHint}
+        />
+      )}
+    </div>
+  );
+}
+
+function profileInfoNeedsEditPrompt(profile: Profile): boolean {
+  return (
+    !safeProfileImageUrl(profile.user.avatarUrl) &&
+    !safeProfileImageUrl(profile.bannerUrl) &&
+    profile.bio.trim().length === 0 &&
+    profile.location.trim().length === 0
+  );
+}
+
+function ProfileInfoBlankEditPrompt() {
+  return (
+    <div
+      className="grid h-full min-h-0 place-items-center rounded-panel border border-dashed border-line-strong bg-surface/48 p-4 text-center shadow-soft backdrop-blur-veil"
+      data-testid="profile-info-edit-prompt"
+    >
+      <div className="max-w-64">
+        <span className="mx-auto grid size-12 place-items-center rounded-card border border-line bg-canvas/70 text-accent-strong">
+          <ImagePlus aria-hidden="true" size={22} />
+        </span>
+        <p className="mt-3 text-base font-semibold text-text">Select to edit profile</p>
+        <p className="mt-1 text-sm leading-6 text-muted">
+          Add an avatar, banner, bio, or location from this module.
+        </p>
+      </div>
     </div>
   );
 }

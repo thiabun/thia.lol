@@ -1467,6 +1467,41 @@ test("owner edits profile info inside the selected module", async ({ page }) => 
   expect(bioWhiteSpace).toBe("pre-wrap");
 });
 
+test("blank owner profile info prompts selection in edit mode", async ({ page }) => {
+  await mockProfileModules(page, {
+    authenticated: true,
+    profileOverrides: {
+      user: {
+        id: 1,
+        handle: "thia",
+        displayName: "Thia",
+        initials: "T",
+        aura: "frost",
+        avatarUrl: null,
+      },
+      bio: "",
+      location: "",
+      bannerUrl: null,
+    },
+    modules: [],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-canvas-edit-button").click();
+
+  const profileInfoModule = page.getByTestId("profile-grid-module-profile_info");
+  await expect(profileInfoModule.getByTestId("profile-info-edit-prompt")).toContainText(
+    "Select to edit profile",
+  );
+  await expect(profileInfoModule.getByTestId("profile-header")).toHaveCount(0);
+
+  await profileInfoModule.click();
+  await expect(page.getByTestId("profile-selected-module-popover")).toBeVisible();
+  await expect(page.getByTestId("profile-info-display-name-input")).toBeVisible();
+  await expect(page.getByTestId("profile-info-bio-input")).toBeVisible();
+});
+
 test("owner can use larger profile info and activity spans", async ({ page }) => {
   let savedPayload: Record<string, unknown> | undefined;
 
