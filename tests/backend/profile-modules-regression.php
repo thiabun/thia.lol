@@ -409,6 +409,12 @@ $mediumStreamChatPlacement = profile_canvas_module_placement(
 );
 assert_true($mediumStreamChatPlacement['colSpan'] === 4, 'creator stream chat should allow 4 columns');
 assert_true($mediumStreamChatPlacement['rowSpan'] === 3, 'creator stream chat should allow 3 rows');
+assert_true(profile_canvas_span_allowed('links', 3, 2), 'links should allow 3x2');
+assert_true(profile_canvas_span_allowed('custom_text', 3, 2), 'text should allow 3x2');
+assert_true(profile_canvas_span_allowed('gallery_media', 4, 3), 'gallery should allow 4x3');
+assert_true(profile_canvas_span_allowed('music', 2, 2), 'music should allow 2x2');
+assert_true(profile_canvas_span_allowed('featured_badges', 2, 2), 'badges should allow 2x2');
+assert_true(!profile_canvas_span_allowed('profile_info', 2, 2), 'profile info should hide legacy 2x2');
 
 assert_true(profile_canvas_background_blur('none') === 'none', 'none blur mismatch');
 assert_true(profile_canvas_background_blur('heavy') === 'heavy', 'heavy blur mismatch');

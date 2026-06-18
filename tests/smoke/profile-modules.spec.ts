@@ -1295,9 +1295,8 @@ test("owner edits background blur, module placement, and visibility", async ({
   const aboutEdit = page
     .getByTestId("profile-grid-module-about")
     .getByTestId("profile-selected-module-controls");
-  await expect(
-    aboutEdit,
-  ).toBeVisible();
+  await expect(page.getByTestId("profile-selected-module-popover")).toBeVisible();
+  await expect(aboutEdit).toBeVisible();
   const aboutModuleBox = await page.getByTestId("profile-grid-module-about").boundingBox();
   const dragHandleBox = await page
     .getByTestId("profile-canvas-drag-handle-1")
@@ -1363,9 +1362,28 @@ test("owner crops a profile background image before upload", async ({ page }) =>
   await expect(page.getByTestId("image-crop-aspect-square")).toHaveCount(0);
 
   const preview = page.getByTestId("image-crop-preview");
+  const frame = page.getByTestId("image-crop-frame");
   await expect(preview).toBeVisible();
+  const frameBox = await frame.boundingBox();
+  expect(frameBox).not.toBeNull();
+  expect(frameBox!.width).toBeLessThanOrEqual(580);
+  const beforeZoomBox = await preview.boundingBox();
+  expect(beforeZoomBox).not.toBeNull();
   await page.getByTestId("image-crop-zoom").fill("1.6");
-  await expect(preview).toHaveCSS("transform", /matrix/);
+  const afterZoomBox = await preview.boundingBox();
+  expect(afterZoomBox).not.toBeNull();
+  expect(afterZoomBox!.width).toBeGreaterThan(beforeZoomBox!.width);
+  const dragStart = {
+    x: frameBox!.x + frameBox!.width / 2,
+    y: frameBox!.y + frameBox!.height / 2,
+  };
+  await page.mouse.move(dragStart.x, dragStart.y);
+  await page.mouse.down();
+  await page.mouse.move(dragStart.x + 24, dragStart.y);
+  await page.mouse.up();
+  const afterDragBox = await preview.boundingBox();
+  expect(afterDragBox).not.toBeNull();
+  expect(Math.round(afterDragBox!.x)).not.toBe(Math.round(afterZoomBox!.x));
 
   await page.getByRole("button", { name: "Apply crop" }).click();
   await expect(page.getByTestId("image-crop-modal")).toHaveCount(0);
@@ -1476,6 +1494,9 @@ test("owner can use larger profile info and activity spans", async ({ page }) =>
   const profileInfoEdit = page
     .getByTestId("profile-grid-module-profile_info")
     .getByTestId("profile-selected-module-controls");
+  await expect(page.getByTestId("profile-selected-module-popover")).toBeVisible();
+  await expect(profileInfoEdit.getByText("Full", { exact: true })).toBeVisible();
+  await expect(profileInfoEdit.getByText("6 x 3", { exact: true })).toHaveCount(0);
   await expect(profileInfoEdit.getByTestId("profile-canvas-size-4x3")).toBeVisible();
   await profileInfoEdit.getByTestId("profile-canvas-size-6x3").click();
 
@@ -1483,6 +1504,8 @@ test("owner can use larger profile info and activity spans", async ({ page }) =>
   const activityEdit = page
     .getByTestId("profile-grid-module-activity")
     .getByTestId("profile-selected-module-controls");
+  await expect(activityEdit.getByText("Full", { exact: true })).toBeVisible();
+  await expect(activityEdit.getByText("3 x 6", { exact: true })).toHaveCount(0);
   await expect(activityEdit.getByTestId("profile-canvas-size-3x4")).toBeVisible();
   await activityEdit.getByTestId("profile-canvas-size-3x6").click();
   await page.getByTestId("profile-canvas-save-button").click();
@@ -1500,8 +1523,9 @@ test("owner can use larger profile info and activity spans", async ({ page }) =>
   });
 });
 
-test("owner edits connections inside the selected module", async ({ page }) => {
+test("owner edits connections from the selected module popover", async ({ page }) => {
   let updatedLinks: Array<Record<string, unknown>> = [];
+  let savedPayload: Record<string, unknown> | undefined;
 
   await mockProfileModules(page, {
     authenticated: true,
@@ -1517,6 +1541,9 @@ test("owner edits connections inside the selected module", async ({ page }) => {
         updatedLinks = (config?.links as Array<Record<string, unknown>> | undefined) ?? [];
       }
     },
+    onCanvasSave: (payload) => {
+      savedPayload = payload;
+    },
   });
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
@@ -1528,12 +1555,19 @@ test("owner edits connections inside the selected module", async ({ page }) => {
       .getByTestId("profile-grid-module-links")
       .getByTestId("profile-selected-module-controls"),
   ).toBeVisible();
+  await expect(page.getByTestId("profile-selected-module-popover")).toBeVisible();
+  await expect(page.getByTestId("profile-grid-module-links")).toContainText(
+    "Select to add connections",
+  );
+  await expect(page.getByTestId("profile-canvas-size-3x2")).toHaveText("Showcase");
+  await page.getByTestId("profile-canvas-size-3x2").click();
 
   await page.getByTestId("profile-connection-add-open-button").click();
   await page.getByTestId("profile-connection-platform-twitch").click();
   await page.getByTestId("profile-connection-value-input").fill("thiabun");
   await page.getByTestId("profile-connection-add-button").click();
   await page.getByTestId("profile-canvas-save-button").click();
+  await expect.poll(() => savedPayload).toBeDefined();
 
   expect(updatedLinks).toContainEqual(
     expect.objectContaining({
@@ -1541,6 +1575,11 @@ test("owner edits connections inside the selected module", async ({ page }) => {
       url: "https://www.twitch.tv/thiabun",
     }),
   );
+  const savedModules = savedPayload?.modules as Array<Record<string, unknown>>;
+  expect(savedModules.find((module) => module.id === 2)).toMatchObject({
+    colSpan: 3,
+    rowSpan: 2,
+  });
 });
 
 test("owner drags a canvas module and save includes pushed placement", async ({
@@ -1697,6 +1736,7 @@ test("owner adds modules and deletes featured modules from the canvas editor", a
     config: { body: "" },
   });
   const textModule = page.getByTestId("profile-grid-module-custom_text");
+  await expect(page.getByTestId("profile-selected-module-popover")).toBeVisible();
   await expect(textModule.getByTestId("profile-selected-module-controls")).toBeVisible();
   await page.getByTestId("profile-module-grid").dispatchEvent("click");
   await expect(textModule.getByText("Select to add text")).toBeVisible();
@@ -2414,6 +2454,16 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(modulesApi).toContain("const PROFILE_GALLERY_MEDIA_MODULE_TYPE = 'gallery_media'");
   expect(modulesApi).toContain("const PROFILE_CREATOR_LIVE_MODULE_TYPE = 'creator_live'");
   expect(modulesApi).toContain("const PROFILE_MUSIC_MODULE_TYPE = 'music'");
+  expect(moduleRegistry).toContain(
+    'allowedSizes: ["1x1", "2x1", "3x1", "2x2", "3x2"]',
+  );
+  expect(modulesApi).toContain(
+    "'links' => ['1x1', '2x1', '3x1', '2x2', '3x2']",
+  );
+  expect(moduleRegistry).toContain('profile_info: {\n    allowedSizes: ["3x2", "3x3", "4x3", "6x3"]');
+  expect(modulesApi).toContain(
+    "PROFILE_INFO_MODULE_TYPE => ['3x2', '3x3', '4x3', '6x3']",
+  );
   expect(modulesApi).toContain("const PROFILE_FEATURED_LEGACY_MODULE_TYPE = 'featured'");
   expect(modulesApi).toContain("PROFILE_BUILT_IN_MODULE_TYPES");
   expect(modulesApi).toContain("PROFILE_PROTECTED_MODULE_TYPES = [PROFILE_INFO_MODULE_TYPE]");
@@ -3407,19 +3457,19 @@ const profileModuleSizeAuditMatrix: Array<{
   sizes: string[];
   type: ProfileModuleSizeAuditType;
 }> = [
-  { type: "profile_info", sizes: ["2x1", "2x2", "3x2", "3x3", "4x3", "6x3"] },
-  { type: "about", sizes: ["1x1", "2x1", "3x1"] },
-  { type: "custom_text", sizes: ["1x1", "2x1"] },
-  { type: "links", sizes: ["1x1", "2x1", "3x1", "2x2"] },
-  { type: "featured_badges", sizes: ["1x1", "2x1"] },
+  { type: "profile_info", sizes: ["3x2", "3x3", "4x3", "6x3"] },
+  { type: "about", sizes: ["1x1", "2x1", "3x1", "2x2"] },
+  { type: "custom_text", sizes: ["1x1", "2x1", "2x2", "3x2"] },
+  { type: "links", sizes: ["1x1", "2x1", "3x1", "2x2", "3x2"] },
+  { type: "featured_badges", sizes: ["1x1", "2x1", "2x2"] },
   { type: "featured_post", sizes: ["2x1", "3x1", "2x2", "3x2"] },
-  { type: "featured_room", sizes: ["1x1", "2x1", "3x1"] },
-  { type: "gallery_media", sizes: ["1x1", "2x1", "2x2", "3x2", "3x3"] },
+  { type: "featured_room", sizes: ["1x1", "2x1", "3x1", "2x2"] },
+  { type: "gallery_media", sizes: ["1x1", "2x1", "2x2", "3x2", "3x3", "4x3"] },
   {
     type: "creator_live",
     sizes: ["1x1", "2x1", "2x2", "3x2", "3x3", "4x3", "5x3", "6x5"],
   },
-  { type: "music", sizes: ["1x1", "2x1", "3x1", "3x2"] },
+  { type: "music", sizes: ["1x1", "2x1", "3x1", "2x2", "3x2"] },
   { type: "activity", sizes: ["2x2", "3x2", "3x3", "3x4", "3x6"] },
 ];
 

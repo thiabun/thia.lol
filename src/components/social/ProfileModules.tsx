@@ -17,6 +17,7 @@ import {
   type PointerEvent,
   type ReactNode,
 } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { cn } from "../../lib/classNames";
 import {
   getProfileModuleDefinition,
@@ -358,9 +359,10 @@ export function ProfileModuleGrid({
         const definition = getProfileModuleDefinition(module.type);
         const spanRole = profileModuleSpanRole(span.size);
         const selected = editing?.selectedModuleId === module.id;
-        const selectedContent = selected
+        const selectedControls = selected
           ? editing?.renderSelectedControls?.(module, span.size)
           : undefined;
+        const keepControlsInsideModule = span.columns >= 4 || span.rows >= 3;
         const musicAutoplayRequestId =
           musicAutoplay?.targetModuleId === module.id ? musicAutoplay.requestId : 0;
         const safeLayout =
@@ -384,7 +386,7 @@ export function ProfileModuleGrid({
                 ? "z-20 scale-[1.012] opacity-85 drop-shadow-2xl"
                 : undefined,
               selected
-                ? "ring-2 ring-focus ring-offset-2 ring-offset-canvas"
+                ? "z-30 ring-2 ring-focus ring-offset-2 ring-offset-canvas"
                 : undefined,
             )}
             layout={safeLayout}
@@ -446,16 +448,36 @@ export function ProfileModuleGrid({
                 <Move aria-hidden="true" size={15} />
               </button>
             ) : null}
-            {selectedContent ??
-              renderModuleContent?.(module, span.size) ?? (
-                <ProfileModuleCard
-                  module={module}
-                  badges={badges}
-                  editing={Boolean(editing)}
-                  musicAutoplayRequestId={musicAutoplayRequestId}
-                  size={span.size}
-                />
-              )}
+            {renderModuleContent?.(module, span.size) ?? (
+              <ProfileModuleCard
+                module={module}
+                badges={badges}
+                editing={Boolean(editing)}
+                musicAutoplayRequestId={musicAutoplayRequestId}
+                size={span.size}
+              />
+            )}
+            <AnimatePresence initial={false}>
+              {selectedControls ? (
+                <motion.div
+                  className={cn(
+                    "absolute left-1/2 top-[calc(100%+0.65rem)] z-50 w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 max-md:fixed max-md:inset-x-3 max-md:bottom-[calc(5.75rem+env(safe-area-inset-bottom))] max-md:top-auto max-md:w-auto max-md:translate-x-0",
+                    keepControlsInsideModule
+                      ? "lg:left-auto lg:right-2 lg:top-2 lg:w-[min(30rem,calc(100%-1rem))] lg:translate-x-0"
+                      : undefined,
+                  )}
+                  data-profile-edit-control="true"
+                  data-profile-module-settings-popover="true"
+                  data-testid="profile-selected-module-popover"
+                  initial={{ opacity: 0, scale: 0.96, y: -8 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.96, y: -8 }}
+                  transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  {selectedControls}
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
           </ProfileGridModule>
         );
       })}
@@ -710,7 +732,7 @@ function ProfileModuleContent({
     return (
       <div
         className={cn(
-          "grid max-h-full min-w-0 gap-2 overflow-y-auto pr-1",
+          "grid max-h-full min-w-0 auto-rows-fr gap-2 overflow-y-auto pr-1",
           spanRole === "glance"
             ? "grid-cols-1"
             : spanRole === "hero"
@@ -719,10 +741,13 @@ function ProfileModuleContent({
         )}
         data-profile-module-visible-media={visibleMediaItems.length}
       >
-        {visibleMediaItems.map((item) => (
+        {visibleMediaItems.map((item, index) => (
           <figure
             key={item.url}
-            className="min-w-0 overflow-hidden rounded-card border border-line bg-canvas/55"
+            className={cn(
+              "min-h-0 min-w-0 overflow-hidden rounded-card border border-line bg-canvas/55",
+              spanRole === "hero" && index === 0 ? "col-span-2 row-span-2" : undefined,
+            )}
           >
             <img
               alt=""
@@ -773,7 +798,11 @@ function ProfileModuleContent({
         <p
           className={cn(
             "break-words text-sm leading-6 text-muted",
-            compact ? "line-clamp-2" : "line-clamp-4",
+            compact
+              ? "line-clamp-2"
+              : spanRole === "summary"
+                ? "line-clamp-4"
+                : undefined,
           )}
         >
           {module.config.body}

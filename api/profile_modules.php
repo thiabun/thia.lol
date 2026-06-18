@@ -872,16 +872,16 @@ function profile_canvas_span_allowed(string $type, int $colSpan, int $rowSpan): 
 function profile_canvas_allowed_sizes(string $type): array
 {
     return match ($type) {
-        PROFILE_INFO_MODULE_TYPE => ['3x3', '4x3', '6x3', '3x2', '2x2', '2x1'],
-        'about' => ['1x1', '2x1', '3x1'],
-        'custom_text' => ['1x1', '2x1'],
-        'links' => ['1x1', '2x1', '3x1', '2x2'],
-        'featured_badges' => ['1x1', '2x1'],
+        PROFILE_INFO_MODULE_TYPE => ['3x2', '3x3', '4x3', '6x3'],
+        'about' => ['1x1', '2x1', '3x1', '2x2'],
+        'custom_text' => ['1x1', '2x1', '2x2', '3x2'],
+        'links' => ['1x1', '2x1', '3x1', '2x2', '3x2'],
+        'featured_badges' => ['1x1', '2x1', '2x2'],
         PROFILE_FEATURED_POST_MODULE_TYPE => ['2x1', '3x1', '2x2', '3x2'],
-        PROFILE_FEATURED_ROOM_MODULE_TYPE => ['1x1', '2x1', '3x1'],
-        PROFILE_GALLERY_MEDIA_MODULE_TYPE => ['1x1', '2x1', '2x2', '3x2', '3x3'],
+        PROFILE_FEATURED_ROOM_MODULE_TYPE => ['1x1', '2x1', '3x1', '2x2'],
+        PROFILE_GALLERY_MEDIA_MODULE_TYPE => ['1x1', '2x1', '2x2', '3x2', '3x3', '4x3'],
         PROFILE_CREATOR_LIVE_MODULE_TYPE => ['1x1', '2x1', '2x2', '3x2', '3x3', '4x3', '5x3', '6x5'],
-        PROFILE_MUSIC_MODULE_TYPE => ['1x1', '2x1', '3x1', '3x2'],
+        PROFILE_MUSIC_MODULE_TYPE => ['1x1', '2x1', '3x1', '2x2', '3x2'],
         PROFILE_ACTIVITY_MODULE_TYPE => ['2x2', '3x2', '3x3', '3x4', '3x6'],
         default => ['1x1'],
     };

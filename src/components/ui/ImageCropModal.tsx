@@ -81,6 +81,9 @@ export function ImageCropModal({
   const frameRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | undefined>(undefined);
   const [loadedImage, setLoadedImage] = useState<LoadedImage | undefined>();
+  const [frameSize, setFrameSize] = useState<
+    { height: number; width: number } | undefined
+  >();
   const [aspectId, setAspectId] = useState("original");
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -101,6 +104,20 @@ export function ImageCropModal({
     aspectOptions.find((option) => option.id === aspectId)?.aspect ??
     1;
   const disabled = busy || processing;
+  const previewMetrics =
+    activeImage && frameSize
+      ? frameMetricsFromDimensions(frameSize.width, frameSize.height, activeImage)
+      : undefined;
+  const previewImageStyle =
+    activeImage && previewMetrics
+      ? {
+          height: `${activeImage.height * previewMetrics.baseScale * zoom}px`,
+          left: `calc(50% + ${offset.x}px)`,
+          top: `calc(50% + ${offset.y}px)`,
+          transform: "translate(-50%, -50%)",
+          width: `${activeImage.width * previewMetrics.baseScale * zoom}px`,
+        }
+      : undefined;
 
   useEffect(() => {
     if (!open || !file) {
@@ -132,6 +149,43 @@ export function ImageCropModal({
     };
   }, [file, fileToken, open]);
 
+  useEffect(() => {
+    if (!open || !frameRef.current) {
+      return undefined;
+    }
+
+    const frame = frameRef.current;
+    const updateFrameSize = () => {
+      const rect = frame.getBoundingClientRect();
+
+      setFrameSize({
+        height: Math.max(1, rect.height),
+        width: Math.max(1, rect.width),
+      });
+    };
+
+    updateFrameSize();
+
+    const observer = new ResizeObserver(updateFrameSize);
+    observer.observe(frame);
+    window.addEventListener("resize", updateFrameSize);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateFrameSize);
+    };
+  }, [open, selectedAspect]);
+
+  useEffect(() => {
+    if (!activeImage || !frameRef.current) {
+      return;
+    }
+
+    setOffset((current) =>
+      clampOffset(current, frameRef.current, activeImage, selectedAspect, zoom),
+    );
+  }, [activeImage, frameSize, selectedAspect, zoom]);
+
   function resetCrop() {
     setZoom(1);
     setOffset({ x: 0, y: 0 });
@@ -144,7 +198,11 @@ export function ImageCropModal({
     }
 
     event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Some synthetic test events do not create an active pointer capture target.
+    }
     dragRef.current = {
       offsetX: offset.x,
       offsetY: offset.y,
@@ -259,10 +317,13 @@ export function ImageCropModal({
       <div
         ref={frameRef}
         className={cn(
-          "relative mx-auto w-full max-w-4xl touch-none overflow-hidden rounded-panel border border-line bg-canvas/70 shadow-inner-soft",
+          "relative mx-auto w-full touch-none overflow-hidden rounded-panel border border-line bg-canvas/70 shadow-inner-soft",
           disabled ? "cursor-wait" : "cursor-grab active:cursor-grabbing",
         )}
-        style={{ aspectRatio: selectedAspect }}
+        style={{
+          aspectRatio: selectedAspect,
+          maxWidth: cropFrameMaxWidth(purpose, selectedAspect),
+        }}
         data-testid="image-crop-frame"
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -273,12 +334,10 @@ export function ImageCropModal({
           <img
             alt=""
             aria-hidden="true"
-            className="absolute left-0 top-0 size-full select-none object-cover"
+            className="absolute max-w-none select-none"
             draggable={false}
             src={activeImage.url}
-            style={{
-              transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
-            }}
+            style={previewImageStyle}
             data-testid="image-crop-preview"
           />
         ) : (
@@ -372,9 +431,33 @@ function frameMetrics(
   const rect = frame.getBoundingClientRect();
   const frameWidth = Math.max(1, rect.width);
   const frameHeight = Math.max(1, rect.height || frameWidth / aspect);
+
+  return frameMetricsFromDimensions(frameWidth, frameHeight, image);
+}
+
+function frameMetricsFromDimensions(
+  frameWidth: number,
+  frameHeight: number,
+  image: LoadedImage,
+): FrameMetrics {
   const baseScale = Math.max(frameWidth / image.width, frameHeight / image.height);
 
   return { baseScale, frameHeight, frameWidth };
+}
+
+function cropFrameMaxWidth(
+  purpose: ImageUploadPurpose,
+  aspect: number,
+): string {
+  if (purpose === "avatar" || purpose === "room_icon") {
+    return "280px";
+  }
+
+  if (purpose === "banner" || purpose === "room_banner" || purpose === "profile_background") {
+    return "560px";
+  }
+
+  return aspect < 1 ? "360px" : "480px";
 }
 
 function clampOffset(

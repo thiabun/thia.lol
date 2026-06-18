@@ -121,6 +121,7 @@ import {
   profileModuleAllowedSizes,
   profileModuleFallbackTitle,
   profileModuleGridSpan,
+  profileModuleSizeLabel,
   type ProfileGridModuleSize,
 } from "../lib/profileModuleRegistry";
 import { safeProfileImageUrl } from "../lib/profileMedia";
@@ -1901,8 +1902,21 @@ function normalizeProfileInfoModule(
   profile: Profile,
   module: ProfileModule,
 ): ProfileModule {
+  const legacyLayoutSize = module.layout
+    ? profileGridModuleSpanSize(module.layout.colSpan, module.layout.rowSpan)
+    : undefined;
+  const layout =
+    legacyLayoutSize === "2x1" || legacyLayoutSize === "2x2"
+      ? clampProfileModuleLayout({
+          ...(module.layout ?? { column: 1, row: 1 }),
+          colSpan: 3,
+          rowSpan: 2,
+        })
+      : module.layout ?? null;
+
   return {
     ...module,
+    layout,
     title: module.title ?? "Profile info",
     config: {
       ...module.config,
@@ -3167,6 +3181,7 @@ function ProfileSelectedModuleControls({
   const canDelete = module.type !== "profile_info";
   const visible = module.visibility === "public";
   const pinned = module.pinned === true;
+  const allowedSizes = profileModuleAllowedSizes(module.type);
 
   function updateSpan(nextSize: ProfileGridModuleSize) {
     const span = profileGridModuleSizeSpan(nextSize);
@@ -3209,7 +3224,7 @@ function ProfileSelectedModuleControls({
 
   return (
     <article
-      className="grid h-full min-h-0 min-w-0 grid-rows-[auto_1fr] overflow-hidden rounded-card border border-line-strong bg-surface/82 p-3 text-sm shadow-lift backdrop-blur-veil"
+      className="grid max-h-[min(34rem,calc(100dvh-8rem))] min-h-0 min-w-0 grid-rows-[auto_1fr] overflow-hidden rounded-card border border-line-strong bg-surface/90 p-3 text-sm shadow-lift backdrop-blur-veil"
       data-profile-edit-control="true"
       data-testid="profile-selected-module-controls"
       data-profile-module-edit-surface="true"
@@ -3295,7 +3310,7 @@ function ProfileSelectedModuleControls({
             </div>
           </div>
           <div className="mt-1 flex flex-wrap gap-1">
-            {profileModuleAllowedSizes(module.type).map((allowedSize) => (
+            {allowedSizes.map((allowedSize) => (
               <button
                 key={allowedSize}
                 type="button"
@@ -3304,7 +3319,7 @@ function ProfileSelectedModuleControls({
                 data-testid={`profile-canvas-size-${allowedSize}`}
                 onClick={() => updateSpan(allowedSize)}
               >
-                {sizeLabel(allowedSize)}
+                {profileModuleSizeLabel(module.type, allowedSize)}
               </button>
             ))}
           </div>
@@ -4730,12 +4745,6 @@ function clampProfileModuleLayout(layout: ProfileModuleLayout): ProfileModuleLay
     colSpan,
     rowSpan,
   };
-}
-
-function sizeLabel(size: ProfileGridModuleSize): string {
-  const span = profileGridModuleSizeSpan(size);
-
-  return `${span.columns} x ${span.rows}`;
 }
 
 function mergeProfileFeed(posts: Post[], reblogs: Post[]): Post[] {

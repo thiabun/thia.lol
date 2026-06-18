@@ -89,7 +89,7 @@ const fallbackProfileModule: ProfileModuleRegistryEntry = {
 
 export const profileModuleRegistry = {
   profile_info: {
-    allowedSizes: ["3x3", "4x3", "6x3", "3x2", "2x2", "2x1"],
+    allowedSizes: ["3x2", "3x3", "4x3", "6x3"],
     defaultSize: "3x2",
     description: "Core identity, actions, stats, and essential links.",
     density: "rich",
@@ -101,7 +101,7 @@ export const profileModuleRegistry = {
     purpose: "identity",
   },
   about: {
-    allowedSizes: ["1x1", "2x1", "3x1"],
+    allowedSizes: ["1x1", "2x1", "3x1", "2x2"],
     defaultSize: "2x1",
     description: "A short profile introduction.",
     density: "summary",
@@ -113,7 +113,7 @@ export const profileModuleRegistry = {
     purpose: "status",
   },
   custom_text: {
-    allowedSizes: ["1x1", "2x1"],
+    allowedSizes: ["1x1", "2x1", "2x2", "3x2"],
     defaultSize: "1x1",
     description: "A compact note or update.",
     density: "glance",
@@ -125,7 +125,7 @@ export const profileModuleRegistry = {
     purpose: "status",
   },
   links: {
-    allowedSizes: ["1x1", "2x1", "3x1", "2x2"],
+    allowedSizes: ["1x1", "2x1", "3x1", "2x2", "3x2"],
     defaultSize: "2x1",
     description: "Platform-aware safe links and connections.",
     density: "summary",
@@ -137,7 +137,7 @@ export const profileModuleRegistry = {
     purpose: "navigation",
   },
   featured_badges: {
-    allowedSizes: ["1x1", "2x1"],
+    allowedSizes: ["1x1", "2x1", "2x2"],
     defaultSize: "2x1",
     description: "A shelf of earned visible badges.",
     density: "summary",
@@ -161,7 +161,7 @@ export const profileModuleRegistry = {
     purpose: "activity",
   },
   featured_room: {
-    allowedSizes: ["1x1", "2x1", "3x1"],
+    allowedSizes: ["1x1", "2x1", "3x1", "2x2"],
     defaultSize: "2x1",
     description: "A selected room highlight.",
     density: "summary",
@@ -173,7 +173,7 @@ export const profileModuleRegistry = {
     purpose: "navigation",
   },
   gallery_media: {
-    allowedSizes: ["1x1", "2x1", "2x2", "3x2", "3x3"],
+    allowedSizes: ["1x1", "2x1", "2x2", "3x2", "3x3", "4x3"],
     defaultSize: "2x2",
     description: "A compact strip of selected uploaded media.",
     density: "rich",
@@ -197,7 +197,7 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   music: {
-    allowedSizes: ["1x1", "2x1", "3x1", "3x2"],
+    allowedSizes: ["1x1", "2x1", "3x1", "2x2", "3x2"],
     defaultSize: "2x1",
     description: "A link-first music card.",
     density: "summary",
@@ -222,6 +222,86 @@ export const profileModuleRegistry = {
   },
 } satisfies Record<ProfileModuleType, ProfileModuleRegistryEntry>;
 
+const profileModuleSizeLabels: Record<
+  ProfileModuleType,
+  Partial<Record<ProfileGridModuleSize, string>>
+> = {
+  profile_info: {
+    "3x2": "Small",
+    "3x3": "Medium",
+    "4x3": "Large",
+    "6x3": "Full",
+  },
+  about: {
+    "1x1": "Small",
+    "2x1": "Medium",
+    "3x1": "Wide",
+    "2x2": "Large",
+  },
+  custom_text: {
+    "1x1": "Small",
+    "2x1": "Medium",
+    "2x2": "Large",
+    "3x2": "Wide",
+  },
+  links: {
+    "1x1": "Small",
+    "2x1": "Medium",
+    "3x1": "Wide",
+    "2x2": "Large",
+    "3x2": "Showcase",
+  },
+  featured_badges: {
+    "1x1": "Small",
+    "2x1": "Medium",
+    "2x2": "Large",
+  },
+  featured_post: {
+    "2x1": "Small",
+    "3x1": "Wide",
+    "2x2": "Medium",
+    "3x2": "Large",
+  },
+  featured_room: {
+    "1x1": "Small",
+    "2x1": "Medium",
+    "3x1": "Wide",
+    "2x2": "Large",
+  },
+  gallery_media: {
+    "1x1": "Small",
+    "2x1": "Strip",
+    "2x2": "Medium",
+    "3x2": "Wide",
+    "3x3": "Large",
+    "4x3": "Showcase",
+  },
+  creator_live: {
+    "1x1": "Small",
+    "2x1": "Medium",
+    "2x2": "Card",
+    "3x2": "Stream",
+    "3x3": "Large",
+    "4x3": "Theater",
+    "5x3": "Wide",
+    "6x5": "Full",
+  },
+  music: {
+    "1x1": "Small",
+    "2x1": "Medium",
+    "3x1": "Wide",
+    "2x2": "Large",
+    "3x2": "Showcase",
+  },
+  activity: {
+    "2x2": "Small",
+    "3x2": "Medium",
+    "3x3": "Large",
+    "3x4": "Tall",
+    "3x6": "Full",
+  },
+};
+
 export const profileModuleTypes = Object.keys(
   profileModuleRegistry,
 ) as ProfileModuleType[];
@@ -243,6 +323,13 @@ export function profileModuleAllowedSizes(
   type: ProfileModuleType,
 ): readonly ProfileGridModuleSize[] {
   return getProfileModuleDefinition(type).allowedSizes;
+}
+
+export function profileModuleSizeLabel(
+  type: ProfileModuleType,
+  size: ProfileGridModuleSize,
+): string {
+  return profileModuleSizeLabels[type]?.[size] ?? "Custom";
 }
 
 export function profileModuleFallbackTitle(type: ProfileModuleType): string {
