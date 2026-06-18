@@ -1477,6 +1477,17 @@ test("direct canvas point selection creates a draft module through picker and se
   await page.getByRole("tab", { name: "Info" }).click();
   await page.getByTestId("profile-module-picker-text").click();
   await expect(page.getByTestId("profile-module-settings")).toBeVisible();
+  await page
+    .getByTestId("profile-module-settings-body")
+    .fill("Canvas note configured from settings.");
+  const configuredContent = page.locator(
+    '[data-testid^="profile-canvas-module-content-"]',
+    { hasText: "Canvas note configured from settings." },
+  );
+  await expect(configuredContent).toBeVisible();
+  await expect(
+    configuredContent.evaluate((element) => window.getComputedStyle(element).filter),
+  ).resolves.toBe("none");
   await page.getByRole("button", { name: "Pin" }).click();
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("profile-module-settings")).toHaveCount(0);
@@ -1489,6 +1500,10 @@ test("direct canvas point selection creates a draft module through picker and se
   const textModule = committedModules.find((module) => module.type === "text");
 
   expect(textModule).toMatchObject({
+    config: {
+      body: "Canvas note configured from settings.",
+      configured: true,
+    },
     layout: {
       column: 1,
       row: 4,
@@ -1496,7 +1511,7 @@ test("direct canvas point selection creates a draft module through picker and se
       rowSpan: 2,
     },
     pinned: true,
-    visibility: "hidden",
+    visibility: "public",
   });
 });
 
@@ -1527,6 +1542,56 @@ test("module picker blocks selections larger than designed module sizes", async 
   await expect(githubRepo).toContainText("(6x4)");
 });
 
+test("authenticated integrations hide the connect prompt in module settings", async ({
+  page,
+}) => {
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+    integrations: {
+      providers: [
+        {
+          provider: "github",
+          configured: true,
+          oauthEnabled: true,
+          linkSupported: true,
+          metadataEnabled: true,
+          missingConfigKeys: [],
+        },
+      ],
+      accounts: [
+        {
+          provider: "github",
+          providerAccountId: "thiabun",
+          providerHandle: "thiabun",
+          displayName: "thiabun",
+          avatarUrl: null,
+          scopes: ["read:user"],
+          tokenExpiresAt: null,
+          connectedAt: "2026-06-17T00:00:00Z",
+          refreshedAt: null,
+          revokedAt: null,
+          lastError: null,
+          errorAt: null,
+        },
+      ],
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-cell-1-4").click();
+  await page.getByTestId("profile-canvas-cell-3-5").click();
+  await page.getByRole("tab", { name: "Projects" }).click();
+  await page.getByTestId("profile-module-picker-github_repo").click();
+
+  const settings = page.getByTestId("profile-module-settings");
+  await expect(settings).toBeVisible();
+  await expect(settings.getByRole("button", { name: "Connect" })).toHaveCount(0);
+  await expect(settings.getByTestId("profile-module-settings-url")).toBeVisible();
+});
+
 test("public and editor canvas shell scales wide and glass slider changes opacity", async ({
   page,
 }) => {
@@ -1537,6 +1602,11 @@ test("public and editor canvas shell scales wide and glass slider changes opacit
   });
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
+
+  const backdropBox = await page.getByTestId("profile-personal-backdrop").boundingBox();
+  expect(backdropBox).not.toBeNull();
+  expect(Math.round(backdropBox!.x)).toBe(0);
+  expect(Math.round(backdropBox!.width)).toBe(1280);
 
   const publicGrid = page.getByTestId("profile-module-grid");
   const publicWidth1280 = await publicGrid.evaluate(
@@ -3018,6 +3088,10 @@ async function mockProfileModules(
     onOrder?: (ids: number[]) => void;
     onProfileSave?: (payload: Record<string, unknown>) => void;
     onUpdate?: (id: number, payload: Record<string, unknown>) => void;
+    integrations?: {
+      accounts?: unknown[];
+      providers?: unknown[];
+    };
     profilePosts?: unknown[];
     profileOverrides?: Record<string, unknown>;
     profileReblogs?: unknown[];
@@ -3092,6 +3166,20 @@ async function mockProfileModules(
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ ok: true, data: { notifications: [], unreadCount: 0 } }),
+    });
+  });
+
+  await page.route("**/api/me/integrations", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          providers: options.integrations?.providers ?? [],
+          accounts: options.integrations?.accounts ?? [],
+        },
+      }),
     });
   });
 

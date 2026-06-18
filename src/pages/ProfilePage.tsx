@@ -70,6 +70,7 @@ import {
   getProfileBadges,
   getProfileFollowers,
   getProfileFollowing,
+  getMyProfileIntegrations,
   getProfileModules,
   getProfilePosts,
   getProfileReblogs,
@@ -93,7 +94,9 @@ import {
   type FollowRelationship,
   type ImageUploadPurpose,
   type ProfileCanvasDraftState,
+  type ProfileIntegrationAccount,
   type ProfileIntegrationProvider,
+  type ProfileIntegrationProviderStatus,
   type UpdateProfileInput,
 } from "../lib/api";
 import { ApiClientError } from "../lib/apiClient";
@@ -284,6 +287,10 @@ export function ProfilePage() {
   const normalizedHandle = (handle ?? profileHandle ?? "thia")
     .replace(/^@/, "")
     .toLowerCase();
+  const isOwnProfile =
+    status === "authenticated" &&
+    Boolean(user) &&
+    user?.handle.toLowerCase() === normalizedHandle;
   const profileLoader = useMemo(
     () => () => getProfile(normalizedHandle),
     [normalizedHandle],
@@ -312,6 +319,13 @@ export function ProfilePage() {
     () => () => getProfileModules(normalizedHandle),
     [normalizedHandle],
   );
+  const integrationsLoader = useMemo(
+    () => () =>
+      isOwnProfile
+        ? getMyProfileIntegrations()
+        : Promise.resolve({ providers: [], accounts: [] }),
+    [isOwnProfile],
+  );
   const profileState = useAsyncData(profileLoader);
   const postsState = useAsyncData(postsLoader);
   const repliesState = useAsyncData(repliesLoader);
@@ -319,6 +333,7 @@ export function ProfilePage() {
   const roomsState = useAsyncData(roomsLoader);
   const badgesState = useAsyncData(badgesLoader);
   const modulesState = useAsyncData(modulesLoader);
+  const integrationsState = useAsyncData(integrationsLoader);
   const activeFollowState =
     followState?.handle === normalizedHandle ? followState.relationship : undefined;
   const activeFollowError =
@@ -358,10 +373,6 @@ export function ProfilePage() {
     profile?.profileLayoutPreset ?? defaultProfileLayoutPreset;
   const profileMissing =
     profileState.error instanceof ApiClientError && profileState.error.status === 404;
-  const isOwnProfile =
-    status === "authenticated" &&
-    Boolean(user) &&
-    user?.handle.toLowerCase() === normalizedHandle;
   const musicAutoplayTarget = useMemo(() => {
     if (!profile || canvasEditing || status === "loading" || isOwnProfile) {
       return undefined;
@@ -1040,6 +1051,24 @@ export function ProfilePage() {
     }
   }
 
+  async function handleModuleImageUpload(file: File): Promise<string> {
+    const validationError = validateImageCropFile(file);
+
+    if (validationError) {
+      setCanvasError(validationError);
+      throw new Error(validationError);
+    }
+
+    setCanvasError(undefined);
+
+    const upload = await runWithAuth(
+      (csrfToken) => uploadImage(file, "post_media", csrfToken),
+      { retryOnCsrf: true },
+    );
+
+    return upload.url;
+  }
+
   async function handleBackgroundBlurChange(blur: ProfileBackgroundBlur) {
     if (!profile || canvasSaving) {
       return;
@@ -1396,6 +1425,8 @@ export function ProfilePage() {
               busy={canvasSaving}
               draft={canvasDraft}
               error={canvasError}
+              integrationAccounts={integrationsState.data?.accounts ?? []}
+              integrationProviders={integrationsState.data?.providers ?? []}
               modules={canvasDraft.modules}
               profile={renderedProfile}
               uploading={profileDraftUploading}
@@ -1408,7 +1439,9 @@ export function ProfilePage() {
                 void handleCanvasProviderConnect(provider)
               }
               onImageUpload={handleProfileImageDraftSelection}
+              onModuleImageUpload={handleModuleImageUpload}
               onNewDraftModuleId={() => nextDraftModuleIdRef.current--}
+              onProfileDraftChange={handleDraftProfileChange}
               onRenderModuleContent={(module, size) =>
                 renderProfileModuleContent(module, size, true)
               }
@@ -2682,6 +2715,8 @@ type ProfileDirectCanvasEditorProps = {
   busy: boolean;
   draft: ProfileCanvasDraftState;
   error?: string | undefined;
+  integrationAccounts: ProfileIntegrationAccount[];
+  integrationProviders: ProfileIntegrationProviderStatus[];
   modules: ProfileModule[];
   onBackgroundBlurChange: (blur: ProfileBackgroundBlur) => void;
   onCancel: () => void;
@@ -2693,7 +2728,9 @@ type ProfileDirectCanvasEditorProps = {
     file: File,
     purpose: "avatar" | "banner" | "profile_background",
   ) => void;
+  onModuleImageUpload: (file: File) => Promise<string>;
   onNewDraftModuleId: () => number;
+  onProfileDraftChange: (updater: (profile: Profile) => Profile) => void;
   onRenderModuleContent: (
     module: ProfileModule,
     size: ProfileGridModuleSize,
@@ -2712,6 +2749,8 @@ function ProfileDirectCanvasEditor({
   busy,
   draft,
   error,
+  integrationAccounts,
+  integrationProviders,
   modules,
   onBackgroundBlurChange,
   onCancel,
@@ -2720,7 +2759,9 @@ function ProfileDirectCanvasEditor({
   onClearBackground,
   onConnectProvider,
   onImageUpload,
+  onModuleImageUpload,
   onNewDraftModuleId,
+  onProfileDraftChange,
   onRenderModuleContent,
   onSave,
   onVideoUpload,
@@ -2920,6 +2961,20 @@ function ProfileDirectCanvasEditor({
     );
   }
 
+  function handleModuleConfig(module: ProfileModule, config: ProfileModule["config"]) {
+    updateDraftModules((currentModules) =>
+      currentModules.map((item) =>
+        item.id === module.id
+          ? {
+              ...item,
+              config,
+              visibility: config.configured === false ? "draft" : "public",
+            }
+          : item,
+      ),
+    );
+  }
+
   function handleRemoveModule(module: ProfileModule) {
     updateDraftModules((currentModules) =>
       module.id < 0
@@ -3115,7 +3170,7 @@ function ProfileDirectCanvasEditor({
           const placeholder = module.type === "placeholder";
           const unconfigured =
             !placeholder &&
-            (module.visibility === "draft" || module.config.configured === false);
+            module.config.configured === false;
           const placeholderMicro =
             placeholder && layout.colSpan <= 1 && layout.rowSpan <= 1;
           const placeholderSmall =
@@ -3229,6 +3284,7 @@ function ProfileDirectCanvasEditor({
                       "h-full min-h-0 min-w-0",
                       unconfigured ? "blur-[1px]" : undefined,
                     )}
+                    data-testid={`profile-canvas-module-content-${module.id}`}
                   >
                     {onRenderModuleContent(module, size) ?? (
                       <ProfileModuleCard
@@ -3264,11 +3320,17 @@ function ProfileDirectCanvasEditor({
         onClose={() => setPickerModuleId(undefined)}
       />
       <ModuleSettingsModal
+        integrationAccounts={integrationAccounts}
+        integrationProviders={integrationProviders}
         module={settingsModule}
         modules={sortedModules}
+        profile={profile}
         onClose={() => setSettingsModuleId(undefined)}
         onRemove={handleRemoveModule}
         onConnectProvider={onConnectProvider}
+        onModuleImageUpload={onModuleImageUpload}
+        onProfileDraftChange={onProfileDraftChange}
+        onUpdateConfig={handleModuleConfig}
         onSize={handleModuleSize}
         onTogglePin={(module) =>
           updateDraftModules((currentModules) =>
@@ -3454,24 +3516,137 @@ function getProfileModuleCategoryIcon(category: ProfileModuleCategory) {
 }
 
 function ModuleSettingsModal({
+  integrationAccounts,
+  integrationProviders,
   module,
   modules,
   onClose,
   onConnectProvider,
+  onModuleImageUpload,
+  onProfileDraftChange,
   onRemove,
   onSize,
   onTogglePin,
+  onUpdateConfig,
+  profile,
 }: {
+  integrationAccounts: ProfileIntegrationAccount[];
+  integrationProviders: ProfileIntegrationProviderStatus[];
   module: ProfileModule | undefined;
   modules: ProfileModule[];
   onClose: () => void;
   onConnectProvider: (provider: ProfileIntegrationProvider) => void;
+  onModuleImageUpload: (file: File) => Promise<string>;
+  onProfileDraftChange: (updater: (profile: Profile) => Profile) => void;
   onRemove: (module: ProfileModule) => void;
   onSize: (module: ProfileModule, size: ProfileGridModuleSize) => void;
   onTogglePin: (module: ProfileModule) => void;
+  onUpdateConfig: (module: ProfileModule, config: ProfileModule["config"]) => void;
+  profile: Profile;
 }) {
   const definition = module ? getProfileModuleDefinition(module.type) : undefined;
   const provider = module ? profileCanvasProviderForModule(module.type) : undefined;
+  const providerStatus = provider
+    ? integrationProviders.find((item) => item.provider === provider)
+    : undefined;
+  const connectedAccount = provider
+    ? integrationAccounts.find(
+        (item) => item.provider === provider && !item.revokedAt,
+      )
+    : undefined;
+  const showConnectPrompt = Boolean(
+    provider && providerStatus?.oauthEnabled && !connectedAccount,
+  );
+  const [moduleImageUploading, setModuleImageUploading] = useState(false);
+  const [moduleImageError, setModuleImageError] = useState<string | undefined>();
+
+  function updateModuleConfig(nextConfig: ProfileModule["config"]) {
+    if (!module) {
+      return;
+    }
+
+    onUpdateConfig(module, nextConfig);
+  }
+
+  function configWithContent(
+    patch: ProfileModule["config"],
+    configured: boolean,
+  ): ProfileModule["config"] {
+    const canvasSize = module?.config.canvasSize;
+
+    return {
+      ...module?.config,
+      ...patch,
+      configured,
+      ...(canvasSize ? { canvasSize } : {}),
+    };
+  }
+
+  function handleUrlConfig(value: string) {
+    if (!module || !definition) {
+      return;
+    }
+
+    const trimmed = value.trim();
+    const configured = trimmed.length > 0;
+    const label = module.config.label ?? profileModuleFallbackTitle(module.type);
+
+    if (module.type === "connections" || module.type === "links") {
+      updateModuleConfig(
+        configWithContent(
+          {
+            links: configured
+              ? [{ label, platform: "website", url: trimmed }]
+              : [],
+          },
+          configured,
+        ),
+      );
+      return;
+    }
+
+    updateModuleConfig(
+      configWithContent(
+        {
+          label,
+          url: trimmed,
+        },
+        configured,
+      ),
+    );
+  }
+
+  async function handleModuleImageSelection(file: File | undefined) {
+    if (!module || !file) {
+      return;
+    }
+
+    setModuleImageUploading(true);
+    setModuleImageError(undefined);
+
+    try {
+      const url = await onModuleImageUpload(file);
+      const mediaItems = [
+        ...(module.config.mediaItems ?? []),
+        { url },
+      ].slice(0, 6);
+
+      updateModuleConfig(
+        configWithContent(
+          {
+            mediaItems,
+          },
+          mediaItems.length > 0,
+        ),
+      );
+    } catch (error) {
+      setModuleImageError(
+        error instanceof Error ? error.message : "Could not upload this image.",
+      );
+    } finally {
+      setModuleImageUploading(false);
+    }
+  }
 
   return (
     <ModalSheet
@@ -3511,21 +3686,154 @@ function ModuleSettingsModal({
     >
       {module && definition ? (
         <div className="space-y-4">
-          {definition.purpose === "integration" && provider ? (
+          {module.type === "profile_info" ? (
+            <div className="space-y-3">
+              <label className="block">
+                <span className="text-xs font-semibold uppercase text-muted">
+                  Display name
+                </span>
+                <input
+                  className="mt-1 min-h-11 w-full rounded-control border border-line bg-canvas/45 px-3 text-sm font-semibold text-text outline-none transition focus:border-line-strong focus:outline-2 focus:outline-focus"
+                  value={profile.user.displayName}
+                  data-testid="profile-info-modal-display-name"
+                  onChange={(event) => {
+                    const displayName = event.currentTarget.value;
+                    onProfileDraftChange((currentProfile) => ({
+                      ...currentProfile,
+                      user: {
+                        ...currentProfile.user,
+                        displayName,
+                      },
+                    }));
+                  }}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase text-muted">
+                  Bio
+                </span>
+                <textarea
+                  className="mt-1 min-h-24 w-full resize-none rounded-control border border-line bg-canvas/45 px-3 py-2 text-sm leading-6 text-text outline-none transition focus:border-line-strong focus:outline-2 focus:outline-focus"
+                  value={profile.bio}
+                  data-testid="profile-info-modal-bio"
+                  onChange={(event) => {
+                    const bio = event.currentTarget.value;
+                    onProfileDraftChange((currentProfile) => ({
+                      ...currentProfile,
+                      bio,
+                    }));
+                  }}
+                />
+              </label>
+            </div>
+          ) : null}
+          {module.type === "text" ||
+          module.type === "about" ||
+          module.type === "custom_text" ? (
+            <label className="block">
+              <span className="text-xs font-semibold uppercase text-muted">
+                Text
+              </span>
+              <textarea
+                className="mt-1 min-h-28 w-full resize-none rounded-control border border-line bg-canvas/45 px-3 py-2 text-sm leading-6 text-text outline-none transition focus:border-line-strong focus:outline-2 focus:outline-focus"
+                value={module.config.body ?? ""}
+                data-testid="profile-module-settings-body"
+                onChange={(event) => {
+                  const body = event.currentTarget.value;
+                  updateModuleConfig(
+                    configWithContent({ body }, body.trim().length > 0),
+                  );
+                }}
+              />
+            </label>
+          ) : null}
+          {module.type === "connections" || module.type === "links" ? (
+            <label className="block">
+              <span className="text-xs font-semibold uppercase text-muted">
+                Link
+              </span>
+              <input
+                className="mt-1 min-h-11 w-full rounded-control border border-line bg-canvas/45 px-3 text-sm text-text outline-none transition focus:border-line-strong focus:outline-2 focus:outline-focus"
+                value={module.config.links?.[0]?.url ?? ""}
+                placeholder="https://example.com"
+                data-testid="profile-module-settings-url"
+                onChange={(event) => handleUrlConfig(event.currentTarget.value)}
+              />
+            </label>
+          ) : null}
+          {definition.category === "video" ||
+          definition.category === "music" ||
+          module.type === "github_repo" ? (
+            <label className="block">
+              <span className="text-xs font-semibold uppercase text-muted">
+                {definition.category === "music"
+                  ? "Music link"
+                  : module.type === "github_repo"
+                    ? "Repo link"
+                    : "Media link"}
+              </span>
+              <input
+                className="mt-1 min-h-11 w-full rounded-control border border-line bg-canvas/45 px-3 text-sm text-text outline-none transition focus:border-line-strong focus:outline-2 focus:outline-focus"
+                value={module.config.url ?? ""}
+                placeholder="https://"
+                data-testid="profile-module-settings-url"
+                onChange={(event) => handleUrlConfig(event.currentTarget.value)}
+              />
+            </label>
+          ) : null}
+          {definition.category === "images" ? (
+            <div>
+              <p className="text-xs font-semibold uppercase text-muted">Media</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <label
+                  className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-control border border-line bg-canvas/45 px-3 text-sm font-semibold text-text transition hover:border-line-strong focus-within:outline-2 focus-within:outline-focus"
+                  data-profile-edit-control="true"
+                >
+                  <ImagePlus aria-hidden="true" size={16} />
+                  {moduleImageUploading ? "Uploading" : "Image"}
+                  <input
+                    className="sr-only"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    data-testid="profile-module-settings-image-input"
+                    disabled={moduleImageUploading}
+                    onChange={(event) => {
+                      void handleModuleImageSelection(
+                        event.currentTarget.files?.[0],
+                      );
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+                <span className="text-xs font-medium text-muted">
+                  {module.config.mediaItems?.length ?? 0}/6
+                </span>
+              </div>
+              {moduleImageError ? (
+                <p className="mt-2 text-xs font-semibold text-rose-ink" role="alert">
+                  {moduleImageError}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+          {showConnectPrompt && provider ? (
             <div className="rounded-card border border-line bg-canvas/45 p-3">
-              <p className="text-sm font-semibold text-text">Connect</p>
-              <p className="mt-1 text-sm leading-6 text-muted">
-                Connect only when this module needs provider data. thia.lol stores the minimum token data needed to refresh this card.
-              </p>
-              <Button
-                type="button"
-                size="sm"
-                className="mt-3"
-                variant="secondary"
-                onClick={() => onConnectProvider(provider)}
-              >
-                Connect
-              </Button>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-text">Connect</p>
+                  <p className="mt-1 text-xs font-medium text-muted">
+                    Required for authenticated provider data.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => onConnectProvider(provider)}
+                >
+                  Connect
+                </Button>
+              </div>
             </div>
           ) : null}
           <div>
@@ -3634,7 +3942,7 @@ function ProfilePersonalBackdrop({ profile }: { profile: Profile }) {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute left-1/2 top-[-1.25rem] bottom-[-2rem] z-0 min-h-dvh w-screen -translate-x-1/2 overflow-hidden sm:top-[-1.5rem]"
+      className="pointer-events-none fixed inset-0 z-0 min-h-dvh w-screen overflow-hidden"
       data-profile-background-blur={blurTreatment}
       data-profile-background-source={videoUrl ? "video" : imageUrl ? "image" : "fallback"}
       data-profile-background-visibility={visibility.name}
@@ -3644,7 +3952,7 @@ function ProfilePersonalBackdrop({ profile }: { profile: Profile }) {
         <video
           aria-hidden="true"
           className={cn(
-            "absolute inset-0 size-full scale-105 object-cover saturate-[1.04] motion-reduce:hidden",
+            "absolute inset-0 size-full object-cover object-center saturate-[1.04] motion-reduce:hidden",
             visibility.mediaOpacity,
             profileBackgroundBlurClass(blurTreatment),
           )}
@@ -3662,7 +3970,7 @@ function ProfilePersonalBackdrop({ profile }: { profile: Profile }) {
         <img
           alt=""
           className={cn(
-            "absolute inset-0 size-full scale-105 object-cover saturate-[1.04]",
+            "absolute inset-0 size-full object-cover object-center saturate-[1.04]",
             visibility.mediaOpacity,
             videoUrl ? "motion-safe:hidden" : undefined,
             profileBackgroundBlurClass(blurTreatment),
