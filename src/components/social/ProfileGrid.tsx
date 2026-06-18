@@ -25,6 +25,7 @@ import type { ProfileLayoutPreset, ProfileModuleLayout } from "../../lib/types";
 import { cardEntrance, softSpring } from "../../lib/motionPresets";
 
 type ProfileGridProps = {
+  canvasGlass?: number | undefined;
   children: ReactNode;
   className?: string | undefined;
   layoutPreset?: ProfileLayoutPreset | undefined;
@@ -36,6 +37,7 @@ type ProfileGridProps = {
 };
 
 export function ProfileGrid({
+  canvasGlass = 58,
   children,
   className,
   layoutPreset = defaultProfileLayoutPreset,
@@ -105,7 +107,20 @@ export function ProfileGrid({
     };
   }, [layoutPreset, maxColumns, maxRows]);
 
+  const normalizedCanvasGlass = Math.min(
+    92,
+    Math.max(0, Math.round(canvasGlass)),
+  );
+  const canvasSurfacePercent = Math.round(
+    94 - (normalizedCanvasGlass / 92) * 82,
+  );
+  const moduleSurfacePercent = Math.round(
+    78 - (normalizedCanvasGlass / 92) * 42,
+  );
   const gridStyle = {
+    "--profile-canvas-glass": String(normalizedCanvasGlass),
+    "--profile-canvas-glass-alpha": `${canvasSurfacePercent}%`,
+    "--profile-module-glass-alpha": `${moduleSurfacePercent}%`,
     "--profile-grid-gap": layoutPreset === "compact" ? "0.5rem" : "0.75rem",
     "--profile-grid-columns": String(maxColumns),
     "--profile-grid-active-columns": String(activeColumnCount),
@@ -118,6 +133,7 @@ export function ProfileGrid({
     gridTemplateColumns:
       "repeat(var(--profile-grid-active-columns), minmax(0, 1fr))",
     gridAutoRows: "var(--profile-grid-row-size)",
+    backgroundColor: `color-mix(in oklab, var(--app-surface) ${canvasSurfacePercent}%, transparent)`,
   } as CSSProperties;
 
   return (
@@ -129,6 +145,7 @@ export function ProfileGrid({
         className,
       )}
       data-profile-canvas-columns={maxColumns}
+      data-profile-canvas-glass={normalizedCanvasGlass}
       data-profile-canvas-rows={activeRowBudget}
       data-profile-layout-preset={layoutPreset}
       data-testid={testId}

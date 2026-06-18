@@ -61,6 +61,7 @@ const PROFILE_CANVAS_ROWS = PROFILE_CANVAS_DESKTOP_ROWS;
 
 type ProfileModulesSectionProps = {
   badges: UserBadge[];
+  canvasGlass?: number | undefined;
   error: unknown;
   isOwnProfile: boolean;
   layoutPreset?: ProfileLayoutPreset | undefined;
@@ -78,6 +79,7 @@ export type ProfileMusicAutoplayRequest = {
 
 export function ProfileModulesSection({
   badges,
+  canvasGlass,
   error,
   isOwnProfile,
   layoutPreset = defaultProfileLayoutPreset,
@@ -113,6 +115,7 @@ export function ProfileModulesSection({
         <ProfileModuleGrid
           modules={renderableModules}
           badges={badges}
+          canvasGlass={canvasGlass}
           editing={editing}
           layoutPreset={layoutPreset}
           musicAutoplay={musicAutoplay}
@@ -152,6 +155,7 @@ export function ProfileModulesSection({
 
 type ProfileModuleGridProps = {
   badges: UserBadge[];
+  canvasGlass?: number | undefined;
   editing?: ProfileModuleGridEditing | undefined;
   layoutPreset?: ProfileLayoutPreset | undefined;
   maxColumns?: 6 | 12;
@@ -177,6 +181,7 @@ type ProfileModuleGridEditing = {
 
 export function ProfileModuleGrid({
   badges,
+  canvasGlass,
   editing,
   layoutPreset = defaultProfileLayoutPreset,
   maxColumns,
@@ -272,6 +277,7 @@ export function ProfileModuleGrid({
   if (renderableModules.length === 0) {
     return (
       <ProfileGrid
+        canvasGlass={canvasGlass}
         layoutPreset={layoutPreset}
         maxColumns={resolvedMaxColumns}
         testId="profile-module-grid"
@@ -355,6 +361,7 @@ export function ProfileModuleGrid({
 
   return (
     <ProfileGrid
+      canvasGlass={canvasGlass}
       gridRef={gridRef}
       layoutPreset={layoutPreset}
       maxColumns={resolvedMaxColumns}
@@ -585,7 +592,9 @@ export function ProfileModuleCard({
       className={cn(
         "grid h-full min-h-0 min-w-0 overflow-hidden rounded-card focus-within:border-line-strong",
         editing
-          ? "grid-rows-[auto_1fr] gap-2 border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
+          ? compact
+            ? "grid-rows-[1fr] border border-line bg-surface/58 p-2 shadow-soft backdrop-blur-veil"
+            : "grid-rows-[auto_1fr] gap-2 border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
           : publicSurface
             ? "grid-rows-[1fr] border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
             : "grid-rows-[1fr] border border-transparent bg-transparent p-0 shadow-none",
@@ -600,7 +609,7 @@ export function ProfileModuleCard({
       data-profile-module-span-role={spanRole}
       data-testid={`profile-module-${module.type}`}
     >
-      {editing ? (
+      {editing && !compact ? (
         <header className="min-w-0">
           <h3 className="truncate text-sm font-semibold text-text">{title}</h3>
         </header>
@@ -978,6 +987,8 @@ function ProfileModuleStaticCard({
   size?: ProfileGridModuleSize | undefined;
 }) {
   const url = module.config.url;
+  const span = profileGridModuleSizeSpan(size);
+  const micro = span.columns <= 2 && span.rows <= 1;
 
   if (!url) {
     return null;
@@ -994,6 +1005,32 @@ function ProfileModuleStaticCard({
         module={module}
         size={size}
       />
+    );
+  }
+
+  if (micro) {
+    return (
+      <a
+        className="flex h-full min-h-0 min-w-0 items-center gap-2 overflow-hidden rounded-card border border-line bg-canvas/55 p-2 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        href={url}
+        rel="noopener noreferrer"
+        target="_blank"
+        title={module.config.label ?? fallbackLabel}
+      >
+        <span className="grid size-9 shrink-0 place-items-center rounded-card border border-line bg-surface/80 text-text">
+          {icon}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-xs font-semibold text-text">
+            {module.config.label ?? fallbackLabel}
+          </span>
+          <span className="block truncate text-[0.68rem] text-muted">
+            {module.config.platform
+              ? platformDisplayName(module.config.platform)
+              : moduleLinkPreview(url)}
+          </span>
+        </span>
+      </a>
     );
   }
 
@@ -1063,6 +1100,8 @@ function ProfileIntegrationRichCard({
   const showTwitchStreamChat = Boolean(
     twitchChatSrc && showPrimaryEmbed && primaryEmbed,
   );
+  const span = profileGridModuleSizeSpan(size);
+  const micro = span.columns <= 2 && span.rows <= 1;
   const twitchEmbedSandbox =
     "allow-storage-access-by-user-activation allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-modals allow-forms";
 
@@ -1076,6 +1115,41 @@ function ProfileIntegrationRichCard({
         module={module}
         size={size}
       />
+    );
+  }
+
+  if (micro) {
+    return (
+      <a
+        className="relative isolate flex h-full min-h-0 min-w-0 items-end overflow-hidden rounded-card border border-line bg-canvas/55 p-2 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        href={integration.sourceUrl}
+        rel="noopener noreferrer"
+        target="_blank"
+        title={title}
+      >
+        {metadata.imageUrl ? (
+          <img
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 -z-20 size-full object-cover"
+            decoding="async"
+            loading="lazy"
+            src={metadata.imageUrl}
+          />
+        ) : null}
+        <span className="absolute inset-0 -z-10 bg-canvas/68" />
+        <span className="grid size-8 shrink-0 place-items-center rounded-card border border-line bg-surface/80 text-text shadow-soft">
+          {icon}
+        </span>
+        <span className="ml-2 min-w-0 flex-1">
+          <span className="block truncate text-xs font-semibold text-text">
+            {title}
+          </span>
+          <span className="block truncate text-[0.68rem] text-muted">
+            {subtitle}
+          </span>
+        </span>
+      </a>
     );
   }
 
@@ -1320,7 +1394,7 @@ function SpotifyMusicPlayer({
   const playerTitle = integration.embed?.title ?? `${title} on Spotify`;
   const playerHeight = profileIntegrationEmbedHeight(integration);
   const playerSpan = profileGridModuleSizeSpan(size);
-  const compactPlayer = playerSpan.columns === 1 && playerSpan.rows === 1;
+  const compactPlayer = playerSpan.rows === 1 && playerSpan.columns <= 2;
   const richPlayer = playerSpan.rows >= 2;
   const uri = spotifyIntegrationUri(integration);
 

@@ -111,6 +111,19 @@ const gallerySlideshowSizes = sizes([2, 3, 4, 5, 6], [2, 3, 4, 5, 6]);
 const textSizes = sizes([3, 4], [2, 3, 4, 5]);
 
 export const profileModuleRegistry = {
+  placeholder: {
+    allowedSizes: uploadedImageSizes,
+    category: "info",
+    defaultSize: "1x1",
+    description: "Draft selection envelope.",
+    density: "glance",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "Blank module",
+    freshness: "static",
+    label: "Blank",
+    primaryAction: "none",
+    purpose: "status",
+  },
   profile_info: {
     allowedSizes: ["3x2", "3x3", "4x3", "6x3", "8x3", "8x4"],
     category: "info",

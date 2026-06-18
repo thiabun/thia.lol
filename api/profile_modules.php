@@ -19,6 +19,7 @@ const PROFILE_CONNECTIONS_MODULE_TYPE = 'connections';
 const PROFILE_TEXT_MODULE_TYPE = 'text';
 const PROFILE_BADGE_DISPLAY_MODULE_TYPE = 'badge_display';
 const PROFILE_GITHUB_REPO_MODULE_TYPE = 'github_repo';
+const PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE = 'placeholder';
 const PROFILE_VIDEO_MODULE_TYPES = ['twitch_channel', 'youtube_video', 'youtube_stream', 'youtube_playlist', 'uploaded_video'];
 const PROFILE_MUSIC_SPECIFIC_MODULE_TYPES = ['spotify_song', 'apple_music_song', 'youtube_music_song', 'spotify_playlist', 'apple_music_playlist', 'youtube_music_playlist', 'spotify_artist', 'apple_music_artist', 'youtube_music_artist'];
 const PROFILE_IMAGE_MODULE_TYPES = ['uploaded_image', 'gallery_slideshow', 'gallery_feed'];
@@ -747,6 +748,10 @@ function profile_canvas_commit_draft_modules(array $modules, int $userId): array
     $placements = [];
 
     foreach ($modules as $index => $module) {
+        if (($module['type'] ?? null) === PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE) {
+            continue;
+        }
+
         $draftId = profile_canvas_draft_module_id($module['id'] ?? null);
         $type = profile_module_type($module['type'] ?? null);
         $status = profile_module_status($module['status'] ?? 'active');
@@ -950,20 +955,28 @@ function profile_canvas_draft_modules(mixed $value, int $userId): array
         }
 
         profile_module_reject_unknown_keys($item, ['id', 'draftId', 'type', 'title', 'config', 'visibility', 'position', 'pinned', 'layout', 'status', 'schemaVersion', 'createdAt', 'updatedAt']);
-        $type = profile_module_type($item['type'] ?? null);
-        $config = profile_module_config($type, $item['config'] ?? [], $userId);
+        $type = profile_canvas_draft_module_type($item['type'] ?? null);
         $layout = profile_canvas_draft_module_layout($type, $item['layout'] ?? null, $index);
+        $config = $type === PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE
+            ? profile_canvas_placeholder_config($item['config'] ?? [], $layout)
+            : profile_module_config($type, $item['config'] ?? [], $userId);
 
         $modules[] = [
             'id' => profile_canvas_draft_module_id($item['id'] ?? null),
             'type' => $type,
             'title' => profile_module_title($item['title'] ?? null),
             'config' => $config,
-            'visibility' => profile_module_visibility($item['visibility'] ?? 'public'),
+            'visibility' => $type === PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE
+                ? 'draft'
+                : profile_module_visibility($item['visibility'] ?? 'public'),
             'position' => $index + 1,
-            'pinned' => profile_canvas_pinned($item['pinned'] ?? false),
+            'pinned' => $type === PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE
+                ? false
+                : profile_canvas_pinned($item['pinned'] ?? false),
             'layout' => $layout,
-            'status' => profile_module_status($item['status'] ?? 'active'),
+            'status' => $type === PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE
+                ? 'active'
+                : profile_module_status($item['status'] ?? 'active'),
             'schemaVersion' => PROFILE_MODULE_SCHEMA_VERSION,
             'createdAt' => $item['createdAt'] ?? null,
             'updatedAt' => $item['updatedAt'] ?? null,
@@ -971,6 +984,54 @@ function profile_canvas_draft_modules(mixed $value, int $userId): array
     }
 
     return $modules;
+}
+
+function profile_canvas_draft_module_type(mixed $value): string
+{
+    if (!is_string($value)) {
+        json_error('Choose a supported module type.', 422);
+    }
+
+    $type = strtolower(trim($value));
+
+    if ($type === PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE) {
+        return $type;
+    }
+
+    return profile_module_type($type);
+}
+
+function profile_canvas_placeholder_config(mixed $value, array $layout): array
+{
+    if (!is_array($value) || ($value !== [] && array_is_list($value))) {
+        json_error('Module config must be an object.', 422);
+    }
+
+    profile_module_reject_unknown_keys($value, ['canvasSize', 'configured', 'placeholder']);
+
+    if (array_key_exists('configured', $value) && $value['configured'] !== false) {
+        json_error('Placeholder modules must stay unconfigured.', 422);
+    }
+
+    if (array_key_exists('placeholder', $value) && $value['placeholder'] !== true) {
+        json_error('Placeholder module config is invalid.', 422);
+    }
+
+    $size = "{$layout['colSpan']}x{$layout['rowSpan']}";
+
+    if (array_key_exists('canvasSize', $value)) {
+        if (!is_string($value['canvasSize']) || !in_array($value['canvasSize'], profile_canvas_allowed_sizes(PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE), true)) {
+            json_error('Choose a supported canvas size.', 422);
+        }
+
+        $size = $value['canvasSize'];
+    }
+
+    return [
+        'configured' => false,
+        'placeholder' => true,
+        'canvasSize' => $size,
+    ];
 }
 
 function profile_canvas_draft_module_layout(string $type, mixed $value, int $index): array
@@ -1104,11 +1165,11 @@ function profile_canvas_profile_preferences(int $userId): array
 function profile_canvas_glass_opacity(mixed $value): int
 {
     if (is_int($value)) {
-        return max(22, min(92, $value));
+        return max(0, min(92, $value));
     }
 
     if (is_string($value) && preg_match('/^[0-9]+$/', $value) === 1) {
-        return max(22, min(92, (int) $value));
+        return max(0, min(92, (int) $value));
     }
 
     json_error('Choose a supported canvas glass opacity.', 422);
@@ -1423,6 +1484,7 @@ function profile_canvas_allowed_sizes(string $type): array
         'youtube_music_artist' => ['3x2', '4x3', '6x4'],
         PROFILE_GITHUB_REPO_MODULE_TYPE => ['3x2', '4x3', '6x4'],
         PROFILE_ACTIVITY_MODULE_TYPE => ['3x4', '4x6'],
+        PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE => $uploadedImageSizes,
         default => ['1x1'],
     };
 }
@@ -2063,6 +2125,7 @@ function profile_canvas_default_size(string $type, int $index): string
         'apple_music_artist',
         'youtube_music_artist' => '4x3',
         PROFILE_ACTIVITY_MODULE_TYPE => $index <= 2 ? '3x4' : '4x6',
+        PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE => '1x1',
         default => '1x1',
     };
 }

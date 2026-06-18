@@ -113,6 +113,7 @@ function profile_payload(array $row, ?array $stats = null, ?array $social = null
         'profileTheme' => $row['profile_theme'] ?? null,
         'profileLayoutPreset' => profile_layout_preset($row['profile_layout_preset'] ?? null),
         'profileCanvasVersion' => profile_canvas_version($row['profile_canvas_version'] ?? null),
+        'profileCanvasGlass' => profile_canvas_glass($row['profile_canvas_glass_opacity'] ?? null),
         'featuredPostId' => profile_featured_nullable_id($row['featured_post_id'] ?? null),
         'featuredRoomId' => profile_featured_nullable_id($row['featured_room_id'] ?? null),
         'links' => json_array_value($row['links'] ?? null),
@@ -194,6 +195,19 @@ function profile_background_blur(mixed $value): string
 function profile_canvas_version(mixed $value): int
 {
     return (int) $value === 2 ? 2 : 2;
+}
+
+function profile_canvas_glass(mixed $value): int
+{
+    if (is_int($value)) {
+        return max(0, min(92, $value));
+    }
+
+    if (is_string($value) && preg_match('/^[0-9]+$/', $value) === 1) {
+        return max(0, min(92, (int) $value));
+    }
+
+    return 58;
 }
 
 function room_payload(array $row): array
@@ -438,6 +452,9 @@ function profile_customization_select_sql(string $alias): string
     $canvasVersionSelect = profile_canvas_version_column_exists()
         ? "{$alias}.profile_canvas_version,"
         : "2 AS profile_canvas_version,";
+    $canvasGlassSelect = profile_canvas_glass_column_exists()
+        ? "{$alias}.profile_canvas_glass_opacity,"
+        : "58 AS profile_canvas_glass_opacity,";
     $backgroundVideoSelect = profile_background_video_columns_exist()
         ? "{$alias}.profile_background_video_url,
             {$alias}.profile_background_video_poster_url,"
@@ -452,7 +469,8 @@ function profile_customization_select_sql(string $alias): string
             {$backgroundBlurSelect}
             {$alias}.profile_theme,
             {$layoutSelect}
-            {$canvasVersionSelect}";
+            {$canvasVersionSelect}
+            {$canvasGlassSelect}";
     }
 
     return "NULL AS banner_url,
@@ -463,7 +481,8 @@ function profile_customization_select_sql(string $alias): string
             NULL AS profile_background_blur,
             NULL AS profile_theme,
             {$layoutSelect}
-            {$canvasVersionSelect}";
+            {$canvasVersionSelect}
+            {$canvasGlassSelect}";
 }
 
 function profile_layout_preset_column_exists(): bool
@@ -479,6 +498,11 @@ function profile_background_blur_column_exists(): bool
 function profile_canvas_version_column_exists(): bool
 {
     return database_column_exists('profiles', 'profile_canvas_version');
+}
+
+function profile_canvas_glass_column_exists(): bool
+{
+    return database_column_exists('profiles', 'profile_canvas_glass_opacity');
 }
 
 function profile_background_video_columns_exist(): bool

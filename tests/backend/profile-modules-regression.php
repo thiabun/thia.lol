@@ -170,6 +170,8 @@ assert_true(str_contains($profileModulesSource, 'restoreFeaturedPostId'), 'featu
 assert_true(str_contains($profileModulesSource, 'profile_canvas_reflow_existing_modules'), 'restore should reflow canvas placements');
 assert_true(str_contains($profileModulesSource, 'profile_canvas_draft_commit'), 'draft commit endpoint should exist');
 assert_true(str_contains($profileModulesSource, 'profile_canvas_glass_opacity'), 'canvas glass preference should persist');
+assert_true(str_contains($profileModulesSource, 'PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE'), 'draft placeholder type should exist');
+assert_true(str_contains($profileModulesSource, '=== PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE) {'), 'draft commit should skip placeholders');
 
 assert_module_config_rejected(
     'links',
@@ -433,6 +435,36 @@ assert_true(profile_canvas_span_allowed('profile_info', 8, 3), 'profile info sho
 
 assert_true(profile_canvas_background_blur('none') === 'none', 'none blur mismatch');
 assert_true(profile_canvas_background_blur('heavy') === 'heavy', 'heavy blur mismatch');
+assert_true(profile_canvas_glass_opacity(0) === 0, 'canvas glass should allow solid lower bound');
+assert_true(profile_canvas_glass_opacity('92') === 92, 'canvas glass should allow clear upper bound');
+assert_true(profile_canvas_draft_module_type('placeholder') === 'placeholder', 'draft placeholder type should validate');
+assert_true(profile_canvas_span_allowed('placeholder', 6, 6), 'placeholder should allow 6x6 draft envelopes');
+
+$placeholderDraft = profile_canvas_draft_modules(
+    [
+        [
+            'id' => -42,
+            'type' => 'placeholder',
+            'title' => null,
+            'config' => ['configured' => false, 'placeholder' => true, 'canvasSize' => '3x2'],
+            'visibility' => 'public',
+            'position' => 1,
+            'pinned' => true,
+            'layout' => ['column' => 2, 'row' => 3, 'colSpan' => 3, 'rowSpan' => 2],
+            'status' => 'active',
+        ],
+    ],
+    123
+);
+assert_true($placeholderDraft[0]['type'] === 'placeholder', 'placeholder draft type mismatch');
+assert_true($placeholderDraft[0]['visibility'] === 'draft', 'placeholder visibility should force draft');
+assert_true($placeholderDraft[0]['pinned'] === false, 'placeholder should not pin');
+assert_true($placeholderDraft[0]['config']['placeholder'] === true, 'placeholder config marker mismatch');
+assert_true($placeholderDraft[0]['layout']['colSpan'] === 3, 'placeholder layout columns mismatch');
+assert_php_rejected(
+    'profile_module_type("placeholder");',
+    'Choose a supported module type.'
+);
 
 assert_php_rejected(
     'profile_canvas_background_blur("blur(999px)");',

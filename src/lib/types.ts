@@ -26,6 +26,7 @@ export type Profile = {
   profileTheme?: string | null;
   profileLayoutPreset: ProfileLayoutPreset;
   profileCanvasVersion: 1 | 2;
+  profileCanvasGlass: number;
   featuredPostId?: number | null;
   featuredRoomId?: number | null;
   featuredPost?: Post | null;
@@ -114,6 +115,7 @@ export type ProfileBadgesResult = {
 };
 
 export type ProfileModuleType =
+  | "placeholder"
   | "profile_info"
   | "about"
   | "links"
@@ -209,6 +211,7 @@ export type ProfileModuleConfig = {
   links?: ProfileModuleLink[];
   mediaItems?: ProfileModuleMediaItem[];
   platform?: string;
+  placeholder?: boolean;
   restoreFeaturedPostId?: number;
   restoreFeaturedRoomId?: number;
   sourceMode?: string;

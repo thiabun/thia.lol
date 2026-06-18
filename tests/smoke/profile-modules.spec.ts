@@ -1124,7 +1124,7 @@ test.skip("retired canvas editor pin controls stay backend-only during transitio
         layout: { column: 3, row: 4, colSpan: 2, rowSpan: 1 },
       },
     ],
-    onCanvasSave: (payload) => {
+    onCanvasDraftSave: (payload) => {
       savedPayload = payload;
     },
   });
@@ -1212,7 +1212,73 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
   });
 
   expect(metrics.headerHeight).toBeGreaterThanOrEqual(metrics.moduleHeight * 0.92);
-  expect(metrics.bannerHeight).toBeGreaterThanOrEqual(150);
+  expect(metrics.bannerHeight).toBeGreaterThanOrEqual(56);
+  expect(metrics.bannerHeight).toBeLessThan(metrics.moduleHeight * 0.45);
+});
+
+test("profile info variants stay within each supported size", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await acknowledgeCookieNotice(page);
+
+  const cases = [
+    { size: "3x2", variant: "compact", column: 1 },
+    { size: "3x3", variant: "compact", column: 1 },
+    { size: "4x3", variant: "balanced", column: 1 },
+    { size: "6x3", variant: "wide", column: 1 },
+    { size: "8x3", variant: "wide", column: 3 },
+    { size: "8x4", variant: "expanded", column: 3 },
+  ];
+
+  for (const profileInfoCase of cases) {
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+    await mockProfileModules(page, {
+      authenticated: false,
+      profileOverrides: {
+        bannerUrl: "/uploads/media/2026/06/profile-banner.webp",
+        bio: "A founder profile with enough bio text to prove this size does not clip its identity, actions, stats, and badges.",
+      },
+      modules: [
+        withAuditLayout(
+          profileInfoModule(),
+          profileInfoCase.size,
+          1,
+          profileInfoCase.column,
+        ),
+      ],
+    });
+    await page.goto(`/@thia?profileInfo=${profileInfoCase.size}`);
+
+    const module = page.getByTestId("profile-grid-module-profile_info");
+    const header = module.getByTestId("profile-header");
+    await expect(module).toHaveAttribute("data-profile-grid-size", profileInfoCase.size);
+    await expect(header).toHaveAttribute(
+      "data-profile-info-variant",
+      profileInfoCase.variant,
+    );
+
+    const metrics = await module.evaluate((element) => {
+      const headerElement = element.querySelector<HTMLElement>(
+        '[data-testid="profile-header"]',
+      );
+
+      if (!headerElement) {
+        throw new Error("Profile info header did not render.");
+      }
+
+      const moduleRect = element.getBoundingClientRect();
+      const headerRect = headerElement.getBoundingClientRect();
+
+      return {
+        headerBottom: headerRect.bottom,
+        headerRight: headerRect.right,
+        moduleBottom: moduleRect.bottom,
+        moduleRight: moduleRect.right,
+      };
+    });
+
+    expect(metrics.headerRight).toBeLessThanOrEqual(metrics.moduleRight + 1);
+    expect(metrics.headerBottom).toBeLessThanOrEqual(metrics.moduleBottom + 1);
+  }
 });
 
 test("owner edits background clarity in the direct canvas draft", async ({
@@ -1234,7 +1300,7 @@ test("owner edits background clarity in the direct canvas draft", async ({
       },
       linksModule({ id: 2, title: "Links", position: 3 }),
     ],
-    onCanvasSave: (payload) => {
+    onCanvasDraftSave: (payload) => {
       savedPayload = payload;
     },
   });
@@ -1250,7 +1316,7 @@ test("owner edits background clarity in the direct canvas draft", async ({
   await expect(page.getByText(/is selected\./)).toHaveCount(0);
   await page.getByTestId("profile-canvas-background-trigger").click();
   await expect(page.getByTestId("profile-canvas-background-popover")).toBeVisible();
-  await expect(page.getByText("Background clarity")).toBeVisible();
+  await expect(page.getByText("Clarity")).toBeVisible();
   await expect(page.getByTestId("profile-canvas-add-label-input")).toHaveCount(0);
   await expect(page.getByTestId("profile-personal-backdrop")).toHaveAttribute(
     "data-profile-background-blur",
@@ -1320,17 +1386,26 @@ test("direct canvas point selection creates a draft module through picker and se
 
   const hoverCell = page.getByTestId("profile-canvas-cell-3-5");
   await hoverCell.hover();
-  await expect(hoverCell).toHaveClass(/border-focus/);
+  await expect(page.getByTestId("profile-canvas-selection-preview")).toBeVisible();
   await hoverCell.click();
 
   const blankModule = page.locator('[data-testid^="profile-canvas-add-module-"]');
   await expect(blankModule).toBeVisible();
+  await expect(blankModule).toContainText("Click to add module");
+  await expect(
+    blankModule.evaluate((element) => window.getComputedStyle(element).filter),
+  ).resolves.toBe("none");
   await expect(page.getByTestId("profile-module-picker")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Video" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(page.getByTestId("profile-module-picker-youtube_video")).toBeDisabled();
   await expect(page.getByTestId("profile-module-picker-youtube_video")).toContainText(
     "Selection too small",
   );
 
+  await page.getByRole("tab", { name: "Info" }).click();
   await page.getByTestId("profile-module-picker-text").click();
   await expect(page.getByTestId("profile-module-settings")).toBeVisible();
   await page.getByRole("button", { name: "Pin" }).click();
@@ -1356,6 +1431,68 @@ test("direct canvas point selection creates a draft module through picker and se
   });
 });
 
+test("public and editor canvas shell scales wide and glass slider changes opacity", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [aboutModule({ id: 1, title: "About", body: "Wide canvas." })],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const publicGrid = page.getByTestId("profile-module-grid");
+  const publicWidth1280 = await publicGrid.evaluate(
+    (element) => element.getBoundingClientRect().width,
+  );
+  expect(publicWidth1280).toBeGreaterThanOrEqual(930);
+  expect(publicWidth1280).toBeLessThanOrEqual(990);
+
+  await page.setViewportSize({ width: 1920, height: 1000 });
+  await expect
+    .poll(() =>
+      publicGrid.evaluate((element) => element.getBoundingClientRect().width),
+    )
+    .toBeGreaterThan(1320);
+
+  await page.getByTestId("profile-edit-button").click();
+  const directGrid = page.getByTestId("profile-canvas-direct-grid");
+  await expect(directGrid).toHaveAttribute("data-profile-canvas-glass", "58");
+  const initialBackground = await directGrid.evaluate(
+    (element) => window.getComputedStyle(element).backgroundColor,
+  );
+  const slider = page.getByTestId("profile-canvas-glass-slider");
+  await slider.focus();
+  await page.keyboard.press("End");
+  await expect(directGrid).toHaveAttribute("data-profile-canvas-glass", "92");
+  const clearBackground = await directGrid.evaluate(
+    (element) => window.getComputedStyle(element).backgroundColor,
+  );
+
+  expect(clearBackground).not.toBe(initialBackground);
+});
+
+test("background popover stays within narrow viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 780 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [aboutModule({ id: 1, title: "About", body: "Narrow popover." })],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-background-trigger").click();
+
+  const box = await page.getByTestId("profile-canvas-background-popover").boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(360);
+  await expect(page.getByText("Clarity")).toBeVisible();
+  await expect(page.getByText("Media and clarity")).toHaveCount(0);
+});
+
 test("direct canvas cancel discards an uncommitted draft module", async ({ page }) => {
   await mockProfileModules(page, {
     authenticated: true,
@@ -1374,6 +1511,33 @@ test("direct canvas cancel discards an uncommitted draft module", async ({ page 
 
   await page.getByTestId("profile-edit-button").click();
   await expect(page.locator('[data-testid^="profile-canvas-add-module-"]')).toHaveCount(0);
+});
+
+test("direct canvas commit drops unpicked placeholder envelopes", async ({ page }) => {
+  let commitPayload: Record<string, unknown> | undefined;
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+    onCanvasSave: (payload) => {
+      commitPayload = payload;
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-cell-4-5").click();
+  await page.getByTestId("profile-canvas-cell-5-6").click();
+  await expect(page.getByTestId("profile-module-picker")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator('[data-testid^="profile-canvas-add-module-"]')).toBeVisible();
+  await page.getByTestId("profile-canvas-save-button").click();
+
+  await expect.poll(() => commitPayload).toBeDefined();
+  const committedModules = commitPayload?.modules as Array<Record<string, unknown>>;
+  expect(committedModules.some((module) => module.type === "placeholder")).toBe(false);
+  expect(committedModules.map((module) => module.type)).toEqual(["profile_info"]);
 });
 
 test("owner crops a profile background image before upload", async ({ page }) => {
@@ -2615,6 +2779,10 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(modulesApi).toContain("profile_canvas_update");
   expect(modulesApi).toContain("profile_canvas_draft_commit");
   expect(modulesApi).toContain("profile_canvas_glass_opacity");
+  expect(modulesApi).toContain("max(0, min(92");
+  expect(modulesApi).toContain("PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE");
+  expect(modulesApi).toContain("profile_canvas_placeholder_config");
+  expect(modulesApi).toContain("module['type'] ?? null) === PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE");
   expect(modulesApi).toContain("profile_canvas_background_blur");
   expect(modulesApi).toContain("anchorModuleId");
   expect(modulesApi).toContain("profile_canvas_push_collisions");
@@ -2980,6 +3148,10 @@ async function mockProfileModules(
         ok: true,
         data: {
           backgroundBlur: profileOverrides.profileBackgroundBlur ?? "medium",
+          canvasGlass:
+            typeof profileOverrides.profileCanvasGlass === "number"
+              ? profileOverrides.profileCanvasGlass
+              : 58,
           canvasVersion: PROFILE_CANVAS_VERSION,
           modules: ownerModules,
         },
@@ -3002,7 +3174,7 @@ async function mockProfileModules(
       }
 
       const committedModules = (canvasDraft.modules as Array<Record<string, unknown>>)
-        .filter((module) => module.status !== "deleted")
+        .filter((module) => module.status !== "deleted" && module.type !== "placeholder")
         .map((module, index) => {
           const existingId = typeof module.id === "number" && module.id > 0
             ? module.id
@@ -3022,6 +3194,7 @@ async function mockProfileModules(
       profileOverrides = {
         ...profileOverrides,
         profileBackgroundBlur: canvasDraft.backgroundBlur,
+        profileCanvasGlass: canvasDraft.canvasGlass,
         profileCanvasVersion: PROFILE_CANVAS_VERSION,
       };
       canvasDraft = profileCanvasDraftState(ownerModules, profileOverrides);
@@ -3056,7 +3229,6 @@ async function mockProfileModules(
     if (method === "PATCH") {
       const payload = (await route.request().postDataJSON()) as Record<string, unknown>;
       options.onCanvasDraftSave?.(payload);
-      options.onCanvasSave?.(payload);
       canvasDraft = {
         ...canvasDraft,
         backgroundBlur:
@@ -4041,6 +4213,7 @@ function profileBody(overrides: Record<string, unknown> = {}) {
     profileBackgroundBlur: "medium",
     profileTheme: null,
     profileLayoutPreset: "balanced",
+    profileCanvasGlass: 58,
     profileCanvasVersion: PROFILE_CANVAS_VERSION,
     links: [],
     traits: [],

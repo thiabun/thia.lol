@@ -416,6 +416,7 @@ function profileBody(links: unknown[], overrides: Partial<ProfileBody> = {}): Pr
     profileBackgroundBlur: "medium",
     profileTheme: null,
     profileLayoutPreset: "balanced",
+    profileCanvasGlass: 58,
     profileCanvasVersion: 2,
     links,
     traits: [],
@@ -465,6 +466,7 @@ type ProfileBody = {
   profileBackgroundBlur: "none" | "soft" | "medium" | "heavy";
   profileTheme: string | null;
   profileLayoutPreset: "balanced" | "compact" | "showcase";
+  profileCanvasGlass: number;
   profileCanvasVersion: 1 | 2;
   links: unknown[];
   traits: unknown[];

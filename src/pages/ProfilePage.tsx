@@ -3,8 +3,10 @@ import {
   Award,
   Bug,
   CalendarDays,
+  FolderGit2,
   Heart,
   ImagePlus,
+  Info,
   MessageCircle,
   MoreHorizontal,
   Music2,
@@ -25,7 +27,7 @@ import {
   Users,
   Video,
 } from "lucide-react";
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import {
   useCallback,
   useEffect,
@@ -46,7 +48,6 @@ import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
 import { PostCard } from "../components/social/PostCard";
 import { ProfileGrid, ProfileGridModule } from "../components/social/ProfileGrid";
-import { ProfileHeader } from "../components/social/ProfileHeader";
 import {
   ProfileModuleCard,
   ProfileModulesSection,
@@ -56,6 +57,7 @@ import { ReportForm } from "../components/social/ReportForm";
 import { RoomCard } from "../components/social/RoomCard";
 import { UserIdentityLink } from "../components/social/UserProfileLink";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
+import { Avatar } from "../components/ui/Avatar";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -104,6 +106,7 @@ import { defaultProfileLayoutPreset } from "../lib/profileLayoutPresets";
 import {
   PROFILE_CANVAS_DESKTOP_COLUMNS,
   PROFILE_CANVAS_DESKTOP_ROWS,
+  PROFILE_CANVAS_MAX_MODULE_COLUMNS,
   PROFILE_CANVAS_MAX_MODULE_ROWS,
   PROFILE_CANVAS_PROFILE_INFO_COLUMNS,
   PROFILE_CANVAS_VERSION,
@@ -114,6 +117,7 @@ import {
   profileGridModuleSizeSpan,
   profileGridModuleSpanSize,
   profileModuleSizeLabel,
+  type ProfileModuleCategory,
   type ProfileGridModuleSize,
 } from "../lib/profileModuleRegistry";
 import { safeProfileImageUrl } from "../lib/profileMedia";
@@ -830,6 +834,7 @@ export function ProfilePage() {
       setProfileOverride({
         ...profile,
         profileBackgroundBlur: saved.backgroundBlur,
+        profileCanvasGlass: saved.canvasGlass,
         profileCanvasVersion: saved.canvasVersion,
       });
       setDraftBackgroundBlur(saved.backgroundBlur);
@@ -1059,6 +1064,7 @@ export function ProfilePage() {
       const savedProfile = {
         ...profile,
         profileBackgroundBlur: canvas.backgroundBlur,
+        profileCanvasGlass: canvas.canvasGlass,
         profileCanvasVersion: canvas.canvasVersion,
       };
 
@@ -1068,6 +1074,7 @@ export function ProfilePage() {
           ? {
               ...current,
               profileBackgroundBlur: canvas.backgroundBlur,
+              profileCanvasGlass: canvas.canvasGlass,
               profileCanvasVersion: canvas.canvasVersion,
             }
           : savedProfile,
@@ -1105,7 +1112,7 @@ export function ProfilePage() {
   function handleDraftCanvasGlassChange(canvasGlass: number) {
     handleCanvasDraftChange((draft) => ({
       ...draft,
-      canvasGlass: Math.min(92, Math.max(22, Math.round(canvasGlass))),
+      canvasGlass: Math.min(92, Math.max(0, Math.round(canvasGlass))),
     }));
   }
 
@@ -1350,7 +1357,7 @@ export function ProfilePage() {
   }
   return (
     <motion.div
-      className="relative mx-auto max-w-5xl"
+      className="profile-canvas-page-shell relative mx-auto"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
@@ -1411,6 +1418,7 @@ export function ProfilePage() {
           ) : (
             <ProfileModulesSection
               badges={profileBadges}
+              canvasGlass={renderedProfile.profileCanvasGlass}
               error={modulesState.error}
               isOwnProfile={isOwnProfile}
               layoutPreset={profileLayoutPreset}
@@ -2102,7 +2110,7 @@ function ProfileCanvasBackgroundControls({
 
       {open ? (
         <div
-          className="absolute left-0 right-0 top-full z-20 mt-2 rounded-card border border-line bg-surface/95 p-3 shadow-lift backdrop-blur-veil"
+          className="absolute left-0 top-full z-20 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-card border border-line bg-surface/95 p-3 shadow-lift backdrop-blur-veil"
           role="dialog"
           aria-label="Background settings"
           data-testid="profile-canvas-background-popover"
@@ -2110,7 +2118,6 @@ function ProfileCanvasBackgroundControls({
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-text">Background</p>
-              <p className="text-xs text-muted">Media and clarity</p>
             </div>
             <button
               type="button"
@@ -2122,13 +2129,16 @@ function ProfileCanvasBackgroundControls({
               <X aria-hidden="true" size={15} />
             </button>
           </div>
-          <div className="mt-3 grid gap-2">
+          <div className="mt-3 grid grid-cols-3 gap-2">
             <label
-              className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-surface/68 px-3 text-sm font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-within:outline-2 focus-within:outline-focus"
+              className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-surface/68 px-2 text-sm font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-within:outline-2 focus-within:outline-focus"
               data-profile-edit-control="true"
+              title="Choose image"
             >
               <ImagePlus aria-hidden="true" size={16} />
-              {uploading === "backgroundImage" ? "Uploading image" : "Choose image"}
+              <span className="truncate">
+                {uploading === "backgroundImage" ? "Uploading" : "Image"}
+              </span>
               <input
                 className="sr-only"
                 type="file"
@@ -2148,11 +2158,14 @@ function ProfileCanvasBackgroundControls({
               />
             </label>
             <label
-              className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-surface/68 px-3 text-sm font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-within:outline-2 focus-within:outline-focus"
+              className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-surface/68 px-2 text-sm font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-within:outline-2 focus-within:outline-focus"
               data-profile-edit-control="true"
+              title="Choose video"
             >
               <Video aria-hidden="true" size={16} />
-              {uploading === "backgroundVideo" ? "Uploading video" : "Choose video"}
+              <span className="truncate">
+                {uploading === "backgroundVideo" ? "Uploading" : "Video"}
+              </span>
               <input
                 className="sr-only"
                 type="file"
@@ -2173,21 +2186,23 @@ function ProfileCanvasBackgroundControls({
             </label>
             <button
               type="button"
-              className="min-h-10 rounded-control border border-line bg-canvas/55 px-3 text-sm font-semibold text-muted transition duration-fluid ease-fluid hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-50"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-control border border-line bg-canvas/55 px-2 text-sm font-semibold text-muted transition duration-fluid ease-fluid hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-50"
               data-profile-edit-control="true"
+              title="Clear background"
               disabled={!hasBackground || Boolean(uploading)}
               onClick={() => {
                 onClear();
                 setOpen(false);
               }}
             >
-              Clear background
+              <Trash2 aria-hidden="true" size={16} />
+              <span className="truncate">Clear</span>
             </button>
           </div>
           <div className="mt-3">
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs font-semibold uppercase text-muted">
-                Background clarity
+                Clarity
               </p>
               <span className="text-xs text-muted">{blurLabel(backgroundBlur)}</span>
             </div>
@@ -2199,8 +2214,9 @@ function ProfileCanvasBackgroundControls({
                 <button
                   key={blur}
                   type="button"
-                  className="rounded-control px-2 py-1.5 text-xs font-semibold text-muted transition duration-fluid ease-fluid hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-surface aria-pressed:text-text"
+                  className="min-w-0 rounded-control px-1.5 py-1.5 text-xs font-semibold text-muted transition duration-fluid ease-fluid hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-surface aria-pressed:text-text"
                   aria-pressed={backgroundBlur === blur}
+                  aria-label={`Set background clarity to ${blurLabel(blur)}`}
                   data-profile-edit-control="true"
                   data-testid={`profile-background-blur-${blur}`}
                   onClick={() => {
@@ -2208,7 +2224,7 @@ function ProfileCanvasBackgroundControls({
                     setOpen(false);
                   }}
                 >
-                  {blurLabel(blur)}
+                  {blurShortLabel(blur)}
                 </button>
               ))}
             </div>
@@ -2221,6 +2237,14 @@ function ProfileCanvasBackgroundControls({
 
 function blurLabel(blur: ProfileBackgroundBlur): string {
   return blur === "none" ? "None" : blur[0]!.toUpperCase() + blur.slice(1);
+}
+
+function blurShortLabel(blur: ProfileBackgroundBlur): string {
+  if (blur === "medium") {
+    return "Med";
+  }
+
+  return blurLabel(blur);
 }
 
 function profileCanvasCells(): CanvasPoint[] {
@@ -2364,6 +2388,28 @@ function profileCanvasBestSizeForSelection(
           firstSpan.columns * firstSpan.rows ||
         secondSpan.columns - firstSpan.columns ||
         secondSpan.rows - firstSpan.rows
+      );
+    })[0];
+}
+
+function profileCanvasSmallestSizeForSelection(
+  type: ProfileModule["type"],
+  selection: ProfileModuleLayout,
+): ProfileGridModuleSize | undefined {
+  return [...profileModuleAllowedSizes(type)]
+    .filter((size) => {
+      const span = profileGridModuleSizeSpan(size);
+      return span.columns <= selection.colSpan && span.rows <= selection.rowSpan;
+    })
+    .sort((first, second) => {
+      const firstSpan = profileGridModuleSizeSpan(first);
+      const secondSpan = profileGridModuleSizeSpan(second);
+
+      return (
+        firstSpan.columns * firstSpan.rows -
+          secondSpan.columns * secondSpan.rows ||
+        firstSpan.columns - secondSpan.columns ||
+        firstSpan.rows - secondSpan.rows
       );
     })[0];
 }
@@ -2740,14 +2786,14 @@ function ProfileDirectCanvasEditor({
 
     const rect = profileCanvasRectFromPoints(selectionStart, point);
     const id = onNewDraftModuleId();
-    const colSpan = Math.min(PROFILE_CANVAS_MAX_MODULE_ROWS, rect.colSpan);
+    const colSpan = Math.min(PROFILE_CANVAS_MAX_MODULE_COLUMNS, rect.colSpan);
     const rowSpan = Math.min(PROFILE_CANVAS_MAX_MODULE_ROWS, rect.rowSpan);
     const size = profileGridModuleSpanSize(colSpan, rowSpan) ?? "1x1";
     const blankModule: ProfileModule = {
       id,
-      type: "uploaded_image",
+      type: "placeholder",
       title: null,
-      config: { canvasSize: size, configured: false },
+      config: { canvasSize: size, configured: false, placeholder: true },
       visibility: "draft",
       position: modules.length + 1,
       pinned: false,
@@ -2869,18 +2915,26 @@ function ProfileDirectCanvasEditor({
             onImageUpload={(file) => onImageUpload(file, "profile_background")}
             onVideoUpload={onVideoUpload}
           />
-          <label className="flex min-h-11 items-center gap-3 rounded-control border border-line bg-surface/72 px-3 text-sm font-semibold text-text shadow-soft backdrop-blur-veil">
+          <label className="flex min-h-11 items-center gap-2 rounded-control border border-line bg-surface/72 px-3 text-sm font-semibold text-text shadow-soft backdrop-blur-veil">
             <span>Glass</span>
+            <span
+              aria-hidden="true"
+              className="size-4 rounded-[0.3rem] border border-line-strong bg-surface-strong shadow-inner-soft"
+            />
             <input
               className="w-28 accent-[var(--app-accent)]"
               type="range"
-              min={22}
+              min={0}
               max={92}
               value={draft.canvasGlass}
               data-testid="profile-canvas-glass-slider"
               onChange={(event) =>
                 onCanvasGlassChange(Number(event.currentTarget.value))
               }
+            />
+            <span
+              aria-hidden="true"
+              className="size-4 rounded-[0.3rem] border border-line-strong bg-transparent shadow-inner-soft"
             />
           </label>
         </div>
@@ -2925,6 +2979,7 @@ function ProfileDirectCanvasEditor({
         </p>
       ) : null}
       <ProfileGrid
+        canvasGlass={draft.canvasGlass}
         gridRef={gridRef}
         className="relative overflow-hidden"
         maxColumns={PROFILE_CANVAS_COLUMNS}
@@ -2937,8 +2992,33 @@ function ProfileDirectCanvasEditor({
             gridTemplateColumns: `repeat(${PROFILE_CANVAS_COLUMNS}, minmax(0, 1fr))`,
             gridTemplateRows: `repeat(${PROFILE_CANVAS_ROWS}, minmax(0, 1fr))`,
           }}
-          aria-hidden="true"
+          onMouseLeave={() => {
+            if (selectionStart) {
+              setSelectionHover(selectionStart);
+            }
+          }}
         >
+          <AnimatePresence initial={false}>
+            {selectionRect ? (
+              <motion.div
+                layout
+                className="pointer-events-none relative z-20 rounded-[1.1rem] border border-focus/80 bg-focus/20 shadow-glow backdrop-blur-veil"
+                data-testid="profile-canvas-selection-preview"
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{
+                  layout: { type: "spring", stiffness: 420, damping: 34 },
+                  opacity: { duration: 0.12 },
+                  scale: { duration: 0.16 },
+                }}
+                style={{
+                  gridColumn: `${selectionRect.column} / span ${selectionRect.colSpan}`,
+                  gridRow: `${selectionRect.row} / span ${selectionRect.rowSpan}`,
+                }}
+              />
+            ) : null}
+          </AnimatePresence>
           {profileCanvasCells().map((point) => {
             const selected = selectionStart &&
               point.column === selectionStart.column &&
@@ -2952,11 +3032,16 @@ function ProfileDirectCanvasEditor({
                 key={`${point.column}:${point.row}`}
                 type="button"
                 className={cn(
-                  "min-h-0 rounded-card border border-line/55 bg-surface/20 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface/42 focus-visible:outline-2 focus-visible:outline-focus",
-                  selected ? "border-focus bg-focus/30" : undefined,
-                  inPreview && !selected ? "border-focus/70 bg-focus/15" : undefined,
+                  "relative z-10 min-h-0 rounded-card border border-line/55 bg-surface/20 transition duration-fluid ease-fluid hover:scale-[1.03] hover:border-line-strong hover:bg-surface/42 focus-visible:z-30 focus-visible:outline-2 focus-visible:outline-focus",
+                  selected ? "z-30 border-focus bg-focus/35 shadow-glow" : undefined,
+                  inPreview && !selected ? "border-transparent bg-surface/10 opacity-55" : undefined,
                 )}
+                aria-label={`Select grid point column ${point.column}, row ${point.row}`}
                 data-testid={`profile-canvas-cell-${point.column}-${point.row}`}
+                style={{
+                  gridColumn: point.column,
+                  gridRow: point.row,
+                }}
                 onClick={() => handleCellClick(point)}
                 onMouseEnter={() => {
                   if (selectionStart) {
@@ -2972,15 +3057,17 @@ function ProfileDirectCanvasEditor({
           const size =
             profileGridModuleSpanSize(layout.colSpan, layout.rowSpan) ??
             getProfileModuleDefinition(module.type).defaultSize;
+          const placeholder = module.type === "placeholder";
           const unconfigured =
-            module.visibility === "draft" || module.config.configured === false;
+            !placeholder &&
+            (module.visibility === "draft" || module.config.configured === false);
 
           return (
             <ProfileGridModule
               key={module.id}
               className={cn(
                 "z-10 rounded-card transition duration-fluid ease-fluid",
-                unconfigured ? "backdrop-blur-veil" : undefined,
+                placeholder || unconfigured ? "backdrop-blur-veil" : undefined,
                 module.pinned ? "outline outline-1 outline-line-strong" : undefined,
               )}
               layout={layout}
@@ -2991,7 +3078,6 @@ function ProfileDirectCanvasEditor({
               <div
                 className={cn(
                   "relative h-full min-h-0 cursor-grab rounded-card active:cursor-grabbing",
-                  unconfigured ? "blur-[1px]" : undefined,
                 )}
                 onPointerDown={(event) => {
                   const target = event.target;
@@ -3014,7 +3100,7 @@ function ProfileDirectCanvasEditor({
                   });
                 }}
               >
-                {unconfigured ? (
+                {placeholder ? (
                   <button
                     type="button"
                     className="grid h-full min-h-0 w-full place-items-center rounded-card border border-dashed border-line-strong bg-surface/62 p-4 text-center shadow-soft backdrop-blur-veil focus-visible:outline-2 focus-visible:outline-focus"
@@ -3029,30 +3115,42 @@ function ProfileDirectCanvasEditor({
                       <span className="mt-3 block text-sm font-semibold text-text">
                         Click to add module
                       </span>
+                      <span className="mt-1 block text-xs font-medium text-muted">
+                        {profileModuleSizeLabel("placeholder", size)}
+                      </span>
                     </span>
                   </button>
                 ) : (
-                  onRenderModuleContent(module, size) ?? (
-                    <ProfileModuleCard
-                      module={module}
-                      badges={[]}
-                      editing
-                      size={size}
-                    />
-                  )
+                  <div
+                    className={cn(
+                      "h-full min-h-0 min-w-0",
+                      unconfigured ? "blur-[1px]" : undefined,
+                    )}
+                  >
+                    {onRenderModuleContent(module, size) ?? (
+                      <ProfileModuleCard
+                        module={module}
+                        badges={[]}
+                        editing
+                        size={size}
+                      />
+                    )}
+                  </div>
                 )}
               </div>
-              <button
-                type="button"
-                className="absolute right-2 top-2 z-30 grid size-8 place-items-center rounded-control border border-line bg-surface/92 text-text shadow-soft backdrop-blur-veil transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus"
-                aria-label={`Edit ${profileModuleFallbackTitle(module.type)}`}
-                title={`Edit ${profileModuleFallbackTitle(module.type)}`}
-                data-profile-edit-control="true"
-                data-testid={`profile-canvas-edit-module-${module.id}`}
-                onClick={() => setSettingsModuleId(module.id)}
-              >
-                <MoreHorizontal aria-hidden="true" size={16} />
-              </button>
+              {!placeholder ? (
+                <button
+                  type="button"
+                  className="absolute right-2 top-2 z-30 grid size-8 place-items-center rounded-control border border-line bg-surface/92 text-text shadow-soft backdrop-blur-veil transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus"
+                  aria-label={`Edit ${profileModuleFallbackTitle(module.type)}`}
+                  title={`Edit ${profileModuleFallbackTitle(module.type)}`}
+                  data-profile-edit-control="true"
+                  data-testid={`profile-canvas-edit-module-${module.id}`}
+                  onClick={() => setSettingsModuleId(module.id)}
+                >
+                  <MoreHorizontal aria-hidden="true" size={16} />
+                </button>
+              ) : null}
             </ProfileGridModule>
           );
         })}
@@ -3090,46 +3188,159 @@ function ModulePickerModal({
   onChoose: (type: ProfileModule["type"]) => void;
   onClose: () => void;
 }) {
+  const [activeCategory, setActiveCategory] =
+    useState<ProfileModuleCategory>("video");
+  const handleClose = useCallback(() => {
+    setActiveCategory("video");
+    onClose();
+  }, [onClose]);
+  const handleChoose = useCallback(
+    (type: ProfileModule["type"]) => {
+      setActiveCategory("video");
+      onChoose(type);
+    },
+    [onChoose],
+  );
+
+  const pickerItems = useMemo(() => {
+    if (!module?.layout) {
+      return [];
+    }
+
+    return profileModuleCatalog
+      .filter((item) => item.category === activeCategory)
+      .map((item) => {
+        const fittingSize = profileCanvasBestSizeForSelection(
+          item.type,
+          module.layout!,
+        );
+        const smallestFittingSize = profileCanvasSmallestSizeForSelection(
+          item.type,
+          module.layout!,
+        );
+        const sortSpan = profileGridModuleSizeSpan(
+          smallestFittingSize ?? getProfileModuleDefinition(item.type).defaultSize,
+        );
+
+        return {
+          ...item,
+          enabled: Boolean(fittingSize),
+          fittingSize,
+          sortArea: sortSpan.columns * sortSpan.rows,
+        };
+      })
+      .sort(
+        (first, second) =>
+          Number(!first.enabled) - Number(!second.enabled) ||
+          first.sortArea - second.sortArea ||
+          first.label.localeCompare(second.label),
+      );
+  }, [activeCategory, module]);
+
   return (
     <ModalSheet
       open={Boolean(module)}
-      onClose={onClose}
+      onClose={handleClose}
       title="Add module"
-      description="Choose a tool that fits the selected space."
-      size="lg"
+      description="Pick a tool for this space."
+      size="md"
       testId="profile-module-picker"
     >
       {module?.layout ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {profileModuleCatalog.map((item) => {
-            const enabled = Boolean(
-              profileCanvasBestSizeForSelection(item.type, module.layout!),
-            );
+        <div className="space-y-3">
+          <div
+            className="flex gap-1 overflow-x-auto rounded-card border border-line bg-canvas/45 p-1"
+            role="tablist"
+            aria-label="Module categories"
+          >
+            {profileModulePickerCategories.map(({ category, icon: Icon, label }) => {
+              const active = activeCategory === category;
 
-            return (
-              <button
-                key={item.type}
-                type="button"
-                className={cn(
-                  "min-h-28 rounded-card border border-line bg-canvas/45 p-3 text-left transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
-                  !enabled ? "cursor-not-allowed opacity-50 blur-[1px]" : undefined,
-                )}
-                disabled={!enabled}
-                data-testid={`profile-module-picker-${item.type}`}
-                onClick={() => onChoose(item.type)}
-              >
-                <span className="block text-sm font-semibold text-text">
-                  {item.label}
-                </span>
-                <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted">
-                  {enabled ? item.description : "Selection too small"}
-                </span>
-              </button>
-            );
-          })}
+              return (
+                <button
+                  key={category}
+                  type="button"
+                  className={cn(
+                    "inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-xs font-semibold transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-focus",
+                    active
+                      ? "bg-surface text-text shadow-soft"
+                      : "text-muted hover:bg-surface/56 hover:text-text",
+                  )}
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setActiveCategory(category)}
+                >
+                  <Icon aria-hidden="true" size={15} />
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="grid gap-2">
+            {pickerItems.map((item) => {
+              const Icon = getProfileModuleCategoryIcon(item.category);
+
+              return (
+                <button
+                  key={item.type}
+                  type="button"
+                  className={cn(
+                    "flex min-h-14 min-w-0 items-center gap-3 rounded-card border border-line bg-canvas/45 px-3 py-2 text-left transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface/70 focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:hover:border-line disabled:hover:bg-canvas/45",
+                    !item.enabled ? "opacity-55" : undefined,
+                  )}
+                  disabled={!item.enabled}
+                  data-testid={`profile-module-picker-${item.type}`}
+                  onClick={() => handleChoose(item.type)}
+                >
+                  <span
+                    className={cn(
+                      "grid size-9 shrink-0 place-items-center rounded-card border border-line bg-surface/75 text-text",
+                      !item.enabled ? "blur-[0.8px]" : undefined,
+                    )}
+                  >
+                    <Icon aria-hidden="true" size={16} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span
+                      className={cn(
+                        "block truncate text-sm font-semibold text-text",
+                        !item.enabled ? "blur-[0.7px]" : undefined,
+                      )}
+                    >
+                      {item.label}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs font-medium text-muted">
+                      {item.enabled && item.fittingSize
+                        ? profileModuleSizeLabel(item.type, item.fittingSize)
+                        : "Selection too small"}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       ) : null}
     </ModalSheet>
+  );
+}
+
+const profileModulePickerCategories = [
+  { category: "video", icon: Video, label: "Video" },
+  { category: "music", icon: Music2, label: "Music" },
+  { category: "images", icon: ImagePlus, label: "Images" },
+  { category: "info", icon: Info, label: "Info" },
+  { category: "projects", icon: FolderGit2, label: "Projects" },
+] satisfies {
+  category: ProfileModuleCategory;
+  icon: typeof Video;
+  label: string;
+}[];
+
+function getProfileModuleCategoryIcon(category: ProfileModuleCategory) {
+  return (
+    profileModulePickerCategories.find((item) => item.category === category)?.icon ??
+    Sparkles
   );
 }
 
@@ -3486,10 +3697,12 @@ function ProfileInfoModule({
       {showBlankEditPrompt ? (
         <ProfileInfoBlankEditPrompt />
       ) : (
-        <ProfileHeader
-          profile={profile}
+        <ProfileInfoSizedCard
+          activeFollowError={activeFollowError}
+          activeProfileControlError={activeProfileControlError}
+          activeProfileControlMessage={activeProfileControlMessage}
+          editing={editing}
           featuredBadges={featuredBadges}
-          followError={activeFollowError}
           followPosting={followPosting}
           isOwnProfile={isOwnProfile}
           messageToHandle={
@@ -3500,18 +3713,232 @@ function ProfileInfoModule({
               ? profile.user.handle
               : undefined
           }
-          profileControlBusy={profileControlBusy}
-          profileControlError={activeProfileControlError}
-          profileControlMessage={activeProfileControlMessage}
           onBlockToggle={onBlockToggle}
           onFollowToggle={onFollowToggle}
           onMuteToggle={onMuteToggle}
           onOpenPanel={onOpenPanel}
-          profileInfoColumns={span.columns}
-          profileInfoRows={span.rows}
-          chrome={editing}
-          reportAction={
-            !isOwnProfile ? (
+          profile={profile}
+          profileControlBusy={profileControlBusy}
+          showChatHint={showChatHint}
+          span={span}
+        />
+      )}
+    </div>
+  );
+}
+
+type ProfileInfoSizedCardProps = {
+  activeFollowError?: string | undefined;
+  activeProfileControlError?: string | undefined;
+  activeProfileControlMessage?: string | undefined;
+  editing: boolean;
+  featuredBadges: UserBadge[];
+  followPosting: boolean;
+  isOwnProfile: boolean;
+  messageToHandle?: string | undefined;
+  onBlockToggle?: (() => Promise<void> | void) | undefined;
+  onFollowToggle: () => void;
+  onMuteToggle?: (() => Promise<void> | void) | undefined;
+  onOpenPanel: (panel: "followers" | "following" | "badges") => void;
+  profile: Profile;
+  profileControlBusy?: "block" | "mute" | undefined;
+  showChatHint: boolean;
+  span: { columns: number; rows: number; size: ProfileGridModuleSize };
+};
+
+function ProfileInfoSizedCard({
+  activeFollowError,
+  activeProfileControlError,
+  activeProfileControlMessage,
+  editing,
+  featuredBadges,
+  followPosting,
+  isOwnProfile,
+  messageToHandle,
+  onBlockToggle,
+  onFollowToggle,
+  onMuteToggle,
+  onOpenPanel,
+  profile,
+  profileControlBusy,
+  showChatHint,
+  span,
+}: ProfileInfoSizedCardProps) {
+  const compact = span.columns <= 3;
+  const balanced = span.columns === 4;
+  const expanded = span.rows >= 4;
+  const bannerUrl = safeProfileImageUrl(profile.bannerUrl);
+  const showBanner = Boolean(bannerUrl) && !compact;
+  const shellClass = cn(
+    "relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-panel border",
+    editing
+      ? "border-line bg-surface/68 shadow-soft backdrop-blur-veil"
+      : "border-line bg-surface/52 shadow-soft backdrop-blur-veil",
+  );
+
+  if (compact) {
+    return (
+      <article
+        className={cn(shellClass, "p-3")}
+        data-profile-info-card="true"
+        data-profile-info-variant="compact"
+        data-testid="profile-header"
+      >
+        <div className="flex min-w-0 items-center gap-2.5">
+          <Avatar
+            user={profile.user}
+            size="md"
+            className={span.rows >= 3 ? "size-12" : ""}
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <h1 className="truncate text-sm font-semibold text-text">
+                {profile.user.displayName}
+              </h1>
+              {!isOwnProfile && profile.isMoot ? (
+                <Badge className="min-h-5 px-1.5 text-[0.65rem]">Moot</Badge>
+              ) : null}
+            </div>
+            <p className="truncate text-xs text-muted">@{profile.user.handle}</p>
+          </div>
+        </div>
+        {span.rows >= 3 && profile.bio ? (
+          <p className="mt-2 line-clamp-2 min-h-0 text-xs leading-5 text-text">
+            {profile.bio}
+          </p>
+        ) : null}
+        <div className="mt-auto flex min-w-0 items-end justify-between gap-2 pt-2">
+          <ProfileInfoMiniStats profile={profile} onOpenPanel={onOpenPanel} />
+          <ProfileInfoActions
+            compact
+            followPosting={followPosting}
+            isOwnProfile={isOwnProfile}
+            messageToHandle={messageToHandle}
+            onFollowToggle={onFollowToggle}
+            profile={profile}
+          />
+        </div>
+        <ProfileInfoStatusLine
+          followError={activeFollowError}
+          profile={profile}
+          profileControlError={activeProfileControlError}
+          profileControlMessage={activeProfileControlMessage}
+          showChatHint={showChatHint}
+        />
+      </article>
+    );
+  }
+
+  return (
+    <article
+      className={shellClass}
+      data-profile-info-card="true"
+      data-profile-info-variant={expanded ? "expanded" : balanced ? "balanced" : "wide"}
+      data-testid="profile-header"
+    >
+      {showBanner ? (
+        <div
+          className={cn(
+            "shrink-0 overflow-hidden border-b border-line bg-canvas/55",
+            expanded ? "h-24 sm:h-28" : balanced ? "h-14" : "h-16",
+          )}
+          data-profile-banner-treatment="clear"
+          data-testid="profile-header-banner"
+        >
+          <img
+            alt=""
+            className="size-full object-cover object-center"
+            src={bannerUrl}
+          />
+        </div>
+      ) : (
+        <div
+          aria-hidden="true"
+          className="h-1 shrink-0 bg-gradient-to-r from-accent/45 via-cool/30 to-leaf/30"
+        />
+      )}
+      <div
+        className={cn(
+          "flex min-h-0 min-w-0 flex-1 flex-col",
+          expanded ? "p-4" : "p-3",
+        )}
+      >
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <Avatar
+              user={profile.user}
+              size="lg"
+              className={cn(
+                "border-[3px] border-surface",
+                showBanner && expanded ? "-mt-10" : undefined,
+                balanced ? "size-14" : expanded ? "size-20" : "size-16",
+              )}
+            />
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                <h1
+                  className={cn(
+                    "min-w-0 truncate font-semibold text-text",
+                    expanded ? "text-xl" : "text-base",
+                  )}
+                >
+                  {profile.user.displayName}
+                </h1>
+                {!isOwnProfile && profile.isMoot ? (
+                  <Badge className="min-h-5 px-2 text-[0.68rem]">Moot</Badge>
+                ) : null}
+                {!isOwnProfile && profile.mutedByMe ? (
+                  <Badge className="min-h-5 px-2 text-[0.68rem]" tone="cool">
+                    Muted
+                  </Badge>
+                ) : null}
+              </div>
+              <p className="truncate text-xs text-muted">@{profile.user.handle}</p>
+            </div>
+          </div>
+          <ProfileInfoActions
+            followPosting={followPosting}
+            isOwnProfile={isOwnProfile}
+            messageToHandle={messageToHandle}
+            onBlockToggle={onBlockToggle}
+            onFollowToggle={onFollowToggle}
+            onMuteToggle={onMuteToggle}
+            profile={profile}
+            profileControlBusy={profileControlBusy}
+            showControls={span.columns >= 6}
+          />
+        </div>
+        {profile.bio ? (
+          <p
+            className={cn(
+              "mt-2 min-h-0 whitespace-pre-wrap break-words text-sm leading-5 text-text",
+              expanded ? "line-clamp-4" : balanced ? "line-clamp-2" : "line-clamp-2",
+            )}
+            data-testid="profile-bio"
+          >
+            {profile.bio}
+          </p>
+        ) : null}
+        <div className="mt-auto min-w-0 pt-2">
+          <ProfileInfoStats
+            featuredBadges={featuredBadges}
+            onOpenPanel={onOpenPanel}
+            profile={profile}
+            rich={expanded || span.columns >= 6}
+          />
+          <ProfileInfoBadgeStrip
+            featuredBadges={featuredBadges}
+            max={expanded ? 5 : 3}
+          />
+          <ProfileInfoStatusLine
+            followError={activeFollowError}
+            profile={profile}
+            profileControlError={activeProfileControlError}
+            profileControlMessage={activeProfileControlMessage}
+            showChatHint={showChatHint}
+          />
+          {!isOwnProfile && span.columns >= 6 ? (
+            <div className="mt-2 flex justify-end">
               <ReportForm
                 targetType="profile"
                 targetId={profile.user.id}
@@ -3520,12 +3947,232 @@ function ProfileInfoModule({
                 explainer={`This reports @${profile.user.handle}'s profile to moderators.`}
                 triggerClassName="min-h-8 px-2.5 text-xs"
               />
-            ) : undefined
-          }
-          showChatHint={showChatHint}
-        />
-      )}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ProfileInfoActions({
+  compact = false,
+  followPosting,
+  isOwnProfile,
+  messageToHandle,
+  onBlockToggle,
+  onFollowToggle,
+  onMuteToggle,
+  profile,
+  profileControlBusy,
+  showControls = false,
+}: {
+  compact?: boolean | undefined;
+  followPosting: boolean;
+  isOwnProfile: boolean;
+  messageToHandle?: string | undefined;
+  onBlockToggle?: (() => Promise<void> | void) | undefined;
+  onFollowToggle: () => void;
+  onMuteToggle?: (() => Promise<void> | void) | undefined;
+  profile: Profile;
+  profileControlBusy?: "block" | "mute" | undefined;
+  showControls?: boolean | undefined;
+}) {
+  if (isOwnProfile) {
+    return null;
+  }
+
+  const disabled = profile.blockedByMe === true;
+
+  return (
+    <div className={cn("flex shrink-0 flex-wrap justify-end gap-1.5", compact ? "items-center" : undefined)}>
+      {messageToHandle && !disabled ? (
+        <Link
+          className={cn(
+            "inline-flex items-center justify-center gap-1.5 rounded-control border border-line bg-surface text-text shadow-soft transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
+            compact ? "size-8 p-0" : "min-h-8 px-2.5 text-xs font-semibold",
+          )}
+          data-testid="profile-message-button"
+          to={`/chat?with=${encodeURIComponent(messageToHandle)}`}
+          aria-label={`Message @${profile.user.handle}`}
+          title={`Message @${profile.user.handle}`}
+        >
+          <MessageCircle aria-hidden="true" size={compact ? 14 : 15} />
+          {compact ? null : "Message"}
+        </Link>
+      ) : null}
+      {!disabled ? (
+        <Button
+          type="button"
+          variant={profile.isFollowing ? "secondary" : "primary"}
+          disabled={followPosting}
+          className={compact ? "size-8 p-0" : "min-h-8 px-2.5 text-xs"}
+          data-testid="profile-follow-button"
+          size={compact ? "icon" : "sm"}
+          icon={<UserCheck aria-hidden="true" size={compact ? 14 : 15} />}
+          aria-label={profile.isFollowing ? "Following" : "Follow"}
+          title={profile.isFollowing ? "Following" : "Follow"}
+          onClick={onFollowToggle}
+        >
+          {compact ? null : followPosting ? "Saving" : profile.isFollowing ? "Following" : "Follow"}
+        </Button>
+      ) : null}
+      {showControls && onMuteToggle ? (
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="min-h-8 px-2.5 text-xs"
+          disabled={profileControlBusy !== undefined}
+          onClick={() => void onMuteToggle()}
+        >
+          {profile.mutedByMe ? "Unmute" : "Mute"}
+        </Button>
+      ) : null}
+      {showControls && onBlockToggle ? (
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="min-h-8 px-2.5 text-xs"
+          disabled={profileControlBusy !== undefined}
+          onClick={() => void onBlockToggle()}
+        >
+          {profile.blockedByMe ? "Unblock" : "Block"}
+        </Button>
+      ) : null}
     </div>
+  );
+}
+
+function ProfileInfoMiniStats({
+  onOpenPanel,
+  profile,
+}: {
+  onOpenPanel: (panel: "followers" | "following" | "badges") => void;
+  profile: Profile;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2 text-[0.68rem] font-semibold text-muted">
+      <button
+        type="button"
+        className="truncate rounded-control text-left hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
+        onClick={() => onOpenPanel("followers")}
+      >
+        <span className="text-text">{profile.stats.followers.toLocaleString()}</span>{" "}
+        followers
+      </button>
+    </div>
+  );
+}
+
+function ProfileInfoStats({
+  featuredBadges,
+  onOpenPanel,
+  profile,
+  rich,
+}: {
+  featuredBadges: UserBadge[];
+  onOpenPanel: (panel: "followers" | "following" | "badges") => void;
+  profile: Profile;
+  rich: boolean;
+}) {
+  const stats = [
+    { label: "Followers", panel: "followers" as const, value: profile.stats.followers },
+    { label: "Following", panel: "following" as const, value: profile.stats.following },
+    { label: "Badges", panel: "badges" as const, value: featuredBadges.length },
+  ];
+
+  return (
+    <div
+      className={cn(
+        "grid min-w-0 gap-1.5",
+        rich ? "grid-cols-3" : "grid-cols-2",
+      )}
+      data-testid="profile-social-context"
+    >
+      {stats.slice(0, rich ? 3 : 2).map((stat) => (
+        <button
+          key={stat.panel}
+          type="button"
+          className="min-w-0 rounded-control border border-line bg-canvas/42 px-2 py-1.5 text-left transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus"
+          onClick={() => onOpenPanel(stat.panel)}
+        >
+          <span className="block truncate text-sm font-semibold text-text">
+            {stat.value.toLocaleString()}
+          </span>
+          <span className="block truncate text-[0.68rem] font-medium text-muted">
+            {stat.label}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ProfileInfoBadgeStrip({
+  featuredBadges,
+  max,
+}: {
+  featuredBadges: UserBadge[];
+  max: number;
+}) {
+  if (featuredBadges.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2 flex min-w-0 flex-wrap gap-1.5 overflow-hidden">
+      {featuredBadges.slice(0, max).map((userBadge) => (
+        <Badge
+          key={userBadge.id}
+          className="min-h-6 max-w-36 px-2 text-[0.68rem]"
+          title={userBadge.badge.description ?? userBadge.badge.name}
+        >
+          <span className="truncate">{userBadge.badge.name}</span>
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+function ProfileInfoStatusLine({
+  followError,
+  profile,
+  profileControlError,
+  profileControlMessage,
+  showChatHint,
+}: {
+  followError?: string | undefined;
+  profile: Profile;
+  profileControlError?: string | undefined;
+  profileControlMessage?: string | undefined;
+  showChatHint: boolean;
+}) {
+  const message =
+    followError ??
+    profileControlError ??
+    profileControlMessage ??
+    (showChatHint
+      ? "Follow each other to chat"
+      : profile.blockedByMe
+        ? `@${profile.user.handle} is blocked.`
+        : undefined);
+
+  if (!message) {
+    return null;
+  }
+
+  return (
+    <p
+      className={cn(
+        "mt-2 line-clamp-1 text-xs font-medium",
+        followError || profileControlError ? "text-rose-ink" : "text-muted",
+      )}
+      role={followError || profileControlError ? "alert" : "status"}
+    >
+      {message}
+    </p>
   );
 }
 

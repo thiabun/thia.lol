@@ -128,6 +128,11 @@ body[data-profile-canvas-editing="true"] [data-app-mobile-nav="true"] {
   display: none;
 }
 
+.profile-canvas-page-shell {
+  width: min(calc(100vw - 2rem), clamp(960px, 75vw, 1800px));
+  max-width: none;
+}
+
 @utility bg-page-wash {
   background:
     linear-gradient(
@@ -155,10 +160,25 @@ body[data-profile-canvas-editing="true"] [data-app-mobile-nav="true"] {
   grid-template-rows: repeat(var(--profile-grid-row-budget), var(--profile-grid-row-size));
 }
 
+.profile-grid-canvas [data-profile-module-shell="true"],
+.profile-grid-canvas [data-profile-info-card="true"] {
+  background-color: color-mix(
+    in oklab,
+    var(--app-surface) var(--profile-module-glass-alpha, 58%),
+    transparent
+  );
+}
+
 .profile-grid-canvas
   > .profile-grid-module[data-profile-grid-placement="manual"] {
   grid-column: span var(--profile-grid-mobile-column-span);
   grid-row: span var(--profile-grid-row-span);
+}
+
+@media (max-width: 1023px) {
+  .profile-canvas-page-shell {
+    width: 100%;
+  }
 }
 
 @media (min-width: 1024px) {

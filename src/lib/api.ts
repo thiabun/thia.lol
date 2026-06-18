@@ -62,7 +62,12 @@ type ApiRoom = Room & {
 
 type ApiProfile = Omit<
   Profile,
-  "featuredPost" | "featuredRoom" | "profileBackgroundBlur" | "profileLayoutPreset" | "profileCanvasVersion"
+  | "featuredPost"
+  | "featuredRoom"
+  | "profileBackgroundBlur"
+  | "profileLayoutPreset"
+  | "profileCanvasVersion"
+  | "profileCanvasGlass"
 > & {
   avatarUrl?: string | null;
   createdAt?: string;
@@ -76,6 +81,7 @@ type ApiProfile = Omit<
   profileBackgroundBlur?: string | null;
   profileLayoutPreset?: string | null;
   profileCanvasVersion?: number | string | null;
+  profileCanvasGlass?: number | string | null;
   links?: unknown[];
   isBlocked?: boolean;
   isMuted?: boolean;
@@ -198,6 +204,7 @@ export type UpdateProfileCanvasInput = {
 
 export type UpdateProfileCanvasResult = {
   backgroundBlur: ProfileBackgroundBlur;
+  canvasGlass: number;
   canvasVersion: typeof PROFILE_CANVAS_VERSION;
   modules: ProfileModule[];
 };
@@ -694,10 +701,12 @@ export function updateProfileCanvas(
 ): Promise<UpdateProfileCanvasResult> {
   return apiPatch<{
     backgroundBlur?: string | null;
+    canvasGlass?: number | string | null;
     canvasVersion?: number | string | null;
     modules?: ApiProfileModule[];
   }>("/me/profile/canvas", input, csrfToken).then((result) => ({
     backgroundBlur: normalizeProfileBackgroundBlur(result.backgroundBlur),
+    canvasGlass: normalizeProfileCanvasGlass(result.canvasGlass),
     canvasVersion: PROFILE_CANVAS_VERSION,
     modules: Array.isArray(result.modules)
       ? result.modules.filter(isApiProfileModule).map(normalizeProfileModule)
@@ -727,10 +736,12 @@ export function commitProfileCanvasDraft(
 ): Promise<UpdateProfileCanvasResult> {
   return apiPost<{
     backgroundBlur?: string | null;
+    canvasGlass?: number | string | null;
     canvasVersion?: number | string | null;
     modules?: ApiProfileModule[];
   }>("/me/profile/canvas-draft/commit", {}, csrfToken).then((result) => ({
     backgroundBlur: normalizeProfileBackgroundBlur(result.backgroundBlur),
+    canvasGlass: normalizeProfileCanvasGlass(result.canvasGlass),
     canvasVersion: PROFILE_CANVAS_VERSION,
     modules: Array.isArray(result.modules)
       ? result.modules.filter(isApiProfileModule).map(normalizeProfileModule)
@@ -1387,6 +1398,7 @@ function normalizeProfile(profile: ApiProfile): Profile {
       Number(profile.profileCanvasVersion) === PROFILE_CANVAS_VERSION
         ? PROFILE_CANVAS_VERSION
         : PROFILE_CANVAS_VERSION,
+    profileCanvasGlass: normalizeProfileCanvasGlass(profile.profileCanvasGlass),
     featuredPostId: profile.featuredPostId ?? profile.featuredPost?.id ?? null,
     featuredRoomId: profile.featuredRoomId ?? profile.featuredRoom?.id ?? null,
     featuredPost: profile.featuredPost ? normalizePost(profile.featuredPost) : null,
@@ -1474,6 +1486,19 @@ function normalizeProfileBackgroundBlur(
     : "medium";
 }
 
+function normalizeProfileCanvasGlass(value: unknown): number {
+  const number =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : 58;
+
+  return Number.isFinite(number)
+    ? Math.min(92, Math.max(0, Math.round(number)))
+    : 58;
+}
+
 function normalizeProfileModule(module: ApiProfileModule): ProfileModule {
   return {
     id: module.id,
@@ -1497,9 +1522,7 @@ function normalizeProfileCanvasDraftState(
   return {
     backgroundBlur: normalizeProfileBackgroundBlur(state.backgroundBlur),
     canvasGlass:
-      typeof state.canvasGlass === "number" && Number.isFinite(state.canvasGlass)
-        ? Math.min(92, Math.max(22, Math.round(state.canvasGlass)))
-        : 58,
+      normalizeProfileCanvasGlass(state.canvasGlass),
     canvasVersion: PROFILE_CANVAS_VERSION,
     modules: Array.isArray(state.modules)
       ? state.modules.filter(isApiProfileModule).map(normalizeProfileModule)
