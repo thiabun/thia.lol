@@ -102,6 +102,7 @@ import {
   type ProfileIntegrationProvider,
   type ProfileIntegrationProviderStatus,
   type ProfileIntegrationsResult,
+  type UpdateProfileInput,
 } from "../lib/api";
 import { ApiClientError } from "../lib/apiClient";
 import { cn } from "../lib/classNames";
@@ -155,9 +156,60 @@ import {
 
 const PROFILE_CANVAS_COLUMNS = 6;
 const PROFILE_CANVAS_ROWS = 12;
+const PROFILE_CONTENT_AUTOSAVE_DELAY_MS = 650;
 
 type ProfileTab = "feed" | "replies" | "rooms";
 type ProfilePanel = "followers" | "following" | "badges";
+type ProfileContentAutosaveState = "idle" | "pending" | "saving" | "saved" | "error";
+
+function profileContentAutosaveInput(
+  draft: Profile,
+  saved: Profile,
+): UpdateProfileInput | undefined {
+  const next = {
+    displayName: draft.user.displayName,
+    bio: draft.bio,
+    location: draft.location,
+    avatarUrl: draft.user.avatarUrl ?? null,
+    bannerUrl: draft.bannerUrl ?? null,
+    profileBackground: draft.profileBackground ?? null,
+    profileBackgroundVideo: draft.profileBackgroundVideo ?? null,
+    profileBackgroundVideoPoster: draft.profileBackgroundVideoPoster ?? null,
+  };
+  const current = {
+    displayName: saved.user.displayName,
+    bio: saved.bio,
+    location: saved.location,
+    avatarUrl: saved.user.avatarUrl ?? null,
+    bannerUrl: saved.bannerUrl ?? null,
+    profileBackground: saved.profileBackground ?? null,
+    profileBackgroundVideo: saved.profileBackgroundVideo ?? null,
+    profileBackgroundVideoPoster: saved.profileBackgroundVideoPoster ?? null,
+  };
+
+  return Object.entries(next).some(
+    ([key, value]) => current[key as keyof typeof current] !== value,
+  )
+    ? next
+    : undefined;
+}
+
+function mergeAutosavedProfileContent(current: Profile, saved: Profile): Profile {
+  return {
+    ...current,
+    bio: saved.bio,
+    location: saved.location,
+    bannerUrl: saved.bannerUrl ?? null,
+    profileBackground: saved.profileBackground ?? null,
+    profileBackgroundVideo: saved.profileBackgroundVideo ?? null,
+    profileBackgroundVideoPoster: saved.profileBackgroundVideoPoster ?? null,
+    user: {
+      ...current.user,
+      displayName: saved.user.displayName,
+      avatarUrl: saved.user.avatarUrl ?? null,
+    },
+  };
+}
 
 export function ProfilePage() {
   const { handle, profileHandle } = useParams();
@@ -166,6 +218,7 @@ export function ProfilePage() {
   const { setTopBarAction } = useOutletContext<AppShellOutletContext>();
   const { runWithAuth, status, user } = useAuth();
   const canvasEditReturnHandledRef = useRef(false);
+  const profileContentAutosaveRequestRef = useRef(0);
   const [activeTab, setActiveTab] = useState<ProfileTab>("feed");
   const [activePanel, setActivePanel] = useState<ProfilePanel | undefined>();
   const [profileOverride, setProfileOverride] = useState<Profile | undefined>();
@@ -184,6 +237,10 @@ export function ProfilePage() {
   const [draftBackgroundBlur, setDraftBackgroundBlur] =
     useState<ProfileBackgroundBlur>("medium");
   const [draftProfile, setDraftProfile] = useState<Profile | undefined>();
+  const [profileContentAutosaveState, setProfileContentAutosaveState] =
+    useState<ProfileContentAutosaveState>("idle");
+  const [profileContentAutosaveError, setProfileContentAutosaveError] =
+    useState<string | undefined>();
   const [profileDraftUploading, setProfileDraftUploading] = useState<
     "backgroundImage" | "backgroundVideo" | "avatar" | "banner" | undefined
   >();
@@ -581,6 +638,8 @@ export function ProfilePage() {
       setIntegrationMessage(undefined);
       setDraftBackgroundBlur(profile.profileBackgroundBlur);
       setDraftProfile(profile);
+      setProfileContentAutosaveState("idle");
+      setProfileContentAutosaveError(undefined);
       setSelectedCanvasModuleId(undefined);
       setCanvasMovementContext(undefined);
       setCanvasEditing(true);
@@ -625,6 +684,69 @@ export function ProfilePage() {
     profile,
   ]);
 
+  useEffect(() => {
+    if (
+      !canvasEditing ||
+      !isOwnProfile ||
+      !profile ||
+      !draftProfile ||
+      canvasSaving
+    ) {
+      return undefined;
+    }
+
+    const input = profileContentAutosaveInput(draftProfile, profile);
+
+    if (!input) {
+      return undefined;
+    }
+
+    const requestId = profileContentAutosaveRequestRef.current + 1;
+    profileContentAutosaveRequestRef.current = requestId;
+
+    const timeout = window.setTimeout(() => {
+      setProfileContentAutosaveState("saving");
+      setProfileContentAutosaveError(undefined);
+
+      void runWithAuth((csrfToken) => updateMyProfile(input, csrfToken), {
+        retryOnCsrf: true,
+      })
+        .then((savedProfile) => {
+          if (profileContentAutosaveRequestRef.current !== requestId) {
+            return;
+          }
+
+          setProfileOverride(savedProfile);
+          setDraftProfile((current) =>
+            current ? mergeAutosavedProfileContent(current, savedProfile) : current,
+          );
+          setProfileContentAutosaveState("saved");
+          setProfileContentAutosaveError(undefined);
+        })
+        .catch((error) => {
+          if (profileContentAutosaveRequestRef.current !== requestId) {
+            return;
+          }
+
+          setProfileContentAutosaveState("error");
+          setProfileContentAutosaveError(
+            error instanceof Error
+              ? error.message
+              : "Profile edits could not save automatically.",
+          );
+        });
+    }, PROFILE_CONTENT_AUTOSAVE_DELAY_MS);
+
+    return () => window.clearTimeout(timeout);
+  }, [
+    canvasEditing,
+    canvasSaving,
+    draftProfile,
+    isOwnProfile,
+    profile,
+    runWithAuth,
+  ]);
+
   function handleCancelCanvasEdit() {
     setCanvasEditing(false);
     setCanvasError(undefined);
@@ -635,6 +757,8 @@ export function ProfilePage() {
     setDraftBackgroundBlur(profile?.profileBackgroundBlur ?? "medium");
     setDraftProfile(undefined);
     setProfileDraftUploading(undefined);
+    setProfileContentAutosaveState("idle");
+    setProfileContentAutosaveError(undefined);
     setIntegrationMessage(undefined);
   }
 
@@ -911,6 +1035,50 @@ export function ProfilePage() {
     });
   }
 
+  async function saveProfileContentImmediately(
+    nextProfile: Profile,
+    fallbackMessage = "Could not save profile edits.",
+  ) {
+    if (!profile) {
+      return;
+    }
+
+    const input = profileContentAutosaveInput(nextProfile, profile);
+
+    if (!input) {
+      return;
+    }
+
+    const requestId = profileContentAutosaveRequestRef.current + 1;
+    profileContentAutosaveRequestRef.current = requestId;
+    setProfileContentAutosaveState("saving");
+    setProfileContentAutosaveError(undefined);
+
+    try {
+      const savedProfile = await runWithAuth(
+        (csrfToken) => updateMyProfile(input, csrfToken),
+        { retryOnCsrf: true },
+      );
+
+      if (profileContentAutosaveRequestRef.current !== requestId) {
+        return;
+      }
+
+      setProfileOverride(savedProfile);
+      setDraftProfile((current) =>
+        current ? mergeAutosavedProfileContent(current, savedProfile) : current,
+      );
+      setProfileContentAutosaveState("saved");
+      setProfileContentAutosaveError(undefined);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : fallbackMessage;
+      setProfileContentAutosaveState("error");
+      setProfileContentAutosaveError(message);
+      setCanvasError(message);
+      throw error;
+    }
+  }
+
   function handleProfileImageDraftSelection(
     file: File,
     purpose: Extract<ImageUploadPurpose, "avatar" | "banner" | "profile_background">,
@@ -949,30 +1117,32 @@ export function ProfilePage() {
         { retryOnCsrf: true },
       );
 
-      handleDraftProfileChange((current) => {
-        if (purpose === "avatar") {
-          return {
-            ...current,
-            user: {
-              ...current.user,
-              avatarUrl: upload.url,
-            },
-          };
-        }
+      const baseProfile = draftProfile ?? profile;
+      const nextProfile =
+        purpose === "avatar"
+          ? {
+              ...baseProfile,
+              user: {
+                ...baseProfile.user,
+                avatarUrl: upload.url,
+              },
+            }
+          : purpose === "banner"
+            ? {
+                ...baseProfile,
+                bannerUrl: upload.url,
+              }
+            : {
+                ...baseProfile,
+                profileBackground: upload.url,
+                profileBackgroundVideo: null,
+              };
 
-        if (purpose === "banner") {
-          return {
-            ...current,
-            bannerUrl: upload.url,
-          };
-        }
-
-        return {
-          ...current,
-          profileBackground: upload.url,
-          profileBackgroundVideo: null,
-        };
-      });
+      setDraftProfile(nextProfile);
+      await saveProfileContentImmediately(
+        nextProfile,
+        "Uploaded image, but could not save it to your profile.",
+      );
     } catch (error) {
       setCanvasError(
         error instanceof Error ? error.message : "Could not upload this image.",
@@ -997,16 +1167,45 @@ export function ProfilePage() {
         { retryOnCsrf: true },
       );
 
-      handleDraftProfileChange((current) => ({
-        ...current,
+      const nextProfile = {
+        ...(draftProfile ?? profile),
         profileBackgroundVideo: upload.url,
-      }));
+      };
+
+      setDraftProfile(nextProfile);
+      await saveProfileContentImmediately(
+        nextProfile,
+        "Uploaded video, but could not save it to your profile.",
+      );
     } catch (error) {
       setCanvasError(
         error instanceof Error ? error.message : "Could not upload this video.",
       );
     } finally {
       setProfileDraftUploading(undefined);
+    }
+  }
+
+  async function handleClearProfileBackgroundDraft() {
+    if (!profile) {
+      return;
+    }
+
+    const nextProfile = {
+      ...(draftProfile ?? profile),
+      profileBackground: null,
+      profileBackgroundVideo: null,
+      profileBackgroundVideoPoster: null,
+    };
+
+    setDraftProfile(nextProfile);
+    try {
+      await saveProfileContentImmediately(
+        nextProfile,
+        "Could not clear this profile background.",
+      );
+    } catch {
+      // The save helper already surfaced the error in the editor.
     }
   }
 
@@ -1375,14 +1574,7 @@ export function ProfilePage() {
                   profile={renderedProfile}
                   uploading={profileDraftUploading}
                   onBackgroundBlurChange={setDraftBackgroundBlur}
-                  onClear={() =>
-                    handleDraftProfileChange((current) => ({
-                      ...current,
-                      profileBackground: null,
-                      profileBackgroundVideo: null,
-                      profileBackgroundVideoPoster: null,
-                    }))
-                  }
+                  onClear={() => void handleClearProfileBackgroundDraft()}
                   onImageUpload={(file) =>
                     handleProfileImageDraftSelection(file, "profile_background")
                   }
@@ -1408,6 +1600,8 @@ export function ProfilePage() {
                       integrations={profileIntegrations}
                       module={module}
                       profile={renderedProfile}
+                      profileAutosaveError={profileContentAutosaveError}
+                      profileAutosaveState={profileContentAutosaveState}
                       rooms={profileRooms}
                       size={size}
                       onConfigChange={(config) =>
@@ -2822,7 +3016,8 @@ function ProfileCanvasEditorToolbar({
             <button
               type="button"
               className="grid size-9 place-items-center rounded-control bg-accent text-accent-ink focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-55"
-              aria-label="Done"
+              aria-label="Save layout"
+              title="Save layout"
               data-testid="profile-canvas-save-button-mobile"
               disabled={busy}
               onClick={onSave}
@@ -2868,7 +3063,7 @@ function ProfileCanvasEditorToolbar({
             icon={<Save aria-hidden="true" size={16} />}
             onClick={onSave}
           >
-            Done
+            Save layout
           </Button>
         </div>
       </div>
@@ -3138,6 +3333,8 @@ function ProfileSelectedModuleControls({
   onResolveIntegration,
   onVisibilityChange,
   profile,
+  profileAutosaveError,
+  profileAutosaveState,
   rooms,
   size,
 }: {
@@ -3162,6 +3359,8 @@ function ProfileSelectedModuleControls({
   }) => Promise<ProfileIntegrationCard>;
   onVisibilityChange: (visible: boolean) => void;
   profile: Profile;
+  profileAutosaveError?: string | undefined;
+  profileAutosaveState: ProfileContentAutosaveState;
   rooms: Room[];
   size: ProfileGridModuleSize;
 }) {
@@ -3335,6 +3534,8 @@ function ProfileSelectedModuleControls({
           integrations={integrations}
           module={module}
           profile={profile}
+          profileAutosaveError={profileAutosaveError}
+          profileAutosaveState={profileAutosaveState}
           rooms={rooms}
           onAddConnection={addConnection}
           onConnectIntegration={onConnectIntegration}
@@ -3351,6 +3552,38 @@ function ProfileSelectedModuleControls({
         />
       </div>
     </article>
+  );
+}
+
+function ProfileInfoAutosaveStatus({
+  error,
+  state,
+}: {
+  error?: string | undefined;
+  state: ProfileContentAutosaveState;
+}) {
+  const message =
+    state === "error"
+      ? error ?? "Profile edits could not save automatically."
+      : state === "saving" || state === "pending"
+        ? "Saving profile..."
+        : state === "saved"
+          ? "Profile saved."
+          : "Profile edits save automatically.";
+
+  return (
+    <p
+      className={cn(
+        "rounded-card border px-3 py-2 text-xs font-semibold",
+        state === "error"
+          ? "border-rose/30 bg-rose/12 text-rose-ink"
+          : "border-line bg-canvas/45 text-muted",
+      )}
+      data-testid="profile-info-autosave-status"
+      role={state === "error" ? "alert" : "status"}
+    >
+      {message}
+    </p>
   );
 }
 
@@ -3375,6 +3608,8 @@ function ProfileSelectedModuleContentControls({
   onResolveIntegration,
   onSizeChange,
   profile,
+  profileAutosaveError,
+  profileAutosaveState,
   rooms,
   selectedSize,
 }: {
@@ -3404,86 +3639,94 @@ function ProfileSelectedModuleContentControls({
   }) => Promise<ProfileIntegrationCard>;
   onSizeChange: (size: ProfileGridModuleSize) => void;
   profile: Profile;
+  profileAutosaveError?: string | undefined;
+  profileAutosaveState: ProfileContentAutosaveState;
   rooms: Room[];
   selectedSize: ProfileGridModuleSize;
 }) {
   if (module.type === "profile_info") {
     return (
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <label className="text-xs font-semibold uppercase text-muted">
-          Name
-          <input
-            className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/55 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
-            value={profile.user.displayName}
-            data-testid="profile-info-display-name-input"
-            onChange={(event) =>
-              onProfileDraftChange((current) => ({
-                ...current,
-                user: { ...current.user, displayName: event.target.value },
-              }))
-            }
-          />
-        </label>
-        <label className="text-xs font-semibold uppercase text-muted">
-          Location
-          <input
-            className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/55 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
-            value={profile.location}
-            data-testid="profile-info-location-input"
-            onChange={(event) =>
-              onProfileDraftChange((current) => ({
-                ...current,
-                location: event.target.value,
-              }))
-            }
-          />
-        </label>
-        <label className="sm:col-span-2 text-xs font-semibold uppercase text-muted">
-          Bio
-          <textarea
-            className="mt-1 min-h-16 w-full resize-none rounded-control border border-line bg-canvas/55 px-2 py-2 text-sm font-medium normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
-            value={profile.bio}
-            data-testid="profile-info-bio-input"
-            onChange={(event) =>
-              onProfileDraftChange((current) => ({
-                ...current,
-                bio: event.target.value,
-              }))
-            }
-          />
-        </label>
-        <label className="inline-flex min-h-9 cursor-pointer items-center justify-center rounded-control border border-line bg-canvas/55 px-2 text-xs font-semibold text-muted transition hover:text-text focus-within:outline-2 focus-within:outline-focus">
-          Avatar
-          <input
-            className="sr-only"
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            data-testid="profile-info-avatar-input"
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
-              if (file) {
-                onProfileImageUpload(file, "avatar");
+      <div className="mt-3 space-y-3">
+        <ProfileInfoAutosaveStatus
+          error={profileAutosaveError}
+          state={profileAutosaveState}
+        />
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="text-xs font-semibold uppercase text-muted">
+            Name
+            <input
+              className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/55 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
+              value={profile.user.displayName}
+              data-testid="profile-info-display-name-input"
+              onChange={(event) =>
+                onProfileDraftChange((current) => ({
+                  ...current,
+                  user: { ...current.user, displayName: event.target.value },
+                }))
               }
-              event.currentTarget.value = "";
-            }}
-          />
-        </label>
-        <label className="inline-flex min-h-9 cursor-pointer items-center justify-center rounded-control border border-line bg-canvas/55 px-2 text-xs font-semibold text-muted transition hover:text-text focus-within:outline-2 focus-within:outline-focus">
-          Banner
-          <input
-            className="sr-only"
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            data-testid="profile-info-banner-input"
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
-              if (file) {
-                onProfileImageUpload(file, "banner");
+            />
+          </label>
+          <label className="text-xs font-semibold uppercase text-muted">
+            Location
+            <input
+              className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/55 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
+              value={profile.location}
+              data-testid="profile-info-location-input"
+              onChange={(event) =>
+                onProfileDraftChange((current) => ({
+                  ...current,
+                  location: event.target.value,
+                }))
               }
-              event.currentTarget.value = "";
-            }}
-          />
-        </label>
+            />
+          </label>
+          <label className="sm:col-span-2 text-xs font-semibold uppercase text-muted">
+            Bio
+            <textarea
+              className="mt-1 min-h-16 w-full resize-none rounded-control border border-line bg-canvas/55 px-2 py-2 text-sm font-medium normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
+              value={profile.bio}
+              data-testid="profile-info-bio-input"
+              onChange={(event) =>
+                onProfileDraftChange((current) => ({
+                  ...current,
+                  bio: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label className="inline-flex min-h-9 cursor-pointer items-center justify-center rounded-control border border-line bg-canvas/55 px-2 text-xs font-semibold text-muted transition hover:text-text focus-within:outline-2 focus-within:outline-focus">
+            Avatar
+            <input
+              className="sr-only"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              data-testid="profile-info-avatar-input"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                if (file) {
+                  onProfileImageUpload(file, "avatar");
+                }
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+          <label className="inline-flex min-h-9 cursor-pointer items-center justify-center rounded-control border border-line bg-canvas/55 px-2 text-xs font-semibold text-muted transition hover:text-text focus-within:outline-2 focus-within:outline-focus">
+            Banner
+            <input
+              className="sr-only"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              data-testid="profile-info-banner-input"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                if (file) {
+                  onProfileImageUpload(file, "banner");
+                }
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+        </div>
       </div>
     );
   }

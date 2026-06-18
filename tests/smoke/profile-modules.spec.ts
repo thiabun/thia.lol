@@ -1393,11 +1393,16 @@ test("owner crops a profile background image before upload", async ({ page }) =>
       .getByTestId("profile-personal-backdrop")
       .locator('img[src="/uploads/media/2026/06/profile_background-cropped.webp"]'),
   ).toBeVisible();
+  await expect
+    .poll(() => savedProfilePayload?.profileBackground)
+    .toBe("/uploads/media/2026/06/profile_background-cropped.webp");
 
-  await page.getByTestId("profile-canvas-save-button").click();
-  expect(savedProfilePayload?.profileBackground).toBe(
-    "/uploads/media/2026/06/profile_background-cropped.webp",
-  );
+  await page.reload();
+  await expect(
+    page
+      .getByTestId("profile-personal-backdrop")
+      .locator('img[src="/uploads/media/2026/06/profile_background-cropped.webp"]'),
+  ).toBeVisible();
 });
 
 test("image crop modal is wired to current image upload surfaces", () => {
@@ -1454,13 +1459,26 @@ test("owner edits profile info inside the selected module", async ({ page }) => 
 
   await page.getByTestId("profile-info-display-name-input").fill("Thia Canvas");
   await page.getByTestId("profile-info-bio-input").fill(multilineBio);
-  await page.getByTestId("profile-canvas-save-button").click();
+  await expect(page.getByTestId("profile-info-autosave-status")).toContainText(
+    /Profile edits save automatically|Saving profile|Profile saved/,
+  );
+  await expect
+    .poll(() => savedProfile)
+    .toMatchObject({
+      displayName: "Thia Canvas",
+      bio: multilineBio,
+    });
+  await expect(page.getByTestId("profile-info-autosave-status")).toContainText(
+    "Profile saved.",
+  );
 
+  await page.reload();
+
+  await expect(page.getByTestId("profile-bio")).toHaveText(multilineBio);
   expect(savedProfile).toMatchObject({
     displayName: "Thia Canvas",
     bio: multilineBio,
   });
-  await expect(page.getByTestId("profile-bio")).toHaveText(multilineBio);
   const bioWhiteSpace = await page
     .getByTestId("profile-bio")
     .evaluate((element) => window.getComputedStyle(element).whiteSpace);
@@ -2782,6 +2800,20 @@ async function mockProfileModules(
       profileOverrides = { ...profileOverrides, location: payload.location };
     }
 
+    if (typeof payload.avatarUrl === "string" || payload.avatarUrl === null) {
+      profileOverrides = {
+        ...profileOverrides,
+        user: {
+          ...(profileBody(profileOverrides).user as Record<string, unknown>),
+          avatarUrl: payload.avatarUrl,
+        },
+      };
+    }
+
+    if (typeof payload.bannerUrl === "string" || payload.bannerUrl === null) {
+      profileOverrides = { ...profileOverrides, bannerUrl: payload.bannerUrl };
+    }
+
     if (typeof payload.profileBackground === "string" || payload.profileBackground === null) {
       profileOverrides = { ...profileOverrides, profileBackground: payload.profileBackground };
     }
@@ -2793,6 +2825,16 @@ async function mockProfileModules(
       profileOverrides = {
         ...profileOverrides,
         profileBackgroundVideo: payload.profileBackgroundVideo,
+      };
+    }
+
+    if (
+      typeof payload.profileBackgroundVideoPoster === "string" ||
+      payload.profileBackgroundVideoPoster === null
+    ) {
+      profileOverrides = {
+        ...profileOverrides,
+        profileBackgroundVideoPoster: payload.profileBackgroundVideoPoster,
       };
     }
 
