@@ -1280,22 +1280,58 @@ test("profile info variants stay within each supported size", async ({ page }) =
       const headerElement = element.querySelector<HTMLElement>(
         '[data-testid="profile-header"]',
       );
+      const gridElement = element.closest<HTMLElement>(
+        '[data-testid="profile-module-grid"]',
+      );
 
-      if (!headerElement) {
-        throw new Error("Profile info header did not render.");
+      if (!headerElement || !gridElement) {
+        throw new Error("Profile info header or grid did not render.");
       }
 
       const moduleRect = element.getBoundingClientRect();
       const headerRect = headerElement.getBoundingClientRect();
+      const gridStyles = window.getComputedStyle(gridElement);
+      const columnGap = Number.parseFloat(gridStyles.columnGap) || 0;
+      const rowGap = Number.parseFloat(gridStyles.rowGap) || columnGap;
+      const paddingLeft = Number.parseFloat(gridStyles.paddingLeft) || 0;
+      const paddingRight = Number.parseFloat(gridStyles.paddingRight) || 0;
+      const activeColumns = Number(
+        gridElement.getAttribute("data-profile-canvas-columns") ?? 12,
+      );
+      const cellSize =
+        Number.parseFloat(gridStyles.getPropertyValue("--profile-grid-cell-size")) ||
+        (gridElement.clientWidth -
+          paddingLeft -
+          paddingRight -
+          columnGap * (activeColumns - 1)) /
+          activeColumns;
+      const colSpan = Number(
+        element.getAttribute("data-profile-grid-column-span") ?? 1,
+      );
+      const rowSpan = Number(
+        element.getAttribute("data-profile-grid-row-span") ?? 1,
+      );
 
       return {
+        expectedModuleHeight: Math.round(cellSize * rowSpan + rowGap * (rowSpan - 1)),
+        expectedModuleWidth: Math.round(
+          cellSize * colSpan + columnGap * (colSpan - 1),
+        ),
         headerBottom: headerRect.bottom,
+        headerHeight: Math.round(headerRect.height),
         headerRight: headerRect.right,
+        headerWidth: Math.round(headerRect.width),
         moduleBottom: moduleRect.bottom,
+        moduleHeight: Math.round(moduleRect.height),
         moduleRight: moduleRect.right,
+        moduleWidth: Math.round(moduleRect.width),
       };
     });
 
+    expect(Math.abs(metrics.moduleWidth - metrics.expectedModuleWidth)).toBeLessThanOrEqual(2);
+    expect(Math.abs(metrics.moduleHeight - metrics.expectedModuleHeight)).toBeLessThanOrEqual(2);
+    expect(metrics.headerWidth).toBeGreaterThanOrEqual(metrics.moduleWidth - 2);
+    expect(metrics.headerHeight).toBeGreaterThanOrEqual(metrics.moduleHeight - 2);
     expect(metrics.headerRight).toBeLessThanOrEqual(metrics.moduleRight + 1);
     expect(metrics.headerBottom).toBeLessThanOrEqual(metrics.moduleBottom + 1);
   }

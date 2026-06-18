@@ -3798,7 +3798,7 @@ function ProfileInfoModule({
 
   return (
     <div
-      className="h-full min-w-0"
+      className="size-full min-w-0"
       data-profile-info-columns={span.columns}
       data-profile-info-rows={span.rows}
       data-testid="profile-module-profile-info"
@@ -3882,7 +3882,7 @@ function ProfileInfoSizedCard({
   const bannerUrl = safeProfileImageUrl(profile.bannerUrl);
   const showBanner = Boolean(bannerUrl) && !compact;
   const shellClass = cn(
-    "relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-panel border",
+    "relative flex size-full min-h-0 min-w-0 flex-col overflow-hidden rounded-panel border",
     editing
       ? "border-line bg-surface/68 shadow-soft backdrop-blur-veil"
       : "border-line bg-surface/52 shadow-soft backdrop-blur-veil",

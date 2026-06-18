@@ -290,7 +290,7 @@ export function ProfileGridModule({
         scale: { duration: 0.16, ease: "easeOut" },
       }}
       className={cn(
-        "profile-grid-module relative min-h-0 min-w-0 scroll-mt-24 transform-gpu max-md:[aspect-ratio:var(--profile-grid-column-span)/var(--profile-grid-row-span)] md:h-full",
+        "profile-grid-module relative h-full min-h-0 w-full min-w-0 scroll-mt-24 transform-gpu",
         profileGridModuleSizeClass(span.size),
         className,
       )}

@@ -152,8 +152,10 @@ body[data-profile-canvas-editing="true"] [data-app-mobile-nav="true"] {
 .profile-grid-module {
   grid-column: span var(--profile-grid-mobile-column-span);
   grid-row: span var(--profile-grid-row-span);
-  aspect-ratio: var(--profile-grid-mobile-column-span) /
-    var(--profile-grid-row-span);
+  align-self: stretch;
+  height: 100%;
+  justify-self: stretch;
+  width: 100%;
 }
 
 .profile-grid-canvas {
@@ -184,8 +186,6 @@ body[data-profile-canvas-editing="true"] [data-app-mobile-nav="true"] {
 @media (min-width: 1024px) {
   .profile-grid-module {
     grid-column: span var(--profile-grid-column-span);
-    aspect-ratio: var(--profile-grid-column-span) /
-      var(--profile-grid-row-span);
   }
 
   .profile-grid-canvas
