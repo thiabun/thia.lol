@@ -1,27 +1,19 @@
 import {
   ArrowRight,
   Award,
-  BadgeCheck,
   Bug,
   CalendarDays,
-  Eye,
   Heart,
   ImagePlus,
-  Link2,
   MessageCircle,
   Music2,
-  Pin,
-  Plus,
   Radio,
   Repeat2,
   Reply,
-  Save,
   Settings2,
   Shield,
   Sparkles,
   Star,
-  Trash2,
-  Undo2,
   X,
   UserCheck,
   Users,
@@ -35,9 +27,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type ReactNode,
 } from "react";
-import { createPortal } from "react-dom";
 import {
   Link,
   useLocation,
@@ -49,7 +39,6 @@ import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
 import { PostCard } from "../components/social/PostCard";
 import { ProfileHeader } from "../components/social/ProfileHeader";
-import { ProfileConnectionIcon } from "../components/social/ProfileConnectionIcon";
 import {
   ProfileModulesSection,
   type ProfileMusicAutoplayRequest,
@@ -65,43 +54,28 @@ import { ImageCropModal } from "../components/ui/ImageCropModal";
 import { ModalSheet } from "../components/ui/ModalSheet";
 import {
   blockProfile,
-  createProfileModule,
-  deleteProfileModule,
-  disconnectProfileIntegration,
   followProfile,
-  getMyProfileIntegrations,
   getProfile,
   getProfileBadges,
   getProfileFollowers,
   getProfileFollowing,
   getProfileModules,
-  getMyProfileModules,
   getProfilePosts,
   getProfileReblogs,
   getProfileReplies,
   getProfileRooms,
   muteProfile,
   removeProfileFollower,
-  resolveProfileIntegrationMetadata,
-  restoreProfileModule,
-  startProfileIntegration,
   unblockProfile,
   unfollowProfile,
   unmuteProfile,
   updateProfileCanvas,
   updateFeaturedBadges,
-  updateProfileFeaturedContent,
   updateMyProfile,
-  updateProfileModule,
   uploadImage,
   uploadVideo,
-  type CreateProfileModuleInput,
   type FollowRelationship,
   type ImageUploadPurpose,
-  type ProfileIntegrationAccount,
-  type ProfileIntegrationProvider,
-  type ProfileIntegrationProviderStatus,
-  type ProfileIntegrationsResult,
   type UpdateProfileInput,
 } from "../lib/api";
 import { ApiClientError } from "../lib/apiClient";
@@ -110,19 +84,10 @@ import { formatShortDate } from "../lib/dates";
 import { validateImageCropFile } from "../lib/imageCrop";
 import { pageEntrance } from "../lib/motionPresets";
 import { formatCountWithUnit } from "../lib/pluralize";
-import {
-  connectionPlatformLabel,
-  profileConnectionPlatforms,
-  validateProfileConnectionDraft,
-} from "../lib/profileConnections";
 import { defaultProfileLayoutPreset } from "../lib/profileLayoutPresets";
 import {
   profileGridModuleSizeSpan,
   profileGridModuleSpanSize,
-  profileModuleAllowedSizes,
-  profileModuleFallbackTitle,
-  profileModuleGridSpan,
-  profileModuleSizeLabel,
   type ProfileGridModuleSize,
 } from "../lib/profileModuleRegistry";
 import { safeProfileImageUrl } from "../lib/profileMedia";
@@ -131,29 +96,15 @@ import type {
   Post,
   Profile,
   ProfileBackgroundBlur,
-  ProfileCanvasMovementContext,
-  ProfileConnectionPlatform,
   ProfileExternalConnection,
-  ProfileIntegrationCard,
-  ProfileLayoutPreset,
   ProfileModule,
-  ProfileModuleConfig,
   ProfileModuleLayout,
   ProfileModuleLink,
-  ProfileModuleType,
   Room,
   UserBadge,
 } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
-import {
-  SiApplemusic,
-  SiGithub,
-  SiSpotify,
-  SiTwitch,
-  SiYoutube,
-} from "react-icons/si";
-
 const PROFILE_CANVAS_COLUMNS = 6;
 const PROFILE_CANVAS_ROWS = 12;
 const PROFILE_CONTENT_AUTOSAVE_DELAY_MS = 650;
@@ -161,7 +112,6 @@ const PROFILE_CONTENT_AUTOSAVE_DELAY_MS = 650;
 type ProfileTab = "feed" | "replies" | "rooms";
 type ProfilePanel = "followers" | "following" | "badges";
 type ProfileContentAutosaveState = "idle" | "pending" | "saving" | "saved" | "error";
-type ProfileCanvasEditorViewportMode = "mobile" | "compact" | "wide";
 
 function profileContentAutosaveInput(
   draft: Profile,
@@ -218,24 +168,18 @@ export function ProfilePage() {
   const location = useLocation();
   const { setTopBarAction } = useOutletContext<AppShellOutletContext>();
   const { runWithAuth, status, user } = useAuth();
-  const canvasEditReturnHandledRef = useRef(false);
+  const profileEditReturnHandledRef = useRef(false);
   const profileContentAutosaveRequestRef = useRef(0);
-  const canvasEditorViewportMode = useProfileCanvasEditorViewportMode();
   const [activeTab, setActiveTab] = useState<ProfileTab>("feed");
   const [activePanel, setActivePanel] = useState<ProfilePanel | undefined>();
   const [profileOverride, setProfileOverride] = useState<Profile | undefined>();
   const [badgesOverride, setBadgesOverride] = useState<
     { handle: string; result: Awaited<ReturnType<typeof getProfileBadges>> } | undefined
   >();
-  const [modulesOverride, setModulesOverride] = useState<
-    { handle: string; modules: ProfileModule[] } | undefined
-  >();
   const [canvasEditing, setCanvasEditing] = useState(false);
   const [canvasLoading, setCanvasLoading] = useState(false);
   const [canvasSaving, setCanvasSaving] = useState(false);
   const [canvasError, setCanvasError] = useState<string | undefined>();
-  const [draftModules, setDraftModules] = useState<ProfileModule[]>([]);
-  const [deletedDraftModules, setDeletedDraftModules] = useState<ProfileModule[]>([]);
   const [draftBackgroundBlur, setDraftBackgroundBlur] =
     useState<ProfileBackgroundBlur>("medium");
   const [draftProfile, setDraftProfile] = useState<Profile | undefined>();
@@ -256,18 +200,6 @@ export function ProfilePage() {
       }
     | undefined
   >();
-  const [selectedCanvasModuleId, setSelectedCanvasModuleId] = useState<
-    number | undefined
-  >();
-  const [canvasMovementContext, setCanvasMovementContext] = useState<
-    ProfileCanvasMovementContext | undefined
-  >();
-  const [profileIntegrations, setProfileIntegrations] =
-    useState<ProfileIntegrationsResult | undefined>();
-  const [integrationBusy, setIntegrationBusy] = useState<
-    ProfileIntegrationProvider | "metadata" | undefined
-  >();
-  const [integrationMessage, setIntegrationMessage] = useState<string | undefined>();
   const [
     musicAutoplayDismissedProfileId,
     setMusicAutoplayDismissedProfileId,
@@ -368,12 +300,8 @@ export function ProfilePage() {
     badgesOverride?.handle === normalizedHandle ? badgesOverride.result : badgesState.data;
   const profileBadges = profileBadgesResult?.badges ?? [];
   const featuredBadges = profileBadgesResult?.featuredBadges ?? [];
-  const loadedModules =
-    modulesOverride?.handle === normalizedHandle
-      ? modulesOverride.modules
-      : modulesState.data ?? [];
-  const displayModules = canvasEditing ? draftModules : loadedModules;
-  const publicModules = displayModules.filter(
+  const loadedModules = modulesState.data ?? [];
+  const publicModules = loadedModules.filter(
     (module) => module.visibility === "public" && module.status === "active",
   );
   const profileLayoutPreset =
@@ -610,53 +538,24 @@ export function ProfilePage() {
     setBadgesOverride({ handle: normalizedHandle, result: updated });
   }
 
-  const handleStartCanvasEdit = useCallback(async () => {
+  const handleStartCanvasEdit = useCallback(() => {
     if (!profile || !isOwnProfile || canvasLoading) {
       return;
     }
 
     setCanvasLoading(true);
     setCanvasError(undefined);
-
-    try {
-      const [modules, integrations] = await Promise.all([
-        getMyProfileModules({ includeDeleted: true }),
-        getMyProfileIntegrations().catch(() => undefined),
-      ]);
-      const activeModules = modules.filter((module) => module.status !== "deleted");
-      const deletedModules = modules.filter((module) => module.status === "deleted");
-      const preparedModules = prepareProfileCanvasModules(
-        profile,
-        mergeIntegrationAccountsIntoConnectionModules(
-          activeModules,
-          integrations?.accounts,
-        ),
-        profileLayoutPreset,
-      );
-
-      setDraftModules(preparedModules);
-      setDeletedDraftModules(deletedModules);
-      setProfileIntegrations(integrations);
-      setIntegrationMessage(undefined);
-      setDraftBackgroundBlur(profile.profileBackgroundBlur);
-      setDraftProfile(profile);
-      setProfileContentAutosaveState("idle");
-      setProfileContentAutosaveError(undefined);
-      setSelectedCanvasModuleId(undefined);
-      setCanvasMovementContext(undefined);
-      setCanvasEditing(true);
-    } catch (error) {
-      setCanvasError(
-        error instanceof Error ? error.message : "Could not load canvas editor.",
-      );
-    } finally {
-      setCanvasLoading(false);
-    }
-  }, [canvasLoading, isOwnProfile, profile, profileLayoutPreset]);
+    setDraftBackgroundBlur(profile.profileBackgroundBlur);
+    setDraftProfile(profile);
+    setProfileContentAutosaveState("idle");
+    setProfileContentAutosaveError(undefined);
+    setCanvasEditing(true);
+    setCanvasLoading(false);
+  }, [canvasLoading, isOwnProfile, profile]);
 
   useEffect(() => {
     if (
-      canvasEditReturnHandledRef.current ||
+      profileEditReturnHandledRef.current ||
       canvasEditing ||
       canvasLoading ||
       !profile ||
@@ -667,13 +566,13 @@ export function ProfilePage() {
 
     const params = new URLSearchParams(location.search);
 
-    if (params.get("editCanvas") !== "1") {
+    if (params.get("editProfile") !== "1" && params.get("editCanvas") !== "1") {
       return;
     }
 
-    canvasEditReturnHandledRef.current = true;
+    profileEditReturnHandledRef.current = true;
     const timer = window.setTimeout(() => {
-      void handleStartCanvasEdit();
+      handleStartCanvasEdit();
     }, 0);
 
     return () => window.clearTimeout(timer);
@@ -752,281 +651,11 @@ export function ProfilePage() {
   function handleCancelCanvasEdit() {
     setCanvasEditing(false);
     setCanvasError(undefined);
-    setDraftModules([]);
-    setDeletedDraftModules([]);
-    setSelectedCanvasModuleId(undefined);
-    setCanvasMovementContext(undefined);
     setDraftBackgroundBlur(profile?.profileBackgroundBlur ?? "medium");
     setDraftProfile(undefined);
     setProfileDraftUploading(undefined);
     setProfileContentAutosaveState("idle");
     setProfileContentAutosaveError(undefined);
-    setIntegrationMessage(undefined);
-  }
-
-  async function handleSaveCanvasEdit() {
-    if (!profile || !canvasEditing || canvasSaving) {
-      return;
-    }
-
-    setCanvasSaving(true);
-    setCanvasError(undefined);
-
-    try {
-      const { profile: savedProfile, canvas } = await runWithAuth(
-        async (csrfToken) => {
-          let modulesForSave = draftModules;
-          let anchorModuleIdForSave = selectedCanvasModuleId ?? null;
-
-          for (const module of modulesForSave) {
-            if (
-              module.id >= 0 ||
-              module.type === "profile_info" ||
-              module.status !== "active"
-            ) {
-              continue;
-            }
-
-            const existingIds = new Set(
-              modulesForSave
-                .filter((item) => item.id > 0)
-                .map((item) => item.id),
-            );
-            const createdModules = await createProfileModule(
-              {
-                type: module.type,
-                title: null,
-                visibility: module.visibility,
-                status: "active",
-                config: profileModulePersistentConfig(module.config),
-              },
-              csrfToken,
-            );
-            const createdModule = createdModules
-              .filter(
-                (item) => item.type === module.type && !existingIds.has(item.id),
-              )
-              .sort((first, second) => second.id - first.id)[0];
-
-            if (!createdModule) {
-              throw new Error("Could not persist this module.");
-            }
-
-            modulesForSave = modulesForSave.map((item) =>
-              item.id === module.id
-                ? {
-                    ...createdModule,
-                    config: module.config,
-                    layout: module.layout ?? null,
-                    visibility: module.visibility,
-                  }
-                : item,
-            );
-
-            if (anchorModuleIdForSave === module.id) {
-              anchorModuleIdForSave = createdModule.id;
-            }
-          }
-
-          await Promise.all(
-            modulesForSave
-              .filter((module) => module.id > 0 && module.type !== "profile_info")
-              .map((module) =>
-                updateProfileModule(
-                  module.id,
-                  { config: profileModulePersistentConfig(module.config) },
-                  csrfToken,
-                ),
-              ),
-          );
-
-          const shouldClearLegacyProfileLinks =
-            profile.links.length > 0 &&
-            modulesForSave.some(
-              (module) => module.id > 0 && module.type === "links",
-            );
-          let updatedProfile = draftProfile
-            ? await updateMyProfile(
-                {
-                  displayName: draftProfile.user.displayName,
-                  bio: draftProfile.bio,
-                  location: draftProfile.location,
-                  avatarUrl: draftProfile.user.avatarUrl ?? null,
-                  bannerUrl: draftProfile.bannerUrl ?? null,
-                  profileBackground: draftProfile.profileBackground ?? null,
-                  profileBackgroundVideo: draftProfile.profileBackgroundVideo ?? null,
-                  profileBackgroundVideoPoster:
-                    draftProfile.profileBackgroundVideoPoster ?? null,
-                  links: shouldClearLegacyProfileLinks ? [] : draftProfile.links,
-                },
-                csrfToken,
-              )
-            : undefined;
-
-          if (
-            draftProfile &&
-            (draftProfile.featuredPostId !== profile.featuredPostId ||
-              draftProfile.featuredRoomId !== profile.featuredRoomId)
-          ) {
-            updatedProfile = await updateProfileFeaturedContent(
-              {
-                featuredPostId: draftProfile.featuredPostId ?? null,
-                featuredRoomId: draftProfile.featuredRoomId ?? null,
-              },
-              csrfToken,
-            );
-          }
-
-          const updatedCanvas = await updateProfileCanvas(
-            {
-              canvasVersion: 1,
-              anchorModuleId: anchorModuleIdForSave,
-              backgroundBlur: draftBackgroundBlur,
-              movementContext: canvasMovementContext ?? null,
-              modules: modulesForSave
-                .filter((module) => module.id > 0)
-                .map((module) =>
-                  profileModuleCanvasInput(
-                    module,
-                    profile,
-                    profileLayoutPreset,
-                    modulesForSave.indexOf(module),
-                  ),
-                ),
-            },
-            csrfToken,
-          );
-
-          return { profile: updatedProfile, canvas: updatedCanvas };
-        },
-        { retryOnCsrf: true },
-      );
-      const nextProfile = {
-        ...(savedProfile ?? profile),
-        profileBackgroundBlur: canvas.backgroundBlur,
-        profileCanvasVersion: canvas.canvasVersion,
-      };
-
-      const normalizedModules = prepareProfileCanvasModules(
-        nextProfile,
-        canvas.modules,
-        profileLayoutPreset,
-      );
-
-      setModulesOverride({
-        handle: normalizedHandle,
-        modules: normalizedModules,
-      });
-      setProfileOverride(nextProfile);
-      setDraftModules(normalizedModules);
-      setDraftBackgroundBlur(canvas.backgroundBlur);
-      setCanvasEditing(false);
-      setSelectedCanvasModuleId(undefined);
-      setCanvasMovementContext(undefined);
-      setDraftProfile(undefined);
-    } catch (error) {
-      setCanvasError(
-        error instanceof Error ? error.message : "Could not save canvas layout.",
-      );
-    } finally {
-      setCanvasSaving(false);
-    }
-  }
-
-  function handleSelectCanvasModule(module: ProfileModule) {
-    setSelectedCanvasModuleId(module.id);
-  }
-
-  function handleCanvasModuleVisibilityChange(moduleId: number, visible: boolean) {
-    if (!profile) {
-      return;
-    }
-
-    setDraftModules((modules) =>
-      pushProfileCanvasModules(
-        profile,
-        modules.map((module) =>
-          module.id === moduleId
-            ? {
-                ...module,
-                visibility: visible ? "public" : "hidden",
-                status: "active",
-            }
-            : module,
-        ),
-        profileLayoutPreset,
-        moduleId,
-      ),
-    );
-    setCanvasMovementContext(undefined);
-  }
-
-  function handleCanvasModuleLayoutChange(
-    moduleId: number,
-    layout: ProfileModuleLayout,
-    movementContext?: ProfileCanvasMovementContext,
-  ) {
-    if (!profile) {
-      return;
-    }
-
-    setSelectedCanvasModuleId(moduleId);
-    setCanvasMovementContext(movementContext);
-    setDraftModules((modules) =>
-      pushProfileCanvasModules(
-        profile,
-        modules.map((module) =>
-          module.id === moduleId
-            ? {
-                ...module,
-                layout,
-              }
-            : module,
-        ),
-        profileLayoutPreset,
-        moduleId,
-        movementContext,
-      ),
-    );
-  }
-
-  function handleCanvasModulePinnedChange(moduleId: number, pinned: boolean) {
-    if (!profile) {
-      return;
-    }
-
-    setCanvasMovementContext(undefined);
-    setDraftModules((modules) =>
-      pushProfileCanvasModules(
-        profile,
-        modules.map((module) =>
-          module.id === moduleId
-            ? {
-                ...module,
-                pinned,
-              }
-            : module,
-        ),
-        profileLayoutPreset,
-        undefined,
-      ),
-    );
-  }
-
-  function handleCanvasModuleConfigChange(
-    moduleId: number,
-    config: ProfileModuleConfig,
-  ) {
-    setDraftModules((modules) =>
-      modules.map((module) =>
-        module.id === moduleId
-          ? {
-              ...module,
-              config,
-            }
-          : module,
-      ),
-    );
   }
 
   function handleDraftProfileChange(updater: (profile: Profile) => Profile) {
@@ -1188,6 +817,56 @@ export function ProfilePage() {
     }
   }
 
+  async function handleBackgroundBlurChange(blur: ProfileBackgroundBlur) {
+    if (!profile || canvasSaving) {
+      return;
+    }
+
+    setDraftBackgroundBlur(blur);
+    setCanvasSaving(true);
+    setCanvasError(undefined);
+
+    try {
+      const canvas = await runWithAuth(
+        (csrfToken) =>
+          updateProfileCanvas(
+            {
+              canvasVersion: 1,
+              backgroundBlur: blur,
+            },
+            csrfToken,
+          ),
+        { retryOnCsrf: true },
+      );
+      const savedProfile = {
+        ...profile,
+        profileBackgroundBlur: canvas.backgroundBlur,
+        profileCanvasVersion: canvas.canvasVersion,
+      };
+
+      setProfileOverride(savedProfile);
+      setDraftProfile((current) =>
+        current
+          ? {
+              ...current,
+              profileBackgroundBlur: canvas.backgroundBlur,
+              profileCanvasVersion: canvas.canvasVersion,
+            }
+          : savedProfile,
+      );
+      setDraftBackgroundBlur(canvas.backgroundBlur);
+    } catch (error) {
+      setDraftBackgroundBlur(profile.profileBackgroundBlur);
+      setCanvasError(
+        error instanceof Error
+          ? error.message
+          : "Could not save background clarity.",
+      );
+    } finally {
+      setCanvasSaving(false);
+    }
+  }
+
   async function handleClearProfileBackgroundDraft() {
     if (!profile) {
       return;
@@ -1209,218 +888,6 @@ export function ProfilePage() {
     } catch {
       // The save helper already surfaced the error in the editor.
     }
-  }
-
-  async function handleAddCanvasModule(input: CreateProfileModuleInput) {
-    if (!profile || !canvasEditing || canvasSaving) {
-      return;
-    }
-
-    setCanvasSaving(true);
-    setCanvasError(undefined);
-
-    try {
-      const modules = await runWithAuth(
-        (csrfToken) => createProfileModule(input, csrfToken),
-        { retryOnCsrf: true },
-      );
-      const activeModules = modules.filter((module) => module.status !== "deleted");
-      const normalizedModules = prepareProfileCanvasModules(
-        profile,
-        activeModules,
-        profileLayoutPreset,
-      );
-      const newestModule = normalizedModules.reduce<ProfileModule | undefined>(
-        (current, module) =>
-          !current || module.id > current.id ? module : current,
-        undefined,
-      );
-
-      setDraftModules(normalizedModules);
-      setModulesOverride({ handle: normalizedHandle, modules: normalizedModules });
-      setSelectedCanvasModuleId(newestModule?.id);
-    } catch (error) {
-      setCanvasError(
-        error instanceof Error ? error.message : "Could not add profile module.",
-      );
-    } finally {
-      setCanvasSaving(false);
-    }
-  }
-
-  async function handleDeleteCanvasModule(module: ProfileModule) {
-    if (!profile || !canvasEditing || canvasSaving || module.type === "profile_info") {
-      return;
-    }
-
-    if (module.id < 0) {
-      setDraftModules((modules) => modules.filter((item) => item.id !== module.id));
-      setSelectedCanvasModuleId(undefined);
-
-      if (module.type === "links") {
-        handleDraftProfileChange((current) => ({
-          ...current,
-          links: [],
-        }));
-      }
-
-      return;
-    }
-
-    setCanvasSaving(true);
-    setCanvasError(undefined);
-
-    try {
-      const modules = await runWithAuth(
-        (csrfToken) => deleteProfileModule(module.id, csrfToken),
-        { retryOnCsrf: true },
-      );
-      const deletedModule: ProfileModule = {
-        ...module,
-        status: "deleted",
-        visibility: "hidden",
-        config: {
-          ...module.config,
-          ...(module.type === "featured_post" && profile.featuredPostId
-            ? { restoreFeaturedPostId: profile.featuredPostId }
-            : {}),
-          ...(module.type === "featured_room" && profile.featuredRoomId
-            ? { restoreFeaturedRoomId: profile.featuredRoomId }
-            : {}),
-        },
-      };
-      const nextProfile = {
-        ...profile,
-        ...(module.type === "featured_post"
-          ? { featuredPostId: null, featuredPost: null }
-          : {}),
-        ...(module.type === "featured_room"
-          ? { featuredRoomId: null, featuredRoom: null }
-          : {}),
-      };
-      const activeModules = modules.filter((item) => item.status !== "deleted");
-      const normalizedModules = prepareProfileCanvasModules(
-        nextProfile,
-        activeModules,
-        profileLayoutPreset,
-      );
-
-      setProfileOverride(nextProfile);
-      setDraftModules(normalizedModules);
-      setDeletedDraftModules((items) => [
-        deletedModule,
-        ...items.filter((item) => item.id !== module.id),
-      ]);
-      setModulesOverride({ handle: normalizedHandle, modules: normalizedModules });
-      setSelectedCanvasModuleId(normalizedModules[0]?.id);
-    } catch (error) {
-      setCanvasError(
-        error instanceof Error ? error.message : "Could not delete profile module.",
-      );
-    } finally {
-      setCanvasSaving(false);
-    }
-  }
-
-  async function handleRestoreCanvasModule(module: ProfileModule) {
-    if (!profile || !canvasEditing || canvasSaving) {
-      return;
-    }
-
-    setCanvasSaving(true);
-    setCanvasError(undefined);
-
-    try {
-      const modules = await runWithAuth(
-        (csrfToken) => restoreProfileModule(module.id, csrfToken),
-        { retryOnCsrf: true },
-      );
-      const activeModules = modules.filter((item) => item.status !== "deleted");
-      const deletedModules = modules.filter((item) => item.status === "deleted");
-      const normalizedModules = prepareProfileCanvasModules(
-        profile,
-        activeModules,
-        profileLayoutPreset,
-      );
-      const restored = normalizedModules.find((item) => item.id === module.id);
-
-      setDraftModules(normalizedModules);
-      setDeletedDraftModules(deletedModules);
-      setModulesOverride({ handle: normalizedHandle, modules: normalizedModules });
-      setSelectedCanvasModuleId(restored?.id ?? normalizedModules[0]?.id);
-    } catch (error) {
-      setCanvasError(
-        error instanceof Error ? error.message : "Could not restore profile module.",
-      );
-    } finally {
-      setCanvasSaving(false);
-    }
-  }
-
-  async function handleConnectIntegration(provider: ProfileIntegrationProvider) {
-    if (!profile || integrationBusy) {
-      return;
-    }
-
-    setIntegrationBusy(provider);
-    setIntegrationMessage(undefined);
-
-    try {
-      const result = await runWithAuth(
-        (csrfToken) =>
-          startProfileIntegration(
-            provider,
-            csrfToken,
-            `/@${profile.user.handle}?editCanvas=1`,
-          ),
-        { retryOnCsrf: true },
-      );
-
-      window.location.assign(result.authorizationUrl);
-    } catch (error) {
-      setIntegrationMessage(
-        error instanceof Error
-          ? error.message
-          : "Could not start this integration.",
-      );
-      setIntegrationBusy(undefined);
-    }
-  }
-
-  async function handleDisconnectIntegration(provider: ProfileIntegrationProvider) {
-    if (integrationBusy) {
-      return;
-    }
-
-    setIntegrationBusy(provider);
-    setIntegrationMessage(undefined);
-
-    try {
-      const result = await runWithAuth(
-        (csrfToken) => disconnectProfileIntegration(provider, csrfToken),
-        { retryOnCsrf: true },
-      );
-
-      setProfileIntegrations(result);
-    } catch (error) {
-      setIntegrationMessage(
-        error instanceof Error
-          ? error.message
-          : "Could not disconnect this integration.",
-      );
-    } finally {
-      setIntegrationBusy(undefined);
-    }
-  }
-
-  async function handleResolveIntegrationMetadata(input: {
-    provider?: ProfileIntegrationProvider;
-    url: string;
-  }): Promise<ProfileIntegrationCard> {
-    return runWithAuth(
-      (csrfToken) => resolveProfileIntegrationMetadata(input, csrfToken),
-      { retryOnCsrf: true },
-    );
   }
 
   useEffect(() => {
@@ -1501,18 +968,17 @@ export function ProfilePage() {
       repliesState.error ??
       roomsState.error,
   });
-  const visibleCanvasModules = canvasEditing ? displayModules : publicModules;
-  const profileSpaceModules = visibleCanvasModules.filter((module) => {
+  const profileSpaceModules = publicModules.filter((module) => {
     if (module.type === "activity") {
       return showActivityModule;
     }
 
     if (module.type === "featured_post") {
-      return canvasEditing || Boolean(renderedProfile.featuredPost);
+      return Boolean(renderedProfile.featuredPost);
     }
 
     if (module.type === "featured_room") {
-      return canvasEditing || Boolean(renderedProfile.featuredRoom);
+      return Boolean(renderedProfile.featuredRoom);
     }
 
     return true;
@@ -1521,117 +987,42 @@ export function ProfilePage() {
     renderedProfile,
     mergeProfileLinksIntoConnectionModules(renderedProfile, profileSpaceModules),
   );
-  const wideCanvasEditor = canvasEditorViewportMode === "wide";
   return (
     <motion.div
-      className={cn("relative mx-auto", canvasEditing ? "max-w-7xl" : "max-w-5xl")}
+      className="relative mx-auto max-w-5xl"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
     >
       <ProfilePersonalBackdrop profile={backgroundPreviewProfile} />
-      <div
-        className={cn(
-          "relative z-10 space-y-4 sm:space-y-5",
-          canvasEditing && wideCanvasEditor
-            ? "xl:grid xl:grid-cols-[22rem_minmax(0,1fr)] xl:items-start xl:gap-5 xl:space-y-0"
-            : undefined,
-        )}
-      >
+      <div className="relative z-10 space-y-4 sm:space-y-5">
         <PageMeta
           title={`${renderedProfile.user.displayName} (@${renderedProfile.user.handle})`}
           description={renderedProfile.bio}
           path={`/@${renderedProfile.user.handle}`}
         />
         {isOwnProfile ? (
-          <ProfileCanvasEditorToolbar
+          <ProfileTransitionEditor
+            autosaveError={profileContentAutosaveError}
+            autosaveState={profileContentAutosaveState}
+            backgroundBlur={draftBackgroundBlur}
             busy={canvasLoading || canvasSaving}
             editing={canvasEditing}
             error={canvasError}
-            integrationBusy={integrationBusy}
-            integrationMessage={integrationMessage}
-            integrations={profileIntegrations}
-            modules={draftModules}
-            removedModules={deletedDraftModules}
-            userBadges={profileBadges}
-            viewportMode={canvasEditorViewportMode}
-            onAddModule={(input) => void handleAddCanvasModule(input)}
+            profile={renderedProfile}
+            uploading={profileDraftUploading}
+            onBackgroundBlurChange={(blur) => void handleBackgroundBlurChange(blur)}
             onCancel={handleCancelCanvasEdit}
-            onConnectIntegration={(provider) => void handleConnectIntegration(provider)}
-            onDisconnectIntegration={(provider) =>
-              void handleDisconnectIntegration(provider)
-            }
-            onEdit={() => void handleStartCanvasEdit()}
-            onRestoreModule={(module) => void handleRestoreCanvasModule(module)}
-            onSave={() => void handleSaveCanvasEdit()}
+            onClearBackground={() => void handleClearProfileBackgroundDraft()}
+            onEdit={handleStartCanvasEdit}
+            onImageUpload={handleProfileImageDraftSelection}
+            onProfileDraftChange={handleDraftProfileChange}
+            onVideoUpload={(file) => void handleProfileVideoDraftUpload(file)}
           />
         ) : null}
         <div className="min-w-0 space-y-4 sm:space-y-5">
-          {canvasEditing ? (
-            <div
-              className="relative z-30 flex justify-end"
-              data-testid="profile-canvas-background-surface"
-            >
-              <div className="w-full max-w-sm">
-                <ProfileCanvasBackgroundControls
-                  backgroundBlur={draftBackgroundBlur}
-                  profile={renderedProfile}
-                  uploading={profileDraftUploading}
-                  onBackgroundBlurChange={setDraftBackgroundBlur}
-                  onClear={() => void handleClearProfileBackgroundDraft()}
-                  onImageUpload={(file) =>
-                    handleProfileImageDraftSelection(file, "profile_background")
-                  }
-                  onVideoUpload={(file) => void handleProfileVideoDraftUpload(file)}
-                />
-              </div>
-            </div>
-          ) : null}
           <ProfileModulesSection
           badges={profileBadges}
-          editing={
-            canvasEditing
-              ? {
-                  selectedModuleId: selectedCanvasModuleId,
-                  onDeselectModule: () => setSelectedCanvasModuleId(undefined),
-                  onMoveModule: handleCanvasModuleLayoutChange,
-                  onSelectModule: handleSelectCanvasModule,
-                  renderSelectedControls: (module, size) => (
-                    <ProfileSelectedModuleControls
-                      busy={canvasSaving || Boolean(profileDraftUploading)}
-                      feed={profileFeed}
-                      integrationBusy={integrationBusy}
-                      integrations={profileIntegrations}
-                      module={module}
-                      profile={renderedProfile}
-                      profileAutosaveError={profileContentAutosaveError}
-                      profileAutosaveState={profileContentAutosaveState}
-                      rooms={profileRooms}
-                      size={size}
-                      onConfigChange={(config) =>
-                        handleCanvasModuleConfigChange(module.id, config)
-                      }
-                      onDeleteModule={() => void handleDeleteCanvasModule(module)}
-                      onConnectIntegration={(provider) =>
-                        void handleConnectIntegration(provider)
-                      }
-                      onLayoutChange={(layout) =>
-                        handleCanvasModuleLayoutChange(module.id, layout)
-                      }
-                      onPinnedChange={(pinned) =>
-                        handleCanvasModulePinnedChange(module.id, pinned)
-                      }
-                      onProfileDraftChange={handleDraftProfileChange}
-                      onProfileImageUpload={handleProfileImageDraftSelection}
-                      onResolveIntegration={handleResolveIntegrationMetadata}
-                      onVisibilityChange={(visible) =>
-                        handleCanvasModuleVisibilityChange(module.id, visible)
-                      }
-                    />
-                  ),
-                }
-              : undefined
-          }
           error={modulesState.error}
           isOwnProfile={isOwnProfile}
           layoutPreset={profileLayoutPreset}
@@ -1645,7 +1036,7 @@ export function ProfilePage() {
                   activeFollowError={activeFollowError}
                   activeProfileControlError={activeProfileControlError}
                   activeProfileControlMessage={activeProfileControlMessage}
-                  editing={canvasEditing}
+                  editing={false}
                   featuredBadges={featuredBadges}
                   followPosting={followPosting}
                   isOwnProfile={isOwnProfile}
@@ -1678,7 +1069,7 @@ export function ProfilePage() {
             if (module.type === "featured_post" && renderedProfile.featuredPost) {
               return (
                 <FeaturedPostModuleCard
-                  editing={canvasEditing}
+                  editing={false}
                   profile={renderedProfile}
                   title={module.title ?? "Featured post"}
                 />
@@ -1688,7 +1079,7 @@ export function ProfilePage() {
             if (module.type === "featured_room" && renderedProfile.featuredRoom) {
               return (
                 <FeaturedRoomModuleCard
-                  editing={canvasEditing}
+                  editing={false}
                   profile={renderedProfile}
                   title={module.title ?? "Featured room"}
                 />
@@ -1699,7 +1090,7 @@ export function ProfilePage() {
               return (
               <ProfileActivityModule
                 activeTab={activeTab}
-                editing={canvasEditing}
+                editing={false}
                 feed={profileFeed}
                 feedError={postsState.error ?? reblogsState.error}
                 feedLoading={postsState.loading || reblogsState.loading}
@@ -1921,23 +1312,6 @@ function mergeProfileLinksIntoConnectionModules(
   );
 }
 
-function mergeIntegrationAccountsIntoConnectionModules(
-  modules: ProfileModule[],
-  accounts: ProfileIntegrationAccount[] | undefined,
-): ProfileModule[] {
-  const accountLinks =
-    accounts
-      ?.filter((account) => !account.revokedAt)
-      .map(profileModuleLinkFromIntegrationAccount)
-      .filter(isProfileModuleLink) ?? [];
-
-  if (accountLinks.length === 0) {
-    return modules;
-  }
-
-  return upsertProfileModuleLinks(modules, accountLinks);
-}
-
 function upsertProfileModuleLinks(
   modules: ProfileModule[],
   links: ProfileModuleLink[],
@@ -1987,64 +1361,6 @@ function upsertProfileModuleLinks(
       schemaVersion: 1,
     },
   ];
-}
-
-function profileModuleLinkFromIntegrationAccount(
-  account: ProfileIntegrationAccount,
-): ProfileModuleLink | undefined {
-  if (account.provider === "spotify") {
-    const accountId = account.providerAccountId.trim();
-
-    if (!accountId) {
-      return undefined;
-    }
-
-    return {
-      label: account.displayName || account.providerHandle || "Spotify",
-      platform: "spotify",
-      url: `https://open.spotify.com/user/${encodeURIComponent(accountId)}`,
-    };
-  }
-
-  const platform = integrationConnectionPlatform(account.provider);
-
-  if (!platform) {
-    return undefined;
-  }
-
-  const value =
-    account.providerHandle?.trim() ||
-    (account.provider === "youtube" && account.providerAccountId.trim()
-      ? `https://www.youtube.com/channel/${account.providerAccountId.trim()}`
-      : account.providerAccountId.trim());
-  const result = validateProfileConnectionDraft(platform, value);
-
-  if ("error" in result) {
-    return undefined;
-  }
-
-  const link = profileModuleLinkFromConnection(result.connection);
-
-  return {
-    ...link,
-    label: account.displayName || account.providerHandle || link.label,
-  };
-}
-
-function integrationConnectionPlatform(
-  provider: ProfileIntegrationProvider,
-): ProfileConnectionPlatform | undefined {
-  if (provider === "github" || provider === "twitch" || provider === "youtube") {
-    return provider;
-  }
-
-  return undefined;
-}
-
-function isProfileModuleLink(
-  link: ProfileModuleLink | undefined,
-): link is ProfileModuleLink {
-  return Boolean(link);
 }
 
 function profileModuleLinkFromConnection(
@@ -2143,594 +1459,6 @@ function createSyntheticProfileInfoModule(profile: Profile | undefined): Profile
   };
 }
 
-function prepareProfileCanvasModules(
-  profile: Profile,
-  modules: ProfileModule[],
-  layoutPreset: ProfileLayoutPreset,
-): ProfileModule[] {
-  const normalized = resolveProfileCanvasModules(
-    profile,
-    mergeProfileLinksIntoConnectionModules(profile, modules),
-  );
-  const occupied = new Set<string>();
-
-  return normalized.map((module, index) => {
-    const withProfileInfo =
-      module.type === "profile_info"
-        ? normalizeProfileInfoModule(profile, module)
-        : module;
-    const existingLayout = profileModuleLayoutFits(
-      withProfileInfo.layout,
-      occupied,
-    )
-      ? withProfileInfo.layout
-      : undefined;
-    const layout =
-      existingLayout ??
-      findProfileModuleDefaultLayout(
-        withProfileInfo,
-        profile,
-        layoutPreset,
-        index,
-        occupied,
-      );
-
-    occupyProfileModuleLayout(layout, occupied);
-
-    return {
-      ...withProfileInfo,
-      layout,
-    };
-  });
-}
-
-function pushProfileCanvasModules(
-  profile: Profile,
-  modules: ProfileModule[],
-  layoutPreset: ProfileLayoutPreset,
-  anchorModuleId?: number,
-  movementContext?: ProfileCanvasMovementContext,
-): ProfileModule[] {
-  const normalized = modules.map((module) =>
-    module.type === "profile_info" ? normalizeProfileInfoModule(profile, module) : module,
-  );
-  const visibleModules = normalized
-    .filter((module) => module.visibility === "public" || module.type === "profile_info")
-    .map((module, index) => profileCanvasModuleWithRequestedLayout(module, layoutPreset, index))
-    .sort(profileCanvasModuleSort);
-  const hiddenModules = normalized.filter(
-    (module) => module.visibility !== "public" && module.type !== "profile_info",
-  );
-  const anchor = visibleModules.find((module) => module.id === anchorModuleId);
-  const occupied = new Set<string>();
-  const placed = new Map<number, ProfileModule>();
-  let anchorLayout: ProfileModuleLayout | undefined;
-
-  visibleModules.forEach((module) => {
-    if (!module.pinned || !module.layout) {
-      return;
-    }
-
-    if (!profileModuleLayoutFits(module.layout, occupied)) {
-      placed.set(module.id, module);
-      return;
-    }
-
-    occupyProfileModuleLayout(module.layout, occupied);
-    placed.set(module.id, module);
-  });
-
-  if (anchor && !placed.has(anchor.id) && anchor.layout) {
-    const layout = findProfileCanvasAnchorLayout(
-      anchor,
-      visibleModules,
-      occupied,
-      movementContext,
-    );
-
-    anchorLayout = layout ?? anchor.layout;
-
-    if (layout) {
-      occupyProfileModuleLayout(layout, occupied);
-    }
-
-    placed.set(anchor.id, { ...anchor, layout: anchorLayout });
-  }
-
-  const movableModules = visibleModules
-    .filter((module) => !placed.has(module.id))
-    .sort((first, second) => {
-      if (anchorLayout && movementContext) {
-        const firstIntent = profileCanvasDisplacementIntent(
-          anchorLayout,
-          first.layout,
-          movementContext,
-        );
-        const secondIntent = profileCanvasDisplacementIntent(
-          anchorLayout,
-          second.layout,
-          movementContext,
-        );
-
-        if (Boolean(firstIntent) !== Boolean(secondIntent)) {
-          return firstIntent ? -1 : 1;
-        }
-      }
-
-      return profileCanvasModuleSort(first, second);
-    });
-
-  movableModules.forEach((module) => {
-    const requestedLayout = module.layout;
-
-    if (!requestedLayout) {
-      placed.set(module.id, module);
-      return;
-    }
-
-    const intent = anchorLayout && movementContext
-      ? profileCanvasDisplacementIntent(anchorLayout, requestedLayout, movementContext)
-      : undefined;
-    const layout = profileModuleLayoutFits(requestedLayout, occupied)
-      ? requestedLayout
-      : findProfileModuleNextLayout(requestedLayout, occupied, intent);
-
-    if (layout) {
-      occupyProfileModuleLayout(layout, occupied);
-    }
-
-    placed.set(module.id, { ...module, layout: layout ?? requestedLayout });
-  });
-
-  hiddenModules.forEach((module) => {
-    placed.set(module.id, module);
-  });
-
-  return normalized
-    .map((module) => placed.get(module.id) ?? module)
-    .sort(profileCanvasModuleSort);
-}
-
-function profileCanvasModuleWithRequestedLayout(
-  module: ProfileModule,
-  layoutPreset: ProfileLayoutPreset,
-  index: number,
-): ProfileModule {
-  const span = profileModuleGridSpan(module, layoutPreset, index);
-  const layout = clampProfileModuleLayout({
-    column: module.layout?.column ?? 1,
-    row: module.layout?.row ?? 1,
-    colSpan: span.columns,
-    rowSpan: span.rows,
-  });
-
-  return {
-    ...module,
-    layout,
-  };
-}
-
-function profileModuleCanvasInput(
-  module: ProfileModule,
-  profile: Profile,
-  layoutPreset: ProfileLayoutPreset,
-  index: number,
-) {
-  const layout =
-    module.layout ??
-    findProfileModuleDefaultLayout(
-      module,
-      profile,
-      layoutPreset,
-      index,
-      new Set<string>(),
-    );
-
-  return {
-    id: module.id,
-    column: layout.column,
-    row: layout.row,
-    colSpan: layout.colSpan,
-    rowSpan: layout.rowSpan,
-    pinned: module.pinned === true,
-    visible: module.type === "profile_info" || module.visibility === "public",
-  };
-}
-
-function findProfileModuleDefaultLayout(
-  module: ProfileModule,
-  profile: Profile,
-  layoutPreset: ProfileLayoutPreset,
-  index: number,
-  occupied: Set<string>,
-): ProfileModuleLayout {
-  const profileInfoAwareModule =
-    module.type === "profile_info" ? normalizeProfileInfoModule(profile, module) : module;
-  const span = profileModuleGridSpan(profileInfoAwareModule, layoutPreset, index);
-  const colSpan = span.columns;
-  const rowSpan = span.rows;
-
-  for (let row = 1; row <= PROFILE_CANVAS_ROWS - rowSpan + 1; row++) {
-    for (let column = 1; column <= PROFILE_CANVAS_COLUMNS - colSpan + 1; column++) {
-      const layout = { column, row, colSpan, rowSpan };
-
-      if (profileModuleLayoutFits(layout, occupied)) {
-        return layout;
-      }
-    }
-  }
-
-  return {
-    column: 1,
-    row: 1,
-    colSpan,
-    rowSpan,
-  };
-}
-
-function findProfileCanvasAnchorLayout(
-  anchor: ProfileModule,
-  visibleModules: ProfileModule[],
-  fixedOccupied: Set<string>,
-  movementContext?: ProfileCanvasMovementContext,
-): ProfileModuleLayout | undefined {
-  const targetLayout = anchor.layout;
-
-  if (!targetLayout) {
-    return undefined;
-  }
-
-  if (!movementContext) {
-    return profileModuleLayoutFits(targetLayout, fixedOccupied)
-      ? targetLayout
-      : findProfileModuleNextLayout(targetLayout, fixedOccupied);
-  }
-
-  if (!profileModuleLayoutFits(targetLayout, fixedOccupied)) {
-    return findProfileModuleNextLayout(
-      targetLayout,
-      fixedOccupied,
-      profileCanvasAnchorIntent(movementContext),
-    );
-  }
-
-  if (!profileCanvasAnchorCrossedCollisionHalf(targetLayout, visibleModules, movementContext)) {
-    const fromLayout = clampProfileModuleLayout({
-      ...targetLayout,
-      column: movementContext.from.column,
-      row: movementContext.from.row,
-    });
-
-    if (profileModuleLayoutFits(fromLayout, fixedOccupied)) {
-      return fromLayout;
-    }
-  }
-
-  return targetLayout;
-}
-
-function profileCanvasAnchorCrossedCollisionHalf(
-  anchorLayout: ProfileModuleLayout,
-  visibleModules: ProfileModule[],
-  movementContext: ProfileCanvasMovementContext,
-): boolean {
-  for (const module of visibleModules) {
-    if (
-      !module.layout ||
-      module.id === movementContext.anchorModuleId ||
-      module.pinned ||
-      module.visibility !== "public"
-    ) {
-      continue;
-    }
-
-    if (!profileModuleLayoutsIntersect(anchorLayout, module.layout)) {
-      continue;
-    }
-
-    if (!profileCanvasDisplacementIntent(anchorLayout, module.layout, movementContext)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-function profileCanvasAnchorIntent(
-  movementContext: ProfileCanvasMovementContext,
-): ProfileCanvasMoveIntent | undefined {
-  const deltaColumn = movementContext.to.column - movementContext.from.column;
-  const deltaRow = movementContext.to.row - movementContext.from.row;
-
-  if (Math.abs(deltaColumn) >= Math.abs(deltaRow) && deltaColumn !== 0) {
-    return { dx: deltaColumn > 0 ? 1 : -1, dy: 0 };
-  }
-
-  if (deltaRow !== 0) {
-    return { dx: 0, dy: deltaRow > 0 ? 1 : -1 };
-  }
-
-  return undefined;
-}
-
-type ProfileCanvasMoveIntent = {
-  dx: -1 | 0 | 1;
-  dy: -1 | 0 | 1;
-};
-
-function profileCanvasDisplacementIntent(
-  anchorLayout: ProfileModuleLayout,
-  layout: ProfileModuleLayout | null | undefined,
-  movementContext: ProfileCanvasMovementContext,
-): ProfileCanvasMoveIntent | undefined {
-  if (!layout || !profileModuleLayoutsIntersect(anchorLayout, layout)) {
-    return undefined;
-  }
-
-  const deltaColumn = movementContext.to.column - movementContext.from.column;
-  const deltaRow = movementContext.to.row - movementContext.from.row;
-
-  if (Math.abs(deltaColumn) >= Math.abs(deltaRow) && deltaColumn !== 0) {
-    const overlap = profileModuleAxisOverlap(anchorLayout, layout, "column");
-
-    if (overlap * 2 <= layout.colSpan) {
-      return undefined;
-    }
-
-    return { dx: deltaColumn > 0 ? -1 : 1, dy: 0 };
-  }
-
-  if (deltaRow !== 0) {
-    const overlap = profileModuleAxisOverlap(anchorLayout, layout, "row");
-
-    if (overlap * 2 <= layout.rowSpan) {
-      return undefined;
-    }
-
-    return { dx: 0, dy: deltaRow > 0 ? -1 : 1 };
-  }
-
-  return undefined;
-}
-
-function profileModuleLayoutsIntersect(
-  first: ProfileModuleLayout,
-  second: ProfileModuleLayout,
-): boolean {
-  return (
-    first.column < second.column + second.colSpan &&
-    first.column + first.colSpan > second.column &&
-    first.row < second.row + second.rowSpan &&
-    first.row + first.rowSpan > second.row
-  );
-}
-
-function profileModuleAxisOverlap(
-  first: ProfileModuleLayout,
-  second: ProfileModuleLayout,
-  axis: "column" | "row",
-): number {
-  if (axis === "column") {
-    const start = Math.max(first.column, second.column);
-    const end = Math.min(first.column + first.colSpan - 1, second.column + second.colSpan - 1);
-
-    return Math.max(0, end - start + 1);
-  }
-
-  const start = Math.max(first.row, second.row);
-  const end = Math.min(first.row + first.rowSpan - 1, second.row + second.rowSpan - 1);
-
-  return Math.max(0, end - start + 1);
-}
-
-function findProfileModuleNextLayout(
-  requestedLayout: ProfileModuleLayout,
-  occupied: Set<string>,
-  intent?: ProfileCanvasMoveIntent,
-): ProfileModuleLayout | undefined {
-  const maxColumn = PROFILE_CANVAS_COLUMNS - requestedLayout.colSpan + 1;
-  const maxRow = PROFILE_CANVAS_ROWS - requestedLayout.rowSpan + 1;
-  const baseColumn = Math.min(maxColumn, Math.max(1, requestedLayout.column));
-  const baseRow = Math.min(maxRow, Math.max(1, requestedLayout.row));
-  const candidates = [
-    ...(intent
-      ? profileCanvasDirectionalCandidates(baseColumn, baseRow, maxColumn, maxRow, intent)
-      : []),
-    ...profileCanvasNearestCandidates(baseColumn, baseRow, maxColumn, maxRow),
-  ];
-  const seen = new Set<string>();
-
-  for (const candidatePoint of candidates) {
-    const key = `${candidatePoint.column}:${candidatePoint.row}`;
-
-    if (seen.has(key)) {
-      continue;
-    }
-
-    seen.add(key);
-
-    const candidate = {
-      ...requestedLayout,
-      column: candidatePoint.column,
-      row: candidatePoint.row,
-    };
-
-    if (profileModuleLayoutFits(candidate, occupied)) {
-      return candidate;
-    }
-  }
-
-  return undefined;
-}
-
-function profileCanvasDirectionalCandidates(
-  baseColumn: number,
-  baseRow: number,
-  maxColumn: number,
-  maxRow: number,
-  intent: ProfileCanvasMoveIntent,
-): { column: number; row: number }[] {
-  const candidates: { column: number; row: number }[] = [];
-
-  if (intent.dx !== 0) {
-    for (
-      let column = baseColumn + intent.dx;
-      column >= 1 && column <= maxColumn;
-      column += intent.dx
-    ) {
-      candidates.push({ column, row: baseRow });
-    }
-
-    for (const row of profileCanvasNearbyRows(baseRow, maxRow)) {
-      if (row !== baseRow) {
-        candidates.push({ column: baseColumn, row });
-      }
-    }
-  }
-
-  if (intent.dy !== 0) {
-    for (
-      let row = baseRow + intent.dy;
-      row >= 1 && row <= maxRow;
-      row += intent.dy
-    ) {
-      candidates.push({ column: baseColumn, row });
-    }
-
-    for (const column of profileCanvasNearbyColumns(baseColumn, maxColumn)) {
-      if (column !== baseColumn) {
-        candidates.push({ column, row: baseRow });
-      }
-    }
-  }
-
-  return candidates;
-}
-
-function profileCanvasNearestCandidates(
-  baseColumn: number,
-  baseRow: number,
-  maxColumn: number,
-  maxRow: number,
-): { column: number; row: number }[] {
-  const candidates = profileCanvasSameRowSidewaysColumns(baseColumn, maxColumn).map(
-    (column) => ({ column, row: baseRow }),
-  );
-
-  for (const row of profileCanvasNearbyRows(baseRow, maxRow)) {
-    if (row === baseRow) {
-      continue;
-    }
-
-    for (const column of profileCanvasNearbyColumns(baseColumn, maxColumn)) {
-      candidates.push({ column, row });
-    }
-  }
-
-  return candidates;
-}
-
-function profileCanvasSameRowSidewaysColumns(
-  baseColumn: number,
-  maxColumn: number,
-): number[] {
-  const columns: number[] = [];
-
-  for (let distance = 1; distance <= maxColumn; distance += 1) {
-    const right = baseColumn + distance;
-    const left = baseColumn - distance;
-
-    if (right <= maxColumn) {
-      columns.push(right);
-    }
-
-    if (left >= 1) {
-      columns.push(left);
-    }
-  }
-
-  return columns;
-}
-
-function profileCanvasNearbyColumns(baseColumn: number, maxColumn: number): number[] {
-  const columns = [baseColumn];
-
-  for (let distance = 1; distance <= maxColumn; distance += 1) {
-    const right = baseColumn + distance;
-    const left = baseColumn - distance;
-
-    if (right <= maxColumn) {
-      columns.push(right);
-    }
-
-    if (left >= 1) {
-      columns.push(left);
-    }
-  }
-
-  return [...new Set(columns)];
-}
-
-function profileCanvasNearbyRows(baseRow: number, maxRow: number): number[] {
-  const rows = [baseRow];
-
-  for (let distance = 1; distance <= maxRow; distance += 1) {
-    const down = baseRow + distance;
-    const up = baseRow - distance;
-
-    if (down <= maxRow) {
-      rows.push(down);
-    }
-
-    if (up >= 1) {
-      rows.push(up);
-    }
-  }
-
-  return [...new Set(rows)];
-}
-
-function profileModuleLayoutFits(
-  layout: ProfileModuleLayout | null | undefined,
-  occupied: Set<string>,
-): layout is ProfileModuleLayout {
-  if (!layout) {
-    return false;
-  }
-
-  if (
-    layout.column < 1 ||
-    layout.row < 1 ||
-    layout.colSpan < 1 ||
-    layout.rowSpan < 1 ||
-    layout.column + layout.colSpan - 1 > PROFILE_CANVAS_COLUMNS ||
-    layout.row + layout.rowSpan - 1 > PROFILE_CANVAS_ROWS
-  ) {
-    return false;
-  }
-
-  for (let row = layout.row; row < layout.row + layout.rowSpan; row++) {
-    for (let column = layout.column; column < layout.column + layout.colSpan; column++) {
-      if (occupied.has(`${column}:${row}`)) {
-        return false;
-      }
-    }
-  }
-
-  return true;
-}
-
-function occupyProfileModuleLayout(
-  layout: ProfileModuleLayout,
-  occupied: Set<string>,
-) {
-  for (let row = layout.row; row < layout.row + layout.rowSpan; row++) {
-    for (let column = layout.column; column < layout.column + layout.colSpan; column++) {
-      occupied.add(`${column}:${row}`);
-    }
-  }
-}
-
 function profileCanvasModuleSort(first: ProfileModule, second: ProfileModule): number {
   const firstLayout = first.layout;
   const secondLayout = second.layout;
@@ -2752,203 +1480,44 @@ function profileCanvasModuleSort(first: ProfileModule, second: ProfileModule): n
   return first.position - second.position;
 }
 
-type ProfileCanvasAddEntry =
-  | "about"
-  | "custom_text"
-  | "links"
-  | "featured_badges"
-  | "gallery_media"
-  | "creator_live"
-  | "music"
-  | "github_project"
-  | "featured_post"
-  | "featured_room"
-  | "activity";
-
-const profileCanvasAddEntries: { label: string; value: ProfileCanvasAddEntry }[] = [
-  { label: "About", value: "about" },
-  { label: "Text", value: "custom_text" },
-  { label: "Links", value: "links" },
-  { label: "Badges", value: "featured_badges" },
-  { label: "Gallery", value: "gallery_media" },
-  { label: "Creator", value: "creator_live" },
-  { label: "Music", value: "music" },
-  { label: "GitHub project", value: "github_project" },
-  { label: "Featured post", value: "featured_post" },
-  { label: "Featured room", value: "featured_room" },
-  { label: "Activity", value: "activity" },
-];
-
-function profileCanvasAddInput(
-  entry: ProfileCanvasAddEntry,
-  userBadges: UserBadge[],
-): CreateProfileModuleInput | undefined {
-  const base = {
-    status: "active" as const,
-    title: null,
-    visibility: "public" as const,
-  };
-
-  if (entry === "about") {
-    return { ...base, type: "about", config: {} };
-  }
-
-  if (entry === "custom_text") {
-    return { ...base, type: "custom_text", config: { body: "" } };
-  }
-
-  if (entry === "links") {
-    return {
-      ...base,
-      type: "links",
-      config: { links: [] },
-    };
-  }
-
-  if (entry === "featured_badges") {
-    const badgeId = userBadges.find((userBadge) => userBadge.isVisible)?.id;
-    return {
-      ...base,
-      type: "featured_badges",
-      config: { userBadgeIds: badgeId ? [badgeId] : [] },
-    };
-  }
-
-  if (entry === "gallery_media") {
-    return {
-      ...base,
-      type: "gallery_media",
-      config: { mediaItems: [] },
-    };
-  }
-
-  if (entry === "creator_live") {
-    return { ...base, type: "creator_live", config: {} };
-  }
-
-  if (entry === "github_project") {
-    return { ...base, type: "creator_live", config: { platform: "github" } };
-  }
-
-  if (entry === "music") {
-    return { ...base, type: "music", config: {} };
-  }
-
-  if (
-    entry === "featured_post" ||
-    entry === "featured_room" ||
-    entry === "activity"
-  ) {
-    return { ...base, type: entry as ProfileModuleType, config: {} };
-  }
-
-  return undefined;
-}
-
-type ProfileCanvasEditorToolbarProps = {
+type ProfileTransitionEditorProps = {
+  autosaveError?: string | undefined;
+  autosaveState: ProfileContentAutosaveState;
+  backgroundBlur: ProfileBackgroundBlur;
   busy: boolean;
   editing: boolean;
   error?: string | undefined;
-  integrationBusy?: ProfileIntegrationProvider | "metadata" | undefined;
-  integrationMessage?: string | undefined;
-  integrations?: ProfileIntegrationsResult | undefined;
-  modules: ProfileModule[];
-  removedModules: ProfileModule[];
-  onAddModule: (input: CreateProfileModuleInput) => void;
+  profile: Profile;
+  uploading?: "backgroundImage" | "backgroundVideo" | "avatar" | "banner" | undefined;
+  onBackgroundBlurChange: (blur: ProfileBackgroundBlur) => void;
   onCancel: () => void;
-  onConnectIntegration: (provider: ProfileIntegrationProvider) => void;
-  onDisconnectIntegration: (provider: ProfileIntegrationProvider) => void;
   onEdit: () => void;
-  onRestoreModule: (module: ProfileModule) => void;
-  onSave: () => void;
-  userBadges: UserBadge[];
-  viewportMode: ProfileCanvasEditorViewportMode;
+  onClearBackground: () => void;
+  onImageUpload: (
+    file: File,
+    purpose: "avatar" | "banner" | "profile_background",
+  ) => void;
+  onProfileDraftChange: (updater: (profile: Profile) => Profile) => void;
+  onVideoUpload: (file: File) => void;
 };
 
-type ProfileCanvasDockCategory =
-  | "essentials"
-  | "featured"
-  | "media"
-  | "integrations"
-  | "removed";
-
-const profileCanvasDockCategories: {
-  icon: ReactNode;
-  label: string;
-  value: ProfileCanvasDockCategory;
-}[] = [
-  {
-    icon: <Radio aria-hidden="true" size={15} />,
-    label: "Integrations",
-    value: "integrations",
-  },
-  {
-    icon: <UserCheck aria-hidden="true" size={15} />,
-    label: "Essentials",
-    value: "essentials",
-  },
-  {
-    icon: <Star aria-hidden="true" size={15} />,
-    label: "Featured",
-    value: "featured",
-  },
-  {
-    icon: <ImagePlus aria-hidden="true" size={15} />,
-    label: "Media",
-    value: "media",
-  },
-  {
-    icon: <Undo2 aria-hidden="true" size={15} />,
-    label: "Removed",
-    value: "removed",
-  },
-];
-
-const profileCanvasDockEntries: Record<
-  Exclude<ProfileCanvasDockCategory, "integrations" | "removed">,
-  ProfileCanvasAddEntry[]
-> = {
-  essentials: ["about", "links", "featured_badges", "activity"],
-  featured: ["featured_post", "featured_room"],
-  media: ["gallery_media", "creator_live", "music", "custom_text"],
-};
-
-const profileIntegrationProviders: ProfileIntegrationProvider[] = [
-  "spotify",
-  "apple_music",
-  "youtube",
-  "twitch",
-  "github",
-];
-
-function ProfileCanvasEditorToolbar({
+function ProfileTransitionEditor({
+  autosaveError,
+  autosaveState,
+  backgroundBlur,
   busy,
   editing,
   error,
-  integrationBusy,
-  integrationMessage,
-  integrations,
-  modules,
-  onAddModule,
+  onBackgroundBlurChange,
   onCancel,
-  onConnectIntegration,
-  onDisconnectIntegration,
   onEdit,
-  onRestoreModule,
-  onSave,
-  removedModules,
-  userBadges,
-  viewportMode,
-}: ProfileCanvasEditorToolbarProps) {
-  const [activeCategory, setActiveCategory] =
-    useState<ProfileCanvasDockCategory>("integrations");
-  const [moduleSearch, setModuleSearch] = useState("");
-  const useMobilePanel = viewportMode === "mobile";
-  const useCompactPanel = viewportMode === "compact";
-  const dockGridClass = useCompactPanel
-    ? "grid gap-2 sm:grid-cols-2 lg:grid-cols-3"
-    : "grid gap-2 sm:grid-cols-2 xl:grid-cols-1";
-
+  onClearBackground,
+  onImageUpload,
+  onProfileDraftChange,
+  onVideoUpload,
+  profile,
+  uploading,
+}: ProfileTransitionEditorProps) {
   if (!editing) {
     return (
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
@@ -2962,656 +1531,177 @@ function ProfileCanvasEditorToolbar({
           size="sm"
           variant="secondary"
           disabled={busy}
-          data-testid="profile-canvas-edit-button"
+          data-testid="profile-edit-button"
           icon={<Settings2 aria-hidden="true" size={16} />}
           onClick={onEdit}
         >
-          {busy ? "Opening" : "Edit canvas"}
+          {busy ? "Opening" : "Edit profile"}
         </Button>
       </div>
     );
   }
 
-  const activeModuleTypes = new Set(modules.map((module) => module.type));
-  const normalizedSearch = moduleSearch.trim().toLowerCase();
-  const categoryEntries =
-    activeCategory === "integrations" || activeCategory === "removed"
-      ? []
-      : profileCanvasDockEntries[activeCategory];
-  const visibleEntries = categoryEntries.filter((entry) => {
-    if (entry === "featured_badges" && userBadges.length === 0) {
-      return false;
-    }
-
-    if (!normalizedSearch) {
-      return true;
-    }
-
-    return profileCanvasAddEntryLabel(entry).toLowerCase().includes(normalizedSearch);
-  });
-  const providerStatuses = profileIntegrationProviders.map((provider) =>
-    profileIntegrationStatus(provider, integrations?.providers),
-  );
-
-  const editorPanel = (
+  return (
     <section
-      aria-label="Profile canvas editor"
-      className={cn(
-        "mx-auto flex flex-col overflow-hidden rounded-panel border border-line",
-        useMobilePanel
-          ? "fixed inset-x-3 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-[70] max-h-[calc(100dvh-7rem)] max-w-xl bg-surface/86 shadow-lift backdrop-blur-veil"
-          : useCompactPanel
-            ? "relative z-40 max-h-[min(30rem,52dvh)] w-full bg-surface/92 shadow-soft"
-            : "sticky top-20 hidden max-h-[calc(100dvh-6rem)] max-w-none bg-surface/78 shadow-lift backdrop-blur-veil xl:flex",
-      )}
-      data-testid="profile-canvas-editor"
-      data-profile-canvas-edit-mode={
-        useMobilePanel ? "stacked" : useCompactPanel ? "compact" : "grid"
-      }
-      data-profile-canvas-panel={
-        useMobilePanel ? "bottom" : useCompactPanel ? "inline" : "left"
-      }
+      aria-label="Profile editor"
+      className="rounded-panel border border-line bg-surface/82 p-3 shadow-soft backdrop-blur-veil sm:p-4"
+      data-testid="profile-editor"
     >
-      <div
-        className={cn(
-          "flex shrink-0 flex-col border-b border-line/70 p-3",
-          useCompactPanel ? "gap-2" : undefined,
-        )}
-      >
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase text-muted">Canvas</p>
+            <p className="text-xs font-semibold uppercase text-muted">Profile</p>
             <h2 className="truncate text-base font-semibold text-text">
-              Arrange modules
+              Edit profile
             </h2>
-          </div>
-          <div className="flex shrink-0 items-center gap-1 xl:hidden">
-            <button
-              type="button"
-              className="grid size-9 place-items-center rounded-control border border-line bg-canvas/55 text-text focus-visible:outline-2 focus-visible:outline-focus"
-              aria-label="Cancel editing"
-              onClick={onCancel}
-            >
-              <X aria-hidden="true" size={17} />
-            </button>
-            <button
-              type="button"
-              className="grid size-9 place-items-center rounded-control bg-accent text-accent-ink focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-55"
-              aria-label="Save layout"
-              title="Save layout"
-              data-testid="profile-canvas-save-button-mobile"
-              disabled={busy}
-              onClick={onSave}
-            >
-              <Save aria-hidden="true" size={17} />
-            </button>
+            <p className="mt-1 text-sm leading-5 text-muted">
+              Edit the profile identity and media shown publicly.
+            </p>
           </div>
         </div>
 
-        <div
-          className={cn(
-            "grid gap-1",
-            useCompactPanel ? "grid-cols-3 lg:grid-cols-5" : "mt-3 grid-cols-2",
-          )}
-          role="tablist"
-          aria-label="Module categories"
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={busy}
+          icon={<X aria-hidden="true" size={16} />}
+          onClick={onCancel}
         >
-          {profileCanvasDockCategories.map((category) => (
-            <button
-              key={category.value}
-              type="button"
-              role="tab"
-              aria-selected={activeCategory === category.value}
-              className="inline-flex min-w-0 items-center gap-2 rounded-card px-3 py-2 text-left text-sm font-semibold text-muted transition duration-fluid ease-fluid hover:bg-canvas/55 hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-selected:bg-canvas/70 aria-selected:text-text"
-              data-testid={`profile-canvas-category-${category.value}`}
-              onClick={() => setActiveCategory(category.value)}
-            >
-              {category.icon}
-              <span className="block truncate">{category.label}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-auto hidden gap-2 pt-3 xl:flex">
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            disabled={busy}
-            icon={<X aria-hidden="true" size={16} />}
-            onClick={onCancel}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            disabled={busy}
-            data-testid="profile-canvas-save-button"
-            icon={<Save aria-hidden="true" size={16} />}
-            onClick={onSave}
-          >
-            Save layout
-          </Button>
-        </div>
+          Close
+        </Button>
       </div>
 
-      <div className="min-h-0 overflow-y-auto p-3" data-testid="profile-canvas-dock">
+      <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,0.8fr)]">
+        <ProfileIdentityEditorFields
+          autosaveError={autosaveError}
+          autosaveState={autosaveState}
+          onImageUpload={onImageUpload}
+          onProfileDraftChange={onProfileDraftChange}
+          profile={profile}
+        />
         <div className="space-y-3">
-          <label className="relative min-w-0 flex-1">
-            <span className="sr-only">Search modules</span>
-            <input
-              className="h-10 w-full rounded-control border border-line bg-canvas/55 px-3 text-sm font-medium text-text placeholder:text-muted focus-visible:outline-2 focus-visible:outline-focus"
-              value={moduleSearch}
-              onChange={(event) => setModuleSearch(event.target.value)}
-              placeholder="Search modules"
-              data-testid="profile-canvas-module-search"
-            />
-          </label>
-        </div>
-
-        {activeCategory === "integrations" ? (
-          <div className="mt-3 space-y-3" data-testid="profile-canvas-integrations">
-            <div className={dockGridClass}>
-              {providerStatuses.map((providerStatus) => {
-                const account = profileIntegrationAccount(providerStatus.provider, integrations?.accounts);
-                const connected = Boolean(account && !account.revokedAt);
-                const canAddModule =
-                  connected ||
-                  providerStatus.provider === "apple_music" ||
-                  (!providerStatus.oauthEnabled && Boolean(providerStatus.linkSupported));
-                const addModuleLabel =
-                  profileCanvasIntegrationModuleType(providerStatus.provider) === "music"
-                    ? "Add music"
-                    : "Add creator";
-
-                return (
-                  <article
-                    key={providerStatus.provider}
-                    className="min-w-0 rounded-card border border-line bg-canvas/48 p-3"
-                    data-testid={`profile-integration-card-${providerStatus.provider}`}
-                  >
-                    <div className="flex items-start gap-2">
-                      <span
-                        className="grid size-9 shrink-0 place-items-center rounded-card border border-line bg-surface/78 text-text"
-                        data-testid={`profile-integration-logo-${providerStatus.provider}`}
-                      >
-                        {profileIntegrationIcon(providerStatus.provider)}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="truncate text-sm font-semibold text-text">
-                          {integrationProviderLabel(providerStatus.provider)}
-                        </h3>
-                        <p className="mt-0.5 truncate text-xs text-muted">
-                          {connected
-                            ? account?.displayName ?? account?.providerHandle ?? "Connected"
-                            : profileIntegrationStatusText(providerStatus)}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {!connected ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          disabled={
-                            busy ||
-                            integrationBusy === providerStatus.provider ||
-                            !providerStatus.oauthEnabled
-                          }
-                          title={
-                            providerStatus.oauthEnabled
-                              ? `Connect ${integrationProviderLabel(providerStatus.provider)}`
-                              : profileIntegrationStatusText(providerStatus)
-                          }
-                          data-testid={`profile-integration-connect-${providerStatus.provider}`}
-                          onClick={() => onConnectIntegration(providerStatus.provider)}
-                        >
-                          Connect
-                        </Button>
-                      ) : null}
-                      {connected ? (
-                        <>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            disabled={busy || integrationBusy === providerStatus.provider}
-                            data-testid={`profile-integration-add-module-${providerStatus.provider}`}
-                            onClick={() =>
-                              onAddModule(
-                                profileCanvasModuleInputFromProvider(
-                                  providerStatus.provider,
-                                  account,
-                                ),
-                              )
-                            }
-                          >
-                            {addModuleLabel}
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            disabled={busy || integrationBusy === providerStatus.provider}
-                            onClick={() => onDisconnectIntegration(providerStatus.provider)}
-                          >
-                            Disconnect
-                          </Button>
-                        </>
-                      ) : null}
-                      {!connected && canAddModule ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          disabled={busy}
-                          data-testid={`profile-integration-add-module-${providerStatus.provider}`}
-                          onClick={() =>
-                            onAddModule(
-                              profileCanvasModuleInputFromProvider(
-                                providerStatus.provider,
-                                account,
-                              ),
-                            )
-                          }
-                        >
-                          {addModuleLabel}
-                        </Button>
-                      ) : null}
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-
-            {integrationMessage ? (
-              <p className="rounded-card border border-line bg-canvas/48 p-3 text-sm font-medium text-muted" role="status">
-                {integrationMessage}
-              </p>
-            ) : null}
-          </div>
-        ) : activeCategory === "removed" ? (
-          <div className={cn("mt-3", dockGridClass)}>
-            {removedModules.length > 0 ? (
-              removedModules.map((module) => (
-                <ProfileDockModuleCard
-                  key={module.id}
-                  actionLabel="Restore"
-                  disabled={busy}
-                  icon={profileCanvasModuleIcon(module.type)}
-                  meta="Removed from canvas"
-                  title={module.title ?? profileModuleFallbackTitle(module.type)}
-                  onAction={() => onRestoreModule(module)}
-                  testId={`profile-canvas-restore-module-${module.id}`}
-                />
-              ))
-            ) : (
-              <p className="rounded-card border border-dashed border-line bg-canvas/45 p-4 text-sm text-muted">
-                Removed modules appear here.
-              </p>
-            )}
-          </div>
-        ) : (
-          <>
-            <div
-              className={cn("mt-3", dockGridClass)}
-              data-testid="profile-canvas-module-browser"
-            >
-              {activeCategory === "essentials" &&
-              (!normalizedSearch || "profile info".includes(normalizedSearch)) ? (
-                <ProfileDockModuleCard
-                  actionLabel="On canvas"
-                  disabled
-                  icon={<UserCheck aria-hidden="true" size={20} />}
-                  meta="Identity anchor. Always visible and not removable."
-                  title="Profile info"
-                  onAction={() => undefined}
-                  testId="profile-canvas-identity-anchor"
-                />
-              ) : null}
-              {visibleEntries.map((entry) => {
-                const existing = profileCanvasEntryActiveModule(entry, modules);
-                const singletonExists = existing && profileCanvasEntryIsSingleton(entry);
-                const addInput = profileCanvasAddInput(entry, userBadges);
-
-                return (
-                  <ProfileDockModuleCard
-                    key={entry}
-                    actionLabel={singletonExists ? "On canvas" : "Add"}
-                    disabled={busy || Boolean(singletonExists) || !addInput}
-                    icon={profileCanvasEntryIcon(entry)}
-                    meta={profileCanvasEntryPurpose(entry)}
-                    title={profileCanvasAddEntryLabel(entry)}
-                    onAction={() => {
-                      if (addInput) {
-                        onAddModule(addInput);
-                      }
-                    }}
-                    testId={`profile-canvas-add-module-${entry}`}
-                  />
-                );
-              })}
-            </div>
-          </>
-        )}
-      </div>
-      {(error || activeModuleTypes.size === 0) ? (
-        <div className="shrink-0 border-t border-line/70 p-3">
+          <ProfileCanvasBackgroundControls
+            backgroundBlur={backgroundBlur}
+            profile={profile}
+            uploading={uploading}
+            onBackgroundBlurChange={onBackgroundBlurChange}
+            onClear={onClearBackground}
+            onImageUpload={(file) => onImageUpload(file, "profile_background")}
+            onVideoUpload={onVideoUpload}
+          />
           {error ? (
-            <p className="text-sm font-medium text-rose-ink" role="alert">
+            <p
+              className="rounded-card border border-rose/30 bg-rose/12 p-3 text-sm font-medium text-rose-ink"
+              role="alert"
+            >
               {error}
             </p>
           ) : null}
-          {activeModuleTypes.size === 0 ? (
-            <p className="text-xs text-muted">Add a module to start shaping this space.</p>
-          ) : null}
         </div>
-      ) : null}
+      </div>
     </section>
   );
-
-  if (useMobilePanel && typeof document !== "undefined") {
-    return createPortal(editorPanel, document.body);
-  }
-
-  return editorPanel;
 }
 
-function useProfileCanvasEditorViewportMode(): ProfileCanvasEditorViewportMode {
-  const [mode, setMode] = useState<ProfileCanvasEditorViewportMode>(() =>
-    profileCanvasEditorViewportMode(),
-  );
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return undefined;
-    }
-
-    const queries = [
-      window.matchMedia("(max-width: 1023px)"),
-      window.matchMedia("(max-width: 1279px)"),
-      window.matchMedia("(max-height: 820px)"),
-    ];
-    const update = () => {
-      const nextMode = profileCanvasEditorViewportMode();
-
-      setMode((current) => (current === nextMode ? current : nextMode));
-    };
-
-    for (const query of queries) {
-      query.addEventListener("change", update);
-    }
-
-    window.addEventListener("resize", update);
-
-    return () => {
-      for (const query of queries) {
-        query.removeEventListener("change", update);
-      }
-
-      window.removeEventListener("resize", update);
-    };
-  }, []);
-
-  return mode;
-}
-
-function profileCanvasEditorViewportMode(): ProfileCanvasEditorViewportMode {
-  if (typeof window === "undefined") {
-    return "wide";
-  }
-
-  if (window.matchMedia("(max-width: 1023px)").matches) {
-    return "mobile";
-  }
-
-  if (
-    window.matchMedia("(max-width: 1279px)").matches ||
-    window.matchMedia("(max-height: 820px)").matches
-  ) {
-    return "compact";
-  }
-
-  return "wide";
-}
-
-function ProfileSelectedModuleControls({
-  busy,
-  feed,
-  integrationBusy,
-  integrations,
-  module,
-  onConnectIntegration,
-  onConfigChange,
-  onDeleteModule,
-  onLayoutChange,
-  onPinnedChange,
+function ProfileIdentityEditorFields({
+  autosaveError,
+  autosaveState,
+  onImageUpload,
   onProfileDraftChange,
-  onProfileImageUpload,
-  onResolveIntegration,
-  onVisibilityChange,
   profile,
-  profileAutosaveError,
-  profileAutosaveState,
-  rooms,
-  size,
 }: {
-  busy: boolean;
-  feed: Post[];
-  integrationBusy?: ProfileIntegrationProvider | "metadata" | undefined;
-  integrations?: ProfileIntegrationsResult | undefined;
-  module: ProfileModule;
-  onConnectIntegration: (provider: ProfileIntegrationProvider) => void;
-  onConfigChange: (config: ProfileModuleConfig) => void;
-  onDeleteModule: () => void;
-  onLayoutChange: (layout: ProfileModuleLayout) => void;
-  onPinnedChange: (pinned: boolean) => void;
-  onProfileDraftChange: (updater: (profile: Profile) => Profile) => void;
-  onProfileImageUpload: (
+  autosaveError?: string | undefined;
+  autosaveState: ProfileContentAutosaveState;
+  onImageUpload: (
     file: File,
     purpose: "avatar" | "banner" | "profile_background",
   ) => void;
-  onResolveIntegration: (input: {
-    provider?: ProfileIntegrationProvider;
-    url: string;
-  }) => Promise<ProfileIntegrationCard>;
-  onVisibilityChange: (visible: boolean) => void;
+  onProfileDraftChange: (updater: (profile: Profile) => Profile) => void;
   profile: Profile;
-  profileAutosaveError?: string | undefined;
-  profileAutosaveState: ProfileContentAutosaveState;
-  rooms: Room[];
-  size: ProfileGridModuleSize;
 }) {
-  const [connectionPlatform, setConnectionPlatform] =
-    useState<ProfileConnectionPlatform>("website");
-  const [connectionValue, setConnectionValue] = useState("");
-  const [connectionError, setConnectionError] = useState<string | undefined>();
-  const [connectionFormOpen, setConnectionFormOpen] = useState(false);
-  const layout = module.layout ?? {
-    column: 1,
-    row: 1,
-    colSpan: profileGridModuleSizeSpan(size).columns,
-    rowSpan: profileGridModuleSizeSpan(size).rows,
-  };
-  const selectedSize =
-    profileGridModuleSpanSize(layout.colSpan, layout.rowSpan) ?? size;
-  const canDelete = module.type !== "profile_info";
-  const visible = module.visibility === "public";
-  const pinned = module.pinned === true;
-  const allowedSizes = profileModuleAllowedSizes(module.type);
-
-  function updateSpan(nextSize: ProfileGridModuleSize) {
-    const span = profileGridModuleSizeSpan(nextSize);
-
-    onLayoutChange(
-      clampProfileModuleLayout({
-        ...layout,
-        colSpan: span.columns,
-        rowSpan: span.rows,
-      }),
-    );
-  }
-
-  function addConnection() {
-    const result = validateProfileConnectionDraft(connectionPlatform, connectionValue);
-
-    if ("error" in result) {
-      setConnectionError(result.error);
-      return;
-    }
-
-    setConnectionError(undefined);
-    setConnectionValue("");
-    setConnectionFormOpen(false);
-    onConfigChange({
-      ...module.config,
-      links: dedupeProfileModuleLinks([
-        ...(module.config.links ?? []),
-        profileModuleLinkFromConnection(result.connection),
-      ]),
-    });
-  }
-
-  function removeConnection(link: ProfileModuleLink) {
-    onConfigChange({
-      ...module.config,
-      links: (module.config.links ?? []).filter((item) => item.url !== link.url),
-    });
-  }
-
   return (
-    <article
-      className="grid max-h-[min(34rem,calc(100dvh-8rem))] min-h-0 min-w-0 grid-rows-[auto_1fr] overflow-hidden rounded-card border border-line-strong bg-surface/90 p-3 text-sm shadow-lift backdrop-blur-veil"
-      data-profile-edit-control="true"
-      data-testid="profile-selected-module-controls"
-      data-profile-module-edit-surface="true"
-      role="region"
-      aria-label={`Edit ${profileModuleFallbackTitle(module.type)} module`}
-    >
-      <header className="min-w-0 pr-10">
-        <div className="min-w-0">
-          <p className="truncate font-semibold text-text">
-            {module.title ?? profileModuleFallbackTitle(module.type)}
-          </p>
-        </div>
-      </header>
-
-      <div className="mt-3 min-h-0 overflow-y-auto pr-1">
-        <div>
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold uppercase text-muted">Size</p>
-            <div className="relative z-30 flex shrink-0 gap-1">
-              <button
-                type="button"
-                className="grid size-8 place-items-center rounded-control border border-line bg-canvas/55 text-muted transition hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-accent aria-pressed:text-accent-ink"
-                aria-label={pinned ? "Unpin module" : "Pin module"}
-                aria-pressed={pinned}
-                title={pinned ? "Unpin module" : "Pin module"}
-                data-profile-edit-control="true"
-                data-testid="profile-canvas-pin-module-button"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onPinnedChange(!pinned);
-                }}
-                onPointerDown={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onPinnedChange(!pinned);
-                }}
-              >
-                <Pin aria-hidden="true" size={15} />
-              </button>
-              <button
-                type="button"
-                className="grid size-8 place-items-center rounded-control border border-line bg-canvas/55 text-muted transition hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-50"
-                aria-label={visible ? "Hide module" : "Show module"}
-                title={visible ? "Hide module" : "Show module"}
-                disabled={module.type === "profile_info"}
-                data-profile-edit-control="true"
-                data-testid="profile-canvas-visibility-button"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onVisibilityChange(!visible);
-                }}
-                onPointerDown={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onVisibilityChange(!visible);
-                }}
-              >
-                <Eye aria-hidden="true" size={15} />
-              </button>
-              <button
-                type="button"
-                className="grid size-8 place-items-center rounded-control border border-line bg-canvas/55 text-muted transition hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-50"
-                aria-label="Remove module"
-                title="Remove module"
-                disabled={!canDelete || busy}
-                data-profile-edit-control="true"
-                data-testid="profile-canvas-delete-module-button"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onDeleteModule();
-                }}
-                onPointerDown={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onDeleteModule();
-                }}
-              >
-                <Trash2 aria-hidden="true" size={15} />
-              </button>
-            </div>
-          </div>
-          <div className="mt-1 flex flex-wrap gap-1">
-            {allowedSizes.map((allowedSize) => (
-              <button
-                key={allowedSize}
-                type="button"
-                className="rounded-control border border-line bg-canvas/55 px-2 py-1 text-xs font-semibold text-muted transition hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-surface aria-pressed:text-text"
-                aria-pressed={selectedSize === allowedSize}
-                data-testid={`profile-canvas-size-${allowedSize}`}
-                onClick={() => updateSpan(allowedSize)}
-              >
-                {profileModuleSizeLabel(module.type, allowedSize)}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <ProfileSelectedModuleContentControls
-          connectionError={connectionError}
-          connectionFormOpen={connectionFormOpen}
-          connectionPlatform={connectionPlatform}
-          connectionValue={connectionValue}
-          feed={feed}
-          integrationBusy={integrationBusy}
-          integrations={integrations}
-          module={module}
-          profile={profile}
-          profileAutosaveError={profileAutosaveError}
-          profileAutosaveState={profileAutosaveState}
-          rooms={rooms}
-          onAddConnection={addConnection}
-          onConnectIntegration={onConnectIntegration}
-          onConfigChange={onConfigChange}
-          onConnectionFormOpenChange={setConnectionFormOpen}
-          onConnectionPlatformChange={setConnectionPlatform}
-          onConnectionValueChange={setConnectionValue}
-          onProfileDraftChange={onProfileDraftChange}
-          onProfileImageUpload={onProfileImageUpload}
-          onRemoveConnection={removeConnection}
-          onResolveIntegration={onResolveIntegration}
-          onSizeChange={updateSpan}
-          selectedSize={selectedSize}
-        />
+    <div className="min-w-0 space-y-3" data-testid="profile-identity-editor">
+      <ProfileInfoAutosaveStatus error={autosaveError} state={autosaveState} />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-xs font-semibold uppercase text-muted">
+          Name
+          <input
+            className="mt-1 h-10 w-full rounded-control border border-line bg-canvas/55 px-3 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
+            value={profile.user.displayName}
+            data-testid="profile-info-display-name-input"
+            onChange={(event) =>
+              onProfileDraftChange((current) => ({
+                ...current,
+                user: { ...current.user, displayName: event.target.value },
+              }))
+            }
+          />
+        </label>
+        <label className="text-xs font-semibold uppercase text-muted">
+          Location
+          <input
+            className="mt-1 h-10 w-full rounded-control border border-line bg-canvas/55 px-3 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
+            value={profile.location}
+            data-testid="profile-info-location-input"
+            onChange={(event) =>
+              onProfileDraftChange((current) => ({
+                ...current,
+                location: event.target.value,
+              }))
+            }
+          />
+        </label>
+        <label className="text-xs font-semibold uppercase text-muted sm:col-span-2">
+          Bio
+          <textarea
+            className="mt-1 min-h-24 w-full resize-y rounded-control border border-line bg-canvas/55 px-3 py-2 text-sm font-medium normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
+            value={profile.bio}
+            data-testid="profile-info-bio-input"
+            onChange={(event) =>
+              onProfileDraftChange((current) => ({
+                ...current,
+                bio: event.target.value,
+              }))
+            }
+          />
+        </label>
+        <label className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-canvas/55 px-3 text-sm font-semibold text-text transition hover:border-line-strong focus-within:outline-2 focus-within:outline-focus">
+          <ImagePlus aria-hidden="true" size={16} />
+          Avatar
+          <input
+            className="sr-only"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            data-testid="profile-info-avatar-input"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              if (file) {
+                onImageUpload(file, "avatar");
+              }
+              event.currentTarget.value = "";
+            }}
+          />
+        </label>
+        <label className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-canvas/55 px-3 text-sm font-semibold text-text transition hover:border-line-strong focus-within:outline-2 focus-within:outline-focus">
+          <ImagePlus aria-hidden="true" size={16} />
+          Banner
+          <input
+            className="sr-only"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            data-testid="profile-info-banner-input"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              if (file) {
+                onImageUpload(file, "banner");
+              }
+              event.currentTarget.value = "";
+            }}
+          />
+        </label>
       </div>
-    </article>
+    </div>
   );
 }
 
@@ -3644,723 +1734,6 @@ function ProfileInfoAutosaveStatus({
     >
       {message}
     </p>
-  );
-}
-
-function ProfileSelectedModuleContentControls({
-  connectionError,
-  connectionFormOpen,
-  connectionPlatform,
-  connectionValue,
-  feed,
-  integrationBusy,
-  integrations,
-  module,
-  onAddConnection,
-  onConnectIntegration,
-  onConfigChange,
-  onConnectionFormOpenChange,
-  onConnectionPlatformChange,
-  onConnectionValueChange,
-  onProfileDraftChange,
-  onProfileImageUpload,
-  onRemoveConnection,
-  onResolveIntegration,
-  onSizeChange,
-  profile,
-  profileAutosaveError,
-  profileAutosaveState,
-  rooms,
-  selectedSize,
-}: {
-  connectionError?: string | undefined;
-  connectionFormOpen: boolean;
-  connectionPlatform: ProfileConnectionPlatform;
-  connectionValue: string;
-  feed: Post[];
-  integrationBusy?: ProfileIntegrationProvider | "metadata" | undefined;
-  integrations?: ProfileIntegrationsResult | undefined;
-  module: ProfileModule;
-  onAddConnection: () => void;
-  onConnectIntegration: (provider: ProfileIntegrationProvider) => void;
-  onConfigChange: (config: ProfileModuleConfig) => void;
-  onConnectionFormOpenChange: (open: boolean) => void;
-  onConnectionPlatformChange: (platform: ProfileConnectionPlatform) => void;
-  onConnectionValueChange: (value: string) => void;
-  onProfileDraftChange: (updater: (profile: Profile) => Profile) => void;
-  onProfileImageUpload: (
-    file: File,
-    purpose: "avatar" | "banner" | "profile_background",
-  ) => void;
-  onRemoveConnection: (link: ProfileModuleLink) => void;
-  onResolveIntegration: (input: {
-    provider?: ProfileIntegrationProvider;
-    url: string;
-  }) => Promise<ProfileIntegrationCard>;
-  onSizeChange: (size: ProfileGridModuleSize) => void;
-  profile: Profile;
-  profileAutosaveError?: string | undefined;
-  profileAutosaveState: ProfileContentAutosaveState;
-  rooms: Room[];
-  selectedSize: ProfileGridModuleSize;
-}) {
-  if (module.type === "profile_info") {
-    return (
-      <div className="mt-3 space-y-3">
-        <ProfileInfoAutosaveStatus
-          error={profileAutosaveError}
-          state={profileAutosaveState}
-        />
-        <div className="grid gap-2 sm:grid-cols-2">
-          <label className="text-xs font-semibold uppercase text-muted">
-            Name
-            <input
-              className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/55 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
-              value={profile.user.displayName}
-              data-testid="profile-info-display-name-input"
-              onChange={(event) =>
-                onProfileDraftChange((current) => ({
-                  ...current,
-                  user: { ...current.user, displayName: event.target.value },
-                }))
-              }
-            />
-          </label>
-          <label className="text-xs font-semibold uppercase text-muted">
-            Location
-            <input
-              className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/55 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
-              value={profile.location}
-              data-testid="profile-info-location-input"
-              onChange={(event) =>
-                onProfileDraftChange((current) => ({
-                  ...current,
-                  location: event.target.value,
-                }))
-              }
-            />
-          </label>
-          <label className="sm:col-span-2 text-xs font-semibold uppercase text-muted">
-            Bio
-            <textarea
-              className="mt-1 min-h-16 w-full resize-none rounded-control border border-line bg-canvas/55 px-2 py-2 text-sm font-medium normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
-              value={profile.bio}
-              data-testid="profile-info-bio-input"
-              onChange={(event) =>
-                onProfileDraftChange((current) => ({
-                  ...current,
-                  bio: event.target.value,
-                }))
-              }
-            />
-          </label>
-          <label className="inline-flex min-h-9 cursor-pointer items-center justify-center rounded-control border border-line bg-canvas/55 px-2 text-xs font-semibold text-muted transition hover:text-text focus-within:outline-2 focus-within:outline-focus">
-            Avatar
-            <input
-              className="sr-only"
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              data-testid="profile-info-avatar-input"
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                if (file) {
-                  onProfileImageUpload(file, "avatar");
-                }
-                event.currentTarget.value = "";
-              }}
-            />
-          </label>
-          <label className="inline-flex min-h-9 cursor-pointer items-center justify-center rounded-control border border-line bg-canvas/55 px-2 text-xs font-semibold text-muted transition hover:text-text focus-within:outline-2 focus-within:outline-focus">
-            Banner
-            <input
-              className="sr-only"
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              data-testid="profile-info-banner-input"
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                if (file) {
-                  onProfileImageUpload(file, "banner");
-                }
-                event.currentTarget.value = "";
-              }}
-            />
-          </label>
-        </div>
-      </div>
-    );
-  }
-
-  if (module.type === "links") {
-    const links = module.config.links ?? [];
-
-    return (
-      <div className="mt-3 space-y-2">
-        <div className="flex flex-wrap gap-1">
-          {links.map((link) => (
-            <span
-              key={`${link.platform ?? "website"}-${link.url}`}
-              className="inline-flex max-w-full items-center gap-1 rounded-control border border-line bg-canvas/55 px-2 py-1 text-xs font-semibold text-muted"
-            >
-              <span className="truncate">{link.label || moduleLinkLabelFromUrl(link.url)}</span>
-              <button
-                type="button"
-                className="rounded-full text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
-                aria-label={`Remove ${link.label || "connection"}`}
-                onClick={() => onRemoveConnection(link)}
-              >
-                <X aria-hidden="true" size={12} />
-              </button>
-            </span>
-          ))}
-        </div>
-        <button
-          type="button"
-          className="inline-flex min-h-9 items-center rounded-control border border-line bg-canvas/55 px-3 text-sm font-semibold text-text transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus"
-          data-testid="profile-connection-add-open-button"
-          onClick={() => onConnectionFormOpenChange(!connectionFormOpen)}
-        >
-          Add connection +
-        </button>
-        {connectionFormOpen ? (
-          <div
-            className="rounded-card border border-line bg-canvas/45 p-2"
-            data-testid="profile-connection-add-popover"
-          >
-            <div className="flex flex-wrap gap-1" aria-label="Connection platform">
-              {profileConnectionPlatforms.map((platform) => (
-                <button
-                  key={platform.value}
-                  type="button"
-                  className="inline-flex min-h-9 items-center gap-1.5 rounded-control border border-line bg-surface/62 px-2 text-xs font-semibold text-muted transition hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-accent aria-pressed:text-accent-ink"
-                  aria-label={platform.label}
-                  aria-pressed={connectionPlatform === platform.value}
-                  data-testid={`profile-connection-platform-${platform.value}`}
-                  onClick={() => onConnectionPlatformChange(platform.value)}
-                >
-                  <ProfileConnectionIcon platform={platform.value} size={15} />
-                  <span className="max-w-20 truncate">{platform.label}</span>
-                </button>
-              ))}
-            </div>
-            <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
-              <label className="text-xs font-semibold uppercase text-muted">
-                Handle or URL
-                <input
-                  className="mt-1 h-9 w-full rounded-control border border-line bg-surface/68 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
-                  value={connectionValue}
-                  data-testid="profile-connection-value-input"
-                  onChange={(event) => onConnectionValueChange(event.target.value)}
-                  placeholder={connectionPlatformLabel(connectionPlatform)}
-                />
-              </label>
-              <div className="flex items-end">
-                <button
-                  type="button"
-                  className="min-h-9 rounded-control bg-accent px-3 text-sm font-semibold text-accent-ink focus-visible:outline-2 focus-visible:outline-focus"
-                  data-testid="profile-connection-add-button"
-                  onClick={onAddConnection}
-                >
-                  Add
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-        {connectionFormOpen ? null : links.length === 0 ? (
-          <p className="text-xs text-muted">No connections yet.</p>
-        ) : null}
-        {connectionError ? (
-          <p className="text-xs font-semibold text-rose-ink" role="alert">
-            {connectionError}
-          </p>
-        ) : null}
-      </div>
-    );
-  }
-
-  if (module.type === "about" || module.type === "custom_text") {
-    return (
-      <label className="mt-3 block text-xs font-semibold uppercase text-muted">
-        Text
-        <textarea
-          className="mt-1 min-h-16 w-full resize-none rounded-control border border-line bg-canvas/55 px-2 py-2 text-sm font-medium normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
-          value={module.config.body ?? ""}
-          data-testid="profile-module-body-input"
-          onChange={(event) =>
-            onConfigChange({
-              ...module.config,
-              body: event.target.value,
-            })
-          }
-        />
-      </label>
-    );
-  }
-
-  if (module.type === "music") {
-    return (
-      <ProfileMusicModuleConfigControls
-        key={module.id}
-        integrationBusy={integrationBusy}
-        integrations={integrations}
-        module={module}
-        onConfigChange={onConfigChange}
-        onConnectIntegration={onConnectIntegration}
-        onResolveIntegration={onResolveIntegration}
-      />
-    );
-  }
-
-  if (module.type === "creator_live") {
-    return (
-      <ProfileCreatorModuleConfigControls
-        key={module.id}
-        integrationBusy={integrationBusy}
-        integrations={integrations}
-        module={module}
-        selectedSize={selectedSize}
-        onConfigChange={onConfigChange}
-        onConnectIntegration={onConnectIntegration}
-        onResolveIntegration={onResolveIntegration}
-        onSizeChange={onSizeChange}
-      />
-    );
-  }
-
-  if (module.type === "featured_post") {
-    return (
-      <label className="mt-3 block text-xs font-semibold uppercase text-muted">
-        Featured post
-        <select
-          className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/55 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
-          value={profile.featuredPostId ?? ""}
-          data-testid="profile-featured-post-select"
-          onChange={(event) => {
-            const id = Number(event.target.value) || null;
-            const post = feed.find((item) => item.id === id) ?? null;
-
-            onProfileDraftChange((current) => ({
-              ...current,
-              featuredPostId: id,
-              featuredPost: post,
-            }));
-          }}
-        >
-          <option value="">Choose post</option>
-          {feed.map((post) => (
-            <option key={post.id} value={post.id}>
-              {post.body.slice(0, 72)}
-            </option>
-          ))}
-        </select>
-      </label>
-    );
-  }
-
-  if (module.type === "featured_room") {
-    return (
-      <label className="mt-3 block text-xs font-semibold uppercase text-muted">
-        Featured room
-        <select
-          className="mt-1 h-9 w-full rounded-control border border-line bg-canvas/55 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
-          value={profile.featuredRoomId ?? ""}
-          data-testid="profile-featured-room-select"
-          onChange={(event) => {
-            const id = Number(event.target.value) || null;
-            const room = rooms.find((item) => item.id === id) ?? null;
-
-            onProfileDraftChange((current) => ({
-              ...current,
-              featuredRoomId: id,
-              featuredRoom: room,
-            }));
-          }}
-        >
-          <option value="">Choose room</option>
-          {rooms.map((room) => (
-            <option key={room.id} value={room.id}>
-              {room.name}
-            </option>
-          ))}
-        </select>
-      </label>
-    );
-  }
-
-  return null;
-}
-
-function ProfileMusicModuleConfigControls({
-  integrationBusy,
-  integrations,
-  module,
-  onConfigChange,
-  onConnectIntegration,
-  onResolveIntegration,
-}: {
-  integrationBusy?: ProfileIntegrationProvider | "metadata" | undefined;
-  integrations?: ProfileIntegrationsResult | undefined;
-  module: ProfileModule;
-  onConfigChange: (config: ProfileModuleConfig) => void;
-  onConnectIntegration: (provider: ProfileIntegrationProvider) => void;
-  onResolveIntegration: (input: {
-    provider?: ProfileIntegrationProvider;
-    url: string;
-  }) => Promise<ProfileIntegrationCard>;
-}) {
-  const selectedProvider = profileMusicProviderFromConfig(module.config);
-  const [url, setUrl] = useState(module.config.url ?? "");
-  const [preview, setPreview] = useState<ProfileIntegrationCard | undefined>(
-    module.config.integration,
-  );
-  const [error, setError] = useState<string | undefined>();
-  const [resolving, setResolving] = useState(false);
-  const spotifyStatus = profileIntegrationStatus("spotify", integrations?.providers);
-  const spotifyAccount = profileIntegrationAccount("spotify", integrations?.accounts);
-  const spotifyConnected = Boolean(spotifyAccount && !spotifyAccount.revokedAt);
-
-  async function resolveUrl() {
-    const trimmed = url.trim();
-
-    if (!trimmed) {
-      setError("Paste a song or playlist URL.");
-      return;
-    }
-
-    setResolving(true);
-    setError(undefined);
-
-    try {
-      const card = await onResolveIntegration({
-        provider: selectedProvider,
-        url: trimmed,
-      });
-
-      setPreview(card);
-      onConfigChange({
-        ...profileModulePersistentConfig(module.config),
-        displayMode: "embed",
-        label: card.metadata.title ?? integrationProviderLabel(card.provider),
-        platform: profileMusicPlatformFromProvider(card.provider),
-        sourceMode: profileMusicSourceModeFromProvider(card.provider),
-        url: card.sourceUrl,
-        ...(card.metadata.description
-          ? { description: card.metadata.description }
-          : {}),
-      });
-    } catch (metadataError) {
-      setError(
-        metadataError instanceof Error
-          ? metadataError.message
-          : "Could not preview that link.",
-      );
-    } finally {
-      setResolving(false);
-    }
-  }
-
-  function selectProvider(provider: Extract<ProfileIntegrationProvider, "spotify" | "apple_music" | "youtube">) {
-    onConfigChange({
-      ...profileModulePersistentConfig(module.config),
-      displayMode: "embed",
-      platform: profileMusicPlatformFromProvider(provider),
-      sourceMode: profileMusicSourceModeFromProvider(provider),
-    });
-  }
-
-  return (
-    <div className="mt-3 space-y-3" data-testid="profile-music-config">
-      <div className="flex flex-wrap gap-1" aria-label="Music source">
-        {musicModuleProviderOptions.map((option) => (
-          <button
-            key={option.provider}
-            type="button"
-            className="inline-flex min-h-9 items-center gap-1.5 rounded-control border border-line bg-canvas/55 px-2 text-xs font-semibold text-muted transition hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-accent aria-pressed:text-accent-ink"
-            aria-pressed={selectedProvider === option.provider}
-            data-testid={`profile-music-provider-${option.provider}`}
-            onClick={() => selectProvider(option.provider)}
-          >
-            {profileIntegrationIcon(option.provider)}
-            <span>{option.label}</span>
-          </button>
-        ))}
-      </div>
-
-      {selectedProvider === "spotify" && !spotifyConnected && spotifyStatus.oauthEnabled ? (
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          disabled={integrationBusy === "spotify"}
-          data-testid="profile-music-connect-spotify"
-          onClick={() => onConnectIntegration("spotify")}
-        >
-          Connect Spotify
-        </Button>
-      ) : null}
-
-      <label className="block text-xs font-semibold uppercase text-muted">
-        Song or playlist URL
-        <div className="mt-1 grid gap-2 sm:grid-cols-[1fr_auto]">
-          <input
-            className="h-9 w-full rounded-control border border-line bg-canvas/55 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
-            value={url}
-            data-testid="profile-music-url-input"
-            onChange={(event) => setUrl(event.target.value)}
-            placeholder={musicModuleUrlPlaceholder(selectedProvider)}
-          />
-          <Button
-            type="button"
-            size="sm"
-            disabled={resolving}
-            data-testid="profile-music-preview-button"
-            onClick={() => void resolveUrl()}
-          >
-            {resolving ? "Checking" : "Use"}
-          </Button>
-        </div>
-      </label>
-
-      {preview ? (
-        <ProfileIntegrationPreviewSummary card={preview} />
-      ) : null}
-      {error ? (
-        <p className="text-xs font-semibold text-rose-ink" role="alert">
-          {error}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function ProfileCreatorModuleConfigControls({
-  integrationBusy,
-  integrations,
-  module,
-  onConfigChange,
-  onConnectIntegration,
-  onResolveIntegration,
-  onSizeChange,
-  selectedSize,
-}: {
-  integrationBusy?: ProfileIntegrationProvider | "metadata" | undefined;
-  integrations?: ProfileIntegrationsResult | undefined;
-  module: ProfileModule;
-  onConfigChange: (config: ProfileModuleConfig) => void;
-  onConnectIntegration: (provider: ProfileIntegrationProvider) => void;
-  onResolveIntegration: (input: {
-    provider?: ProfileIntegrationProvider;
-    url: string;
-  }) => Promise<ProfileIntegrationCard>;
-  onSizeChange: (size: ProfileGridModuleSize) => void;
-  selectedSize: ProfileGridModuleSize;
-}) {
-  const selectedProvider = profileCreatorProviderFromConfig(module.config);
-  const selectedMode =
-    module.config.displayMode ?? profileCreatorDefaultDisplayMode(selectedProvider);
-  const [url, setUrl] = useState(module.config.url ?? "");
-  const [preview, setPreview] = useState<ProfileIntegrationCard | undefined>(
-    module.config.integration,
-  );
-  const [error, setError] = useState<string | undefined>();
-  const [resolving, setResolving] = useState(false);
-  const providerStatus = profileIntegrationStatus(selectedProvider, integrations?.providers);
-  const account = profileIntegrationAccount(selectedProvider, integrations?.accounts);
-  const connected = Boolean(account && !account.revokedAt);
-  const accountUrl = account ? profileIntegrationAccountUrl(account) : undefined;
-  const modeOptions = creatorModuleModeOptions(selectedProvider);
-
-  function selectProvider(provider: Extract<ProfileIntegrationProvider, "youtube" | "twitch" | "github">) {
-    const nextMode = profileCreatorDefaultDisplayMode(provider);
-
-    onConfigChange({
-      ...profileModulePersistentConfig(module.config),
-      displayMode: nextMode,
-      platform: integrationPlatformFromProvider(provider),
-      sourceMode: profileIntegrationSourceMode(provider),
-    });
-  }
-
-  function selectMode(mode: string, minSize?: ProfileGridModuleSize) {
-    onConfigChange({
-      ...profileModulePersistentConfig(module.config),
-      displayMode: mode,
-      platform: integrationPlatformFromProvider(selectedProvider),
-      sourceMode: profileIntegrationSourceMode(selectedProvider),
-    });
-
-    if (minSize && !profileGridSizeAtLeast(selectedSize, minSize)) {
-      onSizeChange(minSize);
-    }
-  }
-
-  function useConnectedAccount() {
-    if (!accountUrl || !account) {
-      return;
-    }
-
-    setUrl(accountUrl);
-    onConfigChange({
-      ...profileModulePersistentConfig(module.config),
-      displayMode: selectedMode,
-      label: account.displayName ?? account.providerHandle ?? integrationProviderLabel(account.provider),
-      platform: integrationPlatformFromProvider(account.provider),
-      sourceMode: profileIntegrationSourceMode(account.provider),
-      url: accountUrl,
-    });
-  }
-
-  async function resolveUrl() {
-    const trimmed = url.trim();
-
-    if (!trimmed) {
-      setError("Paste a supported source URL.");
-      return;
-    }
-
-    setResolving(true);
-    setError(undefined);
-
-    try {
-      const card = await onResolveIntegration({
-        provider: selectedProvider,
-        url: trimmed,
-      });
-
-      setPreview(card);
-      onConfigChange({
-        ...profileModulePersistentConfig(module.config),
-        displayMode: selectedMode,
-        label: card.metadata.title ?? integrationProviderLabel(card.provider),
-        platform: integrationPlatformFromProvider(card.provider),
-        sourceMode: profileIntegrationSourceMode(card.provider),
-        url: card.sourceUrl,
-        ...(card.metadata.description
-          ? { description: card.metadata.description }
-          : {}),
-      });
-    } catch (metadataError) {
-      setError(
-        metadataError instanceof Error
-          ? metadataError.message
-          : "Could not preview that source.",
-      );
-    } finally {
-      setResolving(false);
-    }
-  }
-
-  return (
-    <div className="mt-3 space-y-3" data-testid="profile-creator-config">
-      <div className="flex flex-wrap gap-1" aria-label="Creator source">
-        {creatorModuleProviderOptions.map((option) => (
-          <button
-            key={option.provider}
-            type="button"
-            className="inline-flex min-h-9 items-center gap-1.5 rounded-control border border-line bg-canvas/55 px-2 text-xs font-semibold text-muted transition hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-accent aria-pressed:text-accent-ink"
-            aria-pressed={selectedProvider === option.provider}
-            data-testid={`profile-creator-provider-${option.provider}`}
-            onClick={() => selectProvider(option.provider)}
-          >
-            {profileIntegrationIcon(option.provider)}
-            <span>{option.label}</span>
-          </button>
-        ))}
-      </div>
-
-      <div className="flex flex-wrap gap-1" aria-label="Creator display">
-        {modeOptions.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            className="rounded-control border border-line bg-canvas/55 px-2 py-1 text-xs font-semibold text-muted transition hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-surface aria-pressed:text-text"
-            aria-pressed={selectedMode === option.value}
-            data-testid={`profile-creator-mode-${option.value}`}
-            onClick={() => selectMode(option.value, option.minSize)}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-
-      {!connected && providerStatus.oauthEnabled ? (
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          disabled={integrationBusy === selectedProvider}
-          data-testid={`profile-creator-connect-${selectedProvider}`}
-          onClick={() => onConnectIntegration(selectedProvider)}
-        >
-          Connect {integrationProviderLabel(selectedProvider)}
-        </Button>
-      ) : null}
-
-      {connected && accountUrl ? (
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          data-testid={`profile-creator-use-connected-${selectedProvider}`}
-          onClick={useConnectedAccount}
-        >
-          Use connected account
-        </Button>
-      ) : null}
-
-      <label className="block text-xs font-semibold uppercase text-muted">
-        Source URL
-        <div className="mt-1 grid gap-2 sm:grid-cols-[1fr_auto]">
-          <input
-            className="h-9 w-full rounded-control border border-line bg-canvas/55 px-2 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
-            value={url}
-            data-testid="profile-creator-url-input"
-            onChange={(event) => setUrl(event.target.value)}
-            placeholder={creatorModuleUrlPlaceholder(selectedProvider, selectedMode)}
-          />
-          <Button
-            type="button"
-            size="sm"
-            disabled={resolving}
-            data-testid="profile-creator-preview-button"
-            onClick={() => void resolveUrl()}
-          >
-            {resolving ? "Checking" : "Use"}
-          </Button>
-        </div>
-      </label>
-
-      {preview ? (
-        <ProfileIntegrationPreviewSummary card={preview} />
-      ) : null}
-      {error ? (
-        <p className="text-xs font-semibold text-rose-ink" role="alert">
-          {error}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function ProfileIntegrationPreviewSummary({
-  card,
-}: {
-  card: ProfileIntegrationCard;
-}) {
-  return (
-    <div
-      className="rounded-card border border-line bg-canvas/45 px-3 py-2 text-sm"
-      data-testid="profile-integration-preview-summary"
-    >
-      <p className="truncate font-semibold text-text">
-        {card.metadata.title ?? integrationProviderLabel(card.provider)}
-      </p>
-      <p className="truncate text-xs text-muted">
-        {integrationProviderLabel(card.provider)}
-        {card.resourceType ? ` · ${card.resourceType}` : ""}
-      </p>
-    </div>
   );
 }
 
@@ -4535,504 +1908,8 @@ function ProfileCanvasBackgroundControls({
   );
 }
 
-function ProfileDockModuleCard({
-  actionLabel,
-  active,
-  disabled,
-  icon,
-  meta,
-  onAction,
-  testId,
-  title,
-}: {
-  actionLabel: string;
-  active?: boolean;
-  disabled?: boolean;
-  icon: ReactNode;
-  meta: string;
-  onAction: () => void;
-  testId: string;
-  title: string;
-}) {
-  return (
-    <article
-      className={cn(
-        "flex min-w-0 items-center gap-2 rounded-card border bg-canvas/48 p-2.5 transition duration-fluid ease-fluid",
-        active ? "border-line-strong bg-surface/70" : "border-line",
-      )}
-      data-testid={testId}
-    >
-      <span className="grid size-9 shrink-0 place-items-center rounded-card border border-line bg-surface/78 text-text">
-        {icon}
-      </span>
-      <div className="min-w-0 flex-1">
-        <h3 className="truncate text-sm font-semibold text-text">{title}</h3>
-        <p className="truncate text-xs text-muted">{meta}</p>
-      </div>
-      <button
-        type="button"
-        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-control border border-line bg-surface/70 px-2.5 text-xs font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55"
-        disabled={disabled}
-        onClick={onAction}
-      >
-        {actionLabel === "Restore" ? (
-          <Undo2 aria-hidden="true" size={14} />
-        ) : actionLabel === "On canvas" ? (
-          <Eye aria-hidden="true" size={14} />
-        ) : (
-          <Plus aria-hidden="true" size={14} />
-        )}
-        {actionLabel}
-      </button>
-    </article>
-  );
-}
-
-function profileCanvasAddEntryLabel(entry: ProfileCanvasAddEntry): string {
-  return profileCanvasAddEntries.find((item) => item.value === entry)?.label ?? "Module";
-}
-
-function profileCanvasEntryPurpose(entry: ProfileCanvasAddEntry): string {
-  return matchProfileCanvasEntry(entry, {
-    about: "A compact intro, mood, or current focus.",
-    activity: "Recent public posts, replies, and rooms.",
-    creator_live: "A creator channel, stream, or public project link.",
-    custom_text: "A short plain-text note with an optional link.",
-    featured_badges: "Earned badges worth showing at a glance.",
-    featured_post: "Pin one eligible post without moving the post itself.",
-    featured_room: "Pin one eligible room without changing the room.",
-    gallery_media: "Uploaded profile media in a restrained preview.",
-    github_project: "A public repository card.",
-    links: "A concise set of links or connections.",
-    music: "Spotify, Apple Music, or another music link card.",
-  });
-}
-
-function profileCanvasEntryIcon(entry: ProfileCanvasAddEntry): ReactNode {
-  return matchProfileCanvasEntry(entry, {
-    about: <Sparkles aria-hidden="true" size={20} />,
-    activity: <Repeat2 aria-hidden="true" size={20} />,
-    creator_live: <Radio aria-hidden="true" size={20} />,
-    custom_text: <FileTextIcon />,
-    featured_badges: <BadgeCheck aria-hidden="true" size={20} />,
-    featured_post: <Star aria-hidden="true" size={20} />,
-    featured_room: <Users aria-hidden="true" size={20} />,
-    gallery_media: <Video aria-hidden="true" size={20} />,
-    github_project: <Bug aria-hidden="true" size={20} />,
-    links: <Link2 aria-hidden="true" size={20} />,
-    music: <Music2 aria-hidden="true" size={20} />,
-  });
-}
-
-function profileCanvasModuleIcon(type: ProfileModuleType): ReactNode {
-  if (type === "profile_info") {
-    return <UserCheck aria-hidden="true" size={20} />;
-  }
-
-  const entry = profileCanvasEntryFromType(type);
-
-  return entry ? profileCanvasEntryIcon(entry) : <Sparkles aria-hidden="true" size={20} />;
-}
-
-function profileCanvasEntryFromType(type: ProfileModuleType): ProfileCanvasAddEntry | undefined {
-  if (type === "about") {
-    return "about";
-  }
-
-  if (type === "links") {
-    return "links";
-  }
-
-  if (type === "featured_badges") {
-    return "featured_badges";
-  }
-
-  if (type === "featured_post") {
-    return "featured_post";
-  }
-
-  if (type === "featured_room") {
-    return "featured_room";
-  }
-
-  if (type === "gallery_media") {
-    return "gallery_media";
-  }
-
-  if (type === "creator_live") {
-    return "creator_live";
-  }
-
-  if (type === "music") {
-    return "music";
-  }
-
-  if (type === "custom_text") {
-    return "custom_text";
-  }
-
-  if (type === "activity") {
-    return "activity";
-  }
-
-  return undefined;
-}
-
-function profileCanvasEntryActiveModule(
-  entry: ProfileCanvasAddEntry,
-  modules: ProfileModule[],
-): ProfileModule | undefined {
-  const type = entry === "github_project" ? "creator_live" : entry;
-
-  if (!profileCanvasEntryIsSingleton(entry)) {
-    return undefined;
-  }
-
-  return modules.find((module) => module.type === type && module.status === "active");
-}
-
-function profileCanvasEntryIsSingleton(entry: ProfileCanvasAddEntry): boolean {
-  return entry === "featured_post" || entry === "featured_room" || entry === "activity";
-}
-
-function matchProfileCanvasEntry<T>(
-  entry: ProfileCanvasAddEntry,
-  values: Record<ProfileCanvasAddEntry, T>,
-): T {
-  return values[entry];
-}
-
 function blurLabel(blur: ProfileBackgroundBlur): string {
   return blur === "none" ? "None" : blur[0]!.toUpperCase() + blur.slice(1);
-}
-
-function profileIntegrationStatus(
-  provider: ProfileIntegrationProvider,
-  statuses: ProfileIntegrationProviderStatus[] | undefined,
-): ProfileIntegrationProviderStatus {
-  return (
-    statuses?.find((status) => status.provider === provider) ?? {
-      provider,
-      configured: false,
-      oauthEnabled: false,
-      linkSupported: true,
-      metadataEnabled: false,
-      missingConfigKeys: [],
-    }
-  );
-}
-
-function profileIntegrationAccount(
-  provider: ProfileIntegrationProvider,
-  accounts: ProfileIntegrationAccount[] | undefined,
-): ProfileIntegrationAccount | undefined {
-  return accounts?.find((account) => account.provider === provider);
-}
-
-function integrationProviderLabel(provider: ProfileIntegrationProvider): string {
-  if (provider === "apple_music") {
-    return "Apple Music";
-  }
-
-  if (provider === "youtube") {
-    return "YouTube";
-  }
-
-  if (provider === "github") {
-    return "GitHub";
-  }
-
-  return provider[0]!.toUpperCase() + provider.slice(1);
-}
-
-function integrationPlatformFromProvider(
-  provider: ProfileIntegrationProvider | undefined,
-): string {
-  return provider ?? "website";
-}
-
-function profileCanvasIntegrationModuleType(
-  provider: ProfileIntegrationProvider,
-): Extract<ProfileModuleType, "creator_live" | "music"> {
-  return provider === "spotify" || provider === "apple_music" ? "music" : "creator_live";
-}
-
-function profileCanvasModuleInputFromProvider(
-  provider: ProfileIntegrationProvider,
-  account: ProfileIntegrationAccount | undefined,
-): CreateProfileModuleInput {
-  const type = profileCanvasIntegrationModuleType(provider);
-  const url =
-    type === "creator_live" && account
-      ? profileIntegrationAccountUrl(account)
-      : undefined;
-  const label =
-    account?.displayName ||
-    account?.providerHandle ||
-    integrationProviderLabel(provider);
-
-  return {
-    type,
-    title: null,
-    visibility: "public",
-    status: "active",
-    config: {
-      platform: integrationPlatformFromProvider(provider),
-      sourceMode: profileIntegrationSourceMode(provider),
-      ...(type === "music" ? { displayMode: "embed" } : {}),
-      ...(type === "creator_live"
-        ? { displayMode: profileCreatorDefaultDisplayMode(provider) }
-        : {}),
-      ...(label ? { label } : {}),
-      ...(url ? { url } : {}),
-    },
-  };
-}
-
-function profileIntegrationSourceMode(provider: ProfileIntegrationProvider): string {
-  if (provider === "apple_music") {
-    return "apple_music";
-  }
-
-  return provider;
-}
-
-function profileCreatorDefaultDisplayMode(provider: ProfileIntegrationProvider): string {
-  if (provider === "twitch") {
-    return "stream_status";
-  }
-
-  if (provider === "youtube") {
-    return "latest_video";
-  }
-
-  if (provider === "github") {
-    return "project";
-  }
-
-  return "link";
-}
-
-function profileIntegrationAccountUrl(
-  account: ProfileIntegrationAccount,
-): string | undefined {
-  const handle = account.providerHandle?.replace(/^@/, "").trim();
-  const accountId = account.providerAccountId.trim();
-
-  if (account.provider === "spotify" && accountId) {
-    return `https://open.spotify.com/user/${encodeURIComponent(accountId)}`;
-  }
-
-  if (account.provider === "twitch" && handle) {
-    return `https://www.twitch.tv/${encodeURIComponent(handle)}`;
-  }
-
-  if (account.provider === "youtube") {
-    if (account.providerHandle?.startsWith("@")) {
-      return `https://www.youtube.com/${account.providerHandle}`;
-    }
-
-    if (accountId) {
-      return `https://www.youtube.com/channel/${encodeURIComponent(accountId)}`;
-    }
-  }
-
-  if (account.provider === "github" && handle) {
-    return `https://github.com/${encodeURIComponent(handle)}`;
-  }
-
-  return undefined;
-}
-
-function profileIntegrationStatusText(status: ProfileIntegrationProviderStatus): string {
-  if (status.oauthEnabled) {
-    return "Ready to connect";
-  }
-
-  if (status.provider === "apple_music") {
-    return "OAuth not available";
-  }
-
-  if ((status.missingConfigKeys ?? []).length > 0) {
-    return "OAuth setup needed";
-  }
-
-  if (status.metadataEnabled) {
-    return "Metadata only";
-  }
-
-  return "OAuth unavailable";
-}
-
-function profileIntegrationIcon(provider: ProfileIntegrationProvider): ReactNode {
-  const className = "shrink-0";
-
-  if (provider === "spotify") {
-    return <SiSpotify aria-hidden="true" className={className} size={20} />;
-  }
-
-  if (provider === "apple_music") {
-    return <SiApplemusic aria-hidden="true" className={className} size={20} />;
-  }
-
-  if (provider === "youtube") {
-    return <SiYoutube aria-hidden="true" className={className} size={20} />;
-  }
-
-  if (provider === "twitch") {
-    return <SiTwitch aria-hidden="true" className={className} size={20} />;
-  }
-
-  return <SiGithub aria-hidden="true" className={className} size={20} />;
-}
-
-const musicModuleProviderOptions: {
-  label: string;
-  provider: Extract<ProfileIntegrationProvider, "spotify" | "apple_music" | "youtube">;
-}[] = [
-  { label: "Spotify", provider: "spotify" },
-  { label: "Apple Music", provider: "apple_music" },
-  { label: "YouTube", provider: "youtube" },
-];
-
-const creatorModuleProviderOptions: {
-  label: string;
-  provider: Extract<ProfileIntegrationProvider, "youtube" | "twitch" | "github">;
-}[] = [
-  { label: "Twitch", provider: "twitch" },
-  { label: "YouTube", provider: "youtube" },
-  { label: "GitHub", provider: "github" },
-];
-
-function profileMusicProviderFromConfig(
-  config: ProfileModuleConfig,
-): Extract<ProfileIntegrationProvider, "spotify" | "apple_music" | "youtube"> {
-  if (config.platform === "apple_music") {
-    return "apple_music";
-  }
-
-  if (config.platform === "youtube" || config.platform === "youtube_music") {
-    return "youtube";
-  }
-
-  return "spotify";
-}
-
-function profileCreatorProviderFromConfig(
-  config: ProfileModuleConfig,
-): Extract<ProfileIntegrationProvider, "youtube" | "twitch" | "github"> {
-  if (config.platform === "youtube") {
-    return "youtube";
-  }
-
-  if (config.platform === "github") {
-    return "github";
-  }
-
-  return "twitch";
-}
-
-function profileMusicPlatformFromProvider(
-  provider: ProfileIntegrationProvider,
-): string {
-  if (provider === "youtube") {
-    return "youtube_music";
-  }
-
-  return provider;
-}
-
-function profileMusicSourceModeFromProvider(
-  provider: ProfileIntegrationProvider,
-): string {
-  if (provider === "youtube") {
-    return "youtube_music";
-  }
-
-  return profileIntegrationSourceMode(provider);
-}
-
-function creatorModuleModeOptions(
-  provider: Extract<ProfileIntegrationProvider, "youtube" | "twitch" | "github">,
-): { label: string; minSize?: ProfileGridModuleSize; value: string }[] {
-  if (provider === "twitch") {
-    return [
-      { label: "Status", minSize: "1x1", value: "stream_status" },
-      { label: "Stream", minSize: "3x2", value: "stream" },
-      { label: "Stream + chat", minSize: "4x3", value: "stream_chat" },
-    ];
-  }
-
-  if (provider === "youtube") {
-    return [
-      { label: "Latest upload", minSize: "2x1", value: "latest_video" },
-      { label: "Video", minSize: "3x2", value: "video" },
-      { label: "Playlist", minSize: "3x2", value: "playlist" },
-    ];
-  }
-
-  return [{ label: "Project", minSize: "2x1", value: "project" }];
-}
-
-function profileGridSizeAtLeast(
-  currentSize: ProfileGridModuleSize,
-  minimumSize: ProfileGridModuleSize,
-): boolean {
-  const current = profileGridModuleSizeSpan(currentSize);
-  const minimum = profileGridModuleSizeSpan(minimumSize);
-
-  return current.columns >= minimum.columns && current.rows >= minimum.rows;
-}
-
-function musicModuleUrlPlaceholder(
-  provider: Extract<ProfileIntegrationProvider, "spotify" | "apple_music" | "youtube">,
-): string {
-  if (provider === "apple_music") {
-    return "https://music.apple.com/...";
-  }
-
-  if (provider === "youtube") {
-    return "https://music.youtube.com/...";
-  }
-
-  return "https://open.spotify.com/...";
-}
-
-function creatorModuleUrlPlaceholder(
-  provider: Extract<ProfileIntegrationProvider, "youtube" | "twitch" | "github">,
-  mode: string,
-): string {
-  if (provider === "youtube" && mode === "playlist") {
-    return "https://www.youtube.com/playlist?list=...";
-  }
-
-  if (provider === "youtube") {
-    return "https://www.youtube.com/watch?v=...";
-  }
-
-  if (provider === "github") {
-    return "https://github.com/owner/repo";
-  }
-
-  return "https://www.twitch.tv/channel";
-}
-
-function FileTextIcon() {
-  return (
-    <span className="grid size-5 place-items-center text-[0.68rem] font-bold">
-      T
-    </span>
-  );
-}
-
-function profileModulePersistentConfig(
-  config: ProfileModuleConfig,
-): ProfileModuleConfig {
-  const persistentConfig = { ...config };
-
-  delete persistentConfig.integration;
-
-  return persistentConfig;
 }
 
 function clampProfileModuleLayout(layout: ProfileModuleLayout): ProfileModuleLayout {

@@ -15,7 +15,7 @@ test.beforeEach(async ({ context }) => {
   });
 });
 
-test("profile canvas editor replaces the retired customization modal", async ({ page }) => {
+test("profile identity editor replaces the retired customization modal", async ({ page }) => {
   await mockOwnProfile(page, () => [
     {
       platform: "github",
@@ -29,12 +29,16 @@ test("profile canvas editor replaces the retired customization modal", async ({ 
   await page.goto("/@thia");
   await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Edit personal space" })).toHaveCount(0);
-  await expect(page.getByTestId("profile-canvas-edit-button")).toBeVisible();
+  await expect(page.getByTestId("profile-edit-button")).toBeVisible();
+  await page.getByTestId("profile-edit-button").click();
+  await expect(page.getByTestId("profile-editor")).toBeVisible();
+  await expect(page.getByTestId("profile-identity-editor")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
   await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
   await expect(page.getByRole("link", { name: /GitHub/ })).toBeVisible();
 });
 
-test("mobile profile stays stable with compact canvas entry", async ({ page }) => {
+test("mobile profile stays stable with compact profile editor", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockOwnProfile(page, () => []);
 
@@ -42,7 +46,10 @@ test("mobile profile stays stable with compact canvas entry", async ({ page }) =
   await page.goto("/@thia");
 
   await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
-  await expect(page.getByTestId("profile-canvas-edit-button")).toBeVisible();
+  await expect(page.getByTestId("profile-edit-button")).toBeVisible();
+  await page.getByTestId("profile-edit-button").click();
+  await expect(page.getByTestId("profile-editor")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
   await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,

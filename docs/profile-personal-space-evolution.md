@@ -5,7 +5,7 @@
 > be tracked through issue [#18](https://github.com/thiabun/thia.lol/issues/18)
 > and focused follow-up issues, not by extending this document into a task list.
 
-Date: 2026-06-17
+Date: 2026-06-18
 
 Safety rules for future customization and modules are defined in
 `docs/profile-customization-safety-rules.md`. Treat that document as required
@@ -37,6 +37,29 @@ Bugs are expected to be found and fixed through small, verifiable passes. Fear
 of bugs should not block necessary profile architecture, but profile work must
 still avoid reckless rewrites, auth/session churn, secrets exposure, arbitrary
 user code, silent production migrations, and unsupported integrations.
+
+## Current Transition State - 2026-06-18
+
+The experimental module/canvas editor is retired from the active product
+surface. It remains important historical and compatibility work, but owners
+should not currently see module dragging, placement, size controls, pinning,
+module add/remove/restore controls, or integration setup panels.
+
+The active owner surface is `Edit profile`, a compact identity/media editor for
+display name, bio, location, avatar, banner, profile background image/video, and
+background clarity. These fields autosave through existing profile APIs with
+clear saving, saved, and error feedback.
+
+Existing public modules, rich cards, music, creator modules, gallery, activity,
+Connections, featured content, persisted grid data, pin fields, integration
+tables, and canvas endpoints remain intact for compatibility and recovery.
+Public profiles continue rendering safe persisted modules read-only. Owners
+also see modules read-only during this transition.
+
+The replacement module editor must be designed mobile-first and small-screen
+safe from the beginning. It must include accessible non-drag layout paths,
+recovery from mistakes, clear save/autosave behavior, and public preview rules
+that cannot be confused with unsaved draft state.
 
 ## Profiles v3 - Personal Spaces
 
@@ -157,12 +180,15 @@ product value and safety order, not a promise that every capability ships.
 
 #### P3A - Canvas Editing Completion
 
-P3A makes the modular profile canvas a real editable surface.
+P3A made the modular profile canvas a real editable surface as an experimental
+implementation pass. As of 2026-06-18, that editor is retired from the active
+product surface while a replacement is planned. The data model, API validation,
+and public renderer remain preserved for compatibility and recovery.
 
 - The profile canvas is a 6 x 12 desktop grid with square cells. A `3x2`
   module renders as a 3:2 rectangle; content cannot stretch the grid tracks.
-- Desktop owners can move unpinned modules with native pointer drag in the
-  canvas.
+- The retired editor allowed desktop owners to move unpinned modules with native
+  pointer drag in the canvas. This behavior is not currently exposed.
 - Visible position-map controls are not part of the normal editing flow. A
   future settings pass can expose direct position controls behind an
   accessibility toggle; this pass keeps drag as the primary placement model.
@@ -185,20 +211,15 @@ P3A makes the modular profile canvas a real editable surface.
   module from public and default owner reads, but the editor can request
   `includeDeleted=1` and restore the prior title, config, and saved grid
   placement where possible.
-- The editor model keeps the live profile canvas visible. Desktop uses a
-  compact translucent left panel with categories, module cards, search,
-  suggestions, integrations, and removed modules. Background uses a compact
-  popover trigger attached to the live canvas surface, outside the module menu.
-  Mobile uses a stacked editor with span previews and content controls instead
-  of the desktop coordinate grid. Public mobile layout still ignores exact
-  desktop placement.
-- The panel categories are Essentials, Featured, Media, Integrations, and
-  Removed. Add, remove, restore, connect, use-link, and add-card actions should
-  live in this canvas editor instead of a separate settings dashboard.
-- Clicking or tapping a module in Edit Canvas mode selects it. The selected
-  module replaces its display content with local controls for size, visibility,
-  removal, and supported module content editing. Saving or cancelling returns
-  modules to their normal display state.
+- The retired editor model kept the live profile canvas visible with a desktop
+  left panel and mobile stacked editor. These controls are not active during the
+  transition.
+- The retired panel categories were Essentials, Featured, Media, Integrations,
+  and Removed. Future work should revisit that information architecture instead
+  of copying it by default.
+- The retired module selection model exposed size, visibility, removal, and
+  content controls. Future work must redesign this with mobile, keyboard access,
+  recovery, and autosave clarity from the beginning.
 - `profile_info` can use `4x3` and `6x3` spans when owners want a larger
   identity anchor. Activity can use `3x4` and `3x6` spans while keeping its
   internal scroll area for overflow.
@@ -233,10 +254,10 @@ the profile renderer constrained.
   outbound link card.
 - Spotify, Apple Music, YouTube, Twitch, and GitHub URLs are normalized by
   provider/resource id.
-- OAuth and rich integration controls belong inside the canvas editor. Provider
-  cards should show configured/unconfigured state, connected identity, and
-  connect/disconnect actions. Connected providers add the appropriate module
-  type, then the selected module owns source/display configuration.
+- OAuth and rich integration storage/metadata support remains available for
+  compatibility, but the editor UI for configuring integrations is temporarily
+  unavailable. The replacement editor should show configured/unconfigured state,
+  connected identity, and connect/disconnect actions without exposing secrets.
 - Apple Music in this pass is URL/link/embed/metadata support only. MusicKit
   user-token authorization is deferred.
 - Rich card creation starts from an allowlisted provider URL inside the selected
@@ -936,28 +957,29 @@ Profiles V3 P3 adds real persistence for the modular profile canvas:
 - Mobile ignores exact grid coordinates and stacks by normalized module order.
 - Invalid saved coordinates or retired module rows are ignored or safely
   normalized on read instead of breaking public profiles.
-- Owner customization is now an inline canvas edit mode with a desktop left
-  panel, mobile stacked editor, preview, save, and cancel. It does not revive the
-  retired large customization modal.
-- Module editing is local to the selected module where possible: size,
-  visibility, profile info, Connections, text, and featured content selection
-  are not sent to a generic dashboard. Background media and clarity live in a
-  compact Background popover attached to the live canvas surface.
-- Pointer drag is the primary placement system in this pass. Direct position
-  controls are deferred to a future accessibility toggle in the settings
-  surface.
+- The frontend canvas editor built on this persistence is now retired from the
+  active product surface. The persistence layer remains for public rendering,
+  recovery, migration, and future editor work.
+- The active owner surface is a compact profile identity/media editor. It does
+  not expose module placement, module selection, size controls, pin controls,
+  add/remove/restore controls, or integration setup.
+- Future module layout work must not assume drag is sufficient; accessible
+  non-drag paths, mobile editing, recovery, and autosave clarity need to be
+  designed before the editor returns.
 
 ### Implementation Note - 2026-06-17 Canvas Editor Refinement
 
-The P3 editor refinement keeps the canvas-first architecture and tightens the
-interaction model:
+The P3 editor refinement was an experimental pass that tightened the
+canvas-first interaction model. As of 2026-06-18, this frontend editor is
+retired from the active product surface, but the public renderer and backend
+compatibility remain.
 
-- Desktop editing uses a compact left panel for module library, removed
-  modules, integration status, background media, and Done/Cancel. Mobile uses a
-  stacked editor.
-- Selected modules expose local controls in or attached to the module. Public
-  link navigation is suppressed while editing unless the owner explicitly uses a
-  preview/open-link control.
+- The retired desktop editor used a compact left panel for module library,
+  removed modules, integration status, background media, and Done/Cancel.
+  Mobile used a stacked editor.
+- The retired module selection model exposed local controls in or attached to
+  the module. Future work should revisit the interaction instead of assuming
+  this shape is final.
 - Collision resolution is directional and pin-aware: the anchor claims the
   requested valid target, pinned modules stay fixed, colliders move after
   half-overlap on the active axis, and the solver tries the opposite drag
@@ -986,8 +1008,7 @@ interaction model:
   `music` or `creator_live` modules when they need more space.
 - Profile Info remains identity-first and no longer duplicates legacy links.
 - Background image, muted looping video background where supported, reset, and
-  "Background clarity" blur controls live in a compact Background popover
-  attached to the live canvas surface, outside the module menu.
+  "Background clarity" are now handled by the active `Edit profile` surface.
 - Image uploads now open a custom crop/zoom modal before upload across profile
   avatar, banner, background, post/reply media, room icon, and room banner. Crops
   are baked into the uploaded image file in this pass; no crop metadata or
@@ -995,25 +1016,15 @@ interaction model:
 - Integration provider status should distinguish link support, metadata support,
   OAuth support, and safe missing-config diagnostics by key name only. Provider
   logos should use branded icons where available.
-- The Integrations panel should use `Connect` for OAuth-capable providers and
-  `Add music` / `Add creator` for module creation. It should not expose a
-  separate unresponsive card-suggestion step.
-- `music` modules are configured locally after selection. Spotify can start the
-  OAuth flow, while Spotify, Apple Music, and YouTube Music URLs can resolve to
-  validated rich embeds without storing user-supplied iframe HTML. Spotify
-  player rendering is span-aware: `1x1` uses an artwork-forward mini player,
-  `2x1` and `3x1` use a horizontal player, and `3x2` uses a richer layout that
-  fills the module height.
-- `creator_live` modules are configured locally after selection. Twitch supports
-  status, stream, and stream-plus-chat display modes with size floors of `1x1`,
-  `3x2`, and `4x3`; stream-plus-chat can expand through `5x3` to `6x5`, keeps
-  stream on the left and chat on the right, and hides the link/info shell when
-  the embed is available. YouTube supports latest/video/playlist source modes;
-  GitHub supports public project cards.
+- The retired Integrations panel used `Connect` for OAuth-capable providers and
+  module creation actions for rich cards. These controls are temporarily
+  unavailable in the active UI while module editing is redesigned.
+- Existing `music` and `creator_live` modules continue to render read-only from
+  persisted data. Their rich configuration UI is temporarily unavailable.
 - Theme editing and custom color profile overrides are deferred to a separate
   planning pass with contrast, recovery, and migration strategy.
 - Onboarding, settings IA, analytics/tracking consent, and ads consent are
-  follow-up priorities and should not be hidden inside the canvas editor.
+  follow-up priorities and should not be hidden inside profile editor work.
 
 ### Implementation Note - 2026-06-16 Profiles V3 P2 Expressive Modules
 

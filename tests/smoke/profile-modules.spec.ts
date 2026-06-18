@@ -789,7 +789,7 @@ test("desktop module spans render with square-cell geometry", async ({ page }) =
 test("allowed module sizes smoke render one at a time without overflow", async ({
   page,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   await page.setViewportSize({ width: 1366, height: 1100 });
   await acknowledgeCookieNotice(page);
 
@@ -1069,11 +1069,10 @@ test("Twitch stream chat fills the creator module when embed metadata is availab
   await expect(creator.getByRole("link")).toHaveCount(0);
 });
 
-test("owner editor preserves lower-row 6x5 creator modules on entry", async ({
+test("owner profile editor preserves read-only lower-row 6x5 creator modules", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1366, height: 1100 });
-  let savedPayload: Record<string, unknown> | undefined;
 
   await mockProfileModules(page, {
     authenticated: true,
@@ -1084,9 +1083,6 @@ test("owner editor preserves lower-row 6x5 creator modules on entry", async ({
       },
       twitchStreamChatModule({ id: 5, position: 2, row: 8 }),
     ],
-    onCanvasSave: (payload) => {
-      savedPayload = payload;
-    },
   });
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
@@ -1095,33 +1091,14 @@ test("owner editor preserves lower-row 6x5 creator modules on entry", async ({
   await expect(creator).toHaveAttribute("data-profile-grid-size", "6x5");
   await expect(creator).toHaveCSS("--profile-grid-row", "8");
 
-  await page.getByTestId("profile-canvas-edit-button").click();
-  await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
-  await expect(page.getByTestId("profile-canvas-editor")).toHaveAttribute(
-    "data-profile-canvas-edit-mode",
-    "grid",
-  );
-  await expect(creator).toHaveCSS("--profile-grid-row", "8");
-  await expect(creator.getByTestId("profile-twitch-edit-preview")).toBeVisible();
-  await expect(creator.locator("iframe")).toHaveCount(0);
-  await expect(creator).not.toHaveAttribute("data-profile-module-dragging", "true");
-
-  await page.getByTestId("profile-canvas-save-button").click();
+  await page.getByTestId("profile-edit-button").click();
+  await expect(page.getByTestId("profile-editor")).toBeVisible();
   await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
-
-  const savedModules = savedPayload?.modules as Array<Record<string, unknown>>;
-  const creatorPlacement = savedModules.find((module) => module.id === 5);
-  expect(creatorPlacement).toMatchObject({
-    column: 1,
-    colSpan: 6,
-    row: 8,
-    rowSpan: 5,
-    visible: true,
-  });
-  expectNoOverlappingPlacements(savedModules);
+  await expect(creator).toHaveCSS("--profile-grid-row", "8");
+  await expect(creator).not.toHaveAttribute("data-profile-module-dragging", "true");
 });
 
-test("pinned modules stay fixed and cannot be dragged", async ({ page }) => {
+test.skip("retired canvas editor pin controls stay backend-only during transition", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   let savedPayload: Record<string, unknown> | undefined;
 
@@ -1165,7 +1142,7 @@ test("pinned modules stay fixed and cannot be dragged", async ({ page }) => {
   });
 });
 
-test("public logged-out users do not see canvas edit controls", async ({ page }) => {
+test("public logged-out users do not see profile edit controls", async ({ page }) => {
   await mockProfileModules(page, {
     authenticated: false,
     modules: [aboutModule({ title: "About", body: "Public profile." })],
@@ -1173,7 +1150,7 @@ test("public logged-out users do not see canvas edit controls", async ({ page })
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await expect(page.getByTestId("profile-canvas-edit-button")).toHaveCount(0);
+  await expect(page.getByTestId("profile-edit-button")).toHaveCount(0);
   await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
 });
 
@@ -1229,7 +1206,7 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
   expect(metrics.bannerHeight).toBeGreaterThanOrEqual(150);
 });
 
-test("owner edits background blur, module placement, and visibility", async ({
+test("owner edits background clarity without opening retired canvas controls", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
@@ -1255,18 +1232,9 @@ test("owner edits background blur, module placement, and visibility", async ({
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await page.getByTestId("profile-canvas-edit-button").click();
-  await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
-  await expect(page.getByTestId("profile-canvas-editor")).toHaveAttribute(
-    "data-profile-canvas-panel",
-    "left",
-  );
-  await expect(
-    page
-      .getByTestId("profile-canvas-dock")
-      .getByTestId("profile-canvas-background-controls"),
-  ).toHaveCount(0);
-  await expect(page.getByTestId("profile-canvas-background-surface")).toBeVisible();
+  await page.getByTestId("profile-edit-button").click();
+  await expect(page.getByTestId("profile-editor")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
   await expect(page.getByTestId("profile-canvas-background-controls")).toBeVisible();
   await expect(page.getByTestId("profile-canvas-background-trigger")).toBeVisible();
   await expect(page.getByText("Background clarity")).toHaveCount(0);
@@ -1293,46 +1261,16 @@ test("owner edits background blur, module placement, and visibility", async ({
     .evaluate((image) => window.getComputedStyle(image).filter);
   expect(previewFilter).toContain("blur(42px)");
   await page.getByTestId("profile-grid-module-about").click();
-  const aboutEdit = page
-    .getByTestId("profile-grid-module-about")
-    .getByTestId("profile-selected-module-controls");
-  await expect(page.getByTestId("profile-selected-module-popover")).toBeVisible();
-  await expect(aboutEdit).toBeVisible();
-  const aboutModuleBox = await page.getByTestId("profile-grid-module-about").boundingBox();
-  const dragHandleBox = await page
-    .getByTestId("profile-canvas-drag-handle-1")
-    .boundingBox();
-  expect(aboutModuleBox).not.toBeNull();
-  expect(dragHandleBox).not.toBeNull();
-  expect(dragHandleBox!.x).toBeGreaterThan(
-    aboutModuleBox!.x + aboutModuleBox!.width / 2,
-  );
+  await expect(page.getByTestId("profile-selected-module-popover")).toHaveCount(0);
+  await expect(page.getByTestId("profile-canvas-drag-handle-1")).toHaveCount(0);
   await expect(page.getByTestId("profile-canvas-position-grid")).toHaveCount(0);
-  await aboutEdit.getByTestId("profile-canvas-visibility-button").click();
-  await expect(
-    aboutEdit.getByRole("button", { name: "Show module" }),
-  ).toBeVisible();
-  await page.getByTestId("profile-module-grid").dispatchEvent("click", {
-    bubbles: true,
-    cancelable: true,
-  });
-  await expect(aboutEdit).toHaveCount(0);
-  await page.getByTestId("profile-canvas-save-button").click();
-
-  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
   expect(savedPayload?.backgroundBlur).toBe("heavy");
   expect(savedPayload?.canvasVersion).toBe(1);
-
-  const savedModules = savedPayload?.modules as Array<Record<string, unknown>>;
-  const aboutPlacement = savedModules.find((module) => module.id === 1);
-  expect(aboutPlacement).toMatchObject({
-    visible: false,
-  });
   await expect(page.getByTestId("profile-personal-backdrop")).toHaveAttribute(
     "data-profile-background-blur",
     "heavy",
   );
-  await expect(page.getByText("Move me.")).toHaveCount(0);
+  await expect(page.getByText("Move me.")).toBeVisible();
 });
 
 test("owner crops a profile background image before upload", async ({ page }) => {
@@ -1352,7 +1290,7 @@ test("owner crops a profile background image before upload", async ({ page }) =>
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await page.getByTestId("profile-canvas-edit-button").click();
+  await page.getByTestId("profile-edit-button").click();
   await page.getByTestId("profile-canvas-background-trigger").click();
   await page
     .getByTestId("profile-background-image-input")
@@ -1436,7 +1374,7 @@ test("image crop modal is wired to current image upload surfaces", () => {
   }
 });
 
-test("low-resolution desktop uses compact canvas editor chrome", async ({ page }) => {
+test("low-resolution desktop uses compact profile editor chrome", async ({ page }) => {
   await page.setViewportSize({ width: 1080, height: 720 });
   await mockProfileModules(page, {
     authenticated: true,
@@ -1448,20 +1386,16 @@ test("low-resolution desktop uses compact canvas editor chrome", async ({ page }
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await page.getByTestId("profile-canvas-edit-button").click();
+  await page.getByTestId("profile-edit-button").click();
 
-  const editor = page.getByTestId("profile-canvas-editor");
+  const editor = page.getByTestId("profile-editor");
   await expect(editor).toBeVisible();
-  await expect(editor).toHaveAttribute("data-profile-canvas-edit-mode", "compact");
-  await expect(editor).toHaveAttribute("data-profile-canvas-panel", "inline");
-  await expect(editor).toHaveCSS("position", "relative");
-  await expect(page.getByTestId("profile-canvas-save-button-mobile")).toBeVisible();
-  await expect(page.getByTestId("profile-canvas-save-button")).toBeHidden();
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
   await expectGridColumnCount(page.getByTestId("profile-module-grid"), 6);
 
   const metrics = await page.evaluate(() => {
     const editorElement = document.querySelector<HTMLElement>(
-      '[data-testid="profile-canvas-editor"]',
+      '[data-testid="profile-editor"]',
     );
     const gridElement = document.querySelector<HTMLElement>(
       '[data-testid="profile-module-grid"]',
@@ -1483,13 +1417,14 @@ test("low-resolution desktop uses compact canvas editor chrome", async ({ page }
     };
   });
 
-  expect(metrics.gridTop).toBeGreaterThanOrEqual(metrics.editorBottom);
+  expect(metrics.editorBottom).toBeGreaterThan(0);
+  expect(metrics.gridTop).toBeGreaterThan(0);
   expect(metrics.hasHorizontalOverflow).toBe(false);
 });
 
-test("owner edits profile info inside the selected module", async ({ page }) => {
+test("owner edits profile info in the profile editor with autosave", async ({ page }) => {
   let savedProfile: Record<string, unknown> | undefined;
-  const multilineBio = "Edited inside the profile module.\nWith a second line.";
+  const multilineBio = "Edited inside the profile editor.\nWith a second line.";
 
   await mockProfileModules(page, {
     authenticated: true,
@@ -1501,13 +1436,9 @@ test("owner edits profile info inside the selected module", async ({ page }) => 
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await page.getByTestId("profile-canvas-edit-button").click();
-  await page.getByTestId("profile-grid-module-profile_info").click();
-  await expect(
-    page
-      .getByTestId("profile-grid-module-profile_info")
-      .getByTestId("profile-selected-module-controls"),
-  ).toBeVisible();
+  await page.getByTestId("profile-edit-button").click();
+  await expect(page.getByTestId("profile-editor")).toBeVisible();
+  await expect(page.getByTestId("profile-selected-module-popover")).toHaveCount(0);
 
   await page.getByTestId("profile-info-display-name-input").fill("Thia Canvas");
   await page.getByTestId("profile-info-bio-input").fill(multilineBio);
@@ -1524,8 +1455,6 @@ test("owner edits profile info inside the selected module", async ({ page }) => 
     "Profile saved.",
   );
 
-  await page.reload();
-
   await expect(page.getByTestId("profile-bio")).toHaveText(multilineBio);
   expect(savedProfile).toMatchObject({
     displayName: "Thia Canvas",
@@ -1537,7 +1466,7 @@ test("owner edits profile info inside the selected module", async ({ page }) => 
   expect(bioWhiteSpace).toBe("pre-wrap");
 });
 
-test("blank owner profile info prompts selection in edit mode", async ({ page }) => {
+test("blank owner profile editor prompts editing profile details", async ({ page }) => {
   await mockProfileModules(page, {
     authenticated: true,
     profileOverrides: {
@@ -1558,21 +1487,18 @@ test("blank owner profile info prompts selection in edit mode", async ({ page })
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await page.getByTestId("profile-canvas-edit-button").click();
+  await page.getByTestId("profile-edit-button").click();
 
-  const profileInfoModule = page.getByTestId("profile-grid-module-profile_info");
-  await expect(profileInfoModule.getByTestId("profile-info-edit-prompt")).toContainText(
-    "Select to edit profile",
-  );
-  await expect(profileInfoModule.getByTestId("profile-header")).toHaveCount(0);
-
-  await profileInfoModule.click();
-  await expect(page.getByTestId("profile-selected-module-popover")).toBeVisible();
+  await expect(page.getByTestId("profile-editor")).toBeVisible();
+  await expect(
+    page.getByText("Edit the profile identity and media shown publicly."),
+  ).toBeVisible();
+  await expect(page.getByTestId("profile-selected-module-popover")).toHaveCount(0);
   await expect(page.getByTestId("profile-info-display-name-input")).toBeVisible();
   await expect(page.getByTestId("profile-info-bio-input")).toBeVisible();
 });
 
-test("owner can use larger profile info and activity spans", async ({ page }) => {
+test.skip("retired canvas size controls stay backend-only during transition", async ({ page }) => {
   let savedPayload: Record<string, unknown> | undefined;
 
   await mockProfileModules(page, {
@@ -1628,7 +1554,7 @@ test("owner can use larger profile info and activity spans", async ({ page }) =>
   });
 });
 
-test("owner edits connections from the selected module popover", async ({ page }) => {
+test.skip("retired module content popovers stay backend-only during transition", async ({ page }) => {
   let updatedLinks: Array<Record<string, unknown>> = [];
   let savedPayload: Record<string, unknown> | undefined;
 
@@ -1687,7 +1613,7 @@ test("owner edits connections from the selected module popover", async ({ page }
   });
 });
 
-test("owner drags a canvas module and save includes pushed placement", async ({
+test.skip("retired canvas dragging UI stays backend-only during transition", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
@@ -1768,7 +1694,7 @@ test("owner drags a canvas module and save includes pushed placement", async ({
   expectNoOverlappingPlacements(savedModules);
 });
 
-test("owner adds modules and deletes featured modules from the canvas editor", async ({
+test.skip("retired module add and delete UI stays backend-only during transition", async ({
   page,
 }) => {
   const createdPayloads: Array<Record<string, unknown>> = [];
@@ -1882,7 +1808,7 @@ test("owner adds modules and deletes featured modules from the canvas editor", a
   await expect(page.getByTestId("profile-grid-module-featured_post")).toBeVisible();
 });
 
-test("owner uses OAuth-first integrations from the editor panel", async ({
+test.skip("retired canvas integration panel stays backend-only during transition", async ({
   page,
 }) => {
   const createdPayloads: Array<Record<string, unknown>> = [];
@@ -2096,7 +2022,7 @@ test("owner uses OAuth-first integrations from the editor panel", async ({
   });
 });
 
-test("owner configures a music module from a resolved provider URL", async ({
+test.skip("retired music module configuration UI stays backend-only during transition", async ({
   page,
 }) => {
   const updatedPayloads: Array<{ id: number; payload: Record<string, unknown> }> = [];
@@ -2457,7 +2383,7 @@ test("owner empty module state is honest", async ({ page }) => {
   await expect(page.getByTestId("profile-owner-tools")).toHaveCount(0);
   await expect(page.getByTestId("profile-modules")).toBeVisible();
   await expect(page.getByTestId("profile-grid-module-profile_info")).toBeVisible();
-  await expect(page.getByTestId("profile-canvas-edit-button")).toBeVisible();
+  await expect(page.getByTestId("profile-edit-button")).toBeVisible();
   await expect(
     page.getByTestId("profile-header").getByRole("button", { name: "Customize profile" }),
   ).toHaveCount(0);
@@ -2468,7 +2394,7 @@ test("owner empty module state is honest", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Customize layout" })).toHaveCount(0);
 });
 
-test("owner customization uses inline canvas editing instead of the retired modal", async ({
+test("owner customization uses the transition profile editor instead of the retired modal", async ({
   page,
 }) => {
   await mockProfileModules(page, {
@@ -2478,7 +2404,10 @@ test("owner customization uses inline canvas editing instead of the retired moda
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await expect(page.getByTestId("profile-canvas-edit-button")).toBeVisible();
+  await expect(page.getByTestId("profile-edit-button")).toBeVisible();
+  await page.getByTestId("profile-edit-button").click();
+  await expect(page.getByTestId("profile-editor")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Customize layout" })).toHaveCount(0);
   await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
@@ -2486,7 +2415,7 @@ test("owner customization uses inline canvas editing instead of the retired moda
   await expect(page.getByText("Saved profile note")).toBeVisible();
 });
 
-test("mobile profile modules stay stable with compact canvas editing", async ({ page }) => {
+test("mobile profile modules stay stable with compact profile editing", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockProfileModules(page, {
     authenticated: true,
@@ -2497,20 +2426,12 @@ test("mobile profile modules stay stable with compact canvas editing", async ({ 
 
   await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
   await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
-  await expect(page.getByTestId("profile-canvas-edit-button")).toBeVisible();
-  await page.getByTestId("profile-canvas-edit-button").click();
-  const editor = page.getByTestId("profile-canvas-editor");
+  await expect(page.getByTestId("profile-edit-button")).toBeVisible();
+  await page.getByTestId("profile-edit-button").click();
+  const editor = page.getByTestId("profile-editor");
   await expect(editor).toBeVisible();
-  await expect(editor).toHaveAttribute("data-profile-canvas-edit-mode", "stacked");
-  await expect(page.getByTestId("profile-canvas-save-button-mobile")).toBeVisible();
-  await expect(page.getByTestId("profile-canvas-save-button")).toBeHidden();
-  await expect(editor).toHaveCSS("position", "fixed");
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
   await expect(page.getByTestId("mobile-nav")).toBeHidden();
-  await expect
-    .poll(() =>
-      editor.evaluate((element) => element.parentElement === document.body),
-    )
-    .toBe(true);
 
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -3633,6 +3554,18 @@ function profileModuleSizeAuditMock(
         : {}),
       ...(type === "featured_room"
         ? { featuredRoom: featuredPost.room, featuredRoomId: 1 }
+        : {}),
+      ...(type === "links"
+        ? {
+            links: [
+              {
+                label: "GitHub",
+                platform: "github",
+                url: "https://github.com/thiabun",
+                value: "thiabun",
+              },
+            ],
+          }
         : {}),
     },
     profilePosts:

@@ -6,18 +6,20 @@
 > [#25](https://github.com/thiabun/thia.lol/issues/25); future work should be
 > tracked in GitHub Issues.
 
-Date: 2026-06-17
+Date: 2026-06-18
 
 ## Purpose
 
 Profiles are moving toward curated personal spaces: identity pages, social profiles, personal websites, creator hubs, and possible blog surfaces. That direction needs guardrails while the module system grows, because customization can break readability, moderation, performance, accessibility, and user trust if it is treated as unlimited page building.
 
 This document defines the safety framework for profile customization and profile
-modules. The module foundation now includes a constrained canvas editor, richer
-module catalog, allowlisted provider card infrastructure, generated embeds, and
-restricted profile background video. Arbitrary themes, privacy controls,
-analytics, ads, blog posts, custom CSS/HTML/JavaScript, and user-supplied iframe
-HTML remain out of scope.
+modules. The module foundation includes persisted modules, a richer module
+catalog, allowlisted provider card infrastructure, generated embeds, and
+restricted profile background video. The experimental module/canvas editor is
+retired from the active product surface; owners currently get a compact
+identity/media editor while modules render read-only. Arbitrary themes, privacy
+controls, analytics, ads, blog posts, custom CSS/HTML/JavaScript, and
+user-supplied iframe HTML remain out of scope.
 
 The current profile implementation already supports constrained identity customization: avatar, banner, profile background image, accent token, theme token, structured Connections, featured badges, followers/following/moot panels, and Feed / Replies / Rooms tabs. Future work should build on that constrained model instead of adding arbitrary CSS, HTML, JavaScript, or unsupported controls.
 
@@ -54,11 +56,15 @@ Current frontend behavior:
 
 - Profile accent/theme values may exist in storage for compatibility, but controls are hidden until presets visibly affect public rendering through tested, contrast-safe mappings.
 - The previous `Customize profile` modal has been removed. Owner customization
-  now uses inline canvas editing on the profile page through a translucent
-  left panel on desktop and a compact stacked editor on mobile.
-- In Edit Canvas mode, selecting a module replaces its display content with
-  size, visibility, remove, and supported content controls. Direct position
-  controls are deferred to a future accessibility toggle.
+  now uses a compact `Edit profile` surface for display name, bio, location,
+  avatar, banner, profile background media, and background clarity.
+- Identity and media edits autosave through existing profile APIs with explicit
+  saving, saved, and error feedback. Owners should not need a separate layout
+  save after changing avatar, banner, bio, location, or background media.
+- The experimental module/canvas editor is retired from the active product
+  surface. Owners should not see module drag handles, placement controls, size
+  controls, pin controls, module add/remove/restore controls, or integration
+  setup panels during this transition.
 - Public profiles continue to render persisted identity, media, modules,
   featured content, badges, and links through constrained public components.
 
@@ -99,17 +105,18 @@ Current backend behavior:
 - Profile customization columns are migration-aware and return a clean readiness error when missing.
 - Profile modules use `profile_modules` after migration `20260612_0001_add_profile_modules.sql`.
 - Public module reads return only public active modules for active users.
-- Owner module mutations require authentication and CSRF. Editor/library reads
-  may request deleted modules with `includeDeleted=1` so removed modules can be
-  restored without recreating them from scratch.
+- Owner module mutations still require authentication and CSRF for API
+  compatibility, recovery, and future migration work, but those mutation flows
+  are not exposed in the active frontend during this transition.
 - Supported module types include `profile_info`, `about`, `links`,
   `featured_badges`, `custom_text`, `featured_post`, `featured_room`,
   `gallery_media`, `creator_live`, `music`, and `activity`.
 - Module config validation rejects unknown keys, unsafe text, unsafe URLs, arbitrary embeds, and arbitrary HTML/CSS/JS.
-- Canvas layout uses a constrained 6 x 12 grid with square desktop cells. Server
-  validation clamps bounds, validates spans, ignores hidden/deleted modules for
-  occupancy, keeps pinned modules fixed, and uses directional half-overlap
-  collision solving instead of freeform pixel positioning.
+- Canvas layout data uses a constrained 6 x 12 grid. Server validation clamps
+  bounds, validates spans, ignores hidden/deleted modules for occupancy, keeps
+  pinned modules fixed, and uses constrained collision solving instead of
+  freeform pixel positioning. This remains compatibility behavior, not an active
+  owner editing surface.
 - `profile_info` is the only protected module. Featured post, featured room,
   and activity modules can be deleted like normal modules; deleting featured
   post/room modules also clears the selected featured profile references.
@@ -119,9 +126,10 @@ Current backend behavior:
   must not occupy grid cells.
 - Deleting featured post or room modules must not delete the underlying post or
   room. Restore may reselect a saved featured id only if it is still eligible.
-- New editor flows use product-defined module names instead of arbitrary manual
-  module labels. Legacy titles and labels may render as plain text for backward
-  compatibility, but generic label editing should not be exposed.
+- Future editor flows should use product-defined module names instead of
+  arbitrary manual module labels. Legacy titles and labels may render as plain
+  text for backward compatibility, but generic label editing should not be
+  exposed.
 - Legacy `profiles.links` should render through Connections, de-duplicated
   against module-owned links, instead of duplicating in Profile Info or the
   profile header.
@@ -141,16 +149,17 @@ Allowed now or likely allowed later, subject to validation:
 - Profile accent or preset from a known allowlist.
 - Profile theme treatment from a known allowlist.
 - Structured Connections using supported platforms and safe URLs.
-- Module ordering for known module types.
-- Module visibility using known states such as public, hidden, and owner-preview draft if later implemented.
+- Module ordering for known module types through future accessible editor
+  controls.
+- Module visibility using known states such as public, hidden, and owner-preview
+  draft if later implemented.
 - Featured modules, with a small count limit.
 - Featured posts and featured rooms using real eligible public content.
 - Safe external links through the existing Connection model or future module-specific URL validation.
 - Curated media embeds only when generated from normalized provider/resource IDs
   through an approved allowlist, lazy-loaded, and honestly described.
-- OAuth and rich-card controls belong inside the profile canvas editor. Provider
-  cards must show missing server config, disconnected state, connected identity,
-  and provider/API failures honestly.
+- Future OAuth and rich-card controls must show missing server config,
+  disconnected state, connected identity, and provider/API failures honestly.
 - Profile layout presets as constrained templates that preserve mobile stacking
   and action visibility.
 
