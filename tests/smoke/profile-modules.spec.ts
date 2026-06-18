@@ -1232,6 +1232,7 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
 test("owner edits background blur, module placement, and visibility", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
   let savedPayload: Record<string, unknown> | undefined;
 
   await mockProfileModules(page, {
@@ -1433,6 +1434,57 @@ test("image crop modal is wired to current image upload surfaces", () => {
     expect(source).toContain("ImageCropModal");
     expect(source).toContain("validateImageCropFile");
   }
+});
+
+test("low-resolution desktop uses compact canvas editor chrome", async ({ page }) => {
+  await page.setViewportSize({ width: 1080, height: 720 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      aboutModule({ id: 1, title: "About", body: "Compact editor." }),
+      linksModule({ id: 2, title: "Links" }),
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-canvas-edit-button").click();
+
+  const editor = page.getByTestId("profile-canvas-editor");
+  await expect(editor).toBeVisible();
+  await expect(editor).toHaveAttribute("data-profile-canvas-edit-mode", "compact");
+  await expect(editor).toHaveAttribute("data-profile-canvas-panel", "inline");
+  await expect(editor).toHaveCSS("position", "relative");
+  await expect(page.getByTestId("profile-canvas-save-button-mobile")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-save-button")).toBeHidden();
+  await expectGridColumnCount(page.getByTestId("profile-module-grid"), 6);
+
+  const metrics = await page.evaluate(() => {
+    const editorElement = document.querySelector<HTMLElement>(
+      '[data-testid="profile-canvas-editor"]',
+    );
+    const gridElement = document.querySelector<HTMLElement>(
+      '[data-testid="profile-module-grid"]',
+    );
+
+    if (!editorElement || !gridElement) {
+      throw new Error("Editor or profile grid did not render.");
+    }
+
+    const editorRect = editorElement.getBoundingClientRect();
+    const gridRect = gridElement.getBoundingClientRect();
+
+    return {
+      editorBottom: Math.round(editorRect.bottom),
+      gridTop: Math.round(gridRect.top),
+      hasHorizontalOverflow:
+        document.documentElement.scrollWidth >
+        document.documentElement.clientWidth,
+    };
+  });
+
+  expect(metrics.gridTop).toBeGreaterThanOrEqual(metrics.editorBottom);
+  expect(metrics.hasHorizontalOverflow).toBe(false);
 });
 
 test("owner edits profile info inside the selected module", async ({ page }) => {
@@ -2322,7 +2374,7 @@ test("public modules ignore hidden and retired module records", async ({ page })
 
   const section = page.getByTestId("profile-modules");
   await expect(section).toBeVisible();
-  await expectTextOrder(section, ["Visible first", "Visible second"]);
+  await expectTextOrder(section, ["Shown", "Also shown"]);
   await expect(section.getByText("Unsupported embed")).toHaveCount(0);
   await expect(section.getByText("This should not render")).toHaveCount(0);
   await expect(section.getByText("Hidden note")).toHaveCount(0);
@@ -2379,8 +2431,8 @@ test("showcase layout gives the first about module more presence", async ({ page
   );
   await expectTextOrder(page.getByTestId("profile-modules"), [
     "Thia",
-    "Lead note",
-    "Small note",
+    "Shown first.",
+    "Shown second.",
   ]);
 });
 

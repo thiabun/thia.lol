@@ -212,7 +212,7 @@ export function ProfileModuleGrid({
     function handlePointerMove(event: globalThis.PointerEvent) {
       const grid = gridRef.current;
 
-      if (!grid || window.innerWidth < 1024) {
+      if (!grid || !profileGridSupportsDesktopCanvas()) {
         return;
       }
 
@@ -288,7 +288,12 @@ export function ProfileModuleGrid({
     module: ProfileModule,
     layout: ProfileModuleLayout,
   ) {
-    if (!editing || event.button !== 0 || window.innerWidth < 1024 || module.pinned) {
+    if (
+      !editing ||
+      event.button !== 0 ||
+      !profileGridSupportsDesktopCanvas() ||
+      module.pinned
+    ) {
       return;
     }
 
@@ -482,6 +487,13 @@ export function ProfileModuleGrid({
         );
       })}
     </ProfileGrid>
+  );
+}
+
+function profileGridSupportsDesktopCanvas(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia("(min-width: 1024px)").matches
   );
 }
 

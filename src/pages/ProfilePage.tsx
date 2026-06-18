@@ -161,6 +161,7 @@ const PROFILE_CONTENT_AUTOSAVE_DELAY_MS = 650;
 type ProfileTab = "feed" | "replies" | "rooms";
 type ProfilePanel = "followers" | "following" | "badges";
 type ProfileContentAutosaveState = "idle" | "pending" | "saving" | "saved" | "error";
+type ProfileCanvasEditorViewportMode = "mobile" | "compact" | "wide";
 
 function profileContentAutosaveInput(
   draft: Profile,
@@ -219,6 +220,7 @@ export function ProfilePage() {
   const { runWithAuth, status, user } = useAuth();
   const canvasEditReturnHandledRef = useRef(false);
   const profileContentAutosaveRequestRef = useRef(0);
+  const canvasEditorViewportMode = useProfileCanvasEditorViewportMode();
   const [activeTab, setActiveTab] = useState<ProfileTab>("feed");
   const [activePanel, setActivePanel] = useState<ProfilePanel | undefined>();
   const [profileOverride, setProfileOverride] = useState<Profile | undefined>();
@@ -1519,6 +1521,7 @@ export function ProfilePage() {
     renderedProfile,
     mergeProfileLinksIntoConnectionModules(renderedProfile, profileSpaceModules),
   );
+  const wideCanvasEditor = canvasEditorViewportMode === "wide";
   return (
     <motion.div
       className={cn("relative mx-auto", canvasEditing ? "max-w-7xl" : "max-w-5xl")}
@@ -1530,8 +1533,8 @@ export function ProfilePage() {
       <div
         className={cn(
           "relative z-10 space-y-4 sm:space-y-5",
-          canvasEditing
-            ? "lg:grid lg:grid-cols-[23rem_minmax(0,1fr)] lg:items-start lg:gap-5 lg:space-y-0"
+          canvasEditing && wideCanvasEditor
+            ? "xl:grid xl:grid-cols-[22rem_minmax(0,1fr)] xl:items-start xl:gap-5 xl:space-y-0"
             : undefined,
         )}
       >
@@ -1551,6 +1554,7 @@ export function ProfilePage() {
             modules={draftModules}
             removedModules={deletedDraftModules}
             userBadges={profileBadges}
+            viewportMode={canvasEditorViewportMode}
             onAddModule={(input) => void handleAddCanvasModule(input)}
             onCancel={handleCancelCanvasEdit}
             onConnectIntegration={(provider) => void handleConnectIntegration(provider)}
@@ -2858,6 +2862,7 @@ type ProfileCanvasEditorToolbarProps = {
   onRestoreModule: (module: ProfileModule) => void;
   onSave: () => void;
   userBadges: UserBadge[];
+  viewportMode: ProfileCanvasEditorViewportMode;
 };
 
 type ProfileCanvasDockCategory =
@@ -2933,11 +2938,16 @@ function ProfileCanvasEditorToolbar({
   onSave,
   removedModules,
   userBadges,
+  viewportMode,
 }: ProfileCanvasEditorToolbarProps) {
   const [activeCategory, setActiveCategory] =
     useState<ProfileCanvasDockCategory>("integrations");
   const [moduleSearch, setModuleSearch] = useState("");
-  const useMobilePanel = useProfileCanvasMobilePanel();
+  const useMobilePanel = viewportMode === "mobile";
+  const useCompactPanel = viewportMode === "compact";
+  const dockGridClass = useCompactPanel
+    ? "grid gap-2 sm:grid-cols-2 lg:grid-cols-3"
+    : "grid gap-2 sm:grid-cols-2 xl:grid-cols-1";
 
   if (!editing) {
     return (
@@ -2987,16 +2997,27 @@ function ProfileCanvasEditorToolbar({
     <section
       aria-label="Profile canvas editor"
       className={cn(
-        "mx-auto flex flex-col overflow-hidden rounded-panel border border-line bg-surface/78 shadow-lift backdrop-blur-veil",
+        "mx-auto flex flex-col overflow-hidden rounded-panel border border-line",
         useMobilePanel
-          ? "fixed inset-x-3 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-[70] max-h-[calc(100dvh-7rem)] max-w-xl"
-          : "sticky top-20 hidden max-h-[calc(100dvh-6rem)] max-w-none lg:flex",
+          ? "fixed inset-x-3 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-[70] max-h-[calc(100dvh-7rem)] max-w-xl bg-surface/86 shadow-lift backdrop-blur-veil"
+          : useCompactPanel
+            ? "relative z-40 max-h-[min(30rem,52dvh)] w-full bg-surface/92 shadow-soft"
+            : "sticky top-20 hidden max-h-[calc(100dvh-6rem)] max-w-none bg-surface/78 shadow-lift backdrop-blur-veil xl:flex",
       )}
       data-testid="profile-canvas-editor"
-      data-profile-canvas-edit-mode={useMobilePanel ? "stacked" : "grid"}
-      data-profile-canvas-panel="left"
+      data-profile-canvas-edit-mode={
+        useMobilePanel ? "stacked" : useCompactPanel ? "compact" : "grid"
+      }
+      data-profile-canvas-panel={
+        useMobilePanel ? "bottom" : useCompactPanel ? "inline" : "left"
+      }
     >
-      <div className="flex shrink-0 flex-col border-b border-line/70 p-3">
+      <div
+        className={cn(
+          "flex shrink-0 flex-col border-b border-line/70 p-3",
+          useCompactPanel ? "gap-2" : undefined,
+        )}
+      >
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase text-muted">Canvas</p>
@@ -3004,7 +3025,7 @@ function ProfileCanvasEditorToolbar({
               Arrange modules
             </h2>
           </div>
-          <div className="flex shrink-0 items-center gap-1 lg:hidden">
+          <div className="flex shrink-0 items-center gap-1 xl:hidden">
             <button
               type="button"
               className="grid size-9 place-items-center rounded-control border border-line bg-canvas/55 text-text focus-visible:outline-2 focus-visible:outline-focus"
@@ -3027,7 +3048,14 @@ function ProfileCanvasEditorToolbar({
           </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-1" role="tablist" aria-label="Module categories">
+        <div
+          className={cn(
+            "grid gap-1",
+            useCompactPanel ? "grid-cols-3 lg:grid-cols-5" : "mt-3 grid-cols-2",
+          )}
+          role="tablist"
+          aria-label="Module categories"
+        >
           {profileCanvasDockCategories.map((category) => (
             <button
               key={category.value}
@@ -3044,7 +3072,7 @@ function ProfileCanvasEditorToolbar({
           ))}
         </div>
 
-        <div className="mt-auto hidden gap-2 pt-3 lg:flex">
+        <div className="mt-auto hidden gap-2 pt-3 xl:flex">
           <Button
             type="button"
             size="sm"
@@ -3084,7 +3112,7 @@ function ProfileCanvasEditorToolbar({
 
         {activeCategory === "integrations" ? (
           <div className="mt-3 space-y-3" data-testid="profile-canvas-integrations">
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+            <div className={dockGridClass}>
               {providerStatuses.map((providerStatus) => {
                 const account = profileIntegrationAccount(providerStatus.provider, integrations?.accounts);
                 const connected = Boolean(account && !account.revokedAt);
@@ -3205,7 +3233,7 @@ function ProfileCanvasEditorToolbar({
             ) : null}
           </div>
         ) : activeCategory === "removed" ? (
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+          <div className={cn("mt-3", dockGridClass)}>
             {removedModules.length > 0 ? (
               removedModules.map((module) => (
                 <ProfileDockModuleCard
@@ -3228,7 +3256,7 @@ function ProfileCanvasEditorToolbar({
         ) : (
           <>
             <div
-              className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1"
+              className={cn("mt-3", dockGridClass)}
               data-testid="profile-canvas-module-browser"
             >
               {activeCategory === "essentials" &&
@@ -3291,30 +3319,62 @@ function ProfileCanvasEditorToolbar({
   return editorPanel;
 }
 
-function useProfileCanvasMobilePanel(): boolean {
-  const [matches, setMatches] = useState(() => {
-    if (typeof window === "undefined") {
-      return false;
-    }
-
-    return window.matchMedia("(max-width: 1023px)").matches;
-  });
+function useProfileCanvasEditorViewportMode(): ProfileCanvasEditorViewportMode {
+  const [mode, setMode] = useState<ProfileCanvasEditorViewportMode>(() =>
+    profileCanvasEditorViewportMode(),
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") {
       return undefined;
     }
 
-    const query = window.matchMedia("(max-width: 1023px)");
-    const update = () => setMatches(query.matches);
+    const queries = [
+      window.matchMedia("(max-width: 1023px)"),
+      window.matchMedia("(max-width: 1279px)"),
+      window.matchMedia("(max-height: 820px)"),
+    ];
+    const update = () => {
+      const nextMode = profileCanvasEditorViewportMode();
 
-    update();
-    query.addEventListener("change", update);
+      setMode((current) => (current === nextMode ? current : nextMode));
+    };
 
-    return () => query.removeEventListener("change", update);
+    for (const query of queries) {
+      query.addEventListener("change", update);
+    }
+
+    window.addEventListener("resize", update);
+
+    return () => {
+      for (const query of queries) {
+        query.removeEventListener("change", update);
+      }
+
+      window.removeEventListener("resize", update);
+    };
   }, []);
 
-  return matches;
+  return mode;
+}
+
+function profileCanvasEditorViewportMode(): ProfileCanvasEditorViewportMode {
+  if (typeof window === "undefined") {
+    return "wide";
+  }
+
+  if (window.matchMedia("(max-width: 1023px)").matches) {
+    return "mobile";
+  }
+
+  if (
+    window.matchMedia("(max-width: 1279px)").matches ||
+    window.matchMedia("(max-height: 820px)").matches
+  ) {
+    return "compact";
+  }
+
+  return "wide";
 }
 
 function ProfileSelectedModuleControls({
