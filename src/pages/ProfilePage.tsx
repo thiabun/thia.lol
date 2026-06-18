@@ -2361,57 +2361,97 @@ function profileCanvasLayoutFromPointer(
   };
 }
 
-function profileCanvasBestSizeForSelection(
+type ProfileCanvasSelectionFit = {
+  enabled: boolean;
+  exactSize?: ProfileGridModuleSize | undefined;
+  noteSize?: ProfileGridModuleSize | undefined;
+  sortSize: ProfileGridModuleSize;
+  warning?: "too-large" | "too-small" | undefined;
+};
+
+function profileCanvasAllowedSizesByArea(
   type: ProfileModule["type"],
+): ProfileGridModuleSize[] {
+  return [...profileModuleAllowedSizes(type)].sort((first, second) => {
+    const firstSpan = profileGridModuleSizeSpan(first);
+    const secondSpan = profileGridModuleSizeSpan(second);
+
+    return (
+      firstSpan.columns * firstSpan.rows -
+        secondSpan.columns * secondSpan.rows ||
+      firstSpan.columns - secondSpan.columns ||
+      firstSpan.rows - secondSpan.rows
+    );
+  });
+}
+
+function profileCanvasSelectionSize(
   selection: ProfileModuleLayout,
 ): ProfileGridModuleSize | undefined {
-  const selectionSize = profileGridModuleSpanSize(
+  return profileGridModuleSpanSize(
     Math.min(PROFILE_CANVAS_PROFILE_INFO_COLUMNS, selection.colSpan),
     Math.min(PROFILE_CANVAS_MAX_MODULE_ROWS, selection.rowSpan),
   );
-  const allowedSizes = profileModuleAllowedSizes(type);
-
-  if (selectionSize && allowedSizes.includes(selectionSize)) {
-    return selectionSize;
-  }
-
-  return [...allowedSizes]
-    .filter((size) => {
-      const span = profileGridModuleSizeSpan(size);
-      return span.columns <= selection.colSpan && span.rows <= selection.rowSpan;
-    })
-    .sort((first, second) => {
-      const firstSpan = profileGridModuleSizeSpan(first);
-      const secondSpan = profileGridModuleSizeSpan(second);
-      return (
-        secondSpan.columns * secondSpan.rows -
-          firstSpan.columns * firstSpan.rows ||
-        secondSpan.columns - firstSpan.columns ||
-        secondSpan.rows - firstSpan.rows
-      );
-    })[0];
 }
 
-function profileCanvasSmallestSizeForSelection(
+function profileCanvasExactSizeForSelection(
   type: ProfileModule["type"],
   selection: ProfileModuleLayout,
 ): ProfileGridModuleSize | undefined {
-  return [...profileModuleAllowedSizes(type)]
-    .filter((size) => {
-      const span = profileGridModuleSizeSpan(size);
-      return span.columns <= selection.colSpan && span.rows <= selection.rowSpan;
-    })
-    .sort((first, second) => {
-      const firstSpan = profileGridModuleSizeSpan(first);
-      const secondSpan = profileGridModuleSizeSpan(second);
+  const selectionSize = profileCanvasSelectionSize(selection);
 
-      return (
-        firstSpan.columns * firstSpan.rows -
-          secondSpan.columns * secondSpan.rows ||
-        firstSpan.columns - secondSpan.columns ||
-        firstSpan.rows - secondSpan.rows
-      );
-    })[0];
+  if (selectionSize && profileModuleAllowedSizes(type).includes(selectionSize)) {
+    return selectionSize;
+  }
+
+  return undefined;
+}
+
+function profileCanvasFitForSelection(
+  type: ProfileModule["type"],
+  selection: ProfileModuleLayout,
+): ProfileCanvasSelectionFit {
+  const allowedSizes = profileCanvasAllowedSizesByArea(type);
+  const fallbackSize = getProfileModuleDefinition(type).defaultSize;
+  const smallestSize = allowedSizes[0] ?? fallbackSize;
+  const largestSize = allowedSizes[allowedSizes.length - 1] ?? fallbackSize;
+  const exactSize = profileCanvasExactSizeForSelection(type, selection);
+
+  if (exactSize) {
+    return {
+      enabled: true,
+      exactSize,
+      sortSize: exactSize,
+    };
+  }
+
+  const smallestSpan = profileGridModuleSizeSpan(smallestSize);
+  const largestSpan = profileGridModuleSizeSpan(largestSize);
+  const allowedSpans = allowedSizes.map(profileGridModuleSizeSpan);
+  const minColumns = Math.min(...allowedSpans.map((span) => span.columns));
+  const minRows = Math.min(...allowedSpans.map((span) => span.rows));
+  const maxColumns = Math.max(...allowedSpans.map((span) => span.columns));
+  const maxRows = Math.max(...allowedSpans.map((span) => span.rows));
+  const selectionArea = selection.colSpan * selection.rowSpan;
+  const smallestArea = smallestSpan.columns * smallestSpan.rows;
+  const largestArea = largestSpan.columns * largestSpan.rows;
+  const warning =
+    selectionArea < smallestArea ||
+    selection.colSpan < minColumns ||
+    selection.rowSpan < minRows
+      ? "too-small"
+      : selectionArea > largestArea ||
+          selection.colSpan > maxColumns ||
+          selection.rowSpan > maxRows
+        ? "too-large"
+        : "too-large";
+
+  return {
+    enabled: false,
+    noteSize: warning === "too-small" ? smallestSize : largestSize,
+    sortSize: warning === "too-small" ? smallestSize : largestSize,
+    warning,
+  };
 }
 
 function profileCanvasDefaultConfigForModule(
@@ -2824,7 +2864,7 @@ function ProfileDirectCanvasEditor({
       return;
     }
 
-    const size = profileCanvasBestSizeForSelection(type, module.layout);
+    const size = profileCanvasExactSizeForSelection(type, module.layout);
 
     if (!size) {
       return;
@@ -3026,6 +3066,17 @@ function ProfileDirectCanvasEditor({
             const inPreview = selectionRect
               ? profileCanvasPointInRect(point, selectionRect)
               : false;
+            const previewHasArea = Boolean(
+              selectionRect &&
+                (selectionRect.colSpan > 1 || selectionRect.rowSpan > 1),
+            );
+            const coveredByModule = sortedModules.some((draftModule) =>
+              profileCanvasPointInRect(
+                point,
+                draftModule.layout ?? profileCanvasDefaultClientLayout(draftModule, 0),
+              ),
+            );
+            const visuallyCovered = coveredByModule || (inPreview && previewHasArea);
 
             return (
               <button
@@ -3033,8 +3084,12 @@ function ProfileDirectCanvasEditor({
                 type="button"
                 className={cn(
                   "relative z-10 min-h-0 rounded-card border border-line/55 bg-surface/20 transition duration-fluid ease-fluid hover:scale-[1.03] hover:border-line-strong hover:bg-surface/42 focus-visible:z-30 focus-visible:outline-2 focus-visible:outline-focus",
-                  selected ? "z-30 border-focus bg-focus/35 shadow-glow" : undefined,
-                  inPreview && !selected ? "border-transparent bg-surface/10 opacity-55" : undefined,
+                  selected && !visuallyCovered
+                    ? "z-30 border-focus bg-focus/35 shadow-glow"
+                    : undefined,
+                  visuallyCovered
+                    ? "border-transparent bg-transparent opacity-0 hover:bg-transparent hover:opacity-0"
+                    : undefined,
                 )}
                 aria-label={`Select grid point column ${point.column}, row ${point.row}`}
                 data-testid={`profile-canvas-cell-${point.column}-${point.row}`}
@@ -3061,6 +3116,17 @@ function ProfileDirectCanvasEditor({
           const unconfigured =
             !placeholder &&
             (module.visibility === "draft" || module.config.configured === false);
+          const placeholderMicro =
+            placeholder && layout.colSpan <= 1 && layout.rowSpan <= 1;
+          const placeholderSmall =
+            placeholder &&
+            !placeholderMicro &&
+            (layout.colSpan <= 2 || layout.rowSpan <= 1);
+          const placeholderLabel = placeholderMicro
+            ? "Add"
+            : placeholderSmall
+              ? "Add module"
+              : "Click to add module";
 
           return (
             <ProfileGridModule
@@ -3103,19 +3169,56 @@ function ProfileDirectCanvasEditor({
                 {placeholder ? (
                   <button
                     type="button"
-                    className="grid h-full min-h-0 w-full place-items-center rounded-card border border-dashed border-line-strong bg-surface/62 p-4 text-center shadow-soft backdrop-blur-veil focus-visible:outline-2 focus-visible:outline-focus"
+                    className={cn(
+                      "grid h-full min-h-0 w-full place-items-center overflow-hidden rounded-card border border-dashed border-line-strong bg-surface/62 text-center shadow-soft backdrop-blur-veil focus-visible:outline-2 focus-visible:outline-focus",
+                      placeholderMicro
+                        ? "p-1"
+                        : placeholderSmall
+                          ? "p-2"
+                          : "p-4",
+                    )}
                     data-profile-edit-control="true"
                     data-testid={`profile-canvas-add-module-${module.id}`}
                     onClick={() => setPickerModuleId(module.id)}
                   >
-                    <span>
-                      <span className="mx-auto grid size-11 place-items-center rounded-full border border-line bg-canvas/80 text-accent-strong">
-                        <Plus aria-hidden="true" size={22} />
+                    <span className="min-w-0 max-w-full">
+                      <span
+                        className={cn(
+                          "mx-auto grid place-items-center rounded-full border border-line bg-canvas/80 text-accent-strong",
+                          placeholderMicro
+                            ? "size-8"
+                            : placeholderSmall
+                              ? "size-9"
+                              : "size-11",
+                        )}
+                      >
+                        <Plus
+                          aria-hidden="true"
+                          size={placeholderMicro ? 16 : placeholderSmall ? 18 : 22}
+                        />
                       </span>
-                      <span className="mt-3 block text-sm font-semibold text-text">
-                        Click to add module
+                      <span
+                        className={cn(
+                          "block max-w-full break-words font-semibold text-text",
+                          placeholderMicro
+                            ? "mt-1 text-[0.68rem] leading-3"
+                            : placeholderSmall
+                              ? "mt-1.5 text-xs leading-4"
+                              : "mt-3 text-sm",
+                        )}
+                      >
+                        {placeholderLabel}
                       </span>
-                      <span className="mt-1 block text-xs font-medium text-muted">
+                      <span
+                        className={cn(
+                          "block font-medium text-muted",
+                          placeholderMicro
+                            ? "sr-only"
+                            : placeholderSmall
+                              ? "mt-0.5 text-[0.68rem]"
+                              : "mt-1 text-xs",
+                        )}
+                      >
                         {profileModuleSizeLabel("placeholder", size)}
                       </span>
                     </span>
@@ -3210,23 +3313,16 @@ function ModulePickerModal({
     return profileModuleCatalog
       .filter((item) => item.category === activeCategory)
       .map((item) => {
-        const fittingSize = profileCanvasBestSizeForSelection(
-          item.type,
-          module.layout!,
-        );
-        const smallestFittingSize = profileCanvasSmallestSizeForSelection(
-          item.type,
-          module.layout!,
-        );
-        const sortSpan = profileGridModuleSizeSpan(
-          smallestFittingSize ?? getProfileModuleDefinition(item.type).defaultSize,
-        );
+        const fit = profileCanvasFitForSelection(item.type, module.layout!);
+        const sortSpan = profileGridModuleSizeSpan(fit.sortSize);
 
         return {
           ...item,
-          enabled: Boolean(fittingSize),
-          fittingSize,
+          enabled: fit.enabled,
+          fittingSize: fit.exactSize,
+          noteSize: fit.noteSize,
           sortArea: sortSpan.columns * sortSpan.rows,
+          warning: fit.warning,
         };
       })
       .sort(
@@ -3310,9 +3406,22 @@ function ModulePickerModal({
                       {item.label}
                     </span>
                     <span className="mt-0.5 block truncate text-xs font-medium text-muted">
-                      {item.enabled && item.fittingSize
-                        ? profileModuleSizeLabel(item.type, item.fittingSize)
-                        : "Selection too small"}
+                      {item.enabled && item.fittingSize ? (
+                        profileModuleSizeLabel(item.type, item.fittingSize)
+                      ) : (
+                        <>
+                          <span className="block">
+                            {item.warning === "too-large"
+                              ? "Selection too large."
+                              : "Selection too small."}
+                          </span>
+                          {item.noteSize ? (
+                            <span className="block text-[0.68rem]">
+                              ({item.noteSize})
+                            </span>
+                          ) : null}
+                        </>
+                      )}
                     </span>
                   </span>
                 </button>
@@ -3767,6 +3876,9 @@ function ProfileInfoSizedCard({
   const compact = span.columns <= 3;
   const balanced = span.columns === 4;
   const expanded = span.rows >= 4;
+  const wide = span.columns >= 6;
+  const large = span.columns >= 8;
+  const inlineStats = wide;
   const bannerUrl = safeProfileImageUrl(profile.bannerUrl);
   const showBanner = Boolean(bannerUrl) && !compact;
   const shellClass = cn(
@@ -3840,9 +3952,19 @@ function ProfileInfoSizedCard({
         <div
           className={cn(
             "shrink-0 overflow-hidden border-b border-line bg-canvas/55",
-            expanded ? "h-24 sm:h-28" : balanced ? "h-14" : "h-16",
+            expanded
+              ? large
+                ? "h-32 sm:h-36"
+                : "h-24 sm:h-28"
+              : large
+                ? "h-24 sm:h-28"
+                : wide
+                  ? "h-20"
+                  : balanced
+                    ? "h-14"
+                    : "h-16",
           )}
-          data-profile-banner-treatment="clear"
+          data-profile-banner-treatment={large ? "full" : "clear"}
           data-testid="profile-header-banner"
         >
           <img
@@ -3863,14 +3985,28 @@ function ProfileInfoSizedCard({
           expanded ? "p-4" : "p-3",
         )}
       >
-        <div className="flex min-w-0 items-start justify-between gap-3">
+        {inlineStats ? (
+          <ProfileInfoStats
+            featuredBadges={featuredBadges}
+            inline
+            onOpenPanel={onOpenPanel}
+            profile={profile}
+            rich
+          />
+        ) : null}
+        <div
+          className={cn(
+            "flex min-w-0 items-start justify-between gap-3",
+            inlineStats ? "mt-2" : undefined,
+          )}
+        >
           <div className="flex min-w-0 items-center gap-3">
             <Avatar
               user={profile.user}
               size="lg"
               className={cn(
                 "border-[3px] border-surface",
-                showBanner && expanded ? "-mt-10" : undefined,
+                showBanner && expanded && !large ? "-mt-10" : undefined,
                 balanced ? "size-14" : expanded ? "size-20" : "size-16",
               )}
             />
@@ -3920,12 +4056,14 @@ function ProfileInfoSizedCard({
           </p>
         ) : null}
         <div className="mt-auto min-w-0 pt-2">
-          <ProfileInfoStats
-            featuredBadges={featuredBadges}
-            onOpenPanel={onOpenPanel}
-            profile={profile}
-            rich={expanded || span.columns >= 6}
-          />
+          {!inlineStats ? (
+            <ProfileInfoStats
+              featuredBadges={featuredBadges}
+              onOpenPanel={onOpenPanel}
+              profile={profile}
+              rich={expanded || span.columns >= 6}
+            />
+          ) : null}
           <ProfileInfoBadgeStrip
             featuredBadges={featuredBadges}
             max={expanded ? 5 : 3}
@@ -4068,20 +4206,79 @@ function ProfileInfoMiniStats({
 
 function ProfileInfoStats({
   featuredBadges,
+  inline = false,
   onOpenPanel,
   profile,
   rich,
 }: {
   featuredBadges: UserBadge[];
+  inline?: boolean | undefined;
   onOpenPanel: (panel: "followers" | "following" | "badges") => void;
   profile: Profile;
   rich: boolean;
 }) {
-  const stats = [
+  const cardStats = [
     { label: "Followers", panel: "followers" as const, value: profile.stats.followers },
     { label: "Following", panel: "following" as const, value: profile.stats.following },
     { label: "Badges", panel: "badges" as const, value: featuredBadges.length },
   ];
+
+  if (inline) {
+    const inlineStats: Array<{
+      label: string;
+      panel?: "followers" | "following" | undefined;
+      value: number;
+    }> = [
+      { label: "Followers", panel: "followers" as const, value: profile.stats.followers },
+      { label: "Following", panel: "following" as const, value: profile.stats.following },
+      { label: "Likes", value: profile.stats.echoes },
+    ];
+
+    return (
+      <div
+        className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 overflow-hidden"
+        data-profile-info-stats-variant="inline"
+        data-testid="profile-social-context"
+      >
+        {inlineStats.map((stat) => {
+          const content = (
+            <>
+              <span className="font-semibold text-text">
+                {stat.value.toLocaleString()}
+              </span>
+              <span className="text-muted">{stat.label}</span>
+            </>
+          );
+          const className =
+            "inline-flex min-w-0 items-baseline gap-1.5 rounded-control py-0.5 text-xs font-medium transition duration-fluid ease-fluid";
+
+          if (stat.panel) {
+            const panel = stat.panel;
+
+            return (
+              <button
+                key={stat.label}
+                type="button"
+                className={cn(
+                  className,
+                  "hover:text-text focus-visible:outline-2 focus-visible:outline-focus",
+                )}
+                onClick={() => onOpenPanel(panel)}
+              >
+                {content}
+              </button>
+            );
+          }
+
+          return (
+            <span key={stat.label} className={className}>
+              {content}
+            </span>
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -4091,7 +4288,7 @@ function ProfileInfoStats({
       )}
       data-testid="profile-social-context"
     >
-      {stats.slice(0, rich ? 3 : 2).map((stat) => (
+      {cardStats.slice(0, rich ? 3 : 2).map((stat) => (
         <button
           key={stat.panel}
           type="button"

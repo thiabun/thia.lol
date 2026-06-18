@@ -1187,6 +1187,11 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
   await expect(info).toHaveAttribute("data-profile-info-columns", "6");
   await expect(info).toHaveAttribute("data-profile-info-rows", "3");
   await expect(banner).toHaveAttribute("data-profile-banner-treatment", "clear");
+  await expect(module.getByTestId("profile-social-context")).toHaveAttribute(
+    "data-profile-info-stats-variant",
+    "inline",
+  );
+  await expect(module.getByTestId("profile-social-context")).toContainText("Likes");
   await expect(module.getByRole("button", { name: "Report" })).toBeVisible();
 
   const metrics = await page.evaluate(() => {
@@ -1255,6 +1260,21 @@ test("profile info variants stay within each supported size", async ({ page }) =
       "data-profile-info-variant",
       profileInfoCase.variant,
     );
+    if (["6x3", "8x3", "8x4"].includes(profileInfoCase.size)) {
+      await expect(module.getByTestId("profile-social-context")).toHaveAttribute(
+        "data-profile-info-stats-variant",
+        "inline",
+      );
+      await expect(module.getByTestId("profile-social-context")).toContainText(
+        "Likes",
+      );
+    }
+    if (["8x3", "8x4"].includes(profileInfoCase.size)) {
+      await expect(module.getByTestId("profile-header-banner")).toHaveAttribute(
+        "data-profile-banner-treatment",
+        "full",
+      );
+    }
 
     const metrics = await module.evaluate((element) => {
       const headerElement = element.querySelector<HTMLElement>(
@@ -1387,11 +1407,21 @@ test("direct canvas point selection creates a draft module through picker and se
   const hoverCell = page.getByTestId("profile-canvas-cell-3-5");
   await hoverCell.hover();
   await expect(page.getByTestId("profile-canvas-selection-preview")).toBeVisible();
+  await expect
+    .poll(() =>
+      hoverCell.evaluate((element) => window.getComputedStyle(element).opacity),
+    )
+    .toBe("0");
   await hoverCell.click();
 
   const blankModule = page.locator('[data-testid^="profile-canvas-add-module-"]');
   await expect(blankModule).toBeVisible();
   await expect(blankModule).toContainText("Click to add module");
+  await expect
+    .poll(() =>
+      startCell.evaluate((element) => window.getComputedStyle(element).opacity),
+    )
+    .toBe("0");
   await expect(
     blankModule.evaluate((element) => window.getComputedStyle(element).filter),
   ).resolves.toBe("none");
@@ -1403,6 +1433,9 @@ test("direct canvas point selection creates a draft module through picker and se
   await expect(page.getByTestId("profile-module-picker-youtube_video")).toBeDisabled();
   await expect(page.getByTestId("profile-module-picker-youtube_video")).toContainText(
     "Selection too small",
+  );
+  await expect(page.getByTestId("profile-module-picker-youtube_video")).toContainText(
+    "(3x4)",
   );
 
   await page.getByRole("tab", { name: "Info" }).click();
@@ -1429,6 +1462,33 @@ test("direct canvas point selection creates a draft module through picker and se
     pinned: true,
     visibility: "hidden",
   });
+});
+
+test("module picker blocks selections larger than designed module sizes", async ({
+  page,
+}) => {
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-cell-1-4").click();
+  await page.getByTestId("profile-canvas-cell-6-9").click();
+  await expect(page.getByTestId("profile-module-picker")).toBeVisible();
+
+  const twitchChannel = page.getByTestId("profile-module-picker-twitch_channel");
+  await expect(twitchChannel).toBeDisabled();
+  await expect(twitchChannel).toContainText("Selection too large.");
+  await expect(twitchChannel).toContainText("(6x4)");
+
+  await page.getByRole("tab", { name: "Projects" }).click();
+  const githubRepo = page.getByTestId("profile-module-picker-github_repo");
+  await expect(githubRepo).toBeDisabled();
+  await expect(githubRepo).toContainText("Selection too large.");
+  await expect(githubRepo).toContainText("(6x4)");
 });
 
 test("public and editor canvas shell scales wide and glass slider changes opacity", async ({
@@ -1538,6 +1598,46 @@ test("direct canvas commit drops unpicked placeholder envelopes", async ({ page 
   const committedModules = commitPayload?.modules as Array<Record<string, unknown>>;
   expect(committedModules.some((module) => module.type === "placeholder")).toBe(false);
   expect(committedModules.map((module) => module.type)).toEqual(["profile_info"]);
+});
+
+test("one-cell blank module keeps its add affordance inside the module", async ({
+  page,
+}) => {
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-cell-2-5").click();
+  await page.getByTestId("profile-canvas-cell-2-5").click();
+
+  const blankModule = page.locator('[data-testid^="profile-canvas-add-module-"]');
+  await expect(blankModule).toBeVisible();
+  await expect(blankModule).toContainText("Add");
+  await expect(blankModule).not.toContainText("Click to add module");
+
+  const overflows = await blankModule.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+
+    return Array.from(element.querySelectorAll<HTMLElement>("span, svg"))
+      .filter((child) => !child.classList.contains("sr-only"))
+      .some((child) => {
+        const childBounds = child.getBoundingClientRect();
+
+        return (
+          childBounds.width > 0 &&
+          childBounds.height > 0 &&
+          (childBounds.left < bounds.left - 1 ||
+            childBounds.right > bounds.right + 1 ||
+            childBounds.top < bounds.top - 1 ||
+            childBounds.bottom > bounds.bottom + 1)
+        );
+      });
+  });
+  expect(overflows).toBe(false);
 });
 
 test("owner crops a profile background image before upload", async ({ page }) => {
