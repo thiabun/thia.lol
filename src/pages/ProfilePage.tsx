@@ -389,7 +389,9 @@ export function ProfilePage() {
       ? modulesOverride.modules
       : modulesState.data ?? [];
   const publicModules = loadedModules.filter(
-    (module) => module.visibility === "public" && module.status === "active",
+    (module) =>
+      module.status === "active" &&
+      (module.visibility === "public" || module.type === "activity"),
   );
   const profileLayoutPreset =
     profile?.profileLayoutPreset ?? defaultProfileLayoutPreset;
@@ -5339,21 +5341,27 @@ function ProfileInfoSizedCard({
   const expanded = span.rows >= 4;
   const wide = span.columns >= 6;
   const large = span.columns >= 8;
-  const inlineStats = wide;
+  const inlineStats = !compact;
   const bannerUrl = safeProfileImageUrl(profile.bannerUrl);
   const showBanner = Boolean(bannerUrl) && !compact;
   const bannerHeight = expanded
     ? large
-      ? "clamp(8.5rem, calc(var(--profile-grid-cell-size) * 1.18), 12rem)"
-      : "clamp(6.75rem, calc(var(--profile-grid-cell-size) * 1), 9.5rem)"
+      ? "9.75rem"
+      : "8rem"
     : large
-      ? "clamp(7.5rem, calc(var(--profile-grid-cell-size) * 1.02), 10.5rem)"
+      ? "7.75rem"
       : wide
-        ? "clamp(6rem, calc(var(--profile-grid-cell-size) * 0.92), 8rem)"
+        ? "6.75rem"
         : balanced
-          ? "clamp(5rem, calc(var(--profile-grid-cell-size) * 0.82), 7rem)"
+          ? "5.5rem"
           : "5rem";
-  const avatarSizeClass = balanced ? "size-14" : expanded ? "size-20" : "size-16";
+  const avatarSizeClass = balanced
+    ? "size-14"
+    : expanded
+      ? "size-20"
+      : large
+        ? "size-[4.5rem]"
+        : "size-16";
   const avatarInsetClass = expanded ? "left-4" : "left-3";
   const avatarOverlapClass = showBanner
     ? expanded || large
@@ -5369,6 +5377,13 @@ function ProfileInfoSizedCard({
     : expanded
       ? "pl-[6.25rem]"
       : "pl-[5.25rem]";
+  const identityMaxWidthClass = balanced
+    ? "max-w-[8.5rem]"
+    : expanded
+      ? "max-w-[12rem]"
+      : large
+        ? "max-w-[11rem]"
+        : "max-w-[10rem]";
   const shellClass = cn(
     "relative flex size-full min-h-0 min-w-0 flex-col overflow-hidden rounded-panel border",
     editing
@@ -5501,26 +5516,42 @@ function ProfileInfoSizedCard({
           data-testid="profile-info-content-cluster"
         >
           <div className="flex min-w-0 items-start justify-between gap-3">
-            <div className={cn("min-w-0", identityInsetClass)}>
-              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                <h1
-                  className={cn(
-                    "min-w-0 truncate font-semibold text-text",
-                    expanded ? "text-xl" : "text-base",
-                  )}
-                >
-                  {profile.user.displayName}
-                </h1>
-                {!isOwnProfile && profile.isMoot ? (
-                  <Badge className="min-h-5 px-2 text-[0.68rem]">Moot</Badge>
-                ) : null}
-                {!isOwnProfile && profile.mutedByMe ? (
-                  <Badge className="min-h-5 px-2 text-[0.68rem]" tone="cool">
-                    Muted
-                  </Badge>
-                ) : null}
+            <div
+              className={cn(
+                "flex min-w-0 flex-1 items-center gap-2.5",
+                identityInsetClass,
+              )}
+              data-testid="profile-info-identity-row"
+            >
+              <div className={cn("min-w-0 shrink-0", identityMaxWidthClass)}>
+                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                  <h1
+                    className={cn(
+                      "min-w-0 truncate font-semibold text-text",
+                      expanded ? "text-xl" : "text-base",
+                    )}
+                  >
+                    {profile.user.displayName}
+                  </h1>
+                  {!isOwnProfile && profile.isMoot ? (
+                    <Badge className="min-h-5 px-2 text-[0.68rem]">Moot</Badge>
+                  ) : null}
+                  {!isOwnProfile && profile.mutedByMe ? (
+                    <Badge className="min-h-5 px-2 text-[0.68rem]" tone="cool">
+                      Muted
+                    </Badge>
+                  ) : null}
+                </div>
+                <p className="truncate text-xs text-muted">@{profile.user.handle}</p>
               </div>
-              <p className="truncate text-xs text-muted">@{profile.user.handle}</p>
+              {inlineStats ? (
+                <ProfileInfoStats
+                  inline
+                  trail
+                  onOpenPanel={onOpenPanel}
+                  profile={profile}
+                />
+              ) : null}
             </div>
             <ProfileInfoActions
               followPosting={followPosting}
@@ -5544,15 +5575,6 @@ function ProfileInfoSizedCard({
             >
               {profile.bio}
             </p>
-          ) : null}
-          {inlineStats ? (
-            <div className="min-w-0">
-              <ProfileInfoStats
-                inline
-                onOpenPanel={onOpenPanel}
-                profile={profile}
-              />
-            </div>
           ) : null}
           <div className="min-w-0 pt-1">
             {!inlineStats ? (
@@ -5686,11 +5708,13 @@ function ProfileInfoStats({
   inline = false,
   onOpenPanel,
   profile,
+  trail = false,
 }: {
   compact?: boolean | undefined;
   inline?: boolean | undefined;
   onOpenPanel: (panel: "followers" | "following" | "badges") => void;
   profile: Profile;
+  trail?: boolean | undefined;
 }) {
   const stats: Array<{
     label: "Followers" | "Following" | "Likes";
@@ -5709,9 +5733,12 @@ function ProfileInfoStats({
           "min-w-0 overflow-hidden",
           compact
             ? "grid grid-cols-3 items-end gap-1"
-            : "flex flex-wrap items-center gap-x-4 gap-y-1",
+            : trail
+              ? "flex flex-wrap items-center gap-x-2 gap-y-1"
+              : "flex flex-wrap items-center gap-x-4 gap-y-1",
         )}
         data-profile-info-stats-variant="inline"
+        data-profile-info-stats-trail={trail ? "true" : undefined}
         data-testid="profile-social-context"
       >
         {stats.map((stat) => {
@@ -5740,27 +5767,21 @@ function ProfileInfoStats({
           const className = compact
             ? "block min-w-0 rounded-control py-0.5 text-left leading-none transition duration-fluid ease-fluid"
             : "inline-flex min-w-0 items-baseline gap-1.5 rounded-control py-0.5 leading-none transition duration-fluid ease-fluid";
-
-          if (stat.panel) {
-            const panel = stat.panel;
-
-            return (
-              <button
-                key={stat.label}
-                type="button"
-                className={cn(
-                  className,
-                  "hover:text-text focus-visible:outline-2 focus-visible:outline-focus",
-                )}
-                data-profile-info-stat={stat.label}
-                onClick={() => onOpenPanel(panel)}
-              >
-                {content}
-              </button>
-            );
-          }
-
-          return (
+          const panel = stat.panel;
+          const statNode = panel ? (
+            <button
+              key={stat.label}
+              type="button"
+              className={cn(
+                className,
+                "hover:text-text focus-visible:outline-2 focus-visible:outline-focus",
+              )}
+              data-profile-info-stat={stat.label}
+              onClick={() => onOpenPanel(panel)}
+            >
+              {content}
+            </button>
+          ) : (
             <span
               key={stat.label}
               className={className}
@@ -5769,6 +5790,26 @@ function ProfileInfoStats({
               {content}
             </span>
           );
+
+          if (trail && !compact) {
+            return (
+              <span
+                key={stat.label}
+                className="inline-flex min-w-0 items-baseline gap-2"
+              >
+                <span
+                  aria-hidden="true"
+                  className="shrink-0 text-sm font-semibold leading-none text-muted"
+                  data-profile-info-stat-separator="true"
+                >
+                  ·
+                </span>
+                {statNode}
+              </span>
+            );
+          }
+
+          return statNode;
         })}
       </div>
     );
