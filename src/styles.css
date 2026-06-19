@@ -230,17 +230,6 @@ body[data-profile-canvas-editing="true"] [data-app-mobile-nav="true"] {
   }
 }
 
-@media (min-width: 1600px) {
-  .profile-grid-canvas [data-profile-twitch-embed-surface="true"]
-    > .profile-twitch-embed-grid,
-  .profile-grid-canvas .profile-media-embed-frame[data-profile-media-only-embed="true"] {
-    block-size: 111.111%;
-    inline-size: 111.111%;
-    transform: scale(0.9);
-    transform-origin: left top;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

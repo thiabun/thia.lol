@@ -1252,7 +1252,7 @@ test("largest Twitch stream chat uses a six plus two desktop split", async ({
     });
   expect(largeEmbedMetrics.streamMinHeight).toBe("0px");
   expect(largeEmbedMetrics.chatMinHeight).toBe("0px");
-  expect(largeEmbedMetrics.transform).not.toBe("none");
+  expect(largeEmbedMetrics.transform).toBe("none");
 });
 
 test("owner direct canvas editor preserves lower-row 6x4 creator modules", async ({
@@ -2424,7 +2424,7 @@ test("public and editor canvas shell scales wide and glass slider changes opacit
     };
   });
   expect(publicMetrics1920.centerDelta).toBeLessThanOrEqual(2);
-  expect(publicMetrics1920.contentScale).toBeLessThanOrEqual(1.06);
+  expect(publicMetrics1920.contentScale).toBeLessThanOrEqual(1.3);
   expect(publicMetrics1920.contentScale).toBeGreaterThan(
     publicMetrics1280.contentScale,
   );

@@ -117,10 +117,7 @@ export function ProfileGrid({
   const moduleSurfacePercent = Math.round(
     78 - (normalizedCanvasGlass / 92) * 42,
   );
-  const contentScale =
-    measuredCellSize === undefined
-      ? 1
-      : Math.min(1.06, Math.max(0.74, measuredCellSize / 86));
+  const contentScale = measuredCellSize === undefined ? 1 : measuredCellSize / 86;
   const contentScaleInverse = 1 / contentScale;
   const gridStyle = {
     "--profile-canvas-glass": String(normalizedCanvasGlass),
