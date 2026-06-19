@@ -1,10 +1,11 @@
 import type {
+  ChangeEvent,
   InputHTMLAttributes,
   ReactNode,
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
-import { forwardRef } from "react";
+import { forwardRef, useState } from "react";
 import { ChevronDown, Search, type LucideIcon } from "lucide-react";
 import { cn } from "../../lib/classNames";
 
@@ -75,6 +76,62 @@ export function TextField({
         className={cn(controlBaseClass, controlDensityClass[density], className)}
         {...props}
       />
+    </FieldShell>
+  );
+}
+
+export function HandleField({
+  density = "default",
+  id,
+  label,
+  icon,
+  hideLabel,
+  className,
+  onChange,
+  ...props
+}: TextFieldProps) {
+  const [internalValue, setInternalValue] = useState(() =>
+    inputValueToString(props.defaultValue),
+  );
+  const valueText = inputValueToString(props.value ?? internalValue);
+  const normalizedStart = valueText.trimStart();
+  const showPrefix = normalizedStart.length > 0 && !normalizedStart.startsWith("@");
+
+  function handleChange(event: ChangeEvent<HTMLInputElement>) {
+    if (props.value === undefined) {
+      setInternalValue(event.currentTarget.value);
+    }
+
+    onChange?.(event);
+  }
+
+  return (
+    <FieldShell id={id} label={label} icon={icon} hideLabel={hideLabel}>
+      <span className="relative block">
+        {showPrefix ? (
+          <span
+            aria-hidden="true"
+            className={cn(
+              "pointer-events-none absolute top-1/2 -translate-y-1/2 select-none text-sm font-semibold text-muted/85",
+              density === "compact" ? "left-3" : "left-4",
+            )}
+            data-testid={`${id}-prefix`}
+          >
+            @
+          </span>
+        ) : null}
+        <input
+          id={id}
+          className={cn(
+            controlBaseClass,
+            controlDensityClass[density],
+            showPrefix && (density === "compact" ? "pl-7" : "pl-8"),
+            className,
+          )}
+          onChange={handleChange}
+          {...props}
+        />
+      </span>
     </FieldShell>
   );
 }
@@ -181,4 +238,22 @@ export function SearchField({ id, label, className, ...props }: SearchFieldProps
       </span>
     </label>
   );
+}
+
+function inputValueToString(
+  value: InputHTMLAttributes<HTMLInputElement>["value"] | undefined,
+): string {
+  if (value === undefined || value === null) {
+    return "";
+  }
+
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  return Array.from(value).join("");
 }

@@ -64,7 +64,11 @@ test("room moderator controls are gated to owners and admins", async ({ page }) 
     "href",
     "/@mira",
   );
+  await expect(modal.getByTestId("room-moderator-handle-prefix")).toHaveCount(0);
   await modal.getByLabel("Add moderator by handle").fill("alex");
+  await expect(modal.getByTestId("room-moderator-handle-prefix")).toBeVisible();
+  await modal.getByLabel("Add moderator by handle").fill("@alex");
+  await expect(modal.getByTestId("room-moderator-handle-prefix")).toHaveCount(0);
   await modal.getByRole("button", { name: "Add" }).click();
 
   await expect.poll(() => addedHandle).toBe("alex");

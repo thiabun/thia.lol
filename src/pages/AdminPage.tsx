@@ -22,7 +22,12 @@ import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Badge } from "../components/ui/Badge";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
-import { SelectField, TextareaField, TextField } from "../components/ui/Field";
+import {
+  HandleField,
+  SelectField,
+  TextareaField,
+  TextField,
+} from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
 import { CompactStateNotice } from "../components/ui/RouteState";
 import {
@@ -624,11 +629,12 @@ function BadgeAdminPanel({
 
       <div className="rounded-card bg-canvas/45 p-3">
         <div className="grid gap-3 lg:grid-cols-[1fr_1fr]">
-          <TextField
+          <HandleField
             id="badge-grant-handle"
             label="Handle"
             value={handle}
-            placeholder="member"
+            placeholder="handle"
+            maxLength={41}
             disabled={pendingAction === "grant"}
             onChange={(event) => onHandleChange(event.currentTarget.value)}
           />

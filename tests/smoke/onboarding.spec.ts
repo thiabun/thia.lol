@@ -25,10 +25,15 @@ test.beforeEach(async ({ page }) => {
 
 test("registration lands in the guided onboarding flow", async ({ page }) => {
   let authenticated = false;
+  let registerPayload: Record<string, unknown> | undefined;
   const state = onboardingState();
 
   await mockAuth(page, () => authenticated);
   await page.route("**/api/auth/register", async (route) => {
+    registerPayload = (await route.request().postDataJSON()) as Record<
+      string,
+      unknown
+    >;
     authenticated = true;
     await route.fulfill({
       status: 201,
@@ -41,14 +46,53 @@ test("registration lands in the guided onboarding flow", async ({ page }) => {
   await mockIntegrations(page);
 
   await page.goto("/register");
+  await expect(page.getByTestId("handle-prefix")).toHaveCount(0);
   await page.getByLabel("Display name").fill("Onboard Tester");
   await page.getByLabel("Handle").fill("onboardtester");
+  await expect(page.getByTestId("handle-prefix")).toBeVisible();
   await page.getByLabel("Email").fill("onboard@example.test");
   await page.getByLabel("Password").fill("password-12345");
   await page.getByRole("button", { name: "Create account" }).click();
 
+  await expect.poll(() => registerPayload?.handle).toBe("onboardtester");
   await expect(page).toHaveURL(/\/onboarding$/);
   await expect(page.getByRole("heading", { name: "Profile setup" })).toBeVisible();
+});
+
+test("registration accepts an explicit @ handle without a duplicate prefix", async ({
+  page,
+}) => {
+  let authenticated = false;
+  let registerPayload: Record<string, unknown> | undefined;
+  const state = onboardingState();
+
+  await mockAuth(page, () => authenticated);
+  await page.route("**/api/auth/register", async (route) => {
+    registerPayload = (await route.request().postDataJSON()) as Record<
+      string,
+      unknown
+    >;
+    authenticated = true;
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: authSession() }),
+    });
+  });
+  await mockNotifications(page);
+  await mockOnboarding(page, state);
+  await mockIntegrations(page);
+
+  await page.goto("/register");
+  await page.getByLabel("Display name").fill("At Tester");
+  await page.getByLabel("Handle").fill("@attester");
+  await expect(page.getByTestId("handle-prefix")).toHaveCount(0);
+  await page.getByLabel("Email").fill("at-tester@example.test");
+  await page.getByLabel("Password").fill("password-12345");
+  await page.getByRole("button", { name: "Create account" }).click();
+
+  await expect.poll(() => registerPayload?.handle).toBe("attester");
+  await expect(page).toHaveURL(/\/onboarding$/);
 });
 
 test("existing authenticated users are routed into onboarding when unfinished", async ({

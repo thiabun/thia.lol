@@ -641,7 +641,7 @@ export function addRoomModerator(
 ): Promise<RoomMember[]> {
   return apiPost<RoomMember[]>(
     `/rooms/${encodeURIComponent(slug)}/moderators`,
-    { handle },
+    { handle: normalizeHandle(handle) },
     csrfToken,
   );
 }
@@ -654,7 +654,7 @@ export function removeRoomModerator(
   return apiDelete<RoomMember[]>(
     `/rooms/${encodeURIComponent(slug)}/moderators`,
     csrfToken,
-    { handle },
+    { handle: normalizeHandle(handle) },
   );
 }
 

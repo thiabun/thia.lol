@@ -42,6 +42,73 @@ test("admin badge grant panel renders for admin", async ({ page }) => {
   );
 });
 
+test("admin badge handle input shows a visual prefix and submits a bare handle", async ({
+  page,
+}) => {
+  let grantPayload: Record<string, unknown> | undefined;
+
+  await mockAdminBadgePanel(page);
+  await page.route("**/api/admin/badges/grant", async (route) => {
+    grantPayload = (await route.request().postDataJSON()) as Record<
+      string,
+      unknown
+    >;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          id: 11,
+          reason: null,
+          earnedAt: "2026-06-10 00:00:00",
+          featuredOrder: null,
+          isVisible: true,
+          user: {
+            id: 3,
+            handle: "alex",
+            displayName: "Alex",
+            initials: "A",
+            aura: "frost",
+            avatarUrl: null,
+          },
+          grantedBy: {
+            id: 1,
+            handle: "admin",
+            displayName: "Admin",
+            initials: "A",
+            aura: "frost",
+            avatarUrl: null,
+          },
+          badge: {
+            id: 1,
+            badgeKey: "founder",
+            name: "Founder",
+            description: "Granted to people who helped establish thia.lol.",
+            rarity: "founder",
+            source: "admin-granted",
+            icon: "sparkles",
+            accent: "founder",
+            isActive: true,
+            createdAt: "2026-06-10 00:00:00",
+          },
+        },
+      }),
+    });
+  });
+
+  await page.goto("/admin");
+  await expect(page.getByTestId("badge-grant-handle-prefix")).toHaveCount(0);
+  await page.getByLabel("Handle").fill("alex");
+  await expect(page.getByTestId("badge-grant-handle-prefix")).toBeVisible();
+  await page.getByLabel("Handle").fill("@alex");
+  await expect(page.getByTestId("badge-grant-handle-prefix")).toHaveCount(0);
+  await page.getByLabel("Badge").selectOption("founder");
+  await page.getByRole("button", { name: "Grant badge" }).click();
+
+  await expect.poll(() => grantPayload?.handle).toBe("alex");
+});
+
 test("grant badge endpoint requires auth/admin", async ({ page }) => {
   test.skip(
     !process.env.THIA_BASE_URL,

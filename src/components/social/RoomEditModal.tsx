@@ -13,7 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button } from "../ui/Button";
-import { SelectField, TextareaField, TextField } from "../ui/Field";
+import { HandleField, SelectField, TextareaField, TextField } from "../ui/Field";
 import { ImageCropModal } from "../ui/ImageCropModal";
 import { ModalSheet, ModalSheetStatus } from "../ui/ModalSheet";
 import { UserIdentityLink } from "./UserProfileLink";
@@ -369,11 +369,12 @@ export function RoomEditModal({
 
               {canManageModerators ? (
                 <div className="grid gap-3 border-t border-line pt-3 sm:grid-cols-[1fr_auto]">
-                  <TextField
+                  <HandleField
                     id="room-moderator-handle"
                     label="Add moderator by handle"
                     value={moderatorHandle}
-                    maxLength={40}
+                    placeholder="handle"
+                    maxLength={41}
                     disabled={busy || moderatorPending !== undefined}
                     onChange={(event) => setModeratorHandle(event.currentTarget.value)}
                   />

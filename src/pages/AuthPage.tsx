@@ -7,7 +7,7 @@ import { BrandLogoMain } from "../components/BrandLogo";
 import { PageMeta } from "../components/PageMeta";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
-import { TextField } from "../components/ui/Field";
+import { HandleField, TextField } from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
 import { useAuth } from "../lib/useAuth";
@@ -35,7 +35,7 @@ export function AuthPage({ mode }: AuthPageProps) {
       if (isRegister) {
         await register({
           displayName: stringField(form, "displayName"),
-          handle: stringField(form, "handle"),
+          handle: normalizeHandleInput(stringField(form, "handle")),
           email: stringField(form, "email"),
           password: stringField(form, "password", false),
         });
@@ -133,18 +133,19 @@ export function AuthPage({ mode }: AuthPageProps) {
                     minLength={1}
                     maxLength={120}
                   />
-                  <TextField
+                  <HandleField
                     id="handle"
                     name="handle"
                     label="Handle"
                     type="text"
-                    placeholder="@handle"
+                    placeholder="handle"
                     autoComplete="username"
                     icon={UserPlus}
                     required
                     minLength={3}
-                    maxLength={40}
-                    pattern="[A-Za-z0-9][A-Za-z0-9_-]{1,38}[A-Za-z0-9]"
+                    maxLength={41}
+                    pattern="@?[A-Za-z0-9][A-Za-z0-9_-]{1,38}[A-Za-z0-9]"
+                    title="Use 3-40 letters, numbers, underscores, or hyphens."
                   />
                 </>
               ) : null}
@@ -226,4 +227,8 @@ function stringField(form: FormData, name: string, trim = true): string {
   }
 
   return trim ? value.trim() : value;
+}
+
+function normalizeHandleInput(value: string): string {
+  return value.trim().replace(/^@/, "");
 }
