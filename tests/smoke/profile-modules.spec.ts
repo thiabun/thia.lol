@@ -1961,13 +1961,13 @@ test("direct canvas point selection creates a draft module through picker and se
     "aria-selected",
     "true",
   );
-  await expect(page.getByTestId("profile-module-picker-youtube_video")).toBeDisabled();
-  await expect(page.getByTestId("profile-module-picker-youtube_video")).toContainText(
-    "Selection too small",
-  );
-  await expect(page.getByTestId("profile-module-picker-youtube_video")).toContainText(
-    "(3x4)",
-  );
+  const youtubeVideo = page.getByTestId("profile-module-picker-youtube_video");
+  await expect(youtubeVideo).toBeDisabled();
+  await expect(youtubeVideo.getByTestId("connection-icon-youtube")).toBeVisible();
+  await expect(youtubeVideo).toContainText("Video");
+  await expect(youtubeVideo).not.toContainText("YouTube video");
+  await expect(youtubeVideo).toContainText("Selection too small");
+  await expect(youtubeVideo).toContainText("(3x4)");
 
   await page.getByRole("tab", { name: "Info" }).click();
   await page.getByTestId("profile-module-picker-text").click();
@@ -2194,8 +2194,29 @@ test("module picker blocks selections larger than designed module sizes", async 
   await page.getByRole("tab", { name: "Projects" }).click();
   const githubRepo = page.getByTestId("profile-module-picker-github_repo");
   await expect(githubRepo).toBeDisabled();
+  await expect(githubRepo.getByTestId("connection-icon-github")).toBeVisible();
+  await expect(githubRepo).toContainText("Repository");
+  await expect(githubRepo).not.toContainText("GitHub repo");
   await expect(githubRepo).toContainText("Selection too large.");
   await expect(githubRepo).toContainText("(6x4)");
+
+  await page.getByRole("tab", { name: "Music" }).click();
+  const spotifySong = page.getByTestId("profile-module-picker-spotify_song");
+  await expect(spotifySong.getByTestId("connection-icon-spotify")).toBeVisible();
+  await expect(spotifySong).toContainText("Music");
+  await expect(spotifySong).not.toContainText("Spotify song");
+
+  const appleMusicSong = page.getByTestId("profile-module-picker-apple_music_song");
+  await expect(appleMusicSong.getByTestId("connection-icon-apple_music")).toBeVisible();
+  await expect(appleMusicSong).toContainText("Music");
+  await expect(appleMusicSong).not.toContainText("Apple Music song");
+
+  const youtubeMusicPlaylist = page.getByTestId(
+    "profile-module-picker-youtube_music_playlist",
+  );
+  await expect(youtubeMusicPlaylist.getByTestId("connection-icon-youtube")).toBeVisible();
+  await expect(youtubeMusicPlaylist).toContainText("Playlist");
+  await expect(youtubeMusicPlaylist).not.toContainText("YouTube Music playlist");
 });
 
 test("authenticated integrations hide the connect prompt in module settings", async ({

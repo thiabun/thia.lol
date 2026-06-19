@@ -1,6 +1,7 @@
 import { Globe } from "lucide-react";
 import type { IconType } from "react-icons";
 import {
+  SiApplemusic,
   SiBluesky,
   SiDiscord,
   SiGithub,
@@ -18,9 +19,13 @@ import {
 } from "../../lib/profileConnections";
 import type { ProfileConnectionPlatform } from "../../lib/types";
 
+export type ProfileConnectionIconPlatform =
+  | ProfileConnectionPlatform
+  | "apple_music";
+
 type ProfileConnectionIconProps = {
-  className?: string;
-  platform: ProfileConnectionPlatform;
+  className?: string | undefined;
+  platform: ProfileConnectionIconPlatform;
   size?: number;
 };
 
@@ -44,6 +49,20 @@ export function ProfileConnectionIcon({
   platform,
   size = 16,
 }: ProfileConnectionIconProps) {
+  if (platform === "apple_music") {
+    return (
+      <SiApplemusic
+        aria-hidden="true"
+        className={cn("shrink-0", className)}
+        data-icon-source="simple-icons"
+        data-icon="simple-icons:applemusic"
+        data-testid="connection-icon-apple_music"
+        focusable="false"
+        size={size}
+      />
+    );
+  }
+
   const iconName = connectionPlatformIconName(platform);
 
   if (iconName === "generic-globe") {

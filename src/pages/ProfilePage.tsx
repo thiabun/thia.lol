@@ -52,7 +52,10 @@ import {
 import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
 import { MentionTextarea } from "../components/social/MentionTextarea";
-import { ProfileConnectionIcon } from "../components/social/ProfileConnectionIcon";
+import {
+  ProfileConnectionIcon,
+  type ProfileConnectionIconPlatform,
+} from "../components/social/ProfileConnectionIcon";
 import { PostCard } from "../components/social/PostCard";
 import { ProfileGrid, ProfileGridModule } from "../components/social/ProfileGrid";
 import {
@@ -4330,7 +4333,8 @@ function ModulePickerModal({
           </div>
           <div className="grid gap-2">
             {pickerItems.map((item) => {
-              const Icon = getProfileModuleCategoryIcon(item.category);
+              const label = profileModulePickerLabel(item.type);
+              const accessibleLabel = profileModulePickerAccessibleLabel(item.type);
 
               return (
                 <button
@@ -4341,6 +4345,7 @@ function ModulePickerModal({
                     !item.enabled ? "opacity-55" : undefined,
                   )}
                   disabled={!item.enabled}
+                  aria-label={accessibleLabel}
                   data-testid={`profile-module-picker-${item.type}`}
                   onClick={() => handleChoose(item.type)}
                 >
@@ -4350,7 +4355,11 @@ function ModulePickerModal({
                       !item.enabled ? "blur-[0.8px]" : undefined,
                     )}
                   >
-                    <Icon aria-hidden="true" size={16} />
+                    <ProfileModulePickerIcon
+                      category={item.category}
+                      disabled={!item.enabled}
+                      type={item.type}
+                    />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span
@@ -4359,7 +4368,7 @@ function ModulePickerModal({
                         !item.enabled ? "blur-[0.7px]" : undefined,
                       )}
                     >
-                      {item.label}
+                      {label}
                     </span>
                     <span className="mt-0.5 block truncate text-xs font-medium text-muted">
                       {item.enabled && item.fittingSize ? (
@@ -4402,11 +4411,128 @@ const profileModulePickerCategories = [
   label: string;
 }[];
 
-function getProfileModuleCategoryIcon(category: ProfileModuleCategory) {
-  return (
-    profileModulePickerCategories.find((item) => item.category === category)?.icon ??
-    Sparkles
-  );
+const profileModulePickerDisplayLabels: Partial<
+  Record<ProfileModule["type"], string>
+> = {
+  apple_music_artist: "Artist",
+  apple_music_playlist: "Playlist",
+  apple_music_song: "Music",
+  github_repo: "Repository",
+  spotify_artist: "Artist",
+  spotify_playlist: "Playlist",
+  spotify_song: "Music",
+  twitch_channel: "Stream",
+  youtube_music_artist: "Artist",
+  youtube_music_playlist: "Playlist",
+  youtube_music_song: "Music",
+  youtube_playlist: "Playlist",
+  youtube_stream: "Stream",
+  youtube_video: "Video",
+};
+
+const profileModulePickerAccessibleLabels: Partial<
+  Record<ProfileModule["type"], string>
+> = {
+  apple_music_artist: "Apple Music artist",
+  apple_music_playlist: "Apple Music playlist",
+  apple_music_song: "Apple Music song",
+  github_repo: "GitHub repository",
+  spotify_artist: "Spotify artist",
+  spotify_playlist: "Spotify playlist",
+  spotify_song: "Spotify song",
+  twitch_channel: "Twitch stream",
+  youtube_music_artist: "YouTube Music artist",
+  youtube_music_playlist: "YouTube Music playlist",
+  youtube_music_song: "YouTube Music song",
+  youtube_playlist: "YouTube playlist",
+  youtube_stream: "YouTube stream",
+  youtube_video: "YouTube video",
+};
+
+function profileModulePickerLabel(type: ProfileModule["type"]): string {
+  return profileModulePickerDisplayLabels[type] ?? getProfileModuleDefinition(type).label;
+}
+
+function profileModulePickerAccessibleLabel(type: ProfileModule["type"]): string {
+  return profileModulePickerAccessibleLabels[type] ?? profileModulePickerLabel(type);
+}
+
+function profileModulePickerBrand(
+  type: ProfileModule["type"],
+): ProfileConnectionIconPlatform | undefined {
+  if (type.startsWith("apple_music_")) {
+    return "apple_music";
+  }
+
+  if (type === "github_repo") {
+    return "github";
+  }
+
+  if (type.startsWith("spotify_")) {
+    return "spotify";
+  }
+
+  if (type === "twitch_channel") {
+    return "twitch";
+  }
+
+  if (type.startsWith("youtube_")) {
+    return "youtube";
+  }
+
+  return undefined;
+}
+
+function ProfileModulePickerIcon({
+  category,
+  disabled,
+  type,
+}: {
+  category: ProfileModuleCategory;
+  disabled: boolean;
+  type: ProfileModule["type"];
+}) {
+  const brand = profileModulePickerBrand(type);
+  const iconClassName = disabled ? "opacity-80" : undefined;
+
+  if (brand) {
+    return (
+      <ProfileConnectionIcon
+        className={iconClassName}
+        platform={brand}
+        size={16}
+      />
+    );
+  }
+
+  const props = {
+    "aria-hidden": true,
+    className: iconClassName,
+    "data-testid": `profile-module-picker-icon-${type}`,
+    size: 16,
+  } as const;
+
+  if (category === "video") {
+    return <Video {...props} />;
+  }
+
+  if (category === "music") {
+    return <Music2 {...props} />;
+  }
+
+  if (category === "images") {
+    return <ImagePlus {...props} />;
+  }
+
+  if (category === "projects") {
+    return <FolderGit2 {...props} />;
+  }
+
+  if (category === "info") {
+    return <Info {...props} />;
+  }
+
+  return <Sparkles {...props} />;
 }
 
 function ModuleSettingsModal({
