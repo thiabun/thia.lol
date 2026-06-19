@@ -336,7 +336,11 @@ test("activity renders through the module grid without a duplicate fixed section
   await mockProfileModules(page, {
     authenticated: false,
     modules: [
-      activityModule({ id: 9, title: "Latest activity", position: 1 }),
+      {
+        ...activityModule({ id: 9, title: "Latest activity", position: 1 }),
+        config: { canvasSize: "4x6", configured: true },
+        layout: { column: 1, row: 1, colSpan: 4, rowSpan: 6 },
+      },
       aboutModule({ id: 1, title: "About", body: "A compact intro.", position: 2 }),
     ],
     profilePosts: [postFixture({ body: "Profile activity post." })],
@@ -355,6 +359,10 @@ test("activity renders through the module grid without a duplicate fixed section
   const section = page.getByTestId("profile-modules");
   await expect(section).toBeVisible();
   await expect(section.getByTestId("profile-grid-module-activity")).toBeVisible();
+  await expect(section.getByTestId("profile-grid-module-activity")).toHaveAttribute(
+    "data-profile-grid-size",
+    "4x6",
+  );
   await expect(section.getByTestId("profile-module-activity")).toBeVisible();
   await expect(section.getByTestId("profile-module-activity")).toHaveAttribute(
     "data-profile-activity-surface",
@@ -1678,6 +1686,19 @@ test("direct canvas point selection creates a draft module through picker and se
   await expect(page.getByTestId("profile-module-settings")).toBeVisible();
   await expect(page.getByText("Available sizes")).toHaveCount(0);
   await expect(page.locator('[data-testid^="profile-canvas-size-"]')).toHaveCount(0);
+  const sizeStepper = page.getByTestId("profile-module-size-stepper");
+  await expect(sizeStepper).toBeVisible();
+  await expect(sizeStepper.getByTestId("profile-module-size-current")).toContainText(
+    "3 x 2",
+  );
+  await sizeStepper.getByTestId("profile-module-size-increase").click();
+  await expect(sizeStepper.getByTestId("profile-module-size-current")).toContainText(
+    "3x3",
+  );
+  await sizeStepper.getByTestId("profile-module-size-decrease").click();
+  await expect(sizeStepper.getByTestId("profile-module-size-current")).toContainText(
+    "3x2",
+  );
   const pickedContent = page.locator(
     '[data-testid^="profile-canvas-module-content-"][data-profile-canvas-module-configured="false"]',
   );
@@ -1702,7 +1723,7 @@ test("direct canvas point selection creates a draft module through picker and se
   );
   await expect(
     configuredContent.evaluate((element) => window.getComputedStyle(element).filter),
-  ).resolves.toContain("blur(10px)");
+  ).resolves.toContain("blur(18px)");
   await expect(configuredContent).toHaveAttribute(
     "data-profile-canvas-module-frame",
     "inset",
@@ -1771,6 +1792,68 @@ test("direct canvas supports a 6x10 activity selection envelope", async ({
 
   await expect(activity).toBeEnabled();
   await expect(activity).toContainText("Full");
+});
+
+test("direct canvas keeps 4x6 activity blurred in editor and public after save", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  let commitPayload: Record<string, unknown> | undefined;
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [profileInfoModule()],
+    profilePosts: [postFixture({ id: 44, body: "Fresh 4x6 activity item." })],
+    onCanvasSave: (payload) => {
+      commitPayload = payload;
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-cell-1-4").click();
+  await page.getByTestId("profile-canvas-cell-4-9").click();
+  await page.getByRole("tab", { name: "Info" }).click();
+  await page.getByTestId("profile-module-picker-activity").click();
+
+  const activityContent = page.locator(
+    '[data-testid^="profile-canvas-module-content-"]',
+    { has: page.getByTestId("profile-activity") },
+  );
+  await expect(activityContent).toHaveAttribute(
+    "data-profile-canvas-module-configured",
+    "true",
+  );
+  await expect(
+    activityContent.evaluate((element) => window.getComputedStyle(element).filter),
+  ).resolves.toContain("blur(18px)");
+
+  await page.keyboard.press("Escape");
+  await page.getByTestId("profile-canvas-save-button").click();
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
+  await expect.poll(() => commitPayload).toBeDefined();
+
+  const committedModules = commitPayload?.modules as Array<Record<string, unknown>>;
+  expect(committedModules.find((module) => module.type === "activity")).toMatchObject({
+    config: {
+      canvasSize: "4x6",
+      configured: true,
+    },
+    layout: {
+      column: 1,
+      row: 4,
+      colSpan: 4,
+      rowSpan: 6,
+    },
+    visibility: "public",
+  });
+  await expect(page.getByTestId("profile-grid-module-activity")).toBeVisible();
+  await expect(page.getByTestId("profile-module-activity")).toHaveAttribute(
+    "data-profile-activity-surface",
+    "public",
+  );
+  await expect(page.getByText("Fresh 4x6 activity item.")).toBeVisible();
 });
 
 test("direct canvas blocks new selections that overlap existing modules", async ({

@@ -2958,6 +2958,10 @@ function profile_module_config(string $type, mixed $value, int $userId): array
         unset($value['canvasSize']);
     }
 
+    if ($configured === false && profile_module_is_intrinsically_configured($type)) {
+        $configured = true;
+    }
+
     if ($configured === false) {
         $draftConfig = ['configured' => false];
 
@@ -3010,6 +3014,20 @@ function profile_module_config(string $type, mixed $value, int $userId): array
     }
 
     return $normalized;
+}
+
+function profile_module_is_intrinsically_configured(string $type): bool
+{
+    return in_array(
+        $type,
+        [
+            PROFILE_INFO_MODULE_TYPE,
+            PROFILE_ACTIVITY_MODULE_TYPE,
+            PROFILE_FEATURED_POST_MODULE_TYPE,
+            PROFILE_FEATURED_ROOM_MODULE_TYPE,
+        ],
+        true
+    );
 }
 
 function profile_module_builtin_config(array $config): array

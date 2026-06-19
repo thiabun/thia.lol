@@ -179,6 +179,9 @@ assert_true($emptyCreator === ['platform' => 'github'], 'empty creator module sh
 
 $emptyMusic = profile_module_config('music', [], 123);
 assert_true($emptyMusic === [], 'empty music module should be valid for owner placement');
+$draftActivityConfig = profile_module_config('activity', ['configured' => false, 'canvasSize' => '4x6'], 123);
+assert_true(($draftActivityConfig['configured'] ?? null) === true, 'activity should normalize as configured');
+assert_true(($draftActivityConfig['canvasSize'] ?? null) === '4x6', 'activity should preserve normalized draft canvas size');
 
 assert_true(is_string($profileModulesSource), 'profile modules source should be readable');
 assert_true(str_contains($profileModulesSource, 'function profile_modules_restore'), 'restore endpoint should exist');

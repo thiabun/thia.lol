@@ -10,6 +10,7 @@ import {
   ImagePlus,
   Info,
   MessageCircle,
+  Minus,
   MoreHorizontal,
   Music2,
   Pin,
@@ -126,6 +127,7 @@ import {
   PROFILE_CANVAS_PROFILE_INFO_COLUMNS,
   PROFILE_CANVAS_VERSION,
   getProfileModuleDefinition,
+  normalizeProfileGridModuleSize,
   profileModuleAllowedSizes,
   profileModuleCatalog,
   profileModuleFallbackTitle,
@@ -2653,7 +2655,10 @@ function profileCanvasDefaultConfigForModule(
   integrationLinks: ProfileModuleLink[] = [],
 ): ProfileModule["config"] {
   const definition = getProfileModuleDefinition(type);
-  const base = { canvasSize: size, configured: false };
+  const base = {
+    canvasSize: size,
+    configured: profileCanvasModuleIsIntrinsicallyConfigured(type),
+  };
 
   if (type === "connections" || type === "links") {
     return profileCanvasConfigWithIntegrationLinks(
@@ -2693,6 +2698,28 @@ function profileCanvasDefaultConfigForModule(
   }
 
   return base;
+}
+
+function profileCanvasModuleIsIntrinsicallyConfigured(
+  type: ProfileModule["type"],
+): boolean {
+  return (
+    type === "profile_info" ||
+    type === "activity" ||
+    type === "featured_post" ||
+    type === "featured_room"
+  );
+}
+
+function profileCanvasModuleIsConfiguredForEditor(module: ProfileModule): boolean {
+  if (module.type === "placeholder") {
+    return false;
+  }
+
+  return (
+    profileCanvasModuleIsIntrinsicallyConfigured(module.type) ||
+    module.config.configured !== false
+  );
 }
 
 type ProfileCanvasAutofillConfig = {
@@ -3483,6 +3510,40 @@ function ProfileDirectCanvasEditor({
     );
   }
 
+  function handleResizeModule(
+    module: ProfileModule,
+    size: ProfileGridModuleSize,
+  ) {
+    const span = profileGridModuleSizeSpan(size);
+
+    updateDraftModules((currentModules) =>
+      profileCanvasResolveDraftCollisions(
+        currentModules.map((item, index) => {
+          if (item.id !== module.id) {
+            return item;
+          }
+
+          const layout =
+            item.layout ?? profileCanvasDefaultClientLayout(item, index);
+
+          return {
+            ...item,
+            config: {
+              ...item.config,
+              canvasSize: size,
+            },
+            layout: {
+              ...layout,
+              colSpan: span.columns,
+              rowSpan: span.rows,
+            },
+          };
+        }),
+        module.id,
+      ),
+    );
+  }
+
   const selectionRect =
     selectionStart && selectionHover
       ? profileCanvasRectFromPoints(selectionStart, selectionHover)
@@ -3688,9 +3749,7 @@ function ProfileDirectCanvasEditor({
             profileGridModuleSpanSize(layout.colSpan, layout.rowSpan) ??
             getProfileModuleDefinition(module.type).defaultSize;
           const placeholder = module.type === "placeholder";
-          const configured =
-            !placeholder &&
-            module.config.configured !== false;
+          const configured = profileCanvasModuleIsConfiguredForEditor(module);
           const placeholderMicro =
             placeholder && layout.colSpan <= 1 && layout.rowSpan <= 1;
           const placeholderSmall =
@@ -3822,7 +3881,7 @@ function ProfileDirectCanvasEditor({
                     className={cn(
                       "h-full min-h-0 min-w-0 overflow-hidden rounded-card",
                       configured
-                        ? "scale-[0.92] blur-[10px] opacity-55"
+                        ? "scale-[0.9] blur-[18px] opacity-45 saturate-50"
                         : undefined,
                     )}
                     data-profile-canvas-module-configured={
@@ -3914,6 +3973,7 @@ function ProfileDirectCanvasEditor({
         profile={profile}
         onClose={() => setSettingsModuleId(undefined)}
         onRemove={handleRemoveModule}
+        onResize={handleResizeModule}
         onConnectProvider={onConnectProvider}
         onModuleImageUpload={onModuleImageUpload}
         onProfileDraftChange={onProfileDraftChange}
@@ -4104,6 +4164,7 @@ function ModuleSettingsModal({
   onModuleImageUpload,
   onProfileDraftChange,
   onRemove,
+  onResize,
   onTogglePin,
   onUpdateConfig,
   profile,
@@ -4116,6 +4177,7 @@ function ModuleSettingsModal({
   onModuleImageUpload: (file: File) => Promise<string>;
   onProfileDraftChange: (updater: (profile: Profile) => Profile) => void;
   onRemove: (module: ProfileModule) => void;
+  onResize: (module: ProfileModule, size: ProfileGridModuleSize) => void;
   onTogglePin: (module: ProfileModule) => void;
   onUpdateConfig: (module: ProfileModule, config: ProfileModule["config"]) => void;
   profile: Profile;
@@ -4142,6 +4204,33 @@ function ModuleSettingsModal({
   const [connectionFormOpen, setConnectionFormOpen] = useState(false);
   const connectionLinks = module?.config.links ?? [];
   const canAddConnection = connectionLinks.length < maxProfileConnections;
+  const allowedSizes =
+    module && module.type !== "placeholder"
+      ? [...profileModuleAllowedSizes(module.type)]
+      : [];
+  const layoutSize = module?.layout
+    ? profileGridModuleSpanSize(module.layout.colSpan, module.layout.rowSpan)
+    : undefined;
+  const currentSize =
+    layoutSize ??
+    normalizeProfileGridModuleSize(module?.config.canvasSize) ??
+    definition?.defaultSize ??
+    allowedSizes[0];
+  const currentSizeIndex = currentSize
+    ? allowedSizes.indexOf(currentSize)
+    : -1;
+  const resolvedSizeIndex =
+    currentSizeIndex >= 0
+      ? currentSizeIndex
+      : definition
+        ? allowedSizes.indexOf(definition.defaultSize)
+        : -1;
+  const previousSize =
+    resolvedSizeIndex > 0 ? allowedSizes[resolvedSizeIndex - 1] : undefined;
+  const nextSize =
+    resolvedSizeIndex >= 0 && resolvedSizeIndex < allowedSizes.length - 1
+      ? allowedSizes[resolvedSizeIndex + 1]
+      : undefined;
 
   function updateModuleConfig(nextConfig: ProfileModule["config"]) {
     if (!module) {
@@ -4339,6 +4428,53 @@ function ModuleSettingsModal({
     >
       {module && definition ? (
         <div className="space-y-4">
+          {allowedSizes.length > 1 && currentSize ? (
+            <div
+              className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-line bg-canvas/38 p-3"
+              data-testid="profile-module-size-stepper"
+            >
+              <p className="text-xs font-semibold uppercase text-muted">Size</p>
+              <div className="inline-flex min-h-10 items-center overflow-hidden rounded-control border border-line bg-surface/70 shadow-inner-soft">
+                <button
+                  type="button"
+                  className="grid size-10 place-items-center text-muted transition hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Shrink module"
+                  disabled={!previousSize}
+                  data-testid="profile-module-size-decrease"
+                  onClick={() => {
+                    if (previousSize) {
+                      onResize(module, previousSize);
+                    }
+                  }}
+                >
+                  <Minus aria-hidden="true" size={16} />
+                </button>
+                <span
+                  className="min-w-24 border-x border-line px-3 text-center text-sm font-semibold text-text"
+                  data-testid="profile-module-size-current"
+                >
+                  {profileModuleSizeLabel(module.type, currentSize)}
+                  <span className="ml-1 text-xs font-medium text-muted">
+                    {currentSize}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  className="grid size-10 place-items-center text-muted transition hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Grow module"
+                  disabled={!nextSize}
+                  data-testid="profile-module-size-increase"
+                  onClick={() => {
+                    if (nextSize) {
+                      onResize(module, nextSize);
+                    }
+                  }}
+                >
+                  <Plus aria-hidden="true" size={16} />
+                </button>
+              </div>
+            </div>
+          ) : null}
           {module.type === "profile_info" ? (
             <div className="space-y-3">
               <label className="block">
