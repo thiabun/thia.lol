@@ -586,15 +586,23 @@ export function ProfileModuleCard({
   const hasDetails = profileModuleSizeHasRoomForDetails(size);
   const spanRole = profileModuleSpanRole(size);
   const publicSurface = module.type === "gallery_media";
+  const transparentCollectionSurface =
+    module.type === "links" ||
+    module.type === "connections" ||
+    module.type === "featured_badges" ||
+    module.type === "badge_display";
+  const showEditingHeader = editing && !compact && !transparentCollectionSurface;
 
   return (
     <article
       className={cn(
         "grid h-full min-h-0 min-w-0 overflow-hidden rounded-card focus-within:border-line-strong",
         editing
-          ? compact
-            ? "grid-rows-[1fr] border border-line bg-surface/58 p-2 shadow-soft backdrop-blur-veil"
-            : "grid-rows-[auto_1fr] gap-2 border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
+          ? transparentCollectionSurface
+            ? "grid-rows-[1fr] border border-transparent bg-transparent p-0 shadow-none"
+            : compact
+              ? "grid-rows-[1fr] border border-line bg-surface/58 p-2 shadow-soft backdrop-blur-veil"
+              : "grid-rows-[auto_1fr] gap-2 border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
           : publicSurface
             ? "grid-rows-[1fr] border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
             : "grid-rows-[1fr] border border-transparent bg-transparent p-0 shadow-none",
@@ -607,9 +615,12 @@ export function ProfileModuleCard({
       data-profile-module-purpose={definition.purpose}
       data-profile-module-shell="true"
       data-profile-module-span-role={spanRole}
+      data-profile-module-transparent-surface={
+        transparentCollectionSurface ? "true" : undefined
+      }
       data-testid={`profile-module-${module.type}`}
     >
-      {editing && !compact ? (
+      {showEditingHeader ? (
         <header className="min-w-0">
           <h3 className="truncate text-sm font-semibold text-text">{title}</h3>
         </header>

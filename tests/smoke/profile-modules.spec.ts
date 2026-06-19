@@ -77,7 +77,7 @@ test("profile renders public modules safely", async ({ page }) => {
   await expect(section.getByTestId("profile-module-grid")).toBeVisible();
   await expect(section.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
     "data-profile-grid-size",
-    "3x2",
+    "8x3",
   );
   await expect(section.getByTestId("profile-module-grid")).toHaveAttribute(
     "data-profile-canvas-rows",
@@ -85,7 +85,7 @@ test("profile renders public modules safely", async ({ page }) => {
   );
   await expect(section.getByTestId("profile-grid-module-about")).toHaveAttribute(
     "data-profile-grid-size",
-    "2x1",
+    "3x2",
   );
   await expect(section.getByTestId("profile-grid-module-about")).toHaveAttribute(
     "data-profile-module-purpose",
@@ -93,7 +93,7 @@ test("profile renders public modules safely", async ({ page }) => {
   );
   await expect(section.getByTestId("profile-grid-module-about")).toHaveAttribute(
     "data-profile-module-span-role",
-    "glance",
+    "rich",
   );
   await expect(section.getByTestId("profile-module-about")).toHaveAttribute(
     "data-profile-module-shell",
@@ -101,15 +101,31 @@ test("profile renders public modules safely", async ({ page }) => {
   );
   await expect(section.getByTestId("profile-grid-module-links")).toHaveAttribute(
     "data-profile-grid-size",
-    "2x1",
+    "3x2",
   );
   await expect(section.getByTestId("profile-grid-module-links")).toHaveAttribute(
     "data-profile-module-action",
     "open",
   );
+  await expect(section.getByTestId("profile-module-links")).toHaveAttribute(
+    "data-profile-module-transparent-surface",
+    "true",
+  );
+  await expect(section.getByTestId("profile-module-links")).toHaveCSS(
+    "background-color",
+    "rgba(0, 0, 0, 0)",
+  );
   await expect(section.getByTestId("profile-grid-module-featured_badges")).toHaveAttribute(
     "data-profile-grid-size",
-    "2x1",
+    "2x2",
+  );
+  await expect(section.getByTestId("profile-module-featured_badges")).toHaveAttribute(
+    "data-profile-module-transparent-surface",
+    "true",
+  );
+  await expect(section.getByTestId("profile-module-featured_badges")).toHaveCSS(
+    "background-color",
+    "rgba(0, 0, 0, 0)",
   );
   await expectTextOrder(section, ["Thia", "Literal <strong>plain</strong> text"]);
   await expect(section.getByRole("heading", { name: "About this space" })).toHaveCount(0);
@@ -1192,6 +1208,36 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
     "inline",
   );
   await expect(module.getByTestId("profile-social-context")).toContainText("Likes");
+  const statStyles = await module
+    .getByTestId("profile-social-context")
+    .evaluate((element) =>
+      Array.from(element.querySelectorAll<HTMLElement>("[data-profile-info-stat]")).map(
+        (stat) => {
+          const label = stat.querySelector<HTMLElement>(
+            "[data-profile-info-stat-label]",
+          );
+          const value = stat.querySelector<HTMLElement>(
+            "[data-profile-info-stat-value]",
+          );
+
+          if (!label || !value) {
+            throw new Error("Profile info stat did not render label and value spans.");
+          }
+
+          const labelStyles = window.getComputedStyle(label);
+          const valueStyles = window.getComputedStyle(value);
+
+          return {
+            label: stat.getAttribute("data-profile-info-stat"),
+            labelFontSize: labelStyles.fontSize,
+            valueFontSize: valueStyles.fontSize,
+          };
+        },
+      ),
+    );
+  expect(statStyles).toHaveLength(3);
+  expect(new Set(statStyles.map((stat) => stat.labelFontSize)).size).toBe(1);
+  expect(new Set(statStyles.map((stat) => stat.valueFontSize)).size).toBe(1);
   await expect(module.getByRole("button", { name: "Report" })).toBeVisible();
 
   const metrics = await page.evaluate(() => {

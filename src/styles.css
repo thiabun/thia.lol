@@ -171,6 +171,10 @@ body[data-profile-canvas-editing="true"] [data-app-mobile-nav="true"] {
   );
 }
 
+.profile-grid-canvas [data-profile-module-transparent-surface="true"] {
+  background-color: transparent;
+}
+
 .profile-grid-canvas
   > .profile-grid-module[data-profile-grid-placement="manual"] {
   grid-column: span var(--profile-grid-mobile-column-span);

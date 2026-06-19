@@ -3942,7 +3942,7 @@ function ProfilePersonalBackdrop({ profile }: { profile: Profile }) {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none fixed inset-0 z-0 min-h-dvh w-screen overflow-hidden"
+      className="pointer-events-none fixed inset-0 z-0 min-h-dvh w-full overflow-hidden"
       data-profile-background-blur={blurTreatment}
       data-profile-background-source={videoUrl ? "video" : imageUrl ? "image" : "fallback"}
       data-profile-background-visibility={visibility.name}
@@ -4551,14 +4551,22 @@ function ProfileInfoStats({
         {inlineStats.map((stat) => {
           const content = (
             <>
-              <span className="font-semibold text-text">
+              <span
+                className="text-base font-semibold leading-none text-text"
+                data-profile-info-stat-value={stat.label}
+              >
                 {stat.value.toLocaleString()}
               </span>
-              <span className="text-muted">{stat.label}</span>
+              <span
+                className="text-sm font-medium leading-none text-muted"
+                data-profile-info-stat-label={stat.label}
+              >
+                {stat.label}
+              </span>
             </>
           );
           const className =
-            "inline-flex min-w-0 items-baseline gap-1.5 rounded-control py-0.5 text-xs font-medium transition duration-fluid ease-fluid";
+            "inline-flex min-w-0 items-baseline gap-1.5 rounded-control py-0.5 leading-none transition duration-fluid ease-fluid";
 
           if (stat.panel) {
             const panel = stat.panel;
@@ -4571,6 +4579,7 @@ function ProfileInfoStats({
                   className,
                   "hover:text-text focus-visible:outline-2 focus-visible:outline-focus",
                 )}
+                data-profile-info-stat={stat.label}
                 onClick={() => onOpenPanel(panel)}
               >
                 {content}
@@ -4579,7 +4588,11 @@ function ProfileInfoStats({
           }
 
           return (
-            <span key={stat.label} className={className}>
+            <span
+              key={stat.label}
+              className={className}
+              data-profile-info-stat={stat.label}
+            >
               {content}
             </span>
           );
