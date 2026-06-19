@@ -683,10 +683,11 @@ function ProfileModuleContent({
   if (module.type === "links" || module.type === "connections") {
     const links = module.config.links ?? [];
     const narrowStack = span.columns <= 2 && span.rows >= 3;
+    const visibleConnectionLimit = 5;
     const visibleLinks = compact
-      ? links.slice(0, 6)
+      ? links.slice(0, visibleConnectionLimit)
       : narrowStack
-        ? links.slice(0, 3)
+        ? links.slice(0, visibleConnectionLimit)
         : links;
     const hiddenCount = Math.max(0, links.length - visibleLinks.length);
 

@@ -2337,6 +2337,18 @@ function profileCanvasPointInRect(
   );
 }
 
+function profileCanvasRectsOverlap(
+  first: ProfileModuleLayout,
+  second: ProfileModuleLayout,
+): boolean {
+  return (
+    first.column < second.column + second.colSpan &&
+    first.column + first.colSpan > second.column &&
+    first.row < second.row + second.rowSpan &&
+    first.row + first.rowSpan > second.row
+  );
+}
+
 function profileCanvasSortDraftModules(modules: ProfileModule[]): ProfileModule[] {
   return [...modules].sort((first, second) => {
     const firstLayout = first.layout;
@@ -2896,39 +2908,6 @@ function profileCanvasResolveDraftCollisions(
   return modules.map((module) => result.get(module.id) ?? module);
 }
 
-function profileCanvasCanResizeModule(
-  module: ProfileModule,
-  modules: ProfileModule[],
-  size: ProfileGridModuleSize,
-): boolean {
-  if (!module.layout) {
-    return false;
-  }
-
-  const span = profileGridModuleSizeSpan(size);
-  const resolved = profileCanvasResolveDraftCollisions(
-    modules.map((item) =>
-      item.id === module.id
-        ? {
-            ...item,
-            layout: {
-              ...module.layout!,
-              colSpan: span.columns,
-              rowSpan: span.rows,
-            },
-          }
-        : item,
-    ),
-    module.id,
-  );
-  const updated = resolved.find((item) => item.id === module.id);
-
-  return (
-    updated?.layout?.colSpan === span.columns &&
-    updated.layout.rowSpan === span.rows
-  );
-}
-
 function profileCanvasClampLayout(
   layout: ProfileModuleLayout,
   type: ProfileModule["type"],
@@ -3205,6 +3184,18 @@ function ProfileDirectCanvasEditor({
     }
 
     const rect = profileCanvasRectFromPoints(selectionStart, point);
+    const blocked = sortedModules.some((draftModule) =>
+      profileCanvasRectsOverlap(
+        rect,
+        draftModule.layout ?? profileCanvasDefaultClientLayout(draftModule, 0),
+      ),
+    );
+
+    if (blocked) {
+      setSelectionHover(point);
+      return;
+    }
+
     const id = onNewDraftModuleId();
     const colSpan = Math.min(PROFILE_CANVAS_PROFILE_INFO_COLUMNS, rect.colSpan);
     const rowSpan = Math.min(PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS, rect.rowSpan);
@@ -3307,29 +3298,6 @@ function ProfileDirectCanvasEditor({
     }
   }
 
-  function handleModuleSize(module: ProfileModule, size: ProfileGridModuleSize) {
-    const span = profileGridModuleSizeSpan(size);
-
-    updateDraftModules((currentModules) =>
-      profileCanvasResolveDraftCollisions(
-        currentModules.map((item) =>
-          item.id === module.id && item.layout
-            ? {
-                ...item,
-                config: { ...item.config, canvasSize: size },
-                layout: {
-                  ...item.layout,
-                  colSpan: span.columns,
-                  rowSpan: span.rows,
-                },
-              }
-            : item,
-        ),
-        module.id,
-      ),
-    );
-  }
-
   function handleModuleConfig(module: ProfileModule, config: ProfileModule["config"]) {
     updateDraftModules((currentModules) =>
       currentModules.map((item) =>
@@ -3370,6 +3338,16 @@ function ProfileDirectCanvasEditor({
     selectionStart && selectionHover
       ? profileCanvasRectFromPoints(selectionStart, selectionHover)
       : undefined;
+  const selectionBlocked = Boolean(
+    selectionRect &&
+      sortedModules.some((draftModule) =>
+        profileCanvasRectsOverlap(
+          selectionRect,
+          draftModule.layout ?? profileCanvasDefaultClientLayout(draftModule, 0),
+        ),
+      ),
+  );
+  const selectionPreviewRect = selectionBlocked ? undefined : selectionRect;
 
   return (
     <section
@@ -3472,7 +3450,7 @@ function ProfileDirectCanvasEditor({
           }}
         >
           <AnimatePresence initial={false}>
-            {selectionRect ? (
+            {selectionPreviewRect ? (
               <motion.div
                 layout
                 className="pointer-events-none relative z-20 rounded-[1.1rem] border border-focus/80 bg-focus/20 shadow-glow backdrop-blur-veil"
@@ -3486,8 +3464,8 @@ function ProfileDirectCanvasEditor({
                   scale: { duration: 0.16 },
                 }}
                 style={{
-                  gridColumn: `${selectionRect.column} / span ${selectionRect.colSpan}`,
-                  gridRow: `${selectionRect.row} / span ${selectionRect.rowSpan}`,
+                  gridColumn: `${selectionPreviewRect.column} / span ${selectionPreviewRect.colSpan}`,
+                  gridRow: `${selectionPreviewRect.row} / span ${selectionPreviewRect.rowSpan}`,
                 }}
               />
             ) : null}
@@ -3496,12 +3474,12 @@ function ProfileDirectCanvasEditor({
             const selected = selectionStart &&
               point.column === selectionStart.column &&
               point.row === selectionStart.row;
-            const inPreview = selectionRect
-              ? profileCanvasPointInRect(point, selectionRect)
+            const inPreview = selectionPreviewRect
+              ? profileCanvasPointInRect(point, selectionPreviewRect)
               : false;
             const previewHasArea = Boolean(
-              selectionRect &&
-                (selectionRect.colSpan > 1 || selectionRect.rowSpan > 1),
+              selectionPreviewRect &&
+                (selectionPreviewRect.colSpan > 1 || selectionPreviewRect.rowSpan > 1),
             );
             const coveredByModule = sortedModules.some((draftModule) =>
               profileCanvasPointInRect(
@@ -3517,7 +3495,10 @@ function ProfileDirectCanvasEditor({
                 type="button"
                 className={cn(
                   "relative z-10 min-h-0 rounded-card border border-line/55 bg-surface/20 transition duration-fluid ease-fluid hover:scale-[1.03] hover:border-line-strong hover:bg-surface/42 focus-visible:z-30 focus-visible:outline-2 focus-visible:outline-focus",
-                  selected && !visuallyCovered
+                  selected && selectionBlocked
+                    ? "z-30 border-rose bg-rose/25 shadow-[0_0_0_4px_color-mix(in_oklab,var(--accent-rose)_18%,transparent)]"
+                    : undefined,
+                  selected && !selectionBlocked && !visuallyCovered
                     ? "z-30 border-focus bg-focus/35 shadow-glow"
                     : undefined,
                   visuallyCovered
@@ -3567,7 +3548,9 @@ function ProfileDirectCanvasEditor({
               className={cn(
                 "z-10 rounded-card transition duration-fluid ease-fluid",
                 configured ? "backdrop-blur-veil" : undefined,
-                module.pinned ? "outline outline-1 outline-line-strong" : undefined,
+                module.pinned
+                  ? "outline outline-2 outline-rose/70 ring-2 ring-rose/20"
+                  : undefined,
               )}
               data-profile-canvas-preview-blurred={configured ? "true" : undefined}
               layout={layout}
@@ -3578,6 +3561,9 @@ function ProfileDirectCanvasEditor({
               <div
                 className={cn(
                   "relative h-full min-h-0 cursor-grab rounded-card active:cursor-grabbing",
+                  configured
+                    ? "overflow-hidden border border-line-strong bg-surface/90 p-2 shadow-inner-soft"
+                    : undefined,
                 )}
                 onPointerDown={(event) => {
                   const target = event.target;
@@ -3673,11 +3659,16 @@ function ProfileDirectCanvasEditor({
                 ) : (
                   <div
                     className={cn(
-                      "h-full min-h-0 min-w-0",
-                      configured ? "blur-[6px] opacity-70" : undefined,
+                      "h-full min-h-0 min-w-0 overflow-hidden rounded-card",
+                      configured
+                        ? "scale-[0.92] blur-[10px] opacity-55"
+                        : undefined,
                     )}
                     data-profile-canvas-module-configured={
                       configured ? "true" : "false"
+                    }
+                    data-profile-canvas-module-frame={
+                      configured ? "inset" : undefined
                     }
                     data-testid={`profile-canvas-module-content-${module.id}`}
                   >
@@ -3759,7 +3750,6 @@ function ProfileDirectCanvasEditor({
         integrationAccounts={integrationAccounts}
         integrationProviders={integrationProviders}
         module={settingsModule}
-        modules={sortedModules}
         profile={profile}
         onClose={() => setSettingsModuleId(undefined)}
         onRemove={handleRemoveModule}
@@ -3767,7 +3757,6 @@ function ProfileDirectCanvasEditor({
         onModuleImageUpload={onModuleImageUpload}
         onProfileDraftChange={onProfileDraftChange}
         onUpdateConfig={handleModuleConfig}
-        onSize={handleModuleSize}
         onTogglePin={handleTogglePin}
       />
     </section>
@@ -3949,13 +3938,11 @@ function ModuleSettingsModal({
   integrationAccounts,
   integrationProviders,
   module,
-  modules,
   onClose,
   onConnectProvider,
   onModuleImageUpload,
   onProfileDraftChange,
   onRemove,
-  onSize,
   onTogglePin,
   onUpdateConfig,
   profile,
@@ -3963,13 +3950,11 @@ function ModuleSettingsModal({
   integrationAccounts: ProfileIntegrationAccount[];
   integrationProviders: ProfileIntegrationProviderStatus[];
   module: ProfileModule | undefined;
-  modules: ProfileModule[];
   onClose: () => void;
   onConnectProvider: (provider: ProfileIntegrationProvider) => void;
   onModuleImageUpload: (file: File) => Promise<string>;
   onProfileDraftChange: (updater: (profile: Profile) => Profile) => void;
   onRemove: (module: ProfileModule) => void;
-  onSize: (module: ProfileModule, size: ProfileGridModuleSize) => void;
   onTogglePin: (module: ProfileModule) => void;
   onUpdateConfig: (module: ProfileModule, config: ProfileModule["config"]) => void;
   profile: Profile;
@@ -4266,29 +4251,6 @@ function ModuleSettingsModal({
               </div>
             </div>
           ) : null}
-          <div>
-            <p className="text-xs font-semibold uppercase text-muted">
-              Available sizes
-            </p>
-            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {profileModuleAllowedSizes(module.type).map((size) => {
-                const enabled = profileCanvasCanResizeModule(module, modules, size);
-
-                return (
-                  <button
-                    key={size}
-                    type="button"
-                    className="min-h-10 rounded-control border border-line bg-canvas/45 px-3 text-sm font-semibold text-text transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-45"
-                    disabled={!enabled}
-                    data-testid={`profile-canvas-size-${size}`}
-                    onClick={() => onSize(module, size)}
-                  >
-                    {profileModuleSizeLabel(module.type, size)}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
         </div>
       ) : null}
     </ModalSheet>

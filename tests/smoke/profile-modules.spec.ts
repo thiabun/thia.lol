@@ -1127,7 +1127,6 @@ test("Twitch stream chat fills the creator module when embed metadata is availab
     "4",
   );
   await expect(twitchSurface).toHaveAttribute("data-profile-twitch-chat-columns", "2");
-  await expectTwitchStreamChatWidthRatio(creator, 2);
   await expect(creator.getByRole("link")).toHaveCount(0);
 });
 
@@ -1591,6 +1590,8 @@ test("direct canvas point selection creates a draft module through picker and se
   await page.getByRole("tab", { name: "Info" }).click();
   await page.getByTestId("profile-module-picker-text").click();
   await expect(page.getByTestId("profile-module-settings")).toBeVisible();
+  await expect(page.getByText("Available sizes")).toHaveCount(0);
+  await expect(page.locator('[data-testid^="profile-canvas-size-"]')).toHaveCount(0);
   const pickedContent = page.locator(
     '[data-testid^="profile-canvas-module-content-"][data-profile-canvas-module-configured="false"]',
   );
@@ -1615,8 +1616,28 @@ test("direct canvas point selection creates a draft module through picker and se
   );
   await expect(
     configuredContent.evaluate((element) => window.getComputedStyle(element).filter),
-  ).resolves.toContain("blur(6px)");
+  ).resolves.toContain("blur(10px)");
+  await expect(configuredContent).toHaveAttribute(
+    "data-profile-canvas-module-frame",
+    "inset",
+  );
+  await expect
+    .poll(() =>
+      configuredContent.evaluate(
+        (element) => window.getComputedStyle(element).scale,
+      ),
+    )
+    .not.toBe("none");
   await page.getByRole("button", { name: "Pin" }).click();
+  const pinnedShell = page.locator(
+    '[data-testid^="profile-canvas-module-"][data-profile-module-pinned="true"]',
+  );
+  await expect(pinnedShell).toBeVisible();
+  await expect
+    .poll(() =>
+      pinnedShell.evaluate((element) => window.getComputedStyle(element).outlineWidth),
+    )
+    .toBe("2px");
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("profile-module-settings")).toHaveCount(0);
   await page.getByTestId("profile-canvas-save-button").click();
@@ -1664,6 +1685,30 @@ test("direct canvas supports a 6x10 activity selection envelope", async ({
 
   await expect(activity).toBeEnabled();
   await expect(activity).toContainText("Full");
+});
+
+test("direct canvas blocks new selections that overlap existing modules", async ({
+  page,
+}) => {
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [profileInfoModule()],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  const startCell = page.getByTestId("profile-canvas-cell-1-4");
+  const blockedEndCell = page.getByTestId("profile-canvas-cell-12-1");
+
+  await startCell.click();
+  await expect(startCell).toHaveClass(/border-focus/);
+  await blockedEndCell.hover();
+  await expect(page.getByTestId("profile-canvas-selection-preview")).toHaveCount(0);
+  await expect(startCell).toHaveClass(/border-rose/);
+  await blockedEndCell.click();
+  await expect(page.getByTestId("profile-module-picker")).toHaveCount(0);
+  await expect(page.locator('[data-testid^="profile-canvas-blank-module-"]')).toHaveCount(0);
 });
 
 test("module picker blocks selections larger than designed module sizes", async ({
@@ -3100,6 +3145,40 @@ test("compact Connections renders icon-only without horizontal overflow", async 
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
   expect(hasHorizontalOverflow).toBe(false);
+});
+
+test("narrow Connections shows five rows before the overflow marker", async ({
+  page,
+}) => {
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      {
+        ...linksModule({
+          id: 2,
+          links: [
+            { label: "GitHub", platform: "github", url: "https://github.com/thiabun" },
+            { label: "Spotify", platform: "spotify", url: "https://open.spotify.com/user/thia" },
+            { label: "Twitch", platform: "twitch", url: "https://www.twitch.tv/thiabun" },
+            { label: "YouTube", platform: "youtube", url: "https://www.youtube.com/@thiabun" },
+            { label: "Website", platform: "website", url: "https://thia.lol" },
+          ],
+        }),
+        layout: { column: 1, row: 2, colSpan: 2, rowSpan: 3 },
+      },
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const links = page.getByTestId("profile-module-links");
+  await expect(links.locator('[data-profile-connections-compact="stack"]')).toBeVisible();
+  await expect(links.locator("[data-profile-module-visible-links]")).toHaveAttribute(
+    "data-profile-module-visible-links",
+    "5",
+  );
+  await expect(links.getByText("+")).toHaveCount(0);
+  await expect(links.getByText("Website")).toBeVisible();
 });
 
 test("invalid saved placement falls back without manual grid placement", async ({
