@@ -2985,7 +2985,16 @@ function ProfileDirectCanvasEditor({
               : item,
           ),
     );
+    setPickerModuleId((current) => (current === module.id ? undefined : current));
     setSettingsModuleId(undefined);
+  }
+
+  function handleTogglePin(module: ProfileModule) {
+    updateDraftModules((currentModules) =>
+      currentModules.map((item) =>
+        item.id === module.id ? { ...item, pinned: !item.pinned } : item,
+      ),
+    );
   }
 
   const selectionRect =
@@ -3223,21 +3232,31 @@ function ProfileDirectCanvasEditor({
                 }}
               >
                 {placeholder ? (
-                  <button
-                    type="button"
+                  <div
                     className={cn(
-                      "grid h-full min-h-0 w-full place-items-center overflow-hidden rounded-card border border-dashed border-line-strong bg-surface/62 text-center shadow-soft backdrop-blur-veil focus-visible:outline-2 focus-visible:outline-focus",
+                      "grid h-full min-h-0 w-full place-items-center overflow-hidden rounded-card border border-dashed border-line-strong bg-surface/62 text-center shadow-soft backdrop-blur-veil",
                       placeholderMicro
                         ? "p-1"
                         : placeholderSmall
                           ? "p-2"
                           : "p-4",
                     )}
-                    data-profile-edit-control="true"
-                    data-testid={`profile-canvas-add-module-${module.id}`}
-                    onClick={() => setPickerModuleId(module.id)}
+                    data-testid={`profile-canvas-blank-module-${module.id}`}
                   >
-                    <span className="min-w-0 max-w-full">
+                    <button
+                      type="button"
+                      className={cn(
+                        "min-w-0 max-w-full rounded-card text-center transition duration-fluid ease-fluid hover:scale-[1.02] focus-visible:outline-2 focus-visible:outline-focus",
+                        placeholderMicro
+                          ? "px-1 py-0.5"
+                          : placeholderSmall
+                            ? "px-2 py-1"
+                            : "px-3 py-2",
+                      )}
+                      data-profile-edit-control="true"
+                      data-testid={`profile-canvas-add-module-${module.id}`}
+                      onClick={() => setPickerModuleId(module.id)}
+                    >
                       <span
                         className={cn(
                           "mx-auto grid place-items-center rounded-full border border-line bg-canvas/80 text-accent-strong",
@@ -3277,8 +3296,8 @@ function ProfileDirectCanvasEditor({
                       >
                         {profileModuleSizeLabel("placeholder", size)}
                       </span>
-                    </span>
-                  </button>
+                    </button>
+                  </div>
                 ) : (
                   <div
                     className={cn(
@@ -3301,7 +3320,48 @@ function ProfileDirectCanvasEditor({
                   </div>
                 )}
               </div>
-              {!placeholder ? (
+              {placeholder ? (
+                <div
+                  className={cn(
+                    "absolute right-1.5 top-1.5 z-30 flex items-center gap-1",
+                    placeholderMicro ? "right-1 top-1 gap-0.5" : undefined,
+                  )}
+                  data-profile-edit-control="true"
+                >
+                  <button
+                    type="button"
+                    className={cn(
+                      "grid place-items-center rounded-control border border-line bg-surface/92 text-text shadow-soft backdrop-blur-veil transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
+                      placeholderMicro ? "size-6" : "size-7",
+                    )}
+                    aria-label={
+                      module.pinned ? "Unpin blank module" : "Pin blank module"
+                    }
+                    title={module.pinned ? "Unpin blank module" : "Pin blank module"}
+                    data-testid={`profile-canvas-pin-placeholder-${module.id}`}
+                    onClick={() => handleTogglePin(module)}
+                  >
+                    {module.pinned ? (
+                      <PinOff aria-hidden="true" size={placeholderMicro ? 12 : 14} />
+                    ) : (
+                      <Pin aria-hidden="true" size={placeholderMicro ? 12 : 14} />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(
+                      "grid place-items-center rounded-control border border-line bg-surface/92 text-rose-ink shadow-soft backdrop-blur-veil transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
+                      placeholderMicro ? "size-6" : "size-7",
+                    )}
+                    aria-label="Delete blank module"
+                    title="Delete blank module"
+                    data-testid={`profile-canvas-delete-placeholder-${module.id}`}
+                    onClick={() => handleRemoveModule(module)}
+                  >
+                    <Trash2 aria-hidden="true" size={placeholderMicro ? 12 : 14} />
+                  </button>
+                </div>
+              ) : (
                 <button
                   type="button"
                   className="absolute right-2 top-2 z-30 grid size-8 place-items-center rounded-control border border-line bg-surface/92 text-text shadow-soft backdrop-blur-veil transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus"
@@ -3313,7 +3373,7 @@ function ProfileDirectCanvasEditor({
                 >
                   <MoreHorizontal aria-hidden="true" size={16} />
                 </button>
-              ) : null}
+              )}
             </ProfileGridModule>
           );
         })}
@@ -3336,13 +3396,7 @@ function ProfileDirectCanvasEditor({
         onProfileDraftChange={onProfileDraftChange}
         onUpdateConfig={handleModuleConfig}
         onSize={handleModuleSize}
-        onTogglePin={(module) =>
-          updateDraftModules((currentModules) =>
-            currentModules.map((item) =>
-              item.id === module.id ? { ...item, pinned: !item.pinned } : item,
-            ),
-          )
-        }
+        onTogglePin={handleTogglePin}
       />
     </section>
   );

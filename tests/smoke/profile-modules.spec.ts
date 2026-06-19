@@ -1822,6 +1822,91 @@ test("direct canvas commit drops unpicked placeholder envelopes", async ({ page 
   expect(committedModules.map((module) => module.type)).toEqual(["profile_info"]);
 });
 
+test("blank draft modules can be pinned moved and deleted in the editor", async ({
+  page,
+}) => {
+  let draftPayload: Record<string, unknown> | undefined;
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+    onCanvasDraftSave: (payload) => {
+      draftPayload = payload;
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-cell-4-6").click();
+  await page.getByTestId("profile-canvas-cell-5-7").click();
+  await expect(page.getByTestId("profile-module-picker")).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  const blankModule = page.locator('[data-testid^="profile-canvas-blank-module-"]');
+  await expect(blankModule).toBeVisible();
+  await expect(page.locator('[data-testid^="profile-canvas-pin-placeholder-"]')).toBeVisible();
+  await expect(
+    page.locator('[data-testid^="profile-canvas-delete-placeholder-"]'),
+  ).toBeVisible();
+
+  await page.locator('[data-testid^="profile-canvas-pin-placeholder-"]').click();
+  await expect(
+    page.locator('[data-testid^="profile-canvas-module-"][data-profile-module-pinned="true"]'),
+  ).toBeVisible();
+  await expect
+    .poll(() => placeholderDraftModule(draftPayload)?.pinned)
+    .toBe(true);
+
+  await page.locator('[data-testid^="profile-canvas-pin-placeholder-"]').click();
+  await expect
+    .poll(() => placeholderDraftModule(draftPayload)?.pinned)
+    .toBe(false);
+
+  const blankBox = await blankModule.boundingBox();
+  const gridBox = await page.getByTestId("profile-canvas-direct-grid").boundingBox();
+
+  if (!blankBox || !gridBox) {
+    throw new Error("Blank placeholder or direct canvas grid did not render.");
+  }
+
+  const pointerStart = {
+    button: 0,
+    buttons: 1,
+    clientX: blankBox.x + blankBox.width / 2,
+    clientY: blankBox.y + blankBox.height / 2,
+    pointerId: 7,
+    pointerType: "mouse",
+  };
+  const pointerTarget = {
+    ...pointerStart,
+    clientX: Math.min(gridBox.x + gridBox.width - 8, pointerStart.clientX + blankBox.width),
+    clientY: pointerStart.clientY,
+  };
+
+  await blankModule.dispatchEvent("pointerdown", pointerStart);
+  await page.dispatchEvent("body", "pointermove", pointerTarget);
+  await page.dispatchEvent("body", "pointerup", {
+    ...pointerTarget,
+    buttons: 0,
+  });
+  await expect
+    .poll(() => {
+      const layout = placeholderDraftModule(draftPayload)?.layout as
+        | Record<string, unknown>
+        | undefined;
+
+      return Number(layout?.column ?? 4);
+    })
+    .toBeGreaterThan(4);
+
+  await page.locator('[data-testid^="profile-canvas-delete-placeholder-"]').click();
+  await expect(page.locator('[data-testid^="profile-canvas-blank-module-"]')).toHaveCount(0);
+  await expect
+    .poll(() => Boolean(placeholderDraftModule(draftPayload)))
+    .toBe(false);
+});
+
 test("one-cell blank module keeps its add affordance inside the module", async ({
   page,
 }) => {
@@ -3860,6 +3945,14 @@ function profileCanvasDraftState(
     selectedModuleId: previous?.selectedModuleId ?? null,
     updatedAt: new Date().toISOString(),
   };
+}
+
+function placeholderDraftModule(payload: Record<string, unknown> | undefined) {
+  const modules = Array.isArray(payload?.modules)
+    ? (payload.modules as Array<Record<string, unknown>>)
+    : [];
+
+  return modules.find((module) => module.type === "placeholder");
 }
 
 function sortModulesByLayout(modules: Array<Record<string, unknown>>) {
