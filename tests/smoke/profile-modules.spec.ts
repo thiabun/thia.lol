@@ -1543,15 +1543,48 @@ test("profile info variants stay within each supported size", async ({ page }) =
       "data-profile-info-variant",
       profileInfoCase.variant,
     );
-    if (["6x3", "8x3", "8x4"].includes(profileInfoCase.size)) {
-      await expect(module.getByTestId("profile-social-context")).toHaveAttribute(
+    const socialContext = module.getByTestId("profile-social-context");
+    await expect(socialContext).toContainText("Followers");
+    await expect(socialContext).toContainText("Following");
+    await expect(socialContext).toContainText("Likes");
+    if (["3x2", "3x3", "6x3", "8x3", "8x4"].includes(profileInfoCase.size)) {
+      await expect(socialContext).toHaveAttribute(
         "data-profile-info-stats-variant",
         "inline",
       );
-      await expect(module.getByTestId("profile-social-context")).toContainText(
-        "Likes",
-      );
     }
+    const statStyles = await socialContext.evaluate((element) =>
+      Array.from(element.querySelectorAll<HTMLElement>("[data-profile-info-stat]")).map(
+        (stat) => {
+          const label = stat.querySelector<HTMLElement>(
+            "[data-profile-info-stat-label]",
+          );
+          const value = stat.querySelector<HTMLElement>(
+            "[data-profile-info-stat-value]",
+          );
+
+          if (!label || !value) {
+            throw new Error("Profile info stat did not render label and value spans.");
+          }
+
+          const labelStyles = window.getComputedStyle(label);
+          const valueStyles = window.getComputedStyle(value);
+
+          return {
+            label: stat.getAttribute("data-profile-info-stat"),
+            labelFontSize: labelStyles.fontSize,
+            valueFontSize: valueStyles.fontSize,
+          };
+        },
+      ),
+    );
+    expect(statStyles.map((stat) => stat.label)).toEqual([
+      "Followers",
+      "Following",
+      "Likes",
+    ]);
+    expect(new Set(statStyles.map((stat) => stat.labelFontSize)).size).toBe(1);
+    expect(new Set(statStyles.map((stat) => stat.valueFontSize)).size).toBe(1);
     if (["8x3", "8x4"].includes(profileInfoCase.size)) {
       await expect(module.getByTestId("profile-header-banner")).toHaveAttribute(
         "data-profile-banner-treatment",
@@ -1905,7 +1938,10 @@ test("direct canvas keeps 4x6 activity blurred in editor and public after save",
     activityContent.evaluate((element) => window.getComputedStyle(element).filter),
   ).resolves.toContain("blur(18px)");
 
-  await page.keyboard.press("Escape");
+  const settings = page.getByTestId("profile-module-settings");
+  await expect(settings).toBeVisible();
+  await settings.getByRole("button", { name: "Close activity" }).click();
+  await expect(settings).toHaveCount(0);
   await page.getByTestId("profile-canvas-save-button").click();
   await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
   await expect.poll(() => commitPayload).toBeDefined();

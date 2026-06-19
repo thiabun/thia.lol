@@ -5408,7 +5408,14 @@ function ProfileInfoSizedCard({
           </p>
         ) : null}
         <div className="mt-auto flex min-w-0 items-end justify-between gap-2 pt-2">
-          <ProfileInfoMiniStats profile={profile} onOpenPanel={onOpenPanel} />
+          <div className="min-w-0 flex-1">
+            <ProfileInfoStats
+              compact
+              inline
+              onOpenPanel={onOpenPanel}
+              profile={profile}
+            />
+          </div>
           <ProfileInfoActions
             compact
             followPosting={followPosting}
@@ -5541,21 +5548,17 @@ function ProfileInfoSizedCard({
           {inlineStats ? (
             <div className="min-w-0">
               <ProfileInfoStats
-                featuredBadges={featuredBadges}
                 inline
                 onOpenPanel={onOpenPanel}
                 profile={profile}
-                rich
               />
             </div>
           ) : null}
           <div className="min-w-0 pt-1">
             {!inlineStats ? (
               <ProfileInfoStats
-                featuredBadges={featuredBadges}
                 onOpenPanel={onOpenPanel}
                 profile={profile}
-                rich={expanded || span.columns >= 6}
               />
             ) : null}
             <ProfileInfoBadgeStrip
@@ -5678,82 +5681,65 @@ function ProfileInfoActions({
   );
 }
 
-function ProfileInfoMiniStats({
-  onOpenPanel,
-  profile,
-}: {
-  onOpenPanel: (panel: "followers" | "following" | "badges") => void;
-  profile: Profile;
-}) {
-  return (
-    <div className="flex min-w-0 items-center gap-2 text-[0.68rem] font-semibold text-muted">
-      <button
-        type="button"
-        className="truncate rounded-control text-left hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
-        onClick={() => onOpenPanel("followers")}
-      >
-        <span className="text-text">{profile.stats.followers.toLocaleString()}</span>{" "}
-        followers
-      </button>
-    </div>
-  );
-}
-
 function ProfileInfoStats({
-  featuredBadges,
+  compact = false,
   inline = false,
   onOpenPanel,
   profile,
-  rich,
 }: {
-  featuredBadges: UserBadge[];
+  compact?: boolean | undefined;
   inline?: boolean | undefined;
   onOpenPanel: (panel: "followers" | "following" | "badges") => void;
   profile: Profile;
-  rich: boolean;
 }) {
-  const cardStats = [
-    { label: "Followers", panel: "followers" as const, value: profile.stats.followers },
-    { label: "Following", panel: "following" as const, value: profile.stats.following },
-    { label: "Badges", panel: "badges" as const, value: featuredBadges.length },
+  const stats: Array<{
+    label: "Followers" | "Following" | "Likes";
+    panel?: "followers" | "following" | undefined;
+    value: number;
+  }> = [
+    { label: "Followers", panel: "followers", value: profile.stats.followers },
+    { label: "Following", panel: "following", value: profile.stats.following },
+    { label: "Likes", value: profile.stats.echoes },
   ];
 
   if (inline) {
-    const inlineStats: Array<{
-      label: string;
-      panel?: "followers" | "following" | undefined;
-      value: number;
-    }> = [
-      { label: "Followers", panel: "followers" as const, value: profile.stats.followers },
-      { label: "Following", panel: "following" as const, value: profile.stats.following },
-      { label: "Likes", value: profile.stats.echoes },
-    ];
-
     return (
       <div
-        className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 overflow-hidden"
+        className={cn(
+          "min-w-0 overflow-hidden",
+          compact
+            ? "grid grid-cols-3 items-end gap-1"
+            : "flex flex-wrap items-center gap-x-4 gap-y-1",
+        )}
         data-profile-info-stats-variant="inline"
         data-testid="profile-social-context"
       >
-        {inlineStats.map((stat) => {
+        {stats.map((stat) => {
           const content = (
             <>
               <span
-                className="text-base font-semibold leading-none text-text"
+                className={cn(
+                  "font-semibold leading-none text-text",
+                  compact ? "block truncate text-[0.72rem]" : "text-base",
+                )}
                 data-profile-info-stat-value={stat.label}
               >
                 {stat.value.toLocaleString()}
               </span>
               <span
-                className="text-sm font-medium leading-none text-muted"
+                className={cn(
+                  "font-medium leading-none text-muted",
+                  compact ? "block truncate text-[0.58rem]" : "text-sm",
+                )}
                 data-profile-info-stat-label={stat.label}
               >
                 {stat.label}
               </span>
             </>
           );
-          const className =
-            "inline-flex min-w-0 items-baseline gap-1.5 rounded-control py-0.5 leading-none transition duration-fluid ease-fluid";
+          const className = compact
+            ? "block min-w-0 rounded-control py-0.5 text-left leading-none transition duration-fluid ease-fluid"
+            : "inline-flex min-w-0 items-baseline gap-1.5 rounded-control py-0.5 leading-none transition duration-fluid ease-fluid";
 
           if (stat.panel) {
             const panel = stat.panel;
@@ -5790,27 +5776,58 @@ function ProfileInfoStats({
 
   return (
     <div
-      className={cn(
-        "grid min-w-0 gap-1.5",
-        rich ? "grid-cols-3" : "grid-cols-2",
-      )}
+      className="grid min-w-0 grid-cols-3 gap-1.5"
       data-testid="profile-social-context"
     >
-      {cardStats.slice(0, rich ? 3 : 2).map((stat) => (
-        <button
-          key={stat.panel}
-          type="button"
-          className="min-w-0 rounded-control border border-line bg-canvas/42 px-2 py-1.5 text-left transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus"
-          onClick={() => onOpenPanel(stat.panel)}
-        >
-          <span className="block truncate text-sm font-semibold text-text">
-            {stat.value.toLocaleString()}
+      {stats.map((stat) => {
+        const content = (
+          <>
+            <span
+              className="block truncate text-sm font-semibold text-text"
+              data-profile-info-stat-value={stat.label}
+            >
+              {stat.value.toLocaleString()}
+            </span>
+            <span
+              className="block truncate text-[0.68rem] font-medium text-muted"
+              data-profile-info-stat-label={stat.label}
+            >
+              {stat.label}
+            </span>
+          </>
+        );
+        const className =
+          "min-w-0 rounded-control border border-line bg-canvas/42 px-2 py-1.5 text-left transition duration-fluid ease-fluid";
+
+        if (stat.panel) {
+          const panel = stat.panel;
+
+          return (
+            <button
+              key={stat.label}
+              type="button"
+              className={cn(
+                className,
+                "hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
+              )}
+              data-profile-info-stat={stat.label}
+              onClick={() => onOpenPanel(panel)}
+            >
+              {content}
+            </button>
+          );
+        }
+
+        return (
+          <span
+            key={stat.label}
+            className={className}
+            data-profile-info-stat={stat.label}
+          >
+            {content}
           </span>
-          <span className="block truncate text-[0.68rem] font-medium text-muted">
-            {stat.label}
-          </span>
-        </button>
-      ))}
+        );
+      })}
     </div>
   );
 }
