@@ -1288,25 +1288,9 @@ export function ProfilePage() {
     canvasEditing && renderedProfile
       ? { ...renderedProfile, profileBackgroundBlur: draftBackgroundBlur }
       : renderedProfile;
-  const showActivityModule = shouldRenderProfileActivityModule({
-    feed: profileFeed,
-    isOwnProfile,
-    loading:
-      postsState.loading ||
-      reblogsState.loading ||
-      repliesState.loading ||
-      roomsState.loading,
-    replies: profileReplies,
-    rooms: profileRooms,
-    error:
-      postsState.error ??
-      reblogsState.error ??
-      repliesState.error ??
-      roomsState.error,
-  });
   const profileSpaceModules = publicModules.filter((module) => {
     if (module.type === "activity") {
-      return showActivityModule;
+      return true;
     }
 
     if (module.type === "featured_post") {
@@ -5369,6 +5353,22 @@ function ProfileInfoSizedCard({
         : balanced
           ? "clamp(5rem, calc(var(--profile-grid-cell-size) * 0.82), 7rem)"
           : "5rem";
+  const avatarSizeClass = balanced ? "size-14" : expanded ? "size-20" : "size-16";
+  const avatarInsetClass = expanded ? "left-4" : "left-3";
+  const avatarOverlapClass = showBanner
+    ? expanded || large
+      ? "-top-10"
+      : balanced
+        ? "-top-7"
+        : "-top-8"
+    : expanded
+      ? "top-4"
+      : "top-3";
+  const identityInsetClass = balanced
+    ? "pl-[4.75rem]"
+    : expanded
+      ? "pl-[6.25rem]"
+      : "pl-[5.25rem]";
   const shellClass = cn(
     "relative flex size-full min-h-0 min-w-0 flex-col overflow-hidden rounded-panel border",
     editing
@@ -5468,28 +5468,33 @@ function ProfileInfoSizedCard({
       )}
       <div
         className={cn(
-          "flex min-h-0 min-w-0 flex-1 flex-col",
+          "relative flex min-h-0 min-w-0 flex-1 flex-col",
           expanded ? "p-4" : "p-3",
         )}
       >
-        <div className="flex min-w-0 items-start justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <Avatar
-              user={profile.user}
-              size="lg"
-              className={cn(
-                "shrink-0 border-[3px] border-surface",
-                showBanner
-                  ? expanded || large
-                    ? "-mt-10"
-                    : balanced
-                      ? "-mt-7"
-                      : "-mt-8"
-                  : undefined,
-                balanced ? "size-14" : expanded ? "size-20" : "size-16",
-              )}
-            />
-            <div className="min-w-0">
+        <div
+          className={cn(
+            "absolute z-30 rounded-full",
+            avatarInsetClass,
+            avatarOverlapClass,
+          )}
+          data-testid="profile-info-avatar-frame"
+        >
+          <Avatar
+            user={profile.user}
+            size="lg"
+            className={cn("border-[3px] border-surface", avatarSizeClass)}
+          />
+        </div>
+        <div
+          className={cn(
+            "mt-auto flex min-h-0 min-w-0 flex-col",
+            expanded ? "gap-2" : "gap-1.5",
+          )}
+          data-testid="profile-info-content-cluster"
+        >
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className={cn("min-w-0", identityInsetClass)}>
               <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                 <h1
                   className={cn(
@@ -5510,73 +5515,73 @@ function ProfileInfoSizedCard({
               </div>
               <p className="truncate text-xs text-muted">@{profile.user.handle}</p>
             </div>
-          </div>
-          <ProfileInfoActions
-            followPosting={followPosting}
-            isOwnProfile={isOwnProfile}
-            messageToHandle={messageToHandle}
-            onBlockToggle={onBlockToggle}
-            onFollowToggle={onFollowToggle}
-            onMuteToggle={onMuteToggle}
-            profile={profile}
-            profileControlBusy={profileControlBusy}
-            showControls={span.columns >= 6}
-          />
-        </div>
-        {profile.bio ? (
-          <p
-            className={cn(
-              "mt-2 min-h-0 whitespace-pre-wrap break-words text-sm leading-5 text-text",
-              expanded ? "line-clamp-4" : balanced ? "line-clamp-2" : "line-clamp-2",
-            )}
-            data-testid="profile-bio"
-          >
-            {profile.bio}
-          </p>
-        ) : null}
-        {inlineStats ? (
-          <div className="mt-2 min-w-0">
-            <ProfileInfoStats
-              featuredBadges={featuredBadges}
-              inline
-              onOpenPanel={onOpenPanel}
+            <ProfileInfoActions
+              followPosting={followPosting}
+              isOwnProfile={isOwnProfile}
+              messageToHandle={messageToHandle}
+              onBlockToggle={onBlockToggle}
+              onFollowToggle={onFollowToggle}
+              onMuteToggle={onMuteToggle}
               profile={profile}
-              rich
+              profileControlBusy={profileControlBusy}
+              showControls={span.columns >= 6}
             />
           </div>
-        ) : null}
-        <div className="mt-auto min-w-0 pt-2">
-          {!inlineStats ? (
-            <ProfileInfoStats
-              featuredBadges={featuredBadges}
-              onOpenPanel={onOpenPanel}
-              profile={profile}
-              rich={expanded || span.columns >= 6}
-            />
+          {profile.bio ? (
+            <p
+              className={cn(
+                "min-h-0 whitespace-pre-wrap break-words text-sm leading-5 text-text",
+                expanded ? "line-clamp-4" : balanced ? "line-clamp-2" : "line-clamp-2",
+              )}
+              data-testid="profile-bio"
+            >
+              {profile.bio}
+            </p>
           ) : null}
-          <ProfileInfoBadgeStrip
-            featuredBadges={featuredBadges}
-            max={expanded ? 5 : 3}
-          />
-          <ProfileInfoStatusLine
-            followError={activeFollowError}
-            profile={profile}
-            profileControlError={activeProfileControlError}
-            profileControlMessage={activeProfileControlMessage}
-            showChatHint={showChatHint}
-          />
-          {!isOwnProfile && span.columns >= 6 ? (
-            <div className="mt-2 flex justify-end">
-              <ReportForm
-                targetType="profile"
-                targetId={profile.user.id}
-                reportedUserId={profile.user.id}
-                title="Report profile"
-                explainer={`This reports @${profile.user.handle}'s profile to moderators.`}
-                triggerClassName="min-h-8 px-2.5 text-xs"
+          {inlineStats ? (
+            <div className="min-w-0">
+              <ProfileInfoStats
+                featuredBadges={featuredBadges}
+                inline
+                onOpenPanel={onOpenPanel}
+                profile={profile}
+                rich
               />
             </div>
           ) : null}
+          <div className="min-w-0 pt-1">
+            {!inlineStats ? (
+              <ProfileInfoStats
+                featuredBadges={featuredBadges}
+                onOpenPanel={onOpenPanel}
+                profile={profile}
+                rich={expanded || span.columns >= 6}
+              />
+            ) : null}
+            <ProfileInfoBadgeStrip
+              featuredBadges={featuredBadges}
+              max={expanded ? 5 : 3}
+            />
+            <ProfileInfoStatusLine
+              followError={activeFollowError}
+              profile={profile}
+              profileControlError={activeProfileControlError}
+              profileControlMessage={activeProfileControlMessage}
+              showChatHint={showChatHint}
+            />
+            {!isOwnProfile && span.columns >= 6 ? (
+              <div className="mt-2 flex justify-end">
+                <ReportForm
+                  targetType="profile"
+                  targetId={profile.user.id}
+                  reportedUserId={profile.user.id}
+                  title="Report profile"
+                  explainer={`This reports @${profile.user.handle}'s profile to moderators.`}
+                  triggerClassName="min-h-8 px-2.5 text-xs"
+                />
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </article>
@@ -6090,33 +6095,6 @@ type ProfileTabButtonProps = {
   label: string;
   onClick: () => void;
 };
-
-type ProfileActivityRenderState = {
-  error: unknown;
-  feed: Post[];
-  isOwnProfile: boolean;
-  loading: boolean;
-  replies: Post[];
-  rooms: Room[];
-};
-
-function shouldRenderProfileActivityModule({
-  error,
-  feed,
-  isOwnProfile,
-  loading,
-  replies,
-  rooms,
-}: ProfileActivityRenderState): boolean {
-  return (
-    isOwnProfile ||
-    loading ||
-    Boolean(error) ||
-    feed.length > 0 ||
-    replies.length > 0 ||
-    rooms.length > 0
-  );
-}
 
 type ProfileActivityModuleProps = {
   activeTab: ProfileTab;

@@ -503,7 +503,7 @@ test("activity respects hidden module preferences", async ({ page }) => {
   await expect(page.getByText("Hidden activity post.")).toHaveCount(0);
 });
 
-test("public empty activity module stays hidden on minimal profiles", async ({ page }) => {
+test("public empty activity module still renders its configured canvas slot", async ({ page }) => {
   await mockProfileModules(page, {
     authenticated: false,
     modules: [activityModule({ id: 9 })],
@@ -511,8 +511,13 @@ test("public empty activity module stays hidden on minimal profiles", async ({ p
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await expect(page.getByTestId("profile-module-activity")).toHaveCount(0);
-  await expect(page.getByTestId("profile-activity-tabs")).toHaveCount(0);
+  await expect(page.getByTestId("profile-grid-module-activity")).toBeVisible();
+  await expect(page.getByTestId("profile-module-activity")).toHaveAttribute(
+    "data-profile-activity-surface",
+    "public",
+  );
+  await expect(page.getByTestId("profile-activity-tabs")).toBeVisible();
+  await expect(page.getByText("No posts yet")).toBeVisible();
 });
 
 test("profile module grid keeps responsive columns bounded", async ({ page }) => {
@@ -1429,10 +1434,23 @@ test("wide profile info keeps full banner and avatar overlap at high resolution"
     const scaledInfo = element.querySelector<HTMLElement>(
       '[data-testid="profile-module-profile-info"]',
     );
-    const avatar = element.querySelector<HTMLImageElement>('img[alt="Thia"]');
+    const avatar = element.querySelector<HTMLElement>(
+      '[data-testid="profile-info-avatar-frame"]',
+    );
+    const contentCluster = element.querySelector<HTMLElement>(
+      '[data-testid="profile-info-content-cluster"]',
+    );
     const bio = element.querySelector<HTMLElement>('[data-testid="profile-bio"]');
 
-    if (!header || !banner || !bannerImage || !scaledInfo || !avatar || !bio) {
+    if (
+      !header ||
+      !banner ||
+      !bannerImage ||
+      !scaledInfo ||
+      !avatar ||
+      !contentCluster ||
+      !bio
+    ) {
       throw new Error("Expected profile info banner, avatar, and bio to render.");
     }
 
@@ -1441,14 +1459,23 @@ test("wide profile info keeps full banner and avatar overlap at high resolution"
     const bannerRect = banner.getBoundingClientRect();
     const scaledInfoRect = scaledInfo.getBoundingClientRect();
     const avatarRect = avatar.getBoundingClientRect();
+    const contentRect = contentCluster.getBoundingClientRect();
     const bioRect = bio.getBoundingClientRect();
+    const topElement = document.elementFromPoint(
+      avatarRect.left + avatarRect.width / 2,
+      Math.min(bannerRect.bottom - 2, avatarRect.top + avatarRect.height * 0.32),
+    );
 
     return {
       avatarBottom: avatarRect.bottom,
+      avatarFrontAtBannerOverlap:
+        topElement === avatar || avatar.contains(topElement),
       avatarTop: avatarRect.top,
       bannerBottom: bannerRect.bottom,
       bannerHeight: bannerRect.height,
       bioBottom: bioRect.bottom,
+      contentBottom: contentRect.bottom,
+      contentTop: contentRect.top,
       headerHeight: headerRect.height,
       headerRight: headerRect.right,
       headerWidth: headerRect.width,
@@ -1466,8 +1493,11 @@ test("wide profile info keeps full banner and avatar overlap at high resolution"
   expect(metrics.infoWidth).toBeGreaterThanOrEqual(metrics.moduleWidth - 2);
   expect(metrics.infoHeight).toBeGreaterThanOrEqual(metrics.moduleHeight - 2);
   expect(metrics.bannerHeight).toBeGreaterThan(metrics.moduleHeight * 0.3);
+  expect(metrics.avatarFrontAtBannerOverlap).toBe(true);
   expect(metrics.avatarTop).toBeLessThan(metrics.bannerBottom);
   expect(metrics.avatarBottom).toBeGreaterThan(metrics.bannerBottom);
+  expect(metrics.contentTop).toBeGreaterThanOrEqual(metrics.bannerBottom - 1);
+  expect(metrics.contentBottom).toBeGreaterThan(metrics.moduleBottom - 28);
   expect(metrics.bioBottom).toBeLessThanOrEqual(metrics.moduleBottom + 1);
   expect(metrics.headerWidth).toBeGreaterThanOrEqual(metrics.moduleWidth - 2);
   expect(metrics.headerHeight).toBeGreaterThanOrEqual(metrics.moduleHeight - 2);
