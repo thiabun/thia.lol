@@ -730,7 +730,7 @@ export function updateProfileCanvasDraft(
 ): Promise<ProfileCanvasDraftState> {
   return apiPatch<ProfileCanvasDraftState>(
     "/me/profile/canvas-draft",
-    input,
+    profileCanvasDraftInputForWrite(input),
     csrfToken,
   ).then(normalizeProfileCanvasDraftState);
 }
@@ -1544,6 +1544,24 @@ function normalizeProfileCanvasDraftState(
         ? state.selectedModuleId
         : null,
     updatedAt: typeof state.updatedAt === "string" ? state.updatedAt : null,
+  };
+}
+
+function profileCanvasDraftInputForWrite(
+  input: UpdateProfileCanvasDraftInput,
+): UpdateProfileCanvasDraftInput {
+  if (!Array.isArray(input.modules)) {
+    return input;
+  }
+
+  return {
+    ...input,
+    modules: input.modules.map((module) => {
+      const nextModule = { ...module };
+      delete nextModule.textEntities;
+
+      return nextModule;
+    }),
   };
 }
 

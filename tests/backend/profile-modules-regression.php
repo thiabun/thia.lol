@@ -257,6 +257,36 @@ assert_true($payload['schemaVersion'] === 1, 'schema version mismatch');
 assert_true($payload['config']['body'] === $customText['body'], 'payload config mismatch');
 assert_true($payload['layout'] === null, 'payload layout should default to null');
 
+$draftModulesWithTextEntities = profile_canvas_draft_modules(
+    [
+        [
+            'id' => 31,
+            'type' => 'custom_text',
+            'title' => 'Note',
+            'config' => ['body' => 'Already parsed text.'],
+            'visibility' => 'public',
+            'position' => 1,
+            'pinned' => false,
+            'layout' => ['column' => 1, 'row' => 4, 'colSpan' => 3, 'rowSpan' => 2],
+            'status' => 'active',
+            'textEntities' => [
+                'body' => [
+                    [
+                        'type' => 'mention',
+                        'start' => 0,
+                        'length' => 5,
+                        'text' => '@thia',
+                    ],
+                ],
+            ],
+            'schemaVersion' => 1,
+        ],
+    ],
+    123
+);
+assert_true($draftModulesWithTextEntities[0]['config']['body'] === 'Already parsed text.', 'draft module should preserve body while accepting computed text entities');
+assert_true(!array_key_exists('textEntities', $draftModulesWithTextEntities[0]), 'draft module save should not persist computed text entities');
+
 $layoutPayload = profile_module_payload(
     [
         'id' => 8,

@@ -1021,7 +1021,7 @@ function profile_canvas_draft_modules(mixed $value, int $userId): array
             json_error('Canvas draft module must be an object.', 422);
         }
 
-        profile_module_reject_unknown_keys($item, ['id', 'draftId', 'type', 'title', 'config', 'visibility', 'position', 'pinned', 'layout', 'status', 'schemaVersion', 'createdAt', 'updatedAt']);
+        profile_module_reject_unknown_keys($item, ['id', 'draftId', 'type', 'title', 'config', 'visibility', 'position', 'pinned', 'layout', 'status', 'textEntities', 'schemaVersion', 'createdAt', 'updatedAt']);
         $type = profile_canvas_draft_module_type($item['type'] ?? null);
         $layout = profile_canvas_draft_module_layout($type, $item['layout'] ?? null, $index);
         $config = $type === PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE
