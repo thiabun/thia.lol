@@ -13,6 +13,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent,
   type PointerEvent,
   type ReactNode,
@@ -1185,6 +1186,17 @@ function ProfileIntegrationRichCard({
     twitchChatSrc && showPrimaryEmbed && primaryEmbed,
   );
   const span = profileGridModuleSizeSpan(size);
+  const twitchStreamChatGridColumns = span.columns >= 8 ? 8 : 6;
+  const twitchStreamChatStreamColumns = span.columns >= 8 ? 6 : 4;
+  const twitchStreamChatColumnStyle = {
+    gridTemplateColumns: `repeat(${twitchStreamChatGridColumns}, minmax(0, 1fr))`,
+  } satisfies CSSProperties;
+  const twitchStreamColumnStyle = {
+    gridColumn: `span ${twitchStreamChatStreamColumns} / span ${twitchStreamChatStreamColumns}`,
+  } satisfies CSSProperties;
+  const twitchChatColumnStyle = {
+    gridColumn: "span 2 / span 2",
+  } satisfies CSSProperties;
   const micro = span.columns <= 2 && span.rows <= 1;
   const compactTile = span.columns <= 2 && span.rows <= 2;
   const twitchEmbedSandbox =
@@ -1252,11 +1264,17 @@ function ProfileIntegrationRichCard({
     return (
       <div
         className="h-full min-h-0 overflow-hidden rounded-card bg-transparent"
+        data-profile-twitch-chat-columns="2"
         data-profile-twitch-embed-surface="true"
+        data-profile-twitch-grid-columns={twitchStreamChatGridColumns}
+        data-profile-twitch-stream-columns={twitchStreamChatStreamColumns}
       >
-        <div className="grid h-full min-h-0 gap-2 md:grid-cols-5">
+        <div
+          className="grid h-full min-h-0 gap-2"
+          style={twitchStreamChatColumnStyle}
+        >
           <iframe
-            className="block h-full min-h-[220px] w-full rounded-card border-0 bg-black md:col-span-3"
+            className="block h-full min-h-[220px] w-full rounded-card border-0 bg-black"
             title={primaryEmbed.title}
             src={primaryEmbedSrc}
             height={360}
@@ -1267,9 +1285,10 @@ function ProfileIntegrationRichCard({
             allowFullScreen
             data-profile-embed-provider={integration.provider}
             data-testid={`profile-integration-embed-${integration.provider}`}
+            style={twitchStreamColumnStyle}
           />
           <iframe
-            className="block h-full min-h-[220px] w-full rounded-card border-0 bg-surface md:col-span-2"
+            className="block h-full min-h-[220px] w-full rounded-card border-0 bg-surface"
             title="Twitch chat"
             src={twitchChatSrc}
             height={360}
@@ -1277,6 +1296,7 @@ function ProfileIntegrationRichCard({
             referrerPolicy="strict-origin-when-cross-origin"
             sandbox={twitchEmbedSandbox}
             data-testid="profile-integration-embed-twitch-chat"
+            style={twitchChatColumnStyle}
           />
         </div>
       </div>

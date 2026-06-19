@@ -1118,7 +1118,48 @@ test("Twitch stream chat fills the creator module when embed metadata is availab
     /autoplay=false/,
   );
   await expect(creator.getByTestId("profile-integration-embed-twitch-chat")).toBeVisible();
+  const twitchSurface = creator.locator(
+    '[data-profile-twitch-embed-surface="true"]',
+  );
+  await expect(twitchSurface).toHaveAttribute("data-profile-twitch-grid-columns", "6");
+  await expect(twitchSurface).toHaveAttribute(
+    "data-profile-twitch-stream-columns",
+    "4",
+  );
+  await expect(twitchSurface).toHaveAttribute("data-profile-twitch-chat-columns", "2");
+  await expectTwitchStreamChatWidthRatio(creator, 2);
   await expect(creator.getByRole("link")).toHaveCount(0);
+});
+
+test("largest Twitch stream chat uses a six plus two desktop split", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      {
+        ...twitchStreamChatModule({ id: 12 }),
+        type: "twitch_channel",
+        layout: { column: 1, row: 1, colSpan: 8, rowSpan: 6 },
+      },
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const twitch = page.getByTestId("profile-grid-module-twitch_channel");
+  await expect(twitch).toHaveAttribute("data-profile-grid-size", "8x6");
+  const twitchSurface = twitch.locator(
+    '[data-profile-twitch-embed-surface="true"]',
+  );
+  await expect(twitchSurface).toHaveAttribute("data-profile-twitch-grid-columns", "8");
+  await expect(twitchSurface).toHaveAttribute(
+    "data-profile-twitch-stream-columns",
+    "6",
+  );
+  await expect(twitchSurface).toHaveAttribute("data-profile-twitch-chat-columns", "2");
+  await expectTwitchStreamChatWidthRatio(twitch, 3);
 });
 
 test("owner direct canvas editor preserves lower-row 6x4 creator modules", async ({
@@ -4494,6 +4535,33 @@ async function expectModuleAspectRatio(locator: Locator, expectedRatio: number) 
       }),
     )
     .toBeLessThan(expectedRatio + 0.08);
+}
+
+async function expectTwitchStreamChatWidthRatio(
+  locator: Locator,
+  expectedRatio: number,
+) {
+  const measureRatio = async () =>
+    locator.evaluate((element) => {
+      const stream = element.querySelector<HTMLElement>(
+        '[data-testid="profile-integration-embed-twitch"]',
+      );
+      const chat = element.querySelector<HTMLElement>(
+        '[data-testid="profile-integration-embed-twitch-chat"]',
+      );
+
+      if (!stream || !chat) {
+        return 0;
+      }
+
+      const streamRect = stream.getBoundingClientRect();
+      const chatRect = chat.getBoundingClientRect();
+
+      return chatRect.width > 0 ? streamRect.width / chatRect.width : 0;
+    });
+
+  await expect.poll(measureRatio).toBeGreaterThan(expectedRatio - 0.12);
+  await expect.poll(measureRatio).toBeLessThan(expectedRatio + 0.12);
 }
 
 async function expectTextOrder(locator: Locator, texts: string[]) {
