@@ -182,6 +182,7 @@ body[data-profile-canvas-editing="true"] [data-app-mobile-nav="true"] {
 }
 
 .profile-grid-canvas {
+  grid-auto-flow: dense;
   grid-template-rows: repeat(var(--profile-grid-row-budget), var(--profile-grid-row-size));
 }
 

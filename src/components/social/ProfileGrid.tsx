@@ -282,7 +282,12 @@ export function ProfileGridModule({
   const columnSpan = layout?.colSpan ?? span.columns;
   const rowSpan = layout?.rowSpan ?? span.rows;
   const mobileColumnSpan = Math.min(PROFILE_CANVAS_MOBILE_COLUMNS, columnSpan);
-  const mobileRowSpan = columnSpan === 8 && rowSpan === 6 ? 4 : rowSpan;
+  const mobileProjectedRows =
+    columnSpan > PROFILE_CANVAS_MOBILE_COLUMNS
+      ? Math.ceil((columnSpan * rowSpan) / PROFILE_CANVAS_MOBILE_COLUMNS)
+      : rowSpan;
+  const mobileRowSpan =
+    columnSpan === 8 && rowSpan === 6 ? 4 : mobileProjectedRows;
   const moduleStyle = {
     "--profile-grid-column": String(layout?.column ?? 1),
     "--profile-grid-row": String(layout?.row ?? 1),

@@ -90,9 +90,11 @@ export function ProfileModulesSection({
   editing,
   renderModuleContent,
 }: ProfileModulesSectionProps) {
-  const renderableModules = editing
-    ? modules.filter((module) => isProfileModuleType(module.type))
-    : renderableProfileModules(modules, badges);
+  const renderableModules = sortProfileModulesForCanvas(
+    editing
+      ? modules.filter((module) => isProfileModuleType(module.type))
+      : renderableProfileModules(modules, badges),
+  );
 
   if (loading && !isOwnProfile) {
     return null;
@@ -190,9 +192,11 @@ export function ProfileModuleGrid({
   modules,
   renderModuleContent,
 }: ProfileModuleGridProps) {
-  const renderableModules = editing
-    ? modules.filter((module) => isProfileModuleType(module.type))
-    : renderableProfileModules(modules, badges);
+  const renderableModules = sortProfileModulesForCanvas(
+    editing
+      ? modules.filter((module) => isProfileModuleType(module.type))
+      : renderableProfileModules(modules, badges),
+  );
   const resolvedMaxColumns = maxColumns ?? profileLayoutMaxColumns(layoutPreset);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const lastDragLayoutRef = useRef<ProfileModuleLayout | undefined>(undefined);
@@ -498,6 +502,38 @@ export function ProfileModuleGrid({
       })}
     </ProfileGrid>
   );
+}
+
+function profileModuleCanvasPriority(module: ProfileModule): number {
+  if (module.type === "profile_info") {
+    return 0;
+  }
+
+  if (module.type === "activity") {
+    return 2;
+  }
+
+  return 1;
+}
+
+function sortProfileModulesForCanvas(modules: ProfileModule[]): ProfileModule[] {
+  return [...modules].sort((first, second) => {
+    const priority =
+      profileModuleCanvasPriority(first) - profileModuleCanvasPriority(second);
+
+    if (priority !== 0) {
+      return priority;
+    }
+
+    return (
+      (first.layout?.row ?? Number.MAX_SAFE_INTEGER) -
+        (second.layout?.row ?? Number.MAX_SAFE_INTEGER) ||
+      (first.layout?.column ?? Number.MAX_SAFE_INTEGER) -
+        (second.layout?.column ?? Number.MAX_SAFE_INTEGER) ||
+      first.position - second.position ||
+      first.id - second.id
+    );
+  });
 }
 
 function profileGridSupportsDesktopCanvas(): boolean {

@@ -1326,12 +1326,98 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
       bannerHeight: Math.round(bannerElement.getBoundingClientRect().height),
       headerHeight: Math.round(headerElement.getBoundingClientRect().height),
       moduleHeight: Math.round(moduleElement.getBoundingClientRect().height),
+      objectFit: window.getComputedStyle(
+        bannerElement.querySelector("img")!,
+      ).objectFit,
     };
   });
 
   expect(metrics.headerHeight).toBeGreaterThanOrEqual(metrics.moduleHeight * 0.92);
-  expect(metrics.bannerHeight).toBeGreaterThanOrEqual(56);
-  expect(metrics.bannerHeight).toBeLessThan(metrics.moduleHeight * 0.45);
+  expect(metrics.bannerHeight).toBeGreaterThan(metrics.moduleHeight * 0.3);
+  expect(metrics.bannerHeight).toBeLessThan(metrics.moduleHeight * 0.62);
+  expect(metrics.objectFit).toBe("contain");
+});
+
+test("wide profile info keeps full banner and avatar overlap at high resolution", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await mockProfileModules(page, {
+    authenticated: false,
+    profileOverrides: {
+      bio: "The queen, owner and creator of thia.lol.",
+      bannerUrl: "/uploads/media/2026/06/profile-banner.webp",
+      user: {
+        id: 1,
+        handle: "thia",
+        displayName: "Thia",
+        initials: "T",
+        aura: "frost",
+        avatarUrl: "/uploads/media/2026/06/avatar.webp",
+      },
+    },
+    modules: [
+      {
+        ...profileInfoModule(),
+        layout: { column: 3, row: 1, colSpan: 8, rowSpan: 3 },
+        config: { canvasSize: "8x3" },
+      },
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const module = page.getByTestId("profile-grid-module-profile_info");
+  await expect(module).toHaveAttribute("data-profile-grid-size", "8x3");
+  await expect(module.getByTestId("profile-header-banner")).toHaveAttribute(
+    "data-profile-banner-treatment",
+    "full",
+  );
+
+  const metrics = await module.evaluate((element) => {
+    const header = element.querySelector<HTMLElement>('[data-testid="profile-header"]');
+    const banner = element.querySelector<HTMLElement>(
+      '[data-testid="profile-header-banner"]',
+    );
+    const bannerImage = banner?.querySelector<HTMLImageElement>("img");
+    const avatar = element.querySelector<HTMLImageElement>('img[alt="Thia"]');
+    const bio = element.querySelector<HTMLElement>('[data-testid="profile-bio"]');
+
+    if (!header || !banner || !bannerImage || !avatar || !bio) {
+      throw new Error("Expected profile info banner, avatar, and bio to render.");
+    }
+
+    const moduleRect = element.getBoundingClientRect();
+    const headerRect = header.getBoundingClientRect();
+    const bannerRect = banner.getBoundingClientRect();
+    const avatarRect = avatar.getBoundingClientRect();
+    const bioRect = bio.getBoundingClientRect();
+
+    return {
+      avatarBottom: avatarRect.bottom,
+      avatarTop: avatarRect.top,
+      bannerBottom: bannerRect.bottom,
+      bannerHeight: bannerRect.height,
+      bioBottom: bioRect.bottom,
+      headerHeight: headerRect.height,
+      headerRight: headerRect.right,
+      headerWidth: headerRect.width,
+      moduleBottom: moduleRect.bottom,
+      moduleHeight: moduleRect.height,
+      moduleRight: moduleRect.right,
+      moduleWidth: moduleRect.width,
+      objectFit: window.getComputedStyle(bannerImage).objectFit,
+    };
+  });
+
+  expect(metrics.objectFit).toBe("contain");
+  expect(metrics.bannerHeight).toBeGreaterThan(metrics.moduleHeight * 0.3);
+  expect(metrics.avatarTop).toBeLessThan(metrics.bannerBottom);
+  expect(metrics.avatarBottom).toBeGreaterThan(metrics.bannerBottom);
+  expect(metrics.bioBottom).toBeLessThanOrEqual(metrics.moduleBottom + 1);
+  expect(metrics.headerWidth).toBeGreaterThanOrEqual(metrics.moduleWidth - 2);
+  expect(metrics.headerHeight).toBeGreaterThanOrEqual(metrics.moduleHeight - 2);
+  expect(metrics.headerRight).toBeLessThanOrEqual(metrics.moduleRight + 1);
 });
 
 test("profile info variants stay within each supported size", async ({ page }) => {
@@ -2340,6 +2426,87 @@ test("low-resolution desktop uses compact direct canvas chrome", async ({ page }
   expect(metrics.editorBottom).toBeGreaterThan(0);
   expect(metrics.gridTop).toBeGreaterThan(0);
   expect(metrics.hasHorizontalOverflow).toBe(false);
+});
+
+test("mobile direct canvas editor uses a 6 by 32 point grid", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  let draftPayload: Record<string, unknown> | undefined;
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+    onCanvasDraftSave: (payload) => {
+      draftPayload = payload;
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+
+  const grid = page.getByTestId("profile-canvas-direct-grid");
+  await expect(grid).toBeVisible();
+  await expect(grid).toHaveAttribute(
+    "data-profile-canvas-columns",
+    String(PROFILE_CANVAS_MOBILE_COLUMNS),
+  );
+  await expect(grid).toHaveAttribute(
+    "data-profile-canvas-rows",
+    String(PROFILE_CANVAS_MOBILE_ROWS),
+  );
+  await expectGridColumnCount(grid, PROFILE_CANVAS_MOBILE_COLUMNS);
+  await expect(page.getByTestId("profile-canvas-cell-6-32")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-cell-7-1")).toHaveCount(0);
+
+  await page.getByTestId("profile-canvas-cell-1-5").click();
+  await page.getByTestId("profile-canvas-cell-2-5").click();
+  await expect(page.locator('[data-testid^="profile-canvas-blank-module-"]')).toBeVisible();
+  await expect
+    .poll(() => {
+      const layout = placeholderDraftModule(draftPayload)?.layout as
+        | Record<string, unknown>
+        | undefined;
+
+      return `${layout?.column}:${layout?.row}:${layout?.colSpan}:${layout?.rowSpan}`;
+    })
+    .toBe("1:3:2:1");
+});
+
+test("mobile canvas packs profile info first and activity last", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      withAuditLayout(activityModule({ id: 9, position: 1 }), "3x4", 1),
+      withAuditLayout(
+        textModule({ id: 2, body: "Middle note.", position: 2 }),
+        "3x2",
+        5,
+      ),
+      withAuditLayout(
+        {
+          ...profileInfoModule(),
+          position: 3,
+        },
+        "8x3",
+        8,
+        3,
+      ),
+    ],
+    profilePosts: [postFixture({ id: 77, body: "A compact activity item." })],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const grid = page.getByTestId("profile-module-grid");
+  await expectGridColumnCount(grid, PROFILE_CANVAS_MOBILE_COLUMNS);
+  const order = await grid.evaluate((element) =>
+    Array.from(
+      element.querySelectorAll<HTMLElement>('[data-profile-grid-module="true"]'),
+    ).map((module) => module.getAttribute("data-testid")),
+  );
+
+  expect(order[0]).toBe("profile-grid-module-profile_info");
+  expect(order.at(-1)).toBe("profile-grid-module-activity");
 });
 
 test.skip("obsolete profile details panel autosave coverage", async ({ page }) => {

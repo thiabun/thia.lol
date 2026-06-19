@@ -110,6 +110,8 @@ import { defaultProfileLayoutPreset } from "../lib/profileLayoutPresets";
 import {
   PROFILE_CANVAS_DESKTOP_COLUMNS,
   PROFILE_CANVAS_DESKTOP_ROWS,
+  PROFILE_CANVAS_MOBILE_COLUMNS,
+  PROFILE_CANVAS_MOBILE_ROWS,
   PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS,
   PROFILE_CANVAS_MAX_MODULE_ROWS,
   PROFILE_CANVAS_PROFILE_INFO_COLUMNS,
@@ -2296,11 +2298,14 @@ function blurShortLabel(blur: ProfileBackgroundBlur): string {
   return blurLabel(blur);
 }
 
-function profileCanvasCells(): CanvasPoint[] {
+function profileCanvasCells(
+  columns = PROFILE_CANVAS_COLUMNS,
+  rows = PROFILE_CANVAS_ROWS,
+): CanvasPoint[] {
   const cells: CanvasPoint[] = [];
 
-  for (let row = 1; row <= PROFILE_CANVAS_ROWS; row += 1) {
-    for (let column = 1; column <= PROFILE_CANVAS_COLUMNS; column += 1) {
+  for (let row = 1; row <= rows; row += 1) {
+    for (let column = 1; column <= columns; column += 1) {
       cells.push({ column, row });
     }
   }
@@ -2349,21 +2354,111 @@ function profileCanvasRectsOverlap(
   );
 }
 
+function profileCanvasModulePriority(module: ProfileModule): number {
+  if (module.type === "profile_info") {
+    return 0;
+  }
+
+  if (module.type === "activity") {
+    return 2;
+  }
+
+  return 1;
+}
+
 function profileCanvasSortDraftModules(modules: ProfileModule[]): ProfileModule[] {
   return [...modules].sort((first, second) => {
-    const firstLayout = first.layout;
-    const secondLayout = second.layout;
+    const priority = profileCanvasModulePriority(first) - profileCanvasModulePriority(second);
 
-    if (firstLayout && secondLayout) {
-      return (
-        firstLayout.row - secondLayout.row ||
-        firstLayout.column - secondLayout.column ||
-        first.position - second.position
-      );
+    if (priority !== 0) {
+      return priority;
     }
 
-    return first.position - second.position;
+    const firstLayout = first.layout ?? profileCanvasDefaultClientLayout(first, 0);
+    const secondLayout = second.layout ?? profileCanvasDefaultClientLayout(second, 0);
+
+    return (
+      firstLayout.row - secondLayout.row ||
+      firstLayout.column - secondLayout.column ||
+      first.position - second.position ||
+      first.id - second.id
+    );
   });
+}
+
+function useProfileCanvasEditorGridProjection(): {
+  columns: 6 | 12;
+  rows: 16 | 32;
+  mobile: boolean;
+} {
+  const [mobile, setMobile] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia("(max-width: 1023px)");
+    const syncProjection = () => setMobile(mediaQuery.matches);
+
+    syncProjection();
+    mediaQuery.addEventListener("change", syncProjection);
+
+    return () => mediaQuery.removeEventListener("change", syncProjection);
+  }, []);
+
+  return mobile
+    ? {
+        columns: PROFILE_CANVAS_MOBILE_COLUMNS,
+        rows: PROFILE_CANVAS_MOBILE_ROWS,
+        mobile,
+      }
+    : {
+        columns: PROFILE_CANVAS_COLUMNS,
+        rows: PROFILE_CANVAS_ROWS,
+        mobile,
+      };
+}
+
+function profileCanvasDesktopPointFromEditorPoint(
+  point: CanvasPoint,
+  mobile: boolean,
+): CanvasPoint {
+  if (!mobile) {
+    return point;
+  }
+
+  const mobileRow = Math.min(
+    PROFILE_CANVAS_MOBILE_ROWS,
+    Math.max(1, point.row),
+  );
+  const desktopRow = Math.min(
+    PROFILE_CANVAS_ROWS,
+    Math.floor((mobileRow - 1) / 2) + 1,
+  );
+  const desktopColumn = Math.min(
+    PROFILE_CANVAS_COLUMNS,
+    Math.max(
+      1,
+      point.column + (mobileRow % 2 === 0 ? PROFILE_CANVAS_MOBILE_COLUMNS : 0),
+    ),
+  );
+
+  return {
+    column: desktopColumn,
+    row: desktopRow,
+  };
+}
+
+function profileCanvasDesktopRectFromEditorPoints(
+  first: CanvasPoint,
+  second: CanvasPoint,
+  mobile: boolean,
+): ProfileModuleLayout {
+  return profileCanvasRectFromPoints(
+    profileCanvasDesktopPointFromEditorPoint(first, mobile),
+    profileCanvasDesktopPointFromEditorPoint(second, mobile),
+  );
 }
 
 function profileCanvasDefaultClientLayout(
@@ -2390,6 +2485,7 @@ function profileCanvasLayoutFromPointer(
   rowSpan: number,
   pointerOffsetX: number,
   pointerOffsetY: number,
+  mobile = false,
 ): ProfileModuleLayout {
   const rect = grid.getBoundingClientRect();
   const styles = window.getComputedStyle(grid);
@@ -2399,10 +2495,12 @@ function profileCanvasLayoutFromPointer(
   const columnGap = Number.parseFloat(styles.columnGap) || 0;
   const rowGap = Number.parseFloat(styles.rowGap) || columnGap;
   const contentWidth = Math.max(1, grid.clientWidth - paddingLeft - paddingRight);
+  const activeColumns = mobile
+    ? PROFILE_CANVAS_MOBILE_COLUMNS
+    : PROFILE_CANVAS_COLUMNS;
   const cellSize = Math.max(
     1,
-    (contentWidth - columnGap * (PROFILE_CANVAS_COLUMNS - 1)) /
-      PROFILE_CANVAS_COLUMNS,
+    (contentWidth - columnGap * (activeColumns - 1)) / activeColumns,
   );
   const stepX = cellSize + columnGap;
   const stepY = cellSize + rowGap;
@@ -2410,13 +2508,28 @@ function profileCanvasLayoutFromPointer(
   const moduleTop = clientY - pointerOffsetY;
   const rawColumn = Math.round((moduleLeft - rect.left - paddingLeft) / stepX) + 1;
   const rawRow = Math.round((moduleTop - rect.top - paddingTop) / stepY) + 1;
+  const point = mobile
+    ? profileCanvasDesktopPointFromEditorPoint(
+        {
+          column: Math.min(
+            PROFILE_CANVAS_MOBILE_COLUMNS,
+            Math.max(1, rawColumn),
+          ),
+          row: Math.min(PROFILE_CANVAS_MOBILE_ROWS, Math.max(1, rawRow)),
+        },
+        true,
+      )
+    : {
+        column: rawColumn,
+        row: rawRow,
+      };
 
   return {
     column: Math.min(
       PROFILE_CANVAS_COLUMNS - colSpan + 1,
-      Math.max(1, rawColumn),
+      Math.max(1, point.column),
     ),
-    row: Math.min(PROFILE_CANVAS_ROWS - rowSpan + 1, Math.max(1, rawRow)),
+    row: Math.min(PROFILE_CANVAS_ROWS - rowSpan + 1, Math.max(1, point.row)),
     colSpan,
     rowSpan,
   };
@@ -2886,10 +2999,21 @@ function profileCanvasResolveDraftCollisions(
         }
       }
 
+      const priority = profileCanvasModulePriority(first) - profileCanvasModulePriority(second);
+
+      if (priority !== 0) {
+        return priority;
+      }
+
       const firstLayout = first.layout ?? profileCanvasDefaultClientLayout(first, 0);
       const secondLayout = second.layout ?? profileCanvasDefaultClientLayout(second, 0);
 
-      return firstLayout.row - secondLayout.row || firstLayout.column - secondLayout.column;
+      return (
+        firstLayout.row - secondLayout.row ||
+        firstLayout.column - secondLayout.column ||
+        first.position - second.position ||
+        first.id - second.id
+      );
     });
 
   active.forEach((module, index) => {
@@ -3060,6 +3184,7 @@ function ProfileDirectCanvasEditor({
   uploading,
 }: ProfileDirectCanvasEditorProps) {
   const gridRef = useRef<HTMLDivElement | null>(null);
+  const editorGrid = useProfileCanvasEditorGridProjection();
   const [selectionStart, setSelectionStart] = useState<CanvasPoint | undefined>();
   const [selectionHover, setSelectionHover] = useState<CanvasPoint | undefined>();
   const [pickerModuleId, setPickerModuleId] = useState<number | undefined>();
@@ -3147,6 +3272,7 @@ function ProfileDirectCanvasEditor({
         activeDragState.startLayout.rowSpan,
         activeDragState.pointerOffsetX,
         activeDragState.pointerOffsetY,
+        editorGrid.mobile,
       );
 
       updateDraftModules((currentModules) =>
@@ -3174,7 +3300,7 @@ function ProfileDirectCanvasEditor({
       window.removeEventListener("pointerup", handlePointerUp);
       window.removeEventListener("pointercancel", handlePointerUp);
     };
-  }, [dragState, modules, updateDraftModules]);
+  }, [dragState, editorGrid.mobile, modules, updateDraftModules]);
 
   function handleCellClick(point: CanvasPoint) {
     if (!selectionStart) {
@@ -3183,7 +3309,11 @@ function ProfileDirectCanvasEditor({
       return;
     }
 
-    const rect = profileCanvasRectFromPoints(selectionStart, point);
+    const rect = profileCanvasDesktopRectFromEditorPoints(
+      selectionStart,
+      point,
+      editorGrid.mobile,
+    );
     const blocked = sortedModules.some((draftModule) =>
       profileCanvasRectsOverlap(
         rect,
@@ -3338,11 +3468,19 @@ function ProfileDirectCanvasEditor({
     selectionStart && selectionHover
       ? profileCanvasRectFromPoints(selectionStart, selectionHover)
       : undefined;
+  const selectionLayoutRect =
+    selectionStart && selectionHover
+      ? profileCanvasDesktopRectFromEditorPoints(
+          selectionStart,
+          selectionHover,
+          editorGrid.mobile,
+        )
+      : undefined;
   const selectionBlocked = Boolean(
-    selectionRect &&
+    selectionLayoutRect &&
       sortedModules.some((draftModule) =>
         profileCanvasRectsOverlap(
-          selectionRect,
+          selectionLayoutRect,
           draftModule.layout ?? profileCanvasDefaultClientLayout(draftModule, 0),
         ),
       ),
@@ -3433,15 +3571,15 @@ function ProfileDirectCanvasEditor({
         canvasGlass={draft.canvasGlass}
         gridRef={gridRef}
         className="relative overflow-hidden"
-        maxColumns={PROFILE_CANVAS_COLUMNS}
-        maxRows={PROFILE_CANVAS_ROWS}
+        maxColumns={editorGrid.columns}
+        maxRows={editorGrid.rows}
         testId="profile-canvas-direct-grid"
       >
         <div
           className="pointer-events-auto absolute inset-2 z-0 grid gap-3"
           style={{
-            gridTemplateColumns: `repeat(${PROFILE_CANVAS_COLUMNS}, minmax(0, 1fr))`,
-            gridTemplateRows: `repeat(${PROFILE_CANVAS_ROWS}, minmax(0, 1fr))`,
+            gridTemplateColumns: `repeat(${editorGrid.columns}, minmax(0, 1fr))`,
+            gridTemplateRows: `repeat(${editorGrid.rows}, minmax(0, 1fr))`,
           }}
           onMouseLeave={() => {
             if (selectionStart) {
@@ -3470,7 +3608,7 @@ function ProfileDirectCanvasEditor({
               />
             ) : null}
           </AnimatePresence>
-          {profileCanvasCells().map((point) => {
+          {profileCanvasCells(editorGrid.columns, editorGrid.rows).map((point) => {
             const selected = selectionStart &&
               point.column === selectionStart.column &&
               point.row === selectionStart.row;
@@ -3481,9 +3619,13 @@ function ProfileDirectCanvasEditor({
               selectionPreviewRect &&
                 (selectionPreviewRect.colSpan > 1 || selectionPreviewRect.rowSpan > 1),
             );
+            const layoutPoint = profileCanvasDesktopPointFromEditorPoint(
+              point,
+              editorGrid.mobile,
+            );
             const coveredByModule = sortedModules.some((draftModule) =>
               profileCanvasPointInRect(
-                point,
+                layoutPoint,
                 draftModule.layout ?? profileCanvasDefaultClientLayout(draftModule, 0),
               ),
             );
@@ -4581,8 +4723,19 @@ function ProfileInfoSizedCard({
   const inlineStats = wide;
   const bannerUrl = safeProfileImageUrl(profile.bannerUrl);
   const showBanner = Boolean(bannerUrl) && !compact;
+  const bannerHeight = expanded
+    ? large
+      ? "clamp(9rem, calc(var(--profile-grid-cell-size) * 1.25), 13rem)"
+      : "clamp(7rem, calc(var(--profile-grid-cell-size) * 1.05), 10rem)"
+    : large
+      ? "clamp(8rem, calc(var(--profile-grid-cell-size) * 1.15), 11.5rem)"
+      : wide
+        ? "clamp(6.5rem, calc(var(--profile-grid-cell-size) * 1.05), 9rem)"
+        : balanced
+          ? "clamp(5rem, calc(var(--profile-grid-cell-size) * 0.82), 7rem)"
+          : "5rem";
   const shellClass = cn(
-    "profile-grid-scaled-content relative flex size-full min-h-0 min-w-0 flex-col overflow-hidden rounded-panel border",
+    "relative flex size-full min-h-0 min-w-0 flex-col overflow-hidden rounded-panel border",
     editing
       ? "border-line bg-surface/68 shadow-soft backdrop-blur-veil"
       : "border-line bg-surface/52 shadow-soft backdrop-blur-veil",
@@ -4650,26 +4803,14 @@ function ProfileInfoSizedCard({
     >
       {showBanner ? (
         <div
-          className={cn(
-            "shrink-0 overflow-hidden border-b border-line bg-canvas/55",
-            expanded
-              ? large
-                ? "h-32 sm:h-36"
-                : "h-24 sm:h-28"
-              : large
-                ? "h-24 sm:h-28"
-                : wide
-                  ? "h-20"
-                  : balanced
-                    ? "h-14"
-                    : "h-16",
-          )}
+          className="shrink-0 overflow-hidden border-b border-line bg-canvas/80"
           data-profile-banner-treatment={large ? "full" : "clear"}
           data-testid="profile-header-banner"
+          style={{ blockSize: bannerHeight }}
         >
           <img
             alt=""
-            className="size-full object-cover object-center"
+            className="size-full object-contain object-center"
             src={bannerUrl}
           />
         </div>
@@ -4685,28 +4826,20 @@ function ProfileInfoSizedCard({
           expanded ? "p-4" : "p-3",
         )}
       >
-        {inlineStats ? (
-          <ProfileInfoStats
-            featuredBadges={featuredBadges}
-            inline
-            onOpenPanel={onOpenPanel}
-            profile={profile}
-            rich
-          />
-        ) : null}
-        <div
-          className={cn(
-            "flex min-w-0 items-start justify-between gap-3",
-            inlineStats ? "mt-2" : undefined,
-          )}
-        >
+        <div className="flex min-w-0 items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <Avatar
               user={profile.user}
               size="lg"
               className={cn(
-                "border-[3px] border-surface",
-                showBanner && expanded && !large ? "-mt-10" : undefined,
+                "shrink-0 border-[3px] border-surface",
+                showBanner
+                  ? expanded || large
+                    ? "-mt-10"
+                    : balanced
+                      ? "-mt-7"
+                      : "-mt-8"
+                  : undefined,
                 balanced ? "size-14" : expanded ? "size-20" : "size-16",
               )}
             />
@@ -4754,6 +4887,17 @@ function ProfileInfoSizedCard({
           >
             {profile.bio}
           </p>
+        ) : null}
+        {inlineStats ? (
+          <div className="mt-2 min-w-0">
+            <ProfileInfoStats
+              featuredBadges={featuredBadges}
+              inline
+              onOpenPanel={onOpenPanel}
+              profile={profile}
+              rich
+            />
+          </div>
         ) : null}
         <div className="mt-auto min-w-0 pt-2">
           {!inlineStats ? (
