@@ -3453,7 +3453,7 @@ function profile_module_link(mixed $value): array
 
     profile_module_reject_unknown_keys($value, ['label', 'url', 'platform']);
 
-    $url = profile_module_url($value['url'] ?? null, 'Link URL');
+    $url = profile_module_connection_url($value['url'] ?? null, $value['platform'] ?? null);
     $platform = profile_module_platform(
         $value['platform'] ?? null,
         PROFILE_MODULE_LINK_PLATFORMS,
@@ -3463,10 +3463,117 @@ function profile_module_link(mixed $value): array
     profile_module_validate_url_platform($url, $platform, 'Link URL');
 
     return [
-        'label' => profile_module_text($value['label'] ?? null, PROFILE_MODULE_LINK_LABEL_MAX, 'Link label'),
+        'label' => profile_module_text(
+            $value['label'] ?? profile_module_connection_default_label($platform, $url),
+            PROFILE_MODULE_LINK_LABEL_MAX,
+            'Link label'
+        ),
         'platform' => $platform,
         'url' => $url,
     ];
+}
+
+function profile_module_connection_url(mixed $value, mixed $platformValue): string
+{
+    if (!is_string($value)) {
+        json_error('Link URL is invalid.', 422);
+    }
+
+    $trimmed = trim($value);
+
+    if ($trimmed === '') {
+        json_error('Link URL is invalid.', 422);
+    }
+
+    if (filter_var($trimmed, FILTER_VALIDATE_URL) !== false) {
+        return profile_module_url($trimmed, 'Link URL');
+    }
+
+    if (is_string($platformValue) && trim($platformValue) !== '') {
+        $platform = profile_module_platform($platformValue, PROFILE_MODULE_LINK_PLATFORMS, 'website');
+        return profile_module_connection_url_for_platform($trimmed, $platform);
+    }
+
+    return profile_module_url($trimmed, 'Link URL');
+}
+
+function profile_module_connection_url_for_platform(string $value, string $platform): string
+{
+    $trimmed = trim($value);
+
+    if ($trimmed === '' || profile_module_text_length($trimmed) > 500 || profile_module_text_is_unsafe($trimmed)) {
+        json_error('Link URL is invalid.', 422);
+    }
+
+    if ($platform === 'website' || $platform === 'custom') {
+        return profile_module_url(profile_module_ensure_https_url($trimmed), 'Link URL');
+    }
+
+    if (str_contains($trimmed, '/') || str_starts_with(strtolower($trimmed), 'www.')) {
+        return profile_module_url(profile_module_ensure_https_url($trimmed), 'Link URL');
+    }
+
+    $handle = profile_module_connection_handle($trimmed);
+    $url = match ($platform) {
+        'youtube' => 'https://www.youtube.com/@' . $handle,
+        'twitch' => 'https://www.twitch.tv/' . $handle,
+        'tiktok' => 'https://www.tiktok.com/@' . $handle,
+        'instagram' => 'https://www.instagram.com/' . $handle,
+        'x' => 'https://x.com/' . $handle,
+        'bluesky' => 'https://bsky.app/profile/' . $handle,
+        'github' => 'https://github.com/' . $handle,
+        'discord' => 'https://discord.gg/' . $handle,
+        'spotify' => 'https://open.spotify.com/user/' . $handle,
+        default => null,
+    };
+
+    if ($url === null) {
+        json_error('Link URL is invalid.', 422);
+    }
+
+    return profile_module_url($url, 'Link URL');
+}
+
+function profile_module_connection_handle(string $value): string
+{
+    $handle = trim($value);
+    $handle = ltrim($handle, '@');
+
+    if (preg_match('/^[A-Za-z0-9._-]{1,80}$/', $handle) !== 1) {
+        json_error('Link URL is invalid.', 422);
+    }
+
+    return $handle;
+}
+
+function profile_module_ensure_https_url(string $value): string
+{
+    if (preg_match('#^https?://#i', $value) === 1) {
+        return $value;
+    }
+
+    return 'https://' . $value;
+}
+
+function profile_module_connection_default_label(string $platform, string $url): string
+{
+    if ($platform === 'website' || $platform === 'custom') {
+        $host = profile_module_url_host($url);
+        return $host !== '' ? preg_replace('/^www\./', '', $host) ?? 'Website' : 'Website';
+    }
+
+    return match ($platform) {
+        'youtube' => 'YouTube',
+        'twitch' => 'Twitch',
+        'tiktok' => 'TikTok',
+        'instagram' => 'Instagram',
+        'x' => 'X',
+        'bluesky' => 'Bluesky',
+        'github' => 'GitHub',
+        'discord' => 'Discord',
+        'spotify' => 'Spotify',
+        default => 'Connection',
+    };
 }
 
 function profile_module_platform(mixed $value, array $allowedPlatforms, string $fallback): string

@@ -38,8 +38,8 @@ export const profileConnectionPlatforms: Array<{
     value: "website",
     label: "Website",
     validationMode: "https-url",
-    help: "Use a full https:// URL.",
-    placeholder: "https://example.com",
+    help: "Use a domain or full https:// URL.",
+    placeholder: "example.com or https://example.com",
     icon: "generic-globe",
     tone: "warm",
   },
@@ -56,9 +56,9 @@ export const profileConnectionPlatforms: Array<{
   {
     value: "twitch",
     label: "Twitch",
-    validationMode: "handle",
-    help: "Use a Twitch username.",
-    placeholder: "channel",
+    validationMode: "profile-url-or-handle",
+    help: "Use a Twitch username or channel URL.",
+    placeholder: "channel or Twitch URL",
     icon: "simple-icons:twitch",
     attributionName: "Twitch",
     tone: "cool",
@@ -126,9 +126,9 @@ export const profileConnectionPlatforms: Array<{
   {
     value: "spotify",
     label: "Spotify",
-    validationMode: "spotify-url",
-    help: "Use an open.spotify.com URL.",
-    placeholder: "https://open.spotify.com/...",
+    validationMode: "profile-url-or-handle",
+    help: "Use a Spotify profile URL or username.",
+    placeholder: "username or open.spotify.com URL",
     icon: "simple-icons:spotify",
     attributionName: "Spotify",
     tone: "leaf",
@@ -230,17 +230,16 @@ export function validateProfileConnectionDraft(
   }
 
   if (platform === "website") {
-    if (!/^https:\/\//i.test(trimmed)) {
-      return { error: "Website requires a full https:// URL." };
-    }
-
     const connection = normalizeWebsite(trimmed);
     return connection ? { connection } : { error: "Website URL is invalid." };
   }
 
   if (platform === "spotify") {
-    const connection = normalizeSpotify(trimmed);
-    return connection ? { connection } : { error: "Spotify requires an open.spotify.com URL." };
+    const connection =
+      normalizeSpotify(trimmed) ?? normalizePlatformHandle(platform, trimmed);
+    return connection
+      ? { connection }
+      : { error: "Spotify requires a profile URL or username." };
   }
 
   if (platform === "discord") {
@@ -251,12 +250,12 @@ export function validateProfileConnectionDraft(
   }
 
   if (["twitch", "instagram", "bluesky"].includes(platform)) {
-    if (/^https?:\/\//i.test(trimmed)) {
-      return { error: `${label} requires a username or handle.` };
-    }
-
-    const connection = normalizePlatformHandle(platform, trimmed);
-    return connection ? { connection } : { error: `${label} username is invalid.` };
+    const connection =
+      normalizePlatformUrl(platform, trimmed) ??
+      normalizePlatformHandle(platform, trimmed);
+    return connection
+      ? { connection }
+      : { error: `${label} username or URL is invalid.` };
   }
 
   const urlConnection = normalizePlatformUrl(platform, trimmed);
@@ -391,6 +390,7 @@ function normalizePlatformHandle(
     x: `https://x.com/${handle}`,
     bluesky: `https://bsky.app/profile/${handle}`,
     github: `https://github.com/${handle}`,
+    spotify: `https://open.spotify.com/user/${handle}`,
   };
   const url = paths[platform];
 

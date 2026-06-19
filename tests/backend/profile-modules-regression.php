@@ -97,6 +97,23 @@ assert_true(count($links['links']) === 2, 'links should be deduped by normalized
 assert_true($links['links'][0]['url'] === 'https://example.com/', 'root URL should normalize with slash');
 assert_true($links['links'][1]['platform'] === 'github', 'link platform should be inferred');
 
+$connectionHandles = profile_module_config(
+    'connections',
+    [
+        'links' => [
+            ['label' => 'GitHub', 'platform' => 'github', 'url' => 'thiabun'],
+            ['label' => 'Twitch', 'platform' => 'twitch', 'url' => '@thiabun'],
+            ['label' => 'Site', 'platform' => 'website', 'url' => 'example.com'],
+            ['label' => 'Bluesky', 'platform' => 'bluesky', 'url' => 'thiabun.bsky.social'],
+        ],
+    ],
+    123
+);
+assert_true($connectionHandles['links'][0]['url'] === 'https://github.com/thiabun', 'GitHub handle should normalize to a profile URL');
+assert_true($connectionHandles['links'][1]['url'] === 'https://www.twitch.tv/thiabun', 'Twitch handle should normalize to a profile URL');
+assert_true($connectionHandles['links'][2]['url'] === 'https://example.com/', 'Website domain should normalize to HTTPS');
+assert_true($connectionHandles['links'][3]['url'] === 'https://bsky.app/profile/thiabun.bsky.social', 'Bluesky handle should normalize to a profile URL');
+
 $gallery = profile_module_config(
     'gallery_media',
     [

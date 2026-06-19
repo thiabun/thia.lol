@@ -1,5 +1,7 @@
 import {
+  ArrowDown,
   ArrowRight,
+  ArrowUp,
   Award,
   Bug,
   CalendarDays,
@@ -46,6 +48,7 @@ import {
 } from "react-router";
 import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
+import { ProfileConnectionIcon } from "../components/social/ProfileConnectionIcon";
 import { PostCard } from "../components/social/PostCard";
 import { ProfileGrid, ProfileGridModule } from "../components/social/ProfileGrid";
 import {
@@ -106,6 +109,12 @@ import { formatShortDate } from "../lib/dates";
 import { validateImageCropFile } from "../lib/imageCrop";
 import { pageEntrance } from "../lib/motionPresets";
 import { formatCountWithUnit } from "../lib/pluralize";
+import {
+  connectionPlatformLabel,
+  maxProfileConnections,
+  profileConnectionPlatforms,
+  validateProfileConnectionDraft,
+} from "../lib/profileConnections";
 import { defaultProfileLayoutPreset } from "../lib/profileLayoutPresets";
 import {
   PROFILE_CANVAS_DESKTOP_COLUMNS,
@@ -132,6 +141,7 @@ import type {
   Post,
   Profile,
   ProfileBackgroundBlur,
+  ProfileConnectionPlatform,
   ProfileExternalConnection,
   ProfileIntegrationCard,
   ProfileModule,
@@ -1678,7 +1688,9 @@ function mergeProfileLinksIntoConnectionModules(
 
   return upsertProfileModuleLinks(
     modules,
-    profile.links.map(profileModuleLinkFromConnection),
+    profile.links
+      .map(profileModuleLinkFromConnection)
+      .filter((link): link is ProfileModuleLink => link !== undefined),
   );
 }
 
@@ -1735,11 +1747,18 @@ function upsertProfileModuleLinks(
 
 function profileModuleLinkFromConnection(
   connection: ProfileExternalConnection,
-): ProfileModuleLink {
+): ProfileModuleLink | undefined {
+  if (!connection.url) {
+    return undefined;
+  }
+
   return {
-    label: connection.label,
+    label:
+      connection.platform === "website"
+        ? connection.label
+        : connection.label || connectionPlatformLabel(connection.platform),
     platform: connection.platform,
-    url: connection.url ?? connection.value,
+    url: connection.url,
   };
 }
 
@@ -4116,6 +4135,13 @@ function ModuleSettingsModal({
   );
   const [moduleImageUploading, setModuleImageUploading] = useState(false);
   const [moduleImageError, setModuleImageError] = useState<string | undefined>();
+  const [connectionPlatform, setConnectionPlatform] =
+    useState<ProfileConnectionPlatform>("website");
+  const [connectionValue, setConnectionValue] = useState("");
+  const [connectionError, setConnectionError] = useState<string | undefined>();
+  const [connectionFormOpen, setConnectionFormOpen] = useState(false);
+  const connectionLinks = module?.config.links ?? [];
+  const canAddConnection = connectionLinks.length < maxProfileConnections;
 
   function updateModuleConfig(nextConfig: ProfileModule["config"]) {
     if (!module) {
@@ -4173,6 +4199,76 @@ function ModuleSettingsModal({
     );
   }
 
+  function handleClose() {
+    setConnectionPlatform("website");
+    setConnectionValue("");
+    setConnectionError(undefined);
+    setConnectionFormOpen(false);
+    onClose();
+  }
+
+  function updateConnectionLinks(nextLinks: ProfileModuleLink[]) {
+    updateModuleConfig(
+      configWithContent(
+        {
+          links: profileModuleUniqueConnectionLinks(nextLinks).slice(
+            0,
+            maxProfileConnections,
+          ),
+        },
+        nextLinks.length > 0,
+      ),
+    );
+  }
+
+  function handleAddConnection() {
+    if (!module) {
+      return;
+    }
+
+    const result = profileModuleConnectionLinkFromDraft(
+      connectionPlatform,
+      connectionValue,
+    );
+
+    if ("error" in result) {
+      setConnectionError(result.error);
+      return;
+    }
+
+    const nextLinks = profileModuleUniqueConnectionLinks([
+      ...connectionLinks,
+      result.link,
+    ]);
+
+    updateConnectionLinks(nextLinks);
+    setConnectionValue("");
+    setConnectionError(undefined);
+    setConnectionFormOpen(false);
+  }
+
+  function handleRemoveConnection(index: number) {
+    updateConnectionLinks(connectionLinks.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  function handleMoveConnection(index: number, direction: -1 | 1) {
+    const nextIndex = index + direction;
+
+    if (nextIndex < 0 || nextIndex >= connectionLinks.length) {
+      return;
+    }
+
+    const nextLinks = [...connectionLinks];
+    const [item] = nextLinks.splice(index, 1);
+
+    if (!item) {
+      return;
+    }
+
+    nextLinks.splice(nextIndex, 0, item);
+    updateConnectionLinks(nextLinks);
+  }
+
   async function handleModuleImageSelection(file: File | undefined) {
     if (!module || !file) {
       return;
@@ -4208,7 +4304,7 @@ function ModuleSettingsModal({
   return (
     <ModalSheet
       open={Boolean(module)}
-      onClose={onClose}
+      onClose={handleClose}
       title={module ? profileModuleFallbackTitle(module.type) : "Module settings"}
       description={definition?.description}
       size="md"
@@ -4305,18 +4401,173 @@ function ModuleSettingsModal({
             </label>
           ) : null}
           {module.type === "connections" || module.type === "links" ? (
-            <label className="block">
-              <span className="text-xs font-semibold uppercase text-muted">
-                Link
-              </span>
-              <input
-                className="mt-1 min-h-11 w-full rounded-control border border-line bg-canvas/45 px-3 text-sm text-text outline-none transition focus:border-line-strong focus:outline-2 focus:outline-focus"
-                value={module.config.links?.[0]?.url ?? ""}
-                placeholder="https://example.com"
-                data-testid="profile-module-settings-url"
-                onChange={(event) => handleUrlConfig(event.currentTarget.value)}
-              />
-            </label>
+            <div
+              className="space-y-3"
+              data-testid="profile-connections-settings"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase text-muted">
+                  Connections
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={!canAddConnection}
+                  icon={<Plus aria-hidden="true" size={15} />}
+                  data-testid="profile-connection-add-open-button"
+                  onClick={() => {
+                    setConnectionFormOpen((open) => !open);
+                    setConnectionError(undefined);
+                  }}
+                >
+                  Add
+                </Button>
+              </div>
+              {connectionLinks.length > 0 ? (
+                <div
+                  className="grid gap-2"
+                  data-testid="profile-connection-settings-list"
+                >
+                  {connectionLinks.map((link, index) => {
+                    const platform =
+                      profileModuleConnectionPlatform(link.platform);
+                    const platformLabel = connectionPlatformLabel(platform);
+
+                    return (
+                      <div
+                        key={`${link.url}:${index}`}
+                        className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-card border border-line bg-canvas/38 p-2"
+                        data-testid={`profile-connection-settings-row-${index}`}
+                      >
+                        <span className="grid size-9 shrink-0 place-items-center rounded-full border border-line bg-surface/72 text-text">
+                          <ProfileConnectionIcon platform={platform} size={17} />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-text">
+                            {link.label || platformLabel}
+                          </p>
+                          <p className="truncate text-xs font-medium text-muted">
+                            {platformLabel} · {profileModuleConnectionPreview(link.url)}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            className="grid size-8 place-items-center rounded-control border border-line bg-surface/72 text-muted transition hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-45"
+                            aria-label={`Move ${link.label || platformLabel} up`}
+                            disabled={index === 0}
+                            data-testid={`profile-connection-move-up-${index}`}
+                            onClick={() => handleMoveConnection(index, -1)}
+                          >
+                            <ArrowUp aria-hidden="true" size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            className="grid size-8 place-items-center rounded-control border border-line bg-surface/72 text-muted transition hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-45"
+                            aria-label={`Move ${link.label || platformLabel} down`}
+                            disabled={index === connectionLinks.length - 1}
+                            data-testid={`profile-connection-move-down-${index}`}
+                            onClick={() => handleMoveConnection(index, 1)}
+                          >
+                            <ArrowDown aria-hidden="true" size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            className="grid size-8 place-items-center rounded-control border border-rose/35 bg-rose/12 text-rose-ink transition hover:border-rose/60 focus-visible:outline-2 focus-visible:outline-focus"
+                            aria-label={`Remove ${link.label || platformLabel}`}
+                            data-testid={`profile-connection-remove-${index}`}
+                            onClick={() => handleRemoveConnection(index)}
+                          >
+                            <Trash2 aria-hidden="true" size={15} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="rounded-card border border-dashed border-line bg-canvas/38 px-3 py-2 text-sm font-medium text-muted">
+                  No connections yet.
+                </p>
+              )}
+              {connectionFormOpen && canAddConnection ? (
+                <div
+                  className="space-y-3 rounded-card border border-line bg-canvas/35 p-3"
+                  data-testid="profile-connection-add-form"
+                >
+                  <div
+                    className="grid grid-cols-5 gap-2"
+                    aria-label="Connection platform"
+                  >
+                    {profileConnectionPlatforms.map((platformOption) => (
+                      <button
+                        key={platformOption.value}
+                        type="button"
+                        className="grid min-h-11 place-items-center rounded-control border border-line bg-surface/58 text-muted transition hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus aria-pressed:border-focus aria-pressed:bg-focus/18 aria-pressed:text-text"
+                        aria-label={platformOption.label}
+                        aria-pressed={connectionPlatform === platformOption.value}
+                        title={platformOption.label}
+                        data-testid={`profile-connection-platform-${platformOption.value}`}
+                        onClick={() => {
+                          setConnectionPlatform(platformOption.value);
+                          setConnectionError(undefined);
+                        }}
+                      >
+                        <ProfileConnectionIcon
+                          platform={platformOption.value}
+                          size={18}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                    <label className="block min-w-0">
+                      <span className="sr-only">
+                        {connectionPlatformLabel(connectionPlatform)} handle or link
+                      </span>
+                      <input
+                        className="min-h-11 w-full rounded-control border border-line bg-canvas/55 px-3 text-sm text-text outline-none transition placeholder:text-muted focus:border-line-strong focus:outline-2 focus:outline-focus"
+                        value={connectionValue}
+                        placeholder={
+                          profileConnectionPlatforms.find(
+                            (item) => item.value === connectionPlatform,
+                          )?.placeholder ?? "Handle or link"
+                        }
+                        data-testid="profile-connection-value-input"
+                        onChange={(event) => {
+                          setConnectionValue(event.currentTarget.value);
+                          setConnectionError(undefined);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            handleAddConnection();
+                          }
+                        }}
+                      />
+                    </label>
+                    <Button
+                      type="button"
+                      size="sm"
+                      icon={<Plus aria-hidden="true" size={15} />}
+                      data-testid="profile-connection-add-button"
+                      onClick={handleAddConnection}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                  {connectionError ? (
+                    <p
+                      className="text-xs font-semibold text-rose-ink"
+                      role="alert"
+                    >
+                      {connectionError}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           ) : null}
           {definition.category === "video" ||
           definition.category === "music" ||
@@ -4397,6 +4648,62 @@ function ModuleSettingsModal({
       ) : null}
     </ModalSheet>
   );
+}
+
+function profileModuleConnectionPlatform(
+  value: string | undefined,
+): ProfileConnectionPlatform {
+  return profileConnectionPlatforms.some((item) => item.value === value)
+    ? (value as ProfileConnectionPlatform)
+    : "website";
+}
+
+function profileModuleConnectionPreview(url: string): string {
+  try {
+    const parsedUrl = new URL(url);
+    return `${parsedUrl.hostname.replace(/^www\./, "")}${parsedUrl.pathname === "/" ? "" : parsedUrl.pathname}`;
+  } catch {
+    return url;
+  }
+}
+
+function profileModuleUniqueConnectionLinks(
+  links: ProfileModuleLink[],
+): ProfileModuleLink[] {
+  const seen = new Set<string>();
+  const uniqueLinks: ProfileModuleLink[] = [];
+
+  for (const link of links) {
+    const key = link.url.trim().toLowerCase();
+
+    if (!key || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    uniqueLinks.push(link);
+  }
+
+  return uniqueLinks;
+}
+
+function profileModuleConnectionLinkFromDraft(
+  platform: ProfileConnectionPlatform,
+  value: string,
+): { link: ProfileModuleLink } | { error: string } {
+  const result = validateProfileConnectionDraft(platform, value);
+
+  if ("error" in result) {
+    return { error: result.error };
+  }
+
+  const link = profileModuleLinkFromConnection(result.connection);
+
+  if (!link) {
+    return { error: "Connection must resolve to a safe link." };
+  }
+
+  return { link };
 }
 
 function clampProfileModuleLayout(layout: ProfileModuleLayout): ProfileModuleLayout {

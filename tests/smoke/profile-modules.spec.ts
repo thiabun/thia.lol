@@ -1992,6 +1992,85 @@ test("connected integrations seed Connections links and Twitch stream modules", 
     );
 });
 
+test("connections settings manage brand links as a compact list", async ({
+  page,
+}) => {
+  let draftPayload: Record<string, unknown> | undefined;
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      {
+        ...linksModule({
+          id: 9,
+          title: "Connections",
+          links: [
+            {
+              label: "Twitch",
+              platform: "twitch",
+              url: "https://www.twitch.tv/thiabun",
+            },
+            {
+              label: "Spotify",
+              platform: "spotify",
+              url: "https://open.spotify.com/user/thia",
+            },
+          ],
+        }),
+        type: "connections",
+        layout: { column: 1, row: 5, colSpan: 3, rowSpan: 2 },
+      },
+    ],
+    onCanvasDraftSave: (payload) => {
+      draftPayload = payload;
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-edit-module-9").click();
+
+  const settings = page.getByTestId("profile-module-settings");
+  await expect(settings).toBeVisible();
+  await expect(settings.getByTestId("profile-connection-settings-list")).toBeVisible();
+  await expect(settings.getByTestId("profile-connection-settings-row-0")).toContainText(
+    "Twitch",
+  );
+  await expect(settings.getByTestId("profile-connection-settings-row-1")).toContainText(
+    "Spotify",
+  );
+
+  await settings.getByTestId("profile-connection-add-open-button").click();
+  await settings.getByTestId("profile-connection-platform-github").click();
+  await settings.getByTestId("profile-connection-value-input").fill("thiabun");
+  await settings.getByTestId("profile-connection-add-button").click();
+
+  await expect(settings.getByTestId("profile-connection-settings-row-2")).toContainText(
+    "GitHub",
+  );
+  await expect
+    .poll(() => draftConnectionLinks(draftPayload).map((link) => link.url).join("|"))
+    .toContain("https://github.com/thiabun");
+
+  await settings.getByTestId("profile-connection-move-up-2").click();
+  await settings.getByTestId("profile-connection-move-up-1").click();
+  await expect(settings.getByTestId("profile-connection-settings-row-0")).toContainText(
+    "GitHub",
+  );
+  await expect
+    .poll(() => draftConnectionLinks(draftPayload).map((link) => link.platform).join("|"))
+    .toBe("github|twitch|spotify");
+
+  await settings.getByTestId("profile-connection-remove-1").click();
+  await expect(settings.getByTestId("profile-connection-settings-row-1")).toContainText(
+    "Spotify",
+  );
+  await expect
+    .poll(() => draftConnectionLinks(draftPayload).map((link) => link.platform).join("|"))
+    .toBe("github|spotify");
+});
+
 test("public and editor canvas shell scales wide and glass slider changes opacity", async ({
   page,
 }) => {
@@ -4427,6 +4506,18 @@ function placeholderDraftModule(payload: Record<string, unknown> | undefined) {
     : [];
 
   return modules.find((module) => module.type === "placeholder");
+}
+
+function draftConnectionLinks(payload: Record<string, unknown> | undefined) {
+  const modules = Array.isArray(payload?.modules)
+    ? (payload.modules as Array<Record<string, unknown>>)
+    : [];
+  const connections = modules.find((module) => module.type === "connections");
+  const config = connections?.config as Record<string, unknown> | undefined;
+
+  return Array.isArray(config?.links)
+    ? (config.links as Array<Record<string, string>>)
+    : [];
 }
 
 function sortModulesByLayout(modules: Array<Record<string, unknown>>) {
