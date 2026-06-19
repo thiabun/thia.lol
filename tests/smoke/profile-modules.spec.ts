@@ -1444,9 +1444,16 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
   await expect(banner).toHaveAttribute("data-profile-banner-treatment", "cover");
   await expect(module.getByTestId("profile-social-context")).toHaveAttribute(
     "data-profile-info-stats-variant",
-    "inline",
+    "row",
   );
   await expect(module.getByTestId("profile-social-context")).toContainText("Likes");
+  await expect(module.getByTestId("profile-info-action-rail")).toBeVisible();
+  await expect(module.getByTestId("profile-info-actions-menu")).toHaveCount(0);
+  await module.getByTestId("profile-info-overflow-button").click();
+  await expect(module.getByTestId("profile-info-actions-menu")).toBeVisible();
+  await expect(
+    module.getByRole("button", { name: "Report profile" }),
+  ).toBeVisible();
   const statStyles = await module
     .getByTestId("profile-social-context")
     .evaluate((element) =>
@@ -1477,7 +1484,6 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
   expect(statStyles).toHaveLength(3);
   expect(new Set(statStyles.map((stat) => stat.labelFontSize)).size).toBe(1);
   expect(new Set(statStyles.map((stat) => stat.valueFontSize)).size).toBe(1);
-  await expect(module.getByRole("button", { name: "Report" })).toBeVisible();
 
   const metrics = await page.evaluate(() => {
     const moduleElement = document.querySelector<HTMLElement>(
@@ -1492,12 +1498,25 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
     const bannerImage = document.querySelector<HTMLElement>(
       '[data-testid="profile-grid-module-profile_info"] [data-testid="profile-header-banner-image"]',
     );
+    const actionRail = document.querySelector<HTMLElement>(
+      '[data-testid="profile-grid-module-profile_info"] [data-testid="profile-info-action-rail"]',
+    );
+    const actionMenu = document.querySelector<HTMLElement>(
+      '[data-testid="profile-grid-module-profile_info"] [data-testid="profile-info-actions-menu"]',
+    );
 
-    if (!moduleElement || !headerElement || !bannerElement || !bannerImage) {
-      throw new Error("Profile info module, header, or banner did not render.");
+    if (!moduleElement || !headerElement || !bannerElement || !bannerImage || !actionRail || !actionMenu) {
+      throw new Error("Profile info module, header, banner, or actions did not render.");
     }
 
+    const moduleRect = moduleElement.getBoundingClientRect();
+    const actionRailRect = actionRail.getBoundingClientRect();
+    const actionMenuRect = actionMenu.getBoundingClientRect();
+
     return {
+      actionMenuBottom: Math.round(actionMenuRect.bottom),
+      actionMenuRight: Math.round(actionMenuRect.right),
+      actionRailRight: Math.round(actionRailRect.right),
       bannerHeight: Math.round(bannerElement.getBoundingClientRect().height),
       headerHeight: Math.round(headerElement.getBoundingClientRect().height),
       infoHeight: Math.round(
@@ -1507,11 +1526,16 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
           )!
           .getBoundingClientRect().height,
       ),
-      moduleHeight: Math.round(moduleElement.getBoundingClientRect().height),
+      moduleBottom: Math.round(moduleRect.bottom),
+      moduleHeight: Math.round(moduleRect.height),
+      moduleRight: Math.round(moduleRect.right),
       objectFit: window.getComputedStyle(bannerImage).objectFit,
     };
   });
 
+  expect(metrics.actionRailRight).toBeLessThanOrEqual(metrics.moduleRight + 1);
+  expect(metrics.actionMenuRight).toBeLessThanOrEqual(metrics.moduleRight + 1);
+  expect(metrics.actionMenuBottom).toBeLessThanOrEqual(metrics.moduleBottom + 1);
   expect(metrics.headerHeight).toBeGreaterThanOrEqual(metrics.moduleHeight * 0.92);
   expect(metrics.infoHeight).toBeGreaterThanOrEqual(metrics.moduleHeight * 0.92);
   expect(metrics.bannerHeight).toBeGreaterThan(metrics.moduleHeight * 0.3);
@@ -1576,7 +1600,10 @@ test("wide profile info keeps cover banner and avatar overlap at high resolution
       '[data-testid="profile-info-identity-row"] h1',
     );
     const socialContext = element.querySelector<HTMLElement>(
-      '[data-testid="profile-info-identity-row"] [data-testid="profile-social-context"]',
+      '[data-testid="profile-social-context"]',
+    );
+    const actionRail = element.querySelector<HTMLElement>(
+      '[data-testid="profile-info-action-rail"]',
     );
     const bio = element.querySelector<HTMLElement>('[data-testid="profile-bio"]');
 
@@ -1589,6 +1616,7 @@ test("wide profile info keeps cover banner and avatar overlap at high resolution
       !contentCluster ||
       !displayName ||
       !socialContext ||
+      !actionRail ||
       !bio
     ) {
       throw new Error("Expected profile info banner, avatar, and bio to render.");
@@ -1602,6 +1630,7 @@ test("wide profile info keeps cover banner and avatar overlap at high resolution
     const contentRect = contentCluster.getBoundingClientRect();
     const displayNameRect = displayName.getBoundingClientRect();
     const socialRect = socialContext.getBoundingClientRect();
+    const actionRailRect = actionRail.getBoundingClientRect();
     const bioRect = bio.getBoundingClientRect();
     const topElement = document.elementFromPoint(
       avatarRect.left + avatarRect.width / 2,
@@ -1609,7 +1638,11 @@ test("wide profile info keeps cover banner and avatar overlap at high resolution
     );
 
     return {
+      actionRailBottom: actionRailRect.bottom,
+      actionRailRight: actionRailRect.right,
+      actionRailTop: actionRailRect.top,
       avatarBottom: avatarRect.bottom,
+      avatarLeft: avatarRect.left,
       avatarRight: avatarRect.right,
       avatarFrontAtBannerOverlap:
         topElement === avatar || avatar.contains(topElement),
@@ -1622,6 +1655,7 @@ test("wide profile info keeps cover banner and avatar overlap at high resolution
       contentTop: contentRect.top,
       displayNameLeft: displayNameRect.left,
       displayNameRight: displayNameRect.right,
+      displayNameTop: displayNameRect.top,
       headerHeight: headerRect.height,
       headerRight: headerRect.right,
       headerWidth: headerRect.width,
@@ -1632,21 +1666,24 @@ test("wide profile info keeps cover banner and avatar overlap at high resolution
       moduleRight: moduleRect.right,
       moduleWidth: moduleRect.width,
       objectFit: window.getComputedStyle(bannerImage).objectFit,
-      socialLeft: socialRect.left,
-      socialTrail: socialContext.getAttribute("data-profile-info-stats-trail"),
+      socialTop: socialRect.top,
+      socialVariant: socialContext.getAttribute("data-profile-info-stats-variant"),
     };
   });
 
   expect(metrics.objectFit).toBe("cover");
-  expect(metrics.socialTrail).toBe("true");
+  expect(metrics.socialVariant).toBe("row");
   expect(metrics.infoWidth).toBeGreaterThanOrEqual(metrics.moduleWidth - 2);
   expect(metrics.infoHeight).toBeGreaterThanOrEqual(metrics.moduleHeight - 2);
   expect(metrics.bannerHeight).toBeGreaterThan(metrics.moduleHeight * 0.3);
   expect(metrics.avatarFrontAtBannerOverlap).toBe(true);
   expect(metrics.avatarTop).toBeLessThan(metrics.bannerBottom);
   expect(metrics.avatarBottom).toBeGreaterThan(metrics.bannerBottom);
-  expect(metrics.displayNameLeft).toBeGreaterThan(metrics.avatarRight - 2);
-  expect(metrics.socialLeft).toBeGreaterThan(metrics.displayNameRight);
+  expect(metrics.displayNameTop).toBeGreaterThan(metrics.avatarBottom - 1);
+  expect(metrics.displayNameLeft).toBeGreaterThanOrEqual(metrics.avatarLeft - 1);
+  expect(metrics.actionRailTop).toBeGreaterThan(metrics.bannerBottom);
+  expect(metrics.actionRailRight).toBeLessThanOrEqual(metrics.moduleRight + 1);
+  expect(metrics.socialTop).toBeGreaterThanOrEqual(metrics.bioBottom - 1);
   expect(metrics.contentTop).toBeGreaterThan(metrics.bannerBottom);
   expect(metrics.contentGapFromBanner).toBeLessThan(metrics.moduleHeight * 0.2);
   expect(metrics.contentBottom).toBeLessThanOrEqual(metrics.moduleBottom + 1);
@@ -1699,29 +1736,18 @@ test("profile info variants stay within each supported size", async ({ page }) =
     await expect(socialContext).toContainText("Followers");
     await expect(socialContext).toContainText("Following");
     await expect(socialContext).toContainText("Likes");
-    if (["3x2", "3x3", "4x3", "6x3", "8x3", "8x4"].includes(profileInfoCase.size)) {
-      await expect(socialContext).toHaveAttribute(
-        "data-profile-info-stats-variant",
-        "inline",
-      );
-    }
+    await expect(socialContext).toHaveAttribute(
+      "data-profile-info-stats-variant",
+      ["3x2", "3x3"].includes(profileInfoCase.size) ? "compact" : "row",
+    );
     if (["4x3", "6x3", "8x3", "8x4"].includes(profileInfoCase.size)) {
-      await expect(socialContext).toHaveAttribute(
-        "data-profile-info-stats-trail",
-        "true",
-      );
       await expect(module.getByTestId("profile-info-identity-row")).toBeVisible();
-      expect(
-        await socialContext
-          .locator('[data-profile-info-stat-separator="true"]')
-          .count(),
-      ).toBe(4);
-      await expect(socialContext).toContainText("Founder");
-      expect(
-        await socialContext
-          .locator('[data-profile-info-badge-separator="true"]')
-          .count(),
-      ).toBe(1);
+      await expect(module.getByTestId("profile-info-overflow-button")).toBeVisible();
+    }
+    if (["6x3", "8x3", "8x4"].includes(profileInfoCase.size)) {
+      await expect(module.getByTestId("profile-info-badge-row")).toContainText("Founder");
+    } else {
+      await expect(module.getByTestId("profile-info-badge-row")).toHaveCount(0);
     }
     const statStyles = await socialContext.evaluate((element) =>
       Array.from(element.querySelectorAll<HTMLElement>("[data-profile-info-stat]")).map(

@@ -94,7 +94,8 @@ test("profile report submits the profile target", async ({ page }) => {
   });
 
   await page.goto("/@alex");
-  await page.getByRole("button", { name: "Report" }).click();
+  await page.getByTestId("profile-info-overflow-button").click();
+  await page.getByRole("button", { name: "Report profile" }).click();
   const reportDialog = page.getByRole("dialog", { name: "Report profile" });
 
   await expect(reportDialog).toContainText("reports @alex's profile");

@@ -6094,19 +6094,18 @@ function ProfileInfoSizedCard({
   const wide = span.columns >= 6;
   const large = span.columns >= 8;
   const mobileWide = mobileProjected && wide;
-  const inlineStats = !compact;
   const bannerUrl = safeProfileImageUrl(profile.bannerUrl);
   const showBanner = Boolean(bannerUrl) && !compact;
   const bannerHeight = mobileWide
-    ? "34%"
+    ? "30%"
     : expanded
-    ? "42%"
+    ? "34%"
     : large
-      ? "44%"
+      ? "36%"
       : wide
-        ? "42%"
+        ? "34%"
         : balanced
-          ? "38%"
+          ? "34%"
           : "5rem";
   const avatarSizeClass = mobileWide
     ? "size-16"
@@ -6131,23 +6130,17 @@ function ProfileInfoSizedCard({
       : "top-3";
   const contentSpacingClass = showBanner
     ? mobileWide
-      ? "pt-9"
+      ? "pt-10"
       : expanded || large
-        ? "pt-11"
+        ? "pt-12"
         : balanced
-          ? "pt-8"
-          : "pt-9"
-    : "pt-0";
-  const identityInsetClass = mobileWide
-    ? "pl-[5rem]"
-    : balanced
-    ? "pl-[4.75rem]"
+          ? "pt-10"
+          : "pt-11"
     : expanded
-      ? "pl-[6.25rem]"
-      : "pl-[5.25rem]";
+      ? "pt-20"
+      : "pt-16";
   const bioLines = expanded ? 4 : balanced ? 1 : mobileWide ? 2 : 2;
-  const showSecondaryControls = large || expanded;
-  const maxTrailBadges = expanded ? 4 : large ? 2 : 1;
+  const badgeLimit = expanded ? 4 : large ? 3 : wide ? 2 : 0;
   const shellClass = cn(
     "relative flex size-full min-h-0 min-w-0 flex-col overflow-hidden rounded-panel border",
     editing
@@ -6188,7 +6181,6 @@ function ProfileInfoSizedCard({
           <div className="min-w-0 flex-1">
             <ProfileInfoStats
               compact
-              inline
               onOpenPanel={onOpenPanel}
               profile={profile}
             />
@@ -6268,64 +6260,32 @@ function ProfileInfoSizedCard({
         </div>
         <div
           className={cn(
-            "flex min-h-0 min-w-0 flex-col",
+            "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
             contentSpacingClass,
-            expanded || mobileWide ? "gap-2" : "gap-1.5",
+            expanded || mobileWide ? "gap-2.5" : "gap-2",
           )}
           data-testid="profile-info-content-cluster"
         >
-          <div className="flex min-w-0 items-start justify-between gap-3">
-            <div
-              className={cn(
-                "flex min-w-0 flex-1 items-center gap-2.5",
-                identityInsetClass,
-              )}
-              data-testid="profile-info-identity-row"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                  <h1
-                    className={cn(
-                      "min-w-0 truncate font-semibold text-text",
-                      expanded ? "text-xl" : "text-base",
-                    )}
-                  >
-                    {profile.user.displayName}
-                  </h1>
-                  {!isOwnProfile && profile.isMoot ? (
-                    <Badge className="min-h-5 px-2 text-[0.68rem]">Moot</Badge>
-                  ) : null}
-                  {!isOwnProfile && profile.mutedByMe ? (
-                    <Badge className="min-h-5 px-2 text-[0.68rem]" tone="cool">
-                      Muted
-                    </Badge>
-                  ) : null}
-                </div>
-                <p className="truncate text-xs text-muted">@{profile.user.handle}</p>
-              </div>
-              {inlineStats ? (
-                <ProfileInfoStats
-                  inline
-                  trail
-                  featuredBadges={featuredBadges}
-                  maxBadges={maxTrailBadges}
-                  onOpenPanel={onOpenPanel}
-                  profile={profile}
-                />
+          <div className="min-w-0" data-testid="profile-info-identity-row">
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <h1
+                className={cn(
+                  "min-w-0 truncate font-semibold leading-tight text-text",
+                  expanded ? "text-xl" : "text-base",
+                )}
+              >
+                {profile.user.displayName}
+              </h1>
+              {!isOwnProfile && profile.isMoot ? (
+                <Badge className="min-h-5 px-2 text-[0.68rem]">Moot</Badge>
+              ) : null}
+              {!isOwnProfile && profile.mutedByMe ? (
+                <Badge className="min-h-5 px-2 text-[0.68rem]" tone="cool">
+                  Muted
+                </Badge>
               ) : null}
             </div>
-            <ProfileInfoActions
-              followPosting={followPosting}
-              isOwnProfile={isOwnProfile}
-              messageToHandle={messageToHandle}
-              onBlockToggle={onBlockToggle}
-              onFollowToggle={onFollowToggle}
-              onMuteToggle={onMuteToggle}
-              profile={profile}
-              profileControlBusy={profileControlBusy}
-              secondaryCompact
-              showControls={showSecondaryControls}
-            />
+            <p className="truncate text-xs text-muted">@{profile.user.handle}</p>
           </div>
           {profile.bio ? (
             <ProfileInfoBio
@@ -6334,13 +6294,16 @@ function ProfileInfoSizedCard({
               lines={bioLines}
             />
           ) : null}
-          <div className="min-w-0 pt-1">
-            {!inlineStats ? (
-              <ProfileInfoStats
-                onOpenPanel={onOpenPanel}
-                profile={profile}
-              />
-            ) : null}
+          <ProfileInfoBadgeRow
+            featuredBadges={featuredBadges}
+            maxBadges={badgeLimit}
+          />
+          <div className={cn("min-w-0 pt-1", balanced ? "mt-auto" : undefined)}>
+            <ProfileInfoStats
+              tight={balanced || mobileWide}
+              onOpenPanel={onOpenPanel}
+              profile={profile}
+            />
             <ProfileInfoStatusLine
               followError={activeFollowError}
               profile={profile}
@@ -6348,21 +6311,26 @@ function ProfileInfoSizedCard({
               profileControlMessage={activeProfileControlMessage}
               showChatHint={showChatHint}
             />
-            {!isOwnProfile && (wide || expanded) ? (
-              <div className="mt-2 flex justify-end">
-                <ReportForm
-                  targetType="profile"
-                  targetId={profile.user.id}
-                  reportedUserId={profile.user.id}
-                  title="Report profile"
-                  explainer={`This reports @${profile.user.handle}'s profile to moderators.`}
-                  triggerMode="icon"
-                  triggerSize="compact"
-                  triggerClassName="border border-line bg-surface/70 text-muted hover:border-line-strong hover:text-text"
-                />
-              </div>
-            ) : null}
           </div>
+        </div>
+        <div
+          className={cn(
+            "absolute right-3 top-3 z-40",
+            expanded || mobileWide ? "right-4 top-4" : undefined,
+          )}
+        >
+          <ProfileInfoActions
+            followPosting={followPosting}
+            isOwnProfile={isOwnProfile}
+            messageToHandle={messageToHandle}
+            onBlockToggle={onBlockToggle}
+            onFollowToggle={onFollowToggle}
+            onMuteToggle={onMuteToggle}
+            primaryCompact={balanced || mobileWide}
+            profile={profile}
+            profileControlBusy={profileControlBusy}
+            showMenu
+          />
         </div>
       </div>
     </article>
@@ -6377,10 +6345,10 @@ function ProfileInfoActions({
   onBlockToggle,
   onFollowToggle,
   onMuteToggle,
+  primaryCompact = false,
   profile,
   profileControlBusy,
-  secondaryCompact = false,
-  showControls = false,
+  showMenu = false,
 }: {
   compact?: boolean | undefined;
   followPosting: boolean;
@@ -6389,32 +6357,41 @@ function ProfileInfoActions({
   onBlockToggle?: (() => Promise<void> | void) | undefined;
   onFollowToggle: () => void;
   onMuteToggle?: (() => Promise<void> | void) | undefined;
+  primaryCompact?: boolean | undefined;
   profile: Profile;
   profileControlBusy?: "block" | "mute" | undefined;
-  secondaryCompact?: boolean | undefined;
-  showControls?: boolean | undefined;
+  showMenu?: boolean | undefined;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   if (isOwnProfile) {
     return null;
   }
 
   const disabled = profile.blockedByMe === true;
+  const iconOnly = compact || primaryCompact;
+  const actionIconSize = iconOnly ? 14 : 15;
+  const menuItemClass =
+    "flex w-full items-center justify-start gap-2 rounded-card px-2.5 py-2 text-left text-xs font-semibold text-text transition duration-fluid ease-fluid hover:bg-surface-strong focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50";
 
   return (
-    <div className={cn("flex shrink-0 flex-wrap justify-end gap-1.5", compact ? "items-center" : undefined)}>
+    <div
+      className="relative flex max-w-full shrink-0 items-center justify-end gap-1.5"
+      data-testid="profile-info-action-rail"
+    >
       {messageToHandle && !disabled ? (
         <Link
           className={cn(
             "inline-flex items-center justify-center gap-1.5 rounded-control border border-line bg-surface text-text shadow-soft transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
-            compact ? "size-8 p-0" : "min-h-8 px-2.5 text-xs font-semibold",
+            iconOnly ? "size-8 p-0" : "min-h-9 px-3 text-xs font-semibold",
           )}
           data-testid="profile-message-button"
           to={`/chat?with=${encodeURIComponent(messageToHandle)}`}
           aria-label={`Message @${profile.user.handle}`}
           title={`Message @${profile.user.handle}`}
         >
-          <MessageCircle aria-hidden="true" size={compact ? 14 : 15} />
-          {compact ? null : "Message"}
+          <MessageCircle aria-hidden="true" size={actionIconSize} />
+          {iconOnly ? null : "Message"}
         </Link>
       ) : null}
       {!disabled ? (
@@ -6422,46 +6399,85 @@ function ProfileInfoActions({
           type="button"
           variant={profile.isFollowing ? "secondary" : "primary"}
           disabled={followPosting}
-          className={compact ? "size-8 p-0" : "min-h-8 px-2.5 text-xs"}
+          className={iconOnly ? "size-8 p-0" : "min-h-9 px-3 text-xs"}
           data-testid="profile-follow-button"
-          size={compact ? "icon" : "sm"}
-          icon={<UserCheck aria-hidden="true" size={compact ? 14 : 15} />}
+          size={iconOnly ? "icon" : "sm"}
+          icon={<UserCheck aria-hidden="true" size={actionIconSize} />}
           aria-label={profile.isFollowing ? "Following" : "Follow"}
           title={profile.isFollowing ? "Following" : "Follow"}
           onClick={onFollowToggle}
         >
-          {compact ? null : followPosting ? "Saving" : profile.isFollowing ? "Following" : "Follow"}
+          {iconOnly ? null : followPosting ? "Saving" : profile.isFollowing ? "Following" : "Follow"}
         </Button>
       ) : null}
-      {showControls && onMuteToggle ? (
-        <Button
-          type="button"
-          variant="secondary"
-          size={secondaryCompact ? "icon" : "sm"}
-          className={secondaryCompact ? "size-8 p-0" : "min-h-8 px-2.5 text-xs"}
-          disabled={profileControlBusy !== undefined}
-          icon={<VolumeX aria-hidden="true" size={14} />}
-          aria-label={profile.mutedByMe ? "Unmute" : "Mute"}
-          title={profile.mutedByMe ? "Unmute" : "Mute"}
-          onClick={() => void onMuteToggle()}
-        >
-          {secondaryCompact ? null : profile.mutedByMe ? "Unmute" : "Mute"}
-        </Button>
-      ) : null}
-      {showControls && onBlockToggle ? (
-        <Button
-          type="button"
-          variant="secondary"
-          size={secondaryCompact ? "icon" : "sm"}
-          className={secondaryCompact ? "size-8 p-0" : "min-h-8 px-2.5 text-xs"}
-          disabled={profileControlBusy !== undefined}
-          icon={<Shield aria-hidden="true" size={14} />}
-          aria-label={profile.blockedByMe ? "Unblock" : "Block"}
-          title={profile.blockedByMe ? "Unblock" : "Block"}
-          onClick={() => void onBlockToggle()}
-        >
-          {secondaryCompact ? null : profile.blockedByMe ? "Unblock" : "Block"}
-        </Button>
+      {showMenu ? (
+        <div className="relative">
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            className="size-8 p-0"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-label={`Profile actions for @${profile.user.handle}`}
+            title={`Profile actions for @${profile.user.handle}`}
+            data-testid="profile-info-overflow-button"
+            icon={<MoreHorizontal aria-hidden="true" size={16} />}
+            onClick={() => setMenuOpen((open) => !open)}
+          />
+          {menuOpen ? (
+            <div
+              role="menu"
+              data-testid="profile-info-actions-menu"
+              className="absolute right-0 z-50 mt-1 w-44 overflow-hidden rounded-card border border-line bg-surface p-1.5 text-sm shadow-lift"
+            >
+              {onMuteToggle ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={menuItemClass}
+                  disabled={profileControlBusy !== undefined}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void onMuteToggle();
+                  }}
+                >
+                  <VolumeX aria-hidden="true" className="shrink-0" size={14} />
+                  <span>{profile.mutedByMe ? "Unmute" : "Mute"}</span>
+                </button>
+              ) : null}
+              {onBlockToggle ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={menuItemClass}
+                  disabled={profileControlBusy !== undefined}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void onBlockToggle();
+                  }}
+                >
+                  <Shield aria-hidden="true" className="shrink-0" size={14} />
+                  <span>{profile.blockedByMe ? "Unblock" : "Block"}</span>
+                </button>
+              ) : null}
+              <ReportForm
+                className="w-full"
+                targetType="profile"
+                targetId={profile.user.id}
+                reportedUserId={profile.user.id}
+                title="Report profile"
+                explainer={`This reports @${profile.user.handle}'s profile to moderators.`}
+                triggerLabel="Report profile"
+                triggerClassName={cn(
+                  menuItemClass,
+                  "min-h-0 border-0 bg-transparent shadow-none",
+                )}
+                triggerIconSize={14}
+              />
+            </div>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
@@ -6469,20 +6485,14 @@ function ProfileInfoActions({
 
 function ProfileInfoStats({
   compact = false,
-  featuredBadges = [],
-  inline = false,
-  maxBadges = 0,
   onOpenPanel,
   profile,
-  trail = false,
+  tight = false,
 }: {
   compact?: boolean | undefined;
-  featuredBadges?: UserBadge[] | undefined;
-  inline?: boolean | undefined;
-  maxBadges?: number | undefined;
   onOpenPanel: (panel: "followers" | "following" | "badges") => void;
   profile: Profile;
-  trail?: boolean | undefined;
+  tight?: boolean | undefined;
 }) {
   const stats: Array<{
     label: "Followers" | "Following" | "Likes";
@@ -6493,127 +6503,52 @@ function ProfileInfoStats({
     { label: "Following", panel: "following", value: profile.stats.following },
     { label: "Likes", value: profile.stats.echoes },
   ];
-  const inlineBadges =
-    trail && !compact && maxBadges > 0
-      ? featuredBadges.slice(0, maxBadges)
-      : [];
-
-  if (inline) {
-    return (
-      <div
-        className={cn(
-          "min-w-0 overflow-hidden",
-          compact
-            ? "grid grid-cols-3 items-end gap-1"
-            : trail
-              ? "flex flex-wrap items-center gap-x-2 gap-y-1"
-              : "flex flex-wrap items-center gap-x-4 gap-y-1",
-        )}
-        data-profile-info-stats-variant="inline"
-        data-profile-info-stats-trail={trail ? "true" : undefined}
-        data-testid="profile-social-context"
-      >
-        {stats.map((stat) => {
-          const content = (
-            <>
-              <span
-                className={cn(
-                  "font-semibold leading-none text-text",
-                  compact ? "block truncate text-[0.72rem]" : "text-[0.95rem]",
-                )}
-                data-profile-info-stat-value={stat.label}
-              >
-                {stat.value.toLocaleString()}
-              </span>
-              <span
-                className={cn(
-                  "font-medium leading-none text-muted",
-                  compact ? "block truncate text-[0.58rem]" : "text-xs",
-                )}
-                data-profile-info-stat-label={stat.label}
-              >
-                {stat.label}
-              </span>
-            </>
-          );
-          const className = compact
-            ? "block min-w-0 rounded-control py-0.5 text-left leading-none transition duration-fluid ease-fluid"
-            : "inline-flex min-w-0 items-baseline gap-1.5 whitespace-nowrap rounded-control py-0.5 leading-none transition duration-fluid ease-fluid";
-          const panel = stat.panel;
-          const statNode = panel ? (
-            <button
-              key={stat.label}
-              type="button"
-              className={cn(
-                className,
-                "hover:text-text focus-visible:outline-2 focus-visible:outline-focus",
-              )}
-              data-profile-info-stat={stat.label}
-              onClick={() => onOpenPanel(panel)}
-            >
-              {content}
-            </button>
-          ) : (
-            <span
-              key={stat.label}
-              className={className}
-              data-profile-info-stat={stat.label}
-            >
-              {content}
-            </span>
-          );
-
-          if (trail && !compact) {
-            return (
-              <span
-                key={stat.label}
-                className="inline-flex min-w-0 items-baseline gap-2 whitespace-nowrap"
-              >
-                <span
-                  aria-hidden="true"
-                  className="shrink-0 text-sm font-semibold leading-none text-muted"
-                  data-profile-info-stat-separator="true"
-                >
-                  ·
-                </span>
-                {statNode}
-              </span>
-            );
-          }
-
-          return statNode;
-        })}
-        {inlineBadges.map((userBadge) => (
-          <ProfileInfoTrailBadge key={userBadge.id} userBadge={userBadge} />
-        ))}
-      </div>
-    );
-  }
 
   return (
     <div
-      className="grid min-w-0 grid-cols-3 gap-1.5"
+      className={cn(
+        "min-w-0 overflow-hidden",
+        compact
+          ? "grid grid-cols-3 items-end gap-1"
+          : "flex flex-wrap items-center gap-x-3 gap-y-1",
+      )}
+      data-profile-info-stats-variant={compact ? "compact" : "row"}
       data-testid="profile-social-context"
     >
       {stats.map((stat) => {
         const content = (
           <>
             <span
-              className="block truncate text-sm font-semibold text-text"
+              className={cn(
+                "font-semibold leading-none text-text",
+                compact
+                  ? "block truncate text-[0.72rem]"
+                  : tight
+                    ? "text-sm"
+                    : "text-[0.95rem]",
+              )}
               data-profile-info-stat-value={stat.label}
             >
               {stat.value.toLocaleString()}
             </span>
             <span
-              className="block truncate text-[0.68rem] font-medium text-muted"
+              className={cn(
+                "font-medium leading-none text-muted",
+                compact
+                  ? "block truncate text-[0.58rem]"
+                  : tight
+                    ? "text-xs"
+                    : "text-sm",
+              )}
               data-profile-info-stat-label={stat.label}
             >
               {stat.label}
             </span>
           </>
         );
-        const className =
-          "min-w-0 rounded-control border border-line bg-canvas/42 px-2 py-1.5 text-left transition duration-fluid ease-fluid";
+        const className = compact
+          ? "block min-w-0 rounded-control py-0.5 text-left leading-none transition duration-fluid ease-fluid"
+          : "inline-flex min-w-0 items-baseline gap-1.5 whitespace-nowrap rounded-control py-0.5 leading-none transition duration-fluid ease-fluid";
 
         if (stat.panel) {
           const panel = stat.panel;
@@ -6624,7 +6559,7 @@ function ProfileInfoStats({
               type="button"
               className={cn(
                 className,
-                "hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
+                "hover:text-text focus-visible:outline-2 focus-visible:outline-focus",
               )}
               data-profile-info-stat={stat.label}
               onClick={() => onOpenPanel(panel)}
@@ -6648,29 +6583,36 @@ function ProfileInfoStats({
   );
 }
 
-function ProfileInfoTrailBadge({ userBadge }: { userBadge: UserBadge }) {
+function ProfileInfoBadgeRow({
+  featuredBadges,
+  maxBadges,
+}: {
+  featuredBadges: UserBadge[];
+  maxBadges: number;
+}) {
+  const visibleBadges = maxBadges > 0 ? featuredBadges.slice(0, maxBadges) : [];
+
+  if (visibleBadges.length === 0) {
+    return null;
+  }
+
   return (
-    <span
-      className="inline-flex min-w-0 items-baseline gap-2 whitespace-nowrap"
-      data-profile-info-badge-trail="true"
+    <div
+      className="flex min-w-0 flex-wrap items-center gap-1.5 overflow-hidden"
+      data-testid="profile-info-badge-row"
     >
-      <span
-        aria-hidden="true"
-        className="shrink-0 text-sm font-semibold leading-none text-muted"
-        data-profile-info-badge-separator="true"
-        data-profile-info-stat-separator="true"
-      >
-        ·
-      </span>
-      <Badge
-        className="min-h-5 max-w-28 px-2 text-[0.68rem]"
-        data-profile-info-badge={userBadge.badge.badgeKey}
-        title={userBadge.badge.description ?? userBadge.badge.name}
-        tone={badgeTone(userBadge.badge.rarity)}
-      >
-        <span className="truncate">{userBadge.badge.name}</span>
-      </Badge>
-    </span>
+      {visibleBadges.map((userBadge) => (
+        <Badge
+          key={userBadge.id}
+          className="min-h-5 max-w-32 px-2 text-[0.68rem]"
+          data-profile-info-badge={userBadge.badge.badgeKey}
+          title={userBadge.badge.description ?? userBadge.badge.name}
+          tone={badgeTone(userBadge.badge.rarity)}
+        >
+          <span className="truncate">{userBadge.badge.name}</span>
+        </Badge>
+      ))}
+    </div>
   );
 }
 
