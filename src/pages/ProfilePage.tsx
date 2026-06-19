@@ -109,6 +109,7 @@ import { defaultProfileLayoutPreset } from "../lib/profileLayoutPresets";
 import {
   PROFILE_CANVAS_DESKTOP_COLUMNS,
   PROFILE_CANVAS_DESKTOP_ROWS,
+  PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS,
   PROFILE_CANVAS_MAX_MODULE_COLUMNS,
   PROFILE_CANVAS_MAX_MODULE_ROWS,
   PROFILE_CANVAS_PROFILE_INFO_COLUMNS,
@@ -2423,7 +2424,7 @@ function profileCanvasSelectionSize(
 ): ProfileGridModuleSize | undefined {
   return profileGridModuleSpanSize(
     Math.min(PROFILE_CANVAS_PROFILE_INFO_COLUMNS, selection.colSpan),
-    Math.min(PROFILE_CANVAS_MAX_MODULE_ROWS, selection.rowSpan),
+    Math.min(PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS, selection.rowSpan),
   );
 }
 
@@ -2589,6 +2590,7 @@ function profileCanvasResolveDraftCollisions(
   active.forEach((module, index) => {
     const requested = profileCanvasClampLayout(
       module.layout ?? profileCanvasDefaultClientLayout(module, index),
+      module.type,
     );
     const layout = profileCanvasLayoutFits(requested, occupied)
       ? requested
@@ -2634,9 +2636,15 @@ function profileCanvasCanResizeModule(
   );
 }
 
-function profileCanvasClampLayout(layout: ProfileModuleLayout): ProfileModuleLayout {
+function profileCanvasClampLayout(
+  layout: ProfileModuleLayout,
+  type: ProfileModule["type"],
+): ProfileModuleLayout {
   const colSpan = Math.min(PROFILE_CANVAS_PROFILE_INFO_COLUMNS, Math.max(1, layout.colSpan));
-  const rowSpan = Math.min(PROFILE_CANVAS_MAX_MODULE_ROWS, Math.max(1, layout.rowSpan));
+  const rowSpan = Math.min(
+    profileCanvasMaxRowsForType(type),
+    Math.max(1, layout.rowSpan),
+  );
 
   return {
     column: Math.min(PROFILE_CANVAS_COLUMNS - colSpan + 1, Math.max(1, layout.column)),
@@ -2644,6 +2652,12 @@ function profileCanvasClampLayout(layout: ProfileModuleLayout): ProfileModuleLay
     colSpan,
     rowSpan,
   };
+}
+
+function profileCanvasMaxRowsForType(type: ProfileModule["type"]): number {
+  return type === "activity" || type === "placeholder"
+    ? PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS
+    : PROFILE_CANVAS_MAX_MODULE_ROWS;
 }
 
 function profileCanvasLayoutFits(
@@ -2868,7 +2882,7 @@ function ProfileDirectCanvasEditor({
     const rect = profileCanvasRectFromPoints(selectionStart, point);
     const id = onNewDraftModuleId();
     const colSpan = Math.min(PROFILE_CANVAS_MAX_MODULE_COLUMNS, rect.colSpan);
-    const rowSpan = Math.min(PROFILE_CANVAS_MAX_MODULE_ROWS, rect.rowSpan);
+    const rowSpan = Math.min(PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS, rect.rowSpan);
     const size = profileGridModuleSpanSize(colSpan, rowSpan) ?? "1x1";
     const blankModule: ProfileModule = {
       id,
@@ -3302,7 +3316,7 @@ function ProfileDirectCanvasEditor({
                   <div
                     className={cn(
                       "h-full min-h-0 min-w-0",
-                      configured ? "blur-[1px]" : undefined,
+                      configured ? "blur-[6px] opacity-70" : undefined,
                     )}
                     data-profile-canvas-module-configured={
                       configured ? "true" : "false"
@@ -3364,14 +3378,14 @@ function ProfileDirectCanvasEditor({
               ) : (
                 <button
                   type="button"
-                  className="absolute right-2 top-2 z-30 grid size-8 place-items-center rounded-control border border-line bg-surface/92 text-text shadow-soft backdrop-blur-veil transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus"
+                  className="absolute left-1/2 top-1/2 z-30 grid size-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-line bg-surface/92 text-text shadow-lift backdrop-blur-veil transition duration-fluid ease-fluid hover:scale-105 hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus"
                   aria-label={`Edit ${profileModuleFallbackTitle(module.type)}`}
                   title={`Edit ${profileModuleFallbackTitle(module.type)}`}
                   data-profile-edit-control="true"
                   data-testid={`profile-canvas-edit-module-${module.id}`}
                   onClick={() => setSettingsModuleId(module.id)}
                 >
-                  <MoreHorizontal aria-hidden="true" size={16} />
+                  <MoreHorizontal aria-hidden="true" size={24} />
                 </button>
               )}
             </ProfileGridModule>
@@ -5115,6 +5129,7 @@ function ProfileActivityModule({
         ) : null}
         {activeTab === "rooms" ? (
           <ProfileRoomList
+            compact
             emptyCompact
             error={roomsError}
             loading={roomsLoading}
@@ -5685,6 +5700,7 @@ function ProfileBadgeCard({
 }
 
 type ProfileRoomListProps = {
+  compact?: boolean;
   emptyCompact?: boolean;
   error: unknown;
   loading: boolean;
@@ -5692,6 +5708,7 @@ type ProfileRoomListProps = {
 };
 
 function ProfileRoomList({
+  compact = false,
   emptyCompact = false,
   error,
   loading,
@@ -5738,11 +5755,69 @@ function ProfileRoomList({
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div
+      className={cn(
+        "grid",
+        compact ? "gap-2 sm:grid-cols-2" : "gap-4 md:grid-cols-2",
+      )}
+      data-profile-activity-rooms-compact={compact ? "true" : undefined}
+    >
       {rooms.map((room, index) => (
-        <RoomCard key={room.slug} room={room} index={index} />
+        compact ? (
+          <ProfileCompactRoomCard key={room.slug} room={room} />
+        ) : (
+          <RoomCard key={room.slug} room={room} index={index} />
+        )
       ))}
     </div>
+  );
+}
+
+function ProfileCompactRoomCard({ room }: { room: Room }) {
+  return (
+    <Link
+      to={`/rooms/${room.slug}`}
+      className="group flex min-h-12 min-w-0 items-center gap-2 rounded-card border border-line bg-canvas/30 px-2 py-2 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface/64 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      data-testid="profile-activity-room-compact-card"
+      style={{ ["--room-accent" as string]: room.accent }}
+      title={`Open ${room.name}`}
+    >
+      <span
+        className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-card border border-line bg-canvas/58 text-text"
+        style={{
+          background:
+            "linear-gradient(135deg, color-mix(in oklab, var(--room-accent) 34%, transparent), var(--app-surface))",
+        }}
+      >
+        {room.iconUrl ? (
+          <img alt="" className="size-full object-cover" src={room.iconUrl} />
+        ) : (
+          <Radio aria-hidden="true" size={16} />
+        )}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="min-w-0 truncate text-sm font-semibold text-text">
+            {room.name}
+          </span>
+          {room.joinedByMe ? (
+            <span className="shrink-0 rounded-full bg-leaf/15 px-1.5 py-0.5 text-[0.62rem] font-semibold text-leaf-ink">
+              Joined
+            </span>
+          ) : room.live ? (
+            <span className="shrink-0 rounded-full bg-leaf/15 px-1.5 py-0.5 text-[0.62rem] font-semibold text-leaf-ink">
+              Active
+            </span>
+          ) : null}
+        </span>
+        <span className="block truncate text-xs text-muted">/{room.slug}</span>
+      </span>
+      <ArrowRight
+        aria-hidden="true"
+        size={15}
+        className="shrink-0 text-muted transition duration-fluid ease-fluid group-hover:translate-x-0.5 group-hover:text-text"
+      />
+    </Link>
   );
 }
 

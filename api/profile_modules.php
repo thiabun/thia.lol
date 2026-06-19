@@ -70,6 +70,7 @@ const PROFILE_CANVAS_ROWS = 16;
 const PROFILE_CANVAS_MOBILE_COLUMNS = 6;
 const PROFILE_CANVAS_MOBILE_ROWS = 32;
 const PROFILE_CANVAS_MAX_MODULE_SPAN = 6;
+const PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS = 10;
 const PROFILE_CANVAS_PROFILE_INFO_MAX_COLUMNS = 8;
 const PROFILE_BACKGROUND_BLUR_LEVELS = ['none', 'soft', 'medium', 'heavy'];
 const PROFILE_MODULE_MAX_PER_PROFILE = 24;
@@ -970,9 +971,7 @@ function profile_canvas_draft_modules(mixed $value, int $userId): array
                 ? 'draft'
                 : profile_module_visibility($item['visibility'] ?? 'public'),
             'position' => $index + 1,
-            'pinned' => $type === PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE
-                ? false
-                : profile_canvas_pinned($item['pinned'] ?? false),
+            'pinned' => profile_canvas_pinned($item['pinned'] ?? false),
             'layout' => $layout,
             'status' => $type === PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE
                 ? 'active'
@@ -1454,13 +1453,14 @@ function profile_canvas_span_allowed(string $type, int $colSpan, int $rowSpan): 
 function profile_canvas_allowed_sizes(string $type): array
 {
     $uploadedImageSizes = profile_canvas_size_range(1, 6, 1, 6);
+    $placeholderEnvelopeSizes = profile_canvas_size_range(1, 6, 1, PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS);
     $gallerySlideshowSizes = profile_canvas_size_range(2, 6, 2, 6);
     $textSizes = profile_canvas_size_range(3, 4, 2, 5);
 
     return match ($type) {
         PROFILE_INFO_MODULE_TYPE => ['3x2', '3x3', '4x3', '6x3', '8x3', '8x4'],
         'about', 'custom_text', PROFILE_TEXT_MODULE_TYPE => $textSizes,
-        'links', PROFILE_CONNECTIONS_MODULE_TYPE => ['3x2', '4x2', '3x3', '3x4'],
+        'links', PROFILE_CONNECTIONS_MODULE_TYPE => ['2x2', '2x3', '3x2', '4x2', '3x3', '3x4'],
         'featured_badges', PROFILE_BADGE_DISPLAY_MODULE_TYPE => ['2x2', '3x2'],
         PROFILE_FEATURED_POST_MODULE_TYPE => ['3x4', '4x5'],
         PROFILE_FEATURED_ROOM_MODULE_TYPE => ['3x1', '4x2'],
@@ -1475,7 +1475,7 @@ function profile_canvas_allowed_sizes(string $type): array
         PROFILE_MUSIC_MODULE_TYPE,
         'spotify_song',
         'apple_music_song',
-        'youtube_music_song' => ['2x1', '3x2', '4x2', '4x3', '4x4'],
+        'youtube_music_song' => ['2x1', '2x2', '3x2', '4x2', '4x3', '4x4'],
         'spotify_playlist',
         'apple_music_playlist',
         'youtube_music_playlist' => ['3x2', '4x3', '3x6', '4x6'],
@@ -1483,8 +1483,8 @@ function profile_canvas_allowed_sizes(string $type): array
         'apple_music_artist',
         'youtube_music_artist' => ['3x2', '4x3', '6x4'],
         PROFILE_GITHUB_REPO_MODULE_TYPE => ['3x2', '4x3', '6x4'],
-        PROFILE_ACTIVITY_MODULE_TYPE => ['3x4', '4x6'],
-        PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE => $uploadedImageSizes,
+        PROFILE_ACTIVITY_MODULE_TYPE => ['3x4', '4x6', '6x10'],
+        PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE => $placeholderEnvelopeSizes,
         default => ['1x1'],
     };
 }
@@ -1514,8 +1514,15 @@ function profile_canvas_normalize_span(string $type, int $colSpan, int $rowSpan)
 
     return [
         max(1, min($maxColumns, $colSpan)),
-        max(1, min(PROFILE_CANVAS_MAX_MODULE_SPAN, $rowSpan)),
+        max(1, min(profile_canvas_max_row_span($type), $rowSpan)),
     ];
+}
+
+function profile_canvas_max_row_span(string $type): int
+{
+    return $type === PROFILE_ACTIVITY_MODULE_TYPE || $type === PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE
+        ? PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS
+        : PROFILE_CANVAS_MAX_MODULE_SPAN;
 }
 
 function profile_canvas_push_collisions(array $placements, ?int $anchorModuleId, ?array $movementContext = null): array

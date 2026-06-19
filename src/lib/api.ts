@@ -38,6 +38,7 @@ import { normalizeProfileConnection } from "./profileConnections";
 import {
   PROFILE_CANVAS_DESKTOP_COLUMNS,
   PROFILE_CANVAS_DESKTOP_ROWS,
+  PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS,
   PROFILE_CANVAS_MAX_MODULE_ROWS,
   PROFILE_CANVAS_PROFILE_INFO_COLUMNS,
   PROFILE_CANVAS_VERSION,
@@ -1508,7 +1509,7 @@ function normalizeProfileModule(module: ApiProfileModule): ProfileModule {
     visibility: module.visibility,
     position: module.position,
     pinned: module.pinned === true,
-    layout: normalizeProfileModuleLayout(module.layout),
+    layout: normalizeProfileModuleLayout(module.layout, module.type),
     status: module.status,
     schemaVersion: module.schemaVersion ?? 1,
     createdAt: module.createdAt ?? null,
@@ -1542,6 +1543,7 @@ function isApiProfileModule(module: ApiProfileModule): boolean {
 
 function normalizeProfileModuleLayout(
   layout: ProfileModule["layout"] | undefined,
+  type: ProfileModule["type"],
 ): ProfileModuleLayout | null {
   if (!layout || typeof layout !== "object") {
     return null;
@@ -1556,11 +1558,16 @@ function normalizeProfileModuleLayout(
     return null;
   }
 
+  const maxRowSpan =
+    type === "activity" || type === "placeholder"
+      ? PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS
+      : PROFILE_CANVAS_MAX_MODULE_ROWS;
+
   return {
     column: Math.min(PROFILE_CANVAS_DESKTOP_COLUMNS, Math.max(1, column)),
     row: Math.min(PROFILE_CANVAS_DESKTOP_ROWS, Math.max(1, row)),
     colSpan: Math.min(PROFILE_CANVAS_PROFILE_INFO_COLUMNS, Math.max(1, colSpan)),
-    rowSpan: Math.min(PROFILE_CANVAS_MAX_MODULE_ROWS, Math.max(1, rowSpan)),
+    rowSpan: Math.min(maxRowSpan, Math.max(1, rowSpan)),
   };
 }
 

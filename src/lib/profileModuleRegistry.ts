@@ -12,10 +12,11 @@ export const PROFILE_CANVAS_MOBILE_COLUMNS = 6;
 export const PROFILE_CANVAS_MOBILE_ROWS = 32;
 export const PROFILE_CANVAS_MAX_MODULE_COLUMNS = 6;
 export const PROFILE_CANVAS_MAX_MODULE_ROWS = 6;
+export const PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS = 10;
 export const PROFILE_CANVAS_PROFILE_INFO_COLUMNS = 8;
 
 type ProfileGridColumnSpan = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
-type ProfileGridRowSpan = 1 | 2 | 3 | 4 | 5 | 6;
+type ProfileGridRowSpan = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
 export type ProfileGridModuleSize =
   `${ProfileGridColumnSpan}x${ProfileGridRowSpan}`;
@@ -60,7 +61,8 @@ export type ProfileModuleCategory =
   | "info"
   | "projects";
 
-export const PROFILE_ACTIVITY_MAX_ROW_SPAN = 6;
+export const PROFILE_ACTIVITY_MAX_ROW_SPAN =
+  PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS;
 
 export type ProfileModuleRegistryEntry = {
   allowedSizes: readonly ProfileGridModuleSize[];
@@ -107,12 +109,16 @@ function sizes(columns: number[], rows: number[]): ProfileGridModuleSize[] {
 }
 
 const uploadedImageSizes = sizes([1, 2, 3, 4, 5, 6], [1, 2, 3, 4, 5, 6]);
+const placeholderEnvelopeSizes = sizes(
+  [1, 2, 3, 4, 5, 6],
+  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+);
 const gallerySlideshowSizes = sizes([2, 3, 4, 5, 6], [2, 3, 4, 5, 6]);
 const textSizes = sizes([3, 4], [2, 3, 4, 5]);
 
 export const profileModuleRegistry = {
   placeholder: {
-    allowedSizes: uploadedImageSizes,
+    allowedSizes: placeholderEnvelopeSizes,
     category: "info",
     defaultSize: "1x1",
     description: "Draft selection envelope.",
@@ -177,7 +183,7 @@ export const profileModuleRegistry = {
     purpose: "status",
   },
   links: {
-    allowedSizes: ["3x2", "4x2", "3x3", "3x4"],
+    allowedSizes: ["2x2", "2x3", "3x2", "4x2", "3x3", "3x4"],
     category: "info",
     defaultSize: "3x2",
     description: "Platform-aware safe links and connections.",
@@ -190,7 +196,7 @@ export const profileModuleRegistry = {
     purpose: "navigation",
   },
   connections: {
-    allowedSizes: ["3x2", "4x2", "3x3", "3x4"],
+    allowedSizes: ["2x2", "2x3", "3x2", "4x2", "3x3", "3x4"],
     category: "info",
     defaultSize: "3x2",
     description: "Platform-aware safe links and connections.",
@@ -255,7 +261,7 @@ export const profileModuleRegistry = {
     purpose: "navigation",
   },
   activity: {
-    allowedSizes: ["3x4", "4x6"],
+    allowedSizes: ["3x4", "4x6", "6x10"],
     category: "info",
     defaultSize: "3x4",
     description: "Feed, replies, and rooms.",
@@ -398,7 +404,7 @@ export const profileModuleRegistry = {
     purpose: "media",
   },
   music: {
-    allowedSizes: ["2x1", "3x2", "4x2", "4x3", "4x4"],
+    allowedSizes: ["2x1", "2x2", "3x2", "4x2", "4x3", "4x4"],
     category: "music",
     defaultSize: "3x2",
     description: "A link-first music card.",
@@ -411,7 +417,7 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   spotify_song: {
-    allowedSizes: ["2x1", "3x2", "4x2", "4x3", "4x4"],
+    allowedSizes: ["2x1", "2x2", "3x2", "4x2", "4x3", "4x4"],
     category: "music",
     defaultSize: "3x2",
     description: "A Spotify song player.",
@@ -424,7 +430,7 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   apple_music_song: {
-    allowedSizes: ["2x1", "3x2", "4x2", "4x3", "4x4"],
+    allowedSizes: ["2x1", "2x2", "3x2", "4x2", "4x3", "4x4"],
     category: "music",
     defaultSize: "3x2",
     description: "An Apple Music song player.",
@@ -437,7 +443,7 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   youtube_music_song: {
-    allowedSizes: ["2x1", "3x2", "4x2", "4x3", "4x4"],
+    allowedSizes: ["2x1", "2x2", "3x2", "4x2", "4x3", "4x4"],
     category: "music",
     defaultSize: "3x2",
     description: "A YouTube Music song player.",
@@ -595,6 +601,59 @@ const profileModuleSizeLabels: Partial<
     "6x3": "Wide",
     "8x3": "Pinned",
     "8x4": "Expanded",
+  },
+  connections: {
+    "2x2": "Compact",
+    "2x3": "Stack",
+    "3x2": "Rows",
+    "4x2": "Wide rows",
+    "3x3": "Grid",
+    "3x4": "Tall grid",
+  },
+  links: {
+    "2x2": "Compact",
+    "2x3": "Stack",
+    "3x2": "Rows",
+    "4x2": "Wide rows",
+    "3x3": "Grid",
+    "3x4": "Tall grid",
+  },
+  activity: {
+    "3x4": "Feed",
+    "4x6": "Roomy",
+    "6x10": "Full",
+  },
+  music: {
+    "2x1": "Mini",
+    "2x2": "Compact",
+    "3x2": "Player",
+    "4x2": "Wide player",
+    "4x3": "Player",
+    "4x4": "Large player",
+  },
+  spotify_song: {
+    "2x1": "Mini",
+    "2x2": "Compact",
+    "3x2": "Player",
+    "4x2": "Wide player",
+    "4x3": "Player",
+    "4x4": "Large player",
+  },
+  apple_music_song: {
+    "2x1": "Mini",
+    "2x2": "Compact",
+    "3x2": "Player",
+    "4x2": "Wide player",
+    "4x3": "Player",
+    "4x4": "Large player",
+  },
+  youtube_music_song: {
+    "2x1": "Mini",
+    "2x2": "Compact",
+    "3x2": "Player",
+    "4x2": "Wide player",
+    "4x3": "Player",
+    "4x4": "Large player",
   },
   twitch_channel: {
     "2x1": "Status",
@@ -769,7 +828,7 @@ export function normalizeProfileGridModuleSize(
     return fallback;
   }
 
-  const match = value.trim().match(/^([1-8])x([1-6])$/);
+  const match = value.trim().match(/^([1-8])x(10|[1-9])$/);
 
   if (!match) {
     return fallback;
@@ -853,7 +912,23 @@ function normalizeProfileGridRowSpan(value: number): ProfileGridRowSpan {
     return 5;
   }
 
-  return 6;
+  if (value <= 6) {
+    return 6;
+  }
+
+  if (value <= 7) {
+    return 7;
+  }
+
+  if (value <= 8) {
+    return 8;
+  }
+
+  if (value <= 9) {
+    return 9;
+  }
+
+  return 10;
 }
 
 export function profileModuleHasContent(

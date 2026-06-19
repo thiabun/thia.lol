@@ -657,6 +657,7 @@ function ProfileModuleContent({
   spanRole: ProfileModuleSpanRole;
 }) {
   const moduleCategory = getProfileModuleDefinition(module.type).category;
+  const span = profileGridModuleSizeSpan(size);
 
   if (module.type === "activity") {
     return (
@@ -680,7 +681,12 @@ function ProfileModuleContent({
 
   if (module.type === "links" || module.type === "connections") {
     const links = module.config.links ?? [];
-    const visibleLinks = compact ? links.slice(0, 6) : links;
+    const narrowStack = span.columns <= 2 && span.rows >= 3;
+    const visibleLinks = compact
+      ? links.slice(0, 6)
+      : narrowStack
+        ? links.slice(0, 3)
+        : links;
     const hiddenCount = Math.max(0, links.length - visibleLinks.length);
 
     if (compact) {
@@ -698,6 +704,28 @@ function ProfileModuleContent({
           ))}
           {hiddenCount > 0 ? (
             <span className="grid size-9 shrink-0 place-items-center rounded-full border border-dashed border-line bg-canvas/45 text-xs font-semibold text-muted">
+              +{hiddenCount}
+            </span>
+          ) : null}
+        </div>
+      );
+    }
+
+    if (narrowStack) {
+      return (
+        <div
+          className="grid max-h-full min-w-0 content-start gap-2 overflow-hidden"
+          data-profile-module-visible-links={visibleLinks.length}
+          data-profile-connections-compact="stack"
+        >
+          {visibleLinks.map((link) => (
+            <ProfileModuleLinkCompactRow
+              key={`${link.label}-${link.url}`}
+              link={link}
+            />
+          ))}
+          {hiddenCount > 0 ? (
+            <span className="inline-flex min-h-9 items-center justify-center rounded-card border border-dashed border-line bg-canvas/28 px-2 text-xs font-semibold text-muted">
               +{hiddenCount}
             </span>
           ) : null}
@@ -960,6 +988,37 @@ function ProfileModuleLinkCard({ link }: { link: ProfileModuleLink }) {
   );
 }
 
+function ProfileModuleLinkCompactRow({ link }: { link: ProfileModuleLink }) {
+  const platform = normalizeModuleConnectionPlatform(link.platform);
+  const label = link.label || moduleLinkPlatformLabel(link);
+
+  return (
+    <a
+      className="group flex min-h-10 min-w-0 items-center gap-2 rounded-card border border-line bg-canvas/30 px-2 text-sm transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface/64 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      href={link.url}
+      rel="noopener noreferrer"
+      target="_blank"
+      title={label}
+    >
+      <span className="grid size-8 shrink-0 place-items-center rounded-full border border-line bg-surface/62 text-text">
+        {platform ? (
+          <ProfileConnectionIcon platform={platform} size={15} />
+        ) : (
+          <Globe aria-hidden="true" size={15} />
+        )}
+      </span>
+      <span className="min-w-0 flex-1 truncate font-semibold text-text">
+        {label}
+      </span>
+      <ExternalLink
+        aria-hidden="true"
+        size={14}
+        className="shrink-0 text-muted transition duration-fluid group-hover:text-text"
+      />
+    </a>
+  );
+}
+
 function ProfileModuleConnectionIconOnly({ link }: { link: ProfileModuleLink }) {
   const platform = normalizeModuleConnectionPlatform(link.platform);
   const label = link.label || moduleLinkPlatformLabel(link);
@@ -1000,6 +1059,7 @@ function ProfileModuleStaticCard({
   const url = module.config.url;
   const span = profileGridModuleSizeSpan(size);
   const micro = span.columns <= 2 && span.rows <= 1;
+  const compactTile = span.columns <= 2 && span.rows <= 2;
 
   if (!url) {
     return null;
@@ -1019,20 +1079,34 @@ function ProfileModuleStaticCard({
     );
   }
 
-  if (micro) {
+  if (compactTile) {
     return (
       <a
-        className="flex h-full min-h-0 min-w-0 items-center gap-2 overflow-hidden rounded-card border border-line bg-canvas/55 p-2 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        className={cn(
+          "relative isolate h-full min-h-0 min-w-0 overflow-hidden rounded-card border border-line bg-canvas/55 p-2 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+          micro ? "flex items-center gap-2" : "flex flex-col justify-end gap-2",
+        )}
         href={url}
         rel="noopener noreferrer"
         target="_blank"
         title={module.config.label ?? fallbackLabel}
       >
-        <span className="grid size-9 shrink-0 place-items-center rounded-card border border-line bg-surface/80 text-text">
+        {!micro ? <span className="absolute inset-0 -z-10 bg-canvas/35" /> : null}
+        <span
+          className={cn(
+            "grid shrink-0 place-items-center rounded-card border border-line bg-surface/80 text-text",
+            micro ? "size-9" : "size-11 shadow-soft",
+          )}
+        >
           {icon}
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-xs font-semibold text-text">
+        <span className={cn("min-w-0", micro ? "flex-1" : "w-full")}>
+          <span
+            className={cn(
+              "block truncate font-semibold text-text",
+              micro ? "text-xs" : "text-sm",
+            )}
+          >
             {module.config.label ?? fallbackLabel}
           </span>
           <span className="block truncate text-[0.68rem] text-muted">
@@ -1113,6 +1187,7 @@ function ProfileIntegrationRichCard({
   );
   const span = profileGridModuleSizeSpan(size);
   const micro = span.columns <= 2 && span.rows <= 1;
+  const compactTile = span.columns <= 2 && span.rows <= 2;
   const twitchEmbedSandbox =
     "allow-storage-access-by-user-activation allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-modals allow-forms";
 
@@ -1129,7 +1204,7 @@ function ProfileIntegrationRichCard({
     );
   }
 
-  if (micro) {
+  if (compactTile) {
     return (
       <a
         className="relative isolate flex h-full min-h-0 min-w-0 items-end overflow-hidden rounded-card border border-line bg-canvas/55 p-2 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
@@ -1149,11 +1224,21 @@ function ProfileIntegrationRichCard({
           />
         ) : null}
         <span className="absolute inset-0 -z-10 bg-canvas/68" />
-        <span className="grid size-8 shrink-0 place-items-center rounded-card border border-line bg-surface/80 text-text shadow-soft">
+        <span
+          className={cn(
+            "grid shrink-0 place-items-center rounded-card border border-line bg-surface/80 text-text shadow-soft",
+            micro ? "size-8" : "size-10",
+          )}
+        >
           {icon}
         </span>
         <span className="ml-2 min-w-0 flex-1">
-          <span className="block truncate text-xs font-semibold text-text">
+          <span
+            className={cn(
+              "block truncate font-semibold text-text",
+              micro ? "text-xs" : "text-sm",
+            )}
+          >
             {title}
           </span>
           <span className="block truncate text-[0.68rem] text-muted">
@@ -1405,8 +1490,8 @@ function SpotifyMusicPlayer({
   const playerTitle = integration.embed?.title ?? `${title} on Spotify`;
   const playerHeight = profileIntegrationEmbedHeight(integration);
   const playerSpan = profileGridModuleSizeSpan(size);
-  const compactPlayer = playerSpan.rows === 1 && playerSpan.columns <= 2;
-  const richPlayer = playerSpan.rows >= 2;
+  const compactPlayer = playerSpan.columns <= 2 && playerSpan.rows <= 2;
+  const richPlayer = playerSpan.rows >= 2 && !compactPlayer;
   const uri = spotifyIntegrationUri(integration);
 
   useEffect(() => {

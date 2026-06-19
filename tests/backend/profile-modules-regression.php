@@ -421,6 +421,8 @@ $mediumStreamChatPlacement = profile_canvas_module_placement(
 assert_true($mediumStreamChatPlacement['colSpan'] === 4, 'creator stream chat should allow 4 columns');
 assert_true($mediumStreamChatPlacement['rowSpan'] === 3, 'creator stream chat should allow 3 rows');
 assert_true(profile_canvas_span_allowed('links', 3, 2), 'links should allow 3x2');
+assert_true(profile_canvas_span_allowed('connections', 2, 2), 'connections should allow 2x2');
+assert_true(profile_canvas_span_allowed('connections', 2, 3), 'connections should allow 2x3');
 assert_true(profile_canvas_span_allowed('custom_text', 3, 2), 'text should allow 3x2');
 assert_true(profile_canvas_span_allowed('text', 4, 5), 'specific text module should allow 4x5');
 assert_true(profile_canvas_span_allowed('gallery_media', 4, 3), 'gallery should allow 4x3');
@@ -429,6 +431,9 @@ assert_true(!profile_canvas_span_allowed('uploaded_image', 7, 1), 'uploaded imag
 assert_true(profile_canvas_span_allowed('youtube_video', 6, 4), 'YouTube video should allow 6x4');
 assert_true(profile_canvas_span_allowed('github_repo', 6, 4), 'GitHub repo should allow 6x4');
 assert_true(profile_canvas_span_allowed('music', 3, 2), 'legacy music should allow 3x2');
+assert_true(profile_canvas_span_allowed('music', 2, 2), 'legacy music should allow 2x2');
+assert_true(profile_canvas_span_allowed('spotify_song', 2, 2), 'Spotify song should allow 2x2');
+assert_true(profile_canvas_span_allowed('activity', 6, 10), 'activity should allow 6x10');
 assert_true(profile_canvas_span_allowed('featured_badges', 2, 2), 'badges should allow 2x2');
 assert_true(!profile_canvas_span_allowed('profile_info', 2, 2), 'profile info should hide legacy 2x2');
 assert_true(profile_canvas_span_allowed('profile_info', 8, 3), 'profile info should allow the 8x3 pinned size');
@@ -439,6 +444,7 @@ assert_true(profile_canvas_glass_opacity(0) === 0, 'canvas glass should allow so
 assert_true(profile_canvas_glass_opacity('92') === 92, 'canvas glass should allow clear upper bound');
 assert_true(profile_canvas_draft_module_type('placeholder') === 'placeholder', 'draft placeholder type should validate');
 assert_true(profile_canvas_span_allowed('placeholder', 6, 6), 'placeholder should allow 6x6 draft envelopes');
+assert_true(profile_canvas_span_allowed('placeholder', 6, 10), 'placeholder should allow 6x10 draft envelopes');
 
 $placeholderDraft = profile_canvas_draft_modules(
     [
@@ -458,7 +464,7 @@ $placeholderDraft = profile_canvas_draft_modules(
 );
 assert_true($placeholderDraft[0]['type'] === 'placeholder', 'placeholder draft type mismatch');
 assert_true($placeholderDraft[0]['visibility'] === 'draft', 'placeholder visibility should force draft');
-assert_true($placeholderDraft[0]['pinned'] === false, 'placeholder should not pin');
+assert_true($placeholderDraft[0]['pinned'] === true, 'placeholder should preserve draft pin state');
 assert_true($placeholderDraft[0]['config']['placeholder'] === true, 'placeholder config marker mismatch');
 assert_true($placeholderDraft[0]['layout']['colSpan'] === 3, 'placeholder layout columns mismatch');
 assert_php_rejected(
@@ -471,7 +477,7 @@ assert_php_rejected(
     'Choose a supported background blur.'
 );
 assert_php_rejected(
-    'profile_canvas_module_placement(["id" => 1, "column" => 1, "row" => 1, "colSpan" => 2, "rowSpan" => 2], ["id" => 1, "type" => "music"], true);',
+    'profile_canvas_module_placement(["id" => 1, "column" => 1, "row" => 1, "colSpan" => 1, "rowSpan" => 1], ["id" => 1, "type" => "music"], true);',
     'Canvas span is not allowed for this module.'
 );
 assert_true(profile_canvas_pinned(true) === true, 'boolean pinned state should be accepted');

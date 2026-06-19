@@ -337,6 +337,14 @@ test("activity renders through the module grid without a duplicate fixed section
       aboutModule({ id: 1, title: "About", body: "A compact intro.", position: 2 }),
     ],
     profilePosts: [postFixture({ body: "Profile activity post." })],
+    profileRooms: [
+      roomFixture({
+        description: "This longer room description should not render in the compact activity card.",
+        name: "Studio",
+        slug: "studio",
+        summary: "This room summary should stay out of the compact activity card.",
+      }),
+    ],
   });
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
@@ -367,6 +375,15 @@ test("activity renders through the module grid without a duplicate fixed section
       .getByTestId("profile-grid-module-activity")
       .getByTestId("profile-activity"),
   ).toBeVisible();
+  await tabs.getByRole("tab", { name: /Rooms/ }).click();
+  await expect(section.getByTestId("profile-activity-room-compact-card")).toBeVisible();
+  await expect(section.getByText("Studio", { exact: true })).toBeVisible();
+  await expect(
+    section.getByText("This room summary should stay out of the compact activity card."),
+  ).toHaveCount(0);
+  await expect(
+    section.getByText("This longer room description should not render in the compact activity card."),
+  ).toHaveCount(0);
 });
 
 test("activity keeps long feeds inside an internal scroll area", async ({ page }) => {
@@ -727,10 +744,10 @@ test("Spotify music player fills each allowed music module span", async ({
   await mockProfileModules(page, {
     authenticated: true,
     modules: [
-      musicModuleWithSize({ id: 61, row: 1, size: "1x1" }),
-      musicModuleWithSize({ id: 62, row: 1, size: "2x1", column: 2 }),
-      musicModuleWithSize({ id: 63, row: 1, size: "3x1", column: 4 }),
-      musicModuleWithSize({ id: 64, row: 2, size: "3x2" }),
+      musicModuleWithSize({ id: 61, row: 1, size: "2x1" }),
+      musicModuleWithSize({ id: 62, row: 1, size: "2x2", column: 3 }),
+      musicModuleWithSize({ id: 63, row: 1, size: "3x2", column: 5 }),
+      musicModuleWithSize({ id: 64, row: 3, size: "4x2" }),
     ],
   });
   await acknowledgeCookieNotice(page);
@@ -772,10 +789,10 @@ test("Spotify music player fills each allowed music module span", async ({
 
   expect(metrics).toEqual(
     expect.arrayContaining([
-      expect.objectContaining({ layout: "compact", size: "1x1" }),
-      expect.objectContaining({ layout: "row", size: "2x1" }),
-      expect.objectContaining({ layout: "row", size: "3x1" }),
+      expect.objectContaining({ layout: "compact", size: "2x1" }),
+      expect.objectContaining({ layout: "compact", size: "2x2" }),
       expect.objectContaining({ layout: "rich", size: "3x2" }),
+      expect.objectContaining({ layout: "rich", size: "4x2" }),
     ]),
   );
 
@@ -783,7 +800,7 @@ test("Spotify music player fills each allowed music module span", async ({
     expect(metric.heightCoverage).toBeGreaterThanOrEqual(0.94);
     expect(metric.widthCoverage).toBeGreaterThanOrEqual(0.94);
     expect(metric.artworkHeight).toBeGreaterThanOrEqual(
-      metric.size === "1x1" ? 90 : metric.size === "3x2" ? 96 : 56,
+      metric.size === "3x2" || metric.size === "4x2" ? 96 : 56,
     );
   }
 });
@@ -1554,7 +1571,7 @@ test("direct canvas point selection creates a draft module through picker and se
   );
   await expect(
     configuredContent.evaluate((element) => window.getComputedStyle(element).filter),
-  ).resolves.toContain("blur(1px)");
+  ).resolves.toContain("blur(6px)");
   await page.getByRole("button", { name: "Pin" }).click();
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("profile-module-settings")).toHaveCount(0);
@@ -1580,6 +1597,29 @@ test("direct canvas point selection creates a draft module through picker and se
     pinned: true,
     visibility: "public",
   });
+});
+
+test("direct canvas supports a 6x10 activity selection envelope", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1400 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [profileInfoModule()],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-cell-1-4").click();
+  await page.getByTestId("profile-canvas-cell-6-13").click();
+  await expect(page.getByTestId("profile-module-picker")).toBeVisible();
+
+  await page.getByRole("tab", { name: "Info" }).click();
+  const activity = page.getByTestId("profile-module-picker-activity");
+
+  await expect(activity).toBeEnabled();
+  await expect(activity).toContainText("Full");
 });
 
 test("module picker blocks selections larger than designed module sizes", async ({
@@ -2211,7 +2251,7 @@ test.skip("retired canvas size controls stay backend-only during transition", as
   await expect(activityEdit.getByText("Full", { exact: true })).toBeVisible();
   await expect(activityEdit.getByText("3 x 6", { exact: true })).toHaveCount(0);
   await expect(activityEdit.getByTestId("profile-canvas-size-3x4")).toBeVisible();
-  await activityEdit.getByTestId("profile-canvas-size-3x6").click();
+  await activityEdit.getByTestId("profile-canvas-size-6x10").click();
   await page.getByTestId("profile-canvas-save-button").click();
   await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
   await expect.poll(() => savedPayload).toBeDefined();
@@ -2222,8 +2262,8 @@ test.skip("retired canvas size controls stay backend-only during transition", as
     rowSpan: 3,
   });
   expect(savedModules.find((module) => module.id === 9)).toMatchObject({
-    colSpan: 3,
-    rowSpan: 6,
+    colSpan: 6,
+    rowSpan: 10,
   });
 });
 
@@ -2885,7 +2925,7 @@ test("compact Connections renders icon-only without horizontal overflow", async 
             },
           ],
         }),
-        layout: { column: 1, row: 2, colSpan: 1, rowSpan: 1 },
+        layout: { column: 1, row: 2, colSpan: 2, rowSpan: 2 },
       },
     ],
   });
@@ -3153,10 +3193,10 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(modulesApi).toContain("const PROFILE_CREATOR_LIVE_MODULE_TYPE = 'creator_live'");
   expect(modulesApi).toContain("const PROFILE_MUSIC_MODULE_TYPE = 'music'");
   expect(moduleRegistry).toContain(
-    'allowedSizes: ["3x2", "4x2", "3x3", "3x4"]',
+    'allowedSizes: ["2x2", "2x3", "3x2", "4x2", "3x3", "3x4"]',
   );
   expect(modulesApi).toContain(
-    "'links', PROFILE_CONNECTIONS_MODULE_TYPE => ['3x2', '4x2', '3x3', '3x4']",
+    "'links', PROFILE_CONNECTIONS_MODULE_TYPE => ['2x2', '2x3', '3x2', '4x2', '3x3', '3x4']",
   );
   expect(moduleRegistry).toContain('profile_info: {\n    allowedSizes: ["3x2", "3x3", "4x3", "6x3", "8x3", "8x4"]');
   expect(modulesApi).toContain(
@@ -3225,7 +3265,9 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(configExample).toContain("'youtube'");
   expect(configExample).toContain("'twitch'");
   expect(configExample).toContain("'github'");
-  expect(moduleRegistry).toContain("export const PROFILE_ACTIVITY_MAX_ROW_SPAN = 6");
+  expect(moduleRegistry).toContain(
+    "export const PROFILE_ACTIVITY_MAX_ROW_SPAN =\n  PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS",
+  );
   expect(moduleRegistry).toContain("export type ProfileModulePurpose");
   expect(moduleRegistry).toContain("export type ProfileModuleDensity");
   expect(moduleRegistry).toContain("export type ProfileModuleFreshness");
@@ -4368,7 +4410,7 @@ const profileModuleSizeAuditMatrix: Array<{
   { type: "profile_info", sizes: ["3x2", "3x3", "4x3", "6x3"] },
   { type: "about", sizes: ["1x1", "2x1", "3x1", "2x2"] },
   { type: "custom_text", sizes: ["1x1", "2x1", "2x2", "3x2"] },
-  { type: "links", sizes: ["1x1", "2x1", "3x1", "2x2", "3x2"] },
+  { type: "links", sizes: ["1x1", "2x1", "3x1", "2x2", "2x3", "3x2"] },
   { type: "featured_badges", sizes: ["1x1", "2x1", "2x2"] },
   { type: "featured_post", sizes: ["2x1", "3x1", "2x2", "3x2"] },
   { type: "featured_room", sizes: ["1x1", "2x1", "3x1", "2x2"] },
@@ -4378,7 +4420,7 @@ const profileModuleSizeAuditMatrix: Array<{
     sizes: ["1x1", "2x1", "2x2", "3x2", "3x3", "4x3", "5x3", "6x4"],
   },
   { type: "music", sizes: ["1x1", "2x1", "3x1", "2x2", "3x2"] },
-  { type: "activity", sizes: ["2x2", "3x2", "3x3", "3x4", "3x6"] },
+  { type: "activity", sizes: ["2x2", "3x2", "3x3", "3x4", "4x6", "6x10"] },
 ];
 
 function profileModuleSizeAuditCases(): Array<{
@@ -4976,6 +5018,33 @@ function activityModule(
     schemaVersion: 1,
     createdAt: "2026-06-12 00:00:00",
     updatedAt: "2026-06-12 00:00:00",
+  };
+}
+
+function roomFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1,
+    slug: "general",
+    name: "General",
+    summary: "Open conversation.",
+    description: "Open conversation.",
+    mood: "",
+    members: 1,
+    memberCount: 1,
+    live: false,
+    accent: "var(--accent-frost)",
+    iconUrl: null,
+    bannerUrl: null,
+    visibility: "public",
+    createdBy: 1,
+    owner: null,
+    joinedByMe: false,
+    myRoomRole: null,
+    postCount: 1,
+    latestActivityAt: "2026-06-10 10:00:00",
+    createdAt: "2026-06-10 10:00:00",
+    updatedAt: "2026-06-10 10:00:00",
+    ...overrides,
   };
 }
 
