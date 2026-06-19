@@ -6604,7 +6604,7 @@ function ProfileInfoBadgeRow({
       {visibleBadges.map((userBadge) => (
         <Badge
           key={userBadge.id}
-          className="min-h-5 max-w-32 px-2 text-[0.68rem]"
+          className="min-h-[1.125rem] max-w-28 px-1.5 text-[0.62rem] leading-none"
           data-profile-info-badge={userBadge.badge.badgeKey}
           title={userBadge.badge.description ?? userBadge.badge.name}
           tone={badgeTone(userBadge.badge.rarity)}
