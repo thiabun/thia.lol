@@ -208,12 +208,13 @@ function profile_modules_public_index(string $handle): void
         'SELECT *
          FROM profile_modules
          WHERE user_id = :user_id
-           AND visibility = :visibility
+           AND (visibility = :visibility OR type = :activity_type)
            AND status = :status
          ORDER BY position ASC, id ASC',
         [
             'user_id' => (int) $profile['user_id'],
             'visibility' => 'public',
+            'activity_type' => PROFILE_ACTIVITY_MODULE_TYPE,
             'status' => 'active',
         ]
     );
@@ -767,6 +768,10 @@ function profile_canvas_commit_draft_modules(array $modules, int $userId): array
             $pinned = true;
         }
 
+        if ($type === PROFILE_ACTIVITY_MODULE_TYPE && $status !== 'deleted') {
+            $visibility = 'public';
+        }
+
         if ($draftId > 0 && isset($records[$draftId])) {
             $record = $records[$draftId];
 
@@ -984,15 +989,20 @@ function profile_canvas_draft_modules(mixed $value, int $userId): array
         $config = $type === PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE
             ? profile_canvas_placeholder_config($item['config'] ?? [], $layout)
             : profile_module_config($type, $item['config'] ?? [], $userId);
+        $visibility = $type === PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE
+            ? 'draft'
+            : profile_module_visibility($item['visibility'] ?? 'public');
+
+        if ($type === PROFILE_ACTIVITY_MODULE_TYPE) {
+            $visibility = 'public';
+        }
 
         $modules[] = [
             'id' => profile_canvas_draft_module_id($item['id'] ?? null),
             'type' => $type,
             'title' => profile_module_title($item['title'] ?? null),
             'config' => $config,
-            'visibility' => $type === PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE
-                ? 'draft'
-                : profile_module_visibility($item['visibility'] ?? 'public'),
+            'visibility' => $visibility,
             'position' => $index + 1,
             'pinned' => profile_canvas_pinned($item['pinned'] ?? false),
             'layout' => $layout,
@@ -1416,7 +1426,7 @@ function profile_canvas_module_placement(array $item, array $record, bool $visib
         'row' => max(1, $row),
         'colSpan' => $colSpan,
         'rowSpan' => $rowSpan,
-        'visible' => $visible,
+        'visible' => $type === PROFILE_ACTIVITY_MODULE_TYPE ? true : $visible,
         'pinned' => $pinned,
     ];
 }
@@ -2099,7 +2109,9 @@ function profile_canvas_existing_module_placement(array $record, int $index): ar
         'row' => $row,
         'colSpan' => $span['colSpan'],
         'rowSpan' => $span['rowSpan'],
-        'visible' => $type === PROFILE_INFO_MODULE_TYPE || (string) $record['visibility'] === 'public',
+        'visible' => $type === PROFILE_INFO_MODULE_TYPE
+            || $type === PROFILE_ACTIVITY_MODULE_TYPE
+            || (string) $record['visibility'] === 'public',
         'pinned' => profile_module_grid_pinned($record['grid_pinned'] ?? null),
     ];
 }

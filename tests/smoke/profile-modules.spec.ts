@@ -485,22 +485,22 @@ test("activity keeps long feeds inside an internal scroll area", async ({ page }
   expect(metrics.documentScrollHeight).toBeLessThan(metrics.bodyScrollHeight + 1_600);
 });
 
-test("activity respects hidden module preferences", async ({ page }) => {
+test("active hidden activity modules recover into the public profile", async ({ page }) => {
   await mockProfileModules(page, {
     authenticated: false,
     modules: [
       {
-        ...activityModule({ id: 9, title: "Hidden activity", position: 1 }),
+        ...activityModule({ id: 9, title: "Recovered activity", position: 1 }),
         visibility: "hidden",
       },
     ],
-    profilePosts: [postFixture({ body: "Hidden activity post." })],
+    profilePosts: [postFixture({ body: "Recovered activity post." })],
   });
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await expect(page.getByTestId("profile-module-activity")).toHaveCount(0);
-  await expect(page.getByText("Hidden activity post.")).toHaveCount(0);
+  await expect(page.getByTestId("profile-module-activity")).toBeVisible();
+  await expect(page.getByText("Recovered activity post.")).toBeVisible();
 });
 
 test("public empty activity module still renders its configured canvas slot", async ({ page }) => {
@@ -819,6 +819,60 @@ test("Spotify music player fills each allowed music module span", async ({
       metric.size === "3x2" || metric.size === "4x2" ? 96 : 56,
     );
   }
+});
+
+test("compact music modules choose black or white text from album art", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockSpotifyIframeApi(page);
+
+  const darkArtworkUrl = "https://assets.example.test/uploads/test/dark-album-art.png";
+  const lightArtworkUrl = "https://assets.example.test/uploads/test/light-album-art.png";
+  await mockAlbumArtwork(page, darkArtworkUrl, darkAlbumArtworkPng);
+  await mockAlbumArtwork(page, lightArtworkUrl, lightAlbumArtworkPng);
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      withAuditLayout(
+        spotifyEmbedMusicModule({
+          id: 81,
+          imageUrl: darkArtworkUrl,
+          position: 81,
+        }),
+        "2x2",
+        1,
+      ),
+      withAuditLayout(
+        appleMusicEmbedModule({
+          id: 82,
+          imageUrl: lightArtworkUrl,
+          position: 82,
+        }),
+        "2x2",
+        1,
+        3,
+      ),
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const spotifyPlayer = page.getByTestId("profile-spotify-custom-player");
+  await expect(spotifyPlayer).toHaveAttribute("data-profile-spotify-text-tone", "white");
+  await expect(spotifyPlayer.locator('[data-profile-spotify-title="true"]')).toHaveCSS(
+    "color",
+    "rgb(255, 255, 255)",
+  );
+
+  const appleMusicTile = page.locator('[data-profile-music-text-tone]').filter({
+    hasText: "Apple song",
+  });
+  await expect(appleMusicTile).toHaveAttribute("data-profile-music-text-tone", "black");
+  await expect(appleMusicTile.locator('[data-profile-music-title="true"]')).toHaveCSS(
+    "color",
+    "rgb(0, 0, 0)",
+  );
 });
 
 test("desktop module spans render with square-cell geometry", async ({ page }) => {
@@ -1440,6 +1494,12 @@ test("wide profile info keeps full banner and avatar overlap at high resolution"
     const contentCluster = element.querySelector<HTMLElement>(
       '[data-testid="profile-info-content-cluster"]',
     );
+    const displayName = element.querySelector<HTMLElement>(
+      '[data-testid="profile-info-identity-row"] h1',
+    );
+    const socialContext = element.querySelector<HTMLElement>(
+      '[data-testid="profile-info-identity-row"] [data-testid="profile-social-context"]',
+    );
     const bio = element.querySelector<HTMLElement>('[data-testid="profile-bio"]');
 
     if (
@@ -1449,6 +1509,8 @@ test("wide profile info keeps full banner and avatar overlap at high resolution"
       !scaledInfo ||
       !avatar ||
       !contentCluster ||
+      !displayName ||
+      !socialContext ||
       !bio
     ) {
       throw new Error("Expected profile info banner, avatar, and bio to render.");
@@ -1460,6 +1522,8 @@ test("wide profile info keeps full banner and avatar overlap at high resolution"
     const scaledInfoRect = scaledInfo.getBoundingClientRect();
     const avatarRect = avatar.getBoundingClientRect();
     const contentRect = contentCluster.getBoundingClientRect();
+    const displayNameRect = displayName.getBoundingClientRect();
+    const socialRect = socialContext.getBoundingClientRect();
     const bioRect = bio.getBoundingClientRect();
     const topElement = document.elementFromPoint(
       avatarRect.left + avatarRect.width / 2,
@@ -1468,6 +1532,7 @@ test("wide profile info keeps full banner and avatar overlap at high resolution"
 
     return {
       avatarBottom: avatarRect.bottom,
+      avatarRight: avatarRect.right,
       avatarFrontAtBannerOverlap:
         topElement === avatar || avatar.contains(topElement),
       avatarTop: avatarRect.top,
@@ -1476,6 +1541,8 @@ test("wide profile info keeps full banner and avatar overlap at high resolution"
       bioBottom: bioRect.bottom,
       contentBottom: contentRect.bottom,
       contentTop: contentRect.top,
+      displayNameLeft: displayNameRect.left,
+      displayNameRight: displayNameRect.right,
       headerHeight: headerRect.height,
       headerRight: headerRect.right,
       headerWidth: headerRect.width,
@@ -1486,16 +1553,21 @@ test("wide profile info keeps full banner and avatar overlap at high resolution"
       moduleRight: moduleRect.right,
       moduleWidth: moduleRect.width,
       objectFit: window.getComputedStyle(bannerImage).objectFit,
+      socialLeft: socialRect.left,
+      socialTrail: socialContext.getAttribute("data-profile-info-stats-trail"),
     };
   });
 
   expect(metrics.objectFit).toBe("contain");
+  expect(metrics.socialTrail).toBe("true");
   expect(metrics.infoWidth).toBeGreaterThanOrEqual(metrics.moduleWidth - 2);
   expect(metrics.infoHeight).toBeGreaterThanOrEqual(metrics.moduleHeight - 2);
   expect(metrics.bannerHeight).toBeGreaterThan(metrics.moduleHeight * 0.3);
   expect(metrics.avatarFrontAtBannerOverlap).toBe(true);
   expect(metrics.avatarTop).toBeLessThan(metrics.bannerBottom);
   expect(metrics.avatarBottom).toBeGreaterThan(metrics.bannerBottom);
+  expect(metrics.displayNameLeft).toBeGreaterThan(metrics.avatarRight - 2);
+  expect(metrics.socialLeft).toBeGreaterThan(metrics.displayNameRight);
   expect(metrics.contentTop).toBeGreaterThanOrEqual(metrics.bannerBottom - 1);
   expect(metrics.contentBottom).toBeGreaterThan(metrics.moduleBottom - 28);
   expect(metrics.bioBottom).toBeLessThanOrEqual(metrics.moduleBottom + 1);
@@ -1547,11 +1619,23 @@ test("profile info variants stay within each supported size", async ({ page }) =
     await expect(socialContext).toContainText("Followers");
     await expect(socialContext).toContainText("Following");
     await expect(socialContext).toContainText("Likes");
-    if (["3x2", "3x3", "6x3", "8x3", "8x4"].includes(profileInfoCase.size)) {
+    if (["3x2", "3x3", "4x3", "6x3", "8x3", "8x4"].includes(profileInfoCase.size)) {
       await expect(socialContext).toHaveAttribute(
         "data-profile-info-stats-variant",
         "inline",
       );
+    }
+    if (["4x3", "6x3", "8x3", "8x4"].includes(profileInfoCase.size)) {
+      await expect(socialContext).toHaveAttribute(
+        "data-profile-info-stats-trail",
+        "true",
+      );
+      await expect(module.getByTestId("profile-info-identity-row")).toBeVisible();
+      expect(
+        await socialContext
+          .locator('[data-profile-info-stat-separator="true"]')
+          .count(),
+      ).toBe(3);
     }
     const statStyles = await socialContext.evaluate((element) =>
       Array.from(element.querySelectorAll<HTMLElement>("[data-profile-info-stat]")).map(
@@ -4444,7 +4528,12 @@ async function mockProfileModules(
           rowSpan: placement.rowSpan,
         },
         pinned: placement.pinned === true,
-        visibility: placement.visible === false ? "hidden" : "public",
+        visibility:
+          module.type === "activity"
+            ? "public"
+            : placement.visible === false
+              ? "hidden"
+              : "public",
         status: "active",
       };
     });
@@ -4494,7 +4583,12 @@ async function mockProfileModules(
             ...module,
             id: existingId,
             position: index + 1,
-            visibility: config?.configured === false ? "hidden" : module.visibility ?? "public",
+            visibility:
+              module.type === "activity"
+                ? "public"
+                : config?.configured === false
+                  ? "hidden"
+                  : module.visibility ?? "public",
             status: "active",
           };
         });
@@ -4596,7 +4690,9 @@ async function mockProfileModules(
       body: JSON.stringify({
         ok: true,
         data: ownerModules.filter(
-          (module) => module.visibility === "public" && module.status === "active",
+          (module) =>
+            module.status === "active" &&
+            (module.visibility === "public" || module.type === "activity"),
         ),
       }),
     });
@@ -5139,6 +5235,25 @@ async function expectSpotifyCustomPlayer(page: Page) {
   await expect(page.getByTestId("profile-spotify-play-button")).toBeVisible();
   await expect(page.getByTestId("profile-spotify-play-button")).toBeEnabled();
   await expect(page.getByTestId("profile-integration-embed-spotify")).toBeAttached();
+}
+
+const darkAlbumArtworkPng =
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGNg5eD9D8IMMAYAIbAEZULJ3y0AAAAASUVORK5CYII=";
+const lightAlbumArtworkPng =
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP48eXFfxBmgDEAiawPTRXeMb4AAAAASUVORK5CYII=";
+
+async function mockAlbumArtwork(page: Page, path: string, pngBase64: string) {
+  await page.route(`**${path}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "image/png",
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "no-store",
+      },
+      body: Buffer.from(pngBase64, "base64"),
+    });
+  });
 }
 
 async function expectSpotifyProgress(
@@ -5781,7 +5896,9 @@ function musicModule(overrides: { id?: number; position?: number } = {}) {
   };
 }
 
-function spotifyEmbedMusicModule(overrides: { id?: number; position?: number } = {}) {
+function spotifyEmbedMusicModule(
+  overrides: { id?: number; imageUrl?: string; position?: number } = {},
+) {
   return {
     ...musicModule(overrides),
     config: {
@@ -5800,7 +5917,7 @@ function spotifyEmbedMusicModule(overrides: { id?: number; position?: number } =
         metadata: {
           title: "Focus track",
           subtitle: "Spotify track",
-          imageUrl: "https://i.scdn.co/image/focus-track",
+          imageUrl: overrides.imageUrl ?? "https://i.scdn.co/image/focus-track",
         },
         embed: {
           type: "iframe",
@@ -5909,7 +6026,9 @@ function integrationResolveCard(url: string, provider: string) {
   };
 }
 
-function appleMusicEmbedModule(overrides: { id?: number; position?: number } = {}) {
+function appleMusicEmbedModule(
+  overrides: { id?: number; imageUrl?: string; position?: number } = {},
+) {
   return {
     ...musicModule(overrides),
     config: {
@@ -5925,6 +6044,7 @@ function appleMusicEmbedModule(overrides: { id?: number; position?: number } = {
         resourceKey: "apple_music:song:1",
         sourceUrl: "https://music.apple.com/us/album/example/1",
         metadata: {
+          imageUrl: overrides.imageUrl,
           title: "Apple song",
           subtitle: "Apple Music",
         },

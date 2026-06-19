@@ -192,6 +192,7 @@ assert_true(str_contains($profileModulesSource, 'profile_canvas_draft_commit'), 
 assert_true(str_contains($profileModulesSource, 'profile_canvas_glass_opacity'), 'canvas glass preference should persist');
 assert_true(str_contains($profileModulesSource, 'PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE'), 'draft placeholder type should exist');
 assert_true(str_contains($profileModulesSource, '=== PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE) {'), 'draft commit should skip placeholders');
+assert_true(str_contains($profileModulesSource, 'OR type = :activity_type'), 'public module read should recover active hidden activity modules');
 
 assert_module_config_rejected(
     'links',
@@ -369,6 +370,22 @@ assert_true($largeActivityPlacement['rowSpan'] === 6, 'activity should allow 6 r
 assert_true($largeActivityPlacement['column'] === 9, 'large activity column should clamp inside the canvas');
 assert_true($largeActivityPlacement['row'] === 11, 'large activity row should clamp inside the canvas');
 
+$hiddenActivityPlacement = profile_canvas_module_placement(
+    [
+        'id' => 14,
+        'column' => 1,
+        'row' => 4,
+        'colSpan' => 3,
+        'rowSpan' => 4,
+    ],
+    [
+        'id' => 14,
+        'type' => 'activity',
+    ],
+    false
+);
+assert_true($hiddenActivityPlacement['visible'] === true, 'activity placement should stay visible');
+
 $streamChatPlacement = profile_canvas_module_placement(
     [
         'id' => 13,
@@ -500,6 +517,24 @@ assert_true($placeholderDraft[0]['visibility'] === 'draft', 'placeholder visibil
 assert_true($placeholderDraft[0]['pinned'] === true, 'placeholder should preserve draft pin state');
 assert_true($placeholderDraft[0]['config']['placeholder'] === true, 'placeholder config marker mismatch');
 assert_true($placeholderDraft[0]['layout']['colSpan'] === 3, 'placeholder layout columns mismatch');
+
+$activityDraft = profile_canvas_draft_modules(
+    [
+        [
+            'id' => 15,
+            'type' => 'activity',
+            'title' => null,
+            'config' => ['canvasSize' => '3x4'],
+            'visibility' => 'hidden',
+            'position' => 1,
+            'pinned' => false,
+            'layout' => ['column' => 1, 'row' => 4, 'colSpan' => 3, 'rowSpan' => 4],
+            'status' => 'active',
+        ],
+    ],
+    123
+);
+assert_true($activityDraft[0]['visibility'] === 'public', 'activity draft visibility should normalize to public');
 assert_php_rejected(
     'profile_module_type("placeholder");',
     'Choose a supported module type.'
