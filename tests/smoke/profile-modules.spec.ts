@@ -3020,6 +3020,86 @@ test("mobile canvas packs profile info first and activity last", async ({ page }
   expect(order.at(-1)).toBe("profile-grid-module-activity");
 });
 
+test("mobile profile info projection keeps content close to the banner", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockProfileModules(page, {
+    authenticated: false,
+    profileOverrides: {
+      bannerUrl: "/uploads/media/2026/06/profile-banner.webp",
+      bio: "The queen, owner and creator of thia.lol",
+    },
+    modules: [
+      withAuditLayout(
+        {
+          ...profileInfoModule(),
+          position: 1,
+        },
+        "8x3",
+        1,
+        3,
+      ),
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const module = page.getByTestId("profile-grid-module-profile_info");
+  const info = module.getByTestId("profile-module-profile-info");
+  await expect(module).toHaveAttribute("data-profile-grid-size", "8x3");
+  await expect(info).toHaveAttribute("data-profile-info-mobile-projection", "true");
+  await expect(info).toHaveAttribute("data-profile-info-columns", "6");
+  await expect(info).toHaveAttribute("data-profile-info-rows", "4");
+  await expect(module.getByTestId("profile-header")).toHaveAttribute(
+    "data-profile-info-mobile-projection",
+    "true",
+  );
+
+  const metrics = await module.evaluate((element) => {
+    const banner = element.querySelector<HTMLElement>(
+      '[data-testid="profile-header-banner"]',
+    );
+    const avatar = element.querySelector<HTMLElement>(
+      '[data-testid="profile-info-avatar-frame"]',
+    );
+    const content = element.querySelector<HTMLElement>(
+      '[data-testid="profile-info-content-cluster"]',
+    );
+    const bio = element.querySelector<HTMLElement>('[data-testid="profile-bio"]');
+
+    if (!banner || !avatar || !content || !bio) {
+      throw new Error("Expected mobile profile info pieces to render.");
+    }
+
+    const moduleRect = element.getBoundingClientRect();
+    const bannerRect = banner.getBoundingClientRect();
+    const avatarRect = avatar.getBoundingClientRect();
+    const contentRect = content.getBoundingClientRect();
+    const bioRect = bio.getBoundingClientRect();
+
+    return {
+      avatarBottom: avatarRect.bottom,
+      avatarTop: avatarRect.top,
+      bannerBottom: bannerRect.bottom,
+      bannerHeight: bannerRect.height,
+      bioBottom: bioRect.bottom,
+      contentBottom: contentRect.bottom,
+      contentGapFromBanner: contentRect.top - bannerRect.bottom,
+      moduleBottom: moduleRect.bottom,
+      moduleHeight: moduleRect.height,
+    };
+  });
+
+  expect(metrics.bannerHeight).toBeGreaterThan(metrics.moduleHeight * 0.18);
+  expect(metrics.bannerHeight).toBeLessThan(metrics.moduleHeight * 0.36);
+  expect(metrics.avatarTop).toBeLessThan(metrics.bannerBottom);
+  expect(metrics.avatarBottom).toBeGreaterThan(metrics.bannerBottom);
+  expect(metrics.contentGapFromBanner).toBeLessThan(metrics.moduleHeight * 0.18);
+  expect(metrics.contentBottom).toBeLessThanOrEqual(metrics.moduleBottom + 1);
+  expect(metrics.bioBottom).toBeLessThanOrEqual(metrics.moduleBottom + 1);
+});
+
 test.skip("obsolete profile details panel autosave coverage", async ({ page }) => {
   let savedProfile: Record<string, unknown> | undefined;
   const multilineBio = "Edited inside the profile editor.\nWith a second line.";

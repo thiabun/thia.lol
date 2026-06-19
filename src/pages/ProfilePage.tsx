@@ -5256,14 +5256,18 @@ function ProfileInfoModule({
   status,
 }: ProfileInfoModuleProps) {
   const span = profileGridModuleSizeSpan(size);
+  const mobileProjection = useProfileMobileCanvasProjection();
+  const renderedSpan = mobileProjection ? profileInfoMobileProjectedSpan(span) : span;
+  const mobileProjected = renderedSpan.columns !== span.columns || renderedSpan.rows !== span.rows;
   const showBlankEditPrompt =
     editing && isOwnProfile && profileInfoNeedsEditPrompt(profile);
 
   return (
     <div
       className="profile-grid-scaled-content size-full min-w-0"
-      data-profile-info-columns={span.columns}
-      data-profile-info-rows={span.rows}
+      data-profile-info-columns={renderedSpan.columns}
+      data-profile-info-mobile-projection={mobileProjected ? "true" : undefined}
+      data-profile-info-rows={renderedSpan.rows}
       data-testid="profile-module-profile-info"
     >
       {showBlankEditPrompt ? (
@@ -5291,12 +5295,53 @@ function ProfileInfoModule({
           onOpenPanel={onOpenPanel}
           profile={profile}
           profileControlBusy={profileControlBusy}
+          mobileProjected={mobileProjected}
           showChatHint={showChatHint}
           span={span}
         />
       )}
     </div>
   );
+}
+
+function useProfileMobileCanvasProjection(): boolean {
+  const [mobileProjection, setMobileProjection] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia("(max-width: 1023px)");
+    const syncProjection = () => setMobileProjection(mediaQuery.matches);
+
+    syncProjection();
+    mediaQuery.addEventListener("change", syncProjection);
+
+    return () => mediaQuery.removeEventListener("change", syncProjection);
+  }, []);
+
+  return mobileProjection;
+}
+
+function profileInfoMobileProjectedSpan(span: {
+  columns: number;
+  rows: number;
+  size: ProfileGridModuleSize;
+}): {
+  columns: number;
+  rows: number;
+  size: ProfileGridModuleSize;
+} {
+  if (span.columns <= PROFILE_CANVAS_MOBILE_COLUMNS) {
+    return span;
+  }
+
+  return {
+    ...span,
+    columns: PROFILE_CANVAS_MOBILE_COLUMNS,
+    rows: Math.ceil((span.columns * span.rows) / PROFILE_CANVAS_MOBILE_COLUMNS),
+  };
 }
 
 type ProfileInfoSizedCardProps = {
@@ -5314,6 +5359,7 @@ type ProfileInfoSizedCardProps = {
   onOpenPanel: (panel: "followers" | "following" | "badges") => void;
   profile: Profile;
   profileControlBusy?: "block" | "mute" | undefined;
+  mobileProjected: boolean;
   showChatHint: boolean;
   span: { columns: number; rows: number; size: ProfileGridModuleSize };
 };
@@ -5333,6 +5379,7 @@ function ProfileInfoSizedCard({
   onOpenPanel,
   profile,
   profileControlBusy,
+  mobileProjected,
   showChatHint,
   span,
 }: ProfileInfoSizedCardProps) {
@@ -5341,10 +5388,13 @@ function ProfileInfoSizedCard({
   const expanded = span.rows >= 4;
   const wide = span.columns >= 6;
   const large = span.columns >= 8;
+  const mobileWide = mobileProjected && wide;
   const inlineStats = !compact;
   const bannerUrl = safeProfileImageUrl(profile.bannerUrl);
   const showBanner = Boolean(bannerUrl) && !compact;
-  const bannerHeight = expanded
+  const bannerHeight = mobileWide
+    ? "6.25rem"
+    : expanded
     ? large
       ? "9.75rem"
       : "8rem"
@@ -5355,16 +5405,20 @@ function ProfileInfoSizedCard({
         : balanced
           ? "5.5rem"
           : "5rem";
-  const avatarSizeClass = balanced
+  const avatarSizeClass = mobileWide
+    ? "size-16"
+    : balanced
     ? "size-14"
     : expanded
       ? "size-20"
       : large
         ? "size-[4.5rem]"
         : "size-16";
-  const avatarInsetClass = expanded ? "left-4" : "left-3";
+  const avatarInsetClass = mobileWide || expanded ? "left-4" : "left-3";
   const avatarOverlapClass = showBanner
-    ? expanded || large
+    ? mobileWide
+      ? "-top-8"
+      : expanded || large
       ? "-top-10"
       : balanced
         ? "-top-7"
@@ -5372,12 +5426,16 @@ function ProfileInfoSizedCard({
     : expanded
       ? "top-4"
       : "top-3";
-  const identityInsetClass = balanced
+  const identityInsetClass = mobileWide
+    ? "pl-[5rem]"
+    : balanced
     ? "pl-[4.75rem]"
     : expanded
       ? "pl-[6.25rem]"
       : "pl-[5.25rem]";
-  const identityMaxWidthClass = balanced
+  const identityMaxWidthClass = mobileWide
+    ? "max-w-[8.75rem]"
+    : balanced
     ? "max-w-[8.5rem]"
     : expanded
       ? "max-w-[12rem]"
@@ -5453,6 +5511,7 @@ function ProfileInfoSizedCard({
     <article
       className={shellClass}
       data-profile-info-card="true"
+      data-profile-info-mobile-projection={mobileProjected ? "true" : undefined}
       data-profile-info-variant={expanded ? "expanded" : balanced ? "balanced" : "wide"}
       data-testid="profile-header"
     >
@@ -5489,7 +5548,7 @@ function ProfileInfoSizedCard({
       <div
         className={cn(
           "relative flex min-h-0 min-w-0 flex-1 flex-col",
-          expanded ? "p-4" : "p-3",
+          mobileWide || expanded ? "p-4" : "p-3",
         )}
       >
         <div
@@ -5508,8 +5567,11 @@ function ProfileInfoSizedCard({
         </div>
         <div
           className={cn(
-            "mt-auto flex min-h-0 min-w-0 flex-col",
-            expanded ? "gap-2" : "gap-1.5",
+            "flex min-h-0 min-w-0 flex-col",
+            mobileWide
+              ? "pt-9"
+              : "mt-auto",
+            expanded || mobileWide ? "gap-2" : "gap-1.5",
           )}
           data-testid="profile-info-content-cluster"
         >
