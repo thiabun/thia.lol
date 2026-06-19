@@ -858,6 +858,31 @@ test("video background and allowlisted rich integrations render safely", async (
   await expect(page.getByTestId("profile-integration-embed-github")).toHaveCount(0);
 });
 
+test("YouTube video modules render allowlisted nocookie embeds", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [youtubeVideoModule({ id: 8 })],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const module = page.getByTestId("profile-grid-module-youtube_video");
+  await expect(module).toBeVisible();
+  await expect(module).toHaveAttribute("data-profile-grid-size", "4x3");
+  const embed = module.getByTestId("profile-integration-embed-youtube");
+  await expect(embed).toBeVisible();
+  await expect(embed).toHaveAttribute(
+    "src",
+    "https://www.youtube-nocookie.com/embed/watch123",
+  );
+  await expect(embed).toHaveAttribute("data-profile-media-only-embed", "true");
+  await expect(embed).toHaveAttribute(
+    "sandbox",
+    /allow-scripts allow-same-origin/,
+  );
+});
+
 test("Spotify music player fills each allowed music module span", async ({
   page,
 }) => {
@@ -2008,7 +2033,7 @@ test("direct canvas point selection creates a draft module through picker and se
       pinnedShell.evaluate((element) => window.getComputedStyle(element).outlineWidth),
     )
     .toBe("2px");
-  await page.keyboard.press("Escape");
+  await page.getByTestId("profile-module-settings-done").click();
   await expect(page.getByTestId("profile-module-settings")).toHaveCount(0);
   await page.getByTestId("profile-canvas-save-button").click();
   await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
@@ -2221,6 +2246,66 @@ test("authenticated integrations hide the connect prompt in module settings", as
   await expect(settings).toBeVisible();
   await expect(settings.getByRole("button", { name: "Connect" })).toHaveCount(0);
   await expect(settings.getByTestId("profile-module-settings-url")).toBeVisible();
+});
+
+test("YouTube module settings prompt for provider connection", async ({ page }) => {
+  let oauthStartPayload: Record<string, unknown> | undefined;
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+    integrations: {
+      providers: [
+        {
+          provider: "youtube",
+          configured: true,
+          oauthEnabled: true,
+          linkSupported: true,
+          metadataEnabled: true,
+          missingConfigKeys: [],
+        },
+      ],
+      accounts: [],
+    },
+  });
+  await page.route("**/api/me/integrations/youtube/start", async (route) => {
+    oauthStartPayload = (await route.request().postDataJSON()) as Record<
+      string,
+      unknown
+    >;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          provider: "youtube",
+          authorizationUrl: "",
+          stateExpiresIn: 600,
+        },
+      }),
+    });
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-cell-1-4").click();
+  await page.getByTestId("profile-canvas-cell-4-6").click();
+  await page.getByTestId("profile-module-picker-youtube_video").click();
+
+  const settings = page.getByTestId("profile-module-settings");
+  await expect(settings).toBeVisible();
+  await expect(settings).toContainText("Connect YouTube");
+  await expect(settings.getByTestId("profile-integration-connect-youtube")).toBeVisible();
+  await expect(settings.getByTestId("profile-module-settings-url")).toBeVisible();
+
+  await settings.getByTestId("profile-integration-connect-youtube").click();
+  await expect
+    .poll(() => oauthStartPayload?.redirectPath)
+    .toBe("/@thia?editCanvas=1");
+  expect(readFileSync("src/pages/ProfilePage.tsx", "utf8")).toContain(
+    'if (type.startsWith("youtube_"))',
+  );
 });
 
 test("connected integrations seed Connections links and Twitch stream modules", async ({
@@ -6141,6 +6226,59 @@ function spotifyEmbedMusicModule(
   };
 }
 
+function youtubeIntegrationCard(
+  resourceId: string,
+  sourceUrl: string,
+  title = "YouTube video",
+) {
+  return {
+    provider: "youtube",
+    resourceType: "video",
+    resourceId,
+    resourceKey: `youtube:video:${resourceId}`,
+    sourceUrl,
+    metadata: {
+      title,
+      subtitle: "YouTube",
+      imageUrl: null,
+    },
+    embed: {
+      type: "iframe",
+      src: `https://www.youtube-nocookie.com/embed/${resourceId}`,
+      title: "YouTube embed",
+      height: 220,
+      allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+    },
+    apiBacked: false,
+    fetchedAt: "2026-06-16T10:00:00Z",
+    stale: false,
+  };
+}
+
+function youtubeVideoModule(overrides: { id?: number; position?: number } = {}) {
+  const url = "https://www.youtube.com/watch?v=watch123";
+
+  return {
+    id: overrides.id ?? 7,
+    type: "youtube_video",
+    title: "YouTube video",
+    config: {
+      displayMode: "embed",
+      label: "Build log",
+      platform: "youtube",
+      sourceMode: "youtube",
+      url,
+      integration: youtubeIntegrationCard("watch123", url, "Build log"),
+    },
+    visibility: "public",
+    position: overrides.position ?? 1,
+    status: "active",
+    schemaVersion: 1,
+    createdAt: "2026-06-12 00:00:00",
+    updatedAt: "2026-06-12 00:00:00",
+  };
+}
+
 function twitchStreamChatModule(
   overrides: { id?: number; position?: number; row?: number } = {},
 ) {
@@ -6182,7 +6320,10 @@ function twitchStreamChatModule(
 
 function integrationResolveCard(url: string, provider: string) {
   const resolvedProvider = provider === "youtube" ? "youtube" : "twitch";
-  const resourceId = url.split("/").filter(Boolean).at(-1) ?? "thiabun";
+  const resourceId =
+    resolvedProvider === "youtube"
+      ? youtubeResourceIdFromUrl(url)
+      : url.split("/").filter(Boolean).at(-1) ?? "thiabun";
 
   if (resolvedProvider === "youtube") {
     return {
@@ -6231,6 +6372,29 @@ function integrationResolveCard(url: string, provider: string) {
     fetchedAt: "2026-06-16T10:00:00Z",
     stale: false,
   };
+}
+
+function youtubeResourceIdFromUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    const segments = url.pathname.split("/").filter(Boolean);
+
+    if (url.hostname === "youtu.be" && segments[0]) {
+      return segments[0];
+    }
+
+    if (segments[0] === "watch") {
+      return url.searchParams.get("v") || "watch";
+    }
+
+    if (["shorts", "live", "embed"].includes(segments[0] ?? "") && segments[1]) {
+      return segments[1];
+    }
+  } catch {
+    return "youtube-video";
+  }
+
+  return value.split("/").filter(Boolean).at(-1) ?? "youtube-video";
 }
 
 function appleMusicEmbedModule(

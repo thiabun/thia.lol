@@ -47,10 +47,34 @@ assert_true($spotify['resourceId'] === 'abc123', 'spotify id mismatch');
 $youtube = profile_integration_normalize_url('https://youtu.be/video123', null);
 assert_true($youtube['provider'] === 'youtube', 'youtube provider mismatch');
 assert_true($youtube['resourceType'] === 'video', 'youtube type mismatch');
+assert_true($youtube['resourceId'] === 'video123', 'youtube shortlink id mismatch');
+assert_true(profile_integration_embed_payload($youtube)['src'] === 'https://www.youtube-nocookie.com/embed/video123', 'youtube shortlink embed mismatch');
+
+$youtubeWatch = profile_integration_normalize_url('https://www.youtube.com/watch?v=watch123&list=PLabc123', null);
+assert_true($youtubeWatch['resourceType'] === 'video', 'youtube watch should prefer video id');
+assert_true($youtubeWatch['resourceId'] === 'watch123', 'youtube watch id mismatch');
+
+$youtubeShort = profile_integration_normalize_url('https://www.youtube.com/shorts/short123?feature=share', null);
+assert_true($youtubeShort['resourceType'] === 'video', 'youtube shorts type mismatch');
+assert_true($youtubeShort['resourceId'] === 'short123', 'youtube shorts id mismatch');
+assert_true(profile_integration_embed_payload($youtubeShort)['src'] === 'https://www.youtube-nocookie.com/embed/short123', 'youtube shorts embed mismatch');
+
+$youtubeLive = profile_integration_normalize_url('https://www.youtube.com/live/live123?si=ignored', null);
+assert_true($youtubeLive['resourceType'] === 'video', 'youtube live type mismatch');
+assert_true($youtubeLive['resourceId'] === 'live123', 'youtube live id mismatch');
+
+$youtubeEmbed = profile_integration_normalize_url('https://www.youtube.com/embed/embed123', null);
+assert_true($youtubeEmbed['resourceType'] === 'video', 'youtube embed type mismatch');
+assert_true($youtubeEmbed['resourceId'] === 'embed123', 'youtube embed id mismatch');
+
+$youtubeMusic = profile_integration_normalize_url('https://music.youtube.com/watch?v=music123', null);
+assert_true($youtubeMusic['resourceType'] === 'video', 'youtube music watch type mismatch');
+assert_true($youtubeMusic['resourceId'] === 'music123', 'youtube music watch id mismatch');
 
 $youtubePlaylist = profile_integration_normalize_url('https://www.youtube.com/playlist?list=PLabc123', null);
 assert_true($youtubePlaylist['provider'] === 'youtube', 'youtube playlist provider mismatch');
 assert_true($youtubePlaylist['resourceType'] === 'playlist', 'youtube playlist type mismatch');
+assert_true($youtubePlaylist['resourceId'] === 'PLabc123', 'youtube playlist id mismatch');
 assert_true(str_contains(profile_integration_embed_payload($youtubePlaylist)['src'], 'videoseries'), 'youtube playlist embed mismatch');
 
 $twitch = profile_integration_normalize_url('https://www.twitch.tv/thiabun', null);

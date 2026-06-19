@@ -5,6 +5,7 @@ import {
   Award,
   Bug,
   CalendarDays,
+  Check,
   FolderGit2,
   Heart,
   ImagePlus,
@@ -4193,6 +4194,7 @@ function ModuleSettingsModal({
   const showConnectPrompt = Boolean(
     provider && providerStatus?.oauthEnabled && !connectedAccount,
   );
+  const providerLabel = provider ? profileCanvasProviderLabel(provider) : undefined;
   const [moduleImageUploading, setModuleImageUploading] = useState(false);
   const [moduleImageError, setModuleImageError] = useState<string | undefined>();
   const [connectionPlatform, setConnectionPlatform] =
@@ -4459,18 +4461,29 @@ function ModuleSettingsModal({
             >
               {module.pinned ? "Unpin" : "Pin"}
             </Button>
-            {module.type !== "profile_info" ? (
+            <div className="flex items-center gap-2">
+              {module.type !== "profile_info" ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="border-rose/35 bg-rose/12 text-rose-ink hover:border-rose/60"
+                  icon={<Trash2 aria-hidden="true" size={16} />}
+                  onClick={() => onRemove(module)}
+                >
+                  Remove
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 size="sm"
-                variant="secondary"
-                className="border-rose/35 bg-rose/12 text-rose-ink hover:border-rose/60"
-                icon={<Trash2 aria-hidden="true" size={16} />}
-                onClick={() => onRemove(module)}
+                icon={<Check aria-hidden="true" size={16} />}
+                data-testid="profile-module-settings-done"
+                onClick={onClose}
               >
-                Remove
+                Done
               </Button>
-            ) : null}
+            </div>
           </div>
         ) : undefined
       }
@@ -4937,13 +4950,14 @@ function ModuleSettingsModal({
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-text">Connect</p>
                   <p className="mt-1 text-xs font-medium text-muted">
-                    Required for authenticated provider data.
+                    Connect {providerLabel} for authenticated provider data.
                   </p>
                 </div>
                 <Button
                   type="button"
                   size="sm"
                   variant="secondary"
+                  data-testid={`profile-integration-connect-${provider}`}
                   onClick={() => onConnectProvider(provider)}
                 >
                   Connect

@@ -854,22 +854,34 @@ function profile_integration_normalize_url(string $rawUrl, ?string $preferredPro
         $resourceType = str_contains($path, '/playlist/') ? 'playlist' : (str_contains($path, '/album/') ? 'album' : 'song');
         $resourceId = profile_integration_last_identifier($url);
     } elseif ($provider === 'youtube' && in_array($host, ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be', 'music.youtube.com'], true)) {
-        $playlistId = profile_integration_query_value($url, 'list');
-        $resourceType = $playlistId !== '' && (($segments[0] ?? '') === 'playlist')
-            ? 'playlist'
-            : 'video';
-        $resourceId = $resourceType === 'playlist'
-            ? $playlistId
-            : ($host === 'youtu.be' ? ($segments[0] ?? '') : profile_integration_query_value($url, 'v'));
+        $playlistId = profile_integration_youtube_identifier(profile_integration_query_value($url, 'list'));
+        $firstSegment = $segments[0] ?? '';
+        $videoId = '';
 
-        if ($resourceId === '' && isset($segments[0]) && str_starts_with($segments[0], '@')) {
-            $resourceType = 'channel';
-            $resourceId = $segments[0];
+        if ($host === 'youtu.be' && isset($segments[0])) {
+            $videoId = profile_integration_youtube_identifier($segments[0]);
+        } elseif ($firstSegment === 'watch') {
+            $videoId = profile_integration_youtube_identifier(profile_integration_query_value($url, 'v'));
+        } elseif (in_array($firstSegment, ['shorts', 'live', 'embed'], true) && isset($segments[1])) {
+            $videoId = profile_integration_youtube_identifier($segments[1]);
         }
 
-        if ($resourceId === '' && ($segments[0] ?? '') === 'channel' && isset($segments[1])) {
+        if ($videoId !== '') {
+            $resourceType = 'video';
+            $resourceId = $videoId;
+            $sourceUrl = 'https://www.youtube.com/watch?v=' . rawurlencode($resourceId);
+        } elseif ($playlistId !== '') {
+            $resourceType = 'playlist';
+            $resourceId = $playlistId;
+            $sourceUrl = 'https://www.youtube.com/playlist?list=' . rawurlencode($resourceId);
+        } elseif (str_starts_with($firstSegment, '@')) {
             $resourceType = 'channel';
-            $resourceId = $segments[1];
+            $resourceId = profile_integration_youtube_identifier($firstSegment, true);
+            $sourceUrl = 'https://www.youtube.com/' . $resourceId;
+        } elseif ($firstSegment === 'channel' && isset($segments[1])) {
+            $resourceType = 'channel';
+            $resourceId = profile_integration_youtube_identifier($segments[1]);
+            $sourceUrl = 'https://www.youtube.com/channel/' . rawurlencode($resourceId);
         }
     } elseif ($provider === 'twitch' && in_array($host, ['twitch.tv', 'www.twitch.tv'], true) && isset($segments[0])) {
         $resourceType = ($segments[0] === 'videos' && isset($segments[1])) ? 'video' : 'channel';
@@ -905,6 +917,19 @@ function profile_integration_provider_from_host(string $host): ?string
         in_array($host, ['github.com', 'www.github.com'], true) => 'github',
         default => null,
     };
+}
+
+function profile_integration_youtube_identifier(string $value, bool $allowHandle = false): string
+{
+    $trimmed = trim($value);
+
+    if ($allowHandle && str_starts_with($trimmed, '@')) {
+        $handle = preg_replace('/[^A-Za-z0-9._-]/', '', substr($trimmed, 1)) ?? '';
+
+        return $handle === '' ? '' : '@' . $handle;
+    }
+
+    return preg_replace('/[^A-Za-z0-9_-]/', '', $trimmed) ?? '';
 }
 
 function profile_integration_url(mixed $value): string
@@ -1140,6 +1165,10 @@ function profile_integration_fetch_youtube_resource(array $normalized): array
     if ($normalized['resourceType'] === 'video') {
         $params['id'] = $normalized['resourceId'];
         $url = 'https://www.googleapis.com/youtube/v3/videos?' . http_build_query($params);
+    } elseif ($normalized['resourceType'] === 'playlist') {
+        $params['id'] = $normalized['resourceId'];
+        $params['part'] = 'snippet,contentDetails';
+        $url = 'https://www.googleapis.com/youtube/v3/playlists?' . http_build_query($params);
     } else {
         $params[str_starts_with($normalized['resourceId'], '@') ? 'forHandle' : 'id'] = $normalized['resourceId'];
         $url = 'https://www.googleapis.com/youtube/v3/channels?' . http_build_query($params);
@@ -1160,6 +1189,7 @@ function profile_integration_fetch_youtube_resource(array $normalized): array
         'stats' => [
             'views' => $item['statistics']['viewCount'] ?? null,
             'subscribers' => $item['statistics']['subscriberCount'] ?? null,
+            'items' => $item['contentDetails']['itemCount'] ?? null,
         ],
     ];
 }
