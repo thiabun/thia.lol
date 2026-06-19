@@ -19,6 +19,10 @@ function integrations_dispatch(array $segments, string $method): void
             profile_integrations_owner_index();
         }
 
+        if (count($segments) === 3 && $segments[2] === 'diagnostics' && ($method === 'GET' || $method === 'HEAD')) {
+            profile_integrations_diagnostics();
+        }
+
         if (count($segments) === 3 && $method === 'DELETE') {
             profile_integrations_disconnect($segments[2]);
         }
@@ -108,31 +112,42 @@ function profile_integrations_oauth_start(string $rawProvider): void
 
 function profile_integrations_oauth_callback(string $rawProvider): void
 {
-    $session = require_authenticated_session();
     require_profile_integrations_storage();
 
     $provider = profile_integration_provider($rawProvider);
     $state = $_GET['state'] ?? null;
     $code = $_GET['code'] ?? null;
     $oauthError = $_GET['error'] ?? null;
+    $stateRow = is_string($state) && $state !== ''
+        ? profile_integration_oauth_state_row($provider, $state)
+        : null;
+    $redirectPath = is_array($stateRow)
+        ? (string) ($stateRow['redirect_path'] ?? '/settings')
+        : '/settings';
 
     if (is_string($oauthError) && $oauthError !== '') {
-        profile_integration_redirect_to_app('/settings', [
+        if (is_array($stateRow)) {
+            profile_integration_consume_oauth_state($stateRow);
+        }
+
+        profile_integration_redirect_to_app($redirectPath, [
             'integrationProvider' => $provider,
             'integrationStatus' => 'error',
-            'integrationError' => substr($oauthError, 0, 80),
+            'integrationError' => profile_integration_oauth_error_code($oauthError, 'provider_error'),
         ]);
     }
 
     if (!is_string($state) || $state === '' || !is_string($code) || $code === '') {
-        profile_integration_redirect_to_app('/settings', [
+        if (is_array($stateRow)) {
+            profile_integration_consume_oauth_state($stateRow);
+        }
+
+        profile_integration_redirect_to_app($redirectPath, [
             'integrationProvider' => $provider,
             'integrationStatus' => 'error',
             'integrationError' => 'missing_callback_parameters',
         ]);
     }
-
-    $stateRow = profile_integration_oauth_state_row($provider, $state, (int) $session['user_id']);
 
     if ($stateRow === null) {
         profile_integration_redirect_to_app('/settings', [
@@ -142,32 +157,49 @@ function profile_integrations_oauth_callback(string $rawProvider): void
         ]);
     }
 
-    $codeVerifier = profile_integration_decrypt((string) $stateRow['code_verifier_cipher']);
-    $token = profile_integration_exchange_code($provider, $code, $codeVerifier);
-    $identity = profile_integration_fetch_identity($provider, $token);
-
-    $pdo = db();
-    $pdo->beginTransaction();
-
     try {
-        db_query(
-            'UPDATE profile_integration_oauth_states
-             SET consumed_at = UTC_TIMESTAMP()
-             WHERE id = :id',
-            ['id' => (int) $stateRow['id']]
-        );
-
-        profile_integration_upsert_account((int) $session['user_id'], $provider, $token, $identity);
-
-        $pdo->commit();
+        $codeVerifier = profile_integration_decrypt_or_throw((string) $stateRow['code_verifier_cipher']);
+        profile_integration_consume_oauth_state($stateRow);
+        $token = profile_integration_exchange_code($provider, $code, $codeVerifier);
+        $identity = profile_integration_fetch_identity($provider, $token);
+        profile_integration_upsert_account((int) $stateRow['user_id'], $provider, $token, $identity);
     } catch (Throwable $exception) {
-        $pdo->rollBack();
-        throw $exception;
+        profile_integration_redirect_to_app($redirectPath, [
+            'integrationProvider' => $provider,
+            'integrationStatus' => 'error',
+            'integrationError' => 'oauth_callback_failed',
+        ]);
     }
 
-    profile_integration_redirect_to_app((string) ($stateRow['redirect_path'] ?? '/settings'), [
+    profile_integration_redirect_to_app($redirectPath, [
         'integrationProvider' => $provider,
         'integrationStatus' => 'connected',
+    ]);
+}
+
+function profile_integrations_diagnostics(): void
+{
+    require_authenticated_session();
+
+    json_success([
+        'storageReady' => profile_integrations_storage_exists(),
+        'encryptionConfigured' => profile_integration_encryption_key() !== null,
+        'encryptionAvailable' => profile_integration_crypto_method() !== null,
+        'cryptoMethod' => profile_integration_crypto_method(),
+        'oauthStateExpiresIn' => PROFILE_INTEGRATION_OAUTH_STATE_SECONDS,
+        'providers' => array_map(
+            static function (string $provider): array {
+                $config = profile_integration_provider_config($provider);
+                $status = profile_integration_provider_public_status($provider);
+
+                return array_merge($status, [
+                    'redirectUri' => $provider === 'apple_music'
+                        ? null
+                        : profile_integration_redirect_uri($provider, $config),
+                ]);
+            },
+            PROFILE_INTEGRATION_PROVIDERS
+        ),
     ]);
 }
 
@@ -478,26 +510,43 @@ function profile_integration_oauth_state(string $provider, string $state, int $u
     return $row;
 }
 
-function profile_integration_oauth_state_row(string $provider, string $state, int $userId): ?array
+function profile_integration_oauth_state_row(string $provider, string $state, ?int $userId = null): ?array
 {
+    $userFilter = $userId === null ? '' : ' AND user_id = :user_id';
+    $params = [
+        'provider' => $provider,
+        'state_hash' => hash('sha256', $state),
+    ];
+
+    if ($userId !== null) {
+        $params['user_id'] = $userId;
+    }
+
     $statement = db_query(
-        'SELECT *
+        "SELECT *
          FROM profile_integration_oauth_states
          WHERE provider = :provider
            AND state_hash = :state_hash
-           AND user_id = :user_id
+           {$userFilter}
            AND consumed_at IS NULL
            AND expires_at > UTC_TIMESTAMP()
-         LIMIT 1',
-        [
-            'provider' => $provider,
-            'state_hash' => hash('sha256', $state),
-            'user_id' => $userId,
-        ]
+         LIMIT 1",
+        $params
     );
     $row = $statement->fetch();
 
     return is_array($row) ? $row : null;
+}
+
+function profile_integration_consume_oauth_state(array $stateRow): void
+{
+    db_query(
+        'UPDATE profile_integration_oauth_states
+         SET consumed_at = UTC_TIMESTAMP()
+         WHERE id = :id
+           AND consumed_at IS NULL',
+        ['id' => (int) $stateRow['id']]
+    );
 }
 
 function profile_integration_upsert_account(int $userId, string $provider, array $token, array $identity): void
@@ -670,7 +719,7 @@ function profile_integration_exchange_code(string $provider, string $code, strin
     $response = profile_integration_http_json('POST', $url, $headers, $body);
 
     if (!isset($response['access_token']) || !is_string($response['access_token'])) {
-        json_error('OAuth token exchange failed.', 502);
+        throw new RuntimeException('OAuth token exchange failed.');
     }
 
     return $response;
@@ -1545,20 +1594,38 @@ function profile_integration_encrypt(string $value): string
 
 function profile_integration_decrypt(string $value): string
 {
-    $key = profile_integration_require_encryption_key();
+    try {
+        return profile_integration_decrypt_or_throw($value);
+    } catch (RuntimeException $exception) {
+        json_error($exception->getMessage(), 500, $exception);
+    }
+}
+
+function profile_integration_decrypt_or_throw(string $value): string
+{
+    $key = profile_integration_encryption_key();
+    $method = profile_integration_crypto_method();
+
+    if ($key === null) {
+        throw new RuntimeException('Integration encryption is not configured.');
+    }
+
+    if ($method === null) {
+        throw new RuntimeException('Integration encryption is not available on this server. Enable PHP Sodium or OpenSSL.');
+    }
 
     if (str_starts_with($value, PROFILE_INTEGRATION_OPENSSL_PREFIX)) {
         return profile_integration_decrypt_openssl(substr($value, strlen(PROFILE_INTEGRATION_OPENSSL_PREFIX)), $key);
     }
 
-    if (profile_integration_crypto_method() !== 'sodium') {
-        json_error('Stored integration token requires PHP Sodium to decrypt.', 500);
+    if ($method !== 'sodium') {
+        throw new RuntimeException('Stored integration token requires PHP Sodium to decrypt.');
     }
 
     $decoded = base64_decode($value, true);
 
     if (!is_string($decoded) || strlen($decoded) <= SODIUM_CRYPTO_SECRETBOX_NONCEBYTES) {
-        json_error('Stored integration token is invalid.', 500);
+        throw new RuntimeException('Stored integration token is invalid.');
     }
 
     $nonce = substr($decoded, 0, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
@@ -1566,7 +1633,7 @@ function profile_integration_decrypt(string $value): string
     $plain = sodium_crypto_secretbox_open($cipher, $nonce, $key);
 
     if (!is_string($plain)) {
-        json_error('Stored integration token could not be decrypted.', 500);
+        throw new RuntimeException('Stored integration token could not be decrypted.');
     }
 
     return $plain;
@@ -1590,7 +1657,7 @@ function profile_integration_decrypt_openssl(string $value, string $key): string
     $decoded = base64_decode($value, true);
 
     if (!is_string($decoded) || strlen($decoded) <= 28) {
-        json_error('Stored integration token is invalid.', 500);
+        throw new RuntimeException('Stored integration token is invalid.');
     }
 
     $nonce = substr($decoded, 0, 12);
@@ -1599,7 +1666,7 @@ function profile_integration_decrypt_openssl(string $value, string $key): string
     $plain = openssl_decrypt($cipher, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $nonce, $tag);
 
     if (!is_string($plain)) {
-        json_error('Stored integration token could not be decrypted.', 500);
+        throw new RuntimeException('Stored integration token could not be decrypted.');
     }
 
     return $plain;
@@ -1614,6 +1681,21 @@ function profile_integration_redirect_to_app(string $redirectPath, array $query)
 
     header('Location: ' . $target, true, 303);
     exit;
+}
+
+function profile_integration_oauth_error_code(mixed $value, string $fallback): string
+{
+    if (!is_string($value)) {
+        return $fallback;
+    }
+
+    $trimmed = substr(trim($value), 0, 80);
+
+    if ($trimmed === '' || preg_match('/^[A-Za-z0-9_.-]+$/', $trimmed) !== 1) {
+        return $fallback;
+    }
+
+    return $trimmed;
 }
 
 function profile_integration_suggestion_items(string $provider, int $userId, array $account): array

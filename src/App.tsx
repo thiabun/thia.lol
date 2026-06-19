@@ -26,6 +26,11 @@ const NotificationsPage = lazy(() =>
     default: module.NotificationsPage,
   })),
 );
+const OnboardingPage = lazy(() =>
+  import("./pages/OnboardingPage").then((module) => ({
+    default: module.OnboardingPage,
+  })),
+);
 const ProfilePage = lazy(() =>
   import("./pages/ProfilePage").then((module) => ({ default: module.ProfilePage })),
 );
@@ -87,6 +92,7 @@ export default function App() {
             <Route path="rooms/:slug" element={<RoomPage />} />
             <Route path="chat" element={<ChatPage />} />
             <Route path="notifications" element={<NotificationsPage />} />
+            <Route path="onboarding" element={<OnboardingPage />} />
             <Route path="@/:handle" element={<ProfilePage />} />
             <Route path="terms" element={<TermsPage />} />
             <Route path="privacy" element={<PrivacyPage />} />

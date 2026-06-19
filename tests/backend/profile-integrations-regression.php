@@ -20,6 +20,14 @@ require_once dirname(__DIR__, 2) . '/api/integrations.php';
 require_once dirname(__DIR__, 2) . '/api/profile.php';
 
 $integrationSource = file_get_contents(dirname(__DIR__, 2) . '/api/integrations.php');
+$callbackSource = is_string($integrationSource)
+    ? substr(
+        $integrationSource,
+        strpos($integrationSource, 'function profile_integrations_oauth_callback') ?: 0,
+        (strpos($integrationSource, 'function profile_integrations_diagnostics') ?: strlen($integrationSource))
+            - (strpos($integrationSource, 'function profile_integrations_oauth_callback') ?: 0)
+    )
+    : '';
 
 function assert_true(bool $condition, string $message): void
 {
@@ -102,6 +110,13 @@ assert_true(is_string($integrationSource), 'integration source should be readabl
 assert_true(str_contains($integrationSource, 'function profile_integrations_provider_suggestions'), 'provider suggestions endpoint should exist');
 assert_true(str_contains($integrationSource, 'function profile_integration_redirect_to_app'), 'OAuth callback should redirect back to app');
 assert_true(str_contains($integrationSource, 'Apple Music'), 'Apple Music support should remain explicit');
+assert_true(!str_contains($callbackSource, 'require_authenticated_session'), 'OAuth callback should not require the browser session cookie');
+assert_true(str_contains($callbackSource, 'profile_integration_oauth_state_row($provider, $state)'), 'OAuth callback should look up state without session user id');
+assert_true(str_contains($callbackSource, "profile_integration_upsert_account((int) \$stateRow['user_id']"), 'OAuth callback should connect the stored state user');
+assert_true(str_contains($callbackSource, 'oauth_callback_failed'), 'OAuth callback should redirect token failures safely');
+assert_true(str_contains($integrationSource, 'function profile_integrations_diagnostics'), 'integration diagnostics endpoint should exist');
+assert_true(profile_integration_oauth_error_code('access_denied', 'fallback') === 'access_denied', 'OAuth provider error code should pass safe values');
+assert_true(profile_integration_oauth_error_code('bad value with spaces', 'fallback') === 'fallback', 'OAuth provider error code should reject unsafe values');
 
 $spotifyStatus = profile_integration_provider_public_status('spotify');
 assert_true($spotifyStatus['linkSupported'] === true, 'spotify links should be supported without OAuth');

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/read.php';
 
 const AUTH_GENERIC_LOGIN_ERROR = 'Invalid email or password.';
 
@@ -92,6 +93,8 @@ function auth_register(): void
             ]
         );
 
+        auth_ensure_onboarding_state($userId);
+
         db()->commit();
     } catch (PDOException $exception) {
         if (db()->inTransaction()) {
@@ -114,6 +117,21 @@ function auth_register(): void
     $session = create_session_for_user($userId);
 
     json_success(auth_session_response_payload($session), 201);
+}
+
+function auth_ensure_onboarding_state(int $userId): void
+{
+    if (!database_table_exists('user_onboarding_state')) {
+        return;
+    }
+
+    db_query(
+        'INSERT IGNORE INTO user_onboarding_state
+            (user_id, completed_steps_json, skipped_steps_json, provider_links_json)
+         VALUES
+            (:user_id, JSON_ARRAY(), JSON_ARRAY(), JSON_OBJECT())',
+        ['user_id' => $userId]
+    );
 }
 
 function auth_login(): void

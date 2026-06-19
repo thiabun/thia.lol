@@ -292,6 +292,10 @@ export function ProfilePage() {
   const [profileControlError, setProfileControlError] = useState<
     { handle: string; message: string } | undefined
   >();
+  const [integrationReloadKey, setIntegrationReloadKey] = useState(0);
+  const [integrationReturnNotice, setIntegrationReturnNotice] = useState<
+    { kind: "success" | "error"; message: string } | undefined
+  >();
 
   function setCurrentCanvasDraft(nextDraft: ProfileCanvasDraftState | undefined) {
     canvasDraftRef.current = nextDraft;
@@ -345,13 +349,17 @@ export function ProfilePage() {
     () => () => getProfileModules(normalizedHandle),
     [normalizedHandle],
   );
-  const integrationsLoader = useMemo(
-    () => () =>
-      isOwnProfile
+  const integrationsLoader = useMemo(() => {
+    const reloadKey = integrationReloadKey;
+
+    return () => {
+      void reloadKey;
+
+      return isOwnProfile
         ? getMyProfileIntegrations()
-        : Promise.resolve({ providers: [], accounts: [] }),
-    [isOwnProfile],
-  );
+        : Promise.resolve({ providers: [], accounts: [] });
+    };
+  }, [integrationReloadKey, isOwnProfile]);
   const profileState = useAsyncData(profileLoader);
   const postsState = useAsyncData(postsLoader);
   const repliesState = useAsyncData(repliesLoader);
@@ -690,6 +698,59 @@ export function ProfilePage() {
     location.search,
     profile,
   ]);
+
+  useEffect(() => {
+    if (!isOwnProfile) {
+      return;
+    }
+
+    const params = new URLSearchParams(location.search);
+    const provider = profileIntegrationProviderFromParam(
+      params.get("integrationProvider"),
+    );
+    const integrationStatus = params.get("integrationStatus");
+
+    if (!provider || !integrationStatus) {
+      return;
+    }
+
+    let active = true;
+
+    queueMicrotask(() => {
+      if (!active) {
+        return;
+      }
+
+      setIntegrationReturnNotice({
+        kind: integrationStatus === "connected" ? "success" : "error",
+        message:
+          integrationStatus === "connected"
+            ? `${profileCanvasProviderLabel(provider)} connected.`
+            : `${profileCanvasProviderLabel(provider)} did not connect${
+                params.get("integrationError")
+                  ? ` (${params.get("integrationError")})`
+                  : ""
+              }.`,
+      });
+      setIntegrationReloadKey((key) => key + 1);
+      params.delete("integrationProvider");
+      params.delete("integrationStatus");
+      params.delete("integrationError");
+      const nextSearch = params.toString();
+
+      navigate(
+        {
+          pathname: location.pathname,
+          search: nextSearch ? `?${nextSearch}` : "",
+        },
+        { replace: true },
+      );
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [isOwnProfile, location.pathname, location.search, navigate]);
 
   useEffect(() => {
     if (
@@ -1412,6 +1473,19 @@ export function ProfilePage() {
           description={renderedProfile.bio}
           path={`/@${renderedProfile.user.handle}`}
         />
+        {integrationReturnNotice ? (
+          <p
+            className={cn(
+              "rounded-card border p-3 text-sm font-semibold",
+              integrationReturnNotice.kind === "success"
+                ? "border-leaf/30 bg-leaf/15 text-leaf-ink"
+                : "border-rose/30 bg-rose/12 text-rose-ink",
+            )}
+            role={integrationReturnNotice.kind === "error" ? "alert" : "status"}
+          >
+            {integrationReturnNotice.message}
+          </p>
+        ) : null}
         {isOwnProfile && !canvasEditing ? (
           <ProfileTransitionEditor
             autosaveError={profileContentAutosaveError}
@@ -2899,6 +2973,18 @@ function profileCanvasProviderLabel(provider: ProfileIntegrationProvider): strin
   };
 
   return labels[provider];
+}
+
+function profileIntegrationProviderFromParam(
+  value: string | null,
+): ProfileIntegrationProvider | undefined {
+  return value === "spotify" ||
+    value === "apple_music" ||
+    value === "youtube" ||
+    value === "twitch" ||
+    value === "github"
+    ? value
+    : undefined;
 }
 
 function profileCanvasConnectionPlatformForProvider(

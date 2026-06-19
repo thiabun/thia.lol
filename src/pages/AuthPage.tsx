@@ -46,7 +46,7 @@ export function AuthPage({ mode }: AuthPageProps) {
         });
       }
 
-      navigate("/", { replace: true });
+      navigate(isRegister ? "/onboarding" : "/", { replace: true });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Something went wrong.");
     } finally {

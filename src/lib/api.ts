@@ -308,6 +308,39 @@ export type StartProfileIntegrationResult = {
   stateExpiresIn: number;
 };
 
+export type OnboardingStep =
+  | "profile_basics"
+  | "spotify"
+  | "youtube"
+  | "twitch"
+  | "github"
+  | "apple_music"
+  | "profile_canvas";
+
+export type OnboardingProviderLink = {
+  provider: ProfileIntegrationProvider;
+  url: string;
+  resourceType: string;
+  resourceId: string;
+  savedAt?: string | null;
+};
+
+export type OnboardingState = {
+  steps: OnboardingStep[];
+  completedSteps: OnboardingStep[];
+  skippedSteps: OnboardingStep[];
+  providerLinks: Partial<Record<ProfileIntegrationProvider, OnboardingProviderLink>>;
+  finishedAt?: string | null;
+  dismissedAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export type UpdateOnboardingInput =
+  | { action: "complete_step" | "skip_step"; step: OnboardingStep }
+  | { action: "save_provider_link"; provider: ProfileIntegrationProvider; url: string }
+  | { action: "finish" | "dismiss" | "reset" };
+
 export type RoomInput = {
   name: string;
   slug?: string;
@@ -821,6 +854,19 @@ export function resolveProfileIntegrationMetadata(
 
     return card;
   });
+}
+
+export function getOnboardingState(): Promise<OnboardingState> {
+  return apiGet<OnboardingState>("/me/onboarding").then(normalizeOnboardingState);
+}
+
+export function updateOnboardingState(
+  input: UpdateOnboardingInput,
+  csrfToken: string,
+): Promise<OnboardingState> {
+  return apiPatch<OnboardingState>("/me/onboarding", input, csrfToken).then(
+    normalizeOnboardingState,
+  );
 }
 
 export function getProfilePosts(handle: string): Promise<Post[]> {
@@ -1814,6 +1860,90 @@ function normalizeProfileIntegrationsResult(
           .filter(isProfileIntegrationAccount)
       : [],
   };
+}
+
+function normalizeOnboardingState(value: OnboardingState): OnboardingState {
+  return {
+    steps: Array.isArray(value.steps)
+      ? value.steps.map(normalizeOnboardingStep).filter(isOnboardingStep)
+      : defaultOnboardingSteps,
+    completedSteps: Array.isArray(value.completedSteps)
+      ? value.completedSteps.map(normalizeOnboardingStep).filter(isOnboardingStep)
+      : [],
+    skippedSteps: Array.isArray(value.skippedSteps)
+      ? value.skippedSteps.map(normalizeOnboardingStep).filter(isOnboardingStep)
+      : [],
+    providerLinks: normalizeOnboardingProviderLinks(value.providerLinks),
+    finishedAt: typeof value.finishedAt === "string" ? value.finishedAt : null,
+    dismissedAt: typeof value.dismissedAt === "string" ? value.dismissedAt : null,
+    createdAt: typeof value.createdAt === "string" ? value.createdAt : null,
+    updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : null,
+  };
+}
+
+const defaultOnboardingSteps: OnboardingStep[] = [
+  "profile_basics",
+  "spotify",
+  "youtube",
+  "twitch",
+  "github",
+  "apple_music",
+  "profile_canvas",
+];
+
+function normalizeOnboardingStep(value: unknown): OnboardingStep | undefined {
+  return value === "profile_basics" ||
+    value === "spotify" ||
+    value === "youtube" ||
+    value === "twitch" ||
+    value === "github" ||
+    value === "apple_music" ||
+    value === "profile_canvas"
+    ? value
+    : undefined;
+}
+
+function isOnboardingStep(value: OnboardingStep | undefined): value is OnboardingStep {
+  return value !== undefined;
+}
+
+function normalizeOnboardingProviderLinks(
+  value: OnboardingState["providerLinks"],
+): OnboardingState["providerLinks"] {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {};
+  }
+
+  const links: OnboardingState["providerLinks"] = {};
+
+  for (const [rawProvider, rawLink] of Object.entries(value)) {
+    const provider = normalizeProfileIntegrationProvider(rawProvider);
+
+    if (!provider || typeof rawLink !== "object" || rawLink === null) {
+      continue;
+    }
+
+    const link = rawLink as Partial<OnboardingProviderLink>;
+
+    if (
+      link.provider !== provider ||
+      typeof link.url !== "string" ||
+      typeof link.resourceType !== "string" ||
+      typeof link.resourceId !== "string"
+    ) {
+      continue;
+    }
+
+    links[provider] = {
+      provider,
+      url: link.url,
+      resourceType: link.resourceType,
+      resourceId: link.resourceId,
+      savedAt: typeof link.savedAt === "string" ? link.savedAt : null,
+    };
+  }
+
+  return links;
 }
 
 function normalizeProfileIntegrationProviderStatus(
