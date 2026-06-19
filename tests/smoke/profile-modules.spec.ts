@@ -547,17 +547,23 @@ test("full-page profile background and glass grid render safely", async ({ page 
     const gridElement = document.querySelector<HTMLElement>(
       '[data-testid="profile-module-grid"]',
     );
+    const footerElement = document.querySelector<HTMLElement>(
+      '[data-testid="site-footer"]',
+    );
 
-    if (!backdropElement || !gridElement) {
-      throw new Error("Profile background or grid did not render.");
+    if (!backdropElement || !gridElement || !footerElement) {
+      throw new Error("Profile background, grid, or footer did not render.");
     }
 
     const backdropRect = backdropElement.getBoundingClientRect();
+    const footerRect = footerElement.getBoundingClientRect();
     const gridStyles = window.getComputedStyle(gridElement);
 
     return {
+      backdropBottom: Math.round(backdropRect.bottom),
       backdropHeight: Math.round(backdropRect.height),
       backdropWidth: Math.round(backdropRect.width),
+      footerTop: Math.round(footerRect.top),
       gridBackground: gridStyles.backgroundColor,
       viewportHeight: window.innerHeight,
       viewportWidth: window.innerWidth,
@@ -566,6 +572,7 @@ test("full-page profile background and glass grid render safely", async ({ page 
 
   expect(metrics.backdropWidth).toBeGreaterThanOrEqual(metrics.viewportWidth);
   expect(metrics.backdropHeight).toBeGreaterThanOrEqual(metrics.viewportHeight);
+  expect(metrics.backdropBottom).toBeLessThanOrEqual(metrics.footerTop + 1);
   expect(metrics.gridBackground).not.toBe("rgba(0, 0, 0, 0)");
 });
 
@@ -1523,6 +1530,16 @@ test("direct canvas point selection creates a draft module through picker and se
   await page.getByRole("tab", { name: "Info" }).click();
   await page.getByTestId("profile-module-picker-text").click();
   await expect(page.getByTestId("profile-module-settings")).toBeVisible();
+  const pickedContent = page.locator(
+    '[data-testid^="profile-canvas-module-content-"][data-profile-canvas-module-configured="false"]',
+  );
+  await expect(pickedContent).toHaveAttribute(
+    "data-profile-canvas-module-configured",
+    "false",
+  );
+  await expect(
+    pickedContent.evaluate((element) => window.getComputedStyle(element).filter),
+  ).resolves.toBe("none");
   await page
     .getByTestId("profile-module-settings-body")
     .fill("Canvas note configured from settings.");
@@ -1531,9 +1548,13 @@ test("direct canvas point selection creates a draft module through picker and se
     { hasText: "Canvas note configured from settings." },
   );
   await expect(configuredContent).toBeVisible();
+  await expect(configuredContent).toHaveAttribute(
+    "data-profile-canvas-module-configured",
+    "true",
+  );
   await expect(
     configuredContent.evaluate((element) => window.getComputedStyle(element).filter),
-  ).resolves.toBe("none");
+  ).resolves.toContain("blur(1px)");
   await page.getByRole("button", { name: "Pin" }).click();
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("profile-module-settings")).toHaveCount(0);
@@ -1660,6 +1681,26 @@ test("public and editor canvas shell scales wide and glass slider changes opacit
   );
   expect(publicWidth1280).toBeGreaterThanOrEqual(930);
   expect(publicWidth1280).toBeLessThanOrEqual(990);
+  const publicMetrics1280 = await page.evaluate(() => {
+    const shell = document.querySelector<HTMLElement>(".profile-canvas-page-shell");
+    const grid = document.querySelector<HTMLElement>('[data-testid="profile-module-grid"]');
+
+    if (!shell || !grid) {
+      throw new Error("Profile canvas shell or grid did not render.");
+    }
+
+    const shellRect = shell.getBoundingClientRect();
+
+    return {
+      centerDelta: Math.abs(
+        shellRect.left + shellRect.width / 2 - window.innerWidth / 2,
+      ),
+      contentScale: Number(grid.dataset.profileGridContentScale),
+    };
+  });
+  expect(publicMetrics1280.centerDelta).toBeLessThanOrEqual(2);
+  expect(publicMetrics1280.contentScale).toBeGreaterThanOrEqual(0.74);
+  expect(publicMetrics1280.contentScale).toBeLessThan(1);
 
   await page.setViewportSize({ width: 1920, height: 1000 });
   await expect
@@ -1667,6 +1708,35 @@ test("public and editor canvas shell scales wide and glass slider changes opacit
       publicGrid.evaluate((element) => element.getBoundingClientRect().width),
     )
     .toBeGreaterThan(1320);
+  await expect
+    .poll(() =>
+      publicGrid.evaluate((element) =>
+        Number(element.getAttribute("data-profile-grid-content-scale")),
+      ),
+    )
+    .toBeGreaterThan(publicMetrics1280.contentScale);
+  const publicMetrics1920 = await page.evaluate(() => {
+    const shell = document.querySelector<HTMLElement>(".profile-canvas-page-shell");
+    const grid = document.querySelector<HTMLElement>('[data-testid="profile-module-grid"]');
+
+    if (!shell || !grid) {
+      throw new Error("Profile canvas shell or grid did not render.");
+    }
+
+    const shellRect = shell.getBoundingClientRect();
+
+    return {
+      centerDelta: Math.abs(
+        shellRect.left + shellRect.width / 2 - window.innerWidth / 2,
+      ),
+      contentScale: Number(grid.dataset.profileGridContentScale),
+    };
+  });
+  expect(publicMetrics1920.centerDelta).toBeLessThanOrEqual(2);
+  expect(publicMetrics1920.contentScale).toBeLessThanOrEqual(1.06);
+  expect(publicMetrics1920.contentScale).toBeGreaterThan(
+    publicMetrics1280.contentScale,
+  );
 
   await page.getByTestId("profile-edit-button").click();
   const directGrid = page.getByTestId("profile-canvas-direct-grid");

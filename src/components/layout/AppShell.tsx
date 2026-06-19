@@ -187,7 +187,7 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-canvas text-text">
+    <div className="flex min-h-dvh flex-col overflow-x-clip bg-canvas text-text">
       <div className="fixed inset-0 -z-10 bg-page-wash" />
       <SiteHeader
         navItems={publicNavItems}

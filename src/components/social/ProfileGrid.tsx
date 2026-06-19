@@ -117,10 +117,17 @@ export function ProfileGrid({
   const moduleSurfacePercent = Math.round(
     78 - (normalizedCanvasGlass / 92) * 42,
   );
+  const contentScale =
+    measuredCellSize === undefined
+      ? 1
+      : Math.min(1.06, Math.max(0.74, measuredCellSize / 86));
+  const contentScaleInverse = 1 / contentScale;
   const gridStyle = {
     "--profile-canvas-glass": String(normalizedCanvasGlass),
     "--profile-canvas-glass-alpha": `${canvasSurfacePercent}%`,
     "--profile-module-glass-alpha": `${moduleSurfacePercent}%`,
+    "--profile-grid-content-scale": contentScale.toFixed(4),
+    "--profile-grid-content-scale-inverse": contentScaleInverse.toFixed(4),
     "--profile-grid-gap": layoutPreset === "compact" ? "0.5rem" : "0.75rem",
     "--profile-grid-columns": String(maxColumns),
     "--profile-grid-active-columns": String(activeColumnCount),
@@ -147,6 +154,7 @@ export function ProfileGrid({
       data-profile-canvas-columns={maxColumns}
       data-profile-canvas-glass={normalizedCanvasGlass}
       data-profile-canvas-rows={activeRowBudget}
+      data-profile-grid-content-scale={contentScale.toFixed(3)}
       data-profile-layout-preset={layoutPreset}
       data-testid={testId}
       onClick={onClick}

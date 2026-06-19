@@ -3168,9 +3168,9 @@ function ProfileDirectCanvasEditor({
             profileGridModuleSpanSize(layout.colSpan, layout.rowSpan) ??
             getProfileModuleDefinition(module.type).defaultSize;
           const placeholder = module.type === "placeholder";
-          const unconfigured =
+          const configured =
             !placeholder &&
-            module.config.configured === false;
+            module.config.configured !== false;
           const placeholderMicro =
             placeholder && layout.colSpan <= 1 && layout.rowSpan <= 1;
           const placeholderSmall =
@@ -3188,9 +3188,10 @@ function ProfileDirectCanvasEditor({
               key={module.id}
               className={cn(
                 "z-10 rounded-card transition duration-fluid ease-fluid",
-                placeholder || unconfigured ? "backdrop-blur-veil" : undefined,
+                configured ? "backdrop-blur-veil" : undefined,
                 module.pinned ? "outline outline-1 outline-line-strong" : undefined,
               )}
+              data-profile-canvas-preview-blurred={configured ? "true" : undefined}
               layout={layout}
               pinned={module.pinned}
               size={size}
@@ -3282,8 +3283,11 @@ function ProfileDirectCanvasEditor({
                   <div
                     className={cn(
                       "h-full min-h-0 min-w-0",
-                      unconfigured ? "blur-[1px]" : undefined,
+                      configured ? "blur-[1px]" : undefined,
                     )}
+                    data-profile-canvas-module-configured={
+                      configured ? "true" : "false"
+                    }
                     data-testid={`profile-canvas-module-content-${module.id}`}
                   >
                     {onRenderModuleContent(module, size) ?? (
@@ -3942,7 +3946,7 @@ function ProfilePersonalBackdrop({ profile }: { profile: Profile }) {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none fixed inset-0 z-0 min-h-dvh w-full overflow-hidden"
+      className="profile-personal-backdrop pointer-events-none z-0 min-h-full overflow-hidden"
       data-profile-background-blur={blurTreatment}
       data-profile-background-source={videoUrl ? "video" : imageUrl ? "image" : "fallback"}
       data-profile-background-visibility={visibility.name}
@@ -4190,7 +4194,7 @@ function ProfileInfoSizedCard({
   const bannerUrl = safeProfileImageUrl(profile.bannerUrl);
   const showBanner = Boolean(bannerUrl) && !compact;
   const shellClass = cn(
-    "relative flex size-full min-h-0 min-w-0 flex-col overflow-hidden rounded-panel border",
+    "profile-grid-scaled-content relative flex size-full min-h-0 min-w-0 flex-col overflow-hidden rounded-panel border",
     editing
       ? "border-line bg-surface/68 shadow-soft backdrop-blur-veil"
       : "border-line bg-surface/52 shadow-soft backdrop-blur-veil",
@@ -4706,7 +4710,7 @@ function profileInfoNeedsEditPrompt(profile: Profile): boolean {
 function ProfileInfoBlankEditPrompt() {
   return (
     <div
-      className="grid h-full min-h-0 place-items-center rounded-panel border border-dashed border-line-strong bg-surface/48 p-4 text-center shadow-soft backdrop-blur-veil"
+      className="profile-grid-scaled-content grid h-full min-h-0 place-items-center rounded-panel border border-dashed border-line-strong bg-surface/48 p-4 text-center shadow-soft backdrop-blur-veil"
       data-testid="profile-info-edit-prompt"
     >
       <div className="max-w-64">
@@ -4736,7 +4740,7 @@ function FeaturedPostModuleCard({
   return (
     <article
       className={cn(
-        "h-full min-w-0 overflow-hidden rounded-card",
+        "profile-grid-scaled-content h-full min-w-0 overflow-hidden rounded-card",
         editing
           ? "border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
           : "border border-transparent bg-transparent p-0 shadow-none",
@@ -4769,7 +4773,7 @@ function FeaturedRoomModuleCard({
   return (
     <article
       className={cn(
-        "h-full min-w-0 overflow-hidden rounded-card",
+        "profile-grid-scaled-content h-full min-w-0 overflow-hidden rounded-card",
         editing
           ? "border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
           : "border border-transparent bg-transparent p-0 shadow-none",
@@ -4983,7 +4987,7 @@ function ProfileActivityModule({
   return (
     <div
       className={cn(
-        "flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-card",
+        "profile-grid-scaled-content flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-card",
         editing
           ? "border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
           : "border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil",

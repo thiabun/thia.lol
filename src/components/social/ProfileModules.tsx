@@ -596,7 +596,7 @@ export function ProfileModuleCard({
   return (
     <article
       className={cn(
-        "grid h-full min-h-0 min-w-0 overflow-hidden rounded-card focus-within:border-line-strong",
+        "profile-grid-scaled-content grid h-full min-h-0 min-w-0 overflow-hidden rounded-card focus-within:border-line-strong",
         editing
           ? transparentCollectionSurface
             ? "grid-rows-[1fr] border border-transparent bg-transparent p-0 shadow-none"
