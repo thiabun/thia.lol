@@ -9,3 +9,8 @@ uploads/
 backend/config/config.php
 config/config.php
 .env.local
+start-server.sh
+api/migrations
+api/migrations/
+.local-api.log
+.local-vite.log

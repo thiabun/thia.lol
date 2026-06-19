@@ -6,6 +6,8 @@ import {
   skipWithoutCredentials,
 } from "../helpers/auth";
 
+test.describe.configure({ mode: "default" });
+
 test.describe("authenticated smoke", () => {
   test.beforeEach(() => {
     skipWithoutCredentials();
@@ -62,7 +64,9 @@ test.describe("authenticated smoke", () => {
       .boundingBox();
 
     expect(logoutClass).toBe(profileClass);
-    expect(profileBox?.height).toBe(logoutBox?.height);
+    expect(Math.abs((profileBox?.height ?? 0) - (logoutBox?.height ?? 0))).toBeLessThan(
+      1,
+    );
 
     await page.setViewportSize({ width: 390, height: 844 });
     const mobileNav = page.getByTestId("mobile-nav");

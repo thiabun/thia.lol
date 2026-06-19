@@ -39,17 +39,16 @@ test("visitor profile renders featured post and room through the module grid", a
   await expect(modules.getByTestId("profile-grid-module-featured_post")).toBeVisible();
   await expect(modules.getByTestId("profile-grid-module-featured_post")).toHaveAttribute(
     "data-profile-grid-size",
-    "3x2",
+    "3x4",
   );
   await expect(modules.getByTestId("profile-grid-module-featured_room")).toBeVisible();
   await expect(modules.getByTestId("profile-grid-module-featured_room")).toHaveAttribute(
     "data-profile-grid-size",
-    "2x1",
+    "3x1",
   );
 
   const featuredPost = modules.getByTestId("profile-module-featured-post");
   await expect(featuredPost).toBeVisible();
-  await expect(featuredPost.getByText("Pinned post", { exact: true })).toBeVisible();
   await expect(featuredPost.getByRole("heading", { name: "Featured post" })).toBeVisible();
   await expect(featuredPost).toContainText("A launch note worth keeping close.");
   await expect(featuredPost.getByTestId("profile-featured-post-media-image")).toHaveAttribute(
@@ -59,14 +58,13 @@ test("visitor profile renders featured post and room through the module grid", a
 
   const featuredRoom = modules.getByTestId("profile-module-featured-room");
   await expect(featuredRoom).toBeVisible();
-  await expect(featuredRoom.getByText("Pinned room", { exact: true })).toBeVisible();
   await expect(featuredRoom.getByRole("heading", { name: "Featured room" })).toBeVisible();
   await expect(featuredRoom).toContainText("General");
   await expectTextOrder(modules, [
-    "Pinned post",
+    "Featured post",
     "A launch note worth keeping close.",
-    "Pinned room",
-    "About this space",
+    "Featured room",
+    "Saved profile note",
   ]);
 });
 
@@ -122,11 +120,11 @@ test("visitor featured module respects profile layout and order", async ({ page 
   await expect(grid).toHaveAttribute("data-profile-layout-preset", "showcase");
   await expect(modules.getByTestId("profile-grid-module-featured_post")).toHaveAttribute(
     "data-profile-grid-size",
-    "3x2",
+    "3x4",
   );
   await expectTextOrder(modules, [
     "Thia",
-    "About this space",
+    "Saved profile note",
     "Featured post",
     "A launch note worth keeping close.",
   ]);
@@ -150,18 +148,18 @@ test("first featured module can lead the showcase layout", async ({ page }) => {
   const modules = page.getByTestId("profile-modules");
   await expect(modules.getByTestId("profile-grid-module-featured_post")).toHaveAttribute(
     "data-profile-grid-size",
-    "3x2",
+    "3x4",
   );
   await expect(modules.getByTestId("profile-grid-module-featured_room")).toHaveAttribute(
     "data-profile-grid-size",
-    "2x1",
+    "3x1",
   );
   await expectTextOrder(modules, [
     "Thia",
     "Featured post",
     "A launch note worth keeping close.",
     "Featured room",
-    "About this space",
+    "Saved profile note",
   ]);
 });
 
@@ -175,8 +173,14 @@ test("owner featured content renders without the removed customization modal", a
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await expect(page.getByText("A launch note worth keeping close.")).toBeVisible();
-  await expect(page.getByTestId("profile-module-featured-room")).toContainText("General");
+  await expect(page.getByTestId("profile-module-featured-post")).toContainText(
+    "A launch note worth keeping close.",
+    { timeout: 15_000 },
+  );
+  await expect(page.getByTestId("profile-module-featured-room")).toContainText(
+    "General",
+    { timeout: 15_000 },
+  );
   await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
   await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
 });

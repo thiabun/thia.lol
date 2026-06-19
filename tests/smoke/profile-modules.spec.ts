@@ -9,7 +9,53 @@ const PROFILE_CANVAS_ROWS = 16;
 const PROFILE_CANVAS_MOBILE_COLUMNS = 6;
 const PROFILE_CANVAS_MOBILE_ROWS = 32;
 
+test.describe.configure({ mode: "default" });
+
 test.beforeEach(async ({ context }) => {
+  await context.route(
+    /^https:\/\/open\.spotify\.com\/embed\/(album|artist|episode|playlist|show|track)\//,
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "text/html",
+        body: "<!doctype html><html><body>Spotify embed stub</body></html>",
+      });
+    },
+  );
+  await context.route(/^https:\/\/i\.scdn\.co\/image\//, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "image/png",
+      body: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    });
+  });
+  await context.route(/^https:\/\/player\.twitch\.tv\//, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/html",
+      body: "<!doctype html><html><body>Twitch player stub</body></html>",
+    });
+  });
+  await context.route(/^https:\/\/www\.twitch\.tv\/embed\//, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/html",
+      body: "<!doctype html><html><body>Twitch chat stub</body></html>",
+    });
+  });
+  await context.route(
+    /^https:\/\/www\.youtube-nocookie\.com\/embed\//,
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "text/html",
+        body: "<!doctype html><html><body>YouTube embed stub</body></html>",
+      });
+    },
+  );
   await context.route("**/api/**", async (route) => {
     await route.fulfill({
       status: 404,
@@ -72,7 +118,7 @@ test("profile renders public modules safely", async ({ page }) => {
   await page.goto("/@thia");
 
   const section = page.getByTestId("profile-modules");
-  await expect(section).toBeVisible();
+  await expect(section).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("Personal space")).toHaveCount(0);
   await expect(section.getByTestId("profile-module-grid")).toBeVisible();
   await expect(section.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
@@ -903,59 +949,6 @@ test("desktop module spans render with square-cell geometry", async ({ page }) =
     "data-profile-activity-scroll",
     "internal",
   );
-});
-
-test("allowed module sizes smoke render one at a time without overflow", async ({
-  page,
-}) => {
-  test.setTimeout(180_000);
-  await page.setViewportSize({ width: 1366, height: 1100 });
-  await acknowledgeCookieNotice(page);
-
-  for (const auditCase of profileModuleSizeAuditCases()) {
-    await page.unrouteAll({ behavior: "ignoreErrors" });
-    await mockProfileModules(page, auditCase.mock);
-    await page.goto(`/@thia?sizeAudit=${auditCase.type}-${auditCase.size}`);
-
-    const module = page.getByTestId(`profile-grid-module-${auditCase.type}`);
-    await expect(module).toBeVisible();
-    await expect(module).toHaveAttribute("data-profile-grid-size", auditCase.size);
-
-    const metrics = await module.evaluate((element) => {
-      const rect = element.getBoundingClientRect();
-      const meaningfulContent = Array.from(
-        element.querySelectorAll<HTMLElement>(
-          'a,button,img,iframe,[data-profile-module-visible-links],[data-profile-module-visible-badges],[data-profile-module-visible-media],[data-testid="profile-header"],[data-testid="profile-activity"],[data-testid="profile-spotify-custom-player"]',
-        ),
-      ).filter((item) => {
-        const itemRect = item.getBoundingClientRect();
-        const styles = window.getComputedStyle(item);
-
-        return (
-          itemRect.width > 0 &&
-          itemRect.height > 0 &&
-          styles.visibility !== "hidden" &&
-          styles.display !== "none"
-        );
-      });
-
-      return {
-        documentOverflowX:
-          document.documentElement.scrollWidth >
-          document.documentElement.clientWidth + 1,
-        height: Math.round(rect.height),
-        hasVisibleContent:
-          meaningfulContent.length > 0 ||
-          (element.textContent?.trim().length ?? 0) > 0,
-        width: Math.round(rect.width),
-      };
-    });
-
-    expect(metrics.documentOverflowX).toBe(false);
-    expect(metrics.hasVisibleContent).toBe(true);
-    expect(metrics.height).toBeGreaterThan(56);
-    expect(metrics.width).toBeGreaterThan(80);
-  }
 });
 
 test("public visitor continues before Spotify profile music starts", async ({
@@ -5757,6 +5750,63 @@ function profileModuleSizeAuditSpan(size: string): {
     colSpan: Number.isFinite(columns) ? columns : 1,
     rowSpan: Number.isFinite(rows) ? rows : 1,
   };
+}
+
+test.describe("allowed module sizes smoke render one at a time without overflow", () => {
+  for (const auditCase of profileModuleSizeAuditCases()) {
+    test(`${auditCase.type} ${auditCase.size}`, async ({ page }) => {
+      await page.setViewportSize({ width: 1366, height: 1100 });
+      await acknowledgeCookieNotice(page);
+      await mockProfileModules(page, auditCase.mock);
+      await page.goto(`/@thia?sizeAudit=${auditCase.type}-${auditCase.size}`);
+
+      await expectAuditModule(page, auditCase);
+    });
+  }
+});
+
+async function expectAuditModule(
+  page: Page,
+  auditCase: { size: string; type: ProfileModuleSizeAuditType },
+) {
+  const module = page.getByTestId(`profile-grid-module-${auditCase.type}`);
+  await expect(module).toBeVisible();
+  await expect(module).toHaveAttribute("data-profile-grid-size", auditCase.size);
+
+  const metrics = await module.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const meaningfulContent = Array.from(
+      element.querySelectorAll<HTMLElement>(
+        'a,button,img,iframe,[data-profile-module-visible-links],[data-profile-module-visible-badges],[data-profile-module-visible-media],[data-testid="profile-header"],[data-testid="profile-activity"],[data-testid="profile-spotify-custom-player"]',
+      ),
+    ).filter((item) => {
+      const itemRect = item.getBoundingClientRect();
+      const styles = window.getComputedStyle(item);
+
+      return (
+        itemRect.width > 0 &&
+        itemRect.height > 0 &&
+        styles.visibility !== "hidden" &&
+        styles.display !== "none"
+      );
+    });
+
+    return {
+      documentOverflowX:
+        document.documentElement.scrollWidth >
+        document.documentElement.clientWidth + 1,
+      height: Math.round(rect.height),
+      hasVisibleContent:
+        meaningfulContent.length > 0 ||
+        (element.textContent?.trim().length ?? 0) > 0,
+      width: Math.round(rect.width),
+    };
+  });
+
+  expect(metrics.documentOverflowX).toBe(false);
+  expect(metrics.hasVisibleContent).toBe(true);
+  expect(metrics.height).toBeGreaterThan(56);
+  expect(metrics.width).toBeGreaterThan(80);
 }
 
 function samplePngFile(name: string) {

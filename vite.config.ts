@@ -2,6 +2,9 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
+const apiHost = process.env.THIA_LOCAL_API_HOST ?? "127.0.0.1";
+const apiPort = process.env.THIA_LOCAL_API_PORT ?? "8090";
+
 export default defineConfig({
   base: "/",
   plugins: [react(), tailwindcss()],
@@ -39,7 +42,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": {
-        target: "http://localhost:8090",
+        target: `http://${apiHost}:${apiPort}`,
         changeOrigin: true,
       },
     },

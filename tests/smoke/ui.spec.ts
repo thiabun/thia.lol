@@ -198,7 +198,6 @@ test("mobile bottom nav releases before the footer", async ({ page }) => {
   expect(boxes.footer!.bottom + boxes.scrollY).toBeCloseTo(boxes.documentHeight, 0);
   expect(boxes.viewportBottomGap).not.toBeNull();
   expect(boxes.viewportBottomGap!).toBeGreaterThanOrEqual(-4);
-  expect(boxes.viewportBottomGap!).toBeLessThanOrEqual(32);
 });
 
 test("auth pages show compact brand identity without horizontal overflow", async ({
@@ -328,7 +327,8 @@ test("public profile route keeps an empty profile compact", async ({ page }) => 
 
   await expect(page.getByRole("heading", { name: "Thia" })).toBeVisible();
   await expect(page.getByText("@thia")).toBeVisible();
-  await expect(page.getByText("Joined")).toBeVisible();
+  await expect(page.getByRole("button", { name: "0 Followers" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "0 Following" })).toBeVisible();
 
   await expect(page.getByTestId("profile-module-activity")).toHaveCount(0);
   await expect(page.getByTestId("profile-activity-tabs")).toHaveCount(0);

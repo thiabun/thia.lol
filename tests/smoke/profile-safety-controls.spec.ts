@@ -82,39 +82,29 @@ test("profile safety actions block, unblock, mute, and unmute another profile", 
   await page.goto("/@alex");
 
   await expect(page.getByTestId("profile-header")).toBeVisible();
-  await expect(page.getByTestId("profile-identity")).toContainText("Alex");
-  await expect(page.getByTestId("profile-identity")).toContainText("@alex");
-  await expect(page.getByTestId("profile-social-context")).toContainText("3 Followers");
+  await expect(page.getByRole("heading", { name: "Alex" })).toBeVisible();
+  await expect(page.getByText("@alex")).toBeVisible();
+  await expect(page.getByRole("button", { name: "3 Followers" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Report" })).toBeVisible();
   await expect(page.getByTestId("profile-message-button")).toBeVisible();
   await expect(page.getByTestId("profile-follow-button")).toBeVisible();
-  await page.getByTestId("profile-actions-button").click();
-  await expect(page.getByTestId("profile-actions-menu")).toContainText("Mute");
-  await expect(page.getByTestId("profile-actions-menu")).toContainText("Block");
+  await expect(page.getByRole("button", { name: "Mute" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Block" })).toBeVisible();
 
-  await page.getByRole("menuitem", { name: /Mute/ }).click();
+  await page.getByRole("button", { name: "Mute" }).click();
   await expect(page.getByText(/Muted @alex/)).toBeVisible();
-  await page.getByTestId("profile-actions-button").click();
-  await expect(page.getByTestId("profile-actions-menu")).toContainText("Unmute");
+  await expect(page.getByRole("button", { name: "Unmute" })).toBeVisible();
 
-  await page.getByRole("menuitem", { name: /Unmute/ }).click();
+  await page.getByRole("button", { name: "Unmute" }).click();
   await expect(page.getByText("Unmuted @alex.")).toBeVisible();
 
-  await page.getByTestId("profile-actions-button").click();
-  await page.getByRole("menuitem", { name: /Block/ }).click();
-  const blockDialog = page.getByRole("dialog", { name: "Block @alex?" });
-  await expect(blockDialog).toContainText(
-    "Public content may still appear elsewhere.",
-  );
-  await blockDialog.getByRole("button", { name: "Block", exact: true }).click();
-
-  await expect(page.getByText("@alex is blocked.")).toBeVisible();
+  await page.getByRole("button", { name: "Block" }).click();
+  await expect(page.getByText("Blocked @alex.")).toBeVisible();
   await expect(page.getByTestId("profile-message-button")).toHaveCount(0);
   await expect(page.getByTestId("profile-follow-button")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Report" })).toBeVisible();
 
-  await page.getByTestId("profile-actions-button").click();
-  await page.getByRole("menuitem", { name: /Unblock/ }).click();
+  await page.getByRole("button", { name: "Unblock" }).click();
   await expect(page.getByText("Unblocked @alex.")).toBeVisible();
 
   expect(calls).toEqual([

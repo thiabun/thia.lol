@@ -397,7 +397,7 @@ async function mockProfileReportApi(page: Page) {
       body: JSON.stringify({ ok: true, data: { badges: [], featuredBadges: [] } }),
     }),
   );
-  for (const suffix of ["posts", "replies", "reblogs", "rooms"]) {
+  for (const suffix of ["posts", "replies", "reblogs", "rooms", "modules"]) {
     await page.route(`**/api/profiles/alex/${suffix}`, (route) =>
       route.fulfill({
         contentType: "application/json",

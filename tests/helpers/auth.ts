@@ -36,8 +36,23 @@ export async function fetchAuthMe(page: Page): Promise<AuthMeResponse> {
       credentials: "include",
       headers: { Accept: "application/json" },
     });
+    const body = await response.text();
 
-    return (await response.json()) as AuthMeResponse;
+    if (!body) {
+      return {
+        ok: false,
+        error: `Empty /api/auth/me response (${response.status})`,
+      };
+    }
+
+    try {
+      return JSON.parse(body) as AuthMeResponse;
+    } catch {
+      return {
+        ok: false,
+        error: `Invalid /api/auth/me JSON response (${response.status})`,
+      };
+    }
   });
 }
 

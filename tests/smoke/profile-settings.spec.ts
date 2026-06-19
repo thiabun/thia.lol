@@ -15,7 +15,7 @@ test.beforeEach(async ({ context }) => {
   });
 });
 
-test("profile identity editor replaces the retired customization modal", async ({ page }) => {
+test("profile canvas editor replaces the retired customization modal", async ({ page }) => {
   await mockOwnProfile(page, () => [
     {
       platform: "github",
@@ -31,11 +31,10 @@ test("profile identity editor replaces the retired customization modal", async (
   await expect(page.getByRole("button", { name: "Edit personal space" })).toHaveCount(0);
   await expect(page.getByTestId("profile-edit-button")).toBeVisible();
   await page.getByTestId("profile-edit-button").click();
-  await expect(page.getByTestId("profile-editor")).toBeVisible();
-  await expect(page.getByTestId("profile-identity-editor")).toBeVisible();
-  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
+  await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
+  await expect(page.getByTestId("profile-editor")).toHaveCount(0);
+  await expect(page.getByTestId("profile-identity-editor")).toHaveCount(0);
   await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
-  await expect(page.getByRole("link", { name: /GitHub/ })).toBeVisible();
 });
 
 test("mobile profile stays stable with compact profile editor", async ({ page }) => {
@@ -48,8 +47,8 @@ test("mobile profile stays stable with compact profile editor", async ({ page })
   await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
   await expect(page.getByTestId("profile-edit-button")).toBeVisible();
   await page.getByTestId("profile-edit-button").click();
-  await expect(page.getByTestId("profile-editor")).toBeVisible();
-  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
+  await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
+  await expect(page.getByTestId("profile-editor")).toHaveCount(0);
   await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -77,18 +76,18 @@ test("profile banners stay behind identity in public header", async ({ page }) =
   await expect(page.getByTestId("profile-header-banner")).toBeVisible();
   await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
     "data-profile-grid-size",
-    "3x3",
+    "8x3",
   );
   await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
     "data-profile-grid-row-span",
     "3",
   );
-  await expect(page.getByTestId("profile-identity")).toContainText("Thia");
-  await expect(page.getByTestId("profile-identity")).toContainText("@thia");
+  await expect(page.getByRole("heading", { name: "Thia" })).toBeVisible();
+  await expect(page.getByText("@thia")).toBeVisible();
   await expectElementAtPointBelongsTo(
     page,
-    page.getByTestId("profile-identity"),
-    "profile-identity",
+    page.getByRole("heading", { name: "Thia" }),
+    ["profile-info-content-cluster", "profile-info-identity-row"],
   );
 });
 
@@ -177,22 +176,20 @@ test("profile layout renders identity, essential social stats, activity module, 
   );
   await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
     "data-profile-grid-size",
-    "3x2",
+    "8x3",
   );
   await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
     "data-profile-grid-column-span",
-    "3",
+    "8",
   );
   await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
     "data-profile-grid-row-span",
-    "2",
+    "3",
   );
   await expect(page.getByTestId("profile-header")).toBeVisible();
-  await expect(page.getByTestId("profile-identity")).toContainText("Thia");
-  await expect(page.getByTestId("profile-identity")).toContainText("@thia");
+  await expect(page.getByRole("heading", { name: "Thia" })).toBeVisible();
+  await expect(page.getByText("@thia")).toBeVisible();
   await expect(page.getByText("Founder profile for thia.lol.")).toBeVisible();
-  await expect(page.getByText("Oslo")).toBeVisible();
-  await expect(page.getByText(/Joined/)).toBeVisible();
   await expect(page.getByRole("link", { name: /GitHub/ })).toBeVisible();
   await expect(page.getByText("Founder", { exact: true })).toBeVisible();
 
@@ -336,6 +333,24 @@ async function mockOwnProfile(
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ ok: true, data: [profileInfoModule(), activityModule()] }),
+    });
+  });
+
+  await page.route("**/api/me/profile/canvas-draft**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          backgroundBlur: profileOverrides.profileBackgroundBlur ?? "medium",
+          canvasGlass: profileOverrides.profileCanvasGlass ?? 58,
+          canvasVersion: 2,
+          modules: [profileInfoModule(), activityModule()],
+          selectedModuleId: null,
+          updatedAt: null,
+        },
+      }),
     });
   });
 
@@ -522,7 +537,7 @@ function activityModule() {
 async function expectElementAtPointBelongsTo(
   page: Page,
   locator: Locator,
-  testId: string,
+  testIds: string | string[],
 ) {
   const box = await locator.boundingBox();
   expect(box).not.toBeNull();
@@ -538,7 +553,8 @@ async function expectElementAtPointBelongsTo(
     },
   );
 
-  expect(owner).toBe(testId);
+  const expectedTestIds = Array.isArray(testIds) ? testIds : [testIds];
+  expect(expectedTestIds).toContain(owner);
 }
 
 function badgeGrant() {

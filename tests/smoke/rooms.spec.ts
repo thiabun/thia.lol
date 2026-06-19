@@ -110,8 +110,8 @@ test("Create room button shows for logged-in users", async ({ page }) => {
   await expect(modal.getByLabel("Slug")).toBeVisible();
   await expect(modal.getByLabel("Summary")).toBeVisible();
   await expect(modal.getByLabel("Room rules")).toBeVisible();
-  await expect(modal.getByText("Change icon")).toBeVisible();
-  await expect(modal.getByText("Change banner")).toBeVisible();
+  await expect(modal.locator("label", { hasText: "Change icon" })).toBeVisible();
+  await expect(modal.locator("label", { hasText: "Change banner" })).toBeVisible();
 });
 
 test("join and leave room API require auth", async ({ page }) => {
