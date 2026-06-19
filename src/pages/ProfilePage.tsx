@@ -1493,7 +1493,7 @@ export function ProfilePage() {
           roomsError={roomsState.error}
           roomsLoading={roomsState.loading}
           size={size}
-          title={module.title ?? "Activity"}
+          title={module.title ?? "Feed"}
           onTabChange={setActiveTab}
         />
       );
@@ -2726,7 +2726,12 @@ function profileCanvasDefaultClientLayout(
 
   return {
     column: module.type === "profile_info" ? 3 : 1,
-    row: module.type === "profile_info" ? 1 : index + 1,
+    row:
+      module.type === "profile_info"
+        ? 1
+        : module.type === "activity"
+          ? 4
+          : index + 1,
     colSpan: span.columns,
     rowSpan: span.rows,
   };

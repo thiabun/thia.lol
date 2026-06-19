@@ -75,7 +75,7 @@ const policies: Record<string, PolicyPageContent> = {
       {
         title: "Profiles, modules, and integrations",
         items: [
-          "Profiles can include modules such as profile info, about/status, links, badges, gallery/media, creator cards, music cards, featured posts, featured rooms, activity, and integration-rich cards.",
+          "Profiles can include modules such as profile info, about/status, links, badges, gallery/media, creator cards, music cards, featured posts, featured rooms, feed, and integration-rich cards.",
           "You may connect or use supported provider links for Spotify, Apple Music, YouTube, Twitch, GitHub, and future supported integrations when those integrations are available.",
           "OAuth connections, provider API metadata, and generated embeds are optional profile features. Do not use them to mislead people about live status, endorsement, sponsorship, verification, or ownership.",
           "Removing a profile module removes it from the canvas; it does not delete the underlying post, room, repository, provider account, track, video, stream, or linked third-party content.",

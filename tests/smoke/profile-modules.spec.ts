@@ -4551,6 +4551,17 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(modulesApi).toContain("PROFILE_RETIRED_MODULE_TYPES");
   expect(modulesApi).toContain("ensure_profile_canvas_builtin_modules");
   expect(modulesApi).toContain("ensure_profile_info_module");
+  expect(modulesApi).toContain("ensure_profile_feed_module($userId);");
+  expect(modulesApi).toContain("function profile_activity_module_payload");
+  expect(modulesApi).toContain("PROFILE_ACTIVITY_MODULE_TYPE => 'Feed'");
+  expect(modulesApi).toContain("PROFILE_ACTIVITY_MODULE_TYPE => '4x6'");
+  expect(modulesApi).toContain(
+    "profile_module_preference_exists_including_deleted($userId, PROFILE_ACTIVITY_MODULE_TYPE)",
+  );
+  expect(modulesApi).toContain("profile_upgrade_default_feed_module($userId);");
+  expect(moduleRegistry).toContain("label: \"Feed\"");
+  expect(moduleRegistry).toContain("fallbackTitle: \"Feed\"");
+  expect(moduleRegistry).toContain("defaultSize: \"4x6\"");
   expect(modulesApi).toContain("includeDeleted");
   expect(modulesApi).toContain("profile_modules_restore");
   expect(modulesApi).toContain("profile_canvas_reflow_existing_modules");
@@ -5433,10 +5444,25 @@ function moduleFromPayload(
 }
 
 function ensureTestBuiltInModules(modules: Array<Record<string, unknown>>) {
+  const shouldAddDefaultFeed = modules.length === 0;
   const result = [...modules];
 
   if (!result.some((module) => module.type === "profile_info")) {
     result.unshift(profileInfoModule());
+  }
+
+  if (
+    shouldAddDefaultFeed &&
+    !result.some((module) => module.type === "activity")
+  ) {
+    result.push(
+      withAuditLayout(
+        activityModule({ id: 9, position: 2 }),
+        "4x6",
+        4,
+        1,
+      ),
+    );
   }
 
   return result.map((module, index) => ({
@@ -6848,7 +6874,7 @@ function activityModule(
   return {
     id: overrides.id ?? 9,
     type: "activity",
-    title: overrides.title ?? "Activity",
+    title: overrides.title ?? "Feed",
     config: {},
     visibility: "public",
     position: overrides.position ?? 1,

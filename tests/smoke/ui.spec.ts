@@ -321,7 +321,9 @@ test("chat page is honest about sign-in state", async ({ page }) => {
   await expect(page.getByText("Sign in to see messages.")).toBeVisible();
 });
 
-test("public profile route keeps an empty profile compact", async ({ page }) => {
+test("public profile route renders the default Feed for a blank profile", async ({
+  page,
+}) => {
   await mockPublicShell(page);
   await page.goto("/@thia");
 
@@ -330,9 +332,13 @@ test("public profile route keeps an empty profile compact", async ({ page }) => 
   await expect(page.getByRole("button", { name: "0 Followers" })).toBeVisible();
   await expect(page.getByRole("button", { name: "0 Following" })).toBeVisible();
 
-  await expect(page.getByTestId("profile-module-activity")).toHaveCount(0);
-  await expect(page.getByTestId("profile-activity-tabs")).toHaveCount(0);
-  await expect(page.getByText("No posts.")).toHaveCount(0);
+  await expect(page.getByTestId("profile-grid-module-activity")).toHaveAttribute(
+    "data-profile-grid-size",
+    "4x6",
+  );
+  await expect(page.getByTestId("profile-module-activity")).toBeVisible();
+  await expect(page.getByTestId("profile-activity-tabs")).toBeVisible();
+  await expect(page.getByText("No posts yet")).toBeVisible();
 });
 
 test("authenticated post button opens an accessible composer select", async ({
@@ -661,7 +667,6 @@ async function mockProfileRoutes(page: Page, handle: string) {
     "rooms",
     "followers",
     "following",
-    "modules",
   ]) {
     await page.route(`**/api/profiles/${handle}/${suffix}`, (route) =>
       route.fulfill({
@@ -670,6 +675,16 @@ async function mockProfileRoutes(page: Page, handle: string) {
       }),
     );
   }
+
+  await page.route(`**/api/profiles/${handle}/modules`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: [profileInfoModule(), defaultFeedModule()],
+      }),
+    }),
+  );
 
   await page.route(`**/api/profiles/${handle}/badges`, (route) =>
     route.fulfill({
@@ -747,6 +762,50 @@ function makeRoom() {
     latestActivityAt: null,
     createdAt: "2026-06-10 00:00:00",
     updatedAt: "2026-06-10 00:00:00",
+  };
+}
+
+function profileInfoModule() {
+  return {
+    id: 0,
+    type: "profile_info",
+    title: "Profile info",
+    config: {},
+    visibility: "public",
+    position: 1,
+    pinned: true,
+    layout: {
+      column: 3,
+      row: 1,
+      colSpan: 8,
+      rowSpan: 3,
+    },
+    status: "active",
+    schemaVersion: 1,
+    createdAt: null,
+    updatedAt: null,
+  };
+}
+
+function defaultFeedModule() {
+  return {
+    id: 0,
+    type: "activity",
+    title: "Feed",
+    config: {},
+    visibility: "public",
+    position: 2,
+    pinned: false,
+    layout: {
+      column: 1,
+      row: 4,
+      colSpan: 4,
+      rowSpan: 6,
+    },
+    status: "active",
+    schemaVersion: 1,
+    createdAt: null,
+    updatedAt: null,
   };
 }
 

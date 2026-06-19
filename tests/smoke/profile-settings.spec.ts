@@ -523,7 +523,7 @@ function activityModule() {
   return {
     id: 9,
     type: "activity",
-    title: "Activity",
+    title: "Feed",
     config: {},
     visibility: "public",
     position: 1,

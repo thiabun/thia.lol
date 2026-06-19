@@ -48,6 +48,13 @@ function assert_php_rejected(string $code, string $expectedError): void
     assert_true(str_contains($output, $expectedError), "expected rejection containing {$expectedError}");
 }
 
+assert_true(str_contains($profileModulesSource, 'ensure_profile_feed_module($userId);'), 'blank profile built-ins should ensure the default Feed module');
+assert_true(str_contains($profileModulesSource, "PROFILE_ACTIVITY_MODULE_TYPE => 'Feed'"), 'activity module label should be Feed');
+assert_true(str_contains($profileModulesSource, "PROFILE_ACTIVITY_MODULE_TYPE => '4x6'"), 'activity default size should be roomy');
+assert_true(str_contains($profileModulesSource, 'function profile_activity_module_payload'), 'public blank profiles should expose a synthetic Feed payload');
+assert_true(str_contains($profileModulesSource, 'profile_module_preference_exists_including_deleted($userId, PROFILE_ACTIVITY_MODULE_TYPE)'), 'deleted Feed preferences should block automatic recreation');
+assert_true(str_contains($profileModulesSource, 'profile_upgrade_default_feed_module($userId);'), 'blank profiles with old default activity should upgrade to roomy Feed');
+
 $about = profile_module_config('about', ['body' => 'A concise personal note.'], 123);
 assert_true($about['body'] === 'A concise personal note.', 'about body mismatch');
 
@@ -64,6 +71,58 @@ assert_true($aboutStatus['workingOn'] === 'Expressive profile modules', 'about w
 
 $activity = profile_module_config('activity', [], 123);
 assert_true($activity === [], 'activity config should be empty');
+assert_true(profile_canvas_default_size('activity', 0) === '4x6', 'activity should default to the roomy Feed size');
+assert_true(profile_module_type_label('activity') === 'Feed', 'activity module should be labeled Feed');
+
+$defaultFeedPayload = profile_activity_module_payload(2);
+assert_true($defaultFeedPayload['title'] === 'Feed', 'synthetic activity payload should be titled Feed');
+assert_true($defaultFeedPayload['layout']['colSpan'] === 4, 'synthetic Feed should use roomy columns');
+assert_true($defaultFeedPayload['layout']['rowSpan'] === 6, 'synthetic Feed should use roomy rows');
+assert_true($defaultFeedPayload['layout']['row'] === 4, 'synthetic Feed should sit below profile info');
+assert_true(
+    profile_feed_module_looks_default([
+        'title' => null,
+        'config_json' => '{}',
+        'grid_column' => null,
+        'grid_row' => null,
+        'grid_col_span' => 3,
+        'grid_row_span' => 4,
+    ]),
+    'partial old activity spans should be treated as default Feed'
+);
+assert_true(
+    profile_feed_module_looks_default([
+        'title' => null,
+        'config_json' => '{}',
+        'grid_column' => null,
+        'grid_row' => null,
+        'grid_col_span' => null,
+        'grid_row_span' => null,
+    ]),
+    'missing old activity layout should be treated as default Feed'
+);
+assert_true(
+    !profile_feed_module_looks_default([
+        'title' => 'Custom feed',
+        'config_json' => '{}',
+        'grid_column' => null,
+        'grid_row' => null,
+        'grid_col_span' => null,
+        'grid_row_span' => null,
+    ]),
+    'custom activity titles should block automatic Feed upgrades'
+);
+assert_true(
+    !profile_feed_module_looks_default([
+        'title' => null,
+        'config_json' => '{}',
+        'grid_column' => 2,
+        'grid_row' => 5,
+        'grid_col_span' => 6,
+        'grid_row_span' => 10,
+    ]),
+    'custom activity layouts should block automatic Feed upgrades'
+);
 
 $profileInfo = profile_module_config('profile_info', [], 123);
 assert_true($profileInfo === [], 'profile info config should be empty');

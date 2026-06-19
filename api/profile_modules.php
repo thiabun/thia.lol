@@ -229,6 +229,14 @@ function profile_modules_public_index(string $handle): void
         $modules[] = profile_info_module_payload(0);
     }
 
+    if (
+        !profile_modules_payload_contains_type($modules, PROFILE_ACTIVITY_MODULE_TYPE)
+        && profile_modules_payload_is_blank_profile($modules)
+        && profile_modules_should_have_default_feed($userId)
+    ) {
+        $modules[] = profile_activity_module_payload(2);
+    }
+
     profile_modules_sort_payload($modules);
 
     json_success($modules);
@@ -910,7 +918,11 @@ function profile_canvas_default_layout_for_type(string $type, int $index): array
 
     return [
         'column' => $type === PROFILE_INFO_MODULE_TYPE ? 3 : 1,
-        'row' => $type === PROFILE_INFO_MODULE_TYPE ? 1 : min(PROFILE_CANVAS_ROWS, $index + 1),
+        'row' => match ($type) {
+            PROFILE_INFO_MODULE_TYPE => 1,
+            PROFILE_ACTIVITY_MODULE_TYPE => 4,
+            default => min(PROFILE_CANVAS_ROWS, $index + 1),
+        },
         'colSpan' => $colSpan,
         'rowSpan' => $rowSpan,
     ];
@@ -2212,7 +2224,7 @@ function profile_canvas_default_size(string $type, int $index): string
         'spotify_artist',
         'apple_music_artist',
         'youtube_music_artist' => '4x3',
-        PROFILE_ACTIVITY_MODULE_TYPE => $index <= 2 ? '3x4' : '4x6',
+        PROFILE_ACTIVITY_MODULE_TYPE => '4x6',
         PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE => '1x1',
         default => '1x1',
     };
@@ -2256,6 +2268,7 @@ function profile_modules_include_deleted_requested(): bool
 function ensure_profile_canvas_builtin_modules(int $userId): void
 {
     ensure_profile_info_module($userId);
+    ensure_profile_feed_module($userId);
 }
 
 function profile_modules_payload(array $rows, bool $public): array
@@ -2282,6 +2295,17 @@ function profile_modules_payload_contains_type(array $modules, string $type): bo
     }
 
     return false;
+}
+
+function profile_modules_payload_is_blank_profile(array $modules): bool
+{
+    foreach ($modules as $module) {
+        if (($module['type'] ?? null) !== PROFILE_INFO_MODULE_TYPE) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 function profile_module_payload(array $row, bool $public): ?array
@@ -2446,7 +2470,7 @@ function profile_module_type_label(string $type): string
         PROFILE_INFO_MODULE_TYPE => 'Profile info',
         PROFILE_FEATURED_POST_MODULE_TYPE => 'Featured post',
         PROFILE_FEATURED_ROOM_MODULE_TYPE => 'Featured room',
-        PROFILE_ACTIVITY_MODULE_TYPE => 'Activity',
+        PROFILE_ACTIVITY_MODULE_TYPE => 'Feed',
         default => 'Module',
     };
 }
@@ -2457,7 +2481,7 @@ function profile_module_delete_message(string $type): string
         PROFILE_INFO_MODULE_TYPE => 'Profile info stays visible as the identity anchor.',
         PROFILE_FEATURED_POST_MODULE_TYPE => 'Featured post was removed from the profile canvas.',
         PROFILE_FEATURED_ROOM_MODULE_TYPE => 'Featured room was removed from the profile canvas.',
-        PROFILE_ACTIVITY_MODULE_TYPE => 'Activity was removed from the profile canvas.',
+        PROFILE_ACTIVITY_MODULE_TYPE => 'Feed was removed from the profile canvas.',
         default => 'Module was removed from the profile canvas.',
     };
 }
@@ -2830,6 +2854,29 @@ function profile_modules_active_count(int $userId): int
     return is_array($row) ? (int) ($row['module_count'] ?? 0) : 0;
 }
 
+function profile_modules_non_default_active_count(int $userId): int
+{
+    $statement = db_query(
+        'SELECT COUNT(*) AS module_count
+         FROM profile_modules
+         WHERE user_id = :user_id
+           AND status <> :deleted_status
+           AND type <> :profile_info_type
+           AND type <> :legacy_featured_type
+           AND type <> :activity_type',
+        [
+            'user_id' => $userId,
+            'deleted_status' => 'deleted',
+            'profile_info_type' => PROFILE_INFO_MODULE_TYPE,
+            'legacy_featured_type' => PROFILE_FEATURED_LEGACY_MODULE_TYPE,
+            'activity_type' => PROFILE_ACTIVITY_MODULE_TYPE,
+        ]
+    );
+    $row = $statement->fetch();
+
+    return is_array($row) ? (int) ($row['module_count'] ?? 0) : 0;
+}
+
 function profile_modules_next_position(int $userId): int
 {
     $statement = db_query(
@@ -2871,6 +2918,23 @@ function profile_singleton_module_preference_exists(int $userId, string $type): 
     return is_array($statement->fetch());
 }
 
+function profile_module_preference_exists_including_deleted(int $userId, string $type): bool
+{
+    $statement = db_query(
+        'SELECT id
+         FROM profile_modules
+         WHERE user_id = :user_id
+           AND type = :module_type
+         LIMIT 1',
+        [
+            'user_id' => $userId,
+            'module_type' => $type,
+        ]
+    );
+
+    return is_array($statement->fetch());
+}
+
 function profile_builtin_module_position(int $userId, string $type): ?int
 {
     $statement = db_query(
@@ -2906,6 +2970,138 @@ function ensure_profile_info_module(int $userId): void
     );
 }
 
+function ensure_profile_feed_module(int $userId): void
+{
+    if (profile_modules_should_have_default_feed($userId)) {
+        $profileInfoPosition = profile_builtin_module_position($userId, PROFILE_INFO_MODULE_TYPE) ?? 1;
+
+        profile_insert_builtin_module_at(
+            $userId,
+            PROFILE_ACTIVITY_MODULE_TYPE,
+            $profileInfoPosition + 1,
+            'public',
+            'active'
+        );
+
+        return;
+    }
+
+    profile_upgrade_default_feed_module($userId);
+}
+
+function profile_modules_should_have_default_feed(int $userId): bool
+{
+    return profile_modules_non_default_active_count($userId) === 0
+        && !profile_module_preference_exists_including_deleted($userId, PROFILE_ACTIVITY_MODULE_TYPE);
+}
+
+function profile_upgrade_default_feed_module(int $userId): void
+{
+    if (profile_modules_non_default_active_count($userId) !== 0) {
+        return;
+    }
+
+    $module = profile_default_feed_module_record($userId);
+
+    if ($module === null || !profile_feed_module_looks_default($module)) {
+        return;
+    }
+
+    $profileInfoPosition = profile_builtin_module_position($userId, PROFILE_INFO_MODULE_TYPE) ?? 1;
+
+    db_query(
+        "UPDATE profile_modules
+         SET title = CASE WHEN title = :legacy_title OR title = '' THEN NULL ELSE title END,
+             position = :position,
+             grid_column = 1,
+             grid_row = 4,
+             grid_col_span = 4,
+             grid_row_span = 6,
+             grid_pinned = 0,
+             updated_at = CURRENT_TIMESTAMP()
+         WHERE id = :id",
+        [
+            'legacy_title' => 'Activity',
+            'position' => $profileInfoPosition + 1,
+            'id' => (int) $module['id'],
+        ]
+    );
+}
+
+function profile_default_feed_module_record(int $userId): ?array
+{
+    $statement = db_query(
+        'SELECT *
+         FROM profile_modules
+         WHERE user_id = :user_id
+           AND type = :module_type
+           AND status <> :deleted_status
+         ORDER BY position ASC, id ASC
+         LIMIT 1',
+        [
+            'user_id' => $userId,
+            'module_type' => PROFILE_ACTIVITY_MODULE_TYPE,
+            'deleted_status' => 'deleted',
+        ]
+    );
+    $row = $statement->fetch();
+
+    return is_array($row) ? $row : null;
+}
+
+function profile_feed_module_looks_default(array $module): bool
+{
+    return profile_feed_module_title_is_default($module['title'] ?? null)
+        && profile_feed_module_config_is_default($module['config_json'] ?? '{}')
+        && profile_feed_module_layout_is_defaultish($module);
+}
+
+function profile_feed_module_title_is_default(mixed $title): bool
+{
+    return $title === null || $title === '' || $title === 'Activity' || $title === 'Feed';
+}
+
+function profile_feed_module_config_is_default(mixed $rawConfig): bool
+{
+    $config = profile_module_json(is_string($rawConfig) ? $rawConfig : '{}');
+
+    foreach ($config as $key => $value) {
+        if (!in_array($key, ['configured', 'canvasSize'], true)) {
+            return false;
+        }
+
+        if ($key === 'canvasSize' && !in_array($value, ['3x4', '4x6'], true)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function profile_feed_module_layout_is_defaultish(array $module): bool
+{
+    $column = profile_module_saved_grid_value($module['grid_column'] ?? null);
+    $row = profile_module_saved_grid_value($module['grid_row'] ?? null);
+    $colSpan = profile_module_saved_grid_value($module['grid_col_span'] ?? null);
+    $rowSpan = profile_module_saved_grid_value($module['grid_row_span'] ?? null);
+
+    if ($column === null && $row === null && $colSpan === null && $rowSpan === null) {
+        return true;
+    }
+
+    if ($colSpan === 3 && $rowSpan === 4 && ($column === null || $column === 1) && ($row === null || $row === 1 || $row === 4)) {
+        return true;
+    }
+
+    if ($colSpan === 4 && $rowSpan === 6 && ($column === null || $column === 1) && ($row === null || $row === 4)) {
+        return true;
+    }
+
+    return ($column === 1 && $row === 4 && $colSpan === 4 && $rowSpan === 6)
+        || ($column === 1 && $row === 1 && $colSpan === 3 && $rowSpan === 4)
+        || ($column === 1 && $row === 4 && $colSpan === 3 && $rowSpan === 4);
+}
+
 function profile_insert_builtin_module_at(
     int $userId,
     string $type,
@@ -2916,7 +3112,11 @@ function profile_insert_builtin_module_at(
     $position = max(1, $position);
     [$defaultColSpan, $defaultRowSpan] = array_map('intval', explode('x', profile_canvas_default_size($type, 0), 2));
     $defaultColumn = $type === PROFILE_INFO_MODULE_TYPE ? 3 : 1;
-    $defaultRow = $type === PROFILE_INFO_MODULE_TYPE ? 1 : 1;
+    $defaultRow = match ($type) {
+        PROFILE_INFO_MODULE_TYPE => 1,
+        PROFILE_ACTIVITY_MODULE_TYPE => 4,
+        default => 1,
+    };
     $defaultPinned = $type === PROFILE_INFO_MODULE_TYPE ? 1 : 0;
 
     db_query(
@@ -2970,6 +3170,29 @@ function profile_info_module_payload(int $position): array
             'row' => 1,
             'colSpan' => 8,
             'rowSpan' => 3,
+        ],
+        'status' => 'active',
+        'schemaVersion' => PROFILE_MODULE_SCHEMA_VERSION,
+        'createdAt' => null,
+        'updatedAt' => null,
+    ];
+}
+
+function profile_activity_module_payload(int $position): array
+{
+    return [
+        'id' => 0,
+        'type' => PROFILE_ACTIVITY_MODULE_TYPE,
+        'title' => 'Feed',
+        'config' => [],
+        'visibility' => 'public',
+        'position' => $position,
+        'pinned' => false,
+        'layout' => [
+            'column' => 1,
+            'row' => 4,
+            'colSpan' => 4,
+            'rowSpan' => 6,
         ],
         'status' => 'active',
         'schemaVersion' => PROFILE_MODULE_SCHEMA_VERSION,
