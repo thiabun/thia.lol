@@ -279,14 +279,17 @@ export function ProfileGridModule({
   onClickCapture,
 }: ProfileGridModuleProps) {
   const span = profileGridModuleSizeSpan(size);
+  const columnSpan = layout?.colSpan ?? span.columns;
+  const rowSpan = layout?.rowSpan ?? span.rows;
+  const mobileColumnSpan = Math.min(PROFILE_CANVAS_MOBILE_COLUMNS, columnSpan);
+  const mobileRowSpan = columnSpan === 8 && rowSpan === 6 ? 4 : rowSpan;
   const moduleStyle = {
     "--profile-grid-column": String(layout?.column ?? 1),
     "--profile-grid-row": String(layout?.row ?? 1),
-    "--profile-grid-column-span": String(layout?.colSpan ?? span.columns),
-    "--profile-grid-mobile-column-span": String(
-      Math.min(PROFILE_CANVAS_MOBILE_COLUMNS, layout?.colSpan ?? span.columns),
-    ),
-    "--profile-grid-row-span": String(layout?.rowSpan ?? span.rows),
+    "--profile-grid-column-span": String(columnSpan),
+    "--profile-grid-mobile-column-span": String(mobileColumnSpan),
+    "--profile-grid-row-span": String(rowSpan),
+    "--profile-grid-mobile-row-span": String(mobileRowSpan),
   } as CSSProperties;
 
   return (

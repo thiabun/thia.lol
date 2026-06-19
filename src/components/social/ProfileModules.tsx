@@ -1149,7 +1149,6 @@ function ProfileModuleStaticCard({
 
 function ProfileIntegrationRichCard({
   autoplayRequestId = 0,
-  editing = false,
   fallbackLabel,
   icon,
   integration,
@@ -1249,41 +1248,6 @@ function ProfileIntegrationRichCard({
     );
   }
 
-  if (editing && integration.provider === "twitch" && showPrimaryEmbed) {
-    return (
-      <a
-        className="flex h-full min-h-0 min-w-0 items-center gap-3 rounded-card border border-line bg-canvas/55 p-3 text-sm transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-        href={integration.sourceUrl}
-        rel="noopener noreferrer"
-        target="_blank"
-        data-testid="profile-twitch-edit-preview"
-      >
-        <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-card border border-line bg-surface/80 text-text">
-          {metadata.imageUrl ? (
-            <img
-              alt=""
-              className="size-full object-cover"
-              decoding="async"
-              loading="lazy"
-              src={metadata.imageUrl}
-            />
-          ) : (
-            icon
-          )}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-semibold text-text">
-            {title}
-          </span>
-          <span className="mt-0.5 block truncate text-xs text-muted">
-            Twitch preview
-          </span>
-        </span>
-        <ExternalLink aria-hidden="true" size={15} className="shrink-0 text-muted" />
-      </a>
-    );
-  }
-
   if (showTwitchStreamChat && primaryEmbed && primaryEmbedSrc && twitchChatSrc) {
     return (
       <div
@@ -1316,6 +1280,34 @@ function ProfileIntegrationRichCard({
           />
         </div>
       </div>
+    );
+  }
+
+  if (
+    showPrimaryEmbed &&
+    primaryEmbed &&
+    primaryEmbedSrc &&
+    (integration.provider === "twitch" || integration.provider === "youtube")
+  ) {
+    return (
+      <iframe
+        className="block h-full min-h-0 w-full rounded-card border-0 bg-black"
+        title={primaryEmbed.title}
+        src={primaryEmbedSrc}
+        height={primaryEmbedHeight}
+        loading={integration.provider === "twitch" ? "eager" : "lazy"}
+        referrerPolicy="strict-origin-when-cross-origin"
+        allow={primaryEmbed.allow}
+        sandbox={
+          integration.provider === "twitch"
+            ? twitchEmbedSandbox
+            : "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+        }
+        allowFullScreen
+        data-profile-embed-provider={integration.provider}
+        data-profile-media-only-embed="true"
+        data-testid={`profile-integration-embed-${integration.provider}`}
+      />
     );
   }
 

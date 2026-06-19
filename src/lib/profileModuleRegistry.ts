@@ -110,7 +110,7 @@ function sizes(columns: number[], rows: number[]): ProfileGridModuleSize[] {
 
 const uploadedImageSizes = sizes([1, 2, 3, 4, 5, 6], [1, 2, 3, 4, 5, 6]);
 const placeholderEnvelopeSizes = sizes(
-  [1, 2, 3, 4, 5, 6],
+  [1, 2, 3, 4, 5, 6, 7, 8],
   [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
 );
 const gallerySlideshowSizes = sizes([2, 3, 4, 5, 6], [2, 3, 4, 5, 6]);
@@ -339,7 +339,7 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   twitch_channel: {
-    allowedSizes: ["2x1", "3x2", "4x3", "5x3", "6x4"],
+    allowedSizes: ["2x1", "3x2", "4x3", "5x3", "6x4", "8x6"],
     category: "video",
     defaultSize: "3x2",
     description: "Twitch status, stream, or stream with chat.",
@@ -661,6 +661,7 @@ const profileModuleSizeLabels: Partial<
     "4x3": "Stream",
     "5x3": "Stream",
     "6x4": "Stream + chat",
+    "8x6": "Desktop stream + chat",
   },
   youtube_video: {
     "3x4": "Short",

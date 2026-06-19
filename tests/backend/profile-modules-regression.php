@@ -428,6 +428,8 @@ assert_true(profile_canvas_span_allowed('text', 4, 5), 'specific text module sho
 assert_true(profile_canvas_span_allowed('gallery_media', 4, 3), 'gallery should allow 4x3');
 assert_true(profile_canvas_span_allowed('uploaded_image', 6, 6), 'uploaded image should allow 6x6');
 assert_true(!profile_canvas_span_allowed('uploaded_image', 7, 1), 'uploaded image should reject spans wider than 6');
+assert_true(profile_canvas_span_allowed('twitch_channel', 8, 6), 'Twitch channel should allow desktop 8x6 stream chat');
+assert_true(!profile_canvas_span_allowed('youtube_stream', 8, 6), 'YouTube stream should still reject 8x6');
 assert_true(profile_canvas_span_allowed('youtube_video', 6, 4), 'YouTube video should allow 6x4');
 assert_true(profile_canvas_span_allowed('github_repo', 6, 4), 'GitHub repo should allow 6x4');
 assert_true(profile_canvas_span_allowed('music', 3, 2), 'legacy music should allow 3x2');
@@ -445,6 +447,17 @@ assert_true(profile_canvas_glass_opacity('92') === 92, 'canvas glass should allo
 assert_true(profile_canvas_draft_module_type('placeholder') === 'placeholder', 'draft placeholder type should validate');
 assert_true(profile_canvas_span_allowed('placeholder', 6, 6), 'placeholder should allow 6x6 draft envelopes');
 assert_true(profile_canvas_span_allowed('placeholder', 6, 10), 'placeholder should allow 6x10 draft envelopes');
+assert_true(profile_canvas_span_allowed('placeholder', 8, 10), 'placeholder should allow 8-wide draft envelopes');
+
+$twitchConnectionLink = profile_module_link_for_integration_account([
+    'provider' => 'twitch',
+    'providerAccountId' => '123',
+    'providerHandle' => 'thiabun',
+    'displayName' => 'Thia',
+    'revokedAt' => null,
+]);
+assert_true($twitchConnectionLink['platform'] === 'twitch', 'Twitch integration connection platform mismatch');
+assert_true($twitchConnectionLink['url'] === 'https://www.twitch.tv/thiabun', 'Twitch integration connection URL mismatch');
 
 $placeholderDraft = profile_canvas_draft_modules(
     [

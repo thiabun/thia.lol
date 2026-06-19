@@ -128,6 +128,13 @@ body[data-profile-canvas-editing="true"] [data-app-mobile-nav="true"] {
   display: none;
 }
 
+.profile-canvas-viewport-shell {
+  width: 100vw;
+  max-width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+}
+
 .profile-canvas-page-shell {
   width: min(calc(100vw - 2rem), clamp(960px, 75vw, 1800px));
   max-width: none;
@@ -137,10 +144,9 @@ body[data-profile-canvas-editing="true"] [data-app-mobile-nav="true"] {
 .profile-personal-backdrop {
   position: absolute;
   inset-block: 0;
-  left: 50%;
-  width: 100vw;
-  max-width: 100vw;
-  translate: -50% 0;
+  left: 0;
+  width: 100%;
+  max-width: 100%;
 }
 
 .profile-grid-scaled-content {
@@ -168,7 +174,7 @@ body[data-profile-canvas-editing="true"] [data-app-mobile-nav="true"] {
 
 .profile-grid-module {
   grid-column: span var(--profile-grid-mobile-column-span);
-  grid-row: span var(--profile-grid-row-span);
+  grid-row: span var(--profile-grid-mobile-row-span, var(--profile-grid-row-span));
   align-self: stretch;
   height: 100%;
   justify-self: stretch;
@@ -195,27 +201,19 @@ body[data-profile-canvas-editing="true"] [data-app-mobile-nav="true"] {
 .profile-grid-canvas
   > .profile-grid-module[data-profile-grid-placement="manual"] {
   grid-column: span var(--profile-grid-mobile-column-span);
-  grid-row: span var(--profile-grid-row-span);
+  grid-row: span var(--profile-grid-mobile-row-span, var(--profile-grid-row-span));
 }
 
 @media (max-width: 1023px) {
   .profile-canvas-page-shell {
-    left: auto;
-    margin-inline: auto;
-    translate: none;
-    width: 100%;
+    width: min(calc(100vw - 1rem), 100%);
   }
 }
 
 @media (min-width: 1024px) {
-  .profile-canvas-page-shell {
-    left: 50%;
-    margin-inline: 0;
-    translate: -50% 0;
-  }
-
   .profile-grid-module {
     grid-column: span var(--profile-grid-column-span);
+    grid-row: span var(--profile-grid-row-span);
   }
 
   .profile-grid-canvas

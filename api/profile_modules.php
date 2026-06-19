@@ -882,14 +882,32 @@ function profile_canvas_draft_state(int $userId): array
     $state = profile_module_json((string) $row['draft_json']);
     $default = profile_canvas_draft_default_state($userId);
 
+    $modules = profile_canvas_draft_modules($state['modules'] ?? $default['modules'], $userId);
+
     return [
         'backgroundBlur' => profile_canvas_background_blur($state['backgroundBlur'] ?? $default['backgroundBlur']),
         'canvasGlass' => profile_canvas_glass_opacity($state['canvasGlass'] ?? $default['canvasGlass']),
         'canvasVersion' => PROFILE_CANVAS_VERSION,
-        'modules' => profile_canvas_draft_modules($state['modules'] ?? $default['modules'], $userId),
+        'modules' => profile_canvas_draft_output_modules($modules, $userId),
         'selectedModuleId' => profile_canvas_draft_selected_module_id($state['selectedModuleId'] ?? null),
         'updatedAt' => $row['updated_at'] ?? null,
     ];
+}
+
+function profile_canvas_draft_output_modules(array $modules, int $userId): array
+{
+    return array_map(
+        static function (array $module) use ($userId): array {
+            $type = (string) ($module['type'] ?? '');
+
+            if ($type !== PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE) {
+                $module['config'] = profile_module_output_config($type, $module['config'] ?? [], $userId);
+            }
+
+            return $module;
+        },
+        $modules
+    );
 }
 
 function profile_canvas_draft_default_state(int $userId): array
@@ -923,6 +941,11 @@ function profile_canvas_draft_row(int $userId): ?array
 function profile_canvas_save_draft_state(int $userId, array $state): void
 {
     $state['canvasVersion'] = PROFILE_CANVAS_VERSION;
+
+    if (isset($state['modules'])) {
+        $state['modules'] = profile_canvas_draft_modules($state['modules'], $userId);
+    }
+
     $payload = json_encode($state, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
     db_query(
@@ -1453,7 +1476,7 @@ function profile_canvas_span_allowed(string $type, int $colSpan, int $rowSpan): 
 function profile_canvas_allowed_sizes(string $type): array
 {
     $uploadedImageSizes = profile_canvas_size_range(1, 6, 1, 6);
-    $placeholderEnvelopeSizes = profile_canvas_size_range(1, 6, 1, PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS);
+    $placeholderEnvelopeSizes = profile_canvas_size_range(1, PROFILE_CANVAS_PROFILE_INFO_MAX_COLUMNS, 1, PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS);
     $gallerySlideshowSizes = profile_canvas_size_range(2, 6, 2, 6);
     $textSizes = profile_canvas_size_range(3, 4, 2, 5);
 
@@ -1467,7 +1490,8 @@ function profile_canvas_allowed_sizes(string $type): array
         PROFILE_GALLERY_MEDIA_MODULE_TYPE, 'gallery_slideshow' => $gallerySlideshowSizes,
         'uploaded_image' => $uploadedImageSizes,
         'gallery_feed' => ['3x6', '4x6'],
-        PROFILE_CREATOR_LIVE_MODULE_TYPE, 'twitch_channel' => ['2x1', '3x2', '4x3', '5x3', '6x4'],
+        PROFILE_CREATOR_LIVE_MODULE_TYPE => ['2x1', '3x2', '4x3', '5x3', '6x4'],
+        'twitch_channel' => ['2x1', '3x2', '4x3', '5x3', '6x4', '8x6'],
         'youtube_video' => ['3x4', '4x3', '6x4'],
         'youtube_stream' => ['4x3', '5x3', '6x4'],
         'youtube_playlist' => ['4x3', '5x3', '2x4', '3x6'],
@@ -1508,14 +1532,19 @@ function profile_canvas_normalize_span(string $type, int $colSpan, int $rowSpan)
         return [5, 3];
     }
 
-    $maxColumns = $type === PROFILE_INFO_MODULE_TYPE
-        ? PROFILE_CANVAS_PROFILE_INFO_MAX_COLUMNS
-        : PROFILE_CANVAS_MAX_MODULE_SPAN;
-
     return [
-        max(1, min($maxColumns, $colSpan)),
+        max(1, min(profile_canvas_max_column_span($type), $colSpan)),
         max(1, min(profile_canvas_max_row_span($type), $rowSpan)),
     ];
+}
+
+function profile_canvas_max_column_span(string $type): int
+{
+    return $type === PROFILE_INFO_MODULE_TYPE
+        || $type === 'twitch_channel'
+        || $type === PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE
+        ? PROFILE_CANVAS_PROFILE_INFO_MAX_COLUMNS
+        : PROFILE_CANVAS_MAX_MODULE_SPAN;
 }
 
 function profile_canvas_max_row_span(string $type): int
@@ -2484,6 +2513,10 @@ function profile_module_featured_room_can_restore(int $roomId, int $userId): boo
 
 function profile_module_output_config(string $type, array $config, int $userId): array
 {
+    if ($type === 'links' || $type === PROFILE_CONNECTIONS_MODULE_TYPE) {
+        return profile_module_config_with_connected_integration_links($config, $userId);
+    }
+
     if (
         $type === PROFILE_CREATOR_LIVE_MODULE_TYPE ||
         $type === PROFILE_MUSIC_MODULE_TYPE ||
@@ -2507,6 +2540,138 @@ function profile_module_output_config(string $type, array $config, int $userId):
     }
 
     return $config;
+}
+
+function profile_module_config_with_connected_integration_links(array $config, int $userId): array
+{
+    $links = is_array($config['links'] ?? null) ? $config['links'] : [];
+    $seen = [];
+
+    foreach ($links as $link) {
+        if (is_array($link) && is_string($link['url'] ?? null)) {
+            $seen[strtolower((string) ($link['platform'] ?? 'website') . ':' . $link['url'])] = true;
+        }
+    }
+
+    foreach (profile_module_connected_integration_links($userId) as $link) {
+        $key = strtolower((string) $link['platform'] . ':' . $link['url']);
+
+        if (isset($seen[$key])) {
+            continue;
+        }
+
+        $seen[$key] = true;
+        $links[] = $link;
+    }
+
+    return ['links' => $links];
+}
+
+function profile_module_connected_integration_links(int $userId): array
+{
+    if (!function_exists('profile_integrations_storage_exists') || !profile_integrations_storage_exists()) {
+        return [];
+    }
+
+    $links = [];
+
+    foreach (profile_integration_accounts_for_user($userId) as $account) {
+        if (($account['revokedAt'] ?? null) !== null) {
+            continue;
+        }
+
+        $link = profile_module_link_for_integration_account($account);
+
+        if ($link !== null) {
+            $links[] = $link;
+        }
+    }
+
+    return $links;
+}
+
+function profile_module_link_for_integration_account(array $account): ?array
+{
+    $provider = (string) ($account['provider'] ?? '');
+    $handle = profile_module_integration_account_handle($account);
+    $accountId = trim((string) ($account['providerAccountId'] ?? ''));
+    $platform = match ($provider) {
+        'github' => 'github',
+        'spotify' => 'spotify',
+        'twitch' => 'twitch',
+        'youtube' => 'youtube',
+        default => null,
+    };
+
+    if ($platform === null) {
+        return null;
+    }
+
+    $url = match ($provider) {
+        'github' => $handle === null ? null : 'https://github.com/' . rawurlencode(ltrim($handle, '@')),
+        'spotify' => $accountId === '' ? null : 'https://open.spotify.com/user/' . rawurlencode($accountId),
+        'twitch' => $handle === null ? null : 'https://www.twitch.tv/' . rawurlencode(ltrim($handle, '@')),
+        'youtube' => profile_module_youtube_account_url($account, $accountId),
+        default => null,
+    };
+
+    if ($url === null) {
+        return null;
+    }
+
+    return [
+        'label' => profile_module_integration_link_label(
+            $account['displayName'] ?? $handle,
+            profile_integration_provider_label($provider)
+        ),
+        'platform' => $platform,
+        'url' => $url,
+    ];
+}
+
+function profile_module_youtube_account_url(array $account, string $accountId): ?string
+{
+    $handle = is_string($account['providerHandle'] ?? null)
+        ? trim((string) $account['providerHandle'])
+        : '';
+
+    if ($handle !== '' && preg_match('/^@[A-Za-z0-9_.-]+$/', $handle) === 1) {
+        return 'https://www.youtube.com/' . $handle;
+    }
+
+    return $accountId === '' ? null : 'https://www.youtube.com/channel/' . rawurlencode($accountId);
+}
+
+function profile_module_integration_account_handle(array $account): ?string
+{
+    foreach (['providerHandle', 'displayName', 'providerAccountId'] as $key) {
+        $value = $account[$key] ?? null;
+
+        if (is_string($value) && trim($value) !== '') {
+            return trim($value);
+        }
+    }
+
+    return null;
+}
+
+function profile_module_integration_link_label(mixed $value, string $fallback): string
+{
+    if (!is_string($value)) {
+        return $fallback;
+    }
+
+    $label = trim(preg_replace('/\s+/', ' ', $value) ?? $value);
+
+    if (
+        $label === ''
+        || profile_module_text_is_unsafe($label)
+        || profile_module_text_length($label) > PROFILE_MODULE_LINK_LABEL_MAX
+    ) {
+        return $fallback;
+    }
+
+    return $label;
 }
 
 function profile_module_json(string $value): array

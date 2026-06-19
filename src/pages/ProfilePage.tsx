@@ -79,6 +79,7 @@ import {
   getProfileCanvasDraft,
   muteProfile,
   removeProfileFollower,
+  resolveProfileIntegrationMetadata,
   startProfileIntegration,
   unblockProfile,
   unfollowProfile,
@@ -110,7 +111,6 @@ import {
   PROFILE_CANVAS_DESKTOP_COLUMNS,
   PROFILE_CANVAS_DESKTOP_ROWS,
   PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS,
-  PROFILE_CANVAS_MAX_MODULE_COLUMNS,
   PROFILE_CANVAS_MAX_MODULE_ROWS,
   PROFILE_CANVAS_PROFILE_INFO_COLUMNS,
   PROFILE_CANVAS_VERSION,
@@ -131,6 +131,7 @@ import type {
   Profile,
   ProfileBackgroundBlur,
   ProfileExternalConnection,
+  ProfileIntegrationCard,
   ProfileModule,
   ProfileModuleLayout,
   ProfileModuleLink,
@@ -212,6 +213,7 @@ export function ProfilePage() {
   const profileContentAutosaveRequestRef = useRef(0);
   const profileCanvasDraftAutosaveRequestRef = useRef(0);
   const profileCanvasDraftAutosaveTimerRef = useRef<number | undefined>(undefined);
+  const canvasDraftRef = useRef<ProfileCanvasDraftState | undefined>(undefined);
   const nextDraftModuleIdRef = useRef(-1000);
   const [activeTab, setActiveTab] = useState<ProfileTab>("feed");
   const [activePanel, setActivePanel] = useState<ProfilePanel | undefined>();
@@ -272,6 +274,11 @@ export function ProfilePage() {
   const [profileControlError, setProfileControlError] = useState<
     { handle: string; message: string } | undefined
   >();
+
+  function setCurrentCanvasDraft(nextDraft: ProfileCanvasDraftState | undefined) {
+    canvasDraftRef.current = nextDraft;
+    setCanvasDraft(nextDraft);
+  }
 
   useEffect(() => {
     if (typeof document === "undefined" || !canvasEditing) {
@@ -611,7 +618,7 @@ export function ProfilePage() {
     try {
       const draft = await getProfileCanvasDraft();
 
-      setCanvasDraft(draft);
+      setCurrentCanvasDraft(draft);
       setDraftBackgroundBlur(draft.backgroundBlur);
       setDraftProfile({
         ...profile,
@@ -736,7 +743,7 @@ export function ProfilePage() {
   }, []);
 
   function queueCanvasDraftAutosave(nextDraft: ProfileCanvasDraftState) {
-    setCanvasDraft(nextDraft);
+    setCurrentCanvasDraft(nextDraft);
     setDraftBackgroundBlur(nextDraft.backgroundBlur);
     setCanvasDraftAutosaveState("pending");
     setCanvasDraftAutosaveError(undefined);
@@ -770,7 +777,7 @@ export function ProfilePage() {
             return;
           }
 
-          setCanvasDraft(savedDraft);
+          setCurrentCanvasDraft(savedDraft);
           setDraftBackgroundBlur(savedDraft.backgroundBlur);
           setCanvasDraftAutosaveState("saved");
           setCanvasDraftAutosaveError(undefined);
@@ -819,7 +826,7 @@ export function ProfilePage() {
     );
 
     if (profileCanvasDraftAutosaveRequestRef.current === requestId) {
-      setCanvasDraft(savedDraft);
+      setCurrentCanvasDraft(savedDraft);
       setDraftBackgroundBlur(savedDraft.backgroundBlur);
       setCanvasDraftAutosaveState("saved");
     }
@@ -850,7 +857,7 @@ export function ProfilePage() {
         profileCanvasVersion: saved.canvasVersion,
       });
       setDraftBackgroundBlur(saved.backgroundBlur);
-      setCanvasDraft(undefined);
+      setCurrentCanvasDraft(undefined);
       setCanvasEditing(false);
       setCanvasDraftAutosaveState("idle");
       setCanvasDraftAutosaveError(undefined);
@@ -883,7 +890,7 @@ export function ProfilePage() {
 
     setCanvasEditing(false);
     setCanvasError(undefined);
-    setCanvasDraft(undefined);
+    setCurrentCanvasDraft(undefined);
     setDraftBackgroundBlur(profile?.profileBackgroundBlur ?? "medium");
     setDraftProfile(undefined);
     setProfileDraftUploading(undefined);
@@ -1125,11 +1132,13 @@ export function ProfilePage() {
   function handleCanvasDraftChange(
     updater: (draft: ProfileCanvasDraftState) => ProfileCanvasDraftState,
   ) {
-    if (!canvasDraft) {
+    const currentDraft = canvasDraftRef.current ?? canvasDraft;
+
+    if (!currentDraft) {
       return;
     }
 
-    queueCanvasDraftAutosave(updater(canvasDraft));
+    queueCanvasDraftAutosave(updater(currentDraft));
   }
 
   function handleDraftBackgroundBlurChange(blur: ProfileBackgroundBlur) {
@@ -1387,13 +1396,13 @@ export function ProfilePage() {
   }
   return (
     <motion.div
-      className="profile-canvas-page-shell relative mx-auto"
+      className="profile-canvas-viewport-shell relative"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
     >
       <ProfilePersonalBackdrop profile={backgroundPreviewProfile} />
-      <div className="relative z-10 space-y-4 sm:space-y-5">
+      <div className="profile-canvas-page-shell relative z-10 mx-auto space-y-4 sm:space-y-5">
         <PageMeta
           title={`${renderedProfile.user.displayName} (@${renderedProfile.user.handle})`}
           description={renderedProfile.bio}
@@ -1445,6 +1454,12 @@ export function ProfilePage() {
               onProfileDraftChange={handleDraftProfileChange}
               onRenderModuleContent={(module, size) =>
                 renderProfileModuleContent(module, size, true)
+              }
+              onResolveIntegrationMetadata={(input) =>
+                runWithAuth(
+                  (csrfToken) => resolveProfileIntegrationMetadata(input, csrfToken),
+                  { retryOnCsrf: true },
+                )
               }
               onSave={() => void handleSaveCanvasEdit()}
               onVideoUpload={(file) => void handleProfileVideoDraftUpload(file)}
@@ -2491,12 +2506,16 @@ function profileCanvasFitForSelection(
 function profileCanvasDefaultConfigForModule(
   type: ProfileModule["type"],
   size: ProfileGridModuleSize,
+  integrationLinks: ProfileModuleLink[] = [],
 ): ProfileModule["config"] {
   const definition = getProfileModuleDefinition(type);
   const base = { canvasSize: size, configured: false };
 
   if (type === "connections" || type === "links") {
-    return { ...base, links: [] };
+    return profileCanvasConfigWithIntegrationLinks(
+      { ...base, links: [] },
+      integrationLinks,
+    );
   }
 
   if (type === "badge_display" || type === "featured_badges") {
@@ -2530,6 +2549,280 @@ function profileCanvasDefaultConfigForModule(
   }
 
   return base;
+}
+
+type ProfileCanvasAutofillConfig = {
+  config: ProfileModule["config"];
+  resolve?: {
+    provider?: ProfileIntegrationProvider;
+    url: string;
+  };
+};
+
+function profileCanvasAutofillConfigForModule(
+  type: ProfileModule["type"],
+  size: ProfileGridModuleSize,
+  baseConfig: ProfileModule["config"],
+  integrationAccounts: ProfileIntegrationAccount[],
+): ProfileCanvasAutofillConfig {
+  if (type !== "twitch_channel") {
+    return { config: baseConfig };
+  }
+
+  const account = profileCanvasConnectedIntegrationAccount(
+    integrationAccounts,
+    "twitch",
+  );
+  const sourceUrl = account
+    ? profileCanvasIntegrationAccountUrl(account)
+    : undefined;
+
+  if (!sourceUrl || !account) {
+    return { config: baseConfig };
+  }
+
+  const label =
+    account.displayName ??
+    profileCanvasIntegrationAccountHandle(account) ??
+    "Twitch stream";
+  const config = {
+    ...baseConfig,
+    configured: true,
+    displayMode: profileCanvasTwitchDisplayModeForSize(size),
+    label,
+    platform: "twitch",
+    sourceMode: "twitch",
+    url: sourceUrl,
+  };
+
+  return {
+    config,
+    resolve: {
+      provider: "twitch",
+      url: sourceUrl,
+    },
+  };
+}
+
+function profileCanvasConfigWithIntegrationCard(
+  config: ProfileModule["config"],
+  card: ProfileIntegrationCard,
+): ProfileModule["config"] {
+  const nextConfig: ProfileModule["config"] = {
+    ...config,
+    configured: true,
+    integration: card,
+    platform: card.provider,
+    url: card.sourceUrl,
+  };
+
+  if (card.metadata.description) {
+    nextConfig.description = card.metadata.description;
+  }
+
+  if (card.metadata.title) {
+    nextConfig.label = card.metadata.title;
+  }
+
+  return nextConfig;
+}
+
+function profileCanvasTwitchDisplayModeForSize(
+  size: ProfileGridModuleSize,
+): "stream_status" | "stream" | "stream_chat" {
+  const span = profileGridModuleSizeSpan(size);
+
+  if (span.columns >= 6 && span.rows >= 4) {
+    return "stream_chat";
+  }
+
+  if (span.columns >= 4 && span.rows >= 3) {
+    return "stream";
+  }
+
+  return "stream_status";
+}
+
+function profileCanvasConnectedIntegrationAccount(
+  integrationAccounts: ProfileIntegrationAccount[],
+  provider: ProfileIntegrationProvider,
+): ProfileIntegrationAccount | undefined {
+  return integrationAccounts.find(
+    (account) => account.provider === provider && !account.revokedAt,
+  );
+}
+
+function profileCanvasConnectionLinksFromIntegrationAccounts(
+  integrationAccounts: ProfileIntegrationAccount[],
+): ProfileModuleLink[] {
+  return integrationAccounts
+    .filter((account) => !account.revokedAt)
+    .map(profileCanvasConnectionLinkFromIntegrationAccount)
+    .filter((link): link is ProfileModuleLink => Boolean(link));
+}
+
+function profileCanvasConnectionLinkFromIntegrationAccount(
+  account: ProfileIntegrationAccount,
+): ProfileModuleLink | undefined {
+  const url = profileCanvasIntegrationAccountUrl(account);
+
+  if (!url) {
+    return undefined;
+  }
+
+  return {
+    label:
+      account.displayName ??
+      profileCanvasIntegrationAccountHandle(account) ??
+      profileCanvasProviderLabel(account.provider),
+    platform: profileCanvasConnectionPlatformForProvider(account.provider),
+    url,
+  };
+}
+
+function profileCanvasIntegrationAccountUrl(
+  account: ProfileIntegrationAccount,
+): string | undefined {
+  const handle = profileCanvasIntegrationAccountHandle(account);
+
+  if (account.provider === "github" && handle) {
+    return `https://github.com/${encodeURIComponent(handle.replace(/^@/, ""))}`;
+  }
+
+  if (account.provider === "twitch" && handle) {
+    return `https://www.twitch.tv/${encodeURIComponent(handle.replace(/^@/, ""))}`;
+  }
+
+  if (account.provider === "youtube") {
+    const rawHandle = account.providerHandle?.trim();
+
+    if (rawHandle && /^@[A-Za-z0-9_.-]+$/.test(rawHandle)) {
+      return `https://www.youtube.com/${rawHandle}`;
+    }
+
+    if (account.providerAccountId) {
+      return `https://www.youtube.com/channel/${encodeURIComponent(
+        account.providerAccountId,
+      )}`;
+    }
+  }
+
+  if (account.provider === "spotify" && account.providerAccountId) {
+    return `https://open.spotify.com/user/${encodeURIComponent(
+      account.providerAccountId,
+    )}`;
+  }
+
+  return undefined;
+}
+
+function profileCanvasIntegrationAccountHandle(
+  account: ProfileIntegrationAccount,
+): string | undefined {
+  const handle = account.providerHandle?.trim() || account.displayName?.trim();
+
+  if (handle) {
+    return handle;
+  }
+
+  return account.providerAccountId?.trim() || undefined;
+}
+
+function profileCanvasProviderLabel(provider: ProfileIntegrationProvider): string {
+  const labels: Record<ProfileIntegrationProvider, string> = {
+    apple_music: "Apple Music",
+    github: "GitHub",
+    spotify: "Spotify",
+    twitch: "Twitch",
+    youtube: "YouTube",
+  };
+
+  return labels[provider];
+}
+
+function profileCanvasConnectionPlatformForProvider(
+  provider: ProfileIntegrationProvider,
+): string {
+  return provider === "apple_music" ? "website" : provider;
+}
+
+function profileCanvasModulesWithIntegrationLinks(
+  modules: ProfileModule[],
+  integrationLinks: ProfileModuleLink[],
+): ProfileModule[] {
+  if (integrationLinks.length === 0) {
+    return modules;
+  }
+
+  let changed = false;
+  const nextModules = modules.map((module) => {
+    if (module.type !== "connections" && module.type !== "links") {
+      return module;
+    }
+
+    const config = profileCanvasConfigWithIntegrationLinks(
+      module.config,
+      integrationLinks,
+    );
+
+    if (config === module.config) {
+      return module;
+    }
+
+    changed = true;
+
+    return {
+      ...module,
+      config,
+      visibility: config.configured === false ? module.visibility : "public",
+    };
+  });
+
+  return changed ? nextModules : modules;
+}
+
+function profileCanvasConfigWithIntegrationLinks(
+  config: ProfileModule["config"],
+  integrationLinks: ProfileModuleLink[],
+): ProfileModule["config"] {
+  if (integrationLinks.length === 0) {
+    return config;
+  }
+
+  const links = [...(config.links ?? [])];
+  const seen = new Set(links.map(profileCanvasConnectionLinkKey));
+  let changed = false;
+
+  integrationLinks.forEach((link) => {
+    const key = profileCanvasConnectionLinkKey(link);
+
+    if (seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    links.push(link);
+    changed = true;
+  });
+
+  if (!changed) {
+    return config;
+  }
+
+  const nextConfig: ProfileModule["config"] = {
+    ...config,
+    links,
+  };
+
+  if (links.length > 0) {
+    nextConfig.configured = true;
+  }
+
+  return nextConfig;
+}
+
+function profileCanvasConnectionLinkKey(link: ProfileModuleLink): string {
+  return `${link.platform ?? "website"}:${link.url.toLowerCase()}`;
 }
 
 function profileCanvasProviderForModule(
@@ -2749,6 +3042,10 @@ type ProfileDirectCanvasEditorProps = {
     module: ProfileModule,
     size: ProfileGridModuleSize,
   ) => ReactNode | undefined;
+  onResolveIntegrationMetadata: (input: {
+    provider?: ProfileIntegrationProvider;
+    url: string;
+  }) => Promise<ProfileIntegrationCard>;
   onSave: () => void;
   onVideoUpload: (file: File) => void;
   profile: Profile;
@@ -2777,6 +3074,7 @@ function ProfileDirectCanvasEditor({
   onNewDraftModuleId,
   onProfileDraftChange,
   onRenderModuleContent,
+  onResolveIntegrationMetadata,
   onSave,
   onVideoUpload,
   profile,
@@ -2801,6 +3099,10 @@ function ProfileDirectCanvasEditor({
   );
   const pickerModule = sortedModules.find((module) => module.id === pickerModuleId);
   const settingsModule = sortedModules.find((module) => module.id === settingsModuleId);
+  const integrationConnectionLinks = useMemo(
+    () => profileCanvasConnectionLinksFromIntegrationAccounts(integrationAccounts),
+    [integrationAccounts],
+  );
   const autosaveMessage =
     autosaveState === "error"
       ? autosaveError ?? "Canvas draft could not save."
@@ -2820,6 +3122,29 @@ function ProfileDirectCanvasEditor({
     },
     [onChange],
   );
+
+  useEffect(() => {
+    if (integrationConnectionLinks.length === 0) {
+      return;
+    }
+
+    const nextModules = profileCanvasModulesWithIntegrationLinks(
+      modules,
+      integrationConnectionLinks,
+    );
+
+    if (nextModules === modules) {
+      return;
+    }
+
+    onChange((currentDraft) => ({
+      ...currentDraft,
+      modules: profileCanvasModulesWithIntegrationLinks(
+        currentDraft.modules,
+        integrationConnectionLinks,
+      ),
+    }));
+  }, [integrationConnectionLinks, modules, onChange]);
 
   useEffect(() => {
     if (!dragState) {
@@ -2881,7 +3206,7 @@ function ProfileDirectCanvasEditor({
 
     const rect = profileCanvasRectFromPoints(selectionStart, point);
     const id = onNewDraftModuleId();
-    const colSpan = Math.min(PROFILE_CANVAS_MAX_MODULE_COLUMNS, rect.colSpan);
+    const colSpan = Math.min(PROFILE_CANVAS_PROFILE_INFO_COLUMNS, rect.colSpan);
     const rowSpan = Math.min(PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS, rect.rowSpan);
     const size = profileGridModuleSpanSize(colSpan, rowSpan) ?? "1x1";
     const blankModule: ProfileModule = {
@@ -2907,12 +3232,13 @@ function ProfileDirectCanvasEditor({
     updateDraftModules((currentModules) =>
       profileCanvasResolveDraftCollisions([...currentModules, blankModule], id),
     );
+    setSettingsModuleId(undefined);
     setPickerModuleId(id);
     setSelectionStart(undefined);
     setSelectionHover(undefined);
   }
 
-  function handleChooseModule(type: ProfileModule["type"]) {
+  async function handleChooseModule(type: ProfileModule["type"]) {
     const module = pickerModule;
 
     if (!module?.layout) {
@@ -2926,20 +3252,26 @@ function ProfileDirectCanvasEditor({
     }
 
     const span = profileGridModuleSizeSpan(size);
+    const autofill = profileCanvasAutofillConfigForModule(
+      type,
+      size,
+      profileCanvasDefaultConfigForModule(type, size, integrationConnectionLinks),
+      integrationAccounts,
+    );
 
     updateDraftModules((currentModules) =>
       profileCanvasResolveDraftCollisions(
         currentModules.map((item) =>
           item.id === module.id
             ? {
-                ...item,
-                type,
-                title: null,
-                config: profileCanvasDefaultConfigForModule(type, size),
-                visibility: "draft",
-                layout: {
-                  ...item.layout!,
-                  colSpan: span.columns,
+	                ...item,
+	                type,
+	                title: null,
+	                config: autofill.config,
+	                visibility: autofill.config.configured === false ? "draft" : "public",
+	                layout: {
+	                  ...item.layout!,
+	                  colSpan: span.columns,
                   rowSpan: span.rows,
                 },
               }
@@ -2949,7 +3281,30 @@ function ProfileDirectCanvasEditor({
       ),
     );
     setPickerModuleId(undefined);
-    setSettingsModuleId(module.id);
+    setSettingsModuleId(undefined);
+    window.setTimeout(() => setSettingsModuleId(module.id), 0);
+
+    if (!autofill.resolve) {
+      return;
+    }
+
+    try {
+      const card = await onResolveIntegrationMetadata(autofill.resolve);
+
+      updateDraftModules((currentModules) =>
+        currentModules.map((item) =>
+          item.id === module.id && item.type === type
+            ? {
+                ...item,
+                config: profileCanvasConfigWithIntegrationCard(item.config, card),
+                visibility: "public",
+              }
+            : item,
+        ),
+      );
+    } catch {
+      // The saved URL still lets the backend regenerate a safe fallback card.
+    }
   }
 
   function handleModuleSize(module: ProfileModule, size: ProfileGridModuleSize) {
@@ -3269,7 +3624,10 @@ function ProfileDirectCanvasEditor({
                       )}
                       data-profile-edit-control="true"
                       data-testid={`profile-canvas-add-module-${module.id}`}
-                      onClick={() => setPickerModuleId(module.id)}
+                      onClick={() => {
+                        setSettingsModuleId(undefined);
+                        setPickerModuleId(module.id);
+                      }}
                     >
                       <span
                         className={cn(
@@ -3418,11 +3776,11 @@ function ProfileDirectCanvasEditor({
 
 function ModulePickerModal({
   module,
-  onChoose,
-  onClose,
+	onChoose,
+	onClose,
 }: {
   module: ProfileModule | undefined;
-  onChoose: (type: ProfileModule["type"]) => void;
+  onChoose: (type: ProfileModule["type"]) => Promise<void> | void;
   onClose: () => void;
 }) {
   const [activeCategory, setActiveCategory] =

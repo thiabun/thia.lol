@@ -214,7 +214,7 @@ test("P2 expressive modules render compact link-first cards", async ({ page }) =
   );
   await expect(modules.getByTestId("profile-grid-module-gallery_media")).toHaveAttribute(
     "data-profile-module-span-role",
-    "rich",
+    "glance",
   );
   const gallerySurface = modules
     .getByTestId("profile-grid-module-gallery_media")
@@ -225,7 +225,7 @@ test("P2 expressive modules render compact link-first cards", async ({ page }) =
   );
   expect(galleryBackground).not.toBe("rgba(0, 0, 0, 0)");
   await expect(modules.locator('img[src="/uploads/media/2026/06/profile-gallery-one.webp"]')).toBeVisible();
-  await expect(modules.getByText("Studio corner")).toBeVisible();
+  await expect(modules.getByText("Studio corner")).toHaveCount(0);
   await expect(modules.getByRole("link", { name: /Find me on Twitch/ })).toHaveAttribute(
     "href",
     "https://www.twitch.tv/thiabun",
@@ -259,25 +259,28 @@ test("module shells keep compact content glanceable without public overflow", as
           workingOn: "A compact module design rubric.",
         },
       },
-      linksModule({
-        id: 2,
-        position: 2,
-        links: [
-          { label: "Site", platform: "website", url: "https://example.com/" },
-          { label: "GitHub", platform: "github", url: "https://github.com/thiabun" },
-          { label: "YouTube", platform: "youtube", url: "https://www.youtube.com/@thia" },
-          { label: "Twitch", platform: "twitch", url: "https://www.twitch.tv/thiabun" },
-          { label: "Music", platform: "spotify", url: "https://open.spotify.com/playlist/profile-test" },
-        ],
-      }),
+      {
+        ...linksModule({
+          id: 2,
+          position: 2,
+          links: [
+            { label: "Site", platform: "website", url: "https://example.com/" },
+            { label: "GitHub", platform: "github", url: "https://github.com/thiabun" },
+            { label: "YouTube", platform: "youtube", url: "https://www.youtube.com/@thia" },
+            { label: "Twitch", platform: "twitch", url: "https://www.twitch.tv/thiabun" },
+            { label: "Music", platform: "spotify", url: "https://open.spotify.com/playlist/profile-test" },
+          ],
+        }),
+        layout: { column: 1, row: 3, colSpan: 2, rowSpan: 2 },
+      },
     ],
   });
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
   const about = page.getByTestId("profile-grid-module-about");
-  await expect(about).toHaveAttribute("data-profile-grid-size", "1x1");
-  await expect(about).toHaveAttribute("data-profile-module-compact", "true");
+  await expect(about).toHaveAttribute("data-profile-grid-size", "3x2");
+  await expect(about).toHaveAttribute("data-profile-module-compact", "false");
   await expect(about).toHaveAttribute("data-profile-module-density", "summary");
   await expect(page.getByTestId("profile-module-about")).toHaveAttribute(
     "data-profile-module-empty-policy",
@@ -418,13 +421,13 @@ test("activity keeps long feeds inside an internal scroll area", async ({ page }
   const module = page.getByTestId("profile-module-activity");
   const body = page.getByTestId("profile-activity");
   const tabs = page.getByTestId("profile-activity-tabs");
-  await expect(module).toHaveAttribute("data-profile-activity-max-rows", "3");
+  await expect(module).toHaveAttribute("data-profile-activity-max-rows", "4");
   await expect(body).toHaveAttribute("data-profile-activity-scroll", "internal");
   await expect(tabs.getByRole("tab", { name: /Feed/ })).toBeVisible();
   await expect(page.getByText("Long activity item 14.")).toHaveCount(1);
   await expectModuleAspectRatio(
     page.getByTestId("profile-grid-module-activity"),
-    3 / 3,
+    3 / 4,
   );
 
   const metrics = await page.evaluate(() => {
@@ -813,7 +816,7 @@ test("desktop module spans render with square-cell geometry", async ({ page }) =
       withAuditLayout(profileInfoModule(), "4x3", 1),
       withAuditLayout(
         activityModule({ id: 9, position: 2 }),
-        "3x2",
+        "3x4",
         4,
         1,
       ),
@@ -827,8 +830,8 @@ test("desktop module spans render with square-cell geometry", async ({ page }) =
   await page.goto("/@thia");
 
   await expectModuleAspectRatio(page.getByTestId("profile-grid-module-profile_info"), 4 / 3);
-  await expectModuleAspectRatio(page.getByTestId("profile-grid-module-activity"), 3 / 2);
-  await expectModuleAspectRatio(page.getByTestId("profile-grid-module-creator_live"), 6 / 5);
+  await expectModuleAspectRatio(page.getByTestId("profile-grid-module-activity"), 3 / 4);
+  await expectModuleAspectRatio(page.getByTestId("profile-grid-module-creator_live"), 6 / 4);
   await expect(page.getByTestId("profile-activity")).toHaveAttribute(
     "data-profile-activity-scroll",
     "internal",
@@ -883,7 +886,7 @@ test("allowed module sizes smoke render one at a time without overflow", async (
 
     expect(metrics.documentOverflowX).toBe(false);
     expect(metrics.hasVisibleContent).toBe(true);
-    expect(metrics.height).toBeGreaterThan(80);
+    expect(metrics.height).toBeGreaterThan(56);
     expect(metrics.width).toBeGreaterThan(80);
   }
 });
@@ -1640,7 +1643,7 @@ test("module picker blocks selections larger than designed module sizes", async 
   const twitchChannel = page.getByTestId("profile-module-picker-twitch_channel");
   await expect(twitchChannel).toBeDisabled();
   await expect(twitchChannel).toContainText("Selection too large.");
-  await expect(twitchChannel).toContainText("(6x4)");
+  await expect(twitchChannel).toContainText("(8x6)");
 
   await page.getByRole("tab", { name: "Projects" }).click();
   const githubRepo = page.getByTestId("profile-module-picker-github_repo");
@@ -1697,6 +1700,124 @@ test("authenticated integrations hide the connect prompt in module settings", as
   await expect(settings).toBeVisible();
   await expect(settings.getByRole("button", { name: "Connect" })).toHaveCount(0);
   await expect(settings.getByTestId("profile-module-settings-url")).toBeVisible();
+});
+
+test("connected integrations seed Connections links and Twitch stream modules", async ({
+  page,
+}) => {
+  let draftPayload: Record<string, unknown> | undefined;
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      {
+        ...linksModule({ id: 9, links: [] }),
+        type: "connections",
+        layout: { column: 1, row: 5, colSpan: 3, rowSpan: 2 },
+      },
+    ],
+    integrations: {
+      providers: [
+        {
+          provider: "twitch",
+          configured: true,
+          oauthEnabled: true,
+          linkSupported: true,
+          metadataEnabled: true,
+          missingConfigKeys: [],
+        },
+      ],
+      accounts: [
+        {
+          provider: "twitch",
+          providerAccountId: "123",
+          providerHandle: "thiabun",
+          displayName: "Thia",
+          avatarUrl: null,
+          scopes: ["user:read:email"],
+          tokenExpiresAt: null,
+          connectedAt: "2026-06-17T00:00:00Z",
+          refreshedAt: null,
+          revokedAt: null,
+          lastError: null,
+          errorAt: null,
+        },
+      ],
+    },
+    onCanvasDraftSave: (payload) => {
+      draftPayload = payload;
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+
+  await expect
+    .poll(() => {
+      const modules = Array.isArray(draftPayload?.modules)
+        ? (draftPayload.modules as Array<Record<string, unknown>>)
+        : [];
+      const connections = modules.find((module) => module.type === "connections");
+      const config = connections?.config as Record<string, unknown> | undefined;
+      const links = Array.isArray(config?.links)
+        ? (config.links as Array<Record<string, unknown>>)
+        : [];
+
+      return links.map((link) => link.url).join("|");
+    })
+    .toContain("https://www.twitch.tv/thiabun");
+
+  await page.getByTestId("profile-canvas-cell-1-10").click();
+  await page.getByTestId("profile-canvas-cell-8-15").click();
+  if (!(await page.getByTestId("profile-module-picker").isVisible())) {
+    const closeBlankSettings = page.getByRole("button", {
+      name: "Close blank module",
+    });
+    if (await closeBlankSettings.isVisible()) {
+      await closeBlankSettings.click();
+    }
+    const addBlankModule = page
+      .locator('[data-testid^="profile-canvas-add-module-"]')
+      .first();
+    await expect(addBlankModule).toBeVisible();
+    await addBlankModule.click();
+  }
+  const twitchChannel = page.getByTestId("profile-module-picker-twitch_channel");
+  await expect(twitchChannel).toBeEnabled();
+  await twitchChannel.click();
+
+  const settings = page.getByTestId("profile-module-settings");
+  await expect(settings).toBeVisible();
+  await expect(settings.getByRole("button", { name: "Connect" })).toHaveCount(0);
+  await expect(settings.getByTestId("profile-module-settings-url")).toHaveValue(
+    "https://www.twitch.tv/thiabun",
+  );
+
+  await expect
+    .poll(() => {
+      const modules = Array.isArray(draftPayload?.modules)
+        ? (draftPayload.modules as Array<Record<string, unknown>>)
+        : [];
+      const twitch = modules.find((module) => module.type === "twitch_channel");
+      const config = twitch?.config as Record<string, unknown> | undefined;
+      const layout = twitch?.layout as Record<string, unknown> | undefined;
+
+      return JSON.stringify({
+        displayMode: config?.displayMode,
+        url: config?.url,
+        colSpan: layout?.colSpan,
+        rowSpan: layout?.rowSpan,
+      });
+    })
+    .toContain(
+      JSON.stringify({
+        displayMode: "stream_chat",
+        url: "https://www.twitch.tv/thiabun",
+        colSpan: 8,
+        rowSpan: 6,
+      }).slice(1, -1),
+    );
 });
 
 test("public and editor canvas shell scales wide and glass slider changes opacity", async ({
@@ -2863,7 +2984,7 @@ test("mobile stack ignores saved desktop placement", async ({ page }) => {
   await page.goto("/@thia");
 
   const grid = page.getByTestId("profile-module-grid");
-  await expectGridColumnCount(grid, 1);
+  await expectGridColumnCount(grid, PROFILE_CANVAS_MOBILE_COLUMNS);
   await expect(page.getByText("Still stacks.")).toBeVisible();
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -2956,7 +3077,7 @@ test("invalid saved placement falls back without manual grid placement", async (
   await page.goto("/@thia");
 
   const music = page.getByTestId("profile-grid-module-music");
-  await expect(music).toHaveAttribute("data-profile-grid-size", "2x1");
+  await expect(music).toHaveAttribute("data-profile-grid-size", "3x2");
   await expect(music).toHaveAttribute("data-profile-grid-placement", "auto");
 });
 
@@ -2978,9 +3099,9 @@ test("profile canvas falls back safely for invalid mocked spans", async ({ page 
   await page.goto("/@thia");
 
   const malformed = page.getByTestId("profile-grid-module-custom_text");
-  await expect(malformed).toHaveAttribute("data-profile-grid-size", "1x1");
-  await expect(malformed).toHaveAttribute("data-profile-grid-column-span", "1");
-  await expect(malformed).toHaveAttribute("data-profile-grid-row-span", "1");
+  await expect(malformed).toHaveAttribute("data-profile-grid-size", "3x2");
+  await expect(malformed).toHaveAttribute("data-profile-grid-column-span", "3");
+  await expect(malformed).toHaveAttribute("data-profile-grid-row-span", "2");
   await expect(page.getByText("Still renders compactly.")).toBeVisible();
 });
 
@@ -3036,10 +3157,10 @@ test("layout presets affect the public module grid without breaking mobile", asy
 
   const grid = page.getByTestId("profile-module-grid");
   await expect(grid).toHaveAttribute("data-profile-layout-preset", "compact");
-  await expectGridColumnCount(grid, 6);
+  await expectGridColumnCount(grid, PROFILE_CANVAS_COLUMNS);
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await expectGridColumnCount(grid, 1);
+  await expectGridColumnCount(grid, PROFILE_CANVAS_MOBILE_COLUMNS);
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
@@ -3062,11 +3183,11 @@ test("showcase layout gives the first about module more presence", async ({ page
   await expect(grid).toHaveAttribute("data-profile-layout-preset", "showcase");
   await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
     "data-profile-grid-column-span",
-    "3",
+    "8",
   );
   await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
     "data-profile-grid-row-span",
-    "2",
+    "3",
   );
   await expectTextOrder(page.getByTestId("profile-modules"), [
     "Thia",
@@ -3409,6 +3530,30 @@ async function mockProfileModules(
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ ok: true, data: { notifications: [], unreadCount: 0 } }),
+    });
+  });
+
+  await page.route("**/api/me/integrations/metadata/resolve", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fulfill({
+        status: 405,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: false, error: "Method not allowed." }),
+      });
+      return;
+    }
+
+    const payload = (await route.request().postDataJSON()) as Record<string, unknown>;
+    const url = typeof payload.url === "string" ? payload.url : "";
+    const provider = typeof payload.provider === "string" ? payload.provider : "twitch";
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: integrationResolveCard(url, provider),
+      }),
     });
   });
 
@@ -4408,19 +4553,19 @@ const profileModuleSizeAuditMatrix: Array<{
   type: ProfileModuleSizeAuditType;
 }> = [
   { type: "profile_info", sizes: ["3x2", "3x3", "4x3", "6x3"] },
-  { type: "about", sizes: ["1x1", "2x1", "3x1", "2x2"] },
-  { type: "custom_text", sizes: ["1x1", "2x1", "2x2", "3x2"] },
-  { type: "links", sizes: ["1x1", "2x1", "3x1", "2x2", "2x3", "3x2"] },
-  { type: "featured_badges", sizes: ["1x1", "2x1", "2x2"] },
-  { type: "featured_post", sizes: ["2x1", "3x1", "2x2", "3x2"] },
-  { type: "featured_room", sizes: ["1x1", "2x1", "3x1", "2x2"] },
-  { type: "gallery_media", sizes: ["1x1", "2x1", "2x2", "3x2", "3x3", "4x3"] },
+  { type: "about", sizes: ["3x2", "4x3", "4x5"] },
+  { type: "custom_text", sizes: ["3x2", "4x3", "4x5"] },
+  { type: "links", sizes: ["2x2", "2x3", "3x2", "4x2", "3x4"] },
+  { type: "featured_badges", sizes: ["2x2", "3x2"] },
+  { type: "featured_post", sizes: ["3x4", "4x5"] },
+  { type: "featured_room", sizes: ["3x1", "4x2"] },
+  { type: "gallery_media", sizes: ["2x2", "3x2", "3x3", "4x3"] },
   {
     type: "creator_live",
-    sizes: ["1x1", "2x1", "2x2", "3x2", "3x3", "4x3", "5x3", "6x4"],
+    sizes: ["2x1", "3x2", "4x3", "5x3", "6x4"],
   },
-  { type: "music", sizes: ["1x1", "2x1", "3x1", "2x2", "3x2"] },
-  { type: "activity", sizes: ["2x2", "3x2", "3x3", "3x4", "4x6", "6x10"] },
+  { type: "music", sizes: ["2x1", "2x2", "3x2", "4x2", "4x3", "4x4"] },
+  { type: "activity", sizes: ["3x4", "4x6", "6x10"] },
 ];
 
 function profileModuleSizeAuditCases(): Array<{
@@ -4963,6 +5108,59 @@ function twitchStreamChatModule(
         stale: false,
       },
     },
+  };
+}
+
+function integrationResolveCard(url: string, provider: string) {
+  const resolvedProvider = provider === "youtube" ? "youtube" : "twitch";
+  const resourceId = url.split("/").filter(Boolean).at(-1) ?? "thiabun";
+
+  if (resolvedProvider === "youtube") {
+    return {
+      provider: "youtube",
+      resourceType: "video",
+      resourceId,
+      resourceKey: `youtube:video:${resourceId}`,
+      sourceUrl: url,
+      metadata: {
+        title: "YouTube video",
+        subtitle: "YouTube",
+        imageUrl: null,
+      },
+      embed: {
+        type: "iframe",
+        src: `https://www.youtube-nocookie.com/embed/${resourceId}`,
+        title: "YouTube embed",
+        height: 220,
+        allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+      },
+      apiBacked: false,
+      fetchedAt: "2026-06-16T10:00:00Z",
+      stale: false,
+    };
+  }
+
+  return {
+    provider: "twitch",
+    resourceType: "channel",
+    resourceId,
+    resourceKey: `twitch:channel:${resourceId}`,
+    sourceUrl: url,
+    metadata: {
+      title: "Thia live",
+      subtitle: "Twitch",
+      imageUrl: null,
+    },
+    embed: {
+      type: "iframe",
+      src: `https://player.twitch.tv/?channel=${resourceId}&parent=localhost&muted=true&autoplay=false`,
+      title: "Twitch stream",
+      height: 360,
+      allow: "autoplay; fullscreen; picture-in-picture",
+    },
+    apiBacked: true,
+    fetchedAt: "2026-06-16T10:00:00Z",
+    stale: false,
   };
 }
 
