@@ -850,7 +850,7 @@ function ProfileModuleContent({
       >
         {visibleMediaItems.map((item, index) => (
           <figure
-            key={item.url}
+            key={`${item.url}:${index}`}
             className={cn(
               "min-h-0 min-w-0 overflow-hidden rounded-card border border-line bg-canvas/55",
               spanRole === "hero" && index === 0 ? "col-span-2 row-span-2" : undefined,
@@ -858,7 +858,7 @@ function ProfileModuleContent({
           >
             <img
               alt=""
-              className="aspect-square size-full object-cover"
+              className="size-full object-cover"
               decoding="async"
               loading="lazy"
               src={item.url}
@@ -1304,11 +1304,11 @@ function ProfileIntegrationRichCard({
         data-profile-twitch-stream-columns={twitchStreamChatStreamColumns}
       >
         <div
-          className="grid h-full min-h-0 gap-2"
+          className="profile-twitch-embed-grid grid h-full min-h-0 gap-2"
           style={twitchStreamChatColumnStyle}
         >
           <iframe
-            className="block h-full min-h-[220px] min-w-0 w-full rounded-card border-0 bg-black"
+            className="profile-twitch-embed-frame block h-full min-h-0 min-w-0 w-full rounded-card border-0 bg-black"
             title={primaryEmbed.title}
             src={primaryEmbedSrc}
             height={360}
@@ -1321,7 +1321,7 @@ function ProfileIntegrationRichCard({
             data-testid={`profile-integration-embed-${integration.provider}`}
           />
           <iframe
-            className="block h-full min-h-[220px] min-w-0 w-full rounded-card border-0 bg-surface"
+            className="profile-twitch-embed-frame block h-full min-h-0 min-w-0 w-full rounded-card border-0 bg-surface"
             title="Twitch chat"
             src={twitchChatSrc}
             height={360}
@@ -1342,24 +1342,26 @@ function ProfileIntegrationRichCard({
     (integration.provider === "twitch" || integration.provider === "youtube")
   ) {
     return (
-      <iframe
-        className="block h-full min-h-0 w-full rounded-card border-0 bg-black"
-        title={primaryEmbed.title}
-        src={primaryEmbedSrc}
-        height={primaryEmbedHeight}
-        loading={integration.provider === "twitch" ? "eager" : "lazy"}
-        referrerPolicy="strict-origin-when-cross-origin"
-        allow={primaryEmbed.allow}
-        sandbox={
-          integration.provider === "twitch"
-            ? twitchEmbedSandbox
-            : "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
-        }
-        allowFullScreen
-        data-profile-embed-provider={integration.provider}
-        data-profile-media-only-embed="true"
-        data-testid={`profile-integration-embed-${integration.provider}`}
-      />
+      <div className="profile-media-embed-surface h-full min-h-0 overflow-hidden rounded-card bg-black">
+        <iframe
+          className="profile-media-embed-frame block h-full min-h-0 w-full rounded-card border-0 bg-black"
+          title={primaryEmbed.title}
+          src={primaryEmbedSrc}
+          height={primaryEmbedHeight}
+          loading={integration.provider === "twitch" ? "eager" : "lazy"}
+          referrerPolicy="strict-origin-when-cross-origin"
+          allow={primaryEmbed.allow}
+          sandbox={
+            integration.provider === "twitch"
+              ? twitchEmbedSandbox
+              : "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+          }
+          allowFullScreen
+          data-profile-embed-provider={integration.provider}
+          data-profile-media-only-embed="true"
+          data-testid={`profile-integration-embed-${integration.provider}`}
+        />
+      </div>
     );
   }
 

@@ -1145,7 +1145,7 @@ test("Twitch stream chat fills the creator module when embed metadata is availab
 test("largest Twitch stream chat uses a six plus two desktop split", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1440, height: 1100 });
+  await page.setViewportSize({ width: 1920, height: 1100 });
   await mockProfileModules(page, {
     authenticated: false,
     modules: [
@@ -1174,6 +1174,26 @@ test("largest Twitch stream chat uses a six plus two desktop split", async ({
     max: 2.75,
     min: 2.15,
   });
+  const largeEmbedMetrics = await twitchSurface
+    .locator(".profile-twitch-embed-grid")
+    .evaluate((element) => {
+      const styles = window.getComputedStyle(element);
+      const stream = element.querySelector<HTMLElement>(
+        '[data-testid="profile-integration-embed-twitch"]',
+      );
+      const chat = element.querySelector<HTMLElement>(
+        '[data-testid="profile-integration-embed-twitch-chat"]',
+      );
+
+      return {
+        chatMinHeight: chat ? window.getComputedStyle(chat).minHeight : "",
+        streamMinHeight: stream ? window.getComputedStyle(stream).minHeight : "",
+        transform: styles.transform,
+      };
+    });
+  expect(largeEmbedMetrics.streamMinHeight).toBe("0px");
+  expect(largeEmbedMetrics.chatMinHeight).toBe("0px");
+  expect(largeEmbedMetrics.transform).not.toBe("none");
 });
 
 test("owner direct canvas editor preserves lower-row 6x4 creator modules", async ({
@@ -2537,6 +2557,142 @@ test("owner crops a profile background image before upload", async ({ page }) =>
       .getByTestId("profile-personal-backdrop")
       .locator('img[src="/uploads/media/2026/06/profile_background-cropped.webp"]'),
   ).toBeVisible();
+});
+
+test("profile-info settings change picture and banner through crop controls", async ({
+  page,
+}) => {
+  const uploadPurposes: string[] = [];
+  let savedProfilePayload: Record<string, unknown> | undefined;
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      {
+        ...profileInfoModule(),
+        layout: { column: 3, row: 1, colSpan: 8, rowSpan: 3 },
+        pinned: true,
+      },
+    ],
+    onImageUpload: (purpose) => {
+      uploadPurposes.push(purpose);
+    },
+    onProfileSave: (payload) => {
+      savedProfilePayload = payload;
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-edit-module-9001").click();
+
+  const settings = page.getByTestId("profile-module-settings");
+  await expect(settings.getByTestId("profile-info-media-settings")).toBeVisible();
+  await settings
+    .getByTestId("profile-info-modal-avatar-input")
+    .setInputFiles(samplePngFile("profile-avatar.png"));
+
+  await expect(page.getByTestId("image-crop-modal")).toBeVisible();
+  await expect(page.getByText("Square crop")).toBeVisible();
+  await page.getByRole("button", { name: "Apply crop" }).click();
+  await expect(page.getByTestId("image-crop-modal")).toHaveCount(0);
+  await expect.poll(() => uploadPurposes.at(-1)).toBe("avatar");
+  await expect
+    .poll(() => savedProfilePayload?.avatarUrl)
+    .toBe("/uploads/media/2026/06/avatar-cropped.webp");
+  await expect(
+    settings.locator('img[src="/uploads/media/2026/06/avatar-cropped.webp"]'),
+  ).toBeVisible();
+
+  await settings
+    .getByTestId("profile-info-modal-banner-input")
+    .setInputFiles(samplePngFile("profile-banner.png"));
+
+  await expect(page.getByTestId("image-crop-modal")).toBeVisible();
+  await expect(page.getByText("Wide crop")).toBeVisible();
+  await page.getByRole("button", { name: "Apply crop" }).click();
+  await expect(page.getByTestId("image-crop-modal")).toHaveCount(0);
+  await expect.poll(() => uploadPurposes.at(-1)).toBe("banner");
+  await expect
+    .poll(() => savedProfilePayload?.bannerUrl)
+    .toBe("/uploads/media/2026/06/banner-cropped.webp");
+  await expect(
+    settings.locator('img[src="/uploads/media/2026/06/banner-cropped.webp"]'),
+  ).toBeVisible();
+});
+
+test("image module settings crop and add multiple photos", async ({ page }) => {
+  const uploadPurposes: string[] = [];
+  let draftPayload: Record<string, unknown> | undefined;
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      {
+        id: 12,
+        type: "uploaded_image",
+        title: "Photos",
+        config: { configured: false, mediaItems: [] },
+        layout: { column: 1, row: 4, colSpan: 3, rowSpan: 3 },
+        visibility: "draft",
+        position: 1,
+        status: "active",
+        schemaVersion: 1,
+        createdAt: "2026-06-12 00:00:00",
+        updatedAt: "2026-06-12 00:00:00",
+      },
+    ],
+    onCanvasDraftSave: (payload) => {
+      draftPayload = payload;
+    },
+    onImageUpload: (purpose) => {
+      uploadPurposes.push(purpose);
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-edit-module-12").click();
+
+  const settings = page.getByTestId("profile-module-settings");
+  await expect(settings.getByTestId("profile-image-module-settings")).toBeVisible();
+  await settings
+    .getByTestId("profile-module-settings-image-input")
+    .setInputFiles([
+      samplePngFile("module-photo-one.png"),
+      samplePngFile("module-photo-two.png"),
+    ]);
+
+  await expect(page.getByTestId("image-crop-modal")).toBeVisible();
+  await expect(page.getByTestId("image-crop-aspect-original")).toBeVisible();
+  await page.getByRole("button", { name: "Apply crop" }).click();
+  await expect.poll(() => uploadPurposes.length).toBe(1);
+  await expect(page.getByTestId("image-crop-modal")).toBeVisible();
+  await page.getByRole("button", { name: "Apply crop" }).click();
+  await expect(page.getByTestId("image-crop-modal")).toHaveCount(0);
+  await expect.poll(() => uploadPurposes).toEqual(["post_media", "post_media"]);
+
+  await expect(settings.getByTestId("profile-module-media-item-0")).toBeVisible();
+  await expect(settings.getByTestId("profile-module-media-item-1")).toBeVisible();
+  await expect
+    .poll(() => {
+      const modules = Array.isArray(draftPayload?.modules)
+        ? (draftPayload.modules as Array<Record<string, unknown>>)
+        : [];
+      const imageModule = modules.find((module) => module.id === 12);
+      const config = imageModule?.config as Record<string, unknown> | undefined;
+      const mediaItems = Array.isArray(config?.mediaItems)
+        ? config.mediaItems
+        : [];
+
+      return JSON.stringify({
+        configured: config?.configured,
+        mediaCount: mediaItems.length,
+      });
+    })
+    .toBe(JSON.stringify({ configured: true, mediaCount: 2 }));
 });
 
 test("image crop modal is wired to current image upload surfaces", () => {

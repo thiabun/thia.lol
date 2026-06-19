@@ -3971,11 +3971,13 @@ function ProfileDirectCanvasEditor({
         integrationProviders={integrationProviders}
         module={settingsModule}
         profile={profile}
+        uploading={uploading}
         onClose={() => setSettingsModuleId(undefined)}
         onRemove={handleRemoveModule}
         onResize={handleResizeModule}
         onConnectProvider={onConnectProvider}
         onModuleImageUpload={onModuleImageUpload}
+        onProfileImageUpload={onImageUpload}
         onProfileDraftChange={onProfileDraftChange}
         onUpdateConfig={handleModuleConfig}
         onTogglePin={handleTogglePin}
@@ -4162,12 +4164,14 @@ function ModuleSettingsModal({
   onClose,
   onConnectProvider,
   onModuleImageUpload,
+  onProfileImageUpload,
   onProfileDraftChange,
   onRemove,
   onResize,
   onTogglePin,
   onUpdateConfig,
   profile,
+  uploading,
 }: {
   integrationAccounts: ProfileIntegrationAccount[];
   integrationProviders: ProfileIntegrationProviderStatus[];
@@ -4175,12 +4179,17 @@ function ModuleSettingsModal({
   onClose: () => void;
   onConnectProvider: (provider: ProfileIntegrationProvider) => void;
   onModuleImageUpload: (file: File) => Promise<string>;
+  onProfileImageUpload: (
+    file: File,
+    purpose: "avatar" | "banner" | "profile_background",
+  ) => void;
   onProfileDraftChange: (updater: (profile: Profile) => Profile) => void;
   onRemove: (module: ProfileModule) => void;
   onResize: (module: ProfileModule, size: ProfileGridModuleSize) => void;
   onTogglePin: (module: ProfileModule) => void;
   onUpdateConfig: (module: ProfileModule, config: ProfileModule["config"]) => void;
   profile: Profile;
+  uploading?: "backgroundImage" | "backgroundVideo" | "avatar" | "banner" | undefined;
 }) {
   const definition = module ? getProfileModuleDefinition(module.type) : undefined;
   const provider = module ? profileCanvasProviderForModule(module.type) : undefined;
@@ -4202,8 +4211,12 @@ function ModuleSettingsModal({
   const [connectionValue, setConnectionValue] = useState("");
   const [connectionError, setConnectionError] = useState<string | undefined>();
   const [connectionFormOpen, setConnectionFormOpen] = useState(false);
+  const [moduleImageCropQueue, setModuleImageCropQueue] = useState<File[]>([]);
   const connectionLinks = module?.config.links ?? [];
   const canAddConnection = connectionLinks.length < maxProfileConnections;
+  const moduleMediaItems = module?.config.mediaItems ?? [];
+  const moduleMediaSlots = Math.max(0, 6 - moduleMediaItems.length);
+  const activeModuleImageCropFile = moduleImageCropQueue[0];
   const allowedSizes =
     module && module.type !== "placeholder"
       ? [...profileModuleAllowedSizes(module.type)]
@@ -4293,6 +4306,7 @@ function ModuleSettingsModal({
     setConnectionValue("");
     setConnectionError(undefined);
     setConnectionFormOpen(false);
+    setModuleImageCropQueue([]);
     onClose();
   }
 
@@ -4358,8 +4372,53 @@ function ModuleSettingsModal({
     updateConnectionLinks(nextLinks);
   }
 
-  async function handleModuleImageSelection(file: File | undefined) {
-    if (!module || !file) {
+  function handleRemoveModuleImage(index: number) {
+    if (!module) {
+      return;
+    }
+
+    const mediaItems = moduleMediaItems.filter(
+      (_, itemIndex) => itemIndex !== index,
+    );
+
+    updateModuleConfig(
+      configWithContent(
+        {
+          mediaItems,
+        },
+        mediaItems.length > 0,
+      ),
+    );
+  }
+
+  function handleModuleImageSelection(files: FileList | null) {
+    if (!module || !files || moduleMediaSlots <= 0) {
+      return;
+    }
+
+    const selectedFiles: File[] = [];
+
+    for (const file of Array.from(files).slice(0, moduleMediaSlots)) {
+      const validationError = validateImageCropFile(file);
+
+      if (validationError) {
+        setModuleImageError(validationError);
+        continue;
+      }
+
+      selectedFiles.push(file);
+    }
+
+    if (selectedFiles.length === 0) {
+      return;
+    }
+
+    setModuleImageError(undefined);
+    setModuleImageCropQueue(selectedFiles);
+  }
+
+  async function handleCroppedModuleImage(croppedFile: File) {
+    if (!module) {
       return;
     }
 
@@ -4367,7 +4426,7 @@ function ModuleSettingsModal({
     setModuleImageError(undefined);
 
     try {
-      const url = await onModuleImageUpload(file);
+      const url = await onModuleImageUpload(croppedFile);
       const mediaItems = [
         ...(module.config.mediaItems ?? []),
         { url },
@@ -4387,6 +4446,7 @@ function ModuleSettingsModal({
       );
     } finally {
       setModuleImageUploading(false);
+      setModuleImageCropQueue((queue) => queue.slice(1));
     }
   }
 
@@ -4477,6 +4537,86 @@ function ModuleSettingsModal({
           ) : null}
           {module.type === "profile_info" ? (
             <div className="space-y-3">
+              <div
+                className="overflow-hidden rounded-card border border-line bg-canvas/38"
+                data-testid="profile-info-media-settings"
+              >
+                <div className="relative min-h-28 overflow-hidden bg-surface/55">
+                  {safeProfileImageUrl(profile.bannerUrl) ? (
+                    <img
+                      alt=""
+                      className="absolute inset-0 size-full object-cover"
+                      src={safeProfileImageUrl(profile.bannerUrl)}
+                    />
+                  ) : (
+                    <div className="absolute inset-0 bg-gradient-to-br from-accent/20 via-cool/12 to-leaf/14" />
+                  )}
+                  <div className="absolute inset-0 bg-canvas/18" />
+                  <div className="absolute bottom-2 left-2 flex items-end gap-2">
+                    <Avatar
+                      user={profile.user}
+                      size="lg"
+                      className="size-16 border-[3px] border-surface shadow-soft"
+                    />
+                    <div className="mb-1 min-w-0">
+                      <p className="truncate text-sm font-semibold text-text">
+                        {profile.user.displayName}
+                      </p>
+                      <p className="truncate text-xs font-medium text-muted">
+                        @{profile.user.handle}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid gap-2 p-2 sm:grid-cols-2">
+                  <label
+                    className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-surface/62 px-3 text-sm font-semibold text-text transition hover:border-line-strong focus-within:outline-2 focus-within:outline-focus"
+                    title="Change profile picture"
+                  >
+                    <ImagePlus aria-hidden="true" size={16} />
+                    {uploading === "avatar" ? "Uploading" : "Picture"}
+                    <input
+                      className="sr-only"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      data-testid="profile-info-modal-avatar-input"
+                      disabled={Boolean(uploading)}
+                      onChange={(event) => {
+                        const file = event.currentTarget.files?.[0];
+
+                        if (file) {
+                          onProfileImageUpload(file, "avatar");
+                        }
+
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                  </label>
+                  <label
+                    className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-surface/62 px-3 text-sm font-semibold text-text transition hover:border-line-strong focus-within:outline-2 focus-within:outline-focus"
+                    title="Change profile banner"
+                  >
+                    <ImagePlus aria-hidden="true" size={16} />
+                    {uploading === "banner" ? "Uploading" : "Banner"}
+                    <input
+                      className="sr-only"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      data-testid="profile-info-modal-banner-input"
+                      disabled={Boolean(uploading)}
+                      onChange={(event) => {
+                        const file = event.currentTarget.files?.[0];
+
+                        if (file) {
+                          onProfileImageUpload(file, "banner");
+                        }
+
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
               <label className="block">
                 <span className="text-xs font-semibold uppercase text-muted">
                   Display name
@@ -4726,35 +4866,79 @@ function ModuleSettingsModal({
             </label>
           ) : null}
           {definition.category === "images" ? (
-            <div>
-              <p className="text-xs font-semibold uppercase text-muted">Media</p>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
+            <div
+              className="space-y-3"
+              data-testid="profile-image-module-settings"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase text-muted">Photos</p>
                 <label
-                  className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-control border border-line bg-canvas/45 px-3 text-sm font-semibold text-text transition hover:border-line-strong focus-within:outline-2 focus-within:outline-focus"
+                  className={cn(
+                    "inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-control border border-line bg-canvas/45 px-3 text-sm font-semibold text-text transition hover:border-line-strong focus-within:outline-2 focus-within:outline-focus",
+                    moduleMediaSlots <= 0 || moduleImageUploading
+                      ? "pointer-events-none opacity-50"
+                      : undefined,
+                  )}
                   data-profile-edit-control="true"
+                  title="Add photos"
                 >
                   <ImagePlus aria-hidden="true" size={16} />
-                  {moduleImageUploading ? "Uploading" : "Image"}
+                  {moduleImageUploading ? "Uploading" : "Add"}
                   <input
                     className="sr-only"
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
+                    multiple
                     data-testid="profile-module-settings-image-input"
-                    disabled={moduleImageUploading}
+                    disabled={moduleImageUploading || moduleMediaSlots <= 0}
                     onChange={(event) => {
-                      void handleModuleImageSelection(
-                        event.currentTarget.files?.[0],
-                      );
+                      handleModuleImageSelection(event.currentTarget.files);
                       event.currentTarget.value = "";
                     }}
                   />
                 </label>
-                <span className="text-xs font-medium text-muted">
-                  {module.config.mediaItems?.length ?? 0}/6
-                </span>
               </div>
+              {moduleMediaItems.length > 0 ? (
+                <div
+                  className="grid grid-cols-3 gap-2"
+                  data-testid="profile-module-media-list"
+                >
+                  {moduleMediaItems.map((item, index) => (
+                    <figure
+                      key={`${item.url}:${index}`}
+                      className="group relative aspect-square min-w-0 overflow-hidden rounded-card border border-line bg-canvas/45"
+                      data-testid={`profile-module-media-item-${index}`}
+                    >
+                      <img
+                        alt=""
+                        className="size-full object-cover"
+                        src={item.url}
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-1.5 top-1.5 grid size-7 place-items-center rounded-full border border-rose/35 bg-canvas/84 text-rose-ink opacity-95 shadow-soft transition hover:border-rose/60 focus-visible:outline-2 focus-visible:outline-focus"
+                        aria-label={`Remove photo ${index + 1}`}
+                        data-testid={`profile-module-media-remove-${index}`}
+                        onClick={() => handleRemoveModuleImage(index)}
+                      >
+                        <Trash2 aria-hidden="true" size={14} />
+                      </button>
+                    </figure>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid min-h-28 place-items-center rounded-card border border-dashed border-line bg-canvas/35 px-3 text-center text-sm font-medium text-muted">
+                  Add cropped photos.
+                </div>
+              )}
+              <p className="text-xs font-medium text-muted">
+                {moduleMediaItems.length}/6
+                {moduleImageCropQueue.length > 0
+                  ? ` · ${moduleImageCropQueue.length} crop queued`
+                  : ""}
+              </p>
               {moduleImageError ? (
-                <p className="mt-2 text-xs font-semibold text-rose-ink" role="alert">
+                <p className="text-xs font-semibold text-rose-ink" role="alert">
                   {moduleImageError}
                 </p>
               ) : null}
@@ -4782,6 +4966,14 @@ function ModuleSettingsModal({
           ) : null}
         </div>
       ) : null}
+      <ImageCropModal
+        open={Boolean(activeModuleImageCropFile)}
+        file={activeModuleImageCropFile}
+        purpose="post_media"
+        busy={moduleImageUploading}
+        onClose={() => setModuleImageCropQueue([])}
+        onApply={handleCroppedModuleImage}
+      />
     </ModalSheet>
   );
 }

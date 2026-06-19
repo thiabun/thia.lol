@@ -199,6 +199,11 @@ body[data-profile-canvas-editing="true"] [data-app-mobile-nav="true"] {
   background-color: transparent;
 }
 
+.profile-media-embed-surface,
+.profile-twitch-embed-grid {
+  transform-origin: left top;
+}
+
 .profile-grid-canvas
   > .profile-grid-module[data-profile-grid-placement="manual"] {
   grid-column: span var(--profile-grid-mobile-column-span);
@@ -222,6 +227,17 @@ body[data-profile-canvas-editing="true"] [data-app-mobile-nav="true"] {
     grid-column: var(--profile-grid-column) / span
       var(--profile-grid-column-span);
     grid-row: var(--profile-grid-row) / span var(--profile-grid-row-span);
+  }
+}
+
+@media (min-width: 1600px) {
+  .profile-grid-canvas [data-profile-twitch-embed-surface="true"]
+    > .profile-twitch-embed-grid,
+  .profile-grid-canvas .profile-media-embed-frame[data-profile-media-only-embed="true"] {
+    block-size: 111.111%;
+    inline-size: 111.111%;
+    transform: scale(0.9);
+    transform-origin: left top;
   }
 }
 
