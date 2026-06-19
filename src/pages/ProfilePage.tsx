@@ -119,6 +119,12 @@ import { ApiClientError } from "../lib/apiClient";
 import { cn } from "../lib/classNames";
 import { formatShortDate } from "../lib/dates";
 import { validateImageCropFile } from "../lib/imageCrop";
+import {
+  imageUploadAccept,
+  isAcceptedVideoUploadFile,
+  videoUploadAccept,
+  videoUploadFormatHelp,
+} from "../lib/mediaFormats";
 import { pageEntrance } from "../lib/motionPresets";
 import { formatCountWithUnit } from "../lib/pluralize";
 import {
@@ -1122,6 +1128,13 @@ export function ProfilePage() {
       return;
     }
 
+    const validationError = validateProfileModuleVideoFile(file);
+
+    if (validationError) {
+      setCanvasError(validationError);
+      return;
+    }
+
     setProfileDraftUploading("backgroundVideo");
     setCanvasError(undefined);
 
@@ -1761,8 +1774,6 @@ function validateProfileModuleAudioFile(file: File): string | undefined {
 }
 
 function validateProfileModuleVideoFile(file: File): string | undefined {
-  const name = file.name.toLowerCase();
-
   if (file.size <= 0) {
     return "Video cannot be empty.";
   }
@@ -1771,13 +1782,8 @@ function validateProfileModuleVideoFile(file: File): string | undefined {
     return "Video must be 30 MB or smaller.";
   }
 
-  if (
-    file.type !== "video/mp4" &&
-    file.type !== "video/webm" &&
-    !name.endsWith(".mp4") &&
-    !name.endsWith(".webm")
-  ) {
-    return "Use an MP4 or WebM file.";
+  if (!isAcceptedVideoUploadFile(file)) {
+    return videoUploadFormatHelp;
   }
 
   return undefined;
@@ -2297,7 +2303,7 @@ function ProfileIdentityEditorFields({
           <input
             className="sr-only"
             type="file"
-            accept="image/jpeg,image/png,image/webp"
+            accept={imageUploadAccept}
             data-testid="profile-info-avatar-input"
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];
@@ -2314,7 +2320,7 @@ function ProfileIdentityEditorFields({
           <input
             className="sr-only"
             type="file"
-            accept="image/jpeg,image/png,image/webp"
+            accept={imageUploadAccept}
             data-testid="profile-info-banner-input"
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];
@@ -2448,7 +2454,7 @@ function ProfileCanvasBackgroundControls({
               <input
                 className="sr-only"
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept={imageUploadAccept}
                 data-testid="profile-background-image-input"
                 disabled={Boolean(uploading)}
                 onChange={(event) => {
@@ -2475,7 +2481,7 @@ function ProfileCanvasBackgroundControls({
               <input
                 className="sr-only"
                 type="file"
-                accept="video/mp4,video/webm"
+                accept={videoUploadAccept}
                 data-testid="profile-background-video-input"
                 disabled={Boolean(uploading)}
                 onChange={(event) => {
@@ -5129,7 +5135,7 @@ function ModuleSettingsModal({
                     <input
                       className="sr-only"
                       type="file"
-                      accept="image/jpeg,image/png,image/webp"
+                      accept={imageUploadAccept}
                       data-testid="profile-info-modal-avatar-input"
                       disabled={Boolean(uploading)}
                       onChange={(event) => {
@@ -5152,7 +5158,7 @@ function ModuleSettingsModal({
                     <input
                       className="sr-only"
                       type="file"
-                      accept="image/jpeg,image/png,image/webp"
+                      accept={imageUploadAccept}
                       data-testid="profile-info-modal-banner-input"
                       disabled={Boolean(uploading)}
                       onChange={(event) => {
@@ -5414,7 +5420,7 @@ function ModuleSettingsModal({
                   <input
                     className="sr-only"
                     type="file"
-                    accept="video/mp4,video/webm"
+                    accept={videoUploadAccept}
                     data-testid="profile-module-settings-video-input"
                     disabled={moduleVideoUploading}
                     onChange={(event) => {
@@ -5454,7 +5460,7 @@ function ModuleSettingsModal({
                 </div>
               ) : (
                 <div className="grid min-h-28 place-items-center rounded-card border border-dashed border-line bg-canvas/35 px-3 text-center text-sm font-medium text-muted">
-                  Upload an MP4 or WebM file.
+                  {videoUploadFormatHelp}
                 </div>
               )}
               {moduleVideoError ? (
@@ -5582,7 +5588,7 @@ function ModuleSettingsModal({
                   <input
                     className="sr-only"
                     type="file"
-                    accept="image/jpeg,image/png,image/webp"
+                    accept={imageUploadAccept}
                     multiple
                     data-testid="profile-module-settings-image-input"
                     disabled={moduleImageUploading || moduleMediaSlots <= 0}

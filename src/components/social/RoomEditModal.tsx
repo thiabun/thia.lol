@@ -18,6 +18,7 @@ import { ImageCropModal } from "../ui/ImageCropModal";
 import { ModalSheet, ModalSheetStatus } from "../ui/ModalSheet";
 import { UserIdentityLink } from "./UserProfileLink";
 import { validateImageCropFile } from "../../lib/imageCrop";
+import { imageUploadAccept } from "../../lib/mediaFormats";
 import type {
   ImageUploadPurpose,
   RoomInput,
@@ -544,7 +545,7 @@ function ImageUploadControl({
             id={id}
             className="sr-only"
             type="file"
-            accept="image/jpeg,image/png,image/webp"
+            accept={imageUploadAccept}
             disabled={uploading}
             onChange={onChange}
           />

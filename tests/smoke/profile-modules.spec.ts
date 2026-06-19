@@ -2920,6 +2920,16 @@ test("owner crops a profile background image before upload", async ({ page }) =>
 
   await page.getByTestId("profile-edit-button").click();
   await page.getByTestId("profile-canvas-background-trigger").click();
+  const backgroundImageAccept = await page
+    .getByTestId("profile-background-image-input")
+    .getAttribute("accept");
+  const backgroundVideoAccept = await page
+    .getByTestId("profile-background-video-input")
+    .getAttribute("accept");
+  expect(backgroundImageAccept).toContain("image/avif");
+  expect(backgroundImageAccept).toContain(".heic");
+  expect(backgroundVideoAccept).toContain("video/quicktime");
+  expect(backgroundVideoAccept).toContain(".mov");
   await page
     .getByTestId("profile-background-image-input")
     .setInputFiles(samplePngFile("profile-background.png"));
@@ -3172,6 +3182,13 @@ test("uploaded video and custom MP3 module settings use file uploads", async ({
   const videoSettings = page.getByTestId("profile-module-settings");
   await expect(videoSettings.getByTestId("profile-video-module-settings")).toBeVisible();
   await expect(videoSettings.getByTestId("profile-module-settings-url")).toHaveCount(0);
+  const videoAccept = await videoSettings
+    .getByTestId("profile-module-settings-video-input")
+    .getAttribute("accept");
+  expect(videoAccept).toContain("video/quicktime");
+  expect(videoAccept).toContain(".mov");
+  expect(videoAccept).toContain(".mkv");
+  expect(videoAccept).toContain(".3gp");
   await videoSettings
     .getByTestId("profile-module-settings-video-input")
     .setInputFiles(sampleMp4File("launch-clip.mp4"));
@@ -3232,7 +3249,11 @@ test("image crop modal is wired to current image upload surfaces", () => {
   for (const source of [profilePage, postComposer, postCard, roomEditor]) {
     expect(source).toContain("ImageCropModal");
     expect(source).toContain("validateImageCropFile");
+    expect(source).toContain("imageUploadAccept");
   }
+
+  expect(readFileSync("src/lib/mediaFormats.ts", "utf8")).toContain("image/heic");
+  expect(readFileSync("src/lib/mediaFormats.ts", "utf8")).toContain("video/quicktime");
 });
 
 test("low-resolution desktop uses compact direct canvas chrome", async ({ page }) => {

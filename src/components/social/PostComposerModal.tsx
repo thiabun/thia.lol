@@ -8,6 +8,7 @@ import { MentionTextarea } from "./MentionTextarea";
 import { createPost, uploadImage } from "../../lib/api";
 import type { CreatePostInput } from "../../lib/api";
 import { validateImageCropFile } from "../../lib/imageCrop";
+import { imageUploadAccept } from "../../lib/mediaFormats";
 import type { Post, Room } from "../../lib/types";
 
 type PostComposerModalProps = {
@@ -217,7 +218,7 @@ export function PostComposerModal({
               <input
                 className="sr-only"
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept={imageUploadAccept}
                 disabled={submitting || uploadingImage}
                 onChange={handleImageChange}
               />

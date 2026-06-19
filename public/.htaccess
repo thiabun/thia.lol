@@ -3,7 +3,7 @@ Options -Indexes -MultiViews
 DirectoryIndex index.html
 
 AddType image/webp .webp
-AddType video/mp4 .mp4
+AddType video/mp4 .mp4 .m4v
 AddType video/webm .webm
 
 <IfModule mod_headers.c>
@@ -17,7 +17,7 @@ AddType video/webm .webm
     Header set Cache-Control "public, max-age=31536000, immutable"
   </FilesMatch>
 
-  <FilesMatch "\.(?:webp|avif|jpe?g|gif|ico|mp4|webm)$">
+  <FilesMatch "\.(?:webp|avif|jpe?g|gif|ico|mp4|m4v|webm)$">
     Header set Cache-Control "public, max-age=604800"
   </FilesMatch>
 </IfModule>
@@ -33,6 +33,7 @@ AddType video/webm .webm
   ExpiresByType image/gif "access plus 7 days"
   ExpiresByType image/x-icon "access plus 7 days"
   ExpiresByType video/mp4 "access plus 7 days"
+  ExpiresByType video/x-m4v "access plus 7 days"
   ExpiresByType video/webm "access plus 7 days"
 </IfModule>
 

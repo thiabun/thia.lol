@@ -19,6 +19,11 @@ return [
         'migration_token' => '',
         'integration_encryption_key' => '',
     ],
+    'media' => [
+        'ffmpeg_path' => '',
+        'ffprobe_path' => '',
+        'video_transcode_timeout_seconds' => 60,
+    ],
     'integrations' => [
         'spotify' => [
             'client_id' => '',

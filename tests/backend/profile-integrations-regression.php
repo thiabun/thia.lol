@@ -141,6 +141,7 @@ assert_true(str_contains($integrationSource, "database_column_exists('profile_in
 assert_true(str_contains($integrationSource, 'profile_integration_crypto_method'), 'integration crypto fallback should exist');
 
 assert_true(validate_profile_video_url('/uploads/media/2026/06/profile_background-abc123.mp4', 'Profile video') === '/uploads/media/2026/06/profile_background-abc123.mp4', 'video URL should validate');
+assert_true(validate_profile_video_url('/uploads/media/2026/06/profile_background-legacy.webm', 'Profile video') === '/uploads/media/2026/06/profile_background-legacy.webm', 'legacy WebM background video URL should validate');
 
 assert_php_rejected_with_config(
     $emptyConfigPath,

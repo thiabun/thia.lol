@@ -43,6 +43,7 @@ import {
 } from "../../lib/api";
 import { cn } from "../../lib/classNames";
 import { validateImageCropFile } from "../../lib/imageCrop";
+import { imageUploadAccept } from "../../lib/mediaFormats";
 import {
   buttonHover,
   buttonTap,
@@ -794,7 +795,7 @@ function ReplyComposer({
             <input
               className="sr-only"
               type="file"
-              accept="image/jpeg,image/png,image/webp"
+              accept={imageUploadAccept}
               disabled={submitting || uploadingImage}
               onChange={(event) => void handleImageChange(event)}
             />

@@ -273,6 +273,20 @@ $uploadedVideo = profile_module_config(
 assert_true($uploadedVideo['video']['url'] === '/uploads/media/2026/06/profile_module_video-video123.mp4', 'uploaded video URL mismatch');
 assert_true($uploadedVideo['sourceMode'] === 'upload', 'uploaded video source mode mismatch');
 
+$legacyWebmVideo = profile_module_config(
+    'uploaded_video',
+    [
+        'sourceMode' => 'upload',
+        'video' => [
+            'url' => '/uploads/media/2026/06/profile_module_video-legacy.webm',
+            'mime' => 'video/webm',
+            'size' => 345678,
+        ],
+    ],
+    123
+);
+assert_true($legacyWebmVideo['video']['type'] === 'video/webm', 'legacy WebM video metadata should remain valid');
+
 $emptyAbout = profile_module_config('about', [], 123);
 assert_true($emptyAbout === [], 'empty about module should be valid for owner placement');
 
