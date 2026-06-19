@@ -1226,13 +1226,10 @@ function ProfileIntegrationRichCard({
   const twitchStreamChatGridColumns = span.columns >= 8 ? 8 : 6;
   const twitchStreamChatStreamColumns = span.columns >= 8 ? 6 : 4;
   const twitchStreamChatColumnStyle = {
-    gridTemplateColumns: `repeat(${twitchStreamChatGridColumns}, minmax(0, 1fr))`,
-  } satisfies CSSProperties;
-  const twitchStreamColumnStyle = {
-    gridColumn: `span ${twitchStreamChatStreamColumns} / span ${twitchStreamChatStreamColumns}`,
-  } satisfies CSSProperties;
-  const twitchChatColumnStyle = {
-    gridColumn: "span 2 / span 2",
+    gridTemplateColumns:
+      span.columns >= 8
+        ? "minmax(0, 5.75fr) minmax(min(22rem, 31%), 2.25fr)"
+        : "minmax(0, 4fr) minmax(min(19rem, 36%), 2fr)",
   } satisfies CSSProperties;
   const micro = span.columns <= 2 && span.rows <= 1;
   const compactTile = span.columns <= 2 && span.rows <= 2;
@@ -1311,7 +1308,7 @@ function ProfileIntegrationRichCard({
           style={twitchStreamChatColumnStyle}
         >
           <iframe
-            className="block h-full min-h-[220px] w-full rounded-card border-0 bg-black"
+            className="block h-full min-h-[220px] min-w-0 w-full rounded-card border-0 bg-black"
             title={primaryEmbed.title}
             src={primaryEmbedSrc}
             height={360}
@@ -1322,10 +1319,9 @@ function ProfileIntegrationRichCard({
             allowFullScreen
             data-profile-embed-provider={integration.provider}
             data-testid={`profile-integration-embed-${integration.provider}`}
-            style={twitchStreamColumnStyle}
           />
           <iframe
-            className="block h-full min-h-[220px] w-full rounded-card border-0 bg-surface"
+            className="block h-full min-h-[220px] min-w-0 w-full rounded-card border-0 bg-surface"
             title="Twitch chat"
             src={twitchChatSrc}
             height={360}
@@ -1333,7 +1329,6 @@ function ProfileIntegrationRichCard({
             referrerPolicy="strict-origin-when-cross-origin"
             sandbox={twitchEmbedSandbox}
             data-testid="profile-integration-embed-twitch-chat"
-            style={twitchChatColumnStyle}
           />
         </div>
       </div>

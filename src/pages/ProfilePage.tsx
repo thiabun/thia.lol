@@ -5083,7 +5083,7 @@ function ProfileInfoModule({
 
   return (
     <div
-      className="size-full min-w-0"
+      className="profile-grid-scaled-content size-full min-w-0"
       data-profile-info-columns={span.columns}
       data-profile-info-rows={span.rows}
       data-testid="profile-module-profile-info"
@@ -5168,12 +5168,12 @@ function ProfileInfoSizedCard({
   const showBanner = Boolean(bannerUrl) && !compact;
   const bannerHeight = expanded
     ? large
-      ? "clamp(9rem, calc(var(--profile-grid-cell-size) * 1.25), 13rem)"
-      : "clamp(7rem, calc(var(--profile-grid-cell-size) * 1.05), 10rem)"
+      ? "clamp(8.5rem, calc(var(--profile-grid-cell-size) * 1.18), 12rem)"
+      : "clamp(6.75rem, calc(var(--profile-grid-cell-size) * 1), 9.5rem)"
     : large
-      ? "clamp(8rem, calc(var(--profile-grid-cell-size) * 1.15), 11.5rem)"
+      ? "clamp(7.5rem, calc(var(--profile-grid-cell-size) * 1.02), 10.5rem)"
       : wide
-        ? "clamp(6.5rem, calc(var(--profile-grid-cell-size) * 1.05), 9rem)"
+        ? "clamp(6rem, calc(var(--profile-grid-cell-size) * 0.92), 8rem)"
         : balanced
           ? "clamp(5rem, calc(var(--profile-grid-cell-size) * 0.82), 7rem)"
           : "5rem";
@@ -5246,15 +5246,26 @@ function ProfileInfoSizedCard({
     >
       {showBanner ? (
         <div
-          className="shrink-0 overflow-hidden border-b border-line bg-canvas/80"
+          className="relative isolate grid shrink-0 place-items-center overflow-hidden border-b border-line bg-canvas/80"
           data-profile-banner-treatment={large ? "full" : "clear"}
           data-testid="profile-header-banner"
           style={{ blockSize: bannerHeight }}
         >
           <img
             alt=""
-            className="size-full object-contain object-center"
+            aria-hidden="true"
+            className="absolute inset-0 -z-10 size-full scale-105 object-cover opacity-35 blur-sm saturate-75"
             src={bannerUrl}
+          />
+          <span
+            aria-hidden="true"
+            className="absolute inset-0 -z-10 bg-canvas/25"
+          />
+          <img
+            alt=""
+            className="relative z-10 h-full max-h-full max-w-full object-contain object-center"
+            src={bannerUrl}
+            data-testid="profile-header-banner-image"
           />
         </div>
       ) : (

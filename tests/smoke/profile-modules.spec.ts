@@ -1135,6 +1135,10 @@ test("Twitch stream chat fills the creator module when embed metadata is availab
     "4",
   );
   await expect(twitchSurface).toHaveAttribute("data-profile-twitch-chat-columns", "2");
+  await expectTwitchStreamChatWidthRatio(creator, {
+    max: 2.1,
+    min: 1.7,
+  });
   await expect(creator.getByRole("link")).toHaveCount(0);
 });
 
@@ -1166,7 +1170,10 @@ test("largest Twitch stream chat uses a six plus two desktop split", async ({
     "6",
   );
   await expect(twitchSurface).toHaveAttribute("data-profile-twitch-chat-columns", "2");
-  await expectTwitchStreamChatWidthRatio(twitch, 3);
+  await expectTwitchStreamChatWidthRatio(twitch, {
+    max: 2.75,
+    min: 2.15,
+  });
 });
 
 test("owner direct canvas editor preserves lower-row 6x4 creator modules", async ({
@@ -1325,22 +1332,31 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
     const bannerElement = document.querySelector<HTMLElement>(
       '[data-testid="profile-grid-module-profile_info"] [data-testid="profile-header-banner"]',
     );
+    const bannerImage = document.querySelector<HTMLElement>(
+      '[data-testid="profile-grid-module-profile_info"] [data-testid="profile-header-banner-image"]',
+    );
 
-    if (!moduleElement || !headerElement || !bannerElement) {
+    if (!moduleElement || !headerElement || !bannerElement || !bannerImage) {
       throw new Error("Profile info module, header, or banner did not render.");
     }
 
     return {
       bannerHeight: Math.round(bannerElement.getBoundingClientRect().height),
       headerHeight: Math.round(headerElement.getBoundingClientRect().height),
+      infoHeight: Math.round(
+        document
+          .querySelector<HTMLElement>(
+            '[data-testid="profile-grid-module-profile_info"] [data-testid="profile-module-profile-info"]',
+          )!
+          .getBoundingClientRect().height,
+      ),
       moduleHeight: Math.round(moduleElement.getBoundingClientRect().height),
-      objectFit: window.getComputedStyle(
-        bannerElement.querySelector("img")!,
-      ).objectFit,
+      objectFit: window.getComputedStyle(bannerImage).objectFit,
     };
   });
 
   expect(metrics.headerHeight).toBeGreaterThanOrEqual(metrics.moduleHeight * 0.92);
+  expect(metrics.infoHeight).toBeGreaterThanOrEqual(metrics.moduleHeight * 0.92);
   expect(metrics.bannerHeight).toBeGreaterThan(metrics.moduleHeight * 0.3);
   expect(metrics.bannerHeight).toBeLessThan(metrics.moduleHeight * 0.62);
   expect(metrics.objectFit).toBe("contain");
@@ -1387,17 +1403,23 @@ test("wide profile info keeps full banner and avatar overlap at high resolution"
     const banner = element.querySelector<HTMLElement>(
       '[data-testid="profile-header-banner"]',
     );
-    const bannerImage = banner?.querySelector<HTMLImageElement>("img");
+    const bannerImage = banner?.querySelector<HTMLImageElement>(
+      '[data-testid="profile-header-banner-image"]',
+    );
+    const scaledInfo = element.querySelector<HTMLElement>(
+      '[data-testid="profile-module-profile-info"]',
+    );
     const avatar = element.querySelector<HTMLImageElement>('img[alt="Thia"]');
     const bio = element.querySelector<HTMLElement>('[data-testid="profile-bio"]');
 
-    if (!header || !banner || !bannerImage || !avatar || !bio) {
+    if (!header || !banner || !bannerImage || !scaledInfo || !avatar || !bio) {
       throw new Error("Expected profile info banner, avatar, and bio to render.");
     }
 
     const moduleRect = element.getBoundingClientRect();
     const headerRect = header.getBoundingClientRect();
     const bannerRect = banner.getBoundingClientRect();
+    const scaledInfoRect = scaledInfo.getBoundingClientRect();
     const avatarRect = avatar.getBoundingClientRect();
     const bioRect = bio.getBoundingClientRect();
 
@@ -1410,6 +1432,8 @@ test("wide profile info keeps full banner and avatar overlap at high resolution"
       headerHeight: headerRect.height,
       headerRight: headerRect.right,
       headerWidth: headerRect.width,
+      infoHeight: scaledInfoRect.height,
+      infoWidth: scaledInfoRect.width,
       moduleBottom: moduleRect.bottom,
       moduleHeight: moduleRect.height,
       moduleRight: moduleRect.right,
@@ -1419,6 +1443,8 @@ test("wide profile info keeps full banner and avatar overlap at high resolution"
   });
 
   expect(metrics.objectFit).toBe("contain");
+  expect(metrics.infoWidth).toBeGreaterThanOrEqual(metrics.moduleWidth - 2);
+  expect(metrics.infoHeight).toBeGreaterThanOrEqual(metrics.moduleHeight - 2);
   expect(metrics.bannerHeight).toBeGreaterThan(metrics.moduleHeight * 0.3);
   expect(metrics.avatarTop).toBeLessThan(metrics.bannerBottom);
   expect(metrics.avatarBottom).toBeGreaterThan(metrics.bannerBottom);
@@ -4959,8 +4985,17 @@ async function expectModuleAspectRatio(locator: Locator, expectedRatio: number) 
 
 async function expectTwitchStreamChatWidthRatio(
   locator: Locator,
-  expectedRatio: number,
+  expectedRatio:
+    | number
+    | {
+        max: number;
+        min: number;
+      },
 ) {
+  const minRatio =
+    typeof expectedRatio === "number" ? expectedRatio - 0.12 : expectedRatio.min;
+  const maxRatio =
+    typeof expectedRatio === "number" ? expectedRatio + 0.12 : expectedRatio.max;
   const measureRatio = async () =>
     locator.evaluate((element) => {
       const stream = element.querySelector<HTMLElement>(
@@ -4980,8 +5015,8 @@ async function expectTwitchStreamChatWidthRatio(
       return chatRect.width > 0 ? streamRect.width / chatRect.width : 0;
     });
 
-  await expect.poll(measureRatio).toBeGreaterThan(expectedRatio - 0.12);
-  await expect.poll(measureRatio).toBeLessThan(expectedRatio + 0.12);
+  await expect.poll(measureRatio).toBeGreaterThan(minRatio);
+  await expect.poll(measureRatio).toBeLessThan(maxRatio);
 }
 
 async function expectTextOrder(locator: Locator, texts: string[]) {
