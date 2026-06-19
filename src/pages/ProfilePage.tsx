@@ -27,6 +27,7 @@ import {
   Star,
   Trash2,
   Upload,
+  VolumeX,
   X,
   UserCheck,
   Users,
@@ -5081,17 +5082,22 @@ function ModuleSettingsModal({
                 className="overflow-hidden rounded-card border border-line bg-canvas/38"
                 data-testid="profile-info-media-settings"
               >
-                <div className="relative min-h-28 overflow-hidden bg-surface/55">
+                <div
+                  className="relative min-h-32 overflow-hidden bg-surface/55"
+                  data-profile-banner-treatment="cover"
+                  data-testid="profile-info-preview-banner"
+                >
                   {safeProfileImageUrl(profile.bannerUrl) ? (
                     <img
                       alt=""
-                      className="absolute inset-0 size-full object-cover"
+                      className="absolute inset-0 size-full object-cover object-center"
                       src={safeProfileImageUrl(profile.bannerUrl)}
+                      data-testid="profile-info-preview-banner-image"
                     />
                   ) : (
                     <div className="absolute inset-0 bg-gradient-to-br from-accent/20 via-cool/12 to-leaf/14" />
                   )}
-                  <div className="absolute inset-0 bg-canvas/18" />
+                  <div className="absolute inset-0 bg-gradient-to-b from-canvas/18 via-canvas/5 to-canvas/46" />
                   <div className="absolute bottom-2 left-2 flex items-end gap-2">
                     <Avatar
                       user={profile.user}
@@ -6084,7 +6090,7 @@ function ProfileInfoSizedCard({
 }: ProfileInfoSizedCardProps) {
   const compact = span.columns <= 3;
   const balanced = span.columns === 4;
-  const expanded = span.rows >= 4;
+  const expanded = span.size === "8x4" || span.rows >= 4;
   const wide = span.columns >= 6;
   const large = span.columns >= 8;
   const mobileWide = mobileProjected && wide;
@@ -6092,17 +6098,15 @@ function ProfileInfoSizedCard({
   const bannerUrl = safeProfileImageUrl(profile.bannerUrl);
   const showBanner = Boolean(bannerUrl) && !compact;
   const bannerHeight = mobileWide
-    ? "6.25rem"
+    ? "34%"
     : expanded
-    ? large
-      ? "9.75rem"
-      : "8rem"
+    ? "42%"
     : large
-      ? "7.75rem"
+      ? "44%"
       : wide
-        ? "6.75rem"
+        ? "42%"
         : balanced
-          ? "5.5rem"
+          ? "38%"
           : "5rem";
   const avatarSizeClass = mobileWide
     ? "size-16"
@@ -6125,6 +6129,15 @@ function ProfileInfoSizedCard({
     : expanded
       ? "top-4"
       : "top-3";
+  const contentSpacingClass = showBanner
+    ? mobileWide
+      ? "pt-9"
+      : expanded || large
+        ? "pt-11"
+        : balanced
+          ? "pt-8"
+          : "pt-9"
+    : "pt-0";
   const identityInsetClass = mobileWide
     ? "pl-[5rem]"
     : balanced
@@ -6132,15 +6145,9 @@ function ProfileInfoSizedCard({
     : expanded
       ? "pl-[6.25rem]"
       : "pl-[5.25rem]";
-  const identityMaxWidthClass = mobileWide
-    ? "max-w-[8.75rem]"
-    : balanced
-    ? "max-w-[8.5rem]"
-    : expanded
-      ? "max-w-[12rem]"
-      : large
-        ? "max-w-[11rem]"
-        : "max-w-[10rem]";
+  const bioLines = expanded ? 4 : balanced ? 1 : mobileWide ? 2 : 2;
+  const showSecondaryControls = large || expanded;
+  const maxTrailBadges = expanded ? 4 : large ? 2 : 1;
   const shellClass = cn(
     "relative flex size-full min-h-0 min-w-0 flex-col overflow-hidden rounded-panel border",
     editing
@@ -6216,26 +6223,21 @@ function ProfileInfoSizedCard({
     >
       {showBanner ? (
         <div
-          className="relative isolate grid shrink-0 place-items-center overflow-hidden border-b border-line bg-canvas/80"
-          data-profile-banner-treatment={large ? "full" : "clear"}
+          className="relative isolate shrink-0 overflow-hidden border-b border-line bg-canvas/80"
+          data-profile-banner-treatment="cover"
           data-testid="profile-header-banner"
           style={{ blockSize: bannerHeight }}
         >
           <img
             alt=""
             aria-hidden="true"
-            className="absolute inset-0 -z-10 size-full scale-105 object-cover opacity-35 blur-sm saturate-75"
+            className="absolute inset-0 size-full object-cover object-center"
             src={bannerUrl}
+            data-testid="profile-header-banner-image"
           />
           <span
             aria-hidden="true"
-            className="absolute inset-0 -z-10 bg-canvas/25"
-          />
-          <img
-            alt=""
-            className="relative z-10 h-full max-h-full max-w-full object-contain object-center"
-            src={bannerUrl}
-            data-testid="profile-header-banner-image"
+            className="absolute inset-0 bg-gradient-to-b from-canvas/18 via-canvas/5 to-canvas/46"
           />
         </div>
       ) : (
@@ -6267,9 +6269,7 @@ function ProfileInfoSizedCard({
         <div
           className={cn(
             "flex min-h-0 min-w-0 flex-col",
-            mobileWide
-              ? "pt-9"
-              : "mt-auto",
+            contentSpacingClass,
             expanded || mobileWide ? "gap-2" : "gap-1.5",
           )}
           data-testid="profile-info-content-cluster"
@@ -6282,7 +6282,7 @@ function ProfileInfoSizedCard({
               )}
               data-testid="profile-info-identity-row"
             >
-              <div className={cn("min-w-0 shrink-0", identityMaxWidthClass)}>
+              <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                   <h1
                     className={cn(
@@ -6308,7 +6308,7 @@ function ProfileInfoSizedCard({
                   inline
                   trail
                   featuredBadges={featuredBadges}
-                  maxBadges={expanded ? 5 : 3}
+                  maxBadges={maxTrailBadges}
                   onOpenPanel={onOpenPanel}
                   profile={profile}
                 />
@@ -6323,14 +6323,15 @@ function ProfileInfoSizedCard({
               onMuteToggle={onMuteToggle}
               profile={profile}
               profileControlBusy={profileControlBusy}
-              showControls={span.columns >= 6}
+              secondaryCompact
+              showControls={showSecondaryControls}
             />
           </div>
           {profile.bio ? (
             <ProfileInfoBio
               bio={profile.bio}
               entities={profile.bioEntities}
-              expanded={expanded}
+              lines={bioLines}
             />
           ) : null}
           <div className="min-w-0 pt-1">
@@ -6347,7 +6348,7 @@ function ProfileInfoSizedCard({
               profileControlMessage={activeProfileControlMessage}
               showChatHint={showChatHint}
             />
-            {!isOwnProfile && span.columns >= 6 ? (
+            {!isOwnProfile && (wide || expanded) ? (
               <div className="mt-2 flex justify-end">
                 <ReportForm
                   targetType="profile"
@@ -6355,7 +6356,9 @@ function ProfileInfoSizedCard({
                   reportedUserId={profile.user.id}
                   title="Report profile"
                   explainer={`This reports @${profile.user.handle}'s profile to moderators.`}
-                  triggerClassName="min-h-8 px-2.5 text-xs"
+                  triggerMode="icon"
+                  triggerSize="compact"
+                  triggerClassName="border border-line bg-surface/70 text-muted hover:border-line-strong hover:text-text"
                 />
               </div>
             ) : null}
@@ -6376,6 +6379,7 @@ function ProfileInfoActions({
   onMuteToggle,
   profile,
   profileControlBusy,
+  secondaryCompact = false,
   showControls = false,
 }: {
   compact?: boolean | undefined;
@@ -6387,6 +6391,7 @@ function ProfileInfoActions({
   onMuteToggle?: (() => Promise<void> | void) | undefined;
   profile: Profile;
   profileControlBusy?: "block" | "mute" | undefined;
+  secondaryCompact?: boolean | undefined;
   showControls?: boolean | undefined;
 }) {
   if (isOwnProfile) {
@@ -6432,24 +6437,30 @@ function ProfileInfoActions({
         <Button
           type="button"
           variant="secondary"
-          size="sm"
-          className="min-h-8 px-2.5 text-xs"
+          size={secondaryCompact ? "icon" : "sm"}
+          className={secondaryCompact ? "size-8 p-0" : "min-h-8 px-2.5 text-xs"}
           disabled={profileControlBusy !== undefined}
+          icon={<VolumeX aria-hidden="true" size={14} />}
+          aria-label={profile.mutedByMe ? "Unmute" : "Mute"}
+          title={profile.mutedByMe ? "Unmute" : "Mute"}
           onClick={() => void onMuteToggle()}
         >
-          {profile.mutedByMe ? "Unmute" : "Mute"}
+          {secondaryCompact ? null : profile.mutedByMe ? "Unmute" : "Mute"}
         </Button>
       ) : null}
       {showControls && onBlockToggle ? (
         <Button
           type="button"
           variant="secondary"
-          size="sm"
-          className="min-h-8 px-2.5 text-xs"
+          size={secondaryCompact ? "icon" : "sm"}
+          className={secondaryCompact ? "size-8 p-0" : "min-h-8 px-2.5 text-xs"}
           disabled={profileControlBusy !== undefined}
+          icon={<Shield aria-hidden="true" size={14} />}
+          aria-label={profile.blockedByMe ? "Unblock" : "Block"}
+          title={profile.blockedByMe ? "Unblock" : "Block"}
           onClick={() => void onBlockToggle()}
         >
-          {profile.blockedByMe ? "Unblock" : "Block"}
+          {secondaryCompact ? null : profile.blockedByMe ? "Unblock" : "Block"}
         </Button>
       ) : null}
     </div>
@@ -6508,7 +6519,7 @@ function ProfileInfoStats({
               <span
                 className={cn(
                   "font-semibold leading-none text-text",
-                  compact ? "block truncate text-[0.72rem]" : "text-base",
+                  compact ? "block truncate text-[0.72rem]" : "text-[0.95rem]",
                 )}
                 data-profile-info-stat-value={stat.label}
               >
@@ -6517,7 +6528,7 @@ function ProfileInfoStats({
               <span
                 className={cn(
                   "font-medium leading-none text-muted",
-                  compact ? "block truncate text-[0.58rem]" : "text-sm",
+                  compact ? "block truncate text-[0.58rem]" : "text-xs",
                 )}
                 data-profile-info-stat-label={stat.label}
               >
@@ -6527,7 +6538,7 @@ function ProfileInfoStats({
           );
           const className = compact
             ? "block min-w-0 rounded-control py-0.5 text-left leading-none transition duration-fluid ease-fluid"
-            : "inline-flex min-w-0 items-baseline gap-1.5 rounded-control py-0.5 leading-none transition duration-fluid ease-fluid";
+            : "inline-flex min-w-0 items-baseline gap-1.5 whitespace-nowrap rounded-control py-0.5 leading-none transition duration-fluid ease-fluid";
           const panel = stat.panel;
           const statNode = panel ? (
             <button
@@ -6556,7 +6567,7 @@ function ProfileInfoStats({
             return (
               <span
                 key={stat.label}
-                className="inline-flex min-w-0 items-baseline gap-2"
+                className="inline-flex min-w-0 items-baseline gap-2 whitespace-nowrap"
               >
                 <span
                   aria-hidden="true"
@@ -6640,7 +6651,7 @@ function ProfileInfoStats({
 function ProfileInfoTrailBadge({ userBadge }: { userBadge: UserBadge }) {
   return (
     <span
-      className="inline-flex min-w-0 items-baseline gap-2"
+      className="inline-flex min-w-0 items-baseline gap-2 whitespace-nowrap"
       data-profile-info-badge-trail="true"
     >
       <span
@@ -6667,22 +6678,30 @@ function ProfileInfoBio({
   bio,
   compact = false,
   entities,
-  expanded = false,
+  lines,
 }: {
   bio: string;
   compact?: boolean | undefined;
   entities?: Profile["bioEntities"] | undefined;
-  expanded?: boolean | undefined;
+  lines?: 1 | 2 | 3 | 4 | undefined;
 }) {
+  const lineClampClass = compact
+    ? "line-clamp-2"
+    : lines === 1
+      ? "line-clamp-1"
+      : lines === 3
+        ? "line-clamp-3"
+        : lines === 4
+          ? "line-clamp-4"
+          : "line-clamp-2";
+
   return (
     <p
       className={cn(
         "min-h-0 max-w-full shrink-0 overflow-hidden break-words text-text",
         compact
           ? "mt-2 line-clamp-2 text-xs leading-5"
-          : expanded
-            ? "line-clamp-4 whitespace-pre-wrap text-sm leading-5"
-            : "line-clamp-2 whitespace-pre-wrap text-sm leading-5",
+          : cn(lineClampClass, "whitespace-pre-wrap text-sm leading-5"),
       )}
       data-profile-bio-clamped="true"
       data-testid="profile-bio"

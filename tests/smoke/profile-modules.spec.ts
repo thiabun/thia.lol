@@ -1441,7 +1441,7 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
 
   await expect(info).toHaveAttribute("data-profile-info-columns", "6");
   await expect(info).toHaveAttribute("data-profile-info-rows", "3");
-  await expect(banner).toHaveAttribute("data-profile-banner-treatment", "clear");
+  await expect(banner).toHaveAttribute("data-profile-banner-treatment", "cover");
   await expect(module.getByTestId("profile-social-context")).toHaveAttribute(
     "data-profile-info-stats-variant",
     "inline",
@@ -1516,10 +1516,10 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
   expect(metrics.infoHeight).toBeGreaterThanOrEqual(metrics.moduleHeight * 0.92);
   expect(metrics.bannerHeight).toBeGreaterThan(metrics.moduleHeight * 0.3);
   expect(metrics.bannerHeight).toBeLessThan(metrics.moduleHeight * 0.62);
-  expect(metrics.objectFit).toBe("contain");
+  expect(metrics.objectFit).toBe("cover");
 });
 
-test("wide profile info keeps full banner and avatar overlap at high resolution", async ({
+test("wide profile info keeps cover banner and avatar overlap at high resolution", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
@@ -1552,7 +1552,7 @@ test("wide profile info keeps full banner and avatar overlap at high resolution"
   await expect(module).toHaveAttribute("data-profile-grid-size", "8x3");
   await expect(module.getByTestId("profile-header-banner")).toHaveAttribute(
     "data-profile-banner-treatment",
-    "full",
+    "cover",
   );
 
   const metrics = await module.evaluate((element) => {
@@ -1618,6 +1618,7 @@ test("wide profile info keeps full banner and avatar overlap at high resolution"
       bannerHeight: bannerRect.height,
       bioBottom: bioRect.bottom,
       contentBottom: contentRect.bottom,
+      contentGapFromBanner: contentRect.top - bannerRect.bottom,
       contentTop: contentRect.top,
       displayNameLeft: displayNameRect.left,
       displayNameRight: displayNameRect.right,
@@ -1636,7 +1637,7 @@ test("wide profile info keeps full banner and avatar overlap at high resolution"
     };
   });
 
-  expect(metrics.objectFit).toBe("contain");
+  expect(metrics.objectFit).toBe("cover");
   expect(metrics.socialTrail).toBe("true");
   expect(metrics.infoWidth).toBeGreaterThanOrEqual(metrics.moduleWidth - 2);
   expect(metrics.infoHeight).toBeGreaterThanOrEqual(metrics.moduleHeight - 2);
@@ -1646,8 +1647,9 @@ test("wide profile info keeps full banner and avatar overlap at high resolution"
   expect(metrics.avatarBottom).toBeGreaterThan(metrics.bannerBottom);
   expect(metrics.displayNameLeft).toBeGreaterThan(metrics.avatarRight - 2);
   expect(metrics.socialLeft).toBeGreaterThan(metrics.displayNameRight);
-  expect(metrics.contentTop).toBeGreaterThanOrEqual(metrics.bannerBottom - 1);
-  expect(metrics.contentBottom).toBeGreaterThan(metrics.moduleBottom - 28);
+  expect(metrics.contentTop).toBeGreaterThan(metrics.bannerBottom);
+  expect(metrics.contentGapFromBanner).toBeLessThan(metrics.moduleHeight * 0.2);
+  expect(metrics.contentBottom).toBeLessThanOrEqual(metrics.moduleBottom + 1);
   expect(metrics.bioBottom).toBeLessThanOrEqual(metrics.moduleBottom + 1);
   expect(metrics.headerWidth).toBeGreaterThanOrEqual(metrics.moduleWidth - 2);
   expect(metrics.headerHeight).toBeGreaterThanOrEqual(metrics.moduleHeight - 2);
@@ -1753,10 +1755,17 @@ test("profile info variants stay within each supported size", async ({ page }) =
     ]);
     expect(new Set(statStyles.map((stat) => stat.labelFontSize)).size).toBe(1);
     expect(new Set(statStyles.map((stat) => stat.valueFontSize)).size).toBe(1);
-    if (["8x3", "8x4"].includes(profileInfoCase.size)) {
+    if (["3x2", "3x3"].includes(profileInfoCase.size)) {
+      await expect(module.getByTestId("profile-header-banner")).toHaveCount(0);
+    }
+    if (["4x3", "6x3", "8x3", "8x4"].includes(profileInfoCase.size)) {
       await expect(module.getByTestId("profile-header-banner")).toHaveAttribute(
         "data-profile-banner-treatment",
-        "full",
+        "cover",
+      );
+      await expect(module.getByTestId("profile-header-banner-image")).toHaveCSS(
+        "object-fit",
+        "cover",
       );
     }
 
@@ -2998,6 +3007,14 @@ test("profile-info settings change picture and banner through crop controls", as
   await expect(
     settings.locator('img[src="/uploads/media/2026/06/banner-cropped.webp"]'),
   ).toBeVisible();
+  await expect(settings.getByTestId("profile-info-preview-banner")).toHaveAttribute(
+    "data-profile-banner-treatment",
+    "cover",
+  );
+  await expect(settings.getByTestId("profile-info-preview-banner-image")).toHaveCSS(
+    "object-fit",
+    "cover",
+  );
 });
 
 test("image module settings crop and add multiple photos", async ({ page }) => {
