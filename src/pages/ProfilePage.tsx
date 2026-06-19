@@ -3417,14 +3417,14 @@ function ProfileDirectCanvasEditor({
         currentModules.map((item) =>
           item.id === module.id
             ? {
-	                ...item,
-	                type,
-	                title: null,
-	                config: autofill.config,
-	                visibility: autofill.config.configured === false ? "draft" : "public",
-	                layout: {
-	                  ...item.layout!,
-	                  colSpan: span.columns,
+                ...item,
+                type,
+                title: null,
+                config: autofill.config,
+                visibility: autofill.config.configured === false ? "draft" : "public",
+                layout: {
+                  ...item.layout!,
+                  colSpan: span.columns,
                   rowSpan: span.rows,
                 },
               }
@@ -3974,8 +3974,8 @@ function ProfileDirectCanvasEditor({
 
 function ModulePickerModal({
   module,
-	onChoose,
-	onClose,
+  onChoose,
+  onClose,
 }: {
   module: ProfileModule | undefined;
   onChoose: (type: ProfileModule["type"]) => Promise<void> | void;
@@ -5418,9 +5418,7 @@ function ProfileInfoSizedCard({
           </div>
         </div>
         {span.rows >= 3 && profile.bio ? (
-          <p className="mt-2 line-clamp-2 min-h-0 text-xs leading-5 text-text">
-            {profile.bio}
-          </p>
+          <ProfileInfoBio bio={profile.bio} compact />
         ) : null}
         <div className="mt-auto flex min-w-0 items-end justify-between gap-2 pt-2">
           <div className="min-w-0 flex-1">
@@ -5548,6 +5546,8 @@ function ProfileInfoSizedCard({
                 <ProfileInfoStats
                   inline
                   trail
+                  featuredBadges={featuredBadges}
+                  maxBadges={expanded ? 5 : 3}
                   onOpenPanel={onOpenPanel}
                   profile={profile}
                 />
@@ -5565,17 +5565,7 @@ function ProfileInfoSizedCard({
               showControls={span.columns >= 6}
             />
           </div>
-          {profile.bio ? (
-            <p
-              className={cn(
-                "min-h-0 whitespace-pre-wrap break-words text-sm leading-5 text-text",
-                expanded ? "line-clamp-4" : balanced ? "line-clamp-2" : "line-clamp-2",
-              )}
-              data-testid="profile-bio"
-            >
-              {profile.bio}
-            </p>
-          ) : null}
+          {profile.bio ? <ProfileInfoBio bio={profile.bio} expanded={expanded} /> : null}
           <div className="min-w-0 pt-1">
             {!inlineStats ? (
               <ProfileInfoStats
@@ -5583,10 +5573,6 @@ function ProfileInfoSizedCard({
                 profile={profile}
               />
             ) : null}
-            <ProfileInfoBadgeStrip
-              featuredBadges={featuredBadges}
-              max={expanded ? 5 : 3}
-            />
             <ProfileInfoStatusLine
               followError={activeFollowError}
               profile={profile}
@@ -5705,13 +5691,17 @@ function ProfileInfoActions({
 
 function ProfileInfoStats({
   compact = false,
+  featuredBadges = [],
   inline = false,
+  maxBadges = 0,
   onOpenPanel,
   profile,
   trail = false,
 }: {
   compact?: boolean | undefined;
+  featuredBadges?: UserBadge[] | undefined;
   inline?: boolean | undefined;
+  maxBadges?: number | undefined;
   onOpenPanel: (panel: "followers" | "following" | "badges") => void;
   profile: Profile;
   trail?: boolean | undefined;
@@ -5725,6 +5715,10 @@ function ProfileInfoStats({
     { label: "Following", panel: "following", value: profile.stats.following },
     { label: "Likes", value: profile.stats.echoes },
   ];
+  const inlineBadges =
+    trail && !compact && maxBadges > 0
+      ? featuredBadges.slice(0, maxBadges)
+      : [];
 
   if (inline) {
     return (
@@ -5811,6 +5805,9 @@ function ProfileInfoStats({
 
           return statNode;
         })}
+        {inlineBadges.map((userBadge) => (
+          <ProfileInfoTrailBadge key={userBadge.id} userBadge={userBadge} />
+        ))}
       </div>
     );
   }
@@ -5873,29 +5870,57 @@ function ProfileInfoStats({
   );
 }
 
-function ProfileInfoBadgeStrip({
-  featuredBadges,
-  max,
-}: {
-  featuredBadges: UserBadge[];
-  max: number;
-}) {
-  if (featuredBadges.length === 0) {
-    return null;
-  }
-
+function ProfileInfoTrailBadge({ userBadge }: { userBadge: UserBadge }) {
   return (
-    <div className="mt-2 flex min-w-0 flex-wrap gap-1.5 overflow-hidden">
-      {featuredBadges.slice(0, max).map((userBadge) => (
-        <Badge
-          key={userBadge.id}
-          className="min-h-6 max-w-36 px-2 text-[0.68rem]"
-          title={userBadge.badge.description ?? userBadge.badge.name}
-        >
-          <span className="truncate">{userBadge.badge.name}</span>
-        </Badge>
-      ))}
-    </div>
+    <span
+      className="inline-flex min-w-0 items-baseline gap-2"
+      data-profile-info-badge-trail="true"
+    >
+      <span
+        aria-hidden="true"
+        className="shrink-0 text-sm font-semibold leading-none text-muted"
+        data-profile-info-badge-separator="true"
+        data-profile-info-stat-separator="true"
+      >
+        ·
+      </span>
+      <Badge
+        className="min-h-5 max-w-28 px-2 text-[0.68rem]"
+        data-profile-info-badge={userBadge.badge.badgeKey}
+        title={userBadge.badge.description ?? userBadge.badge.name}
+        tone={badgeTone(userBadge.badge.rarity)}
+      >
+        <span className="truncate">{userBadge.badge.name}</span>
+      </Badge>
+    </span>
+  );
+}
+
+function ProfileInfoBio({
+  bio,
+  compact = false,
+  expanded = false,
+}: {
+  bio: string;
+  compact?: boolean | undefined;
+  expanded?: boolean | undefined;
+}) {
+  return (
+    <p
+      className={cn(
+        "min-h-0 max-w-full shrink-0 overflow-hidden break-words text-text",
+        compact
+          ? "mt-2 line-clamp-2 text-xs leading-5"
+          : expanded
+            ? "line-clamp-4 whitespace-pre-wrap text-sm leading-5"
+            : "line-clamp-2 whitespace-pre-wrap text-sm leading-5",
+      )}
+      data-profile-bio-clamped="true"
+      data-testid="profile-bio"
+      title={bio}
+    >
+      {bio}
+    </p>
   );
 }
 

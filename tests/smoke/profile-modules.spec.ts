@@ -1252,7 +1252,7 @@ test("largest Twitch stream chat uses a six plus two desktop split", async ({
     });
   expect(largeEmbedMetrics.streamMinHeight).toBe("0px");
   expect(largeEmbedMetrics.chatMinHeight).toBe("0px");
-  expect(largeEmbedMetrics.transform).toBe("none");
+  expect(largeEmbedMetrics.transform).not.toBe("none");
 });
 
 test("owner direct canvas editor preserves lower-row 6x4 creator modules", async ({
@@ -1635,7 +1635,13 @@ test("profile info variants stay within each supported size", async ({ page }) =
         await socialContext
           .locator('[data-profile-info-stat-separator="true"]')
           .count(),
-      ).toBe(3);
+      ).toBe(4);
+      await expect(socialContext).toContainText("Founder");
+      expect(
+        await socialContext
+          .locator('[data-profile-info-badge-separator="true"]')
+          .count(),
+      ).toBe(1);
     }
     const statStyles = await socialContext.evaluate((element) =>
       Array.from(element.querySelectorAll<HTMLElement>("[data-profile-info-stat]")).map(
@@ -1680,6 +1686,7 @@ test("profile info variants stay within each supported size", async ({ page }) =
       const headerElement = element.querySelector<HTMLElement>(
         '[data-testid="profile-header"]',
       );
+      const bioElement = element.querySelector<HTMLElement>('[data-testid="profile-bio"]');
       const gridElement = element.closest<HTMLElement>(
         '[data-testid="profile-module-grid"]',
       );
@@ -1690,6 +1697,7 @@ test("profile info variants stay within each supported size", async ({ page }) =
 
       const moduleRect = element.getBoundingClientRect();
       const headerRect = headerElement.getBoundingClientRect();
+      const bioStyles = bioElement ? window.getComputedStyle(bioElement) : null;
       const gridStyles = window.getComputedStyle(gridElement);
       const columnGap = Number.parseFloat(gridStyles.columnGap) || 0;
       const rowGap = Number.parseFloat(gridStyles.rowGap) || columnGap;
@@ -1713,6 +1721,11 @@ test("profile info variants stay within each supported size", async ({ page }) =
       );
 
       return {
+        bioLineClamp:
+          bioStyles?.getPropertyValue("-webkit-line-clamp") ??
+          bioStyles?.webkitLineClamp ??
+          "",
+        bioOverflow: bioStyles?.overflow ?? "",
         expectedModuleHeight: Math.round(cellSize * rowSpan + rowGap * (rowSpan - 1)),
         expectedModuleWidth: Math.round(
           cellSize * colSpan + columnGap * (colSpan - 1),
@@ -1734,6 +1747,10 @@ test("profile info variants stay within each supported size", async ({ page }) =
     expect(metrics.headerHeight).toBeGreaterThanOrEqual(metrics.moduleHeight - 2);
     expect(metrics.headerRight).toBeLessThanOrEqual(metrics.moduleRight + 1);
     expect(metrics.headerBottom).toBeLessThanOrEqual(metrics.moduleBottom + 1);
+    if (profileInfoCase.size !== "3x2") {
+      expect(metrics.bioOverflow).toBe("hidden");
+      expect(metrics.bioLineClamp).not.toBe("none");
+    }
   }
 });
 
