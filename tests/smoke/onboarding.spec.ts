@@ -51,6 +51,21 @@ test("registration lands in the guided onboarding flow", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Profile setup" })).toBeVisible();
 });
 
+test("existing authenticated users are routed into onboarding when unfinished", async ({
+  page,
+}) => {
+  const state = onboardingState();
+
+  await mockAuth(page, () => true);
+  await mockNotifications(page);
+  await mockOnboarding(page, state);
+  await mockIntegrations(page);
+
+  await page.goto("/discover");
+  await expect(page).toHaveURL(/\/onboarding$/);
+  await expect(page.getByRole("heading", { name: "Profile setup" })).toBeVisible();
+});
+
 test("onboarding handles OAuth returns, manual links, skip, connect, and finish", async ({
   page,
 }) => {

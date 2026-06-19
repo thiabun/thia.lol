@@ -24,6 +24,8 @@ import type {
   ProfileModuleMediaItem,
   ProfileModuleStatus,
   ProfileModuleType,
+  ProfileModuleUploadedAudio,
+  ProfileModuleUploadedVideo,
   ProfileModuleVisibility,
   PublicStats,
   RichLinkCard,
@@ -156,7 +158,9 @@ export type ImageUploadPurpose =
   | "room_icon"
   | "room_banner";
 
-export type VideoUploadPurpose = "profile_background";
+export type VideoUploadPurpose = "profile_background" | "profile_module_video";
+
+export type AudioUploadPurpose = "profile_music";
 
 export type UploadedImage = {
   url: string;
@@ -174,6 +178,14 @@ export type UploadedVideo = {
   type: "video/mp4" | "video/webm";
   size: number;
   purpose: VideoUploadPurpose;
+};
+
+export type UploadedAudio = {
+  url: string;
+  mime: "audio/mpeg";
+  type: "audio/mpeg";
+  size: number;
+  purpose: AudioUploadPurpose;
 };
 
 export type UpdateProfileInput = {
@@ -1056,6 +1068,18 @@ export function uploadVideo(
   return apiUpload<UploadedVideo>("/uploads/video", formData, csrfToken);
 }
 
+export function uploadAudio(
+  file: File,
+  purpose: AudioUploadPurpose,
+  csrfToken: string,
+): Promise<UploadedAudio> {
+  const formData = new FormData();
+  formData.set("file", file);
+  formData.set("purpose", purpose);
+
+  return apiUpload<UploadedAudio>("/uploads/audio", formData, csrfToken);
+}
+
 export function updateMyProfile(
   input: UpdateProfileInput,
   csrfToken: string,
@@ -1672,6 +1696,20 @@ function normalizeProfileModuleConfig(config: ProfileModuleConfig): ProfileModul
     ? config.userBadgeIds.filter((id): id is number => Number.isInteger(id) && id > 0)
     : undefined;
   const integration = normalizeProfileIntegrationCard(config.integration);
+  const audio = normalizeProfileModuleUploadedAudio(config.audio);
+  const video = normalizeProfileModuleUploadedVideo(config.video);
+
+  if (audio) {
+    normalized.audio = audio;
+  }
+
+  if (video) {
+    normalized.video = video;
+  }
+
+  if (typeof config.autoplay === "boolean") {
+    normalized.autoplay = config.autoplay;
+  }
 
   if (typeof config.body === "string") {
     normalized.body = config.body;
@@ -1812,6 +1850,77 @@ function isProfileModuleMediaItem(
   return item !== undefined;
 }
 
+function normalizeProfileModuleUploadedAudio(
+  audio: ProfileModuleConfig["audio"],
+): ProfileModuleUploadedAudio | undefined {
+  if (!audio || typeof audio.url !== "string") {
+    return undefined;
+  }
+
+  if (!isUploadedProfileModuleAudioUrl(audio.url)) {
+    return undefined;
+  }
+
+  const mime = audio.mime === "audio/mpeg" || audio.type === "audio/mpeg"
+    ? "audio/mpeg"
+    : undefined;
+
+  if (!mime || !Number.isFinite(audio.size) || audio.size <= 0) {
+    return undefined;
+  }
+
+  return {
+    url: audio.url,
+    mime,
+    type: mime,
+    size: audio.size,
+    ...(typeof audio.title === "string" && audio.title.trim() !== ""
+      ? { title: audio.title }
+      : {}),
+    ...(typeof audio.duration === "number" && Number.isFinite(audio.duration) && audio.duration > 0
+      ? { duration: audio.duration }
+      : {}),
+    ...(typeof audio.uploadedAt === "string" ? { uploadedAt: audio.uploadedAt } : {}),
+  };
+}
+
+function normalizeProfileModuleUploadedVideo(
+  video: ProfileModuleConfig["video"],
+): ProfileModuleUploadedVideo | undefined {
+  if (!video || typeof video.url !== "string") {
+    return undefined;
+  }
+
+  if (!isUploadedProfileModuleVideoUrl(video.url)) {
+    return undefined;
+  }
+
+  const mime =
+    video.mime === "video/mp4" || video.mime === "video/webm"
+      ? video.mime
+      : video.type === "video/mp4" || video.type === "video/webm"
+        ? video.type
+        : undefined;
+
+  if (!mime || !Number.isFinite(video.size) || video.size <= 0) {
+    return undefined;
+  }
+
+  return {
+    url: video.url,
+    mime,
+    type: mime,
+    size: video.size,
+    ...(typeof video.title === "string" && video.title.trim() !== ""
+      ? { title: video.title }
+      : {}),
+    ...(typeof video.duration === "number" && Number.isFinite(video.duration) && video.duration > 0
+      ? { duration: video.duration }
+      : {}),
+    ...(typeof video.uploadedAt === "string" ? { uploadedAt: video.uploadedAt } : {}),
+  };
+}
+
 function normalizeProfileModuleExternalUrl(value: string): string | undefined {
   try {
     const url = new URL(value);
@@ -1828,6 +1937,14 @@ function normalizeProfileModuleExternalUrl(value: string): string | undefined {
 
 function isUploadedProfileModuleMediaUrl(value: string): boolean {
   return /^\/uploads\/media\/[0-9]{4}\/[0-9]{2}\/[a-z0-9_-]+\.webp$/.test(value);
+}
+
+function isUploadedProfileModuleAudioUrl(value: string): boolean {
+  return /^\/uploads\/media\/[0-9]{4}\/[0-9]{2}\/profile_music-[a-z0-9_-]+\.mp3$/.test(value);
+}
+
+function isUploadedProfileModuleVideoUrl(value: string): boolean {
+  return /^\/uploads\/media\/[0-9]{4}\/[0-9]{2}\/profile_module_video-[a-z0-9_-]+\.(?:mp4|webm)$/.test(value);
 }
 
 function normalizeUploadedProfileImageUrl(value: unknown): string | null {

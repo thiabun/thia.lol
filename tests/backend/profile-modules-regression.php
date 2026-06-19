@@ -167,6 +167,53 @@ assert_true($music['url'] === 'https://open.spotify.com/playlist/profile-test', 
 assert_true($music['displayMode'] === 'embed', 'music display mode mismatch');
 assert_true($music['sourceMode'] === 'spotify', 'music source mode mismatch');
 
+$uploadedMusic = profile_module_config(
+    'music',
+    [
+        'platform' => 'custom',
+        'label' => 'My MP3',
+        'description' => 'Uploaded track.',
+        'displayMode' => 'player',
+        'sourceMode' => 'upload',
+        'audio' => [
+            'url' => '/uploads/media/2026/06/profile_music-audio123.mp3',
+            'mime' => 'audio/mpeg',
+            'type' => 'audio/mpeg',
+            'size' => 123456,
+            'title' => 'My MP3',
+            'duration' => 123.4567,
+            'uploadedAt' => '2026-06-19T12:00:00Z',
+        ],
+        'autoplay' => true,
+    ],
+    123
+);
+assert_true($uploadedMusic['audio']['url'] === '/uploads/media/2026/06/profile_music-audio123.mp3', 'uploaded audio URL mismatch');
+assert_true($uploadedMusic['audio']['duration'] === 123.457, 'uploaded audio duration should round');
+assert_true($uploadedMusic['sourceMode'] === 'upload', 'uploaded music source mode mismatch');
+assert_true($uploadedMusic['autoplay'] === true, 'uploaded music autoplay mismatch');
+
+$uploadedVideo = profile_module_config(
+    'uploaded_video',
+    [
+        'label' => 'Launch clip',
+        'description' => 'Uploaded video.',
+        'displayMode' => 'video',
+        'sourceMode' => 'upload',
+        'video' => [
+            'url' => '/uploads/media/2026/06/profile_module_video-video123.mp4',
+            'mime' => 'video/mp4',
+            'type' => 'video/mp4',
+            'size' => 345678,
+            'title' => 'Launch clip',
+            'duration' => 42,
+        ],
+    ],
+    123
+);
+assert_true($uploadedVideo['video']['url'] === '/uploads/media/2026/06/profile_module_video-video123.mp4', 'uploaded video URL mismatch');
+assert_true($uploadedVideo['sourceMode'] === 'upload', 'uploaded video source mode mismatch');
+
 $emptyAbout = profile_module_config('about', [], 123);
 assert_true($emptyAbout === [], 'empty about module should be valid for owner placement');
 
@@ -198,6 +245,8 @@ assert_true(str_contains($profileModulesSource, 'profile_canvas_glass_opacity'),
 assert_true(str_contains($profileModulesSource, 'PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE'), 'draft placeholder type should exist');
 assert_true(str_contains($profileModulesSource, '=== PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE) {'), 'draft commit should skip placeholders');
 assert_true(str_contains($profileModulesSource, 'OR type = :activity_type'), 'public module read should recover active hidden activity modules');
+assert_true(str_contains($profileModulesSource, 'profile_module_uploaded_audio'), 'uploaded audio module metadata should be validated');
+assert_true(str_contains($profileModulesSource, 'profile_module_uploaded_video_config'), 'uploaded video module config should be file-backed');
 
 assert_module_config_rejected(
     'links',
@@ -235,6 +284,35 @@ assert_module_config_rejected(
         'iframe' => '<iframe></iframe>',
     ],
     'Unsupported module field was provided.'
+);
+assert_module_config_rejected(
+    'music',
+    [
+        'audio' => [
+            'url' => 'https://example.com/track.mp3',
+            'mime' => 'audio/mpeg',
+            'size' => 123,
+        ],
+    ],
+    'Audio file must come from the audio upload endpoint.'
+);
+assert_module_config_rejected(
+    'uploaded_video',
+    [
+        'url' => 'https://example.com/video.mp4',
+    ],
+    'Unsupported module field was provided.'
+);
+assert_module_config_rejected(
+    'uploaded_video',
+    [
+        'video' => [
+            'url' => '/uploads/media/2026/06/profile_background-not-module.mp4',
+            'mime' => 'video/mp4',
+            'size' => 123,
+        ],
+    ],
+    'Video file must come from the video upload endpoint.'
 );
 
 $payload = profile_module_payload(

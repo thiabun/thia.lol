@@ -21,7 +21,7 @@ import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from "reac
 import { BrandLogo, BrandMark } from "../BrandLogo";
 import { ThemeToggle } from "../ThemeToggle";
 import { Button, ButtonLink } from "../ui/Button";
-import { getNotifications, getRooms } from "../../lib/api";
+import { getNotifications, getOnboardingState, getRooms } from "../../lib/api";
 import { cn } from "../../lib/classNames";
 import {
   buttonTap,
@@ -61,6 +61,31 @@ const bugReportUrl =
   "https://github.com/thiabun/thia.lol/issues/new?template=bug_report.yml";
 
 const cookieNoticeStorageKey = "thia_cookie_notice_ack";
+type OnboardingGateState = Awaited<ReturnType<typeof getOnboardingState>>;
+
+function profileOnboardingGateShouldSkip(pathname: string, search: string): boolean {
+  if (
+    pathname === "/onboarding" ||
+    pathname === "/login" ||
+    pathname === "/register"
+  ) {
+    return true;
+  }
+
+  const params = new URLSearchParams(search);
+
+  return Boolean(params.get("integrationProvider") || params.get("integrationStatus"));
+}
+
+function profileOnboardingStateNeedsVisit(state: OnboardingGateState): boolean {
+  if (state.finishedAt || state.dismissedAt) {
+    return false;
+  }
+
+  const handled = new Set([...state.completedSteps, ...state.skippedSteps]);
+
+  return state.steps.some((step) => !handled.has(step));
+}
 
 export type AppShellOutletContext = {
   openPostComposer: (roomSlug?: string) => void;
@@ -86,6 +111,34 @@ export function AppShell() {
     { path: "/rooms/:slug", end: true },
     location.pathname,
   )?.params.slug;
+
+  useEffect(() => {
+    if (status !== "authenticated" || !user) {
+      return undefined;
+    }
+
+    if (profileOnboardingGateShouldSkip(location.pathname, location.search)) {
+      return undefined;
+    }
+
+    let active = true;
+
+    getOnboardingState()
+      .then((state) => {
+        if (!active || !profileOnboardingStateNeedsVisit(state)) {
+          return;
+        }
+
+        navigate("/onboarding", { replace: true });
+      })
+      .catch(() => {
+        // Onboarding should not block the app if the deployment is between code and migration.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [location.pathname, location.search, navigate, status, user]);
 
   useEffect(() => {
     let active = true;

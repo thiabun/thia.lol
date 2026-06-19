@@ -2426,6 +2426,58 @@ test("connected integrations seed Connections links and Twitch stream modules", 
     );
 });
 
+test("YouTube Music modules render working players across song sizes", async ({
+  page,
+}) => {
+  const placements = [
+    { column: 1, row: 4, size: "2x1" },
+    { column: 4, row: 4, size: "2x2" },
+    { column: 7, row: 4, size: "3x2" },
+    { column: 1, row: 7, size: "4x2" },
+    { column: 6, row: 7, size: "4x3" },
+    { column: 1, row: 11, size: "4x4" },
+  ];
+  const modules = placements.map((placement, index) =>
+    withAuditLayout(
+      youtubeMusicEmbedModule({ id: 300 + index, position: index + 1 }),
+      placement.size,
+      placement.row,
+      placement.column,
+    ),
+  );
+
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules,
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expect(page.getByTestId("profile-youtube-music-player")).toHaveCount(
+    placements.length,
+  );
+
+  for (const { size } of placements) {
+    await expect(
+      page.locator(`[data-profile-grid-size="${size}"]`).getByTestId(
+        "profile-youtube-music-player",
+      ),
+    ).toBeVisible();
+  }
+
+  const firstPlayer = page.getByTestId("profile-youtube-music-player").first();
+  await expect(page.getByTestId("profile-music-continue-overlay")).toBeVisible();
+  await page.getByTestId("profile-music-continue-button").click();
+  await expect
+    .poll(() =>
+      firstPlayer
+        .locator('iframe[data-profile-embed-provider="youtube"]')
+        .first()
+        .getAttribute("src"),
+    )
+    .toContain("autoplay=1");
+});
+
 test("connections settings manage brand links as a compact list", async ({
   page,
 }) => {
@@ -2998,6 +3050,95 @@ test("image module settings crop and add multiple photos", async ({ page }) => {
       });
     })
     .toBe(JSON.stringify({ configured: true, mediaCount: 2 }));
+});
+
+test("uploaded video and custom MP3 module settings use file uploads", async ({
+  page,
+}) => {
+  const uploadPurposes: string[] = [];
+  let draftPayload: Record<string, unknown> | undefined;
+
+  await mockMediaMetadata(page);
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      {
+        id: 21,
+        type: "uploaded_video",
+        title: "Video",
+        config: { configured: false, sourceMode: "upload" },
+        layout: { column: 1, row: 4, colSpan: 4, rowSpan: 3 },
+        visibility: "draft",
+        position: 1,
+        status: "active",
+        schemaVersion: 1,
+        createdAt: "2026-06-12 00:00:00",
+        updatedAt: "2026-06-12 00:00:00",
+      },
+      {
+        id: 22,
+        type: "music",
+        title: "Music",
+        config: { configured: false, sourceMode: "upload" },
+        layout: { column: 5, row: 4, colSpan: 3, rowSpan: 2 },
+        visibility: "draft",
+        position: 2,
+        status: "active",
+        schemaVersion: 1,
+        createdAt: "2026-06-12 00:00:00",
+        updatedAt: "2026-06-12 00:00:00",
+      },
+    ],
+    onCanvasDraftSave: (payload) => {
+      draftPayload = payload;
+    },
+    onVideoUpload: (purpose) => {
+      uploadPurposes.push(purpose);
+    },
+    onAudioUpload: (purpose) => {
+      uploadPurposes.push(purpose);
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-edit-module-21").click();
+
+  const videoSettings = page.getByTestId("profile-module-settings");
+  await expect(videoSettings.getByTestId("profile-video-module-settings")).toBeVisible();
+  await expect(videoSettings.getByTestId("profile-module-settings-url")).toHaveCount(0);
+  await videoSettings
+    .getByTestId("profile-module-settings-video-input")
+    .setInputFiles(sampleMp4File("launch-clip.mp4"));
+  await expect.poll(() => uploadPurposes.includes("profile_module_video")).toBe(true);
+  await expect(videoSettings.getByTestId("profile-module-video-preview")).toBeVisible();
+  await expect
+    .poll(() => moduleConfigFromDraft(draftPayload, 21)?.video)
+    .toMatchObject({
+      url: "/uploads/media/2026/06/profile_module_video-clip.mp4",
+      mime: "video/mp4",
+      title: "launch clip",
+    });
+
+  await videoSettings.getByTestId("profile-module-settings-done").click();
+  await page.getByTestId("profile-canvas-edit-module-22").click();
+
+  const musicSettings = page.getByTestId("profile-module-settings");
+  await expect(musicSettings.getByTestId("profile-audio-module-settings")).toBeVisible();
+  await expect(musicSettings.getByTestId("profile-module-settings-url")).toBeVisible();
+  await musicSettings
+    .getByTestId("profile-module-settings-audio-input")
+    .setInputFiles(sampleMp3File("custom-track.mp3"));
+  await expect.poll(() => uploadPurposes.includes("profile_music")).toBe(true);
+  await expect(musicSettings.getByTestId("profile-module-audio-preview")).toBeVisible();
+  await expect
+    .poll(() => moduleConfigFromDraft(draftPayload, 22)?.audio)
+    .toMatchObject({
+      url: "/uploads/media/2026/06/profile_music-track.mp3",
+      mime: "audio/mpeg",
+      title: "custom track",
+    });
 });
 
 test("image crop modal is wired to current image upload surfaces", () => {
@@ -4354,6 +4495,8 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(modulesApi).toContain("visibility = 'hidden'");
   expect(modulesApi).toContain("profile_module_gallery_media_config");
   expect(modulesApi).toContain("profile_module_music_config");
+  expect(modulesApi).toContain("profile_module_uploaded_audio");
+  expect(modulesApi).toContain("profile_module_uploaded_video_config");
   expect(modulesApi).toContain("profile_integration_card_for_module");
   expect(modulesApi).toContain("profile_module_validate_url_platform");
   expect(modulesApi).toContain("require_csrf_token($session)");
@@ -4383,8 +4526,12 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(profileApi).toContain("validate_profile_video_url");
   expect(profileApi).toContain("profile_background_video_url");
   expect(uploadsApi).toContain("uploads_video_create");
+  expect(uploadsApi).toContain("uploads_audio_create");
   expect(uploadsApi).toContain("VIDEO_UPLOAD_MAX_BYTES");
+  expect(uploadsApi).toContain("AUDIO_UPLOAD_MAX_BYTES");
   expect(uploadsApi).toContain("profile_background");
+  expect(uploadsApi).toContain("profile_module_video");
+  expect(uploadsApi).toContain("profile_music");
   expect(integrationsApi).toContain("profile_integration_encrypt");
   expect(integrationsApi).toContain("profile_integrations_oauth_start");
   expect(integrationsApi).toContain("profile_integrations_oauth_callback");
@@ -4464,7 +4611,9 @@ async function mockProfileModules(
     onCanvasSave?: (payload: Record<string, unknown>) => void;
     onCanvasDraftSave?: (payload: Record<string, unknown>) => void;
     onDelete?: (id: number) => void;
+    onAudioUpload?: (purpose: string) => void;
     onImageUpload?: (purpose: string) => void;
+    onVideoUpload?: (purpose: string) => void;
     onOrder?: (ids: number[]) => void;
     onProfileSave?: (payload: Record<string, unknown>) => void;
     onUpdate?: (id: number, payload: Record<string, unknown>) => void;
@@ -4549,6 +4698,34 @@ async function mockProfileModules(
     });
   });
 
+  await page.route("**/api/me/onboarding", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          steps: [
+            "profile_basics",
+            "spotify",
+            "youtube",
+            "twitch",
+            "github",
+            "apple_music",
+            "profile_canvas",
+          ],
+          completedSteps: [],
+          skippedSteps: [],
+          providerLinks: {},
+          finishedAt: null,
+          dismissedAt: "2026-06-19T00:00:00Z",
+          createdAt: "2026-06-19T00:00:00Z",
+          updatedAt: "2026-06-19T00:00:00Z",
+        },
+      }),
+    });
+  });
+
   await page.route("**/api/me/integrations/metadata/resolve", async (route) => {
     if (route.request().method() !== "POST") {
       await route.fulfill({
@@ -4622,6 +4799,70 @@ async function mockProfileModules(
           mime: "image/webp",
           type: "image/webp",
           size: 2048,
+          purpose,
+        },
+      }),
+    });
+  });
+
+  await page.route("**/api/uploads/video", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fulfill({
+        status: 405,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: false, error: "Method not allowed." }),
+      });
+      return;
+    }
+
+    const postData = route.request().postData() ?? "";
+    const purpose =
+      postData.match(/name="purpose"\r\n\r\n([^\r\n]+)/)?.[1] ??
+      "profile_module_video";
+    options.onVideoUpload?.(purpose);
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          url: `/uploads/media/2026/06/${purpose}-clip.mp4`,
+          mime: "video/mp4",
+          type: "video/mp4",
+          size: 4096,
+          purpose,
+        },
+      }),
+    });
+  });
+
+  await page.route("**/api/uploads/audio", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fulfill({
+        status: 405,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: false, error: "Method not allowed." }),
+      });
+      return;
+    }
+
+    const postData = route.request().postData() ?? "";
+    const purpose =
+      postData.match(/name="purpose"\r\n\r\n([^\r\n]+)/)?.[1] ??
+      "profile_music";
+    options.onAudioUpload?.(purpose);
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          url: `/uploads/media/2026/06/${purpose}-track.mp3`,
+          mime: "audio/mpeg",
+          type: "audio/mpeg",
+          size: 3072,
           purpose,
         },
       }),
@@ -5954,6 +6195,51 @@ async function expectAuditModule(
   expect(metrics.width).toBeGreaterThan(80);
 }
 
+async function mockMediaMetadata(page: Page) {
+  await page.addInitScript(() => {
+    const originalAddEventListener = HTMLMediaElement.prototype.addEventListener;
+
+    HTMLMediaElement.prototype.addEventListener = function (
+      type,
+      listener,
+      options,
+    ) {
+      if (type === "loadedmetadata" && listener) {
+        window.setTimeout(() => {
+          if (typeof listener === "function") {
+            listener.call(this, new Event("loadedmetadata"));
+          } else {
+            listener.handleEvent(new Event("loadedmetadata"));
+          }
+        }, 0);
+      }
+
+      return originalAddEventListener.call(this, type, listener, options);
+    };
+
+    Object.defineProperty(HTMLMediaElement.prototype, "duration", {
+      configurable: true,
+      get() {
+        return 12.5;
+      },
+    });
+  });
+}
+
+function moduleConfigFromDraft(
+  draftPayload: Record<string, unknown> | undefined,
+  moduleId: number,
+): Record<string, unknown> | undefined {
+  const modules = Array.isArray(draftPayload?.modules)
+    ? (draftPayload.modules as Array<Record<string, unknown>>)
+    : [];
+  const module = modules.find((item) => item.id === moduleId);
+
+  return module?.config && typeof module.config === "object"
+    ? (module.config as Record<string, unknown>)
+    : undefined;
+}
+
 function samplePngFile(name: string) {
   return {
     name,
@@ -5962,6 +6248,22 @@ function samplePngFile(name: string) {
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
       "base64",
     ),
+  };
+}
+
+function sampleMp4File(name: string) {
+  return {
+    name,
+    mimeType: "video/mp4",
+    buffer: Buffer.from("AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDE=", "base64"),
+  };
+}
+
+function sampleMp3File(name: string) {
+  return {
+    name,
+    mimeType: "audio/mpeg",
+    buffer: Buffer.from("SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjYwLjMuMTAwAAAAAAAA", "base64"),
   };
 }
 
@@ -6216,6 +6518,44 @@ function spotifyEmbedMusicModule(
           src: "https://open.spotify.com/embed/track/profile-test",
           title: "Spotify player",
           height: 80,
+          allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+        },
+        apiBacked: true,
+        fetchedAt: "2026-06-16T10:00:00Z",
+        stale: false,
+      },
+    },
+  };
+}
+
+function youtubeMusicEmbedModule(
+  overrides: { id?: number; imageUrl?: string; position?: number } = {},
+) {
+  return {
+    ...musicModule(overrides),
+    type: "youtube_music_song",
+    config: {
+      displayMode: "embed",
+      label: "YouTube Music song",
+      platform: "youtube_music",
+      sourceMode: "youtube_music",
+      url: "https://music.youtube.com/watch?v=music123",
+      integration: {
+        provider: "youtube",
+        resourceType: "video",
+        resourceId: "music123",
+        resourceKey: "youtube:video:music123",
+        sourceUrl: "https://www.youtube.com/watch?v=music123",
+        metadata: {
+          imageUrl: overrides.imageUrl,
+          title: "YouTube Music song",
+          subtitle: "YouTube Music",
+        },
+        embed: {
+          type: "iframe",
+          src: "https://www.youtube-nocookie.com/embed/music123",
+          title: "YouTube Music embed",
+          height: 220,
           allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
         },
         apiBacked: true,

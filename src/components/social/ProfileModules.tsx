@@ -49,6 +49,8 @@ import type {
   ProfileModule,
   ProfileModuleLayout,
   ProfileModuleLink,
+  ProfileModuleUploadedAudio,
+  ProfileModuleUploadedVideo,
   ProfileConnectionPlatform,
   UserBadge,
 } from "../../lib/types";
@@ -984,6 +986,17 @@ function ProfileModuleContent({
     moduleCategory === "video" ||
     module.type === "github_repo"
   ) {
+    if (module.type === "uploaded_video" && module.config.video) {
+      return (
+        <UploadedVideoPlayer
+          fallbackLabel="Uploaded video"
+          module={module}
+          size={size}
+          video={module.config.video}
+        />
+      );
+    }
+
     return (
       <ProfileModuleStaticCard
         icon={<Radio aria-hidden="true" size={17} />}
@@ -996,6 +1009,18 @@ function ProfileModuleContent({
   }
 
   if (module.type === "music" || moduleCategory === "music") {
+    if (module.config.audio) {
+      return (
+        <UploadedAudioPlayer
+          audio={module.config.audio}
+          fallbackLabel="Uploaded track"
+          module={module}
+          autoplayRequestId={musicAutoplayRequestId}
+          size={size}
+        />
+      );
+    }
+
     return (
       <ProfileModuleStaticCard
         icon={<Music2 aria-hidden="true" size={17} />}
@@ -1291,6 +1316,261 @@ function ProfileModuleStaticCard({
   );
 }
 
+function UploadedVideoPlayer({
+  fallbackLabel,
+  module,
+  size,
+  video,
+}: {
+  fallbackLabel: string;
+  module: ProfileModule;
+  size?: ProfileGridModuleSize | undefined;
+  video: ProfileModuleUploadedVideo;
+}) {
+  const span = profileGridModuleSizeSpan(size);
+  const compact = span.columns <= 2 && span.rows <= 2;
+  const title = video.title ?? module.config.label ?? fallbackLabel;
+
+  return (
+    <div
+      className="grid h-full min-h-0 overflow-hidden rounded-card border border-line bg-black"
+      data-testid="profile-uploaded-video-player"
+      data-profile-uploaded-video-layout={compact ? "compact" : "player"}
+    >
+      <video
+        className="size-full min-h-0 bg-black object-contain"
+        controls
+        loop={module.config.autoplay === true}
+        muted={module.config.autoplay === true}
+        playsInline
+        preload="metadata"
+        title={title}
+        data-testid="profile-uploaded-video-element"
+      >
+        <source src={video.url} type={video.mime} />
+      </video>
+    </div>
+  );
+}
+
+function UploadedAudioPlayer({
+  audio,
+  autoplayRequestId = 0,
+  fallbackLabel,
+  module,
+  size,
+}: {
+  audio: ProfileModuleUploadedAudio;
+  autoplayRequestId?: number | undefined;
+  fallbackLabel: string;
+  module: ProfileModule;
+  size?: ProfileGridModuleSize | undefined;
+}) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const lastAutoplayRequestRef = useRef(0);
+  const [duration, setDuration] = useState(audio.duration ?? 0);
+  const [playing, setPlaying] = useState(false);
+  const [position, setPosition] = useState(0);
+  const span = profileGridModuleSizeSpan(size);
+  const compactPlayer = span.columns <= 2 && span.rows <= 2;
+  const richPlayer = span.rows >= 2 && !compactPlayer;
+  const title = audio.title ?? module.config.label ?? fallbackLabel;
+  const subtitle = module.config.description ?? "Uploaded MP3";
+  const progressPercent =
+    duration > 0 ? Math.min(100, Math.max(0, (position / duration) * 100)) : 0;
+
+  useEffect(() => {
+    const element = audioRef.current;
+
+    if (!element) {
+      return undefined;
+    }
+
+    const mediaElement = element;
+
+    function syncMetadata() {
+      if (Number.isFinite(mediaElement.duration) && mediaElement.duration > 0) {
+        setDuration(mediaElement.duration);
+      }
+    }
+
+    function syncTime() {
+      setPosition(
+        Number.isFinite(mediaElement.currentTime) ? mediaElement.currentTime : 0,
+      );
+    }
+
+    function syncPlaying() {
+      setPlaying(!mediaElement.paused && !mediaElement.ended);
+    }
+
+    mediaElement.addEventListener("loadedmetadata", syncMetadata);
+    mediaElement.addEventListener("timeupdate", syncTime);
+    mediaElement.addEventListener("play", syncPlaying);
+    mediaElement.addEventListener("pause", syncPlaying);
+    mediaElement.addEventListener("ended", syncPlaying);
+    syncMetadata();
+    syncTime();
+    syncPlaying();
+
+    return () => {
+      mediaElement.removeEventListener("loadedmetadata", syncMetadata);
+      mediaElement.removeEventListener("timeupdate", syncTime);
+      mediaElement.removeEventListener("play", syncPlaying);
+      mediaElement.removeEventListener("pause", syncPlaying);
+      mediaElement.removeEventListener("ended", syncPlaying);
+    };
+  }, [audio.url]);
+
+  useEffect(() => {
+    const element = audioRef.current;
+
+    if (
+      !element ||
+      autoplayRequestId <= 0 ||
+      lastAutoplayRequestRef.current === autoplayRequestId
+    ) {
+      return;
+    }
+
+    lastAutoplayRequestRef.current = autoplayRequestId;
+    void element.play().catch(() => {
+      setPlaying(false);
+    });
+  }, [autoplayRequestId]);
+
+  async function handlePlaybackToggle() {
+    const element = audioRef.current;
+
+    if (!element) {
+      return;
+    }
+
+    if (playing) {
+      element.pause();
+      return;
+    }
+
+    try {
+      await element.play();
+    } catch {
+      setPlaying(false);
+    }
+  }
+
+  return (
+    <div
+      className="flex h-full min-h-0 overflow-hidden rounded-card border border-line bg-canvas/55"
+      data-profile-uploaded-audio-layout={
+        compactPlayer ? "compact" : richPlayer ? "rich" : "row"
+      }
+      data-testid="profile-uploaded-audio-player"
+    >
+      <audio ref={audioRef} preload="metadata" src={audio.url} />
+      <div
+        className={cn(
+          "relative isolate flex h-full min-h-0 w-full overflow-hidden",
+          compactPlayer
+            ? "flex-col justify-end p-2"
+            : richPlayer
+              ? "flex-col gap-3 p-3 sm:p-4"
+              : "items-center gap-3 p-3",
+        )}
+      >
+        <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_24%_18%,color-mix(in_oklab,var(--app-accent)_24%,transparent),transparent_34%),linear-gradient(135deg,color-mix(in_oklab,var(--surface)_92%,transparent),color-mix(in_oklab,var(--canvas)_82%,transparent))]" />
+        <div
+          className={cn(
+            "min-w-0",
+            compactPlayer
+              ? "contents"
+              : richPlayer
+                ? "flex min-h-0 flex-1 items-center gap-4"
+                : "flex min-w-0 flex-1 items-center gap-3",
+          )}
+        >
+          <span
+            className={cn(
+              "grid shrink-0 place-items-center rounded-card border border-line bg-surface/70 text-text shadow-soft",
+              compactPlayer
+                ? "size-11"
+                : richPlayer
+                  ? "size-24 sm:size-28 lg:size-32"
+                  : "size-16",
+            )}
+          >
+            <Music2 aria-hidden="true" size={compactPlayer ? 20 : 28} />
+          </span>
+          <span className={cn("min-w-0", compactPlayer ? "mt-2" : "flex-1")}>
+            <span
+              className={cn(
+                "block truncate font-semibold text-text",
+                compactPlayer ? "text-xs" : "text-sm",
+              )}
+            >
+              {title}
+            </span>
+            {!compactPlayer ? (
+              <span className="mt-0.5 block truncate text-xs text-muted">
+                {subtitle}
+              </span>
+            ) : null}
+          </span>
+        </div>
+        <div
+          className={cn(
+            "relative z-10 flex min-w-0 items-center gap-3",
+            compactPlayer
+              ? "mt-2"
+              : richPlayer
+                ? "mt-auto"
+                : "w-[42%] min-w-36 max-w-72",
+          )}
+        >
+          <button
+            type="button"
+            className={cn(
+              "grid shrink-0 place-items-center rounded-full border border-line bg-accent text-accent-contrast shadow-soft transition duration-fluid ease-fluid hover:-translate-y-0.5 hover:shadow-lift focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+              compactPlayer ? "size-9" : "size-11",
+            )}
+            onClick={handlePlaybackToggle}
+            aria-label={playing ? "Pause uploaded music" : "Play uploaded music"}
+            data-testid="profile-uploaded-audio-play-button"
+          >
+            {playing ? (
+              <Pause aria-hidden="true" size={compactPlayer ? 15 : 18} />
+            ) : (
+              <Play aria-hidden="true" size={compactPlayer ? 15 : 18} />
+            )}
+          </button>
+          <div className="min-w-0 flex-1">
+            <div className="h-1.5 overflow-hidden rounded-full bg-line">
+              <div
+                className="h-full rounded-full bg-accent transition-[width] duration-fluid ease-fluid"
+                role="progressbar"
+                aria-label="Uploaded music playback progress"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(progressPercent)}
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+            <div className="mt-1 flex items-center justify-between gap-3 text-[0.7rem] font-semibold uppercase text-muted">
+              {!compactPlayer ? <span className="truncate">MP3</span> : null}
+              <span data-testid="profile-uploaded-audio-progress-time">
+                {duration > 0
+                  ? `${formatMediaTime(position)} / ${formatMediaTime(duration)}`
+                  : playing
+                    ? "Playing"
+                    : "Ready"}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProfileIntegrationRichCard({
   autoplayRequestId = 0,
   fallbackLabel,
@@ -1351,6 +1631,25 @@ function ProfileIntegrationRichCard({
   if (showPrimaryEmbed && primaryEmbed && integration.provider === "spotify") {
     return (
       <SpotifyMusicPlayer
+        autoplayRequestId={autoplayRequestId}
+        fallbackLabel={fallbackLabel}
+        icon={icon}
+        integration={integration}
+        module={module}
+        size={size}
+      />
+    );
+  }
+
+  if (
+    showPrimaryEmbed &&
+    primaryEmbed &&
+    primaryEmbedSrc &&
+    integration.provider === "youtube" &&
+    module.type.startsWith("youtube_music")
+  ) {
+    return (
+      <YouTubeMusicPlayer
         autoplayRequestId={autoplayRequestId}
         fallbackLabel={fallbackLabel}
         icon={icon}
@@ -1552,6 +1851,261 @@ function ProfileIntegrationRichCard({
           data-testid={`profile-integration-embed-${integration.provider}`}
         />
       ) : null}
+    </div>
+  );
+}
+
+function YouTubeMusicPlayer({
+  autoplayRequestId,
+  fallbackLabel,
+  icon,
+  integration,
+  module,
+  size = "2x1",
+}: {
+  autoplayRequestId: number;
+  fallbackLabel: string;
+  icon: ReactNode;
+  integration: ProfileIntegrationCard;
+  module: ProfileModule;
+  size?: ProfileGridModuleSize | undefined;
+}) {
+  const lastAutoplayRequestRef = useRef(0);
+  const [playing, setPlaying] = useState(false);
+  const [playerVersion, setPlayerVersion] = useState(0);
+  const metadata = integration.metadata;
+  const title = metadata.title ?? module.config.label ?? fallbackLabel;
+  const subtitle = metadata.subtitle ?? "YouTube Music";
+  const description = metadata.description ?? module.config.description;
+  const playerSpan = profileGridModuleSizeSpan(size);
+  const compactPlayer = playerSpan.columns <= 2 && playerSpan.rows <= 2;
+  const richPlayer = playerSpan.rows >= 2 && !compactPlayer;
+  const compactTextTone = useAlbumArtworkTextTone(
+    metadata.imageUrl ?? undefined,
+    compactPlayer,
+  );
+  const compactTextClass = albumArtworkTextClass(compactTextTone);
+  const compactMutedTextClass = albumArtworkMutedTextClass(compactTextTone);
+  const embedSrc = youtubeMusicEmbedSrc(integration, playing, playerVersion);
+
+  useEffect(() => {
+    if (
+      autoplayRequestId <= 0 ||
+      lastAutoplayRequestRef.current === autoplayRequestId
+    ) {
+      return;
+    }
+
+    lastAutoplayRequestRef.current = autoplayRequestId;
+    setPlaying(true);
+    setPlayerVersion((version) => version + 1);
+  }, [autoplayRequestId]);
+
+  function handlePlaybackToggle() {
+    setPlaying((current) => !current);
+    setPlayerVersion((version) => version + 1);
+  }
+
+  return (
+    <div
+      className="flex h-full min-h-0 overflow-hidden rounded-card border border-line bg-canvas/55"
+      data-profile-youtube-music-layout={
+        compactPlayer ? "compact" : richPlayer ? "rich" : "row"
+      }
+      data-profile-youtube-music-text-tone={compactPlayer ? compactTextTone : undefined}
+      data-testid="profile-youtube-music-player"
+    >
+      <div
+        className={cn(
+          "relative isolate flex h-full min-h-0 w-full overflow-hidden",
+          compactPlayer
+            ? "flex-col justify-end p-2"
+            : richPlayer
+              ? "flex-col gap-3 p-3 sm:p-4"
+              : "items-center gap-3 p-3",
+        )}
+      >
+        {metadata.imageUrl ? (
+          <img
+            alt=""
+            aria-hidden="true"
+            className={cn(
+              "absolute inset-0 -z-20 size-full object-cover blur-2xl",
+              compactPlayer ? "opacity-35" : "opacity-20",
+            )}
+            decoding="async"
+            loading="lazy"
+            src={metadata.imageUrl}
+          />
+        ) : null}
+        <div
+          className={cn(
+            "absolute inset-0 -z-10",
+            compactPlayer ? albumArtworkOverlayClass(compactTextTone) : "bg-canvas/72",
+          )}
+        />
+        <div
+          className={cn(
+            "min-w-0",
+            compactPlayer
+              ? "contents"
+              : richPlayer
+                ? "flex min-h-0 flex-1 items-center gap-4"
+                : "flex min-w-0 flex-1 items-center gap-3",
+          )}
+        >
+          <span
+            className={cn(
+              "grid shrink-0 place-items-center overflow-hidden border border-line bg-surface/70 text-text shadow-soft",
+              compactPlayer
+                ? "absolute inset-0 -z-10 size-full rounded-card opacity-80"
+                : richPlayer
+                  ? "size-24 rounded-card sm:size-28 lg:size-32"
+                  : "size-16 rounded-card",
+            )}
+          >
+            {metadata.imageUrl ? (
+              <img
+                alt=""
+                className="size-full object-cover"
+                decoding="async"
+                loading="lazy"
+                src={metadata.imageUrl}
+              />
+            ) : (
+              icon
+            )}
+          </span>
+          <span
+            className={cn(
+              "min-w-0",
+              compactPlayer ? "relative z-10" : "flex-1",
+            )}
+          >
+            <span
+              className={cn(
+                "block truncate font-semibold",
+                compactPlayer
+                  ? cn("text-xs", compactTextClass)
+                  : "text-sm text-text",
+              )}
+            >
+              {title}
+            </span>
+            {!compactPlayer ? (
+              <span className="mt-0.5 block truncate text-xs text-muted">
+                {subtitle}
+              </span>
+            ) : null}
+            {!compactPlayer && description ? (
+              <span
+                className={cn(
+                  "mt-1 block text-xs leading-5 text-muted",
+                  richPlayer ? "line-clamp-2" : "line-clamp-1",
+                )}
+              >
+                {description}
+              </span>
+            ) : null}
+          </span>
+          {!compactPlayer ? (
+            <a
+              className="grid size-9 shrink-0 place-items-center rounded-card border border-line bg-canvas/65 text-muted transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              href={integration.sourceUrl}
+              rel="noopener noreferrer"
+              target="_blank"
+              aria-label="Open in YouTube Music"
+            >
+              <ExternalLink aria-hidden="true" size={16} />
+            </a>
+          ) : null}
+        </div>
+        {richPlayer ? (
+          <iframe
+            key={embedSrc}
+            className="min-h-0 w-full flex-1 rounded-card border-0 bg-black"
+            title={integration.embed?.title ?? `${title} on YouTube Music`}
+            src={embedSrc}
+            loading="lazy"
+            referrerPolicy="strict-origin-when-cross-origin"
+            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+            allowFullScreen
+            data-profile-embed-provider="youtube"
+            data-testid="profile-integration-embed-youtube"
+          />
+        ) : (
+          <iframe
+            key={embedSrc}
+            className="pointer-events-none absolute size-px opacity-0"
+            title={integration.embed?.title ?? `${title} on YouTube Music`}
+            src={embedSrc}
+            loading="lazy"
+            referrerPolicy="strict-origin-when-cross-origin"
+            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+            allowFullScreen
+            data-profile-embed-provider="youtube"
+            data-testid="profile-integration-embed-youtube"
+          />
+        )}
+        <div
+          className={cn(
+            "relative z-10 flex min-w-0 items-center gap-3",
+            compactPlayer ? "mt-2" : richPlayer ? "mt-auto" : "w-[42%] min-w-36 max-w-72",
+          )}
+        >
+          <button
+            type="button"
+            className={cn(
+              "grid shrink-0 place-items-center rounded-full border border-line bg-accent text-accent-contrast shadow-soft transition duration-fluid ease-fluid hover:-translate-y-0.5 hover:shadow-lift focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+              compactPlayer ? "size-9" : "size-11",
+            )}
+            onClick={handlePlaybackToggle}
+            aria-label={playing ? "Stop YouTube Music" : "Play YouTube Music"}
+            data-testid="profile-youtube-music-play-button"
+          >
+            {playing ? (
+              <Pause aria-hidden="true" size={compactPlayer ? 15 : 18} />
+            ) : (
+              <Play aria-hidden="true" size={compactPlayer ? 15 : 18} />
+            )}
+          </button>
+          <div className="min-w-0 flex-1">
+            <div
+              className={cn(
+                "h-1.5 overflow-hidden rounded-full",
+                compactPlayer
+                  ? compactTextTone === "black"
+                    ? "bg-black/25"
+                    : "bg-white/30"
+                  : "bg-line",
+              )}
+            >
+              <div
+                className={cn(
+                  "h-full rounded-full bg-accent transition-[width] duration-fluid ease-fluid",
+                  playing ? "w-full" : "w-0",
+                )}
+                role="progressbar"
+                aria-label="YouTube Music playback state"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={playing ? 100 : 0}
+              />
+            </div>
+            <div
+              className={cn(
+                "mt-1 flex items-center justify-between gap-3 text-[0.7rem] font-semibold uppercase",
+                compactPlayer ? compactMutedTextClass : "text-muted",
+              )}
+            >
+              {!compactPlayer ? <span className="truncate">YouTube Music</span> : null}
+              <span>{playing ? "Playing" : "Ready"}</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2169,6 +2723,21 @@ function formatSpotifyPlaybackTime(value: number): string {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+function formatMediaTime(value: number): string {
+  const totalSeconds = Math.max(0, Math.floor(value));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds
+      .toString()
+      .padStart(2, "0")}`;
+  }
+
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
 async function playSpotifyEmbed(controller: SpotifyEmbedController): Promise<boolean> {
   try {
     if (controller.play) {
@@ -2219,6 +2788,35 @@ function spotifyIntegrationUri(integration: ProfileIntegrationCard): string | un
   }
 
   return `spotify:${integration.resourceType}:${integration.resourceId}`;
+}
+
+function youtubeMusicEmbedSrc(
+  integration: ProfileIntegrationCard,
+  autoplay: boolean,
+  version: number,
+): string {
+  const src = integration.embed?.src ?? integration.sourceUrl;
+
+  try {
+    const url = new URL(src);
+
+    if (url.hostname === "www.youtube-nocookie.com") {
+      url.searchParams.set("enablejsapi", "1");
+      url.searchParams.set("playsinline", "1");
+      url.searchParams.set("rel", "0");
+      url.searchParams.set("autoplay", autoplay ? "1" : "0");
+      url.searchParams.set(
+        "origin",
+        typeof window === "undefined" ? "https://thia.lol" : window.location.origin,
+      );
+      url.searchParams.set("thiaPlayer", String(version));
+      return url.toString();
+    }
+  } catch {
+    return src;
+  }
+
+  return src;
 }
 
 function profileIntegrationEmbedSrc(integration: ProfileIntegrationCard): string {

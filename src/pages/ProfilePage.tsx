@@ -26,6 +26,7 @@ import {
   Sparkles,
   Star,
   Trash2,
+  Upload,
   X,
   UserCheck,
   Users,
@@ -97,8 +98,11 @@ import {
   updateProfileCanvasDraft,
   updateFeaturedBadges,
   updateMyProfile,
+  uploadAudio,
   uploadImage,
   uploadVideo,
+  type UploadedAudio,
+  type UploadedVideo,
   type FollowRelationship,
   type ImageUploadPurpose,
   type ProfileCanvasDraftState,
@@ -160,6 +164,8 @@ import { useAuth } from "../lib/useAuth";
 const PROFILE_CANVAS_COLUMNS = PROFILE_CANVAS_DESKTOP_COLUMNS;
 const PROFILE_CANVAS_ROWS = PROFILE_CANVAS_DESKTOP_ROWS;
 const PROFILE_CONTENT_AUTOSAVE_DELAY_MS = 650;
+const PROFILE_MODULE_AUDIO_MAX_BYTES = 20971520;
+const PROFILE_MODULE_VIDEO_MAX_BYTES = 31457280;
 
 type ProfileTab = "feed" | "replies" | "rooms";
 type ProfilePanel = "followers" | "following" | "badges";
@@ -414,7 +420,7 @@ export function ProfilePage() {
       return undefined;
     }
 
-    return firstSpotifyMusicAutoplayModule(
+    return firstProfileMusicAutoplayModule(
       resolveProfileCanvasModules(
         profile,
         mergeProfileLinksIntoConnectionModules(profile, publicModules),
@@ -464,7 +470,7 @@ export function ProfilePage() {
       grantedAt: new Date().toISOString(),
       handle: profile.user.handle,
       profileId: profile.user.id,
-      provider: "spotify",
+      provider: profileMusicAutoplayProvider(musicAutoplayTarget),
     });
     setMusicAutoplayDismissedProfileId(profile.user.id);
     setMusicAutoplayRequestId((requestId) => requestId + 1);
@@ -1158,6 +1164,38 @@ export function ProfilePage() {
     return upload.url;
   }
 
+  async function handleModuleVideoUpload(file: File): Promise<UploadedVideo> {
+    const validationError = validateProfileModuleVideoFile(file);
+
+    if (validationError) {
+      setCanvasError(validationError);
+      throw new Error(validationError);
+    }
+
+    setCanvasError(undefined);
+
+    return runWithAuth(
+      (csrfToken) => uploadVideo(file, "profile_module_video", csrfToken),
+      { retryOnCsrf: true },
+    );
+  }
+
+  async function handleModuleAudioUpload(file: File): Promise<UploadedAudio> {
+    const validationError = validateProfileModuleAudioFile(file);
+
+    if (validationError) {
+      setCanvasError(validationError);
+      throw new Error(validationError);
+    }
+
+    setCanvasError(undefined);
+
+    return runWithAuth(
+      (csrfToken) => uploadAudio(file, "profile_music", csrfToken),
+      { retryOnCsrf: true },
+    );
+  }
+
   async function handleBackgroundBlurChange(blur: ProfileBackgroundBlur) {
     if (!profile || canvasSaving) {
       return;
@@ -1526,8 +1564,10 @@ export function ProfilePage() {
               onConnectProvider={(provider) =>
                 void handleCanvasProviderConnect(provider)
               }
+              onModuleAudioUpload={handleModuleAudioUpload}
               onImageUpload={handleProfileImageDraftSelection}
               onModuleImageUpload={handleModuleImageUpload}
+              onModuleVideoUpload={handleModuleVideoUpload}
               onNewDraftModuleId={() => nextDraftModuleIdRef.current--}
               onProfileDraftChange={handleDraftProfileChange}
               onRenderModuleContent={(module, size) =>
@@ -1626,7 +1666,7 @@ function ProfileMusicContinueOverlay({
         </p>
         <h2 className="mt-1 text-xl font-semibold text-text">Continue to profile</h2>
         <p className="mt-2 text-sm leading-6 text-muted">
-          Spotify music may start after you continue. Spotify content is embedded on this profile.
+          Profile music may start after you continue. Embedded or uploaded music is available on this profile.
         </p>
         <Button
           type="button"
@@ -1645,15 +1685,15 @@ type ProfileMusicAutoplayConsent = {
   grantedAt: string;
   handle: string;
   profileId: number;
-  provider: "spotify";
+  provider: "spotify" | "youtube" | "upload";
 };
 
-function firstSpotifyMusicAutoplayModule(
+function firstProfileMusicAutoplayModule(
   modules: ProfileModule[],
 ): ProfileModule | undefined {
   const firstMusicModule = modules.find(
     (module) =>
-      module.type === "music" &&
+      (module.type === "music" || getProfileModuleDefinition(module.type).category === "music") &&
       module.visibility === "public" &&
       module.status === "active",
   );
@@ -1664,11 +1704,137 @@ function firstSpotifyMusicAutoplayModule(
 
   const integration = firstMusicModule.config.integration;
 
-  return integration?.provider === "spotify" &&
-    Boolean(integration.embed) &&
+  if (firstMusicModule.config.audio) {
+    return firstMusicModule;
+  }
+
+  if (!integration?.embed) {
+    return undefined;
+  }
+
+  if (
+    integration.provider === "spotify" &&
     ["track", "album", "playlist"].includes(integration.resourceType)
+  ) {
+    return firstMusicModule;
+  }
+
+  return integration.provider === "youtube" && firstMusicModule.type.startsWith("youtube_music")
     ? firstMusicModule
     : undefined;
+}
+
+function profileMusicAutoplayProvider(
+  module: ProfileModule | undefined,
+): ProfileMusicAutoplayConsent["provider"] {
+  if (module?.config.audio) {
+    return "upload";
+  }
+
+  if (module?.config.integration?.provider === "youtube") {
+    return "youtube";
+  }
+
+  return "spotify";
+}
+
+function validateProfileModuleAudioFile(file: File): string | undefined {
+  const name = file.name.toLowerCase();
+
+  if (file.size <= 0) {
+    return "Audio cannot be empty.";
+  }
+
+  if (file.size > PROFILE_MODULE_AUDIO_MAX_BYTES) {
+    return "Audio must be 20 MB or smaller.";
+  }
+
+  if (file.type !== "audio/mpeg" && !name.endsWith(".mp3")) {
+    return "Use an MP3 file.";
+  }
+
+  return undefined;
+}
+
+function validateProfileModuleVideoFile(file: File): string | undefined {
+  const name = file.name.toLowerCase();
+
+  if (file.size <= 0) {
+    return "Video cannot be empty.";
+  }
+
+  if (file.size > PROFILE_MODULE_VIDEO_MAX_BYTES) {
+    return "Video must be 30 MB or smaller.";
+  }
+
+  if (
+    file.type !== "video/mp4" &&
+    file.type !== "video/webm" &&
+    !name.endsWith(".mp4") &&
+    !name.endsWith(".webm")
+  ) {
+    return "Use an MP4 or WebM file.";
+  }
+
+  return undefined;
+}
+
+function readMediaFileDuration(file: File): Promise<number | undefined> {
+  if (typeof document === "undefined" || typeof URL === "undefined") {
+    return Promise.resolve(undefined);
+  }
+
+  return new Promise((resolve) => {
+    const objectUrl = URL.createObjectURL(file);
+    const element = file.type.startsWith("video/")
+      ? document.createElement("video")
+      : document.createElement("audio");
+    const cleanup = () => {
+      window.clearTimeout(timeout);
+      URL.revokeObjectURL(objectUrl);
+    };
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      resolve(undefined);
+    }, 4000);
+
+    element.preload = "metadata";
+    element.onloadedmetadata = () => {
+      const duration = Number.isFinite(element.duration) && element.duration > 0
+        ? Math.round(element.duration * 1000) / 1000
+        : undefined;
+
+      cleanup();
+      resolve(duration);
+    };
+    element.onerror = () => {
+      cleanup();
+      resolve(undefined);
+    };
+    element.src = objectUrl;
+  });
+}
+
+function sanitizeUploadedMediaTitle(fileName: string, fallback: string): string {
+  const title = fileName
+    .replace(/\.[^.]+$/, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return title ? title.slice(0, 60) : fallback;
+}
+
+function formatUploadSize(size: number): string {
+  if (!Number.isFinite(size) || size <= 0) {
+    return "0 KB";
+  }
+
+  if (size >= 1048576) {
+    return `${(size / 1048576).toFixed(size >= 10485760 ? 0 : 1)} MB`;
+  }
+
+  return `${Math.ceil(size / 1024)} KB`;
 }
 
 function profileMusicAutoplayConsentKey(profileId: number): string {
@@ -2740,6 +2906,10 @@ function profileCanvasDefaultConfigForModule(
   }
 
   if (definition.category === "video") {
+    if (type === "uploaded_video") {
+      return { ...base, sourceMode: "upload" };
+    }
+
     return {
       ...base,
       platform: type.startsWith("youtube") ? "youtube" : "twitch",
@@ -3256,11 +3426,13 @@ type ProfileDirectCanvasEditorProps = {
   onChange: (updater: (draft: ProfileCanvasDraftState) => ProfileCanvasDraftState) => void;
   onClearBackground: () => void;
   onConnectProvider: (provider: ProfileIntegrationProvider) => void;
+  onModuleAudioUpload: (file: File) => Promise<UploadedAudio>;
   onImageUpload: (
     file: File,
     purpose: "avatar" | "banner" | "profile_background",
   ) => void;
   onModuleImageUpload: (file: File) => Promise<string>;
+  onModuleVideoUpload: (file: File) => Promise<UploadedVideo>;
   onNewDraftModuleId: () => number;
   onProfileDraftChange: (updater: (profile: Profile) => Profile) => void;
   onRenderModuleContent: (
@@ -3294,8 +3466,10 @@ function ProfileDirectCanvasEditor({
   onChange,
   onClearBackground,
   onConnectProvider,
+  onModuleAudioUpload,
   onImageUpload,
   onModuleImageUpload,
+  onModuleVideoUpload,
   onNewDraftModuleId,
   onProfileDraftChange,
   onRenderModuleContent,
@@ -4052,7 +4226,9 @@ function ProfileDirectCanvasEditor({
         onRemove={handleRemoveModule}
         onResize={handleResizeModule}
         onConnectProvider={onConnectProvider}
+        onModuleAudioUpload={onModuleAudioUpload}
         onModuleImageUpload={onModuleImageUpload}
+        onModuleVideoUpload={onModuleVideoUpload}
         onProfileImageUpload={onImageUpload}
         onProfileDraftChange={onProfileDraftChange}
         onUpdateConfig={handleModuleConfig}
@@ -4239,7 +4415,9 @@ function ModuleSettingsModal({
   module,
   onClose,
   onConnectProvider,
+  onModuleAudioUpload,
   onModuleImageUpload,
+  onModuleVideoUpload,
   onProfileImageUpload,
   onProfileDraftChange,
   onRemove,
@@ -4254,7 +4432,9 @@ function ModuleSettingsModal({
   module: ProfileModule | undefined;
   onClose: () => void;
   onConnectProvider: (provider: ProfileIntegrationProvider) => void;
+  onModuleAudioUpload: (file: File) => Promise<UploadedAudio>;
   onModuleImageUpload: (file: File) => Promise<string>;
+  onModuleVideoUpload: (file: File) => Promise<UploadedVideo>;
   onProfileImageUpload: (
     file: File,
     purpose: "avatar" | "banner" | "profile_background",
@@ -4281,8 +4461,12 @@ function ModuleSettingsModal({
     provider && providerStatus?.oauthEnabled && !connectedAccount,
   );
   const providerLabel = provider ? profileCanvasProviderLabel(provider) : undefined;
+  const [moduleAudioUploading, setModuleAudioUploading] = useState(false);
+  const [moduleAudioError, setModuleAudioError] = useState<string | undefined>();
   const [moduleImageUploading, setModuleImageUploading] = useState(false);
   const [moduleImageError, setModuleImageError] = useState<string | undefined>();
+  const [moduleVideoUploading, setModuleVideoUploading] = useState(false);
+  const [moduleVideoError, setModuleVideoError] = useState<string | undefined>();
   const [connectionPlatform, setConnectionPlatform] =
     useState<ProfileConnectionPlatform>("website");
   const [connectionValue, setConnectionValue] = useState("");
@@ -4333,15 +4517,21 @@ function ModuleSettingsModal({
   function configWithContent(
     patch: ProfileModule["config"],
     configured: boolean,
+    removeKeys: (keyof ProfileModule["config"])[] = [],
   ): ProfileModule["config"] {
     const canvasSize = module?.config.canvasSize;
-
-    return {
+    const nextConfig = {
       ...module?.config,
       ...patch,
       configured,
       ...(canvasSize ? { canvasSize } : {}),
     };
+
+    removeKeys.forEach((key) => {
+      delete nextConfig[key];
+    });
+
+    return nextConfig;
   }
 
   function handleUrlConfig(value: string) {
@@ -4374,6 +4564,7 @@ function ModuleSettingsModal({
           url: trimmed,
         },
         configured,
+        definition.category === "music" ? ["audio", "integration"] : ["video", "integration"],
       ),
     );
   }
@@ -4383,6 +4574,8 @@ function ModuleSettingsModal({
     setConnectionValue("");
     setConnectionError(undefined);
     setConnectionFormOpen(false);
+    setModuleAudioError(undefined);
+    setModuleVideoError(undefined);
     setModuleImageCropQueue([]);
     onClose();
   }
@@ -4464,6 +4657,139 @@ function ModuleSettingsModal({
           mediaItems,
         },
         mediaItems.length > 0,
+      ),
+    );
+  }
+
+  async function handleModuleVideoSelection(file: File | undefined) {
+    if (!module || !file || moduleVideoUploading) {
+      return;
+    }
+
+    const validationError = validateProfileModuleVideoFile(file);
+
+    if (validationError) {
+      setModuleVideoError(validationError);
+      return;
+    }
+
+    setModuleVideoUploading(true);
+    setModuleVideoError(undefined);
+
+    try {
+      const [upload, duration] = await Promise.all([
+        onModuleVideoUpload(file),
+        readMediaFileDuration(file),
+      ]);
+      const title = sanitizeUploadedMediaTitle(file.name, "Uploaded video");
+      const video = {
+        mime: upload.mime,
+        size: upload.size,
+        title,
+        type: upload.type,
+        uploadedAt: new Date().toISOString(),
+        url: upload.url,
+        ...(duration ? { duration } : {}),
+      };
+
+      updateModuleConfig(
+        configWithContent(
+          {
+            displayMode: "video",
+            label: title,
+            sourceMode: "upload",
+            video,
+          },
+          true,
+          ["url", "integration", "platform"],
+        ),
+      );
+    } catch (error) {
+      setModuleVideoError(
+        error instanceof Error ? error.message : "Could not upload this video.",
+      );
+    } finally {
+      setModuleVideoUploading(false);
+    }
+  }
+
+  async function handleModuleAudioSelection(file: File | undefined) {
+    if (!module || !file || moduleAudioUploading) {
+      return;
+    }
+
+    const validationError = validateProfileModuleAudioFile(file);
+
+    if (validationError) {
+      setModuleAudioError(validationError);
+      return;
+    }
+
+    setModuleAudioUploading(true);
+    setModuleAudioError(undefined);
+
+    try {
+      const [upload, duration] = await Promise.all([
+        onModuleAudioUpload(file),
+        readMediaFileDuration(file),
+      ]);
+      const title = sanitizeUploadedMediaTitle(file.name, "Uploaded track");
+      const audio = {
+        mime: upload.mime,
+        size: upload.size,
+        title,
+        type: upload.type,
+        uploadedAt: new Date().toISOString(),
+        url: upload.url,
+        ...(duration ? { duration } : {}),
+      };
+
+      updateModuleConfig(
+        configWithContent(
+          {
+            audio,
+            displayMode: "player",
+            label: title,
+            platform: "custom",
+            sourceMode: "upload",
+          },
+          true,
+          ["url", "integration"],
+        ),
+      );
+    } catch (error) {
+      setModuleAudioError(
+        error instanceof Error ? error.message : "Could not upload this MP3.",
+      );
+    } finally {
+      setModuleAudioUploading(false);
+    }
+  }
+
+  function handleRemoveModuleVideo() {
+    if (!module) {
+      return;
+    }
+
+    updateModuleConfig(
+      configWithContent(
+        {},
+        false,
+        ["video", "url", "integration"],
+      ),
+    );
+  }
+
+  function handleRemoveModuleAudio() {
+    if (!module) {
+      return;
+    }
+
+    updateModuleConfig(
+      configWithContent(
+        {},
+        false,
+        ["audio", "integration"],
       ),
     );
   }
@@ -4931,16 +5257,162 @@ function ModuleSettingsModal({
               ) : null}
             </div>
           ) : null}
-          {definition.category === "video" ||
-          definition.category === "music" ||
-          module.type === "github_repo" ? (
+          {module.type === "uploaded_video" ? (
+            <div
+              className="space-y-3"
+              data-testid="profile-video-module-settings"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase text-muted">Video file</p>
+                <label
+                  className={cn(
+                    "inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-control border border-line bg-canvas/45 px-3 text-sm font-semibold text-text transition hover:border-line-strong focus-within:outline-2 focus-within:outline-focus",
+                    moduleVideoUploading ? "pointer-events-none opacity-50" : undefined,
+                  )}
+                  data-profile-edit-control="true"
+                  title={module.config.video ? "Replace video" : "Upload video"}
+                >
+                  <Upload aria-hidden="true" size={16} />
+                  {moduleVideoUploading ? "Uploading" : module.config.video ? "Replace" : "Upload"}
+                  <input
+                    className="sr-only"
+                    type="file"
+                    accept="video/mp4,video/webm"
+                    data-testid="profile-module-settings-video-input"
+                    disabled={moduleVideoUploading}
+                    onChange={(event) => {
+                      void handleModuleVideoSelection(event.currentTarget.files?.[0]);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+              </div>
+              {module.config.video ? (
+                <div
+                  className="overflow-hidden rounded-card border border-line bg-black"
+                  data-testid="profile-module-video-preview"
+                >
+                  <video
+                    className="aspect-video w-full bg-black object-contain"
+                    controls
+                    playsInline
+                    preload="metadata"
+                  >
+                    <source src={module.config.video.url} type={module.config.video.mime} />
+                  </video>
+                  <div className="flex items-center justify-between gap-3 border-t border-line bg-canvas/70 px-3 py-2">
+                    <p className="min-w-0 truncate text-sm font-semibold text-text">
+                      {module.config.video.title ?? module.config.label ?? "Uploaded video"}
+                    </p>
+                    <button
+                      type="button"
+                      className="grid size-8 shrink-0 place-items-center rounded-control border border-rose/35 bg-rose/12 text-rose-ink transition hover:border-rose/60 focus-visible:outline-2 focus-visible:outline-focus"
+                      aria-label="Remove video"
+                      data-testid="profile-module-video-remove"
+                      onClick={handleRemoveModuleVideo}
+                    >
+                      <Trash2 aria-hidden="true" size={15} />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid min-h-28 place-items-center rounded-card border border-dashed border-line bg-canvas/35 px-3 text-center text-sm font-medium text-muted">
+                  Upload an MP4 or WebM file.
+                </div>
+              )}
+              {moduleVideoError ? (
+                <p className="text-xs font-semibold text-rose-ink" role="alert">
+                  {moduleVideoError}
+                </p>
+              ) : null}
+            </div>
+          ) : definition.category === "music" ? (
+            <div className="space-y-3">
+              {module.type === "music" ? (
+                <div
+                  className="space-y-3 rounded-card border border-line bg-canvas/35 p-3"
+                  data-testid="profile-audio-module-settings"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-semibold uppercase text-muted">MP3 upload</p>
+                    <label
+                      className={cn(
+                        "inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-control border border-line bg-surface/62 px-3 text-sm font-semibold text-text transition hover:border-line-strong focus-within:outline-2 focus-within:outline-focus",
+                        moduleAudioUploading ? "pointer-events-none opacity-50" : undefined,
+                      )}
+                      data-profile-edit-control="true"
+                      title={module.config.audio ? "Replace MP3" : "Upload MP3"}
+                    >
+                      <Upload aria-hidden="true" size={16} />
+                      {moduleAudioUploading ? "Uploading" : module.config.audio ? "Replace" : "Upload"}
+                      <input
+                        className="sr-only"
+                        type="file"
+                        accept="audio/mpeg,.mp3"
+                        data-testid="profile-module-settings-audio-input"
+                        disabled={moduleAudioUploading}
+                        onChange={(event) => {
+                          void handleModuleAudioSelection(event.currentTarget.files?.[0]);
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                  </div>
+                  {module.config.audio ? (
+                    <div
+                      className="flex min-w-0 items-center gap-3 rounded-card border border-line bg-surface/62 p-3"
+                      data-testid="profile-module-audio-preview"
+                    >
+                      <span className="grid size-10 shrink-0 place-items-center rounded-card border border-line bg-canvas/70 text-text">
+                        <Music2 aria-hidden="true" size={18} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-text">
+                          {module.config.audio.title ?? module.config.label ?? "Uploaded track"}
+                        </p>
+                        <p className="truncate text-xs font-medium text-muted">
+                          MP3 · {formatUploadSize(module.config.audio.size)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="grid size-8 shrink-0 place-items-center rounded-control border border-rose/35 bg-rose/12 text-rose-ink transition hover:border-rose/60 focus-visible:outline-2 focus-visible:outline-focus"
+                        aria-label="Remove MP3"
+                        data-testid="profile-module-audio-remove"
+                        onClick={handleRemoveModuleAudio}
+                      >
+                        <Trash2 aria-hidden="true" size={15} />
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="rounded-card border border-dashed border-line bg-canvas/38 px-3 py-2 text-sm font-medium text-muted">
+                      Upload a custom MP3 or use a provider link below.
+                    </p>
+                  )}
+                  {moduleAudioError ? (
+                    <p className="text-xs font-semibold text-rose-ink" role="alert">
+                      {moduleAudioError}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+              <label className="block">
+                <span className="text-xs font-semibold uppercase text-muted">
+                  Music link
+                </span>
+                <input
+                  className="mt-1 min-h-11 w-full rounded-control border border-line bg-canvas/45 px-3 text-sm text-text outline-none transition focus:border-line-strong focus:outline-2 focus:outline-focus"
+                  value={module.config.url ?? ""}
+                  placeholder="https://"
+                  data-testid="profile-module-settings-url"
+                  onChange={(event) => handleUrlConfig(event.currentTarget.value)}
+                />
+              </label>
+            </div>
+          ) : definition.category === "video" || module.type === "github_repo" ? (
             <label className="block">
               <span className="text-xs font-semibold uppercase text-muted">
-                {definition.category === "music"
-                  ? "Music link"
-                  : module.type === "github_repo"
-                    ? "Repo link"
-                    : "Media link"}
+                {module.type === "github_repo" ? "Repo link" : "Media link"}
               </span>
               <input
                 className="mt-1 min-h-11 w-full rounded-control border border-line bg-canvas/45 px-3 text-sm text-text outline-none transition focus:border-line-strong focus:outline-2 focus:outline-focus"

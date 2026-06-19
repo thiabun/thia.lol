@@ -7,10 +7,11 @@ require_once __DIR__ . '/auth.php';
 const IMAGE_UPLOAD_MAX_BYTES = 10485760;
 const IMAGE_UPLOAD_WEBP_QUALITY = 82;
 const VIDEO_UPLOAD_MAX_BYTES = 31457280;
+const AUDIO_UPLOAD_MAX_BYTES = 20971520;
 
 function uploads_dispatch(array $segments, string $method): void
 {
-    if (count($segments) !== 2 || ($segments[0] ?? null) !== 'uploads' || !in_array($segments[1], ['image', 'video'], true)) {
+    if (count($segments) !== 2 || ($segments[0] ?? null) !== 'uploads' || !in_array($segments[1], ['image', 'video', 'audio'], true)) {
         json_error('Not found.', 404);
     }
 
@@ -22,7 +23,11 @@ function uploads_dispatch(array $segments, string $method): void
         uploads_image_create();
     }
 
-    uploads_video_create();
+    if ($segments[1] === 'video') {
+        uploads_video_create();
+    }
+
+    uploads_audio_create();
 }
 
 function uploads_image_create(): void
@@ -112,6 +117,43 @@ function uploads_video_create(): void
     ], 201);
 }
 
+function uploads_audio_create(): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+
+    $contentLength = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
+
+    if ($contentLength > AUDIO_UPLOAD_MAX_BYTES) {
+        json_error('Audio must be 20 MB or smaller.', 413);
+    }
+
+    $purpose = validate_audio_upload_purpose($_POST['purpose'] ?? null);
+    $file = uploaded_audio_file('file');
+    $mime = detect_uploaded_audio_mime($file['tmp_name']);
+    $storage = create_upload_destination($purpose, 'mp3');
+
+    if (!move_uploaded_file($file['tmp_name'], $storage['path'])) {
+        json_error('Audio could not be stored.', 500);
+    }
+
+    @chmod($storage['path'], 0644);
+
+    $size = filesize($storage['path']);
+
+    if ($size === false || $size <= 0) {
+        json_error('Audio could not be verified after upload.', 500);
+    }
+
+    json_success([
+        'url' => $storage['url'],
+        'mime' => $mime,
+        'type' => $mime,
+        'size' => (int) $size,
+        'purpose' => $purpose,
+    ], 201);
+}
+
 function validate_upload_purpose(mixed $value): string
 {
     if (!is_string($value)) {
@@ -136,8 +178,23 @@ function validate_video_upload_purpose(mixed $value): string
 
     $purpose = trim($value);
 
-    if ($purpose !== 'profile_background') {
+    if (!in_array($purpose, ['profile_background', 'profile_module_video'], true)) {
         json_error('Unsupported video purpose.', 422);
+    }
+
+    return $purpose;
+}
+
+function validate_audio_upload_purpose(mixed $value): string
+{
+    if (!is_string($value)) {
+        json_error('Choose where this audio will be used.', 422);
+    }
+
+    $purpose = trim($value);
+
+    if ($purpose !== 'profile_music') {
+        json_error('Unsupported audio purpose.', 422);
     }
 
     return $purpose;
@@ -227,6 +284,48 @@ function uploaded_video_file(string $field): array
     ];
 }
 
+function uploaded_audio_file(string $field): array
+{
+    if (!isset($_FILES[$field]) || !is_array($_FILES[$field])) {
+        json_error('Choose an audio file to upload.', 422);
+    }
+
+    $file = $_FILES[$field];
+    $error = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
+
+    if ($error === UPLOAD_ERR_NO_FILE) {
+        json_error('Choose an audio file to upload.', 422);
+    }
+
+    if ($error === UPLOAD_ERR_INI_SIZE || $error === UPLOAD_ERR_FORM_SIZE) {
+        json_error('Audio must be 20 MB or smaller.', 413);
+    }
+
+    if ($error !== UPLOAD_ERR_OK) {
+        json_error('Audio could not be uploaded.', 400);
+    }
+
+    $size = (int) ($file['size'] ?? 0);
+    $tmpName = $file['tmp_name'] ?? '';
+
+    if (!is_string($tmpName) || $tmpName === '' || !is_uploaded_file($tmpName)) {
+        json_error('Audio could not be uploaded.', 400);
+    }
+
+    if ($size <= 0) {
+        json_error('Audio cannot be empty.', 422);
+    }
+
+    if ($size > AUDIO_UPLOAD_MAX_BYTES) {
+        json_error('Audio must be 20 MB or smaller.', 413);
+    }
+
+    return [
+        'tmp_name' => $tmpName,
+        'size' => $size,
+    ];
+}
+
 function detect_uploaded_image_mime(string $path): string
 {
     $finfo = new finfo(FILEINFO_MIME_TYPE);
@@ -267,6 +366,22 @@ function detect_uploaded_video_mime(string $path): string
     }
 
     return $mime;
+}
+
+function detect_uploaded_audio_mime(string $path): string
+{
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime = $finfo->file($path);
+
+    if (!is_string($mime)) {
+        json_error('Unsupported audio type.', 415);
+    }
+
+    if (!in_array($mime, ['audio/mpeg', 'audio/mp3'], true)) {
+        json_error('Unsupported audio type. Use MP3.', 415);
+    }
+
+    return 'audio/mpeg';
 }
 
 function decode_uploaded_image(string $path, string $mime): GdImage
@@ -432,11 +547,18 @@ function ensure_upload_directory(string $path): void
 function ensure_upload_htaccess(string $path): void
 {
     $file = $path . '/.htaccess';
+    $contents = "Options -Indexes\nAddType image/webp .webp\nAddType video/mp4 .mp4\nAddType video/webm .webm\nAddType audio/mpeg .mp3\n<FilesMatch \"\\.(?:php|phtml|phar|cgi|pl|py|sh|shtml|html?|svg)$\">\n  Require all denied\n</FilesMatch>\n";
 
     if (is_file($file)) {
+        $current = @file_get_contents($file);
+
+        if (is_string($current) && str_contains($current, 'AddType audio/mpeg .mp3')) {
+            return;
+        }
+
+        @file_put_contents($file, $contents, LOCK_EX);
         return;
     }
 
-    $contents = "Options -Indexes\nAddType image/webp .webp\nAddType video/mp4 .mp4\nAddType video/webm .webm\n<FilesMatch \"\\.(?:php|phtml|phar|cgi|pl|py|sh|shtml|html?|svg)$\">\n  Require all denied\n</FilesMatch>\n";
     @file_put_contents($file, $contents, LOCK_EX);
 }

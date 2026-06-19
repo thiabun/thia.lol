@@ -975,10 +975,17 @@ export function profileModuleHasContent(
 
   if (
     module.type === "creator_live" ||
-    module.type === "music" ||
     getProfileModuleDefinition(module.type).purpose === "integration"
   ) {
     return Boolean(module.config.url?.trim() || module.config.integration);
+  }
+
+  if (module.type === "uploaded_video") {
+    return Boolean(module.config.video);
+  }
+
+  if (module.type === "music" || getProfileModuleDefinition(module.type).category === "music") {
+    return Boolean(module.config.audio || module.config.url?.trim() || module.config.integration);
   }
 
   if (module.type === "featured_post" || module.type === "featured_room") {
@@ -1033,10 +1040,17 @@ export function profileModuleSummary(module: ProfileModule): string {
 
   if (
     module.type === "creator_live" ||
-    module.type === "music" ||
     getProfileModuleDefinition(module.type).purpose === "integration"
   ) {
     return module.config.description?.trim() || module.config.url || getProfileModuleDefinition(module.type).description;
+  }
+
+  if (module.type === "uploaded_video" && module.config.video) {
+    return module.config.video.title ?? module.config.label ?? "Uploaded video";
+  }
+
+  if (module.config.audio) {
+    return module.config.audio.title ?? module.config.label ?? "Uploaded audio";
   }
 
   if (

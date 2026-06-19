@@ -87,6 +87,8 @@ const PROFILE_MODULE_GALLERY_CAPTION_MAX = 80;
 const PROFILE_MODULE_LINK_PLATFORMS = ['website', 'youtube', 'twitch', 'tiktok', 'instagram', 'x', 'bluesky', 'github', 'discord', 'spotify', 'custom'];
 const PROFILE_MODULE_CREATOR_PLATFORMS = ['website', 'youtube', 'twitch', 'tiktok', 'instagram', 'x', 'bluesky', 'github', 'discord', 'custom'];
 const PROFILE_MODULE_MUSIC_PLATFORMS = ['spotify', 'apple_music', 'youtube_music', 'soundcloud', 'bandcamp', 'custom'];
+const PROFILE_MODULE_UPLOADED_AUDIO_MAX_BYTES = 20971520;
+const PROFILE_MODULE_UPLOADED_VIDEO_MAX_BYTES = 31457280;
 
 function profile_modules_dispatch(array $segments, string $method): void
 {
@@ -3097,8 +3099,8 @@ function profile_module_config(string $type, mixed $value, int $userId): array
         'youtube_video',
         'youtube_stream',
         'youtube_playlist',
-        'uploaded_video',
         PROFILE_GITHUB_REPO_MODULE_TYPE => profile_module_creator_live_config($value),
+        'uploaded_video' => profile_module_uploaded_video_config($value),
         PROFILE_MUSIC_MODULE_TYPE,
         'spotify_song',
         'apple_music_song',
@@ -3345,17 +3347,42 @@ function profile_module_creator_live_config(array $config): array
 
 function profile_module_music_config(array $config): array
 {
-    profile_module_reject_unknown_keys($config, ['platform', 'label', 'url', 'description', 'displayMode', 'sourceMode']);
+    profile_module_reject_unknown_keys($config, ['platform', 'label', 'url', 'description', 'displayMode', 'sourceMode', 'audio', 'autoplay']);
     $displayMode = profile_module_optional_choice(
         $config['displayMode'] ?? null,
-        ['embed', 'link', 'now_playing'],
+        ['embed', 'link', 'now_playing', 'player'],
         'Display mode'
     );
     $sourceMode = profile_module_optional_choice(
         $config['sourceMode'] ?? null,
-        ['spotify', 'apple_music', 'youtube_music', 'link'],
+        ['spotify', 'apple_music', 'youtube_music', 'link', 'upload'],
         'Source mode'
     );
+
+    if (array_key_exists('audio', $config) && $config['audio'] !== null) {
+        $audio = profile_module_uploaded_audio($config['audio']);
+        $normalized = [
+            'audio' => $audio,
+            'label' => profile_module_text($config['label'] ?? ($audio['title'] ?? 'Uploaded track'), PROFILE_MODULE_LINK_LABEL_MAX, 'Music title'),
+            'platform' => profile_module_platform($config['platform'] ?? null, PROFILE_MODULE_MUSIC_PLATFORMS, 'custom'),
+            'sourceMode' => $sourceMode ?? 'upload',
+        ];
+        $description = profile_module_optional_text($config['description'] ?? null, PROFILE_MODULE_SHORT_TEXT_MAX, 'Card description');
+
+        if ($description !== null) {
+            $normalized['description'] = $description;
+        }
+
+        if ($displayMode !== null) {
+            $normalized['displayMode'] = $displayMode;
+        }
+
+        if (array_key_exists('autoplay', $config)) {
+            $normalized['autoplay'] = profile_module_bool($config['autoplay'], 'Autoplay');
+        }
+
+        return $normalized;
+    }
 
     if (
         !array_key_exists('url', $config) ||
@@ -3413,6 +3440,67 @@ function profile_module_music_config(array $config): array
 
     if ($sourceMode !== null) {
         $normalized['sourceMode'] = $sourceMode;
+    }
+
+    return $normalized;
+}
+
+function profile_module_uploaded_video_config(array $config): array
+{
+    profile_module_reject_unknown_keys($config, ['label', 'description', 'displayMode', 'sourceMode', 'video', 'autoplay']);
+    $displayMode = profile_module_optional_choice(
+        $config['displayMode'] ?? null,
+        ['video', 'player'],
+        'Display mode'
+    );
+    $sourceMode = profile_module_optional_choice(
+        $config['sourceMode'] ?? null,
+        ['upload'],
+        'Source mode'
+    );
+
+    if (!array_key_exists('video', $config) || $config['video'] === null) {
+        $normalized = [];
+        $label = profile_module_optional_text($config['label'] ?? null, PROFILE_MODULE_LINK_LABEL_MAX, 'Video title');
+        $description = profile_module_optional_text($config['description'] ?? null, PROFILE_MODULE_SHORT_TEXT_MAX, 'Card description');
+
+        if ($label !== null) {
+            $normalized['label'] = $label;
+        }
+
+        if ($description !== null) {
+            $normalized['description'] = $description;
+        }
+
+        if ($displayMode !== null) {
+            $normalized['displayMode'] = $displayMode;
+        }
+
+        if ($sourceMode !== null) {
+            $normalized['sourceMode'] = $sourceMode;
+        }
+
+        return $normalized;
+    }
+
+    $video = profile_module_uploaded_video($config['video']);
+    $normalized = [
+        'video' => $video,
+        'label' => profile_module_text($config['label'] ?? ($video['title'] ?? 'Uploaded video'), PROFILE_MODULE_LINK_LABEL_MAX, 'Video title'),
+        'sourceMode' => $sourceMode ?? 'upload',
+    ];
+    $description = profile_module_optional_text($config['description'] ?? null, PROFILE_MODULE_SHORT_TEXT_MAX, 'Card description');
+
+    if ($description !== null) {
+        $normalized['description'] = $description;
+    }
+
+    if ($displayMode !== null) {
+        $normalized['displayMode'] = $displayMode;
+    }
+
+    if (array_key_exists('autoplay', $config)) {
+        $normalized['autoplay'] = profile_module_bool($config['autoplay'], 'Autoplay');
     }
 
     return $normalized;
@@ -3547,6 +3635,183 @@ function profile_module_uploaded_media_url(mixed $value, string $label): string
     }
 
     return $trimmed;
+}
+
+function profile_module_uploaded_audio(mixed $value): array
+{
+    if (!is_array($value) || array_is_list($value)) {
+        json_error('Uploaded audio metadata must be an object.', 422);
+    }
+
+    profile_module_reject_unknown_keys($value, ['url', 'mime', 'type', 'size', 'title', 'duration', 'uploadedAt']);
+
+    $audio = [
+        'url' => profile_module_uploaded_audio_url($value['url'] ?? null, 'Audio file'),
+        'mime' => profile_module_uploaded_mime($value['mime'] ?? ($value['type'] ?? null), ['audio/mpeg'], 'Audio MIME type'),
+        'size' => profile_module_uploaded_size($value['size'] ?? null, PROFILE_MODULE_UPLOADED_AUDIO_MAX_BYTES, 'Audio file size'),
+    ];
+    $title = profile_module_optional_text($value['title'] ?? null, PROFILE_MODULE_LINK_LABEL_MAX, 'Audio title');
+    $duration = profile_module_optional_duration($value['duration'] ?? null, 'Audio duration');
+    $uploadedAt = profile_module_optional_timestamp($value['uploadedAt'] ?? null);
+
+    $audio['type'] = $audio['mime'];
+
+    if ($title !== null) {
+        $audio['title'] = $title;
+    }
+
+    if ($duration !== null) {
+        $audio['duration'] = $duration;
+    }
+
+    if ($uploadedAt !== null) {
+        $audio['uploadedAt'] = $uploadedAt;
+    }
+
+    return $audio;
+}
+
+function profile_module_uploaded_video(mixed $value): array
+{
+    if (!is_array($value) || array_is_list($value)) {
+        json_error('Uploaded video metadata must be an object.', 422);
+    }
+
+    profile_module_reject_unknown_keys($value, ['url', 'mime', 'type', 'size', 'title', 'duration', 'uploadedAt']);
+
+    $video = [
+        'url' => profile_module_uploaded_video_url($value['url'] ?? null, 'Video file'),
+        'mime' => profile_module_uploaded_mime($value['mime'] ?? ($value['type'] ?? null), ['video/mp4', 'video/webm'], 'Video MIME type'),
+        'size' => profile_module_uploaded_size($value['size'] ?? null, PROFILE_MODULE_UPLOADED_VIDEO_MAX_BYTES, 'Video file size'),
+    ];
+    $title = profile_module_optional_text($value['title'] ?? null, PROFILE_MODULE_LINK_LABEL_MAX, 'Video title');
+    $duration = profile_module_optional_duration($value['duration'] ?? null, 'Video duration');
+    $uploadedAt = profile_module_optional_timestamp($value['uploadedAt'] ?? null);
+
+    $video['type'] = $video['mime'];
+
+    if ($title !== null) {
+        $video['title'] = $title;
+    }
+
+    if ($duration !== null) {
+        $video['duration'] = $duration;
+    }
+
+    if ($uploadedAt !== null) {
+        $video['uploadedAt'] = $uploadedAt;
+    }
+
+    return $video;
+}
+
+function profile_module_uploaded_audio_url(mixed $value, string $label): string
+{
+    if (!is_string($value)) {
+        json_error("{$label} must be an uploaded MP3 URL.", 422);
+    }
+
+    $trimmed = trim($value);
+
+    if (preg_match('#^/uploads/media/[0-9]{4}/[0-9]{2}/profile_music-[a-z0-9_-]+\.mp3$#', $trimmed) !== 1) {
+        json_error("{$label} must come from the audio upload endpoint.", 422);
+    }
+
+    return $trimmed;
+}
+
+function profile_module_uploaded_video_url(mixed $value, string $label): string
+{
+    if (!is_string($value)) {
+        json_error("{$label} must be an uploaded video URL.", 422);
+    }
+
+    $trimmed = trim($value);
+
+    if (preg_match('#^/uploads/media/[0-9]{4}/[0-9]{2}/profile_module_video-[a-z0-9_-]+\.(?:mp4|webm)$#', $trimmed) !== 1) {
+        json_error("{$label} must come from the video upload endpoint.", 422);
+    }
+
+    return $trimmed;
+}
+
+function profile_module_uploaded_mime(mixed $value, array $allowed, string $label): string
+{
+    if (!is_string($value)) {
+        json_error("{$label} is invalid.", 422);
+    }
+
+    $mime = strtolower(trim($value));
+
+    if (!in_array($mime, $allowed, true)) {
+        json_error("{$label} is invalid.", 422);
+    }
+
+    return $mime;
+}
+
+function profile_module_uploaded_size(mixed $value, int $max, string $label): int
+{
+    if (is_int($value)) {
+        $size = $value;
+    } elseif (is_string($value) && preg_match('/^[0-9]+$/', $value) === 1) {
+        $size = (int) $value;
+    } else {
+        json_error("{$label} is invalid.", 422);
+    }
+
+    if ($size <= 0 || $size > $max) {
+        json_error("{$label} is invalid.", 422);
+    }
+
+    return $size;
+}
+
+function profile_module_optional_duration(mixed $value, string $label): ?float
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    if (!is_int($value) && !is_float($value) && !(is_string($value) && is_numeric($value))) {
+        json_error("{$label} is invalid.", 422);
+    }
+
+    $duration = (float) $value;
+
+    if (!is_finite($duration) || $duration <= 0 || $duration > 86400) {
+        json_error("{$label} is invalid.", 422);
+    }
+
+    return round($duration, 3);
+}
+
+function profile_module_optional_timestamp(mixed $value): ?string
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    if (!is_string($value)) {
+        json_error('Upload timestamp is invalid.', 422);
+    }
+
+    $trimmed = trim($value);
+
+    if (strlen($trimmed) > 40 || strtotime($trimmed) === false) {
+        json_error('Upload timestamp is invalid.', 422);
+    }
+
+    return $trimmed;
+}
+
+function profile_module_bool(mixed $value, string $label): bool
+{
+    if (!is_bool($value)) {
+        json_error("{$label} setting is invalid.", 422);
+    }
+
+    return $value;
 }
 
 function profile_module_link_card_config(

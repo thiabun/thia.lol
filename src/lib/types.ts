@@ -195,6 +195,26 @@ export type ProfileModuleMediaItem = {
   url: string;
 };
 
+export type ProfileModuleUploadedAudio = {
+  duration?: number;
+  mime: "audio/mpeg";
+  size: number;
+  title?: string;
+  type: "audio/mpeg";
+  uploadedAt?: string;
+  url: string;
+};
+
+export type ProfileModuleUploadedVideo = {
+  duration?: number;
+  mime: "video/mp4" | "video/webm";
+  size: number;
+  title?: string;
+  type: "video/mp4" | "video/webm";
+  uploadedAt?: string;
+  url: string;
+};
+
 export type ProfileIntegrationEmbed = {
   allow?: string;
   height?: number;
@@ -230,6 +250,8 @@ export type ProfileIntegrationCard = {
 };
 
 export type ProfileModuleConfig = {
+  audio?: ProfileModuleUploadedAudio;
+  autoplay?: boolean;
   body?: string;
   canvasSize?: string;
   configured?: boolean;
@@ -249,6 +271,7 @@ export type ProfileModuleConfig = {
   statusText?: string;
   userBadgeIds?: number[];
   url?: string;
+  video?: ProfileModuleUploadedVideo;
   workingOn?: string;
 };
 
