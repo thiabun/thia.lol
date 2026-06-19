@@ -821,6 +821,60 @@ test("Spotify music player fills each allowed music module span", async ({
   }
 });
 
+test("compact music modules choose black or white text from album art", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockSpotifyIframeApi(page);
+
+  const darkArtworkUrl = "https://assets.example.test/uploads/test/dark-album-art.png";
+  const lightArtworkUrl = "https://assets.example.test/uploads/test/light-album-art.png";
+  await mockAlbumArtwork(page, darkArtworkUrl, darkAlbumArtworkPng);
+  await mockAlbumArtwork(page, lightArtworkUrl, lightAlbumArtworkPng);
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      withAuditLayout(
+        spotifyEmbedMusicModule({
+          id: 81,
+          imageUrl: darkArtworkUrl,
+          position: 81,
+        }),
+        "2x2",
+        1,
+      ),
+      withAuditLayout(
+        appleMusicEmbedModule({
+          id: 82,
+          imageUrl: lightArtworkUrl,
+          position: 82,
+        }),
+        "2x2",
+        1,
+        3,
+      ),
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const spotifyPlayer = page.getByTestId("profile-spotify-custom-player");
+  await expect(spotifyPlayer).toHaveAttribute("data-profile-spotify-text-tone", "white");
+  await expect(spotifyPlayer.locator('[data-profile-spotify-title="true"]')).toHaveCSS(
+    "color",
+    "rgb(255, 255, 255)",
+  );
+
+  const appleMusicTile = page.locator('[data-profile-music-text-tone]').filter({
+    hasText: "Apple song",
+  });
+  await expect(appleMusicTile).toHaveAttribute("data-profile-music-text-tone", "black");
+  await expect(appleMusicTile.locator('[data-profile-music-title="true"]')).toHaveCSS(
+    "color",
+    "rgb(0, 0, 0)",
+  );
+});
+
 test("desktop module spans render with square-cell geometry", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 1100 });
   await mockProfileModules(page, {
@@ -5183,6 +5237,25 @@ async function expectSpotifyCustomPlayer(page: Page) {
   await expect(page.getByTestId("profile-integration-embed-spotify")).toBeAttached();
 }
 
+const darkAlbumArtworkPng =
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGNg5eD9D8IMMAYAIbAEZULJ3y0AAAAASUVORK5CYII=";
+const lightAlbumArtworkPng =
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP48eXFfxBmgDEAiawPTRXeMb4AAAAASUVORK5CYII=";
+
+async function mockAlbumArtwork(page: Page, path: string, pngBase64: string) {
+  await page.route(`**${path}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "image/png",
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "no-store",
+      },
+      body: Buffer.from(pngBase64, "base64"),
+    });
+  });
+}
+
 async function expectSpotifyProgress(
   page: Page,
   expectedPercent: number | { max: number; min: number },
@@ -5823,7 +5896,9 @@ function musicModule(overrides: { id?: number; position?: number } = {}) {
   };
 }
 
-function spotifyEmbedMusicModule(overrides: { id?: number; position?: number } = {}) {
+function spotifyEmbedMusicModule(
+  overrides: { id?: number; imageUrl?: string; position?: number } = {},
+) {
   return {
     ...musicModule(overrides),
     config: {
@@ -5842,7 +5917,7 @@ function spotifyEmbedMusicModule(overrides: { id?: number; position?: number } =
         metadata: {
           title: "Focus track",
           subtitle: "Spotify track",
-          imageUrl: "https://i.scdn.co/image/focus-track",
+          imageUrl: overrides.imageUrl ?? "https://i.scdn.co/image/focus-track",
         },
         embed: {
           type: "iframe",
@@ -5951,7 +6026,9 @@ function integrationResolveCard(url: string, provider: string) {
   };
 }
 
-function appleMusicEmbedModule(overrides: { id?: number; position?: number } = {}) {
+function appleMusicEmbedModule(
+  overrides: { id?: number; imageUrl?: string; position?: number } = {},
+) {
   return {
     ...musicModule(overrides),
     config: {
@@ -5967,6 +6044,7 @@ function appleMusicEmbedModule(overrides: { id?: number; position?: number } = {
         resourceKey: "apple_music:song:1",
         sourceUrl: "https://music.apple.com/us/album/example/1",
         metadata: {
+          imageUrl: overrides.imageUrl,
           title: "Apple song",
           subtitle: "Apple Music",
         },

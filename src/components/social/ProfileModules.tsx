@@ -60,6 +60,8 @@ import { ProfileConnectionIcon } from "./ProfileConnectionIcon";
 const PROFILE_CANVAS_COLUMNS = PROFILE_CANVAS_DESKTOP_COLUMNS;
 const PROFILE_CANVAS_ROWS = PROFILE_CANVAS_DESKTOP_ROWS;
 
+type AlbumArtworkTextTone = "black" | "white";
+
 type ProfileModulesSectionProps = {
   badges: UserBadge[];
   canvasGlass?: number | undefined;
@@ -72,6 +74,108 @@ type ProfileModulesSectionProps = {
   editing?: ProfileModuleGridEditing | undefined;
   renderModuleContent?: ProfileModuleContentRenderer | undefined;
 };
+
+function useAlbumArtworkTextTone(
+  imageUrl: string | undefined,
+  enabled: boolean,
+): AlbumArtworkTextTone {
+  const [sample, setSample] = useState<{
+    imageUrl: string;
+    tone: AlbumArtworkTextTone;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!enabled || !imageUrl || typeof window === "undefined") {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const image = new Image();
+    const artworkUrl = new URL(imageUrl, window.location.href);
+
+    if (artworkUrl.origin !== window.location.origin) {
+      image.crossOrigin = "anonymous";
+    }
+
+    image.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        const width = 24;
+        const height = 24;
+        canvas.width = width;
+        canvas.height = height;
+
+        const context = canvas.getContext("2d", { willReadFrequently: true });
+        if (!context) {
+          return;
+        }
+
+        context.drawImage(image, 0, 0, width, height);
+        const sampleTop = Math.floor(height * 0.42);
+        const pixels = context.getImageData(0, sampleTop, width, height - sampleTop).data;
+        let totalLuminance = 0;
+        let sampleCount = 0;
+
+        for (let index = 0; index < pixels.length; index += 4) {
+          const alpha = pixels[index + 3] ?? 0;
+
+          if (alpha < 32) {
+            continue;
+          }
+
+          const red = pixels[index] ?? 0;
+          const green = pixels[index + 1] ?? 0;
+          const blue = pixels[index + 2] ?? 0;
+          totalLuminance += 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+          sampleCount += 1;
+        }
+
+        if (!cancelled) {
+          const averageLuminance = sampleCount > 0 ? totalLuminance / sampleCount : 0;
+          setSample({
+            imageUrl,
+            tone: averageLuminance >= 148 ? "black" : "white",
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setSample({ imageUrl, tone: "white" });
+        }
+      }
+    };
+
+    image.onerror = () => {
+      if (!cancelled) {
+        setSample({ imageUrl, tone: "white" });
+      }
+    };
+    image.src = artworkUrl.href;
+
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, imageUrl]);
+
+  return enabled && imageUrl && sample?.imageUrl === imageUrl ? sample.tone : "white";
+}
+
+function albumArtworkTextClass(tone: AlbumArtworkTextTone): string {
+  return tone === "black" ? "text-black" : "text-white";
+}
+
+function albumArtworkMutedTextClass(tone: AlbumArtworkTextTone): string {
+  return tone === "black" ? "text-black/75" : "text-white/80";
+}
+
+function albumArtworkOverlayClass(tone: AlbumArtworkTextTone): string {
+  return tone === "black" ? "bg-white/42" : "bg-black/46";
+}
+
+function albumArtworkControlSurfaceClass(tone: AlbumArtworkTextTone): string {
+  return tone === "black"
+    ? "border-black/15 bg-white/55 text-black"
+    : "border-white/20 bg-black/42 text-white";
+}
 
 export type ProfileMusicAutoplayRequest = {
   requestId: number;
@@ -1233,6 +1337,12 @@ function ProfileIntegrationRichCard({
   } satisfies CSSProperties;
   const micro = span.columns <= 2 && span.rows <= 1;
   const compactTile = span.columns <= 2 && span.rows <= 2;
+  const compactTextTone = useAlbumArtworkTextTone(
+    metadata.imageUrl ?? undefined,
+    compactTile,
+  );
+  const compactTextClass = albumArtworkTextClass(compactTextTone);
+  const compactMutedTextClass = albumArtworkMutedTextClass(compactTextTone);
   const twitchEmbedSandbox =
     "allow-storage-access-by-user-activation allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-modals allow-forms";
 
@@ -1253,6 +1363,7 @@ function ProfileIntegrationRichCard({
     return (
       <a
         className="relative isolate flex h-full min-h-0 min-w-0 items-end overflow-hidden rounded-card border border-line bg-canvas/55 p-2 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        data-profile-music-text-tone={compactTextTone}
         href={integration.sourceUrl}
         rel="noopener noreferrer"
         target="_blank"
@@ -1268,10 +1379,16 @@ function ProfileIntegrationRichCard({
             src={metadata.imageUrl}
           />
         ) : null}
-        <span className="absolute inset-0 -z-10 bg-canvas/68" />
         <span
           className={cn(
-            "grid shrink-0 place-items-center rounded-card border border-line bg-surface/80 text-text shadow-soft",
+            "absolute inset-0 -z-10",
+            albumArtworkOverlayClass(compactTextTone),
+          )}
+        />
+        <span
+          className={cn(
+            "grid shrink-0 place-items-center rounded-card border shadow-soft",
+            albumArtworkControlSurfaceClass(compactTextTone),
             micro ? "size-8" : "size-10",
           )}
         >
@@ -1280,13 +1397,15 @@ function ProfileIntegrationRichCard({
         <span className="ml-2 min-w-0 flex-1">
           <span
             className={cn(
-              "block truncate font-semibold text-text",
+              "block truncate font-semibold",
+              compactTextClass,
               micro ? "text-xs" : "text-sm",
             )}
+            data-profile-music-title="true"
           >
             {title}
           </span>
-          <span className="block truncate text-[0.68rem] text-muted">
+          <span className={cn("block truncate text-[0.68rem]", compactMutedTextClass)}>
             {subtitle}
           </span>
         </span>
@@ -1538,6 +1657,12 @@ function SpotifyMusicPlayer({
   const playerSpan = profileGridModuleSizeSpan(size);
   const compactPlayer = playerSpan.columns <= 2 && playerSpan.rows <= 2;
   const richPlayer = playerSpan.rows >= 2 && !compactPlayer;
+  const compactTextTone = useAlbumArtworkTextTone(
+    metadata.imageUrl ?? undefined,
+    compactPlayer,
+  );
+  const compactTextClass = albumArtworkTextClass(compactTextTone);
+  const compactMutedTextClass = albumArtworkMutedTextClass(compactTextTone);
   const uri = spotifyIntegrationUri(integration);
 
   useEffect(() => {
@@ -1693,6 +1818,7 @@ function SpotifyMusicPlayer({
       data-profile-spotify-layout={
         compactPlayer ? "compact" : richPlayer ? "rich" : "row"
       }
+      data-profile-spotify-text-tone={compactPlayer ? compactTextTone : undefined}
       data-testid="profile-spotify-custom-player"
     >
       <div
@@ -1721,7 +1847,9 @@ function SpotifyMusicPlayer({
         <div
           className={cn(
             "absolute inset-0 -z-10",
-            compactPlayer ? "bg-canvas/48" : "bg-canvas/72",
+            compactPlayer
+              ? albumArtworkOverlayClass(compactTextTone)
+              : "bg-canvas/72",
           )}
         />
         <div
@@ -1758,9 +1886,12 @@ function SpotifyMusicPlayer({
           >
             <span
               className={cn(
-                "block truncate font-semibold text-text",
-                compactPlayer ? "text-xs drop-shadow-sm" : "text-sm",
+                "block truncate font-semibold",
+                compactPlayer
+                  ? cn("text-xs", compactTextClass)
+                  : "text-sm text-text",
               )}
+              data-profile-spotify-title={compactPlayer ? "true" : undefined}
             >
               {title}
             </span>
@@ -1821,7 +1952,16 @@ function SpotifyMusicPlayer({
             )}
           </button>
           <div className="min-w-0 flex-1">
-            <div className="h-1.5 overflow-hidden rounded-full bg-line">
+            <div
+              className={cn(
+                "h-1.5 overflow-hidden rounded-full",
+                compactPlayer
+                  ? compactTextTone === "black"
+                    ? "bg-black/25"
+                    : "bg-white/30"
+                  : "bg-line",
+              )}
+            >
               <div
                 className="h-full rounded-full bg-accent transition-[width] duration-fluid ease-fluid"
                 data-testid="profile-spotify-progress-bar"
@@ -1833,7 +1973,12 @@ function SpotifyMusicPlayer({
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
-            <div className="mt-1 flex items-center justify-between gap-3 text-[0.7rem] font-semibold uppercase text-muted">
+            <div
+              className={cn(
+                "mt-1 flex items-center justify-between gap-3 text-[0.7rem] font-semibold uppercase",
+                compactPlayer ? compactMutedTextClass : "text-muted",
+              )}
+            >
               {!compactPlayer ? (
                 <span className="truncate">{integrationLabel(integration)}</span>
               ) : null}
