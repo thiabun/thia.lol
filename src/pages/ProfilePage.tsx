@@ -49,6 +49,7 @@ import {
 } from "react-router";
 import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
+import { MentionTextarea } from "../components/social/MentionTextarea";
 import { ProfileConnectionIcon } from "../components/social/ProfileConnectionIcon";
 import { PostCard } from "../components/social/PostCard";
 import { ProfileGrid, ProfileGridModule } from "../components/social/ProfileGrid";
@@ -58,6 +59,7 @@ import {
   type ProfileMusicAutoplayRequest,
 } from "../components/social/ProfileModules";
 import { ReportForm } from "../components/social/ReportForm";
+import { RichText } from "../components/social/RichText";
 import { RoomCard } from "../components/social/RoomCard";
 import { UserIdentityLink } from "../components/social/UserProfileLink";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
@@ -204,6 +206,7 @@ function mergeAutosavedProfileContent(current: Profile, saved: Profile): Profile
   return {
     ...current,
     bio: saved.bio,
+    bioEntities: saved.bioEntities ?? [],
     location: saved.location,
     bannerUrl: saved.bannerUrl ?? null,
     profileBackground: saved.profileBackground ?? null,
@@ -2031,14 +2034,14 @@ function ProfileIdentityEditorFields({
         </label>
         <label className="text-xs font-semibold uppercase text-muted sm:col-span-2">
           Bio
-          <textarea
+          <MentionTextarea
             className="mt-1 min-h-24 w-full resize-y rounded-control border border-line bg-canvas/55 px-3 py-2 text-sm font-medium normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
             value={profile.bio}
             data-testid="profile-info-bio-input"
-            onChange={(event) =>
+            onValueChange={(bio) =>
               onProfileDraftChange((current) => ({
                 ...current,
-                bio: event.target.value,
+                bio,
               }))
             }
           />
@@ -4627,12 +4630,11 @@ function ModuleSettingsModal({
                 <span className="text-xs font-semibold uppercase text-muted">
                   Bio
                 </span>
-                <textarea
+                <MentionTextarea
                   className="mt-1 min-h-24 w-full resize-none rounded-control border border-line bg-canvas/45 px-3 py-2 text-sm leading-6 text-text outline-none transition focus:border-line-strong focus:outline-2 focus:outline-focus"
                   value={profile.bio}
                   data-testid="profile-info-modal-bio"
-                  onChange={(event) => {
-                    const bio = event.currentTarget.value;
+                  onValueChange={(bio) => {
                     onProfileDraftChange((currentProfile) => ({
                       ...currentProfile,
                       bio,
@@ -4649,12 +4651,11 @@ function ModuleSettingsModal({
               <span className="text-xs font-semibold uppercase text-muted">
                 Text
               </span>
-              <textarea
+              <MentionTextarea
                 className="mt-1 min-h-28 w-full resize-none rounded-control border border-line bg-canvas/45 px-3 py-2 text-sm leading-6 text-text outline-none transition focus:border-line-strong focus:outline-2 focus:outline-focus"
                 value={module.config.body ?? ""}
                 data-testid="profile-module-settings-body"
-                onChange={(event) => {
-                  const body = event.currentTarget.value;
+                onValueChange={(body) => {
                   updateModuleConfig(
                     configWithContent({ body }, body.trim().length > 0),
                   );
@@ -5476,7 +5477,7 @@ function ProfileInfoSizedCard({
           </div>
         </div>
         {span.rows >= 3 && profile.bio ? (
-          <ProfileInfoBio bio={profile.bio} compact />
+          <ProfileInfoBio bio={profile.bio} entities={profile.bioEntities} compact />
         ) : null}
         <div className="mt-auto flex min-w-0 items-end justify-between gap-2 pt-2">
           <div className="min-w-0 flex-1">
@@ -5627,7 +5628,13 @@ function ProfileInfoSizedCard({
               showControls={span.columns >= 6}
             />
           </div>
-          {profile.bio ? <ProfileInfoBio bio={profile.bio} expanded={expanded} /> : null}
+          {profile.bio ? (
+            <ProfileInfoBio
+              bio={profile.bio}
+              entities={profile.bioEntities}
+              expanded={expanded}
+            />
+          ) : null}
           <div className="min-w-0 pt-1">
             {!inlineStats ? (
               <ProfileInfoStats
@@ -5961,10 +5968,12 @@ function ProfileInfoTrailBadge({ userBadge }: { userBadge: UserBadge }) {
 function ProfileInfoBio({
   bio,
   compact = false,
+  entities,
   expanded = false,
 }: {
   bio: string;
   compact?: boolean | undefined;
+  entities?: Profile["bioEntities"] | undefined;
   expanded?: boolean | undefined;
 }) {
   return (
@@ -5981,7 +5990,7 @@ function ProfileInfoBio({
       data-testid="profile-bio"
       title={bio}
     >
-      {bio}
+      <RichText text={bio} entities={entities} showPreviews={false} />
     </p>
   );
 }
@@ -6132,8 +6141,12 @@ function FeaturedPostCard({ post }: { post: Post }) {
         <span className="text-muted/50">·</span>
         <span>{post.createdAt}</span>
       </div>
-      <p className="mt-2 line-clamp-3 break-words text-sm leading-6 text-text">
-        {post.body}
+      <p className="mt-2 line-clamp-3 break-words whitespace-pre-wrap text-sm leading-6 text-text">
+        <RichText
+          text={post.body}
+          entities={post.bodyEntities}
+          showPreviews={false}
+        />
       </p>
       {post.mediaUrl && post.mediaUrl !== "/ambient-veil.webp" ? (
         <div

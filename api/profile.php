@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read.php';
+require_once __DIR__ . '/text_entities.php';
 
 const PROFILE_LAYOUT_PRESETS = ['balanced', 'compact', 'showcase'];
 
@@ -70,6 +71,19 @@ function profile_update_for_user(int $userId, string $handle, array $body): arra
         }
 
         throw $exception;
+    }
+
+    if (array_key_exists('bio', $statement['params'])) {
+        $bio = $statement['params']['bio'];
+
+        if (is_string($bio) && $bio !== '') {
+            text_entities_store_for_content('profile', $userId, 'bio', $bio, $userId, [
+                'notifyMentions' => true,
+                'targetUrl' => '/@' . rawurlencode($handle),
+            ]);
+        } else {
+            text_entities_delete_for_content('profile', $userId, 'bio');
+        }
     }
 
     $profile = fetch_profile_by_handle($handle);

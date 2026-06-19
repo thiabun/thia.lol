@@ -70,6 +70,8 @@ test.beforeEach(async ({ context }) => {
 
 test("profile renders public modules safely", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  const aboutBody =
+    "Literal <strong>plain</strong> text @alex https://example.com/notes";
   await mockProfileModules(page, {
     authenticated: false,
     modules: [
@@ -77,7 +79,59 @@ test("profile renders public modules safely", async ({ page }) => {
         id: 1,
         type: "about",
         title: "About this space",
-        config: { body: "Literal <strong>plain</strong> text" },
+        config: { body: aboutBody },
+        textEntities: {
+          body: [
+            {
+              type: "mention",
+              start: aboutBody.indexOf("@alex"),
+              length: "@alex".length,
+              text: "@alex",
+              mention: {
+                handle: "alex",
+                user: {
+                  id: 2,
+                  handle: "alex",
+                  displayName: "Alex",
+                  initials: "A",
+                  aura: "frost",
+                  avatarUrl: null,
+                },
+              },
+            },
+            {
+              type: "link",
+              start: aboutBody.indexOf("https://example.com/notes"),
+              length: "https://example.com/notes".length,
+              text: "https://example.com/notes",
+              link: {
+                url: "https://example.com/notes",
+                card: {
+                  provider: "website",
+                  resourceType: "url",
+                  resourceId: "example-notes",
+                  resourceKey: "website:url:example-notes",
+                  sourceUrl: "https://example.com/notes",
+                  metadata: {
+                    title: "Example notes",
+                    subtitle: "example.com",
+                    description: "A safe profile module card.",
+                    imageUrl: null,
+                    live: false,
+                    stats: {},
+                  },
+                  embed: null,
+                  apiBacked: true,
+                  fetchedAt: "2026-06-10T10:00:00Z",
+                  expiresAt: null,
+                  staleAt: null,
+                  stale: false,
+                  lastError: null,
+                },
+              },
+            },
+          ],
+        },
         visibility: "public",
         position: 1,
         status: "active",
@@ -179,6 +233,12 @@ test("profile renders public modules safely", async ({ page }) => {
   await expect(section.getByRole("heading", { name: "Badge shelf" })).toHaveCount(0);
   await expect(section).toContainText("Literal <strong>plain</strong> text");
   await expect(section.locator("strong")).toHaveCount(0);
+  await expect(
+    section.getByTestId("profile-grid-module-about").getByTestId("rich-mention-link"),
+  ).toHaveAttribute("href", "/@alex");
+  await expect(
+    section.getByTestId("profile-grid-module-about").getByTestId("rich-inline-link"),
+  ).toHaveAttribute("href", "https://example.com/notes");
   await expect(section.getByRole("link", { name: "Personal site" })).toHaveAttribute(
     "href",
     "https://example.com/",

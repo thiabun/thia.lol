@@ -4,6 +4,7 @@ import { ChevronDown, ImagePlus, Radio, Send, Trash2 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { ImageCropModal } from "../ui/ImageCropModal";
 import { ModalSheet, ModalSheetStatus } from "../ui/ModalSheet";
+import { MentionTextarea } from "./MentionTextarea";
 import { createPost, uploadImage } from "../../lib/api";
 import type { CreatePostInput } from "../../lib/api";
 import { validateImageCropFile } from "../../lib/imageCrop";
@@ -259,7 +260,7 @@ export function PostComposerModal({
         <label htmlFor="post-composer-body" className="sr-only">
           Post
         </label>
-        <textarea
+        <MentionTextarea
           ref={textareaRef}
           id="post-composer-body"
           name="body"
@@ -269,7 +270,7 @@ export function PostComposerModal({
           maxLength={2000}
           disabled={submitting}
           required
-          onChange={(event) => setBody(event.currentTarget.value)}
+          onValueChange={setBody}
         />
 
         {mediaUrl ? (

@@ -13,9 +13,40 @@ export type User = {
   avatarUrl?: string | null;
 };
 
+export type RichLinkCard = Omit<ProfileIntegrationCard, "provider"> & {
+  provider: ProfileIntegrationCard["provider"] | "website";
+};
+
+export type RichTextEntity =
+  | {
+      type: "mention";
+      start: number;
+      length: number;
+      text: string;
+      mention: {
+        handle: string;
+        user: User;
+      };
+    }
+  | {
+      type: "link";
+      start: number;
+      length: number;
+      text: string;
+      link: {
+        url: string;
+        card?: RichLinkCard | null;
+      };
+    };
+
+export type TextEntitiesByField = {
+  body?: RichTextEntity[];
+};
+
 export type Profile = {
   user: User;
   bio: string;
+  bioEntities?: RichTextEntity[];
   location: string;
   bannerUrl?: string | null;
   profileAccent?: string | null;
@@ -244,6 +275,7 @@ export type ProfileModule = {
   pinned: boolean;
   layout?: ProfileModuleLayout | null;
   status: ProfileModuleStatus;
+  textEntities?: TextEntitiesByField;
   schemaVersion: number;
   createdAt?: string | null;
   updatedAt?: string | null;
@@ -301,6 +333,7 @@ export type Post = {
   author: User;
   room: Pick<Room, "slug" | "name" | "accent">;
   body: string;
+  bodyEntities?: RichTextEntity[];
   createdAt: string;
   mood: string;
   parentId?: number | null;
@@ -354,6 +387,7 @@ export type ChatMessage = {
   id: number;
   conversationId: number;
   body: string;
+  bodyEntities?: RichTextEntity[];
   deletedAt: string | null;
   createdAt: string;
   sender: User;
@@ -389,6 +423,7 @@ export type NotificationType =
   | "reply"
   | "reblog"
   | "message"
+  | "mention"
   | "badge_granted";
 
 export type NotificationPostSummary = {

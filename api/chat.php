@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/notifications.php';
 require_once __DIR__ . '/read.php';
+require_once __DIR__ . '/text_entities.php';
 
 const CHAT_MESSAGE_MAX_LENGTH = 2000;
 
@@ -257,6 +258,9 @@ function chat_messages_create(int $conversationId): void
         ]);
 
         $messageId = (int) $pdo->lastInsertId();
+        text_entities_store_for_content('message', $messageId, 'body', $messageBody, $viewerUserId, [
+            'notifyMentions' => false,
+        ]);
 
         $updateConversation = $pdo->prepare(
             'UPDATE conversations
@@ -717,6 +721,7 @@ function chat_message_payload(array $row): array
         'id' => (int) $row['id'],
         'conversationId' => (int) $row['conversation_id'],
         'body' => $row['deleted_at'] === null ? (string) $row['body'] : '',
+        'bodyEntities' => $row['deleted_at'] === null ? text_entities_for_content('message', (int) $row['id'], 'body') : [],
         'deletedAt' => $row['deleted_at'] ?? null,
         'createdAt' => $row['created_at'],
         'sender' => chat_user_payload($row, 'sender'),

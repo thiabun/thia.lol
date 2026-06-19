@@ -23,13 +23,14 @@ import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { Avatar } from "../ui/Avatar";
 import { Button, ButtonLink } from "../ui/Button";
-import { TextareaField } from "../ui/Field";
 import { ImageCropModal } from "../ui/ImageCropModal";
 import { ModalSheet } from "../ui/ModalSheet";
 import { Panel } from "../ui/Panel";
 import { CompactStateNotice } from "../ui/RouteState";
 import { InlineUserProfileLink } from "./UserProfileLink";
+import { MentionTextarea } from "./MentionTextarea";
 import { ReportForm } from "./ReportForm";
+import { RichText } from "./RichText";
 import {
   deletePost,
   createPostReply,
@@ -172,9 +173,11 @@ export function PostCard({
             data-testid="post-body-open-thread"
             className="mt-4 block w-full text-left"
           >
-            <span className="block p-1 text-pretty text-base leading-7 text-text">
-              {post.body}
-            </span>
+            <RichText
+              text={post.body}
+              entities={post.bodyEntities}
+              className="block whitespace-pre-wrap break-words p-1 text-pretty text-base leading-7 text-text"
+            />
 
             <PostMedia mediaUrl={post.mediaUrl} />
           </div>
@@ -247,6 +250,7 @@ function isThreadOpenIgnoredTarget(target: EventTarget | null) {
         "a",
         "button",
         "input",
+        "iframe",
         "textarea",
         "select",
         "option",
@@ -730,18 +734,22 @@ function ReplyComposer({
         data-testid="reply-composer"
         onSubmit={(event) => void handleSubmit(event)}
       >
-      <TextareaField
-        ref={textareaRef}
-        id={`reply-composer-${parentPostId}`}
-        label="Reply"
-        rows={3}
-        maxLength={2000}
-        className="min-h-20 bg-surface/70"
-        placeholder="Write a reply"
-        value={body}
-        disabled={submitting}
-        onChange={(event) => setBody(event.currentTarget.value)}
-      />
+      <label className="block" htmlFor={`reply-composer-${parentPostId}`}>
+        <span className="mb-2 flex items-center gap-2 text-sm font-medium text-text">
+          Reply
+        </span>
+        <MentionTextarea
+          ref={textareaRef}
+          id={`reply-composer-${parentPostId}`}
+          rows={3}
+          maxLength={2000}
+          className="min-h-20 w-full resize-none rounded-card border border-line bg-surface/70 px-4 py-3 text-sm leading-6 text-text shadow-inner-soft outline-none transition duration-fluid placeholder:text-muted/70 focus:border-line-strong focus:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          placeholder="Write a reply"
+          value={body}
+          disabled={submitting}
+          onValueChange={setBody}
+        />
+      </label>
 
       <PostMedia
         className="mt-3"
@@ -1063,7 +1071,11 @@ function ParentPostPreview({
             <span className="text-sm text-muted">{post.createdAt}</span>
             <PostMetaChips post={post} />
           </div>
-          <p className="mt-3 text-pretty text-base leading-7 text-text sm:text-[1.0625rem] sm:leading-8">{post.body}</p>
+          <RichText
+            text={post.body}
+            entities={post.bodyEntities}
+            className="mt-3 block whitespace-pre-wrap break-words text-pretty text-base leading-7 text-text sm:text-[1.0625rem] sm:leading-8"
+          />
           <PostMedia className="mt-3" mediaUrl={post.mediaUrl} />
           <div data-testid="thread-root-actions">{actionRow}</div>
         </div>
@@ -1209,7 +1221,11 @@ function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
             <span className="text-muted/50">·</span>
             <span className="text-sm text-muted">{reply.createdAt}</span>
           </div>
-          <p className="mt-2 text-pretty text-sm leading-6 text-text">{reply.body}</p>
+          <RichText
+            text={reply.body}
+            entities={reply.bodyEntities}
+            className="mt-2 block whitespace-pre-wrap break-words text-pretty text-sm leading-6 text-text"
+          />
           <PostMedia className="mt-3" mediaUrl={reply.mediaUrl} />
 
           <div data-testid="thread-reply-actions">

@@ -1,5 +1,6 @@
 import {
   Award,
+  AtSign,
   Bell,
   Check,
   CheckCheck,
@@ -458,6 +459,10 @@ function NotificationCopy({
     return <>{actor} sent you a message</>;
   }
 
+  if (notification.type === "mention") {
+    return <>{actor} mentioned you</>;
+  }
+
   if (notification.type === "badge_granted") {
     const badgeName =
       typeof notification.data?.badgeName === "string"
@@ -501,6 +506,10 @@ function NotificationIcon({ type }: { type: NotificationItem["type"] }) {
 
   if (type === "badge_granted") {
     return <Award aria-hidden="true" size={20} />;
+  }
+
+  if (type === "mention") {
+    return <AtSign aria-hidden="true" size={20} />;
   }
 
   return <MessageCircle aria-hidden="true" size={20} />;

@@ -26,9 +26,12 @@ import type {
   ProfileModuleType,
   ProfileModuleVisibility,
   PublicStats,
+  RichLinkCard,
+  RichTextEntity,
   Room,
   RoomMember,
   SearchResults,
+  User,
   UserBadge,
 } from "./types";
 import { apiDelete, apiGet, apiPatch, apiPost, apiUpload } from "./apiClient";
@@ -1154,7 +1157,10 @@ export function getChatMessages(
 ): Promise<ChatMessagesResult> {
   return apiGet<ChatMessagesResult>(
     `/chat/conversations/${conversationId}/messages`,
-  );
+  ).then((result) => ({
+    ...result,
+    messages: result.messages.map(normalizeChatMessage),
+  }));
 }
 
 export function sendChatMessage(
@@ -1166,7 +1172,7 @@ export function sendChatMessage(
     `/chat/conversations/${conversationId}/messages`,
     { body },
     csrfToken,
-  );
+  ).then(normalizeChatMessage);
 }
 
 export function markChatConversationRead(
@@ -1380,6 +1386,9 @@ function normalizeProfile(profile: ApiProfile): Profile {
   return {
     user: profile.user,
     bio: isRetiredThiaProfile ? "Founder profile for thia.lol." : profile.bio,
+    bioEntities: isRetiredThiaProfile
+      ? []
+      : normalizeRichTextEntities(profile.bioEntities),
     location: profile.location,
     bannerUrl: profile.bannerUrl ?? null,
     profileAccent: profile.profileAccent ?? null,
@@ -1511,6 +1520,7 @@ function normalizeProfileModule(module: ApiProfileModule): ProfileModule {
     pinned: module.pinned === true,
     layout: normalizeProfileModuleLayout(module.layout, module.type),
     status: module.status,
+    textEntities: normalizeTextEntitiesByField(module.textEntities),
     schemaVersion: module.schemaVersion ?? 1,
     createdAt: module.createdAt ?? null,
     updatedAt: module.updatedAt ?? null,
@@ -2093,12 +2103,164 @@ function normalizeDiscoverPerson(person: DiscoverPerson): DiscoverPerson {
   };
 }
 
+function normalizeTextEntitiesByField(value: unknown): { body?: RichTextEntity[] } {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+
+  const body = normalizeRichTextEntities((value as { body?: unknown }).body);
+
+  return body.length > 0 ? { body } : {};
+}
+
+function normalizeRichTextEntities(value: unknown): RichTextEntity[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map(normalizeRichTextEntity)
+    .filter((entity): entity is RichTextEntity => entity !== undefined)
+    .sort((first, second) => first.start - second.start);
+}
+
+function normalizeRichTextEntity(value: unknown): RichTextEntity | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const entity = value as {
+    type?: unknown;
+    start?: unknown;
+    length?: unknown;
+    text?: unknown;
+    mention?: { handle?: unknown; user?: unknown };
+    link?: { url?: unknown; card?: unknown };
+  };
+
+  if (
+    typeof entity.start !== "number" ||
+    typeof entity.length !== "number" ||
+    entity.start < 0 ||
+    entity.length <= 0 ||
+    typeof entity.text !== "string"
+  ) {
+    return undefined;
+  }
+
+  if (
+    entity.type === "mention" &&
+    entity.mention &&
+    typeof entity.mention.handle === "string" &&
+    isUserLike(entity.mention.user)
+  ) {
+    return {
+      type: "mention",
+      start: entity.start,
+      length: entity.length,
+      text: entity.text,
+      mention: {
+        handle: entity.mention.handle,
+        user: entity.mention.user,
+      },
+    };
+  }
+
+  if (
+    entity.type === "link" &&
+    entity.link &&
+    typeof entity.link.url === "string"
+  ) {
+    const url = normalizeProfileModuleExternalUrl(entity.link.url);
+
+    if (!url) {
+      return undefined;
+    }
+
+    const card = normalizeRichLinkCard(entity.link.card);
+
+    return {
+      type: "link",
+      start: entity.start,
+      length: entity.length,
+      text: entity.text,
+      link: {
+        url,
+        ...(card ? { card } : {}),
+      },
+    };
+  }
+
+  return undefined;
+}
+
+function isUserLike(value: unknown): value is User {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const user = value as User;
+
+  return (
+    typeof user.id === "number" &&
+    typeof user.handle === "string" &&
+    typeof user.displayName === "string" &&
+    typeof user.initials === "string" &&
+    typeof user.aura === "string"
+  );
+}
+
+function normalizeRichLinkCard(value: unknown): RichLinkCard | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const provider = (value as { provider?: unknown }).provider;
+
+  if (provider !== "website") {
+    const integration = normalizeProfileIntegrationCard(value);
+    return integration ? { ...integration } : undefined;
+  }
+
+  const card = value as RichLinkCard;
+  const sourceUrl =
+    typeof card.sourceUrl === "string"
+      ? normalizeProfileModuleExternalUrl(card.sourceUrl)
+      : undefined;
+
+  if (
+    !sourceUrl ||
+    typeof card.resourceType !== "string" ||
+    typeof card.resourceId !== "string" ||
+    typeof card.resourceKey !== "string"
+  ) {
+    return undefined;
+  }
+
+  return {
+    provider: "website",
+    resourceType: card.resourceType,
+    resourceId: card.resourceId,
+    resourceKey: card.resourceKey,
+    sourceUrl,
+    metadata: normalizeProfileIntegrationMetadata(card.metadata),
+    embed: null,
+    apiBacked: Boolean(card.apiBacked),
+    fetchedAt: typeof card.fetchedAt === "string" ? card.fetchedAt : null,
+    expiresAt: typeof card.expiresAt === "string" ? card.expiresAt : null,
+    staleAt: typeof card.staleAt === "string" ? card.staleAt : null,
+    stale: Boolean(card.stale),
+    lastError: typeof card.lastError === "string" ? card.lastError : null,
+  };
+}
+
 function normalizePost(post: ApiPost): Post {
   const normalized: Post = {
     id: post.id,
     author: post.author,
     room: post.room ? normalizeRoom(post.room) : makeFallbackRoom(),
     body: post.body,
+    bodyEntities: normalizeRichTextEntities(post.bodyEntities),
     createdAt: formatRelativeTime(post.createdAt),
     mood: post.mood,
     parentId: post.parentId ?? null,
@@ -2122,6 +2284,13 @@ function normalizePost(post: ApiPost): Post {
   }
 
   return normalized;
+}
+
+function normalizeChatMessage(message: ChatMessage): ChatMessage {
+  return {
+    ...message,
+    bodyEntities: normalizeRichTextEntities(message.bodyEntities),
+  };
 }
 
 function normalizeNotification(notification: NotificationItem): NotificationItem {

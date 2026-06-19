@@ -5,7 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read.php';
 
-const NOTIFICATION_TYPES = ['follow', 'moot', 'like', 'reply', 'reblog', 'message', 'badge_granted'];
+const NOTIFICATION_TYPES = ['follow', 'moot', 'like', 'reply', 'reblog', 'message', 'mention', 'badge_granted'];
 
 function notifications_dispatch(array $segments, string $method): void
 {
@@ -355,6 +355,10 @@ function notification_target_url(string $type, ?array $actor, ?array $post, ?arr
 {
     if ($type === 'message') {
         return '/chat';
+    }
+
+    if ($type === 'mention' && is_string($data['targetUrl'] ?? null)) {
+        return (string) $data['targetUrl'];
     }
 
     if ($type === 'badge_granted' && is_string($data['profileHandle'] ?? null)) {

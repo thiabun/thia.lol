@@ -2,10 +2,15 @@
 
 declare(strict_types=1);
 
-$testConfigPath = dirname(__DIR__, 2) . '/config/test-config.php';
+if (getenv('THIA_CONFIG_PATH') === false) {
+    $fallbackConfigPath = sys_get_temp_dir() . '/thia-profile-modules-test-config.php';
+    $key = base64_encode(str_repeat('m', SODIUM_CRYPTO_SECRETBOX_KEYBYTES));
 
-if (getenv('THIA_CONFIG_PATH') === false && is_file($testConfigPath)) {
-    putenv('THIA_CONFIG_PATH=' . $testConfigPath);
+    file_put_contents(
+        $fallbackConfigPath,
+        "<?php return ['database' => ['host' => 'localhost', 'name' => 'test', 'user' => 'test'], 'app' => ['environment' => 'development', 'base_url' => 'https://thia.lol'], 'security' => ['integration_encryption_key' => '{$key}'], 'integrations' => ['twitch' => ['embed_parent' => 'thia.lol']]];"
+    );
+    putenv('THIA_CONFIG_PATH=' . $fallbackConfigPath);
 }
 
 require_once dirname(__DIR__, 2) . '/api/profile_modules.php';

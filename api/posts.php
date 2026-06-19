@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/notifications.php';
 require_once __DIR__ . '/read.php';
+require_once __DIR__ . '/text_entities.php';
 
 function posts_dispatch(array $segments, string $method): void
 {
@@ -108,7 +109,14 @@ function posts_create(): void
         ]
     );
 
-    json_success(fetch_post_payload_by_id((int) db()->lastInsertId(), (int) $session['user_id']), 201);
+    $postId = (int) db()->lastInsertId();
+    text_entities_store_for_content('post', $postId, 'body', $postBody, (int) $session['user_id'], [
+        'notifyMentions' => true,
+        'postId' => $postId,
+        'roomId' => $roomId,
+    ]);
+
+    json_success(fetch_post_payload_by_id($postId, (int) $session['user_id']), 201);
 }
 
 function posts_replies_index(int $postId): void
@@ -164,6 +172,11 @@ function posts_reply_create(int $postId): void
     );
 
     $replyId = (int) db()->lastInsertId();
+    text_entities_store_for_content('post', $replyId, 'body', $postBody, (int) $session['user_id'], [
+        'notifyMentions' => true,
+        'postId' => $replyId,
+        'roomId' => $parent['room_id'] === null ? null : (int) $parent['room_id'],
+    ]);
     $parentAuthorId = (int) $parent['author_id'];
     $actorId = (int) $session['user_id'];
 
@@ -198,6 +211,7 @@ function posts_update(int $postId): void
     $params = ['id' => $postId];
     $isModerator = is_moderator_session($session);
     $isAuthor = (int) $post['author_id'] === (int) $session['user_id'];
+    $updatedPostBody = null;
 
     if (array_key_exists('body', $body)) {
         if (!$isAuthor) {
@@ -209,7 +223,8 @@ function posts_update(int $postId): void
         }
 
         $updates[] = 'body = :body';
-        $params['body'] = validate_post_body($body['body']);
+        $updatedPostBody = validate_post_body($body['body']);
+        $params['body'] = $updatedPostBody;
     }
 
     if (array_key_exists('roomSlug', $body) || array_key_exists('roomId', $body) || array_key_exists('room_id', $body)) {
@@ -275,6 +290,14 @@ function posts_update(int $postId): void
         implode(', ', $updates)
     );
     db_query($sql, $params);
+
+    if ($updatedPostBody !== null) {
+        text_entities_store_for_content('post', $postId, 'body', $updatedPostBody, (int) $session['user_id'], [
+            'notifyMentions' => true,
+            'postId' => $postId,
+            'roomId' => $post['room_id'] === null ? null : (int) $post['room_id'],
+        ]);
+    }
 
     json_success(fetch_post_payload_by_id($postId, (int) $session['user_id']));
 }

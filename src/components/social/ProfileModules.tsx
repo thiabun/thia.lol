@@ -56,6 +56,7 @@ import { ApiStateNotice } from "../ui/ApiStateNotice";
 import { CompactStateNotice } from "../ui/RouteState";
 import { ProfileGrid, ProfileGridModule } from "./ProfileGrid";
 import { ProfileConnectionIcon } from "./ProfileConnectionIcon";
+import { RichText } from "./RichText";
 
 const PROFILE_CANVAS_COLUMNS = PROFILE_CANVAS_DESKTOP_COLUMNS;
 const PROFILE_CANVAS_ROWS = PROFILE_CANVAS_DESKTOP_ROWS;
@@ -1010,18 +1011,19 @@ function ProfileModuleContent({
   return (
     <div className="max-h-full space-y-2 overflow-y-auto pr-1">
       {module.config.body ? (
-        <p
+        <RichText
+          text={module.config.body}
+          entities={module.textEntities?.body}
+          showPreviews={!compact}
           className={cn(
-            "break-words text-sm leading-6 text-muted",
+            "block whitespace-pre-wrap break-words text-sm leading-6 text-muted",
             compact
               ? "line-clamp-2"
               : spanRole === "summary"
                 ? "line-clamp-4"
                 : undefined,
           )}
-        >
-          {module.config.body}
-        </p>
+        />
       ) : null}
       {module.config.statusText ? (
         <p className="line-clamp-2 rounded-card bg-canvas/55 px-3 py-2 text-sm leading-5 text-text">

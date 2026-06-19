@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read.php';
+require_once __DIR__ . '/text_entities.php';
 require_once __DIR__ . '/integrations.php';
 require_once __DIR__ . '/profile.php';
 
@@ -291,6 +292,14 @@ function profile_modules_create(): void
             'schema_version' => PROFILE_MODULE_SCHEMA_VERSION,
         ]
     );
+    profile_module_store_body_entities(
+        (int) db()->lastInsertId(),
+        $userId,
+        (string) $session['handle'],
+        $config,
+        $visibility,
+        $status
+    );
 
     json_success(profile_modules_for_owner($userId), 201);
 }
@@ -328,6 +337,9 @@ function profile_modules_update(string $rawModuleId): void
 
     $updates = [];
     $params = ['id' => $moduleId];
+    $nextConfig = null;
+    $nextVisibility = (string) $module['visibility'];
+    $nextStatus = (string) $module['status'];
 
     if (array_key_exists('title', $body)) {
         $updates[] = 'title = :title';
@@ -337,6 +349,7 @@ function profile_modules_update(string $rawModuleId): void
     if (array_key_exists('config', $body)) {
         $updates[] = 'config_json = :config_json';
         $config = profile_module_config((string) $module['type'], $body['config'], $userId);
+        $nextConfig = $config;
         $params['config_json'] = json_encode($config, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     }
 
@@ -346,7 +359,8 @@ function profile_modules_update(string $rawModuleId): void
         }
 
         $updates[] = 'visibility = :visibility';
-        $params['visibility'] = profile_module_visibility($body['visibility']);
+        $nextVisibility = profile_module_visibility($body['visibility']);
+        $params['visibility'] = $nextVisibility;
     }
 
     if (array_key_exists('status', $body)) {
@@ -355,7 +369,8 @@ function profile_modules_update(string $rawModuleId): void
         }
 
         $updates[] = 'status = :status';
-        $params['status'] = profile_module_status($body['status']);
+        $nextStatus = profile_module_status($body['status']);
+        $params['status'] = $nextStatus;
     }
 
     if ($updates === []) {
@@ -369,6 +384,21 @@ function profile_modules_update(string $rawModuleId): void
         ),
         $params
     );
+
+    if (
+        $nextConfig !== null ||
+        array_key_exists('visibility', $body) ||
+        array_key_exists('status', $body)
+    ) {
+        profile_module_store_body_entities(
+            $moduleId,
+            $userId,
+            (string) $session['handle'],
+            $nextConfig ?? profile_module_json((string) $module['config_json']),
+            $nextVisibility,
+            $nextStatus
+        );
+    }
 
     json_success(profile_modules_for_owner($userId));
 }
@@ -825,6 +855,14 @@ function profile_canvas_commit_draft_modules(array $modules, int $userId): array
             continue;
         }
 
+        profile_module_store_body_entities(
+            $moduleId,
+            $userId,
+            profile_module_owner_handle($userId),
+            $config,
+            $visibility,
+            $status
+        );
         $seen[$moduleId] = true;
 
         if ($status === 'deleted') {
@@ -2253,7 +2291,7 @@ function profile_module_payload(array $row, bool $public): ?array
     $config = profile_module_json((string) $row['config_json']);
     $config = profile_module_output_config((string) $row['type'], $config, (int) $row['user_id']);
 
-    return [
+    $payload = [
         'id' => (int) $row['id'],
         'type' => (string) $row['type'],
         'title' => $row['title'] === null ? null : (string) $row['title'],
@@ -2267,6 +2305,53 @@ function profile_module_payload(array $row, bool $public): ?array
         'createdAt' => $row['created_at'] ?? null,
         'updatedAt' => $row['updated_at'] ?? null,
     ];
+
+    if (isset($config['body']) && is_string($config['body']) && trim($config['body']) !== '') {
+        $payload['textEntities'] = [
+            'body' => text_entities_for_content('profile_module', (int) $row['id'], 'body'),
+        ];
+    }
+
+    return $payload;
+}
+
+function profile_module_store_body_entities(
+    int $moduleId,
+    int $userId,
+    string $handle,
+    array $config,
+    string $visibility,
+    string $status
+): void {
+    $body = $config['body'] ?? null;
+
+    if (
+        !is_string($body) ||
+        trim($body) === '' ||
+        $visibility !== 'public' ||
+        $status !== 'active'
+    ) {
+        text_entities_delete_for_content('profile_module', $moduleId, 'body');
+        return;
+    }
+
+    text_entities_store_for_content('profile_module', $moduleId, 'body', $body, $userId, [
+        'notifyMentions' => true,
+        'targetUrl' => '/@' . rawurlencode($handle),
+    ]);
+}
+
+function profile_module_owner_handle(int $userId): string
+{
+    $row = db_query(
+        'SELECT handle
+         FROM users
+         WHERE id = :user_id
+         LIMIT 1',
+        ['user_id' => $userId]
+    )->fetch();
+
+    return is_array($row) ? (string) $row['handle'] : '';
 }
 
 function profile_module_layout_payload(array $row): ?array
@@ -2581,13 +2666,23 @@ function profile_module_config_with_connected_integration_links(array $config, i
 
 function profile_module_connected_integration_links(int $userId): array
 {
-    if (!function_exists('profile_integrations_storage_exists') || !profile_integrations_storage_exists()) {
+    try {
+        if (!function_exists('profile_integrations_storage_exists') || !profile_integrations_storage_exists()) {
+            return [];
+        }
+    } catch (Throwable) {
         return [];
     }
 
     $links = [];
 
-    foreach (profile_integration_accounts_for_user($userId) as $account) {
+    try {
+        $accounts = profile_integration_accounts_for_user($userId);
+    } catch (Throwable) {
+        return [];
+    }
+
+    foreach ($accounts as $account) {
         if (($account['revokedAt'] ?? null) !== null) {
             continue;
         }

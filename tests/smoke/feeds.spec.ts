@@ -212,6 +212,118 @@ test("PostCard author avatar, name, and handle navigate to profile", async ({
   await expect(page.getByRole("heading", { name: "Alex" })).toBeVisible();
 });
 
+test("feed, thread, and profile surfaces render rich text entities", async ({
+  page,
+}) => {
+  await mockAuthenticatedApi(page);
+  await page.route(/^https:\/\/www\.youtube-nocookie\.com\/embed\//, (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><html><body>YouTube embed stub</body></html>",
+    }),
+  );
+
+  const thia = {
+    id: 3,
+    handle: "thia",
+    displayName: "Thia",
+    initials: "T",
+    aura: "frost",
+    avatarUrl: null,
+  };
+  const bio = "Bio says hi to @alex";
+  await mockProfileRoutes(page, "thia", {
+    user: thia,
+    bio,
+    bioEntities: [richMentionEntity(bio, "@alex")],
+  });
+
+  const body =
+    "Hi @thia check https://example.com/notes and https://www.youtube.com/watch?v=abc123";
+  const replyBody = "Reply to @thia with https://example.com/reply";
+
+  await page.route("**/api/feed/home", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          posts: [
+            makePost({
+              body,
+              bodyEntities: [
+                richMentionEntity(body, "@thia", thia),
+                richLinkEntity(body, "https://example.com/notes", richWebsiteCard("https://example.com/notes", "Example notes")),
+                richLinkEntity(body, "https://www.youtube.com/watch?v=abc123", richYouTubeCard("https://www.youtube.com/watch?v=abc123")),
+              ],
+            }),
+          ],
+          personalized: true,
+        },
+      }),
+    }),
+  );
+  await page.route("**/api/posts/42/replies", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: [
+          makePost({
+            id: 50,
+            parentId: 42,
+            body: replyBody,
+            bodyEntities: [
+              richMentionEntity(replyBody, "@thia", thia),
+              richLinkEntity(replyBody, "https://example.com/reply", richWebsiteCard("https://example.com/reply", "Reply card")),
+            ],
+          }),
+        ],
+      }),
+    }),
+  );
+
+  await page.goto("/");
+
+  const postCard = page.getByTestId("post-card-open-thread").first();
+  await expect(postCard.getByTestId("rich-mention-link")).toHaveAttribute(
+    "href",
+    "/@thia",
+  );
+  await expect(postCard.getByTestId("rich-inline-link").first()).toHaveAttribute(
+    "href",
+    "https://example.com/notes",
+  );
+  await expect(postCard.getByTestId("rich-link-preview").first()).toContainText(
+    "Example notes",
+  );
+  await expect(postCard.getByTestId("rich-link-embed-youtube")).toBeVisible();
+
+  await postCard.getByTestId("rich-mention-link").click();
+  await expect(page).toHaveURL(/\/@thia$/);
+  await expect(page.getByTestId("profile-bio").getByTestId("rich-mention-link")).toHaveAttribute(
+    "href",
+    "/@alex",
+  );
+
+  await page.goto("/");
+  await page
+    .getByTestId("post-body-open-thread")
+    .first()
+    .click({ position: { x: 8, y: 8 } });
+  const dialog = page.getByTestId("thread-modal");
+
+  await expect(dialog.getByTestId("thread-root-post").getByTestId("rich-mention-link")).toHaveAttribute(
+    "href",
+    "/@thia",
+  );
+  await expect(dialog.getByTestId("thread-reply-item").getByTestId("rich-mention-link")).toHaveAttribute(
+    "href",
+    "/@thia",
+  );
+  await expect(dialog.getByText("Reply card")).toBeVisible();
+});
+
 test("Profile Feed renders API-backed reblogs", async ({ page }) => {
   await mockAuthenticatedApi(page);
   await page.route("**/api/profiles/alex", (route) =>
@@ -1232,11 +1344,21 @@ async function mockAuthenticatedApi(page: Page) {
   );
 }
 
-async function mockProfileRoutes(page: Page, handle: string) {
+async function mockProfileRoutes(
+  page: Page,
+  handle: string,
+  profileOverrides: Record<string, unknown> = {},
+) {
   await page.route(`**/api/profiles/${handle}`, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: makePost().profile }),
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          ...makePost().profile,
+          ...profileOverrides,
+        },
+      }),
     }),
   );
 
@@ -1330,6 +1452,99 @@ function activityModule() {
     schemaVersion: 1,
     createdAt: "2026-06-12 00:00:00",
     updatedAt: "2026-06-12 00:00:00",
+  };
+}
+
+function richMentionEntity(
+  body: string,
+  mention: string,
+  user = {
+    id: 2,
+    handle: mention.replace(/^@/, ""),
+    displayName: mention.replace(/^@/, ""),
+    initials: mention.replace(/^@/, "").slice(0, 2).toUpperCase(),
+    aura: "frost",
+    avatarUrl: null,
+  },
+) {
+  return {
+    type: "mention",
+    start: body.indexOf(mention),
+    length: mention.length,
+    text: mention,
+    mention: {
+      handle: user.handle,
+      user,
+    },
+  };
+}
+
+function richLinkEntity(body: string, url: string, card: Record<string, unknown>) {
+  return {
+    type: "link",
+    start: body.indexOf(url),
+    length: url.length,
+    text: url,
+    link: {
+      url,
+      card,
+    },
+  };
+}
+
+function richWebsiteCard(url: string, title: string) {
+  return {
+    provider: "website",
+    resourceType: "url",
+    resourceId: title.toLowerCase().replace(/\s+/g, "-"),
+    resourceKey: `website:url:${title.toLowerCase().replace(/\s+/g, "-")}`,
+    sourceUrl: url,
+    metadata: {
+      title,
+      subtitle: new URL(url).hostname,
+      description: "A safe server-rendered link card.",
+      imageUrl: null,
+      live: false,
+      stats: {},
+    },
+    embed: null,
+    apiBacked: true,
+    fetchedAt: "2026-06-10T10:00:00Z",
+    expiresAt: null,
+    staleAt: null,
+    stale: false,
+    lastError: null,
+  };
+}
+
+function richYouTubeCard(url: string) {
+  return {
+    provider: "youtube",
+    resourceType: "video",
+    resourceId: "abc123",
+    resourceKey: "youtube:video:abc123",
+    sourceUrl: url,
+    metadata: {
+      title: "YouTube demo",
+      subtitle: "YouTube",
+      description: null,
+      imageUrl: null,
+      live: false,
+      stats: {},
+    },
+    embed: {
+      type: "iframe",
+      src: "https://www.youtube-nocookie.com/embed/abc123",
+      title: "YouTube demo",
+      height: 220,
+      allow: "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share",
+    },
+    apiBacked: false,
+    fetchedAt: "2026-06-10T10:00:00Z",
+    expiresAt: null,
+    staleAt: null,
+    stale: false,
+    lastError: null,
   };
 }
 

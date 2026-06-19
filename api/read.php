@@ -102,6 +102,9 @@ function profile_payload(array $row, ?array $stats = null, ?array $social = null
     return [
         'user' => user_payload($row),
         'bio' => (string) ($row['bio'] ?? ''),
+        'bioEntities' => function_exists('text_entities_for_content')
+            ? text_entities_for_content('profile', (int) $row['user_id'], 'bio')
+            : [],
         'location' => (string) ($row['location'] ?? ''),
         'avatarUrl' => $row['avatar_url'] ?? null,
         'bannerUrl' => $row['banner_url'] ?? null,
@@ -282,6 +285,9 @@ function post_payload(array $row): array
     return [
         'id' => (int) $row['post_id'],
         'body' => (string) $row['post_body'],
+        'bodyEntities' => function_exists('text_entities_for_content')
+            ? text_entities_for_content('post', (int) $row['post_id'], 'body')
+            : [],
         'mood' => (string) ($row['post_mood'] ?? ''),
         'mediaUrl' => $row['post_media_url'] ?? null,
         'visibility' => (string) $row['post_visibility'],

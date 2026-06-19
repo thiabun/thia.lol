@@ -19,7 +19,9 @@ import {
 } from "react";
 import { Link, useSearchParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
+import { MentionTextarea } from "../components/social/MentionTextarea";
 import { ReportForm } from "../components/social/ReportForm";
+import { RichText } from "../components/social/RichText";
 import { Avatar } from "../components/ui/Avatar";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { ModalSheet } from "../components/ui/ModalSheet";
@@ -578,14 +580,14 @@ export function ChatPage() {
                     <label className="sr-only" htmlFor="chat-message-body">
                       Write a message
                     </label>
-                    <textarea
+                    <MentionTextarea
                       id="chat-message-body"
                       className="min-h-10 flex-1 resize-none rounded-control border border-line bg-canvas/60 px-3 py-2 text-sm leading-6 text-text outline-none transition duration-fluid ease-fluid placeholder:text-muted focus:border-line-strong focus:ring-2 focus:ring-focus/30"
                       maxLength={maxMessageLength}
                       placeholder="Write a message"
                       rows={1}
                       value={body}
-                      onChange={(event) => setBody(event.target.value)}
+                      onValueChange={setBody}
                     />
                     <Button
                       type="submit"
@@ -900,7 +902,12 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
               : "border border-line bg-surface text-text hover:border-line-strong",
           )}
         >
-          <p className="whitespace-pre-wrap break-words">{message.body}</p>
+          <RichText
+            text={message.body}
+            entities={message.bodyEntities}
+            className="block whitespace-pre-wrap break-words"
+            previewClassName="mt-2"
+          />
           <div
             className={cn(
               "mt-0.5 flex flex-wrap items-center gap-1.5 text-[0.68rem] leading-none",

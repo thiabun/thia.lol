@@ -51,6 +51,90 @@ test("authenticated chat renders conversations and message composer", async ({
   await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
 });
 
+test("authenticated chat renders rich message entities", async ({ page }) => {
+  await page.route(/^https:\/\/www\.youtube-nocookie\.com\/embed\//, async (route) => {
+    await route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><html><body>YouTube embed stub</body></html>",
+    });
+  });
+
+  const body =
+    "hello @mootfriend with https://example.com/chat and https://www.youtube.com/watch?v=abc123";
+  const richConversation = {
+    ...mockConversation,
+    lastMessage: {
+      ...mockConversation.lastMessage,
+      body,
+      bodyEntities: [
+        richMentionEntity(body, "@mootfriend", mockConversation.otherParticipant),
+        richLinkEntity(
+          body,
+          "https://example.com/chat",
+          richWebsiteCard("https://example.com/chat", "Chat card"),
+        ),
+        richLinkEntity(
+          body,
+          "https://www.youtube.com/watch?v=abc123",
+          richYouTubeCard("https://www.youtube.com/watch?v=abc123"),
+        ),
+      ],
+    },
+  } as typeof mockConversation;
+
+  await mockAuthenticatedChat(page, {
+    conversations: [richConversation],
+  });
+
+  await page.goto("/chat");
+
+  const messages = page.getByTestId("chat-message-list");
+  await expect(messages.getByTestId("rich-mention-link")).toHaveAttribute(
+    "href",
+    "/@mootfriend",
+  );
+  await expect(messages.getByTestId("rich-inline-link").first()).toHaveAttribute(
+    "href",
+    "https://example.com/chat",
+  );
+  await expect(messages.getByText("Chat card")).toBeVisible();
+  await expect(messages.getByTestId("rich-link-embed-youtube")).toBeVisible();
+});
+
+test("chat composer inserts mention suggestions", async ({ page }) => {
+  await mockAuthenticatedChat(page);
+  await page.route("**/api/search?**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          query: "mo",
+          minQueryLength: 2,
+          results: {
+            profiles: [
+              {
+                user: mockConversation.otherParticipant,
+                bioSnippet: "A moot.",
+              },
+            ],
+            rooms: [],
+          },
+        },
+      }),
+    });
+  });
+
+  await page.goto("/chat");
+  const composer = page.getByPlaceholder("Write a message");
+
+  await composer.fill("hello @mo");
+  await expect(page.getByTestId("mention-suggestions")).toBeVisible();
+  await page.getByTestId("mention-suggestion-mootfriend").click();
+
+  await expect(composer).toHaveValue("hello @mootfriend ");
+});
+
 test("chat conversation row separates profile links from open targets", async ({
   page,
 }) => {
@@ -567,6 +651,9 @@ async function mockAuthenticatedChat(
               id: conversation.lastMessage?.id ?? 100 + conversation.id,
               conversationId: conversation.id,
               body: conversation.lastMessage?.body ?? "hello from a moot",
+              bodyEntities:
+                (conversation.lastMessage as { bodyEntities?: unknown } | null)
+                  ?.bodyEntities ?? [],
               deletedAt: null,
               createdAt: "2026-06-10 10:00:00",
               sender: conversation.otherParticipant,
@@ -672,6 +759,93 @@ function makeProfile(user: typeof mockConversation.otherParticipant) {
     mutedByMe: false,
     createdAt: "2026-06-10 09:00:00",
     updatedAt: "2026-06-10 09:00:00",
+  };
+}
+
+function richMentionEntity(
+  body: string,
+  mention: string,
+  user = mockConversation.otherParticipant,
+) {
+  return {
+    type: "mention",
+    start: body.indexOf(mention),
+    length: mention.length,
+    text: mention,
+    mention: {
+      handle: user.handle,
+      user,
+    },
+  };
+}
+
+function richLinkEntity(body: string, url: string, card: Record<string, unknown>) {
+  return {
+    type: "link",
+    start: body.indexOf(url),
+    length: url.length,
+    text: url,
+    link: {
+      url,
+      card,
+    },
+  };
+}
+
+function richWebsiteCard(url: string, title: string) {
+  return {
+    provider: "website",
+    resourceType: "url",
+    resourceId: title.toLowerCase().replace(/\s+/g, "-"),
+    resourceKey: `website:url:${title.toLowerCase().replace(/\s+/g, "-")}`,
+    sourceUrl: url,
+    metadata: {
+      title,
+      subtitle: new URL(url).hostname,
+      description: "A safe server-rendered link card.",
+      imageUrl: null,
+      live: false,
+      stats: {},
+    },
+    embed: null,
+    apiBacked: true,
+    fetchedAt: "2026-06-10T10:00:00Z",
+    expiresAt: null,
+    staleAt: null,
+    stale: false,
+    lastError: null,
+  };
+}
+
+function richYouTubeCard(url: string) {
+  return {
+    provider: "youtube",
+    resourceType: "video",
+    resourceId: "abc123",
+    resourceKey: "youtube:video:abc123",
+    sourceUrl: url,
+    metadata: {
+      title: "YouTube demo",
+      subtitle: "YouTube",
+      description: null,
+      imageUrl: null,
+      live: false,
+      stats: {},
+    },
+    embed: {
+      type: "iframe",
+      src: "https://www.youtube-nocookie.com/embed/abc123",
+      title: "YouTube demo",
+      height: 220,
+      allow:
+        "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share",
+    },
+    apiBacked: false,
+    fetchedAt: "2026-06-10T10:00:00Z",
+    expiresAt: null,
+    staleAt: null,
+    stale: false,
+    lastError: null,
   };
 }
 
