@@ -2809,6 +2809,40 @@ type ProfileCanvasSelectionFit = {
   warning?: "too-large" | "too-small" | undefined;
 };
 
+type ProfileCanvasSelectionExample = {
+  category: ProfileModuleCategory;
+  label: string;
+  type: ProfileModule["type"];
+};
+
+const profileCanvasSelectionExampleLimit = 4;
+const profileCanvasSelectionExampleCategoryPriority: Record<
+  ProfileModuleCategory,
+  number
+> = {
+  music: 0,
+  info: 1,
+  images: 2,
+  video: 3,
+  projects: 4,
+};
+const profileCanvasSelectionExampleTypePriority: Partial<
+  Record<ProfileModule["type"], number>
+> = {
+  music: 0,
+  text: 1,
+  uploaded_image: 2,
+  twitch_channel: 3,
+  uploaded_video: 4,
+  youtube_video: 5,
+  activity: 6,
+  connections: 7,
+  badge_display: 8,
+  featured_room: 9,
+  featured_post: 10,
+  github_repo: 11,
+};
+
 function profileCanvasAllowedSizesByArea(
   type: ProfileModule["type"],
 ): ProfileGridModuleSize[] {
@@ -2892,6 +2926,66 @@ function profileCanvasFitForSelection(
     sortSize: warning === "too-small" ? smallestSize : largestSize,
     warning,
   };
+}
+
+function profileCanvasSelectionExampleRank(type: ProfileModule["type"]): number {
+  return profileCanvasSelectionExampleTypePriority[type] ?? 100;
+}
+
+function profileCanvasSelectionExamples(
+  selection: ProfileModuleLayout,
+): ProfileCanvasSelectionExample[] {
+  const ranked = profileModuleCatalog
+    .map((item) => ({
+      ...item,
+      fit: profileCanvasFitForSelection(item.type, selection),
+    }))
+    .filter((item) => item.fit.exactSize)
+    .sort(
+      (first, second) =>
+        profileCanvasSelectionExampleRank(first.type) -
+          profileCanvasSelectionExampleRank(second.type) ||
+        profileCanvasSelectionExampleCategoryPriority[first.category] -
+          profileCanvasSelectionExampleCategoryPriority[second.category] ||
+        first.label.localeCompare(second.label),
+    );
+  const picked: ProfileCanvasSelectionExample[] = [];
+  const usedCategories = new Set<ProfileModuleCategory>();
+
+  for (const item of ranked) {
+    if (usedCategories.has(item.category)) {
+      continue;
+    }
+
+    picked.push({
+      category: item.category,
+      label: profileModulePickerLabel(item.type),
+      type: item.type,
+    });
+    usedCategories.add(item.category);
+
+    if (picked.length >= profileCanvasSelectionExampleLimit) {
+      return picked;
+    }
+  }
+
+  for (const item of ranked) {
+    if (picked.some((example) => example.type === item.type)) {
+      continue;
+    }
+
+    picked.push({
+      category: item.category,
+      label: profileModulePickerLabel(item.type),
+      type: item.type,
+    });
+
+    if (picked.length >= profileCanvasSelectionExampleLimit) {
+      break;
+    }
+  }
+
+  return picked;
 }
 
 function profileCanvasDefaultConfigForModule(
@@ -3470,6 +3564,100 @@ type ProfileDirectCanvasEditorProps = {
 
 type CanvasPoint = { column: number; row: number };
 
+function ProfileCanvasSelectionExamples({
+  selection,
+}: {
+  selection: ProfileModuleLayout;
+}) {
+  const examples = profileCanvasSelectionExamples(selection);
+  const size = profileCanvasSelectionSize(selection);
+  const span = size
+    ? profileGridModuleSizeSpan(size)
+    : {
+        columns: Math.min(8, Math.max(1, selection.colSpan)),
+        rows: Math.min(10, Math.max(1, selection.rowSpan)),
+      };
+  const tiny = span.columns <= 2 || span.rows <= 1;
+  const roomy = span.columns >= 3 && span.rows >= 2;
+
+  return (
+    <div
+      className={cn(
+        "absolute inset-0 flex min-h-0 min-w-0 flex-col items-center justify-center overflow-hidden text-center",
+        tiny ? "gap-1 p-1" : "gap-2 p-2",
+      )}
+      data-testid="profile-canvas-selection-examples"
+    >
+      {!tiny && size ? (
+        <motion.p
+          className="max-w-full truncate rounded-full border border-focus/35 bg-canvas/72 px-2 py-0.5 text-[0.68rem] font-semibold uppercase text-text shadow-soft"
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.14 }}
+        >
+          Fits {size}
+        </motion.p>
+      ) : null}
+      <div
+        className={cn(
+          "flex max-h-full max-w-full flex-wrap items-center justify-center overflow-hidden",
+          tiny ? "gap-1" : "gap-1.5",
+        )}
+      >
+        <AnimatePresence initial={false} mode="popLayout">
+          {examples.length > 0 ? (
+            examples.map((example, index) => (
+              <motion.span
+                key={example.type}
+                layout
+                className={cn(
+                  "min-w-0 max-w-full border border-line bg-surface/88 text-text shadow-soft backdrop-blur-veil",
+                  roomy
+                    ? "inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs font-semibold"
+                    : "grid size-7 place-items-center rounded-full",
+                )}
+                data-testid={`profile-canvas-selection-example-${example.type}`}
+                initial={{ opacity: 0, scale: 0.88, y: 5 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: -4 }}
+                transition={{
+                  delay: Math.min(index * 0.025, 0.08),
+                  duration: 0.16,
+                  ease: "easeOut",
+                  layout: { type: "spring", stiffness: 430, damping: 32 },
+                }}
+              >
+                <ProfileModulePickerIcon
+                  category={example.category}
+                  disabled={false}
+                  type={example.type}
+                />
+                {roomy ? (
+                  <span className="max-w-[7rem] truncate">{example.label}</span>
+                ) : (
+                  <span className="sr-only">{example.label}</span>
+                )}
+              </motion.span>
+            ))
+          ) : (
+            <motion.span
+              key="empty"
+              className="max-w-full truncate rounded-full border border-line bg-surface/88 px-2 py-1 text-[0.68rem] font-semibold text-muted shadow-soft backdrop-blur-veil"
+              data-testid="profile-canvas-selection-examples-empty"
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.92 }}
+              transition={{ duration: 0.14 }}
+            >
+              No exact fit
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
 function ProfileDirectCanvasEditor({
   autosaveError,
   autosaveState,
@@ -3940,7 +4128,7 @@ function ProfileDirectCanvasEditor({
             {selectionPreviewRect ? (
               <motion.div
                 layout
-                className="pointer-events-none relative z-20 rounded-[1.1rem] border border-focus/80 bg-focus/20 shadow-glow backdrop-blur-veil"
+                className="pointer-events-none relative z-20 overflow-hidden rounded-[1.1rem] border border-focus/80 bg-focus/20 shadow-glow backdrop-blur-veil"
                 data-testid="profile-canvas-selection-preview"
                 initial={{ opacity: 0, scale: 0.96 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -3954,7 +4142,9 @@ function ProfileDirectCanvasEditor({
                   gridColumn: `${selectionPreviewRect.column} / span ${selectionPreviewRect.colSpan}`,
                   gridRow: `${selectionPreviewRect.row} / span ${selectionPreviewRect.rowSpan}`,
                 }}
-              />
+              >
+                <ProfileCanvasSelectionExamples selection={selectionPreviewRect} />
+              </motion.div>
             ) : null}
           </AnimatePresence>
           {profileCanvasCells(editorGrid.columns, editorGrid.rows).map((point) => {

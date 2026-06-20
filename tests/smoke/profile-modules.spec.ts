@@ -1992,13 +1992,56 @@ test("direct canvas point selection creates a draft module through picker and se
     String(PROFILE_CANVAS_ROWS),
   );
 
-  const startCell = page.getByTestId("profile-canvas-cell-1-4");
+  const startCell = page.getByTestId("profile-canvas-cell-5-4");
   await startCell.click();
   await expect(startCell).toHaveClass(/border-focus/);
 
-  const hoverCell = page.getByTestId("profile-canvas-cell-3-5");
+  const hoverCell = page.getByTestId("profile-canvas-cell-7-5");
   await hoverCell.hover();
   await expect(page.getByTestId("profile-canvas-selection-preview")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-selection-examples")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-selection-examples")).toContainText(
+    "Fits 3x2",
+  );
+  await expect(page.getByTestId("profile-canvas-selection-example-music")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-selection-example-text")).toBeVisible();
+  await expect(
+    page.getByTestId("profile-canvas-selection-example-uploaded_image"),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("profile-canvas-selection-example-twitch_channel"),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("profile-canvas-selection-example-github_repo"),
+  ).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const preview = document.querySelector(
+          '[data-testid="profile-canvas-selection-preview"]',
+        );
+        const examples = document.querySelector(
+          '[data-testid="profile-canvas-selection-examples"]',
+        );
+
+        if (!preview || !examples) {
+          return false;
+        }
+
+        const previewRect = preview.getBoundingClientRect();
+        const examplesRect = examples.getBoundingClientRect();
+
+        return (
+          examplesRect.left >= previewRect.left - 1 &&
+          examplesRect.right <= previewRect.right + 1 &&
+          examplesRect.top >= previewRect.top - 1 &&
+          examplesRect.bottom <= previewRect.bottom + 1 &&
+          document.documentElement.scrollWidth <=
+            document.documentElement.clientWidth
+        );
+      }),
+    )
+    .toBe(true);
   await expect
     .poll(() =>
       hoverCell.evaluate((element) => window.getComputedStyle(element).opacity),
@@ -2110,7 +2153,7 @@ test("direct canvas point selection creates a draft module through picker and se
       configured: true,
     },
     layout: {
-      column: 1,
+      column: 5,
       row: 4,
       colSpan: 3,
       rowSpan: 2,
@@ -2118,6 +2161,75 @@ test("direct canvas point selection creates a draft module through picker and se
     pinned: true,
     visibility: "public",
   });
+});
+
+test("direct canvas selection examples adapt to tiny selections", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-cell-6-4").click();
+
+  await expect(page.getByTestId("profile-canvas-selection-preview")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-selection-examples")).toBeVisible();
+  await expect(
+    page.getByTestId("profile-canvas-selection-example-uploaded_image"),
+  ).toBeVisible();
+  await expect(page.getByText("Fits 1x1")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const preview = document.querySelector(
+          '[data-testid="profile-canvas-selection-preview"]',
+        );
+        const examples = document.querySelector(
+          '[data-testid="profile-canvas-selection-examples"]',
+        );
+
+        if (!preview || !examples) {
+          return false;
+        }
+
+        const previewRect = preview.getBoundingClientRect();
+        const examplesRect = examples.getBoundingClientRect();
+
+        return (
+          examplesRect.left >= previewRect.left - 1 &&
+          examplesRect.right <= previewRect.right + 1 &&
+          examplesRect.top >= previewRect.top - 1 &&
+          examplesRect.bottom <= previewRect.bottom + 1
+        );
+      }),
+    )
+    .toBe(true);
+});
+
+test("direct canvas selection examples show empty state for unsupported exact sizes", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-cell-5-10").click();
+  await page.getByTestId("profile-canvas-cell-11-10").hover();
+
+  await expect(page.getByTestId("profile-canvas-selection-preview")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-selection-examples")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-selection-examples-empty")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-selection-example-music")).toHaveCount(
+    0,
+  );
 });
 
 test("direct canvas supports a 6x10 activity selection envelope", async ({
@@ -2226,6 +2338,7 @@ test("direct canvas blocks new selections that overlap existing modules", async 
   await expect(startCell).toHaveClass(/border-focus/);
   await blockedEndCell.hover();
   await expect(page.getByTestId("profile-canvas-selection-preview")).toHaveCount(0);
+  await expect(page.getByTestId("profile-canvas-selection-examples")).toHaveCount(0);
   await expect(startCell).toHaveClass(/border-rose/);
   await blockedEndCell.click();
   await expect(page.getByTestId("profile-module-picker")).toHaveCount(0);
