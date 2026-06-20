@@ -1175,6 +1175,32 @@ test("Spotify playback failure still opens the profile", async ({ page }) => {
   await expectSpotifyProgress(page, 0, "Ready");
 });
 
+test("uploaded MP3 music modules use the continue overlay", async ({ page }) => {
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [uploadedMp3MusicModule()],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expect(page.getByTestId("profile-music-continue-overlay")).toBeVisible();
+  await expect(page.getByTestId("profile-uploaded-audio-player")).toBeVisible();
+
+  await page.getByTestId("profile-music-continue-button").click();
+  await expect(page.getByTestId("profile-music-continue-overlay")).toHaveCount(0);
+
+  const stored = await page.evaluate(() =>
+    window.localStorage.getItem("thia.profile.musicAutoplayConsent.v1:1"),
+  );
+
+  expect(stored).not.toBeNull();
+  expect(JSON.parse(stored ?? "{}")).toMatchObject({
+    handle: "thia",
+    profileId: 1,
+    provider: "upload",
+  });
+});
+
 test("integration modules do not fake live or recent labels without API backing", async ({
   page,
 }) => {
@@ -2217,8 +2243,8 @@ test("module picker blocks selections larger than designed module sizes", async 
   await page.goto("/@thia");
 
   await page.getByTestId("profile-edit-button").click();
-  await page.getByTestId("profile-canvas-cell-1-4").click();
-  await page.getByTestId("profile-canvas-cell-6-9").click();
+  await page.getByTestId("profile-canvas-cell-7-4").click();
+  await page.getByTestId("profile-canvas-cell-12-9").click();
   await expect(page.getByTestId("profile-module-picker")).toBeVisible();
 
   const twitchChannel = page.getByTestId("profile-module-picker-twitch_channel");
@@ -2236,6 +2262,11 @@ test("module picker blocks selections larger than designed module sizes", async 
   await expect(githubRepo).toContainText("(6x4)");
 
   await page.getByRole("tab", { name: "Music" }).click();
+  const mp3Upload = page.getByTestId("profile-module-picker-music");
+  await expect(mp3Upload).toHaveAttribute("aria-label", "MP3 music upload");
+  await expect(mp3Upload.getByTestId("profile-module-picker-icon-music")).toBeVisible();
+  await expect(mp3Upload).toContainText("MP3");
+
   const spotifySong = page.getByTestId("profile-module-picker-spotify_song");
   await expect(spotifySong.getByTestId("connection-icon-spotify")).toBeVisible();
   await expect(spotifySong).toContainText("Music");
@@ -2252,6 +2283,90 @@ test("module picker blocks selections larger than designed module sizes", async 
   await expect(youtubeMusicPlaylist.getByTestId("connection-icon-youtube")).toBeVisible();
   await expect(youtubeMusicPlaylist).toContainText("Playlist");
   await expect(youtubeMusicPlaylist).not.toContainText("YouTube Music playlist");
+});
+
+test("module picker creates MP3 upload music modules", async ({ page }) => {
+  let draftPayload: Record<string, unknown> | undefined;
+  const uploadPurposes: string[] = [];
+
+  await mockMediaMetadata(page);
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+    onCanvasDraftSave: (payload) => {
+      draftPayload = payload;
+    },
+    onAudioUpload: (purpose) => {
+      uploadPurposes.push(purpose);
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-cell-5-4").click();
+  await page.getByTestId("profile-canvas-cell-7-5").click();
+  await page.getByRole("tab", { name: "Music" }).click();
+
+  const mp3Upload = page.getByTestId("profile-module-picker-music");
+  await expect(mp3Upload).toBeEnabled();
+  await expect(mp3Upload).toContainText("MP3");
+  await mp3Upload.click();
+
+  const settings = page.getByTestId("profile-module-settings");
+  await expect(settings.getByTestId("profile-audio-module-settings")).toBeVisible();
+  await expect(settings.getByTestId("profile-module-settings-url")).toHaveCount(0);
+  await expect
+    .poll(() => {
+      const modules = Array.isArray(draftPayload?.modules)
+        ? (draftPayload.modules as Array<Record<string, unknown>>)
+        : [];
+      const music = modules.find((module) => module.type === "music");
+      const config =
+        music?.config && typeof music.config === "object"
+          ? (music.config as Record<string, unknown>)
+          : undefined;
+
+      return JSON.stringify({
+        configured: config?.configured,
+        platform: config?.platform,
+        sourceMode: config?.sourceMode,
+        type: music?.type,
+      });
+    })
+    .toBe(
+      JSON.stringify({
+        configured: false,
+        platform: "custom",
+        sourceMode: "upload",
+        type: "music",
+      }),
+    );
+
+  await settings
+    .getByTestId("profile-module-settings-audio-input")
+    .setInputFiles(sampleMp3File("custom-track.mp3"));
+  await expect.poll(() => uploadPurposes.includes("profile_music")).toBe(true);
+  await expect(settings.getByTestId("profile-module-audio-preview")).toBeVisible();
+  await expect(page.getByTestId("profile-uploaded-audio-player")).toBeVisible();
+  await expect
+    .poll(() => {
+      const modules = Array.isArray(draftPayload?.modules)
+        ? (draftPayload.modules as Array<Record<string, unknown>>)
+        : [];
+      const music = modules.find((module) => module.type === "music");
+      const config =
+        music?.config && typeof music.config === "object"
+          ? (music.config as Record<string, unknown>)
+          : undefined;
+
+      return config?.audio;
+    })
+    .toMatchObject({
+      mime: "audio/mpeg",
+      title: "custom track",
+      url: "/uploads/media/2026/06/profile_music-track.mp3",
+    });
 });
 
 test("authenticated integrations hide the connect prompt in module settings", async ({
@@ -3207,7 +3322,7 @@ test("uploaded video and custom MP3 module settings use file uploads", async ({
 
   const musicSettings = page.getByTestId("profile-module-settings");
   await expect(musicSettings.getByTestId("profile-audio-module-settings")).toBeVisible();
-  await expect(musicSettings.getByTestId("profile-module-settings-url")).toBeVisible();
+  await expect(musicSettings.getByTestId("profile-module-settings-url")).toHaveCount(0);
   await musicSettings
     .getByTestId("profile-module-settings-audio-input")
     .setInputFiles(sampleMp3File("custom-track.mp3"));
@@ -4521,6 +4636,7 @@ test("profile module API guardrails are present by inspection", async () => {
   const uploadsApi = readFileSync("api/uploads.php", "utf8");
   const configExample = readFileSync("backend/config/config.example.php", "utf8");
   const moduleRegistry = readFileSync("src/lib/profileModuleRegistry.ts", "utf8");
+  const profilePage = readFileSync("src/pages/ProfilePage.tsx", "utf8");
   const profileEvolution = readFileSync("docs/profile-personal-space-evolution.md", "utf8");
   const safetyRules = readFileSync("docs/profile-customization-safety-rules.md", "utf8");
   const productGuidelines = readFileSync("docs/product-ui-ux-guidelines.md", "utf8");
@@ -4593,6 +4709,11 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(modulesApi).toContain("profile_module_music_config");
   expect(modulesApi).toContain("profile_module_uploaded_audio");
   expect(modulesApi).toContain("profile_module_uploaded_video_config");
+  expect(moduleRegistry).toContain('"music",\n    "spotify_song"');
+  expect(moduleRegistry).toContain('description: "Upload and play a custom MP3 track."');
+  expect(profilePage).toContain('music: "MP3"');
+  expect(profilePage).toContain('music: "MP3 music upload"');
+  expect(profilePage).toContain('platform: "custom", sourceMode: "upload"');
   expect(modulesApi).toContain("profile_integration_card_for_module");
   expect(modulesApi).toContain("profile_module_validate_url_platform");
   expect(modulesApi).toContain("require_csrf_token($session)");
@@ -6635,6 +6756,30 @@ function spotifyEmbedMusicModule(
         fetchedAt: "2026-06-16T10:00:00Z",
         stale: false,
       },
+    },
+  };
+}
+
+function uploadedMp3MusicModule(
+  overrides: { id?: number; position?: number } = {},
+) {
+  return {
+    ...musicModule(overrides),
+    config: {
+      audio: {
+        duration: 180,
+        mime: "audio/mpeg",
+        size: 123456,
+        title: "Custom track",
+        type: "audio/mpeg",
+        uploadedAt: "2026-06-19T12:00:00.000Z",
+        url: "/uploads/media/2026/06/profile_music-track.mp3",
+      },
+      configured: true,
+      displayMode: "player",
+      label: "Custom track",
+      platform: "custom",
+      sourceMode: "upload",
     },
   };
 }

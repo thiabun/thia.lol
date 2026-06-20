@@ -2933,6 +2933,10 @@ function profileCanvasDefaultConfigForModule(
   }
 
   if (definition.category === "music") {
+    if (type === "music") {
+      return { ...base, platform: "custom", sourceMode: "upload" };
+    }
+
     const provider = type.startsWith("apple")
       ? "apple_music"
       : type.startsWith("youtube")
@@ -4430,6 +4434,7 @@ const profileModulePickerDisplayLabels: Partial<
   apple_music_playlist: "Playlist",
   apple_music_song: "Music",
   github_repo: "Repository",
+  music: "MP3",
   spotify_artist: "Artist",
   spotify_playlist: "Playlist",
   spotify_song: "Music",
@@ -4449,6 +4454,7 @@ const profileModulePickerAccessibleLabels: Partial<
   apple_music_playlist: "Apple Music playlist",
   apple_music_song: "Apple Music song",
   github_repo: "GitHub repository",
+  music: "MP3 music upload",
   spotify_artist: "Spotify artist",
   spotify_playlist: "Spotify playlist",
   spotify_song: "Spotify song",
@@ -4643,6 +4649,11 @@ function ModuleSettingsModal({
     resolvedSizeIndex >= 0 && resolvedSizeIndex < allowedSizes.length - 1
       ? allowedSizes[resolvedSizeIndex + 1]
       : undefined;
+  const showMusicUrlField = Boolean(
+    module &&
+      definition?.category === "music" &&
+      (module.type !== "music" || module.config.url?.trim()),
+  );
 
   function updateModuleConfig(nextConfig: ProfileModule["config"]) {
     if (!module) {
@@ -5529,7 +5540,7 @@ function ModuleSettingsModal({
                     </div>
                   ) : (
                     <p className="rounded-card border border-dashed border-line bg-canvas/38 px-3 py-2 text-sm font-medium text-muted">
-                      Upload a custom MP3 or use a provider link below.
+                      Upload a custom MP3.
                     </p>
                   )}
                   {moduleAudioError ? (
@@ -5539,18 +5550,20 @@ function ModuleSettingsModal({
                   ) : null}
                 </div>
               ) : null}
-              <label className="block">
-                <span className="text-xs font-semibold uppercase text-muted">
-                  Music link
-                </span>
-                <input
-                  className="mt-1 min-h-11 w-full rounded-control border border-line bg-canvas/45 px-3 text-sm text-text outline-none transition focus:border-line-strong focus:outline-2 focus:outline-focus"
-                  value={module.config.url ?? ""}
-                  placeholder="https://"
-                  data-testid="profile-module-settings-url"
-                  onChange={(event) => handleUrlConfig(event.currentTarget.value)}
-                />
-              </label>
+              {showMusicUrlField ? (
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase text-muted">
+                    Music link
+                  </span>
+                  <input
+                    className="mt-1 min-h-11 w-full rounded-control border border-line bg-canvas/45 px-3 text-sm text-text outline-none transition focus:border-line-strong focus:outline-2 focus:outline-focus"
+                    value={module.config.url ?? ""}
+                    placeholder="https://"
+                    data-testid="profile-module-settings-url"
+                    onChange={(event) => handleUrlConfig(event.currentTarget.value)}
+                  />
+                </label>
+              ) : null}
             </div>
           ) : definition.category === "video" || module.type === "github_repo" ? (
             <label className="block">

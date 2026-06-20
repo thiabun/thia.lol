@@ -252,6 +252,17 @@ assert_true($uploadedMusic['audio']['duration'] === 123.457, 'uploaded audio dur
 assert_true($uploadedMusic['sourceMode'] === 'upload', 'uploaded music source mode mismatch');
 assert_true($uploadedMusic['autoplay'] === true, 'uploaded music autoplay mismatch');
 
+$emptyUploadMusic = profile_module_config(
+    'music',
+    [
+        'platform' => 'custom',
+        'sourceMode' => 'upload',
+    ],
+    123
+);
+assert_true($emptyUploadMusic['platform'] === 'custom', 'empty upload music platform mismatch');
+assert_true($emptyUploadMusic['sourceMode'] === 'upload', 'empty upload music source mode mismatch');
+
 $uploadedVideo = profile_module_config(
     'uploaded_video',
     [
