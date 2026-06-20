@@ -101,6 +101,61 @@ test("authenticated chat renders rich message entities", async ({ page }) => {
   await expect(messages.getByTestId("rich-link-embed-youtube")).toBeVisible();
 });
 
+test("authenticated chat renders post attachments", async ({ page }) => {
+  const attachedPost = {
+    id: 42,
+    canonicalPath: "/@alex/posts/42",
+    canonicalUrl: "https://thia.lol/@alex/posts/42",
+    bodySnippet: "A shared post from Alex.",
+    createdAt: "2026-06-10 10:00:00",
+    mediaUrl: null,
+    author: {
+      id: 4,
+      handle: "alex",
+      displayName: "Alex",
+      initials: "A",
+      aura: "frost",
+      avatarUrl: null,
+    },
+    room: null,
+  };
+  const sharedConversation = {
+    ...mockConversation,
+    lastMessage: {
+      ...mockConversation.lastMessage,
+      body: "you should see this",
+      attachments: [{ type: "post", post: attachedPost }],
+    },
+  } as unknown as typeof mockConversation;
+  const unavailableConversation = {
+    ...mockUnreadConversation,
+    lastMessage: {
+      ...mockUnreadConversation.lastMessage,
+      body: "this one disappeared",
+      attachments: [{ type: "post", post: null }],
+    },
+  } as unknown as typeof mockConversation;
+
+  await mockAuthenticatedChat(page, {
+    conversations: [sharedConversation, unavailableConversation],
+  });
+
+  await page.goto("/chat?conversation=10");
+
+  await expect(page.getByTestId("chat-post-attachment")).toHaveAttribute(
+    "href",
+    "/@alex/posts/42",
+  );
+  await expect(page.getByTestId("chat-post-attachment")).toContainText(
+    "A shared post from Alex.",
+  );
+
+  await page.getByTestId("chat-conversation-row-11").click();
+  await expect(page.getByTestId("chat-post-attachment-unavailable")).toContainText(
+    "Post unavailable.",
+  );
+});
+
 test("chat composer inserts mention suggestions", async ({ page }) => {
   await mockAuthenticatedChat(page);
   await page.route("**/api/search?**", async (route) => {
@@ -654,6 +709,9 @@ async function mockAuthenticatedChat(
               bodyEntities:
                 (conversation.lastMessage as { bodyEntities?: unknown } | null)
                   ?.bodyEntities ?? [],
+              attachments:
+                (conversation.lastMessage as { attachments?: unknown } | null)
+                  ?.attachments ?? [],
               deletedAt: null,
               createdAt: "2026-06-10 10:00:00",
               sender: conversation.otherParticipant,

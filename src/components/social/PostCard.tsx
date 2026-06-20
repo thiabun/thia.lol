@@ -16,6 +16,7 @@ import {
   MessageCircle,
   Repeat2,
   Send,
+  Share2,
   Trash2,
   WifiOff,
 } from "lucide-react";
@@ -29,6 +30,7 @@ import { Panel } from "../ui/Panel";
 import { CompactStateNotice } from "../ui/RouteState";
 import { InlineUserProfileLink } from "./UserProfileLink";
 import { MentionTextarea } from "./MentionTextarea";
+import { PostShareModal } from "./PostShareModal";
 import { ReportForm } from "./ReportForm";
 import { RichText } from "./RichText";
 import {
@@ -420,6 +422,7 @@ function ReactionControls({
   const [reblogPending, setReblogPending] = useState(false);
   const [reblogPulse, setReblogPulse] = useState(0);
   const [reblogError, setReblogError] = useState<string>();
+  const [shareOpen, setShareOpen] = useState(false);
   const canReport = status !== "loading" && user?.id !== post.author.id;
   const canReblog =
     status === "authenticated" && Boolean(csrfToken) && user?.id !== post.author.id;
@@ -532,6 +535,12 @@ function ReactionControls({
           reblogged={reblogged}
           onClick={() => void handleReblog()}
         />
+        <PostActionIconButton
+          label="Share post"
+          variant="ghost"
+          icon={<Share2 aria-hidden="true" size={15} />}
+          onClick={() => setShareOpen(true)}
+        />
         {canReport || actions ? (
           <span
             className={cn(
@@ -561,6 +570,13 @@ function ReactionControls({
       ) : null}
       {reblogError ? (
         <p className="mt-2 text-xs font-medium text-rose-ink">{reblogError}</p>
+      ) : null}
+      {shareOpen ? (
+        <PostShareModal
+          open={shareOpen}
+          post={post}
+          onClose={() => setShareOpen(false)}
+        />
       ) : null}
     </>
   );

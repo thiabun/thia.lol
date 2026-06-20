@@ -10,6 +10,7 @@ import type {
   NotificationItem,
   NotificationsResult,
   Post,
+  PostShareSummary,
   Profile,
   ProfileBadgesResult,
   ProfileConnection,
@@ -115,6 +116,12 @@ type ApiPost = Omit<Post, "room" | "createdAt"> & {
   deletedAt?: string | null;
   visibility?: string;
   status?: string;
+  canonicalPath?: string;
+  canonicalUrl?: string;
+};
+
+type ApiPostShareSummary = Omit<PostShareSummary, "room"> & {
+  room?: ApiRoom | null;
 };
 
 type ApiHomeFeed = {
@@ -148,6 +155,31 @@ export type UpdatePostInput = {
   parentId?: number | null;
   mediaUrl?: string | null;
   status?: "published" | "hidden" | "removed";
+};
+
+export type SharePostToMessagesInput = {
+  recipientUserIds: number[];
+  note?: string;
+};
+
+export type SharePostToMessagesResult = {
+  post: PostShareSummary;
+  results: Array<
+    | {
+        recipientUserId: number;
+        recipient?: User;
+        status: "sent";
+        conversationId: number;
+        messageId: number;
+      }
+    | {
+        recipientUserId: number;
+        status: "failed";
+        error: string;
+      }
+  >;
+  sentCount: number;
+  failedCount: number;
 };
 
 export type ImageUploadPurpose =
@@ -1101,6 +1133,48 @@ export function createPost(
   csrfToken: string,
 ): Promise<Post> {
   return apiPost<ApiPost>("/posts", input, csrfToken).then(normalizePost);
+}
+
+export function getPost(postId: number): Promise<Post> {
+  return apiGet<ApiPost>(`/posts/${postId}`).then(normalizePost);
+}
+
+export function postCanonicalPath(post: Pick<Post, "id" | "author" | "canonicalPath">) {
+  return post.canonicalPath ?? `/@${post.author.handle}/posts/${post.id}`;
+}
+
+export function postCanonicalUrl(post: Pick<Post, "id" | "author" | "canonicalUrl" | "canonicalPath">) {
+  if (post.canonicalUrl) {
+    return post.canonicalUrl;
+  }
+
+  if (typeof window === "undefined") {
+    return `https://thia.lol${postCanonicalPath(post)}`;
+  }
+
+  return new URL(postCanonicalPath(post), window.location.origin).toString();
+}
+
+export function postShareCardUrl(postId: number) {
+  return `/api/posts/${postId}/share-card.png`;
+}
+
+export function sharePostToMessages(
+  postId: number,
+  input: SharePostToMessagesInput,
+  csrfToken: string,
+): Promise<SharePostToMessagesResult> {
+  return apiPost<SharePostToMessagesResult>(
+    `/posts/${postId}/shares/messages`,
+    {
+      recipientUserIds: input.recipientUserIds,
+      ...(input.note !== undefined ? { note: input.note } : {}),
+    },
+    csrfToken,
+  ).then((result) => ({
+    ...result,
+    post: normalizePostShareSummary(result.post as ApiPostShareSummary),
+  }));
 }
 
 export function getPostReplies(postId: number): Promise<Post[]> {
@@ -2538,11 +2612,20 @@ function normalizePost(post: ApiPost): Post {
     rebloggedByCurrentUser: post.rebloggedByCurrentUser ?? post.rebloggedByMe ?? false,
     rebloggedBy: post.rebloggedBy ?? null,
     rebloggedAt: post.rebloggedAt ?? null,
+    updatedAt: post.updatedAt ?? null,
     socialContext: post.socialContext ?? {
       authorRelationship: null,
       likedByFollowedCount: 0,
     },
   };
+
+  if (post.canonicalPath) {
+    normalized.canonicalPath = post.canonicalPath;
+  }
+
+  if (post.canonicalUrl) {
+    normalized.canonicalUrl = post.canonicalUrl;
+  }
 
   if (post.mediaUrl) {
     normalized.mediaUrl = post.mediaUrl;
@@ -2551,10 +2634,27 @@ function normalizePost(post: ApiPost): Post {
   return normalized;
 }
 
+function normalizePostShareSummary(post: ApiPostShareSummary): PostShareSummary {
+  return {
+    ...post,
+    room: post.room ? normalizeRoom(post.room) : null,
+  };
+}
+
 function normalizeChatMessage(message: ChatMessage): ChatMessage {
   return {
     ...message,
     bodyEntities: normalizeRichTextEntities(message.bodyEntities),
+    attachments: (message.attachments ?? []).map((attachment) =>
+      attachment.type === "post"
+        ? {
+            type: "post",
+            post: attachment.post
+              ? normalizePostShareSummary(attachment.post as ApiPostShareSummary)
+              : null,
+          }
+        : attachment,
+    ),
   };
 }
 

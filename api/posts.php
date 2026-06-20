@@ -6,6 +6,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/notifications.php';
 require_once __DIR__ . '/read.php';
 require_once __DIR__ . '/text_entities.php';
+require_once __DIR__ . '/chat.php';
 
 function posts_dispatch(array $segments, string $method): void
 {
@@ -65,8 +66,33 @@ function posts_dispatch(array $segments, string $method): void
         json_error('Method not allowed.', 405);
     }
 
+    if (count($segments) === 3 && preg_match('/^\d+$/', $segments[1]) === 1 && $segments[2] === 'share-card.png') {
+        if ($method === 'GET' || $method === 'HEAD') {
+            posts_share_card((int) $segments[1]);
+        }
+
+        json_error('Method not allowed.', 405);
+    }
+
+    if (
+        count($segments) === 4 &&
+        preg_match('/^\d+$/', $segments[1]) === 1 &&
+        $segments[2] === 'shares' &&
+        $segments[3] === 'messages'
+    ) {
+        if ($method === 'POST') {
+            posts_share_messages_create((int) $segments[1]);
+        }
+
+        json_error('Method not allowed.', 405);
+    }
+
     if (count($segments) === 2 && preg_match('/^\d+$/', $segments[1]) === 1) {
         $postId = (int) $segments[1];
+
+        if ($method === 'GET' || $method === 'HEAD') {
+            posts_show($postId);
+        }
 
         if ($method === 'PATCH') {
             posts_update($postId);
@@ -80,6 +106,15 @@ function posts_dispatch(array $segments, string $method): void
     if (in_array($method, ['POST', 'PATCH', 'DELETE'], true)) {
         json_error('Method not allowed.', 405);
     }
+}
+
+function posts_show(int $postId): void
+{
+    $post = fetch_public_post_payload_by_id($postId, current_request_user_id());
+    $post['canonicalPath'] = post_canonical_path($post);
+    $post['canonicalUrl'] = post_canonical_url($post);
+
+    json_success($post);
 }
 
 function posts_create(): void
@@ -341,6 +376,430 @@ function posts_delete(int $postId): void
         'status' => 'removed',
         'deletedAt' => is_array($deletedPost) ? $deletedPost['deleted_at'] : null,
     ]);
+}
+
+function posts_share_messages_create(int $postId): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+    require_chat_tables();
+    require_chat_follows_table();
+    require_message_attachments_table();
+
+    $senderUserId = (int) $session['user_id'];
+    $post = fetch_public_post_payload_by_id($postId, $senderUserId);
+    $body = request_json_body();
+    $recipientIds = validate_post_share_recipient_ids($body['recipientUserIds'] ?? null);
+    $note = validate_post_share_note($body['note'] ?? null);
+    $canonicalUrl = post_canonical_url($post);
+    $messageBody = trim(($note === null ? 'Shared a post with you.' : $note) . "\n" . $canonicalUrl);
+    $results = [];
+    $successCount = 0;
+
+    foreach ($recipientIds as $recipientUserId) {
+        $recipient = post_share_fetch_recipient($recipientUserId);
+
+        if ($recipient === null) {
+            $results[] = post_share_result($recipientUserId, 'failed', 'Profile not found.');
+            continue;
+        }
+
+        if ($recipientUserId === $senderUserId) {
+            $results[] = post_share_result($recipientUserId, 'failed', 'Choose another member.');
+            continue;
+        }
+
+        $blockState = chat_pair_block_state($senderUserId, $recipientUserId);
+
+        if ($blockState['viewerBlocksTarget']) {
+            $results[] = post_share_result($recipientUserId, 'failed', 'Unblock this member before messaging.');
+            continue;
+        }
+
+        if ($blockState['targetBlocksViewer']) {
+            $results[] = post_share_result($recipientUserId, 'failed', 'You cannot message this member.');
+            continue;
+        }
+
+        if (!chat_users_are_moots($senderUserId, $recipientUserId)) {
+            $results[] = post_share_result($recipientUserId, 'failed', 'Follow each other to chat.');
+            continue;
+        }
+
+        $conversationId = chat_find_or_create_direct_conversation($senderUserId, $recipientUserId);
+        $messageId = chat_insert_message($conversationId, $senderUserId, $messageBody, [
+            [
+                'type' => 'post',
+                'postId' => $postId,
+            ],
+        ]);
+        chat_notify_message($conversationId, $senderUserId, $messageId);
+        $successCount++;
+
+        $results[] = [
+            'recipientUserId' => $recipientUserId,
+            'recipient' => user_payload($recipient),
+            'status' => 'sent',
+            'conversationId' => $conversationId,
+            'messageId' => $messageId,
+        ];
+    }
+
+    json_success([
+        'post' => post_share_summary_payload($post),
+        'results' => $results,
+        'sentCount' => $successCount,
+        'failedCount' => count($results) - $successCount,
+    ], 201);
+}
+
+function validate_post_share_recipient_ids(mixed $value): array
+{
+    if (!is_array($value)) {
+        json_error('Choose at least one moot to share with.', 422);
+    }
+
+    $ids = [];
+
+    foreach ($value as $rawId) {
+        if (!is_int($rawId) && !(is_string($rawId) && preg_match('/^\d+$/', $rawId) === 1)) {
+            json_error('Recipient ids must be numeric.', 422);
+        }
+
+        $id = (int) $rawId;
+
+        if ($id <= 0) {
+            json_error('Recipient ids must be numeric.', 422);
+        }
+
+        $ids[$id] = $id;
+    }
+
+    $recipientIds = array_values($ids);
+
+    if ($recipientIds === []) {
+        json_error('Choose at least one moot to share with.', 422);
+    }
+
+    if (count($recipientIds) > 10) {
+        json_error('Share with up to 10 moots at once.', 422);
+    }
+
+    return $recipientIds;
+}
+
+function validate_post_share_note(mixed $value): ?string
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    if (!is_string($value)) {
+        json_error('Share note must be text.', 422);
+    }
+
+    $note = trim($value);
+
+    if ($note === '') {
+        return null;
+    }
+
+    if (text_length($note) > 500) {
+        json_error('Share note must be 500 characters or fewer.', 422);
+    }
+
+    return $note;
+}
+
+function post_share_fetch_recipient(int $recipientUserId): ?array
+{
+    $statement = db_query(
+        "SELECT
+            u.id AS user_id,
+            u.handle,
+            p.display_name,
+            p.avatar_url
+         FROM users u
+         INNER JOIN profiles p ON p.user_id = u.id
+         WHERE u.id = :user_id
+           AND u.status = 'active'
+         LIMIT 1",
+        ['user_id' => $recipientUserId]
+    );
+    $recipient = $statement->fetch();
+
+    return is_array($recipient) ? $recipient : null;
+}
+
+function post_share_result(int $recipientUserId, string $status, string $error): array
+{
+    return [
+        'recipientUserId' => $recipientUserId,
+        'status' => $status,
+        'error' => $error,
+    ];
+}
+
+function posts_share_card(int $postId): void
+{
+    $post = fetch_public_post_payload_by_id($postId, current_request_user_id());
+    $headOnly = $_SERVER['REQUEST_METHOD'] === 'HEAD';
+
+    if (!extension_loaded('gd') || !function_exists('imagecreatetruecolor')) {
+        posts_share_card_fallback($headOnly);
+    }
+
+    posts_share_card_png_headers();
+
+    if ($headOnly) {
+        exit;
+    }
+
+    $image = imagecreatetruecolor(1200, 630);
+
+    if (!$image) {
+        posts_share_card_fallback(false);
+    }
+
+    imageantialias($image, true);
+    $bg = imagecolorallocate($image, 13, 31, 41);
+    $panel = imagecolorallocate($image, 22, 51, 61);
+    $line = imagecolorallocate($image, 65, 126, 146);
+    $text = imagecolorallocate($image, 232, 247, 248);
+    $muted = imagecolorallocate($image, 158, 192, 202);
+    $accent = imagecolorallocate($image, 244, 140, 173);
+
+    imagefilledrectangle($image, 0, 0, 1200, 630, $bg);
+    imagefilledrectangle($image, 44, 44, 1156, 586, $panel);
+    imagerectangle($image, 44, 44, 1156, 586, $line);
+
+    posts_share_card_draw_thumbnail($image, $post);
+
+    $font = posts_share_card_font_path();
+    $left = 92;
+    $top = 92;
+    $author = (string) ($post['author']['displayName'] ?? $post['author']['handle'] ?? 'thia.lol');
+    $handle = '@' . (string) ($post['author']['handle'] ?? 'profile');
+    $snippet = post_body_snippet((string) ($post['body'] ?? ''), 250);
+    $canonical = post_canonical_path($post);
+
+    posts_share_card_text($image, $font, 24, $left, $top, $accent, 'thia.lol');
+    posts_share_card_text($image, $font, 38, $left, $top + 74, $text, $author);
+    posts_share_card_text($image, $font, 22, $left, $top + 116, $muted, $handle);
+    posts_share_card_wrapped_text($image, $font, 28, $left, $top + 178, $text, $snippet, 620, 4);
+    posts_share_card_text($image, $font, 18, $left, 538, $muted, $canonical);
+
+    imagepng($image);
+    imagedestroy($image);
+    exit;
+}
+
+function posts_share_card_png_headers(): void
+{
+    header_remove('Content-Type');
+    header('Content-Type: image/png');
+    header('Cache-Control: public, max-age=900');
+    header('X-Content-Type-Options: nosniff');
+}
+
+function posts_share_card_fallback(bool $headOnly = false): void
+{
+    $paths = [
+        dirname(__DIR__) . '/brand/thia-og.png',
+        dirname(__DIR__) . '/public/brand/thia-og.png',
+    ];
+
+    foreach ($paths as $path) {
+        if (is_file($path)) {
+            posts_share_card_png_headers();
+
+            if (!$headOnly) {
+                readfile($path);
+            }
+
+            exit;
+        }
+    }
+
+    header_remove('Content-Type');
+    header('Content-Type: text/plain; charset=utf-8');
+    http_response_code(503);
+
+    if (!$headOnly) {
+        echo 'Share card generation is unavailable.';
+    }
+
+    exit;
+}
+
+function posts_share_card_font_path(): ?string
+{
+    foreach ([
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+        '/System/Library/Fonts/Supplemental/Arial.ttf',
+        '/Library/Fonts/Arial.ttf',
+    ] as $path) {
+        if (is_file($path)) {
+            return $path;
+        }
+    }
+
+    return null;
+}
+
+function posts_share_card_text($image, ?string $font, int $size, int $x, int $y, int $color, string $text): void
+{
+    if ($font !== null && function_exists('imagettftext')) {
+        imagettftext($image, $size, 0, $x, $y, $color, $font, $text);
+        return;
+    }
+
+    imagestring($image, 5, $x, max(0, $y - 18), $text, $color);
+}
+
+function posts_share_card_wrapped_text(
+    $image,
+    ?string $font,
+    int $size,
+    int $x,
+    int $y,
+    int $color,
+    string $text,
+    int $maxWidth,
+    int $maxLines
+): void {
+    $words = preg_split('/\s+/', $text) ?: [];
+    $lines = [];
+    $line = '';
+
+    foreach ($words as $word) {
+        $candidate = trim($line . ' ' . $word);
+
+        if ($line !== '' && posts_share_card_text_width($font, $size, $candidate) > $maxWidth) {
+            $lines[] = $line;
+            $line = $word;
+
+            if (count($lines) >= $maxLines) {
+                break;
+            }
+
+            continue;
+        }
+
+        $line = $candidate;
+    }
+
+    if ($line !== '' && count($lines) < $maxLines) {
+        $lines[] = $line;
+    }
+
+    foreach (array_slice($lines, 0, $maxLines) as $index => $lineText) {
+        if ($index === $maxLines - 1 && count($words) > count(preg_split('/\s+/', implode(' ', $lines)) ?: [])) {
+            $lineText = rtrim($lineText, '.,;:- ') . '...';
+        }
+
+        posts_share_card_text($image, $font, $size, $x, $y + ($index * 42), $color, $lineText);
+    }
+}
+
+function posts_share_card_text_width(?string $font, int $size, string $text): int
+{
+    if ($font !== null && function_exists('imagettfbbox')) {
+        $box = imagettfbbox($size, 0, $font, $text);
+
+        if (is_array($box)) {
+            return abs((int) $box[2] - (int) $box[0]);
+        }
+    }
+
+    return strlen($text) * 10;
+}
+
+function posts_share_card_draw_thumbnail($image, array $post): void
+{
+    $mediaUrl = $post['mediaUrl'] ?? null;
+
+    if (!is_string($mediaUrl) || $mediaUrl === '') {
+        $accent = imagecolorallocate($image, 244, 140, 173);
+        $soft = imagecolorallocate($image, 41, 82, 92);
+        imagefilledellipse($image, 930, 302, 280, 280, $soft);
+        imagefilledellipse($image, 944, 292, 138, 138, $accent);
+        imagefilledellipse($image, 906, 268, 42, 72, $accent);
+        imagefilledellipse($image, 982, 268, 42, 72, $accent);
+        return;
+    }
+
+    $path = posts_share_card_media_path($mediaUrl);
+
+    if ($path === null || !function_exists('imagecreatefromwebp')) {
+        return;
+    }
+
+    $source = @imagecreatefromwebp($path);
+
+    if (!$source) {
+        return;
+    }
+
+    $sourceWidth = imagesx($source);
+    $sourceHeight = imagesy($source);
+    $targetX = 770;
+    $targetY = 104;
+    $targetWidth = 316;
+    $targetHeight = 408;
+    $sourceRatio = $sourceWidth / max(1, $sourceHeight);
+    $targetRatio = $targetWidth / $targetHeight;
+
+    if ($sourceRatio > $targetRatio) {
+        $cropHeight = $sourceHeight;
+        $cropWidth = (int) round($sourceHeight * $targetRatio);
+        $cropX = (int) floor(($sourceWidth - $cropWidth) / 2);
+        $cropY = 0;
+    } else {
+        $cropWidth = $sourceWidth;
+        $cropHeight = (int) round($sourceWidth / $targetRatio);
+        $cropX = 0;
+        $cropY = (int) floor(($sourceHeight - $cropHeight) / 2);
+    }
+
+    imagecopyresampled(
+        $image,
+        $source,
+        $targetX,
+        $targetY,
+        $cropX,
+        $cropY,
+        $targetWidth,
+        $targetHeight,
+        $cropWidth,
+        $cropHeight
+    );
+    imagedestroy($source);
+
+    $line = imagecolorallocate($image, 65, 126, 146);
+    imagerectangle($image, $targetX, $targetY, $targetX + $targetWidth, $targetY + $targetHeight, $line);
+}
+
+function posts_share_card_media_path(string $mediaUrl): ?string
+{
+    if (preg_match('#^/uploads/media/[0-9]{4}/[0-9]{2}/[a-z0-9_-]+\.webp$#', $mediaUrl) !== 1) {
+        return null;
+    }
+
+    $relative = ltrim($mediaUrl, '/');
+    $paths = [
+        dirname(__DIR__) . '/' . $relative,
+        dirname(__DIR__) . '/public/' . $relative,
+    ];
+
+    foreach ($paths as $path) {
+        if (is_file($path)) {
+            return $path;
+        }
+    }
+
+    return null;
 }
 
 function posts_reaction_create(int $postId): void

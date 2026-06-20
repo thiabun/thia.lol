@@ -369,12 +369,32 @@ export type Post = {
   rebloggedByCurrentUser?: boolean;
   rebloggedBy?: User | null;
   rebloggedAt?: string | null;
+  updatedAt?: string | null;
+  canonicalPath?: string;
+  canonicalUrl?: string;
   socialContext?: {
     authorRelationship?: "self" | "following" | "moot" | null;
     likedByFollowedCount: number;
   };
   mediaUrl?: string;
 };
+
+export type PostShareSummary = {
+  id: number;
+  canonicalPath: string;
+  canonicalUrl: string;
+  bodySnippet: string;
+  createdAt?: string | null;
+  mediaUrl?: string | null;
+  author: User;
+  room?: Pick<Room, "slug" | "name" | "accent"> | null;
+};
+
+export type ChatMessageAttachment =
+  | {
+      type: "post";
+      post: PostShareSummary | null;
+    };
 
 export type DiscoverPerson = ProfileConnection & {
   postCount: number;
@@ -411,6 +431,7 @@ export type ChatMessage = {
   conversationId: number;
   body: string;
   bodyEntities?: RichTextEntity[];
+  attachments?: ChatMessageAttachment[];
   deletedAt: string | null;
   createdAt: string;
   sender: User;

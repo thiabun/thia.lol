@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { Buffer } from "node:buffer";
 import { readFileSync } from "node:fs";
 import { loginWithEnv, skipWithoutCredentials } from "../helpers/auth";
 
@@ -176,6 +177,203 @@ test("PostCard reblog action updates count and state", async ({ page }) => {
   );
 });
 
+test("PostCard share modal copies, saves, and sends typed post attachments", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          (window as unknown as { __copiedText?: string }).__copiedText = text;
+        },
+      },
+    });
+  });
+
+  await mockAuthenticatedApi(page);
+  const post = makePost({
+    canonicalPath: "/@alex/posts/42",
+    canonicalUrl: "https://thia.lol/@alex/posts/42",
+  });
+  const moot = {
+    id: 7,
+    handle: "mootpal",
+    displayName: "Moot Pal",
+    initials: "MP",
+    aura: "frost",
+    avatarUrl: null,
+  };
+  let sharePayload: Record<string, unknown> | undefined;
+
+  await page.route("**/api/feed/home", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { posts: [post], personalized: true },
+      }),
+    }),
+  );
+  await page.route("**/api/chat/moots", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [moot] }),
+    }),
+  );
+  await page.route("**/api/posts/42/shares/messages", async (route) => {
+    sharePayload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          post: {
+            id: 42,
+            canonicalPath: "/@alex/posts/42",
+            canonicalUrl: "https://thia.lol/@alex/posts/42",
+            bodySnippet: "A public post.",
+            createdAt: "2026-06-10 10:00:00",
+            mediaUrl: null,
+            author: post.author,
+            room: null,
+          },
+          results: [
+            {
+              recipientUserId: 7,
+              recipient: moot,
+              status: "sent",
+              conversationId: 31,
+              messageId: 501,
+            },
+          ],
+          sentCount: 1,
+          failedCount: 0,
+        },
+      }),
+    });
+  });
+  await page.route("**/api/posts/42/share-card.png", (route) =>
+    route.fulfill({
+      contentType: "image/png",
+      body: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lulc9QAAAABJRU5ErkJggg==",
+        "base64",
+      ),
+    }),
+  );
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Share post" }).first().click();
+
+  await expect(page.getByTestId("thread-modal")).toHaveCount(0);
+  const modal = page.getByTestId("post-share-modal");
+  await expect(modal).toBeVisible();
+
+  await modal.getByTestId("post-share-copy-link").click();
+  await expect(modal.getByTestId("post-share-copy-link")).toContainText("Copied");
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as { __copiedText?: string }).__copiedText),
+    )
+    .toBe("https://thia.lol/@alex/posts/42");
+
+  await expect(modal.getByTestId("post-share-save-image")).toHaveAttribute(
+    "href",
+    "/api/posts/42/share-card.png",
+  );
+  await expect(modal.getByTestId("post-share-save-image")).toHaveAttribute(
+    "download",
+    "thia-post-42.png",
+  );
+
+  await expect(modal.getByTestId("post-share-moot-list")).toContainText("Moot Pal");
+  await modal.getByTestId("post-share-moot-7").click();
+  await modal.getByTestId("post-share-note").fill("thought you would like this");
+  await modal.getByTestId("post-share-send-moots").click();
+
+  await expect(modal.getByText("Sent to 1 moot.")).toBeVisible();
+  await expect(modal.getByRole("link", { name: "Open chat" })).toHaveAttribute(
+    "href",
+    "/chat?conversation=31",
+  );
+  expect(sharePayload).toMatchObject({
+    recipientUserIds: [7],
+    note: "thought you would like this",
+  });
+});
+
+test("post permalink route loads canonical post and replies", async ({ page }) => {
+  await mockCommonApi(page);
+  await page.route("**/api/posts/42", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: makePost({
+          canonicalPath: "/@alex/posts/42",
+          canonicalUrl: "https://thia.lol/@alex/posts/42",
+          commentCount: 1,
+        }),
+      }),
+    }),
+  );
+  await page.route("**/api/posts/42/replies", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: [
+          makePost({
+            id: 73,
+            parentId: 42,
+            body: "A permalink reply.",
+            canonicalPath: "/@alex/posts/73",
+            canonicalUrl: "https://thia.lol/@alex/posts/73",
+          }),
+        ],
+      }),
+    }),
+  );
+
+  await page.goto("/@stale/posts/42");
+
+  await expect(page).toHaveURL(/\/@alex\/posts\/42$/);
+  await expect(page.getByRole("heading", { name: "Post", exact: true })).toBeVisible();
+  await expect(page.getByText("A public post.")).toBeVisible();
+  await expect(page.getByText("A permalink reply.")).toBeVisible();
+});
+
+test("post permalink route shows unavailable state", async ({ page }) => {
+  await mockCommonApi(page);
+  await page.route("**/api/posts/404", (route) =>
+    route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "Post not found." }),
+    }),
+  );
+
+  await page.goto("/@alex/posts/404");
+
+  await expect(page.getByRole("heading", { name: "Post not found" })).toBeVisible();
+  await expect(page.getByText("Post not found.")).toBeVisible();
+});
+
+test("post permalink server renderer emits social metadata by inspection", async () => {
+  const renderer = readFileSync("api/post-share.php", "utf8");
+  const htaccess = readFileSync("public/.htaccess", "utf8");
+
+  expect(htaccess).toContain("api/post-share.php?handle=$1&postId=$2");
+  expect(renderer).toContain('<meta property="og:title"');
+  expect(renderer).toContain('<meta property="og:description"');
+  expect(renderer).toContain('<meta property="og:url"');
+  expect(renderer).toContain('<meta property="og:image"');
+  expect(renderer).toContain('<meta name="twitter:card" content="summary_large_image"');
+  expect(renderer).toContain("post_share_page_escape");
+});
+
 test("PostCard author avatar, name, and handle navigate to profile", async ({
   page,
 }) => {
@@ -307,11 +505,10 @@ test("feed, thread, and profile surfaces render rich text entities", async ({
   );
 
   await page.goto("/");
-  await page
-    .getByTestId("post-body-open-thread")
-    .first()
-    .click({ position: { x: 8, y: 8 } });
+  await postCard.focus();
+  await page.keyboard.press("Enter");
   const dialog = page.getByTestId("thread-modal");
+  await expect(dialog).toBeVisible();
 
   await expect(dialog.getByTestId("thread-root-post").getByTestId("rich-mention-link")).toHaveAttribute(
     "href",

@@ -43,7 +43,12 @@ import {
 import { cn } from "../lib/classNames";
 import { parseApiTimestamp } from "../lib/dates";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
-import type { ChatConversation, ChatMessage, ChatMoot } from "../lib/types";
+import type {
+  ChatConversation,
+  ChatMessage,
+  ChatMoot,
+  PostShareSummary,
+} from "../lib/types";
 import { useAuth } from "../lib/useAuth";
 
 const maxMessageLength = 2000;
@@ -908,6 +913,19 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
             className="block whitespace-pre-wrap break-words"
             previewClassName="mt-2"
           />
+          {message.attachments?.length ? (
+            <div className="mt-2 space-y-2" data-testid="chat-message-attachments">
+              {message.attachments.map((attachment, index) =>
+                attachment.type === "post" ? (
+                  <ChatPostAttachment
+                    key={`${message.id}-post-${attachment.post?.id ?? index}`}
+                    mine={mine}
+                    post={attachment.post}
+                  />
+                ) : null,
+              )}
+            </div>
+          ) : null}
           <div
             className={cn(
               "mt-0.5 flex flex-wrap items-center gap-1.5 text-[0.68rem] leading-none",
@@ -945,6 +963,63 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+function ChatPostAttachment({
+  mine,
+  post,
+}: {
+  mine: boolean;
+  post: PostShareSummary | null;
+}) {
+  if (!post) {
+    return (
+      <div
+        className={cn(
+          "rounded-card border px-3 py-2 text-xs font-medium",
+          mine
+            ? "border-accent-ink/20 bg-accent-ink/10 text-accent-ink/80"
+            : "border-line bg-canvas/70 text-muted",
+        )}
+        data-testid="chat-post-attachment-unavailable"
+      >
+        Post unavailable.
+      </div>
+    );
+  }
+
+  return (
+    <Link
+      to={post.canonicalPath}
+      className={cn(
+        "block rounded-card border px-3 py-2 text-left shadow-inner-soft transition duration-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+        mine
+          ? "border-accent-ink/20 bg-accent-ink/10 text-accent-ink hover:bg-accent-ink/15"
+          : "border-line bg-canvas/70 text-text hover:border-line-strong hover:bg-surface",
+      )}
+      data-testid="chat-post-attachment"
+    >
+      <span className="flex items-center gap-2">
+        <Avatar user={post.author} size="sm" />
+        <span className="min-w-0">
+          <span className="block truncate text-xs font-semibold">
+            {post.author.displayName}
+          </span>
+          <span
+            className={cn(
+              "block truncate text-[0.68rem]",
+              mine ? "text-accent-ink/70" : "text-muted",
+            )}
+          >
+            @{post.author.handle}
+          </span>
+        </span>
+      </span>
+      <span className="mt-2 line-clamp-2 block text-xs leading-5">
+        {post.bodySnippet}
+      </span>
+    </Link>
   );
 }
 

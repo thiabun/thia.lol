@@ -31,6 +31,9 @@ const OnboardingPage = lazy(() =>
     default: module.OnboardingPage,
   })),
 );
+const PostPage = lazy(() =>
+  import("./pages/PostPage").then((module) => ({ default: module.PostPage })),
+);
 const ProfilePage = lazy(() =>
   import("./pages/ProfilePage").then((module) => ({ default: module.ProfilePage })),
 );
@@ -93,6 +96,7 @@ export default function App() {
             <Route path="chat" element={<ChatPage />} />
             <Route path="notifications" element={<NotificationsPage />} />
             <Route path="onboarding" element={<OnboardingPage />} />
+            <Route path=":profileHandle/posts/:postId" element={<PostPage />} />
             <Route path="@/:handle" element={<ProfilePage />} />
             <Route path="terms" element={<TermsPage />} />
             <Route path="privacy" element={<PrivacyPage />} />

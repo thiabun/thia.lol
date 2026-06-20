@@ -319,6 +319,89 @@ function post_payload(array $row): array
     ];
 }
 
+function fetch_public_post_payload_by_id_or_null(int $postId, ?int $viewerUserId = null): ?array
+{
+    $statement = db_query(
+        post_select_sql(
+            'AND p.id = :post_id',
+            'p.created_at DESC, p.id DESC',
+            '',
+            $viewerUserId
+        ),
+        ['post_id' => $postId]
+    );
+    $row = $statement->fetch();
+
+    return is_array($row) ? post_payload($row) : null;
+}
+
+function fetch_public_post_payload_by_id(int $postId, ?int $viewerUserId = null): array
+{
+    $post = fetch_public_post_payload_by_id_or_null($postId, $viewerUserId);
+
+    if ($post === null) {
+        json_error('Post not found.', 404);
+    }
+
+    return $post;
+}
+
+function post_public_base_url(): string
+{
+    $baseUrl = rtrim((string) (api_config()['app']['base_url'] ?? 'https://thia.lol'), '/');
+
+    return $baseUrl === '' ? 'https://thia.lol' : $baseUrl;
+}
+
+function post_canonical_path(array $post): string
+{
+    $handle = (string) ($post['author']['handle'] ?? '');
+    $postId = (int) ($post['id'] ?? 0);
+
+    return sprintf('/@%s/posts/%d', rawurlencode($handle), $postId);
+}
+
+function post_canonical_url(array $post): string
+{
+    return post_public_base_url() . post_canonical_path($post);
+}
+
+function post_body_snippet(string $body, int $maxLength = 180): string
+{
+    $snippet = trim((string) preg_replace('/\s+/u', ' ', $body));
+
+    if ($snippet === '') {
+        return 'A post on thia.lol.';
+    }
+
+    $length = function_exists('mb_strlen') ? mb_strlen($snippet) : strlen($snippet);
+
+    if ($length <= $maxLength) {
+        return $snippet;
+    }
+
+    $sliceLength = max(1, $maxLength - 1);
+    $slice = function_exists('mb_substr')
+        ? mb_substr($snippet, 0, $sliceLength)
+        : substr($snippet, 0, $sliceLength);
+
+    return rtrim($slice) . '...';
+}
+
+function post_share_summary_payload(array $post): array
+{
+    return [
+        'id' => (int) $post['id'],
+        'canonicalPath' => post_canonical_path($post),
+        'canonicalUrl' => post_canonical_url($post),
+        'bodySnippet' => post_body_snippet((string) ($post['body'] ?? ''), 160),
+        'createdAt' => $post['createdAt'] ?? null,
+        'mediaUrl' => $post['mediaUrl'] ?? null,
+        'author' => $post['author'],
+        'room' => $post['room'] ?? null,
+    ];
+}
+
 function reblog_context_user_payload(array $row): ?array
 {
     if (($row['reblogged_by_user_id'] ?? null) === null || ($row['reblogged_by_handle'] ?? null) === null) {

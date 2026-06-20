@@ -243,6 +243,18 @@ function chat_messages_create(int $conversationId): void
     $body = request_json_body();
     $messageBody = chat_message_body_from_request($body);
 
+    $messageId = chat_insert_message($conversationId, $viewerUserId, $messageBody);
+    chat_notify_message($conversationId, $viewerUserId, $messageId);
+
+    json_success(chat_fetch_message($messageId), 201);
+}
+
+function chat_insert_message(
+    int $conversationId,
+    int $senderUserId,
+    string $messageBody,
+    array $attachments = []
+): int {
     $pdo = db();
     $pdo->beginTransaction();
 
@@ -253,14 +265,41 @@ function chat_messages_create(int $conversationId): void
         );
         $insert->execute([
             'conversation_id' => $conversationId,
-            'sender_id' => $viewerUserId,
+            'sender_id' => $senderUserId,
             'body' => $messageBody,
         ]);
 
         $messageId = (int) $pdo->lastInsertId();
-        text_entities_store_for_content('message', $messageId, 'body', $messageBody, $viewerUserId, [
+        text_entities_store_for_content('message', $messageId, 'body', $messageBody, $senderUserId, [
             'notifyMentions' => false,
         ]);
+
+        if ($attachments !== []) {
+            require_message_attachments_table();
+
+            $insertAttachment = $pdo->prepare(
+                'INSERT IGNORE INTO message_attachments (message_id, type, post_id)
+                 VALUES (:message_id, :type, :post_id)'
+            );
+
+            foreach ($attachments as $attachment) {
+                if (!is_array($attachment) || ($attachment['type'] ?? null) !== 'post') {
+                    continue;
+                }
+
+                $postId = (int) ($attachment['postId'] ?? $attachment['post_id'] ?? 0);
+
+                if ($postId <= 0) {
+                    continue;
+                }
+
+                $insertAttachment->execute([
+                    'message_id' => $messageId,
+                    'type' => 'post',
+                    'post_id' => $postId,
+                ]);
+            }
+        }
 
         $updateConversation = $pdo->prepare(
             'UPDATE conversations
@@ -278,7 +317,7 @@ function chat_messages_create(int $conversationId): void
         );
         $updateRead->execute([
             'conversation_id' => $conversationId,
-            'user_id' => $viewerUserId,
+            'user_id' => $senderUserId,
         ]);
 
         $pdo->commit();
@@ -287,10 +326,15 @@ function chat_messages_create(int $conversationId): void
         throw $exception;
     }
 
-    foreach (chat_conversation_recipient_ids($conversationId, $viewerUserId) as $recipientId) {
+    return $messageId;
+}
+
+function chat_notify_message(int $conversationId, int $senderUserId, int $messageId): void
+{
+    foreach (chat_conversation_recipient_ids($conversationId, $senderUserId) as $recipientId) {
         notification_create(
             $recipientId,
-            $viewerUserId,
+            $senderUserId,
             'message',
             null,
             null,
@@ -301,8 +345,6 @@ function chat_messages_create(int $conversationId): void
             false
         );
     }
-
-    json_success(chat_fetch_message($messageId), 201);
 }
 
 function chat_conversation_read(int $conversationId): void
@@ -717,15 +759,51 @@ function chat_conversation_payload(array $row): array
 
 function chat_message_payload(array $row): array
 {
+    $deleted = $row['deleted_at'] !== null;
+
     return [
         'id' => (int) $row['id'],
         'conversationId' => (int) $row['conversation_id'],
-        'body' => $row['deleted_at'] === null ? (string) $row['body'] : '',
-        'bodyEntities' => $row['deleted_at'] === null ? text_entities_for_content('message', (int) $row['id'], 'body') : [],
+        'body' => !$deleted ? (string) $row['body'] : '',
+        'bodyEntities' => !$deleted ? text_entities_for_content('message', (int) $row['id'], 'body') : [],
+        'attachments' => !$deleted ? chat_message_attachments((int) $row['id']) : [],
         'deletedAt' => $row['deleted_at'] ?? null,
         'createdAt' => $row['created_at'],
         'sender' => chat_user_payload($row, 'sender'),
     ];
+}
+
+function chat_message_attachments(int $messageId): array
+{
+    if (!message_attachments_table_exists()) {
+        return [];
+    }
+
+    $statement = db_query(
+        "SELECT id, type, post_id
+         FROM message_attachments
+         WHERE message_id = :message_id
+         ORDER BY id ASC
+         LIMIT 10",
+        ['message_id' => $messageId]
+    );
+    $attachments = [];
+
+    foreach ($statement->fetchAll() as $row) {
+        if (($row['type'] ?? null) !== 'post') {
+            continue;
+        }
+
+        $postId = (int) ($row['post_id'] ?? 0);
+        $post = $postId > 0 ? fetch_public_post_payload_by_id_or_null($postId, current_request_user_id()) : null;
+
+        $attachments[] = [
+            'type' => 'post',
+            'post' => $post === null ? null : post_share_summary_payload($post),
+        ];
+    }
+
+    return $attachments;
 }
 
 function chat_user_payload(array $row, string $prefix): array
@@ -744,6 +822,18 @@ function require_chat_tables(): void
         if (!database_table_exists($tableName)) {
             json_error('Chat storage is not ready. Run pending migrations.', 503);
         }
+    }
+}
+
+function message_attachments_table_exists(): bool
+{
+    return database_table_exists('message_attachments');
+}
+
+function require_message_attachments_table(): void
+{
+    if (!message_attachments_table_exists()) {
+        json_error('Message attachment storage is not ready. Run pending migrations.', 503);
     }
 }
 

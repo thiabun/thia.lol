@@ -1,0 +1,68 @@
+<?php
+
+declare(strict_types=1);
+
+$root = dirname(__DIR__, 2);
+
+$postsSource = file_get_contents($root . '/api/posts.php');
+$chatSource = file_get_contents($root . '/api/chat.php');
+$readSource = file_get_contents($root . '/api/read.php');
+$shareRendererSource = file_get_contents($root . '/api/post-share.php');
+$htaccessSource = file_get_contents($root . '/public/.htaccess');
+$migrationSource = file_get_contents($root . '/api/migrations/20260621_0001_add_message_attachments.sql');
+
+function assert_true(bool $condition, string $message): void
+{
+    if (!$condition) {
+        fwrite(STDERR, $message . PHP_EOL);
+        exit(1);
+    }
+}
+
+assert_true(is_string($migrationSource), 'message attachment migration should be readable');
+assert_true(str_contains($migrationSource, 'CREATE TABLE IF NOT EXISTS message_attachments'), 'message attachments table should be idempotent');
+assert_true(str_contains($migrationSource, 'message_id BIGINT UNSIGNED NOT NULL'), 'message attachments should belong to messages');
+assert_true(str_contains($migrationSource, 'post_id BIGINT UNSIGNED NULL'), 'post attachments should store post ids');
+assert_true(str_contains($migrationSource, 'ON DELETE CASCADE'), 'message attachments should cascade when messages are deleted');
+assert_true(str_contains($migrationSource, 'ON DELETE SET NULL'), 'post attachments should degrade when posts are removed');
+
+assert_true(is_string($readSource), 'read source should be readable');
+assert_true(str_contains($readSource, 'function fetch_public_post_payload_by_id_or_null'), 'public post lookup should have non-throwing helper');
+assert_true(str_contains($readSource, 'function post_canonical_path'), 'canonical post paths should be centralized');
+assert_true(str_contains($readSource, 'function post_share_summary_payload'), 'chat attachments should use a typed post summary');
+assert_true(str_contains($readSource, "post_select_sql(\n            'AND p.id = :post_id'"), 'public post lookup should use shared visibility SQL');
+
+assert_true(is_string($postsSource), 'posts source should be readable');
+assert_true(str_contains($postsSource, "segments[2] === 'share-card.png'"), 'share-card PNG route should be registered');
+assert_true(str_contains($postsSource, "segments[2] === 'shares'"), 'share-to-message route should be registered');
+assert_true(str_contains($postsSource, 'function posts_show'), 'public post GET endpoint should be registered');
+assert_true(str_contains($postsSource, 'require_csrf_token($session)'), 'share-to-message must stay CSRF protected');
+assert_true(str_contains($postsSource, 'require_message_attachments_table()'), 'typed sharing should require attachment storage');
+assert_true(str_contains($postsSource, 'chat_users_are_moots($senderUserId, $recipientUserId)'), 'share recipients should be moots');
+assert_true(str_contains($postsSource, 'chat_pair_block_state($senderUserId, $recipientUserId)'), 'share recipients should respect block pairs');
+assert_true(str_contains($postsSource, 'count($recipientIds) > 10'), 'share-to-message should cap recipient count');
+assert_true(str_contains($postsSource, 'text_length($note) > 500'), 'share notes should have a bounded length');
+assert_true(str_contains($postsSource, "header('Content-Type: image/png')"), 'share-card endpoint should return PNG content');
+assert_true(str_contains($postsSource, 'posts_share_card_fallback'), 'share-card endpoint should have a fallback image path');
+
+assert_true(is_string($chatSource), 'chat source should be readable');
+assert_true(str_contains($chatSource, 'function chat_insert_message'), 'chat message creation should be reusable');
+assert_true(str_contains($chatSource, 'function chat_notify_message'), 'post shares should create normal message notifications');
+assert_true(str_contains($chatSource, "'attachments' => !\$deleted ? chat_message_attachments"), 'message payloads should expose typed attachments');
+assert_true(str_contains($chatSource, 'post_share_summary_payload($post)'), 'message attachments should hydrate post summaries');
+assert_true(str_contains($chatSource, 'post === null ? null'), 'unavailable attached posts should degrade to null');
+
+assert_true(is_string($shareRendererSource), 'post share renderer should be readable');
+assert_true(str_contains($shareRendererSource, '<meta property="og:type" content="article" />'), 'share renderer should emit article Open Graph type');
+assert_true(str_contains($shareRendererSource, '<meta property="og:title"'), 'share renderer should emit og:title');
+assert_true(str_contains($shareRendererSource, '<meta property="og:description"'), 'share renderer should emit og:description');
+assert_true(str_contains($shareRendererSource, '<meta property="og:url"'), 'share renderer should emit og:url');
+assert_true(str_contains($shareRendererSource, '<meta property="og:image"'), 'share renderer should emit og:image');
+assert_true(str_contains($shareRendererSource, 'post_share_page_escape'), 'share renderer should escape metadata');
+assert_true(str_contains($shareRendererSource, 'header(\'Location: \' . post_canonical_path($post), true, 302)'), 'stale handles should redirect safely');
+
+assert_true(is_string($htaccessSource), 'public htaccess should be readable');
+assert_true(str_contains($htaccessSource, 'api/post-share.php?handle=$1&postId=$2'), 'post permalink rewrite should target the share renderer');
+assert_true(str_contains($htaccessSource, 'REQUEST_URI} ^/api'), 'API exclusion should remain ahead of SPA rewrite');
+
+echo "post sharing regression ok\n";
