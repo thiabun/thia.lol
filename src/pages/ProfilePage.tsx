@@ -6751,7 +6751,7 @@ function ProfileInfoSizedCard({
         <img
           alt=""
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[68%] w-full object-cover object-center opacity-28 blur-2xl saturate-125 [mask-image:linear-gradient(to_bottom,black_0%,black_42%,transparent_100%)]"
+          className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[82%] w-full object-cover object-center opacity-22 blur-2xl saturate-125 [mask-image:linear-gradient(to_bottom,black_0%,black_34%,transparent_100%)]"
           src={bannerUrl}
           data-testid="profile-header-banner-card-bleed"
         />
@@ -6772,18 +6772,18 @@ function ProfileInfoSizedCard({
           />
           <span
             aria-hidden="true"
-            className="absolute inset-0 bg-gradient-to-b from-canvas/18 via-canvas/5 to-canvas/46"
+            className="absolute inset-0 bg-gradient-to-b from-canvas/16 via-canvas/4 to-surface/8"
           />
           <img
             alt=""
             aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 -bottom-16 z-0 h-24 w-full object-cover object-center opacity-45 blur-2xl saturate-125"
+            className="pointer-events-none absolute inset-x-0 -bottom-28 z-0 h-44 w-full object-cover object-center opacity-36 blur-2xl saturate-125 [mask-image:linear-gradient(to_bottom,black_0%,black_35%,transparent_100%)]"
             src={bannerUrl}
             data-testid="profile-header-banner-bleed"
           />
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 -bottom-16 z-0 h-24 bg-gradient-to-b from-canvas/0 via-surface/20 to-surface/68"
+            className="pointer-events-none absolute inset-x-0 -bottom-28 z-0 h-44 bg-gradient-to-b from-surface/0 via-surface/10 to-surface/54"
           />
         </div>
       ) : (
@@ -6794,7 +6794,7 @@ function ProfileInfoSizedCard({
       )}
       <div
         className={cn(
-          "relative z-20 flex min-h-0 min-w-0 flex-1 flex-col overflow-visible bg-gradient-to-b from-surface/0 via-surface/48 to-surface/78",
+          "relative z-20 flex min-h-0 min-w-0 flex-1 flex-col overflow-visible bg-gradient-to-b from-surface/0 via-surface/30 to-surface/78",
           layout.bodyPaddingClass,
         )}
       >
@@ -6803,13 +6803,13 @@ function ProfileInfoSizedCard({
             <img
               alt=""
               aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 -top-16 z-0 h-44 w-full object-cover object-center opacity-42 blur-2xl saturate-125"
+              className="pointer-events-none absolute inset-x-0 -top-24 z-0 h-64 w-full object-cover object-center opacity-28 blur-2xl saturate-125 [mask-image:linear-gradient(to_bottom,black_0%,black_38%,transparent_100%)]"
               src={bannerUrl}
               data-testid="profile-header-banner-body-bleed"
             />
             <span
               aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 -top-14 z-0 h-48 bg-gradient-to-b from-surface/0 via-surface/28 to-surface/90"
+              className="pointer-events-none absolute inset-x-0 -top-24 z-0 h-64 bg-gradient-to-b from-surface/0 via-surface/12 to-surface/88"
             />
           </>
         ) : null}
