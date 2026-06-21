@@ -7,6 +7,7 @@ import { ButtonLink } from "../components/ui/Button";
 import { RouteHeader, RouteStateNotice } from "../components/ui/RouteState";
 import { getPost, getPostReplies, postCanonicalPath } from "../lib/api";
 import { pageEntrance } from "../lib/motionPresets";
+import { usePageLoadSignal } from "../lib/pageLoadingContext";
 import type { Post } from "../lib/types";
 import { motion } from "motion/react";
 
@@ -24,6 +25,10 @@ export function PostPage() {
   const [error, setError] = useState<string>();
   const [repliesLoading, setRepliesLoading] = useState(false);
   const [repliesError, setRepliesError] = useState<string>();
+  usePageLoadSignal(
+    Boolean(postIdentifier) && (loading || (repliesLoading && replies.length === 0)),
+    "post",
+  );
 
   useEffect(() => {
     if (!postIdentifier) {

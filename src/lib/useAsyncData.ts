@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useRegisterPageLoadTask } from "./pageLoadingContext";
 
 type AsyncState<T> = {
   data: T | undefined;
@@ -7,6 +8,7 @@ type AsyncState<T> = {
 };
 
 export function useAsyncData<T>(load: () => Promise<T>): AsyncState<T> {
+  const registerPageLoadTask = useRegisterPageLoadTask();
   const [state, setState] = useState<AsyncState<T>>({
     data: undefined,
     loading: true,
@@ -15,6 +17,7 @@ export function useAsyncData<T>(load: () => Promise<T>): AsyncState<T> {
 
   useEffect(() => {
     let active = true;
+    const finishPageLoadTask = registerPageLoadTask();
 
     queueMicrotask(() => {
       if (active) {
@@ -40,12 +43,14 @@ export function useAsyncData<T>(load: () => Promise<T>): AsyncState<T> {
             error: error instanceof Error ? error : new Error("Unknown error"),
           });
         }
-      });
+      })
+      .finally(finishPageLoadTask);
 
     return () => {
       active = false;
+      finishPageLoadTask();
     };
-  }, [load]);
+  }, [load, registerPageLoadTask]);
 
   return state;
 }

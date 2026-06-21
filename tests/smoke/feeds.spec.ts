@@ -76,6 +76,37 @@ test("Discover loads the feed empty state without unbacked sections", async ({
     .toBe(1);
 });
 
+test("global loading overlay waits for route data and grace timer", async ({
+  page,
+}) => {
+  await mockCommonApi(page);
+  let releaseDiscover: (() => void) | undefined;
+  await page.route("**/api/feed/discover", async (route) => {
+    await new Promise<void>((resolve) => {
+      releaseDiscover = resolve;
+    });
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { posts: [], activeRooms: [], peopleToWatch: [] },
+      }),
+    });
+  });
+
+  await page.goto("/discover");
+
+  const overlay = page.getByTestId("page-loading-overlay");
+  await expect(overlay).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Loading Discover" })).toBeVisible();
+
+  await page.waitForTimeout(1000);
+  releaseDiscover?.();
+  await expect(page.getByRole("heading", { name: "Rising" })).toBeVisible();
+  await expect(overlay).toBeVisible();
+  await expect(overlay).toBeHidden({ timeout: 5000 });
+});
+
 test("Discover renders primary sections only when backed by data", async ({
   page,
 }) => {

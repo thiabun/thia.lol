@@ -57,6 +57,7 @@ import {
   type TwoFactorSetupResult,
 } from "../lib/api";
 import { cn } from "../lib/classNames";
+import { usePageLoadSignal } from "../lib/pageLoadingContext";
 import { useAuth } from "../lib/useAuth";
 
 const notificationKeys = [
@@ -90,6 +91,9 @@ export function SettingsPage() {
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState<string>();
+  const settingsLoading =
+    status === "loading" || (status === "authenticated" && !settings && !error);
+  usePageLoadSignal(settingsLoading, "settings");
 
   useEffect(() => {
     if (status !== "authenticated") {

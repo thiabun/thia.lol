@@ -27,6 +27,7 @@ import { cn } from "../../lib/classNames";
 import { desktopNotificationSupport, ensureNotificationServiceWorkerRegistration } from "../../lib/desktopNotifications";
 import {
   buttonTap,
+  fluidEase,
   popoverPanel,
   snappySpring,
 } from "../../lib/motionPresets";
@@ -274,11 +275,22 @@ export function AppShell() {
       />
       <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 sm:px-6 lg:px-8">
         <main className="flex-1 pb-6 pt-5 lg:pb-16">
-          <Outlet
-            context={
-              { openPostComposer, setTopBarAction } satisfies AppShellOutletContext
-            }
-          />
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={`${location.pathname}${location.search}`}
+              className="min-h-full"
+              initial={{ opacity: 0, y: 10, filter: "blur(8px)" }}
+              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              exit={{ opacity: 0, y: -8, filter: "blur(6px)" }}
+              transition={{ duration: 0.24, ease: fluidEase }}
+            >
+              <Outlet
+                context={
+                  { openPostComposer, setTopBarAction } satisfies AppShellOutletContext
+                }
+              />
+            </motion.div>
+          </AnimatePresence>
         </main>
         <MobileDock
           navItems={publicNavItems}

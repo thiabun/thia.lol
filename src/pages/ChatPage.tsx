@@ -43,6 +43,7 @@ import {
 import { cn } from "../lib/classNames";
 import { parseApiTimestamp } from "../lib/dates";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
+import { usePageLoadSignal } from "../lib/pageLoadingContext";
 import type {
   ChatConversation,
   ChatMessage,
@@ -343,6 +344,12 @@ export function ChatPage() {
   const conversationsEmpty =
     !conversationsLoading && !conversationsError && conversations.length === 0;
   const showConversationLayout = conversations.length > 0;
+  usePageLoadSignal(
+    status === "loading" ||
+      showInitialConversationLoading ||
+      (messagesLoading && messages.length === 0 && showConversationLayout),
+    "chat",
+  );
 
   if (status === "anonymous") {
     return (

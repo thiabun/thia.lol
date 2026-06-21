@@ -1,8 +1,10 @@
 import { MotionConfig } from "motion/react";
 import { Navigate, Route, Routes, useLocation, useParams } from "react-router";
-import { lazy, Suspense, useEffect } from "react";
-import { BrandMark } from "./components/BrandLogo";
+import { lazy, Suspense, useEffect, type ReactNode } from "react";
 import { AppShell } from "./components/layout/AppShell";
+import { PageLoadingProvider } from "./lib/pageLoading";
+import { usePageLoadSignal } from "./lib/pageLoadingContext";
+import { useAuth } from "./lib/useAuth";
 
 const AdminPage = lazy(() =>
   import("./pages/AdminPage").then((module) => ({ default: module.AdminPage })),
@@ -87,57 +89,53 @@ const TermsPage = lazy(() =>
 export default function App() {
   return (
     <MotionConfig reducedMotion="user">
-      <ScrollToTop />
-      <Suspense fallback={<RouteLoading />}>
+      <PageLoadingProvider>
+        <AuthLoadingSignal />
+        <ScrollToTop />
         <Routes>
           <Route element={<AppShell />}>
-            <Route index element={<HomePage />} />
-            <Route path="discover" element={<DiscoverPage />} />
-            <Route path="search" element={<SearchPage />} />
-            <Route path="rooms" element={<RoomsPage />} />
-            <Route path="rooms/:slug" element={<RoomPage />} />
-            <Route path="chat" element={<ChatPage />} />
-            <Route path="notifications" element={<NotificationsPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-            <Route path="onboarding" element={<OnboardingPage />} />
-            <Route path=":profileHandle/posts/:postId" element={<PostPage />} />
-            <Route path="@/:handle" element={<ProfilePage />} />
-            <Route path="terms" element={<TermsPage />} />
-            <Route path="privacy" element={<PrivacyPage />} />
-            <Route path="cookies" element={<CookiesPage />} />
-            <Route path="community-guidelines" element={<CommunityGuidelinesPage />} />
-            <Route path="copyright" element={<CopyrightPage />} />
-            <Route path="moderation" element={<ModerationPage />} />
-            <Route path="legal" element={<LegalIndexPage />} />
-            <Route path="legal/contact" element={<LegalContactRedirect />} />
+            <Route index element={<RouteSuspense><HomePage /></RouteSuspense>} />
+            <Route path="discover" element={<RouteSuspense><DiscoverPage /></RouteSuspense>} />
+            <Route path="search" element={<RouteSuspense><SearchPage /></RouteSuspense>} />
+            <Route path="rooms" element={<RouteSuspense><RoomsPage /></RouteSuspense>} />
+            <Route path="rooms/:slug" element={<RouteSuspense><RoomPage /></RouteSuspense>} />
+            <Route path="chat" element={<RouteSuspense><ChatPage /></RouteSuspense>} />
+            <Route path="notifications" element={<RouteSuspense><NotificationsPage /></RouteSuspense>} />
+            <Route path="settings" element={<RouteSuspense><SettingsPage /></RouteSuspense>} />
+            <Route path="onboarding" element={<RouteSuspense><OnboardingPage /></RouteSuspense>} />
+            <Route path=":profileHandle/posts/:postId" element={<RouteSuspense><PostPage /></RouteSuspense>} />
+            <Route path="@/:handle" element={<RouteSuspense><ProfilePage /></RouteSuspense>} />
+            <Route path="terms" element={<RouteSuspense><TermsPage /></RouteSuspense>} />
+            <Route path="privacy" element={<RouteSuspense><PrivacyPage /></RouteSuspense>} />
+            <Route path="cookies" element={<RouteSuspense><CookiesPage /></RouteSuspense>} />
+            <Route path="community-guidelines" element={<RouteSuspense><CommunityGuidelinesPage /></RouteSuspense>} />
+            <Route path="copyright" element={<RouteSuspense><CopyrightPage /></RouteSuspense>} />
+            <Route path="moderation" element={<RouteSuspense><ModerationPage /></RouteSuspense>} />
+            <Route path="legal" element={<RouteSuspense><LegalIndexPage /></RouteSuspense>} />
+            <Route path="legal/contact" element={<RouteSuspense><LegalContactRedirect /></RouteSuspense>} />
             <Route path="studio" element={<Navigate to="/discover" replace />} />
-            <Route path="admin" element={<AdminPage />} />
-            <Route path="login" element={<AuthPage mode="login" />} />
-            <Route path="register" element={<AuthPage mode="register" />} />
-            <Route path=":profileHandle" element={<ProfileHandleRoute />} />
+            <Route path="admin" element={<RouteSuspense><AdminPage /></RouteSuspense>} />
+            <Route path="login" element={<RouteSuspense><AuthPage mode="login" /></RouteSuspense>} />
+            <Route path="register" element={<RouteSuspense><AuthPage mode="register" /></RouteSuspense>} />
+            <Route path=":profileHandle" element={<RouteSuspense><ProfileHandleRoute /></RouteSuspense>} />
             <Route path="*" element={<Navigate to="/discover" replace />} />
           </Route>
         </Routes>
-      </Suspense>
+      </PageLoadingProvider>
     </MotionConfig>
   );
 }
 
-function RouteLoading() {
-  return (
-    <div className="grid min-h-dvh place-items-center bg-canvas px-4 py-8 text-sm text-muted">
-      <div className="inline-flex items-center gap-3" role="status">
-        <BrandMark
-          className="shadow-soft"
-          data-testid="route-loading-brand"
-          shape="circle"
-          size="md"
-          variant="pink"
-        />
-        <span>Loading thia.lol.</span>
-      </div>
-    </div>
-  );
+function RouteSuspense({ children }: { children: ReactNode }) {
+  return <Suspense fallback={null}>{children}</Suspense>;
+}
+
+function AuthLoadingSignal() {
+  const { status } = useAuth();
+
+  usePageLoadSignal(status === "loading", "auth");
+
+  return null;
 }
 
 function ProfileHandleRoute() {

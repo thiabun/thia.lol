@@ -49,6 +49,7 @@ import {
 import { parseApiTimestamp } from "../lib/dates";
 import { cn } from "../lib/classNames";
 import { pageEntrance } from "../lib/motionPresets";
+import { usePageLoadSignal } from "../lib/pageLoadingContext";
 import { formatCountWithUnit } from "../lib/pluralize";
 import type { BadgeDefinition, Room, UserBadge } from "../lib/types";
 import { useAuth } from "../lib/useAuth";
@@ -154,6 +155,15 @@ export function AdminPage() {
 
     return { open, closed, hiddenPosts, suspendedUsers, badges: badges.badges.length };
   }, [badges.badges.length, reports]);
+  usePageLoadSignal(
+    status === "loading" ||
+      (isModerator &&
+        reports.length === 0 &&
+        rooms.length === 0 &&
+        badges.badges.length === 0 &&
+        (loading || loadingRooms || loadingBadges)),
+    "admin",
+  );
 
   async function runAction(
     report: ModerationReport,
