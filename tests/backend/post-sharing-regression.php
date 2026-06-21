@@ -8,6 +8,8 @@ $postsSource = file_get_contents($root . '/api/posts.php');
 $chatSource = file_get_contents($root . '/api/chat.php');
 $readSource = file_get_contents($root . '/api/read.php');
 $shareRendererSource = file_get_contents($root . '/api/post-share.php');
+$profileShareRendererSource = file_get_contents($root . '/api/profile-share.php');
+$indexSource = file_get_contents($root . '/api/index.php');
 $htaccessSource = file_get_contents($root . '/public/.htaccess');
 $migrationSource = file_get_contents($root . '/api/migrations/20260621_0001_add_message_attachments.sql');
 $publicIdMigrationSource = file_get_contents($root . '/api/migrations/20260621_0002_add_post_public_ids.sql');
@@ -37,6 +39,8 @@ assert_true(str_contains($readSource, 'function fetch_public_post_payload_by_ide
 assert_true(str_contains($readSource, "'publicId' => post_row_public_id"), 'post payloads should expose public ids');
 assert_true(str_contains($readSource, 'function post_canonical_path'), 'canonical post paths should be centralized');
 assert_true(str_contains($readSource, 'post_public_identifier($post)'), 'canonical post paths should use public ids');
+assert_true(str_contains($readSource, 'function profile_canonical_path'), 'canonical profile paths should be centralized');
+assert_true(str_contains($readSource, 'function profile_share_card_path'), 'profile share-card paths should be centralized');
 assert_true(str_contains($readSource, 'function post_share_summary_payload'), 'chat attachments should use a typed post summary');
 assert_true(str_contains($readSource, "post_select_sql(\n            'AND p.id = :post_id'"), 'public numeric post lookup should use shared visibility SQL');
 assert_true(str_contains($readSource, "post_select_sql(\n                'AND p.public_id = :post_public_id'"), 'public id lookup should use shared visibility SQL');
@@ -55,6 +59,10 @@ assert_true(str_contains($postsSource, "header('Content-Type: image/png')"), 'sh
 assert_true(str_contains($postsSource, "stale-while-revalidate=86400"), 'share-card endpoint should send crawler-friendly cache headers');
 assert_true(str_contains($postsSource, "header('Content-Disposition: inline')"), 'share-card endpoint should render inline for crawlers');
 assert_true(str_contains($postsSource, 'posts_share_card_fallback'), 'share-card endpoint should have a fallback image path');
+assert_true(str_contains($postsSource, 'function profile_share_card(string $handle): void'), 'profile share-card endpoint should be implemented');
+assert_true(str_contains($postsSource, 'profile_viewer_can_view_row($profileRow, null)'), 'profile share cards should not expose private profiles');
+assert_true(str_contains($postsSource, 'profile_share_card_modules'), 'profile share cards should render public module previews');
+assert_true(str_contains($postsSource, 'posts_share_card_draw_cover_uploaded_image'), 'profile share cards should render cover-style uploaded images');
 assert_true(str_contains($postsSource, 'posts_generate_public_id'), 'new posts should generate public ids');
 assert_true(str_contains($postsSource, 'NotoSans-Regular.ttf'), 'share cards should use bundled UTF-8 text fonts');
 assert_true(str_contains($postsSource, 'NotoEmoji-Regular.ttf'), 'share cards should use bundled emoji fonts');
@@ -102,8 +110,22 @@ assert_true(str_contains($shareRendererSource, 'post_share_page_escape'), 'share
 assert_true(str_contains($shareRendererSource, 'header(\'Location: \' . post_canonical_path($post), true, 302)'), 'stale handles should redirect safely');
 assert_true(str_contains($shareRendererSource, 'post_public_identifier($post)'), 'numeric permalink returns should redirect to public id URLs');
 
+assert_true(is_string($profileShareRendererSource), 'profile share renderer should be readable');
+assert_true(str_contains($profileShareRendererSource, '<meta property="og:type" content="profile" />'), 'profile share renderer should emit profile Open Graph type');
+assert_true(str_contains($profileShareRendererSource, '<meta property="profile:username"'), 'profile share renderer should emit profile username metadata');
+assert_true(str_contains($profileShareRendererSource, '<meta property="og:image"'), 'profile share renderer should emit og:image');
+assert_true(str_contains($profileShareRendererSource, '<meta name="twitter:image"'), 'profile share renderer should emit twitter:image');
+assert_true(str_contains($profileShareRendererSource, 'profile_share_page_https_url(post_public_base_url() . profile_share_card_path($profile))'), 'profile share renderer should use absolute HTTPS share-card images');
+assert_true(str_contains($profileShareRendererSource, 'profile_viewer_can_view_row($profileRow, null)'), 'profile share renderer should hide private profile metadata');
+assert_true(str_contains($profileShareRendererSource, 'profile_share_page_fallback_html'), 'profile share renderer should include a no-JS fallback body');
+
+assert_true(is_string($indexSource), 'API index should be readable');
+assert_true(str_contains($indexSource, "segments[2] === 'share-card.png'"), 'profile share-card API route should be registered');
+assert_true(str_contains($indexSource, 'profile_share_card($segments[1])'), 'profile share-card API route should call the renderer');
+
 assert_true(is_string($htaccessSource), 'public htaccess should be readable');
 assert_true(str_contains($htaccessSource, 'api/post-share.php?handle=$1&postId=$2'), 'post permalink rewrite should target the share renderer');
+assert_true(str_contains($htaccessSource, 'api/profile-share.php?handle=$1'), 'profile permalink rewrite should target the profile share renderer');
 assert_true(str_contains($htaccessSource, 'REQUEST_URI} ^/api'), 'API exclusion should remain ahead of SPA rewrite');
 
 echo "post sharing regression ok\n";

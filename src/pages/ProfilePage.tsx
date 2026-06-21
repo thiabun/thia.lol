@@ -23,6 +23,7 @@ import {
   Save,
   Settings2,
   Shield,
+  Share2,
   Sparkles,
   Star,
   Trash2,
@@ -65,6 +66,7 @@ import {
   ProfileModulesSection,
   type ProfileMusicAutoplayRequest,
 } from "../components/social/ProfileModules";
+import { ProfileShareModal } from "../components/social/ProfileShareModal";
 import { ReportForm } from "../components/social/ReportForm";
 import { RichText } from "../components/social/RichText";
 import { RoomCard } from "../components/social/RoomCard";
@@ -320,6 +322,7 @@ export function ProfilePage() {
     { kind: "success" | "error"; message: string } | undefined
   >();
   const [profileEditorTourOpen, setProfileEditorTourOpen] = useState(false);
+  const [profileShareOpen, setProfileShareOpen] = useState(false);
 
   function setCurrentCanvasDraft(nextDraft: ProfileCanvasDraftState | undefined) {
     canvasDraftRef.current = nextDraft;
@@ -1641,6 +1644,7 @@ export function ProfilePage() {
           followPosting={followPosting}
           isOwnProfile={isOwnProfile}
           onStarToggle={handleStarToggle}
+          onShareProfile={() => setProfileShareOpen(true)}
           profile={renderedProfile}
           profileControlBusy={profileControlBusy}
           size={size}
@@ -1738,6 +1742,20 @@ export function ProfilePage() {
           >
             {integrationReturnNotice.message}
           </p>
+        ) : null}
+        {!canvasEditing ? (
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              data-testid="profile-share-button"
+              icon={<Share2 aria-hidden="true" size={16} />}
+              onClick={() => setProfileShareOpen(true)}
+            >
+              Share
+            </Button>
+          </div>
         ) : null}
         {isOwnProfile && !canvasEditing ? (
           <ProfileTransitionEditor
@@ -1859,6 +1877,11 @@ export function ProfilePage() {
           );
           setPendingProfileImageCrop(undefined);
         }}
+      />
+      <ProfileShareModal
+        open={profileShareOpen}
+        profile={renderedProfile}
+        onClose={() => setProfileShareOpen(false)}
       />
     </motion.div>
   );
@@ -6514,6 +6537,7 @@ type ProfileInfoModuleProps = {
   onFollowToggle: () => void;
   onMuteToggle?: (() => Promise<void> | void) | undefined;
   onOpenPanel: (panel: "followers" | "following" | "badges") => void;
+  onShareProfile: () => void;
   onStarToggle: () => void;
   profile: Profile;
   profileControlBusy?: "block" | "mute" | undefined;
@@ -6535,6 +6559,7 @@ function ProfileInfoModule({
   onFollowToggle,
   onMuteToggle,
   onOpenPanel,
+  onShareProfile,
   onStarToggle,
   profile,
   profileControlBusy,
@@ -6581,6 +6606,7 @@ function ProfileInfoModule({
           onFollowToggle={onFollowToggle}
           onMuteToggle={onMuteToggle}
           onOpenPanel={onOpenPanel}
+          onShareProfile={onShareProfile}
           onStarToggle={onStarToggle}
           profile={profile}
           profileControlBusy={profileControlBusy}
@@ -6647,6 +6673,7 @@ type ProfileInfoSizedCardProps = {
   onFollowToggle: () => void;
   onMuteToggle?: (() => Promise<void> | void) | undefined;
   onOpenPanel: (panel: "followers" | "following" | "badges") => void;
+  onShareProfile: () => void;
   onStarToggle: () => void;
   profile: Profile;
   profileControlBusy?: "block" | "mute" | undefined;
@@ -6783,6 +6810,7 @@ function ProfileInfoSizedCard({
   onFollowToggle,
   onMuteToggle,
   onOpenPanel,
+  onShareProfile,
   onStarToggle,
   profile,
   profileControlBusy,
@@ -6845,6 +6873,7 @@ function ProfileInfoSizedCard({
             isOwnProfile={isOwnProfile}
             messageToHandle={messageToHandle}
             onFollowToggle={onFollowToggle}
+            onShareProfile={onShareProfile}
             onStarToggle={onStarToggle}
             profile={profile}
             starPosting={starPosting}
@@ -7002,6 +7031,7 @@ function ProfileInfoSizedCard({
             onBlockToggle={onBlockToggle}
             onFollowToggle={onFollowToggle}
             onMuteToggle={onMuteToggle}
+            onShareProfile={onShareProfile}
             onStarToggle={onStarToggle}
             primaryCompact={layout.primaryCompact}
             profile={profile}
@@ -7023,6 +7053,7 @@ function ProfileInfoActions({
   onBlockToggle,
   onFollowToggle,
   onMuteToggle,
+  onShareProfile,
   onStarToggle,
   primaryCompact = false,
   profile,
@@ -7037,6 +7068,7 @@ function ProfileInfoActions({
   onBlockToggle?: (() => Promise<void> | void) | undefined;
   onFollowToggle: () => void;
   onMuteToggle?: (() => Promise<void> | void) | undefined;
+  onShareProfile: () => void;
   onStarToggle: () => void;
   primaryCompact?: boolean | undefined;
   profile: Profile;
@@ -7046,13 +7078,10 @@ function ProfileInfoActions({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
-  if (isOwnProfile) {
-    return null;
-  }
-
   const disabled = profile.blockedByMe === true;
   const iconOnly = compact || primaryCompact;
   const actionIconSize = iconOnly ? 14 : 15;
+  const showOverflowMenu = showMenu && !isOwnProfile;
   const followLabel = profile.isFollowRequestPending
     ? "Requested"
     : profile.isFollowing
@@ -7066,6 +7095,19 @@ function ProfileInfoActions({
       className="relative flex max-w-full shrink-0 items-center justify-end gap-1.5"
       data-testid="profile-info-action-rail"
     >
+      <Button
+        type="button"
+        variant="secondary"
+        size="icon"
+        className="size-8 p-0"
+        data-testid="profile-info-share-button"
+        icon={<Share2 aria-hidden="true" size={actionIconSize} />}
+        aria-label={`Share @${profile.user.handle}`}
+        title={`Share @${profile.user.handle}`}
+        onClick={onShareProfile}
+      />
+      {isOwnProfile ? null : (
+        <>
       {messageToHandle && !disabled ? (
         <Link
           className={cn(
@@ -7119,7 +7161,9 @@ function ProfileInfoActions({
           {iconOnly ? null : followPosting ? "Saving" : followLabel}
         </Button>
       ) : null}
-      {showMenu ? (
+        </>
+      )}
+      {showOverflowMenu ? (
         <div className="relative">
           <Button
             type="button"

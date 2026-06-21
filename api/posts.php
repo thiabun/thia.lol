@@ -610,6 +610,129 @@ function posts_share_card(string $postIdentifier): void
     exit;
 }
 
+function profile_share_card(string $handle): void
+{
+    $headOnly = $_SERVER['REQUEST_METHOD'] === 'HEAD';
+    $profileRow = fetch_profile_by_handle(normalize_handle($handle));
+
+    if (
+        $profileRow === null
+        || !profile_public_account_available($profileRow, null)
+        || !profile_viewer_can_view_row($profileRow, null)
+        || !extension_loaded('gd')
+        || !function_exists('imagecreatetruecolor')
+    ) {
+        posts_share_card_fallback($headOnly);
+    }
+
+    posts_share_card_png_headers();
+
+    if ($headOnly) {
+        exit;
+    }
+
+    $profile = profile_payload_with_featured(
+        $profileRow,
+        null,
+        profile_social_context((int) $profileRow['user_id'], null),
+        null
+    );
+    $modules = profile_share_card_modules((int) $profileRow['user_id']);
+    $image = imagecreatetruecolor(1200, 630);
+
+    if (!$image) {
+        posts_share_card_fallback(false);
+    }
+
+    imageantialias($image, true);
+    imagealphablending($image, true);
+    $bg = imagecolorallocate($image, 13, 31, 41);
+    $panel = imagecolorallocate($image, 22, 51, 61);
+    $panelSoft = imagecolorallocatealpha($image, 26, 60, 72, 18);
+    $panelStrong = imagecolorallocatealpha($image, 9, 25, 34, 28);
+    $line = imagecolorallocate($image, 65, 126, 146);
+    $text = imagecolorallocate($image, 232, 247, 248);
+    $muted = imagecolorallocate($image, 158, 192, 202);
+    $accent = imagecolorallocate($image, 88, 226, 224);
+    $panelLeft = 44;
+    $panelTop = 96;
+    $panelRight = 1156;
+    $panelBottom = 586;
+
+    imagefilledrectangle($image, 0, 0, 1200, 630, $bg);
+    posts_share_card_draw_lockup($image);
+    imagefilledrectangle($image, $panelLeft, $panelTop, $panelRight, $panelBottom, $panel);
+
+    $backgroundUrl = $profile['profileBackground']
+        ?? $profile['profileBackgroundVideoPoster']
+        ?? $profile['bannerUrl']
+        ?? $profile['user']['avatarUrl']
+        ?? null;
+    if (is_string($backgroundUrl) && $backgroundUrl !== '') {
+        posts_share_card_draw_cover_uploaded_image(
+            $image,
+            $backgroundUrl,
+            $panelLeft,
+            $panelTop,
+            $panelRight - $panelLeft,
+            $panelBottom - $panelTop
+        );
+        imagefilledrectangle($image, $panelLeft, $panelTop, $panelRight, $panelBottom, $panelStrong);
+    }
+
+    imagefilledrectangle($image, $panelLeft, $panelTop, $panelRight, $panelBottom, $panelSoft);
+    imagerectangle($image, $panelLeft, $panelTop, $panelRight, $panelBottom, $line);
+
+    $fonts = posts_share_card_font_paths();
+    $left = 92;
+    $top = 136;
+    $avatarDrawn = posts_share_card_draw_avatar(
+        $image,
+        ['author' => ['avatarUrl' => $profile['user']['avatarUrl'] ?? null]],
+        $left,
+        $top,
+        88
+    );
+    $identityLeft = $avatarDrawn ? $left + 112 : $left;
+    $displayName = (string) ($profile['user']['displayName'] ?? $profile['user']['handle'] ?? 'thia.lol');
+    $profileHandle = '@' . (string) ($profile['user']['handle'] ?? 'profile');
+    $description = profile_share_description($profile);
+    $canonical = profile_canonical_path($profile);
+
+    posts_share_card_text($image, $fonts, 40, $identityLeft, $top + 38, $text, $displayName);
+    posts_share_card_text($image, $fonts, 23, $identityLeft, $top + 78, $muted, $profileHandle);
+    posts_share_card_wrapped_text($image, $fonts, 24, $left, $top + 136, $text, $description, 540, 3);
+    profile_share_card_draw_stats($image, $fonts, $profile, $left, 350, $text, $muted);
+
+    $moduleX = 700;
+    $moduleY = 146;
+    $moduleWidth = 194;
+    $moduleHeight = 114;
+    $moduleGap = 16;
+    foreach (array_slice($modules, 0, 4) as $index => $module) {
+        $x = $moduleX + (($index % 2) * ($moduleWidth + $moduleGap));
+        $y = $moduleY + ((int) floor($index / 2) * ($moduleHeight + $moduleGap));
+        profile_share_card_draw_module_preview(
+            $image,
+            $fonts,
+            $module,
+            $x,
+            $y,
+            $moduleWidth,
+            $moduleHeight,
+            $text,
+            $muted,
+            $accent,
+            $line
+        );
+    }
+
+    posts_share_card_text($image, $fonts, 18, $left, 538, $muted, $canonical);
+
+    imagepng($image);
+    exit;
+}
+
 function post_route_identifier_is_valid(string $identifier): bool
 {
     return normalize_post_public_identifier($identifier) !== null;
@@ -669,6 +792,244 @@ function posts_share_card_fallback(bool $headOnly = false): void
     }
 
     exit;
+}
+
+function profile_share_card_modules(int $userId): array
+{
+    if (!database_table_exists('profile_modules')) {
+        return [];
+    }
+
+    $statement = db_query(
+        'SELECT type, title, config_json, position
+         FROM profile_modules
+         WHERE user_id = :user_id
+           AND visibility = :visibility
+           AND status = :status
+           AND type <> :profile_info
+           AND type <> :placeholder
+         ORDER BY position ASC, id ASC
+         LIMIT 12',
+        [
+            'user_id' => $userId,
+            'visibility' => 'public',
+            'status' => 'active',
+            'profile_info' => 'profile_info',
+            'placeholder' => 'placeholder',
+        ]
+    );
+
+    $modules = [];
+
+    foreach ($statement->fetchAll() as $row) {
+        $config = [];
+        $decoded = json_decode((string) ($row['config_json'] ?? '{}'), true);
+
+        if (is_array($decoded)) {
+            $config = $decoded;
+        }
+
+        $preview = profile_share_card_module_preview(
+            (string) ($row['type'] ?? ''),
+            is_string($row['title'] ?? null) ? (string) $row['title'] : null,
+            $config
+        );
+
+        if ($preview !== null) {
+            $modules[] = $preview;
+        }
+    }
+
+    return $modules;
+}
+
+function profile_share_card_module_preview(string $type, ?string $title, array $config): ?array
+{
+    $label = profile_share_card_module_type_label($type);
+    $name = trim($title ?? '');
+    $description = '';
+    $imageUrl = profile_share_card_module_image_url($type, $config);
+
+    if ($name === '') {
+        $name = profile_share_card_module_title($type, $config, $label);
+    }
+
+    if (is_string($config['body'] ?? null)) {
+        $description = post_body_snippet((string) $config['body'], 80);
+    } elseif (is_string($config['description'] ?? null)) {
+        $description = post_body_snippet((string) $config['description'], 80);
+    } elseif (is_string($config['statusText'] ?? null)) {
+        $description = post_body_snippet((string) $config['statusText'], 80);
+    } elseif (is_string($config['platform'] ?? null)) {
+        $description = profile_share_card_platform_label((string) $config['platform']);
+    } elseif (is_array($config['integration'] ?? null)) {
+        $description = profile_share_card_platform_label((string) ($config['integration']['provider'] ?? 'Link'));
+    }
+
+    return [
+        'label' => $label,
+        'title' => $name,
+        'description' => $description,
+        'imageUrl' => $imageUrl,
+    ];
+}
+
+function profile_share_card_module_type_label(string $type): string
+{
+    return match (true) {
+        $type === 'activity' => 'Feed',
+        $type === 'custom_text' || $type === 'text' => 'Text',
+        $type === 'uploaded_image' || str_starts_with($type, 'gallery') => 'Image',
+        $type === 'uploaded_video' || str_contains($type, 'video') => 'Video',
+        $type === 'music' || str_contains($type, 'music') => 'Music',
+        $type === 'connections' => 'Links',
+        str_contains($type, 'twitch') => 'Stream',
+        str_contains($type, 'github') => 'Project',
+        default => 'Module',
+    };
+}
+
+function profile_share_card_module_title(string $type, array $config, string $fallback): string
+{
+    foreach ([
+        $config['label'] ?? null,
+        $config['audio']['title'] ?? null,
+        $config['video']['title'] ?? null,
+        $config['link']['label'] ?? null,
+        $config['integration']['metadata']['title'] ?? null,
+        $config['integration']['displayName'] ?? null,
+    ] as $value) {
+        if (is_string($value) && trim($value) !== '') {
+            return trim($value);
+        }
+    }
+
+    if ($type === 'activity') {
+        return 'Feed';
+    }
+
+    return $fallback;
+}
+
+function profile_share_card_module_image_url(string $type, array $config): ?string
+{
+    if (
+        in_array($type, ['uploaded_image', 'gallery_media', 'gallery_slideshow', 'gallery_feed'], true)
+        && is_array($config['mediaItems'] ?? null)
+    ) {
+        foreach ($config['mediaItems'] as $item) {
+            if (is_array($item) && is_string($item['url'] ?? null) && $item['url'] !== '') {
+                return (string) $item['url'];
+            }
+        }
+    }
+
+    foreach ([
+        $config['video']['posterUrl'] ?? null,
+        $config['integration']['metadata']['image'] ?? null,
+        $config['integration']['metadata']['imageUrl'] ?? null,
+        $config['integration']['metadata']['thumbnailUrl'] ?? null,
+        $config['imageUrl'] ?? null,
+    ] as $value) {
+        if (is_string($value) && $value !== '' && str_starts_with($value, '/uploads/media/')) {
+            return $value;
+        }
+    }
+
+    return null;
+}
+
+function profile_share_card_platform_label(string $platform): string
+{
+    return match (strtolower($platform)) {
+        'apple_music' => 'Apple Music',
+        'github' => 'GitHub',
+        'spotify' => 'Spotify',
+        'twitch' => 'Twitch',
+        'youtube' => 'YouTube',
+        default => ucfirst(str_replace('_', ' ', $platform)),
+    };
+}
+
+function profile_share_card_draw_stats(
+    $image,
+    array $fonts,
+    array $profile,
+    int $x,
+    int $y,
+    int $text,
+    int $muted
+): void {
+    $stats = [
+        [(int) ($profile['followerCount'] ?? 0), 'Followers'],
+        [(int) ($profile['followingCount'] ?? 0), 'Following'],
+        [(int) ($profile['stats']['echoes'] ?? 0), 'Likes'],
+        [(int) ($profile['starCount'] ?? 0), 'Stars'],
+    ];
+    $cursor = $x;
+
+    foreach ($stats as [$value, $label]) {
+        posts_share_card_text($image, $fonts, 25, $cursor, $y, $text, (string) $value);
+        $valueWidth = posts_share_card_text_width($fonts, 25, (string) $value);
+        posts_share_card_text($image, $fonts, 17, $cursor + $valueWidth + 8, $y, $muted, $label);
+        $cursor += $valueWidth + posts_share_card_text_width($fonts, 17, $label) + 34;
+    }
+}
+
+function profile_share_card_draw_module_preview(
+    $image,
+    array $fonts,
+    array $module,
+    int $x,
+    int $y,
+    int $width,
+    int $height,
+    int $text,
+    int $muted,
+    int $accent,
+    int $line
+): void {
+    $surface = imagecolorallocatealpha($image, 9, 25, 34, 22);
+    imagefilledrectangle($image, $x, $y, $x + $width, $y + $height, $surface);
+    imagerectangle($image, $x, $y, $x + $width, $y + $height, $line);
+
+    $imageUrl = $module['imageUrl'] ?? null;
+    $textX = $x + 14;
+    if (is_string($imageUrl) && $imageUrl !== '') {
+        $thumbSize = 58;
+        if (posts_share_card_draw_cover_uploaded_image($image, $imageUrl, $x + 12, $y + 14, $thumbSize, $thumbSize)) {
+            imagerectangle($image, $x + 12, $y + 14, $x + 12 + $thumbSize, $y + 14 + $thumbSize, $line);
+            $textX = $x + 82;
+        }
+    }
+
+    posts_share_card_text($image, $fonts, 11, $textX, $y + 28, $accent, strtoupper((string) $module['label']));
+    posts_share_card_wrapped_text(
+        $image,
+        $fonts,
+        16,
+        $textX,
+        $y + 55,
+        $text,
+        (string) $module['title'],
+        max(60, $x + $width - $textX - 12),
+        1
+    );
+
+    $description = trim((string) ($module['description'] ?? ''));
+    if ($description !== '') {
+        posts_share_card_wrapped_text(
+            $image,
+            $fonts,
+            11,
+            $textX,
+            $y + 82,
+            $muted,
+            $description,
+            max(60, $x + $width - $textX - 12),
+            1
+        );
+    }
 }
 
 function posts_share_card_font_paths(): array
@@ -1111,6 +1472,59 @@ function posts_share_card_draw_thumbnail($image, array $post): bool
 
     $line = imagecolorallocate($image, 65, 126, 146);
     imagerectangle($image, $targetX, $targetY, $targetX + $targetWidth, $targetY + $targetHeight, $line);
+
+    return true;
+}
+
+function posts_share_card_draw_cover_uploaded_image(
+    $image,
+    string $mediaUrl,
+    int $targetX,
+    int $targetY,
+    int $targetWidth,
+    int $targetHeight
+): bool {
+    $path = posts_share_card_media_path($mediaUrl);
+
+    if ($path === null) {
+        return false;
+    }
+
+    $source = posts_share_card_load_image($path);
+
+    if (!$source) {
+        return false;
+    }
+
+    $sourceWidth = imagesx($source);
+    $sourceHeight = imagesy($source);
+    $sourceRatio = $sourceWidth / max(1, $sourceHeight);
+    $targetRatio = $targetWidth / max(1, $targetHeight);
+
+    if ($sourceRatio > $targetRatio) {
+        $cropHeight = $sourceHeight;
+        $cropWidth = (int) round($sourceHeight * $targetRatio);
+        $cropX = (int) floor(($sourceWidth - $cropWidth) / 2);
+        $cropY = 0;
+    } else {
+        $cropWidth = $sourceWidth;
+        $cropHeight = (int) round($sourceWidth / $targetRatio);
+        $cropX = 0;
+        $cropY = (int) floor(($sourceHeight - $cropHeight) / 2);
+    }
+
+    imagecopyresampled(
+        $image,
+        $source,
+        $targetX,
+        $targetY,
+        $cropX,
+        $cropY,
+        $targetWidth,
+        $targetHeight,
+        $cropWidth,
+        $cropHeight
+    );
 
     return true;
 }

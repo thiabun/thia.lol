@@ -52,6 +52,9 @@ AddType video/webm .webm
   # Serve post-specific Open Graph metadata before the React app hydrates.
   RewriteRule ^@([A-Za-z0-9_-]{1,40})/posts/([A-Za-z0-9_-]{1,40})/?$ api/post-share.php?handle=$1&postId=$2 [QSA,L]
 
+  # Serve profile-specific Open Graph metadata before the React app hydrates.
+  RewriteRule ^@([A-Za-z0-9_-]{1,40})/?$ api/profile-share.php?handle=$1 [QSA,L]
+
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [END]

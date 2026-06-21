@@ -1459,6 +1459,22 @@ export function postShareCardUrl(post: Pick<Post, "id" | "publicId">) {
   return `/api/posts/${postPublicIdentifier(post)}/share-card.png`;
 }
 
+export function profileCanonicalPath(profile: Pick<Profile, "user">) {
+  return `/@${profile.user.handle}`;
+}
+
+export function profileCanonicalUrl(profile: Pick<Profile, "user">) {
+  if (typeof window === "undefined") {
+    return `https://thia.lol${profileCanonicalPath(profile)}`;
+  }
+
+  return new URL(profileCanonicalPath(profile), window.location.origin).toString();
+}
+
+export function profileShareCardUrl(profile: Pick<Profile, "user">) {
+  return `/api/profiles/${encodeURIComponent(profile.user.handle)}/share-card.png`;
+}
+
 export function sharePostToMessages(
   postId: number | string,
   input: SharePostToMessagesInput,

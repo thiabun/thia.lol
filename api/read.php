@@ -451,6 +451,38 @@ function post_share_card_path(array $post): string
     return '/api/posts/' . rawurlencode(post_public_identifier($post)) . '/share-card.png';
 }
 
+function profile_canonical_path(array $profile): string
+{
+    $handle = (string) ($profile['handle'] ?? ($profile['user']['handle'] ?? ''));
+
+    return '/@' . rawurlencode($handle);
+}
+
+function profile_canonical_url(array $profile): string
+{
+    return post_public_base_url() . profile_canonical_path($profile);
+}
+
+function profile_share_card_path(array $profile): string
+{
+    $handle = (string) ($profile['handle'] ?? ($profile['user']['handle'] ?? ''));
+
+    return '/api/profiles/' . rawurlencode($handle) . '/share-card.png';
+}
+
+function profile_share_description(array $profile): string
+{
+    $bio = trim((string) ($profile['bio'] ?? ''));
+
+    if ($bio !== '') {
+        return post_body_snippet($bio, 180);
+    }
+
+    $handle = (string) ($profile['handle'] ?? ($profile['user']['handle'] ?? 'profile'));
+
+    return '@' . $handle . ' on thia.lol.';
+}
+
 function post_body_snippet(string $body, int $maxLength = 180): string
 {
     $snippet = trim((string) preg_replace('/\s+/u', ' ', $body));

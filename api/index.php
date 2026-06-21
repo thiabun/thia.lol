@@ -176,6 +176,14 @@ try {
         profiles_show($segments[1]);
     }
 
+    if (($segments[0] ?? null) === 'profiles' && count($segments) === 3 && $segments[2] === 'share-card.png') {
+        if ($method === 'GET' || $method === 'HEAD') {
+            profile_share_card($segments[1]);
+        }
+
+        json_error('Method not allowed.', 405);
+    }
+
     if (($segments[0] ?? null) === 'profiles' && count($segments) === 3 && $segments[2] === 'posts') {
         profile_posts_index($segments[1]);
     }
