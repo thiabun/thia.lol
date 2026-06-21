@@ -716,19 +716,23 @@ function profile_share_card(string $handle): void
     foreach (array_slice($modules, 0, 4) as $index => $module) {
         $x = $moduleX + (($index % 2) * ($moduleWidth + $moduleGap));
         $y = $moduleY + ((int) floor($index / 2) * ($moduleHeight + $moduleGap));
-        profile_share_card_draw_module_preview(
-            $image,
-            $fonts,
-            $module,
-            $x,
-            $y,
-            $moduleWidth,
-            $moduleHeight,
-            $text,
-            $muted,
-            $accent,
-            $line
-        );
+        try {
+            profile_share_card_draw_module_preview(
+                $image,
+                $fonts,
+                $module,
+                $x,
+                $y,
+                $moduleWidth,
+                $moduleHeight,
+                $text,
+                $muted,
+                $accent,
+                $line
+            );
+        } catch (Throwable) {
+            continue;
+        }
     }
 
     posts_share_card_text($image, $fonts, 18, $left, $canonicalY, $muted, $canonical);
@@ -804,24 +808,28 @@ function profile_share_card_modules(int $userId): array
         return [];
     }
 
-    $statement = db_query(
-        'SELECT type, title, config_json, position
-         FROM profile_modules
-         WHERE user_id = :user_id
-           AND visibility = :visibility
-           AND status = :status
-           AND type <> :profile_info
-           AND type <> :placeholder
-         ORDER BY position ASC, id ASC
-         LIMIT 12',
-        [
-            'user_id' => $userId,
-            'visibility' => 'public',
-            'status' => 'active',
-            'profile_info' => 'profile_info',
-            'placeholder' => 'placeholder',
-        ]
-    );
+    try {
+        $statement = db_query(
+            'SELECT type, title, config_json, position
+             FROM profile_modules
+             WHERE user_id = :user_id
+               AND visibility = :visibility
+               AND status = :status
+               AND type <> :profile_info
+               AND type <> :placeholder
+             ORDER BY position ASC, id ASC
+             LIMIT 12',
+            [
+                'user_id' => $userId,
+                'visibility' => 'public',
+                'status' => 'active',
+                'profile_info' => 'profile_info',
+                'placeholder' => 'placeholder',
+            ]
+        );
+    } catch (Throwable) {
+        return [];
+    }
 
     $modules = [];
 
@@ -833,14 +841,18 @@ function profile_share_card_modules(int $userId): array
             $config = $decoded;
         }
 
-        $type = (string) ($row['type'] ?? '');
-        $config = profile_share_card_module_config_for_preview($type, $config, $userId);
-        $preview = profile_share_card_module_preview(
-            $type,
-            is_string($row['title'] ?? null) ? (string) $row['title'] : null,
-            $config,
-            $userId
-        );
+        try {
+            $type = (string) ($row['type'] ?? '');
+            $config = profile_share_card_module_config_for_preview($type, $config, $userId);
+            $preview = profile_share_card_module_preview(
+                $type,
+                is_string($row['title'] ?? null) ? (string) $row['title'] : null,
+                $config,
+                $userId
+            );
+        } catch (Throwable) {
+            continue;
+        }
 
         if ($preview !== null) {
             $modules[] = $preview;
@@ -1154,7 +1166,11 @@ function profile_share_card_module_image_url(string $type, array $config): ?stri
         $config['integration']['metadata']['thumbnailUrl'] ?? null,
         $config['imageUrl'] ?? null,
     ] as $value) {
-        if (is_string($value) && $value !== '' && str_starts_with($value, '/uploads/media/')) {
+        if (!is_string($value) || $value === '') {
+            continue;
+        }
+
+        if (str_starts_with($value, '/uploads/media/') || posts_share_card_provider_image_url_is_allowed($value)) {
             return $value;
         }
     }
@@ -1230,23 +1246,27 @@ function profile_share_card_activity_items(int $userId): array
         return [];
     }
 
-    $statement = db_query(
-        "SELECT p.body
-         FROM posts p
-         LEFT JOIN rooms r ON r.id = p.room_id
-         WHERE p.author_id = :user_id
-           AND p.parent_id IS NULL
-           AND p.visibility = 'public'
-           AND p.status = 'published'
-           AND p.deleted_at IS NULL
-           AND (
-             p.room_id IS NULL
-             OR (r.visibility = 'public' AND r.deleted_at IS NULL)
-           )
-         ORDER BY p.created_at DESC, p.id DESC
-         LIMIT 3",
-        ['user_id' => $userId]
-    );
+    try {
+        $statement = db_query(
+            "SELECT p.body
+             FROM posts p
+             LEFT JOIN rooms r ON r.id = p.room_id
+             WHERE p.author_id = :user_id
+               AND p.parent_id IS NULL
+               AND p.visibility = 'public'
+               AND p.status = 'published'
+               AND p.deleted_at IS NULL
+               AND (
+                 p.room_id IS NULL
+                 OR (r.visibility = 'public' AND r.deleted_at IS NULL)
+               )
+             ORDER BY p.created_at DESC, p.id DESC
+             LIMIT 3",
+            ['user_id' => $userId]
+        );
+    } catch (Throwable) {
+        return [];
+    }
 
     $items = [];
 
@@ -1377,7 +1397,7 @@ function profile_share_card_draw_module_preview(
     $textX = $x + 14;
     if (is_string($imageUrl) && $imageUrl !== '') {
         $thumbSize = 58;
-        if (posts_share_card_draw_cover_uploaded_image($image, $imageUrl, $x + 12, $y + 14, $thumbSize, $thumbSize)) {
+        if (posts_share_card_draw_cover_safe_image($image, $imageUrl, $x + 12, $y + 14, $thumbSize, $thumbSize)) {
             imagerectangle($image, $x + 12, $y + 14, $x + 12 + $thumbSize, $y + 14 + $thumbSize, $line);
             $textX = $x + 82;
         }
@@ -1442,7 +1462,7 @@ function profile_share_card_draw_image_preview(
     $shouldDrawTitle = $title !== '' && strcasecmp($title, $label) !== 0;
 
     if (count($imageUrls) <= 1) {
-        if (($imageUrls[0] ?? null) && posts_share_card_draw_cover_uploaded_image($image, $imageUrls[0], $x + 1, $y + 1, $width - 2, $height - 2)) {
+        if (($imageUrls[0] ?? null) && posts_share_card_draw_cover_safe_image($image, $imageUrls[0], $x + 1, $y + 1, $width - 2, $height - 2)) {
             if ($shouldDrawTitle) {
                 $shade = imagecolorallocatealpha($image, 5, 18, 27, 52);
                 imagefilledrectangle($image, $x + 1, $y + $height - 48, $x + $width - 1, $y + $height - 1, $shade);
@@ -1456,7 +1476,7 @@ function profile_share_card_draw_image_preview(
         foreach (array_slice($imageUrls, 0, 4) as $index => $imageUrl) {
             $tileX = $x + 2 + (($index % 2) * ($tileWidth + $gap));
             $tileY = $y + 2 + ((int) floor($index / 2) * ($tileHeight + $gap));
-            posts_share_card_draw_cover_uploaded_image($image, $imageUrl, $tileX, $tileY, $tileWidth, $tileHeight);
+            posts_share_card_draw_cover_safe_image($image, $imageUrl, $tileX, $tileY, $tileWidth, $tileHeight);
         }
     }
 
@@ -1516,7 +1536,7 @@ function profile_share_card_draw_player_preview(
     $coverDrawn = false;
 
     if (is_string($imageUrl) && $imageUrl !== '') {
-        $coverDrawn = posts_share_card_draw_cover_uploaded_image($image, $imageUrl, $x + 12, $y + 16, $coverSize, $coverSize);
+        $coverDrawn = posts_share_card_draw_cover_safe_image($image, $imageUrl, $x + 12, $y + 16, $coverSize, $coverSize);
     }
 
     if (!$coverDrawn) {
@@ -2149,6 +2169,49 @@ function posts_share_card_draw_cover_uploaded_image(
         return false;
     }
 
+    posts_share_card_draw_cover_source($image, $source, $targetX, $targetY, $targetWidth, $targetHeight);
+
+    return true;
+}
+
+function posts_share_card_draw_cover_safe_image(
+    $image,
+    string $imageUrl,
+    int $targetX,
+    int $targetY,
+    int $targetWidth,
+    int $targetHeight
+): bool {
+    $source = posts_share_card_load_safe_image_source($imageUrl);
+
+    if (!$source) {
+        return false;
+    }
+
+    posts_share_card_draw_cover_source($image, $source, $targetX, $targetY, $targetWidth, $targetHeight);
+
+    return true;
+}
+
+function posts_share_card_load_safe_image_source(string $imageUrl): ?GdImage
+{
+    $path = posts_share_card_media_path($imageUrl);
+
+    if ($path !== null) {
+        return posts_share_card_load_image($path);
+    }
+
+    return posts_share_card_load_allowlisted_provider_image($imageUrl);
+}
+
+function posts_share_card_draw_cover_source(
+    $image,
+    GdImage $source,
+    int $targetX,
+    int $targetY,
+    int $targetWidth,
+    int $targetHeight
+): void {
     $sourceWidth = imagesx($source);
     $sourceHeight = imagesy($source);
     $sourceRatio = $sourceWidth / max(1, $sourceHeight);
@@ -2178,8 +2241,6 @@ function posts_share_card_draw_cover_uploaded_image(
         $cropWidth,
         $cropHeight
     );
-
-    return true;
 }
 
 function posts_share_card_draw_avatar($image, array $post, int $x, int $y, int $size): bool
@@ -2271,6 +2332,147 @@ function posts_share_card_media_path(string $mediaUrl): ?string
     }
 
     return null;
+}
+
+function posts_share_card_load_allowlisted_provider_image(string $imageUrl): ?GdImage
+{
+    $body = posts_share_card_fetch_allowlisted_provider_image($imageUrl);
+
+    if ($body === null || !function_exists('imagecreatefromstring')) {
+        return null;
+    }
+
+    $size = @getimagesizefromstring($body);
+
+    if (!is_array($size)) {
+        return null;
+    }
+
+    $mime = (string) ($size['mime'] ?? '');
+    $width = (int) ($size[0] ?? 0);
+    $height = (int) ($size[1] ?? 0);
+
+    if (
+        !in_array($mime, ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], true)
+        || $width <= 0
+        || $height <= 0
+        || $width > 4096
+        || $height > 4096
+    ) {
+        return null;
+    }
+
+    $source = @imagecreatefromstring($body);
+
+    return $source instanceof GdImage ? $source : null;
+}
+
+function posts_share_card_fetch_allowlisted_provider_image(string $imageUrl): ?string
+{
+    static $cache = [];
+
+    $imageUrl = trim($imageUrl);
+
+    if (!posts_share_card_provider_image_url_is_allowed($imageUrl) || !function_exists('curl_init')) {
+        return null;
+    }
+
+    if (array_key_exists($imageUrl, $cache)) {
+        return $cache[$imageUrl] ?: null;
+    }
+
+    $curl = curl_init($imageUrl);
+
+    if ($curl === false) {
+        $cache[$imageUrl] = false;
+        return null;
+    }
+
+    curl_setopt_array($curl, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => false,
+        CURLOPT_CONNECTTIMEOUT_MS => 800,
+        CURLOPT_TIMEOUT_MS => 1800,
+        CURLOPT_USERAGENT => 'thia.lol share-card',
+        CURLOPT_HTTPHEADER => ['Accept: image/avif,image/webp,image/png,image/jpeg,image/gif;q=0.9,*/*;q=0.1'],
+        CURLOPT_ENCODING => '',
+    ]);
+
+    if (defined('CURLOPT_PROTOCOLS_STR')) {
+        @curl_setopt($curl, CURLOPT_PROTOCOLS_STR, 'https');
+    } elseif (defined('CURLOPT_PROTOCOLS') && defined('CURLPROTO_HTTPS')) {
+        @curl_setopt($curl, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+    }
+
+    $body = curl_exec($curl);
+    $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+    $contentType = strtolower((string) curl_getinfo($curl, CURLINFO_CONTENT_TYPE));
+    curl_close($curl);
+
+    if (
+        !is_string($body)
+        || $status !== 200
+        || strlen($body) === 0
+        || strlen($body) > 3000000
+        || (
+            $contentType !== ''
+            && !str_starts_with($contentType, 'image/jpeg')
+            && !str_starts_with($contentType, 'image/png')
+            && !str_starts_with($contentType, 'image/webp')
+            && !str_starts_with($contentType, 'image/gif')
+        )
+    ) {
+        $cache[$imageUrl] = false;
+        return null;
+    }
+
+    $cache[$imageUrl] = $body;
+
+    return $body;
+}
+
+function posts_share_card_provider_image_url_is_allowed(string $imageUrl): bool
+{
+    $imageUrl = trim($imageUrl);
+
+    if ($imageUrl === '' || strlen($imageUrl) > 1200) {
+        return false;
+    }
+
+    $parts = parse_url($imageUrl);
+
+    if (!is_array($parts) || strtolower((string) ($parts['scheme'] ?? '')) !== 'https') {
+        return false;
+    }
+
+    if (isset($parts['user']) || isset($parts['pass'])) {
+        return false;
+    }
+
+    $host = strtolower(rtrim((string) ($parts['host'] ?? ''), '.'));
+
+    if ($host === '') {
+        return false;
+    }
+
+    $exactHosts = [
+        'avatars.githubusercontent.com',
+        'i.scdn.co',
+        'i.ytimg.com',
+        'image-cdn-ak.spotifycdn.com',
+        'img.youtube.com',
+        'mosaic.scdn.co',
+        'opengraph.githubassets.com',
+        'static-cdn.jtvnw.net',
+        'static-cdn.twitchcdn.net',
+        'yt3.ggpht.com',
+    ];
+
+    if (in_array($host, $exactHosts, true)) {
+        return true;
+    }
+
+    return $host === 'mzstatic.com' || str_ends_with($host, '.mzstatic.com');
 }
 
 function posts_share_card_load_image(string $path): ?GdImage

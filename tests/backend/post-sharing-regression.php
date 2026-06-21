@@ -87,6 +87,12 @@ assert_true(str_contains($postsSource, 'profile_share_card_draw_text_preview'), 
 assert_true(str_contains($postsSource, 'profile_share_card_draw_player_preview'), 'music/video modules should render through a player-style preview path');
 assert_true(str_contains($postsSource, 'profile_share_card_draw_feed_preview'), 'activity modules should render through a feed preview path');
 assert_true(str_contains($postsSource, 'profile_share_card_draw_list_preview'), 'link/project modules should render through a list preview path');
+assert_true(str_contains($postsSource, 'profile_share_card_module_url_can_resolve'), 'profile share-card cached integration enrichment should preflight URLs before cache lookups');
+assert_true(str_contains($postsSource, 'posts_share_card_draw_cover_safe_image'), 'profile module previews should render safe local or provider artwork');
+assert_true(str_contains($postsSource, 'posts_share_card_provider_image_url_is_allowed'), 'profile module previews should allow only known provider image hosts');
+assert_true(str_contains($postsSource, "'i.scdn.co'"), 'profile module previews should support Spotify provider artwork');
+assert_true(str_contains($postsSource, "'i.ytimg.com'"), 'profile module previews should support YouTube provider thumbnails');
+assert_true(str_contains($postsSource, "'static-cdn.jtvnw.net'"), 'profile module previews should support Twitch provider artwork');
 assert_true(str_contains($postsSource, 'profile_share_card_activity_items'), 'activity previews should use recent public post snippets');
 assert_true(str_contains($postsSource, 'profile_share_card_plain_text'), 'text previews should strip markdown into safe plain text for GD drawing');
 assert_true(str_contains($postsSource, 'posts_share_card_draw_cover_uploaded_image'), 'profile share cards should render cover-style uploaded images');
