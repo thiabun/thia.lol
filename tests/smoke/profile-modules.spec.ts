@@ -2496,18 +2496,34 @@ test("direct canvas point selection creates a draft module through picker and se
       ),
     )
     .not.toBe("none");
-  await page.getByRole("button", { name: "Pin" }).click();
+  const configuredModuleShell = page.locator('[data-testid^="profile-canvas-module-"]', {
+    has: page.getByText("Canvas note configured from settings."),
+  });
+  const configuredPinButton = configuredModuleShell.locator(
+    '[data-testid^="profile-canvas-pin-module-"]',
+  );
+  await expect(configuredPinButton).toBeVisible();
+  await expect(configuredPinButton).toHaveAttribute("aria-pressed", "false");
+  await expect(
+    page.getByTestId("profile-module-settings").getByRole("button", { name: /^Pin$/ }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("profile-module-settings").getByRole("button", { name: /^Unpin$/ }),
+  ).toHaveCount(0);
+  await page.getByTestId("profile-module-settings-done").click();
+  await expect(page.getByTestId("profile-module-settings")).toHaveCount(0);
+  await configuredPinButton.click();
+  await expect(configuredPinButton).toHaveAttribute("aria-pressed", "true");
   const pinnedShell = page.locator(
     '[data-testid^="profile-canvas-module-"][data-profile-module-pinned="true"]',
   );
   await expect(pinnedShell).toBeVisible();
+  await expect(configuredModuleShell.locator('[data-testid^="profile-canvas-drag-handle-"]')).toHaveCount(0);
   await expect
     .poll(() =>
       pinnedShell.evaluate((element) => window.getComputedStyle(element).outlineWidth),
     )
     .toBe("2px");
-  await page.getByTestId("profile-module-settings-done").click();
-  await expect(page.getByTestId("profile-module-settings")).toHaveCount(0);
   await page.getByTestId("profile-canvas-save-button").click();
   await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
 
@@ -3497,19 +3513,26 @@ test("blank draft modules can be pinned moved and deleted in the editor", async 
   await page.goto("/@thia");
 
   await page.getByTestId("profile-edit-button").click();
-  await page.getByTestId("profile-canvas-cell-4-6").click();
-  await page.getByTestId("profile-canvas-cell-5-7").click();
+  const blankStartColumn = 1;
+  await page.getByTestId("profile-canvas-cell-1-10").click();
+  await page.getByTestId("profile-canvas-cell-2-11").click();
   await expect(page.getByTestId("profile-module-picker")).toBeVisible();
   await page.keyboard.press("Escape");
 
   const blankModule = page.locator('[data-testid^="profile-canvas-blank-module-"]');
   await expect(blankModule).toBeVisible();
-  await expect(page.locator('[data-testid^="profile-canvas-pin-placeholder-"]')).toBeVisible();
+  const placeholderShell = page.locator('[data-testid^="profile-canvas-module-"]', {
+    has: blankModule,
+  });
+  const placeholderPinButton = placeholderShell.locator(
+    '[data-testid^="profile-canvas-pin-module-"]',
+  );
+  await expect(placeholderPinButton).toBeVisible();
   await expect(
     page.locator('[data-testid^="profile-canvas-delete-placeholder-"]'),
   ).toBeVisible();
 
-  await page.locator('[data-testid^="profile-canvas-pin-placeholder-"]').click();
+  await placeholderPinButton.click();
   await expect(
     page.locator('[data-testid^="profile-canvas-module-"][data-profile-module-pinned="true"]'),
   ).toBeVisible();
@@ -3517,10 +3540,12 @@ test("blank draft modules can be pinned moved and deleted in the editor", async 
     .poll(() => placeholderDraftModule(draftPayload)?.pinned)
     .toBe(true);
 
-  await page.locator('[data-testid^="profile-canvas-pin-placeholder-"]').click();
+  await expect(placeholderPinButton).toHaveAttribute("aria-pressed", "true");
+  await placeholderPinButton.click();
   await expect
     .poll(() => placeholderDraftModule(draftPayload)?.pinned)
     .toBe(false);
+  await expect(placeholderPinButton).toHaveAttribute("aria-pressed", "false");
 
   const blankBox = await blankModule.boundingBox();
   const gridBox = await page.getByTestId("profile-canvas-direct-grid").boundingBox();
@@ -3555,9 +3580,9 @@ test("blank draft modules can be pinned moved and deleted in the editor", async 
         | Record<string, unknown>
         | undefined;
 
-      return Number(layout?.column ?? 4);
+      return Number(layout?.column ?? blankStartColumn);
     })
-    .toBeGreaterThan(4);
+    .toBeGreaterThan(blankStartColumn);
 
   await page.locator('[data-testid^="profile-canvas-delete-placeholder-"]').click();
   await expect(page.locator('[data-testid^="profile-canvas-blank-module-"]')).toHaveCount(0);

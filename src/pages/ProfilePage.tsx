@@ -4447,6 +4447,12 @@ function ProfileDirectCanvasEditor({
             : placeholderSmall
               ? "Add module"
               : "Click to add module";
+          const moduleTitle = profileModuleFallbackTitle(module.type);
+          const pinLabel = module.pinned
+            ? `Unpin ${placeholder ? "blank module" : moduleTitle}`
+            : `Pin ${placeholder ? "blank module" : moduleTitle}`;
+          const editControlSize = placeholderMicro ? "size-6" : "size-8";
+          const editControlIconSize = placeholderMicro ? 12 : 15;
 
           return (
             <ProfileGridModule
@@ -4589,60 +4595,61 @@ function ProfileDirectCanvasEditor({
                   </div>
                 )}
               </div>
-              {placeholder ? (
-                <div
-                  className={cn(
-                    "absolute right-1.5 top-1.5 z-30 flex items-center gap-1",
-                    placeholderMicro ? "right-1 top-1 gap-0.5" : undefined,
-                  )}
-                  data-profile-edit-control="true"
-                >
+              <div
+                className={cn(
+                  "absolute right-1.5 top-1.5 z-40 flex items-center gap-1",
+                  placeholderMicro ? "right-1 top-1 gap-0.5" : undefined,
+                )}
+                data-profile-edit-control="true"
+              >
+                {placeholder ? (
                   <button
                     type="button"
                     className={cn(
-                      "grid place-items-center rounded-control border border-line bg-surface/92 text-text shadow-soft backdrop-blur-veil transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
-                      placeholderMicro ? "size-6" : "size-7",
-                    )}
-                    aria-label={
-                      module.pinned ? "Unpin blank module" : "Pin blank module"
-                    }
-                    title={module.pinned ? "Unpin blank module" : "Pin blank module"}
-                    data-testid={`profile-canvas-pin-placeholder-${module.id}`}
-                    onClick={() => handleTogglePin(module)}
-                  >
-                    {module.pinned ? (
-                      <PinOff aria-hidden="true" size={placeholderMicro ? 12 : 14} />
-                    ) : (
-                      <Pin aria-hidden="true" size={placeholderMicro ? 12 : 14} />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className={cn(
-                      "grid place-items-center rounded-control border border-line bg-surface/92 text-rose-ink shadow-soft backdrop-blur-veil transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
-                      placeholderMicro ? "size-6" : "size-7",
+                      "grid place-items-center rounded-full border border-line bg-surface/92 text-rose-ink shadow-soft backdrop-blur-veil transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
+                      editControlSize,
                     )}
                     aria-label="Delete blank module"
                     title="Delete blank module"
                     data-testid={`profile-canvas-delete-placeholder-${module.id}`}
                     onClick={() => handleRemoveModule(module)}
                   >
-                    <Trash2 aria-hidden="true" size={placeholderMicro ? 12 : 14} />
+                    <Trash2 aria-hidden="true" size={editControlIconSize} />
                   </button>
-                </div>
-              ) : (
+                ) : null}
+                <button
+                  type="button"
+                  className={cn(
+                    "grid place-items-center rounded-full border border-line bg-surface/92 text-text shadow-soft backdrop-blur-veil transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
+                    module.pinned ? "border-rose/50 bg-rose/18 text-rose-ink" : undefined,
+                    editControlSize,
+                  )}
+                  aria-label={pinLabel}
+                  aria-pressed={module.pinned}
+                  title={pinLabel}
+                  data-testid={`profile-canvas-pin-module-${module.id}`}
+                  onClick={() => handleTogglePin(module)}
+                >
+                  {module.pinned ? (
+                    <PinOff aria-hidden="true" size={editControlIconSize} />
+                  ) : (
+                    <Pin aria-hidden="true" size={editControlIconSize} />
+                  )}
+                </button>
+              </div>
+              {!placeholder ? (
                 <button
                   type="button"
                   className="absolute left-1/2 top-1/2 z-30 grid size-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-line bg-surface/92 text-text shadow-lift backdrop-blur-veil transition duration-fluid ease-fluid hover:scale-105 hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus"
-                  aria-label={`Edit ${profileModuleFallbackTitle(module.type)}`}
-                  title={`Edit ${profileModuleFallbackTitle(module.type)}`}
+                  aria-label={`Edit ${moduleTitle}`}
+                  title={`Edit ${moduleTitle}`}
                   data-profile-edit-control="true"
                   data-testid={`profile-canvas-edit-module-${module.id}`}
                   onClick={() => setSettingsModuleId(module.id)}
                 >
                   <MoreHorizontal aria-hidden="true" size={24} />
                 </button>
-              )}
+              ) : null}
             </ProfileGridModule>
           );
         })}
@@ -4668,7 +4675,6 @@ function ProfileDirectCanvasEditor({
         onProfileImageUpload={onImageUpload}
         onProfileDraftChange={onProfileDraftChange}
         onUpdateConfig={handleModuleConfig}
-        onTogglePin={handleTogglePin}
       />
     </section>
   );
@@ -4983,7 +4989,6 @@ function ModuleSettingsModal({
   onProfileDraftChange,
   onRemove,
   onResize,
-  onTogglePin,
   onUpdateConfig,
   profile,
   uploading,
@@ -5003,7 +5008,6 @@ function ModuleSettingsModal({
   onProfileDraftChange: (updater: (profile: Profile) => Profile) => void;
   onRemove: (module: ProfileModule) => void;
   onResize: (module: ProfileModule, size: ProfileGridModuleSize) => void;
-  onTogglePin: (module: ProfileModule) => void;
   onUpdateConfig: (module: ProfileModule, config: ProfileModule["config"]) => void;
   profile: Profile;
   uploading?: "backgroundImage" | "backgroundVideo" | "avatar" | "banner" | undefined;
@@ -5440,39 +5444,28 @@ function ModuleSettingsModal({
       testId="profile-module-settings"
       footer={
         module ? (
-          <div className="flex items-center justify-between gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              icon={module.pinned ? <PinOff aria-hidden="true" size={16} /> : <Pin aria-hidden="true" size={16} />}
-              onClick={() => onTogglePin(module)}
-            >
-              {module.pinned ? "Unpin" : "Pin"}
-            </Button>
-            <div className="flex items-center gap-2">
-              {module.type !== "profile_info" ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  className="border-rose/35 bg-rose/12 text-rose-ink hover:border-rose/60"
-                  icon={<Trash2 aria-hidden="true" size={16} />}
-                  onClick={() => onRemove(module)}
-                >
-                  Remove
-                </Button>
-              ) : null}
+          <div className="flex items-center justify-end gap-2">
+            {module.type !== "profile_info" ? (
               <Button
                 type="button"
                 size="sm"
-                icon={<Check aria-hidden="true" size={16} />}
-                data-testid="profile-module-settings-done"
-                onClick={onClose}
+                variant="secondary"
+                className="border-rose/35 bg-rose/12 text-rose-ink hover:border-rose/60"
+                icon={<Trash2 aria-hidden="true" size={16} />}
+                onClick={() => onRemove(module)}
               >
-                Done
+                Remove
               </Button>
-            </div>
+            ) : null}
+            <Button
+              type="button"
+              size="sm"
+              icon={<Check aria-hidden="true" size={16} />}
+              data-testid="profile-module-settings-done"
+              onClick={onClose}
+            >
+              Done
+            </Button>
           </div>
         ) : undefined
       }
