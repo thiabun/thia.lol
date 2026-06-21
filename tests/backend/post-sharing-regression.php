@@ -60,12 +60,16 @@ assert_true(str_contains($postsSource, 'twemoji@14.0.2'), 'share cards should re
 assert_true(str_contains($postsSource, 'thia-lockup-frostveil.png'), 'share cards should render the real thia.lol lockup');
 assert_true(str_contains($postsSource, '$panelTop = 96'), 'share-card panel should sit below the top brand strip');
 assert_true(str_contains($postsSource, "posts_share_card_draw_lockup(\$image);\n    imagefilledrectangle(\$image, \$panelLeft, \$panelTop"), 'share-card lockup should draw outside the post panel');
-assert_true(str_contains($postsSource, '$targetX = 1116 - $targetWidth'), 'share-card lockup should be right aligned');
-assert_true(str_contains($postsSource, '$targetY = 16'), 'share-card lockup should sit in the top brand strip');
+assert_true(str_contains($postsSource, '$targetX = 24'), 'share-card lockup should sit tight to the left edge');
+assert_true(str_contains($postsSource, '$targetY = 12'), 'share-card lockup should sit tight in the top brand strip');
 assert_true(str_contains($postsSource, '$top = 76'), 'share-card text should remain contained after lowering the panel');
+assert_true(str_contains($postsSource, '$avatarDrawn = posts_share_card_draw_avatar($image, $post, $left, $top + 50, 72)'), 'share cards should draw the author avatar next to identity');
+assert_true(str_contains($postsSource, '$identityLeft = $avatarDrawn ? $left + 92 : $left'), 'share cards should only offset author text when the avatar renders');
 assert_true(str_contains($postsSource, '$hasThumbnail = posts_share_card_draw_thumbnail($image, $post)'), 'share cards should know whether real media was drawn');
 assert_true(str_contains($postsSource, '$bodyWidth = $hasThumbnail ? 620 : 940'), 'share cards without media should use a wider text column');
 assert_true(str_contains($postsSource, 'function posts_share_card_draw_thumbnail($image, array $post): bool'), 'thumbnail drawing should report whether real media rendered');
+assert_true(str_contains($postsSource, 'function posts_share_card_draw_avatar($image, array $post, int $x, int $y, int $size): bool'), 'share-card avatar drawing should be isolated');
+assert_true(str_contains($postsSource, "\$avatarUrl = \$post['author']['avatarUrl'] ?? null;"), 'share-card avatar drawing should use the author avatar URL');
 assert_true(str_contains($postsSource, "if (!is_string(\$mediaUrl) || \$mediaUrl === '') {\n        return false;\n    }"), 'missing post media should not draw a placeholder thumbnail');
 assert_true(!str_contains($postsSource, 'imagefilledellipse'), 'share cards should not draw decorative placeholder blobs for posts without media');
 assert_true(str_contains($postsSource, 'imagecreatefromwebp($path)'), 'valid uploaded media should still render as a WebP thumbnail');

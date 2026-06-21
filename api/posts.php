@@ -594,13 +594,15 @@ function posts_share_card(string $postIdentifier): void
     $left = 92;
     $top = 76;
     $bodyWidth = $hasThumbnail ? 620 : 940;
+    $avatarDrawn = posts_share_card_draw_avatar($image, $post, $left, $top + 50, 72);
+    $identityLeft = $avatarDrawn ? $left + 92 : $left;
     $author = (string) ($post['author']['displayName'] ?? $post['author']['handle'] ?? 'thia.lol');
     $handle = '@' . (string) ($post['author']['handle'] ?? 'profile');
     $snippet = post_body_snippet((string) ($post['body'] ?? ''), 250);
     $canonical = post_canonical_path($post);
 
-    posts_share_card_text($image, $fonts, 38, $left, $top + 86, $text, $author);
-    posts_share_card_text($image, $fonts, 22, $left, $top + 128, $muted, $handle);
+    posts_share_card_text($image, $fonts, 38, $identityLeft, $top + 86, $text, $author);
+    posts_share_card_text($image, $fonts, 22, $identityLeft, $top + 128, $muted, $handle);
     posts_share_card_wrapped_text($image, $fonts, 28, $left, $top + 190, $text, $snippet, $bodyWidth, 4);
     posts_share_card_text($image, $fonts, 18, $left, 538, $muted, $canonical);
 
@@ -1034,8 +1036,8 @@ function posts_share_card_draw_lockup($image): void
         imagealphablending($source, true);
         $targetWidth = 160;
         $targetHeight = 72;
-        $targetX = 1116 - $targetWidth;
-        $targetY = 16;
+        $targetX = 24;
+        $targetY = 12;
         imagecopyresampled(
             $image,
             $source,
@@ -1108,6 +1110,76 @@ function posts_share_card_draw_thumbnail($image, array $post): bool
 
     $line = imagecolorallocate($image, 65, 126, 146);
     imagerectangle($image, $targetX, $targetY, $targetX + $targetWidth, $targetY + $targetHeight, $line);
+
+    return true;
+}
+
+function posts_share_card_draw_avatar($image, array $post, int $x, int $y, int $size): bool
+{
+    $avatarUrl = $post['author']['avatarUrl'] ?? null;
+
+    if (!is_string($avatarUrl) || $avatarUrl === '' || !function_exists('imagecreatefromwebp')) {
+        return false;
+    }
+
+    $path = posts_share_card_media_path($avatarUrl);
+
+    if ($path === null) {
+        return false;
+    }
+
+    $source = @imagecreatefromwebp($path);
+
+    if (!$source) {
+        return false;
+    }
+
+    $sourceWidth = imagesx($source);
+    $sourceHeight = imagesy($source);
+    $cropSize = min($sourceWidth, $sourceHeight);
+    $cropX = (int) floor(($sourceWidth - $cropSize) / 2);
+    $cropY = (int) floor(($sourceHeight - $cropSize) / 2);
+    $avatar = imagecreatetruecolor($size, $size);
+
+    if (!$avatar) {
+        return false;
+    }
+
+    $panel = imagecolorallocate($avatar, 22, 51, 61);
+    imagefilledrectangle($avatar, 0, 0, $size, $size, $panel);
+    imagecopyresampled(
+        $avatar,
+        $source,
+        0,
+        0,
+        $cropX,
+        $cropY,
+        $size,
+        $size,
+        $cropSize,
+        $cropSize
+    );
+
+    $radius = ($size - 1) / 2;
+    $radiusSquared = $radius * $radius;
+
+    for ($pixelY = 0; $pixelY < $size; $pixelY++) {
+        for ($pixelX = 0; $pixelX < $size; $pixelX++) {
+            $dx = $pixelX - $radius;
+            $dy = $pixelY - $radius;
+
+            if (($dx * $dx) + ($dy * $dy) > $radiusSquared) {
+                imagesetpixel($avatar, $pixelX, $pixelY, $panel);
+            }
+        }
+    }
+
+    imagecopy($image, $avatar, $x, $y, 0, 0, $size, $size);
+
+    $line = imagecolorallocate($image, 65, 126, 146);
+    imagesetthickness($image, 3);
+    imageellipse($image, $x + intdiv($size, 2), $y + intdiv($size, 2), $size - 2, $size - 2, $line);
+    imagesetthickness($image, 1);
 
     return true;
 }
