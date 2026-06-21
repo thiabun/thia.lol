@@ -2011,10 +2011,11 @@ test("profile info variants stay within each supported size", async ({ page }) =
       await expect(module.getByTestId("profile-info-identity-row")).toBeVisible();
       await expect(module.getByTestId("profile-info-overflow-button")).toBeVisible();
     }
+    await expect(module.getByTestId("profile-info-badge-row")).toHaveCount(0);
     if (["6x3", "8x3", "8x4"].includes(profileInfoCase.size)) {
-      await expect(module.getByTestId("profile-info-badge-row")).toContainText("Founder");
+      await expect(module.getByTestId("profile-info-inline-badges")).toContainText("Founder");
     } else {
-      await expect(module.getByTestId("profile-info-badge-row")).toHaveCount(0);
+      await expect(module.getByTestId("profile-info-inline-badges")).toHaveCount(0);
     }
     const statStyles = await socialContext.evaluate((element) =>
       Array.from(element.querySelectorAll<HTMLElement>("[data-profile-info-stat]")).map(
@@ -2095,7 +2096,7 @@ test("profile info variants stay within each supported size", async ({ page }) =
       ["bio", bioElement],
       [
         "badges",
-        element.querySelector<HTMLElement>('[data-testid="profile-info-badge-row"]'),
+        element.querySelector<HTMLElement>('[data-testid="profile-info-inline-badges"]'),
       ],
       [
         "stats",
@@ -2153,8 +2154,12 @@ test("profile info variants stay within each supported size", async ({ page }) =
     const banner = element.querySelector<HTMLElement>(
       '[data-testid="profile-header-banner"]',
     );
+    const bannerBodyBleed = element.querySelector<HTMLElement>(
+      '[data-testid="profile-header-banner-body-bleed"]',
+    );
     const bannerBleedRect = bannerBleed?.getBoundingClientRect();
     const bannerRect = banner?.getBoundingClientRect();
+    const bannerBodyBleedRect = bannerBodyBleed?.getBoundingClientRect();
     const gridStyles = window.getComputedStyle(gridElement);
       const columnGap = Number.parseFloat(gridStyles.columnGap) || 0;
       const rowGap = Number.parseFloat(gridStyles.rowGap) || columnGap;
@@ -2186,6 +2191,11 @@ test("profile info variants stay within each supported size", async ({ page }) =
         bannerBleedExtends:
           bannerBleedRect && bannerRect
             ? bannerBleedRect.bottom > bannerRect.bottom
+            : false,
+        bannerBodyBleedExtends:
+          bannerBodyBleedRect && bannerRect
+            ? bannerBodyBleedRect.top < bannerRect.bottom &&
+              bannerBodyBleedRect.bottom > bannerRect.bottom
             : false,
         expectedModuleHeight: Math.round(cellSize * rowSpan + rowGap * (rowSpan - 1)),
         expectedModuleWidth: Math.round(
@@ -2221,6 +2231,7 @@ test("profile info variants stay within each supported size", async ({ page }) =
     }
     if (["4x3", "6x3", "8x3", "8x4"].includes(profileInfoCase.size)) {
       expect(metrics.bannerBleedExtends).toBe(true);
+      expect(metrics.bannerBodyBleedExtends).toBe(true);
     }
   }
 });

@@ -52,6 +52,8 @@ assert_true(str_contains($postsSource, 'chat_pair_block_state($senderUserId, $re
 assert_true(str_contains($postsSource, 'count($recipientIds) > 10'), 'share-to-message should cap recipient count');
 assert_true(str_contains($postsSource, 'text_length($note) > 500'), 'share notes should have a bounded length');
 assert_true(str_contains($postsSource, "header('Content-Type: image/png')"), 'share-card endpoint should return PNG content');
+assert_true(str_contains($postsSource, "stale-while-revalidate=86400"), 'share-card endpoint should send crawler-friendly cache headers');
+assert_true(str_contains($postsSource, "header('Content-Disposition: inline')"), 'share-card endpoint should render inline for crawlers');
 assert_true(str_contains($postsSource, 'posts_share_card_fallback'), 'share-card endpoint should have a fallback image path');
 assert_true(str_contains($postsSource, 'posts_generate_public_id'), 'new posts should generate public ids');
 assert_true(str_contains($postsSource, 'NotoSans-Regular.ttf'), 'share cards should use bundled UTF-8 text fonts');
@@ -89,6 +91,12 @@ assert_true(str_contains($shareRendererSource, '<meta property="og:title"'), 'sh
 assert_true(str_contains($shareRendererSource, '<meta property="og:description"'), 'share renderer should emit og:description');
 assert_true(str_contains($shareRendererSource, '<meta property="og:url"'), 'share renderer should emit og:url');
 assert_true(str_contains($shareRendererSource, '<meta property="og:image"'), 'share renderer should emit og:image');
+assert_true(str_contains($shareRendererSource, '<meta property="og:image:secure_url"'), 'share renderer should emit og:image:secure_url');
+assert_true(str_contains($shareRendererSource, '<meta property="og:image:type" content="image/png" />'), 'share renderer should emit PNG image type');
+assert_true(str_contains($shareRendererSource, '<meta name="twitter:image"'), 'share renderer should emit twitter:image');
+assert_true(str_contains($shareRendererSource, 'post_share_page_https_url(post_public_base_url() . post_share_card_path($post))'), 'share renderer should use absolute HTTPS share-card images');
+assert_true(str_contains($shareRendererSource, 'post_share_page_fallback_html'), 'share renderer should include a no-JS fallback body');
+assert_true(str_contains($shareRendererSource, '<noscript>'), 'share renderer should insert fallback HTML before hydration');
 assert_true(str_contains($shareRendererSource, 'post_share_page_escape'), 'share renderer should escape metadata');
 assert_true(str_contains($shareRendererSource, 'header(\'Location: \' . post_canonical_path($post), true, 302)'), 'stale handles should redirect safely');
 assert_true(str_contains($shareRendererSource, 'post_public_identifier($post)'), 'numeric permalink returns should redirect to public id URLs');

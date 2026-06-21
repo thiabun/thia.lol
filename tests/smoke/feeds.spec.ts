@@ -483,7 +483,11 @@ test("post permalink server renderer emits social metadata by inspection", async
   expect(renderer).toContain('<meta property="og:description"');
   expect(renderer).toContain('<meta property="og:url"');
   expect(renderer).toContain('<meta property="og:image"');
+  expect(renderer).toContain('<meta property="og:image:secure_url"');
+  expect(renderer).toContain('<meta property="og:image:type" content="image/png"');
   expect(renderer).toContain('<meta name="twitter:card" content="summary_large_image"');
+  expect(renderer).toContain('<meta name="twitter:image"');
+  expect(renderer).toContain("post_share_page_fallback_html");
   expect(renderer).toContain("post_share_page_escape");
 });
 

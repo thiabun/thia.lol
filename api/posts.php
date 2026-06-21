@@ -636,7 +636,8 @@ function posts_share_card_png_headers(): void
 {
     header_remove('Content-Type');
     header('Content-Type: image/png');
-    header('Cache-Control: public, max-age=900');
+    header('Cache-Control: public, max-age=3600, stale-while-revalidate=86400');
+    header('Content-Disposition: inline');
     header('X-Content-Type-Options: nosniff');
 }
 

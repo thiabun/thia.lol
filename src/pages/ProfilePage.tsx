@@ -6622,7 +6622,7 @@ function profileInfoCardLayout(
       avatarInsetClass: "left-4",
       avatarOverlapClass: "-top-10",
       avatarSizeClass: "size-20",
-      badgeLimit: 4,
+      badgeLimit: 3,
       bannerHeight: "34%",
       bioLines: 3,
       bodyPaddingClass: "p-4",
@@ -6639,7 +6639,7 @@ function profileInfoCardLayout(
     avatarInsetClass: "left-4",
     avatarOverlapClass: "-top-9",
     avatarSizeClass: "size-[4.5rem]",
-    badgeLimit: 3,
+    badgeLimit: 2,
     bannerHeight: "31%",
     bioLines: 2,
     bodyPaddingClass: "p-4",
@@ -6768,13 +6768,13 @@ function ProfileInfoSizedCard({
           <img
             alt=""
             aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 -bottom-12 z-0 h-16 w-full object-cover object-center opacity-35 blur-xl saturate-125"
+            className="pointer-events-none absolute inset-x-0 -bottom-16 z-0 h-24 w-full object-cover object-center opacity-45 blur-2xl saturate-125"
             src={bannerUrl}
             data-testid="profile-header-banner-bleed"
           />
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 -bottom-12 z-0 h-16 bg-gradient-to-b from-canvas/0 via-surface/42 to-surface"
+            className="pointer-events-none absolute inset-x-0 -bottom-16 z-0 h-24 bg-gradient-to-b from-canvas/0 via-surface/20 to-surface/68"
           />
         </div>
       ) : (
@@ -6785,10 +6785,25 @@ function ProfileInfoSizedCard({
       )}
       <div
         className={cn(
-          "relative z-10 flex min-h-0 min-w-0 flex-1 flex-col bg-gradient-to-b from-surface/48 via-surface/58 to-surface/70",
+          "relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-gradient-to-b from-surface/10 via-surface/54 to-surface/76",
           layout.bodyPaddingClass,
         )}
       >
+        {showBanner ? (
+          <>
+            <img
+              alt=""
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 -top-14 z-0 h-36 w-full object-cover object-center opacity-32 blur-2xl saturate-125"
+              src={bannerUrl}
+              data-testid="profile-header-banner-body-bleed"
+            />
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 -top-8 z-0 h-40 bg-gradient-to-b from-surface/0 via-surface/45 to-surface/88"
+            />
+          </>
+        ) : null}
         <div
           className={cn(
             "absolute z-30 rounded-full",
@@ -6805,7 +6820,7 @@ function ProfileInfoSizedCard({
         </div>
         <div
           className={cn(
-            "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+            "relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
             showBanner
               ? layout.contentSpacingClass
               : layout.variant === "expanded"
@@ -6816,10 +6831,10 @@ function ProfileInfoSizedCard({
         >
           <div className={cn("min-h-0 min-w-0 overflow-hidden", layout.contentGapClass)}>
             <div className="min-w-0 shrink-0" data-testid="profile-info-identity-row">
-              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <div className="flex max-h-7 min-w-0 flex-wrap items-center gap-1.5 overflow-hidden">
                 <h1
                   className={cn(
-                    "min-w-0 truncate font-semibold leading-tight text-text",
+                    "min-w-0 max-w-full truncate font-semibold leading-tight text-text",
                     layout.titleClass,
                   )}
                 >
@@ -6833,6 +6848,10 @@ function ProfileInfoSizedCard({
                     Muted
                   </Badge>
                 ) : null}
+                <ProfileInfoInlineBadges
+                  featuredBadges={featuredBadges}
+                  maxBadges={layout.badgeLimit}
+                />
               </div>
               <p className="truncate text-xs text-muted">@{profile.user.handle}</p>
             </div>
@@ -6843,10 +6862,6 @@ function ProfileInfoSizedCard({
                 lines={layout.bioLines}
               />
             ) : null}
-            <ProfileInfoBadgeRow
-              featuredBadges={featuredBadges}
-              maxBadges={layout.badgeLimit}
-            />
           </div>
           <div className="mt-auto min-w-0 shrink-0 pt-1">
             <ProfileInfoStats
@@ -7133,7 +7148,7 @@ function ProfileInfoStats({
   );
 }
 
-function ProfileInfoBadgeRow({
+function ProfileInfoInlineBadges({
   featuredBadges,
   maxBadges,
 }: {
@@ -7148,13 +7163,13 @@ function ProfileInfoBadgeRow({
 
   return (
     <div
-      className="flex max-h-6 min-w-0 shrink-0 flex-wrap items-center gap-1.5 overflow-hidden"
-      data-testid="profile-info-badge-row"
+      className="flex min-w-0 max-w-full shrink items-center gap-1 overflow-hidden"
+      data-testid="profile-info-inline-badges"
     >
       {visibleBadges.map((userBadge) => (
         <Badge
           key={userBadge.id}
-          className="min-h-[1.125rem] max-w-28 px-1.5 text-[0.62rem] leading-none"
+          className="min-h-4 max-w-24 shrink px-1.5 text-[0.58rem] leading-none"
           data-profile-info-badge={userBadge.badge.badgeKey}
           title={userBadge.badge.description ?? userBadge.badge.name}
           tone={badgeTone(userBadge.badge.rarity)}

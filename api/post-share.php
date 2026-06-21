@@ -36,8 +36,9 @@ function post_share_page_render(array $post): void
     $authorHandle = (string) ($post['author']['handle'] ?? 'profile');
     $title = "{$authorName} on thia.lol";
     $description = post_body_snippet((string) ($post['body'] ?? ''), 220);
-    $canonicalUrl = post_canonical_url($post);
-    $imageUrl = post_public_base_url() . post_share_card_path($post);
+    $canonicalUrl = post_share_page_https_url(post_canonical_url($post));
+    $imageUrl = post_share_page_https_url(post_public_base_url() . post_share_card_path($post));
+    $imageAlt = "Post by @{$authorHandle} on thia.lol.";
     $createdAt = (string) ($post['createdAt'] ?? '');
 
     $meta = [
@@ -49,14 +50,16 @@ function post_share_page_render(array $post): void
         '<meta property="og:description" content="' . post_share_page_escape($description) . '" />',
         '<meta property="og:url" content="' . post_share_page_escape($canonicalUrl) . '" />',
         '<meta property="og:image" content="' . post_share_page_escape($imageUrl) . '" />',
+        '<meta property="og:image:secure_url" content="' . post_share_page_escape($imageUrl) . '" />',
+        '<meta property="og:image:type" content="image/png" />',
         '<meta property="og:image:width" content="1200" />',
         '<meta property="og:image:height" content="630" />',
-        '<meta property="og:image:alt" content="' . post_share_page_escape("Post by @{$authorHandle} on thia.lol.") . '" />',
+        '<meta property="og:image:alt" content="' . post_share_page_escape($imageAlt) . '" />',
         '<meta name="twitter:card" content="summary_large_image" />',
         '<meta name="twitter:title" content="' . post_share_page_escape($title) . '" />',
         '<meta name="twitter:description" content="' . post_share_page_escape($description) . '" />',
         '<meta name="twitter:image" content="' . post_share_page_escape($imageUrl) . '" />',
-        '<meta name="twitter:image:alt" content="' . post_share_page_escape("Post by @{$authorHandle} on thia.lol.") . '" />',
+        '<meta name="twitter:image:alt" content="' . post_share_page_escape($imageAlt) . '" />',
         '<link rel="canonical" href="' . post_share_page_escape($canonicalUrl) . '" />',
         '<title>' . post_share_page_escape($title) . '</title>',
     ];
@@ -65,7 +68,10 @@ function post_share_page_render(array $post): void
         $meta[] = '<meta property="article:published_time" content="' . post_share_page_escape(post_share_page_iso_date($createdAt)) . '" />';
     }
 
-    post_share_page_emit_shell(implode("\n    ", $meta));
+    post_share_page_emit_shell(
+        implode("\n    ", $meta),
+        post_share_page_fallback_html($title, $description, $canonicalUrl, $imageUrl, $imageAlt)
+    );
 }
 
 function post_share_page_not_found(): void
@@ -73,8 +79,9 @@ function post_share_page_not_found(): void
     http_response_code(404);
     $title = 'Post not found | thia.lol';
     $description = 'This post is not available on thia.lol.';
-    $canonicalUrl = post_public_base_url() . '/discover';
-    $imageUrl = post_public_base_url() . '/brand/thia-og.png';
+    $canonicalUrl = post_share_page_https_url(post_public_base_url() . '/discover');
+    $imageUrl = post_share_page_https_url(post_public_base_url() . '/brand/thia-og.png');
+    $imageAlt = 'thia.lol bunny mark and wordmark.';
     $meta = implode("\n    ", [
         '<meta name="description" content="' . post_share_page_escape($description) . '" />',
         '<meta name="theme-color" content="#223454" />',
@@ -84,20 +91,27 @@ function post_share_page_not_found(): void
         '<meta property="og:description" content="' . post_share_page_escape($description) . '" />',
         '<meta property="og:url" content="' . post_share_page_escape($canonicalUrl) . '" />',
         '<meta property="og:image" content="' . post_share_page_escape($imageUrl) . '" />',
+        '<meta property="og:image:secure_url" content="' . post_share_page_escape($imageUrl) . '" />',
+        '<meta property="og:image:type" content="image/png" />',
         '<meta property="og:image:width" content="1200" />',
         '<meta property="og:image:height" content="630" />',
+        '<meta property="og:image:alt" content="' . post_share_page_escape($imageAlt) . '" />',
         '<meta name="twitter:card" content="summary_large_image" />',
         '<meta name="twitter:title" content="' . post_share_page_escape($title) . '" />',
         '<meta name="twitter:description" content="' . post_share_page_escape($description) . '" />',
         '<meta name="twitter:image" content="' . post_share_page_escape($imageUrl) . '" />',
+        '<meta name="twitter:image:alt" content="' . post_share_page_escape($imageAlt) . '" />',
         '<link rel="canonical" href="' . post_share_page_escape($canonicalUrl) . '" />',
         '<title>' . post_share_page_escape($title) . '</title>',
     ]);
 
-    post_share_page_emit_shell($meta);
+    post_share_page_emit_shell(
+        $meta,
+        post_share_page_fallback_html($title, $description, $canonicalUrl, $imageUrl, $imageAlt)
+    );
 }
 
-function post_share_page_emit_shell(string $metaHtml): void
+function post_share_page_emit_shell(string $metaHtml, string $fallbackHtml = ''): void
 {
     header('Content-Type: text/html; charset=utf-8');
     header('Cache-Control: no-cache, no-store, must-revalidate');
@@ -107,7 +121,10 @@ function post_share_page_emit_shell(string $metaHtml): void
     $html = is_file($indexPath) ? file_get_contents($indexPath) : false;
 
     if (!is_string($html) || $html === '') {
-        echo "<!doctype html><html lang=\"en\"><head><meta charset=\"UTF-8\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />{$metaHtml}</head><body><div id=\"root\"></div></body></html>";
+        $body = $fallbackHtml === ''
+            ? '<div id="root"></div>'
+            : '<noscript>' . $fallbackHtml . '</noscript><div id="root"></div>';
+        echo "<!doctype html><html lang=\"en\"><head><meta charset=\"UTF-8\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />{$metaHtml}</head><body>{$body}</body></html>";
         exit;
     }
 
@@ -116,8 +133,40 @@ function post_share_page_emit_shell(string $metaHtml): void
     $html = preg_replace('/\s*<link\b(?=[^>]*rel=["\']canonical["\'])[^>]*>\s*/is', "\n", $html);
     $html = preg_replace('/<\/head>/i', "    {$metaHtml}\n  </head>", $html, 1);
 
+    if ($fallbackHtml !== '') {
+        $html = preg_replace('/<body([^>]*)>/i', '<body$1><noscript>' . $fallbackHtml . '</noscript>', $html, 1);
+    }
+
     echo $html;
     exit;
+}
+
+function post_share_page_fallback_html(
+    string $title,
+    string $description,
+    string $canonicalUrl,
+    string $imageUrl,
+    string $imageAlt
+): string {
+    return '<main>'
+        . '<a href="' . post_share_page_escape($canonicalUrl) . '">'
+        . '<img src="' . post_share_page_escape($imageUrl) . '" width="1200" height="630" alt="' . post_share_page_escape($imageAlt) . '" />'
+        . '</a>'
+        . '<h1>' . post_share_page_escape($title) . '</h1>'
+        . '<p>' . post_share_page_escape($description) . '</p>'
+        . '<p><a href="' . post_share_page_escape($canonicalUrl) . '">Open post on thia.lol</a></p>'
+        . '</main>';
+}
+
+function post_share_page_https_url(string $url): string
+{
+    $url = trim($url);
+
+    if (str_starts_with($url, '//')) {
+        return 'https:' . $url;
+    }
+
+    return preg_replace('#^http://#i', 'https://', $url) ?? $url;
 }
 
 function post_share_page_escape(string $value): string
