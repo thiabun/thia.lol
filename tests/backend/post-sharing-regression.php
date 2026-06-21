@@ -11,6 +11,7 @@ $shareRendererSource = file_get_contents($root . '/api/post-share.php');
 $profileShareRendererSource = file_get_contents($root . '/api/profile-share.php');
 $indexSource = file_get_contents($root . '/api/index.php');
 $htaccessSource = file_get_contents($root . '/public/.htaccess');
+$apiHtaccessSource = file_get_contents($root . '/api/.htaccess');
 $migrationSource = file_get_contents($root . '/api/migrations/20260621_0001_add_message_attachments.sql');
 $publicIdMigrationSource = file_get_contents($root . '/api/migrations/20260621_0002_add_post_public_ids.sql');
 
@@ -127,5 +128,7 @@ assert_true(is_string($htaccessSource), 'public htaccess should be readable');
 assert_true(str_contains($htaccessSource, 'api/post-share.php?handle=$1&postId=$2'), 'post permalink rewrite should target the share renderer');
 assert_true(str_contains($htaccessSource, 'api/profile-share.php?handle=$1'), 'profile permalink rewrite should target the profile share renderer');
 assert_true(str_contains($htaccessSource, 'REQUEST_URI} ^/api'), 'API exclusion should remain ahead of SPA rewrite');
+assert_true(is_string($apiHtaccessSource), 'API htaccess should be readable');
+assert_true(str_contains($apiHtaccessSource, '^(?:post-share|profile-share|sitemap)\.php$'), 'API htaccess should allow metadata/sitemap scripts to execute instead of rewriting them to index.php');
 
 echo "post sharing regression ok\n";

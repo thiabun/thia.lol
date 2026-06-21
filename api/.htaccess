@@ -7,5 +7,6 @@ DirectoryIndex index.php
   RewriteBase /api/
 
   RewriteRule ^index\.php$ - [L]
+  RewriteRule ^(?:post-share|profile-share|sitemap)\.php$ - [L]
   RewriteRule ^.*$ index.php [QSA,L]
 </IfModule>
