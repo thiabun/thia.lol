@@ -52,6 +52,7 @@ import {
 } from "react-router";
 import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
+import { MarkdownEditor } from "../components/social/MarkdownEditor";
 import { MentionTextarea } from "../components/social/MentionTextarea";
 import {
   ProfileConnectionIcon,
@@ -5650,9 +5651,19 @@ function ModuleSettingsModal({
               </label>
             </div>
           ) : null}
-          {module.type === "text" ||
-          module.type === "about" ||
-          module.type === "custom_text" ? (
+          {module.type === "text" || module.type === "custom_text" ? (
+            <MarkdownEditor
+              value={module.config.body ?? ""}
+              entities={module.textEntities?.body}
+              textareaTestId="profile-module-settings-body"
+              onValueChange={(body) => {
+                updateModuleConfig(
+                  configWithContent({ body }, body.trim().length > 0),
+                );
+              }}
+            />
+          ) : null}
+          {module.type === "about" ? (
             <label className="block">
               <span className="text-xs font-semibold uppercase text-muted">
                 Text

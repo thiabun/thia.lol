@@ -358,6 +358,26 @@ assert_true($emptyAbout === [], 'empty about module should be valid for owner pl
 $emptyCustomText = profile_module_config('custom_text', [], 123);
 assert_true($emptyCustomText === [], 'empty text module should be valid for owner placement');
 
+$richCustomText = profile_module_config(
+    'custom_text',
+    ['body' => "## Favorite notes\n\n- Safe Markdown\n- https://example.com"],
+    123
+);
+assert_true(
+    $richCustomText['body'] === "## Favorite notes\n\n- Safe Markdown\n- https://example.com",
+    'custom text rich body should preserve Markdown line breaks'
+);
+
+$richLegacyText = profile_module_config(
+    'text',
+    ['body' => "Line one\nLine two"],
+    123
+);
+assert_true($richLegacyText['body'] === "Line one\nLine two", 'legacy text body should preserve line breaks');
+
+$longRichText = profile_module_config('custom_text', ['body' => str_repeat('a', 900)], 123);
+assert_true(strlen($longRichText['body']) === 900, 'custom text should allow richer body length');
+
 $emptyLinks = profile_module_config('links', ['links' => []], 123);
 assert_true($emptyLinks === ['links' => []], 'empty links module should be valid for owner placement');
 
@@ -386,6 +406,11 @@ assert_true(str_contains($profileModulesSource, 'OR type = :activity_type'), 'pu
 assert_true(str_contains($profileModulesSource, 'profile_module_uploaded_audio'), 'uploaded audio module metadata should be validated');
 assert_true(str_contains($profileModulesSource, 'profile_module_uploaded_video_config'), 'uploaded video module config should be file-backed');
 
+assert_module_config_rejected(
+    'custom_text',
+    ['body' => '<script>alert(1)</script>'],
+    'Module text must be plain text.'
+);
 assert_module_config_rejected(
     'links',
     [

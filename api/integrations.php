@@ -1394,7 +1394,6 @@ function profile_integration_http_json(string $method, string $url, array $heade
     $raw = curl_exec($curl);
     $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
     $error = curl_error($curl);
-    curl_close($curl);
 
     if (!is_string($raw) || $raw === false || $status < 200 || $status >= 300) {
         throw new RuntimeException($error !== '' ? $error : "Provider request failed with HTTP {$status}.");

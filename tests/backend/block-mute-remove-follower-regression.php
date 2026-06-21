@@ -90,6 +90,7 @@ assert_contains($read, 'fetch_home_feed', 'home feed function missing');
 assert_contains($read, 'fetch_discover_posts', 'discover feed function missing');
 assert_contains($read, 'function fetch_people_to_watch', 'discover people function missing');
 assert_contains($read, 'COALESCE(profile_posts.post_count, 0) DESC', 'discover people should rank posters first');
+assert_contains($read, "u.handle NOT REGEXP '^smoketest[0-9]+$'", 'discover people should hide smoke test accounts');
 assert_true(
     !str_contains($read, 'AND COALESCE(profile_posts.post_count, 0) > 0'),
     'discover people should include active profiles without posts'

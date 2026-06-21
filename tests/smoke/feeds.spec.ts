@@ -182,12 +182,18 @@ test("Discover uses desktop side rails around the rising feed", async ({ page })
               name: `Room ${index + 1}`,
             }),
           ),
-          peopleToWatch: Array.from({ length: 6 }, (_, index) =>
+          peopleToWatch: [
             makeDiscoverPerson({
-              handle: `person${index + 1}`,
-              displayName: `Person ${index + 1}`,
+              handle: "smoketest1",
+              displayName: "Smoke Test 1",
             }),
-          ),
+            ...Array.from({ length: 6 }, (_, index) =>
+              makeDiscoverPerson({
+                handle: `person${index + 1}`,
+                displayName: `Person ${index + 1}`,
+              }),
+            ),
+          ],
         },
       }),
     }),
@@ -210,6 +216,8 @@ test("Discover uses desktop side rails around the rising feed", async ({ page })
   expect(risingBox!.width).toBeLessThanOrEqual(620);
   await expect(roomsRail.getByTestId("room-card")).toHaveCount(5);
   await expect(peopleRail.locator("article")).toHaveCount(5);
+  await expect(peopleRail.getByText("@smoketest1")).toHaveCount(0);
+  await expect(peopleRail.getByText("@person5")).toBeVisible();
 
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,

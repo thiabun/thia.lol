@@ -1055,15 +1055,20 @@ function ProfileModuleContent({
     );
   }
 
+  const markdownTextModule =
+    module.type === "custom_text" || module.type === "text";
+
   return (
     <div className="max-h-full space-y-2 overflow-y-auto pr-1">
       {module.config.body ? (
         <RichText
+          markdown={markdownTextModule}
           text={module.config.body}
           entities={module.textEntities?.body}
           showPreviews={!compact}
           className={cn(
-            "block whitespace-pre-wrap break-words text-sm leading-6 text-muted",
+            "block break-words text-sm leading-6 text-muted",
+            markdownTextModule ? "space-y-2" : "whitespace-pre-wrap",
             compact
               ? "line-clamp-2"
               : spanRole === "summary"

@@ -37,6 +37,11 @@ assert_true(text_entity_normalize_https_url('https://EXAMPLE.com') === 'https://
 assert_true(text_entity_url_is_safe_for_fetch('https://127.0.0.1/path') === false, 'private IPv4 hosts should not be fetched');
 assert_true(text_entity_url_is_safe_for_fetch('https://[::1]/path') === false, 'private IPv6 hosts should not be fetched');
 
+$markdownLinks = text_entity_link_matches('Read [docs](https://example.com/docs) and https://example.com/notes.');
+assert_true(count($markdownLinks) === 2, 'Markdown and bare HTTPS links should both be detected');
+assert_true($markdownLinks[0]['text'] === 'https://example.com/docs', 'Markdown link URL mismatch');
+assert_true($markdownLinks[1]['text'] === 'https://example.com/notes', 'Bare link URL mismatch');
+
 $fallback = text_entity_fallback_card('https://example.com/notes');
 assert_true($fallback['provider'] === 'website', 'generic fallback card provider mismatch');
 assert_true($fallback['embed'] === null, 'generic fallback cards must not embed arbitrary frames');
@@ -53,6 +58,7 @@ assert_true($metadata['imageUrl'] === 'https://example.com/card.jpg', 'relative 
 assert_true(is_string($textEntitiesSource), 'text entity source should be readable');
 assert_true(str_contains($textEntitiesSource, 'TEXT_ENTITY_LINK_CARD_LIMIT = 3'), 'link card limit should stay capped at three');
 assert_true(str_contains($textEntitiesSource, 'preg_match_all(\'#https://'), 'parser should only link explicit HTTPS URLs');
+assert_true(str_contains($textEntitiesSource, 'text_entity_add_link_match'), 'Markdown link URLs should use the shared HTTPS parser path');
 assert_true(str_contains($textEntitiesSource, 'text_entity_resolved_mentions'), 'mention parser should resolve handles');
 assert_true(str_contains($textEntitiesSource, "u.status = 'active'"), 'mentions should resolve active users only');
 assert_true(str_contains($textEntitiesSource, 'text_entity_range_overlaps'), 'mentions inside URLs should be skipped');

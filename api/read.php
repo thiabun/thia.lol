@@ -1994,6 +1994,7 @@ function fetch_people_to_watch(): array
          ) profile_posts ON profile_posts.author_id = u.id
          {$followJoins}
          WHERE u.status = 'active'
+           AND u.handle NOT REGEXP '^smoketest[0-9]+$'
            AND ({$viewerSql} IS NULL OR u.id <> {$viewerSql})
            {$excludeFollowed}
            {$relationshipFilter}

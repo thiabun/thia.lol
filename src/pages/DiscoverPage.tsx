@@ -26,7 +26,9 @@ export function DiscoverPage() {
   const [pendingPostId, setPendingPostId] = useState<number | undefined>();
   const [postActionError, setPostActionError] = useState<string | undefined>();
   const rooms = discoverState.data?.activeRooms ?? [];
-  const people = discoverState.data?.peopleToWatch ?? [];
+  const people = (discoverState.data?.peopleToWatch ?? []).filter(
+    (person) => !/^smoketest[0-9]+$/i.test(person.handle),
+  );
   const visibleRooms = rooms.slice(0, 5);
   const visiblePeople = people.slice(0, 5);
   const visiblePosts = useMemo(

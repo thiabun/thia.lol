@@ -5005,6 +5005,73 @@ test("invalid saved placement falls back without manual grid placement", async (
   await expect(music).toHaveAttribute("data-profile-grid-placement", "auto");
 });
 
+test("custom text modules use the Markdown editor and preview", async ({ page }) => {
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      withAuditLayout(
+        textModule({ id: 2, title: "Note", body: "Starter text." }),
+        "4x3",
+        4,
+        1,
+      ),
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-module-2").click();
+
+  const editor = page.getByTestId("profile-markdown-editor");
+  const input = editor.getByTestId("profile-module-settings-body");
+
+  await expect(editor).toBeVisible();
+  await expect(editor.getByTestId("profile-markdown-toolbar")).toBeVisible();
+  await input.fill("Favorite artist");
+  await input.selectText();
+  await editor.getByTestId("profile-markdown-button-bold").click();
+  await expect(input).toHaveValue("**Favorite artist**");
+  await input.fill("## Favorite artist\n\n- One\n- Two\n\n[Listen](https://example.com/music)");
+  await editor.getByTestId("profile-markdown-button-preview").click();
+  await expect(editor.getByTestId("profile-markdown-preview")).toBeVisible();
+  await expect(
+    editor
+      .getByTestId("profile-markdown-preview")
+      .getByRole("heading", { name: "Favorite artist" }),
+  ).toBeVisible();
+  await expect(editor.getByTestId("profile-markdown-preview").getByText("Listen")).toBeVisible();
+  await expect(
+    editor.getByTestId("profile-markdown-preview").getByTestId("rich-link-preview"),
+  ).toBeVisible();
+});
+
+test("public custom text modules render safe Markdown", async ({ page }) => {
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      withAuditLayout(
+        textModule({
+          id: 4,
+          title: "Markdown",
+          body: "## Favorite artist\n\n- One\n- Two\n\n[Listen](https://example.com/music)",
+        }),
+        "4x3",
+        4,
+        1,
+      ),
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const text = page.getByTestId("profile-grid-module-custom_text");
+  await expect(text.getByTestId("profile-markdown-rendered")).toBeVisible();
+  await expect(text.getByRole("heading", { name: "Favorite artist" })).toBeVisible();
+  await expect(text.getByText("Listen")).toBeVisible();
+  await expect(text.getByText("## Favorite artist")).toHaveCount(0);
+});
+
 test("profile canvas falls back safely for invalid mocked spans", async ({ page }) => {
   await mockProfileModules(page, {
     authenticated: false,

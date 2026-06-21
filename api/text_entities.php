@@ -335,26 +335,47 @@ function text_entity_pair_blocked(int $firstUserId, int $secondUserId): bool
 
 function text_entity_link_matches(string $text): array
 {
-    preg_match_all('#https://[^\s<>"\']+#i', $text, $matches, PREG_OFFSET_CAPTURE);
     $result = [];
+    $seenRanges = [];
 
-    foreach ($matches[0] ?? [] as $match) {
-        $raw = (string) $match[0];
-        $startByte = (int) $match[1];
-        $trimmed = text_entity_trim_url_token($raw);
+    preg_match_all('/\[[^\]\r\n]{1,200}\]\((https:\/\/[^\s<>"\')]+)\)/i', $text, $markdownMatches, PREG_OFFSET_CAPTURE);
 
-        if ($trimmed === '') {
-            continue;
-        }
-
-        $result[] = [
-            'text' => $trimmed,
-            'startByte' => $startByte,
-            'endByte' => $startByte + strlen($trimmed),
-        ];
+    foreach ($markdownMatches[1] ?? [] as $match) {
+        text_entity_add_link_match($result, $seenRanges, (string) $match[0], (int) $match[1]);
     }
 
+    preg_match_all('#https://[^\s<>"\']+#i', $text, $matches, PREG_OFFSET_CAPTURE);
+
+    foreach ($matches[0] ?? [] as $match) {
+        text_entity_add_link_match($result, $seenRanges, (string) $match[0], (int) $match[1]);
+    }
+
+    usort($result, static fn (array $a, array $b): int => $a['startByte'] <=> $b['startByte']);
+
     return $result;
+}
+
+function text_entity_add_link_match(array &$result, array &$seenRanges, string $raw, int $startByte): void
+{
+    $trimmed = text_entity_trim_url_token($raw);
+
+    if ($trimmed === '') {
+        return;
+    }
+
+    $endByte = $startByte + strlen($trimmed);
+    $rangeKey = $startByte . ':' . $endByte;
+
+    if (isset($seenRanges[$rangeKey])) {
+        return;
+    }
+
+    $seenRanges[$rangeKey] = true;
+    $result[] = [
+        'text' => $trimmed,
+        'startByte' => $startByte,
+        'endByte' => $endByte,
+    ];
 }
 
 function text_entity_trim_url_token(string $value): string
@@ -617,7 +638,6 @@ function text_entity_fetch_html(string $url): ?string
     $ok = curl_exec($curl);
     $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
     $contentType = strtolower((string) curl_getinfo($curl, CURLINFO_CONTENT_TYPE));
-    curl_close($curl);
 
     if ($ok === false || $status < 200 || $status >= 300 || !str_contains($contentType, 'text/html')) {
         return null;

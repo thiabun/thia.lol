@@ -77,6 +77,7 @@ const PROFILE_BACKGROUND_BLUR_LEVELS = ['none', 'soft', 'medium', 'heavy'];
 const PROFILE_MODULE_MAX_PER_PROFILE = 24;
 const PROFILE_MODULE_TITLE_MAX = 80;
 const PROFILE_MODULE_TEXT_MAX = 500;
+const PROFILE_MODULE_RICH_TEXT_MAX = 2000;
 const PROFILE_MODULE_STATUS_TEXT_MAX = 120;
 const PROFILE_MODULE_SHORT_TEXT_MAX = 180;
 const PROFILE_MODULE_LINKS_MAX = 10;
@@ -3318,7 +3319,8 @@ function profile_module_config(string $type, mixed $value, int $userId): array
         PROFILE_FEATURED_POST_MODULE_TYPE,
         PROFILE_FEATURED_ROOM_MODULE_TYPE,
         PROFILE_ACTIVITY_MODULE_TYPE => profile_module_builtin_config($value),
-        'about', PROFILE_TEXT_MODULE_TYPE => profile_module_about_config($value),
+        'about' => profile_module_about_config($value),
+        PROFILE_TEXT_MODULE_TYPE => profile_module_text_config($value),
         'custom_text' => profile_module_custom_text_config($value),
         'links', PROFILE_CONNECTIONS_MODULE_TYPE => profile_module_links_config($value),
         'featured_badges', PROFILE_BADGE_DISPLAY_MODULE_TYPE => profile_module_featured_badges_config($value, $userId),
@@ -3422,7 +3424,7 @@ function profile_module_custom_text_config(array $config): array
     profile_module_reject_unknown_keys($config, ['body', 'link']);
 
     $normalized = [];
-    $body = profile_module_optional_text($config['body'] ?? null, PROFILE_MODULE_TEXT_MAX, 'Module text');
+    $body = profile_module_optional_rich_text($config['body'] ?? null, PROFILE_MODULE_RICH_TEXT_MAX, 'Module text');
 
     if ($body !== null) {
         $normalized['body'] = $body;
@@ -3430,6 +3432,30 @@ function profile_module_custom_text_config(array $config): array
 
     if (array_key_exists('link', $config) && $config['link'] !== null) {
         $normalized['link'] = profile_module_link($config['link']);
+    }
+
+    return $normalized;
+}
+
+function profile_module_text_config(array $config): array
+{
+    profile_module_reject_unknown_keys($config, ['body', 'statusText', 'workingOn']);
+
+    $normalized = [];
+    $body = profile_module_optional_rich_text($config['body'] ?? null, PROFILE_MODULE_RICH_TEXT_MAX, 'Module text');
+    $statusText = profile_module_optional_text($config['statusText'] ?? null, PROFILE_MODULE_STATUS_TEXT_MAX, 'Status text');
+    $workingOn = profile_module_optional_text($config['workingOn'] ?? null, PROFILE_MODULE_STATUS_TEXT_MAX, 'Working on text');
+
+    if ($body !== null) {
+        $normalized['body'] = $body;
+    }
+
+    if ($statusText !== null) {
+        $normalized['statusText'] = $statusText;
+    }
+
+    if ($workingOn !== null) {
+        $normalized['workingOn'] = $workingOn;
     }
 
     return $normalized;
@@ -4442,6 +4468,35 @@ function profile_module_optional_text(mixed $value, int $maxLength, string $labe
     }
 
     $trimmed = trim(preg_replace('/\s+/', ' ', $value) ?? $value);
+
+    if ($trimmed === '') {
+        return null;
+    }
+
+    if (profile_module_text_length($trimmed) > $maxLength) {
+        json_error("{$label} is too long.", 422);
+    }
+
+    if (profile_module_text_is_unsafe($trimmed)) {
+        json_error("{$label} must be plain text.", 422);
+    }
+
+    return $trimmed;
+}
+
+function profile_module_optional_rich_text(mixed $value, int $maxLength, string $label): ?string
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    if (!is_string($value)) {
+        json_error("{$label} is invalid.", 422);
+    }
+
+    $normalized = str_replace(["\r\n", "\r"], "\n", $value);
+    $normalized = preg_replace("/[ \t]+\n/", "\n", $normalized) ?? $normalized;
+    $trimmed = trim($normalized);
 
     if ($trimmed === '') {
         return null;
