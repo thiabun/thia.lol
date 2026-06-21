@@ -1997,8 +1997,8 @@ function fetch_people_to_watch(): array
            AND ({$viewerSql} IS NULL OR u.id <> {$viewerSql})
            {$excludeFollowed}
            {$relationshipFilter}
-           AND COALESCE(profile_posts.post_count, 0) > 0
          ORDER BY
+            COALESCE(profile_posts.post_count, 0) DESC,
             profile_posts.latest_post_at DESC,
             profile_posts.like_count DESC,
             u.created_at DESC

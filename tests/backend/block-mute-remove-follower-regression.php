@@ -88,6 +88,12 @@ assert_contains($read, 'isMuted', 'profile relationship mute state missing');
 assert_contains($read, 'viewer_feed_relationship_filter_sql', 'feed mute/block filter helper missing');
 assert_contains($read, 'fetch_home_feed', 'home feed function missing');
 assert_contains($read, 'fetch_discover_posts', 'discover feed function missing');
+assert_contains($read, 'function fetch_people_to_watch', 'discover people function missing');
+assert_contains($read, 'COALESCE(profile_posts.post_count, 0) DESC', 'discover people should rank posters first');
+assert_true(
+    !str_contains($read, 'AND COALESCE(profile_posts.post_count, 0) > 0'),
+    'discover people should include active profiles without posts'
+);
 assert_contains($read, 'FROM user_mutes feed_mutes', 'mute feed filtering missing');
 assert_contains($read, 'FROM user_blocks pair_blocks', 'block relationship filtering missing');
 

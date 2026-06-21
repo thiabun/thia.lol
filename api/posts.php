@@ -578,17 +578,21 @@ function posts_share_card(string $postIdentifier): void
     $text = imagecolorallocate($image, 232, 247, 248);
     $muted = imagecolorallocate($image, 158, 192, 202);
     $accent = imagecolorallocate($image, 244, 140, 173);
+    $panelLeft = 44;
+    $panelTop = 96;
+    $panelRight = 1156;
+    $panelBottom = 586;
 
     imagefilledrectangle($image, 0, 0, 1200, 630, $bg);
-    imagefilledrectangle($image, 44, 44, 1156, 586, $panel);
-    imagerectangle($image, 44, 44, 1156, 586, $line);
-
     posts_share_card_draw_lockup($image);
+    imagefilledrectangle($image, $panelLeft, $panelTop, $panelRight, $panelBottom, $panel);
+    imagerectangle($image, $panelLeft, $panelTop, $panelRight, $panelBottom, $line);
+
     $hasThumbnail = posts_share_card_draw_thumbnail($image, $post);
 
     $fonts = posts_share_card_font_paths();
     $left = 92;
-    $top = 92;
+    $top = 76;
     $bodyWidth = $hasThumbnail ? 620 : 940;
     $author = (string) ($post['author']['displayName'] ?? $post['author']['handle'] ?? 'thia.lol');
     $handle = '@' . (string) ($post['author']['handle'] ?? 'profile');
@@ -1028,15 +1032,19 @@ function posts_share_card_draw_lockup($image): void
         }
 
         imagealphablending($source, true);
+        $targetWidth = 160;
+        $targetHeight = 72;
+        $targetX = 1116 - $targetWidth;
+        $targetY = 16;
         imagecopyresampled(
             $image,
             $source,
-            86,
-            70,
+            $targetX,
+            $targetY,
             0,
             0,
-            158,
-            70,
+            $targetWidth,
+            $targetHeight,
             imagesx($source),
             imagesy($source)
         );
@@ -1067,7 +1075,7 @@ function posts_share_card_draw_thumbnail($image, array $post): bool
     $sourceWidth = imagesx($source);
     $sourceHeight = imagesy($source);
     $targetX = 770;
-    $targetY = 104;
+    $targetY = 130;
     $targetWidth = 316;
     $targetHeight = 408;
     $sourceRatio = $sourceWidth / max(1, $sourceHeight);
