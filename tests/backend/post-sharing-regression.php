@@ -71,6 +71,10 @@ assert_true(str_contains($postsSource, 'profile_share_card_draw_stats($image, $f
 assert_true(str_contains($postsSource, 'function posts_share_card_wrapped_text_lines'), 'share-card text wrapping should expose measurable line clamping');
 assert_true(str_contains($postsSource, 'function posts_share_card_ellipsize_line'), 'share-card text wrapping should ellipsize overflow text');
 assert_true(str_contains($postsSource, "'kind' => \$kind"), 'profile module previews should expose an internal kind for visual rendering');
+assert_true(str_contains($postsSource, 'profile_share_card_module_config_for_preview'), 'profile share-card module previews should reuse public module enrichment when available');
+assert_true(str_contains($postsSource, 'profile_share_card_module_integration'), 'profile share-card module previews should read stored integration metadata');
+assert_true(str_contains($postsSource, 'profile_share_card_module_stats'), 'profile share-card module previews should expose provider stats metadata');
+assert_true(!str_contains($postsSource, "strtoupper((string) \$module['label'])"), 'profile share-card module tiles should not render repeated uppercase category labels');
 assert_true(str_contains($postsSource, 'function profile_share_card_module_kind'), 'profile module previews should classify visual preview kinds');
 assert_true(str_contains($postsSource, 'profile_share_card_draw_image_preview'), 'image modules should render through a visual image preview path');
 assert_true(str_contains($postsSource, 'profile_share_card_draw_text_preview'), 'text modules should render through a text-card preview path');

@@ -833,8 +833,10 @@ function profile_share_card_modules(int $userId): array
             $config = $decoded;
         }
 
+        $type = (string) ($row['type'] ?? '');
+        $config = profile_share_card_module_config_for_preview($type, $config, $userId);
         $preview = profile_share_card_module_preview(
-            (string) ($row['type'] ?? ''),
+            $type,
             is_string($row['title'] ?? null) ? (string) $row['title'] : null,
             $config,
             $userId
@@ -848,32 +850,91 @@ function profile_share_card_modules(int $userId): array
     return $modules;
 }
 
+function profile_share_card_module_config_for_preview(string $type, array $config, int $userId): array
+{
+    if (function_exists('profile_module_config')) {
+        try {
+            return profile_module_config($type, $config, $userId);
+        } catch (Throwable) {
+            return $config;
+        }
+    }
+
+    if (
+        function_exists('profile_integration_card_for_module') &&
+        !isset($config['integration']) &&
+        is_string($config['url'] ?? null)
+    ) {
+        try {
+            $integration = profile_integration_card_for_module($config, $userId);
+
+            if ($integration !== null) {
+                $config['integration'] = $integration;
+            }
+        } catch (Throwable) {
+            return $config;
+        }
+    }
+
+    return $config;
+}
+
 function profile_share_card_module_preview(string $type, ?string $title, array $config, int $userId): ?array
 {
     $label = profile_share_card_module_type_label($type);
     $kind = profile_share_card_module_kind($type);
     $name = trim($title ?? '');
     $body = '';
+    $subtitle = '';
     $imageUrl = profile_share_card_module_image_url($type, $config);
     $imageUrls = profile_share_card_module_image_urls($type, $config);
     $items = [];
     $provider = null;
+    $integration = profile_share_card_module_integration($config);
+    $metadata = is_array($integration['metadata'] ?? null) ? $integration['metadata'] : [];
 
-    if ($name === '') {
+    $metadataTitle = profile_share_card_first_string([
+        $metadata['title'] ?? null,
+        $config['card']['metadata']['title'] ?? null,
+        $config['link']['card']['metadata']['title'] ?? null,
+    ]);
+
+    if ($metadataTitle !== '') {
+        $name = $metadataTitle;
+    } elseif ($name === '') {
         $name = profile_share_card_module_title($type, $config, $label);
     }
 
-    if (is_string($config['body'] ?? null)) {
-        $body = post_body_snippet(profile_share_card_plain_text((string) $config['body']), 140);
-    } elseif (is_string($config['description'] ?? null)) {
-        $body = post_body_snippet((string) $config['description'], 140);
-    } elseif (is_string($config['statusText'] ?? null)) {
-        $body = post_body_snippet((string) $config['statusText'], 140);
+    if (is_string($integration['provider'] ?? null)) {
+        $provider = (string) $integration['provider'];
     } elseif (is_string($config['platform'] ?? null)) {
         $provider = (string) $config['platform'];
     } elseif (is_array($config['integration'] ?? null)) {
         $provider = (string) ($config['integration']['provider'] ?? 'Link');
     }
+
+    $subtitle = profile_share_card_first_string([
+        $metadata['subtitle'] ?? null,
+        $metadata['recentLabel'] ?? null,
+        $config['audio']['title'] ?? null,
+        $config['video']['title'] ?? null,
+    ]);
+
+    if ($subtitle === '' && $provider !== null) {
+        $subtitle = profile_share_card_platform_label($provider);
+    }
+
+    if (is_string($metadata['description'] ?? null)) {
+        $body = post_body_snippet(profile_share_card_plain_text((string) $metadata['description']), 140);
+    } elseif (is_string($config['body'] ?? null)) {
+        $body = post_body_snippet(profile_share_card_plain_text((string) $config['body']), 140);
+    } elseif (is_string($config['description'] ?? null)) {
+        $body = post_body_snippet((string) $config['description'], 140);
+    } elseif (is_string($config['statusText'] ?? null)) {
+        $body = post_body_snippet((string) $config['statusText'], 140);
+    }
+
+    $stats = profile_share_card_module_stats($metadata);
 
     if ($kind === 'feed') {
         $items = profile_share_card_activity_items($userId);
@@ -890,12 +951,94 @@ function profile_share_card_module_preview(string $type, ?string $title, array $
         'kind' => $kind,
         'label' => $label,
         'title' => $name,
-        'subtitle' => $provider !== null ? profile_share_card_platform_label($provider) : '',
+        'subtitle' => $subtitle,
         'body' => $body,
         'imageUrl' => $imageUrl,
         'items' => $items,
         'provider' => $provider,
+        'stats' => $stats,
     ];
+}
+
+function profile_share_card_module_integration(array $config): ?array
+{
+    foreach ([
+        $config['integration'] ?? null,
+        $config['card'] ?? null,
+        $config['link']['card'] ?? null,
+    ] as $candidate) {
+        if (is_array($candidate) && is_array($candidate['metadata'] ?? null)) {
+            return $candidate;
+        }
+    }
+
+    return null;
+}
+
+function profile_share_card_first_string(array $candidates): string
+{
+    foreach ($candidates as $candidate) {
+        if (is_string($candidate) && trim($candidate) !== '') {
+            return trim($candidate);
+        }
+    }
+
+    return '';
+}
+
+function profile_share_card_module_stats(array $metadata): array
+{
+    $stats = is_array($metadata['stats'] ?? null) ? $metadata['stats'] : [];
+    $items = [];
+
+    foreach ([
+        'listeners' => 'listeners',
+        'followers' => 'followers',
+        'subscribers' => 'subs',
+        'views' => 'views',
+        'popularity' => 'popularity',
+    ] as $key => $label) {
+        $value = $stats[$key] ?? null;
+
+        if (!is_string($value) && !is_int($value) && !is_float($value)) {
+            continue;
+        }
+
+        $valueText = is_numeric($value) ? profile_share_card_compact_number((float) $value) : trim((string) $value);
+
+        if ($valueText === '') {
+            continue;
+        }
+
+        $items[] = [
+            'key' => $key,
+            'label' => $label,
+            'value' => $key === 'popularity' && is_numeric($value) ? $valueText . '/100' : $valueText,
+        ];
+
+        if (count($items) >= 2) {
+            break;
+        }
+    }
+
+    return $items;
+}
+
+function profile_share_card_compact_number(float $value): string
+{
+    if ($value >= 1000000000) {
+        return rtrim(rtrim(number_format($value / 1000000000, 1), '0'), '.') . 'B';
+    }
+
+    if ($value >= 1000000) {
+        return rtrim(rtrim(number_format($value / 1000000, 1), '0'), '.') . 'M';
+    }
+
+    if ($value >= 1000) {
+        return rtrim(rtrim(number_format($value / 1000, 1), '0'), '.') . 'K';
+    }
+
+    return (string) (int) round($value);
 }
 
 function profile_share_card_module_kind(string $type): string
@@ -1196,13 +1339,12 @@ function profile_share_card_draw_module_preview(
         }
     }
 
-    posts_share_card_text($image, $fonts, 11, $textX, $y + 28, $accent, strtoupper((string) $module['label']));
     posts_share_card_wrapped_text(
         $image,
         $fonts,
         16,
         $textX,
-        $y + 55,
+        $y + 42,
         $text,
         (string) $module['title'],
         max(60, $x + $width - $textX - 12),
@@ -1216,7 +1358,7 @@ function profile_share_card_draw_module_preview(
             $fonts,
             11,
             $textX,
-            $y + 82,
+            $y + 69,
             $muted,
             $body,
             max(60, $x + $width - $textX - 12),
@@ -1268,8 +1410,12 @@ function profile_share_card_draw_image_preview(
         }
     }
 
-    posts_share_card_text($image, $fonts, 10, $x + 12, $y + 23, $accent, strtoupper((string) $module['label']));
-    posts_share_card_wrapped_text($image, $fonts, 15, $x + 12, $y + $height - 18, $text, (string) $module['title'], $width - 24, 1, 20);
+    $title = trim((string) ($module['title'] ?? ''));
+    $label = trim((string) ($module['label'] ?? ''));
+
+    if ($title !== '' && strcasecmp($title, $label) !== 0) {
+        posts_share_card_wrapped_text($image, $fonts, 15, $x + 12, $y + $height - 18, $text, $title, $width - 24, 1, 20);
+    }
 
     if (($module['kind'] ?? '') === 'slideshow' && count($imageUrls) > 1) {
         $dotX = $x + $width - 34;
@@ -1295,15 +1441,14 @@ function profile_share_card_draw_text_preview(
     int $accent
 ): void {
     imagefilledrectangle($image, $x + 12, $y + 16, $x + 16, $y + $height - 16, $accent);
-    posts_share_card_text($image, $fonts, 10, $x + 26, $y + 28, $accent, strtoupper((string) $module['label']));
-    posts_share_card_wrapped_text($image, $fonts, 17, $x + 26, $y + 58, $text, (string) $module['title'], $width - 42, 1, 24);
+    posts_share_card_wrapped_text($image, $fonts, 17, $x + 26, $y + 44, $text, (string) $module['title'], $width - 42, 1, 24);
 
     $body = trim((string) ($module['body'] ?? ''));
     if ($body === '') {
         $body = 'Profile note';
     }
 
-    posts_share_card_wrapped_text($image, $fonts, 11, $x + 26, $y + 88, $muted, $body, $width - 42, 2, 22);
+    posts_share_card_wrapped_text($image, $fonts, 11, $x + 26, $y + 76, $muted, $body, $width - 42, 2, 22);
 }
 
 function profile_share_card_draw_player_preview(
@@ -1343,18 +1488,30 @@ function profile_share_card_draw_player_preview(
     ];
     imagefilledpolygon($image, $triangle, 3, $accent);
 
-    posts_share_card_text($image, $fonts, 10, $x + 104, $y + 31, $accent, strtoupper((string) $module['label']));
-    posts_share_card_wrapped_text($image, $fonts, 16, $x + 104, $y + 60, $text, (string) $module['title'], $width - 118, 1, 22);
+    posts_share_card_wrapped_text($image, $fonts, 16, $x + 104, $y + 38, $text, (string) $module['title'], $width - 118, 1, 22);
 
     $subtitle = trim((string) ($module['subtitle'] ?? ''));
     if ($subtitle === '') {
         $subtitle = (string) ($module['label'] ?? 'Open');
     }
-    posts_share_card_wrapped_text($image, $fonts, 11, $x + 104, $y + 88, $muted, $subtitle, $width - 118, 1, 18);
+    posts_share_card_wrapped_text($image, $fonts, 11, $x + 104, $y + 63, $muted, $subtitle, $width - 118, 1, 18);
+
+    $stats = is_array($module['stats'] ?? null) ? $module['stats'] : [];
+    $body = trim((string) ($module['body'] ?? ''));
+
+    if ($stats !== []) {
+        $statText = implode(' · ', array_map(
+            static fn (array $item): string => trim((string) ($item['value'] ?? '') . ' ' . (string) ($item['label'] ?? '')),
+            array_filter($stats, 'is_array')
+        ));
+        posts_share_card_wrapped_text($image, $fonts, 10, $x + 104, $y + 85, $accent, $statText, $width - 118, 1, 16);
+    } elseif ($body !== '') {
+        posts_share_card_wrapped_text($image, $fonts, 10, $x + 104, $y + 85, $muted, $body, $width - 118, 1, 16);
+    }
 
     imagefilledrectangle($image, $x + 14, $y + $height - 30, $x + $width - 14, $y + $height - 25, $line);
     imagefilledrectangle($image, $x + 14, $y + $height - 30, $x + 70, $y + $height - 25, $accent);
-    posts_share_card_text($image, $fonts, 10, $x + 14, $y + $height - 12, $muted, 'OPEN TO PLAY');
+    posts_share_card_text($image, $fonts, 10, $x + 14, $y + $height - 12, $muted, 'OPEN');
 }
 
 function profile_share_card_draw_feed_preview(
@@ -1369,15 +1526,14 @@ function profile_share_card_draw_feed_preview(
     int $muted,
     int $accent
 ): void {
-    posts_share_card_text($image, $fonts, 10, $x + 14, $y + 26, $accent, 'FEED');
-    posts_share_card_wrapped_text($image, $fonts, 16, $x + 14, $y + 54, $text, (string) $module['title'], $width - 28, 1, 22);
+    posts_share_card_wrapped_text($image, $fonts, 16, $x + 14, $y + 34, $text, (string) $module['title'], $width - 28, 1, 22);
 
     $items = is_array($module['items'] ?? null) ? $module['items'] : [];
     if ($items === []) {
         $items = [['title' => 'Recent profile posts appear here.', 'subtitle' => 'Post']];
     }
 
-    $rowY = $y + 82;
+    $rowY = $y + 66;
     foreach (array_slice($items, 0, 2) as $item) {
         if (!is_array($item)) {
             continue;
@@ -1413,8 +1569,7 @@ function profile_share_card_draw_list_preview(
     int $accent,
     int $line
 ): void {
-    posts_share_card_text($image, $fonts, 10, $x + 14, $y + 26, $accent, strtoupper((string) $module['label']));
-    posts_share_card_wrapped_text($image, $fonts, 16, $x + 14, $y + 54, $text, (string) $module['title'], $width - 28, 1, 22);
+    posts_share_card_wrapped_text($image, $fonts, 16, $x + 14, $y + 34, $text, (string) $module['title'], $width - 28, 1, 22);
 
     $items = is_array($module['items'] ?? null) ? $module['items'] : [];
     if ($items === []) {
@@ -1424,7 +1579,7 @@ function profile_share_card_draw_list_preview(
         ]];
     }
 
-    $rowY = $y + 78;
+    $rowY = $y + 60;
     foreach (array_slice($items, 0, 2) as $item) {
         if (!is_array($item)) {
             continue;
