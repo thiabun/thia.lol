@@ -246,6 +246,19 @@ $galleryFeed = profile_module_config(
 );
 assert_true(count($galleryFeed['mediaItems']) === 2, 'gallery feed should keep multiple photos');
 
+$safeOriginalGallery = profile_module_config(
+    'gallery_feed',
+    [
+        'mediaItems' => [
+            ['url' => '/uploads/media/2026/06/profile-feed-one.jpg'],
+            ['url' => '/uploads/media/2026/06/profile-feed-two.png'],
+            ['url' => '/uploads/media/2026/06/profile-feed-three.gif'],
+        ],
+    ],
+    123
+);
+assert_true(count($safeOriginalGallery['mediaItems']) === 3, 'gallery feed should accept safe original image extensions');
+
 $creator = profile_module_config(
     'creator_live',
     [

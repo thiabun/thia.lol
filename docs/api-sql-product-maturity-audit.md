@@ -52,7 +52,7 @@ Current API/database foundations are stronger than the older docs imply:
   profile modules.
 - profile modules support `about`, `links`, `featured_badges`, and
   `custom_text` with allowlisted settings, ordering, visibility, and soft delete.
-- uploads support authenticated image-only uploads converted to WebP under
+- uploads support authenticated safe-original image uploads under
   `public_html/uploads/media/yyyy/mm/...`.
 - moderation supports reports for posts, profiles, rooms, and messages plus
   admin report queues, post hide/remove, user suspension, room admin listing,
@@ -86,7 +86,7 @@ Important limits:
 | Search | Public profiles and public rooms search with prepared SQL and block/mute profile filtering. | No posts/modules/media search, no pagination, limited ranking, no full-text/index plan, room search does not apply viewer block/mute owner filters. | Medium | Search v1 database/API expansion plan. |
 | Block/mute/remove-follower | Tables, endpoints, profile relationship payload, feed/profile/chat filters, follow/chat guards. | Need live migration confirmation, API smoke, post/reply/like/reblog blocked-pair guards, admin report pair booleans, settings recovery UI later. | Medium/high | Thread/reply integrity audit; block/mute visibility/admin context follow-up. |
 | Profiles v3 | Profile customization columns, featured post/room, module table/API, badges, links, safe upload URLs. | Theme tokens are too shallow for v3, background/banner controls need structured fit/focal/overlay/blur/dim, modules lack featured post/room/music/media/gallery/layout presets. | High | Theme token storage; media controls; module v3 expansion; music/media cards. |
-| Media/uploads | Authenticated image upload, WebP conversion, purpose limits, cPanel storage preservation. | No media table, ownership, moderation status, reference tracking, cleanup, gallery storage, video/animation constraints, or media review tools. | High | Media library/moderation diagnostics; profile background/banner controls. |
+| Media/uploads | Authenticated image upload, safe-original storage, purpose limits, cPanel storage preservation. | No media table, ownership, moderation status, reference tracking, cleanup, conversion pipeline, gallery storage, video/animation constraints, or media review tools. | High | Media library/moderation diagnostics; profile background/banner controls. |
 | Moderation/admin | Reports for post/profile/room/message, admin reports, room list, action log, hide/remove/suspend/resolve. | No module/media report target, no report pair block/mute booleans, no media review, no schema-readiness admin diagnostics, no room/profile/user context bundle. | Medium/high | Media moderation/admin diagnostics; health/schema readiness endpoint improvements. |
 | Analytics/revenue prep | No trackers, ads, optional cookies, or revenue code. | Need future data-needs memo only: privacy-preserving aggregates, consent/legal implications, retention, cookie policy impact, and what not to collect. | Low for planning, high for implementation | Coordinate with #19; no implementation from #20. |
 | Deployment/diagnostics | Health endpoints, migration runner, deploy docs, `scripts/smoke-live.sh`, deploy-meta expectations. | Need schema readiness checks beyond migration status, stronger API-backed smoke credential strategy, clear deploy-meta/admin display, post-deploy fixture plan. | Medium | API-backed smoke harness; health/schema readiness improvements. |

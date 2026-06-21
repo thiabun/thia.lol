@@ -3,13 +3,6 @@ export const acceptedImageUploadTypes = [
   "image/png",
   "image/webp",
   "image/gif",
-  "image/bmp",
-  "image/x-ms-bmp",
-  "image/avif",
-  "image/heic",
-  "image/heif",
-  "image/tiff",
-  "image/jxl",
 ] as const;
 
 export const acceptedImageUploadExtensions = [
@@ -18,13 +11,6 @@ export const acceptedImageUploadExtensions = [
   ".png",
   ".webp",
   ".gif",
-  ".bmp",
-  ".avif",
-  ".heic",
-  ".heif",
-  ".tif",
-  ".tiff",
-  ".jxl",
 ] as const;
 
 export const imageUploadAccept = [
@@ -33,34 +19,16 @@ export const imageUploadAccept = [
 ].join(",");
 
 export const imageUploadFormatHelp =
-  "Use JPEG, PNG, WebP, GIF, BMP, AVIF, HEIC, HEIF, TIFF, or JPEG XL.";
+  "Use JPEG, PNG, WebP, or GIF.";
 
 export const acceptedVideoUploadTypes = [
   "video/mp4",
-  "video/x-m4v",
-  "video/quicktime",
   "video/webm",
-  "video/x-matroska",
-  "video/x-msvideo",
-  "video/ogg",
-  "application/ogg",
-  "video/3gpp",
-  "video/3gpp2",
-  "video/mpeg",
 ] as const;
 
 export const acceptedVideoUploadExtensions = [
   ".mp4",
-  ".m4v",
-  ".mov",
-  ".qt",
   ".webm",
-  ".mkv",
-  ".avi",
-  ".ogv",
-  ".ogg",
-  ".3gp",
-  ".3g2",
 ] as const;
 
 export const videoUploadAccept = [
@@ -69,7 +37,7 @@ export const videoUploadAccept = [
 ].join(",");
 
 export const videoUploadFormatHelp =
-  "Use MP4, MOV/QuickTime, WebM, M4V, MKV, AVI, OGG/OGV, or 3GP. Videos are converted to MP4.";
+  "Use MP4 or WebM.";
 
 export function isAcceptedImageUploadFile(file: File): boolean {
   return fileMatchesAcceptedMedia(

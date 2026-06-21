@@ -74,11 +74,11 @@ Current profile text and media constraints:
 - Bio: optional, maximum 500 characters.
 - Location: optional, maximum 120 characters.
 - Connections: maximum 10, each input maximum 300 characters.
-- Profile images: JPEG, PNG, or WebP uploads, maximum 10 MB, converted to WebP.
+- Profile images: JPEG, PNG, WebP, or GIF uploads, maximum 10 MB, stored as safe originals while cPanel conversion is disabled.
 - Profile background video: MP4 or WebM upload, maximum 30 MB, restricted to the
   `profile_background` purpose.
 - Upload purposes include `avatar`, `banner`, and `profile_background`.
-- Upload resize targets are 512x512 for avatars, 1600x600 for banners, and 1920x1080 for profile backgrounds.
+- Client crop targets remain 512x512 for avatars, 1600x600 for banners, and 1920x1080 for profile backgrounds when the crop UI is used.
 
 Current supported Connection platforms:
 
@@ -261,7 +261,7 @@ The following are not allowed:
 - Avatars should remain square/circular crops at known dimensions.
 - Banners should use stable aspect-ratio rules and object-fit crop behavior.
 - Profile backgrounds should be decorative only and must not carry required text.
-- Image uploads should continue through the authenticated upload pipeline, WebP conversion, size checks, and purpose-specific resizing.
+- Image uploads should continue through the authenticated upload pipeline, size checks, safe-format validation, and purpose checks. Server-side conversion/resizing is temporarily disabled until the VPS migration.
 - External hotlinked media should not be used for first-pass modules. Prefer uploaded media references or link cards.
 - Media captions, if added later, must be plain text with length limits.
 

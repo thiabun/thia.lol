@@ -154,6 +154,9 @@ assert_true(str_contains($integrationSource, 'profile_integration_crypto_method'
 
 assert_true(validate_profile_video_url('/uploads/media/2026/06/profile_background-abc123.mp4', 'Profile video') === '/uploads/media/2026/06/profile_background-abc123.mp4', 'video URL should validate');
 assert_true(validate_profile_video_url('/uploads/media/2026/06/profile_background-legacy.webm', 'Profile video') === '/uploads/media/2026/06/profile_background-legacy.webm', 'legacy WebM background video URL should validate');
+assert_true(validate_profile_image_url('/uploads/media/2026/06/avatar-safe.jpg', 'Avatar') === '/uploads/media/2026/06/avatar-safe.jpg', 'JPEG profile image URL should validate');
+assert_true(validate_profile_image_url('/uploads/media/2026/06/banner-safe.png', 'Banner') === '/uploads/media/2026/06/banner-safe.png', 'PNG profile image URL should validate');
+assert_true(validate_profile_image_url('/uploads/media/2026/06/background-safe.gif', 'Background') === '/uploads/media/2026/06/background-safe.gif', 'GIF profile image URL should validate');
 
 assert_php_rejected_with_config(
     $emptyConfigPath,

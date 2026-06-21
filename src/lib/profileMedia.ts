@@ -3,7 +3,7 @@ export function safeProfileImageUrl(value: string | null | undefined): string | 
     return undefined;
   }
 
-  if (/^\/uploads\/media\/[0-9]{4}\/[0-9]{2}\/[a-z0-9_-]+\.webp$/.test(value)) {
+  if (/^\/uploads\/media\/[0-9]{4}\/[0-9]{2}\/[a-z0-9_-]+\.(?:jpe?g|png|webp|gif)$/.test(value)) {
     return value;
   }
 

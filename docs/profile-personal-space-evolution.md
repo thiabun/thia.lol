@@ -645,7 +645,7 @@ Implemented public profile behavior:
 Implemented owner edit behavior:
 
 - The edit modal supports display name, bio, location, structured Connections, avatar upload, banner upload, profile background upload, module layout, module visibility/order, and module-native Featured post/room selection. Stored accent/theme values remain hidden until they have visible, tested rendering behavior.
-- Upload controls use the authenticated image upload path and WebP conversion rules.
+- Upload controls use the authenticated image upload path and current safe-original storage rules.
 - Profile saves use `PATCH /api/me/profile` with CSRF protection and server-side validation.
 - Legacy string links are still normalized for backward compatibility.
 

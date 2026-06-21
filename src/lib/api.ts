@@ -193,13 +193,18 @@ export type ImageUploadPurpose =
 export type VideoUploadPurpose = "profile_background" | "profile_module_video";
 
 export type AudioUploadPurpose = "profile_music";
+export type UploadedImageMime =
+  | "image/jpeg"
+  | "image/png"
+  | "image/webp"
+  | "image/gif";
 
 export type UploadedImage = {
   url: string;
   width: number;
   height: number;
-  mime: "image/webp";
-  type: "image/webp";
+  mime: UploadedImageMime;
+  type: UploadedImageMime;
   size: number;
   purpose: ImageUploadPurpose;
 };
@@ -2034,7 +2039,7 @@ function normalizeProfileModuleExternalUrl(value: string): string | undefined {
 }
 
 function isUploadedProfileModuleMediaUrl(value: string): boolean {
-  return /^\/uploads\/media\/[0-9]{4}\/[0-9]{2}\/[a-z0-9_-]+\.webp$/.test(value);
+  return /^\/uploads\/media\/[0-9]{4}\/[0-9]{2}\/[a-z0-9_-]+\.(?:jpe?g|png|webp|gif)$/.test(value);
 }
 
 function isUploadedProfileModuleAudioUrl(value: string): boolean {

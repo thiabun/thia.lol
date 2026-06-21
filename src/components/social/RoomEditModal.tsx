@@ -83,7 +83,7 @@ export function RoomEditModal({
   const busy = saving || uploading !== undefined || deletePending;
   const moderators = members.filter((member) => member.role === "moderator");
   const owner = members.find((member) => member.role === "owner");
-  const messageTone = message === "Images are converted to WebP" ? "success" : "error";
+  const messageTone = message === "Image uploaded" ? "success" : "error";
 
   function closeEditor() {
     setPendingImageCrop(undefined);
@@ -156,7 +156,7 @@ export function RoomEditModal({
       const uploaded = await onUpload(file, slot);
       updateForm(slot === "room_icon" ? "iconUrl" : "bannerUrl", uploaded.url);
       setPendingImageCrop(undefined);
-      setMessage("Images are converted to WebP");
+      setMessage("Image uploaded");
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Image could not be uploaded.";

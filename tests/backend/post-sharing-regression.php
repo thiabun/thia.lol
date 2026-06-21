@@ -74,7 +74,8 @@ assert_true(str_contains($postsSource, 'function posts_share_card_draw_avatar($i
 assert_true(str_contains($postsSource, "\$avatarUrl = \$post['author']['avatarUrl'] ?? null;"), 'share-card avatar drawing should use the author avatar URL');
 assert_true(str_contains($postsSource, "if (!is_string(\$mediaUrl) || \$mediaUrl === '') {\n        return false;\n    }"), 'missing post media should not draw a placeholder thumbnail');
 assert_true(!str_contains($postsSource, 'imagefilledellipse'), 'share cards should not draw decorative placeholder blobs for posts without media');
-assert_true(str_contains($postsSource, 'imagecreatefromwebp($path)'), 'valid uploaded media should still render as a WebP thumbnail');
+assert_true(str_contains($postsSource, 'posts_share_card_load_image($path)'), 'valid uploaded media should render through the safe-original image loader');
+assert_true(str_contains($postsSource, "'image/jpeg'"), 'share cards should render JPEG thumbnails');
 assert_true(str_contains($postsSource, '$targetY = 130'), 'share-card media thumbnail should stay inside the lowered panel');
 assert_true(str_contains($postsSource, "imagerectangle(\$image, \$targetX, \$targetY, \$targetX + \$targetWidth, \$targetY + \$targetHeight, \$line);\n\n    return true;"), 'thumbnail drawing should return true only after drawing real media');
 

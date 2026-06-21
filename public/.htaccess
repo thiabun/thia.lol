@@ -2,8 +2,11 @@ Options -Indexes -MultiViews
 
 DirectoryIndex index.html
 
+AddType image/jpeg .jpg .jpeg
+AddType image/png .png
 AddType image/webp .webp
-AddType video/mp4 .mp4 .m4v
+AddType image/gif .gif
+AddType video/mp4 .mp4
 AddType video/webm .webm
 
 <IfModule mod_headers.c>

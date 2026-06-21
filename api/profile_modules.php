@@ -3900,7 +3900,7 @@ function profile_module_uploaded_media_url(mixed $value, string $label): string
 
     $trimmed = trim($value);
 
-    if (preg_match('#^/uploads/media/[0-9]{4}/[0-9]{2}/[a-z0-9_-]+\.webp$#', $trimmed) !== 1) {
+    if (preg_match('#^/uploads/media/[0-9]{4}/[0-9]{2}/[a-z0-9_-]+\.(?:jpe?g|png|webp|gif)$#', $trimmed) !== 1) {
         json_error("{$label} must come from the image upload endpoint.", 422);
     }
 

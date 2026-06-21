@@ -46,7 +46,7 @@ Current foundation includes:
 - accounts and sessions
 - public profiles
 - profile editing and image customization
-- image uploads converted to WebP
+- image uploads with temporary safe-original storage
 - posts with media
 - replies/thread foundations
 - likes
@@ -115,9 +115,9 @@ Backend/API:
 Uploads:
 
 - authenticated image uploads only
-- JPEG, PNG, and WebP accepted
+- JPEG, PNG, WebP, and GIF accepted
 - 10 MB max
-- converted to WebP
+- stored as safe originals while cPanel conversion is disabled
 - stored under the deployed server `uploads/` directory
 
 ## Contributing and testing

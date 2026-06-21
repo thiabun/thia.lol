@@ -1065,11 +1065,11 @@ function posts_share_card_draw_thumbnail($image, array $post): bool
 
     $path = posts_share_card_media_path($mediaUrl);
 
-    if ($path === null || !function_exists('imagecreatefromwebp')) {
+    if ($path === null) {
         return false;
     }
 
-    $source = @imagecreatefromwebp($path);
+    $source = posts_share_card_load_image($path);
 
     if (!$source) {
         return false;
@@ -1119,7 +1119,7 @@ function posts_share_card_draw_avatar($image, array $post, int $x, int $y, int $
 {
     $avatarUrl = $post['author']['avatarUrl'] ?? null;
 
-    if (!is_string($avatarUrl) || $avatarUrl === '' || !function_exists('imagecreatefromwebp')) {
+    if (!is_string($avatarUrl) || $avatarUrl === '') {
         return false;
     }
 
@@ -1129,7 +1129,7 @@ function posts_share_card_draw_avatar($image, array $post, int $x, int $y, int $
         return false;
     }
 
-    $source = @imagecreatefromwebp($path);
+    $source = posts_share_card_load_image($path);
 
     if (!$source) {
         return false;
@@ -1187,7 +1187,7 @@ function posts_share_card_draw_avatar($image, array $post, int $x, int $y, int $
 
 function posts_share_card_media_path(string $mediaUrl): ?string
 {
-    if (preg_match('#^/uploads/media/[0-9]{4}/[0-9]{2}/[a-z0-9_-]+\.webp$#', $mediaUrl) !== 1) {
+    if (preg_match('#^/uploads/media/[0-9]{4}/[0-9]{2}/[a-z0-9_-]+\.(?:jpe?g|png|webp|gif)$#', $mediaUrl) !== 1) {
         return null;
     }
 
@@ -1204,6 +1204,25 @@ function posts_share_card_media_path(string $mediaUrl): ?string
     }
 
     return null;
+}
+
+function posts_share_card_load_image(string $path): ?GdImage
+{
+    $size = @getimagesize($path);
+
+    if ($size === false) {
+        return null;
+    }
+
+    $source = match ($size['mime'] ?? '') {
+        'image/jpeg' => function_exists('imagecreatefromjpeg') ? @imagecreatefromjpeg($path) : false,
+        'image/png' => function_exists('imagecreatefrompng') ? @imagecreatefrompng($path) : false,
+        'image/webp' => function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($path) : false,
+        'image/gif' => function_exists('imagecreatefromgif') ? @imagecreatefromgif($path) : false,
+        default => false,
+    };
+
+    return $source instanceof GdImage ? $source : null;
 }
 
 function posts_reaction_create(int $postId): void
@@ -1413,7 +1432,7 @@ function validate_post_media_url(mixed $value): ?string
         json_error('Post image URL is too long.', 422);
     }
 
-    if (preg_match('#^/uploads/media/[0-9]{4}/[0-9]{2}/[a-z0-9_-]+\.webp$#', $trimmed) !== 1) {
+    if (preg_match('#^/uploads/media/[0-9]{4}/[0-9]{2}/[a-z0-9_-]+\.(?:jpe?g|png|webp|gif)$#', $trimmed) !== 1) {
         json_error('Use Upload image to attach an image.', 422);
     }
 

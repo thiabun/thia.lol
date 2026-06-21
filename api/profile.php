@@ -662,7 +662,7 @@ function validate_profile_image_url(mixed $value, string $label): ?string
         json_error("{$label} image URL is too long.", 422);
     }
 
-    if (preg_match('#^/uploads/media/[0-9]{4}/[0-9]{2}/[a-z0-9_-]+\.webp$#', $trimmed) === 1) {
+    if (preg_match('#^/uploads/media/[0-9]{4}/[0-9]{2}/[a-z0-9_-]+\.(?:jpe?g|png|webp|gif)$#', $trimmed) === 1) {
         return $trimmed;
     }
 

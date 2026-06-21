@@ -683,7 +683,7 @@ function room_upload_url(mixed $value, string $label): ?string
 
     $url = trim($value);
 
-    if (!preg_match('#^/uploads/media/[0-9]{4}/[0-9]{2}/(?:room_icon|room_banner)-[a-f0-9]{32}\.webp$#', $url)) {
+    if (!preg_match('#^/uploads/media/[0-9]{4}/[0-9]{2}/(?:room_icon|room_banner)-[a-f0-9]{32}\.(?:jpe?g|png|webp|gif)$#', $url)) {
         json_error("{$label} must come from the image upload endpoint.", 422);
     }
 
