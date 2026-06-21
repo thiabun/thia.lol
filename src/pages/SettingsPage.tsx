@@ -1,11 +1,23 @@
 import {
-  Bell,
-  Check,
+  AtSign,
+  BellRing,
+  ChevronDown,
+  Clock3,
+  FileText,
+  Fingerprint,
+  KeyRound,
   Lock,
   Mail,
+  Save,
   ShieldCheck,
+  SlidersHorizontal,
+  Sparkles,
   Trash2,
+  UserCheck,
+  UserPlus,
   UserRound,
+  X,
+  type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Navigate } from "react-router";
@@ -55,6 +67,15 @@ const notificationKeys = [
   ["replies", "Replies"],
   ["reblogs", "Reblogs"],
   ["badges", "Badges"],
+] as const;
+
+const settingsNavItems = [
+  { id: "account", label: "Account", icon: UserRound },
+  { id: "security", label: "Security", icon: ShieldCheck },
+  { id: "privacy", label: "Privacy", icon: Lock },
+  { id: "consent", label: "Consent", icon: SlidersHorizontal },
+  { id: "content", label: "Content", icon: FileText },
+  { id: "danger", label: "Danger", icon: Trash2 },
 ] as const;
 
 export function SettingsPage() {
@@ -353,28 +374,84 @@ export function SettingsPage() {
     });
   }
 
+  const enabledNotificationCount = notificationKeys.filter(
+    ([key]) => preferences?.notifications[key] ?? true,
+  ).length;
+  const consentEnabledCount = [
+    preferences?.analyticsConsent,
+    preferences?.personalizationConsent,
+    preferences?.richEmbedsConsent,
+    preferences?.autoplayMediaConsent,
+    preferences?.sensitiveContentVisible,
+  ].filter(Boolean).length;
+  const deletionActive = Boolean(
+    settings.deletion?.requestedAt &&
+      !settings.deletion.canceledAt &&
+      !settings.deletion.completedAt,
+  );
+  const deletionScheduledFor = settings.deletion?.scheduledFor ?? "the scheduled date";
+  const visibilityLabel =
+    settings.privacy.profileVisibility === "private" ? "Private" : "Public";
+  const twoFactorLabel = settings.twoFactor.enabled ? "2FA on" : "2FA off";
+
   return (
-    <main className="mx-auto w-full max-w-6xl px-3 py-6 sm:px-4 lg:px-6">
+    <main className="mx-auto w-full max-w-7xl px-3 py-5 sm:px-4 lg:px-6">
       <PageMeta title="Settings" description="Manage your thia.lol account." path="/settings" />
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <Badge tone="cool">settings</Badge>
-          <h1 className="mt-3 text-3xl font-semibold tracking-normal text-text">
-            Account settings
-          </h1>
-          <p className="mt-2 text-sm text-muted">
-            Signed in as {user ? `@${user.handle}` : "your account"}.
-          </p>
+      <section className="relative mb-4 overflow-hidden rounded-panel border border-line bg-surface/82 p-4 shadow-soft backdrop-blur-veil sm:p-5">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/70 to-transparent" />
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <Badge tone="cool" className="min-h-6 px-2.5 text-[0.68rem] uppercase tracking-[0.12em]">
+              control room
+            </Badge>
+            <h1 className="mt-3 text-3xl font-semibold tracking-normal text-text sm:text-4xl">
+              Settings
+            </h1>
+            <p className="mt-1 text-sm text-muted">
+              {settings.account.displayName} · @{user?.handle ?? settings.account.handle}
+            </p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[26rem]">
+            <InlineStatus
+              icon={Lock}
+              label={visibilityLabel}
+              tone={settings.privacy.profileVisibility === "private" ? "warm" : "cool"}
+            />
+            <InlineStatus
+              icon={Fingerprint}
+              label={twoFactorLabel}
+              tone={settings.twoFactor.enabled ? "cool" : "default"}
+            />
+            <InlineStatus
+              icon={BellRing}
+              label={`${enabledNotificationCount}/${notificationKeys.length} alerts`}
+              tone="default"
+            />
+          </div>
         </div>
-      </div>
+      </section>
 
       {error ? <Notice tone="error">{error}</Notice> : null}
       {message ? <Notice tone="success">{message}</Notice> : null}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.72fr)]">
+      <div className="grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)]">
+        <SettingsRail />
+
         <div className="space-y-4">
-          <SettingsSection title="Account" icon={<UserRound size={18} />}>
-            <div className="grid gap-4 xl:grid-cols-2">
+          <SettingsSection
+            id="account"
+            title="Account"
+            kicker="Identity"
+            icon={UserRound}
+            badge={settings.account.status}
+          >
+            <div className="grid gap-2 sm:grid-cols-2">
+              <StatusTile icon={Mail} label="Email" value={settings.account.email} />
+              <StatusTile icon={AtSign} label="Handle" value={`@${settings.account.handle}`} />
+            </div>
+
+            <div className="mt-3 grid gap-2 xl:grid-cols-2">
+              <ActionDetails icon={Mail} title="Change email" meta={settings.account.email}>
               <form className="space-y-3" onSubmit={handleEmailSubmit}>
                 <TextField
                   id="settings-email"
@@ -383,6 +460,7 @@ export function SettingsPage() {
                   type="email"
                   defaultValue={settings?.account.email ?? ""}
                   icon={Mail}
+                  density="compact"
                   required
                 />
                 <TextField
@@ -391,12 +469,24 @@ export function SettingsPage() {
                   label="Current password"
                   type="password"
                   autoComplete="current-password"
+                  density="compact"
                   required
                 />
-                <Button type="submit" disabled={busy === "email"}>
+                <Button type="submit" size="sm" icon={<Save size={15} />} disabled={busy === "email"}>
                   Save email
                 </Button>
               </form>
+              </ActionDetails>
+
+              <ActionDetails
+                icon={AtSign}
+                title="Change handle"
+                meta={
+                  settings?.account.handleChange.canChange === false
+                    ? "Cooldown active"
+                    : `@${settings.account.handle}`
+                }
+              >
               <form className="space-y-3" onSubmit={handleHandleSubmit}>
                 <HandleField
                   id="settings-handle"
@@ -404,6 +494,7 @@ export function SettingsPage() {
                   label="Handle"
                   defaultValue={settings?.account.handle ?? ""}
                   disabled={settings?.account.handleChange.canChange === false}
+                  density="compact"
                   required
                   maxLength={41}
                 />
@@ -413,6 +504,7 @@ export function SettingsPage() {
                   label="Current password"
                   type="password"
                   autoComplete="current-password"
+                  density="compact"
                   required
                 />
                 {settings?.account.handleChange.canChange === false ? (
@@ -426,14 +518,24 @@ export function SettingsPage() {
                     busy === "handle" ||
                     settings?.account.handleChange.canChange === false
                   }
+                  icon={<Save size={15} />}
+                  size="sm"
                 >
                   Save handle
                 </Button>
               </form>
+              </ActionDetails>
             </div>
           </SettingsSection>
 
-          <SettingsSection title="Security" icon={<ShieldCheck size={18} />}>
+          <SettingsSection
+            id="security"
+            title="Security"
+            kicker="Access"
+            icon={ShieldCheck}
+            badge={twoFactorLabel}
+          >
+            <ActionDetails icon={KeyRound} title="Password" meta="Update credentials">
             <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]" onSubmit={handlePasswordSubmit}>
               <TextField
                 id="settings-password-current"
@@ -441,6 +543,7 @@ export function SettingsPage() {
                 label="Current password"
                 type="password"
                 autoComplete="current-password"
+                density="compact"
                 required
               />
               <TextField
@@ -449,30 +552,35 @@ export function SettingsPage() {
                 label="New password"
                 type="password"
                 autoComplete="new-password"
+                density="compact"
                 minLength={10}
                 maxLength={255}
                 required
               />
-              <Button type="submit" className="self-end" disabled={busy === "password"}>
+              <Button type="submit" size="sm" className="self-end" icon={<Save size={15} />} disabled={busy === "password"}>
                 Save
               </Button>
             </form>
+            </ActionDetails>
 
-            <div className="mt-5 rounded-card border border-line bg-canvas/35 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-text">Two-factor authentication</p>
-                  <p className="mt-1 text-sm text-muted">
-                    {settings?.twoFactor.enabled
-                      ? `${settings.twoFactor.backupCodeCount} recovery codes remaining.`
-                      : "Protect sign-ins with an authenticator app."}
-                  </p>
-                </div>
-                <Badge tone={settings?.twoFactor.enabled ? "cool" : "default"}>
-                  {settings?.twoFactor.enabled ? "enabled" : "off"}
-                </Badge>
-              </div>
-
+            <div className="mt-2">
+            <ActionDetails
+              icon={Fingerprint}
+              title="Two-factor authentication"
+              meta={
+                settings?.twoFactor.enabled
+                  ? `${settings.twoFactor.backupCodeCount} recovery codes`
+                  : "Authenticator app"
+              }
+              badge={
+                settings?.twoFactor.enabled ? (
+                  <Badge tone="cool" className="min-h-6 px-2 text-[0.68rem]">enabled</Badge>
+                ) : (
+                  <Badge className="min-h-6 px-2 text-[0.68rem]">off</Badge>
+                )
+              }
+              defaultOpen={Boolean(twoFactorSetup)}
+            >
               {!settings?.twoFactor.enabled ? (
                 <form className="mt-4 flex flex-col gap-3 sm:flex-row" onSubmit={handleTwoFactorSetup}>
                   <TextField
@@ -481,10 +589,13 @@ export function SettingsPage() {
                     label="Current password"
                     type="password"
                     autoComplete="current-password"
+                    density="compact"
                     required
                   />
                   <Button
                     type="submit"
+                    size="sm"
+                    icon={<Sparkles size={15} />}
                     className="self-end"
                     disabled={busy === "2fa-setup"}
                   >
@@ -500,9 +611,10 @@ export function SettingsPage() {
                       label="Current password"
                       type="password"
                       autoComplete="current-password"
+                      density="compact"
                       required
                     />
-                    <Button type="submit" className="self-end" variant="secondary">
+                    <Button type="submit" size="sm" className="self-end" variant="secondary">
                       New codes
                     </Button>
                   </form>
@@ -513,9 +625,10 @@ export function SettingsPage() {
                       label="Current password"
                       type="password"
                       autoComplete="current-password"
+                      density="compact"
                       required
                     />
-                    <Button type="submit" className="self-end" variant="secondary">
+                    <Button type="submit" size="sm" className="self-end" variant="secondary">
                       Disable
                     </Button>
                   </form>
@@ -538,9 +651,10 @@ export function SettingsPage() {
                     name="code"
                     label="Authenticator code"
                     autoComplete="one-time-code"
+                    density="compact"
                     required
                   />
-                  <Button type="submit" disabled={busy === "2fa-enable"}>
+                  <Button type="submit" size="sm" icon={<ShieldCheck size={15} />} disabled={busy === "2fa-enable"}>
                     Enable two-factor
                   </Button>
                 </form>
@@ -558,29 +672,45 @@ export function SettingsPage() {
                   </div>
                 </div>
               ) : null}
+            </ActionDetails>
             </div>
           </SettingsSection>
 
-          <SettingsSection title="Privacy" icon={<Lock size={18} />}>
+          <SettingsSection
+            id="privacy"
+            title="Privacy"
+            kicker="Visibility"
+            icon={Lock}
+            badge={visibilityLabel}
+          >
             <form className="grid gap-3 sm:grid-cols-[1fr_auto]" onSubmit={handlePrivacySubmit}>
               <SelectField
                 id="settings-profile-visibility"
                 name="profileVisibility"
                 label="Profile visibility"
                 defaultValue={settings?.privacy.profileVisibility ?? "public"}
+                density="compact"
                 options={[
                   { value: "public", label: "Public" },
                   { value: "private", label: "Private, approved followers only" },
                 ]}
               />
-              <Button type="submit" className="self-end" disabled={busy === "privacy"}>
+              <Button type="submit" size="sm" icon={<Save size={15} />} className="self-end" disabled={busy === "privacy"}>
                 Save privacy
               </Button>
             </form>
-            <div className="mt-4 space-y-2">
-              <p className="text-sm font-semibold text-text">Follow requests</p>
+
+            <div className="mt-3">
+            <ActionDetails
+              icon={UserPlus}
+              title="Follow requests"
+              meta={`${followRequests.length} pending`}
+              defaultOpen={followRequests.length > 0}
+            >
               {followRequests.length === 0 ? (
-                <p className="text-sm text-muted">No pending requests.</p>
+                <p className="rounded-card border border-line bg-canvas/35 p-3 text-sm text-muted">
+                  No pending requests.
+                </p>
               ) : (
                 followRequests.map((request) => (
                   <div
@@ -595,6 +725,7 @@ export function SettingsPage() {
                       <Button
                         type="button"
                         size="sm"
+                        icon={<UserCheck size={14} />}
                         onClick={() => void handleFollowRequest(request.id, "approve")}
                       >
                         Approve
@@ -603,6 +734,7 @@ export function SettingsPage() {
                         type="button"
                         size="sm"
                         variant="secondary"
+                        icon={<X size={14} />}
                         onClick={() => void handleFollowRequest(request.id, "deny")}
                       >
                         Deny
@@ -611,40 +743,52 @@ export function SettingsPage() {
                   </div>
                 ))
               )}
+            </ActionDetails>
             </div>
           </SettingsSection>
-        </div>
 
-        <div className="space-y-4">
-          <SettingsSection title="Consent" icon={<Check size={18} />}>
+          <SettingsSection
+            id="consent"
+            title="Consent"
+            kicker="Preferences"
+            icon={SlidersHorizontal}
+            badge={`${consentEnabledCount}/5 enabled`}
+          >
             <form className="space-y-3" onSubmit={handlePreferencesSubmit}>
-              <PreferenceToggle
-                name="analyticsConsent"
-                label="Analytics cookies"
-                defaultChecked={preferences?.analyticsConsent}
-              />
-              <PreferenceToggle
-                name="personalizationConsent"
-                label="Personalized discovery"
-                defaultChecked={preferences?.personalizationConsent}
-              />
-              <PreferenceToggle
-                name="richEmbedsConsent"
-                label="Rich embeds"
-                defaultChecked={preferences?.richEmbedsConsent}
-              />
-              <PreferenceToggle
-                name="autoplayMediaConsent"
-                label="Autoplay media"
-                defaultChecked={preferences?.autoplayMediaConsent}
-              />
-              <PreferenceToggle
-                name="sensitiveContentVisible"
-                label="Show sensitive content"
-                defaultChecked={preferences?.sensitiveContentVisible}
-              />
-              <p className="pt-2 text-sm font-semibold text-text">In-app notifications</p>
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                <PreferenceToggle
+                  name="analyticsConsent"
+                  label="Analytics"
+                  defaultChecked={preferences?.analyticsConsent}
+                />
+                <PreferenceToggle
+                  name="personalizationConsent"
+                  label="Discovery"
+                  defaultChecked={preferences?.personalizationConsent}
+                />
+                <PreferenceToggle
+                  name="richEmbedsConsent"
+                  label="Rich embeds"
+                  defaultChecked={preferences?.richEmbedsConsent}
+                />
+                <PreferenceToggle
+                  name="autoplayMediaConsent"
+                  label="Autoplay"
+                  defaultChecked={preferences?.autoplayMediaConsent}
+                />
+                <PreferenceToggle
+                  name="sensitiveContentVisible"
+                  label="Sensitive content"
+                  defaultChecked={preferences?.sensitiveContentVisible}
+                />
+              </div>
+
+              <ActionDetails
+                icon={BellRing}
+                title="Notification categories"
+                meta={`${enabledNotificationCount} enabled`}
+              >
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                 {notificationKeys.map(([key, label]) => (
                   <PreferenceToggle
                     key={key}
@@ -654,19 +798,28 @@ export function SettingsPage() {
                     compact
                   />
                 ))}
-              </div>
-              <Button type="submit" disabled={busy === "preferences"}>
+                </div>
+              </ActionDetails>
+
+              <Button type="submit" size="sm" icon={<Save size={15} />} disabled={busy === "preferences"}>
                 Save preferences
               </Button>
             </form>
           </SettingsSection>
 
-          <SettingsSection title="Content" icon={<Bell size={18} />}>
+          <SettingsSection
+            id="content"
+            title="Content"
+            kicker="Posts"
+            icon={FileText}
+            badge={`${posts.length} shown`}
+          >
             <div className="flex flex-wrap items-end gap-3">
               <SelectField
                 id="settings-post-kind"
                 label="Content"
                 value={postKind}
+                density="compact"
                 onChange={(event) =>
                   setPostKind(event.currentTarget.value as "posts" | "replies" | "all")
                 }
@@ -676,9 +829,7 @@ export function SettingsPage() {
                   { value: "replies", label: "Replies" },
                 ]}
               />
-              <Button type="button" variant="secondary" onClick={() => void handleDeletePosts()}>
-                Delete shown
-              </Button>
+              <Badge className="mb-1 min-h-8 px-3">{posts.length} item{posts.length === 1 ? "" : "s"}</Badge>
             </div>
             <div className="mt-4 max-h-80 space-y-2 overflow-auto pr-1">
               {posts.length === 0 ? (
@@ -694,46 +845,86 @@ export function SettingsPage() {
                 ))
               )}
             </div>
+
+            <div className="mt-3">
+              <ActionDetails icon={Trash2} title="Bulk delete" meta="Selected content" danger>
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-rose/25 bg-rose/10 p-3">
+                  <p className="text-sm text-rose-ink">
+                    Delete all currently shown {postKind === "all" ? "posts and replies" : postKind}.
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    icon={<Trash2 size={14} />}
+                    onClick={() => void handleDeletePosts()}
+                  >
+                    Delete shown
+                  </Button>
+                </div>
+              </ActionDetails>
+            </div>
           </SettingsSection>
 
-          <SettingsSection title="Danger Zone" icon={<Trash2 size={18} />}>
-            {settings?.deletion && !settings.deletion.canceledAt ? (
+          <SettingsSection
+            id="danger"
+            title="Danger"
+            kicker="Account"
+            icon={Trash2}
+            badge={deletionActive ? "pending" : "available"}
+            danger
+          >
+            {deletionActive ? (
               <div className="rounded-card border border-amber/40 bg-amber/10 p-3 text-sm text-text">
-                Deletion is scheduled for {settings.deletion.scheduledFor}.
+                Deletion is scheduled for {deletionScheduledFor}.
                 <Button
                   type="button"
                   className="mt-3"
                   variant="secondary"
+                  size="sm"
+                  icon={<Clock3 size={14} />}
                   onClick={() => void handleCancelDeletion()}
                 >
                   Cancel deletion
                 </Button>
               </div>
             ) : null}
-            <form className="space-y-3" onSubmit={handleDeletionSubmit}>
-              <TextField
-                id="settings-delete-password"
-                name="currentPassword"
-                label="Current password"
-                type="password"
-                autoComplete="current-password"
-                required
-              />
-              <TextareaField
-                id="settings-delete-reason"
-                name="reason"
-                label="Reason"
-                rows={3}
-                maxLength={255}
-              />
-              <Button type="submit" variant="secondary" disabled={busy === "account-delete"}>
-                Schedule account deletion
-              </Button>
-              <p className="text-xs leading-5 text-muted">
-                Your profile and content are hidden immediately. You can sign in and cancel
-                within 30 days.
-              </p>
-            </form>
+
+            <div className="mt-3">
+              <ActionDetails icon={Trash2} title="Schedule account deletion" meta="30-day grace" danger>
+                <form className="space-y-3" onSubmit={handleDeletionSubmit}>
+                  <TextField
+                    id="settings-delete-password"
+                    name="currentPassword"
+                    label="Current password"
+                    type="password"
+                    autoComplete="current-password"
+                    density="compact"
+                    required
+                  />
+                  <TextareaField
+                    id="settings-delete-reason"
+                    name="reason"
+                    label="Reason"
+                    rows={3}
+                    maxLength={255}
+                    density="compact"
+                  />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    variant="secondary"
+                    icon={<Trash2 size={14} />}
+                    disabled={busy === "account-delete"}
+                  >
+                    Schedule deletion
+                  </Button>
+                  <p className="text-xs leading-5 text-muted">
+                    Your profile and content are hidden immediately. You can sign in and cancel within 30 days.
+                  </p>
+                </form>
+              </ActionDetails>
+            </div>
           </SettingsSection>
         </div>
       </div>
@@ -744,20 +935,179 @@ export function SettingsPage() {
 function SettingsSection({
   children,
   icon,
+  id,
+  kicker,
+  badge,
+  danger,
   title,
 }: {
   children: ReactNode;
-  icon: ReactNode;
+  icon: LucideIcon;
+  id: string;
+  kicker: string;
+  badge?: ReactNode;
+  danger?: boolean;
+  title: string;
+}) {
+  const Icon = icon;
+
+  return (
+    <Panel
+      id={id}
+      className={cn(
+        "scroll-mt-24 overflow-hidden p-0",
+        danger && "border-rose/25 bg-rose/5",
+      )}
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-line/70 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            className={cn(
+              "grid size-9 shrink-0 place-items-center rounded-control border bg-canvas/60",
+              danger ? "border-rose/25 text-rose-ink" : "border-line text-accent-strong",
+            )}
+          >
+            <Icon aria-hidden="true" size={17} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted">
+              {kicker}
+            </p>
+            <h2 className="truncate text-base font-semibold text-text">{title}</h2>
+          </div>
+        </div>
+        {badge ? (
+          <Badge
+            tone={danger ? "rose" : "default"}
+            className="min-h-6 shrink-0 px-2 text-[0.68rem]"
+          >
+            {badge}
+          </Badge>
+        ) : null}
+      </div>
+      <div className="p-3 sm:p-4">
+      {children}
+      </div>
+    </Panel>
+  );
+}
+
+function SettingsRail() {
+  return (
+    <nav className="hidden lg:block" aria-label="Settings sections">
+      <Panel className="sticky top-24 p-2">
+        <div className="grid gap-1">
+          {settingsNavItems.map(({ id, label, icon: Icon }) => (
+            <a
+              key={id}
+              href={`#${id}`}
+              className="flex min-h-10 items-center gap-2 rounded-control px-3 text-sm font-medium text-muted transition duration-fluid hover:bg-surface-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
+            >
+              <Icon aria-hidden="true" size={16} />
+              {label}
+            </a>
+          ))}
+        </div>
+      </Panel>
+    </nav>
+  );
+}
+
+function InlineStatus({
+  icon: Icon,
+  label,
+  tone = "default",
+}: {
+  icon: LucideIcon;
+  label: string;
+  tone?: "default" | "cool" | "warm";
+}) {
+  return (
+    <div
+      className={cn(
+        "flex min-h-11 items-center gap-2 rounded-card border px-3 text-sm font-semibold",
+        tone === "cool" && "border-cool/30 bg-cool/12 text-cool-ink",
+        tone === "warm" && "border-warm/35 bg-warm/12 text-warm-ink",
+        tone === "default" && "border-line bg-canvas/45 text-text",
+      )}
+    >
+      <Icon aria-hidden="true" size={16} />
+      <span className="truncate">{label}</span>
+    </div>
+  );
+}
+
+function StatusTile({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-3 rounded-card border border-line bg-canvas/38 px-3 py-2.5">
+      <span className="grid size-8 shrink-0 place-items-center rounded-control border border-line bg-surface/70 text-muted">
+        <Icon aria-hidden="true" size={15} />
+      </span>
+      <div className="min-w-0">
+        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-muted">
+          {label}
+        </p>
+        <p className="truncate text-sm font-semibold text-text">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function ActionDetails({
+  badge,
+  children,
+  danger,
+  defaultOpen,
+  icon: Icon,
+  meta,
+  title,
+}: {
+  badge?: ReactNode;
+  children: ReactNode;
+  danger?: boolean;
+  defaultOpen?: boolean;
+  icon: LucideIcon;
+  meta?: ReactNode;
   title: string;
 }) {
   return (
-    <Panel className="p-4 sm:p-5">
-      <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-text">
-        {icon}
-        {title}
-      </h2>
-      {children}
-    </Panel>
+    <details
+      className={cn(
+        "group overflow-hidden rounded-card border bg-canvas/34",
+        danger ? "border-rose/25" : "border-line",
+      )}
+      open={defaultOpen ? true : undefined}
+    >
+      <summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 px-3 py-2 transition duration-fluid hover:bg-surface/60 focus-visible:outline-2 focus-visible:outline-focus [&::-webkit-details-marker]:hidden">
+        <span
+          className={cn(
+            "grid size-8 shrink-0 place-items-center rounded-control border bg-surface/70",
+            danger ? "border-rose/25 text-rose-ink" : "border-line text-muted",
+          )}
+        >
+          <Icon aria-hidden="true" size={15} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold text-text">{title}</span>
+          {meta ? <span className="block truncate text-xs text-muted">{meta}</span> : null}
+        </span>
+        {badge}
+        <ChevronDown
+          aria-hidden="true"
+          className="shrink-0 text-muted transition duration-fluid group-open:rotate-180"
+          size={16}
+        />
+      </summary>
+      <div className="border-t border-line/70 p-3">{children}</div>
+    </details>
   );
 }
 
@@ -797,17 +1147,18 @@ function PreferenceToggle({
   return (
     <label
       className={cn(
-        "flex items-center justify-between gap-3 rounded-card border border-line bg-canvas/35",
-        compact ? "px-3 py-2 text-sm" : "px-4 py-3",
+        "flex items-center justify-between gap-3 rounded-card border border-line bg-canvas/35 transition duration-fluid hover:border-line-strong hover:bg-surface/60",
+        compact ? "px-3 py-2 text-sm" : "px-3 py-2.5 text-sm",
       )}
     >
       <span className="font-medium text-text">{label}</span>
       <input
-        className="size-5 accent-[var(--accent)]"
+        className="peer sr-only"
         name={name}
         type="checkbox"
         defaultChecked={defaultChecked ?? false}
       />
+      <span className="relative h-6 w-11 shrink-0 rounded-full border border-line bg-canvas shadow-inner-soft transition duration-fluid after:absolute after:left-1 after:top-1 after:size-4 after:rounded-full after:bg-muted after:transition after:duration-fluid peer-checked:border-accent/50 peer-checked:bg-accent peer-checked:after:translate-x-5 peer-checked:after:bg-accent-ink" />
     </label>
   );
 }
