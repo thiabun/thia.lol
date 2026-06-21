@@ -1748,6 +1748,9 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
     const bannerImage = document.querySelector<HTMLElement>(
       '[data-testid="profile-grid-module-profile_info"] [data-testid="profile-header-banner-image"]',
     );
+    const bannerBleed = document.querySelector<HTMLElement>(
+      '[data-testid="profile-grid-module-profile_info"] [data-testid="profile-header-banner-bleed"]',
+    );
     const actionRail = document.querySelector<HTMLElement>(
       '[data-testid="profile-grid-module-profile_info"] [data-testid="profile-info-action-rail"]',
     );
@@ -1755,11 +1758,13 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
       '[data-testid="profile-grid-module-profile_info"] [data-testid="profile-info-actions-menu"]',
     );
 
-    if (!moduleElement || !headerElement || !bannerElement || !bannerImage || !actionRail || !actionMenu) {
+    if (!moduleElement || !headerElement || !bannerElement || !bannerImage || !bannerBleed || !actionRail || !actionMenu) {
       throw new Error("Profile info module, header, banner, or actions did not render.");
     }
 
     const moduleRect = moduleElement.getBoundingClientRect();
+    const bannerRect = bannerElement.getBoundingClientRect();
+    const bannerBleedRect = bannerBleed.getBoundingClientRect();
     const actionRailRect = actionRail.getBoundingClientRect();
     const actionMenuRect = actionMenu.getBoundingClientRect();
 
@@ -1767,7 +1772,9 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
       actionMenuBottom: Math.round(actionMenuRect.bottom),
       actionMenuRight: Math.round(actionMenuRect.right),
       actionRailRight: Math.round(actionRailRect.right),
-      bannerHeight: Math.round(bannerElement.getBoundingClientRect().height),
+      bannerBleedBottom: Math.round(bannerBleedRect.bottom),
+      bannerBottom: Math.round(bannerRect.bottom),
+      bannerHeight: Math.round(bannerRect.height),
       headerHeight: Math.round(headerElement.getBoundingClientRect().height),
       infoHeight: Math.round(
         document
@@ -1788,8 +1795,9 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
   expect(metrics.actionMenuBottom).toBeLessThanOrEqual(metrics.moduleBottom + 1);
   expect(metrics.headerHeight).toBeGreaterThanOrEqual(metrics.moduleHeight * 0.92);
   expect(metrics.infoHeight).toBeGreaterThanOrEqual(metrics.moduleHeight * 0.92);
-  expect(metrics.bannerHeight).toBeGreaterThan(metrics.moduleHeight * 0.3);
-  expect(metrics.bannerHeight).toBeLessThan(metrics.moduleHeight * 0.62);
+  expect(metrics.bannerHeight).toBeGreaterThan(metrics.moduleHeight * 0.24);
+  expect(metrics.bannerHeight).toBeLessThan(metrics.moduleHeight * 0.46);
+  expect(metrics.bannerBleedBottom).toBeGreaterThan(metrics.bannerBottom);
   expect(metrics.objectFit).toBe("cover");
 });
 
@@ -2058,10 +2066,87 @@ test("profile info variants stay within each supported size", async ({ page }) =
         throw new Error("Profile info header or grid did not render.");
       }
 
-      const moduleRect = element.getBoundingClientRect();
-      const headerRect = headerElement.getBoundingClientRect();
-      const bioStyles = bioElement ? window.getComputedStyle(bioElement) : null;
-      const gridStyles = window.getComputedStyle(gridElement);
+    const moduleRect = element.getBoundingClientRect();
+    const headerRect = headerElement.getBoundingClientRect();
+    const bioStyles = bioElement ? window.getComputedStyle(bioElement) : null;
+    const measuredElements = [
+      ["header", headerElement],
+      [
+        "profile info",
+        element.querySelector<HTMLElement>('[data-testid="profile-module-profile-info"]'),
+      ],
+      [
+        "avatar",
+        element.querySelector<HTMLElement>('[data-testid="profile-info-avatar-frame"]'),
+      ],
+      [
+        "identity",
+        element.querySelector<HTMLElement>('[data-testid="profile-info-identity-row"]'),
+      ],
+      ["bio", bioElement],
+      [
+        "badges",
+        element.querySelector<HTMLElement>('[data-testid="profile-info-badge-row"]'),
+      ],
+      [
+        "stats",
+        element.querySelector<HTMLElement>('[data-testid="profile-social-context"]'),
+      ],
+      [
+        "actions",
+        element.querySelector<HTMLElement>('[data-testid="profile-info-action-rail"]'),
+      ],
+    ] as const;
+    const boundedElements = measuredElements
+      .filter((entry): entry is readonly [string, HTMLElement] => Boolean(entry[1]))
+      .map(([name, node]) => {
+        const rect = node.getBoundingClientRect();
+
+        return {
+          name,
+          bottom: rect.bottom,
+          height: rect.height,
+          left: rect.left,
+          right: rect.right,
+          top: rect.top,
+        };
+      });
+    const outOfBounds = boundedElements
+      .filter(
+        (item) =>
+          item.height > 0 &&
+          (item.top < headerRect.top - 1 ||
+            item.left < headerRect.left - 1 ||
+            item.right > headerRect.right + 1 ||
+            item.bottom > headerRect.bottom + 1),
+      )
+      .map((item) => item.name);
+    const statsElement = element.querySelector<HTMLElement>(
+      '[data-testid="profile-social-context"]',
+    );
+    const statOutOfBounds = statsElement
+      ? Array.from(statsElement.querySelectorAll<HTMLElement>("[data-profile-info-stat]"))
+          .filter((stat) => {
+            const rect = stat.getBoundingClientRect();
+
+            return (
+              rect.top < headerRect.top - 1 ||
+              rect.left < headerRect.left - 1 ||
+              rect.right > headerRect.right + 1 ||
+              rect.bottom > headerRect.bottom + 1
+            );
+          })
+          .map((stat) => stat.getAttribute("data-profile-info-stat") ?? "unknown")
+      : ["stats missing"];
+    const bannerBleed = element.querySelector<HTMLElement>(
+      '[data-testid="profile-header-banner-bleed"]',
+    );
+    const banner = element.querySelector<HTMLElement>(
+      '[data-testid="profile-header-banner"]',
+    );
+    const bannerBleedRect = bannerBleed?.getBoundingClientRect();
+    const bannerRect = banner?.getBoundingClientRect();
+    const gridStyles = window.getComputedStyle(gridElement);
       const columnGap = Number.parseFloat(gridStyles.columnGap) || 0;
       const rowGap = Number.parseFloat(gridStyles.rowGap) || columnGap;
       const paddingLeft = Number.parseFloat(gridStyles.paddingLeft) || 0;
@@ -2089,18 +2174,26 @@ test("profile info variants stay within each supported size", async ({ page }) =
           bioStyles?.webkitLineClamp ??
           "",
         bioOverflow: bioStyles?.overflow ?? "",
+        bannerBleedExtends:
+          bannerBleedRect && bannerRect
+            ? bannerBleedRect.bottom > bannerRect.bottom
+            : false,
         expectedModuleHeight: Math.round(cellSize * rowSpan + rowGap * (rowSpan - 1)),
         expectedModuleWidth: Math.round(
           cellSize * colSpan + columnGap * (colSpan - 1),
         ),
         headerBottom: headerRect.bottom,
+        headerClientHeight: headerElement.clientHeight,
         headerHeight: Math.round(headerRect.height),
         headerRight: headerRect.right,
+        headerScrollHeight: headerElement.scrollHeight,
         headerWidth: Math.round(headerRect.width),
         moduleBottom: moduleRect.bottom,
         moduleHeight: Math.round(moduleRect.height),
         moduleRight: moduleRect.right,
         moduleWidth: Math.round(moduleRect.width),
+        outOfBounds,
+        statOutOfBounds,
       };
     });
 
@@ -2110,9 +2203,15 @@ test("profile info variants stay within each supported size", async ({ page }) =
     expect(metrics.headerHeight).toBeGreaterThanOrEqual(metrics.moduleHeight - 2);
     expect(metrics.headerRight).toBeLessThanOrEqual(metrics.moduleRight + 1);
     expect(metrics.headerBottom).toBeLessThanOrEqual(metrics.moduleBottom + 1);
+    expect(metrics.outOfBounds).toEqual([]);
+    expect(metrics.statOutOfBounds).toEqual([]);
+    expect(metrics.headerScrollHeight).toBeLessThanOrEqual(metrics.headerClientHeight + 2);
     if (profileInfoCase.size !== "3x2") {
       expect(metrics.bioOverflow).toBe("hidden");
       expect(metrics.bioLineClamp).not.toBe("none");
+    }
+    if (["4x3", "6x3", "8x3", "8x4"].includes(profileInfoCase.size)) {
+      expect(metrics.bannerBleedExtends).toBe(true);
     }
   }
 });

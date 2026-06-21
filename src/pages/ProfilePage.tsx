@@ -6530,6 +6530,117 @@ type ProfileInfoSizedCardProps = {
   span: { columns: number; rows: number; size: ProfileGridModuleSize };
 };
 
+type ProfileInfoCardLayout = {
+  avatarInsetClass: string;
+  avatarOverlapClass: string;
+  avatarSizeClass: string;
+  badgeLimit: number;
+  bannerHeight: string;
+  bioLines: 1 | 2 | 3 | 4;
+  bodyPaddingClass: string;
+  contentGapClass: string;
+  contentSpacingClass: string;
+  primaryCompact: boolean;
+  statsTight: boolean;
+  titleClass: string;
+  variant: "balanced" | "expanded" | "wide";
+};
+
+function profileInfoCardLayout(
+  span: { columns: number; rows: number; size: ProfileGridModuleSize },
+  mobileProjected: boolean,
+): ProfileInfoCardLayout {
+  const mobileWide = mobileProjected && span.columns >= 6;
+
+  if (mobileWide) {
+    return {
+      avatarInsetClass: "left-4",
+      avatarOverlapClass: "-top-8",
+      avatarSizeClass: "size-16",
+      badgeLimit: 2,
+      bannerHeight: "27%",
+      bioLines: 2,
+      bodyPaddingClass: "p-4",
+      contentGapClass: "space-y-2",
+      contentSpacingClass: "pt-9",
+      primaryCompact: true,
+      statsTight: true,
+      titleClass: "text-base",
+      variant: span.size === "8x4" || span.rows >= 4 ? "expanded" : "wide",
+    };
+  }
+
+  if (span.size === "4x3" || span.columns === 4) {
+    return {
+      avatarInsetClass: "left-3",
+      avatarOverlapClass: "-top-7",
+      avatarSizeClass: "size-14",
+      badgeLimit: 0,
+      bannerHeight: "30%",
+      bioLines: 1,
+      bodyPaddingClass: "p-3",
+      contentGapClass: "space-y-1.5",
+      contentSpacingClass: "pt-8",
+      primaryCompact: true,
+      statsTight: true,
+      titleClass: "text-base",
+      variant: "balanced",
+    };
+  }
+
+  if (span.size === "6x3") {
+    return {
+      avatarInsetClass: "left-3",
+      avatarOverlapClass: "-top-8",
+      avatarSizeClass: "size-16",
+      badgeLimit: 1,
+      bannerHeight: "28%",
+      bioLines: 1,
+      bodyPaddingClass: "p-3",
+      contentGapClass: "space-y-1.5",
+      contentSpacingClass: "pt-9",
+      primaryCompact: false,
+      statsTight: true,
+      titleClass: "text-base",
+      variant: "wide",
+    };
+  }
+
+  if (span.size === "8x4" || span.rows >= 4) {
+    return {
+      avatarInsetClass: "left-4",
+      avatarOverlapClass: "-top-10",
+      avatarSizeClass: "size-20",
+      badgeLimit: 4,
+      bannerHeight: "34%",
+      bioLines: 3,
+      bodyPaddingClass: "p-4",
+      contentGapClass: "space-y-2.5",
+      contentSpacingClass: "pt-12",
+      primaryCompact: false,
+      statsTight: false,
+      titleClass: "text-xl",
+      variant: "expanded",
+    };
+  }
+
+  return {
+    avatarInsetClass: "left-4",
+    avatarOverlapClass: "-top-9",
+    avatarSizeClass: "size-[4.5rem]",
+    badgeLimit: 3,
+    bannerHeight: "31%",
+    bioLines: 2,
+    bodyPaddingClass: "p-4",
+    contentGapClass: "space-y-2",
+    contentSpacingClass: "pt-10",
+    primaryCompact: false,
+    statsTight: false,
+    titleClass: "text-base",
+    variant: "wide",
+  };
+}
+
 function ProfileInfoSizedCard({
   activeFollowError,
   activeProfileControlError,
@@ -6550,58 +6661,9 @@ function ProfileInfoSizedCard({
   span,
 }: ProfileInfoSizedCardProps) {
   const compact = span.columns <= 3;
-  const balanced = span.columns === 4;
-  const expanded = span.size === "8x4" || span.rows >= 4;
-  const wide = span.columns >= 6;
-  const large = span.columns >= 8;
-  const mobileWide = mobileProjected && wide;
+  const layout = profileInfoCardLayout(span, mobileProjected);
   const bannerUrl = safeProfileImageUrl(profile.bannerUrl);
   const showBanner = Boolean(bannerUrl) && !compact;
-  const bannerHeight = mobileWide
-    ? "30%"
-    : expanded
-    ? "34%"
-    : large
-      ? "36%"
-      : wide
-        ? "34%"
-        : balanced
-          ? "34%"
-          : "5rem";
-  const avatarSizeClass = mobileWide
-    ? "size-16"
-    : balanced
-    ? "size-14"
-    : expanded
-      ? "size-20"
-      : large
-        ? "size-[4.5rem]"
-        : "size-16";
-  const avatarInsetClass = mobileWide || expanded ? "left-4" : "left-3";
-  const avatarOverlapClass = showBanner
-    ? mobileWide
-      ? "-top-8"
-      : expanded || large
-      ? "-top-10"
-      : balanced
-        ? "-top-7"
-        : "-top-8"
-    : expanded
-      ? "top-4"
-      : "top-3";
-  const contentSpacingClass = showBanner
-    ? mobileWide
-      ? "pt-10"
-      : expanded || large
-        ? "pt-12"
-        : balanced
-          ? "pt-10"
-          : "pt-11"
-    : expanded
-      ? "pt-20"
-      : "pt-16";
-  const bioLines = expanded ? 4 : balanced ? 1 : mobileWide ? 2 : 2;
-  const badgeLimit = expanded ? 4 : large ? 3 : wide ? 2 : 0;
   const shellClass = cn(
     "relative flex size-full min-h-0 min-w-0 flex-col overflow-hidden rounded-panel border",
     editing
@@ -6671,15 +6733,15 @@ function ProfileInfoSizedCard({
       className={shellClass}
       data-profile-info-card="true"
       data-profile-info-mobile-projection={mobileProjected ? "true" : undefined}
-      data-profile-info-variant={expanded ? "expanded" : balanced ? "balanced" : "wide"}
+      data-profile-info-variant={layout.variant}
       data-testid="profile-header"
     >
       {showBanner ? (
         <div
-          className="relative isolate shrink-0 overflow-hidden border-b border-line bg-canvas/80"
+          className="relative isolate shrink-0 overflow-visible bg-canvas/80"
           data-profile-banner-treatment="cover"
           data-testid="profile-header-banner"
-          style={{ blockSize: bannerHeight }}
+          style={{ blockSize: layout.bannerHeight }}
         >
           <img
             alt=""
@@ -6692,6 +6754,17 @@ function ProfileInfoSizedCard({
             aria-hidden="true"
             className="absolute inset-0 bg-gradient-to-b from-canvas/18 via-canvas/5 to-canvas/46"
           />
+          <img
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 -bottom-12 z-0 h-16 w-full object-cover object-center opacity-35 blur-xl saturate-125"
+            src={bannerUrl}
+            data-testid="profile-header-banner-bleed"
+          />
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 -bottom-12 z-0 h-16 bg-gradient-to-b from-canvas/0 via-surface/42 to-surface"
+          />
         </div>
       ) : (
         <div
@@ -6701,67 +6774,72 @@ function ProfileInfoSizedCard({
       )}
       <div
         className={cn(
-          "relative flex min-h-0 min-w-0 flex-1 flex-col",
-          mobileWide || expanded ? "p-4" : "p-3",
+          "relative z-10 flex min-h-0 min-w-0 flex-1 flex-col bg-gradient-to-b from-surface/48 via-surface/58 to-surface/70",
+          layout.bodyPaddingClass,
         )}
       >
         <div
           className={cn(
             "absolute z-30 rounded-full",
-            avatarInsetClass,
-            avatarOverlapClass,
+            layout.avatarInsetClass,
+            showBanner ? layout.avatarOverlapClass : layout.variant === "expanded" ? "top-4" : "top-3",
           )}
           data-testid="profile-info-avatar-frame"
         >
           <Avatar
             user={profile.user}
             size="lg"
-            className={cn("border-[3px] border-surface", avatarSizeClass)}
+            className={cn("border-[3px] border-surface", layout.avatarSizeClass)}
           />
         </div>
         <div
           className={cn(
             "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
-            contentSpacingClass,
-            expanded || mobileWide ? "gap-2.5" : "gap-2",
+            showBanner
+              ? layout.contentSpacingClass
+              : layout.variant === "expanded"
+                ? "pt-20"
+                : "pt-16",
           )}
           data-testid="profile-info-content-cluster"
         >
-          <div className="min-w-0" data-testid="profile-info-identity-row">
-            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-              <h1
-                className={cn(
-                  "min-w-0 truncate font-semibold leading-tight text-text",
-                  expanded ? "text-xl" : "text-base",
-                )}
-              >
-                {profile.user.displayName}
-              </h1>
-              {!isOwnProfile && profile.isMoot ? (
-                <Badge className="min-h-5 px-2 text-[0.68rem]">Moot</Badge>
-              ) : null}
-              {!isOwnProfile && profile.mutedByMe ? (
-                <Badge className="min-h-5 px-2 text-[0.68rem]" tone="cool">
-                  Muted
-                </Badge>
-              ) : null}
+          <div className={cn("min-h-0 min-w-0 overflow-hidden", layout.contentGapClass)}>
+            <div className="min-w-0 shrink-0" data-testid="profile-info-identity-row">
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                <h1
+                  className={cn(
+                    "min-w-0 truncate font-semibold leading-tight text-text",
+                    layout.titleClass,
+                  )}
+                >
+                  {profile.user.displayName}
+                </h1>
+                {!isOwnProfile && profile.isMoot ? (
+                  <Badge className="min-h-5 px-2 text-[0.68rem]">Moot</Badge>
+                ) : null}
+                {!isOwnProfile && profile.mutedByMe ? (
+                  <Badge className="min-h-5 px-2 text-[0.68rem]" tone="cool">
+                    Muted
+                  </Badge>
+                ) : null}
+              </div>
+              <p className="truncate text-xs text-muted">@{profile.user.handle}</p>
             </div>
-            <p className="truncate text-xs text-muted">@{profile.user.handle}</p>
-          </div>
-          {profile.bio ? (
-            <ProfileInfoBio
-              bio={profile.bio}
-              entities={profile.bioEntities}
-              lines={bioLines}
+            {profile.bio ? (
+              <ProfileInfoBio
+                bio={profile.bio}
+                entities={profile.bioEntities}
+                lines={layout.bioLines}
+              />
+            ) : null}
+            <ProfileInfoBadgeRow
+              featuredBadges={featuredBadges}
+              maxBadges={layout.badgeLimit}
             />
-          ) : null}
-          <ProfileInfoBadgeRow
-            featuredBadges={featuredBadges}
-            maxBadges={badgeLimit}
-          />
-          <div className={cn("min-w-0 pt-1", balanced ? "mt-auto" : undefined)}>
+          </div>
+          <div className="mt-auto min-w-0 shrink-0 pt-1">
             <ProfileInfoStats
-              tight={balanced || mobileWide}
+              tight={layout.statsTight}
               onOpenPanel={onOpenPanel}
               profile={profile}
             />
@@ -6777,7 +6855,7 @@ function ProfileInfoSizedCard({
         <div
           className={cn(
             "absolute right-3 top-3 z-40",
-            expanded || mobileWide ? "right-4 top-4" : undefined,
+            layout.bodyPaddingClass === "p-4" ? "right-4 top-4" : undefined,
           )}
         >
           <ProfileInfoActions
@@ -6787,7 +6865,7 @@ function ProfileInfoSizedCard({
             onBlockToggle={onBlockToggle}
             onFollowToggle={onFollowToggle}
             onMuteToggle={onMuteToggle}
-            primaryCompact={balanced || mobileWide}
+            primaryCompact={layout.primaryCompact}
             profile={profile}
             profileControlBusy={profileControlBusy}
             showMenu
@@ -6968,7 +7046,7 @@ function ProfileInfoStats({
   return (
     <div
       className={cn(
-        "min-w-0 overflow-hidden",
+        "min-w-0 shrink-0 overflow-hidden",
         compact
           ? "grid grid-cols-3 items-end gap-1"
           : "flex flex-wrap items-center gap-x-3 gap-y-1",
@@ -7059,7 +7137,7 @@ function ProfileInfoBadgeRow({
 
   return (
     <div
-      className="flex min-w-0 flex-wrap items-center gap-1.5 overflow-hidden"
+      className="flex max-h-6 min-w-0 shrink-0 flex-wrap items-center gap-1.5 overflow-hidden"
       data-testid="profile-info-badge-row"
     >
       {visibleBadges.map((userBadge) => (
