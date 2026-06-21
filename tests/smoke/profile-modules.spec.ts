@@ -3530,8 +3530,8 @@ test("direct canvas commit drops unpicked placeholder envelopes", async ({ page 
   await page.goto("/@thia");
 
   await page.getByTestId("profile-edit-button").click();
-  await page.getByTestId("profile-canvas-cell-4-5").click();
-  await page.getByTestId("profile-canvas-cell-5-6").click();
+  await page.getByTestId("profile-canvas-cell-1-10").click();
+  await page.getByTestId("profile-canvas-cell-2-11").click();
   await expect(page.getByTestId("profile-module-picker")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator('[data-testid^="profile-canvas-add-module-"]')).toBeVisible();
@@ -3540,7 +3540,10 @@ test("direct canvas commit drops unpicked placeholder envelopes", async ({ page 
   await expect.poll(() => commitPayload).toBeDefined();
   const committedModules = commitPayload?.modules as Array<Record<string, unknown>>;
   expect(committedModules.some((module) => module.type === "placeholder")).toBe(false);
-  expect(committedModules.map((module) => module.type)).toEqual(["profile_info"]);
+  expect(committedModules.map((module) => module.type)).toEqual([
+    "profile_info",
+    "activity",
+  ]);
 });
 
 test("blank draft modules can be pinned moved and deleted in the editor", async ({

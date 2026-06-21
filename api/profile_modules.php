@@ -3285,6 +3285,7 @@ function profile_module_config(string $type, mixed $value, int $userId): array
     unset(
         $value['integration'],
         $value['hasBanner'],
+        $value['placeholder'],
         $value['restoreFeaturedPostId'],
         $value['restoreFeaturedRoomId']
     );

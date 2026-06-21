@@ -58,6 +58,9 @@ assert_true(str_contains($profileModulesSource, 'profile_upgrade_default_feed_mo
 $about = profile_module_config('about', ['body' => 'A concise personal note.'], 123);
 assert_true($about['body'] === 'A concise personal note.', 'about body mismatch');
 
+$aboutWithRenderFlag = profile_module_config('about', ['body' => 'A concise personal note.', 'placeholder' => true], 123);
+assert_true($aboutWithRenderFlag['body'] === 'A concise personal note.', 'render-only placeholder flags should not block module saves');
+
 $aboutStatus = profile_module_config(
     'about',
     [

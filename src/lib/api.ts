@@ -2123,13 +2123,120 @@ function profileCanvasDraftInputForWrite(
 
   return {
     ...input,
-    modules: input.modules.map((module) => {
-      const nextModule = { ...module };
-      delete nextModule.textEntities;
-
-      return nextModule;
-    }),
+    modules: input.modules.map(profileCanvasDraftModuleForWrite),
   };
+}
+
+function profileCanvasDraftModuleForWrite(
+  module: ProfileCanvasDraftModule,
+): ProfileCanvasDraftModule {
+  return {
+    id: module.id,
+    ...(typeof module.draftId === "string" ? { draftId: module.draftId } : {}),
+    type: module.type,
+    title: module.title,
+    config: profileModuleConfigForWrite(module.type, module.config),
+    visibility: module.visibility,
+    position: module.position,
+    pinned: module.pinned,
+    layout: module.layout ?? null,
+    status: module.status,
+    schemaVersion: module.schemaVersion ?? 1,
+    createdAt: module.createdAt ?? null,
+    updatedAt: module.updatedAt ?? null,
+  };
+}
+
+function profileModuleConfigForWrite(
+  type: ProfileModuleType,
+  config: ProfileModuleConfig,
+): ProfileModuleConfig {
+  const keys = new Set<keyof ProfileModuleConfig>(["canvasSize", "configured"]);
+
+  if (type === "placeholder") {
+    keys.add("placeholder");
+    return pickProfileModuleConfig(config, keys);
+  }
+
+  if (type === "about" || type === "text") {
+    keys.add("body");
+    keys.add("statusText");
+    keys.add("workingOn");
+  } else if (type === "custom_text") {
+    keys.add("body");
+    keys.add("link");
+  } else if (type === "links" || type === "connections") {
+    keys.add("links");
+  } else if (type === "featured_badges" || type === "badge_display") {
+    keys.add("userBadgeIds");
+  } else if (
+    type === "gallery_media" ||
+    type === "uploaded_image" ||
+    type === "gallery_slideshow" ||
+    type === "gallery_feed"
+  ) {
+    keys.add("mediaItems");
+  } else if (type === "uploaded_video") {
+    keys.add("label");
+    keys.add("description");
+    keys.add("displayMode");
+    keys.add("sourceMode");
+    keys.add("video");
+    keys.add("autoplay");
+  } else if (
+    type === "creator_live" ||
+    type === "twitch_channel" ||
+    type === "youtube_video" ||
+    type === "youtube_stream" ||
+    type === "youtube_playlist" ||
+    type === "github_repo"
+  ) {
+    keys.add("platform");
+    keys.add("label");
+    keys.add("url");
+    keys.add("description");
+    keys.add("displayMode");
+    keys.add("sourceMode");
+  } else if (
+    type === "music" ||
+    type === "spotify_song" ||
+    type === "apple_music_song" ||
+    type === "youtube_music_song" ||
+    type === "spotify_playlist" ||
+    type === "apple_music_playlist" ||
+    type === "youtube_music_playlist" ||
+    type === "spotify_artist" ||
+    type === "apple_music_artist" ||
+    type === "youtube_music_artist"
+  ) {
+    keys.add("platform");
+    keys.add("label");
+    keys.add("url");
+    keys.add("description");
+    keys.add("displayMode");
+    keys.add("sourceMode");
+    keys.add("audio");
+    keys.add("autoplay");
+  }
+
+  return pickProfileModuleConfig(config, keys);
+}
+
+function pickProfileModuleConfig(
+  config: ProfileModuleConfig,
+  keys: Set<keyof ProfileModuleConfig>,
+): ProfileModuleConfig {
+  const writable: ProfileModuleConfig = {};
+
+  keys.forEach((key) => {
+    const value = config[key];
+
+    if (value !== undefined) {
+      Object.assign(writable, { [key]: value });
+    }
+  });
+
+  return writable;
 }
 
 function isApiProfileModule(module: ApiProfileModule): boolean {
