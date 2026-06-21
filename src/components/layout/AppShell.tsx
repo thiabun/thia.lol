@@ -63,12 +63,20 @@ const bugReportUrl =
 const cookieNoticeStorageKey = "thia_cookie_notice_ack";
 type OnboardingGateState = Awaited<ReturnType<typeof getOnboardingState>>;
 
-function profileOnboardingGateShouldSkip(pathname: string, search: string): boolean {
+function profileOnboardingGateShouldSkip(
+  pathname: string,
+  search: string,
+  userHandle?: string,
+): boolean {
   if (
     pathname === "/onboarding" ||
     pathname === "/login" ||
     pathname === "/register"
   ) {
+    return true;
+  }
+
+  if (userHandle && pathname.toLowerCase() === `/@${userHandle.toLowerCase()}`) {
     return true;
   }
 
@@ -117,7 +125,7 @@ export function AppShell() {
       return undefined;
     }
 
-    if (profileOnboardingGateShouldSkip(location.pathname, location.search)) {
+    if (profileOnboardingGateShouldSkip(location.pathname, location.search, user.handle)) {
       return undefined;
     }
 

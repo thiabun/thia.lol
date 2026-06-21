@@ -111,6 +111,33 @@ test("existing authenticated users are routed into onboarding when unfinished", 
   await expect(page.getByRole("heading", { name: "Profile setup" })).toBeVisible();
 });
 
+test("unfinished users can open their profile and editor from onboarding", async ({
+  page,
+}) => {
+  const state = onboardingState();
+
+  await mockAuth(page, () => true);
+  await mockNotifications(page);
+  await mockOnboarding(page, state);
+  await mockIntegrations(page);
+
+  await page.goto("/onboarding");
+  await page.getByTestId("onboarding-nav-profile_basics").click();
+  await page.getByTestId("onboarding-open-profile-tour").click();
+
+  await expect(page).toHaveURL(/\/@thia\?editCanvas=1&tour=profile-editor$/);
+  await page.waitForTimeout(250);
+  await expect(page).not.toHaveURL(/\/onboarding$/);
+
+  await page.goto("/onboarding");
+  await page.getByTestId("onboarding-nav-profile_basics").click();
+  await page.getByRole("link", { name: "View profile" }).click();
+
+  await expect(page).toHaveURL(/\/@thia$/);
+  await page.waitForTimeout(250);
+  await expect(page).not.toHaveURL(/\/onboarding$/);
+});
+
 test("onboarding handles OAuth returns, manual links, skip, connect, and finish", async ({
   page,
 }) => {
