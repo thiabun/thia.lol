@@ -314,16 +314,12 @@ function ThreadAvatarRail({
   user,
   href,
   ariaLabel,
-  hasLineAfter = false,
-  hasLineBefore = false,
   hasBranch = false,
   branchClassName,
 }: {
   user: Post["author"];
   href: string;
   ariaLabel: string;
-  hasLineAfter?: boolean;
-  hasLineBefore?: boolean;
   hasBranch?: boolean;
   branchClassName?: string;
 }) {
@@ -332,23 +328,6 @@ function ThreadAvatarRail({
       className="relative flex min-h-12 justify-center"
       data-testid="thread-avatar-rail"
     >
-      {hasLineBefore ? (
-        <span
-          className={cn(
-            "pointer-events-none absolute left-1/2 top-0 w-px -translate-x-1/2 bg-line/55",
-            hasBranch ? "h-6" : "h-2.5",
-          )}
-          aria-hidden="true"
-          data-testid="thread-rail-line-before"
-        />
-      ) : null}
-      {hasLineAfter ? (
-        <span
-          className="pointer-events-none absolute bottom-0 left-1/2 top-[3.25rem] w-px -translate-x-1/2 bg-line/55"
-          aria-hidden="true"
-          data-testid="thread-rail-line-after"
-        />
-      ) : null}
       {hasBranch ? (
         <span
           className={cn(
@@ -370,6 +349,9 @@ function ThreadAvatarRail({
     </div>
   );
 }
+
+const threadRailLineClass =
+  "pointer-events-none absolute z-0 w-px -translate-x-1/2 bg-line/55";
 
 const metaChipClass =
   "inline-flex min-h-5 items-center rounded-full border px-1.5 text-[0.68rem] font-medium leading-none";
@@ -1023,7 +1005,7 @@ function ThreadModal({
                   </div>
                 ) : null}
 
-                <div className="px-3 py-1 sm:px-5">
+                <div className="px-4 sm:px-5">
                   {loading ? (
                     <ThreadStateNotice
                       kind="loading"
@@ -1077,12 +1059,21 @@ function ParentPostPreview({
       className="relative border-b border-line/70 bg-surface/36 px-4 pb-3 pt-5 sm:px-5 sm:pt-6"
       data-testid="thread-root-post"
     >
+      {hasReplyConnector ? (
+        <span
+          className={cn(
+            threadRailLineClass,
+            "bottom-0 left-[2.375rem] top-11 sm:left-11 sm:top-12",
+          )}
+          aria-hidden="true"
+          data-testid="thread-rail-line-after"
+        />
+      ) : null}
       <div className="grid grid-cols-[2.75rem_1fr] gap-3 sm:grid-cols-[3rem_1fr]">
         <ThreadAvatarRail
           user={post.author}
           href={`/@${post.author.handle}`}
           ariaLabel={`${post.author.displayName}'s profile`}
-          hasLineAfter={hasReplyConnector}
         />
         <div className="min-w-0 pb-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -1169,6 +1160,8 @@ function ReplyPreview({
   const canNest = depth < 3;
   const hasNextVisibleSibling = index < siblingCount - 1;
   const hasVisibleNestedReplies = childrenOpen && childReplies.length > 0;
+  const hasSameDepthLineBefore = depth === 0 || index > 0;
+  const hasLineAfter = hasNextVisibleSibling || hasVisibleNestedReplies;
 
   async function loadChildren() {
     if (childrenLoading || childReplies.length > 0) {
@@ -1234,13 +1227,31 @@ function ReplyPreview({
       )}
       data-testid="thread-reply-item"
     >
+      {hasSameDepthLineBefore ? (
+        <span
+          className={cn(
+            threadRailLineClass,
+            "left-[1.375rem] top-0 h-9 sm:left-6",
+          )}
+          aria-hidden="true"
+          data-testid="thread-rail-line-before"
+        />
+      ) : null}
+      {hasLineAfter ? (
+        <span
+          className={cn(
+            threadRailLineClass,
+            "bottom-0 left-[1.375rem] top-9 sm:left-6",
+          )}
+          aria-hidden="true"
+          data-testid="thread-rail-line-after"
+        />
+      ) : null}
       <div className="grid grid-cols-[2.75rem_1fr] gap-3 sm:grid-cols-[3rem_1fr]">
         <ThreadAvatarRail
           user={reply.author}
           href={`/@${reply.author.handle}`}
           ariaLabel={`${reply.author.displayName}'s profile`}
-          hasLineBefore
-          hasLineAfter={hasNextVisibleSibling || hasVisibleNestedReplies}
           hasBranch={depth > 0}
           branchClassName={threadBranchClass(depth)}
         />
@@ -1348,7 +1359,7 @@ function ReplyPreview({
       ) : null}
 
       {childrenOpen && childReplies.length > 0 ? (
-        <div className="mt-1" data-testid="thread-nested-replies">
+        <div data-testid="thread-nested-replies">
           {childReplies.map((child, childIndex) => (
             <ReplyPreview
               key={child.id}

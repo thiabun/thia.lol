@@ -1267,6 +1267,10 @@ test("thread modal root and reply identities navigate to profiles", async ({ pag
   await expect(replyItem.getByTestId("thread-rail-line-before")).toHaveCount(1);
   await expect(replyItem.getByTestId("thread-rail-line-after")).toHaveCount(0);
   await expect(dialog.getByTestId("thread-rail-line-after")).toHaveCount(1);
+  await expectThreadRailSegmentsToConnect(
+    rootPost.getByTestId("thread-rail-line-after"),
+    replyItem.getByTestId("thread-rail-line-before"),
+  );
 });
 
 test("thread reply composer is hidden until Reply and exposes media UI", async ({
@@ -1431,11 +1435,17 @@ test("thread renders nested replies and gates reply delete controls", async ({
   await expect(dialog.getByTestId("thread-rail-line-before")).toHaveCount(2);
   await expect(dialog.getByTestId("thread-rail-line-after")).toHaveCount(2);
   await expect(dialog.getByTestId("thread-rail-branch")).toHaveCount(0);
+  const firstReply = dialog.getByTestId("thread-reply-item").nth(0);
+  const secondReply = dialog.getByTestId("thread-reply-item").nth(1);
+  await expectThreadRailSegmentsToConnect(
+    firstReply.getByTestId("thread-rail-line-after"),
+    secondReply.getByTestId("thread-rail-line-before"),
+  );
   await dialog.getByRole("button", { name: "Show 1 reply" }).click();
   await expect(dialog.getByText("Nested reply.")).toBeVisible();
   await expect(dialog.getByTestId("thread-nested-replies")).toBeVisible();
   await expect(dialog.getByTestId("thread-rail-branch")).toHaveCount(1);
-  await expect(dialog.getByTestId("thread-rail-line-before")).toHaveCount(3);
+  await expect(dialog.getByTestId("thread-rail-line-before")).toHaveCount(2);
   await expect(dialog.getByTestId("thread-rail-line-after")).toHaveCount(2);
 
   const topReplyBox = await dialog
@@ -1451,17 +1461,11 @@ test("thread renders nested replies and gates reply delete controls", async ({
   expect(nestedReplyBox!.x - topReplyBox!.x).toBeGreaterThan(6);
   expect(nestedReplyBox!.x - topReplyBox!.x).toBeLessThan(52);
   await expect(nestedReply).not.toHaveClass(/border-l/);
+  await expect(nestedReply.getByTestId("thread-rail-line-before")).toHaveCount(0);
 
-  const nestedIncomingLineBox = await nestedReply
-    .getByTestId("thread-rail-line-before")
-    .boundingBox();
-  const nestedBranchBox = await nestedReply
-    .getByTestId("thread-rail-branch")
-    .boundingBox();
-  expect(nestedIncomingLineBox).not.toBeNull();
-  expect(nestedBranchBox).not.toBeNull();
-  expect(nestedIncomingLineBox!.y + nestedIncomingLineBox!.height).toBeGreaterThanOrEqual(
-    nestedBranchBox!.y,
+  await expectThreadBranchToTouchSpine(
+    firstReply.getByTestId("thread-rail-line-after"),
+    nestedReply.getByTestId("thread-rail-branch"),
   );
 
   const conversationOverflow = await dialog
@@ -1626,6 +1630,65 @@ async function expectHoverToKeepSurfaceFlat(target: Locator) {
   expect(after).toEqual(before);
 }
 
+async function expectThreadRailSegmentsToConnect(
+  upperSegment: Locator,
+  lowerSegment: Locator,
+) {
+  const upperBox = await upperSegment.boundingBox();
+  const lowerBox = await lowerSegment.boundingBox();
+
+  expect(upperBox).not.toBeNull();
+  expect(lowerBox).not.toBeNull();
+
+  const upperCenterX = upperBox!.x + upperBox!.width / 2;
+  const lowerCenterX = lowerBox!.x + lowerBox!.width / 2;
+
+  expect(Math.abs(upperCenterX - lowerCenterX)).toBeLessThanOrEqual(1);
+  expect(upperBox!.y + upperBox!.height).toBeGreaterThanOrEqual(lowerBox!.y - 1);
+}
+
+async function expectThreadBranchToTouchSpine(
+  spineSegment: Locator,
+  branchSegment: Locator,
+) {
+  const spineBox = await spineSegment.boundingBox();
+  const branchBox = await branchSegment.boundingBox();
+
+  expect(spineBox).not.toBeNull();
+  expect(branchBox).not.toBeNull();
+
+  const spineCenterX = spineBox!.x + spineBox!.width / 2;
+  const branchCenterY = branchBox!.y + branchBox!.height / 2;
+
+  expect(spineCenterX).toBeGreaterThanOrEqual(branchBox!.x - 1);
+  expect(spineCenterX).toBeLessThanOrEqual(branchBox!.x + branchBox!.width + 1);
+  expect(branchCenterY).toBeGreaterThanOrEqual(spineBox!.y - 1);
+  expect(branchCenterY).toBeLessThanOrEqual(spineBox!.y + spineBox!.height + 1);
+}
+
+function completedOnboardingState() {
+  const steps = [
+    "profile_basics",
+    "spotify",
+    "youtube",
+    "twitch",
+    "github",
+    "apple_music",
+    "profile_canvas",
+  ];
+
+  return {
+    steps,
+    completedSteps: steps,
+    skippedSteps: [],
+    providerLinks: {},
+    finishedAt: "2026-06-19 12:00:00",
+    dismissedAt: null,
+    createdAt: "2026-06-19 12:00:00",
+    updatedAt: "2026-06-19 12:00:00",
+  };
+}
+
 async function getSurfaceStyle(target: Locator) {
   return target.evaluate((element) => {
     const style = window.getComputedStyle(element);
@@ -1643,6 +1706,14 @@ async function getSurfaceStyle(target: Locator) {
 
 async function mockCommonApi(page: Page) {
   await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "Not authenticated." }),
+    }),
+  );
+
+  await page.route("**/api/me/onboarding", (route) =>
     route.fulfill({
       status: 401,
       contentType: "application/json",
@@ -1713,6 +1784,16 @@ async function mockAuthenticatedApi(page: Page) {
           },
           csrfToken: "test-csrf",
         },
+      }),
+    }),
+  );
+
+  await page.route("**/api/me/onboarding", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: completedOnboardingState(),
       }),
     }),
   );
