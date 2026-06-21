@@ -83,9 +83,11 @@ function profile_payload(array $row, ?array $stats = null, ?array $social = null
         'followerCount' => (int) ($row['follower_count'] ?? 0),
         'followingCount' => (int) ($row['following_count'] ?? 0),
         'mootCount' => (int) ($row['moot_count'] ?? 0),
+        'starCount' => (int) ($row['star_count'] ?? 0),
         'isFollowing' => (bool) ($row['is_following'] ?? false),
         'isFollowedBy' => (bool) ($row['is_followed_by'] ?? false),
         'isMoot' => (bool) ($row['is_moot'] ?? false),
+        'isStarred' => (bool) ($row['is_starred'] ?? false),
         'isBlocked' => (bool) ($row['is_blocked'] ?? false),
         'isMuted' => (bool) ($row['is_muted'] ?? false),
     ];
@@ -98,6 +100,7 @@ function profile_payload(array $row, ?array $stats = null, ?array $social = null
     $stats['followers'] = (int) $social['followerCount'];
     $stats['following'] = (int) $social['followingCount'];
     $stats['moots'] = (int) $social['mootCount'];
+    $stats['stars'] = (int) $social['starCount'];
 
     return [
         'user' => user_payload($row),
@@ -125,9 +128,11 @@ function profile_payload(array $row, ?array $stats = null, ?array $social = null
         'followerCount' => (int) $social['followerCount'],
         'followingCount' => (int) $social['followingCount'],
         'mootCount' => (int) $social['mootCount'],
+        'starCount' => (int) $social['starCount'],
         'isFollowing' => (bool) $social['isFollowing'],
         'isFollowedBy' => (bool) $social['isFollowedBy'],
         'isMoot' => (bool) $social['isMoot'],
+        'isStarred' => (bool) $social['isStarred'],
         'isBlocked' => (bool) ($social['isBlocked'] ?? false),
         'isMuted' => (bool) ($social['isMuted'] ?? false),
         'createdAt' => $row['profile_created_at'] ?? null,
@@ -562,6 +567,16 @@ function user_mutes_table_exists(): bool
     return database_table_exists('user_mutes');
 }
 
+function profile_stars_table_exists(): bool
+{
+    return database_table_exists('profile_stars');
+}
+
+function profile_modules_table_exists(): bool
+{
+    return database_table_exists('profile_modules');
+}
+
 function room_memberships_table_exists(): bool
 {
     return database_table_exists('room_memberships');
@@ -747,6 +762,34 @@ function profile_received_likes_aggregate_sql(): string
         GROUP BY profile_like_posts.author_id";
 }
 
+function profile_star_count_sql(string $profileUserSql): string
+{
+    if (!profile_stars_table_exists()) {
+        return '0';
+    }
+
+    return "(SELECT COUNT(*)
+            FROM profile_stars profile_star_counts
+            INNER JOIN users profile_star_users ON profile_star_users.id = profile_star_counts.starrer_id
+            WHERE profile_star_counts.starred_user_id = {$profileUserSql}
+              AND profile_star_users.status = 'active'
+              " . pair_not_blocked_sql('profile_star_counts.starrer_id', 'profile_star_counts.starred_user_id') . ")";
+}
+
+function profile_stars_aggregate_sql(): string
+{
+    if (!profile_stars_table_exists()) {
+        return 'SELECT 0 AS starred_user_id, 0 AS star_count WHERE 1 = 0';
+    }
+
+    return "SELECT profile_star_counts.starred_user_id, COUNT(*) AS star_count
+        FROM profile_stars profile_star_counts
+        INNER JOIN users profile_star_users ON profile_star_users.id = profile_star_counts.starrer_id
+        WHERE profile_star_users.status = 'active'
+          " . pair_not_blocked_sql('profile_star_counts.starrer_id', 'profile_star_counts.starred_user_id') . "
+        GROUP BY profile_star_counts.starred_user_id";
+}
+
 function pair_not_blocked_sql(string $firstUserSql, string $secondUserSql): string
 {
     if (!user_blocks_table_exists()) {
@@ -889,12 +932,43 @@ function profile_social_context(int $profileUserId, ?int $viewerUserId = null): 
         'followerCount' => 0,
         'followingCount' => 0,
         'mootCount' => 0,
+        'starCount' => 0,
         'isFollowing' => false,
         'isFollowedBy' => false,
         'isMoot' => false,
+        'isStarred' => false,
         'isBlocked' => false,
         'isMuted' => false,
     ];
+
+    if (profile_stars_table_exists()) {
+        $starRow = db_query(
+            "SELECT
+                " . profile_star_count_sql(':profile_user_id_stars') . " AS star_count",
+            [
+                'profile_user_id_stars' => $profileUserId,
+            ]
+        )->fetch();
+
+        if (is_array($starRow)) {
+            $context['starCount'] = (int) ($starRow['star_count'] ?? 0);
+        }
+
+        if ($viewerUserId !== null && $viewerUserId !== $profileUserId) {
+            $starState = db_query(
+                'SELECT 1
+                 FROM profile_stars
+                 WHERE starrer_id = :viewer_user_id
+                   AND starred_user_id = :profile_user_id
+                 LIMIT 1',
+                [
+                    'viewer_user_id' => $viewerUserId,
+                    'profile_user_id' => $profileUserId,
+                ]
+            )->fetch();
+            $context['isStarred'] = is_array($starState);
+        }
+    }
 
     if (!user_follows_table_exists()) {
         return $context;
@@ -1025,6 +1099,7 @@ function profile_social_context(int $profileUserId, ?int $viewerUserId = null): 
         $context['isFollowing'] = !$isBlocked && !$isBlockedBy && (bool) ($relationship['is_following'] ?? false);
         $context['isFollowedBy'] = !$isBlocked && !$isBlockedBy && (bool) ($relationship['is_followed_by'] ?? false);
         $context['isMoot'] = $context['isFollowing'] && $context['isFollowedBy'];
+        $context['isStarred'] = !$isBlocked && !$isBlockedBy && (bool) $context['isStarred'];
     }
 
     return $context;
@@ -1080,7 +1155,8 @@ function fetch_profile_by_handle(string $handle): ?array
                   AND profile_rooms.visibility = 'public'
                   " . room_not_deleted_sql('profile_rooms') . "
             ) AS room_count,
-            " . profile_received_likes_count_sql('u.id') . " AS profile_like_count
+            " . profile_received_likes_count_sql('u.id') . " AS profile_like_count,
+            " . profile_star_count_sql('u.id') . " AS star_count
         FROM users u
         INNER JOIN profiles p ON p.user_id = u.id
         WHERE u.handle = :handle
@@ -1390,6 +1466,7 @@ function post_select_sql(
         COALESCE(profile_replies.reply_count, 0) AS profile_reply_count,
         COALESCE(profile_rooms.room_count, 0) AS room_count,
         COALESCE(profile_likes.like_count, 0) AS profile_like_count,
+        COALESCE(profile_stars.star_count, 0) AS star_count,
         r.id AS room_id,
         r.slug AS room_slug,
         r.name AS room_name,
@@ -1470,6 +1547,9 @@ function post_select_sql(
     LEFT JOIN (
         " . profile_received_likes_aggregate_sql() . "
     ) profile_likes ON profile_likes.author_id = u.id
+    LEFT JOIN (
+        " . profile_stars_aggregate_sql() . "
+    ) profile_stars ON profile_stars.starred_user_id = u.id
     LEFT JOIN (
         SELECT
             post_id,
@@ -1912,6 +1992,7 @@ function discover_person_payload(array $row): array
         'isMoot' => $isFollowing && $isFollowedBy,
         'postCount' => (int) ($row['post_count'] ?? 0),
         'followerCount' => (int) ($row['follower_count'] ?? 0),
+        'starCount' => (int) ($row['star_count'] ?? 0),
     ];
 }
 
@@ -1935,6 +2016,8 @@ function fetch_people_to_watch(): array
     $viewerUserId = current_request_user_id();
     $viewerSql = $viewerUserId === null ? 'NULL' : (string) $viewerUserId;
     $hasFollows = user_follows_table_exists();
+    $hasProfileModules = profile_modules_table_exists();
+    $hasFeaturedBadges = database_table_exists('badges') && database_table_exists('user_badges');
     $followSelect = $hasFollows
         ? "IF(viewer_follows.following_id IS NULL, 0, 1) AS is_following,
         IF(viewer_followed_by.follower_id IS NULL, 0, 1) AS is_followed_by,
@@ -1955,9 +2038,56 @@ function fetch_people_to_watch(): array
             ON viewer_followed_by.follower_id = u.id
            AND viewer_followed_by.following_id = {$viewerSql}"
         : "";
-    $excludeFollowed = $hasFollows
-        ? "AND viewer_follows.following_id IS NULL"
+    $moduleJoin = $hasProfileModules
+        ? "LEFT JOIN (
+            SELECT user_id, COUNT(*) AS module_count
+            FROM profile_modules
+            WHERE visibility = 'public'
+              AND status = 'active'
+              AND type <> 'placeholder'
+            GROUP BY user_id
+        ) profile_modules ON profile_modules.user_id = u.id"
         : "";
+    $badgeJoin = $hasFeaturedBadges
+        ? "LEFT JOIN (
+            SELECT ub.user_id, COUNT(*) AS badge_count
+            FROM user_badges ub
+            INNER JOIN badges b ON b.id = ub.badge_id
+            WHERE ub.is_visible = 1
+              AND ub.featured_order IS NOT NULL
+              AND b.is_active = 1
+            GROUP BY ub.user_id
+        ) featured_badges ON featured_badges.user_id = u.id"
+        : "";
+    $moduleCountSql = $hasProfileModules ? 'COALESCE(profile_modules.module_count, 0)' : '0';
+    $badgeCountSql = $hasFeaturedBadges ? 'COALESCE(featured_badges.badge_count, 0)' : '0';
+    $followerCountSql = $hasFollows ? 'COALESCE(followers.follower_count, 0)' : '0';
+    $profileQualityScore = "(
+        CASE WHEN p.avatar_url IS NULL OR p.avatar_url = '' THEN 0 ELSE 8 END
+        + CASE
+            WHEN p.banner_url IS NOT NULL AND p.banner_url <> '' THEN 6
+            WHEN p.profile_background IS NOT NULL AND p.profile_background <> '' THEN 5
+            WHEN p.profile_background_video_url IS NOT NULL AND p.profile_background_video_url <> '' THEN 5
+            ELSE 0
+          END
+        + CASE WHEN p.bio IS NULL OR TRIM(p.bio) = '' THEN 0 ELSE 6 END
+        + LEAST({$moduleCountSql}, 5) * 3
+        + LEAST({$badgeCountSql}, 3) * 2
+    )";
+    $recentActivityScore = "CASE
+        WHEN profile_posts.latest_post_at IS NULL THEN 0
+        WHEN TIMESTAMPDIFF(DAY, profile_posts.latest_post_at, UTC_TIMESTAMP()) <= 7 THEN 10
+        WHEN TIMESTAMPDIFF(DAY, profile_posts.latest_post_at, UTC_TIMESTAMP()) <= 30 THEN 5
+        ELSE 0
+    END";
+    $rankScore = "(
+        COALESCE(profile_stars.star_count, 0) * 12
+        + COALESCE(profile_posts.like_count, 0) * 2
+        + {$followerCountSql} * 3
+        + COALESCE(profile_posts.post_count, 0) * 4
+        + {$profileQualityScore}
+        + {$recentActivityScore}
+    )";
     $relationshipFilter = viewer_feed_relationship_filter_sql($viewerUserId);
 
     $statement = db_query(
@@ -1968,8 +2098,10 @@ function fetch_people_to_watch(): array
             p.avatar_url,
             p.bio,
             {$followSelect}
+            COALESCE(profile_stars.star_count, 0) AS star_count,
             COALESCE(profile_posts.post_count, 0) AS post_count,
-            profile_posts.latest_post_at
+            profile_posts.latest_post_at,
+            {$rankScore} AS discover_rank_score
          FROM users u
          INNER JOIN profiles p ON p.user_id = u.id
          LEFT JOIN (
@@ -1992,18 +2124,24 @@ function fetch_people_to_watch(): array
               AND (posts.room_id IS NULL OR (post_rooms.visibility = 'public' " . room_not_deleted_sql('post_rooms') . "))
             GROUP BY posts.author_id
          ) profile_posts ON profile_posts.author_id = u.id
+         LEFT JOIN (
+            " . profile_stars_aggregate_sql() . "
+         ) profile_stars ON profile_stars.starred_user_id = u.id
          {$followJoins}
+         {$moduleJoin}
+         {$badgeJoin}
          WHERE u.status = 'active'
            AND u.handle NOT REGEXP '^smoketest[0-9]+$'
            AND ({$viewerSql} IS NULL OR u.id <> {$viewerSql})
-           {$excludeFollowed}
            {$relationshipFilter}
          ORDER BY
-            COALESCE(profile_posts.post_count, 0) DESC,
+            discover_rank_score DESC,
+            COALESCE(profile_stars.star_count, 0) DESC,
             profile_posts.latest_post_at DESC,
             profile_posts.like_count DESC,
+            {$followerCountSql} DESC,
             u.created_at DESC
-         LIMIT 6"
+         LIMIT 24"
     );
 
     return array_map('discover_person_payload', $statement->fetchAll());

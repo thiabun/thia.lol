@@ -1,4 +1,4 @@
-import { Hash, MessageCircle, UsersRound } from "lucide-react";
+import { Hash, MessageCircle, Star, UsersRound } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
@@ -348,6 +348,10 @@ function PersonCard({
             <span className="inline-flex items-center gap-1.5 rounded-full bg-canvas/55 px-2 py-1">
               <MessageCircle aria-hidden="true" size={14} />
               {formatCountWithUnit(person.postCount, "post")}
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-canvas/55 px-2 py-1">
+              <Star aria-hidden="true" size={14} />
+              {formatCountWithUnit(person.starCount, "star")}
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-canvas/55 px-2 py-1">
               <UsersRound aria-hidden="true" size={14} />

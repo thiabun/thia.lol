@@ -72,13 +72,16 @@ export type Profile = {
     followers: number;
     following: number;
     moots: number;
+    stars: number;
   };
   followerCount: number;
   followingCount: number;
   mootCount: number;
+  starCount: number;
   isFollowing: boolean;
   isFollowedBy: boolean;
   isMoot: boolean;
+  isStarred: boolean;
   blockedByMe?: boolean;
   mutedByMe?: boolean;
   createdAt?: string | null;
@@ -401,6 +404,7 @@ export type ChatMessageAttachment =
 export type DiscoverPerson = ProfileConnection & {
   postCount: number;
   followerCount: number;
+  starCount: number;
 };
 
 export type HomeFeed = {

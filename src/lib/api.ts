@@ -485,15 +485,21 @@ type ApiRemoveFollowerResult = Omit<RemoveFollowerResult, "relationship"> & {
   relationship: ApiFollowRelationship;
 };
 
+type ApiProfileStarResult = Omit<ProfileStarResult, "relationship"> & {
+  relationship: ApiFollowRelationship;
+};
+
 export type FollowRelationship = {
   isFollowing: boolean;
   isFollowedBy: boolean;
   isMoot: boolean;
+  isStarred: boolean;
   blockedByMe?: boolean;
   mutedByMe?: boolean;
   followerCount: number;
   followingCount: number;
   mootCount?: number;
+  starCount: number;
 };
 
 export type ProfileControlResult = {
@@ -505,6 +511,18 @@ export type ProfileControlResult = {
 export type RemoveFollowerResult = {
   removedFollower: boolean;
   relationship: FollowRelationship;
+};
+
+export type ProfileStarResult = {
+  isStarred: boolean;
+  starCount: number;
+  relationship: FollowRelationship;
+  stats?: {
+    followers?: number;
+    following?: number;
+    moots?: number;
+    stars?: number;
+  };
 };
 
 export type ReportTargetType = "post" | "profile" | "room" | "message";
@@ -1034,6 +1052,31 @@ export function unfollowProfile(
     `/profiles/${encodeURIComponent(normalized)}/follow`,
     csrfToken,
   ).then(normalizeFollowRelationship);
+}
+
+export function starProfile(
+  handle: string,
+  csrfToken: string,
+): Promise<ProfileStarResult> {
+  const normalized = normalizeHandle(handle);
+
+  return apiPost<ApiProfileStarResult>(
+    `/profiles/${encodeURIComponent(normalized)}/star`,
+    {},
+    csrfToken,
+  ).then(normalizeProfileStarResult);
+}
+
+export function unstarProfile(
+  handle: string,
+  csrfToken: string,
+): Promise<ProfileStarResult> {
+  const normalized = normalizeHandle(handle);
+
+  return apiDelete<ApiProfileStarResult>(
+    `/profiles/${encodeURIComponent(normalized)}/star`,
+    csrfToken,
+  ).then(normalizeProfileStarResult);
 }
 
 export function blockProfile(
@@ -1602,13 +1645,16 @@ function normalizeProfile(profile: ApiProfile): Profile {
       followers: profile.stats.followers ?? profile.followerCount ?? 0,
       following: profile.stats.following ?? profile.followingCount ?? 0,
       moots: profile.stats.moots ?? profile.mootCount ?? 0,
+      stars: profile.stats.stars ?? profile.starCount ?? 0,
     },
     followerCount: profile.followerCount ?? profile.stats.followers ?? 0,
     followingCount: profile.followingCount ?? profile.stats.following ?? 0,
     mootCount: profile.mootCount ?? profile.stats.moots ?? 0,
+    starCount: profile.starCount ?? profile.stats.stars ?? 0,
     isFollowing: profile.isFollowing ?? false,
     isFollowedBy: profile.isFollowedBy ?? false,
     isMoot: profile.isMoot ?? false,
+    isStarred: profile.isStarred ?? false,
     blockedByMe: profile.blockedByMe ?? profile.isBlocked ?? false,
     mutedByMe: profile.mutedByMe ?? profile.isMuted ?? false,
     createdAt: profile.createdAt ?? null,
@@ -1623,11 +1669,29 @@ function normalizeFollowRelationship(
     isFollowing: relationship.isFollowing ?? false,
     isFollowedBy: relationship.isFollowedBy ?? false,
     isMoot: relationship.isMoot ?? false,
+    isStarred: relationship.isStarred ?? false,
     blockedByMe: relationship.blockedByMe ?? relationship.isBlocked ?? false,
     mutedByMe: relationship.mutedByMe ?? relationship.isMuted ?? false,
     followerCount: relationship.followerCount ?? 0,
     followingCount: relationship.followingCount ?? 0,
     mootCount: relationship.mootCount ?? 0,
+    starCount: relationship.starCount ?? 0,
+  };
+}
+
+function normalizeProfileStarResult(result: ApiProfileStarResult): ProfileStarResult {
+  const relationship = normalizeFollowRelationship(result.relationship);
+
+  return {
+    isStarred: result.isStarred ?? relationship.isStarred,
+    starCount: result.starCount ?? relationship.starCount,
+    relationship,
+    stats: {
+      followers: result.stats?.followers ?? relationship.followerCount,
+      following: result.stats?.following ?? relationship.followingCount,
+      moots: result.stats?.moots ?? relationship.mootCount ?? 0,
+      stars: result.stats?.stars ?? relationship.starCount,
+    },
   };
 }
 
@@ -2507,6 +2571,7 @@ function normalizeDiscoverPerson(person: DiscoverPerson): DiscoverPerson {
     bioSnippet: isRetiredThiaProfile
       ? "Founder profile for thia.lol."
       : person.bioSnippet,
+    starCount: person.starCount ?? 0,
   };
 }
 

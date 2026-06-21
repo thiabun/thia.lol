@@ -1787,6 +1787,7 @@ function post_payload_select_sql(string $whereClause, string $tailClause = 'LIMI
         COALESCE(profile_posts.post_count, 0) AS post_count,
         COALESCE(profile_rooms.room_count, 0) AS room_count,
         COALESCE(profile_likes.like_count, 0) AS profile_like_count,
+        COALESCE(profile_stars.star_count, 0) AS star_count,
         r.id AS room_id,
         r.slug AS room_slug,
         r.name AS room_name,
@@ -1832,6 +1833,9 @@ function post_payload_select_sql(string $whereClause, string $tailClause = 'LIMI
     LEFT JOIN (
         " . profile_received_likes_aggregate_sql() . "
     ) profile_likes ON profile_likes.author_id = u.id
+    LEFT JOIN (
+        " . profile_stars_aggregate_sql() . "
+    ) profile_stars ON profile_stars.starred_user_id = u.id
     LEFT JOIN (
         SELECT
             post_id,

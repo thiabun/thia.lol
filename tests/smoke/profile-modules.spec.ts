@@ -1705,6 +1705,7 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
     "data-profile-info-stats-variant",
     "row",
   );
+  await expect(module.getByTestId("profile-social-context")).toContainText("Stars");
   await expect(module.getByTestId("profile-social-context")).toContainText("Likes");
   await expect(module.getByTestId("profile-info-action-rail")).toBeVisible();
   await expect(module.getByTestId("profile-info-actions-menu")).toHaveCount(0);
@@ -1740,7 +1741,7 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
         },
       ),
     );
-  expect(statStyles).toHaveLength(3);
+  expect(statStyles).toHaveLength(4);
   expect(new Set(statStyles.map((stat) => stat.labelFontSize)).size).toBe(1);
   expect(new Set(statStyles.map((stat) => stat.valueFontSize)).size).toBe(1);
 
@@ -1758,7 +1759,7 @@ test("profile info banner fills large module space cleanly", async ({ page }) =>
       '[data-testid="profile-grid-module-profile_info"] [data-testid="profile-header-banner-image"]',
     );
     const bannerBleed = document.querySelector<HTMLElement>(
-      '[data-testid="profile-grid-module-profile_info"] [data-testid="profile-header-banner-bleed"]',
+      '[data-testid="profile-grid-module-profile_info"] [data-testid="profile-header-banner-card-bleed"]',
     );
     const actionRail = document.querySelector<HTMLElement>(
       '[data-testid="profile-grid-module-profile_info"] [data-testid="profile-info-action-rail"]',
@@ -2001,6 +2002,7 @@ test("profile info variants stay within each supported size", async ({ page }) =
       profileInfoCase.variant,
     );
     const socialContext = module.getByTestId("profile-social-context");
+    await expect(socialContext).toContainText("Stars");
     await expect(socialContext).toContainText("Followers");
     await expect(socialContext).toContainText("Following");
     await expect(socialContext).toContainText("Likes");
@@ -2069,6 +2071,7 @@ test("profile info variants stay within each supported size", async ({ page }) =
       ),
     );
     expect(statStyles.map((stat) => stat.label)).toEqual([
+      "Stars",
       "Followers",
       "Following",
       "Likes",
@@ -7295,13 +7298,16 @@ function profileBody(overrides: Record<string, unknown> = {}) {
       followers: 0,
       following: 0,
       moots: 0,
+      stars: 0,
     },
     followerCount: 0,
     followingCount: 0,
     mootCount: 0,
+    starCount: 0,
     isFollowing: false,
     isFollowedBy: false,
     isMoot: false,
+    isStarred: false,
     createdAt: "2026-06-10 00:00:00",
     updatedAt: "2026-06-10 00:00:00",
     ...overrides,

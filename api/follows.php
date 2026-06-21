@@ -51,6 +51,18 @@ function follows_dispatch(array $segments, string $method): void
         json_error('Method not allowed.', 405);
     }
 
+    if ($action === 'star') {
+        if ($method === 'POST') {
+            profile_star_create($handle);
+        }
+
+        if ($method === 'DELETE') {
+            profile_star_delete($handle);
+        }
+
+        json_error('Method not allowed.', 405);
+    }
+
     if ($action === 'follower') {
         if ($method === 'DELETE') {
             profile_follower_delete($handle);
@@ -301,6 +313,61 @@ function profile_follow_delete(string $handle): void
     json_success(follow_relationship_response($targetUserId, $viewerUserId));
 }
 
+function profile_star_create(string $handle): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+    require_profile_stars_table();
+
+    $target = active_profile_for_follow($handle);
+    $viewerUserId = (int) $session['user_id'];
+    $targetUserId = (int) $target['user_id'];
+
+    if ($viewerUserId === $targetUserId) {
+        json_error('You cannot star yourself.', 422);
+    }
+
+    reject_blocked_star($viewerUserId, $targetUserId);
+
+    db_query(
+        'INSERT IGNORE INTO profile_stars (starrer_id, starred_user_id)
+         VALUES (:starrer_id, :starred_user_id)',
+        [
+            'starrer_id' => $viewerUserId,
+            'starred_user_id' => $targetUserId,
+        ]
+    );
+
+    json_success(profile_star_response($targetUserId, $viewerUserId));
+}
+
+function profile_star_delete(string $handle): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+    require_profile_stars_table();
+
+    $target = active_profile_for_follow($handle);
+    $viewerUserId = (int) $session['user_id'];
+    $targetUserId = (int) $target['user_id'];
+
+    if ($viewerUserId === $targetUserId) {
+        json_error('You cannot unstar yourself.', 422);
+    }
+
+    db_query(
+        'DELETE FROM profile_stars
+         WHERE starrer_id = :starrer_id
+           AND starred_user_id = :starred_user_id',
+        [
+            'starrer_id' => $viewerUserId,
+            'starred_user_id' => $targetUserId,
+        ]
+    );
+
+    json_success(profile_star_response($targetUserId, $viewerUserId));
+}
+
 function profile_followers_index(string $handle): void
 {
     require_user_follows_table();
@@ -349,6 +416,13 @@ function require_user_mutes_table(): void
     }
 }
 
+function require_profile_stars_table(): void
+{
+    if (!profile_stars_table_exists()) {
+        json_error('Profile star storage is not ready. Run pending migrations.', 503);
+    }
+}
+
 function follow_relationship_response(int $targetUserId, int $viewerUserId): array
 {
     $context = profile_social_context($targetUserId, $viewerUserId);
@@ -362,6 +436,25 @@ function follow_relationship_response(int $targetUserId, int $viewerUserId): arr
         'followerCount' => (int) $context['followerCount'],
         'followingCount' => (int) $context['followingCount'],
         'mootCount' => (int) $context['mootCount'],
+        'starCount' => (int) $context['starCount'],
+        'isStarred' => (bool) $context['isStarred'],
+    ];
+}
+
+function profile_star_response(int $targetUserId, int $viewerUserId): array
+{
+    $relationship = follow_relationship_response($targetUserId, $viewerUserId);
+
+    return [
+        'isStarred' => (bool) $relationship['isStarred'],
+        'starCount' => (int) $relationship['starCount'],
+        'relationship' => $relationship,
+        'stats' => [
+            'followers' => (int) $relationship['followerCount'],
+            'following' => (int) $relationship['followingCount'],
+            'moots' => (int) $relationship['mootCount'],
+            'stars' => (int) $relationship['starCount'],
+        ],
     ];
 }
 
@@ -386,6 +479,19 @@ function reject_blocked_follow(int $viewerUserId, int $targetUserId): void
 
     if ($state['targetBlocksViewer']) {
         json_error('You cannot follow this member.', 403);
+    }
+}
+
+function reject_blocked_star(int $viewerUserId, int $targetUserId): void
+{
+    $state = user_pair_block_state($viewerUserId, $targetUserId);
+
+    if ($state['viewerBlocksTarget']) {
+        json_error('Unblock this member before starring.', 409);
+    }
+
+    if ($state['targetBlocksViewer']) {
+        json_error('You cannot star this member.', 403);
     }
 }
 

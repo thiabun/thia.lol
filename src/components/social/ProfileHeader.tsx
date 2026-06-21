@@ -7,6 +7,7 @@ import {
   MoreHorizontal,
   Heart,
   ShieldOff,
+  Star,
   UserCheck,
   UserPlus,
   Users,
@@ -43,12 +44,14 @@ type ProfileHeaderProps = {
   onBlockToggle?: (() => Promise<void> | void) | undefined;
   onFollowToggle?: () => void;
   onMuteToggle?: (() => Promise<void> | void) | undefined;
+  onStarToggle?: () => void;
   onOpenPanel?: (panel: "followers" | "following" | "badges") => void;
   featuredBadges?: UserBadge[] | undefined;
   profileInfoColumns?: number | undefined;
   profileInfoRows?: number | undefined;
   reportAction?: ReactNode;
   showChatHint?: boolean;
+  starPosting?: boolean;
 };
 
 export function ProfileHeader({
@@ -64,12 +67,14 @@ export function ProfileHeader({
   onBlockToggle,
   onFollowToggle,
   onMuteToggle,
+  onStarToggle,
   onOpenPanel,
   profile,
   profileInfoColumns = 3,
   profileInfoRows = 2,
   reportAction,
   showChatHint = false,
+  starPosting = false,
 }: ProfileHeaderProps) {
   const [actionsOpen, setActionsOpen] = useState(false);
   const [confirmBlockOpen, setConfirmBlockOpen] = useState(false);
@@ -204,6 +209,26 @@ export function ProfileHeader({
                     >
                       Message
                     </ButtonLink>
+                  ) : null}
+                  {onStarToggle && !directActionsDisabled ? (
+                    <Button
+                      type="button"
+                      variant={profile.isStarred ? "primary" : "secondary"}
+                      disabled={starPosting}
+                      className="flex-1 sm:flex-none"
+                      data-testid="profile-star-button"
+                      size="sm"
+                      icon={
+                        <Star
+                          aria-hidden="true"
+                          className={profile.isStarred ? "fill-current" : undefined}
+                          size={17}
+                        />
+                      }
+                      onClick={onStarToggle}
+                    >
+                      {starPosting ? "Saving" : profile.isStarred ? "Starred" : "Star"}
+                    </Button>
                   ) : null}
                   {!directActionsDisabled ? (
                     <Button
@@ -512,6 +537,7 @@ function ProfileSocialContext({
       data-testid="profile-social-context"
       aria-label="Profile details"
     >
+      <ProfileStat label="Stars" value={profile.stats.stars} icon={Star} />
       <ProfileStat label="Likes" value={profile.stats.echoes} icon={Heart} />
       <ProfilePanelPill
         label="Followers"

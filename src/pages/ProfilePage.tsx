@@ -94,9 +94,11 @@ import {
   removeProfileFollower,
   resolveProfileIntegrationMetadata,
   startProfileIntegration,
+  starProfile,
   unblockProfile,
   unfollowProfile,
   unmuteProfile,
+  unstarProfile,
   commitProfileCanvasDraft,
   discardProfileCanvasDraft,
   updateProfileCanvas,
@@ -299,6 +301,7 @@ export function ProfilePage() {
     { handle: string; relationship: FollowRelationship } | undefined
   >();
   const [followPosting, setFollowPosting] = useState(false);
+  const [starPosting, setStarPosting] = useState(false);
   const [followError, setFollowError] = useState<
     { handle: string; message: string } | undefined
   >();
@@ -524,6 +527,69 @@ export function ProfilePage() {
       });
     } finally {
       setFollowPosting(false);
+    }
+  }
+
+  async function handleStarToggle() {
+    if (!profile || isOwnProfile || profile.blockedByMe || starPosting) {
+      return;
+    }
+
+    if (status !== "authenticated") {
+      navigate("/login");
+      return;
+    }
+
+    const previousRelationship: FollowRelationship = {
+      isFollowing: profile.isFollowing,
+      isFollowedBy: profile.isFollowedBy,
+      isMoot: profile.isMoot,
+      isStarred: profile.isStarred,
+      blockedByMe: profile.blockedByMe ?? false,
+      mutedByMe: profile.mutedByMe ?? false,
+      followerCount: profile.followerCount,
+      followingCount: profile.followingCount,
+      mootCount: profile.mootCount,
+      starCount: profile.starCount,
+    };
+    const optimisticRelationship: FollowRelationship = {
+      ...previousRelationship,
+      isStarred: !profile.isStarred,
+      starCount: Math.max(0, profile.starCount + (profile.isStarred ? -1 : 1)),
+    };
+
+    setStarPosting(true);
+    setFollowError(undefined);
+    setFollowState({
+      handle: normalizedHandle,
+      relationship: optimisticRelationship,
+    });
+
+    try {
+      const result = await runWithAuth(
+        (csrfToken) =>
+          profile.isStarred
+            ? unstarProfile(profile.user.handle, csrfToken)
+            : starProfile(profile.user.handle, csrfToken),
+        { retryOnCsrf: true },
+      );
+
+      setFollowState({
+        handle: normalizedHandle,
+        relationship: result.relationship,
+      });
+    } catch (error) {
+      setFollowState({
+        handle: normalizedHandle,
+        relationship: previousRelationship,
+      });
+      setFollowError({
+        handle: normalizedHandle,
+        message:
+          error instanceof Error ? error.message : "Could not update star state.",
+      });
+    } finally {
+      setStarPosting(false);
     }
   }
 
@@ -1517,6 +1583,7 @@ export function ProfilePage() {
           featuredBadges={featuredBadges}
           followPosting={followPosting}
           isOwnProfile={isOwnProfile}
+          onStarToggle={handleStarToggle}
           profile={renderedProfile}
           profileControlBusy={profileControlBusy}
           size={size}
@@ -1526,6 +1593,7 @@ export function ProfilePage() {
             !renderedProfile.blockedByMe &&
             !renderedProfile.isMoot
           }
+          starPosting={starPosting}
           status={status}
           onBlockToggle={
             status === "authenticated" && !isOwnProfile
@@ -6227,9 +6295,11 @@ function mergeFollowState(
     followerCount: followState.followerCount,
     followingCount: followState.followingCount,
     mootCount,
+    starCount: followState.starCount,
     isFollowing: followState.isFollowing,
     isFollowedBy: followState.isFollowedBy,
     isMoot: followState.isMoot,
+    isStarred: followState.isStarred,
     blockedByMe: followState.blockedByMe ?? profile.blockedByMe ?? false,
     mutedByMe: followState.mutedByMe ?? profile.mutedByMe ?? false,
     stats: {
@@ -6237,6 +6307,7 @@ function mergeFollowState(
       followers: followState.followerCount,
       following: followState.followingCount,
       moots: mootCount,
+      stars: followState.starCount,
     },
   };
 }
@@ -6385,10 +6456,12 @@ type ProfileInfoModuleProps = {
   onFollowToggle: () => void;
   onMuteToggle?: (() => Promise<void> | void) | undefined;
   onOpenPanel: (panel: "followers" | "following" | "badges") => void;
+  onStarToggle: () => void;
   profile: Profile;
   profileControlBusy?: "block" | "mute" | undefined;
   showChatHint: boolean;
   size: ProfileGridModuleSize;
+  starPosting: boolean;
   status: string;
 };
 
@@ -6404,10 +6477,12 @@ function ProfileInfoModule({
   onFollowToggle,
   onMuteToggle,
   onOpenPanel,
+  onStarToggle,
   profile,
   profileControlBusy,
   showChatHint,
   size,
+  starPosting,
   status,
 }: ProfileInfoModuleProps) {
   const span = profileGridModuleSizeSpan(size);
@@ -6448,11 +6523,13 @@ function ProfileInfoModule({
           onFollowToggle={onFollowToggle}
           onMuteToggle={onMuteToggle}
           onOpenPanel={onOpenPanel}
+          onStarToggle={onStarToggle}
           profile={profile}
           profileControlBusy={profileControlBusy}
           mobileProjected={mobileProjected}
           showChatHint={showChatHint}
           span={span}
+          starPosting={starPosting}
         />
       )}
     </div>
@@ -6512,11 +6589,13 @@ type ProfileInfoSizedCardProps = {
   onFollowToggle: () => void;
   onMuteToggle?: (() => Promise<void> | void) | undefined;
   onOpenPanel: (panel: "followers" | "following" | "badges") => void;
+  onStarToggle: () => void;
   profile: Profile;
   profileControlBusy?: "block" | "mute" | undefined;
   mobileProjected: boolean;
   showChatHint: boolean;
   span: { columns: number; rows: number; size: ProfileGridModuleSize };
+  starPosting: boolean;
 };
 
 type ProfileInfoCardLayout = {
@@ -6646,11 +6725,13 @@ function ProfileInfoSizedCard({
   onFollowToggle,
   onMuteToggle,
   onOpenPanel,
+  onStarToggle,
   profile,
   profileControlBusy,
   mobileProjected,
   showChatHint,
   span,
+  starPosting,
 }: ProfileInfoSizedCardProps) {
   const compact = span.columns <= 3;
   const layout = profileInfoCardLayout(span, mobileProjected);
@@ -6706,7 +6787,9 @@ function ProfileInfoSizedCard({
             isOwnProfile={isOwnProfile}
             messageToHandle={messageToHandle}
             onFollowToggle={onFollowToggle}
+            onStarToggle={onStarToggle}
             profile={profile}
+            starPosting={starPosting}
           />
         </div>
         <ProfileInfoStatusLine
@@ -6861,10 +6944,12 @@ function ProfileInfoSizedCard({
             onBlockToggle={onBlockToggle}
             onFollowToggle={onFollowToggle}
             onMuteToggle={onMuteToggle}
+            onStarToggle={onStarToggle}
             primaryCompact={layout.primaryCompact}
             profile={profile}
             profileControlBusy={profileControlBusy}
             showMenu
+            starPosting={starPosting}
           />
         </div>
       </div>
@@ -6880,10 +6965,12 @@ function ProfileInfoActions({
   onBlockToggle,
   onFollowToggle,
   onMuteToggle,
+  onStarToggle,
   primaryCompact = false,
   profile,
   profileControlBusy,
   showMenu = false,
+  starPosting,
 }: {
   compact?: boolean | undefined;
   followPosting: boolean;
@@ -6892,10 +6979,12 @@ function ProfileInfoActions({
   onBlockToggle?: (() => Promise<void> | void) | undefined;
   onFollowToggle: () => void;
   onMuteToggle?: (() => Promise<void> | void) | undefined;
+  onStarToggle: () => void;
   primaryCompact?: boolean | undefined;
   profile: Profile;
   profileControlBusy?: "block" | "mute" | undefined;
   showMenu?: boolean | undefined;
+  starPosting: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -6928,6 +7017,28 @@ function ProfileInfoActions({
           <MessageCircle aria-hidden="true" size={actionIconSize} />
           {iconOnly ? null : "Message"}
         </Link>
+      ) : null}
+      {!disabled ? (
+        <Button
+          type="button"
+          variant={profile.isStarred ? "primary" : "secondary"}
+          disabled={starPosting}
+          className={iconOnly ? "size-8 p-0" : "min-h-9 px-3 text-xs"}
+          data-testid="profile-star-button"
+          size={iconOnly ? "icon" : "sm"}
+          icon={
+            <Star
+              aria-hidden="true"
+              size={actionIconSize}
+              className={profile.isStarred ? "fill-current" : undefined}
+            />
+          }
+          aria-label={profile.isStarred ? "Unstar profile" : "Star profile"}
+          title={profile.isStarred ? "Unstar profile" : "Star profile"}
+          onClick={onStarToggle}
+        >
+          {iconOnly ? null : starPosting ? "Saving" : profile.isStarred ? "Starred" : "Star"}
+        </Button>
       ) : null}
       {!disabled ? (
         <Button
@@ -7030,10 +7141,11 @@ function ProfileInfoStats({
   tight?: boolean | undefined;
 }) {
   const stats: Array<{
-    label: "Followers" | "Following" | "Likes";
+    label: "Stars" | "Followers" | "Following" | "Likes";
     panel?: "followers" | "following" | undefined;
     value: number;
   }> = [
+    { label: "Stars", value: profile.stats.stars },
     { label: "Followers", panel: "followers", value: profile.stats.followers },
     { label: "Following", panel: "following", value: profile.stats.following },
     { label: "Likes", value: profile.stats.echoes },
@@ -7044,7 +7156,7 @@ function ProfileInfoStats({
       className={cn(
         "min-w-0 shrink-0 overflow-hidden",
         compact
-          ? "grid grid-cols-3 items-end gap-1"
+          ? "grid grid-cols-2 items-end gap-x-1 gap-y-1"
           : "flex flex-wrap items-center gap-x-3 gap-y-1",
       )}
       data-profile-info-stats-variant={compact ? "compact" : "row"}

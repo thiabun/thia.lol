@@ -58,7 +58,7 @@ foreach ([$migration, $schema] as $sql) {
     assert_matches('/ON DELETE CASCADE[\s\S]*ON DELETE CASCADE/', $sql, 'safe cascade behavior missing');
 }
 
-assert_contains($router, "['follow', 'followers', 'following', 'block', 'mute', 'follower']", 'profile control routes not dispatched');
+assert_contains($router, "['follow', 'followers', 'following', 'block', 'mute', 'follower', 'star']", 'profile control routes not dispatched');
 
 assert_contains($follows, 'function profile_block_create', 'block create endpoint missing');
 assert_contains($follows, 'function profile_block_delete', 'block delete endpoint missing');
@@ -89,7 +89,7 @@ assert_contains($read, 'viewer_feed_relationship_filter_sql', 'feed mute/block f
 assert_contains($read, 'fetch_home_feed', 'home feed function missing');
 assert_contains($read, 'fetch_discover_posts', 'discover feed function missing');
 assert_contains($read, 'function fetch_people_to_watch', 'discover people function missing');
-assert_contains($read, 'COALESCE(profile_posts.post_count, 0) DESC', 'discover people should rank posters first');
+assert_contains($read, 'discover_rank_score DESC', 'discover people should use blended ranking');
 assert_contains($read, "u.handle NOT REGEXP '^smoketest[0-9]+$'", 'discover people should hide smoke test accounts');
 assert_true(
     !str_contains($read, 'AND COALESCE(profile_posts.post_count, 0) > 0'),

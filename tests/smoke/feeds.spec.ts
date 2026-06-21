@@ -115,6 +115,7 @@ test("Discover renders primary sections only when backed by data", async ({
               isMoot: false,
               postCount: 3,
               followerCount: 1,
+              starCount: 2,
             },
           ],
         },
@@ -128,6 +129,7 @@ test("Discover renders primary sections only when backed by data", async ({
   await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "General" })).toBeVisible();
   await expect(page.getByText("@alex")).toBeVisible();
+  await expect(page.getByText("2 stars")).toBeVisible();
 });
 
 test("Discover keeps context sections stacked on mobile", async ({ page }) => {
@@ -2163,6 +2165,7 @@ function makeDiscoverPerson(overrides: Record<string, unknown> = {}) {
     isMoot: false,
     postCount: 3,
     followerCount: 1,
+    starCount: 2,
     ...overrides,
   };
 }
