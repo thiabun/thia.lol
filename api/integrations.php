@@ -900,7 +900,12 @@ function profile_integration_normalize_url(string $rawUrl, ?string $preferredPro
         $resourceId = preg_replace('/[^A-Za-z0-9]/', '', $segments[1]) ?? '';
         $sourceUrl = "https://open.spotify.com/{$resourceType}/{$resourceId}";
     } elseif ($provider === 'apple_music' && in_array($host, ['music.apple.com', 'itunes.apple.com'], true) && count($segments) >= 2) {
-        $resourceType = str_contains($path, '/playlist/') ? 'playlist' : (str_contains($path, '/album/') ? 'album' : 'song');
+        $resourceType = match (true) {
+            str_contains($path, '/artist/') => 'artist',
+            str_contains($path, '/playlist/') => 'playlist',
+            str_contains($path, '/album/') => 'album',
+            default => 'song',
+        };
         $resourceId = profile_integration_last_identifier($url);
     } elseif ($provider === 'youtube' && in_array($host, ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be', 'music.youtube.com'], true)) {
         $playlistId = profile_integration_youtube_identifier(profile_integration_query_value($url, 'list'));
@@ -1165,11 +1170,23 @@ function profile_integration_fetch_spotify_resource(array $normalized): array
         ? implode(', ', array_map(static fn (array $artist): string => (string) ($artist['name'] ?? ''), $artists))
         : (is_string($artists) ? $artists : 'Spotify');
 
+    $stats = [];
+
+    if ($resourceType === 'artist') {
+        $genres = $response['genres'] ?? [];
+        $stats = [
+            'followers' => $response['followers']['total'] ?? null,
+            'popularity' => $response['popularity'] ?? null,
+            'genres' => is_array($genres) ? implode(', ', array_slice(array_filter($genres, 'is_string'), 0, 2)) : null,
+        ];
+    }
+
     return [
         'title' => $response['name'] ?? 'Spotify ' . $resourceType,
         'subtitle' => trim($subtitle) === '' ? 'Spotify' : $subtitle,
-        'description' => $response['description'] ?? null,
+        'description' => $response['description'] ?? ($stats['genres'] ?? null),
         'imageUrl' => $response['images'][0]['url'] ?? ($response['album']['images'][0]['url'] ?? null),
+        'stats' => $stats,
     ];
 }
 

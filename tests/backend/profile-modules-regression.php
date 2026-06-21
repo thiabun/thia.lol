@@ -78,6 +78,7 @@ $defaultFeedPayload = profile_activity_module_payload(2);
 assert_true($defaultFeedPayload['title'] === 'Feed', 'synthetic activity payload should be titled Feed');
 assert_true($defaultFeedPayload['layout']['colSpan'] === 4, 'synthetic Feed should use roomy columns');
 assert_true($defaultFeedPayload['layout']['rowSpan'] === 6, 'synthetic Feed should use roomy rows');
+assert_true($defaultFeedPayload['layout']['column'] === 5, 'synthetic Feed should be centered below profile info');
 assert_true($defaultFeedPayload['layout']['row'] === 4, 'synthetic Feed should sit below profile info');
 assert_true(
     profile_feed_module_looks_default([
@@ -100,6 +101,17 @@ assert_true(
         'grid_row_span' => null,
     ]),
     'missing old activity layout should be treated as default Feed'
+);
+assert_true(
+    profile_feed_module_looks_default([
+        'title' => 'Feed',
+        'config_json' => '{}',
+        'grid_column' => 5,
+        'grid_row' => 4,
+        'grid_col_span' => 4,
+        'grid_row_span' => 6,
+    ]),
+    'centered default Feed layouts should stay upgrade-safe'
 );
 assert_true(
     !profile_feed_module_looks_default([

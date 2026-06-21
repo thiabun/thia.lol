@@ -917,7 +917,11 @@ function profile_canvas_default_layout_for_type(string $type, int $index): array
     [$colSpan, $rowSpan] = array_map('intval', explode('x', $size, 2));
 
     return [
-        'column' => $type === PROFILE_INFO_MODULE_TYPE ? 3 : 1,
+        'column' => match ($type) {
+            PROFILE_INFO_MODULE_TYPE => 3,
+            PROFILE_ACTIVITY_MODULE_TYPE => 5,
+            default => 1,
+        },
         'row' => match ($type) {
             PROFILE_INFO_MODULE_TYPE => 1,
             PROFILE_ACTIVITY_MODULE_TYPE => 4,
@@ -3013,7 +3017,7 @@ function profile_upgrade_default_feed_module(int $userId): void
         "UPDATE profile_modules
          SET title = CASE WHEN title = :legacy_title OR title = '' THEN NULL ELSE title END,
              position = :position,
-             grid_column = 1,
+             grid_column = 5,
              grid_row = 4,
              grid_col_span = 4,
              grid_row_span = 6,
@@ -3093,11 +3097,12 @@ function profile_feed_module_layout_is_defaultish(array $module): bool
         return true;
     }
 
-    if ($colSpan === 4 && $rowSpan === 6 && ($column === null || $column === 1) && ($row === null || $row === 4)) {
+    if ($colSpan === 4 && $rowSpan === 6 && ($column === null || $column === 1 || $column === 5) && ($row === null || $row === 4)) {
         return true;
     }
 
-    return ($column === 1 && $row === 4 && $colSpan === 4 && $rowSpan === 6)
+    return ($column === 5 && $row === 4 && $colSpan === 4 && $rowSpan === 6)
+        || ($column === 1 && $row === 4 && $colSpan === 4 && $rowSpan === 6)
         || ($column === 1 && $row === 1 && $colSpan === 3 && $rowSpan === 4)
         || ($column === 1 && $row === 4 && $colSpan === 3 && $rowSpan === 4);
 }
@@ -3111,7 +3116,11 @@ function profile_insert_builtin_module_at(
 ): void {
     $position = max(1, $position);
     [$defaultColSpan, $defaultRowSpan] = array_map('intval', explode('x', profile_canvas_default_size($type, 0), 2));
-    $defaultColumn = $type === PROFILE_INFO_MODULE_TYPE ? 3 : 1;
+    $defaultColumn = match ($type) {
+        PROFILE_INFO_MODULE_TYPE => 3,
+        PROFILE_ACTIVITY_MODULE_TYPE => 5,
+        default => 1,
+    };
     $defaultRow = match ($type) {
         PROFILE_INFO_MODULE_TYPE => 1,
         PROFILE_ACTIVITY_MODULE_TYPE => 4,
@@ -3189,7 +3198,7 @@ function profile_activity_module_payload(int $position): array
         'position' => $position,
         'pinned' => false,
         'layout' => [
-            'column' => 1,
+            'column' => 5,
             'row' => 4,
             'colSpan' => 4,
             'rowSpan' => 6,

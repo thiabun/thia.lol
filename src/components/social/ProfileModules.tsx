@@ -1460,7 +1460,7 @@ function UploadedAudioPlayer({
 
   return (
     <div
-      className="flex h-full min-h-0 overflow-hidden rounded-card border border-line bg-canvas/55"
+      className="flex h-full min-h-0 overflow-hidden rounded-card border border-line bg-canvas/55 shadow-inner-soft"
       data-profile-uploaded-audio-layout={
         compactPlayer ? "compact" : richPlayer ? "rich" : "row"
       }
@@ -1490,12 +1490,12 @@ function UploadedAudioPlayer({
         >
           <span
             className={cn(
-              "grid shrink-0 place-items-center rounded-card border border-line bg-surface/70 text-text shadow-soft",
+              "grid shrink-0 place-items-center rounded-card border border-line/80 bg-surface/70 text-text shadow-soft",
               compactPlayer
                 ? "size-11"
                 : richPlayer
-                  ? "size-24 sm:size-28 lg:size-32"
-                  : "size-16",
+                  ? "size-20 sm:size-24 lg:size-28"
+                  : "size-14",
             )}
           >
             <Music2 aria-hidden="true" size={compactPlayer ? 20 : 28} />
@@ -1529,8 +1529,8 @@ function UploadedAudioPlayer({
           <button
             type="button"
             className={cn(
-              "grid shrink-0 place-items-center rounded-full border border-line bg-accent text-accent-contrast shadow-soft transition duration-fluid ease-fluid hover:-translate-y-0.5 hover:shadow-lift focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-              compactPlayer ? "size-9" : "size-11",
+              "grid shrink-0 place-items-center rounded-full border border-accent/35 bg-accent/90 text-accent-contrast shadow-soft transition duration-fluid ease-fluid hover:-translate-y-0.5 hover:bg-accent hover:shadow-lift focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+              compactPlayer ? "size-8" : "size-10",
             )}
             onClick={handlePlaybackToggle}
             aria-label={playing ? "Pause uploaded music" : "Play uploaded music"}
@@ -1543,7 +1543,7 @@ function UploadedAudioPlayer({
             )}
           </button>
           <div className="min-w-0 flex-1">
-            <div className="h-1.5 overflow-hidden rounded-full bg-line">
+            <div className="h-1 overflow-hidden rounded-full bg-line">
               <div
                 className="h-full rounded-full bg-accent transition-[width] duration-fluid ease-fluid"
                 role="progressbar"
@@ -1554,7 +1554,7 @@ function UploadedAudioPlayer({
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
-            <div className="mt-1 flex items-center justify-between gap-3 text-[0.7rem] font-semibold uppercase text-muted">
+            <div className="mt-1 flex items-center justify-between gap-3 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted">
               {!compactPlayer ? <span className="truncate">MP3</span> : null}
               <span data-testid="profile-uploaded-audio-progress-time">
                 {duration > 0
@@ -1627,6 +1627,18 @@ function ProfileIntegrationRichCard({
   const compactMutedTextClass = albumArtworkMutedTextClass(compactTextTone);
   const twitchEmbedSandbox =
     "allow-storage-access-by-user-activation allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-modals allow-forms";
+
+  if (isArtistModuleIntegration(module, integration)) {
+    return (
+      <ProfileIntegrationArtistCard
+        fallbackLabel={fallbackLabel}
+        icon={icon}
+        integration={integration}
+        module={module}
+        size={size}
+      />
+    );
+  }
 
   if (showPrimaryEmbed && primaryEmbed && integration.provider === "spotify") {
     return (
@@ -1855,6 +1867,165 @@ function ProfileIntegrationRichCard({
   );
 }
 
+function ProfileIntegrationArtistCard({
+  fallbackLabel,
+  icon,
+  integration,
+  module,
+  size = "4x3",
+}: {
+  fallbackLabel: string;
+  icon: ReactNode;
+  integration: ProfileIntegrationCard;
+  module: ProfileModule;
+  size?: ProfileGridModuleSize | undefined;
+}) {
+  const metadata = integration.metadata;
+  const span = profileGridModuleSizeSpan(size);
+  const compact = span.columns <= 3 && span.rows <= 2;
+  const spacious = span.columns >= 6 || span.rows >= 4;
+  const title = metadata.title ?? module.config.label ?? fallbackLabel;
+  const subtitle = metadata.subtitle ?? platformDisplayName(integration.provider);
+  const description = metadata.description ?? module.config.description;
+  const stats = profileIntegrationArtistStats(integration);
+
+  return (
+    <a
+      className={cn(
+        "group relative isolate flex h-full min-h-0 min-w-0 overflow-hidden rounded-card border border-line bg-canvas/55 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+        compact ? "items-end p-3" : "items-stretch",
+      )}
+      href={integration.sourceUrl}
+      rel="noopener noreferrer"
+      target="_blank"
+      data-profile-artist-card-layout={compact ? "compact" : spacious ? "spacious" : "standard"}
+      data-testid="profile-integration-artist-card"
+    >
+      {metadata.imageUrl ? (
+        <img
+          alt=""
+          aria-hidden="true"
+          className={cn(
+            "absolute inset-0 -z-30 size-full object-cover blur-2xl transition duration-fluid ease-fluid group-hover:scale-105",
+            compact ? "opacity-45" : "opacity-25",
+          )}
+          decoding="async"
+          loading="lazy"
+          src={metadata.imageUrl}
+        />
+      ) : null}
+      <span className="absolute inset-0 -z-20 bg-[linear-gradient(135deg,color-mix(in_oklab,var(--canvas)_92%,transparent),color-mix(in_oklab,var(--surface)_72%,transparent))]" />
+      {compact ? (
+        <span className="absolute inset-0 -z-10 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+      ) : null}
+      {!compact ? (
+        <span
+          className={cn(
+            "relative min-h-0 shrink-0 overflow-hidden border-r border-line bg-surface/70",
+            spacious ? "w-[45%]" : "w-[42%]",
+          )}
+        >
+          {metadata.imageUrl ? (
+            <img
+              alt=""
+              className="size-full object-cover transition duration-fluid ease-fluid group-hover:scale-[1.02]"
+              decoding="async"
+              loading="lazy"
+              src={metadata.imageUrl}
+              data-testid="profile-integration-artist-image"
+            />
+          ) : (
+            <span className="grid size-full place-items-center text-muted">{icon}</span>
+          )}
+        </span>
+      ) : null}
+      <span
+        className={cn(
+          "relative flex min-w-0 flex-1 flex-col",
+          compact ? "gap-2" : spacious ? "gap-3 p-4" : "gap-2 p-3",
+        )}
+      >
+        <span className="flex min-w-0 items-start gap-3">
+          {compact ? (
+            <span className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-card border border-white/25 bg-black/25 text-white shadow-soft">
+              {metadata.imageUrl ? (
+                <img
+                  alt=""
+                  className="size-full object-cover"
+                  decoding="async"
+                  loading="lazy"
+                  src={metadata.imageUrl}
+                />
+              ) : (
+                icon
+              )}
+            </span>
+          ) : null}
+          <span className="min-w-0 flex-1">
+            <span
+              className={cn(
+                "block truncate font-semibold",
+                compact ? "text-base text-white" : "text-lg text-text",
+              )}
+              data-testid="profile-integration-artist-title"
+            >
+              {title}
+            </span>
+            <span
+              className={cn(
+                "mt-0.5 block truncate text-sm",
+                compact ? "text-white/78" : "text-muted",
+              )}
+            >
+              {subtitle}
+            </span>
+          </span>
+          <span
+            className={cn(
+              "grid size-10 shrink-0 place-items-center rounded-card border transition duration-fluid ease-fluid group-hover:-translate-y-0.5",
+              compact
+                ? "border-white/25 bg-black/20 text-white"
+                : "border-line bg-canvas/65 text-muted group-hover:bg-surface group-hover:text-text",
+            )}
+            aria-label={`Open ${title}`}
+          >
+            <ExternalLink aria-hidden="true" size={17} />
+          </span>
+        </span>
+        {!compact && description ? (
+          <span
+            className={cn(
+              "block text-sm leading-5 text-muted",
+              spacious ? "line-clamp-4" : "line-clamp-2",
+            )}
+          >
+            {description}
+          </span>
+        ) : null}
+        {stats.length > 0 ? (
+          <span
+            className={cn(
+              "mt-auto flex min-w-0 flex-wrap gap-2",
+              compact ? "hidden" : undefined,
+            )}
+            data-testid="profile-integration-artist-stats"
+          >
+            {stats.map((stat) => (
+              <span
+                key={`${stat.label}:${stat.value}`}
+                className="min-w-0 rounded-control border border-line bg-canvas/48 px-2.5 py-1 text-xs font-semibold text-muted"
+              >
+                <span className="text-text">{stat.value}</span>{" "}
+                <span>{stat.label}</span>
+              </span>
+            ))}
+          </span>
+        ) : null}
+      </span>
+    </a>
+  );
+}
+
 function YouTubeMusicPlayer({
   autoplayRequestId,
   fallbackLabel,
@@ -1908,7 +2079,7 @@ function YouTubeMusicPlayer({
 
   return (
     <div
-      className="flex h-full min-h-0 overflow-hidden rounded-card border border-line bg-canvas/55"
+      className="flex h-full min-h-0 overflow-hidden rounded-card border border-line bg-canvas/55 shadow-inner-soft"
       data-profile-youtube-music-layout={
         compactPlayer ? "compact" : richPlayer ? "rich" : "row"
       }
@@ -1956,12 +2127,12 @@ function YouTubeMusicPlayer({
         >
           <span
             className={cn(
-              "grid shrink-0 place-items-center overflow-hidden border border-line bg-surface/70 text-text shadow-soft",
+              "grid shrink-0 place-items-center overflow-hidden border border-line/80 bg-surface/70 text-text shadow-soft",
               compactPlayer
                 ? "absolute inset-0 -z-10 size-full rounded-card opacity-80"
                 : richPlayer
-                  ? "size-24 rounded-card sm:size-28 lg:size-32"
-                  : "size-16 rounded-card",
+                  ? "size-20 rounded-card sm:size-24 lg:size-28"
+                  : "size-14 rounded-card",
             )}
           >
             {metadata.imageUrl ? (
@@ -2058,8 +2229,8 @@ function YouTubeMusicPlayer({
           <button
             type="button"
             className={cn(
-              "grid shrink-0 place-items-center rounded-full border border-line bg-accent text-accent-contrast shadow-soft transition duration-fluid ease-fluid hover:-translate-y-0.5 hover:shadow-lift focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-              compactPlayer ? "size-9" : "size-11",
+              "grid shrink-0 place-items-center rounded-full border border-accent/35 bg-accent/90 text-accent-contrast shadow-soft transition duration-fluid ease-fluid hover:-translate-y-0.5 hover:bg-accent hover:shadow-lift focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+              compactPlayer ? "size-8" : "size-10",
             )}
             onClick={handlePlaybackToggle}
             aria-label={playing ? "Stop YouTube Music" : "Play YouTube Music"}
@@ -2074,7 +2245,7 @@ function YouTubeMusicPlayer({
           <div className="min-w-0 flex-1">
             <div
               className={cn(
-                "h-1.5 overflow-hidden rounded-full",
+                "h-1 overflow-hidden rounded-full",
                 compactPlayer
                   ? compactTextTone === "black"
                     ? "bg-black/25"
@@ -2096,7 +2267,7 @@ function YouTubeMusicPlayer({
             </div>
             <div
               className={cn(
-                "mt-1 flex items-center justify-between gap-3 text-[0.7rem] font-semibold uppercase",
+                "mt-1 flex items-center justify-between gap-3 text-[0.68rem] font-semibold uppercase tracking-[0.08em]",
                 compactPlayer ? compactMutedTextClass : "text-muted",
               )}
             >
@@ -2370,7 +2541,7 @@ function SpotifyMusicPlayer({
 
   return (
     <div
-      className="flex h-full min-h-0 overflow-hidden rounded-card border border-line bg-canvas/55"
+      className="flex h-full min-h-0 overflow-hidden rounded-card border border-line bg-canvas/55 shadow-inner-soft"
       data-profile-spotify-layout={
         compactPlayer ? "compact" : richPlayer ? "rich" : "row"
       }
@@ -2420,12 +2591,12 @@ function SpotifyMusicPlayer({
         >
           <span
             className={cn(
-              "grid shrink-0 place-items-center overflow-hidden border border-line bg-surface/70 text-text shadow-soft",
+              "grid shrink-0 place-items-center overflow-hidden border border-line/80 bg-surface/70 text-text shadow-soft",
               compactPlayer
                 ? "absolute inset-0 -z-10 size-full rounded-card opacity-80"
                 : richPlayer
-                  ? "size-24 rounded-card sm:size-28 lg:size-32"
-                  : "size-16 rounded-card",
+                  ? "size-20 rounded-card sm:size-24 lg:size-28"
+                  : "size-14 rounded-card",
             )}
             data-testid="profile-spotify-artwork-frame"
           >
@@ -2493,8 +2664,8 @@ function SpotifyMusicPlayer({
           <button
             type="button"
             className={cn(
-              "grid shrink-0 place-items-center rounded-full border border-line bg-accent text-accent-contrast shadow-soft transition duration-fluid ease-fluid hover:-translate-y-0.5 hover:shadow-lift focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0",
-              compactPlayer ? "size-9" : "size-11",
+              "grid shrink-0 place-items-center rounded-full border border-accent/35 bg-accent/90 text-accent-contrast shadow-soft transition duration-fluid ease-fluid hover:-translate-y-0.5 hover:bg-accent hover:shadow-lift focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0",
+              compactPlayer ? "size-8" : "size-10",
             )}
             onClick={handlePlaybackToggle}
             disabled={fallback || !controllerReady}
@@ -2510,7 +2681,7 @@ function SpotifyMusicPlayer({
           <div className="min-w-0 flex-1">
             <div
               className={cn(
-                "h-1.5 overflow-hidden rounded-full",
+                "h-1 overflow-hidden rounded-full",
                 compactPlayer
                   ? compactTextTone === "black"
                     ? "bg-black/25"
@@ -2531,7 +2702,7 @@ function SpotifyMusicPlayer({
             </div>
             <div
               className={cn(
-                "mt-1 flex items-center justify-between gap-3 text-[0.7rem] font-semibold uppercase",
+                "mt-1 flex items-center justify-between gap-3 text-[0.68rem] font-semibold uppercase tracking-[0.08em]",
                 compactPlayer ? compactMutedTextClass : "text-muted",
               )}
             >
@@ -2884,6 +3055,60 @@ function twitchChatEmbedSrc(integration: ProfileIntegrationCard): string | undef
   return `https://www.twitch.tv/embed/${encodeURIComponent(
     integration.resourceId,
   )}/chat?parent=${encodeURIComponent(parent)}&darkpopout`;
+}
+
+function isArtistModuleIntegration(
+  module: ProfileModule,
+  integration: ProfileIntegrationCard,
+): boolean {
+  return module.type.endsWith("_artist") || integration.resourceType === "artist";
+}
+
+function profileIntegrationArtistStats(
+  integration: ProfileIntegrationCard,
+): Array<{ label: string; value: string }> {
+  const stats = integration.metadata.stats ?? {};
+  const items: Array<{ label: string; value: string }> = [];
+
+  if (typeof stats.listeners === "number" || typeof stats.listeners === "string") {
+    items.push({ label: "listeners", value: formatCompactStat(stats.listeners) });
+  }
+
+  if (typeof stats.followers === "number" || typeof stats.followers === "string") {
+    items.push({ label: "followers", value: formatCompactStat(stats.followers) });
+  }
+
+  if (typeof stats.subscribers === "number" || typeof stats.subscribers === "string") {
+    items.push({ label: "subscribers", value: formatCompactStat(stats.subscribers) });
+  }
+
+  if (typeof stats.popularity === "number" || typeof stats.popularity === "string") {
+    items.push({ label: "popularity", value: `${formatCompactStat(stats.popularity)}/100` });
+  }
+
+  if (typeof stats.genres === "string" && stats.genres.trim() !== "") {
+    items.push({ label: "genre", value: stats.genres.trim() });
+  }
+
+  if (typeof stats.views === "number" || typeof stats.views === "string") {
+    items.push({ label: "views", value: formatCompactStat(stats.views) });
+  }
+
+  return items.slice(0, 3);
+}
+
+function formatCompactStat(value: string | number): string {
+  const numericValue =
+    typeof value === "number" ? value : Number.parseFloat(value.replace(/,/g, ""));
+
+  if (!Number.isFinite(numericValue)) {
+    return String(value);
+  }
+
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: numericValue >= 1000 ? 1 : 0,
+    notation: numericValue >= 1000 ? "compact" : "standard",
+  }).format(numericValue);
 }
 
 function integrationLabel(integration: ProfileIntegrationCard): string {

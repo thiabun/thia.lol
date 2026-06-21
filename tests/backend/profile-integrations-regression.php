@@ -52,6 +52,15 @@ assert_true($spotify['provider'] === 'spotify', 'spotify provider mismatch');
 assert_true($spotify['resourceType'] === 'track', 'spotify type mismatch');
 assert_true($spotify['resourceId'] === 'abc123', 'spotify id mismatch');
 
+$spotifyArtist = profile_integration_normalize_url('https://open.spotify.com/artist/artist123?si=ignored', null);
+assert_true($spotifyArtist['resourceType'] === 'artist', 'spotify artist type mismatch');
+assert_true($spotifyArtist['resourceId'] === 'artist123', 'spotify artist id mismatch');
+
+$appleArtist = profile_integration_normalize_url('https://music.apple.com/us/artist/example-artist/123456789', null);
+assert_true($appleArtist['provider'] === 'apple_music', 'Apple Music artist provider mismatch');
+assert_true($appleArtist['resourceType'] === 'artist', 'Apple Music artist type mismatch');
+assert_true($appleArtist['resourceId'] === '123456789', 'Apple Music artist id mismatch');
+
 $youtube = profile_integration_normalize_url('https://youtu.be/video123', null);
 assert_true($youtube['provider'] === 'youtube', 'youtube provider mismatch');
 assert_true($youtube['resourceType'] === 'video', 'youtube type mismatch');
@@ -110,6 +119,9 @@ assert_true(is_string($integrationSource), 'integration source should be readabl
 assert_true(str_contains($integrationSource, 'function profile_integrations_provider_suggestions'), 'provider suggestions endpoint should exist');
 assert_true(str_contains($integrationSource, 'function profile_integration_redirect_to_app'), 'OAuth callback should redirect back to app');
 assert_true(str_contains($integrationSource, 'Apple Music'), 'Apple Music support should remain explicit');
+assert_true(str_contains($integrationSource, "\$resourceType === 'artist'"), 'artist resources should receive artist-specific metadata handling');
+assert_true(str_contains($integrationSource, "'followers' => \$response['followers']['total']"), 'Spotify artist metadata should expose followers');
+assert_true(str_contains($integrationSource, "'popularity' => \$response['popularity']"), 'Spotify artist metadata should expose popularity');
 assert_true(!str_contains($callbackSource, 'require_authenticated_session'), 'OAuth callback should not require the browser session cookie');
 assert_true(str_contains($callbackSource, 'profile_integration_oauth_state_row($provider, $state)'), 'OAuth callback should look up state without session user id');
 assert_true(str_contains($callbackSource, "profile_integration_upsert_account((int) \$stateRow['user_id']"), 'OAuth callback should connect the stored state user');

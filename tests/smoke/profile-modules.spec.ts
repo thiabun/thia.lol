@@ -947,9 +947,36 @@ test("Spotify music player fills each allowed music module span", async ({
     expect(metric.heightCoverage).toBeGreaterThanOrEqual(0.94);
     expect(metric.widthCoverage).toBeGreaterThanOrEqual(0.94);
     expect(metric.artworkHeight).toBeGreaterThanOrEqual(
-      metric.size === "3x2" || metric.size === "4x2" ? 96 : 56,
+      metric.size === "3x2" || metric.size === "4x2" ? 88 : 52,
     );
   }
+});
+
+test("artist music modules render as custom artist cards instead of players", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      withAuditLayout(spotifyArtistModule({ id: 66, position: 1 }), "4x3", 1),
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const module = page.getByTestId("profile-grid-module-spotify_artist");
+  await expect(module).toBeVisible();
+  await expect(module).toHaveAttribute("data-profile-grid-size", "4x3");
+  await expect(module.getByTestId("profile-integration-artist-card")).toBeVisible();
+  await expect(module.getByTestId("profile-integration-artist-title")).toContainText(
+    "Mili",
+  );
+  await expect(module.getByTestId("profile-integration-artist-stats")).toContainText(
+    "followers",
+  );
+  await expect(module.getByTestId("profile-spotify-custom-player")).toHaveCount(0);
+  await expect(module.getByTestId("profile-spotify-play-button")).toHaveCount(0);
 });
 
 test("compact music modules choose black or white text from album art", async ({
@@ -6863,6 +6890,51 @@ function spotifyEmbedMusicModule(
           src: "https://open.spotify.com/embed/track/profile-test",
           title: "Spotify player",
           height: 80,
+          allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+        },
+        apiBacked: true,
+        fetchedAt: "2026-06-16T10:00:00Z",
+        stale: false,
+      },
+    },
+  };
+}
+
+function spotifyArtistModule(
+  overrides: { id?: number; imageUrl?: string; position?: number } = {},
+) {
+  return {
+    ...musicModule(overrides),
+    type: "spotify_artist",
+    title: "Artist",
+    config: {
+      displayMode: "embed",
+      label: "Mili",
+      platform: "spotify",
+      sourceMode: "spotify",
+      url: "https://open.spotify.com/artist/mili",
+      integration: {
+        provider: "spotify",
+        resourceType: "artist",
+        resourceId: "mili",
+        resourceKey: "spotify:artist:mili",
+        sourceUrl: "https://open.spotify.com/artist/mili",
+        metadata: {
+          title: "Mili",
+          subtitle: "Spotify",
+          description: "Art-pop, chamber pop",
+          imageUrl: overrides.imageUrl ?? "https://i.scdn.co/image/mili",
+          stats: {
+            followers: 1200000,
+            popularity: 72,
+            genres: "art pop, chamber pop",
+          },
+        },
+        embed: {
+          type: "iframe",
+          src: "https://open.spotify.com/embed/artist/mili",
+          title: "Spotify artist player",
+          height: 152,
           allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
         },
         apiBacked: true,
