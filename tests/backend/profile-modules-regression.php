@@ -769,24 +769,45 @@ $mediumStreamChatPlacement = profile_canvas_module_placement(
 assert_true($mediumStreamChatPlacement['colSpan'] === 4, 'creator stream chat should allow 4 columns');
 assert_true($mediumStreamChatPlacement['rowSpan'] === 3, 'creator stream chat should allow 3 rows');
 assert_true(profile_canvas_span_allowed('links', 3, 2), 'links should allow 3x2');
+assert_true(profile_canvas_span_allowed('links', 8, 1), 'links should allow full-width slim rows');
 assert_true(profile_canvas_span_allowed('connections', 2, 2), 'connections should allow 2x2');
 assert_true(profile_canvas_span_allowed('connections', 2, 3), 'connections should allow 2x3');
+assert_true(profile_canvas_span_allowed('connections', 8, 2), 'connections should allow full-width row stacks');
 assert_true(profile_canvas_span_allowed('custom_text', 3, 2), 'text should allow 3x2');
 assert_true(profile_canvas_span_allowed('text', 4, 5), 'specific text module should allow 4x5');
+assert_true(profile_canvas_span_allowed('text', 8, 1), 'text should allow full-width slim strips');
 assert_true(profile_canvas_span_allowed('gallery_media', 4, 3), 'gallery should allow 4x3');
+assert_true(profile_canvas_span_allowed('gallery_media', 8, 2), 'gallery should allow full-width slim previews');
 assert_true(profile_canvas_span_allowed('uploaded_image', 6, 6), 'uploaded image should allow 6x6');
+assert_true(profile_canvas_span_allowed('uploaded_image', 8, 2), 'uploaded image should allow full-width slim previews');
 assert_true(!profile_canvas_span_allowed('uploaded_image', 7, 1), 'uploaded image should reject spans wider than 6');
 assert_true(profile_canvas_span_allowed('twitch_channel', 8, 6), 'Twitch channel should allow desktop 8x6 stream chat');
 assert_true(!profile_canvas_span_allowed('youtube_stream', 8, 6), 'YouTube stream should still reject 8x6');
 assert_true(profile_canvas_span_allowed('youtube_video', 6, 4), 'YouTube video should allow 6x4');
+assert_true(profile_canvas_span_allowed('youtube_video', 8, 2), 'YouTube video should allow full-width slim players');
 assert_true(profile_canvas_span_allowed('github_repo', 6, 4), 'GitHub repo should allow 6x4');
+assert_true(profile_canvas_span_allowed('github_repo', 8, 2), 'GitHub repo should allow full-width slim cards');
 assert_true(profile_canvas_span_allowed('music', 3, 2), 'legacy music should allow 3x2');
 assert_true(profile_canvas_span_allowed('music', 2, 2), 'legacy music should allow 2x2');
+assert_true(profile_canvas_span_allowed('music', 8, 1), 'legacy music should allow full-width slim players');
 assert_true(profile_canvas_span_allowed('spotify_song', 2, 2), 'Spotify song should allow 2x2');
+assert_true(profile_canvas_span_allowed('spotify_song', 8, 2), 'Spotify song should allow full-width slim players');
+assert_true(profile_canvas_span_allowed('spotify_artist', 8, 2), 'Spotify artist should allow full-width slim cards');
 assert_true(profile_canvas_span_allowed('activity', 6, 10), 'activity should allow 6x10');
+assert_true(profile_canvas_span_allowed('activity', 8, 2), 'activity should allow slim full-width feed previews');
+assert_true(profile_canvas_span_allowed('activity', 8, 3), 'activity should allow medium full-width feed previews');
 assert_true(profile_canvas_span_allowed('featured_badges', 2, 2), 'badges should allow 2x2');
+assert_true(profile_canvas_span_allowed('featured_badges', 8, 1), 'badges should allow full-width slim shelves');
 assert_true(!profile_canvas_span_allowed('profile_info', 2, 2), 'profile info should hide legacy 2x2');
 assert_true(profile_canvas_span_allowed('profile_info', 8, 3), 'profile info should allow the 8x3 pinned size');
+
+$wideMusicPlacement = profile_canvas_module_placement(
+    ['id' => 88, 'column' => 1, 'row' => 2, 'colSpan' => 8, 'rowSpan' => 1],
+    ['id' => 88, 'type' => 'music'],
+    true
+);
+assert_true($wideMusicPlacement['colSpan'] === 8, 'wide music placement should not clamp to 6 columns');
+assert_true($wideMusicPlacement['rowSpan'] === 1, 'wide music placement should preserve slim row span');
 
 assert_true(profile_canvas_background_blur('none') === 'none', 'none blur mismatch');
 assert_true(profile_canvas_background_blur('heavy') === 'heavy', 'heavy blur mismatch');

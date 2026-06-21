@@ -2469,7 +2469,7 @@ test("direct canvas point selection creates a draft module through picker and se
   await expect(youtubeVideo).toContainText("Video");
   await expect(youtubeVideo).not.toContainText("YouTube video");
   await expect(youtubeVideo).toContainText("Selection too small");
-  await expect(youtubeVideo).toContainText("(3x4)");
+  await expect(youtubeVideo).toContainText("(5x2)");
 
   await page.getByRole("tab", { name: "Info" }).click();
   await page.getByTestId("profile-module-picker-text").click();
@@ -2525,9 +2525,12 @@ test("direct canvas point selection creates a draft module through picker and se
       ),
     )
     .not.toBe("none");
-  const configuredModuleShell = page.locator('[data-testid^="profile-canvas-module-"]', {
-    has: page.getByText("Canvas note configured from settings."),
-  });
+  const configuredModuleShell = page.locator(
+    '[data-testid^="profile-canvas-module-"][data-profile-grid-module="true"]',
+    {
+      has: page.getByText("Canvas note configured from settings."),
+    },
+  );
   const configuredPinButton = configuredModuleShell.locator(
     '[data-testid^="profile-canvas-pin-module-"]',
   );
@@ -2541,12 +2544,48 @@ test("direct canvas point selection creates a draft module through picker and se
   ).toHaveCount(0);
   await page.getByTestId("profile-module-settings-done").click();
   await expect(page.getByTestId("profile-module-settings")).toHaveCount(0);
+  const eastResizeHandle = configuredModuleShell.getByRole("button", {
+    name: "Resize from right edge",
+  });
+  await expect(eastResizeHandle).toBeVisible();
+  const eastHandleBox = await eastResizeHandle.boundingBox();
+  expect(eastHandleBox).not.toBeNull();
+  await page.mouse.move(
+    eastHandleBox!.x + eastHandleBox!.width / 2,
+    eastHandleBox!.y + eastHandleBox!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    eastHandleBox!.x + eastHandleBox!.width / 2 + 150,
+    eastHandleBox!.y + eastHandleBox!.height / 2,
+    { steps: 6 },
+  );
+  await expect(page.getByTestId("profile-canvas-resize-preview")).toBeVisible();
+  await page.mouse.up();
+  await expect(page.getByTestId("profile-canvas-resize-preview")).toHaveCount(0);
+  await expect(configuredModuleShell).toHaveAttribute("data-profile-grid-size", "6x2");
+  await expect
+    .poll(() => draftPayload?.modules)
+    .toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          config: expect.objectContaining({ canvasSize: "6x2" }),
+          layout: expect.objectContaining({ colSpan: 6, rowSpan: 2 }),
+          type: "text",
+        }),
+      ]),
+    );
   await configuredPinButton.click();
   await expect(configuredPinButton).toHaveAttribute("aria-pressed", "true");
   const pinnedShell = page.locator(
     '[data-testid^="profile-canvas-module-"][data-profile-module-pinned="true"]',
   );
   await expect(pinnedShell).toBeVisible();
+  await expect(
+    configuredModuleShell
+      .getByRole("button", { name: "Unpin this module before resizing" })
+      .first(),
+  ).toBeDisabled();
   await expect(configuredModuleShell.locator('[data-testid^="profile-canvas-drag-handle-"]')).toHaveCount(0);
   await expect
     .poll(() =>
@@ -2569,7 +2608,7 @@ test("direct canvas point selection creates a draft module through picker and se
     layout: {
       column: 5,
       row: 4,
-      colSpan: 3,
+      colSpan: 6,
       rowSpan: 2,
     },
     pinned: true,
@@ -6912,19 +6951,19 @@ const profileModuleSizeAuditMatrix: Array<{
   type: ProfileModuleSizeAuditType;
 }> = [
   { type: "profile_info", sizes: ["3x2", "3x3", "4x3", "6x3"] },
-  { type: "about", sizes: ["3x2", "4x3", "4x5"] },
-  { type: "custom_text", sizes: ["3x2", "4x3", "4x5"] },
-  { type: "links", sizes: ["2x2", "2x3", "3x2", "4x2", "3x4"] },
-  { type: "featured_badges", sizes: ["2x2", "3x2"] },
+  { type: "about", sizes: ["3x2", "4x3", "4x5", "8x1", "8x2"] },
+  { type: "custom_text", sizes: ["3x2", "4x3", "4x5", "6x1", "8x2"] },
+  { type: "links", sizes: ["2x2", "2x3", "3x2", "4x2", "3x4", "8x1", "8x2"] },
+  { type: "featured_badges", sizes: ["2x2", "3x2", "8x1", "8x2"] },
   { type: "featured_post", sizes: ["3x4", "4x5"] },
   { type: "featured_room", sizes: ["3x1", "4x2"] },
-  { type: "gallery_media", sizes: ["2x2", "3x2", "3x3", "4x3"] },
+  { type: "gallery_media", sizes: ["2x2", "3x2", "3x3", "4x3", "8x2"] },
   {
     type: "creator_live",
-    sizes: ["2x1", "3x2", "4x3", "5x3", "6x4"],
+    sizes: ["2x1", "3x2", "4x3", "5x3", "6x4", "8x2"],
   },
-  { type: "music", sizes: ["2x1", "2x2", "3x2", "4x2", "4x3", "4x4"] },
-  { type: "activity", sizes: ["3x4", "4x6", "6x10"] },
+  { type: "music", sizes: ["2x1", "2x2", "3x2", "4x2", "4x3", "4x4", "8x1", "8x2"] },
+  { type: "activity", sizes: ["5x2", "8x2", "8x3", "3x4", "4x6", "6x10"] },
 ];
 
 function profileModuleSizeAuditCases(): Array<{

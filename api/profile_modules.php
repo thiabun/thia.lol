@@ -1548,42 +1548,77 @@ function profile_canvas_span_allowed(string $type, int $colSpan, int $rowSpan): 
 
 function profile_canvas_allowed_sizes(string $type): array
 {
-    $uploadedImageSizes = profile_canvas_size_range(1, 6, 1, 6);
+    $wideSlimOneRowSizes = ['5x1', '6x1', '8x1'];
+    $wideSlimTwoRowSizes = ['5x2', '6x2', '8x2'];
+    $wideSlimSizes = profile_canvas_unique_sizes($wideSlimOneRowSizes, $wideSlimTwoRowSizes);
+    $uploadedImageSizes = profile_canvas_unique_sizes(
+        profile_canvas_size_range(1, 6, 1, 6),
+        $wideSlimTwoRowSizes
+    );
     $placeholderEnvelopeSizes = profile_canvas_size_range(1, PROFILE_CANVAS_PROFILE_INFO_MAX_COLUMNS, 1, PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS);
-    $gallerySlideshowSizes = profile_canvas_size_range(2, 6, 2, 6);
-    $textSizes = profile_canvas_size_range(3, 4, 2, 5);
+    $gallerySlideshowSizes = profile_canvas_unique_sizes(
+        profile_canvas_size_range(2, 6, 2, 6),
+        $wideSlimTwoRowSizes
+    );
+    $textSizes = profile_canvas_unique_sizes(profile_canvas_size_range(3, 4, 2, 5), $wideSlimSizes);
+    $connectionSizes = profile_canvas_unique_sizes(['2x2', '2x3', '3x2', '4x2', '3x3', '3x4'], $wideSlimSizes);
+    $badgeSizes = profile_canvas_unique_sizes(['2x2', '3x2'], $wideSlimSizes);
+    $providerCardSizes = profile_canvas_unique_sizes(['3x2', '4x3', '6x4'], $wideSlimTwoRowSizes);
+    $videoCardSizes = profile_canvas_unique_sizes(['4x3', '6x4'], $wideSlimTwoRowSizes);
+    $musicSongSizes = profile_canvas_unique_sizes(['2x1', '2x2', '3x2', '4x2', '4x3', '4x4'], $wideSlimSizes);
+    $playlistSizes = profile_canvas_unique_sizes(['3x2', '4x3', '3x6', '4x6'], $wideSlimTwoRowSizes);
+    $activitySizes = profile_canvas_unique_sizes(['3x4', '4x6', '6x10'], ['5x2', '6x2', '8x2', '8x3']);
 
     return match ($type) {
         PROFILE_INFO_MODULE_TYPE => ['3x2', '3x3', '4x3', '6x3', '8x3', '8x4'],
         'about', 'custom_text', PROFILE_TEXT_MODULE_TYPE => $textSizes,
-        'links', PROFILE_CONNECTIONS_MODULE_TYPE => ['2x2', '2x3', '3x2', '4x2', '3x3', '3x4'],
-        'featured_badges', PROFILE_BADGE_DISPLAY_MODULE_TYPE => ['2x2', '3x2'],
+        'links', PROFILE_CONNECTIONS_MODULE_TYPE => $connectionSizes,
+        'featured_badges', PROFILE_BADGE_DISPLAY_MODULE_TYPE => $badgeSizes,
         PROFILE_FEATURED_POST_MODULE_TYPE => ['3x4', '4x5'],
         PROFILE_FEATURED_ROOM_MODULE_TYPE => ['3x1', '4x2'],
         PROFILE_GALLERY_MEDIA_MODULE_TYPE, 'gallery_slideshow' => $gallerySlideshowSizes,
         'uploaded_image' => $uploadedImageSizes,
-        'gallery_feed' => ['3x6', '4x6'],
-        PROFILE_CREATOR_LIVE_MODULE_TYPE => ['2x1', '3x2', '4x3', '5x3', '6x4'],
-        'twitch_channel' => ['2x1', '3x2', '4x3', '5x3', '6x4', '8x6'],
-        'youtube_video' => ['3x4', '4x3', '6x4'],
-        'youtube_stream' => ['4x3', '5x3', '6x4'],
-        'youtube_playlist' => ['4x3', '5x3', '2x4', '3x6'],
-        'uploaded_video' => ['4x3', '6x4', '4x6'],
+        'gallery_feed' => profile_canvas_unique_sizes(['3x6', '4x6'], $wideSlimTwoRowSizes),
+        PROFILE_CREATOR_LIVE_MODULE_TYPE => profile_canvas_unique_sizes(['2x1', '3x2', '4x3', '5x3', '6x4'], $wideSlimTwoRowSizes),
+        'twitch_channel' => profile_canvas_unique_sizes(['2x1', '3x2', '4x3', '5x3', '6x4', '8x6'], $wideSlimTwoRowSizes),
+        'youtube_video' => profile_canvas_unique_sizes(['3x4'], $videoCardSizes),
+        'youtube_stream' => profile_canvas_unique_sizes(['4x3', '5x3', '6x4'], $wideSlimTwoRowSizes),
+        'youtube_playlist' => profile_canvas_unique_sizes(['4x3', '5x3', '2x4', '3x6'], $wideSlimTwoRowSizes),
+        'uploaded_video' => profile_canvas_unique_sizes(['4x3', '6x4', '4x6'], $wideSlimTwoRowSizes),
         PROFILE_MUSIC_MODULE_TYPE,
         'spotify_song',
         'apple_music_song',
-        'youtube_music_song' => ['2x1', '2x2', '3x2', '4x2', '4x3', '4x4'],
+        'youtube_music_song' => $musicSongSizes,
         'spotify_playlist',
         'apple_music_playlist',
-        'youtube_music_playlist' => ['3x2', '4x3', '3x6', '4x6'],
+        'youtube_music_playlist' => $playlistSizes,
         'spotify_artist',
         'apple_music_artist',
-        'youtube_music_artist' => ['3x2', '4x3', '6x4'],
-        PROFILE_GITHUB_REPO_MODULE_TYPE => ['3x2', '4x3', '6x4'],
-        PROFILE_ACTIVITY_MODULE_TYPE => ['3x4', '4x6', '6x10'],
+        'youtube_music_artist' => $providerCardSizes,
+        PROFILE_GITHUB_REPO_MODULE_TYPE => $providerCardSizes,
+        PROFILE_ACTIVITY_MODULE_TYPE => $activitySizes,
         PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE => $placeholderEnvelopeSizes,
         default => ['1x1'],
     };
+}
+
+function profile_canvas_unique_sizes(array ...$groups): array
+{
+    $seen = [];
+    $sizes = [];
+
+    foreach ($groups as $group) {
+        foreach ($group as $size) {
+            if (!is_string($size) || isset($seen[$size])) {
+                continue;
+            }
+
+            $seen[$size] = true;
+            $sizes[] = $size;
+        }
+    }
+
+    return $sizes;
 }
 
 function profile_canvas_size_range(int $minColumns, int $maxColumns, int $minRows, int $maxRows): array
@@ -1613,18 +1648,30 @@ function profile_canvas_normalize_span(string $type, int $colSpan, int $rowSpan)
 
 function profile_canvas_max_column_span(string $type): int
 {
-    return $type === PROFILE_INFO_MODULE_TYPE
-        || $type === 'twitch_channel'
-        || $type === PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE
-        ? PROFILE_CANVAS_PROFILE_INFO_MAX_COLUMNS
-        : PROFILE_CANVAS_MAX_MODULE_SPAN;
+    return profile_canvas_max_allowed_size_axis($type, 0, PROFILE_CANVAS_MAX_MODULE_SPAN);
 }
 
 function profile_canvas_max_row_span(string $type): int
 {
-    return $type === PROFILE_ACTIVITY_MODULE_TYPE || $type === PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE
-        ? PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS
-        : PROFILE_CANVAS_MAX_MODULE_SPAN;
+    return profile_canvas_max_allowed_size_axis($type, 1, PROFILE_CANVAS_MAX_MODULE_SPAN);
+}
+
+function profile_canvas_max_allowed_size_axis(string $type, int $axis, int $fallback): int
+{
+    $max = $fallback;
+
+    foreach (profile_canvas_allowed_sizes($type) as $size) {
+        if (!is_string($size) || preg_match('/^([1-8])x(10|[1-9])$/', $size, $matches) !== 1) {
+            continue;
+        }
+
+        $value = (int) $matches[$axis + 1];
+        $max = max($max, $value);
+    }
+
+    return $axis === 0
+        ? min(PROFILE_CANVAS_PROFILE_INFO_MAX_COLUMNS, $max)
+        : min(PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS, $max);
 }
 
 function profile_canvas_push_collisions(array $placements, ?int $anchorModuleId, ?array $movementContext = null): array

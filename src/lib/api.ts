@@ -46,11 +46,10 @@ import { normalizeProfileThemeConfig } from "./profileThemes";
 import {
   PROFILE_CANVAS_DESKTOP_COLUMNS,
   PROFILE_CANVAS_DESKTOP_ROWS,
-  PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS,
-  PROFILE_CANVAS_MAX_MODULE_ROWS,
-  PROFILE_CANVAS_PROFILE_INFO_COLUMNS,
   PROFILE_CANVAS_VERSION,
   isProfileModuleType,
+  profileGridModuleSizeSpan,
+  profileModuleAllowedSizes,
 } from "./profileModuleRegistry";
 
 type ApiRoom = Room & {
@@ -2260,17 +2259,31 @@ function normalizeProfileModuleLayout(
     return null;
   }
 
-  const maxRowSpan =
-    type === "activity" || type === "placeholder"
-      ? PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS
-      : PROFILE_CANVAS_MAX_MODULE_ROWS;
+  const maxSpan = profileModuleMaxAllowedSpan(type);
 
   return {
     column: Math.min(PROFILE_CANVAS_DESKTOP_COLUMNS, Math.max(1, column)),
     row: Math.min(PROFILE_CANVAS_DESKTOP_ROWS, Math.max(1, row)),
-    colSpan: Math.min(PROFILE_CANVAS_PROFILE_INFO_COLUMNS, Math.max(1, colSpan)),
-    rowSpan: Math.min(maxRowSpan, Math.max(1, rowSpan)),
+    colSpan: Math.min(maxSpan.columns, Math.max(1, colSpan)),
+    rowSpan: Math.min(maxSpan.rows, Math.max(1, rowSpan)),
   };
+}
+
+function profileModuleMaxAllowedSpan(type: ProfileModule["type"]): {
+  columns: number;
+  rows: number;
+} {
+  return profileModuleAllowedSizes(type).reduce(
+    (max, size) => {
+      const span = profileGridModuleSizeSpan(size);
+
+      return {
+        columns: Math.max(max.columns, span.columns),
+        rows: Math.max(max.rows, span.rows),
+      };
+    },
+    { columns: 1, rows: 1 },
+  );
 }
 
 function normalizeCanvasInteger(value: unknown): number | undefined {

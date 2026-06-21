@@ -108,13 +108,47 @@ function sizes(columns: number[], rows: number[]): ProfileGridModuleSize[] {
   return result;
 }
 
-const uploadedImageSizes = sizes([1, 2, 3, 4, 5, 6], [1, 2, 3, 4, 5, 6]);
+function uniqueSizes(
+  ...groups: readonly (readonly ProfileGridModuleSize[])[]
+): ProfileGridModuleSize[] {
+  return Array.from(new Set(groups.flat()));
+}
+
+const wideSlimOneRowSizes = ["5x1", "6x1", "8x1"] as const;
+const wideSlimTwoRowSizes = ["5x2", "6x2", "8x2"] as const;
+const wideSlimSizes = uniqueSizes(wideSlimOneRowSizes, wideSlimTwoRowSizes);
+const wideTwoRowSizes = [...wideSlimTwoRowSizes];
+const uploadedImageSizes = uniqueSizes(
+  sizes([1, 2, 3, 4, 5, 6], [1, 2, 3, 4, 5, 6]),
+  wideTwoRowSizes,
+);
 const placeholderEnvelopeSizes = sizes(
   [1, 2, 3, 4, 5, 6, 7, 8],
   [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
 );
-const gallerySlideshowSizes = sizes([2, 3, 4, 5, 6], [2, 3, 4, 5, 6]);
-const textSizes = sizes([3, 4], [2, 3, 4, 5]);
+const gallerySlideshowSizes = uniqueSizes(
+  sizes([2, 3, 4, 5, 6], [2, 3, 4, 5, 6]),
+  wideTwoRowSizes,
+);
+const textSizes = uniqueSizes(sizes([3, 4], [2, 3, 4, 5]), wideSlimSizes);
+const connectionSizes = uniqueSizes(
+  ["2x2", "2x3", "3x2", "4x2", "3x3", "3x4"],
+  wideSlimSizes,
+);
+const badgeSizes = uniqueSizes(["2x2", "3x2"], wideSlimSizes);
+const providerCardSizes = uniqueSizes(["3x2", "4x3", "6x4"], wideTwoRowSizes);
+const videoCardSizes = uniqueSizes(["4x3", "6x4"], wideTwoRowSizes);
+const musicSongSizes = uniqueSizes(
+  ["2x1", "2x2", "3x2", "4x2", "4x3", "4x4"],
+  wideSlimSizes,
+);
+const playlistSizes = uniqueSizes(["3x2", "4x3", "3x6", "4x6"], wideTwoRowSizes);
+const activitySizes = uniqueSizes(["3x4", "4x6", "6x10"], [
+  "5x2",
+  "6x2",
+  "8x2",
+  "8x3",
+]);
 
 export const profileModuleRegistry = {
   placeholder: {
@@ -183,7 +217,7 @@ export const profileModuleRegistry = {
     purpose: "status",
   },
   links: {
-    allowedSizes: ["2x2", "2x3", "3x2", "4x2", "3x3", "3x4"],
+    allowedSizes: connectionSizes,
     category: "info",
     defaultSize: "3x2",
     description: "Platform-aware safe links and connections.",
@@ -196,7 +230,7 @@ export const profileModuleRegistry = {
     purpose: "navigation",
   },
   connections: {
-    allowedSizes: ["2x2", "2x3", "3x2", "4x2", "3x3", "3x4"],
+    allowedSizes: connectionSizes,
     category: "info",
     defaultSize: "3x2",
     description: "Platform-aware safe links and connections.",
@@ -209,7 +243,7 @@ export const profileModuleRegistry = {
     purpose: "navigation",
   },
   featured_badges: {
-    allowedSizes: ["2x2", "3x2"],
+    allowedSizes: badgeSizes,
     category: "info",
     defaultSize: "2x2",
     description: "A shelf of earned visible badges.",
@@ -222,7 +256,7 @@ export const profileModuleRegistry = {
     purpose: "showcase",
   },
   badge_display: {
-    allowedSizes: ["2x2", "3x2"],
+    allowedSizes: badgeSizes,
     category: "info",
     defaultSize: "2x2",
     description: "A shelf of earned visible badges.",
@@ -261,7 +295,7 @@ export const profileModuleRegistry = {
     purpose: "navigation",
   },
   activity: {
-    allowedSizes: ["3x4", "4x6", "6x10"],
+    allowedSizes: activitySizes,
     category: "info",
     defaultSize: "4x6",
     description: "Posts, replies, and rooms.",
@@ -313,7 +347,7 @@ export const profileModuleRegistry = {
     purpose: "media",
   },
   gallery_feed: {
-    allowedSizes: ["3x6", "4x6"],
+    allowedSizes: uniqueSizes(["3x6", "4x6"], wideTwoRowSizes),
     category: "images",
     defaultSize: "3x6",
     description: "A vertical feed of uploaded images.",
@@ -326,7 +360,7 @@ export const profileModuleRegistry = {
     purpose: "media",
   },
   creator_live: {
-    allowedSizes: ["2x1", "3x2", "4x3", "5x3", "6x4"],
+    allowedSizes: uniqueSizes(["2x1", "3x2", "4x3", "5x3", "6x4"], wideTwoRowSizes),
     category: "video",
     defaultSize: "3x2",
     description: "A static creator or channel card.",
@@ -339,7 +373,7 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   twitch_channel: {
-    allowedSizes: ["2x1", "3x2", "4x3", "5x3", "6x4", "8x6"],
+    allowedSizes: uniqueSizes(["2x1", "3x2", "4x3", "5x3", "6x4", "8x6"], wideTwoRowSizes),
     category: "video",
     defaultSize: "3x2",
     description: "Twitch status, stream, or stream with chat.",
@@ -352,7 +386,7 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   youtube_video: {
-    allowedSizes: ["3x4", "4x3", "6x4"],
+    allowedSizes: uniqueSizes(["3x4"], videoCardSizes),
     category: "video",
     defaultSize: "4x3",
     description: "A featured YouTube video or Short.",
@@ -365,7 +399,7 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   youtube_stream: {
-    allowedSizes: ["4x3", "5x3", "6x4"],
+    allowedSizes: uniqueSizes(["4x3", "5x3", "6x4"], wideTwoRowSizes),
     category: "video",
     defaultSize: "4x3",
     description: "A YouTube stream card.",
@@ -378,7 +412,7 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   youtube_playlist: {
-    allowedSizes: ["4x3", "5x3", "2x4", "3x6"],
+    allowedSizes: uniqueSizes(["4x3", "5x3", "2x4", "3x6"], wideTwoRowSizes),
     category: "video",
     defaultSize: "4x3",
     description: "A YouTube playlist card.",
@@ -391,7 +425,7 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   uploaded_video: {
-    allowedSizes: ["4x3", "6x4", "4x6"],
+    allowedSizes: uniqueSizes(["4x3", "6x4", "4x6"], wideTwoRowSizes),
     category: "video",
     defaultSize: "4x3",
     description: "An uploaded video module.",
@@ -404,7 +438,7 @@ export const profileModuleRegistry = {
     purpose: "media",
   },
   music: {
-    allowedSizes: ["2x1", "2x2", "3x2", "4x2", "4x3", "4x4"],
+    allowedSizes: musicSongSizes,
     category: "music",
     defaultSize: "3x2",
     description: "Upload and play a custom MP3 track.",
@@ -417,7 +451,7 @@ export const profileModuleRegistry = {
     purpose: "media",
   },
   spotify_song: {
-    allowedSizes: ["2x1", "2x2", "3x2", "4x2", "4x3", "4x4"],
+    allowedSizes: musicSongSizes,
     category: "music",
     defaultSize: "3x2",
     description: "A Spotify song player.",
@@ -430,7 +464,7 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   apple_music_song: {
-    allowedSizes: ["2x1", "2x2", "3x2", "4x2", "4x3", "4x4"],
+    allowedSizes: musicSongSizes,
     category: "music",
     defaultSize: "3x2",
     description: "An Apple Music song player.",
@@ -443,7 +477,7 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   youtube_music_song: {
-    allowedSizes: ["2x1", "2x2", "3x2", "4x2", "4x3", "4x4"],
+    allowedSizes: musicSongSizes,
     category: "music",
     defaultSize: "3x2",
     description: "A YouTube Music song player.",
@@ -456,7 +490,7 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   spotify_playlist: {
-    allowedSizes: ["3x2", "4x3", "3x6", "4x6"],
+    allowedSizes: playlistSizes,
     category: "music",
     defaultSize: "4x3",
     description: "A Spotify playlist module.",
@@ -469,7 +503,7 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   apple_music_playlist: {
-    allowedSizes: ["3x2", "4x3", "3x6", "4x6"],
+    allowedSizes: playlistSizes,
     category: "music",
     defaultSize: "4x3",
     description: "An Apple Music playlist module.",
@@ -482,7 +516,7 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   youtube_music_playlist: {
-    allowedSizes: ["3x2", "4x3", "3x6", "4x6"],
+    allowedSizes: playlistSizes,
     category: "music",
     defaultSize: "4x3",
     description: "A YouTube Music playlist module.",
@@ -495,7 +529,7 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   spotify_artist: {
-    allowedSizes: ["3x2", "4x3", "6x4"],
+    allowedSizes: providerCardSizes,
     category: "music",
     defaultSize: "4x3",
     description: "A Spotify artist card.",
@@ -508,7 +542,7 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   apple_music_artist: {
-    allowedSizes: ["3x2", "4x3", "6x4"],
+    allowedSizes: providerCardSizes,
     category: "music",
     defaultSize: "4x3",
     description: "An Apple Music artist card.",
@@ -521,7 +555,7 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   youtube_music_artist: {
-    allowedSizes: ["3x2", "4x3", "6x4"],
+    allowedSizes: providerCardSizes,
     category: "music",
     defaultSize: "4x3",
     description: "A YouTube Music artist card.",
@@ -534,7 +568,7 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   github_repo: {
-    allowedSizes: ["3x2", "4x3", "6x4"],
+    allowedSizes: providerCardSizes,
     category: "projects",
     defaultSize: "3x2",
     description: "A GitHub repository card.",
@@ -608,6 +642,12 @@ const profileModuleSizeLabels: Partial<
     "2x3": "Stack",
     "3x2": "Rows",
     "4x2": "Wide rows",
+    "5x1": "Slim row",
+    "6x1": "Wide strip",
+    "8x1": "Full strip",
+    "5x2": "Slim rows",
+    "6x2": "Wide rows",
+    "8x2": "Full rows",
     "3x3": "Grid",
     "3x4": "Tall grid",
   },
@@ -616,10 +656,20 @@ const profileModuleSizeLabels: Partial<
     "2x3": "Stack",
     "3x2": "Rows",
     "4x2": "Wide rows",
+    "5x1": "Slim row",
+    "6x1": "Wide strip",
+    "8x1": "Full strip",
+    "5x2": "Slim rows",
+    "6x2": "Wide rows",
+    "8x2": "Full rows",
     "3x3": "Grid",
     "3x4": "Tall grid",
   },
   activity: {
+    "5x2": "Slim feed",
+    "6x2": "Wide feed",
+    "8x2": "Full feed",
+    "8x3": "Full preview",
     "3x4": "Compact",
     "4x6": "Roomy",
     "6x10": "Full",
@@ -629,6 +679,12 @@ const profileModuleSizeLabels: Partial<
     "2x2": "Compact",
     "3x2": "Player",
     "4x2": "Wide player",
+    "5x1": "Slim player",
+    "6x1": "Wide strip",
+    "8x1": "Full strip",
+    "5x2": "Slim player",
+    "6x2": "Wide player",
+    "8x2": "Full player",
     "4x3": "Player",
     "4x4": "Large player",
   },
@@ -637,6 +693,12 @@ const profileModuleSizeLabels: Partial<
     "2x2": "Compact",
     "3x2": "Player",
     "4x2": "Wide player",
+    "5x1": "Slim player",
+    "6x1": "Wide strip",
+    "8x1": "Full strip",
+    "5x2": "Slim player",
+    "6x2": "Wide player",
+    "8x2": "Full player",
     "4x3": "Player",
     "4x4": "Large player",
   },
@@ -645,6 +707,12 @@ const profileModuleSizeLabels: Partial<
     "2x2": "Compact",
     "3x2": "Player",
     "4x2": "Wide player",
+    "5x1": "Slim player",
+    "6x1": "Wide strip",
+    "8x1": "Full strip",
+    "5x2": "Slim player",
+    "6x2": "Wide player",
+    "8x2": "Full player",
     "4x3": "Player",
     "4x4": "Large player",
   },
@@ -653,6 +721,12 @@ const profileModuleSizeLabels: Partial<
     "2x2": "Compact",
     "3x2": "Player",
     "4x2": "Wide player",
+    "5x1": "Slim player",
+    "6x1": "Wide strip",
+    "8x1": "Full strip",
+    "5x2": "Slim player",
+    "6x2": "Wide player",
+    "8x2": "Full player",
     "4x3": "Player",
     "4x4": "Large player",
   },
@@ -779,6 +853,14 @@ export function profileModuleSpanRole(
   size: ProfileGridModuleSize | undefined,
 ): ProfileModuleSpanRole {
   const span = profileGridModuleSizeSpan(size);
+
+  if (span.rows <= 1) {
+    return span.columns >= 5 ? "summary" : "glance";
+  }
+
+  if (span.rows <= 2 && span.columns >= 5) {
+    return "summary";
+  }
 
   if (span.rows >= 4 || span.columns >= 5) {
     return "hero";

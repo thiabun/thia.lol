@@ -46,6 +46,7 @@ import {
   useState,
   type ChangeEvent,
   type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import {
@@ -3400,6 +3401,170 @@ function profileCanvasLayoutFromPointer(
   };
 }
 
+function profileCanvasEditorPointFromPointer(
+  grid: HTMLDivElement,
+  clientX: number,
+  clientY: number,
+  mobile = false,
+): CanvasPoint {
+  const rect = grid.getBoundingClientRect();
+  const styles = window.getComputedStyle(grid);
+  const paddingLeft = Number.parseFloat(styles.paddingLeft) || 0;
+  const paddingTop = Number.parseFloat(styles.paddingTop) || 0;
+  const paddingRight = Number.parseFloat(styles.paddingRight) || 0;
+  const columnGap = Number.parseFloat(styles.columnGap) || 0;
+  const rowGap = Number.parseFloat(styles.rowGap) || columnGap;
+  const contentWidth = Math.max(1, grid.clientWidth - paddingLeft - paddingRight);
+  const activeColumns = mobile
+    ? PROFILE_CANVAS_MOBILE_COLUMNS
+    : PROFILE_CANVAS_COLUMNS;
+  const cellSize = Math.max(
+    1,
+    (contentWidth - columnGap * (activeColumns - 1)) / activeColumns,
+  );
+  const stepX = cellSize + columnGap;
+  const stepY = cellSize + rowGap;
+  const rawColumn =
+    Math.round((clientX - rect.left - paddingLeft) / stepX) + 1;
+  const rawRow = Math.round((clientY - rect.top - paddingTop) / stepY) + 1;
+  const editorPoint = {
+    column: Math.min(activeColumns, Math.max(1, rawColumn)),
+    row: Math.min(
+      mobile ? PROFILE_CANVAS_MOBILE_ROWS : PROFILE_CANVAS_ROWS,
+      Math.max(1, rawRow),
+    ),
+  };
+
+  return mobile
+    ? profileCanvasDesktopPointFromEditorPoint(editorPoint, true)
+    : editorPoint;
+}
+
+function profileCanvasResizeLayoutFromPointer(
+  grid: HTMLDivElement,
+  clientX: number,
+  clientY: number,
+  startLayout: ProfileModuleLayout,
+  direction: ProfileCanvasResizeDirection,
+  type: ProfileModule["type"],
+  mobile = false,
+): { layout: ProfileModuleLayout; size: ProfileGridModuleSize } {
+  const point = profileCanvasEditorPointFromPointer(grid, clientX, clientY, mobile);
+  const startEndColumn = startLayout.column + startLayout.colSpan - 1;
+  const startEndRow = startLayout.row + startLayout.rowSpan - 1;
+  const rawColumn =
+    direction.includes("west")
+      ? Math.min(startEndColumn, Math.max(1, point.column))
+      : startLayout.column;
+  const rawEndColumn =
+    direction.includes("east")
+      ? Math.max(startLayout.column, Math.min(PROFILE_CANVAS_COLUMNS, point.column))
+      : startEndColumn;
+  const rawRow =
+    direction.includes("north")
+      ? Math.min(startEndRow, Math.max(1, point.row))
+      : startLayout.row;
+  const rawEndRow =
+    direction.includes("south")
+      ? Math.max(startLayout.row, Math.min(PROFILE_CANVAS_ROWS, point.row))
+      : startEndRow;
+  const rawLayout = {
+    column: rawColumn,
+    row: rawRow,
+    colSpan: Math.max(1, rawEndColumn - rawColumn + 1),
+    rowSpan: Math.max(1, rawEndRow - rawRow + 1),
+  };
+
+  return profileCanvasNearestResizeLayout(type, startLayout, rawLayout, direction);
+}
+
+function profileCanvasNearestResizeLayout(
+  type: ProfileModule["type"],
+  startLayout: ProfileModuleLayout,
+  rawLayout: ProfileModuleLayout,
+  direction: ProfileCanvasResizeDirection,
+): { layout: ProfileModuleLayout; size: ProfileGridModuleSize } {
+  const horizontalOnly =
+    (direction === "east" || direction === "west") &&
+    !direction.includes("north") &&
+    !direction.includes("south");
+  const verticalOnly =
+    (direction === "north" || direction === "south") &&
+    !direction.includes("east") &&
+    !direction.includes("west");
+  const startEndColumn = startLayout.column + startLayout.colSpan - 1;
+  const startEndRow = startLayout.row + startLayout.rowSpan - 1;
+  const candidates = profileModuleAllowedSizes(type)
+    .map((size) => {
+      const span = profileGridModuleSizeSpan(size);
+      const column = direction.includes("west")
+        ? startEndColumn - span.columns + 1
+        : startLayout.column;
+      const row = direction.includes("north")
+        ? startEndRow - span.rows + 1
+        : startLayout.row;
+      const layout = {
+        column,
+        row,
+        colSpan: span.columns,
+        rowSpan: span.rows,
+      };
+
+      return { layout, size };
+    })
+    .filter(({ layout }) =>
+      layout.column >= 1 &&
+      layout.row >= 1 &&
+      layout.column + layout.colSpan - 1 <= PROFILE_CANVAS_COLUMNS &&
+      layout.row + layout.rowSpan - 1 <= PROFILE_CANVAS_ROWS
+    );
+  const fallbackSize =
+    profileGridModuleSpanSize(startLayout.colSpan, startLayout.rowSpan) ??
+    getProfileModuleDefinition(type).defaultSize;
+  const fallback = {
+    layout: startLayout,
+    size: fallbackSize,
+  };
+
+  return (
+    candidates.sort((first, second) => {
+      const firstScore = profileCanvasResizeCandidateScore(
+        first.layout,
+        rawLayout,
+        startLayout,
+        horizontalOnly,
+        verticalOnly,
+      );
+      const secondScore = profileCanvasResizeCandidateScore(
+        second.layout,
+        rawLayout,
+        startLayout,
+        horizontalOnly,
+        verticalOnly,
+      );
+
+      return firstScore - secondScore;
+    })[0] ?? fallback
+  );
+}
+
+function profileCanvasResizeCandidateScore(
+  layout: ProfileModuleLayout,
+  rawLayout: ProfileModuleLayout,
+  startLayout: ProfileModuleLayout,
+  horizontalOnly: boolean,
+  verticalOnly: boolean,
+): number {
+  return (
+    Math.abs(layout.colSpan - rawLayout.colSpan) * 12 +
+    Math.abs(layout.rowSpan - rawLayout.rowSpan) * 12 +
+    Math.abs(layout.column - rawLayout.column) * 3 +
+    Math.abs(layout.row - rawLayout.row) * 3 +
+    (horizontalOnly && layout.rowSpan !== startLayout.rowSpan ? 100 : 0) +
+    (verticalOnly && layout.colSpan !== startLayout.colSpan ? 100 : 0)
+  );
+}
+
 type ProfileCanvasSelectionFit = {
   enabled: boolean;
   exactSize?: ProfileGridModuleSize | undefined;
@@ -4040,11 +4205,9 @@ function profileCanvasClampLayout(
   layout: ProfileModuleLayout,
   type: ProfileModule["type"],
 ): ProfileModuleLayout {
-  const colSpan = Math.min(PROFILE_CANVAS_PROFILE_INFO_COLUMNS, Math.max(1, layout.colSpan));
-  const rowSpan = Math.min(
-    profileCanvasMaxRowsForType(type),
-    Math.max(1, layout.rowSpan),
-  );
+  const maxSpan = profileCanvasMaxSpanForType(type);
+  const colSpan = Math.min(maxSpan.columns, Math.max(1, layout.colSpan));
+  const rowSpan = Math.min(maxSpan.rows, Math.max(1, layout.rowSpan));
 
   return {
     column: Math.min(PROFILE_CANVAS_COLUMNS - colSpan + 1, Math.max(1, layout.column)),
@@ -4054,10 +4217,21 @@ function profileCanvasClampLayout(
   };
 }
 
-function profileCanvasMaxRowsForType(type: ProfileModule["type"]): number {
-  return type === "activity" || type === "placeholder"
-    ? PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS
-    : PROFILE_CANVAS_MAX_MODULE_ROWS;
+function profileCanvasMaxSpanForType(type: ProfileModule["type"]): {
+  columns: number;
+  rows: number;
+} {
+  return profileModuleAllowedSizes(type).reduce(
+    (max, size) => {
+      const span = profileGridModuleSizeSpan(size);
+
+      return {
+        columns: Math.max(max.columns, span.columns),
+        rows: Math.max(max.rows, span.rows),
+      };
+    },
+    { columns: 1, rows: 1 },
+  );
 }
 
 function profileCanvasLayoutFits(
@@ -4086,6 +4260,23 @@ function profileCanvasLayoutFits(
   }
 
   return true;
+}
+
+function profileCanvasResizeBlockedByPinned(
+  modules: ProfileModule[],
+  moduleId: number,
+  layout: ProfileModuleLayout,
+): boolean {
+  return modules.some((module, index) => {
+    if (!module.pinned || module.id === moduleId || module.status === "deleted") {
+      return false;
+    }
+
+    return profileCanvasRectsOverlap(
+      layout,
+      module.layout ?? profileCanvasDefaultClientLayout(module, index),
+    );
+  });
 }
 
 function profileCanvasOccupyLayout(
@@ -4166,6 +4357,50 @@ type ProfileDirectCanvasEditorProps = {
 };
 
 type CanvasPoint = { column: number; row: number };
+
+type ProfileCanvasResizeDirection =
+  | "north"
+  | "east"
+  | "south"
+  | "west"
+  | "north-east"
+  | "south-east"
+  | "south-west"
+  | "north-west";
+
+type ProfileCanvasResizeState = {
+  direction: ProfileCanvasResizeDirection;
+  moduleId: number;
+  previewLayout: ProfileModuleLayout;
+  size: ProfileGridModuleSize;
+  startLayout: ProfileModuleLayout;
+  valid: boolean;
+};
+
+const profileCanvasResizeDirections: ProfileCanvasResizeDirection[] = [
+  "north",
+  "east",
+  "south",
+  "west",
+  "north-east",
+  "south-east",
+  "south-west",
+  "north-west",
+];
+
+const profileCanvasResizeDirectionLabels: Record<
+  ProfileCanvasResizeDirection,
+  string
+> = {
+  north: "top edge",
+  east: "right edge",
+  south: "bottom edge",
+  west: "left edge",
+  "north-east": "top right corner",
+  "south-east": "bottom right corner",
+  "south-west": "bottom left corner",
+  "north-west": "top left corner",
+};
 
 const profileEditorCoachmarkSteps = [
   {
@@ -4435,6 +4670,10 @@ function ProfileDirectCanvasEditor({
       }
     | undefined
   >();
+  const [resizeState, setResizeState] = useState<
+    ProfileCanvasResizeState | undefined
+  >();
+  const resizeStateRef = useRef<ProfileCanvasResizeState | undefined>(undefined);
   const sortedModules = profileCanvasSortDraftModules(
     modules.filter((module) => module.status !== "deleted"),
   );
@@ -4538,6 +4777,96 @@ function ProfileDirectCanvasEditor({
       window.removeEventListener("pointercancel", handlePointerUp);
     };
   }, [dragState, editorGrid.mobile, modules, updateDraftModules]);
+
+  const updateResizeState = useCallback((nextState: ProfileCanvasResizeState | undefined) => {
+    resizeStateRef.current = nextState;
+    setResizeState(nextState);
+  }, []);
+  const activeResizeModuleId = resizeState?.moduleId;
+
+  useEffect(() => {
+    if (activeResizeModuleId === undefined) {
+      return undefined;
+    }
+
+    function handlePointerMove(event: globalThis.PointerEvent) {
+      const grid = gridRef.current;
+      const activeResizeState = resizeStateRef.current;
+
+      if (!grid || !activeResizeState) {
+        return;
+      }
+
+      const moduleType =
+        modules.find((module) => module.id === activeResizeState.moduleId)?.type ??
+        "placeholder";
+      const next = profileCanvasResizeLayoutFromPointer(
+        grid,
+        event.clientX,
+        event.clientY,
+        activeResizeState.startLayout,
+        activeResizeState.direction,
+        moduleType,
+        editorGrid.mobile,
+      );
+      const valid = !profileCanvasResizeBlockedByPinned(
+        modules,
+        activeResizeState.moduleId,
+        next.layout,
+      );
+
+      updateResizeState({
+        ...activeResizeState,
+        previewLayout: next.layout,
+        size: next.size,
+        valid,
+      });
+    }
+
+    function handlePointerUp() {
+      const finalState = resizeStateRef.current;
+
+      if (finalState?.valid) {
+        updateDraftModules((currentModules) =>
+          profileCanvasResolveDraftCollisions(
+            currentModules.map((item) => {
+              if (item.id !== finalState.moduleId) {
+                return item;
+              }
+
+              return {
+                ...item,
+                config: {
+                  ...item.config,
+                  canvasSize: finalState.size,
+                },
+                layout: finalState.previewLayout,
+              };
+            }),
+            finalState.moduleId,
+          ),
+        );
+      }
+
+      updateResizeState(undefined);
+    }
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp, { once: true });
+    window.addEventListener("pointercancel", handlePointerUp, { once: true });
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+    };
+  }, [
+    editorGrid.mobile,
+    modules,
+    activeResizeModuleId,
+    updateDraftModules,
+    updateResizeState,
+  ]);
 
   function handleCellClick(point: CanvasPoint) {
     if (!selectionStart) {
@@ -4733,6 +5062,33 @@ function ProfileDirectCanvasEditor({
         module.id,
       ),
     );
+  }
+
+  function handleResizePointerStart(
+    module: ProfileModule,
+    layout: ProfileModuleLayout,
+    direction: ProfileCanvasResizeDirection,
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) {
+    if (module.pinned || event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    setDragState(undefined);
+    const size =
+      profileGridModuleSpanSize(layout.colSpan, layout.rowSpan) ??
+      getProfileModuleDefinition(module.type).defaultSize;
+
+    updateResizeState({
+      direction,
+      moduleId: module.id,
+      previewLayout: layout,
+      size,
+      startLayout: layout,
+      valid: true,
+    });
   }
 
   const selectionRect =
@@ -4955,6 +5311,28 @@ function ProfileDirectCanvasEditor({
             );
           })}
         </div>
+        <AnimatePresence initial={false}>
+          {resizeState ? (
+            <ProfileGridModule
+              className={cn(
+                "pointer-events-none z-30 rounded-card",
+                resizeState.valid
+                  ? "border border-focus/90 bg-focus/18 shadow-glow"
+                  : "border border-rose/80 bg-rose/18 shadow-[0_0_0_4px_color-mix(in_oklab,var(--accent-rose)_16%,transparent)]",
+              )}
+              layout={resizeState.previewLayout}
+              size={resizeState.size}
+              testId="profile-canvas-resize-preview"
+            >
+              <div
+                className="grid h-full min-h-0 place-items-center rounded-card border border-current/35 text-xs font-semibold text-text/80 backdrop-blur-veil"
+                data-profile-canvas-resize-valid={resizeState.valid ? "true" : "false"}
+              >
+                {resizeState.size}
+              </div>
+            </ProfileGridModule>
+          ) : null}
+        </AnimatePresence>
         {sortedModules.map((module) => {
           const layout = module.layout ?? profileCanvasDefaultClientLayout(module, 0);
           const size =
@@ -5126,6 +5504,13 @@ function ProfileDirectCanvasEditor({
                   </div>
                 )}
               </div>
+              <ProfileCanvasResizeHandles
+                compact={placeholderMicro}
+                disabled={module.pinned}
+                layout={layout}
+                module={module}
+                onResizeStart={handleResizePointerStart}
+              />
               <div
                 className={cn(
                   "absolute right-1.5 top-1.5 z-40 flex items-center gap-1",
@@ -5209,6 +5594,100 @@ function ProfileDirectCanvasEditor({
       />
     </section>
   );
+}
+
+function ProfileCanvasResizeHandles({
+  compact,
+  disabled,
+  layout,
+  module,
+  onResizeStart,
+}: {
+  compact: boolean;
+  disabled: boolean;
+  layout: ProfileModuleLayout;
+  module: ProfileModule;
+  onResizeStart: (
+    module: ProfileModule,
+    layout: ProfileModuleLayout,
+    direction: ProfileCanvasResizeDirection,
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) => void;
+}) {
+  return (
+    <div
+      className="absolute inset-0 z-20 pointer-events-none"
+      data-profile-edit-control="true"
+    >
+      {profileCanvasResizeDirections.map((direction) => {
+        const title = disabled
+          ? "Unpin this module before resizing"
+          : `Resize from ${profileCanvasResizeDirectionLabels[direction]}`;
+
+        return (
+          <button
+            key={direction}
+            type="button"
+            className={cn(
+              "pointer-events-auto absolute grid place-items-center rounded-full border border-line bg-surface/95 text-text shadow-soft backdrop-blur-veil transition duration-fluid ease-fluid hover:scale-110 hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100",
+              profileCanvasResizeHandleClass(direction, compact),
+            )}
+            aria-label={title}
+            disabled={disabled}
+            title={title}
+            data-profile-edit-control="true"
+            data-testid={`profile-canvas-resize-handle-${module.id}-${direction}`}
+            onPointerDown={(event) =>
+              onResizeStart(module, layout, direction, event)
+            }
+          >
+            <span className="size-1.5 rounded-full bg-current" />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function profileCanvasResizeHandleClass(
+  direction: ProfileCanvasResizeDirection,
+  compact: boolean,
+): string {
+  const edgeLength = compact ? "w-5" : "w-7";
+  const edgeThickness = compact ? "h-2" : "h-2.5";
+  const sideLength = compact ? "h-5" : "h-7";
+  const sideThickness = compact ? "w-2" : "w-2.5";
+  const cornerSize = compact ? "size-3" : "size-3.5";
+
+  if (direction === "north") {
+    return `${edgeLength} ${edgeThickness} left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize`;
+  }
+
+  if (direction === "south") {
+    return `${edgeLength} ${edgeThickness} bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 cursor-ns-resize`;
+  }
+
+  if (direction === "east") {
+    return `${sideThickness} ${sideLength} right-0 top-1/2 -translate-y-1/2 translate-x-1/2 cursor-ew-resize`;
+  }
+
+  if (direction === "west") {
+    return `${sideThickness} ${sideLength} left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize`;
+  }
+
+  if (direction === "north-east") {
+    return `${cornerSize} right-0 top-0 -translate-y-1/2 translate-x-1/2 cursor-nesw-resize`;
+  }
+
+  if (direction === "south-east") {
+    return `${cornerSize} bottom-0 right-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize`;
+  }
+
+  if (direction === "south-west") {
+    return `${cornerSize} bottom-0 left-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize`;
+  }
+
+  return `${cornerSize} left-0 top-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize`;
 }
 
 function ModulePickerModal({
@@ -8137,7 +8616,9 @@ function ProfileActivityModule({
   size,
   title,
 }: ProfileActivityModuleProps) {
-  const activityRows = profileGridModuleSizeSpan(size).rows;
+  const activitySpan = profileGridModuleSizeSpan(size);
+  const activityRows = activitySpan.rows;
+  const slim = activitySpan.columns >= 5 && activityRows <= 3;
   const activityMaxHeight = `calc(${activityRows} * var(--profile-grid-row-size) + ${
     Math.max(0, activityRows - 1)
   } * var(--profile-grid-gap))`;
@@ -8149,21 +8630,33 @@ function ProfileActivityModule({
   return (
     <div
       className={cn(
-        "profile-grid-scaled-content flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-card",
-        editing
-          ? "border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
-          : "border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil",
+        "profile-grid-scaled-content flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-card border border-line bg-surface/58 shadow-soft backdrop-blur-veil",
+        slim ? "gap-2 p-2" : "gap-3 p-3",
       )}
       data-profile-activity-max-rows={activityRows}
       data-profile-activity-surface={editing ? "editing" : "public"}
       data-testid="profile-module-activity"
       style={activityStyle}
     >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        {editing ? <h3 className="text-sm font-semibold text-text">{title}</h3> : null}
+      <div
+        className={cn(
+          "flex gap-2",
+          slim
+            ? "items-center justify-between"
+            : "flex-col sm:flex-row sm:items-center sm:justify-between",
+        )}
+      >
+        {editing ? (
+          <h3 className={cn("font-semibold text-text", slim ? "truncate text-xs" : "text-sm")}>
+            {title}
+          </h3>
+        ) : null}
         <div
           aria-label="Profile sections"
-          className="flex gap-1 overflow-x-auto rounded-control bg-canvas/55 p-1 sm:justify-end"
+          className={cn(
+            "flex gap-1 overflow-x-auto rounded-control bg-canvas/55 p-1 sm:justify-end",
+            slim ? "shrink-0" : undefined,
+          )}
           role="tablist"
           data-testid="profile-activity-tabs"
         >
@@ -8188,49 +8681,103 @@ function ProfileActivityModule({
         </div>
       </div>
 
-      <div
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1"
-        data-profile-activity-scroll="internal"
-        data-testid="profile-activity"
-      >
-        {activeTab === "feed" ? (
-          <ProfilePostList
-            emptyCompact
-            emptyDescription="No posts."
-            emptyIcon={MessageCircle}
-            emptyText="No posts yet"
-            errorTitle="Profile feed is not available"
-            error={feedError}
-            items={feed}
-            loading={feedLoading}
-            loadingText="Loading posts."
-            loadingTitle="Loading profile feed"
-          />
-        ) : null}
-        {activeTab === "replies" ? (
-          <ProfilePostList
-            emptyCompact
-            emptyDescription="No replies."
-            emptyIcon={Reply}
-            emptyText="No replies yet"
-            errorTitle="Replies are not available"
-            error={repliesError}
-            items={replies}
-            loading={repliesLoading}
-            loadingText="Loading replies."
-            loadingTitle="Loading replies"
-          />
-        ) : null}
-        {activeTab === "rooms" ? (
-          <ProfileRoomList
-            compact
-            emptyCompact
-            error={roomsError}
-            loading={roomsLoading}
-            rooms={rooms}
-          />
-        ) : null}
-      </div>
+      {slim ? (
+        <ProfileActivitySlimPreview
+          activeTab={activeTab}
+          feed={feed}
+          profile={profile}
+          replies={replies}
+          rooms={rooms}
+        />
+      ) : (
+        <div
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1"
+          data-profile-activity-scroll="internal"
+          data-testid="profile-activity"
+        >
+          {activeTab === "feed" ? (
+            <ProfilePostList
+              emptyCompact
+              emptyDescription="No posts."
+              emptyIcon={MessageCircle}
+              emptyText="No posts yet"
+              errorTitle="Profile feed is not available"
+              error={feedError}
+              items={feed}
+              loading={feedLoading}
+              loadingText="Loading posts."
+              loadingTitle="Loading profile feed"
+            />
+          ) : null}
+          {activeTab === "replies" ? (
+            <ProfilePostList
+              emptyCompact
+              emptyDescription="No replies."
+              emptyIcon={Reply}
+              emptyText="No replies yet"
+              errorTitle="Replies are not available"
+              error={repliesError}
+              items={replies}
+              loading={repliesLoading}
+              loadingText="Loading replies."
+              loadingTitle="Loading replies"
+            />
+          ) : null}
+          {activeTab === "rooms" ? (
+            <ProfileRoomList
+              compact
+              emptyCompact
+              error={roomsError}
+              loading={roomsLoading}
+              rooms={rooms}
+            />
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProfileActivitySlimPreview({
+  activeTab,
+  feed,
+  profile,
+  replies,
+  rooms,
+}: {
+  activeTab: ProfileTab;
+  feed: Post[];
+  profile: Profile;
+  replies: Post[];
+  rooms: Room[];
+}) {
+  const items =
+    activeTab === "feed"
+      ? feed.map((post) => post.body || "Post").slice(0, 3)
+      : activeTab === "replies"
+        ? replies.map((post) => post.body || "Reply").slice(0, 3)
+        : rooms.map((room) => room.name || `/${room.slug}`).slice(0, 3);
+
+  return (
+    <div
+      className="flex min-h-0 flex-1 items-center gap-2 overflow-hidden"
+      data-profile-activity-scroll="slim"
+      data-testid="profile-activity"
+    >
+      {items.length > 0 ? (
+        items.map((item, index) => (
+          <span
+            key={`${activeTab}:${index}:${item}`}
+            className="inline-flex h-9 min-w-0 max-w-[13rem] shrink-0 items-center rounded-full border border-line bg-canvas/45 px-3 text-xs font-semibold text-muted"
+          >
+            <span className="truncate">{item}</span>
+          </span>
+        ))
+      ) : (
+        <span className="inline-flex h-9 min-w-0 items-center rounded-full border border-dashed border-line bg-canvas/32 px-3 text-xs font-semibold text-muted">
+          @{profile.user.handle} has no {activeTab === "rooms" ? "rooms" : activeTab} yet
+        </span>
+      )}
     </div>
   );
 }

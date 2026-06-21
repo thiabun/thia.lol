@@ -740,6 +740,8 @@ export function ProfileModuleCard({
 }: ProfileModuleCardProps) {
   const title = module.title ?? profileModuleFallbackTitle(module.type);
   const definition = getProfileModuleDefinition(module.type);
+  const span = profileGridModuleSizeSpan(size);
+  const slim = span.columns >= 5 && span.rows <= 2;
   const compact = profileModuleSizeIsCompact(size);
   const hasDetails = profileModuleSizeHasRoomForDetails(size);
   const spanRole = profileModuleSpanRole(size);
@@ -749,7 +751,8 @@ export function ProfileModuleCard({
     module.type === "connections" ||
     module.type === "featured_badges" ||
     module.type === "badge_display";
-  const showEditingHeader = editing && !compact && !transparentCollectionSurface;
+  const showEditingHeader =
+    editing && !compact && !slim && !transparentCollectionSurface;
 
   return (
     <article
@@ -760,7 +763,9 @@ export function ProfileModuleCard({
             ? "grid-rows-[1fr] border border-transparent bg-transparent p-0 shadow-none"
             : compact
               ? "grid-rows-[1fr] border border-line bg-surface/58 p-2 shadow-soft backdrop-blur-veil"
-              : "grid-rows-[auto_1fr] gap-2 border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
+              : slim
+                ? "grid-rows-[1fr] border border-line bg-surface/58 p-2 shadow-soft backdrop-blur-veil"
+                : "grid-rows-[auto_1fr] gap-2 border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
           : publicSurface
             ? "grid-rows-[1fr] border border-line bg-surface/58 p-3 shadow-soft backdrop-blur-veil"
             : "grid-rows-[1fr] border border-transparent bg-transparent p-0 shadow-none",
@@ -816,10 +821,12 @@ function ProfileModuleContent({
 }) {
   const moduleCategory = getProfileModuleDefinition(module.type).category;
   const span = profileGridModuleSizeSpan(size);
+  const slim = span.columns >= 5 && span.rows <= 2;
+  const singleRow = span.rows <= 1;
 
   if (module.type === "activity") {
     return (
-      <p className="text-sm leading-6 text-muted">
+      <p className={cn("text-sm text-muted", slim ? "truncate leading-5" : "leading-6")}>
         Feed, replies, and rooms appear here on the public profile.
       </p>
     );
@@ -843,10 +850,34 @@ function ProfileModuleContent({
     const visibleConnectionLimit = 5;
     const visibleLinks = compact
       ? links.slice(0, visibleConnectionLimit)
+      : slim
+        ? links.slice(0, singleRow ? 4 : 6)
       : narrowStack
         ? links.slice(0, visibleConnectionLimit)
         : links;
     const hiddenCount = Math.max(0, links.length - visibleLinks.length);
+
+    if (slim) {
+      return (
+        <div
+          className="flex h-full min-w-0 items-center gap-2 overflow-hidden"
+          data-profile-module-visible-links={visibleLinks.length}
+          data-profile-connections-compact="wide-chips"
+        >
+          {visibleLinks.map((link) => (
+            <ProfileModuleLinkWideChip
+              key={`${link.label}-${link.url}`}
+              link={link}
+            />
+          ))}
+          {hiddenCount > 0 ? (
+            <span className="inline-flex h-9 shrink-0 items-center rounded-full border border-dashed border-line bg-canvas/45 px-3 text-xs font-semibold text-muted">
+              +{hiddenCount}
+            </span>
+          ) : null}
+        </div>
+      );
+    }
 
     if (compact) {
       return (
@@ -918,8 +949,40 @@ function ProfileModuleContent({
 
   if (module.type === "featured_badges" || module.type === "badge_display") {
     const selectedBadges = profileModuleBadges(module, badges);
-    const visibleBadges = compact ? selectedBadges.slice(0, 4) : selectedBadges;
+    const visibleBadges = compact
+      ? selectedBadges.slice(0, 4)
+      : slim
+        ? selectedBadges.slice(0, singleRow ? 4 : 6)
+        : selectedBadges;
     const hiddenCount = Math.max(0, selectedBadges.length - visibleBadges.length);
+
+    if (slim) {
+      return (
+        <div
+          className="flex h-full min-w-0 items-center gap-2 overflow-hidden"
+          data-profile-module-visible-badges={visibleBadges.length}
+        >
+          {visibleBadges.map((userBadge) => (
+            <span
+              key={userBadge.id}
+              className={cn(
+                "inline-flex h-9 min-w-0 max-w-[10rem] shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold",
+                rarityChipClass(userBadge.badge.rarity),
+              )}
+              title={userBadge.badge.description ?? userBadge.badge.name}
+            >
+              <BadgeCheck aria-hidden="true" size={13} className="shrink-0" />
+              <span className="min-w-0 truncate">{userBadge.badge.name}</span>
+            </span>
+          ))}
+          {hiddenCount > 0 ? (
+            <span className="inline-flex h-9 shrink-0 items-center rounded-full border border-dashed border-line bg-canvas/45 px-3 text-xs font-semibold text-muted">
+              +{hiddenCount}
+            </span>
+          ) : null}
+        </div>
+      );
+    }
 
     return (
       <div
@@ -1072,26 +1135,42 @@ function ProfileModuleContent({
     module.type === "text";
 
   return (
-    <div className="max-h-full space-y-2 overflow-y-auto pr-1">
+    <div
+      className={cn(
+        "max-h-full space-y-2",
+        slim ? "overflow-hidden pr-0" : "overflow-y-auto pr-1",
+      )}
+    >
       {module.config.body ? (
         <RichText
           markdown={markdownTextModule}
           text={module.config.body}
           entities={module.textEntities?.body}
-          showPreviews={!compact}
+          showPreviews={!compact && !slim}
           className={cn(
             "block break-words text-sm leading-6 text-muted",
-            markdownTextModule ? "space-y-2" : "whitespace-pre-wrap",
-            compact
+            slim
+              ? singleRow
+                ? "line-clamp-1 leading-5"
+                : "line-clamp-2 leading-5"
+              : markdownTextModule
+                ? "space-y-2"
+                : "whitespace-pre-wrap",
+            compact && !slim
               ? "line-clamp-2"
-              : spanRole === "summary"
+              : spanRole === "summary" && !slim
                 ? "line-clamp-4"
                 : undefined,
           )}
         />
       ) : null}
       {module.config.statusText ? (
-        <p className="line-clamp-2 rounded-card bg-canvas/55 px-3 py-2 text-sm leading-5 text-text">
+        <p
+          className={cn(
+            "rounded-card bg-canvas/55 px-3 py-2 text-sm leading-5 text-text",
+            slim ? "line-clamp-1" : "line-clamp-2",
+          )}
+        >
           {module.config.statusText}
         </p>
       ) : null}
@@ -1337,6 +1416,32 @@ function ProfileModuleLinkCompactRow({ link }: { link: ProfileModuleLink }) {
   );
 }
 
+function ProfileModuleLinkWideChip({ link }: { link: ProfileModuleLink }) {
+  const platform = normalizeModuleConnectionPlatform(link.platform);
+  const label = link.label || moduleLinkPlatformLabel(link);
+
+  return (
+    <a
+      className="group inline-flex h-9 min-w-0 max-w-[11rem] shrink-0 items-center gap-2 rounded-full border border-line bg-canvas/55 px-2.5 text-sm transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      href={link.url}
+      rel="noopener noreferrer"
+      target="_blank"
+      title={label}
+    >
+      <span className="grid size-6 shrink-0 place-items-center rounded-full border border-line bg-surface/62 text-text">
+        {platform ? (
+          <ProfileConnectionIcon platform={platform} size={13} />
+        ) : (
+          <Globe aria-hidden="true" size={13} />
+        )}
+      </span>
+      <span className="min-w-0 flex-1 truncate font-semibold text-text">
+        {label}
+      </span>
+    </a>
+  );
+}
+
 function ProfileModuleConnectionIconOnly({ link }: { link: ProfileModuleLink }) {
   const platform = normalizeModuleConnectionPlatform(link.platform);
   const label = link.label || moduleLinkPlatformLabel(link);
@@ -1522,7 +1627,7 @@ function UploadedAudioPlayer({
   const [position, setPosition] = useState(0);
   const span = profileGridModuleSizeSpan(size);
   const compactPlayer = span.columns <= 2 && span.rows <= 2;
-  const richPlayer = span.rows >= 2 && !compactPlayer;
+  const richPlayer = span.rows >= 3 && !compactPlayer;
   const title = audio.title ?? module.config.label ?? fallbackLabel;
   const subtitle = module.config.description ?? "Uploaded MP3";
   const progressPercent =
@@ -2185,7 +2290,7 @@ function YouTubeMusicPlayer({
   const description = metadata.description ?? module.config.description;
   const playerSpan = profileGridModuleSizeSpan(size);
   const compactPlayer = playerSpan.columns <= 2 && playerSpan.rows <= 2;
-  const richPlayer = playerSpan.rows >= 2 && !compactPlayer;
+  const richPlayer = playerSpan.rows >= 3 && !compactPlayer;
   const compactTextTone = useAlbumArtworkTextTone(
     metadata.imageUrl ?? undefined,
     compactPlayer,
@@ -2518,7 +2623,7 @@ function SpotifyMusicPlayer({
   const playerHeight = profileIntegrationEmbedHeight(integration);
   const playerSpan = profileGridModuleSizeSpan(size);
   const compactPlayer = playerSpan.columns <= 2 && playerSpan.rows <= 2;
-  const richPlayer = playerSpan.rows >= 2 && !compactPlayer;
+  const richPlayer = playerSpan.rows >= 3 && !compactPlayer;
   const compactTextTone = useAlbumArtworkTextTone(
     metadata.imageUrl ?? undefined,
     compactPlayer,
