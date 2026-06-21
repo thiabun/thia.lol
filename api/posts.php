@@ -1393,10 +1393,16 @@ function profile_share_card_draw_image_preview(
         $imageUrls[] = (string) $module['imageUrl'];
     }
 
+    $title = trim((string) ($module['title'] ?? ''));
+    $label = trim((string) ($module['label'] ?? ''));
+    $shouldDrawTitle = $title !== '' && strcasecmp($title, $label) !== 0;
+
     if (count($imageUrls) <= 1) {
         if (($imageUrls[0] ?? null) && posts_share_card_draw_cover_uploaded_image($image, $imageUrls[0], $x + 1, $y + 1, $width - 2, $height - 2)) {
-            $shade = imagecolorallocatealpha($image, 5, 18, 27, 52);
-            imagefilledrectangle($image, $x + 1, $y + $height - 48, $x + $width - 1, $y + $height - 1, $shade);
+            if ($shouldDrawTitle) {
+                $shade = imagecolorallocatealpha($image, 5, 18, 27, 52);
+                imagefilledrectangle($image, $x + 1, $y + $height - 48, $x + $width - 1, $y + $height - 1, $shade);
+            }
         }
     } else {
         $gap = 4;
@@ -1410,10 +1416,7 @@ function profile_share_card_draw_image_preview(
         }
     }
 
-    $title = trim((string) ($module['title'] ?? ''));
-    $label = trim((string) ($module['label'] ?? ''));
-
-    if ($title !== '' && strcasecmp($title, $label) !== 0) {
+    if ($shouldDrawTitle) {
         posts_share_card_wrapped_text($image, $fonts, 15, $x + 12, $y + $height - 18, $text, $title, $width - 24, 1, 20);
     }
 

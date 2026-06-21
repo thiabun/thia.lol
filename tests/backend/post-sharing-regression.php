@@ -75,6 +75,8 @@ assert_true(str_contains($postsSource, 'profile_share_card_module_config_for_pre
 assert_true(str_contains($postsSource, 'profile_share_card_module_integration'), 'profile share-card module previews should read stored integration metadata');
 assert_true(str_contains($postsSource, 'profile_share_card_module_stats'), 'profile share-card module previews should expose provider stats metadata');
 assert_true(!str_contains($postsSource, "strtoupper((string) \$module['label'])"), 'profile share-card module tiles should not render repeated uppercase category labels');
+assert_true(str_contains($postsSource, '$shouldDrawTitle = $title !=='), 'image share-card tiles should decide whether a real title is visible');
+assert_true(str_contains($postsSource, 'if ($shouldDrawTitle) {'), 'image share-card tiles should only draw the bottom title shade when text is visible');
 assert_true(str_contains($postsSource, 'function profile_share_card_module_kind'), 'profile module previews should classify visual preview kinds');
 assert_true(str_contains($postsSource, 'profile_share_card_draw_image_preview'), 'image modules should render through a visual image preview path');
 assert_true(str_contains($postsSource, 'profile_share_card_draw_text_preview'), 'text modules should render through a text-card preview path');
