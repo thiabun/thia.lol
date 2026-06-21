@@ -28,6 +28,7 @@ type ProfileGridProps = {
   canvasGlass?: number | undefined;
   children: ReactNode;
   className?: string | undefined;
+  fitRowsToContent?: boolean | undefined;
   layoutPreset?: ProfileLayoutPreset | undefined;
   maxColumns?: 6 | 12;
   maxRows?: 16 | 32;
@@ -40,6 +41,7 @@ export function ProfileGrid({
   canvasGlass = 58,
   children,
   className,
+  fitRowsToContent = false,
   layoutPreset = defaultProfileLayoutPreset,
   maxColumns = PROFILE_CANVAS_DESKTOP_COLUMNS,
   maxRows = PROFILE_CANVAS_DESKTOP_ROWS,
@@ -49,7 +51,7 @@ export function ProfileGrid({
 }: ProfileGridProps) {
   const localGridRef = useRef<HTMLDivElement | null>(null);
   const [activeColumnCount, setActiveColumnCount] = useState(1);
-  const [activeRowBudget, setActiveRowBudget] = useState(maxRows);
+  const [activeRowBudget, setActiveRowBudget] = useState<number>(maxRows);
   const [measuredCellSize, setMeasuredCellSize] = useState<number | undefined>();
   const setGridElement = useCallback(
     (element: HTMLDivElement | null) => {
@@ -66,11 +68,12 @@ export function ProfileGrid({
       return undefined;
     }
 
-    const updateCellSize = () => {
+    const updateGridLayout = () => {
       const styles = window.getComputedStyle(element);
       const activeColumns = profileGridActiveColumnCount(maxColumns);
       const activeRows = profileGridActiveRowCount(maxRows);
       const columnGap = Number.parseFloat(styles.columnGap) || 0;
+      const rowGap = Number.parseFloat(styles.rowGap) || columnGap;
       const paddingLeft = Number.parseFloat(styles.paddingLeft) || 0;
       const paddingRight = Number.parseFloat(styles.paddingRight) || 0;
       const contentWidth = Math.max(
@@ -81,12 +84,15 @@ export function ProfileGrid({
         1,
         (contentWidth - columnGap * (activeColumns - 1)) / activeColumns,
       );
+      const nextRowBudget = fitRowsToContent
+        ? profileGridMeasuredRowCount(element, activeRows, nextCellSize, rowGap)
+        : activeRows;
 
       setActiveColumnCount((current) =>
         current === activeColumns ? current : activeColumns,
       );
       setActiveRowBudget((current) =>
-        current === activeRows ? current : activeRows,
+        current === nextRowBudget ? current : nextRowBudget,
       );
       setMeasuredCellSize((current) =>
         current !== undefined && Math.abs(current - nextCellSize) < 0.5
@@ -95,17 +101,24 @@ export function ProfileGrid({
       );
     };
 
-    updateCellSize();
+    updateGridLayout();
 
-    const resizeObserver = new ResizeObserver(updateCellSize);
+    const resizeObserver = new ResizeObserver(updateGridLayout);
     resizeObserver.observe(element);
-    window.addEventListener("resize", updateCellSize);
+    const mutationObserver = new MutationObserver(updateGridLayout);
+    mutationObserver.observe(element, {
+      attributes: true,
+      childList: true,
+      subtree: true,
+    });
+    window.addEventListener("resize", updateGridLayout);
 
     return () => {
+      mutationObserver.disconnect();
       resizeObserver.disconnect();
-      window.removeEventListener("resize", updateCellSize);
+      window.removeEventListener("resize", updateGridLayout);
     };
-  }, [layoutPreset, maxColumns, maxRows]);
+  }, [fitRowsToContent, layoutPreset, maxColumns, maxRows]);
 
   const normalizedCanvasGlass = Math.min(
     92,
@@ -149,6 +162,7 @@ export function ProfileGrid({
         className,
       )}
       data-profile-canvas-columns={maxColumns}
+      data-profile-canvas-fit-rows={fitRowsToContent ? "content" : "fixed"}
       data-profile-canvas-glass={normalizedCanvasGlass}
       data-profile-canvas-rows={activeRowBudget}
       data-profile-grid-content-scale={contentScale.toFixed(3)}
@@ -184,6 +198,41 @@ function profileGridActiveRowCount(maxRows: 16 | 32): 16 | 32 {
   }
 
   return PROFILE_CANVAS_MOBILE_ROWS;
+}
+
+function profileGridMeasuredRowCount(
+  grid: HTMLDivElement,
+  fallbackRows: number,
+  cellSize: number,
+  rowGap: number,
+): number {
+  const gridRect = grid.getBoundingClientRect();
+  const styles = window.getComputedStyle(grid);
+  const paddingTop = Number.parseFloat(styles.paddingTop) || 0;
+  const contentTop = gridRect.top + paddingTop;
+  const rowStep = cellSize + rowGap;
+
+  if (rowStep <= 0) {
+    return fallbackRows;
+  }
+
+  const moduleBottoms = Array.from(
+    grid.querySelectorAll<HTMLElement>(
+      ':scope > [data-profile-grid-module="true"]',
+    ),
+  )
+    .map((module) => module.getBoundingClientRect())
+    .filter((rect) => rect.width > 0 && rect.height > 0)
+    .map((rect) => rect.bottom - contentTop);
+
+  if (moduleBottoms.length === 0) {
+    return fallbackRows;
+  }
+
+  const lastModuleBottom = Math.max(...moduleBottoms);
+  const measuredRows = Math.ceil(lastModuleBottom / rowStep - 0.01);
+
+  return Math.min(fallbackRows, Math.max(1, measuredRows));
 }
 
 function assignProfileGridRef(

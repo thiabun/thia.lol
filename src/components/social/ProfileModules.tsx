@@ -391,6 +391,7 @@ export function ProfileModuleGrid({
     return (
       <ProfileGrid
         canvasGlass={canvasGlass}
+        fitRowsToContent={!editing}
         layoutPreset={layoutPreset}
         maxColumns={resolvedMaxColumns}
         testId="profile-module-grid"
@@ -475,6 +476,7 @@ export function ProfileModuleGrid({
   return (
     <ProfileGrid
       canvasGlass={canvasGlass}
+      fitRowsToContent={!editing}
       gridRef={gridRef}
       layoutPreset={layoutPreset}
       maxColumns={resolvedMaxColumns}

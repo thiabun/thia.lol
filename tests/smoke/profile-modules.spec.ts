@@ -180,9 +180,18 @@ test("profile renders public modules safely", async ({ page }) => {
     "8x3",
   );
   await expect(section.getByTestId("profile-module-grid")).toHaveAttribute(
-    "data-profile-canvas-rows",
-    String(PROFILE_CANVAS_MOBILE_ROWS),
+    "data-profile-canvas-fit-rows",
+    "content",
   );
+  await expect
+    .poll(async () =>
+      Number(
+        await section
+          .getByTestId("profile-module-grid")
+          .getAttribute("data-profile-canvas-rows"),
+      ),
+    )
+    .toBeLessThan(PROFILE_CANVAS_MOBILE_ROWS);
   await expect(section.getByTestId("profile-grid-module-about")).toHaveAttribute(
     "data-profile-grid-size",
     "3x2",
@@ -3290,6 +3299,84 @@ test("public and editor canvas shell scales wide and glass slider changes opacit
   expect(clearBackground).not.toBe(initialBackground);
 });
 
+test("public profile grid trims trailing empty desktop rows", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [withAuditLayout(profileInfoModule(), "8x3", 1, 1)],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const grid = page.getByTestId("profile-module-grid");
+  await expect(grid).toHaveAttribute("data-profile-canvas-fit-rows", "content");
+  await expect(grid).toHaveAttribute(
+    "data-profile-canvas-columns",
+    String(PROFILE_CANVAS_COLUMNS),
+  );
+  await expectGridRowBudget(grid, 3);
+
+  const metrics = await grid.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const styles = window.getComputedStyle(element);
+
+    return {
+      borderRadius: Number.parseFloat(styles.borderTopLeftRadius),
+      hasHorizontalOverflow:
+        document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      height: rect.height,
+    };
+  });
+
+  expect(metrics.borderRadius).toBeGreaterThan(0);
+  expect(metrics.hasHorizontalOverflow).toBe(false);
+  expect(metrics.height).toBeGreaterThan(0);
+});
+
+test("public profile grid preserves intentional middle gaps while trimming after content", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      withAuditLayout(profileInfoModule(), "8x3", 1, 1),
+      withAuditLayout(
+        aboutModule({ id: 12, title: "Lower note", body: "Kept below a gap." }),
+        "3x2",
+        6,
+        1,
+      ),
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const grid = page.getByTestId("profile-module-grid");
+  const profileInfo = page.getByTestId("profile-grid-module-profile_info");
+  const lowerNote = page.getByTestId("profile-grid-module-about");
+
+  await expectGridRowBudget(grid, 7);
+
+  const gap = await profileInfo.evaluate((element) => {
+    const note = document.querySelector<HTMLElement>(
+      '[data-testid="profile-grid-module-about"]',
+    );
+
+    if (!note) {
+      throw new Error("Lower note module did not render.");
+    }
+
+    const profileRect = element.getBoundingClientRect();
+    const noteRect = note.getBoundingClientRect();
+
+    return noteRect.top - profileRect.bottom;
+  });
+
+  expect(gap).toBeGreaterThan(40);
+  await expect(lowerNote).toBeVisible();
+});
+
 test("background popover stays within narrow viewport", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 780 });
   await mockProfileModules(page, {
@@ -3920,12 +4007,13 @@ test("mobile direct canvas editor uses a 6 by 32 point grid", async ({ page }) =
     "data-profile-canvas-rows",
     String(PROFILE_CANVAS_MOBILE_ROWS),
   );
+  await expect(grid).toHaveAttribute("data-profile-canvas-fit-rows", "fixed");
   await expectGridColumnCount(grid, PROFILE_CANVAS_MOBILE_COLUMNS);
   await expect(page.getByTestId("profile-canvas-cell-6-32")).toBeVisible();
   await expect(page.getByTestId("profile-canvas-cell-7-1")).toHaveCount(0);
 
-  await page.getByTestId("profile-canvas-cell-1-5").click();
-  await page.getByTestId("profile-canvas-cell-2-5").click();
+  await page.getByTestId("profile-canvas-cell-1-19").click();
+  await page.getByTestId("profile-canvas-cell-2-19").click();
   await expect(page.locator('[data-testid^="profile-canvas-blank-module-"]')).toBeVisible();
   await expect
     .poll(() => {
@@ -3935,7 +4023,7 @@ test("mobile direct canvas editor uses a 6 by 32 point grid", async ({ page }) =
 
       return `${layout?.column}:${layout?.row}:${layout?.colSpan}:${layout?.rowSpan}`;
     })
-    .toBe("1:3:2:1");
+    .toBe("1:10:2:1");
 });
 
 test("mobile canvas packs profile info first and activity last", async ({ page }) => {
@@ -3966,6 +4054,7 @@ test("mobile canvas packs profile info first and activity last", async ({ page }
 
   const grid = page.getByTestId("profile-module-grid");
   await expectGridColumnCount(grid, PROFILE_CANVAS_MOBILE_COLUMNS);
+  await expect(grid).toHaveAttribute("data-profile-canvas-fit-rows", "content");
   const order = await grid.evaluate((element) =>
     Array.from(
       element.querySelectorAll<HTMLElement>('[data-profile-grid-module="true"]'),
@@ -4007,6 +4096,7 @@ test("mobile profile info projection keeps content close to the banner", async (
   await expect(info).toHaveAttribute("data-profile-info-mobile-projection", "true");
   await expect(info).toHaveAttribute("data-profile-info-columns", "6");
   await expect(info).toHaveAttribute("data-profile-info-rows", "4");
+  await expectGridRowBudget(page.getByTestId("profile-module-grid"), 4);
   await expect(module.getByTestId("profile-header")).toHaveAttribute(
     "data-profile-info-mobile-projection",
     "true",
@@ -6482,6 +6572,14 @@ async function expectGridColumnCount(locator: Locator, expectedCount: number) {
       }),
     )
     .toBe(expectedCount);
+}
+
+async function expectGridRowBudget(locator: Locator, expectedRows: number) {
+  await expect
+    .poll(async () =>
+      Number(await locator.getAttribute("data-profile-canvas-rows")),
+    )
+    .toBe(expectedRows);
 }
 
 async function expectModuleAspectRatio(locator: Locator, expectedRatio: number) {
