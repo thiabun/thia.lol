@@ -314,9 +314,10 @@ function ThreadAvatarRail({
   user,
   href,
   ariaLabel,
-  hasLineAfter = true,
+  hasLineAfter = false,
   hasLineBefore = false,
   hasBranch = false,
+  branchClassName,
 }: {
   user: Post["author"];
   href: string;
@@ -324,6 +325,7 @@ function ThreadAvatarRail({
   hasLineAfter?: boolean;
   hasLineBefore?: boolean;
   hasBranch?: boolean;
+  branchClassName?: string;
 }) {
   return (
     <div
@@ -332,21 +334,24 @@ function ThreadAvatarRail({
     >
       {hasLineBefore ? (
         <span
-          className="pointer-events-none absolute left-1/2 top-0 h-2.5 w-px -translate-x-1/2 bg-line/70"
+          className="pointer-events-none absolute left-1/2 top-0 h-2.5 w-px -translate-x-1/2 bg-line/55"
           aria-hidden="true"
           data-testid="thread-rail-line-before"
         />
       ) : null}
       {hasLineAfter ? (
         <span
-          className="pointer-events-none absolute bottom-0 left-1/2 top-[3.25rem] w-px -translate-x-1/2 bg-line/70"
+          className="pointer-events-none absolute bottom-0 left-1/2 top-[3.25rem] w-px -translate-x-1/2 bg-line/55"
           aria-hidden="true"
           data-testid="thread-rail-line-after"
         />
       ) : null}
       {hasBranch ? (
         <span
-          className="pointer-events-none absolute left-1/2 top-6 h-px w-5 -translate-x-full bg-line/70"
+          className={cn(
+            "pointer-events-none absolute left-1/2 top-6 h-px -translate-x-full bg-line/55",
+            branchClassName ?? "w-5",
+          )}
           aria-hidden="true"
           data-testid="thread-rail-branch"
         />
@@ -963,6 +968,7 @@ function ThreadModal({
               >
                 <ParentPostPreview
                   post={post}
+                  hasReplyConnector={loading || replies.length > 0}
                   actionRow={
                     <ReactionControls
                       post={post}
@@ -1037,10 +1043,12 @@ function ThreadModal({
                   ) : null}
                   <div data-testid="thread-replies">
                     <AnimatePresence initial={false}>
-                      {replies.map((reply) => (
+                      {replies.map((reply, replyIndex) => (
                         <ReplyPreview
                           key={reply.id}
                           reply={reply}
+                          index={replyIndex}
+                          siblingCount={replies.length}
                           onDeleted={handleReplyDeleted}
                         />
                       ))}
@@ -1054,9 +1062,11 @@ function ThreadModal({
 
 function ParentPostPreview({
   post,
+  hasReplyConnector,
   actionRow,
 }: {
   post: Post;
+  hasReplyConnector: boolean;
   actionRow: ReactNode;
 }) {
   return (
@@ -1069,6 +1079,7 @@ function ParentPostPreview({
           user={post.author}
           href={`/@${post.author.handle}`}
           ariaLabel={`${post.author.displayName}'s profile`}
+          hasLineAfter={hasReplyConnector}
         />
         <div className="min-w-0 pb-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -1129,10 +1140,18 @@ function ThreadStateNotice({
 type ReplyPreviewProps = {
   reply: Post;
   depth?: number;
+  index: number;
+  siblingCount: number;
   onDeleted: (reply: Post) => void;
 };
 
-function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
+function ReplyPreview({
+  reply,
+  depth = 0,
+  index,
+  siblingCount,
+  onDeleted,
+}: ReplyPreviewProps) {
   const { csrfToken, runWithAuth, status, user } = useAuth();
   const [composerOpen, setComposerOpen] = useState(false);
   const [childrenOpen, setChildrenOpen] = useState(false);
@@ -1145,6 +1164,8 @@ function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
   const isAuthenticated = status === "authenticated" && Boolean(csrfToken);
   const allowDelete = canDeletePost(user, reply);
   const canNest = depth < 3;
+  const hasNextVisibleSibling = index < siblingCount - 1;
+  const hasVisibleNestedReplies = childrenOpen && childReplies.length > 0;
 
   async function loadChildren() {
     if (childrenLoading || childReplies.length > 0) {
@@ -1216,7 +1237,9 @@ function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
           href={`/@${reply.author.handle}`}
           ariaLabel={`${reply.author.displayName}'s profile`}
           hasLineBefore
+          hasLineAfter={hasNextVisibleSibling || hasVisibleNestedReplies}
           hasBranch={depth > 0}
+          branchClassName={threadBranchClass(depth)}
         />
         <div
           className="min-w-0 py-1"
@@ -1323,11 +1346,13 @@ function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
 
       {childrenOpen && childReplies.length > 0 ? (
         <div className="mt-1" data-testid="thread-nested-replies">
-          {childReplies.map((child) => (
+          {childReplies.map((child, childIndex) => (
             <ReplyPreview
               key={child.id}
               reply={child}
               depth={depth + 1}
+              index={childIndex}
+              siblingCount={childReplies.length}
               onDeleted={handleNestedReplyDeleted}
             />
           ))}
@@ -1339,14 +1364,26 @@ function ReplyPreview({ reply, depth = 0, onDeleted }: ReplyPreviewProps) {
 
 function nestedReplyOffsetClass(depth: number) {
   if (depth === 1) {
-    return "ml-2 border-l border-line/55 pl-2 sm:ml-5 sm:pl-3";
+    return "ml-4 sm:ml-8";
   }
 
   if (depth === 2) {
-    return "ml-3 border-l border-line/45 pl-2 sm:ml-8 sm:pl-3";
+    return "ml-6 sm:ml-12";
   }
 
-  return "ml-4 border-l border-line/40 pl-2 sm:ml-10 sm:pl-3";
+  return "ml-8 sm:ml-14";
+}
+
+function threadBranchClass(depth: number) {
+  if (depth === 1) {
+    return "w-4 sm:w-8";
+  }
+
+  if (depth === 2) {
+    return "w-6 sm:w-12";
+  }
+
+  return "w-8 sm:w-14";
 }
 
 type LikeButtonProps = {

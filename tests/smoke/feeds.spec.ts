@@ -1071,7 +1071,10 @@ test("thread modal root and reply identities navigate to profiles", async ({ pag
     expect(bubbleBox!.width).toBeLessThanOrEqual(50);
     expect(bubbleBox!.height).toBeLessThanOrEqual(50);
   }
-  await expect(dialog.getByTestId("thread-rail-line-after")).toHaveCount(2);
+  await expect(rootPost.getByTestId("thread-rail-line-after")).toHaveCount(1);
+  await expect(replyItem.getByTestId("thread-rail-line-before")).toHaveCount(1);
+  await expect(replyItem.getByTestId("thread-rail-line-after")).toHaveCount(0);
+  await expect(dialog.getByTestId("thread-rail-line-after")).toHaveCount(1);
 });
 
 test("thread reply composer is hidden until Reply and exposes media UI", async ({
@@ -1233,10 +1236,15 @@ test("thread renders nested replies and gates reply delete controls", async ({
 
   await expect(dialog.getByText("My reply.")).toBeVisible();
   await expect(dialog.getByText("Rebloggable reply.")).toBeVisible();
+  await expect(dialog.getByTestId("thread-rail-line-before")).toHaveCount(2);
+  await expect(dialog.getByTestId("thread-rail-line-after")).toHaveCount(2);
+  await expect(dialog.getByTestId("thread-rail-branch")).toHaveCount(0);
   await dialog.getByRole("button", { name: "Show 1 reply" }).click();
   await expect(dialog.getByText("Nested reply.")).toBeVisible();
   await expect(dialog.getByTestId("thread-nested-replies")).toBeVisible();
   await expect(dialog.getByTestId("thread-rail-branch")).toHaveCount(1);
+  await expect(dialog.getByTestId("thread-rail-line-before")).toHaveCount(3);
+  await expect(dialog.getByTestId("thread-rail-line-after")).toHaveCount(2);
 
   const topReplyBox = await dialog
     .getByText("My reply.")
@@ -1250,7 +1258,7 @@ test("thread renders nested replies and gates reply delete controls", async ({
   expect(nestedReplyBox).not.toBeNull();
   expect(nestedReplyBox!.x - topReplyBox!.x).toBeGreaterThan(6);
   expect(nestedReplyBox!.x - topReplyBox!.x).toBeLessThan(52);
-  await expect(nestedReply).toHaveClass(/border-l/);
+  await expect(nestedReply).not.toHaveClass(/border-l/);
 
   const conversationOverflow = await dialog
     .getByTestId("thread-conversation")
