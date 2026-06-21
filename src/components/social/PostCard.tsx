@@ -334,7 +334,10 @@ function ThreadAvatarRail({
     >
       {hasLineBefore ? (
         <span
-          className="pointer-events-none absolute left-1/2 top-0 h-2.5 w-px -translate-x-1/2 bg-line/55"
+          className={cn(
+            "pointer-events-none absolute left-1/2 top-0 w-px -translate-x-1/2 bg-line/55",
+            hasBranch ? "h-6" : "h-2.5",
+          )}
           aria-hidden="true"
           data-testid="thread-rail-line-before"
         />

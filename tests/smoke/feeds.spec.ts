@@ -1265,6 +1265,18 @@ test("thread renders nested replies and gates reply delete controls", async ({
   expect(nestedReplyBox!.x - topReplyBox!.x).toBeLessThan(52);
   await expect(nestedReply).not.toHaveClass(/border-l/);
 
+  const nestedIncomingLineBox = await nestedReply
+    .getByTestId("thread-rail-line-before")
+    .boundingBox();
+  const nestedBranchBox = await nestedReply
+    .getByTestId("thread-rail-branch")
+    .boundingBox();
+  expect(nestedIncomingLineBox).not.toBeNull();
+  expect(nestedBranchBox).not.toBeNull();
+  expect(nestedIncomingLineBox!.y + nestedIncomingLineBox!.height).toBeGreaterThanOrEqual(
+    nestedBranchBox!.y,
+  );
+
   const conversationOverflow = await dialog
     .getByTestId("thread-conversation")
     .evaluate((node) => node.scrollWidth > node.clientWidth + 1);
