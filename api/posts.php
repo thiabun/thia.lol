@@ -852,18 +852,10 @@ function profile_share_card_modules(int $userId): array
 
 function profile_share_card_module_config_for_preview(string $type, array $config, int $userId): array
 {
-    if (function_exists('profile_module_config')) {
-        try {
-            return profile_module_config($type, $config, $userId);
-        } catch (Throwable) {
-            return $config;
-        }
-    }
-
     if (
         function_exists('profile_integration_card_for_module') &&
         !isset($config['integration']) &&
-        is_string($config['url'] ?? null)
+        profile_share_card_module_url_can_resolve($config['url'] ?? null)
     ) {
         try {
             $integration = profile_integration_card_for_module($config, $userId);
@@ -877,6 +869,21 @@ function profile_share_card_module_config_for_preview(string $type, array $confi
     }
 
     return $config;
+}
+
+function profile_share_card_module_url_can_resolve(mixed $value): bool
+{
+    if (!is_string($value)) {
+        return false;
+    }
+
+    $trimmed = trim($value);
+
+    if ($trimmed === '' || strlen($trimmed) > 500 || filter_var($trimmed, FILTER_VALIDATE_URL) === false) {
+        return false;
+    }
+
+    return strtolower((string) parse_url($trimmed, PHP_URL_SCHEME)) === 'https';
 }
 
 function profile_share_card_module_preview(string $type, ?string $title, array $config, int $userId): ?array

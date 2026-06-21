@@ -72,6 +72,8 @@ assert_true(str_contains($postsSource, 'function posts_share_card_wrapped_text_l
 assert_true(str_contains($postsSource, 'function posts_share_card_ellipsize_line'), 'share-card text wrapping should ellipsize overflow text');
 assert_true(str_contains($postsSource, "'kind' => \$kind"), 'profile module previews should expose an internal kind for visual rendering');
 assert_true(str_contains($postsSource, 'profile_share_card_module_config_for_preview'), 'profile share-card module previews should reuse public module enrichment when available');
+assert_true(!str_contains($postsSource, 'profile_module_config($type, $config, $userId)'), 'profile share-card previews should not run strict save-time module normalization');
+assert_true(str_contains($postsSource, 'profile_share_card_module_url_can_resolve'), 'profile share-card integration enrichment should preflight URLs before resolver calls');
 assert_true(str_contains($postsSource, 'profile_share_card_module_integration'), 'profile share-card module previews should read stored integration metadata');
 assert_true(str_contains($postsSource, 'profile_share_card_module_stats'), 'profile share-card module previews should expose provider stats metadata');
 assert_true(!str_contains($postsSource, "strtoupper((string) \$module['label'])"), 'profile share-card module tiles should not render repeated uppercase category labels');
