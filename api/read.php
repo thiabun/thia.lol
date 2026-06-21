@@ -284,6 +284,7 @@ function post_payload(array $row): array
 
     return [
         'id' => (int) $row['post_id'],
+        'publicId' => post_row_public_id($row),
         'body' => (string) $row['post_body'],
         'bodyEntities' => function_exists('text_entities_for_content')
             ? text_entities_for_content('post', (int) $row['post_id'], 'body')
@@ -335,9 +336,50 @@ function fetch_public_post_payload_by_id_or_null(int $postId, ?int $viewerUserId
     return is_array($row) ? post_payload($row) : null;
 }
 
+function fetch_public_post_payload_by_identifier_or_null(string $identifier, ?int $viewerUserId = null): ?array
+{
+    $normalized = normalize_post_public_identifier($identifier);
+
+    if ($normalized === null) {
+        return null;
+    }
+
+    if (posts_public_id_column_exists() && !ctype_digit($normalized)) {
+        $statement = db_query(
+            post_select_sql(
+                'AND p.public_id = :post_public_id',
+                'p.created_at DESC, p.id DESC',
+                '',
+                $viewerUserId
+            ),
+            ['post_public_id' => $normalized]
+        );
+        $row = $statement->fetch();
+
+        return is_array($row) ? post_payload($row) : null;
+    }
+
+    if (ctype_digit($normalized)) {
+        return fetch_public_post_payload_by_id_or_null((int) $normalized, $viewerUserId);
+    }
+
+    return null;
+}
+
 function fetch_public_post_payload_by_id(int $postId, ?int $viewerUserId = null): array
 {
     $post = fetch_public_post_payload_by_id_or_null($postId, $viewerUserId);
+
+    if ($post === null) {
+        json_error('Post not found.', 404);
+    }
+
+    return $post;
+}
+
+function fetch_public_post_payload_by_identifier(string $identifier, ?int $viewerUserId = null): array
+{
+    $post = fetch_public_post_payload_by_identifier_or_null($identifier, $viewerUserId);
 
     if ($post === null) {
         json_error('Post not found.', 404);
@@ -353,17 +395,33 @@ function post_public_base_url(): string
     return $baseUrl === '' ? 'https://thia.lol' : $baseUrl;
 }
 
+function post_public_identifier(array $post): string
+{
+    $publicId = (string) ($post['publicId'] ?? '');
+
+    if ($publicId !== '') {
+        return $publicId;
+    }
+
+    return (string) (int) ($post['id'] ?? 0);
+}
+
 function post_canonical_path(array $post): string
 {
     $handle = (string) ($post['author']['handle'] ?? '');
-    $postId = (int) ($post['id'] ?? 0);
+    $postId = post_public_identifier($post);
 
-    return sprintf('/@%s/posts/%d', rawurlencode($handle), $postId);
+    return sprintf('/@%s/posts/%s', rawurlencode($handle), rawurlencode($postId));
 }
 
 function post_canonical_url(array $post): string
 {
     return post_public_base_url() . post_canonical_path($post);
+}
+
+function post_share_card_path(array $post): string
+{
+    return '/api/posts/' . rawurlencode(post_public_identifier($post)) . '/share-card.png';
 }
 
 function post_body_snippet(string $body, int $maxLength = 180): string
@@ -392,6 +450,7 @@ function post_share_summary_payload(array $post): array
 {
     return [
         'id' => (int) $post['id'],
+        'publicId' => post_public_identifier($post),
         'canonicalPath' => post_canonical_path($post),
         'canonicalUrl' => post_canonical_url($post),
         'bodySnippet' => post_body_snippet((string) ($post['body'] ?? ''), 160),
@@ -400,6 +459,29 @@ function post_share_summary_payload(array $post): array
         'author' => $post['author'],
         'room' => $post['room'] ?? null,
     ];
+}
+
+function posts_public_id_column_exists(): bool
+{
+    return database_column_exists('posts', 'public_id');
+}
+
+function post_row_public_id(array $row): string
+{
+    $publicId = (string) ($row['post_public_id'] ?? '');
+
+    return $publicId !== '' ? $publicId : (string) (int) ($row['post_id'] ?? 0);
+}
+
+function normalize_post_public_identifier(string $identifier): ?string
+{
+    $normalized = strtolower(trim(rawurldecode($identifier)));
+
+    if (preg_match('/^(?:[0-9]+|[a-z][a-z0-9_-]{7,31})$/', $normalized) !== 1) {
+        return null;
+    }
+
+    return $normalized;
 }
 
 function reblog_context_user_payload(array $row): ?array
@@ -1277,8 +1359,13 @@ function post_select_sql(
     $resolvedExtraSelect = trim($extraSelect) === '' ? '' : ",\n        {$extraSelect}";
     $profileCustomizationSelect = profile_customization_select_sql('pr');
 
+    $publicIdSelect = posts_public_id_column_exists()
+        ? 'p.public_id AS post_public_id,'
+        : 'NULL AS post_public_id,';
+
     return "SELECT
         p.id AS post_id,
+        {$publicIdSelect}
         p.parent_id AS post_parent_id,
         p.body AS post_body,
         p.mood AS post_mood,

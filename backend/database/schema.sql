@@ -302,6 +302,7 @@ CREATE TABLE IF NOT EXISTS room_memberships (
 
 CREATE TABLE IF NOT EXISTS posts (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  public_id VARCHAR(16) NOT NULL,
   author_id BIGINT UNSIGNED NOT NULL,
   room_id BIGINT UNSIGNED NULL,
   parent_id BIGINT UNSIGNED NULL,
@@ -314,6 +315,7 @@ CREATE TABLE IF NOT EXISTS posts (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY posts_feed_idx (status, visibility, created_at),
+  UNIQUE KEY posts_public_id_unique (public_id),
   KEY posts_author_created_idx (author_id, created_at),
   KEY posts_room_created_idx (room_id, created_at),
   KEY posts_parent_created_idx (parent_id, created_at),

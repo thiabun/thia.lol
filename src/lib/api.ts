@@ -1135,15 +1135,19 @@ export function createPost(
   return apiPost<ApiPost>("/posts", input, csrfToken).then(normalizePost);
 }
 
-export function getPost(postId: number): Promise<Post> {
+export function getPost(postId: number | string): Promise<Post> {
   return apiGet<ApiPost>(`/posts/${postId}`).then(normalizePost);
 }
 
-export function postCanonicalPath(post: Pick<Post, "id" | "author" | "canonicalPath">) {
-  return post.canonicalPath ?? `/@${post.author.handle}/posts/${post.id}`;
+export function postPublicIdentifier(post: Pick<Post, "id" | "publicId">) {
+  return post.publicId ?? String(post.id);
 }
 
-export function postCanonicalUrl(post: Pick<Post, "id" | "author" | "canonicalUrl" | "canonicalPath">) {
+export function postCanonicalPath(post: Pick<Post, "id" | "publicId" | "author" | "canonicalPath">) {
+  return post.canonicalPath ?? `/@${post.author.handle}/posts/${postPublicIdentifier(post)}`;
+}
+
+export function postCanonicalUrl(post: Pick<Post, "id" | "publicId" | "author" | "canonicalUrl" | "canonicalPath">) {
   if (post.canonicalUrl) {
     return post.canonicalUrl;
   }
@@ -1155,12 +1159,12 @@ export function postCanonicalUrl(post: Pick<Post, "id" | "author" | "canonicalUr
   return new URL(postCanonicalPath(post), window.location.origin).toString();
 }
 
-export function postShareCardUrl(postId: number) {
-  return `/api/posts/${postId}/share-card.png`;
+export function postShareCardUrl(post: Pick<Post, "id" | "publicId">) {
+  return `/api/posts/${postPublicIdentifier(post)}/share-card.png`;
 }
 
 export function sharePostToMessages(
-  postId: number,
+  postId: number | string,
   input: SharePostToMessagesInput,
   csrfToken: string,
 ): Promise<SharePostToMessagesResult> {
@@ -2618,6 +2622,10 @@ function normalizePost(post: ApiPost): Post {
       likedByFollowedCount: 0,
     },
   };
+
+  if (post.publicId) {
+    normalized.publicId = post.publicId;
+  }
 
   if (post.canonicalPath) {
     normalized.canonicalPath = post.canonicalPath;

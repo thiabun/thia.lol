@@ -19,6 +19,7 @@ import {
   getChatMoots,
   postCanonicalPath,
   postCanonicalUrl,
+  postPublicIdentifier,
   postShareCardUrl,
   sharePostToMessages,
 } from "../../lib/api";
@@ -49,6 +50,7 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
   );
   const canonicalPath = postCanonicalPath(post);
   const canonicalUrl = postCanonicalUrl(post);
+  const publicIdentifier = postPublicIdentifier(post);
   const selectedCount = selectedIds.size;
   const filteredMoots = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -212,7 +214,7 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
       const result = await runWithAuth(
         (freshCsrfToken) =>
           sharePostToMessages(
-            post.id,
+            publicIdentifier,
             trimmedNote === ""
               ? { recipientUserIds: Array.from(selectedIds) }
               : { recipientUserIds: Array.from(selectedIds), note: trimmedNote },
@@ -298,8 +300,8 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
         <a
           className="inline-flex min-h-9 items-center justify-center gap-2 rounded-control border border-line bg-surface px-3 text-sm font-medium text-text shadow-soft transition duration-fluid hover:-translate-y-0.5 hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:hover:translate-y-0"
           data-testid="post-share-save-image"
-          href={postShareCardUrl(post.id)}
-          download={`thia-post-${post.id}.png`}
+          href={postShareCardUrl(post)}
+          download={`thia-post-${publicIdentifier}.png`}
         >
           <Download aria-hidden="true" size={15} />
           Save image

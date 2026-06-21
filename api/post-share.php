@@ -8,22 +8,22 @@ require_once __DIR__ . '/read.php';
 header_remove('Content-Type');
 
 $rawHandle = (string) ($_GET['handle'] ?? '');
-$rawPostId = (string) ($_GET['postId'] ?? '');
+$rawPostIdentifier = (string) ($_GET['postId'] ?? '');
 
-if (preg_match('/^[a-z0-9_-]{1,40}$/i', $rawHandle) !== 1 || preg_match('/^\d+$/', $rawPostId) !== 1) {
+if (preg_match('/^[a-z0-9_-]{1,40}$/i', $rawHandle) !== 1 || normalize_post_public_identifier($rawPostIdentifier) === null) {
     post_share_page_not_found();
 }
 
-$postId = (int) $rawPostId;
-$post = fetch_public_post_payload_by_id_or_null($postId, null);
+$post = fetch_public_post_payload_by_identifier_or_null($rawPostIdentifier, null);
 
 if ($post === null) {
     post_share_page_not_found();
 }
 
 $currentHandle = (string) ($post['author']['handle'] ?? '');
+$currentIdentifier = post_public_identifier($post);
 
-if (strtolower($rawHandle) !== strtolower($currentHandle)) {
+if (strtolower($rawHandle) !== strtolower($currentHandle) || strtolower($rawPostIdentifier) !== strtolower($currentIdentifier)) {
     header('Location: ' . post_canonical_path($post), true, 302);
     exit;
 }
@@ -37,7 +37,7 @@ function post_share_page_render(array $post): void
     $title = "{$authorName} on thia.lol";
     $description = post_body_snippet((string) ($post['body'] ?? ''), 220);
     $canonicalUrl = post_canonical_url($post);
-    $imageUrl = post_public_base_url() . '/api/posts/' . (int) $post['id'] . '/share-card.png';
+    $imageUrl = post_public_base_url() . post_share_card_path($post);
     $createdAt = (string) ($post['createdAt'] ?? '');
 
     $meta = [

@@ -104,8 +104,9 @@ test("authenticated chat renders rich message entities", async ({ page }) => {
 test("authenticated chat renders post attachments", async ({ page }) => {
   const attachedPost = {
     id: 42,
-    canonicalPath: "/@alex/posts/42",
-    canonicalUrl: "https://thia.lol/@alex/posts/42",
+    publicId: "pabc123def456",
+    canonicalPath: "/@alex/posts/pabc123def456",
+    canonicalUrl: "https://thia.lol/@alex/posts/pabc123def456",
     bodySnippet: "A shared post from Alex.",
     createdAt: "2026-06-10 10:00:00",
     mediaUrl: null,
@@ -144,7 +145,7 @@ test("authenticated chat renders post attachments", async ({ page }) => {
 
   await expect(page.getByTestId("chat-post-attachment")).toHaveAttribute(
     "href",
-    "/@alex/posts/42",
+    "/@alex/posts/pabc123def456",
   );
   await expect(page.getByTestId("chat-post-attachment")).toContainText(
     "A shared post from Alex.",

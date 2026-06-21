@@ -14,8 +14,8 @@ export function PostPage() {
   const { handle: routeHandle = "", profileHandle = "", postId = "" } = useParams();
   const handle = (profileHandle || routeHandle).replace(/^@/, "");
   const navigate = useNavigate();
-  const numericPostId = useMemo(
-    () => (/^\d+$/.test(postId) ? Number(postId) : undefined),
+  const postIdentifier = useMemo(
+    () => (/^(?:[0-9]+|[a-z][a-z0-9_-]{7,31})$/i.test(postId) ? postId : undefined),
     [postId],
   );
   const [post, setPost] = useState<Post | undefined>();
@@ -26,7 +26,7 @@ export function PostPage() {
   const [repliesError, setRepliesError] = useState<string>();
 
   useEffect(() => {
-    if (!numericPostId) {
+    if (!postIdentifier) {
       return;
     }
 
@@ -42,7 +42,7 @@ export function PostPage() {
       setPost(undefined);
       setReplies([]);
 
-      getPost(numericPostId)
+      getPost(postIdentifier)
         .then((nextPost) => {
           if (!active) {
             return;
@@ -71,7 +71,7 @@ export function PostPage() {
     return () => {
       active = false;
     };
-  }, [handle, navigate, numericPostId]);
+  }, [handle, navigate, postIdentifier]);
 
   useEffect(() => {
     if (!post) {
@@ -113,7 +113,7 @@ export function PostPage() {
     };
   }, [post]);
 
-  if (!numericPostId) {
+  if (!postIdentifier) {
     return (
       <motion.div
         className="mx-auto flex w-full max-w-4xl flex-col gap-6"
@@ -157,7 +157,7 @@ export function PostPage() {
         <PageMeta
           title="Post"
           description="Loading a post on thia.lol."
-          {...(numericPostId ? { path: `/@${handle}/posts/${numericPostId}` } : {})}
+          path={`/@${handle}/posts/${postIdentifier}`}
         />
         <RouteHeader
           badge="Post"

@@ -10,6 +10,7 @@ $readSource = file_get_contents($root . '/api/read.php');
 $shareRendererSource = file_get_contents($root . '/api/post-share.php');
 $htaccessSource = file_get_contents($root . '/public/.htaccess');
 $migrationSource = file_get_contents($root . '/api/migrations/20260621_0001_add_message_attachments.sql');
+$publicIdMigrationSource = file_get_contents($root . '/api/migrations/20260621_0002_add_post_public_ids.sql');
 
 function assert_true(bool $condition, string $message): void
 {
@@ -25,12 +26,20 @@ assert_true(str_contains($migrationSource, 'message_id BIGINT UNSIGNED NOT NULL'
 assert_true(str_contains($migrationSource, 'post_id BIGINT UNSIGNED NULL'), 'post attachments should store post ids');
 assert_true(str_contains($migrationSource, 'ON DELETE CASCADE'), 'message attachments should cascade when messages are deleted');
 assert_true(str_contains($migrationSource, 'ON DELETE SET NULL'), 'post attachments should degrade when posts are removed');
+assert_true(is_string($publicIdMigrationSource), 'post public id migration should be readable');
+assert_true(str_contains($publicIdMigrationSource, 'ADD COLUMN public_id VARCHAR(16)'), 'posts should get public ids');
+assert_true(str_contains($publicIdMigrationSource, "CONCAT('p', LOWER(HEX(RANDOM_BYTES(6))))"), 'existing posts should be backfilled with randomized ids');
+assert_true(str_contains($publicIdMigrationSource, 'posts_public_id_unique'), 'post public ids should be unique');
 
 assert_true(is_string($readSource), 'read source should be readable');
 assert_true(str_contains($readSource, 'function fetch_public_post_payload_by_id_or_null'), 'public post lookup should have non-throwing helper');
+assert_true(str_contains($readSource, 'function fetch_public_post_payload_by_identifier_or_null'), 'public post lookup should support public ids');
+assert_true(str_contains($readSource, "'publicId' => post_row_public_id"), 'post payloads should expose public ids');
 assert_true(str_contains($readSource, 'function post_canonical_path'), 'canonical post paths should be centralized');
+assert_true(str_contains($readSource, 'post_public_identifier($post)'), 'canonical post paths should use public ids');
 assert_true(str_contains($readSource, 'function post_share_summary_payload'), 'chat attachments should use a typed post summary');
-assert_true(str_contains($readSource, "post_select_sql(\n            'AND p.id = :post_id'"), 'public post lookup should use shared visibility SQL');
+assert_true(str_contains($readSource, "post_select_sql(\n            'AND p.id = :post_id'"), 'public numeric post lookup should use shared visibility SQL');
+assert_true(str_contains($readSource, "post_select_sql(\n                'AND p.public_id = :post_public_id'"), 'public id lookup should use shared visibility SQL');
 
 assert_true(is_string($postsSource), 'posts source should be readable');
 assert_true(str_contains($postsSource, "segments[2] === 'share-card.png'"), 'share-card PNG route should be registered');
@@ -44,6 +53,11 @@ assert_true(str_contains($postsSource, 'count($recipientIds) > 10'), 'share-to-m
 assert_true(str_contains($postsSource, 'text_length($note) > 500'), 'share notes should have a bounded length');
 assert_true(str_contains($postsSource, "header('Content-Type: image/png')"), 'share-card endpoint should return PNG content');
 assert_true(str_contains($postsSource, 'posts_share_card_fallback'), 'share-card endpoint should have a fallback image path');
+assert_true(str_contains($postsSource, 'posts_generate_public_id'), 'new posts should generate public ids');
+assert_true(str_contains($postsSource, 'NotoSans-Regular.ttf'), 'share cards should use bundled UTF-8 text fonts');
+assert_true(str_contains($postsSource, 'NotoEmoji-Regular.ttf'), 'share cards should use bundled emoji fonts');
+assert_true(str_contains($postsSource, 'twemoji@14.0.2'), 'share cards should render emoji image fallbacks');
+assert_true(str_contains($postsSource, 'thia-lockup-frostveil.png'), 'share cards should render the real thia.lol lockup');
 
 assert_true(is_string($chatSource), 'chat source should be readable');
 assert_true(str_contains($chatSource, 'function chat_insert_message'), 'chat message creation should be reusable');
@@ -60,6 +74,7 @@ assert_true(str_contains($shareRendererSource, '<meta property="og:url"'), 'shar
 assert_true(str_contains($shareRendererSource, '<meta property="og:image"'), 'share renderer should emit og:image');
 assert_true(str_contains($shareRendererSource, 'post_share_page_escape'), 'share renderer should escape metadata');
 assert_true(str_contains($shareRendererSource, 'header(\'Location: \' . post_canonical_path($post), true, 302)'), 'stale handles should redirect safely');
+assert_true(str_contains($shareRendererSource, 'post_public_identifier($post)'), 'numeric permalink returns should redirect to public id URLs');
 
 assert_true(is_string($htaccessSource), 'public htaccess should be readable');
 assert_true(str_contains($htaccessSource, 'api/post-share.php?handle=$1&postId=$2'), 'post permalink rewrite should target the share renderer');

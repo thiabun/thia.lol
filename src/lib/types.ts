@@ -353,6 +353,7 @@ export type PublicStats = {
 
 export type Post = {
   id: number;
+  publicId?: string;
   author: User;
   room: Pick<Room, "slug" | "name" | "accent">;
   body: string;
@@ -381,6 +382,7 @@ export type Post = {
 
 export type PostShareSummary = {
   id: number;
+  publicId?: string;
   canonicalPath: string;
   canonicalUrl: string;
   bodySnippet: string;

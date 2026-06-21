@@ -192,9 +192,11 @@ test("PostCard share modal copies, saves, and sends typed post attachments", asy
   });
 
   await mockAuthenticatedApi(page);
+  const publicId = "pabc123def456";
   const post = makePost({
-    canonicalPath: "/@alex/posts/42",
-    canonicalUrl: "https://thia.lol/@alex/posts/42",
+    publicId,
+    canonicalPath: `/@alex/posts/${publicId}`,
+    canonicalUrl: `https://thia.lol/@alex/posts/${publicId}`,
   });
   const moot = {
     id: 7,
@@ -221,7 +223,7 @@ test("PostCard share modal copies, saves, and sends typed post attachments", asy
       body: JSON.stringify({ ok: true, data: [moot] }),
     }),
   );
-  await page.route("**/api/posts/42/shares/messages", async (route) => {
+  await page.route(`**/api/posts/${publicId}/shares/messages`, async (route) => {
     sharePayload = route.request().postDataJSON() as Record<string, unknown>;
     await route.fulfill({
       status: 201,
@@ -231,8 +233,9 @@ test("PostCard share modal copies, saves, and sends typed post attachments", asy
         data: {
           post: {
             id: 42,
-            canonicalPath: "/@alex/posts/42",
-            canonicalUrl: "https://thia.lol/@alex/posts/42",
+            publicId,
+            canonicalPath: `/@alex/posts/${publicId}`,
+            canonicalUrl: `https://thia.lol/@alex/posts/${publicId}`,
             bodySnippet: "A public post.",
             createdAt: "2026-06-10 10:00:00",
             mediaUrl: null,
@@ -254,7 +257,7 @@ test("PostCard share modal copies, saves, and sends typed post attachments", asy
       }),
     });
   });
-  await page.route("**/api/posts/42/share-card.png", (route) =>
+  await page.route(`**/api/posts/${publicId}/share-card.png`, (route) =>
     route.fulfill({
       contentType: "image/png",
       body: Buffer.from(
@@ -277,15 +280,15 @@ test("PostCard share modal copies, saves, and sends typed post attachments", asy
     .poll(() =>
       page.evaluate(() => (window as unknown as { __copiedText?: string }).__copiedText),
     )
-    .toBe("https://thia.lol/@alex/posts/42");
+    .toBe(`https://thia.lol/@alex/posts/${publicId}`);
 
   await expect(modal.getByTestId("post-share-save-image")).toHaveAttribute(
     "href",
-    "/api/posts/42/share-card.png",
+    `/api/posts/${publicId}/share-card.png`,
   );
   await expect(modal.getByTestId("post-share-save-image")).toHaveAttribute(
     "download",
-    "thia-post-42.png",
+    `thia-post-${publicId}.png`,
   );
 
   await expect(modal.getByTestId("post-share-moot-list")).toContainText("Moot Pal");
@@ -306,14 +309,16 @@ test("PostCard share modal copies, saves, and sends typed post attachments", asy
 
 test("post permalink route loads canonical post and replies", async ({ page }) => {
   await mockCommonApi(page);
-  await page.route("**/api/posts/42", (route) =>
+  const publicId = "pabc123def456";
+  await page.route(`**/api/posts/${publicId}`, (route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         ok: true,
         data: makePost({
-          canonicalPath: "/@alex/posts/42",
-          canonicalUrl: "https://thia.lol/@alex/posts/42",
+          publicId,
+          canonicalPath: `/@alex/posts/${publicId}`,
+          canonicalUrl: `https://thia.lol/@alex/posts/${publicId}`,
           commentCount: 1,
         }),
       }),
@@ -337,9 +342,9 @@ test("post permalink route loads canonical post and replies", async ({ page }) =
     }),
   );
 
-  await page.goto("/@stale/posts/42");
+  await page.goto(`/@stale/posts/${publicId}`);
 
-  await expect(page).toHaveURL(/\/@alex\/posts\/42$/);
+  await expect(page).toHaveURL(new RegExp(`/@alex/posts/${publicId}$`));
   await expect(page.getByRole("heading", { name: "Post", exact: true })).toBeVisible();
   await expect(page.getByText("A public post.")).toBeVisible();
   await expect(page.getByText("A permalink reply.")).toBeVisible();
@@ -347,7 +352,7 @@ test("post permalink route loads canonical post and replies", async ({ page }) =
 
 test("post permalink route shows unavailable state", async ({ page }) => {
   await mockCommonApi(page);
-  await page.route("**/api/posts/404", (route) =>
+  await page.route("**/api/posts/pnotfound1234", (route) =>
     route.fulfill({
       status: 404,
       contentType: "application/json",
@@ -355,7 +360,7 @@ test("post permalink route shows unavailable state", async ({ page }) => {
     }),
   );
 
-  await page.goto("/@alex/posts/404");
+  await page.goto("/@alex/posts/pnotfound1234");
 
   await expect(page.getByRole("heading", { name: "Post not found" })).toBeVisible();
   await expect(page.getByText("Post not found.")).toBeVisible();

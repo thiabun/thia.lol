@@ -66,9 +66,9 @@ function posts_dispatch(array $segments, string $method): void
         json_error('Method not allowed.', 405);
     }
 
-    if (count($segments) === 3 && preg_match('/^\d+$/', $segments[1]) === 1 && $segments[2] === 'share-card.png') {
+    if (count($segments) === 3 && post_route_identifier_is_valid($segments[1]) && $segments[2] === 'share-card.png') {
         if ($method === 'GET' || $method === 'HEAD') {
-            posts_share_card((int) $segments[1]);
+            posts_share_card($segments[1]);
         }
 
         json_error('Method not allowed.', 405);
@@ -76,30 +76,28 @@ function posts_dispatch(array $segments, string $method): void
 
     if (
         count($segments) === 4 &&
-        preg_match('/^\d+$/', $segments[1]) === 1 &&
+        post_route_identifier_is_valid($segments[1]) &&
         $segments[2] === 'shares' &&
         $segments[3] === 'messages'
     ) {
         if ($method === 'POST') {
-            posts_share_messages_create((int) $segments[1]);
+            posts_share_messages_create($segments[1]);
         }
 
         json_error('Method not allowed.', 405);
     }
 
-    if (count($segments) === 2 && preg_match('/^\d+$/', $segments[1]) === 1) {
-        $postId = (int) $segments[1];
-
+    if (count($segments) === 2 && post_route_identifier_is_valid($segments[1])) {
         if ($method === 'GET' || $method === 'HEAD') {
-            posts_show($postId);
+            posts_show($segments[1]);
         }
 
-        if ($method === 'PATCH') {
-            posts_update($postId);
+        if (preg_match('/^\d+$/', $segments[1]) === 1 && $method === 'PATCH') {
+            posts_update((int) $segments[1]);
         }
 
-        if ($method === 'DELETE') {
-            posts_delete($postId);
+        if (preg_match('/^\d+$/', $segments[1]) === 1 && $method === 'DELETE') {
+            posts_delete((int) $segments[1]);
         }
     }
 
@@ -108,9 +106,9 @@ function posts_dispatch(array $segments, string $method): void
     }
 }
 
-function posts_show(int $postId): void
+function posts_show(string $postIdentifier): void
 {
-    $post = fetch_public_post_payload_by_id($postId, current_request_user_id());
+    $post = fetch_public_post_payload_by_identifier($postIdentifier, current_request_user_id());
     $post['canonicalPath'] = post_canonical_path($post);
     $post['canonicalUrl'] = post_canonical_url($post);
 
@@ -129,20 +127,31 @@ function posts_create(): void
     $mood = validate_optional_text($body['mood'] ?? null, 80, 'Mood');
     $mediaUrl = validate_post_media_url($body['mediaUrl'] ?? $body['media_url'] ?? null);
 
-    db_query(
-        'INSERT INTO posts (author_id, room_id, parent_id, body, mood, media_url, visibility, status)
-         VALUES (:author_id, :room_id, :parent_id, :body, :mood, :media_url, :visibility, :status)',
-        [
-            'author_id' => (int) $session['user_id'],
-            'room_id' => $roomId,
-            'parent_id' => $parentId,
-            'body' => $postBody,
-            'mood' => $mood ?? 'sunveil',
-            'media_url' => $mediaUrl,
-            'visibility' => 'public',
-            'status' => 'published',
-        ]
-    );
+    $params = [
+        'author_id' => (int) $session['user_id'],
+        'room_id' => $roomId,
+        'parent_id' => $parentId,
+        'body' => $postBody,
+        'mood' => $mood ?? 'sunveil',
+        'media_url' => $mediaUrl,
+        'visibility' => 'public',
+        'status' => 'published',
+    ];
+
+    if (posts_public_id_column_exists()) {
+        $params['public_id'] = posts_generate_public_id();
+        db_query(
+            'INSERT INTO posts (public_id, author_id, room_id, parent_id, body, mood, media_url, visibility, status)
+             VALUES (:public_id, :author_id, :room_id, :parent_id, :body, :mood, :media_url, :visibility, :status)',
+            $params
+        );
+    } else {
+        db_query(
+            'INSERT INTO posts (author_id, room_id, parent_id, body, mood, media_url, visibility, status)
+             VALUES (:author_id, :room_id, :parent_id, :body, :mood, :media_url, :visibility, :status)',
+            $params
+        );
+    }
 
     $postId = (int) db()->lastInsertId();
     text_entities_store_for_content('post', $postId, 'body', $postBody, (int) $session['user_id'], [
@@ -378,7 +387,7 @@ function posts_delete(int $postId): void
     ]);
 }
 
-function posts_share_messages_create(int $postId): void
+function posts_share_messages_create(string $postIdentifier): void
 {
     $session = require_authenticated_session();
     require_csrf_token($session);
@@ -387,7 +396,8 @@ function posts_share_messages_create(int $postId): void
     require_message_attachments_table();
 
     $senderUserId = (int) $session['user_id'];
-    $post = fetch_public_post_payload_by_id($postId, $senderUserId);
+    $post = fetch_public_post_payload_by_identifier($postIdentifier, $senderUserId);
+    $postId = (int) $post['id'];
     $body = request_json_body();
     $recipientIds = validate_post_share_recipient_ids($body['recipientUserIds'] ?? null);
     $note = validate_post_share_note($body['note'] ?? null);
@@ -540,9 +550,9 @@ function post_share_result(int $recipientUserId, string $status, string $error):
     ];
 }
 
-function posts_share_card(int $postId): void
+function posts_share_card(string $postIdentifier): void
 {
-    $post = fetch_public_post_payload_by_id($postId, current_request_user_id());
+    $post = fetch_public_post_payload_by_identifier($postIdentifier, current_request_user_id());
     $headOnly = $_SERVER['REQUEST_METHOD'] === 'HEAD';
 
     if (!extension_loaded('gd') || !function_exists('imagecreatetruecolor')) {
@@ -573,9 +583,10 @@ function posts_share_card(int $postId): void
     imagefilledrectangle($image, 44, 44, 1156, 586, $panel);
     imagerectangle($image, 44, 44, 1156, 586, $line);
 
+    posts_share_card_draw_lockup($image);
     posts_share_card_draw_thumbnail($image, $post);
 
-    $font = posts_share_card_font_path();
+    $fonts = posts_share_card_font_paths();
     $left = 92;
     $top = 92;
     $author = (string) ($post['author']['displayName'] ?? $post['author']['handle'] ?? 'thia.lol');
@@ -583,15 +594,35 @@ function posts_share_card(int $postId): void
     $snippet = post_body_snippet((string) ($post['body'] ?? ''), 250);
     $canonical = post_canonical_path($post);
 
-    posts_share_card_text($image, $font, 24, $left, $top, $accent, 'thia.lol');
-    posts_share_card_text($image, $font, 38, $left, $top + 74, $text, $author);
-    posts_share_card_text($image, $font, 22, $left, $top + 116, $muted, $handle);
-    posts_share_card_wrapped_text($image, $font, 28, $left, $top + 178, $text, $snippet, 620, 4);
-    posts_share_card_text($image, $font, 18, $left, 538, $muted, $canonical);
+    posts_share_card_text($image, $fonts, 38, $left, $top + 86, $text, $author);
+    posts_share_card_text($image, $fonts, 22, $left, $top + 128, $muted, $handle);
+    posts_share_card_wrapped_text($image, $fonts, 28, $left, $top + 190, $text, $snippet, 620, 4);
+    posts_share_card_text($image, $fonts, 18, $left, 538, $muted, $canonical);
 
     imagepng($image);
-    imagedestroy($image);
     exit;
+}
+
+function post_route_identifier_is_valid(string $identifier): bool
+{
+    return normalize_post_public_identifier($identifier) !== null;
+}
+
+function posts_generate_public_id(): string
+{
+    for ($attempt = 0; $attempt < 8; $attempt++) {
+        $publicId = 'p' . bin2hex(random_bytes(6));
+        $statement = db_query(
+            'SELECT id FROM posts WHERE public_id = :public_id LIMIT 1',
+            ['public_id' => $publicId]
+        );
+
+        if ($statement->fetch() === false) {
+            return $publicId;
+        }
+    }
+
+    json_error('Could not create a post id. Try again.', 503);
 }
 
 function posts_share_card_png_headers(): void
@@ -632,14 +663,30 @@ function posts_share_card_fallback(bool $headOnly = false): void
     exit;
 }
 
-function posts_share_card_font_path(): ?string
+function posts_share_card_font_paths(): array
 {
-    foreach ([
+    $primary = posts_share_card_first_existing_path([
+        __DIR__ . '/assets/fonts/NotoSans-Regular.ttf',
         '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
         '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
         '/System/Library/Fonts/Supplemental/Arial.ttf',
         '/Library/Fonts/Arial.ttf',
-    ] as $path) {
+    ]);
+    $emoji = posts_share_card_first_existing_path([
+        __DIR__ . '/assets/fonts/NotoEmoji-Regular.ttf',
+        '/usr/share/fonts/truetype/noto/NotoEmoji-Regular.ttf',
+        '/usr/share/fonts/truetype/noto/NotoEmoji.ttf',
+    ]);
+
+    return [
+        'primary' => $primary,
+        'emoji' => $emoji,
+    ];
+}
+
+function posts_share_card_first_existing_path(array $paths): ?string
+{
+    foreach ($paths as $path) {
         if (is_file($path)) {
             return $path;
         }
@@ -648,10 +695,49 @@ function posts_share_card_font_path(): ?string
     return null;
 }
 
-function posts_share_card_text($image, ?string $font, int $size, int $x, int $y, int $color, string $text): void
+function posts_share_card_text($image, array $fonts, int $size, int $x, int $y, int $color, string $text): void
 {
-    if ($font !== null && function_exists('imagettftext')) {
-        imagettftext($image, $size, 0, $x, $y, $color, $font, $text);
+    $primaryFont = $fonts['primary'] ?? null;
+    $emojiFont = $fonts['emoji'] ?? null;
+
+    if ($primaryFont !== null && function_exists('imagettftext')) {
+        $cursorX = $x;
+        $textBuffer = '';
+        $flushText = function () use ($image, $primaryFont, $size, $y, $color, &$cursorX, &$textBuffer): void {
+            if ($textBuffer === '') {
+                return;
+            }
+
+            @imagettftext($image, $size, 0, $cursorX, $y, $color, $primaryFont, $textBuffer);
+            $cursorX += posts_share_card_ttf_text_width($primaryFont, $size, $textBuffer);
+            $textBuffer = '';
+        };
+
+        foreach (posts_share_card_graphemes($text) as $grapheme) {
+            if (!posts_share_card_is_emoji($grapheme)) {
+                $textBuffer .= $grapheme;
+                continue;
+            }
+
+            $flushText();
+
+            if (posts_share_card_draw_emoji($image, $grapheme, $cursorX, $y, $size)) {
+                $cursorX += posts_share_card_emoji_advance($size);
+                continue;
+            }
+
+            $font = $emojiFont ?? $primaryFont;
+            $result = @imagettftext($image, $size, 0, $cursorX, $y, $color, $font, $grapheme);
+
+            if ($result === false && $font !== $primaryFont) {
+                $result = @imagettftext($image, $size, 0, $cursorX, $y, $color, $primaryFont, $grapheme);
+            }
+
+            $cursorX += posts_share_card_ttf_text_width($font, $size, $grapheme);
+        }
+
+        $flushText();
+
         return;
     }
 
@@ -660,7 +746,7 @@ function posts_share_card_text($image, ?string $font, int $size, int $x, int $y,
 
 function posts_share_card_wrapped_text(
     $image,
-    ?string $font,
+    array $fonts,
     int $size,
     int $x,
     int $y,
@@ -676,7 +762,7 @@ function posts_share_card_wrapped_text(
     foreach ($words as $word) {
         $candidate = trim($line . ' ' . $word);
 
-        if ($line !== '' && posts_share_card_text_width($font, $size, $candidate) > $maxWidth) {
+        if ($line !== '' && posts_share_card_text_width($fonts, $size, $candidate) > $maxWidth) {
             $lines[] = $line;
             $line = $word;
 
@@ -699,14 +785,48 @@ function posts_share_card_wrapped_text(
             $lineText = rtrim($lineText, '.,;:- ') . '...';
         }
 
-        posts_share_card_text($image, $font, $size, $x, $y + ($index * 42), $color, $lineText);
+        posts_share_card_text($image, $fonts, $size, $x, $y + ($index * 42), $color, $lineText);
     }
 }
 
-function posts_share_card_text_width(?string $font, int $size, string $text): int
+function posts_share_card_text_width(array $fonts, int $size, string $text): int
+{
+    $primaryFont = $fonts['primary'] ?? null;
+
+    if ($primaryFont !== null && function_exists('imagettfbbox')) {
+        $width = 0;
+        $textBuffer = '';
+        $flushWidth = function () use ($primaryFont, $size, &$width, &$textBuffer): void {
+            if ($textBuffer === '') {
+                return;
+            }
+
+            $width += posts_share_card_ttf_text_width($primaryFont, $size, $textBuffer);
+            $textBuffer = '';
+        };
+
+        foreach (posts_share_card_graphemes($text) as $grapheme) {
+            if (posts_share_card_is_emoji($grapheme)) {
+                $flushWidth();
+                $width += posts_share_card_emoji_advance($size);
+                continue;
+            }
+
+            $textBuffer .= $grapheme;
+        }
+
+        $flushWidth();
+
+        return $width;
+    }
+
+    return strlen($text) * 10;
+}
+
+function posts_share_card_ttf_text_width(?string $font, int $size, string $text): int
 {
     if ($font !== null && function_exists('imagettfbbox')) {
-        $box = imagettfbbox($size, 0, $font, $text);
+        $box = @imagettfbbox($size, 0, $font, $text);
 
         if (is_array($box)) {
             return abs((int) $box[2] - (int) $box[0]);
@@ -714,6 +834,213 @@ function posts_share_card_text_width(?string $font, int $size, string $text): in
     }
 
     return strlen($text) * 10;
+}
+
+function posts_share_card_graphemes(string $text): array
+{
+    if (function_exists('grapheme_extract')) {
+        $clusters = [];
+        $offset = 0;
+        $length = strlen($text);
+
+        while ($offset < $length) {
+            $nextOffset = 0;
+            $cluster = grapheme_extract($text, 1, GRAPHEME_EXTR_COUNT, $offset, $nextOffset);
+
+            if (!is_string($cluster) || $cluster === '') {
+                break;
+            }
+
+            $clusters[] = $cluster;
+            $offset = $nextOffset;
+        }
+
+        if ($clusters !== []) {
+            return $clusters;
+        }
+    }
+
+    if (preg_match_all('/\X/u', $text, $matches) === false) {
+        return str_split($text);
+    }
+
+    return $matches[0] ?? [];
+}
+
+function posts_share_card_is_emoji(string $text): bool
+{
+    $propertyMatch = @preg_match('/\p{Extended_Pictographic}|\p{Emoji_Presentation}|\x{FE0F}/u', $text);
+
+    if ($propertyMatch === 1) {
+        return true;
+    }
+
+    return preg_match('/[\x{1F000}-\x{1FAFF}\x{2600}-\x{27BF}]/u', $text) === 1;
+}
+
+function posts_share_card_draw_emoji($image, string $emoji, int $x, int $baselineY, int $textSize): bool
+{
+    $emojiImage = posts_share_card_emoji_image($emoji);
+
+    if ($emojiImage === null) {
+        return false;
+    }
+
+    $size = posts_share_card_emoji_size($textSize);
+    $y = (int) round($baselineY - $size + max(3, $textSize * 0.12));
+
+    imagecopyresampled(
+        $image,
+        $emojiImage,
+        $x,
+        $y,
+        0,
+        0,
+        $size,
+        $size,
+        imagesx($emojiImage),
+        imagesy($emojiImage)
+    );
+
+    return true;
+}
+
+function posts_share_card_emoji_image(string $emoji)
+{
+    static $cache = [];
+
+    $key = posts_share_card_emoji_key($emoji);
+
+    if ($key === null) {
+        return null;
+    }
+
+    if (array_key_exists($key, $cache)) {
+        return $cache[$key] ?: null;
+    }
+
+    $url = "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/{$key}.png";
+    $body = posts_share_card_fetch_allowlisted_asset($url);
+
+    if ($body === null) {
+        $cache[$key] = false;
+        return null;
+    }
+
+    $emojiImage = @imagecreatefromstring($body);
+    $cache[$key] = $emojiImage ?: false;
+
+    return $emojiImage ?: null;
+}
+
+function posts_share_card_emoji_key(string $emoji): ?string
+{
+    if (preg_match_all('/./us', $emoji, $matches) === false) {
+        return null;
+    }
+
+    $codes = [];
+
+    foreach ($matches[0] as $character) {
+        $codepoint = function_exists('mb_ord')
+            ? mb_ord($character, 'UTF-8')
+            : (class_exists('IntlChar') ? IntlChar::ord($character) : null);
+
+        if (!is_int($codepoint) || in_array($codepoint, [0xFE0E, 0xFE0F], true)) {
+            continue;
+        }
+
+        $codes[] = strtolower(dechex($codepoint));
+    }
+
+    return $codes === [] ? null : implode('-', $codes);
+}
+
+function posts_share_card_fetch_allowlisted_asset(string $url): ?string
+{
+    if (!function_exists('curl_init')) {
+        return null;
+    }
+
+    $parts = parse_url($url);
+
+    if (
+        ($parts['scheme'] ?? null) !== 'https'
+        || ($parts['host'] ?? null) !== 'cdn.jsdelivr.net'
+        || !str_starts_with((string) ($parts['path'] ?? ''), '/gh/twitter/twemoji@14.0.2/assets/72x72/')
+    ) {
+        return null;
+    }
+
+    $curl = curl_init($url);
+
+    if ($curl === false) {
+        return null;
+    }
+
+    curl_setopt_array($curl, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => false,
+        CURLOPT_CONNECTTIMEOUT_MS => 700,
+        CURLOPT_TIMEOUT_MS => 1200,
+        CURLOPT_USERAGENT => 'thia.lol share-card',
+    ]);
+
+    $body = curl_exec($curl);
+    $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+
+    if (!is_string($body) || $status !== 200 || strlen($body) > 200000) {
+        return null;
+    }
+
+    return $body;
+}
+
+function posts_share_card_emoji_size(int $textSize): int
+{
+    return max(18, (int) round($textSize * 1.18));
+}
+
+function posts_share_card_emoji_advance(int $textSize): int
+{
+    return posts_share_card_emoji_size($textSize) + 2;
+}
+
+function posts_share_card_draw_lockup($image): void
+{
+    if (!function_exists('imagecreatefrompng')) {
+        return;
+    }
+
+    foreach ([
+        dirname(__DIR__) . '/brand/thia-lockup-frostveil.png',
+        dirname(__DIR__) . '/public/brand/thia-lockup-frostveil.png',
+    ] as $path) {
+        if (!is_file($path)) {
+            continue;
+        }
+
+        $source = @imagecreatefrompng($path);
+
+        if (!$source) {
+            continue;
+        }
+
+        imagealphablending($source, true);
+        imagecopyresampled(
+            $image,
+            $source,
+            86,
+            70,
+            0,
+            0,
+            158,
+            70,
+            imagesx($source),
+            imagesy($source)
+        );
+        return;
+    }
 }
 
 function posts_share_card_draw_thumbnail($image, array $post): void
@@ -775,7 +1102,6 @@ function posts_share_card_draw_thumbnail($image, array $post): void
         $cropWidth,
         $cropHeight
     );
-    imagedestroy($source);
 
     $line = imagecolorallocate($image, 65, 126, 146);
     imagerectangle($image, $targetX, $targetY, $targetX + $targetWidth, $targetY + $targetHeight, $line);
@@ -1335,8 +1661,13 @@ function fetch_post_payload_by_id(int $postId, ?int $currentUserId = null): arra
 
 function post_payload_select_sql(string $whereClause, string $tailClause = 'LIMIT 1'): string
 {
+    $publicIdSelect = posts_public_id_column_exists()
+        ? 'p.public_id AS post_public_id,'
+        : 'NULL AS post_public_id,';
+
     return "SELECT
         p.id AS post_id,
+        {$publicIdSelect}
         p.parent_id AS post_parent_id,
         p.body AS post_body,
         p.mood AS post_mood,
