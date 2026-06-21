@@ -22,12 +22,7 @@ export function RichText({
   const resolvedEntities =
     entities && entities.length > 0 ? entities : fallbackEntities(text);
   const inlineEntities = normalizedInlineEntities(text, resolvedEntities);
-  const previewCards = showPreviews
-    ? inlineEntities
-        .filter((entity) => entity.type === "link" && entity.link.card)
-        .filter(uniqueLinkEntity)
-        .slice(0, 3)
-    : [];
+  const previewCards = showPreviews ? richLinkPreviewItems(inlineEntities).slice(0, 3) : [];
 
   return (
     <>
@@ -38,15 +33,13 @@ export function RichText({
       </span>
       {previewCards.length > 0 ? (
         <div className={cn("mt-3 grid gap-2", previewClassName)}>
-          {previewCards.map((entity) =>
-            entity.type === "link" && entity.link.card ? (
-              <RichLinkPreview
-                key={`${entity.start}:${entity.link.url}`}
-                card={entity.link.card}
-                url={entity.link.url}
-              />
-            ) : null,
-          )}
+          {previewCards.map((item) => (
+            <RichLinkPreview
+              key={`${item.start}:${item.url}`}
+              card={item.card}
+              url={item.url}
+            />
+          ))}
         </div>
       ) : null}
     </>
@@ -125,23 +118,6 @@ function normalizedInlineEntities(
     });
 
   return result;
-}
-
-function uniqueLinkEntity(
-  entity: RichTextEntity,
-  index: number,
-  entities: RichTextEntity[],
-) {
-  if (entity.type !== "link") {
-    return false;
-  }
-
-  return (
-    entities.findIndex(
-      (candidate) =>
-        candidate.type === "link" && candidate.link.url === entity.link.url,
-    ) === index
-  );
 }
 
 function fallbackEntities(text: string): RichTextEntity[] {
@@ -242,6 +218,299 @@ function safeHttpsUrl(value: string): string | undefined {
   }
 }
 
+type RichLinkPreviewItem = {
+  card: RichLinkCard;
+  start: number;
+  url: string;
+};
+
+function richLinkPreviewItems(entities: RichTextEntity[]): RichLinkPreviewItem[] {
+  const seen = new Set<string>();
+  const items: RichLinkPreviewItem[] = [];
+
+  for (const entity of entities) {
+    if (entity.type !== "link" || seen.has(entity.link.url)) {
+      continue;
+    }
+
+    seen.add(entity.link.url);
+
+    const card = entity.link.card ?? fallbackCardForUrl(entity.link.url);
+
+    if (!card) {
+      continue;
+    }
+
+    items.push({
+      card,
+      start: entity.start,
+      url: entity.link.url,
+    });
+  }
+
+  return items;
+}
+
+function fallbackCardForUrl(value: string): RichLinkCard | undefined {
+  const safeUrl = safeHttpsUrl(value);
+
+  if (!safeUrl) {
+    return undefined;
+  }
+
+  const url = new URL(safeUrl);
+
+  return (
+    fallbackYouTubeCard(url) ??
+    fallbackSpotifyCard(url) ??
+    fallbackAppleMusicCard(url) ??
+    fallbackTwitchCard(url) ??
+    fallbackWebsiteCard(url)
+  );
+}
+
+function fallbackYouTubeCard(url: URL): RichLinkCard | undefined {
+  const host = normalizedHost(url);
+  const segments = pathSegments(url);
+
+  if (!["youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"].includes(host)) {
+    return undefined;
+  }
+
+  const playlistId = cleanProviderId(url.searchParams.get("list") ?? "");
+  let resourceType = "video";
+  let resourceId = "";
+
+  if (host === "youtu.be") {
+    resourceId = cleanProviderId(segments[0] ?? "");
+  } else if ((segments[0] ?? "") === "watch") {
+    resourceId = cleanProviderId(url.searchParams.get("v") ?? "");
+  } else if (["shorts", "live", "embed"].includes(segments[0] ?? "")) {
+    resourceId = cleanProviderId(segments[1] ?? "");
+  }
+
+  if (!resourceId && playlistId) {
+    resourceType = "playlist";
+    resourceId = playlistId;
+  }
+
+  if (!resourceId) {
+    return undefined;
+  }
+
+  const sourceUrl =
+    resourceType === "playlist"
+      ? `https://www.youtube.com/playlist?list=${encodeURIComponent(resourceId)}`
+      : `https://www.youtube.com/watch?v=${encodeURIComponent(resourceId)}`;
+  const embedSrc =
+    resourceType === "playlist"
+      ? `https://www.youtube-nocookie.com/embed/videoseries?list=${encodeURIComponent(resourceId)}`
+      : `https://www.youtube-nocookie.com/embed/${encodeURIComponent(resourceId)}`;
+
+  return fallbackProviderCard({
+    provider: "youtube",
+    resourceType,
+    resourceId,
+    resourceKey: `youtube:${resourceType}:${resourceId}`,
+    sourceUrl,
+    title: resourceType === "playlist" ? "YouTube playlist" : "YouTube video",
+    subtitle: host === "music.youtube.com" ? "YouTube Music" : "YouTube",
+    embed: {
+      type: "iframe",
+      src: embedSrc,
+      title: resourceType === "playlist" ? "YouTube playlist" : "YouTube video",
+      height: 220,
+      allow: "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share",
+    },
+  });
+}
+
+function fallbackSpotifyCard(url: URL): RichLinkCard | undefined {
+  if (normalizedHost(url) !== "open.spotify.com") {
+    return undefined;
+  }
+
+  const [resourceType, rawResourceId] = pathSegments(url);
+  const resourceId = cleanProviderId(rawResourceId ?? "");
+  const supportedTypes = new Set(["album", "artist", "episode", "playlist", "show", "track"]);
+
+  if (!resourceType || !supportedTypes.has(resourceType) || !resourceId) {
+    return undefined;
+  }
+
+  const sourceUrl = `https://open.spotify.com/${resourceType}/${resourceId}`;
+
+  return fallbackProviderCard({
+    provider: "spotify",
+    resourceType,
+    resourceId,
+    resourceKey: `spotify:${resourceType}:${resourceId}`,
+    sourceUrl,
+    title: `Spotify ${resourceType}`,
+    subtitle: "Spotify",
+    embed: {
+      type: "iframe",
+      src: `https://open.spotify.com/embed/${resourceType}/${resourceId}?theme=0`,
+      title: `Spotify ${resourceType}`,
+      height: resourceType === "track" ? 80 : 152,
+      allow: "autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture",
+    },
+  });
+}
+
+function fallbackAppleMusicCard(url: URL): RichLinkCard | undefined {
+  const host = normalizedHost(url);
+
+  if (!["music.apple.com", "itunes.apple.com"].includes(host) || url.pathname === "/") {
+    return undefined;
+  }
+
+  const segments = pathSegments(url);
+  const resourceType = segments.includes("playlist")
+    ? "playlist"
+    : segments.includes("album")
+      ? "album"
+      : "song";
+  const resourceId = cleanProviderId(segments.at(-1) ?? url.searchParams.get("i") ?? "");
+
+  if (!resourceId) {
+    return undefined;
+  }
+
+  return fallbackProviderCard({
+    provider: "apple_music",
+    resourceType,
+    resourceId,
+    resourceKey: `apple_music:${resourceType}:${resourceId}`,
+    sourceUrl: url.toString(),
+    title: `Apple Music ${resourceType}`,
+    subtitle: "Apple Music",
+    embed: {
+      type: "iframe",
+      src: `https://embed.music.apple.com${url.pathname}${url.search}`,
+      title: `Apple Music ${resourceType}`,
+      height: 152,
+      allow: "autoplay; encrypted-media",
+    },
+  });
+}
+
+function fallbackTwitchCard(url: URL): RichLinkCard | undefined {
+  if (!["twitch.tv", "www.twitch.tv"].includes(normalizedHost(url))) {
+    return undefined;
+  }
+
+  const segments = pathSegments(url);
+  const isVideo = segments[0] === "videos" && Boolean(segments[1]);
+  const resourceType = isVideo ? "video" : "channel";
+  const resourceId = cleanProviderId(isVideo ? segments[1] ?? "" : segments[0] ?? "");
+
+  if (!resourceId) {
+    return undefined;
+  }
+
+  const embedQuery = isVideo ? `video=${resourceId}` : `channel=${resourceId}`;
+
+  return fallbackProviderCard({
+    provider: "twitch",
+    resourceType,
+    resourceId,
+    resourceKey: `twitch:${resourceType}:${resourceId}`,
+    sourceUrl: url.toString(),
+    title: isVideo ? "Twitch video" : "Twitch stream",
+    subtitle: "Twitch",
+    embed: {
+      type: "iframe",
+      src: `https://player.twitch.tv/?${embedQuery}&muted=true&autoplay=false`,
+      title: isVideo ? "Twitch video" : "Twitch stream",
+      height: 220,
+      allow: "autoplay; fullscreen; picture-in-picture",
+    },
+  });
+}
+
+function fallbackWebsiteCard(url: URL): RichLinkCard {
+  const host = url.hostname;
+  const sourceUrl = url.toString();
+  const resourceId = stableUrlHash(sourceUrl);
+
+  return fallbackProviderCard({
+    provider: "website",
+    resourceType: "url",
+    resourceId,
+    resourceKey: `website:url:${resourceId}`,
+    sourceUrl,
+    title: host,
+    subtitle: host,
+    embed: null,
+  });
+}
+
+function fallbackProviderCard({
+  embed,
+  provider,
+  resourceId,
+  resourceKey,
+  resourceType,
+  sourceUrl,
+  subtitle,
+  title,
+}: {
+  embed: RichLinkCard["embed"];
+  provider: RichLinkCard["provider"];
+  resourceId: string;
+  resourceKey: string;
+  resourceType: string;
+  sourceUrl: string;
+  subtitle: string;
+  title: string;
+}): RichLinkCard {
+  return {
+    provider,
+    resourceType,
+    resourceId,
+    resourceKey,
+    sourceUrl,
+    metadata: {
+      title,
+      subtitle,
+      description: null,
+      imageUrl: null,
+      live: false,
+      stats: {},
+    },
+    embed,
+    apiBacked: false,
+    fetchedAt: null,
+    expiresAt: null,
+    staleAt: null,
+    stale: false,
+    lastError: null,
+  };
+}
+
+function normalizedHost(url: URL): string {
+  return url.hostname.toLowerCase().replace(/^www\./, "");
+}
+
+function pathSegments(url: URL): string[] {
+  return url.pathname.split("/").filter(Boolean);
+}
+
+function cleanProviderId(value: string): string {
+  return value.replace(/[^A-Za-z0-9_-]/g, "");
+}
+
+function stableUrlHash(value: string): string {
+  let hash = 0;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (Math.imul(31, hash) + value.charCodeAt(index)) | 0;
+  }
+
+  return Math.abs(hash).toString(36);
+}
+
 function RichLinkPreview({ card, url }: { card: RichLinkCard; url: string }) {
   const embedSrc = safeEmbedSrc(card);
   const title = card.metadata.title ?? hostnameLabel(url);
@@ -251,6 +520,7 @@ function RichLinkPreview({ card, url }: { card: RichLinkCard; url: string }) {
     return (
       <span
         className="block overflow-hidden rounded-card border border-line bg-canvas/60"
+        data-thread-open-ignore
         data-testid="rich-link-preview"
       >
         <iframe
@@ -281,6 +551,7 @@ function RichLinkPreview({ card, url }: { card: RichLinkCard; url: string }) {
       href={url}
       rel="noopener noreferrer"
       target="_blank"
+      data-thread-open-ignore
       data-testid="rich-link-preview"
     >
       <span className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-card border border-line bg-surface/80 text-muted">

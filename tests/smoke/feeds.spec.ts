@@ -626,6 +626,88 @@ test("feed, thread, and profile surfaces render rich text entities", async ({
   await expect(dialog.getByText("Reply card")).toBeVisible();
 });
 
+test("post links without stored cards render fallback previews and embeds", async ({
+  page,
+}) => {
+  await mockAuthenticatedApi(page);
+  await page.route(/^https:\/\/www\.youtube-nocookie\.com\/embed\//, (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><html><body>YouTube fallback embed stub</body></html>",
+    }),
+  );
+
+  const body = "Watch https://youtu.be/abc123 and read https://example.com/story";
+  const replyBody = "Reply with https://www.youtube.com/shorts/short456";
+
+  await page.route("**/api/feed/home", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          posts: [makePost({ body })],
+          personalized: true,
+        },
+      }),
+    }),
+  );
+  await page.route("**/api/posts/42/replies", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: [
+          makePost({
+            id: 50,
+            parentId: 42,
+            body: replyBody,
+            bodyEntities: [
+              richLinkEntityWithoutCard(
+                replyBody,
+                "https://www.youtube.com/shorts/short456",
+              ),
+            ],
+          }),
+        ],
+      }),
+    }),
+  );
+
+  await page.goto("/");
+
+  const postCard = page.getByTestId("post-card-open-thread").first();
+  await expect(postCard.getByTestId("rich-inline-link").first()).toHaveAttribute(
+    "href",
+    "https://youtu.be/abc123",
+  );
+  await expect(postCard.getByTestId("rich-link-embed-youtube")).toBeVisible();
+  await expect(postCard.getByTestId("rich-link-embed-youtube")).toHaveAttribute(
+    "src",
+    "https://www.youtube-nocookie.com/embed/abc123",
+  );
+
+  const genericPreview = postCard.getByTestId("rich-link-preview").filter({
+    hasText: "example.com",
+  });
+  await expect(genericPreview).toBeVisible();
+  await expect(genericPreview.locator("iframe")).toHaveCount(0);
+
+  await postCard.getByText("YouTube video").click();
+  await expect(page.getByTestId("thread-modal")).toHaveCount(0);
+
+  await postCard.focus();
+  await page.keyboard.press("Enter");
+  const dialog = page.getByTestId("thread-modal");
+  await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByTestId("thread-root-post").getByTestId("rich-link-embed-youtube"),
+  ).toBeVisible();
+  await expect(
+    dialog.getByTestId("thread-reply-item").getByTestId("rich-link-embed-youtube"),
+  ).toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/short456");
+});
+
 test("Profile Feed renders API-backed reblogs", async ({ page }) => {
   await mockAuthenticatedApi(page);
   await page.route("**/api/profiles/alex", (route) =>
@@ -1810,6 +1892,18 @@ function richLinkEntity(body: string, url: string, card: Record<string, unknown>
     link: {
       url,
       card,
+    },
+  };
+}
+
+function richLinkEntityWithoutCard(body: string, url: string) {
+  return {
+    type: "link",
+    start: body.indexOf(url),
+    length: url.length,
+    text: url,
+    link: {
+      url,
     },
   };
 }
