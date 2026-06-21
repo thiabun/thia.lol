@@ -584,11 +584,12 @@ function posts_share_card(string $postIdentifier): void
     imagerectangle($image, 44, 44, 1156, 586, $line);
 
     posts_share_card_draw_lockup($image);
-    posts_share_card_draw_thumbnail($image, $post);
+    $hasThumbnail = posts_share_card_draw_thumbnail($image, $post);
 
     $fonts = posts_share_card_font_paths();
     $left = 92;
     $top = 92;
+    $bodyWidth = $hasThumbnail ? 620 : 940;
     $author = (string) ($post['author']['displayName'] ?? $post['author']['handle'] ?? 'thia.lol');
     $handle = '@' . (string) ($post['author']['handle'] ?? 'profile');
     $snippet = post_body_snippet((string) ($post['body'] ?? ''), 250);
@@ -596,7 +597,7 @@ function posts_share_card(string $postIdentifier): void
 
     posts_share_card_text($image, $fonts, 38, $left, $top + 86, $text, $author);
     posts_share_card_text($image, $fonts, 22, $left, $top + 128, $muted, $handle);
-    posts_share_card_wrapped_text($image, $fonts, 28, $left, $top + 190, $text, $snippet, 620, 4);
+    posts_share_card_wrapped_text($image, $fonts, 28, $left, $top + 190, $text, $snippet, $bodyWidth, 4);
     posts_share_card_text($image, $fonts, 18, $left, 538, $muted, $canonical);
 
     imagepng($image);
@@ -1043,30 +1044,24 @@ function posts_share_card_draw_lockup($image): void
     }
 }
 
-function posts_share_card_draw_thumbnail($image, array $post): void
+function posts_share_card_draw_thumbnail($image, array $post): bool
 {
     $mediaUrl = $post['mediaUrl'] ?? null;
 
     if (!is_string($mediaUrl) || $mediaUrl === '') {
-        $accent = imagecolorallocate($image, 244, 140, 173);
-        $soft = imagecolorallocate($image, 41, 82, 92);
-        imagefilledellipse($image, 930, 302, 280, 280, $soft);
-        imagefilledellipse($image, 944, 292, 138, 138, $accent);
-        imagefilledellipse($image, 906, 268, 42, 72, $accent);
-        imagefilledellipse($image, 982, 268, 42, 72, $accent);
-        return;
+        return false;
     }
 
     $path = posts_share_card_media_path($mediaUrl);
 
     if ($path === null || !function_exists('imagecreatefromwebp')) {
-        return;
+        return false;
     }
 
     $source = @imagecreatefromwebp($path);
 
     if (!$source) {
-        return;
+        return false;
     }
 
     $sourceWidth = imagesx($source);
@@ -1105,6 +1100,8 @@ function posts_share_card_draw_thumbnail($image, array $post): void
 
     $line = imagecolorallocate($image, 65, 126, 146);
     imagerectangle($image, $targetX, $targetY, $targetX + $targetWidth, $targetY + $targetHeight, $line);
+
+    return true;
 }
 
 function posts_share_card_media_path(string $mediaUrl): ?string

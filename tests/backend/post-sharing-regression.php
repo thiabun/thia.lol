@@ -58,6 +58,13 @@ assert_true(str_contains($postsSource, 'NotoSans-Regular.ttf'), 'share cards sho
 assert_true(str_contains($postsSource, 'NotoEmoji-Regular.ttf'), 'share cards should use bundled emoji fonts');
 assert_true(str_contains($postsSource, 'twemoji@14.0.2'), 'share cards should render emoji image fallbacks');
 assert_true(str_contains($postsSource, 'thia-lockup-frostveil.png'), 'share cards should render the real thia.lol lockup');
+assert_true(str_contains($postsSource, '$hasThumbnail = posts_share_card_draw_thumbnail($image, $post)'), 'share cards should know whether real media was drawn');
+assert_true(str_contains($postsSource, '$bodyWidth = $hasThumbnail ? 620 : 940'), 'share cards without media should use a wider text column');
+assert_true(str_contains($postsSource, 'function posts_share_card_draw_thumbnail($image, array $post): bool'), 'thumbnail drawing should report whether real media rendered');
+assert_true(str_contains($postsSource, "if (!is_string(\$mediaUrl) || \$mediaUrl === '') {\n        return false;\n    }"), 'missing post media should not draw a placeholder thumbnail');
+assert_true(!str_contains($postsSource, 'imagefilledellipse'), 'share cards should not draw decorative placeholder blobs for posts without media');
+assert_true(str_contains($postsSource, 'imagecreatefromwebp($path)'), 'valid uploaded media should still render as a WebP thumbnail');
+assert_true(str_contains($postsSource, "imagerectangle(\$image, \$targetX, \$targetY, \$targetX + \$targetWidth, \$targetY + \$targetHeight, \$line);\n\n    return true;"), 'thumbnail drawing should return true only after drawing real media');
 
 assert_true(is_string($chatSource), 'chat source should be readable');
 assert_true(str_contains($chatSource, 'function chat_insert_message'), 'chat message creation should be reusable');
