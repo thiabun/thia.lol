@@ -852,23 +852,60 @@ function profile_share_card_modules(int $userId): array
 
 function profile_share_card_module_config_for_preview(string $type, array $config, int $userId): array
 {
-    if (
-        function_exists('profile_integration_card_for_module') &&
-        !isset($config['integration']) &&
-        profile_share_card_module_url_can_resolve($config['url'] ?? null)
-    ) {
-        try {
-            $integration = profile_integration_card_for_module($config, $userId);
+    if (!isset($config['integration'])) {
+        $integration = profile_share_card_cached_integration_for_module($config);
 
-            if ($integration !== null) {
-                $config['integration'] = $integration;
-            }
-        } catch (Throwable) {
-            return $config;
+        if ($integration !== null) {
+            $config['integration'] = $integration;
         }
     }
 
     return $config;
+}
+
+function profile_share_card_cached_integration_for_module(array $config): ?array
+{
+    if (!profile_share_card_module_url_can_resolve($config['url'] ?? null)) {
+        return null;
+    }
+
+    if (
+        !function_exists('profile_integrations_storage_exists') ||
+        !function_exists('profile_integration_provider_from_platform') ||
+        !function_exists('profile_integration_normalize_url') ||
+        !function_exists('profile_integration_cache_record') ||
+        !function_exists('profile_integration_cache_payload')
+    ) {
+        return null;
+    }
+
+    try {
+        if (!profile_integrations_storage_exists()) {
+            return null;
+        }
+
+        $platform = is_string($config['platform'] ?? null) ? (string) $config['platform'] : null;
+        $provider = profile_integration_provider_from_platform($platform);
+        $normalized = profile_integration_normalize_url((string) $config['url'], $provider);
+
+        if (!is_array($normalized)) {
+            return null;
+        }
+
+        $record = profile_integration_cache_record($normalized['provider'], $normalized['resourceKey']);
+
+        if ($record === null) {
+            return null;
+        }
+
+        $stale = function_exists('profile_integration_cache_is_fresh')
+            ? !profile_integration_cache_is_fresh($record)
+            : false;
+
+        return profile_integration_cache_payload($record, $stale);
+    } catch (Throwable) {
+        return null;
+    }
 }
 
 function profile_share_card_module_url_can_resolve(mixed $value): bool
