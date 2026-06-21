@@ -142,8 +142,14 @@ assert_true($profileInfo === [], 'profile info config should be empty');
 $featuredPost = profile_module_config('featured_post', [], 123);
 assert_true($featuredPost === [], 'featured post config should be empty');
 
+$featuredPostWithRestoreSnapshot = profile_module_config('featured_post', ['restoreFeaturedPostId' => 42], 123);
+assert_true($featuredPostWithRestoreSnapshot === [], 'featured post restore snapshots should not block canvas saves');
+
 $featuredRoom = profile_module_config('featured_room', [], 123);
 assert_true($featuredRoom === [], 'featured room config should be empty');
+
+$featuredRoomWithRestoreSnapshot = profile_module_config('featured_room', ['restoreFeaturedRoomId' => 24], 123);
+assert_true($featuredRoomWithRestoreSnapshot === [], 'featured room restore snapshots should not block canvas saves');
 
 $customText = profile_module_config(
     'custom_text',

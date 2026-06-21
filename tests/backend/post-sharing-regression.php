@@ -97,6 +97,10 @@ assert_true(str_contains($postsSource, 'profile_share_card_activity_items'), 'ac
 assert_true(str_contains($postsSource, 'profile_share_card_plain_text'), 'text previews should strip markdown into safe plain text for GD drawing');
 assert_true(str_contains($postsSource, 'posts_share_card_draw_cover_uploaded_image'), 'profile share cards should render cover-style uploaded images');
 assert_true(str_contains($postsSource, 'posts_generate_public_id'), 'new posts should generate public ids');
+assert_true(
+    substr_count($postsSource, 'INSERT INTO posts (public_id, author_id, room_id, parent_id, body, mood, media_url, visibility, status)') >= 2,
+    'new posts and replies should both generate public ids when the public id column exists'
+);
 assert_true(str_contains($postsSource, 'NotoSans-Regular.ttf'), 'share cards should use bundled UTF-8 text fonts');
 assert_true(str_contains($postsSource, 'NotoEmoji-Regular.ttf'), 'share cards should use bundled emoji fonts');
 assert_true(str_contains($postsSource, 'twemoji@14.0.2'), 'share cards should render emoji image fallbacks');

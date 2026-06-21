@@ -3282,7 +3282,12 @@ function profile_module_config(string $type, mixed $value, int $userId): array
         json_error('Module config must be an object.', 422);
     }
 
-    unset($value['integration'], $value['hasBanner']);
+    unset(
+        $value['integration'],
+        $value['hasBanner'],
+        $value['restoreFeaturedPostId'],
+        $value['restoreFeaturedRoomId']
+    );
 
     $configured = null;
 

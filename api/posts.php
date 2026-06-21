@@ -200,20 +200,31 @@ function posts_reply_create(int $postId): void
     $postBody = validate_post_body($body['body'] ?? null);
     $mediaUrl = validate_post_media_url($body['mediaUrl'] ?? $body['media_url'] ?? null);
 
-    db_query(
-        'INSERT INTO posts (author_id, room_id, parent_id, body, mood, media_url, visibility, status)
-         VALUES (:author_id, :room_id, :parent_id, :body, :mood, :media_url, :visibility, :status)',
-        [
-            'author_id' => (int) $session['user_id'],
-            'room_id' => $parent['room_id'] === null ? null : (int) $parent['room_id'],
-            'parent_id' => $postId,
-            'body' => $postBody,
-            'mood' => $parent['mood'] ?? 'sunveil',
-            'media_url' => $mediaUrl,
-            'visibility' => 'public',
-            'status' => 'published',
-        ]
-    );
+    $params = [
+        'author_id' => (int) $session['user_id'],
+        'room_id' => $parent['room_id'] === null ? null : (int) $parent['room_id'],
+        'parent_id' => $postId,
+        'body' => $postBody,
+        'mood' => $parent['mood'] ?? 'sunveil',
+        'media_url' => $mediaUrl,
+        'visibility' => 'public',
+        'status' => 'published',
+    ];
+
+    if (posts_public_id_column_exists()) {
+        $params['public_id'] = posts_generate_public_id();
+        db_query(
+            'INSERT INTO posts (public_id, author_id, room_id, parent_id, body, mood, media_url, visibility, status)
+             VALUES (:public_id, :author_id, :room_id, :parent_id, :body, :mood, :media_url, :visibility, :status)',
+            $params
+        );
+    } else {
+        db_query(
+            'INSERT INTO posts (author_id, room_id, parent_id, body, mood, media_url, visibility, status)
+             VALUES (:author_id, :room_id, :parent_id, :body, :mood, :media_url, :visibility, :status)',
+            $params
+        );
+    }
 
     $replyId = (int) db()->lastInsertId();
     text_entities_store_for_content('post', $replyId, 'body', $postBody, (int) $session['user_id'], [
