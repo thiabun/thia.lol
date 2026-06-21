@@ -650,7 +650,7 @@ function SiteFooter() {
             data-testid="site-footer-brand"
           >
             <BrandLockup
-              className="h-7 w-auto max-w-[7.75rem]"
+              className="h-9 w-auto max-w-[10rem] sm:h-10 sm:max-w-[11rem]"
               data-testid="site-footer-brand-lockup"
             />
           </div>
