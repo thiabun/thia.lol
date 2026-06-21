@@ -79,6 +79,43 @@ test("profile appearance editor saves profile-scoped color themes", async ({ pag
       }),
     )
     .toBe(true);
+  await expect
+    .poll(() =>
+      saves.some((payload) => payload.profileTheme === "custom" && payload.profileAccent === "custom"),
+    )
+    .toBe(true);
+});
+
+test("profile appearance save flushes pending theme edits", async ({ page }) => {
+  const saves: Record<string, unknown>[] = [];
+  await mockOwnProfile(page, () => [], (payload) => saves.push(payload));
+
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+  await page.getByTestId("profile-edit-button").click();
+  await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
+  await page.getByTestId("profile-appearance-trigger").click();
+  await page.getByTestId("profile-theme-preset-roseveil").click();
+  await page.getByRole("button", { name: "Close appearance settings" }).click();
+  await page.getByTestId("profile-canvas-save-button").click();
+
+  await expect
+    .poll(() =>
+      saves.some((payload) => {
+        const config = payload.profileThemeConfig as { mode?: string; preset?: string } | undefined;
+
+        return config?.mode === "preset" && config.preset === "roseveil";
+      }),
+    )
+    .toBe(true);
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        document.documentElement.style.getPropertyValue("--app-accent").trim(),
+      ),
+    )
+    .toBe("#F48CA2");
 });
 
 test("mobile profile stays stable with compact profile editor", async ({ page }) => {

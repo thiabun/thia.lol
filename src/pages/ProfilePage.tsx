@@ -1126,6 +1126,10 @@ export function ProfilePage() {
     setCanvasError(undefined);
 
     try {
+      const latestProfile =
+        draftProfile
+          ? (await saveProfileContentImmediately(draftProfile)) ?? profile
+          : profile;
       await saveCanvasDraftImmediately(canvasDraft);
       const saved = await runWithAuth(
         (csrfToken) => commitProfileCanvasDraft(csrfToken),
@@ -1134,7 +1138,7 @@ export function ProfilePage() {
 
       setModulesOverride({ handle: normalizedHandle, modules: saved.modules });
       setProfileOverride({
-        ...profile,
+        ...latestProfile,
         profileBackgroundBlur: saved.backgroundBlur,
         profileCanvasGlass: saved.canvasGlass,
         profileCanvasVersion: saved.canvasVersion,
@@ -1194,15 +1198,15 @@ export function ProfilePage() {
   async function saveProfileContentImmediately(
     nextProfile: Profile,
     fallbackMessage = "Could not save profile edits.",
-  ) {
+  ): Promise<Profile | undefined> {
     if (!profile) {
-      return;
+      return undefined;
     }
 
     const input = profileContentAutosaveInput(nextProfile, profile);
 
     if (!input) {
-      return;
+      return undefined;
     }
 
     const requestId = profileContentAutosaveRequestRef.current + 1;
@@ -1226,6 +1230,7 @@ export function ProfilePage() {
       );
       setProfileContentAutosaveState("saved");
       setProfileContentAutosaveError(undefined);
+      return savedProfile;
     } catch (error) {
       const message = error instanceof Error ? error.message : fallbackMessage;
       setProfileContentAutosaveState("error");
@@ -2853,7 +2858,7 @@ function ProfileAppearanceControls({
       ...currentProfile,
       profileAccent:
         config?.mode === "custom"
-          ? config.colors.accent
+          ? "custom"
           : config?.mode === "preset"
             ? config.preset
             : null,
