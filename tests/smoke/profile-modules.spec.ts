@@ -1980,6 +1980,7 @@ test("profile info variants stay within each supported size", async ({ page }) =
       profileOverrides: {
         bannerUrl: "/uploads/media/2026/06/profile-banner.webp",
         bio: "A founder profile with enough bio text to prove this size does not clip its identity, actions, stats, and badges.",
+        isMoot: true,
       },
       modules: [
         withAuditLayout(
@@ -2014,6 +2015,31 @@ test("profile info variants stay within each supported size", async ({ page }) =
     await expect(module.getByTestId("profile-info-badge-row")).toHaveCount(0);
     if (["6x3", "8x3", "8x4"].includes(profileInfoCase.size)) {
       await expect(module.getByTestId("profile-info-inline-badges")).toContainText("Founder");
+      const profileInfoChipMetrics = await module
+        .getByTestId("profile-info-identity-row")
+        .evaluate((element) => {
+          const badgeElements = Array.from(
+            element.querySelectorAll<HTMLElement>("span"),
+          )
+            .filter((badge) => badge.className.includes("inline-flex"))
+            .map((badge) => {
+              const rect = badge.getBoundingClientRect();
+
+              return {
+                height: Math.round(rect.height),
+                text: badge.textContent?.trim() ?? "",
+              };
+            });
+
+          return {
+            featured: badgeElements.find((badge) => badge.text === "Founder"),
+            moot: badgeElements.find((badge) => badge.text === "Moot"),
+          };
+        });
+
+      expect(profileInfoChipMetrics.moot?.height).toBe(
+        profileInfoChipMetrics.featured?.height,
+      );
     } else {
       await expect(module.getByTestId("profile-info-inline-badges")).toHaveCount(0);
     }

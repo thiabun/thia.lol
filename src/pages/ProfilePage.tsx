@@ -6550,6 +6550,9 @@ type ProfileInfoCardLayout = {
   variant: "balanced" | "expanded" | "wide";
 };
 
+const profileInfoBadgeClass =
+  "!h-4 !min-h-0 max-w-20 shrink !px-1.5 !py-0 !text-[0.55rem] !font-semibold !leading-none";
+
 function profileInfoCardLayout(
   span: { columns: number; rows: number; size: ProfileGridModuleSize },
   mobileProjected: boolean,
@@ -6695,7 +6698,7 @@ function ProfileInfoSizedCard({
                 {profile.user.displayName}
               </h1>
               {!isOwnProfile && profile.isMoot ? (
-                <Badge className="min-h-5 px-1.5 text-[0.65rem]">Moot</Badge>
+                <Badge className={profileInfoBadgeClass}>Moot</Badge>
               ) : null}
             </div>
             <p className="truncate text-xs text-muted">@{profile.user.handle}</p>
@@ -6823,10 +6826,10 @@ function ProfileInfoSizedCard({
                   {profile.user.displayName}
                 </h1>
                 {!isOwnProfile && profile.isMoot ? (
-                  <Badge className="min-h-5 px-2 text-[0.68rem]">Moot</Badge>
+                  <Badge className={profileInfoBadgeClass}>Moot</Badge>
                 ) : null}
                 {!isOwnProfile && profile.mutedByMe ? (
-                  <Badge className="min-h-5 px-2 text-[0.68rem]" tone="cool">
+                  <Badge className={profileInfoBadgeClass} tone="cool">
                     Muted
                   </Badge>
                 ) : null}
@@ -7151,7 +7154,7 @@ function ProfileInfoInlineBadges({
       {visibleBadges.map((userBadge) => (
         <Badge
           key={userBadge.id}
-          className="!h-4 !min-h-0 max-w-20 shrink !px-1.5 !py-0 !text-[0.55rem] !font-semibold !leading-none"
+          className={profileInfoBadgeClass}
           data-profile-info-badge={userBadge.badge.badgeKey}
           title={userBadge.badge.description ?? userBadge.badge.name}
           tone={badgeTone(userBadge.badge.rarity)}
