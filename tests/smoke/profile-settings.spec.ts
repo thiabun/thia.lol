@@ -37,6 +37,50 @@ test("profile canvas editor replaces the retired customization modal", async ({ 
   await expect(page.getByTestId("profile-customization-modal")).toHaveCount(0);
 });
 
+test("profile appearance editor saves profile-scoped color themes", async ({ page }) => {
+  const saves: Record<string, unknown>[] = [];
+  await mockOwnProfile(page, () => [], (payload) => saves.push(payload));
+
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+  await page.getByTestId("profile-edit-button").click();
+  await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
+  await page.getByTestId("profile-appearance-trigger").click();
+  await expect(page.getByTestId("profile-appearance-popover")).toBeVisible();
+
+  await page.getByTestId("profile-theme-preset-roseveil").click();
+  await expect
+    .poll(() =>
+      saves.some((payload) => {
+        const config = payload.profileThemeConfig as { mode?: string; preset?: string } | undefined;
+
+        return config?.mode === "preset" && config.preset === "roseveil";
+      }),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        document.documentElement.style.getPropertyValue("--app-accent").trim(),
+      ),
+    )
+    .toBe("#F48CA2");
+
+  await page.getByTestId("profile-theme-custom-start").click();
+  await page.getByTestId("profile-theme-color-accent").fill("#3366FF");
+  await expect
+    .poll(() =>
+      saves.some((payload) => {
+        const config = payload.profileThemeConfig as
+          | { mode?: string; colors?: { accent?: string } }
+          | undefined;
+
+        return config?.mode === "custom" && config.colors?.accent === "#3366FF";
+      }),
+    )
+    .toBe(true);
+});
+
 test("mobile profile stays stable with compact profile editor", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockOwnProfile(page, () => []);
@@ -291,10 +335,24 @@ async function mockOwnProfile(
   await page.route("**/api/me/profile", async (route) => {
     const payload = (await route.request().postDataJSON()) as Record<string, unknown>;
     onSave?.(payload);
+    const savedOverrides: Partial<ProfileBody> = { ...profileOverrides };
+
+    if ("profileThemeConfig" in payload) {
+      savedOverrides.profileThemeConfig = payload.profileThemeConfig;
+    }
+
+    if ("profileTheme" in payload) {
+      savedOverrides.profileTheme = payload.profileTheme as string | null;
+    }
+
+    if ("profileAccent" in payload) {
+      savedOverrides.profileAccent = payload.profileAccent as string | null;
+    }
+
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: profileBody(links(), profileOverrides) }),
+      body: JSON.stringify({ ok: true, data: profileBody(links(), savedOverrides) }),
     });
   });
 
@@ -430,6 +488,7 @@ function profileBody(links: unknown[], overrides: Partial<ProfileBody> = {}): Pr
     profileBackground: null,
     profileBackgroundBlur: "medium",
     profileTheme: null,
+    profileThemeConfig: null,
     profileLayoutPreset: "balanced",
     profileCanvasGlass: 58,
     profileCanvasVersion: 2,
@@ -480,6 +539,7 @@ type ProfileBody = {
   profileBackground: string | null;
   profileBackgroundBlur: "none" | "soft" | "medium" | "heavy";
   profileTheme: string | null;
+  profileThemeConfig: unknown;
   profileLayoutPreset: "balanced" | "compact" | "showcase";
   profileCanvasGlass: number;
   profileCanvasVersion: 1 | 2;

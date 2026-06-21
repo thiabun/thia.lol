@@ -7,6 +7,7 @@ require_once __DIR__ . '/read.php';
 require_once __DIR__ . '/text_entities.php';
 
 const PROFILE_LAYOUT_PRESETS = ['balanced', 'compact', 'showcase'];
+const PROFILE_THEME_PRESETS = ['sunveil', 'frostveil', 'roseveil', 'leafveil', 'violet', 'ember', 'ocean'];
 
 function me_dispatch(array $segments, string $method): void
 {
@@ -171,7 +172,8 @@ function profile_update_statement_for_body(
     array $body,
     int $userId,
     ?bool $hasCustomizationColumns = null,
-    ?bool $hasLayoutPresetColumn = null
+    ?bool $hasLayoutPresetColumn = null,
+    ?bool $hasThemeConfigColumn = null
 ): array
 {
     if (array_is_list($body)) {
@@ -182,6 +184,7 @@ function profile_update_statement_for_body(
     $params = ['user_id' => $userId];
     $hasCustomizationColumns = $hasCustomizationColumns ?? profile_customization_columns_exist();
     $hasLayoutPresetColumn = $hasLayoutPresetColumn ?? profile_layout_preset_column_exists();
+    $hasThemeConfigColumn = $hasThemeConfigColumn ?? profile_theme_config_column_exists();
 
     if (array_key_exists('displayName', $body) || array_key_exists('display_name', $body)) {
         $updates[] = 'display_name = :display_name';
@@ -272,6 +275,13 @@ function profile_update_statement_for_body(
             'Theme'
         );
         add_profile_customization_update($updates, $params, $hasCustomizationColumns, 'profile_theme', $profileTheme);
+    }
+
+    if (array_key_exists('profileThemeConfig', $body) || array_key_exists('profile_theme_config_json', $body)) {
+        $profileThemeConfig = validate_profile_theme_config(
+            profile_body_value($body, 'profileThemeConfig', 'profile_theme_config_json')
+        );
+        add_profile_theme_config_update($updates, $params, $hasThemeConfigColumn, $profileThemeConfig);
     }
 
     if (array_key_exists('profileLayoutPreset', $body) || array_key_exists('profile_layout_preset', $body)) {
@@ -494,6 +504,7 @@ function profile_update_failed_on_missing_customization_column(PDOException $exc
             || str_contains($message, 'profile_background_video_url')
             || str_contains($message, 'profile_background_video_poster_url')
             || str_contains($message, 'profile_theme')
+            || str_contains($message, 'profile_theme_config_json')
             || str_contains($message, 'profile_layout_preset')
         );
 }
@@ -506,6 +517,7 @@ function profile_update_failed_on_invalid_json(PDOException $exception): bool
         && (
             str_contains($message, 'links')
             || str_contains($message, 'traits')
+            || str_contains($message, 'profile_theme_config_json')
             || str_contains($message, 'constraint')
             || str_contains($message, 'check')
         );
@@ -566,6 +578,24 @@ function add_profile_layout_preset_update(
 
     $updates[] = 'profile_layout_preset = :profile_layout_preset';
     $params['profile_layout_preset'] = $value;
+}
+
+function add_profile_theme_config_update(
+    array &$updates,
+    array &$params,
+    bool $hasThemeConfigColumn,
+    ?string $value
+): void {
+    if (!$hasThemeConfigColumn) {
+        if ($value !== null) {
+            json_error('Profile theme migration has not been applied.', 409);
+        }
+
+        return;
+    }
+
+    $updates[] = 'profile_theme_config_json = :profile_theme_config_json';
+    $params['profile_theme_config_json'] = $value;
 }
 
 function validate_profile_layout_preset(mixed $value): string
@@ -731,6 +761,85 @@ function validate_profile_token(mixed $value, string $label): ?string
     }
 
     return $trimmed;
+}
+
+function validate_profile_theme_config(mixed $value): ?string
+{
+    if ($value === null) {
+        return null;
+    }
+
+    if (is_string($value)) {
+        $trimmed = trim($value);
+
+        if ($trimmed === '') {
+            return null;
+        }
+
+        try {
+            $value = json_decode($trimmed, true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            json_error('Profile theme is invalid.', 422);
+        }
+    }
+
+    if (!is_array($value) || array_is_list($value)) {
+        json_error('Profile theme is invalid.', 422);
+    }
+
+    profile_theme_reject_unknown_keys($value, ['mode', 'preset', 'colors']);
+
+    $mode = $value['mode'] ?? null;
+
+    if ($mode === 'preset') {
+        $preset = $value['preset'] ?? null;
+
+        if (!is_string($preset) || !in_array($preset, PROFILE_THEME_PRESETS, true)) {
+            json_error('Choose a supported profile theme preset.', 422);
+        }
+
+        $normalized = ['mode' => 'preset', 'preset' => $preset];
+    } elseif ($mode === 'custom') {
+        $colors = $value['colors'] ?? null;
+
+        if (!is_array($colors) || array_is_list($colors)) {
+            json_error('Custom profile theme colors are invalid.', 422);
+        }
+
+        profile_theme_reject_unknown_keys($colors, profile_theme_color_keys());
+
+        $normalizedColors = [];
+        foreach (profile_theme_color_keys() as $key) {
+            $color = $colors[$key] ?? null;
+
+            if (!is_string($color) || preg_match('/^#[0-9a-fA-F]{6}$/', $color) !== 1) {
+                json_error('Custom profile theme colors must use #RRGGBB hex values.', 422);
+            }
+
+            $normalizedColors[$key] = strtoupper($color);
+        }
+
+        $normalized = ['mode' => 'custom', 'colors' => $normalizedColors];
+    } else {
+        json_error('Choose a supported profile theme mode.', 422);
+    }
+
+    $encoded = json_encode($normalized, JSON_THROW_ON_ERROR);
+
+    if (strlen($encoded) > 2048) {
+        json_error('Profile theme is too large.', 422);
+    }
+
+    return $encoded;
+}
+
+function profile_theme_reject_unknown_keys(array $body, array $allowed): void
+{
+    foreach (array_keys($body) as $key) {
+        if (!is_string($key) || !in_array($key, $allowed, true)) {
+            json_error('Unsupported profile theme field was provided.', 422);
+        }
+    }
 }
 
 function validate_profile_string_list(mixed $value, int $maxItems, int $maxLength, string $label): array

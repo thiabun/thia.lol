@@ -118,6 +118,7 @@ function profile_payload(array $row, ?array $stats = null, ?array $social = null
         'profileBackgroundVideoPoster' => $row['profile_background_video_poster_url'] ?? null,
         'profileBackgroundBlur' => profile_background_blur($row['profile_background_blur'] ?? null),
         'profileTheme' => $row['profile_theme'] ?? null,
+        'profileThemeConfig' => profile_theme_config_payload($row['profile_theme_config_json'] ?? null),
         'profileLayoutPreset' => profile_layout_preset($row['profile_layout_preset'] ?? null),
         'profileCanvasVersion' => profile_canvas_version($row['profile_canvas_version'] ?? null),
         'profileCanvasGlass' => profile_canvas_glass($row['profile_canvas_glass_opacity'] ?? null),
@@ -700,6 +701,9 @@ function profile_customization_select_sql(string $alias): string
             {$alias}.profile_background_video_poster_url,"
         : "NULL AS profile_background_video_url,
             NULL AS profile_background_video_poster_url,";
+    $themeConfigSelect = profile_theme_config_column_exists()
+        ? "{$alias}.profile_theme_config_json,"
+        : "NULL AS profile_theme_config_json,";
 
     if (profile_customization_columns_exist()) {
         return "{$alias}.banner_url,
@@ -708,6 +712,7 @@ function profile_customization_select_sql(string $alias): string
             {$backgroundVideoSelect}
             {$backgroundBlurSelect}
             {$alias}.profile_theme,
+            {$themeConfigSelect}
             {$layoutSelect}
             {$canvasVersionSelect}
             {$canvasGlassSelect}";
@@ -720,9 +725,75 @@ function profile_customization_select_sql(string $alias): string
             NULL AS profile_background_video_poster_url,
             NULL AS profile_background_blur,
             NULL AS profile_theme,
+            NULL AS profile_theme_config_json,
             {$layoutSelect}
             {$canvasVersionSelect}
             {$canvasGlassSelect}";
+}
+
+function profile_theme_config_column_exists(): bool
+{
+    return database_column_exists('profiles', 'profile_theme_config_json');
+}
+
+function profile_theme_config_payload(mixed $value): ?array
+{
+    if (!is_string($value) || trim($value) === '') {
+        return null;
+    }
+
+    try {
+        $decoded = json_decode($value, true, 512, JSON_THROW_ON_ERROR);
+    } catch (JsonException) {
+        return null;
+    }
+
+    if (!is_array($decoded) || !isset($decoded['mode']) || !is_string($decoded['mode'])) {
+        return null;
+    }
+
+    if ($decoded['mode'] === 'preset') {
+        $preset = $decoded['preset'] ?? null;
+
+        return is_string($preset) && preg_match('/^[a-z0-9_-]{1,40}$/', $preset) === 1
+            ? ['mode' => 'preset', 'preset' => $preset]
+            : null;
+    }
+
+    if ($decoded['mode'] !== 'custom' || !isset($decoded['colors']) || !is_array($decoded['colors'])) {
+        return null;
+    }
+
+    $colors = [];
+    foreach (profile_theme_color_keys() as $key) {
+        $color = $decoded['colors'][$key] ?? null;
+
+        if (!is_string($color) || preg_match('/^#[0-9a-fA-F]{6}$/', $color) !== 1) {
+            return null;
+        }
+
+        $colors[$key] = strtoupper($color);
+    }
+
+    return ['mode' => 'custom', 'colors' => $colors];
+}
+
+function profile_theme_color_keys(): array
+{
+    return [
+        'canvas',
+        'canvasSoft',
+        'surface',
+        'surfaceStrong',
+        'text',
+        'muted',
+        'line',
+        'lineStrong',
+        'accent',
+        'accentInk',
+        'accentStrong',
+        'focus',
+    ];
 }
 
 function profile_layout_preset_column_exists(): bool

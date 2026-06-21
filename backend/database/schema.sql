@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   profile_background_video_poster_url VARCHAR(500) NULL,
   profile_background_blur VARCHAR(20) NOT NULL DEFAULT 'medium',
   profile_theme VARCHAR(50) NULL,
+  profile_theme_config_json JSON NULL,
   profile_layout_preset VARCHAR(20) NOT NULL DEFAULT 'balanced',
   profile_canvas_version SMALLINT UNSIGNED NOT NULL DEFAULT 2,
   profile_canvas_glass_opacity TINYINT UNSIGNED NOT NULL DEFAULT 58,

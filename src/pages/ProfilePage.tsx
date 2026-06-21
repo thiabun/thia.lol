@@ -14,12 +14,14 @@ import {
   Minus,
   MoreHorizontal,
   Music2,
+  Palette,
   Pencil,
   Pin,
   PinOff,
   Plus,
   Radio,
   Repeat2,
+  RotateCcw,
   Reply,
   Save,
   Settings2,
@@ -175,9 +177,24 @@ import type {
   ProfileModule,
   ProfileModuleLayout,
   ProfileModuleLink,
+  ProfileThemeColors,
+  ProfileThemeConfig,
   Room,
   UserBadge,
 } from "../lib/types";
+import {
+  applyProfileThemeToRoot,
+  defaultProfileThemePresetId,
+  profileThemeColorKeys,
+  profileThemeConfigColors,
+  profileThemeConfigEquals,
+  profileThemeConfigToCssProperties,
+  profileThemeCustomFromPreset,
+  profileThemeHasBlockingContrastIssue,
+  profileThemePresetById,
+  profileThemePresets,
+  profileThemeContrastWarnings,
+} from "../lib/profileThemes";
 import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
 const PROFILE_CANVAS_COLUMNS = PROFILE_CANVAS_DESKTOP_COLUMNS;
@@ -209,6 +226,9 @@ function profileContentAutosaveInput(
     profileBackground: draft.profileBackground ?? null,
     profileBackgroundVideo: draft.profileBackgroundVideo ?? null,
     profileBackgroundVideoPoster: draft.profileBackgroundVideoPoster ?? null,
+    profileAccent: draft.profileAccent ?? null,
+    profileTheme: draft.profileTheme ?? null,
+    profileThemeConfig: draft.profileThemeConfig ?? null,
   };
   const current = {
     displayName: saved.user.displayName,
@@ -219,11 +239,23 @@ function profileContentAutosaveInput(
     profileBackground: saved.profileBackground ?? null,
     profileBackgroundVideo: saved.profileBackgroundVideo ?? null,
     profileBackgroundVideoPoster: saved.profileBackgroundVideoPoster ?? null,
+    profileAccent: saved.profileAccent ?? null,
+    profileTheme: saved.profileTheme ?? null,
+    profileThemeConfig: saved.profileThemeConfig ?? null,
   };
 
-  return Object.entries(next).some(
-    ([key, value]) => current[key as keyof typeof current] !== value,
-  )
+  const changed = Object.entries(next).some(([key, value]) => {
+    if (key === "profileThemeConfig") {
+      return !profileThemeConfigEquals(
+        value as ProfileThemeConfig | null,
+        current.profileThemeConfig,
+      );
+    }
+
+    return current[key as keyof typeof current] !== value;
+  });
+
+  return changed
     ? next
     : undefined;
 }
@@ -238,6 +270,9 @@ function mergeAutosavedProfileContent(current: Profile, saved: Profile): Profile
     profileBackground: saved.profileBackground ?? null,
     profileBackgroundVideo: saved.profileBackgroundVideo ?? null,
     profileBackgroundVideoPoster: saved.profileBackgroundVideoPoster ?? null,
+    profileAccent: saved.profileAccent ?? null,
+    profileTheme: saved.profileTheme ?? null,
+    profileThemeConfig: saved.profileThemeConfig ?? null,
     user: {
       ...current.user,
       displayName: saved.user.displayName,
@@ -415,6 +450,7 @@ export function ProfilePage() {
       : profileState.data;
   const profile = mergeFollowState(sourceProfile, activeFollowState);
   const workingProfile = canvasEditing && draftProfile ? draftProfile : profile;
+  const activeProfileThemeConfig = workingProfile?.profileThemeConfig ?? null;
   const profileReplies = repliesState.data ?? [];
   const profileFeed = useMemo(
     () => mergeProfileFeed(postsState.data ?? [], reblogsState.data ?? []),
@@ -438,6 +474,10 @@ export function ProfilePage() {
     profile?.profileLayoutPreset ?? defaultProfileLayoutPreset;
   const profileMissing =
     profileState.error instanceof ApiClientError && profileState.error.status === 404;
+
+  useEffect(() => {
+    return applyProfileThemeToRoot(activeProfileThemeConfig);
+  }, [activeProfileThemeConfig]);
   const musicAutoplayTarget = useMemo(() => {
     if (!profile || canvasEditing || status === "loading" || isOwnProfile) {
       return undefined;
@@ -2442,6 +2482,10 @@ function ProfileTransitionEditor({
           profile={profile}
         />
         <div className="space-y-3">
+          <ProfileAppearanceControls
+            profile={profile}
+            onProfileDraftChange={onProfileDraftChange}
+          />
           <ProfileCanvasBackgroundControls
             backgroundBlur={backgroundBlur}
             profile={profile}
@@ -2775,6 +2819,326 @@ function ProfileCanvasBackgroundControls({
       ) : null}
     </div>
   );
+}
+
+function ProfileAppearanceControls({
+  profile,
+  onProfileDraftChange,
+}: {
+  profile: Profile;
+  onProfileDraftChange: (updater: (profile: Profile) => Profile) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const activeConfig = profile.profileThemeConfig ?? null;
+  const activeColors = profileThemeConfigColors(activeConfig);
+  const activeLabel = activeConfig
+    ? activeConfig.mode === "custom"
+      ? "Custom"
+      : profileThemePresetById(activeConfig.preset).label
+    : "Default";
+  const swatchColors = activeColors ?? profileThemePresetById(defaultProfileThemePresetId).colors;
+  const customConfig =
+    activeConfig?.mode === "custom"
+      ? activeConfig
+      : profileThemeCustomFromPreset(
+          activeConfig?.mode === "preset"
+            ? activeConfig.preset
+            : defaultProfileThemePresetId,
+        );
+  const customWarnings = profileThemeContrastWarnings(customConfig.colors);
+  const customBlocked = profileThemeHasBlockingContrastIssue(customConfig.colors);
+
+  function applyThemeConfig(config: ProfileThemeConfig | null) {
+    onProfileDraftChange((currentProfile) => ({
+      ...currentProfile,
+      profileAccent:
+        config?.mode === "custom"
+          ? config.colors.accent
+          : config?.mode === "preset"
+            ? config.preset
+            : null,
+      profileTheme:
+        config?.mode === "preset"
+          ? config.preset
+          : config?.mode === "custom"
+            ? "custom"
+            : null,
+      profileThemeConfig: config,
+    }));
+  }
+
+  function updateCustomColor(key: keyof ProfileThemeColors, color: string) {
+    if (!/^#[0-9a-fA-F]{6}$/.test(color)) {
+      return;
+    }
+
+    applyThemeConfig({
+      mode: "custom",
+      colors: {
+        ...customConfig.colors,
+        [key]: color.toUpperCase(),
+      },
+    });
+  }
+
+  return (
+    <div className="relative" data-testid="profile-appearance-controls">
+      <button
+        type="button"
+        className="flex min-h-11 w-full items-center gap-3 rounded-control border border-line bg-canvas/50 px-3 text-left transition duration-fluid ease-fluid hover:border-line-strong hover:bg-canvas/70 focus-visible:outline-2 focus-visible:outline-focus"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        data-profile-edit-control="true"
+        data-testid="profile-appearance-trigger"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span
+          className="grid size-8 shrink-0 place-items-center rounded-card border border-line text-text"
+          style={{
+            background: `linear-gradient(135deg, ${swatchColors.accent}, ${swatchColors.surface})`,
+          }}
+        >
+          <Palette aria-hidden="true" size={17} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold text-text">
+            Appearance
+          </span>
+          <span className="block truncate text-xs text-muted">{activeLabel}</span>
+        </span>
+      </button>
+
+      {open ? (
+        <div
+          className="absolute left-0 top-full z-20 mt-2 w-[min(30rem,calc(100vw-2rem))] rounded-card border border-line bg-surface/95 p-3 shadow-lift backdrop-blur-veil"
+          role="dialog"
+          aria-label="Profile appearance"
+          data-testid="profile-appearance-popover"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-text">Appearance</p>
+              <p className="mt-0.5 text-xs text-muted">
+                Override Sunveil/Frostveil while people view your profile.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="grid size-8 shrink-0 place-items-center rounded-control border border-line bg-canvas/55 text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
+              aria-label="Close appearance settings"
+              data-profile-edit-control="true"
+              onClick={() => setOpen(false)}
+            >
+              <X aria-hidden="true" size={15} />
+            </button>
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <button
+              type="button"
+              className="min-h-20 rounded-card border border-line bg-canvas/55 p-2 text-left transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus aria-pressed:border-accent aria-pressed:bg-accent/12"
+              aria-pressed={!activeConfig}
+              data-profile-edit-control="true"
+              data-testid="profile-theme-preset-default"
+              onClick={() => applyThemeConfig(null)}
+            >
+              <span className="flex gap-1">
+                <span className="h-4 flex-1 rounded-full bg-warm" />
+                <span className="h-4 flex-1 rounded-full bg-cool" />
+              </span>
+              <span className="mt-2 block text-xs font-semibold text-text">Default</span>
+              <span className="block text-[0.68rem] text-muted">Viewer theme</span>
+            </button>
+            {profileThemePresets.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className="min-h-20 rounded-card border border-line bg-canvas/55 p-2 text-left transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus aria-pressed:border-accent aria-pressed:bg-accent/12"
+                aria-pressed={activeConfig?.mode === "preset" && activeConfig.preset === preset.id}
+                data-profile-edit-control="true"
+                data-testid={`profile-theme-preset-${preset.id}`}
+                onClick={() => applyThemeConfig({ mode: "preset", preset: preset.id })}
+              >
+                <span className="flex gap-1">
+                  <span
+                    className="h-4 flex-1 rounded-full"
+                    style={{ backgroundColor: preset.colors.canvas }}
+                  />
+                  <span
+                    className="h-4 flex-1 rounded-full"
+                    style={{ backgroundColor: preset.colors.surface }}
+                  />
+                  <span
+                    className="h-4 flex-1 rounded-full"
+                    style={{ backgroundColor: preset.colors.accent }}
+                  />
+                </span>
+                <span className="mt-2 block text-xs font-semibold text-text">{preset.label}</span>
+                <span className="block truncate text-[0.68rem] text-muted">
+                  {preset.description}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-3 rounded-card border border-line bg-canvas/38 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase text-muted">Custom</p>
+                <p className="text-sm font-semibold text-text">Fine-tune your palette</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="inline-flex min-h-8 items-center gap-1.5 rounded-control border border-line bg-surface/62 px-2.5 text-xs font-semibold text-text transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus"
+                  data-profile-edit-control="true"
+                  data-testid="profile-theme-custom-start"
+                  onClick={() => applyThemeConfig(customConfig)}
+                >
+                  <Palette aria-hidden="true" size={14} />
+                  Custom
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex min-h-8 items-center gap-1.5 rounded-control border border-line bg-surface/62 px-2.5 text-xs font-semibold text-text transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus"
+                  data-profile-edit-control="true"
+                  data-testid="profile-theme-reset"
+                  onClick={() => applyThemeConfig(null)}
+                >
+                  <RotateCcw aria-hidden="true" size={14} />
+                  Reset
+                </button>
+              </div>
+            </div>
+
+            <div
+              className="mt-3 overflow-hidden rounded-card border border-line"
+              style={profileThemeConfigToCssProperties(customConfig)}
+              data-testid="profile-theme-preview"
+            >
+              <div className="bg-canvas p-3">
+                <div className="rounded-card border border-line bg-surface p-3">
+                  <p className="text-sm font-semibold text-text">{profile.user.displayName}</p>
+                  <p className="text-xs text-muted">@{profile.user.handle}</p>
+                  <div className="mt-3 flex items-center gap-2">
+                    <span className="rounded-full bg-accent px-2.5 py-1 text-xs font-bold text-accent-ink">
+                      Accent
+                    </span>
+                    <span className="text-xs font-semibold text-accent-strong">
+                      Profile link
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {customWarnings.length > 0 ? (
+              <div
+                className={cn(
+                  "mt-3 rounded-card border p-2 text-xs font-medium",
+                  customBlocked
+                    ? "border-rose/35 bg-rose/12 text-rose-ink"
+                    : "border-warm/35 bg-warm/14 text-warm-ink",
+                )}
+                role={customBlocked ? "alert" : "status"}
+              >
+                {customWarnings[0]}
+              </div>
+            ) : null}
+
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              {(["canvas", "surface", "text", "accent", "accentInk", "accentStrong"] as const).map(
+                (key) => (
+                  <ProfileThemeColorInput
+                    key={key}
+                    colorKey={key}
+                    value={customConfig.colors[key]}
+                    onChange={(color) => updateCustomColor(key, color)}
+                  />
+                ),
+              )}
+            </div>
+
+            <details className="mt-3 rounded-card border border-line bg-surface/46 p-2">
+              <summary className="cursor-pointer text-xs font-semibold text-muted">
+                Advanced colors
+              </summary>
+              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                {profileThemeColorKeys
+                  .filter(
+                    (key) =>
+                      ![
+                        "canvas",
+                        "surface",
+                        "text",
+                        "accent",
+                        "accentInk",
+                        "accentStrong",
+                      ].includes(key),
+                  )
+                  .map((key) => (
+                    <ProfileThemeColorInput
+                      key={key}
+                      colorKey={key}
+                      value={customConfig.colors[key]}
+                      onChange={(color) => updateCustomColor(key, color)}
+                    />
+                  ))}
+              </div>
+            </details>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ProfileThemeColorInput({
+  colorKey,
+  value,
+  onChange,
+}: {
+  colorKey: keyof ProfileThemeColors;
+  value: string;
+  onChange: (color: string) => void;
+}) {
+  return (
+    <label className="flex min-w-0 items-center gap-2 rounded-control border border-line bg-surface/58 p-2">
+      <input
+        className="size-8 shrink-0 cursor-pointer rounded-control border border-line bg-transparent"
+        type="color"
+        value={value}
+        data-profile-edit-control="true"
+        data-testid={`profile-theme-color-${colorKey}`}
+        onChange={(event) => onChange(event.currentTarget.value)}
+      />
+      <span className="min-w-0">
+        <span className="block truncate text-xs font-semibold text-text">
+          {profileThemeColorLabel(colorKey)}
+        </span>
+        <span className="block font-mono text-[0.68rem] text-muted">{value}</span>
+      </span>
+    </label>
+  );
+}
+
+function profileThemeColorLabel(key: keyof ProfileThemeColors): string {
+  const labels: Record<keyof ProfileThemeColors, string> = {
+    canvas: "Page",
+    canvasSoft: "Page soft",
+    surface: "Surface",
+    surfaceStrong: "Surface strong",
+    text: "Text",
+    muted: "Muted",
+    line: "Line",
+    lineStrong: "Line strong",
+    accent: "Accent",
+    accentInk: "Accent text",
+    accentStrong: "Accent link",
+    focus: "Focus",
+  };
+
+  return labels[key];
 }
 
 function blurLabel(blur: ProfileBackgroundBlur): string {
@@ -4405,6 +4769,10 @@ function ProfileDirectCanvasEditor({
             onClear={onClearBackground}
             onImageUpload={(file) => onImageUpload(file, "profile_background")}
             onVideoUpload={onVideoUpload}
+          />
+          <ProfileAppearanceControls
+            profile={profile}
+            onProfileDraftChange={onProfileDraftChange}
           />
           <label className="flex min-h-11 items-center gap-2 rounded-control border border-line bg-surface/72 px-3 text-sm font-semibold text-text shadow-soft backdrop-blur-veil">
             <span>Glass</span>

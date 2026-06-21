@@ -646,14 +646,15 @@ function profile_share_card(string $handle): void
 
     imageantialias($image, true);
     imagealphablending($image, true);
-    $bg = imagecolorallocate($image, 13, 31, 41);
-    $panel = imagecolorallocate($image, 22, 51, 61);
-    $panelSoft = imagecolorallocatealpha($image, 26, 60, 72, 18);
-    $panelStrong = imagecolorallocatealpha($image, 9, 25, 34, 28);
-    $line = imagecolorallocate($image, 65, 126, 146);
-    $text = imagecolorallocate($image, 232, 247, 248);
-    $muted = imagecolorallocate($image, 158, 192, 202);
-    $accent = imagecolorallocate($image, 88, 226, 224);
+    $theme = profile_share_card_theme_colors($profile['profileThemeConfig'] ?? null);
+    $bg = posts_share_card_color($image, $theme['canvas'], [13, 31, 41]);
+    $panel = posts_share_card_color($image, $theme['surface'], [22, 51, 61]);
+    $panelSoft = posts_share_card_color_alpha($image, $theme['surfaceStrong'], [26, 60, 72], 18);
+    $panelStrong = posts_share_card_color_alpha($image, $theme['canvas'], [9, 25, 34], 28);
+    $line = posts_share_card_color($image, $theme['lineStrong'], [65, 126, 146]);
+    $text = posts_share_card_color($image, $theme['text'], [232, 247, 248]);
+    $muted = posts_share_card_color($image, $theme['muted'], [158, 192, 202]);
+    $accent = posts_share_card_color($image, $theme['accent'], [88, 226, 224]);
     $panelLeft = 44;
     $panelTop = 96;
     $panelRight = 1156;
@@ -770,6 +771,120 @@ function posts_share_card_png_headers(): void
     header('Cache-Control: public, max-age=3600, stale-while-revalidate=86400');
     header('Content-Disposition: inline');
     header('X-Content-Type-Options: nosniff');
+}
+
+function profile_share_card_theme_colors(mixed $config): array
+{
+    $fallback = [
+        'canvas' => '#0D1F29',
+        'surface' => '#16333D',
+        'surfaceStrong' => '#1A3C48',
+        'text' => '#E8F7F8',
+        'muted' => '#9EC0CA',
+        'lineStrong' => '#417E92',
+        'accent' => '#58E2E0',
+    ];
+
+    if (!is_array($config)) {
+        return $fallback;
+    }
+
+    if (($config['mode'] ?? null) === 'custom' && isset($config['colors']) && is_array($config['colors'])) {
+        return [
+            'canvas' => profile_share_card_hex_color($config['colors']['canvas'] ?? null, $fallback['canvas']),
+            'surface' => profile_share_card_hex_color($config['colors']['surface'] ?? null, $fallback['surface']),
+            'surfaceStrong' => profile_share_card_hex_color($config['colors']['surfaceStrong'] ?? null, $fallback['surfaceStrong']),
+            'text' => profile_share_card_hex_color($config['colors']['text'] ?? null, $fallback['text']),
+            'muted' => profile_share_card_hex_color($config['colors']['muted'] ?? null, $fallback['muted']),
+            'lineStrong' => profile_share_card_hex_color($config['colors']['lineStrong'] ?? null, $fallback['lineStrong']),
+            'accent' => profile_share_card_hex_color($config['colors']['accent'] ?? null, $fallback['accent']),
+        ];
+    }
+
+    $preset = is_string($config['preset'] ?? null) ? (string) $config['preset'] : 'frostveil';
+    $presets = [
+        'sunveil' => [
+            'canvas' => '#FFF6D8',
+            'surface' => '#FFFDF2',
+            'surfaceStrong' => '#F0E0B5',
+            'text' => '#3F3324',
+            'muted' => '#77694E',
+            'lineStrong' => '#CDBB83',
+            'accent' => '#E5B843',
+        ],
+        'roseveil' => [
+            'canvas' => '#22151D',
+            'surface' => '#3A202C',
+            'surfaceStrong' => '#51283A',
+            'text' => '#FFEAF1',
+            'muted' => '#E7A8B9',
+            'lineStrong' => '#B85C79',
+            'accent' => '#F48CA2',
+        ],
+        'leafveil' => [
+            'canvas' => '#10231D',
+            'surface' => '#18362B',
+            'surfaceStrong' => '#22513F',
+            'text' => '#E4FFF2',
+            'muted' => '#9BCDB7',
+            'lineStrong' => '#4B9679',
+            'accent' => '#63D99C',
+        ],
+        'violet' => [
+            'canvas' => '#171627',
+            'surface' => '#242141',
+            'surfaceStrong' => '#312A5C',
+            'text' => '#F1ECFF',
+            'muted' => '#B6A9E2',
+            'lineStrong' => '#7660C4',
+            'accent' => '#BDA4FF',
+        ],
+        'ember' => [
+            'canvas' => '#241713',
+            'surface' => '#3A241C',
+            'surfaceStrong' => '#573023',
+            'text' => '#FFF0E4',
+            'muted' => '#E0A984',
+            'lineStrong' => '#B76541',
+            'accent' => '#FF9E57',
+        ],
+        'ocean' => $fallback,
+        'frostveil' => $fallback,
+    ];
+
+    return $presets[$preset] ?? $fallback;
+}
+
+function profile_share_card_hex_color(mixed $value, string $fallback): string
+{
+    if (is_string($value) && preg_match('/^#[0-9a-fA-F]{6}$/', $value) === 1) {
+        return strtoupper($value);
+    }
+
+    return $fallback;
+}
+
+function posts_share_card_color($image, string $hex, array $fallback)
+{
+    [$red, $green, $blue] = posts_share_card_hex_to_rgb($hex, $fallback);
+
+    return imagecolorallocate($image, $red, $green, $blue);
+}
+
+function posts_share_card_color_alpha($image, string $hex, array $fallback, int $alpha)
+{
+    [$red, $green, $blue] = posts_share_card_hex_to_rgb($hex, $fallback);
+
+    return imagecolorallocatealpha($image, $red, $green, $blue, max(0, min(127, $alpha)));
+}
+
+function posts_share_card_hex_to_rgb(string $hex, array $fallback): array
+{
+    if (preg_match('/^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/', $hex, $matches) !== 1) {
+        return $fallback;
+    }
+
+    return [hexdec($matches[1]), hexdec($matches[2]), hexdec($matches[3])];
 }
 
 function posts_share_card_fallback(bool $headOnly = false): void

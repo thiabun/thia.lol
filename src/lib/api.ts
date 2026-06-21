@@ -19,6 +19,7 @@ import type {
   ProfileIntegrationCard,
   ProfileCanvasMovementContext,
   ProfileLayoutPreset,
+  ProfileThemeConfig,
   ProfileModule,
   ProfileModuleConfig,
   ProfileModuleLayout,
@@ -41,6 +42,7 @@ import { apiDelete, apiGet, apiPatch, apiPost, apiUpload } from "./apiClient";
 import { formatRelativeTime } from "./dates";
 import { normalizeProfileLayoutPreset } from "./profileLayoutPresets";
 import { normalizeProfileConnection } from "./profileConnections";
+import { normalizeProfileThemeConfig } from "./profileThemes";
 import {
   PROFILE_CANVAS_DESKTOP_COLUMNS,
   PROFILE_CANVAS_DESKTOP_ROWS,
@@ -75,6 +77,7 @@ type ApiProfile = Omit<
   | "profileLayoutPreset"
   | "profileCanvasVersion"
   | "profileCanvasGlass"
+  | "profileThemeConfig"
 > & {
   avatarUrl?: string | null;
   createdAt?: string;
@@ -89,6 +92,7 @@ type ApiProfile = Omit<
   profileLayoutPreset?: string | null;
   profileCanvasVersion?: number | string | null;
   profileCanvasGlass?: number | string | null;
+  profileThemeConfig?: unknown;
   links?: unknown[];
   isBlocked?: boolean;
   isMuted?: boolean;
@@ -236,6 +240,7 @@ export type UpdateProfileInput = {
   profileBackgroundVideoPoster?: string | null;
   profileAccent?: string | null;
   profileTheme?: string | null;
+  profileThemeConfig?: ProfileThemeConfig | null;
   profileLayoutPreset?: ProfileLayoutPreset;
   links?: ProfileExternalConnection[];
   traits?: string[];
@@ -1938,6 +1943,7 @@ function normalizeProfile(profile: ApiProfile): Profile {
       profile.profileBackgroundBlur,
     ),
     profileTheme: profile.profileTheme ?? null,
+    profileThemeConfig: normalizeProfileThemeConfig(profile.profileThemeConfig),
     profileLayoutPreset: normalizeProfileLayoutPreset(profile.profileLayoutPreset),
     profileCanvasVersion:
       Number(profile.profileCanvasVersion) === PROFILE_CANVAS_VERSION

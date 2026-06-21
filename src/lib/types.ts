@@ -4,6 +4,32 @@ export type ProfileLayoutPreset = "balanced" | "compact" | "showcase";
 
 export type ProfileBackgroundBlur = "none" | "soft" | "medium" | "heavy";
 
+export type ProfileThemeColorKey =
+  | "canvas"
+  | "canvasSoft"
+  | "surface"
+  | "surfaceStrong"
+  | "text"
+  | "muted"
+  | "line"
+  | "lineStrong"
+  | "accent"
+  | "accentInk"
+  | "accentStrong"
+  | "focus";
+
+export type ProfileThemeColors = Record<ProfileThemeColorKey, string>;
+
+export type ProfileThemeConfig =
+  | {
+      mode: "preset";
+      preset: string;
+    }
+  | {
+      mode: "custom";
+      colors: ProfileThemeColors;
+    };
+
 export type User = {
   id: number;
   handle: string;
@@ -55,6 +81,7 @@ export type Profile = {
   profileBackgroundVideoPoster?: string | null;
   profileBackgroundBlur: ProfileBackgroundBlur;
   profileTheme?: string | null;
+  profileThemeConfig?: ProfileThemeConfig | null;
   profileLayoutPreset: ProfileLayoutPreset;
   profileCanvasVersion: 1 | 2;
   profileCanvasGlass: number;
