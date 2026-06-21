@@ -540,7 +540,6 @@ function RichLinkPreview({ card, url }: { card: RichLinkCard; url: string }) {
           allowFullScreen
           data-testid={`rich-link-embed-${card.provider}`}
         />
-        <RichLinkSummary card={card} title={title} subtitle={subtitle} url={url} compact />
       </span>
     );
   }

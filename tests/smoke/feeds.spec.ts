@@ -693,7 +693,12 @@ test("post links without stored cards render fallback previews and embeds", asyn
   await expect(genericPreview).toBeVisible();
   await expect(genericPreview.locator("iframe")).toHaveCount(0);
 
-  await postCard.getByText("YouTube video").click();
+  const youtubePreview = postCard.locator(
+    '[data-testid="rich-link-preview"]:has([data-testid="rich-link-embed-youtube"])',
+  );
+  await expect(youtubePreview).not.toContainText("YouTube video");
+  await expect(youtubePreview).not.toContainText("https://youtu.be/abc123");
+  await youtubePreview.click({ position: { x: 8, y: 8 } });
   await expect(page.getByTestId("thread-modal")).toHaveCount(0);
 
   await postCard.focus();
