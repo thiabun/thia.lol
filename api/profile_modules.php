@@ -3400,7 +3400,7 @@ function profile_module_about_config(array $config): array
     profile_module_reject_unknown_keys($config, ['body', 'statusText', 'workingOn']);
 
     $normalized = [];
-    $body = profile_module_optional_text($config['body'] ?? null, PROFILE_MODULE_TEXT_MAX, 'About text');
+    $body = profile_module_optional_rich_text($config['body'] ?? null, PROFILE_MODULE_RICH_TEXT_MAX, 'About text');
     $statusText = profile_module_optional_text($config['statusText'] ?? null, PROFILE_MODULE_STATUS_TEXT_MAX, 'Status text');
     $workingOn = profile_module_optional_text($config['workingOn'] ?? null, PROFILE_MODULE_STATUS_TEXT_MAX, 'Working on text');
 

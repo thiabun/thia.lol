@@ -5093,15 +5093,21 @@ test("invalid saved placement falls back without manual grid placement", async (
   await expect(music).toHaveAttribute("data-profile-grid-placement", "auto");
 });
 
-test("custom text modules use the Markdown editor and preview", async ({ page }) => {
+test("profile text modules use the Markdown editor and preview", async ({ page }) => {
   await mockProfileModules(page, {
     authenticated: true,
     modules: [
       withAuditLayout(
-        textModule({ id: 2, title: "Note", body: "Starter text." }),
+        aboutModule({ id: 1, title: "About", body: "Starter about." }),
         "4x3",
         4,
         1,
+      ),
+      withAuditLayout(
+        textModule({ id: 2, title: "Note", body: "Starter text." }),
+        "4x3",
+        4,
+        5,
       ),
     ],
   });
@@ -5109,6 +5115,10 @@ test("custom text modules use the Markdown editor and preview", async ({ page })
   await page.goto("/@thia");
 
   await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-module-1").click();
+  await expect(page.getByTestId("profile-markdown-editor")).toBeVisible();
+  await page.getByTestId("profile-module-settings-done").click();
+
   await page.getByTestId("profile-canvas-module-2").click();
 
   const editor = page.getByTestId("profile-markdown-editor");
@@ -5134,10 +5144,20 @@ test("custom text modules use the Markdown editor and preview", async ({ page })
   ).toBeVisible();
 });
 
-test("public custom text modules render safe Markdown", async ({ page }) => {
+test("public profile text modules render safe Markdown", async ({ page }) => {
   await mockProfileModules(page, {
     authenticated: false,
     modules: [
+      withAuditLayout(
+        aboutModule({
+          id: 3,
+          title: "About",
+          body: "### About me\n\n- Maker\n- Streamer\n\n[Site](https://example.com/about)",
+        }),
+        "4x3",
+        4,
+        1,
+      ),
       withAuditLayout(
         textModule({
           id: 4,
@@ -5146,12 +5166,18 @@ test("public custom text modules render safe Markdown", async ({ page }) => {
         }),
         "4x3",
         4,
-        1,
+        5,
       ),
     ],
   });
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
+
+  const about = page.getByTestId("profile-grid-module-about");
+  await expect(about.getByTestId("profile-markdown-rendered")).toBeVisible();
+  await expect(about.getByRole("heading", { name: "About me" })).toBeVisible();
+  await expect(about.getByText("Site")).toBeVisible();
+  await expect(about.getByText("### About me")).toHaveCount(0);
 
   const text = page.getByTestId("profile-grid-module-custom_text");
   await expect(text.getByTestId("profile-markdown-rendered")).toBeVisible();

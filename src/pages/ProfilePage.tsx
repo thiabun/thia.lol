@@ -5644,7 +5644,9 @@ function ModuleSettingsModal({
               </label>
             </div>
           ) : null}
-          {module.type === "text" || module.type === "custom_text" ? (
+          {module.type === "about" ||
+          module.type === "text" ||
+          module.type === "custom_text" ? (
             <MarkdownEditor
               value={module.config.body ?? ""}
               entities={module.textEntities?.body}
@@ -5655,23 +5657,6 @@ function ModuleSettingsModal({
                 );
               }}
             />
-          ) : null}
-          {module.type === "about" ? (
-            <label className="block">
-              <span className="text-xs font-semibold uppercase text-muted">
-                Text
-              </span>
-              <MentionTextarea
-                className="mt-1 min-h-28 w-full resize-none rounded-control border border-line bg-canvas/45 px-3 py-2 text-sm leading-6 text-text outline-none transition focus:border-line-strong focus:outline-2 focus:outline-focus"
-                value={module.config.body ?? ""}
-                data-testid="profile-module-settings-body"
-                onValueChange={(body) => {
-                  updateModuleConfig(
-                    configWithContent({ body }, body.trim().length > 0),
-                  );
-                }}
-              />
-            </label>
           ) : null}
           {module.type === "connections" || module.type === "links" ? (
             <div

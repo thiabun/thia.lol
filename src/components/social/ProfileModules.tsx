@@ -1056,7 +1056,9 @@ function ProfileModuleContent({
   }
 
   const markdownTextModule =
-    module.type === "custom_text" || module.type === "text";
+    module.type === "about" ||
+    module.type === "custom_text" ||
+    module.type === "text";
 
   return (
     <div className="max-h-full space-y-2 overflow-y-auto pr-1">

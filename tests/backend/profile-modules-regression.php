@@ -355,6 +355,16 @@ assert_true($legacyWebmVideo['video']['type'] === 'video/webm', 'legacy WebM vid
 $emptyAbout = profile_module_config('about', [], 123);
 assert_true($emptyAbout === [], 'empty about module should be valid for owner placement');
 
+$richAbout = profile_module_config(
+    'about',
+    ['body' => "## About me\n\n- Safe Markdown\n- https://example.com"],
+    123
+);
+assert_true(
+    $richAbout['body'] === "## About me\n\n- Safe Markdown\n- https://example.com",
+    'about body should preserve safe Markdown line breaks'
+);
+
 $emptyCustomText = profile_module_config('custom_text', [], 123);
 assert_true($emptyCustomText === [], 'empty text module should be valid for owner placement');
 
@@ -377,6 +387,9 @@ assert_true($richLegacyText['body'] === "Line one\nLine two", 'legacy text body 
 
 $longRichText = profile_module_config('custom_text', ['body' => str_repeat('a', 900)], 123);
 assert_true(strlen($longRichText['body']) === 900, 'custom text should allow richer body length');
+
+$longAboutText = profile_module_config('about', ['body' => str_repeat('a', 900)], 123);
+assert_true(strlen($longAboutText['body']) === 900, 'about text should allow richer body length');
 
 $emptyLinks = profile_module_config('links', ['links' => []], 123);
 assert_true($emptyLinks === ['links' => []], 'empty links module should be valid for owner placement');
