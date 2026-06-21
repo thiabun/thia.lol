@@ -49,6 +49,7 @@ import type {
   ProfileModule,
   ProfileModuleLayout,
   ProfileModuleLink,
+  ProfileModuleMediaItem,
   ProfileModuleUploadedAudio,
   ProfileModuleUploadedVideo,
   ProfileConnectionPlatform,
@@ -941,6 +942,25 @@ function ProfileModuleContent({
     module.type === "gallery_feed"
   ) {
     const mediaItems = module.config.mediaItems ?? [];
+
+    if (module.type === "uploaded_image" || module.type === "gallery_media") {
+      return (
+        <ProfileImageModulePhoto
+          item={mediaItems[0]}
+          showCaption={hasDetails}
+        />
+      );
+    }
+
+    if (module.type === "gallery_slideshow") {
+      return (
+        <ProfileImageModuleSlideshow
+          items={mediaItems}
+          showCaption={hasDetails}
+        />
+      );
+    }
+
     const visibleMediaItems = compact ? mediaItems.slice(0, 2) : mediaItems;
 
     return (
@@ -1075,6 +1095,115 @@ function ProfileModuleContent({
         >
           <span className="min-w-0 truncate">{module.config.link.label}</span>
         </a>
+      ) : null}
+    </div>
+  );
+}
+
+function ProfileImageModulePhoto({
+  item,
+  showCaption,
+}: {
+  item: ProfileModuleMediaItem | undefined;
+  showCaption: boolean;
+}) {
+  if (!item) {
+    return null;
+  }
+
+  return (
+    <figure className="relative h-full min-h-0 min-w-0 overflow-hidden rounded-card border border-line bg-canvas/55">
+      <img
+        alt=""
+        className="absolute inset-0 size-full object-cover"
+        decoding="async"
+        loading="lazy"
+        src={item.url}
+        data-testid="profile-image-module-photo"
+      />
+      {item.caption && showCaption ? (
+        <figcaption className="absolute inset-x-0 bottom-0 truncate bg-canvas/78 px-3 py-2 text-xs font-semibold text-text backdrop-blur">
+          {item.caption}
+        </figcaption>
+      ) : null}
+    </figure>
+  );
+}
+
+function ProfileImageModuleSlideshow({
+  items,
+  showCaption,
+}: {
+  items: ProfileModuleMediaItem[];
+  showCaption: boolean;
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const safeActiveIndex =
+    items.length > 0 ? Math.min(activeIndex, items.length - 1) : 0;
+  const activeItem = items[safeActiveIndex] ?? items[0];
+
+  useEffect(() => {
+    if (items.length <= 1) {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      setActiveIndex((index) => (index + 1) % items.length);
+    }, 5000);
+
+    return () => window.clearInterval(timer);
+  }, [activeIndex, items.length]);
+
+  if (!activeItem) {
+    return null;
+  }
+
+  return (
+    <div
+      className="relative h-full min-h-0 min-w-0 overflow-hidden rounded-card border border-line bg-canvas/55"
+      data-testid="profile-slideshow-module"
+    >
+      <AnimatePresence mode="wait">
+        <motion.figure
+          key={activeItem.url}
+          className="absolute inset-0"
+          initial={{ opacity: 0.35, scale: 1.015 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 1.01 }}
+          transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+          data-testid="profile-slideshow-slide"
+        >
+          <img
+            alt=""
+            className="size-full object-cover"
+            decoding="async"
+            loading="lazy"
+            src={activeItem.url}
+          />
+          {activeItem.caption && showCaption ? (
+            <figcaption className="absolute inset-x-0 bottom-0 truncate bg-canvas/78 px-3 py-2 text-xs font-semibold text-text backdrop-blur">
+              {activeItem.caption}
+            </figcaption>
+          ) : null}
+        </motion.figure>
+      </AnimatePresence>
+      {items.length > 1 ? (
+        <div className="absolute inset-x-0 bottom-2 z-10 flex justify-center gap-1.5 px-3">
+          {items.map((item, index) => (
+            <button
+              key={`${item.url}:${index}`}
+              type="button"
+              className={cn(
+                "size-2.5 rounded-full border border-white/45 bg-white/45 shadow-soft transition duration-fluid ease-fluid hover:scale-110 hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+                index === safeActiveIndex ? "w-5 bg-white" : undefined,
+              )}
+              aria-label={`Show slide ${index + 1}`}
+              aria-current={index === safeActiveIndex ? "true" : undefined}
+              data-testid={`profile-slideshow-dot-${index}`}
+              onClick={() => setActiveIndex(index)}
+            />
+          ))}
+        </div>
       ) : null}
     </div>
   );
@@ -1888,12 +2017,15 @@ function ProfileIntegrationArtistCard({
   const subtitle = metadata.subtitle ?? platformDisplayName(integration.provider);
   const description = metadata.description ?? module.config.description;
   const stats = profileIntegrationArtistStats(integration);
+  const visibleStats = stats.slice(0, compact ? 2 : spacious ? 4 : 3);
+  const genres = profileIntegrationArtistGenres(integration);
+  const visibleGenres = genres.slice(0, spacious ? 4 : 2);
 
   return (
     <a
       className={cn(
-        "group relative isolate flex h-full min-h-0 min-w-0 overflow-hidden rounded-card border border-line bg-canvas/55 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-        compact ? "items-end p-3" : "items-stretch",
+        "group relative isolate flex h-full min-h-0 min-w-0 overflow-hidden rounded-card border border-line bg-canvas/80 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+        compact ? "items-end p-3" : "items-end p-4",
       )}
       href={integration.sourceUrl}
       rel="noopener noreferrer"
@@ -1904,68 +2036,31 @@ function ProfileIntegrationArtistCard({
       {metadata.imageUrl ? (
         <img
           alt=""
-          aria-hidden="true"
-          className={cn(
-            "absolute inset-0 -z-30 size-full object-cover blur-2xl transition duration-fluid ease-fluid group-hover:scale-105",
-            compact ? "opacity-45" : "opacity-25",
-          )}
+          className="absolute inset-0 -z-30 size-full object-cover transition duration-fluid ease-fluid group-hover:scale-[1.025]"
           decoding="async"
           loading="lazy"
           src={metadata.imageUrl}
+          data-testid="profile-integration-artist-image"
         />
-      ) : null}
-      <span className="absolute inset-0 -z-20 bg-[linear-gradient(135deg,color-mix(in_oklab,var(--canvas)_92%,transparent),color-mix(in_oklab,var(--surface)_72%,transparent))]" />
-      {compact ? (
-        <span className="absolute inset-0 -z-10 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-      ) : null}
-      {!compact ? (
-        <span
-          className={cn(
-            "relative min-h-0 shrink-0 overflow-hidden border-r border-line bg-surface/70",
-            spacious ? "w-[45%]" : "w-[42%]",
-          )}
-        >
-          {metadata.imageUrl ? (
-            <img
-              alt=""
-              className="size-full object-cover transition duration-fluid ease-fluid group-hover:scale-[1.02]"
-              decoding="async"
-              loading="lazy"
-              src={metadata.imageUrl}
-              data-testid="profile-integration-artist-image"
-            />
-          ) : (
-            <span className="grid size-full place-items-center text-muted">{icon}</span>
-          )}
+      ) : (
+        <span className="absolute inset-0 -z-30 grid place-items-center bg-[radial-gradient(circle_at_30%_25%,color-mix(in_oklab,var(--accent)_24%,transparent),transparent_42%),linear-gradient(135deg,color-mix(in_oklab,var(--canvas)_94%,transparent),color-mix(in_oklab,var(--surface)_78%,transparent))] text-muted">
+          {icon}
         </span>
-      ) : null}
+      )}
+      <span className="absolute inset-0 -z-20 bg-[linear-gradient(180deg,rgba(0,0,0,0.06)_0%,rgba(0,0,0,0.28)_42%,rgba(0,0,0,0.82)_100%)]" />
+      <span className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_18%_18%,rgba(255,255,255,0.2),transparent_34%),linear-gradient(90deg,rgba(0,0,0,0.46),transparent_58%)] opacity-80" />
       <span
         className={cn(
-          "relative flex min-w-0 flex-1 flex-col",
-          compact ? "gap-2" : spacious ? "gap-3 p-4" : "gap-2 p-3",
+          "relative z-10 flex min-w-0 flex-1 flex-col text-white drop-shadow-[0_1px_10px_rgba(0,0,0,0.55)]",
+          compact ? "gap-2" : spacious ? "gap-3" : "gap-2.5",
         )}
       >
         <span className="flex min-w-0 items-start gap-3">
-          {compact ? (
-            <span className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-card border border-white/25 bg-black/25 text-white shadow-soft">
-              {metadata.imageUrl ? (
-                <img
-                  alt=""
-                  className="size-full object-cover"
-                  decoding="async"
-                  loading="lazy"
-                  src={metadata.imageUrl}
-                />
-              ) : (
-                icon
-              )}
-            </span>
-          ) : null}
-          <span className="min-w-0 flex-1">
+          <span className={cn("min-w-0 flex-1", spacious ? "max-w-[68%]" : undefined)}>
             <span
               className={cn(
                 "block truncate font-semibold",
-                compact ? "text-base text-white" : "text-lg text-text",
+                compact ? "text-base" : spacious ? "text-3xl" : "text-2xl",
               )}
               data-testid="profile-integration-artist-title"
             >
@@ -1973,8 +2068,8 @@ function ProfileIntegrationArtistCard({
             </span>
             <span
               className={cn(
-                "mt-0.5 block truncate text-sm",
-                compact ? "text-white/78" : "text-muted",
+                "mt-0.5 block truncate font-medium text-white/78",
+                compact ? "text-xs" : "text-sm",
               )}
             >
               {subtitle}
@@ -1982,40 +2077,60 @@ function ProfileIntegrationArtistCard({
           </span>
           <span
             className={cn(
-              "grid size-10 shrink-0 place-items-center rounded-card border transition duration-fluid ease-fluid group-hover:-translate-y-0.5",
-              compact
-                ? "border-white/25 bg-black/20 text-white"
-                : "border-line bg-canvas/65 text-muted group-hover:bg-surface group-hover:text-text",
+              "grid shrink-0 place-items-center rounded-card border border-white/30 bg-black/30 text-white shadow-soft backdrop-blur transition duration-fluid ease-fluid group-hover:-translate-y-0.5 group-hover:bg-white/20",
+              compact ? "size-9" : "size-11",
             )}
             aria-label={`Open ${title}`}
           >
             <ExternalLink aria-hidden="true" size={17} />
           </span>
         </span>
+
         {!compact && description ? (
           <span
             className={cn(
-              "block text-sm leading-5 text-muted",
-              spacious ? "line-clamp-4" : "line-clamp-2",
+              "block max-w-[42rem] text-sm leading-5 text-white/82",
+              spacious ? "line-clamp-3" : "line-clamp-2",
             )}
           >
             {description}
           </span>
         ) : null}
-        {stats.length > 0 ? (
+
+        {visibleGenres.length > 0 ? (
+          <span
+            className={cn(
+              "flex min-w-0 flex-wrap gap-1.5",
+              compact ? "hidden" : undefined,
+            )}
+            data-testid="profile-integration-artist-genres"
+          >
+            {visibleGenres.map((genre) => (
+              <span
+                key={genre}
+                className="max-w-full truncate rounded-full border border-white/20 bg-black/25 px-2.5 py-1 text-xs font-semibold text-white/82 backdrop-blur"
+              >
+                {genre}
+              </span>
+            ))}
+          </span>
+        ) : null}
+
+        {visibleStats.length > 0 ? (
           <span
             className={cn(
               "mt-auto flex min-w-0 flex-wrap gap-2",
-              compact ? "hidden" : undefined,
+              compact ? "gap-1.5" : undefined,
             )}
             data-testid="profile-integration-artist-stats"
           >
-            {stats.map((stat) => (
+            {visibleStats.map((stat) => (
               <span
-                key={`${stat.label}:${stat.value}`}
-                className="min-w-0 rounded-control border border-line bg-canvas/48 px-2.5 py-1 text-xs font-semibold text-muted"
+                key={`${stat.key}:${stat.value}`}
+                className="min-w-0 rounded-control border border-white/20 bg-black/30 px-2.5 py-1 text-xs font-semibold text-white/74 backdrop-blur"
+                data-testid={`profile-integration-artist-stat-${stat.key}`}
               >
-                <span className="text-text">{stat.value}</span>{" "}
+                <span className="text-white">{stat.value}</span>{" "}
                 <span>{stat.label}</span>
               </span>
             ))}
@@ -3066,35 +3181,57 @@ function isArtistModuleIntegration(
 
 function profileIntegrationArtistStats(
   integration: ProfileIntegrationCard,
-): Array<{ label: string; value: string }> {
+): Array<{ key: string; label: string; value: string }> {
   const stats = integration.metadata.stats ?? {};
-  const items: Array<{ label: string; value: string }> = [];
+  const items: Array<{ key: string; label: string; value: string }> = [];
 
   if (typeof stats.listeners === "number" || typeof stats.listeners === "string") {
-    items.push({ label: "listeners", value: formatCompactStat(stats.listeners) });
+    items.push({
+      key: "listeners",
+      label: "monthly listeners",
+      value: formatCompactStat(stats.listeners),
+    });
   }
 
   if (typeof stats.followers === "number" || typeof stats.followers === "string") {
-    items.push({ label: "followers", value: formatCompactStat(stats.followers) });
+    items.push({ key: "followers", label: "followers", value: formatCompactStat(stats.followers) });
   }
 
   if (typeof stats.subscribers === "number" || typeof stats.subscribers === "string") {
-    items.push({ label: "subscribers", value: formatCompactStat(stats.subscribers) });
-  }
-
-  if (typeof stats.popularity === "number" || typeof stats.popularity === "string") {
-    items.push({ label: "popularity", value: `${formatCompactStat(stats.popularity)}/100` });
-  }
-
-  if (typeof stats.genres === "string" && stats.genres.trim() !== "") {
-    items.push({ label: "genre", value: stats.genres.trim() });
+    items.push({
+      key: "subscribers",
+      label: "subscribers",
+      value: formatCompactStat(stats.subscribers),
+    });
   }
 
   if (typeof stats.views === "number" || typeof stats.views === "string") {
-    items.push({ label: "views", value: formatCompactStat(stats.views) });
+    items.push({ key: "views", label: "views", value: formatCompactStat(stats.views) });
   }
 
-  return items.slice(0, 3);
+  if (typeof stats.popularity === "number" || typeof stats.popularity === "string") {
+    items.push({
+      key: "popularity",
+      label: "popularity",
+      value: `${formatCompactStat(stats.popularity)}/100`,
+    });
+  }
+
+  return items;
+}
+
+function profileIntegrationArtistGenres(integration: ProfileIntegrationCard): string[] {
+  const stats = integration.metadata.stats ?? {};
+  const genres = stats.genres;
+
+  if (typeof genres !== "string") {
+    return [];
+  }
+
+  return genres
+    .split(",")
+    .map((genre) => genre.trim())
+    .filter(Boolean);
 }
 
 function formatCompactStat(value: string | number): string {

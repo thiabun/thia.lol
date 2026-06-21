@@ -3325,7 +3325,7 @@ function profile_module_config(string $type, mixed $value, int $userId): array
         PROFILE_GALLERY_MEDIA_MODULE_TYPE,
         'uploaded_image',
         'gallery_slideshow',
-        'gallery_feed' => profile_module_gallery_media_config($value),
+        'gallery_feed' => profile_module_gallery_media_config($value, $type),
         PROFILE_CREATOR_LIVE_MODULE_TYPE,
         'twitch_channel',
         'youtube_video',
@@ -3469,7 +3469,7 @@ function profile_module_links_config(array $config): array
     return ['links' => $links];
 }
 
-function profile_module_gallery_media_config(array $config): array
+function profile_module_gallery_media_config(array $config, string $type): array
 {
     profile_module_reject_unknown_keys($config, ['mediaItems']);
 
@@ -3487,6 +3487,7 @@ function profile_module_gallery_media_config(array $config): array
 
     $mediaItems = [];
     $seen = [];
+    $maxItems = profile_module_gallery_media_max_items($type);
 
     foreach ($config['mediaItems'] as $item) {
         $mediaItem = profile_module_gallery_media_item($item);
@@ -3497,9 +3498,20 @@ function profile_module_gallery_media_config(array $config): array
 
         $seen[$mediaItem['url']] = true;
         $mediaItems[] = $mediaItem;
+
+        if (count($mediaItems) >= $maxItems) {
+            break;
+        }
     }
 
     return ['mediaItems' => $mediaItems];
+}
+
+function profile_module_gallery_media_max_items(string $type): int
+{
+    return in_array($type, [PROFILE_GALLERY_MEDIA_MODULE_TYPE, 'uploaded_image'], true)
+        ? 1
+        : PROFILE_MODULE_GALLERY_MEDIA_MAX;
 }
 
 function profile_module_creator_live_config(array $config): array

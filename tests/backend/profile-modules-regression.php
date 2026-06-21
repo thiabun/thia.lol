@@ -198,11 +198,53 @@ $gallery = profile_module_config(
                 'url' => '/uploads/media/2026/06/profile-gallery-one.webp',
                 'caption' => 'Studio corner',
             ],
+            [
+                'url' => '/uploads/media/2026/06/profile-gallery-two.webp',
+                'caption' => 'Second photo',
+            ],
         ],
     ],
     123
 );
 assert_true($gallery['mediaItems'][0]['url'] === '/uploads/media/2026/06/profile-gallery-one.webp', 'gallery media URL mismatch');
+assert_true(count($gallery['mediaItems']) === 1, 'legacy gallery should normalize to one photo');
+
+$uploadedImage = profile_module_config(
+    'uploaded_image',
+    [
+        'mediaItems' => [
+            ['url' => '/uploads/media/2026/06/profile-image-one.webp'],
+            ['url' => '/uploads/media/2026/06/profile-image-two.webp'],
+        ],
+    ],
+    123
+);
+assert_true(count($uploadedImage['mediaItems']) === 1, 'uploaded image should normalize to one photo');
+assert_true($uploadedImage['mediaItems'][0]['url'] === '/uploads/media/2026/06/profile-image-one.webp', 'uploaded image should keep the first photo');
+
+$slideshow = profile_module_config(
+    'gallery_slideshow',
+    [
+        'mediaItems' => [
+            ['url' => '/uploads/media/2026/06/profile-slide-one.webp'],
+            ['url' => '/uploads/media/2026/06/profile-slide-two.webp'],
+        ],
+    ],
+    123
+);
+assert_true(count($slideshow['mediaItems']) === 2, 'slideshow should keep multiple photos');
+
+$galleryFeed = profile_module_config(
+    'gallery_feed',
+    [
+        'mediaItems' => [
+            ['url' => '/uploads/media/2026/06/profile-feed-one.webp'],
+            ['url' => '/uploads/media/2026/06/profile-feed-two.webp'],
+        ],
+    ],
+    123
+);
+assert_true(count($galleryFeed['mediaItems']) === 2, 'gallery feed should keep multiple photos');
 
 $creator = profile_module_config(
     'creator_live',

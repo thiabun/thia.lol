@@ -4810,7 +4810,15 @@ function ModuleSettingsModal({
   const connectionLinks = module?.config.links ?? [];
   const canAddConnection = connectionLinks.length < maxProfileConnections;
   const moduleMediaItems = module?.config.mediaItems ?? [];
-  const moduleMediaSlots = Math.max(0, 6 - moduleMediaItems.length);
+  const singlePhotoImageModule = module
+    ? profileModuleStoresSinglePhoto(module.type)
+    : false;
+  const visibleModuleMediaItems = singlePhotoImageModule
+    ? moduleMediaItems.slice(0, 1)
+    : moduleMediaItems;
+  const moduleMediaMaxItems = singlePhotoImageModule ? 1 : 6;
+  const moduleMediaSlots = Math.max(0, moduleMediaMaxItems - moduleMediaItems.length);
+  const canUploadModuleImage = singlePhotoImageModule || moduleMediaSlots > 0;
   const activeModuleImageCropFile = moduleImageCropQueue[0];
   const allowedSizes =
     module && module.type !== "placeholder"
@@ -5134,13 +5142,14 @@ function ModuleSettingsModal({
   }
 
   function handleModuleImageSelection(files: FileList | null) {
-    if (!module || !files || moduleMediaSlots <= 0) {
+    if (!module || !files || !canUploadModuleImage) {
       return;
     }
 
     const selectedFiles: File[] = [];
+    const selectionLimit = singlePhotoImageModule ? 1 : moduleMediaSlots;
 
-    for (const file of Array.from(files).slice(0, moduleMediaSlots)) {
+    for (const file of Array.from(files).slice(0, selectionLimit)) {
       const validationError = validateImageCropFile(file);
 
       if (validationError) {
@@ -5169,10 +5178,12 @@ function ModuleSettingsModal({
 
     try {
       const url = await onModuleImageUpload(croppedFile);
-      const mediaItems = [
-        ...(module.config.mediaItems ?? []),
-        { url },
-      ].slice(0, 6);
+      const mediaItems = singlePhotoImageModule
+        ? [{ url }]
+        : [
+            ...(module.config.mediaItems ?? []),
+            { url },
+          ].slice(0, moduleMediaMaxItems);
 
       updateModuleConfig(
         configWithContent(
@@ -5775,26 +5786,32 @@ function ModuleSettingsModal({
               data-testid="profile-image-module-settings"
             >
               <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-semibold uppercase text-muted">Photos</p>
+                <p className="text-xs font-semibold uppercase text-muted">
+                  {singlePhotoImageModule ? "Photo" : "Photos"}
+                </p>
                 <label
                   className={cn(
                     "inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-control border border-line bg-canvas/45 px-3 text-sm font-semibold text-text transition hover:border-line-strong focus-within:outline-2 focus-within:outline-focus",
-                    moduleMediaSlots <= 0 || moduleImageUploading
+                    !canUploadModuleImage || moduleImageUploading
                       ? "pointer-events-none opacity-50"
                       : undefined,
                   )}
                   data-profile-edit-control="true"
-                  title="Add photos"
+                  title={singlePhotoImageModule && moduleMediaItems.length > 0 ? "Replace photo" : "Add photos"}
                 >
                   <ImagePlus aria-hidden="true" size={16} />
-                  {moduleImageUploading ? "Uploading" : "Add"}
+                  {moduleImageUploading
+                    ? "Uploading"
+                    : singlePhotoImageModule && moduleMediaItems.length > 0
+                      ? "Replace"
+                      : "Add"}
                   <input
                     className="sr-only"
                     type="file"
                     accept={imageUploadAccept}
-                    multiple
+                    multiple={!singlePhotoImageModule}
                     data-testid="profile-module-settings-image-input"
-                    disabled={moduleImageUploading || moduleMediaSlots <= 0}
+                    disabled={moduleImageUploading || !canUploadModuleImage}
                     onChange={(event) => {
                       handleModuleImageSelection(event.currentTarget.files);
                       event.currentTarget.value = "";
@@ -5802,12 +5819,12 @@ function ModuleSettingsModal({
                   />
                 </label>
               </div>
-              {moduleMediaItems.length > 0 ? (
+              {visibleModuleMediaItems.length > 0 ? (
                 <div
                   className="grid grid-cols-3 gap-2"
                   data-testid="profile-module-media-list"
                 >
-                  {moduleMediaItems.map((item, index) => (
+                  {visibleModuleMediaItems.map((item, index) => (
                     <figure
                       key={`${item.url}:${index}`}
                       className="group relative aspect-square min-w-0 overflow-hidden rounded-card border border-line bg-canvas/45"
@@ -5898,6 +5915,10 @@ function profileModuleConnectionPreview(url: string): string {
   } catch {
     return url;
   }
+}
+
+function profileModuleStoresSinglePhoto(type: ProfileModule["type"]): boolean {
+  return type === "uploaded_image" || type === "gallery_media";
 }
 
 function profileModuleUniqueConnectionLinks(

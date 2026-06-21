@@ -344,6 +344,134 @@ test("P2 expressive modules render compact link-first cards", async ({ page }) =
   await expect(modules.locator("audio, video")).toHaveCount(0);
 });
 
+test("image modules fill surfaces and slideshow rotates", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 980 });
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      withAuditLayout(
+        {
+          id: 101,
+          type: "uploaded_image",
+          title: "Image",
+          config: {
+            mediaItems: [
+              { url: "/uploads/media/2026/06/profile-image-one.webp" },
+              { url: "/uploads/media/2026/06/profile-image-two.webp" },
+            ],
+          },
+          visibility: "public",
+          position: 1,
+          status: "active",
+          schemaVersion: 1,
+          createdAt: "2026-06-12 00:00:00",
+          updatedAt: "2026-06-12 00:00:00",
+        },
+        "4x3",
+        1,
+      ),
+      withAuditLayout(
+        {
+          id: 102,
+          type: "gallery_slideshow",
+          title: "Slideshow",
+          config: {
+            mediaItems: [
+              { url: "/uploads/media/2026/06/profile-slide-one.webp" },
+              { url: "/uploads/media/2026/06/profile-slide-two.webp" },
+            ],
+          },
+          visibility: "public",
+          position: 2,
+          status: "active",
+          schemaVersion: 1,
+          createdAt: "2026-06-12 00:00:00",
+          updatedAt: "2026-06-12 00:00:00",
+        },
+        "3x3",
+        1,
+        5,
+      ),
+      withAuditLayout(
+        {
+          id: 103,
+          type: "gallery_feed",
+          title: "Gallery feed",
+          config: {
+            mediaItems: [
+              { url: "/uploads/media/2026/06/profile-feed-one.webp" },
+              { url: "/uploads/media/2026/06/profile-feed-two.webp" },
+            ],
+          },
+          visibility: "public",
+          position: 3,
+          status: "active",
+          schemaVersion: 1,
+          createdAt: "2026-06-12 00:00:00",
+          updatedAt: "2026-06-12 00:00:00",
+        },
+        "3x6",
+        5,
+      ),
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const imageModule = page.getByTestId("profile-grid-module-uploaded_image");
+  const image = imageModule.getByTestId("profile-image-module-photo");
+  await expect(image).toHaveCSS("object-fit", "cover");
+  await expect(
+    imageModule.locator('img[src="/uploads/media/2026/06/profile-image-two.webp"]'),
+  ).toHaveCount(0);
+
+  const fillMetrics = await imageModule.evaluate((module) => {
+    const photo = module.querySelector<HTMLImageElement>(
+      '[data-testid="profile-image-module-photo"]',
+    );
+
+    if (!photo) {
+      throw new Error("Image module photo was not rendered.");
+    }
+
+    const moduleRect = module.getBoundingClientRect();
+    const imageRect = photo.getBoundingClientRect();
+
+    return {
+      heightCoverage: imageRect.height / moduleRect.height,
+      widthCoverage: imageRect.width / moduleRect.width,
+    };
+  });
+  expect(fillMetrics.heightCoverage).toBeGreaterThan(0.95);
+  expect(fillMetrics.widthCoverage).toBeGreaterThan(0.95);
+
+  const slideshow = page
+    .getByTestId("profile-grid-module-gallery_slideshow")
+    .getByTestId("profile-slideshow-module");
+  await expect(slideshow.getByTestId("profile-slideshow-slide")).toBeVisible();
+  await expect(slideshow.getByTestId("profile-slideshow-dot-0")).toBeVisible();
+  await expect(slideshow.getByTestId("profile-slideshow-dot-1")).toBeVisible();
+  await expect(
+    slideshow.locator('img[src="/uploads/media/2026/06/profile-slide-one.webp"]'),
+  ).toBeVisible();
+  await slideshow.getByTestId("profile-slideshow-dot-1").click();
+  await expect(
+    slideshow.locator('img[src="/uploads/media/2026/06/profile-slide-two.webp"]'),
+  ).toBeVisible();
+  await expect(
+    slideshow.locator('img[src="/uploads/media/2026/06/profile-slide-one.webp"]'),
+  ).toBeVisible({ timeout: 6500 });
+
+  const feedImages = page
+    .getByTestId("profile-grid-module-gallery_feed")
+    .locator("figure img");
+  await expect(feedImages).toHaveCount(2);
+  const feedObjectFits = await feedImages.evaluateAll((images) =>
+    images.map((item) => window.getComputedStyle(item).objectFit),
+  );
+  expect(feedObjectFits).toEqual(["cover", "cover"]);
+});
+
 test("module shells keep compact content glanceable without public overflow", async ({
   page,
 }) => {
@@ -969,14 +1097,83 @@ test("artist music modules render as custom artist cards instead of players", as
   await expect(module).toBeVisible();
   await expect(module).toHaveAttribute("data-profile-grid-size", "4x3");
   await expect(module.getByTestId("profile-integration-artist-card")).toBeVisible();
+  await expect(module.getByTestId("profile-integration-artist-card")).toHaveAttribute(
+    "data-profile-artist-card-layout",
+    "standard",
+  );
+  await expect(module.getByTestId("profile-integration-artist-image")).toHaveCSS(
+    "object-fit",
+    "cover",
+  );
   await expect(module.getByTestId("profile-integration-artist-title")).toContainText(
     "Mili",
+  );
+  await expect(module.getByTestId("profile-integration-artist-genres")).toContainText(
+    "art pop",
   );
   await expect(module.getByTestId("profile-integration-artist-stats")).toContainText(
     "followers",
   );
+  await expect(module.getByTestId("profile-integration-artist-stat-followers")).toContainText(
+    "followers",
+  );
+  await expect(module.getByTestId("profile-integration-artist-stat-listeners")).toHaveCount(
+    0,
+  );
   await expect(module.getByTestId("profile-spotify-custom-player")).toHaveCount(0);
   await expect(module.getByTestId("profile-spotify-play-button")).toHaveCount(0);
+  await expect(module.getByTestId("profile-integration-embed-spotify")).toHaveCount(0);
+});
+
+test("roomy artist cards show listener stats without empty side panels", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      withAuditLayout(
+        spotifyArtistModule({ id: 67, listeners: 84000000, position: 1 }),
+        "6x4",
+        1,
+      ),
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const module = page.getByTestId("profile-grid-module-spotify_artist");
+  await expect(module).toHaveAttribute("data-profile-grid-size", "6x4");
+  await expect(module.getByTestId("profile-integration-artist-card")).toHaveAttribute(
+    "data-profile-artist-card-layout",
+    "spacious",
+  );
+  await expect(module.getByTestId("profile-integration-artist-stat-listeners")).toContainText(
+    "monthly listeners",
+  );
+  await expect(module.getByTestId("profile-integration-artist-stat-popularity")).toContainText(
+    "popularity",
+  );
+
+  const coverRatio = await module.evaluate((element) => {
+    const card = element.querySelector('[data-testid="profile-integration-artist-card"]');
+    const image = element.querySelector('[data-testid="profile-integration-artist-image"]');
+
+    if (!(card instanceof HTMLElement) || !(image instanceof HTMLElement)) {
+      return { height: 0, width: 0 };
+    }
+
+    const cardBox = card.getBoundingClientRect();
+    const imageBox = image.getBoundingClientRect();
+
+    return {
+      height: imageBox.height / cardBox.height,
+      width: imageBox.width / cardBox.width,
+    };
+  });
+
+  expect(coverRatio.width).toBeGreaterThan(0.95);
+  expect(coverRatio.height).toBeGreaterThan(0.95);
 });
 
 test("compact music modules choose black or white text from album art", async ({
@@ -3308,7 +3505,7 @@ test("profile-info settings change picture and banner through crop controls", as
   );
 });
 
-test("image module settings crop and add multiple photos", async ({ page }) => {
+test("image module settings crop and replace a single photo", async ({ page }) => {
   const uploadPurposes: string[] = [];
   let draftPayload: Record<string, unknown> | undefined;
 
@@ -3318,8 +3515,13 @@ test("image module settings crop and add multiple photos", async ({ page }) => {
       {
         id: 12,
         type: "uploaded_image",
-        title: "Photos",
-        config: { configured: false, mediaItems: [] },
+        title: "Image",
+        config: {
+          configured: true,
+          mediaItems: [
+            { url: "/uploads/media/2026/06/existing-module-photo.webp" },
+          ],
+        },
         layout: { column: 1, row: 4, colSpan: 3, rowSpan: 3 },
         visibility: "draft",
         position: 1,
@@ -3344,41 +3546,47 @@ test("image module settings crop and add multiple photos", async ({ page }) => {
 
   const settings = page.getByTestId("profile-module-settings");
   await expect(settings.getByTestId("profile-image-module-settings")).toBeVisible();
+  await expect(settings.getByText("Photo")).toBeVisible();
+  await expect(settings.getByText("Replace")).toBeVisible();
+  await expect(settings.getByTestId("profile-module-media-item-0")).toBeVisible();
+  await expect(settings.getByTestId("profile-module-media-item-1")).toHaveCount(0);
+  await expect(settings.getByTestId("profile-module-settings-image-input")).not.toHaveAttribute(
+    "multiple",
+    "",
+  );
   await settings
     .getByTestId("profile-module-settings-image-input")
-    .setInputFiles([
-      samplePngFile("module-photo-one.png"),
-      samplePngFile("module-photo-two.png"),
-    ]);
+    .setInputFiles(samplePngFile("module-photo-one.png"));
 
   await expect(page.getByTestId("image-crop-modal")).toBeVisible();
   await expect(page.getByTestId("image-crop-aspect-original")).toBeVisible();
   await page.getByRole("button", { name: "Apply crop" }).click();
-  await expect.poll(() => uploadPurposes.length).toBe(1);
-  await expect(page.getByTestId("image-crop-modal")).toBeVisible();
-  await page.getByRole("button", { name: "Apply crop" }).click();
   await expect(page.getByTestId("image-crop-modal")).toHaveCount(0);
-  await expect.poll(() => uploadPurposes).toEqual(["post_media", "post_media"]);
+  await expect.poll(() => uploadPurposes).toEqual(["post_media"]);
 
   await expect(settings.getByTestId("profile-module-media-item-0")).toBeVisible();
-  await expect(settings.getByTestId("profile-module-media-item-1")).toBeVisible();
+  await expect(settings.getByTestId("profile-module-media-item-1")).toHaveCount(0);
   await expect
     .poll(() => {
-      const modules = Array.isArray(draftPayload?.modules)
-        ? (draftPayload.modules as Array<Record<string, unknown>>)
-        : [];
-      const imageModule = modules.find((module) => module.id === 12);
-      const config = imageModule?.config as Record<string, unknown> | undefined;
+      const config = moduleConfigFromDraft(draftPayload, 12);
       const mediaItems = Array.isArray(config?.mediaItems)
         ? config.mediaItems
         : [];
+      const firstItem = mediaItems[0] as Record<string, unknown> | undefined;
 
       return JSON.stringify({
         configured: config?.configured,
         mediaCount: mediaItems.length,
+        url: firstItem?.url,
       });
     })
-    .toBe(JSON.stringify({ configured: true, mediaCount: 2 }));
+    .toBe(
+      JSON.stringify({
+        configured: true,
+        mediaCount: 1,
+        url: "/uploads/media/2026/06/post_media-cropped.webp",
+      }),
+    );
 });
 
 test("uploaded video and custom MP3 module settings use file uploads", async ({
@@ -6901,7 +7109,12 @@ function spotifyEmbedMusicModule(
 }
 
 function spotifyArtistModule(
-  overrides: { id?: number; imageUrl?: string; position?: number } = {},
+  overrides: {
+    id?: number;
+    imageUrl?: string;
+    listeners?: number;
+    position?: number;
+  } = {},
 ) {
   return {
     ...musicModule(overrides),
@@ -6925,6 +7138,9 @@ function spotifyArtistModule(
           description: "Art-pop, chamber pop",
           imageUrl: overrides.imageUrl ?? "https://i.scdn.co/image/mili",
           stats: {
+            ...(typeof overrides.listeners === "number"
+              ? { listeners: overrides.listeners }
+              : {}),
             followers: 1200000,
             popularity: 72,
             genres: "art pop, chamber pop",
