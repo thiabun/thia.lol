@@ -19,7 +19,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from "react-router";
-import { BrandLogo, BrandMark } from "../BrandLogo";
+import { BrandLockup, BrandLogo, BrandMark } from "../BrandLogo";
 import { ThemeToggle } from "../ThemeToggle";
 import { Button, ButtonLink } from "../ui/Button";
 import { getNotifications, getOnboardingState, getRooms } from "../../lib/api";
@@ -649,11 +649,10 @@ function SiteFooter() {
             className="inline-flex items-center gap-2 text-text"
             data-testid="site-footer-brand"
           >
-            <BrandMark shape="circle" size="sm" />
-            <span className="text-sm font-semibold leading-none tracking-normal">
-              <span>thia</span>
-              <span className="text-rose">.lol</span>
-            </span>
+            <BrandLockup
+              className="h-7 w-auto max-w-[7.75rem]"
+              data-testid="site-footer-brand-lockup"
+            />
           </div>
           <div className="space-y-1">
             <p>

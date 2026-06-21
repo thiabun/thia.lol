@@ -1628,6 +1628,9 @@ export function ProfilePage() {
     renderedProfile,
     mergeProfileLinksIntoConnectionModules(renderedProfile, profileSpaceModules),
   );
+  const hasVisibleProfileInfoModule = profileCanvasModules.some(
+    (module) => module.type === "profile_info",
+  );
   function renderProfileModuleContent(
     module: ProfileModule,
     size: ProfileGridModuleSize,
@@ -1743,7 +1746,7 @@ export function ProfilePage() {
             {integrationReturnNotice.message}
           </p>
         ) : null}
-        {!canvasEditing ? (
+        {!canvasEditing && !hasVisibleProfileInfoModule ? (
           <div className="flex justify-end">
             <Button
               type="button"
@@ -6872,10 +6875,14 @@ function ProfileInfoSizedCard({
             followPosting={followPosting}
             isOwnProfile={isOwnProfile}
             messageToHandle={messageToHandle}
+            onBlockToggle={onBlockToggle}
             onFollowToggle={onFollowToggle}
+            onMuteToggle={onMuteToggle}
             onShareProfile={onShareProfile}
             onStarToggle={onStarToggle}
             profile={profile}
+            profileControlBusy={profileControlBusy}
+            showMenu
             starPosting={starPosting}
           />
         </div>
@@ -7081,7 +7088,13 @@ function ProfileInfoActions({
   const disabled = profile.blockedByMe === true;
   const iconOnly = compact || primaryCompact;
   const actionIconSize = iconOnly ? 14 : 15;
-  const showOverflowMenu = showMenu && !isOwnProfile;
+  const iconButtonClass = iconOnly
+    ? "!size-8 !min-h-0 !p-0"
+    : "!size-9 !min-h-9 !p-0";
+  const textButtonClass = iconOnly
+    ? "!size-8 !min-h-0 !p-0"
+    : "h-9 min-h-9 px-3 !text-xs";
+  const showOverflowMenu = showMenu && (Boolean(onShareProfile) || !isOwnProfile);
   const followLabel = profile.isFollowRequestPending
     ? "Requested"
     : profile.isFollowing
@@ -7095,24 +7108,13 @@ function ProfileInfoActions({
       className="relative flex max-w-full shrink-0 items-center justify-end gap-1.5"
       data-testid="profile-info-action-rail"
     >
-      <Button
-        type="button"
-        variant="secondary"
-        size="icon"
-        className="size-8 p-0"
-        data-testid="profile-info-share-button"
-        icon={<Share2 aria-hidden="true" size={actionIconSize} />}
-        aria-label={`Share @${profile.user.handle}`}
-        title={`Share @${profile.user.handle}`}
-        onClick={onShareProfile}
-      />
       {isOwnProfile ? null : (
         <>
       {messageToHandle && !disabled ? (
         <Link
           className={cn(
             "inline-flex items-center justify-center gap-1.5 rounded-control border border-line bg-surface text-text shadow-soft transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
-            iconOnly ? "size-8 p-0" : "min-h-9 px-3 text-xs font-semibold",
+            iconOnly ? "size-8 p-0" : "h-9 min-h-9 px-3 text-xs font-semibold",
           )}
           data-testid="profile-message-button"
           to={`/chat?with=${encodeURIComponent(messageToHandle)}`}
@@ -7128,7 +7130,7 @@ function ProfileInfoActions({
           type="button"
           variant={profile.isStarred ? "primary" : "secondary"}
           disabled={starPosting}
-          className={iconOnly ? "size-8 p-0" : "min-h-9 px-3 text-xs"}
+          className={textButtonClass}
           data-testid="profile-star-button"
           size={iconOnly ? "icon" : "sm"}
           icon={
@@ -7150,7 +7152,7 @@ function ProfileInfoActions({
           type="button"
           variant={profile.isFollowing ? "secondary" : "primary"}
           disabled={followPosting}
-          className={iconOnly ? "size-8 p-0" : "min-h-9 px-3 text-xs"}
+          className={textButtonClass}
           data-testid="profile-follow-button"
           size={iconOnly ? "icon" : "sm"}
           icon={<UserCheck aria-hidden="true" size={actionIconSize} />}
@@ -7169,7 +7171,7 @@ function ProfileInfoActions({
             type="button"
             variant="secondary"
             size="icon"
-            className="size-8 p-0"
+            className={iconButtonClass}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             aria-label={`Profile actions for @${profile.user.handle}`}
@@ -7184,6 +7186,18 @@ function ProfileInfoActions({
               data-testid="profile-info-actions-menu"
               className="absolute right-0 z-50 mt-1 w-44 overflow-hidden rounded-card border border-line bg-surface p-1.5 text-sm shadow-lift"
             >
+              <button
+                type="button"
+                role="menuitem"
+                className={menuItemClass}
+                onClick={() => {
+                  setMenuOpen(false);
+                  onShareProfile();
+                }}
+              >
+                <Share2 aria-hidden="true" className="shrink-0" size={14} />
+                <span>Share profile</span>
+              </button>
               {onMuteToggle ? (
                 <button
                   type="button"
@@ -7214,20 +7228,22 @@ function ProfileInfoActions({
                   <span>{profile.blockedByMe ? "Unblock" : "Block"}</span>
                 </button>
               ) : null}
-              <ReportForm
-                className="w-full"
-                targetType="profile"
-                targetId={profile.user.id}
-                reportedUserId={profile.user.id}
-                title="Report profile"
-                explainer={`This reports @${profile.user.handle}'s profile to moderators.`}
-                triggerLabel="Report profile"
-                triggerClassName={cn(
-                  menuItemClass,
-                  "min-h-0 border-0 bg-transparent shadow-none",
-                )}
-                triggerIconSize={14}
-              />
+              {!isOwnProfile ? (
+                <ReportForm
+                  className="w-full"
+                  targetType="profile"
+                  targetId={profile.user.id}
+                  reportedUserId={profile.user.id}
+                  title="Report profile"
+                  explainer={`This reports @${profile.user.handle}'s profile to moderators.`}
+                  triggerLabel="Report profile"
+                  triggerClassName={cn(
+                    menuItemClass,
+                    "min-h-0 border-0 bg-transparent shadow-none",
+                  )}
+                  triggerIconSize={14}
+                />
+              ) : null}
             </div>
           ) : null}
         </div>
