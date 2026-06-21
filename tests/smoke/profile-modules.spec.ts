@@ -2157,9 +2157,17 @@ test("profile info variants stay within each supported size", async ({ page }) =
     const bannerBodyBleed = element.querySelector<HTMLElement>(
       '[data-testid="profile-header-banner-body-bleed"]',
     );
+    const bannerCardBleed = element.querySelector<HTMLElement>(
+      '[data-testid="profile-header-banner-card-bleed"]',
+    );
+    const avatarElement = element.querySelector<HTMLElement>(
+      '[data-testid="profile-info-avatar-frame"]',
+    );
     const bannerBleedRect = bannerBleed?.getBoundingClientRect();
     const bannerRect = banner?.getBoundingClientRect();
     const bannerBodyBleedRect = bannerBodyBleed?.getBoundingClientRect();
+    const bannerCardBleedRect = bannerCardBleed?.getBoundingClientRect();
+    const avatarRect = avatarElement?.getBoundingClientRect();
     const gridStyles = window.getComputedStyle(gridElement);
       const columnGap = Number.parseFloat(gridStyles.columnGap) || 0;
       const rowGap = Number.parseFloat(gridStyles.rowGap) || columnGap;
@@ -2197,6 +2205,15 @@ test("profile info variants stay within each supported size", async ({ page }) =
             ? bannerBodyBleedRect.top < bannerRect.bottom &&
               bannerBodyBleedRect.bottom > bannerRect.bottom
             : false,
+        bannerCardBleedExtends:
+          bannerCardBleedRect && bannerRect
+            ? bannerCardBleedRect.bottom > bannerRect.bottom
+            : false,
+        avatarOverlapsBannerBoundary:
+          avatarRect && bannerRect
+            ? avatarRect.top < bannerRect.bottom - 2 &&
+              avatarRect.bottom > bannerRect.bottom + 2
+            : false,
         expectedModuleHeight: Math.round(cellSize * rowSpan + rowGap * (rowSpan - 1)),
         expectedModuleWidth: Math.round(
           cellSize * colSpan + columnGap * (colSpan - 1),
@@ -2232,6 +2249,8 @@ test("profile info variants stay within each supported size", async ({ page }) =
     if (["4x3", "6x3", "8x3", "8x4"].includes(profileInfoCase.size)) {
       expect(metrics.bannerBleedExtends).toBe(true);
       expect(metrics.bannerBodyBleedExtends).toBe(true);
+      expect(metrics.bannerCardBleedExtends).toBe(true);
+      expect(metrics.avatarOverlapsBannerBoundary).toBe(true);
     }
   }
 });

@@ -6748,8 +6748,17 @@ function ProfileInfoSizedCard({
       data-testid="profile-header"
     >
       {showBanner ? (
+        <img
+          alt=""
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[68%] w-full object-cover object-center opacity-28 blur-2xl saturate-125 [mask-image:linear-gradient(to_bottom,black_0%,black_42%,transparent_100%)]"
+          src={bannerUrl}
+          data-testid="profile-header-banner-card-bleed"
+        />
+      ) : null}
+      {showBanner ? (
         <div
-          className="relative isolate shrink-0 overflow-visible bg-canvas/80"
+          className="relative z-10 isolate shrink-0 overflow-visible bg-canvas/80"
           data-profile-banner-treatment="cover"
           data-testid="profile-header-banner"
           style={{ blockSize: layout.bannerHeight }}
@@ -6785,7 +6794,7 @@ function ProfileInfoSizedCard({
       )}
       <div
         className={cn(
-          "relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-gradient-to-b from-surface/10 via-surface/54 to-surface/76",
+          "relative z-20 flex min-h-0 min-w-0 flex-1 flex-col overflow-visible bg-gradient-to-b from-surface/0 via-surface/48 to-surface/78",
           layout.bodyPaddingClass,
         )}
       >
@@ -6794,13 +6803,13 @@ function ProfileInfoSizedCard({
             <img
               alt=""
               aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 -top-14 z-0 h-36 w-full object-cover object-center opacity-32 blur-2xl saturate-125"
+              className="pointer-events-none absolute inset-x-0 -top-16 z-0 h-44 w-full object-cover object-center opacity-42 blur-2xl saturate-125"
               src={bannerUrl}
               data-testid="profile-header-banner-body-bleed"
             />
             <span
               aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 -top-8 z-0 h-40 bg-gradient-to-b from-surface/0 via-surface/45 to-surface/88"
+              className="pointer-events-none absolute inset-x-0 -top-14 z-0 h-48 bg-gradient-to-b from-surface/0 via-surface/28 to-surface/90"
             />
           </>
         ) : null}
@@ -7169,7 +7178,7 @@ function ProfileInfoInlineBadges({
       {visibleBadges.map((userBadge) => (
         <Badge
           key={userBadge.id}
-          className="min-h-4 max-w-24 shrink px-1.5 text-[0.58rem] leading-none"
+          className="!h-4 !min-h-0 max-w-20 shrink !px-1.5 !py-0 !text-[0.55rem] !font-semibold !leading-none"
           data-profile-info-badge={userBadge.badge.badgeKey}
           title={userBadge.badge.description ?? userBadge.badge.name}
           tone={badgeTone(userBadge.badge.rarity)}
