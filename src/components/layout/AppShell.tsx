@@ -9,6 +9,7 @@ import {
   PenLine,
   Radio,
   Search,
+  Settings,
   Shield,
   UserRound,
   UserPlus,
@@ -462,6 +463,10 @@ function AccountMenu() {
                 <AccountMenuItem to={`/@${user.handle}`} onSelect={() => setOpen(false)}>
                   <UserRound aria-hidden="true" size={16} />
                   Profile
+                </AccountMenuItem>
+                <AccountMenuItem to="/settings" onSelect={() => setOpen(false)}>
+                  <Settings aria-hidden="true" size={16} />
+                  Settings
                 </AccountMenuItem>
                 <AccountMenuItem to="/legal" onSelect={() => setOpen(false)}>
                   <FileText aria-hidden="true" size={16} />

@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(191) NOT NULL,
   password_hash VARCHAR(255) NULL COMMENT 'Hashed password for login-capable users; NULL for seeded users without credentials.',
   role ENUM('member', 'moderator', 'admin') NOT NULL DEFAULT 'member',
-  status ENUM('active', 'suspended') NOT NULL DEFAULT 'active',
+  status ENUM('active', 'suspended', 'deactivated') NOT NULL DEFAULT 'active',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY users_handle_unique (handle),
@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   profile_layout_preset VARCHAR(20) NOT NULL DEFAULT 'balanced',
   profile_canvas_version SMALLINT UNSIGNED NOT NULL DEFAULT 2,
   profile_canvas_glass_opacity TINYINT UNSIGNED NOT NULL DEFAULT 58,
+  visibility ENUM('public', 'private') NOT NULL DEFAULT 'public',
   links JSON NULL,
   traits JSON NULL,
   featured_post_id BIGINT UNSIGNED NULL,
@@ -48,6 +49,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   KEY profiles_display_name_idx (display_name),
   KEY profiles_featured_post_idx (featured_post_id),
   KEY profiles_featured_room_idx (featured_room_id),
+  KEY profiles_visibility_idx (visibility),
   CONSTRAINT profiles_user_fk
     FOREIGN KEY (user_id) REFERENCES users(id)
     ON DELETE CASCADE
@@ -109,6 +111,109 @@ CREATE TABLE IF NOT EXISTS profile_stars (
     ON DELETE CASCADE,
   CONSTRAINT profile_stars_starred_user_id_fk
     FOREIGN KEY (starred_user_id) REFERENCES users(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_follow_requests (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  requester_id BIGINT UNSIGNED NOT NULL,
+  target_user_id BIGINT UNSIGNED NOT NULL,
+  status ENUM('pending', 'approved', 'denied', 'canceled') NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY user_follow_requests_pair_unique (requester_id, target_user_id),
+  KEY user_follow_requests_target_status_idx (target_user_id, status, created_at),
+  KEY user_follow_requests_requester_status_idx (requester_id, status),
+  CONSTRAINT user_follow_requests_requester_fk
+    FOREIGN KEY (requester_id) REFERENCES users(id)
+    ON DELETE CASCADE,
+  CONSTRAINT user_follow_requests_target_fk
+    FOREIGN KEY (target_user_id) REFERENCES users(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_preferences (
+  user_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+  analytics_consent TINYINT(1) NOT NULL DEFAULT 0,
+  personalization_consent TINYINT(1) NOT NULL DEFAULT 1,
+  rich_embeds_consent TINYINT(1) NOT NULL DEFAULT 1,
+  autoplay_media_consent TINYINT(1) NOT NULL DEFAULT 0,
+  sensitive_content_visible TINYINT(1) NOT NULL DEFAULT 0,
+  notification_preferences_json JSON NULL,
+  email_notification_preferences_json JSON NULL,
+  push_notification_preferences_json JSON NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT user_preferences_user_fk
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_handle_history (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT UNSIGNED NOT NULL,
+  old_handle VARCHAR(40) NOT NULL,
+  new_handle VARCHAR(40) NOT NULL,
+  reserved_until DATETIME NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY user_handle_history_user_created_idx (user_id, created_at),
+  KEY user_handle_history_old_reserved_idx (old_handle, reserved_until),
+  KEY user_handle_history_new_handle_idx (new_handle),
+  CONSTRAINT user_handle_history_user_fk
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_two_factor (
+  user_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+  secret_cipher TEXT NULL,
+  pending_secret_cipher TEXT NULL,
+  enabled_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT user_two_factor_user_fk
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_two_factor_backup_codes (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT UNSIGNED NOT NULL,
+  code_hash VARCHAR(255) NOT NULL,
+  used_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY user_two_factor_backup_codes_user_used_idx (user_id, used_at),
+  CONSTRAINT user_two_factor_backup_codes_user_fk
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS auth_two_factor_challenges (
+  id CHAR(48) PRIMARY KEY,
+  user_id BIGINT UNSIGNED NOT NULL,
+  attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  expires_at DATETIME NOT NULL,
+  consumed_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY auth_two_factor_challenges_user_idx (user_id),
+  KEY auth_two_factor_challenges_expires_idx (expires_at),
+  CONSTRAINT auth_two_factor_challenges_user_fk
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS account_deletion_requests (
+  user_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+  requested_at DATETIME NOT NULL,
+  scheduled_for DATETIME NOT NULL,
+  canceled_at DATETIME NULL,
+  completed_at DATETIME NULL,
+  reason VARCHAR(255) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY account_deletion_requests_scheduled_idx (scheduled_for),
+  CONSTRAINT account_deletion_requests_user_fk
+    FOREIGN KEY (user_id) REFERENCES users(id)
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

@@ -47,6 +47,8 @@ AddType video/webm .webm
   RewriteCond %{REQUEST_URI} ^/api(?:/|$) [NC]
   RewriteRule ^ - [L]
 
+  RewriteRule ^sitemap\.xml$ api/sitemap.php [QSA,L]
+
   # Serve post-specific Open Graph metadata before the React app hydrates.
   RewriteRule ^@([A-Za-z0-9_-]{1,40})/posts/([A-Za-z0-9_-]{1,40})/?$ api/post-share.php?handle=$1&postId=$2 [QSA,L]
 

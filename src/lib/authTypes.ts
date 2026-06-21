@@ -27,6 +27,14 @@ export type AuthSession = {
   csrfToken: string;
 };
 
+export type TwoFactorLoginChallenge = {
+  twoFactorRequired: true;
+  challengeId: string;
+  expiresAt: string;
+};
+
+export type LoginResult = AuthSession | TwoFactorLoginChallenge;
+
 export type LoginInput = {
   email: string;
   password: string;
@@ -44,7 +52,7 @@ export type AuthContextValue = {
   user: AuthUser | undefined;
   profile: AuthProfile | undefined;
   csrfToken: string | undefined;
-  login: (input: LoginInput) => Promise<void>;
+  login: (input: LoginInput) => Promise<LoginResult>;
   register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<AuthSession>;

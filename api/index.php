@@ -12,6 +12,7 @@ require_once __DIR__ . '/profile.php';
 require_once __DIR__ . '/profile_modules.php';
 require_once __DIR__ . '/integrations.php';
 require_once __DIR__ . '/onboarding.php';
+require_once __DIR__ . '/settings.php';
 require_once __DIR__ . '/follows.php';
 require_once __DIR__ . '/notifications.php';
 require_once __DIR__ . '/chat.php';
@@ -60,6 +61,10 @@ try {
         json_response(['ok' => true]);
     }
 
+    if (($segments[0] ?? null) === 'auth' && count($segments) === 3 && ($segments[1] ?? null) === '2fa') {
+        auth_two_factor_dispatch($segments, $method);
+    }
+
     if (($segments[0] ?? null) === 'auth' && count($segments) === 2) {
         auth_dispatch($segments[1], $method);
     }
@@ -102,6 +107,13 @@ try {
 
     if (($segments[0] ?? null) === 'me' && ($segments[1] ?? null) === 'onboarding') {
         onboarding_dispatch($segments, $method);
+    }
+
+    if (
+        ($segments[0] ?? null) === 'me'
+        && in_array($segments[1] ?? null, ['settings', 'account', 'security', 'privacy', 'preferences', 'follow-requests', 'posts'], true)
+    ) {
+        settings_dispatch($segments, $method);
     }
 
     if (($segments[0] ?? null) === 'me') {

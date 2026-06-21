@@ -17,6 +17,7 @@ import type {
   AuthSession,
   AuthStatus,
   LoginInput,
+  LoginResult,
   RegisterInput,
 } from "./authTypes";
 
@@ -83,11 +84,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [clearSession]);
 
   const login = useCallback(
-    async (input: LoginInput) => {
-      await apiPost<AuthSession>("/auth/login", input);
+    async (input: LoginInput): Promise<LoginResult> => {
+      const result = await apiPost<LoginResult>("/auth/login", input);
+
+      if ("twoFactorRequired" in result && result.twoFactorRequired) {
+        return result;
+      }
 
       try {
-        await refreshSession();
+        const nextSession = await refreshSession();
+        return nextSession;
       } catch (error) {
         clearSession();
         throw new Error(

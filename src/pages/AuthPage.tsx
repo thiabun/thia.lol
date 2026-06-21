@@ -10,6 +10,7 @@ import { Button } from "../components/ui/Button";
 import { HandleField, TextField } from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
+import { verifyTwoFactorLogin, type TwoFactorChallenge } from "../lib/api";
 import { useAuth } from "../lib/useAuth";
 
 type AuthPageProps = {
@@ -19,9 +20,11 @@ type AuthPageProps = {
 export function AuthPage({ mode }: AuthPageProps) {
   const isRegister = mode === "register";
   const navigate = useNavigate();
-  const { login, logout, register, status, user } = useAuth();
+  const { login, logout, refreshSession, register, status, user } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [twoFactorChallenge, setTwoFactorChallenge] =
+    useState<TwoFactorChallenge | undefined>();
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,15 +43,45 @@ export function AuthPage({ mode }: AuthPageProps) {
           password: stringField(form, "password", false),
         });
       } else {
-        await login({
+        const result = await login({
           email: stringField(form, "email"),
           password: stringField(form, "password", false),
         });
+
+        if ("twoFactorRequired" in result && result.twoFactorRequired) {
+          setTwoFactorChallenge(result);
+          return;
+        }
       }
 
       navigate(isRegister ? "/onboarding" : "/", { replace: true });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Something went wrong.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleTwoFactorSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!twoFactorChallenge) {
+      return;
+    }
+
+    const form = new FormData(event.currentTarget);
+    setSubmitting(true);
+    setError(undefined);
+
+    try {
+      await verifyTwoFactorLogin({
+        challengeId: twoFactorChallenge.challengeId,
+        code: stringField(form, "code"),
+      });
+      await refreshSession();
+      navigate("/", { replace: true });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Code could not be verified.");
     } finally {
       setSubmitting(false);
     }
@@ -74,7 +107,10 @@ export function AuthPage({ mode }: AuthPageProps) {
         animate="show"
       >
         <Panel className="w-full overflow-hidden">
-          <form className="p-5 sm:p-6" onSubmit={handleSubmit}>
+          <form
+            className="p-5 sm:p-6"
+            onSubmit={twoFactorChallenge ? handleTwoFactorSubmit : handleSubmit}
+          >
             <BrandLogoMain
               className="mb-5"
               data-testid="auth-brand-logo-main"
@@ -89,7 +125,9 @@ export function AuthPage({ mode }: AuthPageProps) {
             <p className="mt-3 text-base leading-7 text-muted">
               {isRegister
                 ? "Choose a handle."
-                : "Use your account."}
+                : twoFactorChallenge
+                  ? "Enter your authenticator or recovery code."
+                  : "Use your account."}
             </p>
 
             {status === "authenticated" && user ? (
@@ -119,7 +157,20 @@ export function AuthPage({ mode }: AuthPageProps) {
             ) : null}
 
             <div className="mt-6 space-y-4">
-              {isRegister ? (
+              {twoFactorChallenge ? (
+                <TextField
+                  id="code"
+                  name="code"
+                  label="Authenticator or recovery code"
+                  type="text"
+                  placeholder="123456"
+                  autoComplete="one-time-code"
+                  icon={LockKeyhole}
+                  required
+                  minLength={6}
+                  maxLength={20}
+                />
+              ) : isRegister ? (
                 <>
                   <TextField
                     id="displayName"
@@ -149,33 +200,56 @@ export function AuthPage({ mode }: AuthPageProps) {
                   />
                 </>
               ) : null}
-              <TextField
-                id="email"
-                name="email"
-                label="Email"
-                type="email"
-                placeholder="you@example.com"
-                autoComplete="email"
-                icon={Mail}
-                required
-              />
-              <TextField
-                id="password"
-                name="password"
-                label="Password"
-                type="password"
-                placeholder="••••••••"
-                autoComplete={isRegister ? "new-password" : "current-password"}
-                icon={LockKeyhole}
-                required
-                minLength={isRegister ? 10 : undefined}
-                maxLength={255}
-              />
+              {!twoFactorChallenge ? (
+                <>
+                  <TextField
+                    id="email"
+                    name="email"
+                    label="Email"
+                    type="email"
+                    placeholder="you@example.com"
+                    autoComplete="email"
+                    icon={Mail}
+                    required
+                  />
+                  <TextField
+                    id="password"
+                    name="password"
+                    label="Password"
+                    type="password"
+                    placeholder="••••••••"
+                    autoComplete={isRegister ? "new-password" : "current-password"}
+                    icon={LockKeyhole}
+                    required
+                    minLength={isRegister ? 10 : undefined}
+                    maxLength={255}
+                  />
+                </>
+              ) : null}
             </div>
 
             <Button type="submit" className="mt-6 w-full" disabled={submitting}>
-              {submitting ? "Working..." : isRegister ? "Create account" : "Sign in"}
+              {submitting
+                ? "Working..."
+                : twoFactorChallenge
+                  ? "Verify code"
+                  : isRegister
+                    ? "Create account"
+                    : "Sign in"}
             </Button>
+            {twoFactorChallenge ? (
+              <Button
+                type="button"
+                className="mt-3 w-full"
+                variant="ghost"
+                onClick={() => {
+                  setTwoFactorChallenge(undefined);
+                  setError(undefined);
+                }}
+              >
+                Use a different account
+              </Button>
+            ) : null}
 
             <p className="mt-4 text-center text-xs leading-5 text-muted">
               By {isRegister ? "creating an account" : "signing in"}, you agree to

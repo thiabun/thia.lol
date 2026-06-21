@@ -494,6 +494,7 @@ export type FollowRelationship = {
   isFollowedBy: boolean;
   isMoot: boolean;
   isStarred: boolean;
+  isFollowRequestPending?: boolean;
   blockedByMe?: boolean;
   mutedByMe?: boolean;
   followerCount: number;
@@ -523,6 +524,86 @@ export type ProfileStarResult = {
     moots?: number;
     stars?: number;
   };
+};
+
+export type AccountSettings = {
+  account: {
+    id: number;
+    handle: string;
+    email: string;
+    displayName: string;
+    status: string;
+    handleChange: {
+      canChange: boolean;
+      nextAllowedAt: string | null;
+    };
+  };
+  privacy: {
+    profileVisibility: "public" | "private";
+  };
+  preferences: AccountPreferences;
+  twoFactor: TwoFactorStatus;
+  deletion: {
+    requestedAt: string | null;
+    scheduledFor: string | null;
+    canceledAt: string | null;
+    completedAt: string | null;
+  } | null;
+};
+
+export type AccountPreferences = {
+  analyticsConsent: boolean;
+  personalizationConsent: boolean;
+  richEmbedsConsent: boolean;
+  autoplayMediaConsent: boolean;
+  sensitiveContentVisible: boolean;
+  notifications: Record<string, boolean>;
+  emailNotifications: Record<string, boolean>;
+  pushNotifications: Record<string, boolean>;
+};
+
+export type TwoFactorStatus = {
+  enabled: boolean;
+  backupCodeCount: number;
+  encryptionConfigured: boolean;
+  encryptionAvailable: boolean;
+};
+
+export type TwoFactorSetupResult = {
+  setup: {
+    manualSecret: string;
+    otpauthUri: string;
+  };
+  twoFactor: TwoFactorStatus;
+};
+
+export type TwoFactorEnableResult = {
+  twoFactor: TwoFactorStatus;
+  backupCodes: string[];
+};
+
+export type FollowRequest = {
+  id: number;
+  createdAt: string;
+  user: User;
+  bioSnippet: string;
+};
+
+export type AccountPostSummary = {
+  id: number;
+  publicId?: string | null;
+  kind: "post" | "reply";
+  body: string;
+  mediaUrl?: string | null;
+  status: string;
+  deletedAt?: string | null;
+  createdAt?: string | null;
+};
+
+export type TwoFactorChallenge = {
+  twoFactorRequired: true;
+  challengeId: string;
+  expiresAt: string;
 };
 
 export type ReportTargetType = "post" | "profile" | "room" | "message";
@@ -1196,6 +1277,153 @@ export function updateProfileFeaturedContent(
   );
 }
 
+export function getAccountSettings(): Promise<AccountSettings> {
+  return apiGet<AccountSettings>("/me/settings");
+}
+
+export function updateAccountEmail(
+  input: { email: string; currentPassword: string },
+  csrfToken: string,
+): Promise<AccountSettings> {
+  return apiPatch<AccountSettings>("/me/account/email", input, csrfToken);
+}
+
+export function updateAccountHandle(
+  input: { handle: string; currentPassword: string },
+  csrfToken: string,
+): Promise<AccountSettings> {
+  return apiPatch<AccountSettings>(
+    "/me/account/handle",
+    { ...input, handle: normalizeHandle(input.handle) },
+    csrfToken,
+  );
+}
+
+export function updateAccountPassword(
+  input: { currentPassword: string; newPassword: string },
+  csrfToken: string,
+): Promise<{ changed: boolean }> {
+  return apiPatch<{ changed: boolean }>("/me/account/password", input, csrfToken);
+}
+
+export function updateAccountPrivacy(
+  input: { profileVisibility: "public" | "private" },
+  csrfToken: string,
+): Promise<AccountSettings> {
+  return apiPatch<AccountSettings>("/me/privacy", input, csrfToken);
+}
+
+export function updateAccountPreferences(
+  input: AccountPreferences,
+  csrfToken: string,
+): Promise<AccountSettings> {
+  return apiPatch<AccountSettings>("/me/preferences", input, csrfToken);
+}
+
+export function getFollowRequests(): Promise<FollowRequest[]> {
+  return apiGet<FollowRequest[]>("/me/follow-requests");
+}
+
+export function approveFollowRequest(
+  id: number,
+  csrfToken: string,
+): Promise<{ approved: boolean }> {
+  return apiPost<{ approved: boolean }>(
+    `/me/follow-requests/${encodeURIComponent(String(id))}/approve`,
+    {},
+    csrfToken,
+  );
+}
+
+export function denyFollowRequest(
+  id: number,
+  csrfToken: string,
+): Promise<{ denied: boolean }> {
+  return apiDelete<{ denied: boolean }>(
+    `/me/follow-requests/${encodeURIComponent(String(id))}`,
+    csrfToken,
+  );
+}
+
+export function getMyPosts(
+  kind: "posts" | "replies" | "all" = "all",
+): Promise<AccountPostSummary[]> {
+  return apiGet<AccountPostSummary[]>(`/me/posts?kind=${encodeURIComponent(kind)}`);
+}
+
+export function deleteMyPosts(
+  kind: "posts" | "replies" | "all",
+  csrfToken: string,
+): Promise<{ deletedCount: number; kind: string }> {
+  return apiDelete<{ deletedCount: number; kind: string }>(
+    `/me/posts?kind=${encodeURIComponent(kind)}`,
+    csrfToken,
+  );
+}
+
+export function startTwoFactorSetup(
+  currentPassword: string,
+  csrfToken: string,
+): Promise<TwoFactorSetupResult> {
+  return apiPost<TwoFactorSetupResult>(
+    "/me/security/2fa/setup",
+    { currentPassword },
+    csrfToken,
+  );
+}
+
+export function enableTwoFactor(
+  code: string,
+  csrfToken: string,
+): Promise<TwoFactorEnableResult> {
+  return apiPost<TwoFactorEnableResult>("/me/security/2fa/enable", { code }, csrfToken);
+}
+
+export function disableTwoFactor(
+  currentPassword: string,
+  csrfToken: string,
+): Promise<{ twoFactor: TwoFactorStatus }> {
+  return apiDelete<{ twoFactor: TwoFactorStatus }>("/me/security/2fa", csrfToken, {
+    currentPassword,
+  });
+}
+
+export function regenerateTwoFactorRecoveryCodes(
+  currentPassword: string,
+  csrfToken: string,
+): Promise<{ backupCodes: string[]; twoFactor: TwoFactorStatus }> {
+  return apiPost<{ backupCodes: string[]; twoFactor: TwoFactorStatus }>(
+    "/me/security/2fa/recovery-codes",
+    { currentPassword },
+    csrfToken,
+  );
+}
+
+export function verifyTwoFactorLogin(input: {
+  challengeId: string;
+  code: string;
+}): Promise<import("./authTypes").AuthSession> {
+  return apiPost<import("./authTypes").AuthSession>("/auth/2fa/verify", input);
+}
+
+export function scheduleAccountDeletion(
+  currentPassword: string,
+  reason: string,
+  csrfToken: string,
+): Promise<{ scheduled: boolean; scheduledFor: string }> {
+  return apiDelete<{ scheduled: boolean; scheduledFor: string }>(
+    "/me/account",
+    csrfToken,
+    { currentPassword, reason },
+  );
+}
+
+export function cancelAccountDeletion(
+  csrfToken: string,
+): Promise<AccountSettings> {
+  return apiPost<AccountSettings>("/me/account/deletion/cancel", {}, csrfToken);
+}
+
 export function createPost(
   input: CreatePostInput,
   csrfToken: string,
@@ -1625,6 +1853,9 @@ function normalizeProfile(profile: ApiProfile): Profile {
         ? PROFILE_CANVAS_VERSION
         : PROFILE_CANVAS_VERSION,
     profileCanvasGlass: normalizeProfileCanvasGlass(profile.profileCanvasGlass),
+    visibility: profile.visibility === "private" ? "private" : "public",
+    isPrivate: profile.isPrivate ?? (profile.visibility === "private"),
+    viewerCanView: profile.viewerCanView ?? true,
     featuredPostId: profile.featuredPostId ?? profile.featuredPost?.id ?? null,
     featuredRoomId: profile.featuredRoomId ?? profile.featuredRoom?.id ?? null,
     featuredPost: profile.featuredPost ? normalizePost(profile.featuredPost) : null,
@@ -1655,6 +1886,7 @@ function normalizeProfile(profile: ApiProfile): Profile {
     isFollowedBy: profile.isFollowedBy ?? false,
     isMoot: profile.isMoot ?? false,
     isStarred: profile.isStarred ?? false,
+    isFollowRequestPending: profile.isFollowRequestPending ?? false,
     blockedByMe: profile.blockedByMe ?? profile.isBlocked ?? false,
     mutedByMe: profile.mutedByMe ?? profile.isMuted ?? false,
     createdAt: profile.createdAt ?? null,
@@ -1670,6 +1902,7 @@ function normalizeFollowRelationship(
     isFollowedBy: relationship.isFollowedBy ?? false,
     isMoot: relationship.isMoot ?? false,
     isStarred: relationship.isStarred ?? false,
+    isFollowRequestPending: relationship.isFollowRequestPending ?? false,
     blockedByMe: relationship.blockedByMe ?? relationship.isBlocked ?? false,
     mutedByMe: relationship.mutedByMe ?? relationship.isMuted ?? false,
     followerCount: relationship.followerCount ?? 0,

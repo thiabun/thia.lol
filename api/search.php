@@ -65,6 +65,7 @@ function search_profiles(string $query): array
     $viewerUserId = current_request_user_id();
     $viewerSql = $viewerUserId === null ? 'NULL' : (string) $viewerUserId;
     $relationshipFilter = viewer_feed_relationship_filter_sql($viewerUserId);
+    $profileVisibilityFilter = profile_visibility_column_exists() ? "AND p.visibility = 'public'" : '';
     $likePrefix = search_like_pattern($query, true);
     $likeAnywhere = search_like_pattern($query, false);
 
@@ -85,7 +86,8 @@ function search_profiles(string $query): array
             END AS search_rank
          FROM users u
          INNER JOIN profiles p ON p.user_id = u.id
-         WHERE u.status = 'active'
+         WHERE " . user_publicly_available_sql('u') . "
+           {$profileVisibilityFilter}
            AND ({$viewerSql} IS NULL OR u.id <> {$viewerSql})
            {$relationshipFilter}
            AND (

@@ -76,6 +76,7 @@ import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { ImageCropModal } from "../components/ui/ImageCropModal";
 import { ModalSheet } from "../components/ui/ModalSheet";
+import { Panel } from "../components/ui/Panel";
 import {
   blockProfile,
   followProfile,
@@ -509,7 +510,7 @@ export function ProfilePage() {
     try {
       const nextState = await runWithAuth(
         (csrfToken) =>
-          profile.isFollowing
+          profile.isFollowing || profile.isFollowRequestPending
             ? unfollowProfile(profile.user.handle, csrfToken)
             : followProfile(profile.user.handle, csrfToken),
         { retryOnCsrf: true },
@@ -545,6 +546,7 @@ export function ProfilePage() {
       isFollowedBy: profile.isFollowedBy,
       isMoot: profile.isMoot,
       isStarred: profile.isStarred,
+      isFollowRequestPending: profile.isFollowRequestPending ?? false,
       blockedByMe: profile.blockedByMe ?? false,
       mutedByMe: profile.mutedByMe ?? false,
       followerCount: profile.followerCount,
@@ -1549,6 +1551,61 @@ export function ProfilePage() {
     canvasEditing && renderedProfile
       ? { ...renderedProfile, profileBackgroundBlur: draftBackgroundBlur }
       : renderedProfile;
+
+  if (!renderedProfile.viewerCanView && !isOwnProfile) {
+    return (
+      <motion.div
+        className="profile-canvas-viewport-shell relative"
+        variants={pageEntrance}
+        initial="hidden"
+        animate="show"
+      >
+        <ProfilePersonalBackdrop profile={backgroundPreviewProfile} />
+        <div className="profile-canvas-page-shell relative z-10 mx-auto">
+          <PageMeta
+            title={`${renderedProfile.user.displayName} (@${renderedProfile.user.handle})`}
+            description="This profile is private."
+            path={`/@${renderedProfile.user.handle}`}
+          />
+          <Panel className="mx-auto max-w-xl p-5 sm:p-6">
+            <div className="flex items-center gap-4">
+              <Avatar user={renderedProfile.user} size="lg" />
+              <div className="min-w-0">
+                <h1 className="truncate text-2xl font-semibold text-text">
+                  {renderedProfile.user.displayName}
+                </h1>
+                <p className="text-sm text-muted">@{renderedProfile.user.handle}</p>
+              </div>
+            </div>
+            <div className="mt-5 rounded-card border border-line bg-canvas/45 p-4">
+              <p className="font-semibold text-text">This profile is private.</p>
+              <p className="mt-2 text-sm leading-6 text-muted">
+                Follow requests must be approved before posts, modules, and profile details are visible.
+              </p>
+              {!isOwnProfile ? (
+                <Button
+                  type="button"
+                  className="mt-4"
+                  disabled={followPosting}
+                  onClick={handleFollowToggle}
+                >
+                  {followPosting
+                    ? "Saving"
+                    : renderedProfile.isFollowRequestPending
+                      ? "Requested"
+                      : "Request follow"}
+                </Button>
+              ) : null}
+              {activeFollowError ? (
+                <p className="mt-3 text-sm text-rose-ink">{activeFollowError}</p>
+              ) : null}
+            </div>
+          </Panel>
+        </div>
+      </motion.div>
+    );
+  }
+
   const profileSpaceModules = publicModules.filter((module) => {
     if (module.type === "activity") {
       return true;
@@ -6300,6 +6357,7 @@ function mergeFollowState(
     isFollowedBy: followState.isFollowedBy,
     isMoot: followState.isMoot,
     isStarred: followState.isStarred,
+    isFollowRequestPending: followState.isFollowRequestPending ?? false,
     blockedByMe: followState.blockedByMe ?? profile.blockedByMe ?? false,
     mutedByMe: followState.mutedByMe ?? profile.mutedByMe ?? false,
     stats: {
@@ -6995,6 +7053,11 @@ function ProfileInfoActions({
   const disabled = profile.blockedByMe === true;
   const iconOnly = compact || primaryCompact;
   const actionIconSize = iconOnly ? 14 : 15;
+  const followLabel = profile.isFollowRequestPending
+    ? "Requested"
+    : profile.isFollowing
+      ? "Following"
+      : "Follow";
   const menuItemClass =
     "flex w-full items-center justify-start gap-2 rounded-card px-2.5 py-2 text-left text-xs font-semibold text-text transition duration-fluid ease-fluid hover:bg-surface-strong focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50";
 
@@ -7049,11 +7112,11 @@ function ProfileInfoActions({
           data-testid="profile-follow-button"
           size={iconOnly ? "icon" : "sm"}
           icon={<UserCheck aria-hidden="true" size={actionIconSize} />}
-          aria-label={profile.isFollowing ? "Following" : "Follow"}
-          title={profile.isFollowing ? "Following" : "Follow"}
+          aria-label={followLabel}
+          title={followLabel}
           onClick={onFollowToggle}
         >
-          {iconOnly ? null : followPosting ? "Saving" : profile.isFollowing ? "Following" : "Follow"}
+          {iconOnly ? null : followPosting ? "Saving" : followLabel}
         </Button>
       ) : null}
       {showMenu ? (

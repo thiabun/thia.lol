@@ -88,6 +88,7 @@ function profile_payload(array $row, ?array $stats = null, ?array $social = null
         'isFollowedBy' => (bool) ($row['is_followed_by'] ?? false),
         'isMoot' => (bool) ($row['is_moot'] ?? false),
         'isStarred' => (bool) ($row['is_starred'] ?? false),
+        'isFollowRequestPending' => (bool) ($row['is_follow_request_pending'] ?? false),
         'isBlocked' => (bool) ($row['is_blocked'] ?? false),
         'isMuted' => (bool) ($row['is_muted'] ?? false),
     ];
@@ -120,6 +121,9 @@ function profile_payload(array $row, ?array $stats = null, ?array $social = null
         'profileLayoutPreset' => profile_layout_preset($row['profile_layout_preset'] ?? null),
         'profileCanvasVersion' => profile_canvas_version($row['profile_canvas_version'] ?? null),
         'profileCanvasGlass' => profile_canvas_glass($row['profile_canvas_glass_opacity'] ?? null),
+        'visibility' => profile_visibility($row['visibility'] ?? null),
+        'isPrivate' => profile_visibility($row['visibility'] ?? null) === 'private',
+        'viewerCanView' => true,
         'featuredPostId' => profile_featured_nullable_id($row['featured_post_id'] ?? null),
         'featuredRoomId' => profile_featured_nullable_id($row['featured_room_id'] ?? null),
         'links' => json_array_value($row['links'] ?? null),
@@ -133,6 +137,7 @@ function profile_payload(array $row, ?array $stats = null, ?array $social = null
         'isFollowedBy' => (bool) $social['isFollowedBy'],
         'isMoot' => (bool) $social['isMoot'],
         'isStarred' => (bool) $social['isStarred'],
+        'isFollowRequestPending' => (bool) ($social['isFollowRequestPending'] ?? false),
         'isBlocked' => (bool) ($social['isBlocked'] ?? false),
         'isMuted' => (bool) ($social['isMuted'] ?? false),
         'createdAt' => $row['profile_created_at'] ?? null,
@@ -148,6 +153,23 @@ function profile_payload_with_featured(
 ): array {
     $payload = profile_payload($row, $stats, $social);
     $profileUserId = (int) $row['user_id'];
+    $viewerCanView = profile_viewer_can_view($profileUserId, $viewerUserId, profile_visibility($row['visibility'] ?? null));
+
+    $payload['viewerCanView'] = $viewerCanView;
+
+    if (!$viewerCanView) {
+        $payload['bio'] = '';
+        $payload['bioEntities'] = [];
+        $payload['location'] = '';
+        $payload['profileBackground'] = null;
+        $payload['profileBackgroundVideo'] = null;
+        $payload['profileBackgroundVideoPoster'] = null;
+        $payload['links'] = [];
+        $payload['traits'] = [];
+        $payload['featuredPost'] = null;
+        $payload['featuredRoom'] = null;
+        return $payload;
+    }
 
     $payload['featuredPost'] = fetch_profile_featured_post(
         $row['featured_post_id'] ?? null,
@@ -691,6 +713,132 @@ function profile_canvas_glass_column_exists(): bool
     return database_column_exists('profiles', 'profile_canvas_glass_opacity');
 }
 
+function profile_visibility_column_exists(): bool
+{
+    return database_column_exists('profiles', 'visibility');
+}
+
+function profile_visibility_select_sql(string $alias): string
+{
+    return profile_visibility_column_exists()
+        ? "{$alias}.visibility,"
+        : "'public' AS visibility,";
+}
+
+function profile_visibility(mixed $value): string
+{
+    return $value === 'private' ? 'private' : 'public';
+}
+
+function user_follow_requests_table_exists(): bool
+{
+    return database_table_exists('user_follow_requests');
+}
+
+function account_deletion_requests_table_exists(): bool
+{
+    return database_table_exists('account_deletion_requests');
+}
+
+function user_publicly_available_sql(string $alias): string
+{
+    if (!account_deletion_requests_table_exists()) {
+        return "{$alias}.status = 'active'";
+    }
+
+    return "{$alias}.status = 'active'
+        AND NOT EXISTS (
+            SELECT 1
+            FROM account_deletion_requests public_account_deletions
+            WHERE public_account_deletions.user_id = {$alias}.id
+              AND public_account_deletions.canceled_at IS NULL
+              AND public_account_deletions.completed_at IS NULL
+        )";
+}
+
+function profile_viewer_can_view(int $profileUserId, ?int $viewerUserId, string $visibility): bool
+{
+    if ($visibility !== 'private' || $viewerUserId === $profileUserId) {
+        return true;
+    }
+
+    if ($viewerUserId === null || !user_follows_table_exists()) {
+        return false;
+    }
+
+    $row = db_query(
+        'SELECT 1
+         FROM user_follows
+         WHERE follower_id = :viewer_user_id
+           AND following_id = :profile_user_id
+         LIMIT 1',
+        [
+            'viewer_user_id' => $viewerUserId,
+            'profile_user_id' => $profileUserId,
+        ]
+    )->fetch();
+
+    return is_array($row);
+}
+
+function profile_viewer_can_view_row(array $profile, ?int $viewerUserId): bool
+{
+    return profile_viewer_can_view(
+        (int) $profile['user_id'],
+        $viewerUserId,
+        profile_visibility($profile['visibility'] ?? null)
+    );
+}
+
+function profile_public_account_available(array $profile, ?int $viewerUserId): bool
+{
+    $profileUserId = (int) $profile['user_id'];
+
+    if ((string) ($profile['user_status'] ?? 'active') !== 'active') {
+        return false;
+    }
+
+    if ($viewerUserId === $profileUserId) {
+        return true;
+    }
+
+    if (!account_deletion_requests_table_exists()) {
+        return true;
+    }
+
+    $row = db_query(
+        'SELECT 1
+         FROM account_deletion_requests
+         WHERE user_id = :user_id
+           AND canceled_at IS NULL
+           AND completed_at IS NULL
+         LIMIT 1',
+        ['user_id' => $profileUserId]
+    )->fetch();
+
+    return !is_array($row);
+}
+
+function profile_author_visibility_sql(string $userAlias, string $profileAlias, ?int $viewerUserId): string
+{
+    if (!profile_visibility_column_exists()) {
+        return '';
+    }
+
+    $viewerSql = $viewerUserId === null ? 'NULL' : (string) $viewerUserId;
+
+    return " AND (
+        {$profileAlias}.visibility = 'public'
+        OR {$userAlias}.id = {$viewerSql}
+        OR EXISTS (
+            SELECT 1
+            FROM user_follows private_profile_follows
+            WHERE private_profile_follows.follower_id = {$viewerSql}
+              AND private_profile_follows.following_id = {$userAlias}.id
+        )
+    )";
+}
+
 function profile_background_video_columns_exist(): bool
 {
     return database_column_exists('profiles', 'profile_background_video_url')
@@ -937,6 +1085,7 @@ function profile_social_context(int $profileUserId, ?int $viewerUserId = null): 
         'isFollowedBy' => false,
         'isMoot' => false,
         'isStarred' => false,
+        'isFollowRequestPending' => false,
         'isBlocked' => false,
         'isMuted' => false,
     ];
@@ -1019,6 +1168,23 @@ function profile_social_context(int $profileUserId, ?int $viewerUserId = null): 
 
     if ($viewerUserId === null || $viewerUserId === $profileUserId) {
         return $context;
+    }
+
+    if (user_follow_requests_table_exists()) {
+        $pendingRequest = db_query(
+            'SELECT 1
+             FROM user_follow_requests
+             WHERE requester_id = :viewer_user_id
+               AND target_user_id = :profile_user_id
+               AND status = :status
+             LIMIT 1',
+            [
+                'viewer_user_id' => $viewerUserId,
+                'profile_user_id' => $profileUserId,
+                'status' => 'pending',
+            ]
+        )->fetch();
+        $context['isFollowRequestPending'] = is_array($pendingRequest);
     }
 
     $blockSelect = user_blocks_table_exists()
@@ -1109,6 +1275,7 @@ function fetch_profile_by_handle(string $handle): ?array
 {
     $customizationSelect = profile_customization_select_sql('p');
     $featuredSelect = profile_featured_select_sql('p');
+    $visibilitySelect = profile_visibility_select_sql('p');
     $statement = db_query(
         "SELECT
             u.id AS user_id,
@@ -1120,6 +1287,7 @@ function fetch_profile_by_handle(string $handle): ?array
             p.avatar_url,
             {$customizationSelect}
             {$featuredSelect}
+            {$visibilitySelect}
             p.links,
             p.traits,
             p.created_at AS profile_created_at,
@@ -1434,6 +1602,7 @@ function post_select_sql(
         : "";
     $resolvedExtraSelect = trim($extraSelect) === '' ? '' : ",\n        {$extraSelect}";
     $profileCustomizationSelect = profile_customization_select_sql('pr');
+    $profileVisibilitySelect = profile_visibility_select_sql('pr');
 
     $publicIdSelect = posts_public_id_column_exists()
         ? 'p.public_id AS post_public_id,'
@@ -1458,6 +1627,7 @@ function post_select_sql(
         pr.location,
         pr.avatar_url,
         {$profileCustomizationSelect}
+        {$profileVisibilitySelect}
         pr.links,
         pr.traits,
         pr.created_at AS profile_created_at,
@@ -1577,8 +1747,9 @@ function post_select_sql(
     {$reblogJoins}
     {$extraJoins}
     WHERE " . public_post_visible_sql('p', 'r') . "
-      AND u.status = 'active'
+      AND " . user_publicly_available_sql('u') . "
       AND " . post_ancestor_visibility_sql('p') . "
+      " . profile_author_visibility_sql('u', 'pr', $viewerUserId) . "
       {$whereClause}
     ORDER BY {$orderClause}
     LIMIT 50";
@@ -2062,6 +2233,7 @@ function fetch_people_to_watch(): array
     $moduleCountSql = $hasProfileModules ? 'COALESCE(profile_modules.module_count, 0)' : '0';
     $badgeCountSql = $hasFeaturedBadges ? 'COALESCE(featured_badges.badge_count, 0)' : '0';
     $followerCountSql = $hasFollows ? 'COALESCE(followers.follower_count, 0)' : '0';
+    $profileVisibilityFilter = profile_visibility_column_exists() ? "AND p.visibility = 'public'" : '';
     $profileQualityScore = "(
         CASE WHEN p.avatar_url IS NULL OR p.avatar_url = '' THEN 0 ELSE 8 END
         + CASE
@@ -2130,7 +2302,8 @@ function fetch_people_to_watch(): array
          {$followJoins}
          {$moduleJoin}
          {$badgeJoin}
-         WHERE u.status = 'active'
+         WHERE " . user_publicly_available_sql('u') . "
+           {$profileVisibilityFilter}
            AND u.handle NOT REGEXP '^smoketest[0-9]+$'
            AND ({$viewerSql} IS NULL OR u.id <> {$viewerSql})
            {$relationshipFilter}
@@ -2160,7 +2333,7 @@ function profiles_show(string $handle): void
 {
     $profile = fetch_profile_by_handle(normalize_handle($handle));
 
-    if ($profile === null) {
+    if ($profile === null || !profile_public_account_available($profile, current_request_user_id())) {
         json_error('Profile not found.', 404);
     }
 
@@ -2177,9 +2350,14 @@ function profiles_show(string $handle): void
 function profile_posts_index(string $handle): void
 {
     $normalizedHandle = normalize_handle($handle);
+    $profile = fetch_profile_by_handle($normalizedHandle);
 
-    if (fetch_profile_by_handle($normalizedHandle) === null) {
+    if ($profile === null || !profile_public_account_available($profile, current_request_user_id())) {
         json_error('Profile not found.', 404);
+    }
+
+    if (!profile_viewer_can_view_row($profile, current_request_user_id())) {
+        json_success([]);
     }
 
     json_success(fetch_public_profile_posts($normalizedHandle));
@@ -2188,9 +2366,14 @@ function profile_posts_index(string $handle): void
 function profile_replies_index(string $handle): void
 {
     $normalizedHandle = normalize_handle($handle);
+    $profile = fetch_profile_by_handle($normalizedHandle);
 
-    if (fetch_profile_by_handle($normalizedHandle) === null) {
+    if ($profile === null || !profile_public_account_available($profile, current_request_user_id())) {
         json_error('Profile not found.', 404);
+    }
+
+    if (!profile_viewer_can_view_row($profile, current_request_user_id())) {
+        json_success([]);
     }
 
     json_success(fetch_public_profile_replies($normalizedHandle));
@@ -2199,9 +2382,14 @@ function profile_replies_index(string $handle): void
 function profile_reblogs_index(string $handle): void
 {
     $normalizedHandle = normalize_handle($handle);
+    $profile = fetch_profile_by_handle($normalizedHandle);
 
-    if (fetch_profile_by_handle($normalizedHandle) === null) {
+    if ($profile === null || !profile_public_account_available($profile, current_request_user_id())) {
         json_error('Profile not found.', 404);
+    }
+
+    if (!profile_viewer_can_view_row($profile, current_request_user_id())) {
+        json_success([]);
     }
 
     json_success(fetch_public_profile_reblogs($normalizedHandle));
@@ -2210,9 +2398,14 @@ function profile_reblogs_index(string $handle): void
 function profile_rooms_index(string $handle): void
 {
     $normalizedHandle = normalize_handle($handle);
+    $profile = fetch_profile_by_handle($normalizedHandle);
 
-    if (fetch_profile_by_handle($normalizedHandle) === null) {
+    if ($profile === null || !profile_public_account_available($profile, current_request_user_id())) {
         json_error('Profile not found.', 404);
+    }
+
+    if (!profile_viewer_can_view_row($profile, current_request_user_id())) {
+        json_success([]);
     }
 
     json_success(fetch_public_profile_rooms($normalizedHandle));

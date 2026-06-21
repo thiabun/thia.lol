@@ -204,8 +204,14 @@ function profile_modules_public_index(string $handle): void
 
     $profile = fetch_profile_by_handle(normalize_handle($handle));
 
-    if ($profile === null || (string) ($profile['user_status'] ?? '') !== 'active') {
+    $viewerUserId = current_request_user_id();
+
+    if ($profile === null || !profile_public_account_available($profile, $viewerUserId)) {
         json_error('Profile not found.', 404);
+    }
+
+    if (!profile_viewer_can_view_row($profile, $viewerUserId)) {
+        json_success([]);
     }
 
     $statement = db_query(

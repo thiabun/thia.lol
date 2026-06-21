@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin
+Disallow: /settings
+Disallow: /onboarding
+Disallow: /chat
+Disallow: /notifications
+Disallow: /login
+Disallow: /register
+
+Sitemap: https://thia.lol/sitemap.xml

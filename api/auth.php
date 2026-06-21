@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/read.php';
+require_once __DIR__ . '/account_security.php';
 
 const AUTH_GENERIC_LOGIN_ERROR = 'Invalid email or password.';
 
@@ -26,6 +27,19 @@ function auth_dispatch(string $action, string $method): void
     }
 
     if (in_array($action, ['register', 'login', 'logout', 'me'], true)) {
+        json_error('Method not allowed.', 405);
+    }
+
+    json_error('Not found.', 404);
+}
+
+function auth_two_factor_dispatch(array $segments, string $method): void
+{
+    if (count($segments) === 3 && $segments[1] === '2fa' && $segments[2] === 'verify') {
+        if ($method === 'POST') {
+            auth_two_factor_verify();
+        }
+
         json_error('Method not allowed.', 405);
     }
 
@@ -156,16 +170,36 @@ function auth_login(): void
     );
     $user = $statement->fetch();
 
-    if (
-        !is_array($user) ||
-        (string) ($user['status'] ?? 'active') !== 'active' ||
-        !is_string($user['password_hash']) ||
-        !password_verify($password, $user['password_hash'])
-    ) {
+    if (!is_array($user) || (string) ($user['status'] ?? 'active') !== 'active') {
         json_error(AUTH_GENERIC_LOGIN_ERROR, 401);
     }
 
+    if (!is_string($user['password_hash']) || !password_verify($password, $user['password_hash'])) {
+        json_error(AUTH_GENERIC_LOGIN_ERROR, 401);
+    }
+
+    if (account_two_factor_enabled((int) $user['id'])) {
+        json_success(account_two_factor_create_challenge((int) $user['id']));
+    }
+
     $session = create_session_for_user((int) $user['id']);
+    json_success(auth_session_response_payload($session));
+}
+
+function auth_two_factor_verify(): void
+{
+    $body = auth_json_body();
+    $challengeId = is_string($body['challengeId'] ?? $body['challenge_id'] ?? null)
+        ? (string) ($body['challengeId'] ?? $body['challenge_id'])
+        : '';
+    $code = is_string($body['code'] ?? null) ? (string) $body['code'] : '';
+
+    if ($challengeId === '' || $code === '') {
+        json_error('Two-factor challenge and code are required.', 422);
+    }
+
+    $userId = account_two_factor_verify_challenge($challengeId, $code);
+    $session = create_session_for_user($userId);
 
     json_success(auth_session_response_payload($session));
 }

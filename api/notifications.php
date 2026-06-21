@@ -412,6 +412,10 @@ function notification_create(
         return;
     }
 
+    if (!notification_user_allows_type($userId, $type)) {
+        return;
+    }
+
     if ($dedupe && notification_exists($userId, $actorId, $type, $postId, $roomId)) {
         return;
     }
@@ -430,6 +434,49 @@ function notification_create(
             'data' => $jsonData === false ? null : $jsonData,
         ]
     );
+}
+
+function notification_user_allows_type(int $userId, string $type): bool
+{
+    if (!database_table_exists('user_preferences')) {
+        return true;
+    }
+
+    $row = db_query(
+        'SELECT notification_preferences_json
+         FROM user_preferences
+         WHERE user_id = :user_id
+         LIMIT 1',
+        ['user_id' => $userId]
+    )->fetch();
+
+    if (!is_array($row) || !is_string($row['notification_preferences_json'] ?? null)) {
+        return true;
+    }
+
+    try {
+        $preferences = json_decode((string) $row['notification_preferences_json'], true, 512, JSON_THROW_ON_ERROR);
+    } catch (JsonException) {
+        return true;
+    }
+
+    if (!is_array($preferences)) {
+        return true;
+    }
+
+    $key = match ($type) {
+        'follow' => 'follows',
+        'moot' => 'moots',
+        'like' => 'likes',
+        'reply' => 'replies',
+        'reblog' => 'reblogs',
+        'message' => 'messages',
+        'mention' => 'mentions',
+        'badge_granted' => 'badges',
+        default => $type,
+    };
+
+    return !array_key_exists($key, $preferences) || (bool) $preferences[$key];
 }
 
 function notification_exists(

@@ -106,6 +106,23 @@ function profile_follow_create(string $handle): void
 
     reject_blocked_follow($viewerUserId, $targetUserId);
 
+    if (profile_visibility($target['visibility'] ?? null) === 'private' && !profile_is_following($viewerUserId, $targetUserId)) {
+        require_user_follow_requests_table();
+        db_query(
+            "INSERT INTO user_follow_requests (requester_id, target_user_id, status)
+             VALUES (:requester_id, :target_user_id, 'pending')
+             ON DUPLICATE KEY UPDATE
+               status = IF(status = 'approved', status, 'pending'),
+               updated_at = CURRENT_TIMESTAMP()",
+            [
+                'requester_id' => $viewerUserId,
+                'target_user_id' => $targetUserId,
+            ]
+        );
+
+        json_success(follow_relationship_response($targetUserId, $viewerUserId));
+    }
+
     $insert = db_query(
         'INSERT IGNORE INTO user_follows (follower_id, following_id)
          VALUES (:follower_id, :following_id)',
@@ -310,6 +327,21 @@ function profile_follow_delete(string $handle): void
         ]
     );
 
+    if (user_follow_requests_table_exists()) {
+        db_query(
+            "UPDATE user_follow_requests
+             SET status = 'canceled',
+                 updated_at = CURRENT_TIMESTAMP()
+             WHERE requester_id = :requester_id
+               AND target_user_id = :target_user_id
+               AND status = 'pending'",
+            [
+                'requester_id' => $viewerUserId,
+                'target_user_id' => $targetUserId,
+            ]
+        );
+    }
+
     json_success(follow_relationship_response($targetUserId, $viewerUserId));
 }
 
@@ -372,23 +404,33 @@ function profile_followers_index(string $handle): void
 {
     require_user_follows_table();
     $target = active_profile_for_follow($handle);
+    $viewerUserId = current_request_user_id();
 
-    json_success(profile_follow_list((int) $target['user_id'], 'followers', current_request_user_id()));
+    if (!profile_viewer_can_view_row($target, $viewerUserId)) {
+        json_success([]);
+    }
+
+    json_success(profile_follow_list((int) $target['user_id'], 'followers', $viewerUserId));
 }
 
 function profile_following_index(string $handle): void
 {
     require_user_follows_table();
     $target = active_profile_for_follow($handle);
+    $viewerUserId = current_request_user_id();
 
-    json_success(profile_follow_list((int) $target['user_id'], 'following', current_request_user_id()));
+    if (!profile_viewer_can_view_row($target, $viewerUserId)) {
+        json_success([]);
+    }
+
+    json_success(profile_follow_list((int) $target['user_id'], 'following', $viewerUserId));
 }
 
 function active_profile_for_follow(string $handle): array
 {
     $profile = fetch_profile_by_handle(normalize_handle($handle));
 
-    if ($profile === null || (string) ($profile['user_status'] ?? 'active') !== 'active') {
+    if ($profile === null || !profile_public_account_available($profile, current_request_user_id())) {
         json_error('Profile not found.', 404);
     }
 
@@ -416,6 +458,13 @@ function require_user_mutes_table(): void
     }
 }
 
+function require_user_follow_requests_table(): void
+{
+    if (!user_follow_requests_table_exists()) {
+        json_error('Follow request storage is not ready. Run pending migrations.', 503);
+    }
+}
+
 function require_profile_stars_table(): void
 {
     if (!profile_stars_table_exists()) {
@@ -431,6 +480,7 @@ function follow_relationship_response(int $targetUserId, int $viewerUserId): arr
         'isFollowing' => (bool) $context['isFollowing'],
         'isFollowedBy' => (bool) $context['isFollowedBy'],
         'isMoot' => (bool) $context['isMoot'],
+        'isFollowRequestPending' => (bool) ($context['isFollowRequestPending'] ?? false),
         'isBlocked' => (bool) ($context['isBlocked'] ?? false),
         'isMuted' => (bool) ($context['isMuted'] ?? false),
         'followerCount' => (int) $context['followerCount'],
@@ -545,6 +595,23 @@ function is_mutual_follow(int $followerId, int $followingId): bool
          FROM user_follows
          WHERE follower_id = :following_id
            AND following_id = :follower_id
+         LIMIT 1',
+        [
+            'follower_id' => $followerId,
+            'following_id' => $followingId,
+        ]
+    );
+
+    return (bool) $statement->fetch();
+}
+
+function profile_is_following(int $followerId, int $followingId): bool
+{
+    $statement = db_query(
+        'SELECT 1
+         FROM user_follows
+         WHERE follower_id = :follower_id
+           AND following_id = :following_id
          LIMIT 1',
         [
             'follower_id' => $followerId,

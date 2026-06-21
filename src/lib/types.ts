@@ -58,6 +58,9 @@ export type Profile = {
   profileLayoutPreset: ProfileLayoutPreset;
   profileCanvasVersion: 1 | 2;
   profileCanvasGlass: number;
+  visibility: "public" | "private";
+  isPrivate: boolean;
+  viewerCanView: boolean;
   featuredPostId?: number | null;
   featuredRoomId?: number | null;
   featuredPost?: Post | null;
@@ -82,6 +85,7 @@ export type Profile = {
   isFollowedBy: boolean;
   isMoot: boolean;
   isStarred: boolean;
+  isFollowRequestPending?: boolean;
   blockedByMe?: boolean;
   mutedByMe?: boolean;
   createdAt?: string | null;
