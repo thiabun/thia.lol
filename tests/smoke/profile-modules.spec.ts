@@ -2733,11 +2733,28 @@ test("direct canvas keeps 4x6 activity blurred in editor and public after save",
   await expect(
     activityContent.evaluate((element) => window.getComputedStyle(element).filter),
   ).resolves.toContain("blur(18px)");
+  await expect(activityContent).toHaveAttribute(
+    "data-profile-module-content-interactive",
+    "false",
+  );
+  await expect(activityContent).toHaveAttribute("inert", "");
+  await expect(activityContent.getByTestId("post-body-open-thread").first()).toBeVisible();
 
-  const settings = page.getByTestId("profile-module-settings");
-  await expect(settings).toBeVisible();
-  await settings.getByRole("button", { name: "Close activity" }).click();
-  await expect(settings).toHaveCount(0);
+  const postBodyBox = await activityContent
+    .getByTestId("post-body-open-thread")
+    .first()
+    .boundingBox();
+
+  expect(postBodyBox).not.toBeNull();
+  if (postBodyBox) {
+    await page.mouse.click(
+      postBodyBox.x + postBodyBox.width / 2,
+      postBodyBox.y + postBodyBox.height / 2,
+    );
+  }
+
+  await expect(page.getByTestId("thread-modal")).toHaveCount(0);
+
   await page.getByTestId("profile-canvas-save-button").click();
   await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
   await expect.poll(() => commitPayload).toBeDefined();

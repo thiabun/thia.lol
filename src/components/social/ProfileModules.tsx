@@ -577,15 +577,26 @@ export function ProfileModuleGrid({
                 <Move aria-hidden="true" size={15} />
               </button>
             ) : null}
-            {renderModuleContent?.(module, span.size) ?? (
-              <ProfileModuleCard
-                module={module}
-                badges={badges}
-                editing={Boolean(editing)}
-                musicAutoplayRequestId={musicAutoplayRequestId}
-                size={span.size}
-              />
-            )}
+            <div
+              className={cn(
+                "h-full min-h-0 min-w-0",
+                editing ? "pointer-events-none select-none" : undefined,
+              )}
+              aria-hidden={editing ? true : undefined}
+              data-profile-module-content-interactive={editing ? "false" : "true"}
+              data-testid={`profile-grid-module-content-${module.id}`}
+              inert={editing ? true : undefined}
+            >
+              {renderModuleContent?.(module, span.size) ?? (
+                <ProfileModuleCard
+                  module={module}
+                  badges={badges}
+                  editing={Boolean(editing)}
+                  musicAutoplayRequestId={musicAutoplayRequestId}
+                  size={span.size}
+                />
+              )}
+            </div>
             <AnimatePresence initial={false}>
               {selectedControls ? (
                 <motion.div

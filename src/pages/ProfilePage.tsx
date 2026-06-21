@@ -4726,16 +4726,21 @@ function ProfileDirectCanvasEditor({
                     className={cn(
                       "h-full min-h-0 min-w-0 overflow-hidden rounded-card",
                       configured
-                        ? "scale-[0.9] blur-[18px] opacity-45 saturate-50"
+                        ? "pointer-events-none scale-[0.9] select-none blur-[18px] opacity-45 saturate-50"
                         : undefined,
                     )}
+                    aria-hidden={configured ? true : undefined}
                     data-profile-canvas-module-configured={
                       configured ? "true" : "false"
+                    }
+                    data-profile-module-content-interactive={
+                      configured ? "false" : "true"
                     }
                     data-profile-canvas-module-frame={
                       configured ? "inset" : undefined
                     }
                     data-testid={`profile-canvas-module-content-${module.id}`}
+                    inert={configured ? true : undefined}
                   >
                     {onRenderModuleContent(module, size) ?? (
                       <ProfileModuleCard
