@@ -8,6 +8,7 @@ const steps = [
   "github",
   "apple_music",
   "profile_canvas",
+  "desktop_notifications",
 ];
 
 test.beforeEach(async ({ page }) => {
@@ -224,6 +225,22 @@ test("onboarding handles OAuth returns, manual links, skip, connect, and finish"
   await page.getByTestId("onboarding-connect-spotify").click();
   await expect.poll(() => spotifyStartPayload?.redirectPath).toBe("/onboarding");
 
+  await page.getByTestId("onboarding-nav-desktop_notifications").click();
+  await expect(page.getByTestId("desktop-notifications-card")).toBeVisible();
+  await expect(page.getByTestId("desktop-notifications-state")).toContainText(
+    /setup needed|unsupported|blocked/,
+  );
+  await page.getByTestId("onboarding-skip-desktop-notifications").click();
+  await expect
+    .poll(() =>
+      patches.some(
+        (patch) =>
+          patch.action === "skip_step" &&
+          patch.step === "desktop_notifications",
+      ),
+    )
+    .toBe(true);
+
   await page.getByTestId("onboarding-nav-finish").click();
   await page.getByTestId("onboarding-finish").click();
   await expect
@@ -293,6 +310,26 @@ async function mockNotifications(page: Page) {
       body: JSON.stringify({ ok: true, data: { notifications: [], unreadCount: 0 } }),
     });
   });
+
+  await page.route("**/api/me/push", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: pushStatus() }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        error: "Desktop notifications are not configured on this server.",
+      }),
+    });
+  });
 }
 
 async function mockOnboarding(
@@ -300,7 +337,7 @@ async function mockOnboarding(
   state: ReturnType<typeof onboardingState>,
   patches: Array<Record<string, unknown>> = [],
 ) {
-  await page.route("**/api/me/onboarding", async (route) => {
+  await page.route("**/api/me/onboarding**", async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill({
         status: 200,
@@ -471,6 +508,24 @@ function applyOnboardingPatch(
 
 function unique(values: string[]) {
   return [...new Set(values)].filter((value) => steps.includes(value));
+}
+
+function pushStatus() {
+  return {
+    supported: true,
+    configured: false,
+    storageReady: true,
+    publicKey: null,
+    subject: "mailto:hello@thia.lol",
+    enabled: false,
+    subscriptionCount: 0,
+    subscriptions: [],
+    diagnostics: {
+      missingConfigKeys: ["push.vapid_public_key", "push.vapid_private_key"],
+      curlAvailable: true,
+      opensslAvailable: true,
+    },
+  };
 }
 
 function appleMusicCard() {

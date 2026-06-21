@@ -16,6 +16,11 @@ AddType video/webm .webm
     Header set Expires "0"
   </FilesMatch>
 
+  <FilesMatch "^service-worker\.js$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Service-Worker-Allowed "/"
+  </FilesMatch>
+
   <FilesMatch "\.(?:js|css|woff2?|ttf|otf|eot|svg)$">
     Header set Cache-Control "public, max-age=31536000, immutable"
   </FilesMatch>

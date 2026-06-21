@@ -22,6 +22,11 @@ test("notifications page renders empty state and keeps nav placement", async ({
   );
   await expect(page.getByText("No notifications yet")).toBeVisible();
   await expect(page.getByRole("button", { name: "Mark all as read" })).toBeDisabled();
+  await expect(page.getByTestId("desktop-notifications-card")).toBeVisible();
+  await expect(page.getByTestId("desktop-notifications-state")).toContainText(
+    /setup needed|unsupported|blocked/,
+  );
+  await expect(page.getByTestId("desktop-notifications-enable")).toBeDisabled();
 
   const nav = page.getByTestId("desktop-nav");
   await expect(nav.getByRole("link", { name: "Chat" })).toBeVisible();
@@ -154,6 +159,35 @@ async function mockAnonymousNotifications(page: Page) {
       body: JSON.stringify({ ok: true, data: [] }),
     });
   });
+
+  await page.route("**/api/me/onboarding**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          steps: [
+            "profile_basics",
+            "spotify",
+            "youtube",
+            "twitch",
+            "github",
+            "apple_music",
+            "profile_canvas",
+            "desktop_notifications",
+          ],
+          completedSteps: [],
+          skippedSteps: [],
+          providerLinks: {},
+          finishedAt: "2026-06-19 12:00:00",
+          dismissedAt: null,
+          createdAt: "2026-06-19 12:00:00",
+          updatedAt: "2026-06-19 12:00:00",
+        },
+      }),
+    });
+  });
 }
 
 async function mockAuthenticatedNotifications(page: Page, notifications: unknown[]) {
@@ -216,11 +250,77 @@ async function mockAuthenticatedNotifications(page: Page, notifications: unknown
     });
   });
 
+  await page.route("**/api/me/push", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            supported: true,
+            configured: false,
+            storageReady: true,
+            publicKey: null,
+            subject: "mailto:hello@thia.lol",
+            enabled: false,
+            subscriptionCount: 0,
+            subscriptions: [],
+            diagnostics: {
+              missingConfigKeys: ["push.vapid_public_key", "push.vapid_private_key"],
+              curlAvailable: true,
+              opensslAvailable: true,
+            },
+          },
+        }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        error: "Desktop notifications are not configured on this server.",
+      }),
+    });
+  });
+
   await page.route("**/api/rooms", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+
+  await page.route("**/api/me/onboarding**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          steps: [
+            "profile_basics",
+            "spotify",
+            "youtube",
+            "twitch",
+            "github",
+            "apple_music",
+            "profile_canvas",
+            "desktop_notifications",
+          ],
+          completedSteps: [],
+          skippedSteps: [],
+          providerLinks: {},
+          finishedAt: "2026-06-19 12:00:00",
+          dismissedAt: null,
+          createdAt: "2026-06-19 12:00:00",
+          updatedAt: "2026-06-19 12:00:00",
+        },
+      }),
     });
   });
 }

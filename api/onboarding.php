@@ -14,6 +14,7 @@ const ONBOARDING_STEPS = [
     'github',
     'apple_music',
     'profile_canvas',
+    'desktop_notifications',
 ];
 
 function onboarding_dispatch(array $segments, string $method): void

@@ -378,7 +378,8 @@ export type OnboardingStep =
   | "twitch"
   | "github"
   | "apple_music"
-  | "profile_canvas";
+  | "profile_canvas"
+  | "desktop_notifications";
 
 export type OnboardingProviderLink = {
   provider: ProfileIntegrationProvider;
@@ -560,6 +561,50 @@ export type AccountPreferences = {
   notifications: Record<string, boolean>;
   emailNotifications: Record<string, boolean>;
   pushNotifications: Record<string, boolean>;
+};
+
+export type PushSubscriptionSummary = {
+  id: number;
+  endpointHash: string;
+  userAgent?: string | null;
+  lastSuccessAt?: string | null;
+  lastErrorAt?: string | null;
+  lastError?: string | null;
+  failureCount: number;
+  disabledAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export type PushNotificationStatus = {
+  supported: boolean;
+  configured: boolean;
+  storageReady: boolean;
+  publicKey: string | null;
+  subject: string;
+  enabled: boolean;
+  subscriptionCount: number;
+  subscriptions: PushSubscriptionSummary[];
+  diagnostics: {
+    missingConfigKeys: string[];
+    curlAvailable: boolean;
+    opensslAvailable: boolean;
+  };
+  lastSend?: {
+    attempted: number;
+    sent: number;
+    failed: number;
+    disabled: number;
+  };
+};
+
+export type PushSubscriptionInput = {
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+  userAgent?: string;
 };
 
 export type TwoFactorStatus = {
@@ -1318,6 +1363,36 @@ export function updateAccountPreferences(
   csrfToken: string,
 ): Promise<AccountSettings> {
   return apiPatch<AccountSettings>("/me/preferences", input, csrfToken);
+}
+
+export function getPushNotificationStatus(): Promise<PushNotificationStatus> {
+  return apiGet<PushNotificationStatus>("/me/push").then(normalizePushNotificationStatus);
+}
+
+export function savePushSubscription(
+  input: PushSubscriptionInput,
+  csrfToken: string,
+): Promise<PushNotificationStatus> {
+  return apiPost<PushNotificationStatus>("/me/push/subscriptions", input, csrfToken).then(
+    normalizePushNotificationStatus,
+  );
+}
+
+export function disablePushSubscription(
+  input: { id?: number; endpoint?: string },
+  csrfToken: string,
+): Promise<PushNotificationStatus> {
+  return apiDelete<PushNotificationStatus>("/me/push/subscriptions", csrfToken, input).then(
+    normalizePushNotificationStatus,
+  );
+}
+
+export function sendPushNotificationTest(
+  csrfToken: string,
+): Promise<PushNotificationStatus> {
+  return apiPost<PushNotificationStatus>("/me/push/test", {}, csrfToken).then(
+    normalizePushNotificationStatus,
+  );
 }
 
 export function getFollowRequests(): Promise<FollowRequest[]> {
@@ -2461,6 +2536,7 @@ const defaultOnboardingSteps: OnboardingStep[] = [
   "github",
   "apple_music",
   "profile_canvas",
+  "desktop_notifications",
 ];
 
 function normalizeOnboardingStep(value: unknown): OnboardingStep | undefined {
@@ -2470,7 +2546,8 @@ function normalizeOnboardingStep(value: unknown): OnboardingStep | undefined {
     value === "twitch" ||
     value === "github" ||
     value === "apple_music" ||
-    value === "profile_canvas"
+    value === "profile_canvas" ||
+    value === "desktop_notifications"
     ? value
     : undefined;
 }
@@ -3048,6 +3125,72 @@ function normalizeNotification(notification: NotificationItem): NotificationItem
   return {
     ...notification,
     room: notification.room ? normalizeRoom(notification.room) : null,
+  };
+}
+
+function normalizePushNotificationStatus(value: PushNotificationStatus): PushNotificationStatus {
+  const subscriptions = Array.isArray(value.subscriptions)
+    ? value.subscriptions.map(normalizePushSubscriptionSummary)
+    : [];
+  const diagnostics =
+    typeof value.diagnostics === "object" && value.diagnostics !== null
+      ? value.diagnostics
+      : {
+          missingConfigKeys: [],
+          curlAvailable: false,
+          opensslAvailable: false,
+        };
+
+  const normalized: PushNotificationStatus = {
+    supported: Boolean(value.supported),
+    configured: Boolean(value.configured),
+    storageReady: Boolean(value.storageReady),
+    publicKey: typeof value.publicKey === "string" ? value.publicKey : null,
+    subject: typeof value.subject === "string" ? value.subject : "",
+    enabled: Boolean(value.enabled),
+    subscriptionCount:
+      typeof value.subscriptionCount === "number"
+        ? value.subscriptionCount
+        : subscriptions.filter((subscription) => !subscription.disabledAt).length,
+    subscriptions,
+    diagnostics: {
+      missingConfigKeys: Array.isArray(diagnostics.missingConfigKeys)
+        ? diagnostics.missingConfigKeys.filter(
+            (key): key is string => typeof key === "string",
+          )
+        : [],
+      curlAvailable: Boolean(diagnostics.curlAvailable),
+      opensslAvailable: Boolean(diagnostics.opensslAvailable),
+    },
+  };
+
+  if (typeof value.lastSend === "object" && value.lastSend !== null) {
+    normalized.lastSend = {
+      attempted: Number(value.lastSend.attempted ?? 0),
+      sent: Number(value.lastSend.sent ?? 0),
+      failed: Number(value.lastSend.failed ?? 0),
+      disabled: Number(value.lastSend.disabled ?? 0),
+    };
+  }
+
+  return normalized;
+}
+
+function normalizePushSubscriptionSummary(
+  value: PushSubscriptionSummary,
+): PushSubscriptionSummary {
+  return {
+    id: Number(value.id),
+    endpointHash: String(value.endpointHash ?? ""),
+    userAgent: typeof value.userAgent === "string" ? value.userAgent : null,
+    lastSuccessAt:
+      typeof value.lastSuccessAt === "string" ? value.lastSuccessAt : null,
+    lastErrorAt: typeof value.lastErrorAt === "string" ? value.lastErrorAt : null,
+    lastError: typeof value.lastError === "string" ? value.lastError : null,
+    failureCount: Number(value.failureCount ?? 0),
+    disabledAt: typeof value.disabledAt === "string" ? value.disabledAt : null,
+    createdAt: typeof value.createdAt === "string" ? value.createdAt : null,
+    updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : null,
   };
 }
 

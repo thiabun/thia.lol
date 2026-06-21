@@ -22,6 +22,7 @@ import {
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Navigate } from "react-router";
 import { PageMeta } from "../components/PageMeta";
+import { DesktopNotificationsCard } from "../components/notifications/DesktopNotificationsCard";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { Panel } from "../components/ui/Panel";
@@ -376,6 +377,9 @@ export function SettingsPage() {
 
   const enabledNotificationCount = notificationKeys.filter(
     ([key]) => preferences?.notifications[key] ?? true,
+  ).length;
+  const enabledPushNotificationCount = notificationKeys.filter(
+    ([key]) => preferences?.pushNotifications[key] ?? true,
   ).length;
   const consentEnabledCount = [
     preferences?.analyticsConsent,
@@ -801,6 +805,27 @@ export function SettingsPage() {
                 </div>
               </ActionDetails>
 
+              <ActionDetails
+                icon={BellRing}
+                title="Desktop notifications"
+                meta={`${enabledPushNotificationCount} push categories enabled`}
+              >
+                <div className="grid gap-3">
+                  <DesktopNotificationsCard compact />
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                    {notificationKeys.map(([key, label]) => (
+                      <PreferenceToggle
+                        key={key}
+                        name={`pushNotification:${key}`}
+                        label={label}
+                        defaultChecked={preferences?.pushNotifications[key] ?? true}
+                        compact
+                      />
+                    ))}
+                  </div>
+                </div>
+              </ActionDetails>
+
               <Button type="submit" size="sm" icon={<Save size={15} />} disabled={busy === "preferences"}>
                 Save preferences
               </Button>
@@ -1168,9 +1193,11 @@ function preferencesFromForm(
   fallback: AccountPreferences | undefined,
 ): AccountPreferences {
   const notifications: Record<string, boolean> = {};
+  const pushNotifications: Record<string, boolean> = {};
 
   for (const [key] of notificationKeys) {
     notifications[key] = form.get(`notification:${key}`) === "on";
+    pushNotifications[key] = form.get(`pushNotification:${key}`) === "on";
   }
 
   return {
@@ -1181,7 +1208,7 @@ function preferencesFromForm(
     sensitiveContentVisible: form.get("sensitiveContentVisible") === "on",
     notifications,
     emailNotifications: fallback?.emailNotifications ?? {},
-    pushNotifications: fallback?.pushNotifications ?? {},
+    pushNotifications,
   };
 }
 

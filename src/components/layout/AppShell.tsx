@@ -24,6 +24,7 @@ import { ThemeToggle } from "../ThemeToggle";
 import { Button, ButtonLink } from "../ui/Button";
 import { getNotifications, getOnboardingState, getRooms } from "../../lib/api";
 import { cn } from "../../lib/classNames";
+import { desktopNotificationSupport, ensureNotificationServiceWorkerRegistration } from "../../lib/desktopNotifications";
 import {
   buttonTap,
   popoverPanel,
@@ -148,6 +149,20 @@ export function AppShell() {
       active = false;
     };
   }, [location.pathname, location.search, navigate, status, user]);
+
+  useEffect(() => {
+    if (
+      !import.meta.env.PROD ||
+      status !== "authenticated" ||
+      !desktopNotificationSupport().supported
+    ) {
+      return;
+    }
+
+    void ensureNotificationServiceWorkerRegistration().catch(() => {
+      // Registration is retried from the explicit opt-in controls.
+    });
+  }, [status]);
 
   useEffect(() => {
     let active = true;

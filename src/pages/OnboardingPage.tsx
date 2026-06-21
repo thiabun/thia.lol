@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   ArrowRight,
+  BellRing,
   Check,
   CheckCircle2,
   ExternalLink,
@@ -22,6 +23,7 @@ import {
 } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
+import { DesktopNotificationsCard } from "../components/notifications/DesktopNotificationsCard";
 import { ProfileConnectionIcon } from "../components/social/ProfileConnectionIcon";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Badge } from "../components/ui/Badge";
@@ -53,6 +55,7 @@ const wizardSteps = [
   "integrations",
   "apple_music",
   "profile_canvas",
+  "desktop_notifications",
   "finish",
 ] as const;
 
@@ -393,9 +396,14 @@ export function OnboardingPage() {
   const profileBasicsDone =
     completed.has("profile_basics") || skipped.has("profile_basics");
   const canvasDone = completed.has("profile_canvas") || skipped.has("profile_canvas");
+  const desktopNotificationsDone =
+    completed.has("desktop_notifications") || skipped.has("desktop_notifications");
   const progressDone =
-    providerCompleteCount + Number(profileBasicsDone) + Number(canvasDone);
-  const progressTotal = providerSteps.length + 2;
+    providerCompleteCount +
+    Number(profileBasicsDone) +
+    Number(canvasDone) +
+    Number(desktopNotificationsDone);
+  const progressTotal = providerSteps.length + 3;
   const activeStepIndex = wizardSteps.indexOf(activeStep);
 
   return (
@@ -474,6 +482,7 @@ export function OnboardingPage() {
           <OnboardingProgressRail
             activeStep={activeStep}
             canvasDone={canvasDone}
+            desktopNotificationsDone={desktopNotificationsDone}
             connectedProviders={connectedProviders}
             profileBasicsDone={profileBasicsDone}
             state={state}
@@ -594,10 +603,40 @@ export function OnboardingPage() {
                     profileUrl={profileUrl}
                     onBack={() => setActiveStep("apple_music")}
                     onComplete={() =>
-                      void updateStep("complete_step", "profile_canvas", "finish")
+                      void updateStep(
+                        "complete_step",
+                        "profile_canvas",
+                        "desktop_notifications",
+                      )
                     }
                     onSkip={() =>
-                      void updateStep("skip_step", "profile_canvas", "finish")
+                      void updateStep(
+                        "skip_step",
+                        "profile_canvas",
+                        "desktop_notifications",
+                      )
+                    }
+                  />
+                ) : null}
+
+                {activeStep === "desktop_notifications" ? (
+                  <DesktopNotificationsStep
+                    busyAction={busyAction}
+                    done={desktopNotificationsDone}
+                    onBack={() => setActiveStep("profile_canvas")}
+                    onComplete={() =>
+                      void updateStep(
+                        "complete_step",
+                        "desktop_notifications",
+                        "finish",
+                      )
+                    }
+                    onSkip={() =>
+                      void updateStep(
+                        "skip_step",
+                        "desktop_notifications",
+                        "finish",
+                      )
                     }
                   />
                 ) : null}
@@ -608,7 +647,7 @@ export function OnboardingPage() {
                     progressDone={progressDone}
                     progressTotal={progressTotal}
                     profileUrl={profileUrl}
-                    onBack={() => setActiveStep("profile_canvas")}
+                    onBack={() => setActiveStep("desktop_notifications")}
                     onFinish={() => void finishOnboarding(profileUrl)}
                   />
                 ) : null}
@@ -636,6 +675,7 @@ function OnboardingLoading() {
 function OnboardingProgressRail({
   activeStep,
   canvasDone,
+  desktopNotificationsDone,
   connectedProviders,
   onSelect,
   profileBasicsDone,
@@ -643,6 +683,7 @@ function OnboardingProgressRail({
 }: {
   activeStep: WizardStep;
   canvasDone: boolean;
+  desktopNotificationsDone: boolean;
   connectedProviders: Set<ProfileIntegrationProvider>;
   onSelect: (step: WizardStep) => void;
   profileBasicsDone: boolean;
@@ -656,6 +697,7 @@ function OnboardingProgressRail({
             step,
             profileBasicsDone,
             canvasDone,
+            desktopNotificationsDone,
             connectedProviders,
             state,
           );
@@ -718,6 +760,7 @@ function WelcomeStep({
         <SetupPreviewCard icon={<UserRound size={18} />} title="Basics" />
         <SetupPreviewCard icon={<Link2 size={18} />} title="Integrations" />
         <SetupPreviewCard icon={<Sparkles size={18} />} title="Profile canvas" />
+        <SetupPreviewCard icon={<BellRing size={18} />} title="Notifications" />
       </div>
       <div className="flex flex-wrap gap-2">
         <Button
@@ -1183,6 +1226,64 @@ function ProfileCanvasStep({
   );
 }
 
+function DesktopNotificationsStep({
+  busyAction,
+  done,
+  onBack,
+  onComplete,
+  onSkip,
+}: {
+  busyAction: string | undefined;
+  done: boolean;
+  onBack: () => void;
+  onComplete: () => void;
+  onSkip: () => void;
+}) {
+  return (
+    <StepScaffold
+      badge={done ? "done" : "desktop"}
+      title="Turn on desktop notifications"
+      text="Desktop notifications are optional. Enable this browser to get follows, mentions, messages, and other chosen notification categories outside the app."
+      icon={<BellRing aria-hidden="true" size={20} />}
+      body={
+        <DesktopNotificationsCard
+          onHandled={(kind) => {
+            if (kind === "enabled") {
+              onComplete();
+            }
+          }}
+        />
+      }
+      footer={
+        <WizardActions
+          back={onBack}
+          primary={
+            <Button
+              type="button"
+              icon={<ArrowRight aria-hidden="true" size={16} />}
+              disabled={busyAction === "complete_step:desktop_notifications"}
+              onClick={onComplete}
+            >
+              Continue
+            </Button>
+          }
+          secondary={
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={busyAction === "skip_step:desktop_notifications"}
+              data-testid="onboarding-skip-desktop-notifications"
+              onClick={onSkip}
+            >
+              Skip
+            </Button>
+          }
+        />
+      }
+    />
+  );
+}
+
 function FinishStep({
   busy,
   onBack,
@@ -1328,6 +1429,7 @@ function wizardStepComplete(
   step: WizardStep,
   profileBasicsDone: boolean,
   canvasDone: boolean,
+  desktopNotificationsDone: boolean,
   connectedProviders: Set<ProfileIntegrationProvider>,
   state: OnboardingState | undefined,
 ): boolean {
@@ -1358,6 +1460,10 @@ function wizardStepComplete(
     return canvasDone;
   }
 
+  if (step === "desktop_notifications") {
+    return desktopNotificationsDone;
+  }
+
   return Boolean(state?.finishedAt);
 }
 
@@ -1381,12 +1487,20 @@ function defaultWizardStep(state: OnboardingState): WizardStep {
     return "profile_canvas";
   }
 
+  if (
+    !completed.has("desktop_notifications") &&
+    !skipped.has("desktop_notifications")
+  ) {
+    return "desktop_notifications";
+  }
+
   return "finish";
 }
 
 function wizardStepLabel(step: WizardStep): string {
   const labels: Record<WizardStep, string> = {
     apple_music: "Apple Music",
+    desktop_notifications: "Notifications",
     finish: "Finish",
     integrations: "Integrations",
     profile_basics: "Profile basics",

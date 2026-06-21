@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/push.php';
 require_once __DIR__ . '/read.php';
 
 const NOTIFICATION_TYPES = ['follow', 'moot', 'like', 'reply', 'reblog', 'message', 'mention', 'badge_granted'];
@@ -434,6 +435,146 @@ function notification_create(
             'data' => $jsonData === false ? null : $jsonData,
         ]
     );
+
+    $notificationId = (int) db()->lastInsertId();
+
+    if ($notificationId > 0) {
+        try {
+            push_send_notification_payload(notification_push_payload(
+                $notificationId,
+                $userId,
+                $actorId,
+                $type,
+                $postId,
+                $roomId,
+                $data
+            ));
+        } catch (Throwable) {
+            // Desktop push is best-effort; in-app notification creation must not fail.
+        }
+    }
+}
+
+function notification_push_payload(
+    int $notificationId,
+    int $userId,
+    ?int $actorId,
+    string $type,
+    ?int $postId,
+    ?int $roomId,
+    ?array $data
+): array {
+    $actor = $actorId !== null ? notification_push_actor_payload($actorId) : null;
+    $post = $postId !== null ? notification_push_post_payload($postId) : null;
+    $room = $roomId !== null ? notification_push_room_payload($roomId) : null;
+
+    return [
+        'id' => $notificationId,
+        'userId' => $userId,
+        'type' => $type,
+        'actor' => $actor,
+        'post' => $post,
+        'room' => $room,
+        'targetUrl' => notification_target_url($type, $actor, $post, $room, $data),
+        'data' => $data,
+    ];
+}
+
+function notification_push_actor_payload(int $actorId): ?array
+{
+    $row = db_query(
+        'SELECT u.id, u.handle, p.display_name, p.avatar_url
+         FROM users u
+         LEFT JOIN profiles p ON p.user_id = u.id
+         WHERE u.id = :actor_id
+         LIMIT 1',
+        ['actor_id' => $actorId]
+    )->fetch();
+
+    if (!is_array($row) || !is_string($row['handle'] ?? null)) {
+        return null;
+    }
+
+    return user_payload([
+        'user_id' => $row['id'],
+        'handle' => $row['handle'],
+        'display_name' => $row['display_name'] ?? $row['handle'],
+        'avatar_url' => $row['avatar_url'] ?? null,
+    ]);
+}
+
+function notification_push_post_payload(int $postId): ?array
+{
+    $row = db_query(
+        'SELECT p.id, p.body, p.created_at,
+                u.id AS author_user_id, u.handle AS author_handle,
+                profile.display_name AS author_display_name,
+                profile.avatar_url AS author_avatar_url
+         FROM posts p
+         INNER JOIN users u ON u.id = p.author_id
+         LEFT JOIN profiles profile ON profile.user_id = u.id
+         WHERE p.id = :post_id
+         LIMIT 1',
+        ['post_id' => $postId]
+    )->fetch();
+
+    if (!is_array($row)) {
+        return null;
+    }
+
+    return [
+        'id' => (int) $row['id'],
+        'bodySnippet' => notification_snippet((string) ($row['body'] ?? ''), 140),
+        'author' => user_payload([
+            'user_id' => $row['author_user_id'],
+            'handle' => $row['author_handle'],
+            'display_name' => $row['author_display_name'] ?? $row['author_handle'],
+            'avatar_url' => $row['author_avatar_url'] ?? null,
+        ]),
+        'createdAt' => $row['created_at'] ?? null,
+    ];
+}
+
+function notification_push_room_payload(int $roomId): ?array
+{
+    $row = db_query(
+        'SELECT r.id, r.slug, r.name, r.summary, r.mood, r.member_count, r.is_live,
+                r.accent, r.visibility, r.created_by, r.created_at, r.updated_at,
+                owner.id AS owner_user_id, owner.handle AS owner_handle,
+                owner_profile.display_name AS owner_display_name,
+                owner_profile.avatar_url AS owner_avatar_url
+         FROM rooms r
+         LEFT JOIN users owner ON owner.id = r.created_by
+         LEFT JOIN profiles owner_profile ON owner_profile.user_id = owner.id
+         WHERE r.id = :room_id
+         LIMIT 1',
+        ['room_id' => $roomId]
+    )->fetch();
+
+    if (!is_array($row)) {
+        return null;
+    }
+
+    return room_payload([
+        'room_id' => $row['id'],
+        'room_slug' => $row['slug'],
+        'room_name' => $row['name'],
+        'room_summary' => $row['summary'],
+        'room_mood' => $row['mood'],
+        'room_member_count' => $row['member_count'],
+        'room_is_live' => $row['is_live'],
+        'room_accent' => $row['accent'],
+        'room_visibility' => $row['visibility'],
+        'room_created_by' => $row['created_by'],
+        'owner_user_id' => $row['owner_user_id'],
+        'owner_handle' => $row['owner_handle'],
+        'owner_display_name' => $row['owner_display_name'],
+        'owner_avatar_url' => $row['owner_avatar_url'],
+        'room_post_count' => 0,
+        'room_latest_activity_at' => null,
+        'room_created_at' => $row['created_at'],
+        'room_updated_at' => $row['updated_at'],
+    ]);
 }
 
 function notification_user_allows_type(int $userId, string $type): bool

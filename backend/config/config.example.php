@@ -19,6 +19,12 @@ return [
         'migration_token' => '',
         'integration_encryption_key' => '',
     ],
+    'push' => [
+        'vapid_public_key' => '',
+        'vapid_private_key' => '',
+        'subject' => 'mailto:hello@thia.lol',
+        'send_timeout_seconds' => 3,
+    ],
     'integrations' => [
         'spotify' => [
             'client_id' => '',

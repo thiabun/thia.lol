@@ -17,6 +17,7 @@ import { motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { PageMeta } from "../components/PageMeta";
+import { DesktopNotificationsCard } from "../components/notifications/DesktopNotificationsCard";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { Panel } from "../components/ui/Panel";
 import { RouteHeader, RouteStateNotice } from "../components/ui/RouteState";
@@ -278,6 +279,8 @@ export function NotificationsPage() {
           text={actionError}
         />
       ) : null}
+
+      {!state.loading && !state.error ? <DesktopNotificationsCard compact /> : null}
 
       {!state.loading && !state.error && notifications.length === 0 ? (
         <RouteStateNotice

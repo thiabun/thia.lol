@@ -22,6 +22,12 @@ return [
         'register_rate_limit_window_seconds' => 3600,
         'integration_encryption_key' => '',
     ],
+    'push' => [
+        'vapid_public_key' => '',
+        'vapid_private_key' => '',
+        'subject' => 'mailto:hello@thia.lol',
+        'send_timeout_seconds' => 1,
+    ],
     'database' => [
         'host' => '',
         'port' => 3306,
