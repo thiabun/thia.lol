@@ -11,10 +11,11 @@ import { Badge } from "../components/ui/Badge";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
 import { deletePost, getDiscoverFeed, updatePost } from "../lib/api";
+import { cn } from "../lib/classNames";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
 import { formatCountWithUnit } from "../lib/pluralize";
-import type { DiscoverPerson, Post } from "../lib/types";
+import type { DiscoverPerson, Post, Room } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
 
@@ -26,6 +27,8 @@ export function DiscoverPage() {
   const [postActionError, setPostActionError] = useState<string | undefined>();
   const rooms = discoverState.data?.activeRooms ?? [];
   const people = discoverState.data?.peopleToWatch ?? [];
+  const visibleRooms = rooms.slice(0, 5);
+  const visiblePeople = people.slice(0, 5);
   const visiblePosts = useMemo(
     () =>
       (discoverState.data?.posts ?? []).filter((post) => !removedPostIds.has(post.id)),
@@ -121,60 +124,174 @@ export function DiscoverPage() {
         </p>
       ) : null}
 
-      <section aria-label="Rising posts">
-        <div className="mb-3 flex items-center justify-between gap-4">
-          <h2 className="text-xl font-semibold text-text">Rising</h2>
-        </div>
-        <div className="space-y-4">
-          {!discoverState.loading && !discoverState.error && visiblePosts.length === 0 ? (
-            <EmptyState
-              icon={Hash}
-              title="No posts yet"
-              text="No public posts."
-            />
-          ) : null}
+      <div
+        className={discoverLayoutClass(visibleRooms.length > 0, visiblePeople.length > 0)}
+        data-testid="discover-layout"
+      >
+        {visibleRooms.length > 0 ? (
+          <DiscoverRoomsSection
+            rooms={visibleRooms}
+            className={discoverRoomsSectionClass()}
+          />
+        ) : null}
 
-          {visiblePosts.map((post, index) => (
-            <PostCard
-              key={post.id}
-              post={post}
-              index={index}
-              canDelete={canDeletePost(user, post)}
-              canHide={canHidePost(user)}
-              actionPending={pendingPostId === post.id}
-              onDelete={(targetPost) => void handleDeletePost(targetPost)}
-              onHide={(targetPost) => void handleHidePost(targetPost)}
-            />
-          ))}
-        </div>
-      </section>
+        <DiscoverRisingSection
+          posts={visiblePosts}
+          loading={discoverState.loading}
+          error={discoverState.error}
+          pendingPostId={pendingPostId}
+          canDelete={(post) => canDeletePost(user, post)}
+          canHide={() => canHidePost(user)}
+          onDelete={(post) => void handleDeletePost(post)}
+          onHide={(post) => void handleHidePost(post)}
+          className={discoverRisingSectionClass(visibleRooms.length > 0)}
+        />
 
-      {rooms.length > 0 ? (
-        <section aria-label="Active rooms">
-          <div className="mb-3 flex items-center justify-between gap-4">
-            <h2 className="text-xl font-semibold text-text">Active rooms</h2>
-          </div>
-          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-            {rooms.map((room, index) => (
-              <RoomCard key={room.id} room={room} index={index} />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {people.length > 0 ? (
-        <section aria-label="People">
-          <div className="mb-3 flex items-center justify-between gap-4">
-            <h2 className="text-xl font-semibold text-text">People</h2>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {people.map((person, index) => (
-              <PersonCard key={person.handle} person={person} index={index} />
-            ))}
-          </div>
-        </section>
-      ) : null}
+        {visiblePeople.length > 0 ? (
+          <DiscoverPeopleSection
+            people={visiblePeople}
+            className={discoverPeopleSectionClass(visibleRooms.length > 0)}
+          />
+        ) : null}
+      </div>
     </motion.div>
+  );
+}
+
+function DiscoverRisingSection({
+  canDelete,
+  canHide,
+  className,
+  error,
+  loading,
+  onDelete,
+  onHide,
+  pendingPostId,
+  posts,
+}: {
+  canDelete: (post: Post) => boolean;
+  canHide: (post: Post) => boolean;
+  className?: string;
+  error: unknown;
+  loading: boolean;
+  onDelete: (post: Post) => void;
+  onHide: (post: Post) => void;
+  pendingPostId: number | undefined;
+  posts: Post[];
+}) {
+  return (
+    <section
+      className={className}
+      aria-label="Rising posts"
+      data-testid="discover-rising-feed"
+    >
+      <div className="mb-3 flex items-center justify-between gap-4">
+        <h2 className="text-xl font-semibold text-text">Rising</h2>
+      </div>
+      <div className="space-y-4">
+        {!loading && !error && posts.length === 0 ? (
+          <EmptyState
+            icon={Hash}
+            title="No posts yet"
+            text="No public posts."
+          />
+        ) : null}
+
+        {posts.map((post, index) => (
+          <PostCard
+            key={post.id}
+            post={post}
+            index={index}
+            canDelete={canDelete(post)}
+            canHide={canHide(post)}
+            actionPending={pendingPostId === post.id}
+            onDelete={(targetPost) => onDelete(targetPost)}
+            onHide={(targetPost) => onHide(targetPost)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DiscoverRoomsSection({
+  className,
+  rooms,
+}: {
+  className?: string;
+  rooms: Room[];
+}) {
+  return (
+    <section
+      className={className}
+      aria-label="Active rooms"
+      data-testid="discover-rooms-rail"
+    >
+      <div className="mb-3 flex items-center justify-between gap-4">
+        <h2 className="text-xl font-semibold text-text">Active rooms</h2>
+      </div>
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-1">
+        {rooms.map((room, index) => (
+          <RoomCard key={room.id} room={room} index={index} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DiscoverPeopleSection({
+  className,
+  people,
+}: {
+  className?: string;
+  people: DiscoverPerson[];
+}) {
+  return (
+    <section
+      className={className}
+      aria-label="People"
+      data-testid="discover-people-rail"
+    >
+      <div className="mb-3 flex items-center justify-between gap-4">
+        <h2 className="text-xl font-semibold text-text">People</h2>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-1">
+        {people.map((person, index) => (
+          <PersonCard key={person.handle} person={person} index={index} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function discoverLayoutClass(hasRooms: boolean, hasPeople: boolean) {
+  return cn(
+    "grid gap-5 xl:items-start xl:justify-center",
+    hasRooms && hasPeople &&
+      "xl:grid-cols-[minmax(14rem,18rem)_minmax(0,38rem)_minmax(14rem,18rem)]",
+    hasRooms && !hasPeople &&
+      "xl:grid-cols-[minmax(14rem,20rem)_minmax(0,38rem)]",
+    !hasRooms && hasPeople &&
+      "xl:grid-cols-[minmax(0,38rem)_minmax(14rem,20rem)]",
+    !hasRooms && !hasPeople && "xl:grid-cols-[minmax(0,38rem)]",
+  );
+}
+
+function discoverRoomsSectionClass() {
+  return "order-2 min-w-0 xl:sticky xl:top-24 xl:order-none xl:col-start-1 xl:row-start-1 xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto xl:pr-1";
+}
+
+function discoverRisingSectionClass(hasRooms: boolean) {
+  return cn(
+    "order-1 min-w-0 xl:order-none xl:row-start-1",
+    hasRooms ? "xl:col-start-2" : "xl:col-start-1",
+  );
+}
+
+function discoverPeopleSectionClass(hasRooms: boolean) {
+  return cn(
+    "order-3 min-w-0 xl:sticky xl:top-24 xl:order-none xl:row-start-1 xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto xl:pl-1",
+    hasRooms ? "xl:col-start-3" : "xl:col-start-2",
   );
 }
 

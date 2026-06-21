@@ -41,6 +41,7 @@ test("API reply queries require visible ancestors by inspection", async () => {
 test("Discover loads the feed empty state without unbacked sections", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
   await mockCommonApi(page);
   await page.route("**/api/feed/discover", (route) =>
     route.fulfill({
@@ -61,6 +62,18 @@ test("Discover loads the feed empty state without unbacked sections", async ({
   await expect(page.getByText("No posts yet").first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Active rooms" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "People" })).toHaveCount(0);
+  await expect
+    .poll(async () =>
+      page
+        .getByTestId("discover-layout")
+        .evaluate((node) =>
+          window
+            .getComputedStyle(node)
+            .gridTemplateColumns.split(" ")
+            .filter(Boolean).length,
+        ),
+    )
+    .toBe(1);
 });
 
 test("Discover renders primary sections only when backed by data", async ({
@@ -115,6 +128,93 @@ test("Discover renders primary sections only when backed by data", async ({
   await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "General" })).toBeVisible();
   await expect(page.getByText("@alex")).toBeVisible();
+});
+
+test("Discover keeps context sections stacked on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await mockCommonApi(page);
+  await page.route("**/api/feed/discover", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          posts: [makePost()],
+          activeRooms: [makeDiscoverRoom()],
+          peopleToWatch: [makeDiscoverPerson()],
+        },
+      }),
+    }),
+  );
+
+  await page.goto("/discover");
+
+  const risingBox = await page.getByTestId("discover-rising-feed").boundingBox();
+  const roomsBox = await page.getByTestId("discover-rooms-rail").boundingBox();
+  const peopleBox = await page.getByTestId("discover-people-rail").boundingBox();
+
+  expect(risingBox).not.toBeNull();
+  expect(roomsBox).not.toBeNull();
+  expect(peopleBox).not.toBeNull();
+  expect(risingBox!.y).toBeLessThan(roomsBox!.y);
+  expect(roomsBox!.y).toBeLessThan(peopleBox!.y);
+
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+  );
+  expect(hasHorizontalOverflow).toBe(false);
+});
+
+test("Discover uses desktop side rails around the rising feed", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await mockCommonApi(page);
+  await page.route("**/api/feed/discover", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          posts: [makePost()],
+          activeRooms: Array.from({ length: 6 }, (_, index) =>
+            makeDiscoverRoom({
+              id: index + 1,
+              slug: `room-${index + 1}`,
+              name: `Room ${index + 1}`,
+            }),
+          ),
+          peopleToWatch: Array.from({ length: 6 }, (_, index) =>
+            makeDiscoverPerson({
+              handle: `person${index + 1}`,
+              displayName: `Person ${index + 1}`,
+            }),
+          ),
+        },
+      }),
+    }),
+  );
+
+  await page.goto("/discover");
+
+  const roomsRail = page.getByTestId("discover-rooms-rail");
+  const risingFeed = page.getByTestId("discover-rising-feed");
+  const peopleRail = page.getByTestId("discover-people-rail");
+  const roomsBox = await roomsRail.boundingBox();
+  const risingBox = await risingFeed.boundingBox();
+  const peopleBox = await peopleRail.boundingBox();
+
+  expect(roomsBox).not.toBeNull();
+  expect(risingBox).not.toBeNull();
+  expect(peopleBox).not.toBeNull();
+  expect(roomsBox!.x).toBeLessThan(risingBox!.x);
+  expect(risingBox!.x).toBeLessThan(peopleBox!.x);
+  expect(risingBox!.width).toBeLessThanOrEqual(620);
+  await expect(roomsRail.getByTestId("room-card")).toHaveCount(5);
+  await expect(peopleRail.locator("article")).toHaveCount(5);
+
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+  );
+  expect(hasHorizontalOverflow).toBe(false);
 });
 
 test("PostCard reblog action updates count and state", async ({ page }) => {
@@ -1837,6 +1937,40 @@ function makePost(overrides: Record<string, unknown> = {}) {
       authorRelationship: null,
       likedByFollowedCount: 0,
     },
+    ...overrides,
+  };
+}
+
+function makeDiscoverRoom(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1,
+    slug: "general",
+    name: "General",
+    summary: "Open conversation.",
+    mood: "sunveil",
+    members: 0,
+    live: false,
+    accent: "var(--accent-warm)",
+    visibility: "public",
+    postCount: 2,
+    latestActivityAt: "2026-06-10 10:00:00",
+    createdAt: "2026-06-10 09:00:00",
+    updatedAt: "2026-06-10 10:00:00",
+    ...overrides,
+  };
+}
+
+function makeDiscoverPerson(overrides: Record<string, unknown> = {}) {
+  return {
+    handle: "alex",
+    displayName: "Alex",
+    initials: "A",
+    avatarUrl: null,
+    bioSnippet: "Writes public posts.",
+    isFollowing: false,
+    isMoot: false,
+    postCount: 3,
+    followerCount: 1,
     ...overrides,
   };
 }
