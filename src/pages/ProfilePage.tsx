@@ -14,6 +14,7 @@ import {
   Minus,
   MoreHorizontal,
   Music2,
+  Pencil,
   Pin,
   PinOff,
   Plus,
@@ -41,6 +42,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent,
   type CSSProperties,
   type ReactNode,
 } from "react";
@@ -2525,8 +2527,8 @@ function ProfileIdentityEditorFields({
             }
           />
         </label>
-        <label className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-canvas/55 px-3 text-sm font-semibold text-text transition hover:border-line-strong focus-within:outline-2 focus-within:outline-focus">
-          <ImagePlus aria-hidden="true" size={16} />
+        <label className="inline-flex min-h-9 cursor-pointer items-center justify-center gap-1.5 rounded-control border border-line bg-canvas/55 px-2.5 text-xs font-semibold text-text transition hover:border-line-strong focus-within:outline-2 focus-within:outline-focus">
+          <ImagePlus aria-hidden="true" size={14} />
           Avatar
           <input
             className="sr-only"
@@ -2542,8 +2544,8 @@ function ProfileIdentityEditorFields({
             }}
           />
         </label>
-        <label className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-canvas/55 px-3 text-sm font-semibold text-text transition hover:border-line-strong focus-within:outline-2 focus-within:outline-focus">
-          <ImagePlus aria-hidden="true" size={16} />
+        <label className="inline-flex min-h-9 cursor-pointer items-center justify-center gap-1.5 rounded-control border border-line bg-canvas/55 px-2.5 text-xs font-semibold text-text transition hover:border-line-strong focus-within:outline-2 focus-within:outline-focus">
+          <ImagePlus aria-hidden="true" size={14} />
           Banner
           <input
             className="sr-only"
@@ -5189,6 +5191,8 @@ function ModuleSettingsModal({
   const [connectionError, setConnectionError] = useState<string | undefined>();
   const [connectionFormOpen, setConnectionFormOpen] = useState(false);
   const [moduleImageCropQueue, setModuleImageCropQueue] = useState<File[]>([]);
+  const profileInfoAvatarInputRef = useRef<HTMLInputElement | null>(null);
+  const profileInfoBannerInputRef = useRef<HTMLInputElement | null>(null);
   const connectionLinks = module?.config.links ?? [];
   const canAddConnection = connectionLinks.length < maxProfileConnections;
   const moduleMediaItems = module?.config.mediaItems ?? [];
@@ -5296,6 +5300,19 @@ function ModuleSettingsModal({
         definition.category === "music" ? ["audio", "integration"] : ["video", "integration"],
       ),
     );
+  }
+
+  function handleProfileInfoImageInput(
+    event: ChangeEvent<HTMLInputElement>,
+    purpose: "avatar" | "banner",
+  ) {
+    const file = event.currentTarget.files?.[0];
+
+    if (file) {
+      onProfileImageUpload(file, purpose);
+    }
+
+    event.currentTarget.value = "";
   }
 
   function handleClose() {
@@ -5676,8 +5693,26 @@ function ModuleSettingsModal({
                 className="overflow-hidden rounded-card border border-line bg-canvas/38"
                 data-testid="profile-info-media-settings"
               >
+                <input
+                  ref={profileInfoAvatarInputRef}
+                  className="sr-only"
+                  type="file"
+                  accept={imageUploadAccept}
+                  data-testid="profile-info-modal-avatar-input"
+                  disabled={Boolean(uploading)}
+                  onChange={(event) => handleProfileInfoImageInput(event, "avatar")}
+                />
+                <input
+                  ref={profileInfoBannerInputRef}
+                  className="sr-only"
+                  type="file"
+                  accept={imageUploadAccept}
+                  data-testid="profile-info-modal-banner-input"
+                  disabled={Boolean(uploading)}
+                  onChange={(event) => handleProfileInfoImageInput(event, "banner")}
+                />
                 <div
-                  className="relative min-h-32 overflow-hidden bg-surface/55"
+                  className="group/profile-banner relative min-h-32 overflow-hidden bg-surface/55"
                   data-profile-banner-treatment="cover"
                   data-testid="profile-info-preview-banner"
                 >
@@ -5692,12 +5727,44 @@ function ModuleSettingsModal({
                     <div className="absolute inset-0 bg-gradient-to-br from-accent/20 via-cool/12 to-leaf/14" />
                   )}
                   <div className="absolute inset-0 bg-gradient-to-b from-canvas/18 via-canvas/5 to-canvas/46" />
-                  <div className="absolute bottom-2 left-2 flex items-end gap-2">
-                    <Avatar
-                      user={profile.user}
-                      size="lg"
-                      className="size-16 border-[3px] border-surface shadow-soft"
-                    />
+                  <button
+                    type="button"
+                    className="absolute inset-0 z-10 grid place-items-center text-text transition focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-70"
+                    aria-label="Change profile banner"
+                    title="Change profile banner"
+                    data-testid="profile-info-banner-edit-overlay"
+                    disabled={Boolean(uploading)}
+                    onClick={() => profileInfoBannerInputRef.current?.click()}
+                  >
+                    <span className="inline-flex translate-y-1 items-center gap-2 rounded-full border border-white/20 bg-black/48 px-3 py-2 text-sm font-semibold text-white opacity-0 shadow-soft backdrop-blur transition group-hover/profile-banner:translate-y-0 group-hover/profile-banner:opacity-100 group-focus-within/profile-banner:translate-y-0 group-focus-within/profile-banner:opacity-100">
+                      <Pencil aria-hidden="true" size={16} />
+                      {uploading === "banner" ? "Uploading" : "Change Banner"}
+                    </span>
+                  </button>
+                  <div className="absolute bottom-2 left-2 z-20 flex items-end gap-2">
+                    <button
+                      type="button"
+                      className="group/profile-avatar relative rounded-full transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-70"
+                      aria-label="Change profile avatar"
+                      title="Change profile avatar"
+                      data-testid="profile-info-avatar-edit-overlay"
+                      disabled={Boolean(uploading)}
+                      onClick={() => profileInfoAvatarInputRef.current?.click()}
+                    >
+                      <Avatar
+                        user={profile.user}
+                        size="lg"
+                        className="size-16 border-[3px] border-surface shadow-soft"
+                      />
+                      <span className="absolute inset-0 grid place-items-center rounded-full bg-black/52 text-white opacity-0 backdrop-blur-[2px] transition group-hover/profile-avatar:opacity-100 group-focus-visible/profile-avatar:opacity-100">
+                        <Pencil aria-hidden="true" size={20} />
+                      </span>
+                      {uploading === "avatar" ? (
+                        <span className="absolute inset-x-0 bottom-1 text-center text-[0.6rem] font-bold uppercase tracking-wide text-white">
+                          Uploading
+                        </span>
+                      ) : null}
+                    </button>
                     <div className="mb-1 min-w-0">
                       <p className="truncate text-sm font-semibold text-text">
                         {profile.user.displayName}
@@ -5709,52 +5776,26 @@ function ModuleSettingsModal({
                   </div>
                 </div>
                 <div className="grid gap-2 p-2 sm:grid-cols-2">
-                  <label
-                    className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-surface/62 px-3 text-sm font-semibold text-text transition hover:border-line-strong focus-within:outline-2 focus-within:outline-focus"
-                    title="Change profile picture"
+                  <button
+                    type="button"
+                    className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-control border border-line bg-surface/62 px-2.5 text-xs font-semibold text-text transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-60"
+                    title="Change profile avatar"
+                    disabled={Boolean(uploading)}
+                    onClick={() => profileInfoAvatarInputRef.current?.click()}
                   >
-                    <ImagePlus aria-hidden="true" size={16} />
-                    {uploading === "avatar" ? "Uploading" : "Picture"}
-                    <input
-                      className="sr-only"
-                      type="file"
-                      accept={imageUploadAccept}
-                      data-testid="profile-info-modal-avatar-input"
-                      disabled={Boolean(uploading)}
-                      onChange={(event) => {
-                        const file = event.currentTarget.files?.[0];
-
-                        if (file) {
-                          onProfileImageUpload(file, "avatar");
-                        }
-
-                        event.currentTarget.value = "";
-                      }}
-                    />
-                  </label>
-                  <label
-                    className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-surface/62 px-3 text-sm font-semibold text-text transition hover:border-line-strong focus-within:outline-2 focus-within:outline-focus"
+                    <ImagePlus aria-hidden="true" size={14} />
+                    {uploading === "avatar" ? "Uploading" : "Avatar"}
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-control border border-line bg-surface/62 px-2.5 text-xs font-semibold text-text transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-60"
                     title="Change profile banner"
+                    disabled={Boolean(uploading)}
+                    onClick={() => profileInfoBannerInputRef.current?.click()}
                   >
-                    <ImagePlus aria-hidden="true" size={16} />
+                    <ImagePlus aria-hidden="true" size={14} />
                     {uploading === "banner" ? "Uploading" : "Banner"}
-                    <input
-                      className="sr-only"
-                      type="file"
-                      accept={imageUploadAccept}
-                      data-testid="profile-info-modal-banner-input"
-                      disabled={Boolean(uploading)}
-                      onChange={(event) => {
-                        const file = event.currentTarget.files?.[0];
-
-                        if (file) {
-                          onProfileImageUpload(file, "banner");
-                        }
-
-                        event.currentTarget.value = "";
-                      }}
-                    />
-                  </label>
+                  </button>
                 </div>
               </div>
               <label className="block">

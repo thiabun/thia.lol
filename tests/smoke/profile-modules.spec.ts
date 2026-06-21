@@ -3743,7 +3743,7 @@ test("owner crops a profile background image before upload", async ({ page }) =>
   ).toBeVisible();
 });
 
-test("profile-info settings change picture and banner through crop controls", async ({
+test("profile-info settings change avatar and banner through crop controls", async ({
   page,
 }) => {
   const uploadPurposes: string[] = [];
@@ -3773,6 +3773,10 @@ test("profile-info settings change picture and banner through crop controls", as
 
   const settings = page.getByTestId("profile-module-settings");
   await expect(settings.getByTestId("profile-info-media-settings")).toBeVisible();
+  await expect(settings.getByText(/^Picture$/)).toHaveCount(0);
+  await expect(settings.getByText(/^Avatar$/)).toBeVisible();
+  await expect(settings.getByTestId("profile-info-avatar-edit-overlay")).toBeVisible();
+  await expect(settings.getByTestId("profile-info-banner-edit-overlay")).toBeVisible();
   await settings
     .getByTestId("profile-info-modal-avatar-input")
     .setInputFiles(samplePngFile("profile-avatar.png"));
