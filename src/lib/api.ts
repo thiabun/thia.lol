@@ -327,6 +327,20 @@ export type ProfileIntegrationsResult = {
   accounts: ProfileIntegrationAccount[];
 };
 
+export type ProfileIntegrationDiagnosticsProvider =
+  ProfileIntegrationProviderStatus & {
+    redirectUri?: string | null;
+  };
+
+export type ProfileIntegrationDiagnostics = {
+  storageReady: boolean;
+  encryptionConfigured: boolean;
+  encryptionAvailable: boolean;
+  cryptoMethod?: string | null;
+  oauthStateExpiresIn: number;
+  providers: ProfileIntegrationDiagnosticsProvider[];
+};
+
 export type ProfileIntegrationSuggestion = {
   id: string;
   label: string;
@@ -842,6 +856,12 @@ export function discardProfileCanvasDraft(
 export function getMyProfileIntegrations(): Promise<ProfileIntegrationsResult> {
   return apiGet<ProfileIntegrationsResult>("/me/integrations").then(
     normalizeProfileIntegrationsResult,
+  );
+}
+
+export function getProfileIntegrationDiagnostics(): Promise<ProfileIntegrationDiagnostics> {
+  return apiGet<ProfileIntegrationDiagnostics>("/me/integrations/diagnostics").then(
+    normalizeProfileIntegrationDiagnostics,
   );
 }
 
@@ -2055,6 +2075,45 @@ function normalizeProfileIntegrationsResult(
           .filter(isProfileIntegrationAccount)
       : [],
   };
+}
+
+function normalizeProfileIntegrationDiagnostics(
+  result: ProfileIntegrationDiagnostics,
+): ProfileIntegrationDiagnostics {
+  return {
+    storageReady: Boolean(result.storageReady),
+    encryptionConfigured: Boolean(result.encryptionConfigured),
+    encryptionAvailable: Boolean(result.encryptionAvailable),
+    cryptoMethod: typeof result.cryptoMethod === "string" ? result.cryptoMethod : null,
+    oauthStateExpiresIn:
+      typeof result.oauthStateExpiresIn === "number" ? result.oauthStateExpiresIn : 0,
+    providers: Array.isArray(result.providers)
+      ? result.providers
+          .map(normalizeProfileIntegrationDiagnosticsProvider)
+          .filter(isProfileIntegrationDiagnosticsProvider)
+      : [],
+  };
+}
+
+function normalizeProfileIntegrationDiagnosticsProvider(
+  value: ProfileIntegrationDiagnosticsProvider,
+): ProfileIntegrationDiagnosticsProvider | undefined {
+  const status = normalizeProfileIntegrationProviderStatus(value);
+
+  if (!status) {
+    return undefined;
+  }
+
+  return {
+    ...status,
+    redirectUri: typeof value.redirectUri === "string" ? value.redirectUri : null,
+  };
+}
+
+function isProfileIntegrationDiagnosticsProvider(
+  value: ProfileIntegrationDiagnosticsProvider | undefined,
+): value is ProfileIntegrationDiagnosticsProvider {
+  return value !== undefined;
 }
 
 function normalizeOnboardingState(value: OnboardingState): OnboardingState {

@@ -57,6 +57,7 @@ test("registration lands in the guided onboarding flow", async ({ page }) => {
   await expect.poll(() => registerPayload?.handle).toBe("onboardtester");
   await expect(page).toHaveURL(/\/onboarding$/);
   await expect(page.getByRole("heading", { name: "Profile setup" })).toBeVisible();
+  await expect(page.getByTestId("onboarding-step-welcome")).toBeVisible();
 });
 
 test("registration accepts an explicit @ handle without a duplicate prefix", async ({
@@ -113,6 +114,7 @@ test("existing authenticated users are routed into onboarding when unfinished", 
 test("onboarding handles OAuth returns, manual links, skip, connect, and finish", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
   const state = onboardingState();
   const patches: Array<Record<string, unknown>> = [];
   let spotifyStartPayload: Record<string, unknown> | undefined;
@@ -164,15 +166,18 @@ test("onboarding handles OAuth returns, manual links, skip, connect, and finish"
   await page.goto("/onboarding?integrationProvider=youtube&integrationStatus=connected");
   await expect(page.getByText("YouTube connected.")).toBeVisible();
   await expect(page).toHaveURL(/\/onboarding$/);
+  await expect(page.getByTestId("onboarding-step-integrations")).toBeVisible();
   await expect
     .poll(() => patches.some((patch) => patch.action === "complete_step" && patch.step === "youtube"))
     .toBe(true);
 
+  await page.getByTestId("onboarding-nav-profile_basics").click();
   await page.getByTestId("onboarding-profile-basics-skip").click();
   await expect
     .poll(() => patches.some((patch) => patch.action === "skip_step" && patch.step === "profile_basics"))
     .toBe(true);
 
+  await page.getByTestId("onboarding-nav-apple_music").click();
   await page
     .getByTestId("onboarding-apple-music-url")
     .fill("https://music.apple.com/us/album/example/1?i=2");
@@ -188,13 +193,50 @@ test("onboarding handles OAuth returns, manual links, skip, connect, and finish"
     )
     .toBe(true);
 
+  await page.getByTestId("onboarding-nav-integrations").click();
   await page.getByTestId("onboarding-connect-spotify").click();
   await expect.poll(() => spotifyStartPayload?.redirectPath).toBe("/onboarding");
 
+  await page.getByTestId("onboarding-nav-finish").click();
   await page.getByTestId("onboarding-finish").click();
   await expect
     .poll(() => patches.some((patch) => patch.action === "finish"))
     .toBe(true);
+});
+
+test("onboarding stays usable when integration storage is unavailable", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const state = onboardingState();
+
+  await mockAuth(page, () => true);
+  await mockNotifications(page);
+  await mockOnboarding(page, state);
+  await page.route("**/api/me/integrations", async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "Integration storage is not ready." }),
+    });
+  });
+  await mockIntegrationDiagnostics(page, {
+    storageReady: false,
+    encryptionConfigured: true,
+    encryptionAvailable: true,
+  });
+
+  await page.goto("/onboarding");
+  await page.getByTestId("onboarding-nav-integrations").click();
+
+  await expect(page.getByTestId("onboarding-step-integrations")).toBeVisible();
+  await expect(page.getByTestId("onboarding-integrations-error")).toContainText(
+    "Integration storage is not ready",
+  );
+  await expect(page.getByTestId("onboarding-provider-message-spotify")).toContainText(
+    "Integration tables are not ready",
+  );
+  await expect(page.getByTestId("onboarding-connect-spotify")).toBeDisabled();
 });
 
 async function mockAuth(page: Page, authenticated: () => boolean) {
@@ -283,6 +325,47 @@ async function mockIntegrations(
             }),
           ),
           accounts,
+        },
+      }),
+    });
+  });
+  await mockIntegrationDiagnostics(page);
+}
+
+async function mockIntegrationDiagnostics(
+  page: Page,
+  overrides: Partial<{
+    storageReady: boolean;
+    encryptionConfigured: boolean;
+    encryptionAvailable: boolean;
+  }> = {},
+) {
+  await page.route("**/api/me/integrations/diagnostics", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          storageReady: overrides.storageReady ?? true,
+          encryptionConfigured: overrides.encryptionConfigured ?? true,
+          encryptionAvailable: overrides.encryptionAvailable ?? true,
+          cryptoMethod: "sodium",
+          oauthStateExpiresIn: 600,
+          providers: ["spotify", "youtube", "twitch", "github", "apple_music"].map(
+            (provider) => ({
+              provider,
+              configured: provider !== "apple_music",
+              oauthEnabled: provider !== "apple_music",
+              linkSupported: true,
+              metadataEnabled: true,
+              redirectUri:
+                provider === "apple_music"
+                  ? null
+                  : `https://thia.lol/api/integrations/${provider}/callback`,
+              missingConfigKeys: [],
+            }),
+          ),
         },
       }),
     });

@@ -100,6 +100,7 @@ import {
   discardProfileCanvasDraft,
   updateProfileCanvas,
   updateProfileCanvasDraft,
+  updateOnboardingState,
   updateFeaturedBadges,
   updateMyProfile,
   uploadAudio,
@@ -244,6 +245,7 @@ export function ProfilePage() {
   const { setTopBarAction } = useOutletContext<AppShellOutletContext>();
   const { runWithAuth, status, user } = useAuth();
   const profileEditReturnHandledRef = useRef(false);
+  const profileEditorTourReturnHandledRef = useRef(false);
   const profileContentAutosaveRequestRef = useRef(0);
   const profileCanvasDraftAutosaveRequestRef = useRef(0);
   const profileCanvasDraftAutosaveTimerRef = useRef<number | undefined>(undefined);
@@ -312,6 +314,7 @@ export function ProfilePage() {
   const [integrationReturnNotice, setIntegrationReturnNotice] = useState<
     { kind: "success" | "error"; message: string } | undefined
   >();
+  const [profileEditorTourOpen, setProfileEditorTourOpen] = useState(false);
 
   function setCurrentCanvasDraft(nextDraft: ProfileCanvasDraftState | undefined) {
     canvasDraftRef.current = nextDraft;
@@ -716,6 +719,53 @@ export function ProfilePage() {
   ]);
 
   useEffect(() => {
+    if (
+      profileEditorTourReturnHandledRef.current ||
+      !canvasEditing ||
+      !isOwnProfile
+    ) {
+      return;
+    }
+
+    const params = new URLSearchParams(location.search);
+
+    if (params.get("tour") !== "profile-editor") {
+      return;
+    }
+
+    profileEditorTourReturnHandledRef.current = true;
+    let active = true;
+
+    queueMicrotask(() => {
+      if (!active) {
+        return;
+      }
+
+      setProfileEditorTourOpen(true);
+      params.delete("tour");
+      const nextSearch = params.toString();
+
+      navigate(
+        {
+          pathname: location.pathname,
+          search: nextSearch ? `?${nextSearch}` : "",
+        },
+        { replace: true },
+      );
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    canvasEditing,
+    isOwnProfile,
+    location.pathname,
+    location.search,
+    navigate,
+  ]);
+
+  useEffect(() => {
     if (!isOwnProfile) {
       return;
     }
@@ -767,6 +817,28 @@ export function ProfilePage() {
       active = false;
     };
   }, [isOwnProfile, location.pathname, location.search, navigate]);
+
+  async function markProfileEditorTourStep(action: "complete_step" | "skip_step") {
+    try {
+      await runWithAuth(
+        (csrfToken) =>
+          updateOnboardingState({ action, step: "profile_canvas" }, csrfToken),
+        { retryOnCsrf: true },
+      );
+    } catch {
+      // The tour should never block profile editing if onboarding state cannot save.
+    }
+  }
+
+  function handleProfileEditorTourComplete() {
+    setProfileEditorTourOpen(false);
+    void markProfileEditorTourStep("complete_step");
+  }
+
+  function handleProfileEditorTourDismiss() {
+    setProfileEditorTourOpen(false);
+    void markProfileEditorTourStep("skip_step");
+  }
 
   useEffect(() => {
     if (
@@ -1568,6 +1640,7 @@ export function ProfilePage() {
               busy={canvasSaving}
               draft={canvasDraft}
               error={canvasError}
+              guideOpen={profileEditorTourOpen}
               integrationAccounts={integrationsState.data?.accounts ?? []}
               integrationProviders={integrationsState.data?.providers ?? []}
               modules={canvasDraft.modules}
@@ -1581,6 +1654,9 @@ export function ProfilePage() {
               onConnectProvider={(provider) =>
                 void handleCanvasProviderConnect(provider)
               }
+              onGuideComplete={handleProfileEditorTourComplete}
+              onGuideDismiss={handleProfileEditorTourDismiss}
+              onGuideOpen={() => setProfileEditorTourOpen(true)}
               onModuleAudioUpload={handleModuleAudioUpload}
               onImageUpload={handleProfileImageDraftSelection}
               onModuleImageUpload={handleModuleImageUpload}
@@ -3530,6 +3606,7 @@ type ProfileDirectCanvasEditorProps = {
   busy: boolean;
   draft: ProfileCanvasDraftState;
   error?: string | undefined;
+  guideOpen: boolean;
   integrationAccounts: ProfileIntegrationAccount[];
   integrationProviders: ProfileIntegrationProviderStatus[];
   modules: ProfileModule[];
@@ -3539,6 +3616,9 @@ type ProfileDirectCanvasEditorProps = {
   onChange: (updater: (draft: ProfileCanvasDraftState) => ProfileCanvasDraftState) => void;
   onClearBackground: () => void;
   onConnectProvider: (provider: ProfileIntegrationProvider) => void;
+  onGuideComplete: () => void;
+  onGuideDismiss: () => void;
+  onGuideOpen: () => void;
   onModuleAudioUpload: (file: File) => Promise<UploadedAudio>;
   onImageUpload: (
     file: File,
@@ -3563,6 +3643,133 @@ type ProfileDirectCanvasEditorProps = {
 };
 
 type CanvasPoint = { column: number; row: number };
+
+const profileEditorCoachmarkSteps = [
+  {
+    title: "Set the stage",
+    body: "Use background settings for profile media and glass. This changes the mood before modules are added.",
+    target: "Background",
+  },
+  {
+    title: "Pick a space",
+    body: "Click one grid cell, then another cell to draw the rectangle your next module should occupy.",
+    target: "Grid",
+  },
+  {
+    title: "Choose a module",
+    body: "The picker only shows modules that fit the selected size. Brand icons tell you the provider at a glance.",
+    target: "Picker",
+  },
+  {
+    title: "Configure it",
+    body: "Module settings handle uploads, text, links, providers, and the Done button returns you to the canvas.",
+    target: "Settings",
+  },
+  {
+    title: "Arrange the room",
+    body: "Drag modules, resize supported cards, and pin important modules so the profile keeps its structure.",
+    target: "Layout",
+  },
+  {
+    title: "Save the canvas",
+    body: "Drafts autosave while you work. Use Save when the public profile should get the final layout.",
+    target: "Save",
+  },
+] as const;
+
+function ProfileEditorCoachmarkTour({
+  onComplete,
+  onDismiss,
+  open,
+}: {
+  onComplete: () => void;
+  onDismiss: () => void;
+  open: boolean;
+}) {
+  const [index, setIndex] = useState(0);
+  const step = profileEditorCoachmarkSteps[index] ?? profileEditorCoachmarkSteps[0];
+  const last = index >= profileEditorCoachmarkSteps.length - 1;
+
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <motion.div
+      className="rounded-card border border-focus/45 bg-surface/92 p-4 shadow-lift backdrop-blur-veil"
+      role="dialog"
+      aria-label="Profile editor guide"
+      data-testid="profile-editor-guide"
+      data-profile-editor-guide-step={step.target.toLowerCase()}
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <Badge tone="cool">{step.target}</Badge>
+          <h2 className="mt-2 text-lg font-semibold text-text">{step.title}</h2>
+          <p className="mt-1 max-w-2xl text-sm font-medium leading-6 text-muted">
+            {step.body}
+          </p>
+        </div>
+        <p className="text-xs font-semibold text-muted">
+          {index + 1}/{profileEditorCoachmarkSteps.length}
+        </p>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          data-testid="profile-editor-guide-dismiss"
+          onClick={() => {
+            setIndex(0);
+            onDismiss();
+          }}
+        >
+          Skip guide
+        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={index === 0}
+            onClick={() => setIndex((current) => Math.max(0, current - 1))}
+          >
+            Back
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            data-testid={last ? "profile-editor-guide-done" : "profile-editor-guide-next"}
+            icon={
+              last ? (
+                <Check aria-hidden="true" size={15} />
+              ) : (
+                <ArrowRight aria-hidden="true" size={15} />
+              )
+            }
+            onClick={() => {
+              if (last) {
+                setIndex(0);
+                onComplete();
+                return;
+              }
+
+              setIndex((current) =>
+                Math.min(profileEditorCoachmarkSteps.length - 1, current + 1),
+              );
+            }}
+          >
+            {last ? "Done" : "Next"}
+          </Button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
 
 function ProfileCanvasSelectionExamples({
   selection,
@@ -3664,6 +3871,7 @@ function ProfileDirectCanvasEditor({
   busy,
   draft,
   error,
+  guideOpen,
   integrationAccounts,
   integrationProviders,
   modules,
@@ -3673,6 +3881,9 @@ function ProfileDirectCanvasEditor({
   onChange,
   onClearBackground,
   onConnectProvider,
+  onGuideComplete,
+  onGuideDismiss,
+  onGuideOpen,
   onModuleAudioUpload,
   onImageUpload,
   onModuleImageUpload,
@@ -4078,6 +4289,16 @@ function ProfileDirectCanvasEditor({
             type="button"
             size="sm"
             variant="secondary"
+            icon={<Sparkles aria-hidden="true" size={16} />}
+            data-testid="profile-editor-guide-button"
+            onClick={onGuideOpen}
+          >
+            Guide
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
             disabled={busy}
             icon={<X aria-hidden="true" size={16} />}
             onClick={onCancel}
@@ -4104,6 +4325,11 @@ function ProfileDirectCanvasEditor({
           {error}
         </p>
       ) : null}
+      <ProfileEditorCoachmarkTour
+        open={guideOpen}
+        onComplete={onGuideComplete}
+        onDismiss={onGuideDismiss}
+      />
       <ProfileGrid
         canvasGlass={draft.canvasGlass}
         gridRef={gridRef}

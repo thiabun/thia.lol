@@ -2387,6 +2387,36 @@ test("direct canvas point selection creates a draft module through picker and se
   });
 });
 
+test("profile editor guide launches from onboarding tour query and can replay", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [aboutModule({ id: 1, body: "Guide target." })],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia?editCanvas=1&tour=profile-editor");
+
+  await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
+  await expect(page.getByTestId("profile-editor-guide")).toBeVisible();
+  await expect(page.getByTestId("profile-editor-guide")).toContainText("Set the stage");
+  await expect(page).toHaveURL(/editCanvas=1/);
+  await expect(page).not.toHaveURL(/tour=profile-editor/);
+
+  for (let step = 0; step < 5; step += 1) {
+    await page.getByTestId("profile-editor-guide-next").click();
+  }
+
+  await page.getByTestId("profile-editor-guide-done").click();
+  await expect(page.getByTestId("profile-editor-guide")).toHaveCount(0);
+
+  await page.getByTestId("profile-editor-guide-button").click();
+  await expect(page.getByTestId("profile-editor-guide")).toBeVisible();
+  await page.getByTestId("profile-editor-guide-dismiss").click();
+  await expect(page.getByTestId("profile-editor-guide")).toHaveCount(0);
+});
+
 test("direct canvas selection examples adapt to tiny selections", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await mockProfileModules(page, {
