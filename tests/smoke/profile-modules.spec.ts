@@ -2148,14 +2148,8 @@ test("profile info variants stay within each supported size", async ({ page }) =
           })
           .map((stat) => stat.getAttribute("data-profile-info-stat") ?? "unknown")
       : ["stats missing"];
-    const bannerBleed = element.querySelector<HTMLElement>(
-      '[data-testid="profile-header-banner-bleed"]',
-    );
     const banner = element.querySelector<HTMLElement>(
       '[data-testid="profile-header-banner"]',
-    );
-    const bannerBodyBleed = element.querySelector<HTMLElement>(
-      '[data-testid="profile-header-banner-body-bleed"]',
     );
     const bannerCardBleed = element.querySelector<HTMLElement>(
       '[data-testid="profile-header-banner-card-bleed"]',
@@ -2163,74 +2157,81 @@ test("profile info variants stay within each supported size", async ({ page }) =
     const avatarElement = element.querySelector<HTMLElement>(
       '[data-testid="profile-info-avatar-frame"]',
     );
-    const bannerBleedRect = bannerBleed?.getBoundingClientRect();
     const bannerRect = banner?.getBoundingClientRect();
-    const bannerBodyBleedRect = bannerBodyBleed?.getBoundingClientRect();
     const bannerCardBleedRect = bannerCardBleed?.getBoundingClientRect();
     const avatarRect = avatarElement?.getBoundingClientRect();
+    const bodyElement = banner?.nextElementSibling as HTMLElement | null;
+    const bodyStyles = bodyElement ? window.getComputedStyle(bodyElement) : null;
+    const bleedStyles = bannerCardBleed
+      ? window.getComputedStyle(bannerCardBleed)
+      : null;
     const gridStyles = window.getComputedStyle(gridElement);
-      const columnGap = Number.parseFloat(gridStyles.columnGap) || 0;
-      const rowGap = Number.parseFloat(gridStyles.rowGap) || columnGap;
-      const paddingLeft = Number.parseFloat(gridStyles.paddingLeft) || 0;
-      const paddingRight = Number.parseFloat(gridStyles.paddingRight) || 0;
-      const activeColumns = Number(
-        gridElement.getAttribute("data-profile-canvas-columns") ?? 12,
-      );
-      const cellSize =
-        Number.parseFloat(gridStyles.getPropertyValue("--profile-grid-cell-size")) ||
-        (gridElement.clientWidth -
-          paddingLeft -
-          paddingRight -
-          columnGap * (activeColumns - 1)) /
-          activeColumns;
-      const colSpan = Number(
-        element.getAttribute("data-profile-grid-column-span") ?? 1,
-      );
-      const rowSpan = Number(
-        element.getAttribute("data-profile-grid-row-span") ?? 1,
-      );
+    const columnGap = Number.parseFloat(gridStyles.columnGap) || 0;
+    const rowGap = Number.parseFloat(gridStyles.rowGap) || columnGap;
+    const paddingLeft = Number.parseFloat(gridStyles.paddingLeft) || 0;
+    const paddingRight = Number.parseFloat(gridStyles.paddingRight) || 0;
+    const activeColumns = Number(
+      gridElement.getAttribute("data-profile-canvas-columns") ?? 12,
+    );
+    const cellSize =
+      Number.parseFloat(gridStyles.getPropertyValue("--profile-grid-cell-size")) ||
+      (gridElement.clientWidth -
+        paddingLeft -
+        paddingRight -
+        columnGap * (activeColumns - 1)) /
+        activeColumns;
+    const colSpan = Number(
+      element.getAttribute("data-profile-grid-column-span") ?? 1,
+    );
+    const rowSpan = Number(
+      element.getAttribute("data-profile-grid-row-span") ?? 1,
+    );
 
-      return {
-        bioLineClamp:
-          bioStyles?.getPropertyValue("-webkit-line-clamp") ??
-          bioStyles?.webkitLineClamp ??
-          "",
-        bioOverflow: bioStyles?.overflow ?? "",
-        bannerBleedExtends:
-          bannerBleedRect && bannerRect
-            ? bannerBleedRect.bottom > bannerRect.bottom
-            : false,
-        bannerBodyBleedExtends:
-          bannerBodyBleedRect && bannerRect
-            ? bannerBodyBleedRect.top < bannerRect.bottom &&
-              bannerBodyBleedRect.bottom > bannerRect.bottom
-            : false,
-        bannerCardBleedExtends:
-          bannerCardBleedRect && bannerRect
-            ? bannerCardBleedRect.bottom > bannerRect.bottom
-            : false,
-        avatarOverlapsBannerBoundary:
-          avatarRect && bannerRect
-            ? avatarRect.top < bannerRect.bottom - 2 &&
-              avatarRect.bottom > bannerRect.bottom + 2
-            : false,
-        expectedModuleHeight: Math.round(cellSize * rowSpan + rowGap * (rowSpan - 1)),
-        expectedModuleWidth: Math.round(
-          cellSize * colSpan + columnGap * (colSpan - 1),
-        ),
-        headerBottom: headerRect.bottom,
-        headerClientHeight: headerElement.clientHeight,
-        headerHeight: Math.round(headerRect.height),
-        headerRight: headerRect.right,
-        headerScrollHeight: headerElement.scrollHeight,
-        headerWidth: Math.round(headerRect.width),
-        moduleBottom: moduleRect.bottom,
-        moduleHeight: Math.round(moduleRect.height),
-        moduleRight: moduleRect.right,
-        moduleWidth: Math.round(moduleRect.width),
-        outOfBounds,
-        statOutOfBounds,
-      };
+    return {
+      bioLineClamp:
+        bioStyles?.getPropertyValue("-webkit-line-clamp") ??
+        bioStyles?.webkitLineClamp ??
+        "",
+      bioOverflow: bioStyles?.overflow ?? "",
+      bodyBackgroundImage: bodyStyles?.backgroundImage ?? "",
+      bodyClassName: bodyElement?.className ?? "",
+      bodyBleedLayerCount: element.querySelectorAll<HTMLElement>(
+        '[data-testid="profile-header-banner-card-bleed"]',
+      ).length,
+      oldBleedLayerCount: element.querySelectorAll<HTMLElement>(
+        '[data-testid="profile-header-banner-bleed"], [data-testid="profile-header-banner-body-bleed"]',
+      ).length,
+      bannerCardBleedExtends:
+        bannerCardBleedRect && bannerRect
+          ? bannerCardBleedRect.bottom > bannerRect.bottom
+          : false,
+      bannerCardBleedMask:
+        bleedStyles?.getPropertyValue("mask-image") ||
+        bleedStyles?.getPropertyValue("-webkit-mask-image") ||
+        "",
+      bannerCardBleedOpacity: bleedStyles?.opacity ?? "",
+      avatarOverlapsBannerBoundary:
+        avatarRect && bannerRect
+          ? avatarRect.top < bannerRect.bottom - 2 &&
+            avatarRect.bottom > bannerRect.bottom + 2
+          : false,
+      expectedModuleHeight: Math.round(cellSize * rowSpan + rowGap * (rowSpan - 1)),
+      expectedModuleWidth: Math.round(
+        cellSize * colSpan + columnGap * (colSpan - 1),
+      ),
+      headerBottom: headerRect.bottom,
+      headerClientHeight: headerElement.clientHeight,
+      headerHeight: Math.round(headerRect.height),
+      headerRight: headerRect.right,
+      headerScrollHeight: headerElement.scrollHeight,
+      headerWidth: Math.round(headerRect.width),
+      moduleBottom: moduleRect.bottom,
+      moduleHeight: Math.round(moduleRect.height),
+      moduleRight: moduleRect.right,
+      moduleWidth: Math.round(moduleRect.width),
+      outOfBounds,
+      statOutOfBounds,
+    };
     });
 
     expect(Math.abs(metrics.moduleWidth - metrics.expectedModuleWidth)).toBeLessThanOrEqual(2);
@@ -2247,9 +2248,15 @@ test("profile info variants stay within each supported size", async ({ page }) =
       expect(metrics.bioLineClamp).not.toBe("none");
     }
     if (["4x3", "6x3", "8x3", "8x4"].includes(profileInfoCase.size)) {
-      expect(metrics.bannerBleedExtends).toBe(true);
-      expect(metrics.bannerBodyBleedExtends).toBe(true);
+      expect(metrics.bodyBleedLayerCount).toBe(1);
+      expect(metrics.oldBleedLayerCount).toBe(0);
       expect(metrics.bannerCardBleedExtends).toBe(true);
+      expect(metrics.bannerCardBleedMask).toContain("linear-gradient");
+      expect(metrics.bannerCardBleedMask).toMatch(/transparent|rgba\(0, 0, 0, 0\)/);
+      expect(Number.parseFloat(metrics.bannerCardBleedOpacity)).toBeLessThanOrEqual(0.2);
+      expect(metrics.bodyBackgroundImage).toContain("linear-gradient");
+      expect(metrics.bodyClassName).toContain("from-surface/0");
+      expect(metrics.bodyClassName).not.toContain("via-surface");
       expect(metrics.avatarOverlapsBannerBoundary).toBe(true);
     }
   }
