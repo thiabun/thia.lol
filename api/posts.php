@@ -561,6 +561,25 @@ function post_share_result(int $recipientUserId, string $status, string $error):
     ];
 }
 
+const SHARE_CARD_LOGICAL_WIDTH = 1200;
+const SHARE_CARD_LOGICAL_HEIGHT = 630;
+const SHARE_CARD_RENDER_SCALE = 2;
+
+function posts_share_card_s(int|float $value): int
+{
+    return (int) round($value * SHARE_CARD_RENDER_SCALE);
+}
+
+function posts_share_card_width(): int
+{
+    return posts_share_card_s(SHARE_CARD_LOGICAL_WIDTH);
+}
+
+function posts_share_card_height(): int
+{
+    return posts_share_card_s(SHARE_CARD_LOGICAL_HEIGHT);
+}
+
 function posts_share_card(string $postIdentifier): void
 {
     $post = fetch_public_post_payload_by_identifier($postIdentifier, current_request_user_id());
@@ -576,46 +595,99 @@ function posts_share_card(string $postIdentifier): void
         exit;
     }
 
-    $image = imagecreatetruecolor(1200, 630);
+    $image = imagecreatetruecolor(posts_share_card_width(), posts_share_card_height());
 
     if (!$image) {
         posts_share_card_fallback(false);
     }
 
     imageantialias($image, true);
-    $bg = imagecolorallocate($image, 13, 31, 41);
-    $panel = imagecolorallocate($image, 22, 51, 61);
-    $line = imagecolorallocate($image, 65, 126, 146);
-    $text = imagecolorallocate($image, 232, 247, 248);
-    $muted = imagecolorallocate($image, 158, 192, 202);
-    $accent = imagecolorallocate($image, 244, 140, 173);
-    $panelLeft = 44;
-    $panelTop = 96;
-    $panelRight = 1156;
-    $panelBottom = 586;
+    imagealphablending($image, true);
+    $theme = profile_share_card_theme_colors($post['profile']['profileThemeConfig'] ?? null);
+    $bg = posts_share_card_color($image, $theme['canvas'], [13, 31, 41]);
+    $panel = posts_share_card_color_alpha($image, $theme['surface'], [22, 51, 61], 14);
+    $line = posts_share_card_color_alpha($image, $theme['lineStrong'], [65, 126, 146], 32);
+    $text = posts_share_card_color($image, $theme['text'], [232, 247, 248]);
+    $muted = posts_share_card_color($image, $theme['muted'], [158, 192, 202]);
+    $accent = posts_share_card_color($image, $theme['accent'], [244, 140, 173]);
+    $mediaUrl = is_string($post['mediaUrl'] ?? null) ? (string) $post['mediaUrl'] : null;
+    $linkCard = posts_share_card_first_rich_link_card($post);
+    $linkImageUrl = is_string($linkCard['imageUrl'] ?? null) ? (string) $linkCard['imageUrl'] : null;
+    $previewImageUrl = ($mediaUrl !== null && $mediaUrl !== '') ? $mediaUrl : $linkImageUrl;
+    $panelLeft = posts_share_card_s(44);
+    $panelTop = posts_share_card_s(96);
+    $panelWidth = posts_share_card_s(1112);
+    $panelHeight = posts_share_card_s(490);
 
-    imagefilledrectangle($image, 0, 0, 1200, 630, $bg);
+    posts_share_card_draw_background_wash(
+        $image,
+        $theme,
+        ($previewImageUrl !== null && $previewImageUrl !== '')
+            ? $previewImageUrl
+            : (is_string($post['author']['avatarUrl'] ?? null) ? (string) $post['author']['avatarUrl'] : null)
+    );
     posts_share_card_draw_lockup($image);
-    imagefilledrectangle($image, $panelLeft, $panelTop, $panelRight, $panelBottom, $panel);
-    imagerectangle($image, $panelLeft, $panelTop, $panelRight, $panelBottom, $line);
-
-    $hasThumbnail = posts_share_card_draw_thumbnail($image, $post);
+    posts_share_card_draw_soft_shadow($image, $panelLeft, $panelTop, $panelWidth, $panelHeight, posts_share_card_s(30));
+    posts_share_card_draw_rounded_rect($image, $panelLeft, $panelTop, $panelWidth, $panelHeight, posts_share_card_s(30), $panel);
+    posts_share_card_stroke_rounded_rect($image, $panelLeft, $panelTop, $panelWidth, $panelHeight, posts_share_card_s(30), $line, posts_share_card_s(1));
 
     $fonts = posts_share_card_font_paths();
-    $left = 92;
-    $top = 76;
-    $bodyWidth = $hasThumbnail ? 620 : 940;
-    $avatarDrawn = posts_share_card_draw_avatar($image, $post, $left, $top + 50, 72);
-    $identityLeft = $avatarDrawn ? $left + 92 : $left;
+    $hasThumbnail = false;
+    $mediaX = posts_share_card_s(770);
+    $mediaY = posts_share_card_s(130);
+    $mediaW = posts_share_card_s(316);
+    $mediaH = posts_share_card_s(408);
+    if ($previewImageUrl !== null && $previewImageUrl !== '') {
+        $hasThumbnail = posts_share_card_draw_cover_safe_image_rounded(
+            $image,
+            $previewImageUrl,
+            $mediaX,
+            $mediaY,
+            $mediaW,
+            $mediaH,
+            posts_share_card_s(26)
+        );
+        if ($hasThumbnail) {
+            posts_share_card_stroke_rounded_rect($image, $mediaX, $mediaY, $mediaW, $mediaH, posts_share_card_s(26), $line, posts_share_card_s(1));
+        }
+    } elseif ($linkCard !== null) {
+        $hasThumbnail = posts_share_card_draw_link_preview_tile($image, $fonts, $linkCard, $mediaX, $mediaY, $mediaW, $mediaH, $text, $muted, $accent, $line);
+    }
+
+    if (!$hasThumbnail && $linkCard !== null) {
+        $hasThumbnail = posts_share_card_draw_link_preview_tile($image, $fonts, $linkCard, $mediaX, $mediaY, $mediaW, $mediaH, $text, $muted, $accent, $line);
+    }
+    $left = posts_share_card_s(92);
+    $top = posts_share_card_s(76);
+    $bodyWidth = $hasThumbnail ? posts_share_card_s(620) : posts_share_card_s(940);
+    $avatarDrawn = posts_share_card_draw_avatar($image, $post, $left, $top + posts_share_card_s(52), posts_share_card_s(72));
+    $identityLeft = $avatarDrawn ? $left + posts_share_card_s(92) : $left;
     $author = (string) ($post['author']['displayName'] ?? $post['author']['handle'] ?? 'thia.lol');
     $handle = '@' . (string) ($post['author']['handle'] ?? 'profile');
     $snippet = post_body_snippet((string) ($post['body'] ?? ''), 250);
     $canonical = post_canonical_path($post);
+    $commentCount = (int) ($post['commentCount'] ?? 0);
+    $likeCount = (int) ($post['reactions']['glow'] ?? 0);
+    $echoCount = (int) ($post['reactions']['echo'] ?? 0);
 
-    posts_share_card_text($image, $fonts, 38, $identityLeft, $top + 86, $text, $author);
-    posts_share_card_text($image, $fonts, 22, $identityLeft, $top + 128, $muted, $handle);
-    posts_share_card_wrapped_text($image, $fonts, 28, $left, $top + 190, $text, $snippet, $bodyWidth, 4);
-    posts_share_card_text($image, $fonts, 18, $left, 538, $muted, $canonical);
+    posts_share_card_text($image, $fonts, posts_share_card_s(39), $identityLeft, $top + posts_share_card_s(92), $text, $author);
+    posts_share_card_text($image, $fonts, posts_share_card_s(22), $identityLeft, $top + posts_share_card_s(132), $muted, $handle);
+    posts_share_card_wrapped_text($image, $fonts, posts_share_card_s(29), $left, $top + posts_share_card_s(194), $text, $snippet, $bodyWidth, 4, posts_share_card_s(42));
+    posts_share_card_draw_stat_pills(
+        $image,
+        $fonts,
+        [
+            [$commentCount, 'Replies'],
+            [$likeCount, 'Likes'],
+            [$echoCount, 'Reposts'],
+        ],
+        $left,
+        posts_share_card_s(486),
+        $text,
+        $muted,
+        $accent
+    );
+    posts_share_card_text($image, $fonts, posts_share_card_s(18), $left, posts_share_card_s(538), $muted, $canonical);
 
     imagepng($image);
     exit;
@@ -649,7 +721,7 @@ function profile_share_card(string $handle): void
         null
     );
     $modules = profile_share_card_modules((int) $profileRow['user_id']);
-    $image = imagecreatetruecolor(1200, 630);
+    $image = imagecreatetruecolor(posts_share_card_width(), posts_share_card_height());
 
     if (!$image) {
         posts_share_card_fallback(false);
@@ -658,85 +730,84 @@ function profile_share_card(string $handle): void
     imageantialias($image, true);
     imagealphablending($image, true);
     $theme = profile_share_card_theme_colors($profile['profileThemeConfig'] ?? null);
-    $bg = posts_share_card_color($image, $theme['canvas'], [13, 31, 41]);
-    $panel = posts_share_card_color($image, $theme['surface'], [22, 51, 61]);
+    $panel = posts_share_card_color_alpha($image, $theme['surface'], [22, 51, 61], 14);
     $panelSoft = posts_share_card_color_alpha($image, $theme['surfaceStrong'], [26, 60, 72], 18);
     $panelStrong = posts_share_card_color_alpha($image, $theme['canvas'], [9, 25, 34], 28);
-    $line = posts_share_card_color($image, $theme['lineStrong'], [65, 126, 146]);
+    $line = posts_share_card_color_alpha($image, $theme['lineStrong'], [65, 126, 146], 30);
     $text = posts_share_card_color($image, $theme['text'], [232, 247, 248]);
     $muted = posts_share_card_color($image, $theme['muted'], [158, 192, 202]);
     $accent = posts_share_card_color($image, $theme['accent'], [88, 226, 224]);
-    $panelLeft = 44;
-    $panelTop = 96;
-    $panelRight = 1156;
-    $panelBottom = 586;
-
-    imagefilledrectangle($image, 0, 0, 1200, 630, $bg);
-    posts_share_card_draw_lockup($image);
-    imagefilledrectangle($image, $panelLeft, $panelTop, $panelRight, $panelBottom, $panel);
-
     $backgroundUrl = $profile['profileBackground']
         ?? $profile['profileBackgroundVideoPoster']
         ?? $profile['bannerUrl']
         ?? $profile['user']['avatarUrl']
         ?? null;
+    $panelLeft = posts_share_card_s(44);
+    $panelTop = posts_share_card_s(96);
+    $panelWidth = posts_share_card_s(1112);
+    $panelHeight = posts_share_card_s(490);
+
+    posts_share_card_draw_background_wash(
+        $image,
+        $theme,
+        is_string($backgroundUrl) && $backgroundUrl !== '' ? $backgroundUrl : null
+    );
+    posts_share_card_draw_lockup($image);
+    posts_share_card_draw_soft_shadow($image, $panelLeft, $panelTop, $panelWidth, $panelHeight, posts_share_card_s(30));
+    posts_share_card_draw_rounded_rect($image, $panelLeft, $panelTop, $panelWidth, $panelHeight, posts_share_card_s(30), $panel);
     if (is_string($backgroundUrl) && $backgroundUrl !== '') {
-        posts_share_card_draw_cover_uploaded_image(
+        posts_share_card_draw_cover_safe_image_rounded(
             $image,
             $backgroundUrl,
             $panelLeft,
             $panelTop,
-            $panelRight - $panelLeft,
-            $panelBottom - $panelTop
+            $panelWidth,
+            $panelHeight,
+            posts_share_card_s(30),
+            posts_share_card_s(1)
         );
-        imagefilledrectangle($image, $panelLeft, $panelTop, $panelRight, $panelBottom, $panelStrong);
+        posts_share_card_draw_rounded_rect($image, $panelLeft, $panelTop, $panelWidth, $panelHeight, posts_share_card_s(30), $panelStrong);
     }
 
-    imagefilledrectangle($image, $panelLeft, $panelTop, $panelRight, $panelBottom, $panelSoft);
-    imagerectangle($image, $panelLeft, $panelTop, $panelRight, $panelBottom, $line);
+    posts_share_card_draw_rounded_rect($image, $panelLeft, $panelTop, $panelWidth, $panelHeight, posts_share_card_s(30), $panelSoft);
+    posts_share_card_stroke_rounded_rect($image, $panelLeft, $panelTop, $panelWidth, $panelHeight, posts_share_card_s(30), $line, posts_share_card_s(1));
 
     $fonts = posts_share_card_font_paths();
-    $left = 92;
-    $top = 136;
-    $leftColumnWidth = 548;
-    $bioY = 258;
-    $statsY = 408;
-    $canonicalY = 538;
+    $left = posts_share_card_s(92);
+    $top = posts_share_card_s(136);
+    $leftColumnWidth = posts_share_card_s(540);
+    $bioY = posts_share_card_s(246);
+    $statsY = posts_share_card_s(392);
+    $canonicalY = posts_share_card_s(538);
     $avatarDrawn = posts_share_card_draw_avatar(
         $image,
         ['author' => ['avatarUrl' => $profile['user']['avatarUrl'] ?? null]],
         $left,
         $top,
-        88
+        posts_share_card_s(88)
     );
-    $identityLeft = $avatarDrawn ? $left + 112 : $left;
+    $identityLeft = $avatarDrawn ? $left + posts_share_card_s(112) : $left;
     $displayName = (string) ($profile['user']['displayName'] ?? $profile['user']['handle'] ?? 'thia.lol');
     $profileHandle = '@' . (string) ($profile['user']['handle'] ?? 'profile');
     $description = profile_share_description($profile);
     $canonical = profile_canonical_path($profile);
 
-    posts_share_card_text($image, $fonts, 40, $identityLeft, $top + 38, $text, $displayName);
-    posts_share_card_text($image, $fonts, 23, $identityLeft, $top + 78, $muted, $profileHandle);
-    posts_share_card_wrapped_text($image, $fonts, 24, $left, $bioY, $text, $description, $leftColumnWidth, 3, 34);
+    posts_share_card_text($image, $fonts, posts_share_card_s(40), $identityLeft, $top + posts_share_card_s(42), $text, $displayName);
+    posts_share_card_text($image, $fonts, posts_share_card_s(23), $identityLeft, $top + posts_share_card_s(82), $muted, $profileHandle);
+    posts_share_card_wrapped_text($image, $fonts, posts_share_card_s(24), $left, $bioY, $text, $description, $leftColumnWidth, 3, posts_share_card_s(34));
     profile_share_card_draw_stats($image, $fonts, $profile, $left, $statsY, $text, $muted, $leftColumnWidth);
 
-    $moduleX = 690;
-    $moduleY = 136;
-    $moduleWidth = 198;
-    $moduleHeight = 150;
-    $moduleGap = 16;
-    foreach (array_slice($modules, 0, 4) as $index => $module) {
-        $x = $moduleX + (($index % 2) * ($moduleWidth + $moduleGap));
-        $y = $moduleY + ((int) floor($index / 2) * ($moduleHeight + $moduleGap));
+    foreach (profile_share_card_module_layouts($modules) as $entry) {
+        $module = $entry['module'];
         try {
             profile_share_card_draw_module_preview(
                 $image,
                 $fonts,
                 $module,
-                $x,
-                $y,
-                $moduleWidth,
-                $moduleHeight,
+                posts_share_card_s((int) $entry['x']),
+                posts_share_card_s((int) $entry['y']),
+                posts_share_card_s((int) $entry['w']),
+                posts_share_card_s((int) $entry['h']),
                 $text,
                 $muted,
                 $accent,
@@ -747,7 +818,7 @@ function profile_share_card(string $handle): void
         }
     }
 
-    posts_share_card_text($image, $fonts, 18, $left, $canonicalY, $muted, $canonical);
+    posts_share_card_text($image, $fonts, posts_share_card_s(18), $left, $canonicalY, $muted, $canonical);
 
     imagepng($image);
     exit;
@@ -782,6 +853,365 @@ function posts_share_card_png_headers(): void
     header('Cache-Control: public, max-age=3600, stale-while-revalidate=86400');
     header('Content-Disposition: inline');
     header('X-Content-Type-Options: nosniff');
+}
+
+function posts_share_card_draw_background_wash($image, array $theme, ?string $imageUrl): void
+{
+    $width = posts_share_card_width();
+    $height = posts_share_card_height();
+    $base = posts_share_card_color($image, $theme['canvas'], [13, 31, 41]);
+    $surface = posts_share_card_color_alpha($image, $theme['surface'], [22, 51, 61], 40);
+    $surfaceStrong = posts_share_card_color_alpha($image, $theme['surfaceStrong'], [26, 60, 72], 76);
+    $accent = posts_share_card_color_alpha($image, $theme['accent'], [88, 226, 224], 104);
+
+    imagefilledrectangle($image, 0, 0, $width, $height, $base);
+
+    if (is_string($imageUrl) && $imageUrl !== '') {
+        $source = posts_share_card_load_safe_image_source($imageUrl);
+
+        if ($source instanceof GdImage) {
+            $wash = imagecreatetruecolor($width, $height);
+            if ($wash) {
+                imagealphablending($wash, true);
+                imagefilledrectangle($wash, 0, 0, $width, $height, $base);
+                posts_share_card_draw_cover_source($wash, $source, 0, 0, $width, $height);
+                for ($i = 0; $i < 5; $i++) {
+                    @imagefilter($wash, IMG_FILTER_GAUSSIAN_BLUR);
+                }
+                imagecopymerge($image, $wash, 0, 0, 0, 0, $width, $height, 32);
+            }
+        }
+    }
+
+    imagefilledellipse($image, posts_share_card_s(320), posts_share_card_s(160), posts_share_card_s(560), posts_share_card_s(360), $surface);
+    imagefilledellipse($image, posts_share_card_s(920), posts_share_card_s(490), posts_share_card_s(640), posts_share_card_s(360), $accent);
+    posts_share_card_draw_vertical_fade($image, 0, 0, $width, $height, $theme['canvas'], [13, 31, 41], 56, 18);
+    imagefilledrectangle($image, 0, posts_share_card_s(540), $width, $height, $surfaceStrong);
+}
+
+function posts_share_card_draw_vertical_fade(
+    $image,
+    int $x,
+    int $y,
+    int $width,
+    int $height,
+    string $hex,
+    array $fallback,
+    int $alphaTop,
+    int $alphaBottom
+): void {
+    $step = max(2, posts_share_card_s(2));
+    for ($row = 0; $row < $height; $row += $step) {
+        $progress = $height <= 1 ? 1 : $row / max(1, $height - 1);
+        $alpha = (int) round($alphaTop + (($alphaBottom - $alphaTop) * $progress));
+        $color = posts_share_card_color_alpha($image, $hex, $fallback, $alpha);
+        imagefilledrectangle($image, $x, $y + $row, $x + $width, min($y + $height, $y + $row + $step), $color);
+    }
+}
+
+function posts_share_card_draw_soft_shadow($image, int $x, int $y, int $width, int $height, int $radius): void
+{
+    for ($i = 4; $i >= 1; $i--) {
+        $offset = posts_share_card_s($i * 3);
+        $alpha = 118 - ($i * 8);
+        $color = imagecolorallocatealpha($image, 0, 0, 0, $alpha);
+        posts_share_card_draw_rounded_rect(
+            $image,
+            $x - $offset,
+            $y + $offset,
+            $width + ($offset * 2),
+            $height + ($offset * 2),
+            $radius + $offset,
+            $color
+        );
+    }
+}
+
+function posts_share_card_draw_rounded_rect($image, int $x, int $y, int $width, int $height, int $radius, int $color): void
+{
+    $radius = max(0, min($radius, intdiv(min($width, $height), 2)));
+
+    if ($radius <= 0) {
+        imagefilledrectangle($image, $x, $y, $x + $width, $y + $height, $color);
+        return;
+    }
+
+    $radiusSquared = $radius * $radius;
+
+    for ($row = 0; $row <= $height; $row++) {
+        $inset = 0;
+
+        if ($row < $radius) {
+            $dy = $radius - $row;
+            $inset = (int) ceil($radius - sqrt(max(0, $radiusSquared - ($dy * $dy))));
+        } elseif ($row > $height - $radius) {
+            $dy = $row - ($height - $radius);
+            $inset = (int) ceil($radius - sqrt(max(0, $radiusSquared - ($dy * $dy))));
+        }
+
+        imagefilledrectangle($image, $x + $inset, $y + $row, $x + $width - $inset, $y + $row, $color);
+    }
+}
+
+function posts_share_card_stroke_rounded_rect(
+    $image,
+    int $x,
+    int $y,
+    int $width,
+    int $height,
+    int $radius,
+    int $color,
+    int $thickness = 1
+): void {
+    $oldThickness = 1;
+    $thickness = max(1, $thickness);
+    imagesetthickness($image, $thickness);
+    $radius = max(0, min($radius, intdiv(min($width, $height), 2)));
+
+    if ($radius <= 0) {
+        imagerectangle($image, $x, $y, $x + $width, $y + $height, $color);
+        imagesetthickness($image, $oldThickness);
+        return;
+    }
+
+    imageline($image, $x + $radius, $y, $x + $width - $radius, $y, $color);
+    imageline($image, $x + $radius, $y + $height, $x + $width - $radius, $y + $height, $color);
+    imageline($image, $x, $y + $radius, $x, $y + $height - $radius, $color);
+    imageline($image, $x + $width, $y + $radius, $x + $width, $y + $height - $radius, $color);
+    imagearc($image, $x + $radius, $y + $radius, $radius * 2, $radius * 2, 180, 270, $color);
+    imagearc($image, $x + $width - $radius, $y + $radius, $radius * 2, $radius * 2, 270, 360, $color);
+    imagearc($image, $x + $radius, $y + $height - $radius, $radius * 2, $radius * 2, 90, 180, $color);
+    imagearc($image, $x + $width - $radius, $y + $height - $radius, $radius * 2, $radius * 2, 0, 90, $color);
+    imagesetthickness($image, $oldThickness);
+}
+
+function posts_share_card_draw_cover_safe_image_rounded(
+    $image,
+    string $imageUrl,
+    int $targetX,
+    int $targetY,
+    int $targetWidth,
+    int $targetHeight,
+    int $radius,
+    int $inset = 0
+): bool {
+    $source = posts_share_card_load_safe_image_source($imageUrl);
+
+    if (!$source) {
+        return false;
+    }
+
+    posts_share_card_draw_cover_source_rounded(
+        $image,
+        $source,
+        $targetX + $inset,
+        $targetY + $inset,
+        max(1, $targetWidth - ($inset * 2)),
+        max(1, $targetHeight - ($inset * 2)),
+        max(0, $radius - $inset)
+    );
+
+    return true;
+}
+
+function posts_share_card_draw_cover_source_rounded(
+    $image,
+    GdImage $source,
+    int $targetX,
+    int $targetY,
+    int $targetWidth,
+    int $targetHeight,
+    int $radius
+): void {
+    $tile = imagecreatetruecolor($targetWidth, $targetHeight);
+
+    if (!$tile) {
+        posts_share_card_draw_cover_source($image, $source, $targetX, $targetY, $targetWidth, $targetHeight);
+        return;
+    }
+
+    imagealphablending($tile, false);
+    imagesavealpha($tile, true);
+    $transparent = imagecolorallocatealpha($tile, 0, 0, 0, 127);
+    imagefilledrectangle($tile, 0, 0, $targetWidth, $targetHeight, $transparent);
+    imagealphablending($tile, true);
+    posts_share_card_draw_cover_source($tile, $source, 0, 0, $targetWidth, $targetHeight);
+
+    $radius = max(0, min($radius, intdiv(min($targetWidth, $targetHeight), 2)));
+    if ($radius > 0) {
+        $r2 = $radius * $radius;
+        for ($py = 0; $py < $radius; $py++) {
+            for ($px = 0; $px < $radius; $px++) {
+                $dx = $radius - $px;
+                $dy = $radius - $py;
+                if (($dx * $dx) + ($dy * $dy) <= $r2) {
+                    continue;
+                }
+                imagesetpixel($tile, $px, $py, $transparent);
+                imagesetpixel($tile, $targetWidth - $px - 1, $py, $transparent);
+                imagesetpixel($tile, $px, $targetHeight - $py - 1, $transparent);
+                imagesetpixel($tile, $targetWidth - $px - 1, $targetHeight - $py - 1, $transparent);
+            }
+        }
+    }
+
+    imagecopy($image, $tile, $targetX, $targetY, 0, 0, $targetWidth, $targetHeight);
+}
+
+function posts_share_card_first_rich_link_card(array $post): ?array
+{
+    $entities = is_array($post['bodyEntities'] ?? null) ? $post['bodyEntities'] : [];
+
+    foreach ($entities as $entity) {
+        if (!is_array($entity) || ($entity['type'] ?? null) !== 'link') {
+            continue;
+        }
+
+        $link = is_array($entity['link'] ?? null) ? $entity['link'] : [];
+        $card = is_array($link['card'] ?? null) ? $link['card'] : null;
+        $url = is_string($link['url'] ?? null) ? (string) $link['url'] : '';
+
+        if ($card === null && $url === '') {
+            continue;
+        }
+
+        $metadata = is_array($card['metadata'] ?? null) ? $card['metadata'] : [];
+        return [
+            'url' => $url !== '' ? $url : (string) ($card['sourceUrl'] ?? ''),
+            'provider' => is_string($card['provider'] ?? null) ? (string) $card['provider'] : 'website',
+            'title' => profile_share_card_first_string([
+                $metadata['title'] ?? null,
+                $metadata['subtitle'] ?? null,
+                $url,
+            ]),
+            'subtitle' => profile_share_card_first_string([
+                $metadata['subtitle'] ?? null,
+                $card['provider'] ?? null,
+            ]),
+            'description' => profile_share_card_first_string([
+                $metadata['description'] ?? null,
+            ]),
+            'imageUrl' => profile_share_card_first_string([
+                $metadata['imageUrl'] ?? null,
+                $metadata['image'] ?? null,
+                $metadata['thumbnailUrl'] ?? null,
+            ]),
+        ];
+    }
+
+    return null;
+}
+
+function posts_share_card_draw_link_preview_tile(
+    $image,
+    array $fonts,
+    array $card,
+    int $x,
+    int $y,
+    int $width,
+    int $height,
+    int $text,
+    int $muted,
+    int $accent,
+    int $line
+): bool {
+    $surface = imagecolorallocatealpha($image, 8, 24, 32, 20);
+    posts_share_card_draw_rounded_rect($image, $x, $y, $width, $height, posts_share_card_s(26), $surface);
+    posts_share_card_stroke_rounded_rect($image, $x, $y, $width, $height, posts_share_card_s(26), $line, posts_share_card_s(1));
+
+    $imageUrl = is_string($card['imageUrl'] ?? null) ? (string) $card['imageUrl'] : '';
+    if ($imageUrl !== '') {
+        posts_share_card_draw_cover_safe_image_rounded($image, $imageUrl, $x + posts_share_card_s(18), $y + posts_share_card_s(18), $width - posts_share_card_s(36), posts_share_card_s(190), posts_share_card_s(18));
+    }
+
+    posts_share_card_text($image, $fonts, posts_share_card_s(13), $x + posts_share_card_s(22), $y + posts_share_card_s(244), $accent, strtoupper(profile_share_card_platform_label((string) ($card['provider'] ?? 'website'))));
+    posts_share_card_wrapped_text($image, $fonts, posts_share_card_s(20), $x + posts_share_card_s(22), $y + posts_share_card_s(280), $text, (string) ($card['title'] ?? 'Link'), $width - posts_share_card_s(44), 2, posts_share_card_s(28));
+    $description = trim((string) ($card['description'] ?? $card['url'] ?? ''));
+    if ($description !== '') {
+        posts_share_card_wrapped_text($image, $fonts, posts_share_card_s(12), $x + posts_share_card_s(22), $y + posts_share_card_s(350), $muted, $description, $width - posts_share_card_s(44), 2, posts_share_card_s(20));
+    }
+
+    return true;
+}
+
+function posts_share_card_draw_stat_pills($image, array $fonts, array $stats, int $x, int $y, int $text, int $muted, int $accent): void
+{
+    $cursor = $x;
+    foreach ($stats as [$value, $label]) {
+        $valueText = (string) max(0, (int) $value);
+        $labelText = (string) $label;
+        $pillTextWidth = posts_share_card_text_width($fonts, posts_share_card_s(14), $valueText)
+            + posts_share_card_text_width($fonts, posts_share_card_s(13), $labelText)
+            + posts_share_card_s(38);
+        $pillHeight = posts_share_card_s(32);
+        $surface = imagecolorallocatealpha($image, 4, 18, 27, 52);
+        posts_share_card_draw_rounded_rect($image, $cursor, $y - posts_share_card_s(22), $pillTextWidth, $pillHeight, intdiv($pillHeight, 2), $surface);
+        posts_share_card_text($image, $fonts, posts_share_card_s(14), $cursor + posts_share_card_s(15), $y, $text, $valueText);
+        posts_share_card_text($image, $fonts, posts_share_card_s(13), $cursor + posts_share_card_s(15) + posts_share_card_text_width($fonts, posts_share_card_s(14), $valueText) + posts_share_card_s(8), $y, $muted, $labelText);
+        $cursor += $pillTextWidth + posts_share_card_s(10);
+    }
+}
+
+function profile_share_card_module_layouts(array $modules): array
+{
+    $modules = array_slice($modules, 0, 4);
+    $count = count($modules);
+
+    if ($count <= 0) {
+        return [];
+    }
+
+    if ($count === 1) {
+        return [[
+            'module' => $modules[0],
+            'x' => 690,
+            'y' => 136,
+            'w' => 412,
+            'h' => 316,
+        ]];
+    }
+
+    if ($count === 2) {
+        return [
+            ['module' => $modules[0], 'x' => 690, 'y' => 136, 'w' => 250, 'h' => 316],
+            ['module' => $modules[1], 'x' => 956, 'y' => 136, 'w' => 146, 'h' => 316],
+        ];
+    }
+
+    $visualIndex = profile_share_card_best_visual_module_index($modules);
+    if ($visualIndex > 0) {
+        $visual = $modules[$visualIndex];
+        array_splice($modules, $visualIndex, 1);
+        array_unshift($modules, $visual);
+    }
+
+    $layouts = [
+        ['module' => $modules[0], 'x' => 690, 'y' => 136, 'w' => 198, 'h' => 316],
+        ['module' => $modules[1], 'x' => 904, 'y' => 136, 'w' => 198, 'h' => 150],
+        ['module' => $modules[2], 'x' => 904, 'y' => 302, 'w' => 198, 'h' => 150],
+    ];
+
+    if (isset($modules[3])) {
+        $layouts[] = ['module' => $modules[3], 'x' => 690, 'y' => 468, 'w' => 412, 'h' => 72];
+    }
+
+    return $layouts;
+}
+
+function profile_share_card_best_visual_module_index(array $modules): int
+{
+    foreach ($modules as $index => $module) {
+        if (!is_array($module)) {
+            continue;
+        }
+
+        $kind = (string) ($module['kind'] ?? '');
+        if (in_array($kind, ['image', 'image_grid', 'slideshow', 'music', 'video', 'stream'], true) && is_string($module['imageUrl'] ?? null) && $module['imageUrl'] !== '') {
+            return (int) $index;
+        }
+    }
+
+    return 0;
 }
 
 function profile_share_card_theme_colors(mixed $config): array
@@ -1356,6 +1786,9 @@ function profile_share_card_link_items(array $config): array
         $items[] = [
             'title' => $label === '' ? profile_share_card_platform_label($platform) : $label,
             'subtitle' => profile_share_card_platform_label($platform),
+            'platform' => $platform,
+            'handle' => profile_share_card_connection_handle_from_url($platform, $url, $label),
+            'url' => $url,
         ];
 
         if (count($items) >= 3) {
@@ -1364,6 +1797,50 @@ function profile_share_card_link_items(array $config): array
     }
 
     return $items;
+}
+
+function profile_share_card_connection_handle_from_url(string $platform, string $url, string $label = ''): string
+{
+    $parts = parse_url($url);
+    $path = trim((string) ($parts['path'] ?? ''), '/');
+    $host = strtolower((string) ($parts['host'] ?? ''));
+    $segments = $path === '' ? [] : explode('/', $path);
+    $candidate = '';
+
+    switch (strtolower($platform)) {
+        case 'youtube':
+            $candidate = (string) ($segments[0] ?? '');
+            $candidate = ltrim($candidate, '@');
+            break;
+        case 'twitch':
+        case 'github':
+        case 'instagram':
+        case 'x':
+            $candidate = (string) ($segments[0] ?? '');
+            break;
+        case 'tiktok':
+            $candidate = ltrim((string) ($segments[0] ?? ''), '@');
+            break;
+        case 'bluesky':
+            $candidate = (string) ($segments[1] ?? $segments[0] ?? '');
+            break;
+        case 'discord':
+            $candidate = (string) ($segments[0] ?? '');
+            break;
+        case 'spotify':
+            $candidate = (string) ($segments[1] ?? $segments[0] ?? '');
+            break;
+        default:
+            $candidate = preg_replace('/^www\./', '', $host) ?? $host;
+            break;
+    }
+
+    $candidate = trim(rawurldecode($candidate));
+    if ($candidate !== '') {
+        return in_array(strtolower($platform), ['website', 'custom'], true) ? $candidate : '@' . ltrim($candidate, '@');
+    }
+
+    return trim($label);
 }
 
 function profile_share_card_activity_items(int $userId): array
@@ -1452,9 +1929,9 @@ function profile_share_card_draw_stats(
         [(int) ($profile['stats']['echoes'] ?? 0), 'Likes'],
         [(int) ($profile['starCount'] ?? 0), 'Stars'],
     ];
-    $valueSize = $maxWidth === null ? 25 : 21;
-    $labelSize = $maxWidth === null ? 17 : 14;
-    $rowHeight = 32;
+    $valueSize = posts_share_card_s($maxWidth === null ? 25 : 21);
+    $labelSize = posts_share_card_s($maxWidth === null ? 17 : 14);
+    $rowHeight = posts_share_card_s(32);
     $cursor = $x;
     $baseline = $y;
 
@@ -1462,7 +1939,7 @@ function profile_share_card_draw_stats(
         $valueText = (string) $value;
         $valueWidth = posts_share_card_text_width($fonts, $valueSize, $valueText);
         $labelWidth = posts_share_card_text_width($fonts, $labelSize, $label);
-        $itemWidth = $valueWidth + 8 + $labelWidth + 28;
+        $itemWidth = $valueWidth + posts_share_card_s(8) + $labelWidth + posts_share_card_s(28);
 
         if ($maxWidth !== null && $cursor > $x && $cursor + $itemWidth > $x + $maxWidth) {
             $cursor = $x;
@@ -1470,7 +1947,7 @@ function profile_share_card_draw_stats(
         }
 
         posts_share_card_text($image, $fonts, $valueSize, $cursor, $baseline, $text, $valueText);
-        posts_share_card_text($image, $fonts, $labelSize, $cursor + $valueWidth + 8, $baseline, $muted, $label);
+        posts_share_card_text($image, $fonts, $labelSize, $cursor + $valueWidth + posts_share_card_s(8), $baseline, $muted, $label);
         $cursor += $itemWidth;
     }
 }
@@ -1489,8 +1966,8 @@ function profile_share_card_draw_module_preview(
     int $line
 ): void {
     $surface = imagecolorallocatealpha($image, 9, 25, 34, 22);
-    imagefilledrectangle($image, $x, $y, $x + $width, $y + $height, $surface);
-    imagerectangle($image, $x, $y, $x + $width, $y + $height, $line);
+    posts_share_card_draw_rounded_rect($image, $x, $y, $width, $height, posts_share_card_s(18), $surface);
+    posts_share_card_stroke_rounded_rect($image, $x, $y, $width, $height, posts_share_card_s(18), $line, posts_share_card_s(1));
 
     $kind = (string) ($module['kind'] ?? 'card');
 
@@ -1520,24 +1997,24 @@ function profile_share_card_draw_module_preview(
     }
 
     $imageUrl = $module['imageUrl'] ?? null;
-    $textX = $x + 14;
+    $textX = $x + posts_share_card_s(14);
     if (is_string($imageUrl) && $imageUrl !== '') {
-        $thumbSize = 58;
-        if (posts_share_card_draw_cover_safe_image($image, $imageUrl, $x + 12, $y + 14, $thumbSize, $thumbSize)) {
-            imagerectangle($image, $x + 12, $y + 14, $x + 12 + $thumbSize, $y + 14 + $thumbSize, $line);
-            $textX = $x + 82;
+        $thumbSize = posts_share_card_s(58);
+        if (posts_share_card_draw_cover_safe_image_rounded($image, $imageUrl, $x + posts_share_card_s(12), $y + posts_share_card_s(14), $thumbSize, $thumbSize, posts_share_card_s(12))) {
+            posts_share_card_stroke_rounded_rect($image, $x + posts_share_card_s(12), $y + posts_share_card_s(14), $thumbSize, $thumbSize, posts_share_card_s(12), $line, posts_share_card_s(1));
+            $textX = $x + posts_share_card_s(82);
         }
     }
 
     posts_share_card_wrapped_text(
         $image,
         $fonts,
-        16,
+        posts_share_card_s(16),
         $textX,
-        $y + 42,
+        $y + posts_share_card_s(42),
         $text,
         (string) $module['title'],
-        max(60, $x + $width - $textX - 12),
+        max(posts_share_card_s(60), $x + $width - $textX - posts_share_card_s(12)),
         1
     );
 
@@ -1546,12 +2023,12 @@ function profile_share_card_draw_module_preview(
         posts_share_card_wrapped_text(
             $image,
             $fonts,
-            11,
+            posts_share_card_s(11),
             $textX,
-            $y + 69,
+            $y + posts_share_card_s(69),
             $muted,
             $body,
-            max(60, $x + $width - $textX - 12),
+            max(posts_share_card_s(60), $x + $width - $textX - posts_share_card_s(12)),
             1
         );
     }
@@ -1588,37 +2065,37 @@ function profile_share_card_draw_image_preview(
     $shouldDrawTitle = $title !== '' && strcasecmp($title, $label) !== 0;
 
     if (count($imageUrls) <= 1) {
-        if (($imageUrls[0] ?? null) && posts_share_card_draw_cover_safe_image($image, $imageUrls[0], $x + 1, $y + 1, $width - 2, $height - 2)) {
+        if (($imageUrls[0] ?? null) && posts_share_card_draw_cover_safe_image_rounded($image, $imageUrls[0], $x, $y, $width, $height, posts_share_card_s(18), posts_share_card_s(1))) {
             if ($shouldDrawTitle) {
                 $shade = imagecolorallocatealpha($image, 5, 18, 27, 52);
-                imagefilledrectangle($image, $x + 1, $y + $height - 48, $x + $width - 1, $y + $height - 1, $shade);
+                posts_share_card_draw_rounded_rect($image, $x + posts_share_card_s(1), $y + $height - posts_share_card_s(52), $width - posts_share_card_s(2), posts_share_card_s(51), posts_share_card_s(16), $shade);
             }
         }
     } else {
-        $gap = 4;
-        $tileWidth = intdiv($width - 3 - $gap, 2);
-        $tileHeight = intdiv($height - 3 - $gap, 2);
+        $gap = posts_share_card_s(4);
+        $tileWidth = intdiv($width - posts_share_card_s(3) - $gap, 2);
+        $tileHeight = intdiv($height - posts_share_card_s(3) - $gap, 2);
 
         foreach (array_slice($imageUrls, 0, 4) as $index => $imageUrl) {
-            $tileX = $x + 2 + (($index % 2) * ($tileWidth + $gap));
-            $tileY = $y + 2 + ((int) floor($index / 2) * ($tileHeight + $gap));
-            posts_share_card_draw_cover_safe_image($image, $imageUrl, $tileX, $tileY, $tileWidth, $tileHeight);
+            $tileX = $x + posts_share_card_s(2) + (($index % 2) * ($tileWidth + $gap));
+            $tileY = $y + posts_share_card_s(2) + ((int) floor($index / 2) * ($tileHeight + $gap));
+            posts_share_card_draw_cover_safe_image_rounded($image, $imageUrl, $tileX, $tileY, $tileWidth, $tileHeight, posts_share_card_s(12));
         }
     }
 
     if ($shouldDrawTitle) {
-        posts_share_card_wrapped_text($image, $fonts, 15, $x + 12, $y + $height - 18, $text, $title, $width - 24, 1, 20);
+        posts_share_card_wrapped_text($image, $fonts, posts_share_card_s(15), $x + posts_share_card_s(12), $y + $height - posts_share_card_s(18), $text, $title, $width - posts_share_card_s(24), 1, posts_share_card_s(20));
     }
 
     if (($module['kind'] ?? '') === 'slideshow' && count($imageUrls) > 1) {
-        $dotX = $x + $width - 34;
-        $dotY = $y + $height - 20;
+        $dotX = $x + $width - posts_share_card_s(34);
+        $dotY = $y + $height - posts_share_card_s(20);
         for ($dot = 0; $dot < min(3, count($imageUrls)); $dot++) {
-            imagefilledrectangle($image, $dotX + ($dot * 9), $dotY, $dotX + 4 + ($dot * 9), $dotY + 4, $dot === 0 ? $accent : $muted);
+            imagefilledellipse($image, $dotX + ($dot * posts_share_card_s(9)), $dotY, posts_share_card_s(5), posts_share_card_s(5), $dot === 0 ? $accent : $muted);
         }
     }
 
-    imagerectangle($image, $x, $y, $x + $width, $y + $height, $line);
+    posts_share_card_stroke_rounded_rect($image, $x, $y, $width, $height, posts_share_card_s(18), $line, posts_share_card_s(1));
 }
 
 function profile_share_card_draw_text_preview(
@@ -1633,15 +2110,15 @@ function profile_share_card_draw_text_preview(
     int $muted,
     int $accent
 ): void {
-    imagefilledrectangle($image, $x + 12, $y + 16, $x + 16, $y + $height - 16, $accent);
-    posts_share_card_wrapped_text($image, $fonts, 17, $x + 26, $y + 44, $text, (string) $module['title'], $width - 42, 1, 24);
+    posts_share_card_draw_rounded_rect($image, $x + posts_share_card_s(14), $y + posts_share_card_s(16), posts_share_card_s(5), $height - posts_share_card_s(32), posts_share_card_s(3), $accent);
+    posts_share_card_wrapped_text($image, $fonts, posts_share_card_s(17), $x + posts_share_card_s(30), $y + posts_share_card_s(44), $text, (string) $module['title'], $width - posts_share_card_s(46), 1, posts_share_card_s(24));
 
     $body = trim((string) ($module['body'] ?? ''));
     if ($body === '') {
         $body = 'Profile note';
     }
 
-    posts_share_card_wrapped_text($image, $fonts, 11, $x + 26, $y + 76, $muted, $body, $width - 42, 2, 22);
+    posts_share_card_wrapped_text($image, $fonts, posts_share_card_s(11), $x + posts_share_card_s(30), $y + posts_share_card_s(76), $muted, $body, $width - posts_share_card_s(46), 2, posts_share_card_s(22));
 }
 
 function profile_share_card_draw_player_preview(
@@ -1658,36 +2135,40 @@ function profile_share_card_draw_player_preview(
     int $line
 ): void {
     $imageUrl = $module['imageUrl'] ?? null;
-    $coverSize = 76;
+    $coverSize = min(posts_share_card_s(92), max(posts_share_card_s(56), $height - posts_share_card_s(46)));
     $coverDrawn = false;
+    $coverX = $x + posts_share_card_s(14);
+    $coverY = $y + posts_share_card_s(16);
 
     if (is_string($imageUrl) && $imageUrl !== '') {
-        $coverDrawn = posts_share_card_draw_cover_safe_image($image, $imageUrl, $x + 12, $y + 16, $coverSize, $coverSize);
+        $coverDrawn = posts_share_card_draw_cover_safe_image_rounded($image, $imageUrl, $coverX, $coverY, $coverSize, $coverSize, posts_share_card_s(16));
     }
 
     if (!$coverDrawn) {
         $cover = imagecolorallocatealpha($image, 34, 86, 99, 20);
-        imagefilledrectangle($image, $x + 12, $y + 16, $x + 12 + $coverSize, $y + 16 + $coverSize, $cover);
+        posts_share_card_draw_rounded_rect($image, $coverX, $coverY, $coverSize, $coverSize, posts_share_card_s(16), $cover);
     }
 
-    imagerectangle($image, $x + 12, $y + 16, $x + 12 + $coverSize, $y + 16 + $coverSize, $line);
+    posts_share_card_stroke_rounded_rect($image, $coverX, $coverY, $coverSize, $coverSize, posts_share_card_s(16), $line, posts_share_card_s(1));
     $triangle = [
-        $x + 43,
-        $y + 43,
-        $x + 43,
-        $y + 66,
-        $x + 62,
-        $y + 55,
+        $coverX + (int) round($coverSize * 0.42),
+        $coverY + (int) round($coverSize * 0.34),
+        $coverX + (int) round($coverSize * 0.42),
+        $coverY + (int) round($coverSize * 0.66),
+        $coverX + (int) round($coverSize * 0.68),
+        $coverY + (int) round($coverSize * 0.50),
     ];
     imagefilledpolygon($image, $triangle, 3, $accent);
 
-    posts_share_card_wrapped_text($image, $fonts, 16, $x + 104, $y + 38, $text, (string) $module['title'], $width - 118, 1, 22);
+    $textX = $coverX + $coverSize + posts_share_card_s(16);
+    $textWidth = max(posts_share_card_s(70), $x + $width - $textX - posts_share_card_s(14));
+    posts_share_card_wrapped_text($image, $fonts, posts_share_card_s(16), $textX, $y + posts_share_card_s(38), $text, (string) $module['title'], $textWidth, 1, posts_share_card_s(22));
 
     $subtitle = trim((string) ($module['subtitle'] ?? ''));
     if ($subtitle === '') {
         $subtitle = (string) ($module['label'] ?? 'Open');
     }
-    posts_share_card_wrapped_text($image, $fonts, 11, $x + 104, $y + 63, $muted, $subtitle, $width - 118, 1, 18);
+    posts_share_card_wrapped_text($image, $fonts, posts_share_card_s(11), $textX, $y + posts_share_card_s(64), $muted, $subtitle, $textWidth, 1, posts_share_card_s(18));
 
     $stats = is_array($module['stats'] ?? null) ? $module['stats'] : [];
     $body = trim((string) ($module['body'] ?? ''));
@@ -1697,14 +2178,15 @@ function profile_share_card_draw_player_preview(
             static fn (array $item): string => trim((string) ($item['value'] ?? '') . ' ' . (string) ($item['label'] ?? '')),
             array_filter($stats, 'is_array')
         ));
-        posts_share_card_wrapped_text($image, $fonts, 10, $x + 104, $y + 85, $accent, $statText, $width - 118, 1, 16);
+        posts_share_card_wrapped_text($image, $fonts, posts_share_card_s(10), $textX, $y + posts_share_card_s(88), $accent, $statText, $textWidth, 1, posts_share_card_s(16));
     } elseif ($body !== '') {
-        posts_share_card_wrapped_text($image, $fonts, 10, $x + 104, $y + 85, $muted, $body, $width - 118, 1, 16);
+        posts_share_card_wrapped_text($image, $fonts, posts_share_card_s(10), $textX, $y + posts_share_card_s(88), $muted, $body, $textWidth, 1, posts_share_card_s(16));
     }
 
-    imagefilledrectangle($image, $x + 14, $y + $height - 30, $x + $width - 14, $y + $height - 25, $line);
-    imagefilledrectangle($image, $x + 14, $y + $height - 30, $x + 70, $y + $height - 25, $accent);
-    posts_share_card_text($image, $fonts, 10, $x + 14, $y + $height - 12, $muted, 'OPEN');
+    $barY = $y + $height - posts_share_card_s(28);
+    posts_share_card_draw_rounded_rect($image, $x + posts_share_card_s(14), $barY, $width - posts_share_card_s(28), posts_share_card_s(5), posts_share_card_s(3), $line);
+    posts_share_card_draw_rounded_rect($image, $x + posts_share_card_s(14), $barY, min($width - posts_share_card_s(28), posts_share_card_s(86)), posts_share_card_s(5), posts_share_card_s(3), $accent);
+    posts_share_card_text($image, $fonts, posts_share_card_s(10), $x + posts_share_card_s(14), $y + $height - posts_share_card_s(10), $muted, strtoupper(profile_share_card_platform_label((string) ($module['provider'] ?? $module['label'] ?? 'Open'))));
 }
 
 function profile_share_card_draw_feed_preview(
@@ -1719,33 +2201,33 @@ function profile_share_card_draw_feed_preview(
     int $muted,
     int $accent
 ): void {
-    posts_share_card_wrapped_text($image, $fonts, 16, $x + 14, $y + 34, $text, (string) $module['title'], $width - 28, 1, 22);
+    posts_share_card_wrapped_text($image, $fonts, posts_share_card_s(16), $x + posts_share_card_s(14), $y + posts_share_card_s(34), $text, (string) $module['title'], $width - posts_share_card_s(28), 1, posts_share_card_s(22));
 
     $items = is_array($module['items'] ?? null) ? $module['items'] : [];
     if ($items === []) {
         $items = [['title' => 'Recent profile posts appear here.', 'subtitle' => 'Post']];
     }
 
-    $rowY = $y + 66;
+    $rowY = $y + posts_share_card_s(66);
     foreach (array_slice($items, 0, 2) as $item) {
         if (!is_array($item)) {
             continue;
         }
 
-        imagefilledrectangle($image, $x + 14, $rowY - 8, $x + 18, $rowY - 4, $accent);
+        posts_share_card_draw_rounded_rect($image, $x + posts_share_card_s(14), $rowY - posts_share_card_s(8), posts_share_card_s(5), posts_share_card_s(5), posts_share_card_s(3), $accent);
         posts_share_card_wrapped_text(
             $image,
             $fonts,
-            10,
-            $x + 28,
+            posts_share_card_s(10),
+            $x + posts_share_card_s(28),
             $rowY,
             $muted,
             (string) ($item['title'] ?? ''),
-            $width - 42,
+            $width - posts_share_card_s(42),
             1,
-            18
+            posts_share_card_s(18)
         );
-        $rowY += 28;
+        $rowY += posts_share_card_s(28);
     }
 }
 
@@ -1762,7 +2244,7 @@ function profile_share_card_draw_list_preview(
     int $accent,
     int $line
 ): void {
-    posts_share_card_wrapped_text($image, $fonts, 16, $x + 14, $y + 34, $text, (string) $module['title'], $width - 28, 1, 22);
+    posts_share_card_wrapped_text($image, $fonts, posts_share_card_s(16), $x + posts_share_card_s(14), $y + posts_share_card_s(34), $text, (string) $module['title'], $width - posts_share_card_s(28), 1, posts_share_card_s(22));
 
     $items = is_array($module['items'] ?? null) ? $module['items'] : [];
     if ($items === []) {
@@ -1772,17 +2254,75 @@ function profile_share_card_draw_list_preview(
         ]];
     }
 
-    $rowY = $y + 60;
+    $rowY = $y + posts_share_card_s(58);
     foreach (array_slice($items, 0, 2) as $item) {
         if (!is_array($item)) {
             continue;
         }
 
-        imagefilledrectangle($image, $x + 14, $rowY, $x + $width - 14, $rowY + 26, imagecolorallocatealpha($image, 22, 51, 61, 24));
-        imagerectangle($image, $x + 14, $rowY, $x + $width - 14, $rowY + 26, $line);
-        posts_share_card_wrapped_text($image, $fonts, 10, $x + 24, $rowY + 18, $text, (string) ($item['title'] ?? 'Link'), $width - 52, 1, 16);
-        $rowY += 34;
+        $rowHeight = posts_share_card_s(34);
+        $surface = imagecolorallocatealpha($image, 22, 51, 61, 24);
+        posts_share_card_draw_rounded_rect($image, $x + posts_share_card_s(14), $rowY, $width - posts_share_card_s(28), $rowHeight, posts_share_card_s(17), $surface);
+        $platform = is_string($item['platform'] ?? null) ? (string) $item['platform'] : 'website';
+        profile_share_card_draw_connection_icon($image, $platform, $x + posts_share_card_s(22), $rowY + posts_share_card_s(7), posts_share_card_s(20), $accent, $text);
+        $handle = trim((string) ($item['handle'] ?? ''));
+        $label = $handle !== '' ? $handle : (string) ($item['title'] ?? 'Link');
+        posts_share_card_wrapped_text($image, $fonts, posts_share_card_s(10), $x + posts_share_card_s(50), $rowY + posts_share_card_s(22), $text, $label, $width - posts_share_card_s(70), 1, posts_share_card_s(16));
+        $rowY += posts_share_card_s(42);
     }
+}
+
+function profile_share_card_draw_connection_icon($image, string $platform, int $x, int $y, int $size, int $accent, int $text): void
+{
+    $platform = strtolower($platform);
+    $brandColor = match ($platform) {
+        'youtube' => imagecolorallocate($image, 255, 0, 0),
+        'spotify' => imagecolorallocate($image, 30, 215, 96),
+        'twitch' => imagecolorallocate($image, 145, 70, 255),
+        'github' => imagecolorallocate($image, 36, 41, 47),
+        'instagram' => imagecolorallocate($image, 225, 48, 108),
+        'tiktok' => imagecolorallocate($image, 0, 242, 234),
+        'x' => imagecolorallocate($image, 236, 245, 246),
+        'discord' => imagecolorallocate($image, 88, 101, 242),
+        'bluesky' => imagecolorallocate($image, 17, 133, 254),
+        default => $accent,
+    };
+
+    posts_share_card_draw_rounded_rect($image, $x, $y, $size, $size, intdiv($size, 2), $brandColor);
+    $cx = $x + intdiv($size, 2);
+    $cy = $y + intdiv($size, 2);
+    $ink = in_array($platform, ['x'], true) ? imagecolorallocate($image, 5, 18, 27) : $text;
+
+    if ($platform === 'youtube') {
+        imagefilledpolygon($image, [
+            $x + (int) round($size * 0.42), $y + (int) round($size * 0.32),
+            $x + (int) round($size * 0.42), $y + (int) round($size * 0.68),
+            $x + (int) round($size * 0.70), $y + (int) round($size * 0.50),
+        ], 3, $text);
+        return;
+    }
+
+    if ($platform === 'spotify') {
+        imagesetthickness($image, max(1, posts_share_card_s(1)));
+        imagearc($image, $cx, $cy + (int) round($size * 0.05), (int) round($size * 0.70), (int) round($size * 0.42), 200, 340, imagecolorallocate($image, 4, 18, 27));
+        imagearc($image, $cx, $cy + (int) round($size * 0.14), (int) round($size * 0.56), (int) round($size * 0.30), 205, 335, imagecolorallocate($image, 4, 18, 27));
+        return;
+    }
+
+    $glyph = match ($platform) {
+        'github' => 'GH',
+        'twitch' => 'T',
+        'instagram' => 'IG',
+        'tiktok' => '♪',
+        'x' => 'X',
+        'discord' => 'D',
+        'bluesky' => 'B',
+        default => '↗',
+    };
+    $fontSize = posts_share_card_s(strlen($glyph) > 1 ? 7 : 10);
+    $fonts = posts_share_card_font_paths();
+    $textWidth = posts_share_card_text_width($fonts, $fontSize, $glyph);
+    posts_share_card_text($image, $fonts, $fontSize, $cx - intdiv($textWidth, 2), $y + (int) round($size * 0.67), $ink, $glyph);
 }
 
 function posts_share_card_font_paths(): array
@@ -2195,10 +2735,10 @@ function posts_share_card_draw_lockup($image): void
         }
 
         imagealphablending($source, true);
-        $targetWidth = 160;
-        $targetHeight = 72;
-        $targetX = 24;
-        $targetY = 12;
+        $targetWidth = posts_share_card_s(160);
+        $targetHeight = posts_share_card_s(72);
+        $targetX = posts_share_card_s(24);
+        $targetY = posts_share_card_s(12);
         imagecopyresampled(
             $image,
             $source,
@@ -2237,10 +2777,10 @@ function posts_share_card_draw_thumbnail($image, array $post): bool
 
     $sourceWidth = imagesx($source);
     $sourceHeight = imagesy($source);
-    $targetX = 770;
-    $targetY = 130;
-    $targetWidth = 316;
-    $targetHeight = 408;
+    $targetX = posts_share_card_s(770);
+    $targetY = posts_share_card_s(130);
+    $targetWidth = posts_share_card_s(316);
+    $targetHeight = posts_share_card_s(408);
     $sourceRatio = $sourceWidth / max(1, $sourceHeight);
     $targetRatio = $targetWidth / $targetHeight;
 
@@ -2270,7 +2810,7 @@ function posts_share_card_draw_thumbnail($image, array $post): bool
     );
 
     $line = imagecolorallocate($image, 65, 126, 146);
-    imagerectangle($image, $targetX, $targetY, $targetX + $targetWidth, $targetY + $targetHeight, $line);
+    posts_share_card_stroke_rounded_rect($image, $targetX, $targetY, $targetWidth, $targetHeight, posts_share_card_s(26), $line, posts_share_card_s(1));
 
     return true;
 }
@@ -2400,8 +2940,11 @@ function posts_share_card_draw_avatar($image, array $post, int $x, int $y, int $
         return false;
     }
 
-    $panel = imagecolorallocate($avatar, 22, 51, 61);
-    imagefilledrectangle($avatar, 0, 0, $size, $size, $panel);
+    imagealphablending($avatar, false);
+    imagesavealpha($avatar, true);
+    $transparent = imagecolorallocatealpha($avatar, 0, 0, 0, 127);
+    imagefilledrectangle($avatar, 0, 0, $size, $size, $transparent);
+    imagealphablending($avatar, true);
     imagecopyresampled(
         $avatar,
         $source,
@@ -2424,7 +2967,7 @@ function posts_share_card_draw_avatar($image, array $post, int $x, int $y, int $
             $dy = $pixelY - $radius;
 
             if (($dx * $dx) + ($dy * $dy) > $radiusSquared) {
-                imagesetpixel($avatar, $pixelX, $pixelY, $panel);
+                imagesetpixel($avatar, $pixelX, $pixelY, $transparent);
             }
         }
     }
@@ -2432,7 +2975,7 @@ function posts_share_card_draw_avatar($image, array $post, int $x, int $y, int $
     imagecopy($image, $avatar, $x, $y, 0, 0, $size, $size);
 
     $line = imagecolorallocate($image, 65, 126, 146);
-    imagesetthickness($image, 3);
+    imagesetthickness($image, max(1, posts_share_card_s(3)));
     imageellipse($image, $x + intdiv($size, 2), $y + intdiv($size, 2), $size - 2, $size - 2, $line);
     imagesetthickness($image, 1);
 

@@ -60,8 +60,8 @@ function profile_share_page_render(array $profile): void
         '<meta property="og:image" content="' . profile_share_page_escape($imageUrl) . '" />',
         '<meta property="og:image:secure_url" content="' . profile_share_page_escape($imageUrl) . '" />',
         '<meta property="og:image:type" content="image/png" />',
-        '<meta property="og:image:width" content="1200" />',
-        '<meta property="og:image:height" content="630" />',
+        '<meta property="og:image:width" content="2400" />',
+        '<meta property="og:image:height" content="1260" />',
         '<meta property="og:image:alt" content="' . profile_share_page_escape($imageAlt) . '" />',
         '<meta name="twitter:card" content="summary_large_image" />',
         '<meta name="twitter:title" content="' . profile_share_page_escape($title) . '" />',
@@ -97,8 +97,8 @@ function profile_share_page_not_found(): void
         '<meta property="og:image" content="' . profile_share_page_escape($imageUrl) . '" />',
         '<meta property="og:image:secure_url" content="' . profile_share_page_escape($imageUrl) . '" />',
         '<meta property="og:image:type" content="image/png" />',
-        '<meta property="og:image:width" content="1200" />',
-        '<meta property="og:image:height" content="630" />',
+        '<meta property="og:image:width" content="2400" />',
+        '<meta property="og:image:height" content="1260" />',
         '<meta property="og:image:alt" content="' . profile_share_page_escape($imageAlt) . '" />',
         '<meta name="twitter:card" content="summary_large_image" />',
         '<meta name="twitter:title" content="' . profile_share_page_escape($title) . '" />',
@@ -149,7 +149,7 @@ function profile_share_page_fallback_html(
 ): string {
     return '<main>'
         . '<a href="' . profile_share_page_escape($canonicalUrl) . '">'
-        . '<img src="' . profile_share_page_escape($imageUrl) . '" width="1200" height="630" alt="' . profile_share_page_escape($imageAlt) . '" />'
+        . '<img src="' . profile_share_page_escape($imageUrl) . '" width="2400" height="1260" alt="' . profile_share_page_escape($imageAlt) . '" />'
         . '</a>'
         . '<h1>' . profile_share_page_escape($title) . '</h1>'
         . '<p>' . profile_share_page_escape($description) . '</p>'
