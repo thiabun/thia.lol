@@ -1404,6 +1404,26 @@ test("public visitor continues before Spotify profile music starts", async ({
   });
 });
 
+test("profile music continue button ignores rapid duplicate clicks", async ({
+  page,
+}) => {
+  await mockSpotifyIframeApi(page);
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [spotifyEmbedMusicModule()],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const button = page.getByTestId("profile-music-continue-button");
+  await expect(button).toBeVisible();
+
+  await button.dblclick();
+
+  await expect(page.getByTestId("profile-music-continue-overlay")).toHaveCount(0);
+  await expect.poll(() => spotifyPlayCalls(page)).toBe(1);
+});
+
 test("stored Spotify music consent skips the continue overlay", async ({
   page,
 }) => {

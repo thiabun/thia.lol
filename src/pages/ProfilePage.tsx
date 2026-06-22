@@ -1945,8 +1945,21 @@ function ProfileMusicContinueOverlay({
   onContinue: () => void;
   profile: Profile;
 }) {
+  const continueClickedRef = useRef(false);
+  const [continuePending, setContinuePending] = useState(false);
+
   if (typeof document === "undefined") {
     return null;
+  }
+
+  function handleContinueClick() {
+    if (continueClickedRef.current) {
+      return;
+    }
+
+    continueClickedRef.current = true;
+    setContinuePending(true);
+    onContinue();
   }
 
   return createPortal(
@@ -1969,7 +1982,8 @@ function ProfileMusicContinueOverlay({
           type="button"
           className="mt-4 w-full justify-center"
           data-testid="profile-music-continue-button"
-          onClick={onContinue}
+          disabled={continuePending}
+          onClick={handleContinueClick}
         >
           Continue to profile
         </Button>
