@@ -59,7 +59,7 @@ const fallbackPalette: SharePalette = {
   accent: "#61e2d4",
 };
 
-const SHARE_CARD_RENDER_VERSION = "mosaic-v3";
+const SHARE_CARD_RENDER_VERSION = "mosaic-v4";
 
 export function ShareCardScene(props: ShareCardSceneProps) {
   const palette =
@@ -85,7 +85,7 @@ export function ShareCardScene(props: ShareCardSceneProps) {
       <ShareCardBackground imageUrl={backgroundUrl} palette={palette} />
       <img
         alt="thia.lol"
-        className="absolute left-[68px] top-[26px] h-[72px] w-auto"
+        className="absolute left-[36px] top-[12px] h-[96px] w-auto"
         data-share-card-brand="true"
         src="/brand/thia-lockup-frostveil.png"
       />

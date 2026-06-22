@@ -70,7 +70,7 @@ assert_true(str_contains($postsSource, 'profile_viewer_can_view_row($profileRow,
 assert_true(str_contains($postsSource, 'SHARE_CARD_LOGICAL_WIDTH = 1200'), 'share cards should keep the standard preview aspect width');
 assert_true(str_contains($postsSource, 'SHARE_CARD_LOGICAL_HEIGHT = 630'), 'share cards should keep the standard preview aspect height');
 assert_true(str_contains($postsSource, 'SHARE_CARD_RENDER_SCALE = 2'), 'share-card cache should store 2x PNG captures');
-assert_true(str_contains($postsSource, "SHARE_CARD_CACHE_RENDER_VERSION = 'mosaic-v3'"), 'share-card cache should include a render-version key so stale card designs are bypassed');
+assert_true(str_contains($postsSource, "SHARE_CARD_CACHE_RENDER_VERSION = 'mosaic-v4'"), 'share-card cache should include a render-version key so stale card designs are bypassed');
 assert_true(str_contains($postsSource, 'function posts_share_card_cache_create'), 'post share cards should expose an authenticated cache upload endpoint');
 assert_true(str_contains($postsSource, 'function profile_share_card_cache_create'), 'profile share cards should expose an authenticated cache upload endpoint');
 assert_true(str_contains($postsSource, "share_card_cache_path('post'"), 'post share-card endpoint should check cached screenshots first');
@@ -131,7 +131,7 @@ assert_true(str_contains($shareSceneSource, 'data-share-card-ready="true"'), 'sh
 assert_true(str_contains($shareSceneSource, 'h-[630px] w-[1200px]'), 'share-card scenes should render at 1200x630 CSS pixels');
 assert_true(str_contains($shareSceneSource, 'src="/brand/thia-lockup-frostveil.png"'), 'browser-rendered cards should render the real thia.lol lockup');
 assert_true(str_contains($shareSceneSource, 'data-share-card-brand="true"'), 'browser-rendered cards should expose a branded lockup hook');
-assert_true(str_contains($shareSceneSource, 'h-[72px]'), 'browser-rendered card lockup should be visibly larger');
+assert_true(str_contains($shareSceneSource, 'h-[96px]'), 'browser-rendered card lockup should be visibly larger');
 assert_true(str_contains($shareSceneSource, 'rounded-[34px]'), 'browser-rendered cards should use polished rounded surfaces');
 assert_true(str_contains($shareSceneSource, 'shadow-[0_32px_90px_rgba(0,0,0,0.42)]'), 'browser-rendered cards should use soft diffusion shadows');
 assert_true(str_contains($shareSceneSource, 'shareCardImageProxyUrl'), 'browser-rendered cards should proxy images to avoid canvas taint');
@@ -183,7 +183,7 @@ assert_true(str_contains($shareRendererSource, '<meta property="og:image:type" c
 assert_true(str_contains($shareRendererSource, '<meta name="twitter:image"'), 'share renderer should emit twitter:image');
 assert_true(str_contains($shareRendererSource, "post_share_page_https_url(post_public_base_url() . post_share_card_path(\$post) . '?v=' . post_share_page_card_version(\$post))"), 'share renderer should use absolute HTTPS versioned share-card images');
 assert_true(str_contains($shareRendererSource, 'post_share_page_card_version($post)'), 'post share metadata should version cached screenshot URLs');
-assert_true(str_contains($shareRendererSource, "'mosaic-v3'"), 'post share metadata version should include the browser-rendered card version');
+assert_true(str_contains($shareRendererSource, "'mosaic-v4'"), 'post share metadata version should include the browser-rendered card version');
 assert_true(str_contains($shareRendererSource, 'post_share_page_fallback_html'), 'share renderer should include a no-JS fallback body');
 assert_true(str_contains($shareRendererSource, '<noscript>'), 'share renderer should insert fallback HTML before hydration');
 assert_true(str_contains($shareRendererSource, 'post_share_page_escape'), 'share renderer should escape metadata');
@@ -197,7 +197,7 @@ assert_true(str_contains($profileShareRendererSource, '<meta property="og:image"
 assert_true(str_contains($profileShareRendererSource, '<meta name="twitter:image"'), 'profile share renderer should emit twitter:image');
 assert_true(str_contains($profileShareRendererSource, "profile_share_page_https_url(post_public_base_url() . profile_share_card_path(\$profile) . '?v=' . profile_share_page_card_version(\$profile))"), 'profile share renderer should use absolute HTTPS versioned share-card images');
 assert_true(str_contains($profileShareRendererSource, 'profile_share_page_card_version($profile)'), 'profile share metadata should version cached screenshot URLs');
-assert_true(str_contains($profileShareRendererSource, "'mosaic-v3'"), 'profile share metadata version should include the browser-rendered card version');
+assert_true(str_contains($profileShareRendererSource, "'mosaic-v4'"), 'profile share metadata version should include the browser-rendered card version');
 assert_true(str_contains($profileShareRendererSource, 'profile_viewer_can_view_row($profileRow, null)'), 'profile share renderer should hide private profile metadata');
 assert_true(str_contains($profileShareRendererSource, 'profile_share_page_fallback_html'), 'profile share renderer should include a no-JS fallback body');
 
