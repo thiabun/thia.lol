@@ -64,7 +64,7 @@ test("profile share render uses module mosaic previews and skips Feed", async ({
 
   await page.goto("/share-render/profile/thia");
   await expect(page.locator("[data-share-card-canvas][data-share-card-ready='true']")).toBeVisible();
-  await expect(page.locator("[data-share-card-brand]")).toHaveCSS("height", "56px");
+  await expect(page.locator("[data-share-card-brand]")).toHaveCSS("height", "72px");
   await expect(page.locator('[data-share-card-module-type="activity"]')).toHaveCount(0);
 
   const imageModule = page.locator('[data-share-card-module-type="uploaded_image"]');
@@ -91,7 +91,7 @@ test("post share render uses the post author avatar and post media", async ({ pa
 
   await page.goto("/share-render/post/pcard123");
   await expect(page.locator("[data-share-card-canvas][data-share-card-ready='true']")).toBeVisible();
-  await expect(page.locator("[data-share-card-brand]")).toHaveCSS("height", "56px");
+  await expect(page.locator("[data-share-card-brand]")).toHaveCSS("height", "72px");
 
   const avatarSrc = await page.locator("[data-share-card-post-author-avatar]").getAttribute("src");
   const mediaSrc = await page.locator("[data-share-card-post-media]").getAttribute("src");
