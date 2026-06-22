@@ -572,7 +572,7 @@ function post_share_result(int $recipientUserId, string $status, string $error):
 const SHARE_CARD_LOGICAL_WIDTH = 1200;
 const SHARE_CARD_LOGICAL_HEIGHT = 630;
 const SHARE_CARD_RENDER_SCALE = 2;
-const SHARE_CARD_CACHE_RENDER_VERSION = 'mosaic-v4';
+const SHARE_CARD_CACHE_RENDER_VERSION = 'mosaic-v5';
 const SHARE_CARD_MAX_UPLOAD_BYTES = 12582912;
 
 function posts_share_card_s(int|float $value): int
@@ -3248,6 +3248,23 @@ function posts_share_card_draw_avatar($image, array $post, int $x, int $y, int $
 
 function posts_share_card_media_path(string $mediaUrl): ?string
 {
+    $parts = parse_url($mediaUrl);
+
+    if (is_array($parts)) {
+        $host = strtolower(rtrim((string) ($parts['host'] ?? ''), '.'));
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+
+        if ($host !== '' || $scheme !== '') {
+            $allowedHost = strtolower((string) parse_url(post_public_base_url(), PHP_URL_HOST));
+
+            if ($scheme !== 'https' || $host !== $allowedHost) {
+                return null;
+            }
+        }
+
+        $mediaUrl = (string) ($parts['path'] ?? '');
+    }
+
     if (preg_match('#^/uploads/media/[0-9]{4}/[0-9]{2}/[a-z0-9_-]+\.(?:jpe?g|png|webp|gif)$#', $mediaUrl) !== 1) {
         return null;
     }

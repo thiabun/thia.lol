@@ -188,7 +188,7 @@ function post_share_page_iso_date(string $value): string
 function post_share_page_card_version(array $post): string
 {
     $basis = implode('|', [
-        'mosaic-v4',
+        'mosaic-v5',
         (string) ($post['publicId'] ?? $post['id'] ?? ''),
         (string) ($post['updatedAt'] ?? ''),
         (string) ($post['mediaUrl'] ?? ''),

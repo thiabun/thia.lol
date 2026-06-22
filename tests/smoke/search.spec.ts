@@ -88,6 +88,32 @@ test("/search shows successful profile and room results", async ({ page }) => {
   );
 });
 
+test("/search keeps typing local without reopening the full page loader", async ({
+  page,
+}) => {
+  await mockShellRequests(page);
+  await mockSearch(page, {
+    ok: true,
+    data: {
+      query: "thi",
+      minQueryLength: 2,
+      results: {
+        profiles: [],
+        rooms: [],
+      },
+    },
+  });
+
+  await page.goto("/search");
+  await expect(page.getByTestId("page-loading-overlay")).toHaveCount(0);
+
+  await page.getByLabel("Search thia.lol").fill("thi");
+
+  await expect(page).toHaveURL(/\/search\?q=thi$/);
+  await expect(page.getByTestId("page-loading-overlay")).toHaveCount(0);
+  await expect(page.getByText("No results found")).toBeVisible();
+});
+
 test("/search shows the no-results state", async ({ page }) => {
   await mockShellRequests(page);
   await mockSearch(page, {
@@ -158,7 +184,7 @@ test("search endpoint uses prepared queries and public safety filters", async ()
   expect(searchSource).toContain("db_query(");
   expect(searchSource).toContain(":handle_match");
   expect(searchSource).toContain(":summary_match");
-  expect(searchSource).toContain("u.status = 'active'");
+  expect(searchSource).toContain("user_publicly_available_sql('u')");
   expect(searchSource).toContain("viewer_feed_relationship_filter_sql");
   expect(searchSource).toContain("rooms.visibility = 'public'");
   expect(searchSource).toContain("room_not_deleted_sql('rooms')");

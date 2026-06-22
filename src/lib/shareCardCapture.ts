@@ -36,6 +36,7 @@ export async function captureShareCard(path: string): Promise<Blob> {
     const blob = await toBlob(canvas, {
       backgroundColor: "transparent",
       cacheBust: true,
+      includeQueryParams: true,
       pixelRatio: SHARE_CARD_PIXEL_RATIO,
       width: SHARE_CARD_WIDTH,
       height: SHARE_CARD_HEIGHT,

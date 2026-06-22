@@ -17,7 +17,7 @@ const pageLoadingGraceMs = 1000;
 export function PageLoadingProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [activeTasks, setActiveTasks] = useState<Set<symbol>>(() => new Set());
-  const locationKey = `${location.pathname}${location.search}`;
+  const locationKey = pageLoadingLocationKey(location.pathname, location.search);
   const routeLabel = pageLoadingLabel(location.pathname);
   const [graceState, setGraceState] = useState(() => ({
     complete: false,
@@ -272,6 +272,14 @@ function pageLoadingLabel(pathname: string): string {
   }
 
   return "page";
+}
+
+function pageLoadingLocationKey(pathname: string, search: string): string {
+  if (pathname === "/search") {
+    return pathname;
+  }
+
+  return `${pathname}${search}`;
 }
 
 async function waitForRouteAssets() {

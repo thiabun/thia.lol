@@ -56,6 +56,7 @@ import {
   useOutletContext,
   useParams,
 } from "react-router";
+import { createPortal } from "react-dom";
 import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
 import { MarkdownEditor } from "../components/social/MarkdownEditor";
@@ -1944,9 +1945,13 @@ function ProfileMusicContinueOverlay({
   onContinue: () => void;
   profile: Profile;
 }) {
-  return (
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-canvas/72 p-4 backdrop-blur-xl"
+      className="fixed inset-0 z-[95] flex items-center justify-center bg-canvas/72 p-4 backdrop-blur-xl"
       data-testid="profile-music-continue-overlay"
     >
       <div className="w-full max-w-sm rounded-panel border border-line bg-surface/86 p-4 text-center shadow-lift backdrop-blur-veil">
@@ -1969,7 +1974,8 @@ function ProfileMusicContinueOverlay({
           Continue to profile
         </Button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -8597,6 +8603,8 @@ function ProfileInfoActions({
   starPosting: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties | undefined>();
+  const overflowButtonRef = useRef<HTMLDivElement | null>(null);
 
   const disabled = profile.blockedByMe === true;
   const iconOnly = compact || primaryCompact;
@@ -8615,6 +8623,115 @@ function ProfileInfoActions({
       : "Follow";
   const menuItemClass =
     "flex w-full items-center justify-start gap-2 rounded-card px-2.5 py-2 text-left text-xs font-semibold text-text transition duration-fluid ease-fluid hover:bg-surface-strong focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50";
+  const updateMenuPosition = useCallback(() => {
+    const button = overflowButtonRef.current;
+
+    if (!button) {
+      return;
+    }
+
+    const rect = button.getBoundingClientRect();
+    setMenuStyle({
+      right: Math.max(8, window.innerWidth - rect.right),
+      top: rect.bottom + 6,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpen) {
+      return undefined;
+    }
+
+    updateMenuPosition();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+      }
+    }
+
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [menuOpen, updateMenuPosition]);
+
+  const actionsMenu =
+    menuOpen && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            role="menu"
+            data-testid="profile-info-actions-menu"
+            className="fixed z-[96] w-44 overflow-hidden rounded-card border border-line bg-surface p-1.5 text-sm shadow-lift"
+            style={menuStyle}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              className={menuItemClass}
+              onClick={() => {
+                setMenuOpen(false);
+                onShareProfile();
+              }}
+            >
+              <Share2 aria-hidden="true" className="shrink-0" size={14} />
+              <span>Share profile</span>
+            </button>
+            {onMuteToggle ? (
+              <button
+                type="button"
+                role="menuitem"
+                className={menuItemClass}
+                disabled={profileControlBusy !== undefined}
+                onClick={() => {
+                  setMenuOpen(false);
+                  void onMuteToggle();
+                }}
+              >
+                <VolumeX aria-hidden="true" className="shrink-0" size={14} />
+                <span>{profile.mutedByMe ? "Unmute" : "Mute"}</span>
+              </button>
+            ) : null}
+            {onBlockToggle ? (
+              <button
+                type="button"
+                role="menuitem"
+                className={menuItemClass}
+                disabled={profileControlBusy !== undefined}
+                onClick={() => {
+                  setMenuOpen(false);
+                  void onBlockToggle();
+                }}
+              >
+                <Shield aria-hidden="true" className="shrink-0" size={14} />
+                <span>{profile.blockedByMe ? "Unblock" : "Block"}</span>
+              </button>
+            ) : null}
+            {!isOwnProfile ? (
+              <ReportForm
+                className="w-full"
+                targetType="profile"
+                targetId={profile.user.id}
+                reportedUserId={profile.user.id}
+                title="Report profile"
+                explainer={`This reports @${profile.user.handle}'s profile to moderators.`}
+                triggerLabel="Report profile"
+                triggerClassName={cn(
+                  menuItemClass,
+                  "min-h-0 border-0 bg-transparent shadow-none",
+                )}
+                triggerIconSize={14}
+              />
+            ) : null}
+          </div>,
+          document.body,
+        )
+      : null;
 
   return (
     <div
@@ -8679,7 +8796,7 @@ function ProfileInfoActions({
         </>
       )}
       {showOverflowMenu ? (
-        <div className="relative">
+        <div className="relative" ref={overflowButtonRef}>
           <Button
             type="button"
             variant="secondary"
@@ -8691,74 +8808,12 @@ function ProfileInfoActions({
             title={`Profile actions for @${profile.user.handle}`}
             data-testid="profile-info-overflow-button"
             icon={<MoreHorizontal aria-hidden="true" size={16} />}
-            onClick={() => setMenuOpen((open) => !open)}
+            onClick={() => {
+              updateMenuPosition();
+              setMenuOpen((open) => !open);
+            }}
           />
-          {menuOpen ? (
-            <div
-              role="menu"
-              data-testid="profile-info-actions-menu"
-              className="absolute right-0 z-50 mt-1 w-44 overflow-hidden rounded-card border border-line bg-surface p-1.5 text-sm shadow-lift"
-            >
-              <button
-                type="button"
-                role="menuitem"
-                className={menuItemClass}
-                onClick={() => {
-                  setMenuOpen(false);
-                  onShareProfile();
-                }}
-              >
-                <Share2 aria-hidden="true" className="shrink-0" size={14} />
-                <span>Share profile</span>
-              </button>
-              {onMuteToggle ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  className={menuItemClass}
-                  disabled={profileControlBusy !== undefined}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    void onMuteToggle();
-                  }}
-                >
-                  <VolumeX aria-hidden="true" className="shrink-0" size={14} />
-                  <span>{profile.mutedByMe ? "Unmute" : "Mute"}</span>
-                </button>
-              ) : null}
-              {onBlockToggle ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  className={menuItemClass}
-                  disabled={profileControlBusy !== undefined}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    void onBlockToggle();
-                  }}
-                >
-                  <Shield aria-hidden="true" className="shrink-0" size={14} />
-                  <span>{profile.blockedByMe ? "Unblock" : "Block"}</span>
-                </button>
-              ) : null}
-              {!isOwnProfile ? (
-                <ReportForm
-                  className="w-full"
-                  targetType="profile"
-                  targetId={profile.user.id}
-                  reportedUserId={profile.user.id}
-                  title="Report profile"
-                  explainer={`This reports @${profile.user.handle}'s profile to moderators.`}
-                  triggerLabel="Report profile"
-                  triggerClassName={cn(
-                    menuItemClass,
-                    "min-h-0 border-0 bg-transparent shadow-none",
-                  )}
-                  triggerIconSize={14}
-                />
-              ) : null}
-            </div>
-          ) : null}
+          {actionsMenu}
         </div>
       ) : null}
     </div>

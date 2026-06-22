@@ -70,7 +70,7 @@ assert_true(str_contains($postsSource, 'profile_viewer_can_view_row($profileRow,
 assert_true(str_contains($postsSource, 'SHARE_CARD_LOGICAL_WIDTH = 1200'), 'share cards should keep the standard preview aspect width');
 assert_true(str_contains($postsSource, 'SHARE_CARD_LOGICAL_HEIGHT = 630'), 'share cards should keep the standard preview aspect height');
 assert_true(str_contains($postsSource, 'SHARE_CARD_RENDER_SCALE = 2'), 'share-card cache should store 2x PNG captures');
-assert_true(str_contains($postsSource, "SHARE_CARD_CACHE_RENDER_VERSION = 'mosaic-v4'"), 'share-card cache should include a render-version key so stale card designs are bypassed');
+assert_true(str_contains($postsSource, "SHARE_CARD_CACHE_RENDER_VERSION = 'mosaic-v5'"), 'share-card cache should include a render-version key so stale card designs are bypassed');
 assert_true(str_contains($postsSource, 'function posts_share_card_cache_create'), 'post share cards should expose an authenticated cache upload endpoint');
 assert_true(str_contains($postsSource, 'function profile_share_card_cache_create'), 'profile share cards should expose an authenticated cache upload endpoint');
 assert_true(str_contains($postsSource, "share_card_cache_path('post'"), 'post share-card endpoint should check cached screenshots first');
@@ -85,6 +85,7 @@ assert_true(str_contains($postsSource, 'posts_share_card_height()'), 'share-card
 assert_true(str_contains($postsSource, 'Share card must be a 2400x1260 PNG.'), 'share-card cache upload should enforce the high-resolution output size');
 assert_true(str_contains($postsSource, '/uploads/share-cards/'), 'share-card cache should store public deterministic PNG assets');
 assert_true(str_contains($postsSource, 'function share_card_image_proxy'), 'share-card rendering should have a safe image proxy for CORS-safe capture');
+assert_true(str_contains($postsSource, '$parts = parse_url($mediaUrl);'), 'share-card local media proxy should tolerate absolute URLs and cache-bust query strings');
 assert_true(str_contains($postsSource, 'posts_share_card_fetch_allowlisted_provider_image($url)'), 'share-card proxy should reuse allowlisted provider image fetching');
 assert_true(str_contains($postsSource, 'CURLOPT_FOLLOWLOCATION => false'), 'share-card proxy fetches should not follow redirects');
 assert_true(str_contains($postsSource, "in_array(\$mime, ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], true)"), 'share-card proxy should return only safe browser image MIME types');
@@ -152,6 +153,7 @@ assert_true(str_contains($shareSceneSource, 'Metric'), 'post share-card scene sh
 assert_true(str_contains($shareSceneSource, 'ProfileMetric'), 'profile share-card scene should render real profile stats');
 assert_true(str_contains($shareSceneSource, 'RichText'), 'share-card scenes should reuse safe rich text rendering');
 assert_true(str_contains($shareCaptureSource, 'pixelRatio: SHARE_CARD_PIXEL_RATIO'), 'share-card capture should render at 2x pixel ratio');
+assert_true(str_contains($shareCaptureSource, 'includeQueryParams: true'), 'share-card capture must keep proxied image query params distinct');
 assert_true(str_contains($shareCaptureSource, 'canvasWidth: SHARE_CARD_WIDTH * SHARE_CARD_PIXEL_RATIO'), 'share-card capture should output high-resolution PNG width');
 assert_true(str_contains($shareCaptureSource, 'canvasHeight: SHARE_CARD_HEIGHT * SHARE_CARD_PIXEL_RATIO'), 'share-card capture should output high-resolution PNG height');
 assert_true(str_contains($shareCaptureSource, 'waitForShareCardCanvas'), 'share-card capture should wait for the render scene to be ready');
@@ -183,7 +185,7 @@ assert_true(str_contains($shareRendererSource, '<meta property="og:image:type" c
 assert_true(str_contains($shareRendererSource, '<meta name="twitter:image"'), 'share renderer should emit twitter:image');
 assert_true(str_contains($shareRendererSource, "post_share_page_https_url(post_public_base_url() . post_share_card_path(\$post) . '?v=' . post_share_page_card_version(\$post))"), 'share renderer should use absolute HTTPS versioned share-card images');
 assert_true(str_contains($shareRendererSource, 'post_share_page_card_version($post)'), 'post share metadata should version cached screenshot URLs');
-assert_true(str_contains($shareRendererSource, "'mosaic-v4'"), 'post share metadata version should include the browser-rendered card version');
+assert_true(str_contains($shareRendererSource, "'mosaic-v5'"), 'post share metadata version should include the browser-rendered card version');
 assert_true(str_contains($shareRendererSource, 'post_share_page_fallback_html'), 'share renderer should include a no-JS fallback body');
 assert_true(str_contains($shareRendererSource, '<noscript>'), 'share renderer should insert fallback HTML before hydration');
 assert_true(str_contains($shareRendererSource, 'post_share_page_escape'), 'share renderer should escape metadata');
@@ -197,7 +199,7 @@ assert_true(str_contains($profileShareRendererSource, '<meta property="og:image"
 assert_true(str_contains($profileShareRendererSource, '<meta name="twitter:image"'), 'profile share renderer should emit twitter:image');
 assert_true(str_contains($profileShareRendererSource, "profile_share_page_https_url(post_public_base_url() . profile_share_card_path(\$profile) . '?v=' . profile_share_page_card_version(\$profile))"), 'profile share renderer should use absolute HTTPS versioned share-card images');
 assert_true(str_contains($profileShareRendererSource, 'profile_share_page_card_version($profile)'), 'profile share metadata should version cached screenshot URLs');
-assert_true(str_contains($profileShareRendererSource, "'mosaic-v4'"), 'profile share metadata version should include the browser-rendered card version');
+assert_true(str_contains($profileShareRendererSource, "'mosaic-v5'"), 'profile share metadata version should include the browser-rendered card version');
 assert_true(str_contains($profileShareRendererSource, 'profile_viewer_can_view_row($profileRow, null)'), 'profile share renderer should hide private profile metadata');
 assert_true(str_contains($profileShareRendererSource, 'profile_share_page_fallback_html'), 'profile share renderer should include a no-JS fallback body');
 
