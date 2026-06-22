@@ -600,8 +600,6 @@ function posts_share_card(string $postIdentifier): void
         share_card_cached_png_response($cachedPath, $headOnly);
     }
 
-    posts_share_card_fallback($headOnly);
-
     if (!extension_loaded('gd') || !function_exists('imagecreatetruecolor')) {
         posts_share_card_fallback($headOnly);
     }
@@ -742,8 +740,6 @@ function profile_share_card(string $handle): void
     if ($cachedPath !== null && is_file($cachedPath)) {
         share_card_cached_png_response($cachedPath, $headOnly);
     }
-
-    posts_share_card_fallback($headOnly);
 
     $modules = profile_share_card_modules((int) $profileRow['user_id']);
     $image = imagecreatetruecolor(posts_share_card_width(), posts_share_card_height());

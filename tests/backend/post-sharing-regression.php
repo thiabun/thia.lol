@@ -65,6 +65,7 @@ assert_true(str_contains($postsSource, "header('Content-Type: image/png')"), 'sh
 assert_true(str_contains($postsSource, "stale-while-revalidate=86400"), 'share-card endpoint should send crawler-friendly cache headers');
 assert_true(str_contains($postsSource, "header('Content-Disposition: inline')"), 'share-card endpoint should render inline for crawlers');
 assert_true(str_contains($postsSource, 'posts_share_card_fallback'), 'share-card endpoint should have a fallback image path');
+assert_true(!str_contains($postsSource, "share_card_cached_png_response(\$cachedPath, \$headOnly);\n    }\n\n    posts_share_card_fallback(\$headOnly);"), 'share-card endpoints should not fall through to the generic lockup before drawing cached/profile cards');
 assert_true(str_contains($postsSource, 'function profile_share_card(string $handle): void'), 'profile share-card endpoint should be implemented');
 assert_true(str_contains($postsSource, 'profile_viewer_can_view_row($profileRow, null)'), 'profile share cards should not expose private profiles');
 assert_true(str_contains($postsSource, 'SHARE_CARD_LOGICAL_WIDTH = 1200'), 'share cards should keep the standard preview aspect width');
