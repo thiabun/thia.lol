@@ -45,7 +45,7 @@ function profile_share_page_render(array $profile): void
     $title = "{$displayName} (@{$handle}) | thia.lol";
     $description = profile_share_description($profile);
     $canonicalUrl = profile_share_page_https_url(profile_canonical_url($profile));
-    $imageUrl = profile_share_page_https_url(post_public_base_url() . profile_share_card_path($profile) . '?v=' . profile_share_page_card_version($profile));
+    $imageUrl = profile_share_page_https_url(post_public_base_url() . profile_share_page_card_image_path($profile) . '?v=' . profile_share_page_card_version($profile));
     $imageAlt = "Profile card for @{$handle} on thia.lol.";
 
     $meta = implode("\n    ", [
@@ -192,6 +192,22 @@ function profile_share_page_card_version(array $profile): string
     return substr(hash('sha256', $basis), 0, 16);
 }
 
+function profile_share_page_card_image_path(array $profile): string
+{
+    $handle = (string) ($profile['user']['handle'] ?? '');
+    $cachedCardPath = profile_share_page_cached_card_path($handle);
+
+    if ($cachedCardPath !== null && is_file($cachedCardPath)) {
+        $cachedCardUrlPath = profile_share_page_cached_card_url_path($handle);
+
+        if ($cachedCardUrlPath !== null) {
+            return $cachedCardUrlPath;
+        }
+    }
+
+    return profile_share_card_path($profile);
+}
+
 function profile_share_page_cached_card_path(string $handle): ?string
 {
     $normalized = strtolower(trim($handle));
@@ -201,4 +217,15 @@ function profile_share_page_cached_card_path(string $handle): ?string
     }
 
     return dirname(__DIR__) . '/uploads/share-cards/profiles/' . $normalized . '-mosaic-v5.png';
+}
+
+function profile_share_page_cached_card_url_path(string $handle): ?string
+{
+    $normalized = strtolower(trim($handle));
+
+    if (preg_match('/^[a-z0-9_-]{1,80}$/', $normalized) !== 1) {
+        return null;
+    }
+
+    return '/uploads/share-cards/profiles/' . rawurlencode($normalized . '-mosaic-v5.png');
 }

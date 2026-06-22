@@ -197,9 +197,10 @@ assert_true(str_contains($profileShareRendererSource, '<meta property="og:type" 
 assert_true(str_contains($profileShareRendererSource, '<meta property="profile:username"'), 'profile share renderer should emit profile username metadata');
 assert_true(str_contains($profileShareRendererSource, '<meta property="og:image"'), 'profile share renderer should emit og:image');
 assert_true(str_contains($profileShareRendererSource, '<meta name="twitter:image"'), 'profile share renderer should emit twitter:image');
-assert_true(str_contains($profileShareRendererSource, "profile_share_page_https_url(post_public_base_url() . profile_share_card_path(\$profile) . '?v=' . profile_share_page_card_version(\$profile))"), 'profile share renderer should use absolute HTTPS versioned share-card images');
+assert_true(str_contains($profileShareRendererSource, "profile_share_page_https_url(post_public_base_url() . profile_share_page_card_image_path(\$profile) . '?v=' . profile_share_page_card_version(\$profile))"), 'profile share renderer should use absolute HTTPS versioned share-card images');
 assert_true(str_contains($profileShareRendererSource, 'profile_share_page_card_version($profile)'), 'profile share metadata should version cached screenshot URLs');
 assert_true(str_contains($profileShareRendererSource, 'profile_share_page_cached_card_path'), 'profile share metadata should inspect cached rendered card files');
+assert_true(str_contains($profileShareRendererSource, 'profile_share_page_cached_card_url_path'), 'profile share metadata should point crawlers directly at cached rendered cards when available');
 assert_true(str_contains($profileShareRendererSource, 'filemtime($cachedCardPath)'), 'profile share metadata should change when the rendered card cache changes');
 assert_true(str_contains($profileShareRendererSource, "'mosaic-v5'"), 'profile share metadata version should include the browser-rendered card version');
 assert_true(str_contains($profileShareRendererSource, 'profile_viewer_can_view_row($profileRow, null)'), 'profile share renderer should hide private profile metadata');

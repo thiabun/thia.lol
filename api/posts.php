@@ -1000,12 +1000,11 @@ function share_card_ensure_cache_directory(string $path): void
     }
 
     $htaccess = $uploadsRoot . '/.htaccess';
-    if (!is_file($htaccess)) {
-        @file_put_contents(
-            $htaccess,
-            "Options -Indexes\nAddType image/png .png\n<IfModule mod_headers.c>\n  <FilesMatch \"\\.(?:png)$\">\n    Header set Cache-Control \"public, max-age=604800\"\n  </FilesMatch>\n</IfModule>\n<FilesMatch \"\\.(?:php|phtml|phar|cgi|pl|py|sh|shtml|html?|svg)$\">\n  Require all denied\n</FilesMatch>\n",
-            LOCK_EX
-        );
+    $htaccessContents = "Options -Indexes\nAddType image/png .png\nAddType image/webp .webp\nAddType video/mp4 .mp4\nAddType video/webm .webm\nAddType audio/mpeg .mp3\n<IfModule mod_headers.c>\n  <FilesMatch \"\\.(?:png|webp|mp4|webm|mp3)$\">\n    Header set Cache-Control \"public, max-age=604800\"\n  </FilesMatch>\n</IfModule>\n<FilesMatch \"\\.(?:php|phtml|phar|cgi|pl|py|sh|shtml|html?|svg)$\">\n  Require all denied\n</FilesMatch>\n";
+    $currentHtaccess = is_file($htaccess) ? file_get_contents($htaccess) : false;
+
+    if (!is_string($currentHtaccess) || !str_contains($currentHtaccess, 'AddType image/png .png')) {
+        @file_put_contents($htaccess, $htaccessContents, LOCK_EX);
     }
 
     if (!is_dir($path) && !mkdir($path, 0755, true) && !is_dir($path)) {
