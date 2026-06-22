@@ -48,6 +48,16 @@ const RoomsPage = lazy(() =>
 const SearchPage = lazy(() =>
   import("./pages/SearchPage").then((module) => ({ default: module.SearchPage })),
 );
+const ShareRenderPostPage = lazy(() =>
+  import("./pages/ShareRenderPage").then((module) => ({
+    default: module.ShareRenderPostPage,
+  })),
+);
+const ShareRenderProfilePage = lazy(() =>
+  import("./pages/ShareRenderPage").then((module) => ({
+    default: module.ShareRenderProfilePage,
+  })),
+);
 const SettingsPage = lazy(() =>
   import("./pages/SettingsPage").then((module) => ({ default: module.SettingsPage })),
 );
@@ -93,6 +103,8 @@ export default function App() {
         <AuthLoadingSignal />
         <ScrollToTop />
         <Routes>
+          <Route path="share-render/post/:postId" element={<RouteSuspense><ShareRenderPostPage /></RouteSuspense>} />
+          <Route path="share-render/profile/:handle" element={<RouteSuspense><ShareRenderProfilePage /></RouteSuspense>} />
           <Route element={<AppShell />}>
             <Route index element={<RouteSuspense><HomePage /></RouteSuspense>} />
             <Route path="discover" element={<RouteSuspense><DiscoverPage /></RouteSuspense>} />

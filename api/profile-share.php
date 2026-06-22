@@ -45,7 +45,7 @@ function profile_share_page_render(array $profile): void
     $title = "{$displayName} (@{$handle}) | thia.lol";
     $description = profile_share_description($profile);
     $canonicalUrl = profile_share_page_https_url(profile_canonical_url($profile));
-    $imageUrl = profile_share_page_https_url(post_public_base_url() . profile_share_card_path($profile));
+    $imageUrl = profile_share_page_https_url(post_public_base_url() . profile_share_card_path($profile) . '?v=' . profile_share_page_card_version($profile));
     $imageAlt = "Profile card for @{$handle} on thia.lol.";
 
     $meta = implode("\n    ", [
@@ -171,4 +171,17 @@ function profile_share_page_https_url(string $url): string
 function profile_share_page_escape(string $value): string
 {
     return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+function profile_share_page_card_version(array $profile): string
+{
+    $basis = implode('|', [
+        (string) ($profile['user']['handle'] ?? ''),
+        (string) ($profile['updatedAt'] ?? ''),
+        (string) ($profile['profileBackground'] ?? ''),
+        (string) ($profile['bannerUrl'] ?? ''),
+        (string) ($profile['user']['avatarUrl'] ?? ''),
+    ]);
+
+    return substr(hash('sha256', $basis), 0, 16);
 }

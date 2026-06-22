@@ -74,6 +74,14 @@ function posts_dispatch(array $segments, string $method): void
         json_error('Method not allowed.', 405);
     }
 
+    if (count($segments) === 3 && post_route_identifier_is_valid($segments[1]) && $segments[2] === 'share-card-cache') {
+        if ($method === 'POST') {
+            posts_share_card_cache_create($segments[1]);
+        }
+
+        json_error('Method not allowed.', 405);
+    }
+
     if (
         count($segments) === 4 &&
         post_route_identifier_is_valid($segments[1]) &&
@@ -564,6 +572,7 @@ function post_share_result(int $recipientUserId, string $status, string $error):
 const SHARE_CARD_LOGICAL_WIDTH = 1200;
 const SHARE_CARD_LOGICAL_HEIGHT = 630;
 const SHARE_CARD_RENDER_SCALE = 2;
+const SHARE_CARD_MAX_UPLOAD_BYTES = 12582912;
 
 function posts_share_card_s(int|float $value): int
 {
@@ -584,6 +593,13 @@ function posts_share_card(string $postIdentifier): void
 {
     $post = fetch_public_post_payload_by_identifier($postIdentifier, current_request_user_id());
     $headOnly = $_SERVER['REQUEST_METHOD'] === 'HEAD';
+    $cachedPath = share_card_cache_path('post', post_public_identifier($post));
+
+    if ($cachedPath !== null && is_file($cachedPath)) {
+        share_card_cached_png_response($cachedPath, $headOnly);
+    }
+
+    posts_share_card_fallback($headOnly);
 
     if (!extension_loaded('gd') || !function_exists('imagecreatetruecolor')) {
         posts_share_card_fallback($headOnly);
@@ -720,6 +736,14 @@ function profile_share_card(string $handle): void
         profile_social_context((int) $profileRow['user_id'], null),
         null
     );
+    $cachedPath = share_card_cache_path('profile', (string) ($profile['user']['handle'] ?? $handle));
+
+    if ($cachedPath !== null && is_file($cachedPath)) {
+        share_card_cached_png_response($cachedPath, $headOnly);
+    }
+
+    posts_share_card_fallback($headOnly);
+
     $modules = profile_share_card_modules((int) $profileRow['user_id']);
     $image = imagecreatetruecolor(posts_share_card_width(), posts_share_card_height());
 
@@ -821,6 +845,245 @@ function profile_share_card(string $handle): void
     posts_share_card_text($image, $fonts, posts_share_card_s(18), $left, $canonicalY, $muted, $canonical);
 
     imagepng($image);
+    exit;
+}
+
+function posts_share_card_cache_create(string $postIdentifier): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+    $post = fetch_public_post_payload_by_identifier($postIdentifier, (int) $session['user_id']);
+    $authorId = (int) ($post['author']['id'] ?? 0);
+
+    if ($authorId !== (int) $session['user_id']) {
+        json_error('Only the post author can publish this share card preview.', 403);
+    }
+
+    $url = share_card_store_uploaded_png('post', post_public_identifier($post));
+
+    json_success([
+        'url' => $url,
+        'width' => posts_share_card_width(),
+        'height' => posts_share_card_height(),
+    ], 201);
+}
+
+function profile_share_card_cache_create(string $handle): void
+{
+    $session = require_authenticated_session();
+    require_csrf_token($session);
+    $profileRow = fetch_profile_by_handle(normalize_handle($handle));
+
+    if (
+        $profileRow === null
+        || !profile_public_account_available($profileRow, null)
+        || !profile_viewer_can_view_row($profileRow, (int) $session['user_id'])
+    ) {
+        json_error('Profile not found.', 404);
+    }
+
+    if ((int) ($profileRow['user_id'] ?? 0) !== (int) $session['user_id']) {
+        json_error('Only the profile owner can publish this share card preview.', 403);
+    }
+
+    $url = share_card_store_uploaded_png('profile', (string) ($profileRow['handle'] ?? $handle));
+
+    json_success([
+        'url' => $url,
+        'width' => posts_share_card_width(),
+        'height' => posts_share_card_height(),
+    ], 201);
+}
+
+function share_card_store_uploaded_png(string $kind, string $key): string
+{
+    $contentLength = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
+
+    if ($contentLength > SHARE_CARD_MAX_UPLOAD_BYTES) {
+        json_error('Share card image must be 12 MB or smaller.', 413);
+    }
+
+    $file = $_FILES['card'] ?? null;
+
+    if (!is_array($file) || (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        json_error('Share card image is required.', 422);
+    }
+
+    $tmpName = (string) ($file['tmp_name'] ?? '');
+    $size = (int) ($file['size'] ?? 0);
+
+    if ($tmpName === '' || $size <= 0 || $size > SHARE_CARD_MAX_UPLOAD_BYTES || !is_uploaded_file($tmpName)) {
+        json_error('Share card image is invalid.', 422);
+    }
+
+    $imageSize = @getimagesize($tmpName);
+
+    if (
+        !is_array($imageSize)
+        || (string) ($imageSize['mime'] ?? '') !== 'image/png'
+        || (int) ($imageSize[0] ?? 0) !== posts_share_card_width()
+        || (int) ($imageSize[1] ?? 0) !== posts_share_card_height()
+    ) {
+        json_error('Share card must be a 2400x1260 PNG.', 422);
+    }
+
+    $path = share_card_cache_path($kind, $key);
+
+    if ($path === null) {
+        json_error('Share card target is invalid.', 422);
+    }
+
+    share_card_ensure_cache_directory(dirname($path));
+    $temporaryPath = $path . '.' . bin2hex(random_bytes(6)) . '.tmp';
+
+    if (!move_uploaded_file($tmpName, $temporaryPath)) {
+        json_error('Share card image could not be stored.', 500);
+    }
+
+    @chmod($temporaryPath, 0644);
+
+    if (!@rename($temporaryPath, $path)) {
+        @unlink($temporaryPath);
+        json_error('Share card image could not be published.', 500);
+    }
+
+    return share_card_cache_url($kind, $key);
+}
+
+function share_card_cache_path(string $kind, string $key): ?string
+{
+    $safeKind = match ($kind) {
+        'post' => 'posts',
+        'profile' => 'profiles',
+        default => null,
+    };
+
+    if ($safeKind === null) {
+        return null;
+    }
+
+    $safeKey = share_card_cache_key($key);
+
+    if ($safeKey === null) {
+        return null;
+    }
+
+    return dirname(__DIR__) . "/uploads/share-cards/{$safeKind}/{$safeKey}.png";
+}
+
+function share_card_cache_url(string $kind, string $key): string
+{
+    $safeKind = $kind === 'profile' ? 'profiles' : 'posts';
+    $safeKey = share_card_cache_key($key) ?? 'card';
+
+    return "/uploads/share-cards/{$safeKind}/{$safeKey}.png";
+}
+
+function share_card_cache_key(string $key): ?string
+{
+    $normalized = strtolower(trim($key));
+
+    if (preg_match('/^[a-z0-9_-]{1,80}$/', $normalized) !== 1) {
+        return null;
+    }
+
+    return $normalized;
+}
+
+function share_card_ensure_cache_directory(string $path): void
+{
+    $uploadsRoot = dirname(__DIR__) . '/uploads';
+
+    if (!is_dir($uploadsRoot) && !mkdir($uploadsRoot, 0755, true) && !is_dir($uploadsRoot)) {
+        json_error('Share card storage is not writable.', 500);
+    }
+
+    $htaccess = $uploadsRoot . '/.htaccess';
+    if (!is_file($htaccess)) {
+        @file_put_contents(
+            $htaccess,
+            "Options -Indexes\nAddType image/png .png\n<IfModule mod_headers.c>\n  <FilesMatch \"\\.(?:png)$\">\n    Header set Cache-Control \"public, max-age=604800\"\n  </FilesMatch>\n</IfModule>\n<FilesMatch \"\\.(?:php|phtml|phar|cgi|pl|py|sh|shtml|html?|svg)$\">\n  Require all denied\n</FilesMatch>\n",
+            LOCK_EX
+        );
+    }
+
+    if (!is_dir($path) && !mkdir($path, 0755, true) && !is_dir($path)) {
+        json_error('Share card storage is not writable.', 500);
+    }
+}
+
+function share_card_cached_png_response(string $path, bool $headOnly = false): void
+{
+    posts_share_card_png_headers();
+    header('Content-Length: ' . (string) filesize($path));
+
+    if (!$headOnly) {
+        readfile($path);
+    }
+
+    exit;
+}
+
+function share_card_image_proxy(): void
+{
+    $headOnly = $_SERVER['REQUEST_METHOD'] === 'HEAD';
+    $rawUrl = (string) ($_GET['url'] ?? '');
+    $url = trim($rawUrl);
+
+    if ($url === '') {
+        http_response_code(404);
+        exit;
+    }
+
+    $localPath = posts_share_card_media_path($url);
+
+    if ($localPath !== null) {
+        $size = @getimagesize($localPath);
+        $mime = is_array($size) ? (string) ($size['mime'] ?? '') : '';
+
+        if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], true)) {
+            http_response_code(404);
+            exit;
+        }
+
+        header_remove('Content-Type');
+        header('Content-Type: ' . $mime);
+        header('Cache-Control: public, max-age=604800, stale-while-revalidate=86400');
+        header('X-Content-Type-Options: nosniff');
+        header('Content-Length: ' . (string) filesize($localPath));
+
+        if (!$headOnly) {
+            readfile($localPath);
+        }
+
+        exit;
+    }
+
+    $body = posts_share_card_fetch_allowlisted_provider_image($url);
+
+    if ($body === null) {
+        http_response_code(404);
+        exit;
+    }
+
+    $size = @getimagesizefromstring($body);
+    $mime = is_array($size) ? (string) ($size['mime'] ?? '') : '';
+
+    if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], true)) {
+        http_response_code(404);
+        exit;
+    }
+
+    header_remove('Content-Type');
+    header('Content-Type: ' . $mime);
+    header('Cache-Control: public, max-age=604800, stale-while-revalidate=86400');
+    header('X-Content-Type-Options: nosniff');
+    header('Content-Length: ' . (string) strlen($body));
+
+    if (!$headOnly) {
+        echo $body;
+    }
+
     exit;
 }
 

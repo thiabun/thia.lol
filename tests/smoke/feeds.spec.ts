@@ -1,5 +1,4 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { Buffer } from "node:buffer";
 import { readFileSync } from "node:fs";
 import { loginWithEnv, skipWithoutCredentials } from "../helpers/auth";
 
@@ -339,6 +338,8 @@ test("PostCard share modal copies, saves, and sends typed post attachments", asy
     canonicalPath: `/@alex/posts/${publicId}`,
     canonicalUrl: `https://thia.lol/@alex/posts/${publicId}`,
   });
+  post.author.id = 1;
+  post.profile.user.id = 1;
   const moot = {
     id: 7,
     handle: "mootpal",
@@ -348,6 +349,7 @@ test("PostCard share modal copies, saves, and sends typed post attachments", asy
     avatarUrl: null,
   };
   let sharePayload: Record<string, unknown> | undefined;
+  let cardCacheUploads = 0;
 
   await page.route("**/api/feed/home", (route) =>
     route.fulfill({
@@ -398,15 +400,41 @@ test("PostCard share modal copies, saves, and sends typed post attachments", asy
       }),
     });
   });
-  await page.route(`**/api/posts/${publicId}/share-card.png`, (route) =>
+  await page.route(`**/share-render/post/${publicId}`, (route) =>
     route.fulfill({
-      contentType: "image/png",
-      body: Buffer.from(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lulc9QAAAABJRU5ErkJggg==",
-        "base64",
-      ),
+      contentType: "text/html",
+      body: `<!doctype html>
+        <html>
+          <body style="margin:0">
+            <main
+              data-share-card-canvas="true"
+              data-share-card-ready="true"
+              style="box-sizing:border-box;width:1200px;height:630px;padding:80px;background:#071820;color:#ecfbfb;font-family:Arial,sans-serif"
+            >
+              <div style="border:2px solid rgba(97,226,212,.5);border-radius:34px;height:100%;padding:48px">
+                <h1 style="font-size:64px;margin:0">Alex</h1>
+                <p style="font-size:42px">A public post.</p>
+              </div>
+            </main>
+          </body>
+        </html>`,
     }),
   );
+  await page.route(`**/api/posts/${publicId}/share-card-cache`, async (route) => {
+    cardCacheUploads += 1;
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          url: `/uploads/share-cards/posts/${publicId}.png`,
+          width: 2400,
+          height: 1260,
+        },
+      }),
+    });
+  });
 
   await page.goto("/");
   await page.getByRole("button", { name: "Share post" }).first().click();
@@ -423,14 +451,11 @@ test("PostCard share modal copies, saves, and sends typed post attachments", asy
     )
     .toBe(`https://thia.lol/@alex/posts/${publicId}`);
 
-  await expect(modal.getByTestId("post-share-save-image")).toHaveAttribute(
-    "href",
-    `/api/posts/${publicId}/share-card.png`,
-  );
-  await expect(modal.getByTestId("post-share-save-image")).toHaveAttribute(
-    "download",
-    `thia-post-${publicId}.png`,
-  );
+  const downloadPromise = page.waitForEvent("download");
+  await modal.getByTestId("post-share-save-image").click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(`thia-post-${publicId}.png`);
+  await expect.poll(() => cardCacheUploads).toBeGreaterThan(0);
 
   await expect(modal.getByTestId("post-share-moot-list")).toContainText("Moot Pal");
   await modal.getByTestId("post-share-moot-7").click();

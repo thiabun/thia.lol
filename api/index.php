@@ -145,6 +145,14 @@ try {
         search_dispatch($segments, $method);
     }
 
+    if (($segments[0] ?? null) === 'share-card' && ($segments[1] ?? null) === 'image' && count($segments) === 2) {
+        if ($method === 'GET' || $method === 'HEAD') {
+            share_card_image_proxy();
+        }
+
+        json_error('Method not allowed.', 405);
+    }
+
     if (($segments[0] ?? null) === 'reports') {
         reports_dispatch($segments, $method);
     }
@@ -167,6 +175,14 @@ try {
 
     if (($segments[0] ?? null) === 'setup') {
         setup_dispatch($segments, $method);
+    }
+
+    if (($segments[0] ?? null) === 'profiles' && count($segments) === 3 && $segments[2] === 'share-card-cache') {
+        if ($method === 'POST') {
+            profile_share_card_cache_create($segments[1]);
+        }
+
+        json_error('Method not allowed.', 405);
     }
 
     if ($method !== 'GET' && $method !== 'HEAD') {

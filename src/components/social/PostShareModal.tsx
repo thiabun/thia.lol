@@ -20,10 +20,12 @@ import {
   postCanonicalPath,
   postCanonicalUrl,
   postPublicIdentifier,
+  postShareCardCacheUpload,
   postShareCardUrl,
   sharePostToMessages,
 } from "../../lib/api";
 import { cn } from "../../lib/classNames";
+import { captureShareCard, downloadBlob } from "../../lib/shareCardCapture";
 import type { ChatMoot, Post } from "../../lib/types";
 import { useAuth } from "../../lib/useAuth";
 
@@ -34,7 +36,7 @@ type PostShareModalProps = {
 };
 
 export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
-  const { csrfToken, runWithAuth, status } = useAuth();
+  const { csrfToken, runWithAuth, status, user } = useAuth();
   const [moots, setMoots] = useState<ChatMoot[]>([]);
   const [mootsLoading, setMootsLoading] = useState(false);
   const [mootsError, setMootsError] = useState<string>();
@@ -45,12 +47,14 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
   const [shareMessage, setShareMessage] = useState<string>();
   const [sentConversationIds, setSentConversationIds] = useState<number[]>([]);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const [cardState, setCardState] = useState<"idle" | "generating" | "error">("idle");
   const [nativeShareAvailable] = useState(
     () => typeof navigator !== "undefined" && "share" in navigator,
   );
   const canonicalPath = postCanonicalPath(post);
   const canonicalUrl = postCanonicalUrl(post);
   const publicIdentifier = postPublicIdentifier(post);
+  const canPublishCard = status === "authenticated" && user?.id === post.author.id;
   const selectedCount = selectedIds.size;
   const filteredMoots = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -163,6 +167,9 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
 
   async function handleCopy() {
     try {
+      void generatePostCard({ publish: canPublishCard, silent: true }).catch(
+        () => undefined,
+      );
       await copyText(canonicalUrl);
       setCopyState("copied");
     } catch {
@@ -176,6 +183,9 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
     }
 
     try {
+      void generatePostCard({ publish: canPublishCard, silent: true }).catch(
+        () => undefined,
+      );
       await navigator.share({
         title: `${post.author.displayName} on thia.lol`,
         text: post.body,
@@ -183,6 +193,52 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
       });
     } catch {
       // User cancellation is not an error worth surfacing.
+    }
+  }
+
+  async function handleSaveImage() {
+    try {
+      const blob = await generatePostCard({ publish: canPublishCard });
+      downloadBlob(blob, `thia-post-${publicIdentifier}.png`);
+    } catch {
+      setCardState("error");
+    }
+  }
+
+  async function generatePostCard({
+    publish,
+    silent = false,
+  }: {
+    publish: boolean;
+    silent?: boolean;
+  }) {
+    if (!silent) {
+      setCardState("generating");
+    }
+
+    try {
+      const blob = await captureShareCard(
+        `/share-render/post/${encodeURIComponent(publicIdentifier)}`,
+      );
+
+      if (publish) {
+        await runWithAuth(
+          (freshCsrfToken) => postShareCardCacheUpload(post, blob, freshCsrfToken),
+          { retryOnCsrf: true },
+        ).catch(() => undefined);
+      }
+
+      if (!silent) {
+        setCardState("idle");
+      }
+
+      return blob;
+    } catch (error) {
+      if (!silent) {
+        setCardState("error");
+      }
+
+      throw error;
     }
   }
 
@@ -297,20 +353,37 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
             Share
           </Button>
         ) : null}
-        <a
-          className="inline-flex min-h-9 items-center justify-center gap-2 rounded-control border border-line bg-surface px-3 text-sm font-medium text-text shadow-soft transition duration-fluid hover:-translate-y-0.5 hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:hover:translate-y-0"
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
           data-testid="post-share-save-image"
-          href={postShareCardUrl(post)}
-          download={`thia-post-${publicIdentifier}.png`}
+          disabled={cardState === "generating"}
+          icon={
+            cardState === "generating" ? (
+              <LoaderCircle aria-hidden="true" className="animate-spin" size={15} />
+            ) : (
+              <Download aria-hidden="true" size={15} />
+            )
+          }
+          onClick={() => void handleSaveImage()}
         >
-          <Download aria-hidden="true" size={15} />
-          Save image
-        </a>
+          {cardState === "generating" ? "Generating" : "Save image"}
+        </Button>
       </div>
 
       {copyState === "error" ? (
         <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
           Copy failed. The link is {canonicalUrl}
+        </p>
+      ) : null}
+      {cardState === "error" ? (
+        <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
+          Image generation failed. You can still open the current cached card at{" "}
+          <a className="underline" href={postShareCardUrl(post)} rel="noreferrer" target="_blank">
+            this link
+          </a>
+          .
         </p>
       ) : null}
 

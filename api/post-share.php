@@ -37,7 +37,7 @@ function post_share_page_render(array $post): void
     $title = "{$authorName} on thia.lol";
     $description = post_body_snippet((string) ($post['body'] ?? ''), 220);
     $canonicalUrl = post_share_page_https_url(post_canonical_url($post));
-    $imageUrl = post_share_page_https_url(post_public_base_url() . post_share_card_path($post));
+    $imageUrl = post_share_page_https_url(post_public_base_url() . post_share_card_path($post) . '?v=' . post_share_page_card_version($post));
     $imageAlt = "Post by @{$authorHandle} on thia.lol.";
     $createdAt = (string) ($post['createdAt'] ?? '');
 
@@ -183,4 +183,15 @@ function post_share_page_iso_date(string $value): string
     }
 
     return gmdate('c', $timestamp);
+}
+
+function post_share_page_card_version(array $post): string
+{
+    $basis = implode('|', [
+        (string) ($post['publicId'] ?? $post['id'] ?? ''),
+        (string) ($post['updatedAt'] ?? ''),
+        (string) ($post['mediaUrl'] ?? ''),
+    ]);
+
+    return substr(hash('sha256', $basis), 0, 16);
 }

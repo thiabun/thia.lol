@@ -1538,6 +1538,21 @@ export function postShareCardUrl(post: Pick<Post, "id" | "publicId">) {
   return `/api/posts/${postPublicIdentifier(post)}/share-card.png`;
 }
 
+export function postShareCardCacheUpload(
+  post: Pick<Post, "id" | "publicId">,
+  card: Blob,
+  csrfToken: string,
+): Promise<{ url: string; width: number; height: number }> {
+  const body = new FormData();
+  body.set("card", card, `thia-post-${postPublicIdentifier(post)}.png`);
+
+  return apiUpload<{ url: string; width: number; height: number }>(
+    `/posts/${postPublicIdentifier(post)}/share-card-cache`,
+    body,
+    csrfToken,
+  );
+}
+
 export function profileCanonicalPath(profile: Pick<Profile, "user">) {
   return `/@${profile.user.handle}`;
 }
@@ -1552,6 +1567,29 @@ export function profileCanonicalUrl(profile: Pick<Profile, "user">) {
 
 export function profileShareCardUrl(profile: Pick<Profile, "user">) {
   return `/api/profiles/${encodeURIComponent(profile.user.handle)}/share-card.png`;
+}
+
+export function profileShareCardCacheUpload(
+  profile: Pick<Profile, "user">,
+  card: Blob,
+  csrfToken: string,
+): Promise<{ url: string; width: number; height: number }> {
+  const body = new FormData();
+  body.set("card", card, `thia-profile-${profile.user.handle}.png`);
+
+  return apiUpload<{ url: string; width: number; height: number }>(
+    `/profiles/${encodeURIComponent(profile.user.handle)}/share-card-cache`,
+    body,
+    csrfToken,
+  );
+}
+
+export function shareCardImageProxyUrl(url: string | null | undefined) {
+  if (!url) {
+    return undefined;
+  }
+
+  return `/api/share-card/image?url=${encodeURIComponent(url)}`;
 }
 
 export function sharePostToMessages(

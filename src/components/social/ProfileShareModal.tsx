@@ -1,12 +1,15 @@
-import { Copy, Download, Share2 } from "lucide-react";
+import { Copy, Download, LoaderCircle, Share2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import {
   profileCanonicalPath,
   profileCanonicalUrl,
+  profileShareCardCacheUpload,
   profileShareCardUrl,
 } from "../../lib/api";
+import { captureShareCard, downloadBlob } from "../../lib/shareCardCapture";
 import type { Profile } from "../../lib/types";
+import { useAuth } from "../../lib/useAuth";
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
 import { ModalSheet } from "../ui/ModalSheet";
@@ -18,12 +21,15 @@ type ProfileShareModalProps = {
 };
 
 export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalProps) {
+  const { runWithAuth, status, user } = useAuth();
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const [cardState, setCardState] = useState<"idle" | "generating" | "error">("idle");
   const [nativeShareAvailable] = useState(
     () => typeof navigator !== "undefined" && "share" in navigator,
   );
   const canonicalPath = profileCanonicalPath(profile);
   const canonicalUrl = profileCanonicalUrl(profile);
+  const canPublishCard = status === "authenticated" && user?.id === profile.user.id;
 
   useEffect(() => {
     if (!open) {
@@ -45,6 +51,9 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
 
   async function handleCopy() {
     try {
+      void generateProfileCard({ publish: canPublishCard, silent: true }).catch(
+        () => undefined,
+      );
       await copyText(canonicalUrl);
       setCopyState("copied");
     } catch {
@@ -58,6 +67,9 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
     }
 
     try {
+      void generateProfileCard({ publish: canPublishCard, silent: true }).catch(
+        () => undefined,
+      );
       await navigator.share({
         title: `${profile.user.displayName} (@${profile.user.handle}) on thia.lol`,
         text: profile.bio || `@${profile.user.handle} on thia.lol`,
@@ -65,6 +77,52 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
       });
     } catch {
       // User cancellation is expected and should stay quiet.
+    }
+  }
+
+  async function handleSaveImage() {
+    try {
+      const blob = await generateProfileCard({ publish: canPublishCard });
+      downloadBlob(blob, `thia-profile-${profile.user.handle}.png`);
+    } catch {
+      setCardState("error");
+    }
+  }
+
+  async function generateProfileCard({
+    publish,
+    silent = false,
+  }: {
+    publish: boolean;
+    silent?: boolean;
+  }) {
+    if (!silent) {
+      setCardState("generating");
+    }
+
+    try {
+      const blob = await captureShareCard(
+        `/share-render/profile/${encodeURIComponent(profile.user.handle)}`,
+      );
+
+      if (publish) {
+        await runWithAuth(
+          (csrfToken) => profileShareCardCacheUpload(profile, blob, csrfToken),
+          { retryOnCsrf: true },
+        ).catch(() => undefined);
+      }
+
+      if (!silent) {
+        setCardState("idle");
+      }
+
+      return blob;
+    } catch (error) {
+      if (!silent) {
+        setCardState("error");
+      }
+
+      throw error;
     }
   }
 
@@ -126,20 +184,37 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
             Share
           </Button>
         ) : null}
-        <a
-          className="inline-flex min-h-9 items-center justify-center gap-2 rounded-control border border-line bg-surface px-3 text-sm font-medium text-text shadow-soft transition duration-fluid hover:-translate-y-0.5 hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:hover:translate-y-0"
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
           data-testid="profile-share-save-image"
-          href={profileShareCardUrl(profile)}
-          download={`thia-profile-${profile.user.handle}.png`}
+          disabled={cardState === "generating"}
+          icon={
+            cardState === "generating" ? (
+              <LoaderCircle aria-hidden="true" className="animate-spin" size={15} />
+            ) : (
+              <Download aria-hidden="true" size={15} />
+            )
+          }
+          onClick={() => void handleSaveImage()}
         >
-          <Download aria-hidden="true" size={15} />
-          Save image
-        </a>
+          {cardState === "generating" ? "Generating" : "Save image"}
+        </Button>
       </div>
 
       {copyState === "error" ? (
         <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
           Copy failed. The link is {canonicalUrl}
+        </p>
+      ) : null}
+      {cardState === "error" ? (
+        <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
+          Image generation failed. You can still open the current cached card at{" "}
+          <a className="underline" href={profileShareCardUrl(profile)} rel="noreferrer" target="_blank">
+            this link
+          </a>
+          .
         </p>
       ) : null}
     </ModalSheet>
