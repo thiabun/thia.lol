@@ -199,6 +199,8 @@ assert_true(str_contains($profileShareRendererSource, '<meta property="og:image"
 assert_true(str_contains($profileShareRendererSource, '<meta name="twitter:image"'), 'profile share renderer should emit twitter:image');
 assert_true(str_contains($profileShareRendererSource, "profile_share_page_https_url(post_public_base_url() . profile_share_card_path(\$profile) . '?v=' . profile_share_page_card_version(\$profile))"), 'profile share renderer should use absolute HTTPS versioned share-card images');
 assert_true(str_contains($profileShareRendererSource, 'profile_share_page_card_version($profile)'), 'profile share metadata should version cached screenshot URLs');
+assert_true(str_contains($profileShareRendererSource, 'profile_share_page_cached_card_path'), 'profile share metadata should inspect cached rendered card files');
+assert_true(str_contains($profileShareRendererSource, 'filemtime($cachedCardPath)'), 'profile share metadata should change when the rendered card cache changes');
 assert_true(str_contains($profileShareRendererSource, "'mosaic-v5'"), 'profile share metadata version should include the browser-rendered card version');
 assert_true(str_contains($profileShareRendererSource, 'profile_viewer_can_view_row($profileRow, null)'), 'profile share renderer should hide private profile metadata');
 assert_true(str_contains($profileShareRendererSource, 'profile_share_page_fallback_html'), 'profile share renderer should include a no-JS fallback body');
@@ -208,6 +210,7 @@ assert_true(str_contains($indexSource, "segments[2] === 'share-card.png'"), 'pro
 assert_true(str_contains($indexSource, 'profile_share_card($segments[1])'), 'profile share-card API route should call the renderer');
 assert_true(str_contains($indexSource, 'share_card_image_proxy()'), 'API index should register the share-card image proxy route');
 assert_true(str_contains($indexSource, 'profile_share_card_cache_create($segments[1])'), 'API index should register profile share-card cache uploads');
+assert_true(str_contains($profileShareModalSource, 'await generateProfileCard({ publish: true, silent: true })'), 'profile copy sharing should wait for the rendered card publish attempt before copying');
 
 assert_true(is_string($htaccessSource), 'public htaccess should be readable');
 assert_true(str_contains($htaccessSource, 'api/post-share.php?handle=$1&postId=$2'), 'post permalink rewrite should target the share renderer');

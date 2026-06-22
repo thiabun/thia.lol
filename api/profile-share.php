@@ -175,8 +175,13 @@ function profile_share_page_escape(string $value): string
 
 function profile_share_page_card_version(array $profile): string
 {
+    $cachedCardPath = profile_share_page_cached_card_path((string) ($profile['user']['handle'] ?? ''));
+    $cachedCardMtime = ($cachedCardPath !== null && is_file($cachedCardPath))
+        ? (string) ((int) filemtime($cachedCardPath))
+        : 'uncached';
     $basis = implode('|', [
         'mosaic-v5',
+        $cachedCardMtime,
         (string) ($profile['user']['handle'] ?? ''),
         (string) ($profile['updatedAt'] ?? ''),
         (string) ($profile['profileBackground'] ?? ''),
@@ -185,4 +190,15 @@ function profile_share_page_card_version(array $profile): string
     ]);
 
     return substr(hash('sha256', $basis), 0, 16);
+}
+
+function profile_share_page_cached_card_path(string $handle): ?string
+{
+    $normalized = strtolower(trim($handle));
+
+    if (preg_match('/^[a-z0-9_-]{1,80}$/', $normalized) !== 1) {
+        return null;
+    }
+
+    return dirname(__DIR__) . '/uploads/share-cards/profiles/' . $normalized . '-mosaic-v5.png';
 }

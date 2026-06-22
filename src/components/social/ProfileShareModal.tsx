@@ -51,9 +51,10 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
 
   async function handleCopy() {
     try {
-      void generateProfileCard({ publish: canPublishCard, silent: true }).catch(
-        () => undefined,
-      );
+      if (canPublishCard) {
+        await generateProfileCard({ publish: true, silent: true }).catch(() => undefined);
+      }
+
       await copyText(canonicalUrl);
       setCopyState("copied");
     } catch {
