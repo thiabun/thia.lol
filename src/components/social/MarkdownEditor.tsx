@@ -18,6 +18,7 @@ import { RichText } from "./RichText";
 
 type MarkdownEditorProps = {
   className?: string;
+  disabled?: boolean;
   entities?: RichTextEntity[] | undefined;
   label?: string;
   maxLength?: number;
@@ -44,6 +45,7 @@ type MarkdownAction = (typeof markdownActions)[number]["id"] | "preview";
 
 export function MarkdownEditor({
   className,
+  disabled = false,
   entities,
   label = "Text",
   maxLength = 2000,
@@ -113,6 +115,7 @@ export function MarkdownEditor({
               className="grid size-8 place-items-center rounded-control text-muted transition duration-fluid ease-fluid hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
               title={action.label}
               aria-label={action.label}
+              disabled={disabled}
               data-testid={`profile-markdown-button-${action.id}`}
               onClick={() => applyAction(action.id)}
             >
@@ -128,6 +131,7 @@ export function MarkdownEditor({
               ? "bg-accent-soft text-accent-strong"
               : "text-muted hover:bg-surface hover:text-text",
           )}
+          disabled={disabled}
           data-testid="profile-markdown-button-preview"
           onClick={() => applyAction("preview")}
         >
@@ -141,6 +145,8 @@ export function MarkdownEditor({
         maxLength={maxLength}
         placeholder={placeholder}
         value={value}
+        aria-label={label}
+        disabled={disabled}
         data-testid={textareaTestId}
         onValueChange={onValueChange}
       />

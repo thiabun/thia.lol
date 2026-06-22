@@ -2,11 +2,15 @@ import { expect, type Page, test } from "@playwright/test";
 
 test("room edit save uses the API and updates the header", async ({ page }) => {
   let summary = "Original room summary.";
+  let rules = "Keep it useful.";
   let patchPayload: Record<string, unknown> | undefined;
 
   await mockOwnedRoom(page, () => summary, (payload) => {
     patchPayload = payload;
     summary = String(payload.summary ?? summary);
+    rules = String(payload.rules ?? rules);
+  }, {
+    rules: () => rules,
   });
 
   await acknowledgeCookieNotice(page);
@@ -16,7 +20,12 @@ test("room edit save uses the API and updates the header", async ({ page }) => {
 
   const modal = page.getByTestId("room-edit-modal");
   await modal.getByLabel("Summary").fill("Updated room summary for public testing.");
-  await modal.getByLabel("Room rules").fill("Keep it useful.\nNo spam.");
+  await modal
+    .getByLabel("Room rules")
+    .fill("## Be kind\n- No spam\nRead [the guide](https://example.com/rules).");
+  await modal.getByTestId("profile-markdown-button-preview").click();
+  await expect(modal.getByTestId("profile-markdown-preview").getByRole("heading", { name: "Be kind" })).toBeVisible();
+  await expect(modal.getByTestId("profile-markdown-preview").getByRole("listitem").filter({ hasText: "No spam" })).toBeVisible();
   await modal.getByRole("button", { name: "Save changes" }).click();
 
   await expect.poll(() => patchPayload).toBeTruthy();
@@ -24,10 +33,16 @@ test("room edit save uses the API and updates the header", async ({ page }) => {
     summary: "Updated room summary for public testing.",
     iconUrl: null,
     bannerUrl: null,
-    rules: "Keep it useful.\nNo spam.",
+    rules: "## Be kind\n- No spam\nRead [the guide](https://example.com/rules).",
     visibility: "public",
   });
   await expect(page.getByText("Updated room summary for public testing.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Be kind" })).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: "No spam" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "the guide" })).toHaveAttribute(
+    "href",
+    "https://example.com/rules",
+  );
 });
 
 test("room moderator controls are gated to owners and admins", async ({ page }) => {
@@ -116,6 +131,7 @@ async function mockOwnedRoom(
     onAddModerator?: (handle: string) => void;
     onRemoveModerator?: (handle: string) => void;
     onDeleteRoom?: () => void;
+    rules?: () => string;
   } = {},
 ) {
   await page.route("**/api/auth/me", async (route) => {
@@ -171,7 +187,7 @@ async function mockOwnedRoom(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: [roomBody(summary())] }),
+      body: JSON.stringify({ ok: true, data: [roomBody(summary(), callbacks.rules?.())] }),
     });
   });
 
@@ -182,7 +198,10 @@ async function mockOwnedRoom(
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ ok: true, data: roomBody(String(payload.summary)) }),
+        body: JSON.stringify({
+          ok: true,
+          data: roomBody(String(payload.summary), String(payload.rules ?? "")),
+        }),
       });
       return;
     }
@@ -203,7 +222,7 @@ async function mockOwnedRoom(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: roomBody(summary()) }),
+      body: JSON.stringify({ ok: true, data: roomBody(summary(), callbacks.rules?.()) }),
     });
   });
 
@@ -277,7 +296,7 @@ function completedOnboardingState() {
   };
 }
 
-function roomBody(summary: string) {
+function roomBody(summary: string, rules = "Keep it useful.") {
   return {
     id: 1,
     slug: "sun-room",
@@ -291,7 +310,7 @@ function roomBody(summary: string) {
     accent: "var(--accent-sun)",
     iconUrl: null,
     bannerUrl: null,
-    rules: "Keep it useful.",
+    rules,
     visibility: "public",
     createdBy: 1,
     owner: {

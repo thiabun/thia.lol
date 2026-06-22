@@ -8,7 +8,6 @@ import {
   Plus,
   Radio,
   Save,
-  ScrollText,
   Shield,
   Trash2,
 } from "lucide-react";
@@ -16,6 +15,7 @@ import { Button } from "../ui/Button";
 import { HandleField, SelectField, TextareaField, TextField } from "../ui/Field";
 import { ImageCropModal } from "../ui/ImageCropModal";
 import { ModalSheet, ModalSheetStatus } from "../ui/ModalSheet";
+import { MarkdownEditor } from "./MarkdownEditor";
 import { UserIdentityLink } from "./UserProfileLink";
 import { validateImageCropFile } from "../../lib/imageCrop";
 import { imageUploadAccept } from "../../lib/mediaFormats";
@@ -337,15 +337,15 @@ export function RoomEditModal({
             onChange={(event) => updateForm("accent", event.currentTarget.value)}
           />
 
-          <TextareaField
-            id="room-rules"
+          <MarkdownEditor
             label="Room rules"
-            icon={ScrollText}
-            className="min-h-32"
+            className="rounded-card border border-line bg-surface/45 p-3"
             maxLength={3000}
             value={form.rules}
             disabled={busy}
-            onChange={(event) => updateForm("rules", event.currentTarget.value)}
+            placeholder="Write room rules with Markdown, @mentions, and HTTPS links."
+            textareaTestId="room-rules"
+            onValueChange={(value) => updateForm("rules", value)}
           />
 
           {mode === "edit" ? (

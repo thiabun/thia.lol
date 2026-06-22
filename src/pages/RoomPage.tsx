@@ -23,6 +23,7 @@ import { useNavigate, useOutletContext, useParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { PostCard } from "../components/social/PostCard";
 import { ReportForm } from "../components/social/ReportForm";
+import { RichText } from "../components/social/RichText";
 import {
   InlineUserProfileLink,
   UserIdentityLink,
@@ -607,9 +608,11 @@ function RoomAbout({
             <ScrollText aria-hidden="true" size={16} className="text-muted" />
             <h2 className="text-sm font-semibold text-text">Rules</h2>
           </div>
-          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">
-            {rules}
-          </p>
+          <RichText
+            markdown
+            text={rules}
+            className="mt-2 space-y-2 break-words text-sm leading-6 text-muted"
+          />
         </Panel>
       ) : null}
 
