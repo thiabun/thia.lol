@@ -697,7 +697,7 @@ function profile_canvas_draft_update(): void
 
     $body = request_json_body();
     profile_module_require_object($body, 'JSON body');
-    profile_module_reject_unknown_keys($body, ['canvasVersion', 'backgroundBlur', 'canvasGlass', 'modules', 'selectedModuleId']);
+    profile_module_reject_unknown_keys($body, ['canvasVersion', 'backgroundBlur', 'canvasGlass', 'modules', 'selectedModuleId', 'updatedAt']);
     profile_canvas_request_version($body['canvasVersion'] ?? PROFILE_CANVAS_VERSION);
 
     $state = profile_canvas_draft_state($userId);

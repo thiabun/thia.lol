@@ -54,6 +54,7 @@ assert_true(str_contains($profileModulesSource, "PROFILE_ACTIVITY_MODULE_TYPE =>
 assert_true(str_contains($profileModulesSource, 'function profile_activity_module_payload'), 'public blank profiles should expose a synthetic Feed payload');
 assert_true(str_contains($profileModulesSource, 'profile_module_preference_exists_including_deleted($userId, PROFILE_ACTIVITY_MODULE_TYPE)'), 'deleted Feed preferences should block automatic recreation');
 assert_true(str_contains($profileModulesSource, 'profile_upgrade_default_feed_module($userId);'), 'blank profiles with old default activity should upgrade to roomy Feed');
+assert_true(str_contains($profileModulesSource, "'selectedModuleId', 'updatedAt'"), 'canvas draft save should accept returned updatedAt round-trips');
 
 $about = profile_module_config('about', ['body' => 'A concise personal note.'], 123);
 assert_true($about['body'] === 'A concise personal note.', 'about body mismatch');

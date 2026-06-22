@@ -2611,12 +2611,19 @@ test("direct canvas point selection creates a draft module through picker and se
     "data-profile-canvas-module-configured",
     "true",
   );
+  await expect(configuredContent).toHaveAttribute(
+    "data-profile-editor-render-mode",
+    "light",
+  );
+  await expect(
+    configuredContent.locator('[data-testid^="profile-canvas-light-preview-"]'),
+  ).toBeVisible();
   await expect(
     configuredContent.evaluate((element) => window.getComputedStyle(element).filter),
-  ).resolves.toContain("blur(18px)");
+  ).resolves.toBe("none");
   await expect(configuredContent).toHaveAttribute(
     "data-profile-canvas-module-frame",
-    "inset",
+    "light",
   );
   await expect
     .poll(() =>
@@ -2624,7 +2631,12 @@ test("direct canvas point selection creates a draft module through picker and se
         (element) => window.getComputedStyle(element).scale,
       ),
     )
-    .not.toBe("none");
+    .toBe("none");
+  await expect(
+    page
+      .getByTestId("profile-canvas-direct-grid")
+      .locator("iframe, video, audio"),
+  ).toHaveCount(0);
   const configuredModuleShell = page.locator(
     '[data-testid^="profile-canvas-module-"][data-profile-grid-module="true"]',
     {
@@ -2714,6 +2726,40 @@ test("direct canvas point selection creates a draft module through picker and se
     pinned: true,
     visibility: "public",
   });
+});
+
+test("direct canvas renders configured modules as light previews", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      withAuditLayout(spotifyEmbedMusicModule({ id: 21, position: 2 }), "4x2", 4, 1),
+      withAuditLayout(youtubeVideoModule({ id: 22, position: 3 }), "5x2", 4, 5),
+      withAuditLayout(uploadedMp3MusicModule({ id: 23, position: 4 }), "4x2", 6, 1),
+      withAuditLayout(galleryModule({ id: 24, position: 5 }), "3x2", 6, 5),
+      withAuditLayout(activityModule({ id: 25, position: 6 }), "5x2", 8, 1),
+    ],
+    profilePosts: [
+      postFixture({ id: 301, body: "This should not render as a live post card." }),
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+
+  const grid = page.getByTestId("profile-canvas-direct-grid");
+  await expect(grid).toBeVisible();
+  await expect(grid.locator("iframe, video, audio")).toHaveCount(0);
+  await expect(grid.getByTestId("profile-canvas-light-preview-21")).toBeVisible();
+  await expect(grid.getByTestId("profile-canvas-light-preview-22")).toBeVisible();
+  await expect(grid.getByTestId("profile-canvas-light-preview-23")).toBeVisible();
+  await expect(grid.getByTestId("profile-canvas-light-preview-24")).toBeVisible();
+  await expect(grid.getByTestId("profile-canvas-light-preview-25")).toBeVisible();
+  await expect(grid.getByTestId("profile-spotify-custom-player")).toHaveCount(0);
+  await expect(grid.getByTestId("profile-uploaded-audio-player")).toHaveCount(0);
+  await expect(grid.getByTestId("profile-uploaded-video-player")).toHaveCount(0);
+  await expect(grid.getByTestId("post-card")).toHaveCount(0);
 });
 
 test("profile editor guide launches from onboarding tour query and can replay", async ({
@@ -3709,6 +3755,15 @@ test("blank draft modules can be pinned moved and deleted in the editor", async 
 
   const blankModule = page.locator('[data-testid^="profile-canvas-blank-module-"]');
   await expect(blankModule).toBeVisible();
+  await expect
+    .poll(() => {
+      const layout = placeholderDraftModule(draftPayload)?.layout as
+        | Record<string, unknown>
+        | undefined;
+
+      return Number(layout?.column ?? 0);
+    })
+    .toBe(blankStartColumn);
   const placeholderShell = page.locator('[data-testid^="profile-canvas-module-"]', {
     has: blankModule,
   });
@@ -3758,10 +3813,21 @@ test("blank draft modules can be pinned moved and deleted in the editor", async 
 
   await blankModule.dispatchEvent("pointerdown", pointerStart);
   await page.dispatchEvent("body", "pointermove", pointerTarget);
+  await expect(page.getByTestId("profile-canvas-drag-preview")).toBeVisible();
+  await expect
+    .poll(() => {
+      const layout = placeholderDraftModule(draftPayload)?.layout as
+        | Record<string, unknown>
+        | undefined;
+
+      return Number(layout?.column ?? blankStartColumn);
+    })
+    .toBe(blankStartColumn);
   await page.dispatchEvent("body", "pointerup", {
     ...pointerTarget,
     buttons: 0,
   });
+  await expect(page.getByTestId("profile-canvas-drag-preview")).toHaveCount(0);
   await expect
     .poll(() => {
       const layout = placeholderDraftModule(draftPayload)?.layout as
@@ -4244,48 +4310,70 @@ test("low-resolution desktop uses compact direct canvas chrome", async ({ page }
   expect(metrics.hasHorizontalOverflow).toBe(false);
 });
 
-test("mobile direct canvas editor uses a 6 by 32 point grid", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  let draftPayload: Record<string, unknown> | undefined;
-  await mockProfileModules(page, {
-    authenticated: true,
-    modules: [],
-    onCanvasDraftSave: (payload) => {
-      draftPayload = payload;
-    },
+test.describe("mobile touch direct canvas", () => {
+  test.use({
+    hasTouch: true,
+    isMobile: true,
+    viewport: { width: 390, height: 844 },
   });
-  await acknowledgeCookieNotice(page);
-  await page.goto("/@thia");
 
-  await page.getByTestId("profile-edit-button").click();
+  test("editor uses a 6 by 32 point grid", async ({ page }) => {
+    let draftPayload: Record<string, unknown> | undefined;
 
-  const grid = page.getByTestId("profile-canvas-direct-grid");
-  await expect(grid).toBeVisible();
-  await expect(grid).toHaveAttribute(
-    "data-profile-canvas-columns",
-    String(PROFILE_CANVAS_MOBILE_COLUMNS),
-  );
-  await expect(grid).toHaveAttribute(
-    "data-profile-canvas-rows",
-    String(PROFILE_CANVAS_MOBILE_ROWS),
-  );
-  await expect(grid).toHaveAttribute("data-profile-canvas-fit-rows", "fixed");
-  await expectGridColumnCount(grid, PROFILE_CANVAS_MOBILE_COLUMNS);
-  await expect(page.getByTestId("profile-canvas-cell-6-32")).toBeVisible();
-  await expect(page.getByTestId("profile-canvas-cell-7-1")).toHaveCount(0);
+    await mockProfileModules(page, {
+      authenticated: true,
+      modules: [],
+      onCanvasDraftSave: (payload) => {
+        draftPayload = payload;
+      },
+    });
+    await acknowledgeCookieNotice(page);
+    await page.goto("/@thia");
 
-  await page.getByTestId("profile-canvas-cell-1-19").click();
-  await page.getByTestId("profile-canvas-cell-2-19").click();
-  await expect(page.locator('[data-testid^="profile-canvas-blank-module-"]')).toBeVisible();
-  await expect
-    .poll(() => {
-      const layout = placeholderDraftModule(draftPayload)?.layout as
-        | Record<string, unknown>
-        | undefined;
+    await page.getByTestId("profile-edit-button").click();
 
-      return `${layout?.column}:${layout?.row}:${layout?.colSpan}:${layout?.rowSpan}`;
-    })
-    .toBe("1:10:2:1");
+    const editor = page.getByTestId("profile-canvas-editor");
+    const grid = page.getByTestId("profile-canvas-direct-grid");
+    await expect(editor).toHaveAttribute("data-profile-editor-input-mode", "touch");
+    await expect(editor).toHaveAttribute("data-profile-editor-render-mode", "light");
+    await expect(grid).toBeVisible();
+    await expect(grid).toHaveAttribute(
+      "data-profile-canvas-columns",
+      String(PROFILE_CANVAS_MOBILE_COLUMNS),
+    );
+    await expect(grid).toHaveAttribute(
+      "data-profile-canvas-rows",
+      String(PROFILE_CANVAS_MOBILE_ROWS),
+    );
+    await expect(grid).toHaveAttribute("data-profile-canvas-fit-rows", "fixed");
+    await expectGridColumnCount(grid, PROFILE_CANVAS_MOBILE_COLUMNS);
+    await expect(page.getByTestId("profile-canvas-cell-6-32")).toBeVisible();
+    await expect(page.getByTestId("profile-canvas-cell-7-1")).toHaveCount(0);
+
+    await page.getByTestId("profile-canvas-cell-1-19").tap();
+    await page.getByTestId("profile-canvas-cell-2-19").tap();
+    await expect(page.getByTestId("profile-module-picker")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("profile-module-picker")).toHaveCount(0);
+    const blankModuleShell = page.locator('[data-testid^="profile-canvas-module-"]', {
+      has: page.locator('[data-testid^="profile-canvas-blank-module-"]'),
+    });
+    await expect(blankModuleShell).toBeVisible();
+    await expect(blankModuleShell.getByTestId("profile-canvas-mobile-actions")).toBeVisible();
+    await expect(page.locator('[data-testid^="profile-canvas-resize-handle-"]')).toHaveCount(0);
+    await blankModuleShell.locator('[data-testid^="profile-canvas-mobile-size-"]').tap();
+    await expect(page.getByTestId("profile-module-settings")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect
+      .poll(() => {
+        const layout = placeholderDraftModule(draftPayload)?.layout as
+          | Record<string, unknown>
+          | undefined;
+
+        return `${layout?.column}:${layout?.row}:${layout?.colSpan}:${layout?.rowSpan}`;
+      })
+      .toBe("1:10:2:1");
+  });
 });
 
 test("mobile canvas packs profile info first and activity last", async ({ page }) => {
@@ -5559,6 +5647,7 @@ test("profile module API guardrails are present by inspection", async () => {
   const configExample = readFileSync("backend/config/config.example.php", "utf8");
   const moduleRegistry = readFileSync("src/lib/profileModuleRegistry.ts", "utf8");
   const profilePage = readFileSync("src/pages/ProfilePage.tsx", "utf8");
+  const profileGrid = readFileSync("src/components/social/ProfileGrid.tsx", "utf8");
   const profileEvolution = readFileSync("docs/profile-personal-space-evolution.md", "utf8");
   const safetyRules = readFileSync("docs/profile-customization-safety-rules.md", "utf8");
   const productGuidelines = readFileSync("docs/product-ui-ux-guidelines.md", "utf8");
@@ -5594,12 +5683,19 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(modulesApi).toContain("const PROFILE_CREATOR_LIVE_MODULE_TYPE = 'creator_live'");
   expect(modulesApi).toContain("const PROFILE_MUSIC_MODULE_TYPE = 'music'");
   expect(moduleRegistry).toContain(
-    'allowedSizes: ["2x2", "2x3", "3x2", "4x2", "3x3", "3x4"]',
+    'const connectionSizes = uniqueSizes(\n  ["2x2", "2x3", "3x2", "4x2", "3x3", "3x4"],\n  wideSlimSizes',
   );
   expect(modulesApi).toContain(
-    "'links', PROFILE_CONNECTIONS_MODULE_TYPE => ['2x2', '2x3', '3x2', '4x2', '3x3', '3x4']",
+    "$connectionSizes = profile_canvas_unique_sizes(['2x2', '2x3', '3x2', '4x2', '3x3', '3x4'], $wideSlimSizes)",
   );
   expect(moduleRegistry).toContain('profile_info: {\n    allowedSizes: ["3x2", "3x3", "4x3", "6x3", "8x3", "8x4"]');
+  expect(profileGrid).toContain("fitRowsToContent\n      ? new MutationObserver");
+  expect(profileGrid).toContain("mutationObserver?.observe");
+  expect(profilePage).toContain("requestAnimationFrame");
+  expect(profilePage).toContain("profile-canvas-drag-preview");
+  expect(profilePage).toContain("profile-canvas-mobile-actions");
+  expect(profilePage).toContain('data-profile-editor-render-mode="light"');
+  expect(profilePage).toContain('data-profile-editor-input-mode={editorGrid.mobile ? "touch" : "pointer"}');
   expect(modulesApi).toContain(
     "PROFILE_INFO_MODULE_TYPE => ['3x2', '3x3', '4x3', '6x3', '8x3', '8x4']",
   );

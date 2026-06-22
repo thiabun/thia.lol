@@ -105,8 +105,11 @@ export function ProfileGrid({
 
     const resizeObserver = new ResizeObserver(updateGridLayout);
     resizeObserver.observe(element);
-    const mutationObserver = new MutationObserver(updateGridLayout);
-    mutationObserver.observe(element, {
+    const mutationObserver = fitRowsToContent
+      ? new MutationObserver(updateGridLayout)
+      : undefined;
+
+    mutationObserver?.observe(element, {
       attributes: true,
       childList: true,
       subtree: true,
@@ -114,7 +117,7 @@ export function ProfileGrid({
     window.addEventListener("resize", updateGridLayout);
 
     return () => {
-      mutationObserver.disconnect();
+      mutationObserver?.disconnect();
       resizeObserver.disconnect();
       window.removeEventListener("resize", updateGridLayout);
     };
