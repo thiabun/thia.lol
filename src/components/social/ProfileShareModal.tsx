@@ -217,7 +217,7 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
       ) : null}
       {cardState === "error" ? (
         <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
-          Image generation failed. You can still open the current cached card at{" "}
+          Image generation or upload failed. You can still open the current cached card at{" "}
           <a className="underline" href={profileShareCardUrl(profile)} rel="noreferrer" target="_blank">
             this link
           </a>

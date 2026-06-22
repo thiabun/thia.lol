@@ -72,6 +72,8 @@ assert_true(str_contains($postsSource, 'SHARE_CARD_LOGICAL_WIDTH = 1200'), 'shar
 assert_true(str_contains($postsSource, 'SHARE_CARD_LOGICAL_HEIGHT = 630'), 'share cards should keep the standard preview aspect height');
 assert_true(str_contains($postsSource, 'SHARE_CARD_RENDER_SCALE = 2'), 'share-card cache should store 2x PNG captures');
 assert_true(str_contains($postsSource, "SHARE_CARD_CACHE_RENDER_VERSION = 'mosaic-v6'"), 'share-card cache should include a render-version key so stale card designs are bypassed');
+assert_true(str_contains($postsSource, 'SHARE_CARD_MAX_UPLOAD_BYTES = 33554432'), 'share-card cache upload should allow high-resolution browser-rendered PNGs');
+assert_true(str_contains($postsSource, 'Share card image must be 32 MB or smaller.'), 'share-card upload limit error should match the high-resolution cache allowance');
 assert_true(str_contains($postsSource, 'function posts_share_card_cache_create'), 'post share cards should expose an authenticated cache upload endpoint');
 assert_true(str_contains($postsSource, 'function profile_share_card_cache_create'), 'profile share cards should expose an authenticated cache upload endpoint');
 assert_true(str_contains($postsSource, "share_card_cache_path('post'"), 'post share-card endpoint should check cached screenshots first');

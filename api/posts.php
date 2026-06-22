@@ -573,7 +573,7 @@ const SHARE_CARD_LOGICAL_WIDTH = 1200;
 const SHARE_CARD_LOGICAL_HEIGHT = 630;
 const SHARE_CARD_RENDER_SCALE = 2;
 const SHARE_CARD_CACHE_RENDER_VERSION = 'mosaic-v6';
-const SHARE_CARD_MAX_UPLOAD_BYTES = 12582912;
+const SHARE_CARD_MAX_UPLOAD_BYTES = 33554432;
 
 function posts_share_card_s(int|float $value): int
 {
@@ -897,7 +897,7 @@ function share_card_store_uploaded_png(string $kind, string $key): string
     $contentLength = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
 
     if ($contentLength > SHARE_CARD_MAX_UPLOAD_BYTES) {
-        json_error('Share card image must be 12 MB or smaller.', 413);
+        json_error('Share card image must be 32 MB or smaller.', 413);
     }
 
     $file = $_FILES['card'] ?? null;
