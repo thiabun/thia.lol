@@ -160,7 +160,8 @@ function PageLoadingOverlay({
                 }}
               />
               <motion.div
-                animate={{ y: [0, -4, 0], scale: [1, 1.04, 1] }}
+                animate={{ scale: [1, 1.04, 1] }}
+                style={{ transformOrigin: "center" }}
                 transition={{
                   duration: 1.8,
                   ease: fluidEase,
