@@ -127,10 +127,10 @@ export function MarkdownEditor({
           Preview
         </button>
       </div>
-      <div className="grid gap-2 lg:grid-cols-2">
+      <div className="overflow-hidden rounded-control border border-line bg-canvas/45 transition focus-within:border-line-strong focus-within:outline-2 focus-within:outline-focus">
         <MentionTextarea
           ref={textareaRef}
-          className="min-h-36 w-full resize-y rounded-control border border-line bg-canvas/45 px-3 py-2 font-mono text-sm leading-6 text-text outline-none transition focus:border-line-strong focus:outline-2 focus:outline-focus"
+          className="min-h-32 w-full resize-y border-0 bg-transparent px-3 py-2 font-mono text-sm leading-6 text-text outline-none"
           maxLength={maxLength}
           placeholder={placeholder}
           value={value}
@@ -142,7 +142,7 @@ export function MarkdownEditor({
         <div
           ref={previewRef}
           tabIndex={-1}
-          className="min-h-36 rounded-control border border-line bg-canvas/45 p-3 outline-none transition focus:outline-2 focus:outline-focus"
+          className="min-h-24 border-t border-line/70 bg-surface/35 p-3 outline-none transition focus:bg-surface/45"
           data-testid="profile-markdown-preview"
         >
           {value.trim() ? (
