@@ -2643,11 +2643,24 @@ test("direct canvas point selection creates a draft module through picker and se
       has: page.getByText("Canvas note configured from settings."),
     },
   );
+  await expect(configuredModuleShell).toHaveAttribute(
+    "data-profile-grid-layout-animation",
+    "false",
+  );
   const configuredPinButton = configuredModuleShell.locator(
     '[data-testid^="profile-canvas-pin-module-"]',
   );
+  const configuredRemoveButton = configuredModuleShell.locator(
+    '[data-testid^="profile-canvas-remove-module-"]',
+  );
   await expect(configuredPinButton).toBeVisible();
   await expect(configuredPinButton).toHaveAttribute("aria-pressed", "false");
+  await expect(configuredRemoveButton).toBeVisible();
+  await expect(
+    page
+      .getByTestId("profile-canvas-module-9001")
+      .locator('[data-testid^="profile-canvas-remove-module-"]'),
+  ).toHaveCount(0);
   await expect(
     page.getByTestId("profile-module-settings").getByRole("button", { name: /^Pin$/ }),
   ).toHaveCount(0);
@@ -2884,7 +2897,7 @@ test("direct canvas supports a 6x10 activity selection envelope", async ({
   await expect(activity).toContainText("Full");
 });
 
-test("direct canvas keeps 4x6 activity blurred in editor and public after save", async ({
+test("direct canvas keeps 4x6 activity light in editor and public after save", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
@@ -2909,36 +2922,30 @@ test("direct canvas keeps 4x6 activity blurred in editor and public after save",
 
   const activityContent = page.locator(
     '[data-testid^="profile-canvas-module-content-"]',
-    { has: page.getByTestId("profile-activity") },
+    { hasText: "Feed" },
   );
   await expect(activityContent).toHaveAttribute(
     "data-profile-canvas-module-configured",
     "true",
   );
-  await expect(
-    activityContent.evaluate((element) => window.getComputedStyle(element).filter),
-  ).resolves.toContain("blur(18px)");
+  await expect(activityContent).toHaveAttribute(
+    "data-profile-editor-render-mode",
+    "light",
+  );
+  await expect(activityContent).toHaveAttribute(
+    "data-profile-canvas-module-frame",
+    "light",
+  );
   await expect(activityContent).toHaveAttribute(
     "data-profile-module-content-interactive",
     "false",
   );
   await expect(activityContent).toHaveAttribute("inert", "");
-  await expect(activityContent.getByTestId("post-body-open-thread").first()).toBeVisible();
-
-  const postBodyBox = await activityContent
-    .getByTestId("post-body-open-thread")
-    .first()
-    .boundingBox();
-
-  expect(postBodyBox).not.toBeNull();
-  if (postBodyBox) {
-    await page.mouse.click(
-      postBodyBox.x + postBodyBox.width / 2,
-      postBodyBox.y + postBodyBox.height / 2,
-    );
-  }
-
+  await expect(activityContent.getByTestId("profile-activity")).toHaveCount(0);
+  await expect(activityContent.getByTestId("post-body-open-thread")).toHaveCount(0);
   await expect(page.getByTestId("thread-modal")).toHaveCount(0);
+  await page.getByTestId("profile-module-settings-done").click();
+  await expect(page.getByTestId("profile-module-settings")).toHaveCount(0);
 
   await page.getByTestId("profile-canvas-save-button").click();
   await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
@@ -3690,8 +3697,8 @@ test("direct canvas cancel discards an uncommitted draft module", async ({ page 
   await page.goto("/@thia");
 
   await page.getByTestId("profile-edit-button").click();
-  await page.getByTestId("profile-canvas-cell-1-5").click();
-  await page.getByTestId("profile-canvas-cell-2-6").click();
+  await page.getByTestId("profile-canvas-cell-1-11").click();
+  await page.getByTestId("profile-canvas-cell-2-12").click();
   await expect(page.locator('[data-testid^="profile-canvas-add-module-"]')).toBeVisible();
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Cancel" }).click();
@@ -3774,6 +3781,10 @@ test("blank draft modules can be pinned moved and deleted in the editor", async 
   await expect(
     page.locator('[data-testid^="profile-canvas-delete-placeholder-"]'),
   ).toBeVisible();
+  await expect(placeholderShell).toHaveAttribute(
+    "data-profile-grid-layout-animation",
+    "false",
+  );
 
   await placeholderPinButton.click();
   await expect(
@@ -3814,6 +3825,10 @@ test("blank draft modules can be pinned moved and deleted in the editor", async 
   await blankModule.dispatchEvent("pointerdown", pointerStart);
   await page.dispatchEvent("body", "pointermove", pointerTarget);
   await expect(page.getByTestId("profile-canvas-drag-preview")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-drag-preview")).toHaveAttribute(
+    "data-profile-grid-layout-animation",
+    "false",
+  );
   await expect
     .poll(() => {
       const layout = placeholderDraftModule(draftPayload)?.layout as
@@ -3843,6 +3858,59 @@ test("blank draft modules can be pinned moved and deleted in the editor", async 
   await expect
     .poll(() => Boolean(placeholderDraftModule(draftPayload)))
     .toBe(false);
+});
+
+test("direct canvas remove control deletes configured modules without opening settings", async ({
+  page,
+}) => {
+  let draftPayload: Record<string, unknown> | undefined;
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      withAuditLayout(
+        aboutModule({ id: 1, title: "About", body: "Remove me from canvas." }),
+        "3x2",
+        4,
+        4,
+      ),
+    ],
+    onCanvasDraftSave: (payload) => {
+      draftPayload = payload;
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+
+  const moduleShell = page.getByTestId("profile-canvas-module-1");
+  await expect(moduleShell).toBeVisible();
+  await expect(moduleShell).toHaveAttribute(
+    "data-profile-grid-layout-animation",
+    "false",
+  );
+  await expect(page.getByTestId("profile-canvas-remove-module-1")).toBeVisible();
+  await expect(
+    page
+      .getByTestId("profile-canvas-module-9001")
+      .locator('[data-testid^="profile-canvas-remove-module-"]'),
+  ).toHaveCount(0);
+
+  await page.getByTestId("profile-canvas-remove-module-1").click();
+
+  await expect(page.getByTestId("profile-module-settings")).toHaveCount(0);
+  await expect(page.getByTestId("profile-canvas-module-1")).toHaveCount(0);
+  await expect
+    .poll(() => {
+      const modules = Array.isArray(draftPayload?.modules)
+        ? (draftPayload.modules as Array<Record<string, unknown>>)
+        : [];
+      const removed = modules.find((module) => module.id === 1);
+
+      return `${removed?.status ?? ""}:${removed?.visibility ?? ""}`;
+    })
+    .toBe("deleted:hidden");
 });
 
 test("one-cell blank module keeps its add affordance inside the module", async ({

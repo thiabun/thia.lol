@@ -3251,7 +3251,11 @@ function useProfileCanvasEditorGridProjection(): {
   rows: 16 | 32;
   mobile: boolean;
 } {
-  const [mobile, setMobile] = useState(false);
+  const [mobile, setMobile] = useState(() =>
+    typeof window === "undefined"
+      ? false
+      : window.matchMedia("(max-width: 1023px)").matches,
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -3308,6 +3312,44 @@ function profileCanvasDesktopPointFromEditorPoint(
     column: desktopColumn,
     row: desktopRow,
   };
+}
+
+function profileCanvasEditorCellKeyFromDesktopPoint(
+  point: CanvasPoint,
+  mobile: boolean,
+): string {
+  if (!mobile) {
+    return `${point.column}:${point.row}`;
+  }
+
+  const leftHalf = point.column <= PROFILE_CANVAS_MOBILE_COLUMNS;
+  const column = leftHalf
+    ? point.column
+    : point.column - PROFILE_CANVAS_MOBILE_COLUMNS;
+  const row = (point.row - 1) * 2 + (leftHalf ? 1 : 2);
+
+  return `${column}:${row}`;
+}
+
+function profileCanvasOccupiedEditorCellKeysForLayout(
+  layout: ProfileModuleLayout,
+  mobile: boolean,
+): Set<string> {
+  const occupied = new Set<string>();
+
+  for (let row = layout.row; row < layout.row + layout.rowSpan; row += 1) {
+    for (
+      let column = layout.column;
+      column < layout.column + layout.colSpan;
+      column += 1
+    ) {
+      occupied.add(
+        profileCanvasEditorCellKeyFromDesktopPoint({ column, row }, mobile),
+      );
+    }
+  }
+
+  return occupied;
 }
 
 function profileCanvasDesktopRectFromEditorPoints(
@@ -4752,27 +4794,20 @@ function ProfileDirectCanvasEditor({
     [editorGrid.columns, editorGrid.rows],
   );
   const occupiedEditorCellKeys = useMemo(() => {
-    const layouts = sortedModules.map((draftModule, index) =>
-      draftModule.layout ?? profileCanvasDefaultClientLayout(draftModule, index),
-    );
     const occupied = new Set<string>();
 
-    editorCells.forEach((point) => {
-      const layoutPoint = profileCanvasDesktopPointFromEditorPoint(
-        point,
-        editorGrid.mobile,
-      );
-      const covered = layouts.some((layout) =>
-        profileCanvasPointInRect(layoutPoint, layout),
-      );
+    sortedModules.forEach((draftModule, index) => {
+      const layout =
+        draftModule.layout ?? profileCanvasDefaultClientLayout(draftModule, index);
 
-      if (covered) {
-        occupied.add(`${point.column}:${point.row}`);
-      }
+      profileCanvasOccupiedEditorCellKeysForLayout(
+        layout,
+        editorGrid.mobile,
+      ).forEach((key) => occupied.add(key));
     });
 
     return occupied;
-  }, [editorCells, editorGrid.mobile, sortedModules]);
+  }, [editorGrid.mobile, sortedModules]);
   const pickerModule = sortedModules.find((module) => module.id === pickerModuleId);
   const settingsModule = sortedModules.find((module) => module.id === settingsModuleId);
   const integrationConnectionLinks = useMemo(
@@ -5575,6 +5610,7 @@ function ProfileDirectCanvasEditor({
                   : "border-rose/80 bg-rose/18 shadow-[0_0_0_4px_color-mix(in_oklab,var(--accent-rose)_16%,transparent)]",
               )}
               layout={dragState.previewLayout}
+              layoutAnimation={false}
               size={dragState.size}
               testId="profile-canvas-drag-preview"
             >
@@ -5595,6 +5631,7 @@ function ProfileDirectCanvasEditor({
                   : "border border-rose/80 bg-rose/18 shadow-[0_0_0_4px_color-mix(in_oklab,var(--accent-rose)_16%,transparent)]",
               )}
               layout={resizeState.previewLayout}
+              layoutAnimation={false}
               size={resizeState.size}
               testId="profile-canvas-resize-preview"
             >
@@ -5629,6 +5666,10 @@ function ProfileDirectCanvasEditor({
           const pinLabel = module.pinned
             ? `Unpin ${placeholder ? "blank module" : moduleTitle}`
             : `Pin ${placeholder ? "blank module" : moduleTitle}`;
+          const removable = module.type !== "profile_info";
+          const removeLabel = placeholder
+            ? "Delete blank module"
+            : `Remove ${moduleTitle}`;
           const editControlSize = placeholderMicro ? "size-6" : "size-8";
           const editControlIconSize = placeholderMicro ? 12 : 15;
 
@@ -5644,6 +5685,7 @@ function ProfileDirectCanvasEditor({
               )}
               data-profile-canvas-preview-blurred={configured ? "true" : undefined}
               layout={layout}
+              layoutAnimation={false}
               pinned={module.pinned}
               size={size}
               testId={`profile-canvas-module-${module.id}`}
@@ -5789,17 +5831,26 @@ function ProfileDirectCanvasEditor({
                 )}
                 data-profile-edit-control="true"
               >
-                {placeholder ? (
+                {removable ? (
                   <button
                     type="button"
                     className={cn(
                       "grid place-items-center rounded-full border border-line bg-surface/92 text-rose-ink shadow-soft backdrop-blur-veil transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
                       editControlSize,
                     )}
-                    aria-label="Delete blank module"
-                    title="Delete blank module"
-                    data-testid={`profile-canvas-delete-placeholder-${module.id}`}
-                    onClick={() => handleRemoveModule(module)}
+                    aria-label={removeLabel}
+                    title={removeLabel}
+                    data-profile-edit-control="true"
+                    data-testid={
+                      placeholder
+                        ? `profile-canvas-delete-placeholder-${module.id}`
+                        : `profile-canvas-remove-module-${module.id}`
+                    }
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      handleRemoveModule(module);
+                    }}
                   >
                     <Trash2 aria-hidden="true" size={editControlIconSize} />
                   </button>

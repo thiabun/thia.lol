@@ -50,8 +50,12 @@ export function ProfileGrid({
   testId = "profile-grid",
 }: ProfileGridProps) {
   const localGridRef = useRef<HTMLDivElement | null>(null);
-  const [activeColumnCount, setActiveColumnCount] = useState(1);
-  const [activeRowBudget, setActiveRowBudget] = useState<number>(maxRows);
+  const [activeColumnCount, setActiveColumnCount] = useState(() =>
+    profileGridActiveColumnCount(maxColumns),
+  );
+  const [activeRowBudget, setActiveRowBudget] = useState<number>(() =>
+    profileGridActiveRowCount(maxRows),
+  );
   const [measuredCellSize, setMeasuredCellSize] = useState<number | undefined>();
   const setGridElement = useCallback(
     (element: HTMLDivElement | null) => {
@@ -297,6 +301,7 @@ type ProfileGridModuleProps = {
   className?: string | undefined;
   dragging?: boolean | undefined;
   layout?: ProfileModuleLayout | null | undefined;
+  layoutAnimation?: boolean | undefined;
   presentation?:
     | {
         compact: boolean;
@@ -320,6 +325,7 @@ export function ProfileGridModule({
   className,
   dragging = false,
   layout,
+  layoutAnimation = true,
   presentation,
   pinned = false,
   selected = false,
@@ -348,7 +354,7 @@ export function ProfileGridModule({
 
   return (
     <motion.div
-      layout
+      layout={layoutAnimation}
       transition={{
         layout: softSpring,
         opacity: { duration: 0.16, ease: "easeOut" },
@@ -360,6 +366,7 @@ export function ProfileGridModule({
         className,
       )}
       data-profile-grid-placement={layout ? "manual" : "auto"}
+      data-profile-grid-layout-animation={layoutAnimation ? "true" : "false"}
       data-profile-grid-module="true"
       data-profile-module-pinned={pinned ? "true" : undefined}
       data-profile-grid-column-span={span.columns}
