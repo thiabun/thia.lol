@@ -79,11 +79,45 @@ export function PostCard({
   onDelete,
   onHide,
 }: PostCardProps) {
-  const showActions = canDelete || canHide;
-  const { csrfToken, runWithAuth, status } = useAuth();
+  const { csrfToken, runWithAuth, status, user } = useAuth();
+  const effectiveCanDelete = canDelete || canDeletePost(user, post);
+  const showActions = effectiveCanDelete || canHide;
   const [commentCount, setCommentCount] = useState(post.commentCount);
   const [threadOpen, setThreadOpen] = useState(false);
   const [threadComposerOpen, setThreadComposerOpen] = useState(false);
+  const [localDeletePending, setLocalDeletePending] = useState(false);
+  const [localDeleteError, setLocalDeleteError] = useState<string>();
+  const [locallyDeleted, setLocallyDeleted] = useState(false);
+
+  async function handleDeletePost(): Promise<boolean> {
+    if (!effectiveCanDelete || actionPending || localDeletePending) {
+      return false;
+    }
+
+    if (onDelete) {
+      onDelete(post);
+      return true;
+    }
+
+    setLocalDeletePending(true);
+    setLocalDeleteError(undefined);
+
+    try {
+      await runWithAuth(
+        (freshCsrfToken) => deletePost(post.id, freshCsrfToken),
+        { retryOnCsrf: true },
+      );
+      setLocallyDeleted(true);
+      return true;
+    } catch (error) {
+      setLocalDeleteError(
+        error instanceof Error ? error.message : "Post could not be deleted.",
+      );
+      return false;
+    } finally {
+      setLocalDeletePending(false);
+    }
+  }
 
   function openThread(options?: { compose?: boolean }) {
     setThreadComposerOpen(Boolean(options?.compose));
@@ -114,6 +148,10 @@ export function PostCard({
   const cardMotionProps = threadOpen
     ? {}
     : { whileHover: cardHover, whileTap: cardTap };
+
+  if (locallyDeleted) {
+    return null;
+  }
 
   return (
     <>
@@ -204,19 +242,24 @@ export function PostCard({
                       onClick={() => onHide?.(post)}
                     />
                   ) : null}
-                  {canDelete ? (
+                  {effectiveCanDelete ? (
                     <PostActionIconButton
                       label="Delete post"
-                      disabled={actionPending}
+                      disabled={actionPending || localDeletePending}
                       variant="ghost"
                       icon={<Trash2 aria-hidden="true" size={15} />}
-                      onClick={() => onDelete?.(post)}
+                      onClick={() => void handleDeletePost()}
                     />
                   ) : null}
                 </>
               ) : null
             }
           />
+          {localDeleteError ? (
+            <p className="mt-3 rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
+              {localDeleteError}
+            </p>
+          ) : null}
         </Panel>
       </motion.article>
       {threadOpen ? (
@@ -227,12 +270,15 @@ export function PostCard({
           csrfToken={csrfToken}
           initialComposerOpen={threadComposerOpen}
           runWithAuth={runWithAuth}
-          canDeleteRoot={canDelete}
-          actionPending={actionPending}
+          canDeleteRoot={effectiveCanDelete}
+          actionPending={actionPending || localDeletePending}
           onClose={() => setThreadOpen(false)}
-          onRootDelete={() => {
-            onDelete?.(post);
-            setThreadOpen(false);
+          onRootDelete={async () => {
+            const deleted = await handleDeletePost();
+
+            if (deleted) {
+              setThreadOpen(false);
+            }
           }}
           onReplyCreated={() => setCommentCount((current) => current + 1)}
           onReplyDeleted={() => setCommentCount((current) => Math.max(0, current - 1))}
@@ -851,7 +897,7 @@ type ThreadModalProps = {
   canDeleteRoot: boolean;
   actionPending: boolean;
   onClose: () => void;
-  onRootDelete: () => void;
+  onRootDelete: () => void | Promise<void>;
   onReplyCreated: (post: Post) => void;
   onReplyDeleted: (post: Post) => void;
 };

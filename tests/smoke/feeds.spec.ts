@@ -1213,6 +1213,57 @@ test("post report and delete controls stay isolated from body open", async ({
   await expect(page.getByRole("heading", { name: "Report post" })).toBeVisible();
 });
 
+test("post permalink shows a trash delete action for the author", async ({
+  page,
+}) => {
+  await mockAuthenticatedApi(page);
+  let deleted = false;
+
+  await page.route("**/api/posts/42", async (route) => {
+    if (route.request().method() === "DELETE") {
+      deleted = true;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: { id: 42, status: "removed", deletedAt: "2026-06-10 11:00:00" },
+        }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: makePost({
+          author: {
+            id: 1,
+            handle: "viewer",
+            displayName: "Viewer",
+            initials: "V",
+            aura: "frost",
+            avatarUrl: null,
+          },
+        }),
+      }),
+    });
+  });
+  await page.route("**/api/posts/42/replies", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    }),
+  );
+
+  await page.goto("/@viewer/posts/42");
+
+  await page.getByRole("button", { name: "Delete post" }).click();
+
+  await expect(page.getByTestId("post-card-open-thread")).toHaveCount(0);
+  expect(deleted).toBe(true);
+});
+
 test("thread modal root and reply identities navigate to profiles", async ({ page }) => {
   await mockAuthenticatedApi(page);
 
