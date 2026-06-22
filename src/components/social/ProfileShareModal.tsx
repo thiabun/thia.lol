@@ -107,10 +107,16 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
       );
 
       if (publish) {
-        await runWithAuth(
+        const publishPromise = runWithAuth(
           (csrfToken) => profileShareCardCacheUpload(profile, blob, csrfToken),
           { retryOnCsrf: true },
-        ).catch(() => undefined);
+        );
+
+        if (silent) {
+          await publishPromise.catch(() => undefined);
+        } else {
+          await publishPromise;
+        }
       }
 
       if (!silent) {

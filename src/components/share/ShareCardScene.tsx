@@ -59,7 +59,7 @@ const fallbackPalette: SharePalette = {
   accent: "#61e2d4",
 };
 
-const SHARE_CARD_RENDER_VERSION = "mosaic-v5";
+const SHARE_CARD_RENDER_VERSION = "mosaic-v6";
 
 export function ShareCardScene(props: ShareCardSceneProps) {
   const palette =

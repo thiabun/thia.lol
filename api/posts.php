@@ -572,7 +572,7 @@ function post_share_result(int $recipientUserId, string $status, string $error):
 const SHARE_CARD_LOGICAL_WIDTH = 1200;
 const SHARE_CARD_LOGICAL_HEIGHT = 630;
 const SHARE_CARD_RENDER_SCALE = 2;
-const SHARE_CARD_CACHE_RENDER_VERSION = 'mosaic-v5';
+const SHARE_CARD_CACHE_RENDER_VERSION = 'mosaic-v6';
 const SHARE_CARD_MAX_UPLOAD_BYTES = 12582912;
 
 function posts_share_card_s(int|float $value): int

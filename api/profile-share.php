@@ -180,7 +180,7 @@ function profile_share_page_card_version(array $profile): string
         ? (string) ((int) filemtime($cachedCardPath))
         : 'uncached';
     $basis = implode('|', [
-        'mosaic-v5',
+        'mosaic-v6',
         $cachedCardMtime,
         (string) ($profile['user']['handle'] ?? ''),
         (string) ($profile['updatedAt'] ?? ''),
@@ -216,7 +216,7 @@ function profile_share_page_cached_card_path(string $handle): ?string
         return null;
     }
 
-    return dirname(__DIR__) . '/uploads/share-cards/profiles/' . $normalized . '-mosaic-v5.png';
+    return dirname(__DIR__) . '/uploads/share-cards/profiles/' . $normalized . '-mosaic-v6.png';
 }
 
 function profile_share_page_cached_card_url_path(string $handle): ?string
@@ -227,5 +227,5 @@ function profile_share_page_cached_card_url_path(string $handle): ?string
         return null;
     }
 
-    return '/uploads/share-cards/profiles/' . rawurlencode($normalized . '-mosaic-v5.png');
+    return '/uploads/share-cards/profiles/' . rawurlencode($normalized . '-mosaic-v6.png');
 }
