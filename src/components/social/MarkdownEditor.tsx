@@ -9,7 +9,7 @@ import {
   Minus,
   Quote,
 } from "lucide-react";
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, type UIEvent } from "react";
 import { cn } from "../../lib/classNames";
 import type { RichTextEntity } from "../../lib/types";
 import { MentionTextarea } from "./MentionTextarea";
@@ -79,6 +79,17 @@ export function MarkdownEditor({
     });
   }
 
+  function handleEditorScroll(event: UIEvent<HTMLTextAreaElement>) {
+    const preview = previewRef.current;
+
+    if (!preview) {
+      return;
+    }
+
+    preview.scrollTop = event.currentTarget.scrollTop;
+    preview.scrollLeft = event.currentTarget.scrollLeft;
+  }
+
   return (
     <div
       className={cn("space-y-2", className)}
@@ -117,32 +128,14 @@ export function MarkdownEditor({
             </button>
           );
         })}
-        <button
-          type="button"
-          className="ml-auto inline-flex min-h-8 items-center gap-1 rounded-control bg-accent-soft px-2 text-xs font-semibold text-accent-strong transition duration-fluid ease-fluid hover:bg-accent-soft/80 focus-visible:outline-2 focus-visible:outline-focus"
-          disabled={disabled}
-          data-testid="profile-markdown-button-preview"
-          onClick={() => previewRef.current?.focus()}
-        >
-          Preview
-        </button>
       </div>
-      <div className="overflow-hidden rounded-control border border-line bg-canvas/45 transition focus-within:border-line-strong focus-within:outline-2 focus-within:outline-focus">
-        <MentionTextarea
-          ref={textareaRef}
-          className="min-h-32 w-full resize-y border-0 bg-transparent px-3 py-2 font-mono text-sm leading-6 text-text outline-none"
-          maxLength={maxLength}
-          placeholder={placeholder}
-          value={value}
-          aria-label={label}
-          disabled={disabled}
-          data-testid={textareaTestId}
-          onValueChange={onValueChange}
-        />
+      <div
+        className="relative min-h-44 overflow-hidden rounded-control border border-line bg-canvas/45 transition focus-within:border-line-strong focus-within:outline-2 focus-within:outline-focus"
+        data-testid="profile-markdown-surface"
+      >
         <div
           ref={previewRef}
-          tabIndex={-1}
-          className="min-h-24 border-t border-line/70 bg-surface/35 p-3 outline-none transition focus:bg-surface/45"
+          className="pointer-events-none absolute inset-0 overflow-hidden px-3 py-2"
           data-testid="profile-markdown-preview"
         >
           {value.trim() ? (
@@ -150,12 +143,25 @@ export function MarkdownEditor({
               markdown
               text={value}
               entities={entities}
-              className="space-y-2 break-words text-sm leading-6 text-muted"
+              className="space-y-2 break-words text-sm leading-6 text-text"
             />
           ) : (
-            <p className="text-sm text-muted">Preview appears here.</p>
+            <p className="text-sm leading-6 text-muted">{placeholder}</p>
           )}
         </div>
+        <MentionTextarea
+          ref={textareaRef}
+          wrapperClassName="relative z-10"
+          className="min-h-44 w-full resize-y border-0 bg-transparent px-3 py-2 text-sm leading-6 text-transparent caret-accent-strong outline-none selection:bg-accent-soft/65"
+          maxLength={maxLength}
+          placeholder=""
+          value={value}
+          aria-label={label}
+          disabled={disabled}
+          data-testid={textareaTestId}
+          onScroll={handleEditorScroll}
+          onValueChange={onValueChange}
+        />
       </div>
     </div>
   );

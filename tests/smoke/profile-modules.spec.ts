@@ -5476,6 +5476,9 @@ test("profile text modules use the Markdown editor and preview", async ({ page }
 
   await expect(editor).toBeVisible();
   await expect(editor.getByTestId("profile-markdown-toolbar")).toBeVisible();
+  await expect(editor.getByTestId("profile-markdown-surface")).toContainText("Starter text.");
+  await expect(editor.getByTestId("profile-markdown-surface").getByTestId("profile-module-settings-body")).toBeVisible();
+  await expect(editor.getByTestId("profile-markdown-surface").getByTestId("profile-markdown-preview")).toBeVisible();
   await input.fill("Favorite artist");
   await input.selectText();
   await editor.getByTestId("profile-markdown-button-bold").click();
