@@ -23,7 +23,6 @@ test("room edit save uses the API and updates the header", async ({ page }) => {
   await modal
     .getByLabel("Room rules")
     .fill("## Be kind\n- No spam\nRead [the guide](https://example.com/rules).");
-  await modal.getByTestId("profile-markdown-button-preview").click();
   await expect(modal.getByTestId("profile-markdown-preview").getByRole("heading", { name: "Be kind" })).toBeVisible();
   await expect(modal.getByTestId("profile-markdown-preview").getByRole("listitem").filter({ hasText: "No spam" })).toBeVisible();
   await modal.getByRole("button", { name: "Save changes" }).click();

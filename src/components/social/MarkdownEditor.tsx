@@ -1,7 +1,6 @@
 import {
   Bold,
   Code2,
-  Eye,
   Heading2,
   Italic,
   Link as LinkIcon,
@@ -10,7 +9,7 @@ import {
   Minus,
   Quote,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 import { cn } from "../../lib/classNames";
 import type { RichTextEntity } from "../../lib/types";
 import { MentionTextarea } from "./MentionTextarea";
@@ -41,7 +40,7 @@ const markdownActions = [
   { id: "divider", label: "Divider", icon: Minus },
 ] as const;
 
-type MarkdownAction = (typeof markdownActions)[number]["id"] | "preview";
+type MarkdownAction = (typeof markdownActions)[number]["id"];
 
 export function MarkdownEditor({
   className,
@@ -55,7 +54,7 @@ export function MarkdownEditor({
   value,
 }: MarkdownEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const previewRef = useRef<HTMLDivElement | null>(null);
   const remaining = maxLength - value.length;
   const countText = useMemo(
     () => `${value.length}/${maxLength}`,
@@ -63,11 +62,6 @@ export function MarkdownEditor({
   );
 
   function applyAction(action: MarkdownAction) {
-    if (action === "preview") {
-      setPreviewOpen((current) => !current);
-      return;
-    }
-
     const textarea = textareaRef.current;
     const start = textarea?.selectionStart ?? value.length;
     const end = textarea?.selectionEnd ?? value.length;
@@ -125,34 +119,30 @@ export function MarkdownEditor({
         })}
         <button
           type="button"
-          className={cn(
-            "ml-auto inline-flex min-h-8 items-center gap-1 rounded-control px-2 text-xs font-semibold transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-focus",
-            previewOpen
-              ? "bg-accent-soft text-accent-strong"
-              : "text-muted hover:bg-surface hover:text-text",
-          )}
+          className="ml-auto inline-flex min-h-8 items-center gap-1 rounded-control bg-accent-soft px-2 text-xs font-semibold text-accent-strong transition duration-fluid ease-fluid hover:bg-accent-soft/80 focus-visible:outline-2 focus-visible:outline-focus"
           disabled={disabled}
           data-testid="profile-markdown-button-preview"
-          onClick={() => applyAction("preview")}
+          onClick={() => previewRef.current?.focus()}
         >
-          <Eye aria-hidden="true" size={14} />
           Preview
         </button>
       </div>
-      <MentionTextarea
-        ref={textareaRef}
-        className="min-h-36 w-full resize-y rounded-control border border-line bg-canvas/45 px-3 py-2 font-mono text-sm leading-6 text-text outline-none transition focus:border-line-strong focus:outline-2 focus:outline-focus"
-        maxLength={maxLength}
-        placeholder={placeholder}
-        value={value}
-        aria-label={label}
-        disabled={disabled}
-        data-testid={textareaTestId}
-        onValueChange={onValueChange}
-      />
-      {previewOpen ? (
+      <div className="grid gap-2 lg:grid-cols-2">
+        <MentionTextarea
+          ref={textareaRef}
+          className="min-h-36 w-full resize-y rounded-control border border-line bg-canvas/45 px-3 py-2 font-mono text-sm leading-6 text-text outline-none transition focus:border-line-strong focus:outline-2 focus:outline-focus"
+          maxLength={maxLength}
+          placeholder={placeholder}
+          value={value}
+          aria-label={label}
+          disabled={disabled}
+          data-testid={textareaTestId}
+          onValueChange={onValueChange}
+        />
         <div
-          className="rounded-card border border-line bg-canvas/45 p-3"
+          ref={previewRef}
+          tabIndex={-1}
+          className="min-h-36 rounded-control border border-line bg-canvas/45 p-3 outline-none transition focus:outline-2 focus:outline-focus"
           data-testid="profile-markdown-preview"
         >
           {value.trim() ? (
@@ -166,7 +156,7 @@ export function MarkdownEditor({
             <p className="text-sm text-muted">Preview appears here.</p>
           )}
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }
