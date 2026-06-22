@@ -11,15 +11,20 @@ test("room edit save uses the API and updates the header", async ({ page }) => {
 
   await acknowledgeCookieNotice(page);
   await page.goto("/rooms/sun-room");
+  await expect(page.getByRole("button", { name: "Account menu for @owner" })).toBeVisible();
   await page.getByRole("button", { name: "Edit room" }).click();
 
   const modal = page.getByTestId("room-edit-modal");
   await modal.getByLabel("Summary").fill("Updated room summary for public testing.");
+  await modal.getByLabel("Room rules").fill("Keep it useful.\nNo spam.");
   await modal.getByRole("button", { name: "Save changes" }).click();
 
   await expect.poll(() => patchPayload).toBeTruthy();
   expect(patchPayload).toMatchObject({
     summary: "Updated room summary for public testing.",
+    iconUrl: null,
+    bannerUrl: null,
+    rules: "Keep it useful.\nNo spam.",
     visibility: "public",
   });
   await expect(page.getByText("Updated room summary for public testing.")).toBeVisible();
@@ -151,6 +156,17 @@ async function mockOwnedRoom(
     });
   });
 
+  await page.route("**/api/me/onboarding", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: completedOnboardingState(),
+      }),
+    });
+  });
+
   await page.route("**/api/rooms", async (route) => {
     await route.fulfill({
       status: 200,
@@ -236,6 +252,29 @@ function readJsonBody(request: import("@playwright/test").Request): { handle?: s
   } catch {
     return {};
   }
+}
+
+function completedOnboardingState() {
+  const steps = [
+    "profile_basics",
+    "spotify",
+    "youtube",
+    "twitch",
+    "github",
+    "apple_music",
+    "profile_canvas",
+  ];
+
+  return {
+    steps,
+    completedSteps: steps,
+    skippedSteps: [],
+    providerLinks: {},
+    finishedAt: "2026-06-19 12:00:00",
+    dismissedAt: null,
+    createdAt: "2026-06-19 12:00:00",
+    updatedAt: "2026-06-19 12:00:00",
+  };
 }
 
 function roomBody(summary: string) {

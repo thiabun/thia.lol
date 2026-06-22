@@ -100,11 +100,11 @@ function rooms_create(): void
     $body = auth_json_body();
     $name = room_text($body['name'] ?? null, 'Name', 2, 80);
     $slug = room_slug_from_value($body['slug'] ?? null, $name);
-    $summary = room_text($body['summary'] ?? $body['description'] ?? null, 'Summary', 5, 500);
+    $summary = room_text(room_body_alias_value($body, 'summary', 'description'), 'Summary', 5, 500);
     $mood = room_optional_token($body['mood'] ?? null, 'Mood', 40);
     $accent = room_accent($body['accent'] ?? null);
-    $iconUrl = room_upload_url($body['iconUrl'] ?? $body['icon_url'] ?? null, 'Icon URL');
-    $bannerUrl = room_upload_url($body['bannerUrl'] ?? $body['banner_url'] ?? null, 'Banner URL');
+    $iconUrl = room_upload_url(room_body_alias_value($body, 'iconUrl', 'icon_url'), 'Icon URL');
+    $bannerUrl = room_upload_url(room_body_alias_value($body, 'bannerUrl', 'banner_url'), 'Banner URL');
     $rules = room_optional_text($body['rules'] ?? null, 'Room rules', 3000);
     $visibility = room_visibility($body['visibility'] ?? 'public');
 
@@ -192,7 +192,7 @@ function rooms_update(string $slug): void
 
     if (array_key_exists('summary', $body) || array_key_exists('description', $body)) {
         $updates[] = 'summary = :summary';
-        $params['summary'] = room_text($body['summary'] ?? $body['description'], 'Summary', 5, 500);
+        $params['summary'] = room_text(room_body_alias_value($body, 'summary', 'description'), 'Summary', 5, 500);
     }
 
     if (array_key_exists('mood', $body)) {
@@ -207,12 +207,12 @@ function rooms_update(string $slug): void
 
     if (array_key_exists('iconUrl', $body) || array_key_exists('icon_url', $body)) {
         $updates[] = 'icon_url = :icon_url';
-        $params['icon_url'] = room_upload_url($body['iconUrl'] ?? $body['icon_url'], 'Icon URL');
+        $params['icon_url'] = room_upload_url(room_body_alias_value($body, 'iconUrl', 'icon_url'), 'Icon URL');
     }
 
     if (array_key_exists('bannerUrl', $body) || array_key_exists('banner_url', $body)) {
         $updates[] = 'banner_url = :banner_url';
-        $params['banner_url'] = room_upload_url($body['bannerUrl'] ?? $body['banner_url'], 'Banner URL');
+        $params['banner_url'] = room_upload_url(room_body_alias_value($body, 'bannerUrl', 'banner_url'), 'Banner URL');
     }
 
     if (array_key_exists('rules', $body)) {
@@ -585,6 +585,19 @@ function room_sync_member_count(int $roomId): void
             'room_id' => $roomId,
         ]
     );
+}
+
+function room_body_alias_value(array $body, string $primaryKey, string $secondaryKey, mixed $default = null): mixed
+{
+    if (array_key_exists($primaryKey, $body)) {
+        return $body[$primaryKey];
+    }
+
+    if (array_key_exists($secondaryKey, $body)) {
+        return $body[$secondaryKey];
+    }
+
+    return $default;
 }
 
 function room_text(mixed $value, string $label, int $minLength, int $maxLength): string
