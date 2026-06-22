@@ -12,7 +12,7 @@ import { cn } from "./classNames";
 import { fluidEase, softSpring } from "./motionPresets";
 import { PageLoadingContext } from "./pageLoadingContext";
 
-const pageLoadingGraceMs = 3000;
+const pageLoadingGraceMs = 1000;
 
 export function PageLoadingProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
