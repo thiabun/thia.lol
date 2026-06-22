@@ -176,6 +176,7 @@ function profile_share_page_escape(string $value): string
 function profile_share_page_card_version(array $profile): string
 {
     $basis = implode('|', [
+        'mosaic-v2',
         (string) ($profile['user']['handle'] ?? ''),
         (string) ($profile['updatedAt'] ?? ''),
         (string) ($profile['profileBackground'] ?? ''),

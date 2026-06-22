@@ -1,4 +1,17 @@
-import { Heart, MessageCircle, Play, Repeat2, Star, Users, type LucideIcon } from "lucide-react";
+import {
+  ExternalLink,
+  Heart,
+  Image as ImageIcon,
+  Link2,
+  MessageCircle,
+  Music2,
+  Play,
+  Repeat2,
+  Star,
+  Users,
+  Video,
+  type LucideIcon,
+} from "lucide-react";
 import { RichText } from "../social/RichText";
 import { cn } from "../../lib/classNames";
 import {
@@ -46,6 +59,8 @@ const fallbackPalette: SharePalette = {
   accent: "#61e2d4",
 };
 
+const SHARE_CARD_RENDER_VERSION = "mosaic-v2";
+
 export function ShareCardScene(props: ShareCardSceneProps) {
   const palette =
     props.kind === "profile"
@@ -57,19 +72,21 @@ export function ShareCardScene(props: ShareCardSceneProps) {
         props.profile.profileBackgroundVideoPoster ??
         props.profile.bannerUrl ??
         props.profile.user.avatarUrl
-      : props.post.mediaUrl ?? props.post.author.avatarUrl;
+      : postShareBackgroundImage(props.post);
 
   return (
     <main
       className="relative h-[630px] w-[1200px] overflow-hidden font-sans"
       data-share-card-canvas="true"
       data-share-card-ready="true"
+      data-share-card-render-version={SHARE_CARD_RENDER_VERSION}
       style={{ backgroundColor: palette.canvas, color: palette.text }}
     >
       <ShareCardBackground imageUrl={backgroundUrl} palette={palette} />
       <img
         alt="thia.lol"
-        className="absolute left-[68px] top-[38px] h-[34px] w-auto"
+        className="absolute left-[68px] top-[34px] h-[56px] w-auto"
+        data-share-card-brand="true"
         src="/brand/thia-lockup-frostveil.png"
       />
       {props.kind === "post" ? (
@@ -78,7 +95,6 @@ export function ShareCardScene(props: ShareCardSceneProps) {
         <ProfileShareCard
           modules={props.modules}
           palette={palette}
-          posts={props.posts}
           profile={props.profile}
         />
       )}
@@ -131,6 +147,7 @@ function PostShareCard({ palette, post }: { palette: SharePalette; post: Post })
       <div className="flex min-w-0 flex-col">
         <IdentityRow
           avatarUrl={post.author.avatarUrl}
+          avatarHook="post-author"
           displayName={post.author.displayName}
           handle={post.author.handle}
           palette={palette}
@@ -158,17 +175,16 @@ function PostShareCard({ palette, post }: { palette: SharePalette; post: Post })
 function ProfileShareCard({
   modules,
   palette,
-  posts,
   profile,
 }: {
   modules: ProfileModule[];
   palette: SharePalette;
-  posts: Post[];
   profile: Profile;
 }) {
   const visibleModules = modules
-    .filter((module) => module.status === "active" && module.visibility === "public" && module.type !== "profile_info" && module.type !== "placeholder")
-    .slice(0, 5);
+    .filter(isProfileShareModuleEligible)
+    .sort(profileShareModuleSort)
+    .slice(0, 4);
 
   return (
     <section
@@ -208,7 +224,7 @@ function ProfileShareCard({
           /@{profile.user.handle}
         </p>
       </div>
-      <div className="relative z-10 grid min-h-0 grid-cols-2 grid-rows-[1fr_1fr_78px] gap-4">
+      <div className="relative z-10 grid min-h-0 grid-cols-2 grid-rows-[1fr_1fr_118px] gap-4">
         {visibleModules.length > 0 ? (
           visibleModules.map((module, index) => (
             <ModulePreview
@@ -216,26 +232,10 @@ function ProfileShareCard({
               key={module.id}
               module={module}
               palette={palette}
-              posts={posts}
             />
           ))
         ) : (
-          <ModulePreview
-            className="col-span-2 row-span-3"
-            module={{
-              id: 0,
-              type: "activity",
-              title: "Feed",
-              config: {},
-              visibility: "public",
-              position: 0,
-              pinned: false,
-              status: "active",
-              schemaVersion: 1,
-            }}
-            palette={palette}
-            posts={posts}
-          />
+          <EmptyModuleMosaic className="col-span-2 row-span-3" palette={palette} />
         )}
       </div>
     </section>
@@ -244,12 +244,14 @@ function ProfileShareCard({
 
 function IdentityRow({
   avatarUrl,
+  avatarHook,
   displayName,
   handle,
   palette,
   size = "md",
 }: {
   avatarUrl?: string | null | undefined;
+  avatarHook?: "post-author" | undefined;
   displayName: string;
   handle: string;
   palette: SharePalette;
@@ -269,6 +271,7 @@ function IdentityRow({
           <img
             alt=""
             className="size-full object-cover"
+            data-share-card-post-author-avatar={avatarHook === "post-author" ? "true" : undefined}
             src={shareCardImageProxyUrl(avatarUrl)}
           />
         ) : null}
@@ -305,6 +308,7 @@ function PostPreviewTile({
         <img
           alt=""
           className="size-full object-cover"
+          data-share-card-post-media="true"
           src={shareCardImageProxyUrl(imageUrl)}
         />
       ) : (
@@ -333,22 +337,289 @@ function ModulePreview({
   className,
   module,
   palette,
-  posts,
 }: {
-  className?: string;
+  className?: string | undefined;
   module: ProfileModule;
   palette: SharePalette;
-  posts: Post[];
+}) {
+  const kind = modulePreviewKind(module);
+
+  if (kind === "image") {
+    return <ImageModulePreview className={className} module={module} palette={palette} />;
+  }
+
+  if (kind === "connections") {
+    return <ConnectionsModulePreview className={className} module={module} palette={palette} />;
+  }
+
+  if (kind === "music") {
+    return <MusicModulePreview className={className} module={module} palette={palette} />;
+  }
+
+  if (kind === "artist") {
+    return <ArtistModulePreview className={className} module={module} palette={palette} />;
+  }
+
+  if (kind === "video") {
+    return <VideoModulePreview className={className} module={module} palette={palette} />;
+  }
+
+  if (kind === "text") {
+    return <TextModulePreview className={className} module={module} palette={palette} />;
+  }
+
+  return <GenericModulePreview className={className} module={module} palette={palette} />;
+}
+
+function EmptyModuleMosaic({
+  className,
+  palette,
+}: {
+  className?: string | undefined;
+  palette: SharePalette;
+}) {
+  return (
+    <div
+      className={cn("relative grid min-h-0 place-items-center overflow-hidden rounded-[24px] border p-8 text-center", className)}
+      data-share-card-module-type="empty"
+      style={{ backgroundColor: palette.surfaceStrong, borderColor: palette.line }}
+    >
+      <div
+        className="absolute inset-0 opacity-70"
+        style={{
+          background: `radial-gradient(circle at 50% 18%, ${hexToRgba(palette.accent, 0.18)}, transparent 42%)`,
+        }}
+      />
+      <div className="relative">
+        <Star className="mx-auto" size={44} style={{ color: palette.accent }} />
+        <p className="mt-5 text-[30px] font-semibold leading-tight">Profile highlights</p>
+        <p className="mt-3 text-[18px] leading-snug" style={{ color: palette.muted }}>
+          More public modules will appear here.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ImageModulePreview({
+  className,
+  module,
+  palette,
+}: {
+  className?: string | undefined;
+  module: ProfileModule;
+  palette: SharePalette;
 }) {
   const imageUrl = moduleImage(module);
-  const title = moduleTitle(module);
-  const subtitle = moduleSubtitle(module);
-  const isFeed = module.type === "activity";
-  const isText = ["custom_text", "text", "about"].includes(module.type);
+
+  return (
+    <div
+      className={cn("relative min-h-0 overflow-hidden rounded-[24px] border", className)}
+      data-share-card-module-type={module.type}
+      style={{ backgroundColor: palette.surfaceStrong, borderColor: palette.line }}
+    >
+      {imageUrl ? (
+        <img
+          alt=""
+          className="size-full object-cover"
+          src={shareCardImageProxyUrl(imageUrl)}
+        />
+      ) : (
+        <div className="grid size-full place-items-center">
+          <ImageIcon size={42} style={{ color: palette.muted }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConnectionsModulePreview({
+  className,
+  module,
+  palette,
+}: {
+  className?: string | undefined;
+  module: ProfileModule;
+  palette: SharePalette;
+}) {
+  const links = moduleLinks(module).slice(0, 4);
 
   return (
     <div
       className={cn("relative min-h-0 overflow-hidden rounded-[24px] border p-5", className)}
+      data-share-card-module-type={module.type}
+      style={{ backgroundColor: palette.surfaceStrong, borderColor: palette.line }}
+    >
+      <div className="flex h-full flex-col">
+        <div className="flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-full" style={{ backgroundColor: hexToRgba(palette.accent, 0.18), color: palette.accent }}>
+            <Link2 size={22} />
+          </span>
+          <p className="truncate text-[24px] font-semibold">Links</p>
+        </div>
+        <div className="mt-4 grid min-h-0 flex-1 content-start gap-2">
+          {links.length > 0 ? (
+            links.map((link) => (
+              <div
+                className="flex min-w-0 items-center gap-3 rounded-[16px] border bg-black/14 px-3 py-2"
+                key={`${link.url}:${link.label}`}
+                style={{ borderColor: hexToRgba(palette.accent, 0.18) }}
+              >
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full" style={{ backgroundColor: hexToRgba(palette.accent, 0.2), color: palette.accent }}>
+                  <ExternalLink size={16} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-[17px] font-semibold leading-tight">{link.label}</span>
+                  <span className="block truncate text-[13px] leading-tight" style={{ color: palette.muted }}>
+                    {linkHost(link.url)}
+                  </span>
+                </span>
+              </div>
+            ))
+          ) : (
+            <p className="mt-auto text-[18px]" style={{ color: palette.muted }}>
+              No public links.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MusicModulePreview({
+  className,
+  module,
+  palette,
+}: {
+  className?: string | undefined;
+  module: ProfileModule;
+  palette: SharePalette;
+}) {
+  const imageUrl = moduleImage(module);
+  const title = moduleTitle(module);
+  const subtitle = moduleSubtitle(module) || providerLabel(module.config.integration?.provider ?? module.config.platform ?? module.type);
+  const duration = module.config.audio?.duration;
+
+  return (
+    <div
+      className={cn("relative min-h-0 overflow-hidden rounded-[24px] border p-5", className)}
+      data-share-card-module-type={module.type}
+      style={{ backgroundColor: palette.surfaceStrong, borderColor: palette.line }}
+    >
+      {imageUrl ? (
+        <img
+          alt=""
+          className="absolute inset-0 size-full object-cover opacity-28 blur-2xl"
+          src={shareCardImageProxyUrl(imageUrl)}
+        />
+      ) : null}
+      <div className="absolute inset-0 bg-gradient-to-br from-black/12 via-black/20 to-black/42" />
+      <div className="relative z-10 flex h-full min-w-0 flex-col">
+        <div className="flex min-w-0 items-center gap-4">
+          <div
+            className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-[18px] border bg-black/25"
+            style={{ borderColor: palette.line }}
+          >
+            {imageUrl ? (
+              <img
+                alt=""
+                className="size-full object-cover"
+                src={shareCardImageProxyUrl(imageUrl)}
+              />
+            ) : (
+              <Music2 size={32} style={{ color: palette.muted }} />
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="line-clamp-2 text-[25px] font-semibold leading-tight">{title}</p>
+            <p className="mt-1 truncate text-[16px]" style={{ color: palette.muted }}>
+              {subtitle}
+            </p>
+          </div>
+        </div>
+        <div className="mt-auto flex items-center gap-3">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full" style={{ backgroundColor: palette.accent, color: palette.canvas }}>
+            <Play size={23} fill="currentColor" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="h-2 overflow-hidden rounded-full bg-white/18">
+              <div className="h-full w-[38%] rounded-full" style={{ backgroundColor: palette.accent }} />
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-3 text-[13px] font-semibold uppercase tracking-[0.16em]" style={{ color: palette.muted }}>
+              <span className="truncate">{providerLabel(module.config.integration?.provider ?? module.config.platform ?? module.type)}</span>
+              {duration ? <span>{formatDuration(duration)}</span> : <span>Ready</span>}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ArtistModulePreview({
+  className,
+  module,
+  palette,
+}: {
+  className?: string | undefined;
+  module: ProfileModule;
+  palette: SharePalette;
+}) {
+  const imageUrl = moduleImage(module);
+  const metadata = module.config.integration?.metadata;
+  const stats = metadata?.stats ?? {};
+  const statValue =
+    stats.listeners ?? stats.followers ?? stats.subscribers ?? stats.views ?? stats.popularity ?? null;
+
+  return (
+    <div
+      className={cn("relative min-h-0 overflow-hidden rounded-[24px] border p-5", className)}
+      data-share-card-module-type={module.type}
+      style={{ backgroundColor: palette.surfaceStrong, borderColor: palette.line }}
+    >
+      {imageUrl ? (
+        <img
+          alt=""
+          className="absolute inset-0 size-full object-cover"
+          src={shareCardImageProxyUrl(imageUrl)}
+        />
+      ) : (
+        <div className="absolute inset-0 grid place-items-center">
+          <Video size={54} style={{ color: palette.muted }} />
+        </div>
+      )}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/82 via-black/30 to-transparent" />
+      <div className="relative z-10 flex h-full flex-col justify-end text-white">
+        <p className="line-clamp-2 text-[28px] font-semibold leading-tight">{moduleTitle(module)}</p>
+        <p className="mt-1 truncate text-[16px] text-white/72">
+          {moduleSubtitle(module) || providerLabel(module.config.integration?.provider ?? module.type)}
+        </p>
+        {statValue !== null ? (
+          <p className="mt-3 w-fit rounded-full bg-black/30 px-3 py-1 text-[14px] font-semibold text-white/82">
+            {String(statValue)}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function VideoModulePreview({
+  className,
+  module,
+  palette,
+}: {
+  className?: string | undefined;
+  module: ProfileModule;
+  palette: SharePalette;
+}) {
+  const imageUrl = moduleImage(module);
+
+  return (
+    <div
+      className={cn("relative min-h-0 overflow-hidden rounded-[24px] border", className)}
+      data-share-card-module-type={module.type}
       style={{ backgroundColor: palette.surfaceStrong, borderColor: palette.line }}
     >
       {imageUrl ? (
@@ -358,75 +629,117 @@ function ModulePreview({
           src={shareCardImageProxyUrl(imageUrl)}
         />
       ) : null}
-      {imageUrl ? <div className="absolute inset-0 bg-gradient-to-t from-black/82 via-black/28 to-transparent" /> : null}
-      <div className="relative z-10 flex h-full flex-col">
-        {isFeed ? (
-          <FeedPreview palette={palette} posts={posts} />
-        ) : isText ? (
-          <TextPreview module={module} palette={palette} />
-        ) : (
-          <>
-            <div className="mb-auto">
-              <p className="text-[13px] uppercase tracking-[0.22em]" style={{ color: palette.accent }}>
-                {providerLabel(module.config.platform ?? module.type)}
-              </p>
-              <p className="mt-2 line-clamp-2 text-[25px] font-semibold leading-tight">
-                {title}
-              </p>
-              {subtitle ? (
-                <p className="mt-1 line-clamp-1 text-[17px]" style={{ color: palette.muted }}>
-                  {subtitle}
-                </p>
-              ) : null}
-            </div>
-            {moduleKind(module) === "music" || moduleKind(module) === "video" ? (
-              <div className="mt-auto flex items-center gap-3">
-                <span className="grid h-10 w-10 place-items-center rounded-full" style={{ backgroundColor: palette.accent, color: palette.canvas }}>
-                  <Play size={22} fill="currentColor" />
-                </span>
-                <span className="text-[15px] uppercase tracking-[0.18em]" style={{ color: palette.muted }}>
-                  Preview
-                </span>
-              </div>
-            ) : null}
-          </>
-        )}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/78 via-black/26 to-black/8" />
+      <div className="relative z-10 flex h-full flex-col p-5 text-white">
+        <span className="mb-auto grid h-14 w-14 place-items-center rounded-full bg-white/18 shadow-[0_12px_32px_rgba(0,0,0,0.35)] backdrop-blur">
+          <Play size={26} fill="currentColor" />
+        </span>
+        <p className="line-clamp-2 text-[25px] font-semibold leading-tight">{moduleTitle(module)}</p>
+        <p className="mt-1 truncate text-[15px] text-white/72">
+          {moduleSubtitle(module) || providerLabel(module.config.platform ?? module.type)}
+        </p>
       </div>
     </div>
   );
 }
 
-function FeedPreview({ palette, posts }: { palette: SharePalette; posts: Post[] }) {
+function TextModulePreview({
+  className,
+  module,
+  palette,
+}: {
+  className?: string | undefined;
+  module: ProfileModule;
+  palette: SharePalette;
+}) {
   return (
-    <div>
-      <p className="text-[30px] font-semibold">Feed</p>
-      <div className="mt-5 space-y-3">
-        {posts.slice(0, 3).map((post) => (
-          <div className="flex items-start gap-3" key={post.id}>
-            <span className="mt-2 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: palette.accent }} />
-            <p className="line-clamp-1 text-[18px]" style={{ color: palette.muted }}>
-              {post.body || postCanonicalPath(post)}
-            </p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function TextPreview({ module, palette }: { module: ProfileModule; palette: SharePalette }) {
-  return (
-    <div className="overflow-hidden">
-      <p className="text-[13px] uppercase tracking-[0.22em]" style={{ color: palette.accent }}>
-        Text
-      </p>
+    <div
+      className={cn("relative min-h-0 overflow-hidden rounded-[24px] border p-5", className)}
+      data-share-card-module-type={module.type}
+      style={{ backgroundColor: palette.surfaceStrong, borderColor: palette.line }}
+    >
       <RichText
-        className="mt-3 line-clamp-5 text-[20px] leading-snug"
+        className="line-clamp-7 text-[21px] leading-snug"
         entities={module.textEntities?.body}
         markdown
         showPreviews={false}
         text={module.config.body ?? module.title ?? ""}
       />
+    </div>
+  );
+}
+
+function GenericModulePreview({
+  className,
+  module,
+  palette,
+}: {
+  className?: string | undefined;
+  module: ProfileModule;
+  palette: SharePalette;
+}) {
+  const metadata = module.config.integration?.metadata;
+  const subtitle =
+    moduleSubtitle(module) ||
+    providerLabel(module.config.integration?.provider ?? module.config.platform ?? module.type);
+  const description =
+    metadata?.description ??
+    module.config.description ??
+    module.config.statusText ??
+    module.config.workingOn ??
+    "";
+  const stats = Object.entries(metadata?.stats ?? {})
+    .filter(([, value]) => value !== null && value !== undefined && value !== "")
+    .slice(0, 2);
+
+  return (
+    <div
+      className={cn("relative min-h-0 overflow-hidden rounded-[24px] border p-5", className)}
+      data-share-card-module-type={module.type}
+      style={{ backgroundColor: palette.surfaceStrong, borderColor: palette.line }}
+    >
+      <div className="flex h-full min-w-0 flex-col">
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full"
+            style={{
+              backgroundColor: hexToRgba(palette.accent, 0.18),
+              color: palette.accent,
+            }}
+          >
+            <ExternalLink size={20} />
+          </span>
+          <span className="min-w-0">
+            <span
+              className="block truncate text-[15px] font-semibold uppercase tracking-[0.16em]"
+              style={{ color: palette.accent }}
+            >
+              {subtitle}
+            </span>
+            <span className="mt-1 block truncate text-[24px] font-semibold leading-tight">
+              {moduleTitle(module)}
+            </span>
+          </span>
+        </div>
+        {description ? (
+          <p className="mt-4 line-clamp-3 text-[17px] leading-snug" style={{ color: palette.muted }}>
+            {description}
+          </p>
+        ) : null}
+        {stats.length > 0 ? (
+          <div className="mt-auto flex flex-wrap gap-2 pt-4">
+            {stats.map(([label, value]) => (
+              <span
+                className="rounded-full border px-3 py-1 text-[13px] font-semibold"
+                key={label}
+                style={{ borderColor: hexToRgba(palette.accent, 0.25), color: palette.text }}
+              >
+                {String(value)} {label}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -504,16 +817,137 @@ function moduleImage(module: ProfileModule) {
   );
 }
 
-function moduleKind(module: ProfileModule) {
-  if (["music", "spotify_song", "apple_music_song", "youtube_music_song", "spotify_playlist", "apple_music_playlist", "youtube_music_playlist", "spotify_artist", "apple_music_artist", "youtube_music_artist"].includes(module.type)) {
+function postShareBackgroundImage(post: Post) {
+  const linkCard = firstLinkCard(post);
+
+  return post.mediaUrl ?? linkCard?.metadata.imageUrl ?? null;
+}
+
+function isProfileShareModuleEligible(module: ProfileModule) {
+  return (
+    module.status === "active" &&
+    module.visibility === "public" &&
+    module.type !== "activity" &&
+    module.type !== "profile_info" &&
+    module.type !== "placeholder"
+  );
+}
+
+function profileShareModuleSort(first: ProfileModule, second: ProfileModule) {
+  const rankDelta = profileShareModuleRank(first) - profileShareModuleRank(second);
+
+  if (rankDelta !== 0) {
+    return rankDelta;
+  }
+
+  return first.position - second.position;
+}
+
+function profileShareModuleRank(module: ProfileModule) {
+  const kind = modulePreviewKind(module);
+
+  if (kind === "image" && moduleImage(module)) return 0;
+  if (kind === "music" && moduleImage(module)) return 1;
+  if (kind === "artist" && moduleImage(module)) return 2;
+  if (kind === "video" && moduleImage(module)) return 3;
+  if (kind === "connections" && moduleLinks(module).length > 0) return 4;
+  if (kind === "card" && module.config.integration) return 5;
+  if (kind === "text") return 6;
+  return 8;
+}
+
+type ModulePreviewKind =
+  | "artist"
+  | "card"
+  | "connections"
+  | "image"
+  | "music"
+  | "text"
+  | "video";
+
+function modulePreviewKind(module: ProfileModule): ModulePreviewKind {
+  if (
+    [
+      "gallery_media",
+      "uploaded_image",
+      "gallery_slideshow",
+      "gallery_feed",
+    ].includes(module.type)
+  ) {
+    return "image";
+  }
+
+  if (module.type === "links" || module.type === "connections") {
+    return "connections";
+  }
+
+  if (["custom_text", "text", "about"].includes(module.type)) {
+    return "text";
+  }
+
+  if (
+    [
+      "spotify_artist",
+      "apple_music_artist",
+      "youtube_music_artist",
+    ].includes(module.type)
+  ) {
+    return "artist";
+  }
+
+  if (
+    [
+      "music",
+      "spotify_song",
+      "apple_music_song",
+      "youtube_music_song",
+      "spotify_playlist",
+      "apple_music_playlist",
+      "youtube_music_playlist",
+    ].includes(module.type)
+  ) {
     return "music";
   }
 
-  if (["uploaded_video", "youtube_video", "youtube_stream"].includes(module.type)) {
+  if (
+    [
+      "uploaded_video",
+      "youtube_video",
+      "youtube_stream",
+      "youtube_playlist",
+      "creator_live",
+    ].includes(module.type)
+  ) {
     return "video";
   }
 
   return "card";
+}
+
+function moduleLinks(module: ProfileModule) {
+  const links = [...(module.config.links ?? [])];
+
+  if (module.config.link) {
+    links.unshift(module.config.link);
+  }
+
+  return links.filter((link) => link.url && link.label);
+}
+
+function linkHost(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  }
+}
+
+function formatDuration(seconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+
+  return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
 }
 
 function paletteFromTheme(config?: ProfileThemeConfig | null): SharePalette {
