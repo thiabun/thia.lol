@@ -995,6 +995,106 @@ test("video background and allowlisted rich integrations render safely", async (
   await expect(page.getByTestId("profile-integration-embed-github")).toHaveCount(0);
 });
 
+test("public profile video background is marked playing outside editor mode", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: false,
+    profileOverrides: {
+      profileBackgroundVideo: "/uploads/media/2026/06/profile_background-loop.mp4",
+      profileBackgroundVideoPoster: "/uploads/media/2026/06/profile-video-poster.webp",
+    },
+    modules: [aboutModule({ title: "About", body: "Video background." })],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const backdrop = page.getByTestId("profile-personal-backdrop");
+  await expect(backdrop).toHaveAttribute("data-profile-background-source", "video");
+  await expect(backdrop).toHaveAttribute("data-profile-background-playback", "playing");
+  await expect(
+    backdrop.locator('source[src="/uploads/media/2026/06/profile_background-loop.mp4"]'),
+  ).toHaveAttribute("type", "video/mp4");
+  await expect(
+    backdrop.locator('img[src="/uploads/media/2026/06/profile-video-poster.webp"]'),
+  ).toBeAttached();
+  await expect
+    .poll(() =>
+      backdrop.locator("video").evaluate((video) => (video as HTMLVideoElement).autoplay),
+    )
+    .toBe(true);
+});
+
+test("editor mode pauses the full-page profile video background only", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    profileOverrides: {
+      profileBackgroundVideo: "/uploads/media/2026/06/profile_background-loop.mp4",
+      profileBackgroundVideoPoster: "/uploads/media/2026/06/profile-video-poster.webp",
+    },
+    modules: [
+      {
+        id: 24,
+        type: "uploaded_video",
+        title: "Uploaded video",
+        config: {
+          configured: true,
+          sourceMode: "upload",
+          video: {
+            duration: 12,
+            mime: "video/mp4",
+            size: 4096,
+            title: "Module clip",
+            type: "video/mp4",
+            uploadedAt: "2026-06-16T10:00:00Z",
+            url: "/uploads/media/2026/06/profile_module_video-clip.mp4",
+          },
+        },
+        layout: { column: 1, row: 4, colSpan: 4, rowSpan: 3 },
+        visibility: "public",
+        position: 1,
+        status: "active",
+        schemaVersion: 1,
+        createdAt: "2026-06-12 00:00:00",
+        updatedAt: "2026-06-12 00:00:00",
+      },
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const backdrop = page.getByTestId("profile-personal-backdrop");
+  await expect(backdrop).toHaveAttribute("data-profile-background-source", "video");
+  await expect(backdrop).toHaveAttribute("data-profile-background-playback", "playing");
+  await expect(page.getByTestId("profile-uploaded-video-player")).toBeVisible();
+
+  await page.getByTestId("profile-edit-button").click();
+  await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
+  await expect(backdrop).toHaveAttribute("data-profile-background-playback", "paused");
+  await expect(
+    backdrop.locator('img[src="/uploads/media/2026/06/profile-video-poster.webp"]'),
+  ).toBeVisible();
+  await expect(backdrop.locator("video")).not.toHaveAttribute("autoplay");
+  await expect
+    .poll(() =>
+      backdrop.locator("video").evaluate((video) => (video as HTMLVideoElement).paused),
+    )
+    .toBe(true);
+  await expect(page.getByTestId("profile-uploaded-video-player")).toBeVisible();
+  await expect(page.getByTestId("profile-uploaded-video-element")).toBeAttached();
+
+  await page
+    .getByTestId("profile-canvas-editor")
+    .getByRole("button", { name: "Cancel" })
+    .click();
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
+  await expect(backdrop).toHaveAttribute("data-profile-background-playback", "playing");
+});
+
 test("YouTube video modules render allowlisted nocookie embeds", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await mockProfileModules(page, {

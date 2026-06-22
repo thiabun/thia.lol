@@ -131,6 +131,10 @@ The largest route-specific improvement was `ProfilePage`: 94.09 kB raw /
 - Route-state primitives remain overlapping (`ApiStateNotice`, `EmptyState`,
   `RouteStateNotice`, `CompactStateNotice`, `ModalSheetStatus`). Consolidation
   may improve maintainability but was not required for this measured pass.
+- WebGPU is not a general React, CSS, or DOM speedup. Consider it only for a
+  measured explicit GPU workload such as a custom canvas effect, visualizer,
+  image filter, or client-side media processing path, and keep a non-WebGPU
+  fallback because support and device behavior still vary.
 
 ## Future Recommendations
 

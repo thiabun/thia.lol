@@ -1611,7 +1611,7 @@ export function ProfilePage() {
         initial="hidden"
         animate="show"
       >
-        <ProfilePersonalBackdrop profile={backgroundPreviewProfile} />
+        <ProfilePersonalBackdrop profile={backgroundPreviewProfile} paused={canvasEditing} />
         <div className="profile-canvas-page-shell relative z-10 mx-auto">
           <PageMeta
             title={`${renderedProfile.user.displayName} (@${renderedProfile.user.handle})`}
@@ -1774,7 +1774,7 @@ export function ProfilePage() {
       initial="hidden"
       animate="show"
     >
-      <ProfilePersonalBackdrop profile={backgroundPreviewProfile} />
+      <ProfilePersonalBackdrop profile={backgroundPreviewProfile} paused={canvasEditing} />
       <div className="profile-canvas-page-shell relative z-10 mx-auto space-y-4 sm:space-y-5">
         <PageMeta
           title={`${renderedProfile.user.displayName} (@${renderedProfile.user.handle})`}
@@ -7294,32 +7294,57 @@ function mergeFollowState(
   };
 }
 
-function ProfilePersonalBackdrop({ profile }: { profile: Profile }) {
+function ProfilePersonalBackdrop({
+  paused = false,
+  profile,
+}: {
+  paused?: boolean;
+  profile: Profile;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const videoUrl = safeProfileVideoUrl(profile.profileBackgroundVideo);
   const imageUrl = safeProfileImageUrl(
     profile.profileBackgroundVideoPoster ?? profile.profileBackground,
   );
   const blurTreatment = profile.profileBackgroundBlur;
   const visibility = profileBackgroundVisibility(blurTreatment);
+  const playbackState = videoUrl ? (paused ? "paused" : "playing") : "static";
+
+  useEffect(() => {
+    const video = videoRef.current;
+
+    if (!video || !videoUrl) {
+      return;
+    }
+
+    if (paused) {
+      video.pause();
+      return;
+    }
+
+    void video.play().catch(() => undefined);
+  }, [paused, videoUrl]);
 
   return (
     <div
       aria-hidden="true"
       className="profile-personal-backdrop pointer-events-none z-0 min-h-full overflow-hidden"
       data-profile-background-blur={blurTreatment}
+      data-profile-background-playback={playbackState}
       data-profile-background-source={videoUrl ? "video" : imageUrl ? "image" : "fallback"}
       data-profile-background-visibility={visibility.name}
       data-testid="profile-personal-backdrop"
     >
       {videoUrl ? (
         <video
+          ref={videoRef}
           aria-hidden="true"
           className={cn(
             "absolute inset-0 size-full object-cover object-center saturate-[1.04] motion-reduce:hidden",
             visibility.mediaOpacity,
             profileBackgroundBlurClass(blurTreatment),
           )}
-          autoPlay
+          autoPlay={!paused}
           loop
           muted
           playsInline
@@ -7335,7 +7360,7 @@ function ProfilePersonalBackdrop({ profile }: { profile: Profile }) {
           className={cn(
             "absolute inset-0 size-full object-cover object-center saturate-[1.04]",
             visibility.mediaOpacity,
-            videoUrl ? "motion-safe:hidden" : undefined,
+            videoUrl && !paused ? "motion-safe:hidden" : undefined,
             profileBackgroundBlurClass(blurTreatment),
           )}
           decoding="async"
