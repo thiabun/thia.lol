@@ -43,7 +43,7 @@ Required repository secrets:
 
 ```text
 VPS_HOST=45.143.196.174
-VPS_USER=<ssh deploy user>
+VPS_USER=deploy
 VPS_SSH_KEY=<private key for that user>
 ```
 
@@ -84,18 +84,18 @@ rsync -az --delete \
   --exclude '/config/' \
   --exclude '/uploads/' \
   --exclude '.DS_Store' \
-  dist/ codex@45.143.196.174:/srv/thia.lol/www/
+  dist/ deploy@45.143.196.174:/srv/thia.lol/www/
 
 rsync -az --delete \
   --exclude '/migrations/' \
   --exclude '.DS_Store' \
   --exclude 'config.php' \
-  api/ codex@45.143.196.174:/srv/thia.lol/www/api/
+  api/ deploy@45.143.196.174:/srv/thia.lol/www/api/
 
 rsync -az --delete \
   --exclude '.DS_Store' \
   backend/database/migrations/ \
-  codex@45.143.196.174:/srv/thia.lol/www/api/migrations/
+  deploy@45.143.196.174:/srv/thia.lol/www/api/migrations/
 ```
 
 Do not copy `config/config.php`, database dumps, `.env` files, cookies, or local
