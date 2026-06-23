@@ -107,8 +107,12 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
       );
 
       if (publish) {
+        const socialCardBlob = await captureShareCard(
+          `/share-render/profile/${encodeURIComponent(profile.user.handle)}`,
+          { quality: 0.9, type: "image/jpeg" },
+        );
         const publishPromise = runWithAuth(
-          (csrfToken) => profileShareCardCacheUpload(profile, blob, csrfToken),
+          (csrfToken) => profileShareCardCacheUpload(profile, socialCardBlob, csrfToken),
           { retryOnCsrf: true },
         );
 

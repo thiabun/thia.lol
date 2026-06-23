@@ -222,8 +222,12 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
       );
 
       if (publish) {
+        const socialCardBlob = await captureShareCard(
+          `/share-render/post/${encodeURIComponent(publicIdentifier)}`,
+          { quality: 0.9, type: "image/jpeg" },
+        );
         await runWithAuth(
-          (freshCsrfToken) => postShareCardCacheUpload(post, blob, freshCsrfToken),
+          (freshCsrfToken) => postShareCardCacheUpload(post, socialCardBlob, freshCsrfToken),
           { retryOnCsrf: true },
         ).catch(() => undefined);
       }

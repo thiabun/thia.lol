@@ -1544,7 +1544,7 @@ export function postShareCardCacheUpload(
   csrfToken: string,
 ): Promise<{ url: string; width: number; height: number }> {
   const body = new FormData();
-  body.set("card", card, `thia-post-${postPublicIdentifier(post)}.png`);
+  body.set("card", card, `thia-post-${postPublicIdentifier(post)}.jpg`);
 
   return apiUpload<{ url: string; width: number; height: number }>(
     `/posts/${postPublicIdentifier(post)}/share-card-cache`,
@@ -1575,7 +1575,7 @@ export function profileShareCardCacheUpload(
   csrfToken: string,
 ): Promise<{ url: string; width: number; height: number }> {
   const body = new FormData();
-  body.set("card", card, `thia-profile-${profile.user.handle}.png`);
+  body.set("card", card, `thia-profile-${profile.user.handle}.jpg`);
 
   return apiUpload<{ url: string; width: number; height: number }>(
     `/profiles/${encodeURIComponent(profile.user.handle)}/share-card-cache`,

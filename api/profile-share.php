@@ -45,7 +45,9 @@ function profile_share_page_render(array $profile): void
     $title = "{$displayName} (@{$handle}) | thia.lol";
     $description = profile_share_description($profile);
     $canonicalUrl = profile_share_page_https_url(profile_canonical_url($profile));
-    $imageUrl = profile_share_page_https_url(post_public_base_url() . profile_share_page_card_image_path($profile) . '?v=' . profile_share_page_card_version($profile));
+    $imagePath = profile_share_page_card_image_path($profile);
+    $imageType = profile_share_page_card_image_type($imagePath);
+    $imageUrl = profile_share_page_https_url(post_public_base_url() . $imagePath . '?v=' . profile_share_page_card_version($profile));
     $imageAlt = "Profile card for @{$handle} on thia.lol.";
 
     $meta = implode("\n    ", [
@@ -59,7 +61,7 @@ function profile_share_page_render(array $profile): void
         '<meta property="og:url" content="' . profile_share_page_escape($canonicalUrl) . '" />',
         '<meta property="og:image" content="' . profile_share_page_escape($imageUrl) . '" />',
         '<meta property="og:image:secure_url" content="' . profile_share_page_escape($imageUrl) . '" />',
-        '<meta property="og:image:type" content="image/png" />',
+        '<meta property="og:image:type" content="' . profile_share_page_escape($imageType) . '" />',
         '<meta property="og:image:width" content="2400" />',
         '<meta property="og:image:height" content="1260" />',
         '<meta property="og:image:alt" content="' . profile_share_page_escape($imageAlt) . '" />',
@@ -208,6 +210,13 @@ function profile_share_page_card_image_path(array $profile): string
     return profile_share_card_path($profile);
 }
 
+function profile_share_page_card_image_type(string $path): string
+{
+    $extension = strtolower(pathinfo(parse_url($path, PHP_URL_PATH) ?: $path, PATHINFO_EXTENSION));
+
+    return ($extension === 'jpg' || $extension === 'jpeg') ? 'image/jpeg' : 'image/png';
+}
+
 function profile_share_page_cached_card_path(string $handle): ?string
 {
     $normalized = strtolower(trim($handle));
@@ -216,7 +225,7 @@ function profile_share_page_cached_card_path(string $handle): ?string
         return null;
     }
 
-    return dirname(__DIR__) . '/uploads/share-cards/profiles/' . $normalized . '-mosaic-v6.png';
+    return dirname(__DIR__) . '/uploads/share-cards/profiles/' . $normalized . '-mosaic-v6.jpg';
 }
 
 function profile_share_page_cached_card_url_path(string $handle): ?string
@@ -227,5 +236,5 @@ function profile_share_page_cached_card_url_path(string $handle): ?string
         return null;
     }
 
-    return '/uploads/share-cards/profiles/' . rawurlencode($normalized . '-mosaic-v6.png');
+    return '/uploads/share-cards/profiles/' . rawurlencode($normalized . '-mosaic-v6.jpg');
 }

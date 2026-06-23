@@ -5,7 +5,18 @@ const SHARE_CARD_HEIGHT = 630;
 const SHARE_CARD_PIXEL_RATIO = 2;
 const SHARE_CARD_READY_TIMEOUT_MS = 12000;
 
-export async function captureShareCard(path: string): Promise<Blob> {
+type CaptureShareCardOptions = {
+  pixelRatio?: number;
+  quality?: number;
+  type?: "image/jpeg" | "image/png";
+};
+
+export async function captureShareCard(
+  path: string,
+  options: CaptureShareCardOptions = {},
+): Promise<Blob> {
+  const pixelRatio = options.pixelRatio ?? SHARE_CARD_PIXEL_RATIO;
+  const type = options.type ?? "image/png";
   const iframe = document.createElement("iframe");
   iframe.setAttribute("aria-hidden", "true");
   iframe.tabIndex = -1;
@@ -33,21 +44,25 @@ export async function captureShareCard(path: string): Promise<Blob> {
     await waitForImages(documentElement);
     await new Promise((resolve) => requestAnimationFrame(resolve));
 
-    const blob = await toBlob(canvas, {
+    const captureOptions = {
       backgroundColor: "transparent",
       cacheBust: true,
       includeQueryParams: true,
-      pixelRatio: SHARE_CARD_PIXEL_RATIO,
+      pixelRatio,
+      type,
       width: SHARE_CARD_WIDTH,
       height: SHARE_CARD_HEIGHT,
-      canvasWidth: SHARE_CARD_WIDTH * SHARE_CARD_PIXEL_RATIO,
-      canvasHeight: SHARE_CARD_HEIGHT * SHARE_CARD_PIXEL_RATIO,
+      canvasWidth: SHARE_CARD_WIDTH * pixelRatio,
+      canvasHeight: SHARE_CARD_HEIGHT * pixelRatio,
       style: {
         width: `${SHARE_CARD_WIDTH}px`,
         height: `${SHARE_CARD_HEIGHT}px`,
         transform: "none",
       },
-    });
+      ...(options.quality !== undefined ? { quality: options.quality } : {}),
+    };
+
+    const blob = await toBlob(canvas, captureOptions);
 
     if (!blob) {
       throw new Error("Share card image could not be generated.");
