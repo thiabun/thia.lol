@@ -72,7 +72,7 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
           set -euo pipefail
-          ssh -i ~/.ssh/thia_lol_deploy "$VPS_USER@$VPS_HOST" '
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/thia_lol_deploy "$VPS_USER@$VPS_HOST" '
             set -euo pipefail
             test -w /srv/thia.lol/www
             test -d /srv/thia.lol/www/uploads
@@ -81,7 +81,7 @@ jobs:
             test -w /srv/thia.lol/www/api/migrations
             test -w /srv/thia.lol/node-api
             test ! -e /srv/thia.lol/www/config/config.php
-            sudo -n /bin/systemctl cat thia-node-api.service >/dev/null
+            test -r /etc/systemd/system/thia-node-api.service
           '
 
       - name: Deploy frontend to VPS web root
@@ -95,7 +95,7 @@ jobs:
             --exclude '/config/' \
             --exclude '/uploads/' \
             --exclude '.DS_Store' \
-            -e 'ssh -i ~/.ssh/thia_lol_deploy' \
+            -e 'ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/thia_lol_deploy' \
             dist/ "$VPS_USER@$VPS_HOST:/srv/thia.lol/www/"
 
       - name: Deploy PHP API
@@ -108,7 +108,7 @@ jobs:
             --exclude '/migrations/' \
             --exclude '.DS_Store' \
             --exclude 'config.php' \
-            -e 'ssh -i ~/.ssh/thia_lol_deploy' \
+            -e 'ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/thia_lol_deploy' \
             api/ "$VPS_USER@$VPS_HOST:/srv/thia.lol/www/api/"
 
       - name: Deploy database migrations
@@ -119,7 +119,7 @@ jobs:
           set -euo pipefail
           rsync -az --delete \
             --exclude '.DS_Store' \
-            -e 'ssh -i ~/.ssh/thia_lol_deploy' \
+            -e 'ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/thia_lol_deploy' \
             backend/database/migrations/ "$VPS_USER@$VPS_HOST:/srv/thia.lol/www/api/migrations/"
 
       - name: Deploy Node API
@@ -134,9 +134,9 @@ jobs:
           cp -R server/dist .deploy-node-api/server/dist
           rsync -az --delete \
             --exclude '.DS_Store' \
-            -e 'ssh -i ~/.ssh/thia_lol_deploy' \
+            -e 'ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/thia_lol_deploy' \
             .deploy-node-api/ "$VPS_USER@$VPS_HOST:/srv/thia.lol/node-api/"
-          ssh -i ~/.ssh/thia_lol_deploy "$VPS_USER@$VPS_HOST" '
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -i ~/.ssh/thia_lol_deploy "$VPS_USER@$VPS_HOST" '
             set -euo pipefail
             cd /srv/thia.lol/node-api
             npm ci --omit=dev
