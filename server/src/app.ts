@@ -2,6 +2,13 @@ import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 import { z } from "zod";
 
 import {
+  normalizePostIdentifier,
+  type DiscoverFeedPayload,
+  type HomeFeedPayload,
+  type PostDetailPayload,
+  type PostsRepository,
+} from "./posts.js";
+import {
   normalizeProfileHandle,
   type FollowUserCardPayload,
   type ProfileBadgesPayload,
@@ -10,6 +17,7 @@ import {
   type ProfilesRepository,
 } from "./profiles.js";
 import { normalizeRoomSlug, type RoomPayload, type RoomsRepository } from "./rooms.js";
+import type { SessionsRepository } from "./sessions.js";
 import type { PublicStatsPayload, StatsRepository } from "./stats.js";
 
 const healthQuerySchema = z.object({
@@ -24,11 +32,22 @@ const profileParamsSchema = z.object({
   handle: z.string(),
 });
 
+const postIdentifierParamsSchema = z.object({
+  identifier: z.string(),
+});
+
+const postRepliesParamsSchema = z.object({
+  id: z.string(),
+});
+
 export interface AppDependencies {
   checkDatabase?: () => Promise<void>;
   profilesRepository?: ProfilesRepository;
+  postsRepository?: PostsRepository;
   roomsRepository?: RoomsRepository;
+  sessionsRepository?: SessionsRepository;
   statsRepository?: StatsRepository;
+  publicBaseUrl?: string;
 }
 
 export interface HealthPayload {
@@ -114,6 +133,19 @@ async function withPublicProfileSubroute<T>(
   }
 }
 
+async function currentViewerUserId(
+  request: { headers: { cookie?: string | undefined } },
+  repository: SessionsRepository | undefined,
+): Promise<number | null> {
+  if (repository === undefined) {
+    return null;
+  }
+
+  const session = await repository.currentSession(request.headers.cookie);
+
+  return session?.userId ?? null;
+}
+
 export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
   const app = Fastify({
     logger: false,
@@ -197,6 +229,220 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       const stats = await dependencies.statsRepository.getPublicStats();
 
       return reply.send(successPayload<PublicStatsPayload>(stats));
+    } catch {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+  });
+
+  app.get("/feed/home", async (request, reply) => {
+    if (dependencies.postsRepository === undefined) {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+
+    try {
+      const viewerUserId = await currentViewerUserId(request, dependencies.sessionsRepository);
+      const feed = await dependencies.postsRepository.getHomeFeed(viewerUserId);
+
+      return reply.send(successPayload<HomeFeedPayload>(feed));
+    } catch {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+  });
+
+  app.get("/feed/discover", async (request, reply) => {
+    if (dependencies.postsRepository === undefined || dependencies.roomsRepository === undefined) {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+
+    try {
+      const viewerUserId = await currentViewerUserId(request, dependencies.sessionsRepository);
+      const [posts, rooms, peopleToWatch] = await Promise.all([
+        dependencies.postsRepository.listDiscoverPosts(viewerUserId),
+        dependencies.roomsRepository.listPublicRooms(),
+        dependencies.postsRepository.listPeopleToWatch(viewerUserId),
+      ]);
+      const feed: DiscoverFeedPayload = {
+        posts,
+        activeRooms: rooms.slice(0, 6),
+        peopleToWatch,
+      };
+
+      return reply.send(successPayload<DiscoverFeedPayload>(feed));
+    } catch {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+  });
+
+  app.get("/posts", async (request, reply) => {
+    if (dependencies.postsRepository === undefined) {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+
+    try {
+      const viewerUserId = await currentViewerUserId(request, dependencies.sessionsRepository);
+      const posts = await dependencies.postsRepository.listPublicPosts(viewerUserId);
+
+      return reply.send(successPayload(posts));
+    } catch {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+  });
+
+  app.get("/posts/:id/replies", async (request, reply) => {
+    if (dependencies.postsRepository === undefined) {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+
+    const parsedParams = postRepliesParamsSchema.safeParse(request.params);
+    const rawId = parsedParams.success ? parsedParams.data.id : "";
+
+    if (!/^[0-9]+$/.test(rawId)) {
+      return reply.status(404).send(errorPayload("Not found."));
+    }
+
+    try {
+      const viewerUserId = await currentViewerUserId(request, dependencies.sessionsRepository);
+      const replies = await dependencies.postsRepository.listPostReplies(Number(rawId), viewerUserId);
+
+      if (replies === null) {
+        return reply.status(404).send(errorPayload("Post not found."));
+      }
+
+      return reply.send(successPayload(replies));
+    } catch {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+  });
+
+  app.get("/posts/:identifier", async (request, reply) => {
+    if (dependencies.postsRepository === undefined) {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+
+    const parsedParams = postIdentifierParamsSchema.safeParse(request.params);
+    const identifier = parsedParams.success ? parsedParams.data.identifier : "";
+
+    if (normalizePostIdentifier(identifier) === null) {
+      return reply.status(404).send(errorPayload("Not found."));
+    }
+
+    try {
+      const viewerUserId = await currentViewerUserId(request, dependencies.sessionsRepository);
+      const post = await dependencies.postsRepository.getPublicPost(
+        identifier,
+        viewerUserId,
+        dependencies.publicBaseUrl ?? "https://thia.lol",
+      );
+
+      if (post === null) {
+        return reply.status(404).send(errorPayload("Post not found."));
+      }
+
+      return reply.send(successPayload<PostDetailPayload>(post));
+    } catch {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+  });
+
+  app.get("/rooms/:slug/posts", async (request, reply) => {
+    if (dependencies.postsRepository === undefined) {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+
+    const parsedParams = roomParamsSchema.safeParse(request.params);
+    const normalizedSlug = parsedParams.success ? normalizeRoomSlug(parsedParams.data.slug) : null;
+
+    if (normalizedSlug === null) {
+      return reply.status(400).send(errorPayload("Invalid room slug."));
+    }
+
+    try {
+      const viewerUserId = await currentViewerUserId(request, dependencies.sessionsRepository);
+      const posts = await dependencies.postsRepository.listRoomPosts(normalizedSlug, viewerUserId);
+
+      if (posts === null) {
+        return reply.status(404).send(errorPayload("Room not found."));
+      }
+
+      return reply.send(successPayload(posts));
+    } catch {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+  });
+
+  app.get("/profiles/:handle/posts", async (request, reply) => {
+    if (dependencies.postsRepository === undefined) {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+
+    const parsedParams = profileParamsSchema.safeParse(request.params);
+    const normalizedHandle = parsedParams.success ? normalizeProfileHandle(parsedParams.data.handle) : null;
+
+    if (normalizedHandle === null) {
+      return reply.status(400).send(errorPayload("Invalid profile handle."));
+    }
+
+    try {
+      const viewerUserId = await currentViewerUserId(request, dependencies.sessionsRepository);
+      const posts = await dependencies.postsRepository.listProfilePosts(normalizedHandle, viewerUserId);
+
+      if (posts === null) {
+        return reply.status(404).send(errorPayload("Profile not found."));
+      }
+
+      return reply.send(successPayload(posts));
+    } catch {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+  });
+
+  app.get("/profiles/:handle/replies", async (request, reply) => {
+    if (dependencies.postsRepository === undefined) {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+
+    const parsedParams = profileParamsSchema.safeParse(request.params);
+    const normalizedHandle = parsedParams.success ? normalizeProfileHandle(parsedParams.data.handle) : null;
+
+    if (normalizedHandle === null) {
+      return reply.status(400).send(errorPayload("Invalid profile handle."));
+    }
+
+    try {
+      const viewerUserId = await currentViewerUserId(request, dependencies.sessionsRepository);
+      const posts = await dependencies.postsRepository.listProfileReplies(normalizedHandle, viewerUserId);
+
+      if (posts === null) {
+        return reply.status(404).send(errorPayload("Profile not found."));
+      }
+
+      return reply.send(successPayload(posts));
+    } catch {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+  });
+
+  app.get("/profiles/:handle/reblogs", async (request, reply) => {
+    if (dependencies.postsRepository === undefined) {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+
+    const parsedParams = profileParamsSchema.safeParse(request.params);
+    const normalizedHandle = parsedParams.success ? normalizeProfileHandle(parsedParams.data.handle) : null;
+
+    if (normalizedHandle === null) {
+      return reply.status(400).send(errorPayload("Invalid profile handle."));
+    }
+
+    try {
+      const viewerUserId = await currentViewerUserId(request, dependencies.sessionsRepository);
+      const posts = await dependencies.postsRepository.listProfileReblogs(normalizedHandle, viewerUserId);
+
+      if (posts === null) {
+        return reply.status(404).send(errorPayload("Profile not found."));
+      }
+
+      return reply.send(successPayload(posts));
     } catch {
       return reply.status(500).send(errorPayload("Internal server error."));
     }

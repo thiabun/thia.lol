@@ -120,6 +120,11 @@ Useful checks:
 systemctl is-active thia-node-api.service
 curl --fail-with-body https://thia.lol/api-next/health
 curl --fail-with-body 'https://thia.lol/api-next/health?db=1'
+curl --fail-with-body https://thia.lol/api-next/posts
+curl --fail-with-body https://thia.lol/api-next/feed/home
+curl --fail-with-body https://thia.lol/api-next/feed/discover
+curl --fail-with-body https://thia.lol/api-next/rooms/general/posts
+curl --fail-with-body https://thia.lol/api-next/profiles/thia/posts
 curl --fail-with-body https://thia.lol/api/rooms
 curl --fail-with-body https://thia.lol/api/stats
 curl --fail-with-body https://thia.lol/api/profiles/thia
@@ -128,6 +133,13 @@ curl --fail-with-body https://thia.lol/api/profiles/thia/followers
 ```
 
 The service reads environment variables from `/srv/thia.lol/config/node-api.env`.
+Besides the MariaDB connection values, the read-preview routes use:
+
+```text
+THIA_SESSION_COOKIE_NAME=thia_session
+THIA_PUBLIC_BASE_URL=https://thia.lol
+```
+
 Do not commit that file or print its database password in logs.
 
 Cutover verification:

@@ -2,13 +2,21 @@ import { describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "./app.js";
 import type {
+  DiscoverPersonPayload,
+  HomeFeedPayload,
+  PostDetailPayload,
+  PostsRepository,
+} from "./posts.js";
+import type {
   FollowUserCardPayload,
+  PostPayload,
   ProfileBadgesPayload,
   ProfileModulePayload,
   ProfilePayload,
   ProfilesRepository,
 } from "./profiles.js";
 import type { RoomPayload, RoomsRepository } from "./rooms.js";
+import type { RequestSession, SessionsRepository } from "./sessions.js";
 import type { PublicStatsPayload, StatsRepository } from "./stats.js";
 
 const room: RoomPayload = {
@@ -189,6 +197,60 @@ const followCard: FollowUserCardPayload = {
   isMoot: false,
 };
 
+const post: PostPayload = {
+  id: 99,
+  publicId: "pc359fe2da759",
+  body: "A public post.",
+  bodyEntities: [],
+  mood: "sunveil",
+  mediaUrl: null,
+  visibility: "public",
+  status: "published",
+  parentId: null,
+  deletedAt: null,
+  createdAt: "2026-06-23 10:00:00",
+  updatedAt: "2026-06-23 10:00:00",
+  author: profile.user,
+  profile,
+  room,
+  commentCount: 1,
+  reactions: {
+    glow: 2,
+    echo: 0,
+    hush: 0,
+  },
+  likeCount: 2,
+  likedByCurrentUser: false,
+  reblogCount: 1,
+  rebloggedByMe: false,
+  rebloggedByCurrentUser: false,
+  rebloggedBy: null,
+  rebloggedAt: null,
+  socialContext: {
+    authorRelationship: null,
+    likedByFollowedCount: 0,
+  },
+};
+
+const postDetail: PostDetailPayload = {
+  ...post,
+  canonicalPath: "/@thia/posts/pc359fe2da759",
+  canonicalUrl: "https://thia.lol/@thia/posts/pc359fe2da759",
+};
+
+const personToWatch: DiscoverPersonPayload = {
+  handle: "friend",
+  displayName: "Friend",
+  initials: "F",
+  avatarUrl: null,
+  bioSnippet: "Public friend.",
+  isFollowing: false,
+  isMoot: false,
+  postCount: 4,
+  followerCount: 2,
+  starCount: 1,
+};
+
 function profilesRepositoryMock(overrides: Partial<ProfilesRepository> = {}): ProfilesRepository {
   return {
     getPublicProfile: vi.fn().mockResolvedValue(profile),
@@ -197,6 +259,40 @@ function profilesRepositoryMock(overrides: Partial<ProfilesRepository> = {}): Pr
     getPublicProfileBadges: vi.fn().mockResolvedValue(profileBadges),
     getPublicProfileFollowers: vi.fn().mockResolvedValue([followCard]),
     getPublicProfileFollowing: vi.fn().mockResolvedValue([followCard]),
+    ...overrides,
+  };
+}
+
+function postsRepositoryMock(overrides: Partial<PostsRepository> = {}): PostsRepository {
+  return {
+    listPublicPosts: vi.fn().mockResolvedValue([post]),
+    getPublicPost: vi.fn().mockResolvedValue(postDetail),
+    listPostReplies: vi.fn().mockResolvedValue([post]),
+    listRoomPosts: vi.fn().mockResolvedValue([post]),
+    listProfilePosts: vi.fn().mockResolvedValue([post]),
+    listProfileReplies: vi.fn().mockResolvedValue([post]),
+    listProfileReblogs: vi.fn().mockResolvedValue([post]),
+    getHomeFeed: vi.fn().mockResolvedValue({
+      posts: [post],
+      personalized: false,
+    } satisfies HomeFeedPayload),
+    listDiscoverPosts: vi.fn().mockResolvedValue([post]),
+    listPeopleToWatch: vi.fn().mockResolvedValue([personToWatch]),
+    ...overrides,
+  };
+}
+
+const session: RequestSession = {
+  sessionId: 7,
+  userId: 42,
+  tokenHash: "hash",
+  handle: "viewer",
+  role: "member",
+};
+
+function sessionsRepositoryMock(overrides: Partial<SessionsRepository> = {}): SessionsRepository {
+  return {
+    currentSession: vi.fn().mockResolvedValue(session),
     ...overrides,
   };
 }
@@ -667,6 +763,235 @@ describe("Node API profile extras preview routes", () => {
     const response = await app.inject({
       method: "GET",
       url: path,
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Internal server error.",
+    });
+  });
+});
+
+describe("Node API post and feed preview routes", () => {
+  it("returns public posts in the PHP success wrapper", async () => {
+    const repository = postsRepositoryMock();
+    const app = buildApp({
+      postsRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/posts",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(repository.listPublicPosts).toHaveBeenCalledWith(null);
+    expect(response.json()).toEqual({
+      ok: true,
+      data: [post],
+    });
+  });
+
+  it("resolves optional sessions for post reads", async () => {
+    const postsRepository = postsRepositoryMock();
+    const sessionsRepository = sessionsRepositoryMock();
+    const app = buildApp({
+      postsRepository,
+      sessionsRepository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/posts",
+      headers: {
+        cookie: "thia_session=token",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(sessionsRepository.currentSession).toHaveBeenCalledWith("thia_session=token");
+    expect(postsRepository.listPublicPosts).toHaveBeenCalledWith(42);
+  });
+
+  it("returns post details with canonical fields", async () => {
+    const repository = postsRepositoryMock();
+    const app = buildApp({
+      postsRepository: repository,
+      publicBaseUrl: "https://thia.lol",
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/posts/pc359fe2da759",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(repository.getPublicPost).toHaveBeenCalledWith("pc359fe2da759", null, "https://thia.lol");
+    expect(response.json()).toEqual({
+      ok: true,
+      data: postDetail,
+    });
+  });
+
+  it("returns 404 for invalid post identifiers", async () => {
+    const repository = postsRepositoryMock();
+    const app = buildApp({
+      postsRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/posts/nope",
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(repository.getPublicPost).not.toHaveBeenCalled();
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Not found.",
+    });
+  });
+
+  it("returns 404 for unknown valid posts", async () => {
+    const repository = postsRepositoryMock({
+      getPublicPost: vi.fn().mockResolvedValue(null),
+    });
+    const app = buildApp({
+      postsRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/posts/pc359fe2da759",
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Post not found.",
+    });
+  });
+
+  it("returns post replies for numeric parent ids", async () => {
+    const repository = postsRepositoryMock();
+    const app = buildApp({
+      postsRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/posts/99/replies",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(repository.listPostReplies).toHaveBeenCalledWith(99, null);
+    expect(response.json()).toEqual({
+      ok: true,
+      data: [post],
+    });
+  });
+
+  it("returns 404 for unknown reply parent posts", async () => {
+    const repository = postsRepositoryMock({
+      listPostReplies: vi.fn().mockResolvedValue(null),
+    });
+    const app = buildApp({
+      postsRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/posts/99/replies",
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Post not found.",
+    });
+  });
+
+  it("returns public room posts", async () => {
+    const repository = postsRepositoryMock();
+    const app = buildApp({
+      postsRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/rooms/general/posts",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(repository.listRoomPosts).toHaveBeenCalledWith("general", null);
+    expect(response.json()).toEqual({
+      ok: true,
+      data: [post],
+    });
+  });
+
+  it("returns public profile post collections", async () => {
+    const repository = postsRepositoryMock();
+    const app = buildApp({
+      postsRepository: repository,
+    });
+
+    for (const [path, methodName] of [
+      ["/profiles/thia/posts", "listProfilePosts"],
+      ["/profiles/thia/replies", "listProfileReplies"],
+      ["/profiles/thia/reblogs", "listProfileReblogs"],
+    ] as const) {
+      const response = await app.inject({
+        method: "GET",
+        url: path,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(repository[methodName]).toHaveBeenCalledWith("thia", null);
+      expect(response.json()).toEqual({
+        ok: true,
+        data: [post],
+      });
+    }
+  });
+
+  it("returns home feed and discover feed wrappers", async () => {
+    const postsRepository = postsRepositoryMock();
+    const app = buildApp({
+      postsRepository,
+      roomsRepository: roomsRepositoryMock(),
+    });
+    const home = await app.inject({
+      method: "GET",
+      url: "/feed/home",
+    });
+    const discover = await app.inject({
+      method: "GET",
+      url: "/feed/discover",
+    });
+
+    expect(home.statusCode).toBe(200);
+    expect(home.json()).toEqual({
+      ok: true,
+      data: {
+        posts: [post],
+        personalized: false,
+      },
+    });
+    expect(discover.statusCode).toBe(200);
+    expect(discover.json()).toEqual({
+      ok: true,
+      data: {
+        posts: [post],
+        activeRooms: [room],
+        peopleToWatch: [personToWatch],
+      },
+    });
+  });
+
+  it("returns JSON 500 without raw post repository details", async () => {
+    const repository = postsRepositoryMock({
+      listPublicPosts: vi.fn().mockRejectedValue(new Error("sensitive post detail")),
+    });
+    const app = buildApp({
+      postsRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/posts",
     });
 
     expect(response.statusCode).toBe(500);

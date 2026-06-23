@@ -42,6 +42,14 @@ Deployment must never overwrite or delete:
 /srv/thia.lol/backups/
 ```
 
+`/srv/thia.lol/config/node-api.env` must include the MariaDB connection values
+plus:
+
+```text
+THIA_SESSION_COOKIE_NAME=thia_session
+THIA_PUBLIC_BASE_URL=https://thia.lol
+```
+
 ## GitHub Actions Deploy
 
 The production workflow is `.github/workflows/deploy.yml`.
@@ -147,6 +155,11 @@ https://thia.lol/api/health
 https://thia.lol/api/health?db=1
 https://thia.lol/api-next/health
 https://thia.lol/api-next/health?db=1
+https://thia.lol/api-next/posts
+https://thia.lol/api-next/feed/home
+https://thia.lol/api-next/feed/discover
+https://thia.lol/api-next/rooms/general/posts
+https://thia.lol/api-next/profiles/thia/posts
 https://thia.lol/api/rooms
 https://thia.lol/api/rooms/general
 https://thia.lol/api/stats

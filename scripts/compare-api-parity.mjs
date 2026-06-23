@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const baseUrl = (process.env.BASE_URL || "https://thia.lol").replace(/\/+$/, "");
+const cookieHeader = process.env.COOKIE_HEADER || "";
 
 const routePairs = [
   ["/api/rooms", "/api-next/rooms"],
@@ -12,7 +13,24 @@ const routePairs = [
   ["/api/profiles/thia/badges", "/api-next/profiles/thia/badges"],
   ["/api/profiles/thia/followers", "/api-next/profiles/thia/followers"],
   ["/api/profiles/thia/following", "/api-next/profiles/thia/following"],
+  ["/api/posts", "/api-next/posts"],
+  ["/api/rooms/general/posts", "/api-next/rooms/general/posts"],
+  ["/api/profiles/thia/posts", "/api-next/profiles/thia/posts"],
+  ["/api/profiles/thia/replies", "/api-next/profiles/thia/replies"],
+  ["/api/profiles/thia/reblogs", "/api-next/profiles/thia/reblogs"],
+  ["/api/feed/home", "/api-next/feed/home"],
+  ["/api/feed/discover", "/api-next/feed/discover"],
 ];
+
+const postsIndex = await fetchJson("/api/posts");
+const postAnchor = firstPostAnchor(postsIndex.body);
+
+if (postAnchor !== null) {
+  routePairs.push(
+    [`/api/posts/${encodeURIComponent(postAnchor.publicIdentifier)}`, `/api-next/posts/${encodeURIComponent(postAnchor.publicIdentifier)}`],
+    [`/api/posts/${postAnchor.id}/replies`, `/api-next/posts/${postAnchor.id}/replies`],
+  );
+}
 
 let failed = false;
 
@@ -43,10 +61,16 @@ if (failed) {
 }
 
 async function fetchJson(path) {
+  const headers = {
+    accept: "application/json",
+  };
+
+  if (cookieHeader !== "") {
+    headers.cookie = cookieHeader;
+  }
+
   const response = await fetch(`${baseUrl}${path}`, {
-    headers: {
-      accept: "application/json",
-    },
+    headers,
   });
   const text = await response.text();
 
@@ -60,6 +84,32 @@ async function fetchJson(path) {
       cause: error,
     });
   }
+}
+
+function firstPostAnchor(body) {
+  const posts = body?.data;
+
+  if (!Array.isArray(posts)) {
+    return null;
+  }
+
+  for (const post of posts) {
+    if (post === null || typeof post !== "object") {
+      continue;
+    }
+
+    const id = post.id;
+    const publicId = post.publicId;
+
+    if (Number.isInteger(id) && id > 0) {
+      return {
+        id,
+        publicIdentifier: typeof publicId === "string" && publicId !== "" ? publicId : String(id),
+      };
+    }
+  }
+
+  return null;
 }
 
 function deepEqual(left, right) {

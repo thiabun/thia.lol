@@ -1685,15 +1685,42 @@ function buildFeaturedRoomQuery(profileUserId: number, capabilities: ProfileSche
         LIMIT 1`;
 }
 
-function postSelectSql(
+export function postSelectSql(
   whereClause: string,
   orderClause: string,
   extraSelect: string,
   capabilities: ProfileSchemaCapabilities,
+  viewerUserId: number | null = null,
+  extraJoins = "",
 ): string {
+  const viewerSql = viewerUserId === null ? "NULL" : String(viewerUserId);
+  const followSelect = capabilities.hasUserFollows
+    ? `IF(viewer_follows_author.following_id IS NULL, 0, 1) AS current_user_follows_author,
+        IF(author_follows_viewer.follower_id IS NULL, 0, 1) AS author_follows_current_user,
+        COALESCE(followed_likes.followed_like_count, 0) AS followed_like_count,`
+    : `0 AS current_user_follows_author,
+        0 AS author_follows_current_user,
+        0 AS followed_like_count,`;
+  const followJoins = capabilities.hasUserFollows
+    ? `LEFT JOIN user_follows viewer_follows_author
+        ON viewer_follows_author.follower_id = ${viewerSql}
+       AND viewer_follows_author.following_id = u.id
+    LEFT JOIN user_follows author_follows_viewer
+        ON author_follows_viewer.follower_id = u.id
+       AND author_follows_viewer.following_id = ${viewerSql}
+    LEFT JOIN (
+        SELECT reactions.post_id, COUNT(*) AS followed_like_count
+        FROM post_reactions reactions
+        INNER JOIN user_follows followed_reactors
+            ON followed_reactors.following_id = reactions.user_id
+           AND followed_reactors.follower_id = ${viewerSql}
+        WHERE reactions.type = 'glow'
+        GROUP BY reactions.post_id
+    ) followed_likes ON followed_likes.post_id = p.id`
+    : "";
   const reblogSelect = capabilities.hasPostReblogs
     ? `COALESCE(reblogs.reblog_count, 0) AS reblog_count,
-        NULL AS current_reblog_user_id,`
+        current_reblog.user_id AS current_reblog_user_id,`
     : `0 AS reblog_count,
         NULL AS current_reblog_user_id,`;
   const reblogJoins = capabilities.hasPostReblogs
@@ -1701,7 +1728,10 @@ function postSelectSql(
         SELECT post_id, COUNT(*) AS reblog_count
         FROM post_reblogs
         GROUP BY post_id
-    ) reblogs ON reblogs.post_id = p.id`
+    ) reblogs ON reblogs.post_id = p.id
+    LEFT JOIN post_reblogs current_reblog
+        ON current_reblog.post_id = p.id
+       AND current_reblog.user_id = ${viewerSql}`
     : "";
   const resolvedExtraSelect = extraSelect.trim() === "" ? "" : `,\n        ${extraSelect}`;
 
@@ -1763,11 +1793,9 @@ function postSelectSql(
         COALESCE(reactions.echo_count, 0) AS reaction_echo_count,
         COALESCE(reactions.hush_count, 0) AS reaction_hush_count,
         COALESCE(replies.reply_count, 0) AS reply_count,
-        NULL AS current_like_user_id,
-        NULL AS current_viewer_user_id,
-        0 AS current_user_follows_author,
-        0 AS author_follows_current_user,
-        0 AS followed_like_count,
+        current_like.user_id AS current_like_user_id,
+        ${viewerSql} AS current_viewer_user_id,
+        ${followSelect}
         ${reblogSelect}
         NULL AS reblogged_by_user_id,
         NULL AS reblogged_by_handle,
@@ -1850,17 +1878,23 @@ function postSelectSql(
           AND ${postAncestorVisibilitySql("reply_posts", capabilities)}
         GROUP BY reply_posts.parent_id
     ) replies ON replies.parent_id = p.id
+    LEFT JOIN post_reactions current_like
+        ON current_like.post_id = p.id
+       AND current_like.user_id = ${viewerSql}
+       AND current_like.type = 'glow'
+    ${followJoins}
     ${reblogJoins}
+    ${extraJoins}
     WHERE ${publicPostVisibleSql("p", "r", capabilities)}
       AND ${userPubliclyAvailableSql("u", capabilities)}
       AND ${postAncestorVisibilitySql("p", capabilities)}
-      ${profileAuthorVisibilitySql("u", "pr", capabilities)}
+      ${profileAuthorVisibilitySql("u", "pr", capabilities, viewerUserId)}
       ${whereClause}
     ORDER BY ${orderClause}
     LIMIT 50`;
 }
 
-function postPayloadFromRow(
+export function postPayloadFromRow(
   row: PostRow,
   bodyEntities: TextEntityPayload[],
   profileBioEntities: TextEntityPayload[],
@@ -2178,7 +2212,11 @@ function roomNotDeletedSql(alias: string, capabilities: ProfileSchemaCapabilitie
   return capabilities.hasRoomSoftDeleteColumn ? `AND ${alias}.deleted_at IS NULL` : "";
 }
 
-function publicPostVisibleSql(postAlias: string, roomAlias: string, capabilities: ProfileSchemaCapabilities): string {
+export function publicPostVisibleSql(
+  postAlias: string,
+  roomAlias: string,
+  capabilities: ProfileSchemaCapabilities,
+): string {
   validateSchemaIdentifier(postAlias);
   validateSchemaIdentifier(roomAlias);
 
@@ -2191,7 +2229,7 @@ function publicPostVisibleSql(postAlias: string, roomAlias: string, capabilities
         )`;
 }
 
-function postAncestorVisibilityJoinsSql(postAlias: string): string {
+export function postAncestorVisibilityJoinsSql(postAlias: string): string {
   validateSchemaIdentifier(postAlias);
 
   return `LEFT JOIN posts parent_post ON parent_post.id = ${postAlias}.parent_id
@@ -2202,7 +2240,7 @@ function postAncestorVisibilityJoinsSql(postAlias: string): string {
     LEFT JOIN rooms great_grandparent_post_room ON great_grandparent_post_room.id = great_grandparent_post.room_id`;
 }
 
-function postAncestorVisibilitySql(postAlias: string, capabilities: ProfileSchemaCapabilities): string {
+export function postAncestorVisibilitySql(postAlias: string, capabilities: ProfileSchemaCapabilities): string {
   validateSchemaIdentifier(postAlias);
 
   const parentVisible = publicPostVisibleSql("parent_post", "parent_post_room", capabilities);
@@ -2324,6 +2362,7 @@ function profileAuthorVisibilitySql(
   userAlias: string,
   profileAlias: string,
   capabilities: ProfileSchemaCapabilities,
+  viewerUserId: number | null = null,
 ): string {
   validateSchemaIdentifier(userAlias);
   validateSchemaIdentifier(profileAlias);
@@ -2336,13 +2375,15 @@ function profileAuthorVisibilitySql(
     return `AND ${profileAlias}.visibility = 'public'`;
   }
 
+  const viewerSql = viewerUserId === null ? "NULL" : String(viewerUserId);
+
   return `AND (
         ${profileAlias}.visibility = 'public'
-        OR ${userAlias}.id = NULL
+        OR ${userAlias}.id = ${viewerSql}
         OR EXISTS (
             SELECT 1
             FROM user_follows private_profile_follows
-            WHERE private_profile_follows.follower_id = NULL
+            WHERE private_profile_follows.follower_id = ${viewerSql}
               AND private_profile_follows.following_id = ${userAlias}.id
         )
     )`;
