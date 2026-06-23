@@ -361,7 +361,7 @@ describe("profile extras payload mapping", () => {
       isFollowing: true,
       isMoot: true,
     });
-    expect(payload.bioSnippet).toHaveLength(140);
+    expect(Buffer.from(payload.bioSnippet, "utf8")).toHaveLength(140);
     expect(payload.bioSnippet).toMatch(/hello\.\.\.$/);
   });
 

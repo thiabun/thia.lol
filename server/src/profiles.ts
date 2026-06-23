@@ -2425,12 +2425,13 @@ function followBioSnippet(value: string | null | undefined): string {
   }
 
   const trimmed = value.replace(/\s+/g, " ").trim();
+  const bytes = Buffer.from(trimmed, "utf8");
 
-  if (trimmed.length <= 140) {
+  if (bytes.length <= 140) {
     return trimmed;
   }
 
-  return `${trimmed.slice(0, 137).trimEnd()}...`;
+  return `${bytes.subarray(0, 137).toString("utf8").trimEnd()}...`;
 }
 
 function profileModuleJson(value: string | null | undefined): Record<string, unknown> {
