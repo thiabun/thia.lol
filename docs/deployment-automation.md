@@ -69,7 +69,9 @@ The deploy job:
 - rsyncs the built Node API to `/srv/thia.lol/node-api/`
 - runs `npm ci --omit=dev` on the VPS and restarts `thia-node-api.service`
 - runs `scripts/smoke-live.sh` against `https://thia.lol`
-- runs `scripts/smoke-api-next.sh` against `https://thia.lol/api-next/health`
+- runs `scripts/smoke-api-next.sh` against the Node preview API
+- runs `scripts/compare-api-parity.mjs` for production/preview read parity
+- runs `scripts/check-api-cutover.mjs` for Node-served production read routes
 
 The `deploy` SSH user should be able to write `/srv/thia.lol/www/`,
 `/srv/thia.lol/www/api/`, `/srv/thia.lol/www/api/migrations/`, and
@@ -145,9 +147,16 @@ https://thia.lol/api/health
 https://thia.lol/api/health?db=1
 https://thia.lol/api-next/health
 https://thia.lol/api-next/health?db=1
+https://thia.lol/api/rooms
+https://thia.lol/api/rooms/general
+https://thia.lol/api/stats
 https://thia.lol/api/profiles/thia
 https://thia.lol/@thia
 ```
+
+`/api/rooms`, `/api/rooms/:slug`, and `/api/stats` are Node-served production
+read routes and should include `X-Thia-API-Runtime: node`. Other production API
+routes remain PHP-owned unless explicitly cut over later.
 
 For upload-sensitive changes, also check one known media URL under:
 

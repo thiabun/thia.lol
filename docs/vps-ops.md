@@ -78,8 +78,23 @@ sudo systemctl reload caddy
 ```
 
 Caddy owns HTTPS for `thia.lol` and redirects `www.thia.lol` to the apex.
-The TypeScript API preview is proxied under `/api-next/*` and does not receive
-production `/api/*` traffic.
+The TypeScript API preview is proxied under `/api-next/*`.
+
+Selected production read routes are served by the Node API and marked with:
+
+```text
+X-Thia-API-Runtime: node
+```
+
+Current Node-served production reads:
+
+```text
+GET/HEAD /api/rooms
+GET/HEAD /api/rooms/:slug
+GET/HEAD /api/stats
+```
+
+All other `/api/*` traffic remains on PHP unless explicitly cut over later.
 
 ## Node API Preview
 
@@ -95,10 +110,22 @@ Useful checks:
 systemctl is-active thia-node-api.service
 curl --fail-with-body https://thia.lol/api-next/health
 curl --fail-with-body 'https://thia.lol/api-next/health?db=1'
+curl --fail-with-body https://thia.lol/api/rooms
+curl --fail-with-body https://thia.lol/api/stats
 ```
 
 The service reads environment variables from `/srv/thia.lol/config/node-api.env`.
 Do not commit that file or print its database password in logs.
+
+Cutover verification:
+
+```bash
+node scripts/check-api-cutover.mjs
+```
+
+Rollback for the current Node read cutover is Caddy-only: restore the backed-up
+`/etc/caddy/Caddyfile` or remove the Node read handlers, validate Caddy, reload
+Caddy, and rerun `scripts/smoke-live.sh`.
 
 ## MariaDB Backups
 

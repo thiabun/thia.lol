@@ -152,3 +152,6 @@ jobs:
 
       - name: Compare PHP and Node API preview parity
         run: node scripts/compare-api-parity.mjs
+
+      - name: Verify Node API production cutover
+        run: node scripts/check-api-cutover.mjs
