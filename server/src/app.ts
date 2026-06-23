@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
 
+import { normalizeProfileHandle, type ProfilePayload, type ProfilesRepository } from "./profiles.js";
 import { normalizeRoomSlug, type RoomPayload, type RoomsRepository } from "./rooms.js";
 import type { PublicStatsPayload, StatsRepository } from "./stats.js";
 
@@ -12,8 +13,13 @@ const roomParamsSchema = z.object({
   slug: z.string(),
 });
 
+const profileParamsSchema = z.object({
+  handle: z.string(),
+});
+
 export interface AppDependencies {
   checkDatabase?: () => Promise<void>;
+  profilesRepository?: ProfilesRepository;
   roomsRepository?: RoomsRepository;
   statsRepository?: StatsRepository;
 }
@@ -154,6 +160,31 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       const stats = await dependencies.statsRepository.getPublicStats();
 
       return reply.send(successPayload<PublicStatsPayload>(stats));
+    } catch {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+  });
+
+  app.get("/profiles/:handle", async (request, reply) => {
+    if (dependencies.profilesRepository === undefined) {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+
+    const parsedParams = profileParamsSchema.safeParse(request.params);
+    const normalizedHandle = parsedParams.success ? normalizeProfileHandle(parsedParams.data.handle) : null;
+
+    if (normalizedHandle === null) {
+      return reply.status(400).send(errorPayload("Invalid profile handle."));
+    }
+
+    try {
+      const profile = await dependencies.profilesRepository.getPublicProfile(normalizedHandle);
+
+      if (profile === null) {
+        return reply.status(404).send(errorPayload("Profile not found."));
+      }
+
+      return reply.send(successPayload<ProfilePayload>(profile));
     } catch {
       return reply.status(500).send(errorPayload("Internal server error."));
     }

@@ -6,6 +6,7 @@ const routePairs = [
   ["/api/rooms", "/api-next/rooms"],
   ["/api/rooms/general", "/api-next/rooms/general"],
   ["/api/stats", "/api-next/stats"],
+  ["/api/profiles/thia", "/api-next/profiles/thia"],
 ];
 
 let failed = false;
