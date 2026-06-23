@@ -1,0 +1,28 @@
+import { z } from "zod";
+
+const envSchema = z.object({
+  THIA_API_HOST: z.string().min(1).default("127.0.0.1"),
+  THIA_API_PORT: z.coerce.number().int().min(1).max(65535).default(3100),
+  THIA_DB_HOST: z.string().min(1).default("127.0.0.1"),
+  THIA_DB_PORT: z.coerce.number().int().min(1).max(65535).default(3306),
+  THIA_DB_NAME: z.string().min(1),
+  THIA_DB_USER: z.string().min(1),
+  THIA_DB_PASSWORD: z.string().default(""),
+  THIA_DB_CHARSET: z.string().min(1).default("utf8mb4"),
+});
+
+export type ServerConfig = z.infer<typeof envSchema>;
+
+export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
+  const parsed = envSchema.safeParse(env);
+
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+      .join("; ");
+
+    throw new Error(`Invalid Node API environment: ${issues}`);
+  }
+
+  return parsed.data;
+}

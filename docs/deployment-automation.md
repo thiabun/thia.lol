@@ -13,6 +13,12 @@ files over SSH/rsync.
 /srv/thia.lol/
   config/
     config.php                 # server-only, never committed
+    node-api.env               # server-only Node API environment
+  node-api/                    # Fastify preview API deploy target
+    package.json
+    package-lock.json
+    server/
+      dist/
   www/
     index.html
     assets/
@@ -31,6 +37,7 @@ Deployment must never overwrite or delete:
 
 ```text
 /srv/thia.lol/config/config.php
+/srv/thia.lol/config/node-api.env
 /srv/thia.lol/www/uploads/
 /srv/thia.lol/backups/
 ```
@@ -54,16 +61,21 @@ The deploy job:
 - runs `npm run typecheck`
 - runs `npm run lint`
 - runs `npm run build`
+- runs `npm run build:api`
 - writes `dist/deploy-meta.json`
 - rsyncs `dist/` to `/srv/thia.lol/www/`
 - rsyncs `api/` to `/srv/thia.lol/www/api/`
 - rsyncs `backend/database/migrations/` to `/srv/thia.lol/www/api/migrations/`
+- rsyncs the built Node API to `/srv/thia.lol/node-api/`
+- runs `npm ci --omit=dev` on the VPS and restarts `thia-node-api.service`
 - runs `scripts/smoke-live.sh` against `https://thia.lol`
+- runs `scripts/smoke-api-next.sh` against `https://thia.lol/api-next/health`
 
 The `deploy` SSH user should be able to write `/srv/thia.lol/www/`,
-`/srv/thia.lol/www/api/`, and `/srv/thia.lol/www/api/migrations/`. It should
-not be able to write `/srv/thia.lol/www/uploads/` or read
-`/srv/thia.lol/config/config.php`.
+`/srv/thia.lol/www/api/`, `/srv/thia.lol/www/api/migrations/`, and
+`/srv/thia.lol/node-api/`. It should be able to restart only
+`thia-node-api.service` through passwordless sudo. It should not be able to
+write `/srv/thia.lol/www/uploads/` or read `/srv/thia.lol/config/config.php`.
 
 The frontend rsync uses `--delete` but excludes `/api/`, `/config/`, and
 `/uploads/`. API deploy excludes `/migrations/` because migrations are deployed
@@ -79,6 +91,7 @@ npm run typecheck
 npm run lint
 npm run optimize:assets
 npm run build
+npm run build:api
 ```
 
 Then deploy from the repository root:
@@ -101,6 +114,15 @@ rsync -az --delete \
   --exclude '.DS_Store' \
   backend/database/migrations/ \
   deploy@45.143.196.174:/srv/thia.lol/www/api/migrations/
+
+rm -rf .deploy-node-api
+mkdir -p .deploy-node-api/server
+cp package.json package-lock.json .deploy-node-api/
+cp -R server/dist .deploy-node-api/server/dist
+rsync -az --delete \
+  --exclude '.DS_Store' \
+  .deploy-node-api/ deploy@45.143.196.174:/srv/thia.lol/node-api/
+ssh deploy@45.143.196.174 'cd /srv/thia.lol/node-api && npm ci --omit=dev && sudo -n /bin/systemctl restart thia-node-api.service'
 ```
 
 Do not copy `config/config.php`, database dumps, `.env` files, cookies, or local
@@ -121,6 +143,8 @@ https://thia.lol/
 https://thia.lol/deploy-meta.json
 https://thia.lol/api/health
 https://thia.lol/api/health?db=1
+https://thia.lol/api-next/health
+https://thia.lol/api-next/health?db=1
 https://thia.lol/api/profiles/thia
 https://thia.lol/@thia
 ```

@@ -51,7 +51,7 @@ Do not cut over auth/session tables until password login, CSRF, cookie behavior,
 Start with public read-only routes after the deploy path is stable:
 
 ```text
-GET /api/health
+GET /api-next/health
 GET /api/profiles/{handle}
 GET /api/rooms
 GET /api/posts

@@ -44,6 +44,9 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      - name: Build Node API
+        run: npm run build:api
+
       - name: Write deploy metadata
         run: |
           node -e "const fs = require('node:fs'); fs.writeFileSync('dist/deploy-meta.json', JSON.stringify({ app: 'thia.lol', environment: 'production', commit: process.env.GITHUB_SHA, builtAt: new Date().toISOString() }, null, 2) + '\n');"
@@ -76,7 +79,9 @@ jobs:
             test ! -w /srv/thia.lol/www/uploads
             test -w /srv/thia.lol/www/api
             test -w /srv/thia.lol/www/api/migrations
+            test -w /srv/thia.lol/node-api
             test ! -e /srv/thia.lol/www/config/config.php
+            sudo -n /bin/systemctl cat thia-node-api.service >/dev/null
           '
 
       - name: Deploy frontend to VPS web root
@@ -117,5 +122,30 @@ jobs:
             -e 'ssh -i ~/.ssh/thia_lol_deploy' \
             backend/database/migrations/ "$VPS_USER@$VPS_HOST:/srv/thia.lol/www/api/migrations/"
 
+      - name: Deploy Node API
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -euo pipefail
+          rm -rf .deploy-node-api
+          mkdir -p .deploy-node-api/server
+          cp package.json package-lock.json .deploy-node-api/
+          cp -R server/dist .deploy-node-api/server/dist
+          rsync -az --delete \
+            --exclude '.DS_Store' \
+            -e 'ssh -i ~/.ssh/thia_lol_deploy' \
+            .deploy-node-api/ "$VPS_USER@$VPS_HOST:/srv/thia.lol/node-api/"
+          ssh -i ~/.ssh/thia_lol_deploy "$VPS_USER@$VPS_HOST" '
+            set -euo pipefail
+            cd /srv/thia.lol/node-api
+            npm ci --omit=dev
+            chmod -R a+rX /srv/thia.lol/node-api
+            sudo -n /bin/systemctl restart thia-node-api.service
+          '
+
       - name: Smoke-test live site
         run: scripts/smoke-live.sh
+
+      - name: Smoke-test Node API preview
+        run: scripts/smoke-api-next.sh

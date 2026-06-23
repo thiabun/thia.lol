@@ -32,6 +32,8 @@ sudo ufw status verbose
 /srv/thia.lol/www/api/migrations/  # deployed SQL migrations
 /srv/thia.lol/www/uploads/         # public uploaded media
 /srv/thia.lol/config/config.php    # server-only config
+/srv/thia.lol/config/node-api.env  # server-only Fastify API environment
+/srv/thia.lol/node-api/            # deployed Fastify preview API
 /srv/thia.lol/backups/db/          # daily MariaDB dumps
 /etc/caddy/Caddyfile               # Caddy routing and TLS config
 ```
@@ -53,6 +55,7 @@ Logs:
 
 ```bash
 sudo journalctl -u caddy -n 120 --no-pager
+sudo journalctl -u thia-node-api -n 120 --no-pager
 sudo journalctl -u php8.3-fpm -n 120 --no-pager
 sudo journalctl -u mariadb -n 120 --no-pager
 sudo journalctl -u fail2ban -n 120 --no-pager
@@ -75,6 +78,27 @@ sudo systemctl reload caddy
 ```
 
 Caddy owns HTTPS for `thia.lol` and redirects `www.thia.lol` to the apex.
+The TypeScript API preview is proxied under `/api-next/*` and does not receive
+production `/api/*` traffic.
+
+## Node API Preview
+
+The Fastify preview service runs as:
+
+```text
+thia-node-api.service
+```
+
+Useful checks:
+
+```bash
+systemctl is-active thia-node-api.service
+curl --fail-with-body https://thia.lol/api-next/health
+curl --fail-with-body 'https://thia.lol/api-next/health?db=1'
+```
+
+The service reads environment variables from `/srv/thia.lol/config/node-api.env`.
+Do not commit that file or print its database password in logs.
 
 ## MariaDB Backups
 
