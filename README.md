@@ -46,7 +46,7 @@ Current foundation includes:
 - accounts and sessions
 - public profiles
 - profile editing and image customization
-- image uploads with temporary safe-original storage
+- image uploads with safe-original storage
 - posts with media
 - replies/thread foundations
 - likes
@@ -92,7 +92,10 @@ GitHub Issues are the active tracker for new v2 work.
 
 ## How it works
 
-The app is static-first on the frontend and uses a PHP/MySQL API on cPanel/Pebblehost.
+The app is static-first on the frontend and currently uses a PHP/MariaDB API on
+a PebbleHost VPS. The next backend direction is a gradual TypeScript API and
+PostgreSQL rewrite, but production stays on the current PHP API until routes are
+moved safely one at a time.
 
 Frontend:
 
@@ -117,8 +120,8 @@ Uploads:
 - authenticated image uploads only
 - JPEG, PNG, WebP, and GIF accepted
 - 10 MB max
-- stored as safe originals while cPanel conversion is disabled
-- stored under the deployed server `uploads/` directory
+- stored as safe originals
+- stored under the deployed server `/srv/thia.lol/www/uploads/` directory
 
 ## Contributing and testing
 
@@ -177,20 +180,23 @@ Never commit real credentials, cookies, database passwords, migration tokens, or
 
 ## Deployment notes
 
-The live deployment is cPanel/Pebblehost-oriented:
+The live deployment is VPS-oriented:
 
-- `dist/` contents go directly into `public_html/`
-- `api/` files go into `public_html/api/`
-- migrations go into `public_html/api/migrations/`
-- `public_html/config/config.php` is server-only and must not be committed
-- `public_html/uploads/` must be preserved
+- `dist/` contents go directly into `/srv/thia.lol/www/`
+- `api/` files go into `/srv/thia.lol/www/api/`
+- migrations go into `/srv/thia.lol/www/api/migrations/`
+- `/srv/thia.lol/config/config.php` is server-only and must not be committed
+- `/srv/thia.lol/www/uploads/` must be preserved
+- Caddy, PHP-FPM, MariaDB, SSH deploys, and daily DB backups are part of production
 
 The detailed deployment guide lives here:
 
 ```text
 docs/deployment-automation.md
+docs/vps-ops.md
 docs/thia-migration-runner-guide.md
 docs/media-uploads.md
+docs/backend-rewrite-roadmap.md
 ```
 
 The README is intentionally not a full recreate-the-platform tutorial. The detailed machinery is in `docs/`, because normal people deserve a front page that does not read like cPanel tax law.

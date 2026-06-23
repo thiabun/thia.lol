@@ -5,7 +5,7 @@
 > tracker; docs provide operating rules, product direction, operational
 > procedures, and historical background.
 
-Date: 2026-06-15
+Date: 2026-06-23
 
 ## Read Order For Future Codex Tasks
 
@@ -44,13 +44,15 @@ paragraphs.
 | Doc | Use For |
 | --- | --- |
 | `docs/public-testing-launch-checklist.md` | Deploy, migration, API smoke, manual test, known limitation, and go/no-go checks. |
-| `docs/deployment-automation.md` | cPanel/GitHub Actions/Web Disk deployment workflow and server-only file preservation. |
+| `docs/deployment-automation.md` | VPS/GitHub Actions SSH deployment workflow and server-only file preservation. |
+| `docs/vps-ops.md` | Production VPS paths, SSH, Caddy, MariaDB backups, restore, and incident checks. |
 | `docs/thia-migration-runner-guide.md` | Practical live migration runner steps and production migration checks. |
 | `docs/migration-runner.md` | Migration runner implementation brief and migration authoring rules. |
-| `docs/media-uploads.md` | Image upload limits, profile background video limits, conversion, cPanel storage, and deploy preservation. |
+| `docs/media-uploads.md` | Image upload limits, profile background video limits, VPS storage, and deploy preservation. |
 | `docs/admin-setup.md` | One-time admin activation procedure and setup-token handling. |
 | `docs/auth-session-diagnostics.md` | Production auth/session diagnostics and migration-token protected checks. |
 | `docs/codex-handoff.md` | Standard Codex work packet and backend/deploy handoff expectations. |
+| `docs/backend-rewrite-roadmap.md` | TypeScript API and PostgreSQL strangler-migration direction. |
 
 ## Historical / Superseded References
 

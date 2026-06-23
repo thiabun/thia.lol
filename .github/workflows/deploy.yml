@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: cpanel-deploy
+  group: vps-deploy
   cancel-in-progress: true
 
 jobs:
@@ -29,6 +29,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Install deploy tools
+        run: sudo apt-get update && sudo apt-get install -y rsync
+
       - name: Optimize assets
         run: npm run optimize:assets
 
@@ -45,51 +48,73 @@ jobs:
         run: |
           node -e "const fs = require('node:fs'); fs.writeFileSync('dist/deploy-meta.json', JSON.stringify({ app: 'thia.lol', environment: 'production', commit: process.env.GITHUB_SHA, builtAt: new Date().toISOString() }, null, 2) + '\n');"
 
-      - name: Deploy frontend to public_html
-        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: dist/
-          server-dir: public_html/
-          dangerous-clean-slate: false
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/node_modules/**
-            **/config/**
-            **/config.php
+      - name: Configure SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST"
+          test -n "$VPS_USER"
+          test -n "$VPS_SSH_KEY"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/thia_lol_deploy
+          chmod 600 ~/.ssh/thia_lol_deploy
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Deploy API to public_html/api
-        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: api/
-          server-dir: public_html/api/
-          dangerous-clean-slate: false
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/config.php
+      - name: Verify remote deploy directories
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/thia_lol_deploy "$VPS_USER@$VPS_HOST" '
+            set -euo pipefail
+            test -d /srv/thia.lol/www
+            test -d /srv/thia.lol/www/uploads
+            test -f /srv/thia.lol/config/config.php
+            test -d /srv/thia.lol/www/api
+            test -d /srv/thia.lol/www/api/migrations
+          '
 
-      - name: Deploy database migrations to public_html/api/migrations
-        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: backend/database/migrations/
-          server-dir: public_html/api/migrations/
-          dangerous-clean-slate: false
-          exclude: |
-            **/.git*
-            **/.git*/**
+      - name: Deploy frontend to VPS web root
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -euo pipefail
+          rsync -az --delete \
+            --exclude '/api/' \
+            --exclude '/config/' \
+            --exclude '/uploads/' \
+            --exclude '.DS_Store' \
+            -e 'ssh -i ~/.ssh/thia_lol_deploy' \
+            dist/ "$VPS_USER@$VPS_HOST:/srv/thia.lol/www/"
 
-      - name: Wait for deployed files to settle
-        run: sleep 15
+      - name: Deploy PHP API
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -euo pipefail
+          rsync -az --delete \
+            --exclude '/migrations/' \
+            --exclude '.DS_Store' \
+            --exclude 'config.php' \
+            -e 'ssh -i ~/.ssh/thia_lol_deploy' \
+            api/ "$VPS_USER@$VPS_HOST:/srv/thia.lol/www/api/"
+
+      - name: Deploy database migrations
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -euo pipefail
+          rsync -az --delete \
+            --exclude '.DS_Store' \
+            -e 'ssh -i ~/.ssh/thia_lol_deploy' \
+            backend/database/migrations/ "$VPS_USER@$VPS_HOST:/srv/thia.lol/www/api/migrations/"
 
       - name: Smoke-test live site
         run: scripts/smoke-live.sh

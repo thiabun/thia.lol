@@ -29,10 +29,11 @@ Use this shape when giving Codex work:
 
 ```text
 Context:
-- thia.lol is hosted on Pebblehost/cPanel.
-- Frontend is Vite/React static deployed to public_html/.
-- PHP API is deployed to public_html/api/.
-- Config is created manually on the server at public_html/config/config.php.
+- thia.lol is hosted on the PebbleHost VPS.
+- Frontend is Vite/React static deployed to /srv/thia.lol/www/.
+- PHP API is deployed to /srv/thia.lol/www/api/.
+- Config is created manually on the server at /srv/thia.lol/config/config.php.
+- Caddy, PHP-FPM, MariaDB, SSH deploys, and daily DB backups are production dependencies.
 - Read AGENTS.md before changing files.
 - Pull latest changes with git pull --rebase before editing.
 
@@ -65,26 +66,26 @@ Output:
 - Commands run and results.
 - Commit SHA.
 - Whether git push succeeded.
-- Exact files/folders to upload to cPanel if manual upload is needed.
+- Exact files/folders deployed to the VPS if manual upload is needed.
 - Exact URLs to test.
 ```
 
-## Current urgent backend issue: cPanel 500
+## Current urgent backend issue: VPS API 500
 
 If the deployed API returns a generic 500 Internal Server Error, use this task packet.
 
 ```text
 Context:
-- thia.lol is hosted on Pebblehost/cPanel.
-- Frontend is deployed to public_html/.
-- API is deployed to public_html/api/.
-- Config is intended at public_html/config/config.php.
+- thia.lol is hosted on the PebbleHost VPS.
+- Frontend is deployed to /srv/thia.lol/www/.
+- API is deployed to /srv/thia.lol/www/api/.
+- Config is intended at /srv/thia.lol/config/config.php.
 - The deployed API currently returns a generic 500 Internal Server Error.
 - Read AGENTS.md first.
 - Pull latest changes with git pull --rebase before editing.
 
 Problem:
-The API needs safer cPanel diagnostics and should not depend on SetEnv/THIA_CONFIG_PATH for basic deployment.
+The API needs safer VPS diagnostics and should keep config loading independent from web-served files.
 
 Task:
 Harden API bootstrap/config loading and add deployment diagnostics.
@@ -92,13 +93,11 @@ Harden API bootstrap/config loading and add deployment diagnostics.
 Requirements:
 1. Keep /api/health able to respond without database access.
 2. Keep /api/health?db=1 as the database connectivity check.
-3. Do not require SetEnv for normal cPanel deployment.
-4. Make config loading try safe fallback paths, including public_html/config/config.php when deployed under public_html/api/.
-5. Ensure api/.htaccess contains only broadly compatible rewrite rules.
-6. Ensure config/.htaccess denies direct web access.
-7. Add README troubleshooting for cPanel 500 errors, including:
-   - check cPanel Errors page and error_log files
-   - remove SetEnv if Apache rejects it
+3. Do not require web-server environment overrides for normal VPS deployment.
+4. Make config loading prefer /srv/thia.lol/config/config.php and keep secrets outside /srv/thia.lol/www/.
+5. Ensure API routing is compatible with Caddy and PHP-FPM.
+6. Add README troubleshooting for VPS 500 errors, including:
+   - check Caddy and PHP-FPM journal logs
    - verify PHP 8.2+ and pdo_mysql
    - verify config.php syntax and location
    - verify database credentials and user privileges
@@ -121,7 +120,7 @@ Git:
 
 Output:
 - Files changed.
-- What to upload to public_html/api and public_html/config.
+- What to deploy to /srv/thia.lol/www/api and /srv/thia.lol/config.
 - URLs to test:
   - https://thia.lol/api/health
   - https://thia.lol/api/health?db=1

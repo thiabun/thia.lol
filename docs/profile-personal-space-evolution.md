@@ -31,7 +31,7 @@ Implementation should prefer real, maintainable product behavior over
 frontend-only pretend features. Avoiding backend or database work is not a
 product principle. Scoped API and schema changes are acceptable when they are
 migrated, validated, tested, documented, and compatible with the existing
-cPanel/PHP/MySQL deployment model.
+VPS/PHP/MariaDB deployment model.
 
 Bugs are expected to be found and fixed through small, verifiable passes. Fear
 of bugs should not block necessary profile architecture, but profile work must

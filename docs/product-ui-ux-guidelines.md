@@ -40,7 +40,7 @@ These guidelines assume the existing architecture:
 - Tailwind CSS
 - Motion for React
 - React Router
-- static build output deployed to cPanel/Pebblehost
+- static build output deployed to the PebbleHost VPS
 
 Future work should improve the current component stack instead of replacing it.
 Use existing primitives in `src/components/ui`, social surfaces in

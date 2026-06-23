@@ -21,7 +21,7 @@ follow-up work.
 
 Block, mute, and remove-follower controls give members practical ways to reduce unwanted contact before the platform invites broader testing. These controls should be clear, boring, and honest. They should reduce exposure and interaction in the places the product controls, without claiming to be a perfect privacy or security wall for public content.
 
-The first version should be small enough to verify against the current PHP/MySQL API on cPanel, but strong enough that chat, follows, feeds, profile actions, and report context behave consistently.
+The first version should be small enough to verify against the current PHP/MariaDB API on the VPS, but strong enough that chat, follows, feeds, profile actions, and report context behave consistently.
 
 ## Product Definitions
 

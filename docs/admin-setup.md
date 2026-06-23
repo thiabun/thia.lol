@@ -21,7 +21,7 @@ Do not commit this token. Store it only in the server-only `config/config.php`.
 On the server, edit the untracked config file:
 
 ```text
-public_html/config/config.php
+/srv/thia.lol/config/config.php
 ```
 
 Set `security.account_setup_token` to the generated token:
@@ -79,8 +79,8 @@ Expected response:
 
 After activation, disable the setup mechanism before leaving the deployment:
 
-1. Remove `account_setup_token` from `public_html/config/config.php`, or set it back to an empty string.
-2. Delete `public_html/api/setup.php` from the server if the temporary file was uploaded.
+1. Remove `account_setup_token` from `/srv/thia.lol/config/config.php`, or set it back to an empty string.
+2. Delete `/srv/thia.lol/www/api/setup.php` from the server if the temporary file was uploaded.
 3. On the next API deploy, remove the setup route and handler from the repo.
 
 Leaving setup enabled after account activation is a security risk.

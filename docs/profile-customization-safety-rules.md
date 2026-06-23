@@ -74,7 +74,7 @@ Current profile text and media constraints:
 - Bio: optional, maximum 500 characters.
 - Location: optional, maximum 120 characters.
 - Connections: maximum 10, each input maximum 300 characters.
-- Profile images: JPEG, PNG, WebP, or GIF uploads, maximum 10 MB, stored as safe originals while cPanel conversion is disabled.
+- Profile images: JPEG, PNG, WebP, or GIF uploads, maximum 10 MB, stored through the authenticated upload pipeline.
 - Profile background video: MP4 or WebM upload, maximum 30 MB, restricted to the
   `profile_background` purpose.
 - Upload purposes include `avatar`, `banner`, and `profile_background`.
@@ -261,7 +261,7 @@ The following are not allowed:
 - Avatars should remain square/circular crops at known dimensions.
 - Banners should use stable aspect-ratio rules and object-fit crop behavior.
 - Profile backgrounds should be decorative only and must not carry required text.
-- Image uploads should continue through the authenticated upload pipeline, size checks, safe-format validation, and purpose checks. Server-side conversion/resizing is temporarily disabled until the VPS migration.
+- Image uploads should continue through the authenticated upload pipeline, size checks, safe-format validation, and purpose checks. Any broader server-side conversion/resizing work should be handled as a separate VPS media-pipeline pass.
 - External hotlinked media should not be used for first-pass modules. Prefer uploaded media references or link cards.
 - Media captions, if added later, must be plain text with length limits.
 
@@ -600,7 +600,7 @@ Every future profile customization or module implementation issue should answer 
 - [ ] Are API errors specified as `422`, `403`, `404`, or `409` where appropriate?
 - [ ] Is API-backed smoke required, and is a working API target available?
 - [ ] If a migration is needed, is it idempotent, documented, and split into a small deployable step?
-- [ ] Are manual cPanel upload paths and migration runner instructions clear?
+- [ ] Are manual VPS deploy paths and migration runner instructions clear?
 
 ## Recommended Follow-Up Issues
 

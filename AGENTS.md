@@ -3,18 +3,26 @@
 > **Status: Active operating guide.** This file defines repository constraints,
 > deployment invariants, verification expectations, and Codex workflow rules.
 
-This repository is for `thia.lol`, a static-first social platform hosted on Pebblehost/cPanel.
+This repository is for `thia.lol`, a static-first social platform hosted on a
+PebbleHost VPS.
 
-Read this file before making changes. The project is intentionally shaped around cPanel constraints, so do not replace the architecture with a server framework, hosted edge runtime, or Vercel-only workflow unless explicitly requested.
+Read this file before making changes. Production now runs on a VPS with Caddy,
+PHP-FPM, MariaDB, SSH deploys, and server-managed backups. Do not replace the
+architecture with a hosted edge runtime, Vercel-only workflow, or a full backend
+rewrite unless explicitly requested. The planned rewrite direction is a gradual
+TypeScript API and PostgreSQL migration, not a big-bang replacement.
 
 ## Current architecture
 
 - Frontend: Vite, React, TypeScript, Tailwind CSS, Motion for React, React Router.
 - Static build output: `dist/`.
-- Production web root: `public_html/`.
-- PHP API deployment target: `public_html/api/`.
-- Config deployment target: normally `public_html/config/config.php`, protected by `public_html/config/.htaccess`.
-- Database: MySQL/MariaDB through cPanel.
+- Production web root: `/srv/thia.lol/www/`.
+- PHP API deployment target: `/srv/thia.lol/www/api/`.
+- Config deployment target: `/srv/thia.lol/config/config.php`, readable by PHP and not web-served.
+- Upload deployment/runtime target: `/srv/thia.lol/www/uploads/`.
+- Database: MariaDB on the VPS.
+- Web server: Caddy with PHP-FPM.
+- Backups: daily MariaDB dumps under `/srv/thia.lol/backups/db/`.
 - Domain root: `https://thia.lol/`.
 - Vite base path: `/`.
 
@@ -52,12 +60,12 @@ delivery surface:
 
 ## Deployment invariant
 
-The contents of `dist/` go directly into `public_html/`.
+The contents of `dist/` go directly into `/srv/thia.lol/www/`.
 
 Correct:
 
 ```text
-public_html/
+/srv/thia.lol/www/
   .htaccess
   index.html
   assets/
@@ -66,13 +74,13 @@ public_html/
 Wrong:
 
 ```text
-public_html/dist/index.html
+/srv/thia.lol/www/dist/index.html
 ```
 
 The API is deployed separately:
 
 ```text
-public_html/api/
+/srv/thia.lol/www/api/
   index.php
   bootstrap.php
   db.php
@@ -88,13 +96,19 @@ public_html/api/
 Config is not committed and must be created on the server:
 
 ```text
-public_html/config/config.php
+/srv/thia.lol/config/config.php
+```
+
+Uploads are server-owned runtime data and must survive every deploy:
+
+```text
+/srv/thia.lol/www/uploads/
 ```
 
 ## Do not do these things
 
 - Do not migrate the app to Next.js server rendering.
-- Do not assume Node is available on the cPanel server.
+- Do not introduce a full backend rewrite in-place; use the planned strangler path.
 - Do not require Composer unless explicitly asked.
 - Do not commit `config/config.php`, database passwords, FTP credentials, cookies, or secrets.
 - Do not remove the `/api` exclusion from the frontend `.htaccess`.
@@ -117,7 +131,7 @@ Every implementation summary should include:
    - `npm run optimize:assets`
    - `npm run build`
 5. Commit SHA and whether `git push` succeeded.
-6. Exact files or folders to upload to cPanel if manual upload is needed.
+6. Exact files or folders deployed to the VPS if manual upload is needed.
 7. Exact URLs to test after deployment.
 
 ## Smoke test rule
@@ -146,10 +160,10 @@ Keep `/api/health` lightweight and able to respond without touching the database
 
 Use `/api/health?db=1` for database connectivity checks.
 
-If cPanel returns a generic 500 error, debug in this order:
+If production returns a generic 500 error, debug in this order:
 
-1. cPanel `Errors` page or `error_log` files.
-2. `public_html/api/.htaccess` compatibility.
+1. Caddy and PHP-FPM logs with `journalctl`.
+2. Caddy routing for `/api/*`.
 3. PHP version and extensions.
 4. Config file path and syntax.
 5. Database credentials.

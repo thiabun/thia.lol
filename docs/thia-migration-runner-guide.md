@@ -1,20 +1,20 @@
 # Thia migration runner guide
 
 > **Status: Operational reference.** Use this when committed SQL migrations need
-> to be checked or applied on the live cPanel database. Do not run migrations
+> to be checked or applied on the live VPS database. Do not run migrations
 > silently, do not commit migration tokens, and do not mark API-backed smoke as
 > passed without a working API path.
 
 This is the practical version of running database migrations for `thia.lol` without turning phpMyAdmin into a ritual sacrifice.
 
-Use this when Codex adds a new SQL file under `backend/database/migrations/` and you need to apply it on the live cPanel database.
+Use this when Codex adds a new SQL file under `backend/database/migrations/` and you need to apply it on the live VPS MariaDB database.
 
 ## What the migration runner does
 
 The runner checks SQL files deployed to:
 
 ```text
-public_html/api/migrations/
+/srv/thia.lol/www/api/migrations/
 ```
 
 Then it applies any migration that is not already listed in the database table:
@@ -27,7 +27,7 @@ Each migration should run once. If a migration is already applied with the same 
 
 Local development note: committed source migrations live under
 `backend/database/migrations/`, but the PHP runner reads the deployed/runtime
-copy under `api/migrations/` or `public_html/api/migrations/`. If a local API
+copy under `api/migrations/` or `/srv/thia.lol/www/api/migrations/`. If a local API
 returns a storage-readiness error and `api/migrations/` is missing, copy or
 otherwise expose the committed SQL files to the runner path before claiming the
 local endpoint works. Do not run production migrations from local automation.
@@ -39,9 +39,9 @@ Make sure the latest code is deployed.
 For a normal feature that changes frontend, API, and migrations, upload:
 
 ```text
-dist/ contents -> public_html/
-api/ contents -> public_html/api/
-backend/database/migrations/*.sql -> public_html/api/migrations/
+dist/ contents -> /srv/thia.lol/www/
+api/ contents -> /srv/thia.lol/www/api/
+backend/database/migrations/*.sql -> /srv/thia.lol/www/api/migrations/
 ```
 
 For the current issue or deploy, use the migration filenames listed in the
@@ -49,19 +49,19 @@ issue, pull request, commit summary, or launch checklist. Recent feature-gating
 migrations to check commonly include:
 
 ```text
-public_html/api/migrations/20260610_0010_add_room_soft_delete.sql
-public_html/api/migrations/20260611_0001_add_user_blocks_and_mutes.sql
-public_html/api/migrations/20260612_0001_add_profile_modules.sql
-public_html/api/migrations/20260613_0001_add_profile_featured_content.sql
-public_html/api/migrations/20260615_0001_add_profile_layout_preset.sql
-public_html/api/migrations/20260616_0001_add_profile_canvas_layout.sql
-public_html/api/migrations/20260616_0002_add_profile_integrations_and_video_backgrounds.sql
+/srv/thia.lol/www/api/migrations/20260610_0010_add_room_soft_delete.sql
+/srv/thia.lol/www/api/migrations/20260611_0001_add_user_blocks_and_mutes.sql
+/srv/thia.lol/www/api/migrations/20260612_0001_add_profile_modules.sql
+/srv/thia.lol/www/api/migrations/20260613_0001_add_profile_featured_content.sql
+/srv/thia.lol/www/api/migrations/20260615_0001_add_profile_layout_preset.sql
+/srv/thia.lol/www/api/migrations/20260616_0001_add_profile_canvas_layout.sql
+/srv/thia.lol/www/api/migrations/20260616_0002_add_profile_integrations_and_video_backgrounds.sql
 ```
 
 Also make sure the server config has a migration token set in:
 
 ```text
-public_html/config/config.php
+/srv/thia.lol/config/config.php
 ```
 
 The token is server-only. Do not paste it into GitHub, docs, Discord, screenshots, or chat. Future-you deserves fewer disasters.
@@ -189,14 +189,14 @@ Usually means:
 Check:
 
 ```text
-public_html/api/migrations.php
-public_html/api/index.php
-public_html/config/config.php
+/srv/thia.lol/www/api/migrations.php
+/srv/thia.lol/www/api/index.php
+/srv/thia.lol/config/config.php
 ```
 
 ### 500
 
-Check cPanel errors or `error_log`. Then check:
+Check Caddy, PHP-FPM, and MariaDB logs. Then check:
 
 ```text
 https://thia.lol/api/health

@@ -110,7 +110,7 @@ Regenerate public assets with:
 npm run optimize:assets
 ```
 
-The generated assets are committed so local dev, Vite builds, and cPanel deploys
+The generated assets are committed so local dev, Vite builds, and VPS deploys
 all have the same favicon, app icon, header mark, and Open Graph image.
 
 ## Do Not

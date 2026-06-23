@@ -1,7 +1,7 @@
 # Media Uploads
 
 > **Status: Operational reference.** Use this for current upload behavior,
-> cPanel storage, file limits, temporary no-conversion rules, video background limits, and
+> VPS storage, file limits, temporary no-conversion rules, video background limits, and
 > deploy preservation requirements. Future upload work should be tracked in
 > GitHub Issues.
 
@@ -14,8 +14,11 @@ profile backgrounds and profile video modules.
 Uploaded public media is stored under the deployed web root:
 
 ```text
-public_html/uploads/media/yyyy/mm/generated-name.jpg|png|webp|gif|mp4|webm
+/srv/thia.lol/www/uploads/media/yyyy/mm/generated-name.jpg|png|webp|gif|mp4|webm
 ```
+
+The historical cPanel path was `public_html/uploads/media/...`; do not use that
+as the production target anymore.
 
 The API returns public URLs such as:
 
@@ -36,9 +39,9 @@ Do not store uploads in `src/`, `dist/`, `backend/`, or `api/`. Do not commit up
 ## Temporary No-Conversion Image Mode
 
 Uploads go through `/api/uploads/image` and are stored as safe original files.
-The cPanel host cannot reliably run image conversion right now, so the API does
-not convert, resize, strip metadata, or normalize orientation server-side. This
-is temporary until the VPS migration restores a conversion pipeline.
+The current API does not convert, resize, strip metadata, or normalize
+orientation server-side. The VPS makes a future conversion pipeline practical,
+but that should ship as a separate moderated upload-processing task.
 
 Before upload, the frontend opens a custom crop/zoom modal for current image
 surfaces: profile avatar, profile banner, profile background, post/reply media,
@@ -90,11 +93,13 @@ Video uploads are not general-purpose post media, audio hosting, or provider
 embeds. If richer video media is added later, it needs separate moderation,
 duration, bandwidth, transcoding, and legal review.
 
-## cPanel Notes
+## VPS Notes
 
-`public_html/uploads/` must be writable by PHP. A typical cPanel folder permission is `755`; some hosts may require `775` depending on PHP user ownership.
+`/srv/thia.lol/www/uploads/` must be writable by PHP-FPM and readable by Caddy.
+Production currently uses `www-data` ownership for uploaded media.
 
-Deploys must preserve `public_html/uploads/`. Do not enable clean-slate FTP deploys that delete server-only upload folders.
+Deploys must preserve `/srv/thia.lol/www/uploads/`. Do not enable rsync rules
+that delete server-owned upload folders.
 
 The committed `api/.user.ini` requests:
 
@@ -103,18 +108,18 @@ upload_max_filesize = 30M
 post_max_size = 32M
 ```
 
-If the host ignores `.user.ini`, set equivalent cPanel PHP options manually.
 `post_max_size` must be larger than the upload limit so PHP can parse the
-request and the API can return clean JSON errors.
+request and the API can return clean JSON errors. On the VPS, check PHP-FPM
+configuration if `.user.ini` behavior changes.
 
-Profile background video currently has a 30 MB application limit. If cPanel/PHP
+Profile background video currently has a 30 MB application limit. If PHP
 request limits are lower than that, increase `upload_max_filesize` and
-`post_max_size` on the host before enabling large video uploads.
+`post_max_size` before enabling large video uploads.
 
 If uploads fail on production, check:
 
-1. `public_html/uploads/` ownership and write permissions.
+1. `/srv/thia.lol/www/uploads/` ownership and write permissions.
 2. Whether the uploaded file is one of the temporary safe formats.
-3. cPanel error logs.
+3. Caddy and PHP-FPM logs.
 4. `upload_max_filesize` and `post_max_size` are large enough for the endpoint
    being tested.

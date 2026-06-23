@@ -23,7 +23,7 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
 
 ### PHP API
 
-- cPanel-friendly PHP API lives in `api/`, with routing in `api/index.php`.
+- VPS-hosted PHP API lives in `api/`, with routing in `api/index.php`.
 - Main implemented areas:
   - `/api/health` and `/api/health?db=1`.
   - `/api/auth/register`, `/api/auth/login`, `/api/auth/logout`, `/api/auth/me`.
@@ -79,10 +79,11 @@ Hard product rule: thia.lol must not build addictive mechanics aimed at minors. 
 ### Deployment
 
 - Static build output is `dist/`.
-- Production web root is `public_html/`.
-- Correct deployment invariant: contents of `dist/` go directly into `public_html/`, not `public_html/dist/`.
-- PHP API deployment target is `public_html/api/`.
-- Config target is normally `public_html/config/config.php`, protected by `public_html/config/.htaccess`; real config and secrets are not committed.
+- Production web root is `/srv/thia.lol/www/`.
+- Correct deployment invariant: contents of `dist/` go directly into `/srv/thia.lol/www/`, not `/srv/thia.lol/www/dist/`.
+- PHP API deployment target is `/srv/thia.lol/www/api/`.
+- Config target is `/srv/thia.lol/config/config.php`; real config and secrets are not committed.
+- Uploaded media lives under `/srv/thia.lol/www/uploads/` and must be preserved by deploys.
 - Deployment automation docs exist in `docs/deployment-automation.md`.
 
 ### Playwright and Testing Status

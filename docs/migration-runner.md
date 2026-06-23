@@ -10,9 +10,11 @@ Use this file as the canonical Codex prompt for adding safe database migrations 
 
 ## Goal
 
-Build a small, cPanel-friendly migration runner so schema changes can be deployed as code instead of manually copied into phpMyAdmin every time.
+Build a small, VPS-friendly migration runner so schema changes can be deployed as code instead of manually copied into phpMyAdmin every time.
 
-This project has no SSH requirement and no server-side Node/Composer requirement. The runner must work with the existing PHP API and MySQL/MariaDB setup.
+The runner remains an HTTPS-protected PHP endpoint even though production now
+has SSH. Do not require server-side Node or Composer for the current PHP API
+and MariaDB setup.
 
 ## Operating rules for Codex
 
@@ -20,7 +22,7 @@ This project has no SSH requirement and no server-side Node/Composer requirement
 2. Run `git pull --rebase` before editing.
 3. Keep the change small and reviewable.
 4. Do not commit secrets.
-5. Do not assume SSH, Composer, or server-side Node.
+5. Do not assume Composer or server-side Node for the PHP API.
 6. Use PDO through the existing `api/db.php` helpers where possible.
 7. Commit verified changes.
 8. Push with `git push` so GitHub Actions deploys.
@@ -114,7 +116,7 @@ For each migration:
 Use both protections:
 
 1. Existing authenticated admin session where possible.
-2. A server-only migration token from `public_html/config/config.php`.
+2. A server-only migration token from `/srv/thia.lol/config/config.php`.
 
 Expected config shape:
 
@@ -145,18 +147,17 @@ GitHub Actions must deploy migration SQL files to a safe server path.
 Recommended target:
 
 ```text
-public_html/api/migrations/
+/srv/thia.lol/www/api/migrations/
 ```
 
-Do not deploy `backend/` wholesale to `public_html/`.
+Do not deploy `backend/` wholesale to `/srv/thia.lol/www/`.
 
 If Codex chooses a different path, document it clearly and keep it outside public frontend assets.
 
-## cPanel constraints
+## VPS/PHP constraints
 
 The runner must work by visiting/calling an HTTPS endpoint. Do not require:
 
-- SSH
 - cron
 - Composer
 - shell access
@@ -199,7 +200,7 @@ ALTER TABLE posts
     ON DELETE CASCADE;
 ```
 
-Codex must check existing schema before deciding the exact SQL. If cPanel/MySQL rejects combined `ALTER TABLE`, split it into safe statements.
+Codex must check existing schema before deciding the exact SQL. If MariaDB rejects combined `ALTER TABLE`, split it into safe statements.
 
 ### Reblogs migration target
 
@@ -266,7 +267,7 @@ Read AGENTS.md and docs/migration-runner.md.
 Run git pull --rebase before editing.
 
 Task:
-Implement the cPanel-friendly migration runner described in docs/migration-runner.md.
+Implement the VPS-friendly migration runner described in docs/migration-runner.md.
 
 Requirements:
 1. Add schema_migrations tracking support.

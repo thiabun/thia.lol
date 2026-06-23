@@ -26,7 +26,7 @@ Public Readiness v2 should make `thia.lol` feel cohesive, polished, desirable, a
 
 Complete or substantially complete:
 
-- Static-first Vite/React frontend with PHP/MySQL API deployment shape for cPanel.
+- Static-first Vite/React frontend with PHP/MariaDB API deployed on the PebbleHost VPS.
 - Public posts, replies, nested thread foundation, media uploads, likes, reblogs, reports, delete/hide controls, and ancestor visibility filtering for the currently rendered thread depth.
 - Profiles with editable identity, structured Connections, avatar/banner customization, follows/following/moots, badges, profile tabs, and profile navigation cleanup.
 - Rooms 2 foundation with creation, editing, customization, join/leave, owner/moderator roles, moderator controls, and soft-delete support.
@@ -198,9 +198,9 @@ Do not delete docs in this pass unless a file is clearly obsolete and duplicated
 ### Operational References
 
 - `docs/public-testing-launch-checklist.md`: deploy, migration, smoke, manual testing, and go/no-go checklist.
-- `docs/deployment-automation.md`: cPanel/GitHub Actions deployment workflow reference.
+- `docs/deployment-automation.md`: VPS/GitHub Actions SSH deployment workflow reference.
 - `docs/thia-migration-runner-guide.md` and `docs/migration-runner.md`: migration runner references; reconcile later if they drift.
-- `docs/media-uploads.md`: image upload behavior and cPanel storage reference.
+- `docs/media-uploads.md`: image upload behavior and VPS storage reference.
 - `docs/admin-setup.md` and `docs/auth-session-diagnostics.md`: admin/session operational references.
 - `docs/codex-handoff.md`: Codex task packet and implementation handoff reference.
 

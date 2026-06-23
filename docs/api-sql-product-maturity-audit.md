@@ -53,13 +53,13 @@ Current API/database foundations are stronger than the older docs imply:
 - profile modules support `about`, `links`, `featured_badges`, and
   `custom_text` with allowlisted settings, ordering, visibility, and soft delete.
 - uploads support authenticated safe-original image uploads under
-  `public_html/uploads/media/yyyy/mm/...`.
+  `/srv/thia.lol/www/uploads/media/yyyy/mm/...`.
 - moderation supports reports for posts, profiles, rooms, and messages plus
   admin report queues, post hide/remove, user suspension, room admin listing,
   moderator notes, and moderation action logs.
-- deployment automation uploads `dist/` contents directly to `public_html/`,
-  `api/` to `public_html/api/`, and migration SQL to
-  `public_html/api/migrations/`.
+- deployment automation uploads `dist/` contents directly to `/srv/thia.lol/www/`,
+  `api/` to `/srv/thia.lol/www/api/`, and migration SQL to
+  `/srv/thia.lol/www/api/migrations/`.
 - the protected migration runner records checksums in `schema_migrations` and
   requires admin session plus server-only migration token.
 
@@ -86,7 +86,7 @@ Important limits:
 | Search | Public profiles and public rooms search with prepared SQL and block/mute profile filtering. | No posts/modules/media search, no pagination, limited ranking, no full-text/index plan, room search does not apply viewer block/mute owner filters. | Medium | Search v1 database/API expansion plan. |
 | Block/mute/remove-follower | Tables, endpoints, profile relationship payload, feed/profile/chat filters, follow/chat guards. | Need live migration confirmation, API smoke, post/reply/like/reblog blocked-pair guards, admin report pair booleans, settings recovery UI later. | Medium/high | Thread/reply integrity audit; block/mute visibility/admin context follow-up. |
 | Profiles v3 | Profile customization columns, featured post/room, module table/API, badges, links, safe upload URLs. | Theme tokens are too shallow for v3, background/banner controls need structured fit/focal/overlay/blur/dim, modules lack featured post/room/music/media/gallery/layout presets. | High | Theme token storage; media controls; module v3 expansion; music/media cards. |
-| Media/uploads | Authenticated image upload, safe-original storage, purpose limits, cPanel storage preservation. | No media table, ownership, moderation status, reference tracking, cleanup, conversion pipeline, gallery storage, video/animation constraints, or media review tools. | High | Media library/moderation diagnostics; profile background/banner controls. |
+| Media/uploads | Authenticated image upload, safe-original storage, purpose limits, VPS upload preservation. | No media table, ownership, moderation status, reference tracking, cleanup, conversion pipeline, gallery storage, video/animation constraints, or media review tools. | High | Media library/moderation diagnostics; profile background/banner controls. |
 | Moderation/admin | Reports for post/profile/room/message, admin reports, room list, action log, hide/remove/suspend/resolve. | No module/media report target, no report pair block/mute booleans, no media review, no schema-readiness admin diagnostics, no room/profile/user context bundle. | Medium/high | Media moderation/admin diagnostics; health/schema readiness endpoint improvements. |
 | Analytics/revenue prep | No trackers, ads, optional cookies, or revenue code. | Need future data-needs memo only: privacy-preserving aggregates, consent/legal implications, retention, cookie policy impact, and what not to collect. | Low for planning, high for implementation | Coordinate with #19; no implementation from #20. |
 | Deployment/diagnostics | Health endpoints, migration runner, deploy docs, `scripts/smoke-live.sh`, deploy-meta expectations. | Need schema readiness checks beyond migration status, stronger API-backed smoke credential strategy, clear deploy-meta/admin display, post-deploy fixture plan. | Medium | API-backed smoke harness; health/schema readiness improvements. |
@@ -341,7 +341,7 @@ Current state:
 - max upload size is 10 MB.
 - output is WebP with purpose-specific dimensions for avatar, banner, profile
   background, post media, room icon, and room banner.
-- uploaded files live under `public_html/uploads/media/...` and must be
+- uploaded files live under `/srv/thia.lol/www/uploads/media/...` and must be
   preserved across deploys.
 
 Gaps:
@@ -381,7 +381,7 @@ Required smoke tests:
   files.
 - If a media table is added, verify moderation-hidden media fails closed in
   profile, post, room, and module rendering.
-- Verify deploy paths preserve `public_html/uploads/`.
+- Verify deploy paths preserve `/srv/thia.lol/www/uploads/`.
 
 ### 6. Moderation And Admin Diagnostics
 
@@ -470,7 +470,7 @@ Current state:
 - `/api/health` is lightweight and does not touch the database.
 - `/api/health?db=1` checks database connectivity.
 - migration status/run endpoints require admin session plus migration token.
-- deploy docs preserve `public_html/config/` and `public_html/uploads/`.
+- deploy docs preserve `/srv/thia.lol/config/` and `/srv/thia.lol/www/uploads/`.
 - `scripts/smoke-live.sh` checks public routes, deploy-meta, API health, and
   lightweight public API reads.
 
@@ -547,7 +547,7 @@ Any future migration must:
 - be a separate issue with explicit acceptance criteria
 - be idempotent where possible
 - update `backend/database/schema.sql` in the same commit
-- be deployed to `public_html/api/migrations/`
+- be deployed to `/srv/thia.lol/www/api/migrations/`
 - be applied only through the protected migration runner unless a documented
   phpMyAdmin fallback is approved
 - not change an already-applied migration file
