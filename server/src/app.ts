@@ -1,12 +1,19 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
 
+import { normalizeRoomSlug, type RoomPayload, type RoomsRepository } from "./rooms.js";
+
 const healthQuerySchema = z.object({
   db: z.union([z.string(), z.array(z.string())]).optional(),
 });
 
+const roomParamsSchema = z.object({
+  slug: z.string(),
+});
+
 export interface AppDependencies {
   checkDatabase?: () => Promise<void>;
+  roomsRepository?: RoomsRepository;
 }
 
 export interface HealthPayload {
@@ -27,6 +34,11 @@ export interface ErrorPayload {
   };
 }
 
+interface SuccessPayload<T> {
+  ok: true;
+  data: T;
+}
+
 function wantsDatabaseCheck(query: unknown): boolean {
   const parsed = healthQuerySchema.safeParse(query);
 
@@ -41,6 +53,20 @@ function wantsDatabaseCheck(query: unknown): boolean {
   }
 
   return value === "1";
+}
+
+function successPayload<T>(data: T): SuccessPayload<T> {
+  return {
+    ok: true,
+    data,
+  };
+}
+
+function errorPayload(error: string): ErrorPayload {
+  return {
+    ok: false,
+    error,
+  };
 }
 
 export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
@@ -61,8 +87,7 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
         await dependencies.checkDatabase?.();
       } catch {
         const error: ErrorPayload = {
-          ok: false,
-          error: "Database connection failed.",
+          ...errorPayload("Database connection failed."),
           database: {
             ok: false,
           },
@@ -79,13 +104,47 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     return reply.send(payload);
   });
 
-  app.setNotFoundHandler((_request, reply) => {
-    const error: ErrorPayload = {
-      ok: false,
-      error: "Not found.",
-    };
+  app.get("/rooms", async (_request, reply) => {
+    if (dependencies.roomsRepository === undefined) {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
 
-    return reply.status(404).send(error);
+    try {
+      const rooms = await dependencies.roomsRepository.listPublicRooms();
+
+      return reply.send(successPayload<RoomPayload[]>(rooms));
+    } catch {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+  });
+
+  app.get("/rooms/:slug", async (request, reply) => {
+    if (dependencies.roomsRepository === undefined) {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+
+    const parsedParams = roomParamsSchema.safeParse(request.params);
+    const normalizedSlug = parsedParams.success ? normalizeRoomSlug(parsedParams.data.slug) : null;
+
+    if (normalizedSlug === null) {
+      return reply.status(400).send(errorPayload("Invalid room slug."));
+    }
+
+    try {
+      const room = await dependencies.roomsRepository.getPublicRoom(normalizedSlug);
+
+      if (room === null) {
+        return reply.status(404).send(errorPayload("Room not found."));
+      }
+
+      return reply.send(successPayload<RoomPayload>(room));
+    } catch {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+  });
+
+  app.setNotFoundHandler((_request, reply) => {
+    return reply.status(404).send(errorPayload("Not found."));
   });
 
   return app;

@@ -33,3 +33,5 @@ check_json_ok() {
 
 check_json_ok "/api-next/health"
 check_json_ok "/api-next/health?db=1"
+check_json_ok "/api-next/rooms"
+check_json_ok "/api-next/rooms/general"

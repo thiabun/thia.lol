@@ -1,0 +1,151 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  buildPublicRoomBySlugQuery,
+  buildPublicRoomsQuery,
+  initialsFromName,
+  normalizeRoomSlug,
+  roomPayloadFromRow,
+  type RoomRow,
+  type RoomSchemaCapabilities,
+} from "./rooms.js";
+
+const fullCapabilities: RoomSchemaCapabilities = {
+  hasRoomMemberships: true,
+  hasRoomCustomizationColumns: true,
+  hasRoomSoftDeleteColumn: true,
+};
+
+function roomRow(overrides: Partial<RoomRow> = {}): RoomRow {
+  return {
+    room_id: 7,
+    room_slug: "general",
+    room_name: "General",
+    room_summary: "Public room for general posts.",
+    room_mood: "warm",
+    room_member_count: "12",
+    room_is_live: 0,
+    room_accent: "var(--accent-sun)",
+    room_icon_url: "/uploads/rooms/general.png",
+    room_banner_url: null,
+    room_rules: null,
+    room_visibility: "public",
+    room_created_by: "42",
+    current_room_role: null,
+    current_room_joined: 0,
+    owner_user_id: "42",
+    owner_handle: "thia",
+    owner_display_name: "Thia Bun",
+    owner_avatar_url: null,
+    room_post_count: "5",
+    room_latest_activity_at: "2026-06-23 11:00:00",
+    room_created_at: "2026-06-20 09:00:00",
+    room_updated_at: "2026-06-22 10:00:00",
+    ...overrides,
+  } as RoomRow;
+}
+
+describe("room preview payload mapping", () => {
+  it("maps the PHP room payload shape", () => {
+    expect(roomPayloadFromRow(roomRow())).toEqual({
+      id: 7,
+      slug: "general",
+      name: "General",
+      summary: "Public room for general posts.",
+      description: "Public room for general posts.",
+      mood: "warm",
+      members: 12,
+      memberCount: 12,
+      live: false,
+      accent: "var(--accent-sun)",
+      iconUrl: "/uploads/rooms/general.png",
+      bannerUrl: null,
+      rules: "",
+      visibility: "public",
+      createdBy: 42,
+      owner: {
+        id: 42,
+        handle: "thia",
+        displayName: "Thia Bun",
+        initials: "TB",
+        aura: "frost",
+        avatarUrl: null,
+      },
+      joinedByMe: false,
+      myRoomRole: null,
+      postCount: 5,
+      latestActivityAt: "2026-06-23 11:00:00",
+      createdAt: "2026-06-20 09:00:00",
+      updatedAt: "2026-06-22 10:00:00",
+    });
+  });
+
+  it("keeps unauthenticated room defaults and nullable media fields stable", () => {
+    const payload = roomPayloadFromRow(
+      roomRow({
+        room_member_count: null,
+        room_icon_url: null,
+        room_banner_url: null,
+        room_rules: null,
+        room_post_count: null,
+        owner_user_id: null,
+        owner_handle: null,
+        owner_display_name: null,
+        owner_avatar_url: null,
+      }),
+    );
+
+    expect(payload.members).toBe(0);
+    expect(payload.memberCount).toBe(0);
+    expect(payload.iconUrl).toBeNull();
+    expect(payload.bannerUrl).toBeNull();
+    expect(payload.rules).toBe("");
+    expect(payload.owner).toBeNull();
+    expect(payload.joinedByMe).toBe(false);
+    expect(payload.myRoomRole).toBeNull();
+    expect(payload.postCount).toBe(0);
+  });
+
+  it("normalizes slugs with the same public room constraints as PHP", () => {
+    expect(normalizeRoomSlug("General")).toBe("general");
+    expect(normalizeRoomSlug("room-123")).toBe("room-123");
+    expect(normalizeRoomSlug("bad_slug")).toBeNull();
+    expect(normalizeRoomSlug("")).toBeNull();
+  });
+
+  it("generates initials with the PHP fallback", () => {
+    expect(initialsFromName("Thia Bun")).toBe("TB");
+    expect(initialsFromName("thia")).toBe("T");
+    expect(initialsFromName("   ")).toBe("TH");
+  });
+});
+
+describe("room preview SQL", () => {
+  it("orders public rooms like the PHP endpoint", () => {
+    expect(buildPublicRoomsQuery(fullCapabilities)).toContain(
+      "ORDER BY room_posts.latest_activity_at DESC, rooms.is_live DESC, rooms.name ASC",
+    );
+  });
+
+  it("uses schema capability fallbacks for older room storage", () => {
+    const query = buildPublicRoomsQuery({
+      hasRoomMemberships: false,
+      hasRoomCustomizationColumns: false,
+      hasRoomSoftDeleteColumn: false,
+    });
+
+    expect(query).toContain("rooms.member_count AS room_member_count");
+    expect(query).toContain("NULL AS room_icon_url");
+    expect(query).not.toContain("room_member_counts");
+    expect(query).not.toContain("rooms.deleted_at IS NULL");
+  });
+
+  it("builds a parameterized room detail query", () => {
+    const query = buildPublicRoomBySlugQuery(fullCapabilities);
+
+    expect(query).toContain("WHERE rooms.slug = ?");
+    expect(query).toContain("AND rooms.visibility = 'public'");
+    expect(query).toContain("AND rooms.deleted_at IS NULL");
+    expect(query).toContain("LIMIT 1");
+  });
+});

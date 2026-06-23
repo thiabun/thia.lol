@@ -19,6 +19,7 @@ export function createDatabaseClient(config: ServerConfig): DatabaseClient {
     user: config.THIA_DB_USER,
     password: config.THIA_DB_PASSWORD,
     charset: config.THIA_DB_CHARSET,
+    dateStrings: true,
     waitForConnections: true,
     connectionLimit: 5,
     maxIdle: 2,
