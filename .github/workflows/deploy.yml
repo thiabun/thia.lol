@@ -71,11 +71,12 @@ jobs:
           set -euo pipefail
           ssh -i ~/.ssh/thia_lol_deploy "$VPS_USER@$VPS_HOST" '
             set -euo pipefail
-            test -d /srv/thia.lol/www
+            test -w /srv/thia.lol/www
             test -d /srv/thia.lol/www/uploads
-            test -f /srv/thia.lol/config/config.php
-            test -d /srv/thia.lol/www/api
-            test -d /srv/thia.lol/www/api/migrations
+            test ! -w /srv/thia.lol/www/uploads
+            test -w /srv/thia.lol/www/api
+            test -w /srv/thia.lol/www/api/migrations
+            test ! -e /srv/thia.lol/www/config/config.php
           '
 
       - name: Deploy frontend to VPS web root

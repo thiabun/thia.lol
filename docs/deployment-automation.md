@@ -60,6 +60,11 @@ The deploy job:
 - rsyncs `backend/database/migrations/` to `/srv/thia.lol/www/api/migrations/`
 - runs `scripts/smoke-live.sh` against `https://thia.lol`
 
+The `deploy` SSH user should be able to write `/srv/thia.lol/www/`,
+`/srv/thia.lol/www/api/`, and `/srv/thia.lol/www/api/migrations/`. It should
+not be able to write `/srv/thia.lol/www/uploads/` or read
+`/srv/thia.lol/config/config.php`.
+
 The frontend rsync uses `--delete` but excludes `/api/`, `/config/`, and
 `/uploads/`. API deploy excludes `/migrations/` because migrations are deployed
 as their own controlled step.
