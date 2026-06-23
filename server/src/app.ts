@@ -1,7 +1,14 @@
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 import { z } from "zod";
 
-import { normalizeProfileHandle, type ProfilePayload, type ProfilesRepository } from "./profiles.js";
+import {
+  normalizeProfileHandle,
+  type FollowUserCardPayload,
+  type ProfileBadgesPayload,
+  type ProfileModulePayload,
+  type ProfilePayload,
+  type ProfilesRepository,
+} from "./profiles.js";
 import { normalizeRoomSlug, type RoomPayload, type RoomsRepository } from "./rooms.js";
 import type { PublicStatsPayload, StatsRepository } from "./stats.js";
 
@@ -75,6 +82,36 @@ function errorPayload(error: string): ErrorPayload {
     ok: false,
     error,
   };
+}
+
+async function withPublicProfileSubroute<T>(
+  request: { params: unknown },
+  reply: FastifyReply,
+  repository: ProfilesRepository | undefined,
+  lookup: (repository: ProfilesRepository, handle: string) => Promise<T | null>,
+) {
+  if (repository === undefined) {
+    return reply.status(500).send(errorPayload("Internal server error."));
+  }
+
+  const parsedParams = profileParamsSchema.safeParse(request.params);
+  const normalizedHandle = parsedParams.success ? normalizeProfileHandle(parsedParams.data.handle) : null;
+
+  if (normalizedHandle === null) {
+    return reply.status(400).send(errorPayload("Invalid profile handle."));
+  }
+
+  try {
+    const data = await lookup(repository, normalizedHandle);
+
+    if (data === null) {
+      return reply.status(404).send(errorPayload("Profile not found."));
+    }
+
+    return reply.send(successPayload<T>(data));
+  } catch {
+    return reply.status(500).send(errorPayload("Internal server error."));
+  }
 }
 
 export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
@@ -164,6 +201,51 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       return reply.status(500).send(errorPayload("Internal server error."));
     }
   });
+
+  app.get("/profiles/:handle/rooms", async (request, reply) =>
+    withPublicProfileSubroute<RoomPayload[]>(
+      request,
+      reply,
+      dependencies.profilesRepository,
+      (repository, handle) => repository.getPublicProfileRooms(handle),
+    ),
+  );
+
+  app.get("/profiles/:handle/modules", async (request, reply) =>
+    withPublicProfileSubroute<ProfileModulePayload[]>(
+      request,
+      reply,
+      dependencies.profilesRepository,
+      (repository, handle) => repository.getPublicProfileModules(handle),
+    ),
+  );
+
+  app.get("/profiles/:handle/badges", async (request, reply) =>
+    withPublicProfileSubroute<ProfileBadgesPayload>(
+      request,
+      reply,
+      dependencies.profilesRepository,
+      (repository, handle) => repository.getPublicProfileBadges(handle),
+    ),
+  );
+
+  app.get("/profiles/:handle/followers", async (request, reply) =>
+    withPublicProfileSubroute<FollowUserCardPayload[]>(
+      request,
+      reply,
+      dependencies.profilesRepository,
+      (repository, handle) => repository.getPublicProfileFollowers(handle),
+    ),
+  );
+
+  app.get("/profiles/:handle/following", async (request, reply) =>
+    withPublicProfileSubroute<FollowUserCardPayload[]>(
+      request,
+      reply,
+      dependencies.profilesRepository,
+      (repository, handle) => repository.getPublicProfileFollowing(handle),
+    ),
+  );
 
   app.get("/profiles/:handle", async (request, reply) => {
     if (dependencies.profilesRepository === undefined) {

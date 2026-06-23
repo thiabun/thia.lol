@@ -1,13 +1,23 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildProfileBadgesQuery,
   buildProfileByHandleQuery,
+  buildProfileFollowListQuery,
+  buildPublicProfileModulesQuery,
+  buildPublicProfileRoomsQuery,
+  followUserCardPayloadFromRow,
   normalizeProfileHandle,
+  profileBadgesPayloadFromRows,
+  profileModuleLayoutPayload,
   profilePayloadFromRow,
   profilePayloadWithFeatured,
+  type FollowUserRow,
+  type ProfileModuleRow,
   type ProfileRow,
   type ProfileSchemaCapabilities,
   type ProfileSocialContext,
+  type UserBadgeRow,
 } from "./profiles.js";
 
 const fullCapabilities: ProfileSchemaCapabilities = {
@@ -32,6 +42,13 @@ const fullCapabilities: ProfileSchemaCapabilities = {
   hasPostPublicIdColumn: true,
   hasPostReblogs: true,
   hasTextEntities: true,
+  hasProfileModules: true,
+  hasProfileModuleLayoutColumns: true,
+  hasProfileModulePinnedColumn: true,
+  hasBadges: true,
+  hasUserBadges: true,
+  hasProfileIntegrationAccounts: true,
+  hasProfileIntegrationMetadataCache: true,
 };
 
 const social: ProfileSocialContext = {
@@ -253,6 +270,151 @@ describe("profile preview payload mapping", () => {
   });
 });
 
+describe("profile extras payload mapping", () => {
+  it("maps visible badge grants with featured fallback like PHP", () => {
+    const rows: UserBadgeRow[] = [
+      {
+        user_badge_id: "8",
+        user_badge_user_id: "1",
+        user_badge_badge_id: "2",
+        user_badge_reason: null,
+        user_badge_earned_at: "2026-06-10 10:00:00",
+        user_badge_featured_order: null,
+        user_badge_is_visible: "1",
+        badge_id: "2",
+        badge_key: "early_user",
+        badge_name: "Early User",
+        badge_description: "Early platform era.",
+        badge_rarity: "rare",
+        badge_source: "admin-granted",
+        badge_icon: "calendar-days",
+        badge_accent: "sunveil",
+        badge_is_active: "1",
+        badge_created_at: "2026-06-10 09:00:00",
+        user_id: "1",
+        handle: "thia",
+        display_name: "Thia Bun",
+        avatar_url: "/uploads/avatar.png",
+        grantor_user_id: null,
+        grantor_handle: null,
+        grantor_display_name: null,
+        grantor_avatar_url: null,
+      } as UserBadgeRow,
+    ];
+
+    expect(profileBadgesPayloadFromRows(rows)).toEqual({
+      badges: [
+        {
+          id: 8,
+          badge: {
+            id: 2,
+            badgeKey: "early_user",
+            name: "Early User",
+            description: "Early platform era.",
+            rarity: "rare",
+            source: "admin-granted",
+            icon: "calendar-days",
+            accent: "sunveil",
+            isActive: true,
+            createdAt: "2026-06-10 09:00:00",
+          },
+          reason: null,
+          earnedAt: "2026-06-10 10:00:00",
+          featuredOrder: null,
+          isVisible: true,
+          grantedBy: null,
+          user: {
+            id: 1,
+            handle: "thia",
+            displayName: "Thia Bun",
+            initials: "TB",
+            aura: "frost",
+            avatarUrl: "/uploads/avatar.png",
+          },
+        },
+      ],
+      featuredBadges: [
+        expect.objectContaining({
+          id: 8,
+        }),
+      ],
+    });
+  });
+
+  it("maps compact follow cards and bio snippets like PHP", () => {
+    const payload = followUserCardPayloadFromRow({
+        user_id: "2",
+        handle: "friend",
+        display_name: null,
+        avatar_url: null,
+        bio: ` ${"hello ".repeat(40)} `,
+        followed_at: "2026-06-20 10:00:00",
+        is_following: "1",
+        is_followed_by: "1",
+      } as FollowUserRow);
+
+    expect(payload).toMatchObject({
+      handle: "friend",
+      displayName: "friend",
+      initials: "F",
+      avatarUrl: null,
+      isFollowing: true,
+      isMoot: true,
+    });
+    expect(payload.bioSnippet).toHaveLength(140);
+    expect(payload.bioSnippet).toMatch(/hello\.\.\.$/);
+  });
+
+  it("normalizes supported module layouts and rejects unsupported spans", () => {
+    expect(
+      profileModuleLayoutPayload({
+        id: "1",
+        user_id: "1",
+        type: "profile_info",
+        title: null,
+        config_json: "{}",
+        visibility: "public",
+        position: "1",
+        grid_column: "99",
+        grid_row: "99",
+        grid_col_span: "8",
+        grid_row_span: "3",
+        grid_pinned: "1",
+        status: "active",
+        schema_version: "1",
+        created_at: null,
+        updated_at: null,
+      } as ProfileModuleRow),
+    ).toEqual({
+      column: 5,
+      row: 14,
+      colSpan: 8,
+      rowSpan: 3,
+    });
+
+    expect(
+      profileModuleLayoutPayload({
+        id: "1",
+        user_id: "1",
+        type: "featured_room",
+        title: null,
+        config_json: "{}",
+        visibility: "public",
+        position: "1",
+        grid_column: "1",
+        grid_row: "1",
+        grid_col_span: "8",
+        grid_row_span: "8",
+        grid_pinned: "0",
+        status: "active",
+        schema_version: "1",
+        created_at: null,
+        updated_at: null,
+      } as ProfileModuleRow),
+    ).toBeNull();
+  });
+});
+
 describe("profile preview SQL", () => {
   it("matches PHP public account and profile constraints", () => {
     const query = buildProfileByHandleQuery(fullCapabilities);
@@ -261,6 +423,48 @@ describe("profile preview SQL", () => {
     expect(query).toContain("u.status = 'active'");
     expect(query).toContain("account_deletion_requests public_account_deletions");
     expect(query).toContain("p.visibility,");
+  });
+
+  it("matches PHP profile rooms owner, public, soft-delete, and ordering constraints", () => {
+    const query = buildPublicProfileRoomsQuery(fullCapabilities);
+
+    expect(query).toContain("WHERE owner.handle = ?");
+    expect(query).toContain("rooms.visibility = 'public'");
+    expect(query).toContain("rooms.deleted_at IS NULL");
+    expect(query).toContain("ORDER BY rooms.created_at DESC, rooms.name ASC");
+  });
+
+  it("matches PHP public module filters, layout fallbacks, and ordering constraints", () => {
+    const query = buildPublicProfileModulesQuery(fullCapabilities);
+
+    expect(query).toContain("FROM profile_modules");
+    expect(query).toContain("AND (visibility = 'public' OR type = 'activity')");
+    expect(query).toContain("AND status = 'active'");
+    expect(query).toContain("grid_column, grid_row, grid_col_span, grid_row_span");
+    expect(query).toContain("ORDER BY position ASC, id ASC");
+  });
+
+  it("matches PHP visible active badge grant constraints", () => {
+    const query = buildProfileBadgesQuery();
+
+    expect(query).toContain("FROM user_badges ub");
+    expect(query).toContain("INNER JOIN badges b ON b.id = ub.badge_id");
+    expect(query).toContain("ub.is_visible = 1");
+    expect(query).toContain("b.is_active = 1");
+    expect(query).toContain("ub.user_id = ?");
+    expect(query).toContain("ub.earned_at DESC");
+  });
+
+  it("matches PHP follow list filters, blocked-pair filtering, order, and limit", () => {
+    const query = buildProfileFollowListQuery("followers", fullCapabilities);
+
+    expect(query).toContain("FROM user_follows follows");
+    expect(query).toContain("INNER JOIN users u ON u.id = follows.follower_id");
+    expect(query).toContain("WHERE follows.following_id = ?");
+    expect(query).toContain("u.status = 'active'");
+    expect(query).toContain("FROM user_blocks pair_blocks");
+    expect(query).toContain("ORDER BY follows.created_at DESC, u.handle ASC");
+    expect(query).toContain("LIMIT 100");
   });
 
   it("matches PHP public post, room, soft-delete, and active-user constraints", () => {

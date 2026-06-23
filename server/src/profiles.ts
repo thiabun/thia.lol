@@ -4,6 +4,11 @@ import { initialsFromName, roomPayloadFromRow, type RoomPayload, type RoomRow, t
 
 export interface ProfilesRepository {
   getPublicProfile(handle: string): Promise<ProfilePayload | null>;
+  getPublicProfileRooms(handle: string): Promise<RoomPayload[] | null>;
+  getPublicProfileModules(handle: string): Promise<ProfileModulePayload[] | null>;
+  getPublicProfileBadges(handle: string): Promise<ProfileBadgesPayload | null>;
+  getPublicProfileFollowers(handle: string): Promise<FollowUserCardPayload[] | null>;
+  getPublicProfileFollowing(handle: string): Promise<FollowUserCardPayload[] | null>;
 }
 
 export interface ProfilePayload {
@@ -57,6 +62,70 @@ export interface ProfileStatsPayload {
   following: number;
   moots: number;
   stars: number;
+}
+
+export interface ProfileModulePayload {
+  id: number;
+  type: string;
+  title: string | null;
+  config: Record<string, unknown>;
+  visibility: string;
+  position: number;
+  pinned: boolean;
+  layout: ProfileModuleLayoutPayload | null;
+  status: string;
+  schemaVersion: number;
+  createdAt: string | null;
+  updatedAt: string | null;
+  textEntities?: {
+    body: TextEntityPayload[];
+  };
+}
+
+export interface ProfileModuleLayoutPayload {
+  column: number;
+  row: number;
+  colSpan: number;
+  rowSpan: number;
+}
+
+export interface BadgePayload {
+  id: number;
+  badgeKey: string;
+  name: string;
+  description: string | null;
+  rarity: string;
+  source: string;
+  icon: string | null;
+  accent: string | null;
+  isActive: boolean;
+  createdAt: string | null;
+}
+
+export interface UserBadgePayload {
+  id: number;
+  badge: BadgePayload;
+  reason: string | null;
+  earnedAt: string | null;
+  featuredOrder: number | null;
+  isVisible: boolean;
+  grantedBy: UserPayload | null;
+  user?: UserPayload;
+}
+
+export interface ProfileBadgesPayload {
+  badges: UserBadgePayload[];
+  featuredBadges: UserBadgePayload[];
+}
+
+export interface FollowUserCardPayload {
+  handle: string;
+  displayName: string;
+  initials: string;
+  avatarUrl: string | null;
+  bioSnippet: string;
+  isFollowing: boolean;
+  isMoot: boolean;
 }
 
 export interface TextEntityPayload {
@@ -131,6 +200,13 @@ export interface ProfileSchemaCapabilities {
   hasPostPublicIdColumn: boolean;
   hasPostReblogs: boolean;
   hasTextEntities: boolean;
+  hasProfileModules: boolean;
+  hasProfileModuleLayoutColumns: boolean;
+  hasProfileModulePinnedColumn: boolean;
+  hasBadges: boolean;
+  hasUserBadges: boolean;
+  hasProfileIntegrationAccounts: boolean;
+  hasProfileIntegrationMetadataCache: boolean;
 }
 
 export interface ProfileRow extends RowDataPacket {
@@ -234,6 +310,93 @@ interface TextEntityRow extends RowDataPacket {
   target_avatar_url: string | null;
 }
 
+export interface ProfileModuleRow extends RowDataPacket {
+  id: number | string;
+  user_id: number | string;
+  type: string;
+  title: string | null;
+  config_json: string | null;
+  visibility: string;
+  position: number | string;
+  grid_column: number | string | null;
+  grid_row: number | string | null;
+  grid_col_span: number | string | null;
+  grid_row_span: number | string | null;
+  grid_pinned: number | string | boolean | null;
+  status: string;
+  schema_version: number | string;
+  created_at: Date | string | null;
+  updated_at: Date | string | null;
+}
+
+export interface UserBadgeRow extends RowDataPacket {
+  user_badge_id: number | string;
+  user_badge_user_id: number | string;
+  user_badge_badge_id: number | string;
+  user_badge_reason: string | null;
+  user_badge_earned_at: Date | string | null;
+  user_badge_featured_order: number | string | null;
+  user_badge_is_visible: number | string | boolean | null;
+  badge_id: number | string;
+  badge_key: string;
+  badge_name: string;
+  badge_description: string | null;
+  badge_rarity: string | null;
+  badge_source: string;
+  badge_icon: string | null;
+  badge_accent: string | null;
+  badge_is_active: number | string | boolean | null;
+  badge_created_at: Date | string | null;
+  user_id: number | string | null;
+  handle: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  grantor_user_id: number | string | null;
+  grantor_handle: string | null;
+  grantor_display_name: string | null;
+  grantor_avatar_url: string | null;
+}
+
+export interface FollowUserRow extends RowDataPacket {
+  user_id: number | string;
+  handle: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  followed_at: Date | string | null;
+  is_following: number | string | boolean | null;
+  is_followed_by: number | string | boolean | null;
+}
+
+interface ProfileIntegrationAccountRow extends RowDataPacket {
+  provider: string;
+  provider_account_id: string;
+  provider_handle: string | null;
+  display_name: string | null;
+  revoked_at: Date | string | null;
+}
+
+interface ProfileIntegrationCacheRow extends RowDataPacket {
+  provider: string;
+  resource_type: string;
+  resource_id: string;
+  resource_key: string;
+  source_url: string;
+  metadata_json: string | null;
+  embed_json: string | null;
+  api_backed: number | string | boolean | null;
+  fetched_at: Date | string | null;
+  expires_at: Date | string | null;
+  stale_at: Date | string | null;
+  error_message: string | null;
+}
+
+interface PublicProfileContext {
+  row: ProfileRow;
+  userId: number;
+  viewerCanView: boolean;
+}
+
 type CountRow = RowDataPacket & {
   table_count?: number | string;
   column_count?: number | string;
@@ -266,6 +429,59 @@ const profileThemeColorKeys = [
   "accentStrong",
   "focus",
 ] as const;
+const profileModuleTypes = new Set([
+  "profile_info",
+  "about",
+  "links",
+  "featured_badges",
+  "custom_text",
+  "gallery_media",
+  "creator_live",
+  "music",
+  "featured_post",
+  "featured_room",
+  "activity",
+  "connections",
+  "text",
+  "badge_display",
+  "github_repo",
+  "twitch_channel",
+  "youtube_video",
+  "youtube_stream",
+  "youtube_playlist",
+  "uploaded_video",
+  "spotify_song",
+  "apple_music_song",
+  "youtube_music_song",
+  "spotify_playlist",
+  "apple_music_playlist",
+  "youtube_music_playlist",
+  "spotify_artist",
+  "apple_music_artist",
+  "youtube_music_artist",
+  "uploaded_image",
+  "gallery_slideshow",
+  "gallery_feed",
+]);
+const profileModuleVideoTypes = new Set([
+  "twitch_channel",
+  "youtube_video",
+  "youtube_stream",
+  "youtube_playlist",
+  "uploaded_video",
+]);
+const profileModuleMusicSpecificTypes = new Set([
+  "spotify_song",
+  "apple_music_song",
+  "youtube_music_song",
+  "spotify_playlist",
+  "apple_music_playlist",
+  "youtube_music_playlist",
+  "spotify_artist",
+  "apple_music_artist",
+  "youtube_music_artist",
+]);
+const maxFeaturedBadges = 4;
 
 export function normalizeProfileHandle(handle: string): string | null {
   try {
@@ -424,6 +640,89 @@ export function buildProfileByHandleQuery(capabilities: ProfileSchemaCapabilitie
         LIMIT 1`;
 }
 
+export function buildPublicProfileRoomsQuery(capabilities: ProfileSchemaCapabilities): string {
+  return `${roomSelectSql(capabilities)}
+        WHERE owner.handle = ?
+          AND rooms.visibility = 'public'
+          ${roomNotDeletedSql("rooms", capabilities)}
+        ORDER BY rooms.created_at DESC, rooms.name ASC`;
+}
+
+export function buildPublicProfileModulesQuery(capabilities: ProfileSchemaCapabilities): string {
+  const layoutSelect = capabilities.hasProfileModuleLayoutColumns
+    ? "grid_column, grid_row, grid_col_span, grid_row_span,"
+    : "NULL AS grid_column, NULL AS grid_row, NULL AS grid_col_span, NULL AS grid_row_span,";
+  const pinnedSelect = capabilities.hasProfileModulePinnedColumn ? "grid_pinned," : "0 AS grid_pinned,";
+
+  return `SELECT
+            id,
+            user_id,
+            type,
+            title,
+            config_json,
+            visibility,
+            position,
+            ${layoutSelect}
+            ${pinnedSelect}
+            status,
+            schema_version,
+            created_at,
+            updated_at
+        FROM profile_modules
+        WHERE user_id = ?
+          AND (visibility = 'public' OR type = 'activity')
+          AND status = 'active'
+        ORDER BY position ASC, id ASC`;
+}
+
+export function buildProfileBadgesQuery(): string {
+  return `${userBadgeSelectSql()}
+        WHERE ub.is_visible = 1
+          AND b.is_active = 1
+          AND ub.user_id = ?
+        ORDER BY
+          CASE WHEN ub.featured_order IS NULL THEN 1 ELSE 0 END,
+          ub.featured_order ASC,
+          ub.earned_at DESC,
+          ub.id DESC`;
+}
+
+export function buildProfileFollowListQuery(
+  kind: "followers" | "following",
+  capabilities: ProfileSchemaCapabilities,
+): string {
+  const joinColumn = kind === "followers" ? "follower_id" : "following_id";
+  const targetColumn = kind === "followers" ? "following_id" : "follower_id";
+
+  return `SELECT
+            u.id AS user_id,
+            u.handle,
+            p.display_name,
+            p.avatar_url,
+            p.bio,
+            follows.created_at AS followed_at,
+            EXISTS (
+                SELECT 1
+                FROM user_follows viewer_following
+                WHERE viewer_following.follower_id = ?
+                  AND viewer_following.following_id = u.id
+            ) AS is_following,
+            EXISTS (
+                SELECT 1
+                FROM user_follows viewer_followed_by
+                WHERE viewer_followed_by.follower_id = u.id
+                  AND viewer_followed_by.following_id = ?
+            ) AS is_followed_by
+        FROM user_follows follows
+        INNER JOIN users u ON u.id = follows.${joinColumn}
+        INNER JOIN profiles p ON p.user_id = u.id
+        WHERE follows.${targetColumn} = ?
+          AND u.status = 'active'
+          ${pairNotBlockedSql("follows.follower_id", "follows.following_id", capabilities)}
+        ORDER BY follows.created_at DESC, u.handle ASC
+        LIMIT 100`;
+}
+
 export function createProfilesRepository(pool: Pool): ProfilesRepository {
   return new MysqlProfilesRepository(pool);
 }
@@ -455,6 +754,395 @@ class MysqlProfilesRepository implements ProfilesRepository {
     ]);
 
     return profilePayloadWithFeatured(row, social, bioEntities, featuredPost, featuredRoom);
+  }
+
+  async getPublicProfileRooms(handle: string): Promise<RoomPayload[] | null> {
+    const capabilities = await this.schemaCapabilities();
+    const context = await this.publicProfileContext(handle, capabilities);
+
+    if (context === null) {
+      return null;
+    }
+
+    if (!context.viewerCanView) {
+      return [];
+    }
+
+    const [rows] = await this.pool.execute<RoomRow[]>(buildPublicProfileRoomsQuery(capabilities), [handle]);
+
+    return rows.map((row) => roomPayloadFromRow(row));
+  }
+
+  async getPublicProfileModules(handle: string): Promise<ProfileModulePayload[] | null> {
+    const capabilities = await this.schemaCapabilities();
+    const context = await this.publicProfileContext(handle, capabilities);
+
+    if (context === null) {
+      return null;
+    }
+
+    if (!context.viewerCanView) {
+      return [];
+    }
+
+    if (!capabilities.hasProfileModules) {
+      throw new Error("Profile module storage is not ready.");
+    }
+
+    const [rows] = await this.pool.execute<ProfileModuleRow[]>(buildPublicProfileModulesQuery(capabilities), [
+      context.userId,
+    ]);
+    const modules = await this.profileModulesPayload(rows, context.userId, capabilities);
+
+    if (!profileModulesPayloadContainsType(modules, "profile_info")) {
+      modules.push(profileInfoModulePayload(0));
+    }
+
+    if (
+      !profileModulesPayloadContainsType(modules, "activity") &&
+      profileModulesPayloadIsBlankProfile(modules) &&
+      (await this.profileModulesShouldHaveDefaultFeed(context.userId))
+    ) {
+      modules.push(profileActivityModulePayload(2));
+    }
+
+    return profileModulesSortPayload(modules);
+  }
+
+  async getPublicProfileBadges(handle: string): Promise<ProfileBadgesPayload | null> {
+    const capabilities = await this.schemaCapabilities();
+    const context = await this.publicProfileContext(handle, capabilities);
+
+    if (context === null) {
+      return null;
+    }
+
+    if (!context.viewerCanView) {
+      return {
+        badges: [],
+        featuredBadges: [],
+      };
+    }
+
+    if (!capabilities.hasBadges || !capabilities.hasUserBadges) {
+      throw new Error("Badge storage is not ready.");
+    }
+
+    const [rows] = await this.pool.execute<UserBadgeRow[]>(buildProfileBadgesQuery(), [context.userId]);
+
+    return profileBadgesPayloadFromRows(rows);
+  }
+
+  async getPublicProfileFollowers(handle: string): Promise<FollowUserCardPayload[] | null> {
+    return this.publicProfileFollowList(handle, "followers");
+  }
+
+  async getPublicProfileFollowing(handle: string): Promise<FollowUserCardPayload[] | null> {
+    return this.publicProfileFollowList(handle, "following");
+  }
+
+  private async publicProfileContext(
+    handle: string,
+    capabilities: ProfileSchemaCapabilities,
+  ): Promise<PublicProfileContext | null> {
+    const [rows] = await this.pool.execute<ProfileRow[]>(buildProfileByHandleQuery(capabilities), [handle]);
+    const row = rows[0];
+
+    if (row === undefined) {
+      return null;
+    }
+
+    return {
+      row,
+      userId: numberValue(row.user_id),
+      viewerCanView: profileVisibility(row.visibility) !== "private",
+    };
+  }
+
+  private async publicProfileFollowList(
+    handle: string,
+    kind: "followers" | "following",
+  ): Promise<FollowUserCardPayload[] | null> {
+    const capabilities = await this.schemaCapabilities();
+    const context = await this.publicProfileContext(handle, capabilities);
+
+    if (context === null) {
+      return null;
+    }
+
+    if (!context.viewerCanView) {
+      return [];
+    }
+
+    if (!capabilities.hasUserFollows) {
+      throw new Error("Follow storage is not ready.");
+    }
+
+    const [rows] = await this.pool.execute<FollowUserRow[]>(buildProfileFollowListQuery(kind, capabilities), [
+      null,
+      null,
+      context.userId,
+    ]);
+
+    return rows.map((row) => followUserCardPayloadFromRow(row));
+  }
+
+  private async profileModulesPayload(
+    rows: ProfileModuleRow[],
+    userId: number,
+    capabilities: ProfileSchemaCapabilities,
+  ): Promise<ProfileModulePayload[]> {
+    const modules: ProfileModulePayload[] = [];
+
+    for (const row of rows) {
+      const module = await this.profileModulePayload(row, userId, capabilities);
+
+      if (module !== null) {
+        modules.push(module);
+      }
+    }
+
+    return modules;
+  }
+
+  private async profileModulePayload(
+    row: ProfileModuleRow,
+    userId: number,
+    capabilities: ProfileSchemaCapabilities,
+  ): Promise<ProfileModulePayload | null> {
+    const type = stringValue(row.type);
+
+    if (!profileModuleTypes.has(type)) {
+      return null;
+    }
+
+    const config = await this.profileModuleOutputConfig(type, profileModuleJson(row.config_json), userId, capabilities);
+    const payload: ProfileModulePayload = {
+      id: numberValue(row.id),
+      type,
+      title: nullableStringValue(row.title),
+      config,
+      visibility: stringValue(row.visibility),
+      position: numberValue(row.position),
+      pinned: profileModuleGridPinned(row.grid_pinned),
+      layout: profileModuleLayoutPayload(row),
+      status: stringValue(row.status),
+      schemaVersion: numberValue(row.schema_version),
+      createdAt: nullableStringValue(row.created_at),
+      updatedAt: nullableStringValue(row.updated_at),
+    };
+
+    if (typeof config.body === "string" && config.body.trim() !== "") {
+      payload.textEntities = {
+        body: await this.textEntities("profile_module", numberValue(row.id), "body", capabilities),
+      };
+    }
+
+    return payload;
+  }
+
+  private async profileModuleOutputConfig(
+    type: string,
+    config: Record<string, unknown>,
+    userId: number,
+    capabilities: ProfileSchemaCapabilities,
+  ): Promise<Record<string, unknown>> {
+    if (type === "links" || type === "connections") {
+      return {
+        links: await this.profileModuleLinksWithConnectedIntegrations(config, userId, capabilities),
+      };
+    }
+
+    if (
+      type === "creator_live" ||
+      type === "music" ||
+      type === "github_repo" ||
+      profileModuleVideoTypes.has(type) ||
+      profileModuleMusicSpecificTypes.has(type)
+    ) {
+      const integration = await this.profileIntegrationCardForModule(config, capabilities);
+
+      if (integration !== null) {
+        return {
+          ...config,
+          integration,
+        };
+      }
+    }
+
+    if (type === "featured_badges") {
+      return {
+        userBadgeIds: await this.profileModuleVisibleUserBadgeIds(userId, config.userBadgeIds, capabilities),
+      };
+    }
+
+    return config;
+  }
+
+  private async profileModuleLinksWithConnectedIntegrations(
+    config: Record<string, unknown>,
+    userId: number,
+    capabilities: ProfileSchemaCapabilities,
+  ): Promise<unknown[]> {
+    const links = Array.isArray(config.links) ? [...config.links] : [];
+    const seen = new Set<string>();
+
+    for (const link of links) {
+      if (isRecord(link) && typeof link.url === "string") {
+        seen.add(`${String(link.platform ?? "website").toLowerCase()}:${link.url.toLowerCase()}`);
+      }
+    }
+
+    for (const link of await this.profileModuleConnectedIntegrationLinks(userId, capabilities)) {
+      const key = `${link.platform.toLowerCase()}:${link.url.toLowerCase()}`;
+
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      links.push(link);
+    }
+
+    return links;
+  }
+
+  private async profileModuleConnectedIntegrationLinks(
+    userId: number,
+    capabilities: ProfileSchemaCapabilities,
+  ): Promise<{ label: string; platform: string; url: string }[]> {
+    if (!capabilities.hasProfileIntegrationAccounts) {
+      return [];
+    }
+
+    const [rows] = await this.pool.execute<ProfileIntegrationAccountRow[]>(
+      `SELECT provider, provider_account_id, provider_handle, display_name, revoked_at
+       FROM profile_integration_accounts
+       WHERE user_id = ?
+       ORDER BY provider ASC`,
+      [userId],
+    );
+
+    return rows.flatMap((row) => {
+      if (row.revoked_at !== null) {
+        return [];
+      }
+
+      const link = profileModuleLinkForIntegrationAccount(row);
+
+      return link === null ? [] : [link];
+    });
+  }
+
+  private async profileModuleVisibleUserBadgeIds(
+    userId: number,
+    values: unknown,
+    capabilities: ProfileSchemaCapabilities,
+  ): Promise<number[]> {
+    if (!Array.isArray(values)) {
+      return [];
+    }
+
+    const ids = new Set<number>();
+
+    for (const value of values) {
+      const id =
+        typeof value === "number" || typeof value === "string" || typeof value === "bigint"
+          ? nullableNumberValue(value)
+          : null;
+
+      if (id !== null && id > 0) {
+        ids.add(id);
+      }
+    }
+
+    if (ids.size === 0) {
+      return [];
+    }
+
+    if (!capabilities.hasBadges || !capabilities.hasUserBadges) {
+      throw new Error("Badge storage is not ready.");
+    }
+
+    const orderedIds = [...ids];
+    const placeholders = orderedIds.map(() => "?").join(", ");
+    const [rows] = await this.pool.execute<(RowDataPacket & { id: number | string })[]>(
+      `SELECT ub.id
+       FROM user_badges ub
+       INNER JOIN badges b ON b.id = ub.badge_id
+       WHERE ub.user_id = ?
+         AND ub.is_visible = 1
+         AND b.is_active = 1
+         AND ub.id IN (${placeholders})`,
+      [userId, ...orderedIds],
+    );
+    const available = new Set(rows.map((row) => numberValue(row.id)));
+
+    return orderedIds.filter((id) => available.has(id));
+  }
+
+  private async profileIntegrationCardForModule(
+    config: Record<string, unknown>,
+    capabilities: ProfileSchemaCapabilities,
+  ): Promise<Record<string, unknown> | null> {
+    if (!capabilities.hasProfileIntegrationMetadataCache || typeof config.url !== "string" || config.url.trim() === "") {
+      return null;
+    }
+
+    const normalized = profileIntegrationNormalizeUrl(
+      config.url,
+      typeof config.platform === "string" ? profileIntegrationProviderFromPlatform(config.platform) : null,
+    );
+
+    if (normalized === null) {
+      return null;
+    }
+
+    const [rows] = await this.pool.execute<ProfileIntegrationCacheRow[]>(
+      `SELECT provider, resource_type, resource_id, resource_key, source_url, metadata_json, embed_json,
+              api_backed, fetched_at, expires_at, stale_at, error_message
+       FROM profile_integration_metadata_cache
+       WHERE provider = ?
+         AND resource_key = ?
+       LIMIT 1`,
+      [normalized.provider, normalized.resourceKey],
+    );
+    const row = rows[0];
+
+    if (row === undefined) {
+      return null;
+    }
+
+    return profileIntegrationCachePayload(row);
+  }
+
+  private async profileModulesShouldHaveDefaultFeed(userId: number): Promise<boolean> {
+    const [rows] = await this.pool.execute<(RowDataPacket & { module_count: number | string | null })[]>(
+      `SELECT COUNT(*) AS module_count
+       FROM profile_modules
+       WHERE user_id = ?
+         AND status <> 'deleted'
+         AND type <> 'profile_info'
+         AND type <> 'featured'
+         AND type <> 'activity'`,
+      [userId],
+    );
+    const nonDefaultCount = rows[0] === undefined ? 0 : numberValue(rows[0].module_count);
+
+    if (nonDefaultCount !== 0) {
+      return false;
+    }
+
+    const [activityRows] = await this.pool.execute<RowDataPacket[]>(
+      `SELECT id
+       FROM profile_modules
+       WHERE user_id = ?
+         AND type = 'activity'
+       LIMIT 1`,
+      [userId],
+    );
+
+    return activityRows[0] === undefined;
   }
 
   private schemaCapabilities(): Promise<ProfileSchemaCapabilities> {
@@ -493,6 +1181,16 @@ class MysqlProfilesRepository implements ProfilesRepository {
       hasPostPublicIdColumn,
       hasPostReblogs,
       hasTextEntities,
+      hasProfileModules,
+      hasProfileModuleGridColumn,
+      hasProfileModuleGridRow,
+      hasProfileModuleGridColSpan,
+      hasProfileModuleGridRowSpan,
+      hasProfileModulePinnedColumn,
+      hasBadges,
+      hasUserBadges,
+      hasProfileIntegrationAccounts,
+      hasProfileIntegrationMetadataCache,
     ] = await Promise.all([
       this.tableExists("account_deletion_requests"),
       this.tableExists("user_follows"),
@@ -522,6 +1220,16 @@ class MysqlProfilesRepository implements ProfilesRepository {
       this.columnExists("posts", "public_id"),
       this.tableExists("post_reblogs"),
       this.tableExists("text_entities"),
+      this.tableExists("profile_modules"),
+      this.columnExists("profile_modules", "grid_column"),
+      this.columnExists("profile_modules", "grid_row"),
+      this.columnExists("profile_modules", "grid_col_span"),
+      this.columnExists("profile_modules", "grid_row_span"),
+      this.columnExists("profile_modules", "grid_pinned"),
+      this.tableExists("badges"),
+      this.tableExists("user_badges"),
+      this.tableExists("profile_integration_accounts"),
+      this.tableExists("profile_integration_metadata_cache"),
     ]);
 
     return {
@@ -547,6 +1255,17 @@ class MysqlProfilesRepository implements ProfilesRepository {
       hasPostPublicIdColumn,
       hasPostReblogs,
       hasTextEntities,
+      hasProfileModules,
+      hasProfileModuleLayoutColumns:
+        hasProfileModuleGridColumn &&
+        hasProfileModuleGridRow &&
+        hasProfileModuleGridColSpan &&
+        hasProfileModuleGridRowSpan,
+      hasProfileModulePinnedColumn,
+      hasBadges,
+      hasUserBadges,
+      hasProfileIntegrationAccounts,
+      hasProfileIntegrationMetadataCache,
     };
   }
 
@@ -658,7 +1377,7 @@ class MysqlProfilesRepository implements ProfilesRepository {
   }
 
   private async textEntities(
-    contentType: "post" | "profile",
+    contentType: "post" | "profile" | "profile_module",
     contentId: number,
     fieldName: "bio" | "body",
     capabilities: ProfileSchemaCapabilities,
@@ -760,6 +1479,191 @@ function profileSocialContextFromRow(row: ProfileRow): ProfileSocialContext {
     isBlocked: booleanValue(row.is_blocked),
     isMuted: booleanValue(row.is_muted),
   };
+}
+
+export function profileBadgesPayloadFromRows(rows: UserBadgeRow[]): ProfileBadgesPayload {
+  const badges = rows.map((row) => userBadgePayloadFromRow(row));
+  let featuredBadges = badges.filter((badge) => badge.featuredOrder !== null && badge.isVisible);
+
+  if (featuredBadges.length === 0) {
+    featuredBadges = badges.filter((badge) => badge.isVisible).slice(0, maxFeaturedBadges);
+  }
+
+  return {
+    badges,
+    featuredBadges: featuredBadges.slice(0, maxFeaturedBadges),
+  };
+}
+
+export function userBadgePayloadFromRow(row: UserBadgeRow): UserBadgePayload {
+  const payload: UserBadgePayload = {
+    id: numberValue(row.user_badge_id),
+    badge: badgePayloadFromRow(row),
+    reason: nullableStringValue(row.user_badge_reason),
+    earnedAt: nullableStringValue(row.user_badge_earned_at),
+    featuredOrder: nullableNumberValue(row.user_badge_featured_order),
+    isVisible: booleanValue(row.user_badge_is_visible),
+    grantedBy: compactUserPayload(
+      row.grantor_user_id,
+      row.grantor_handle,
+      row.grantor_display_name,
+      row.grantor_avatar_url,
+    ),
+  };
+
+  const user = compactUserPayload(row.user_id, row.handle, row.display_name, row.avatar_url);
+
+  if (user !== null) {
+    payload.user = user;
+  }
+
+  return payload;
+}
+
+export function badgePayloadFromRow(row: UserBadgeRow): BadgePayload {
+  return {
+    id: numberValue(row.badge_id),
+    badgeKey: stringValue(row.badge_key),
+    name: stringValue(row.badge_name),
+    description: nullableStringValue(row.badge_description),
+    rarity: badgeRarity(row.badge_rarity),
+    source: stringValue(row.badge_source),
+    icon: nullableStringValue(row.badge_icon),
+    accent: nullableStringValue(row.badge_accent),
+    isActive: booleanValue(row.badge_is_active),
+    createdAt: nullableStringValue(row.badge_created_at),
+  };
+}
+
+export function followUserCardPayloadFromRow(row: FollowUserRow): FollowUserCardPayload {
+  const handle = stringValue(row.handle);
+  const displayName = stringValue(row.display_name, handle);
+  const isFollowing = booleanValue(row.is_following);
+  const isFollowedBy = booleanValue(row.is_followed_by);
+
+  return {
+    handle,
+    displayName,
+    initials: initialsFromName(displayName),
+    avatarUrl: nullableStringValue(row.avatar_url),
+    bioSnippet: followBioSnippet(row.bio),
+    isFollowing,
+    isMoot: isFollowing && isFollowedBy,
+  };
+}
+
+export function profileModuleLayoutPayload(row: ProfileModuleRow): ProfileModuleLayoutPayload | null {
+  const type = stringValue(row.type);
+  let column = profileModuleSavedGridValue(row.grid_column);
+  let rowNumber = profileModuleSavedGridValue(row.grid_row);
+  let colSpan = profileModuleSavedGridValue(row.grid_col_span);
+  let rowSpan = profileModuleSavedGridValue(row.grid_row_span);
+
+  if (column === null || rowNumber === null || colSpan === null || rowSpan === null) {
+    return null;
+  }
+
+  [colSpan, rowSpan] = profileCanvasNormalizeSpan(type, colSpan, rowSpan);
+
+  if (!profileCanvasSpanAllowed(type, colSpan, rowSpan)) {
+    return null;
+  }
+
+  column = Math.max(1, Math.min(12 - colSpan + 1, column));
+  rowNumber = Math.max(1, Math.min(16 - rowSpan + 1, rowNumber));
+
+  return {
+    column,
+    row: rowNumber,
+    colSpan,
+    rowSpan,
+  };
+}
+
+function profileModulesPayloadContainsType(modules: ProfileModulePayload[], type: string): boolean {
+  return modules.some((module) => module.type === type);
+}
+
+function profileModulesPayloadIsBlankProfile(modules: ProfileModulePayload[]): boolean {
+  return modules.every((module) => module.type === "profile_info");
+}
+
+function profileInfoModulePayload(position: number): ProfileModulePayload {
+  return {
+    id: 0,
+    type: "profile_info",
+    title: "Profile info",
+    config: {},
+    visibility: "public",
+    position,
+    pinned: true,
+    layout: {
+      column: 3,
+      row: 1,
+      colSpan: 8,
+      rowSpan: 3,
+    },
+    status: "active",
+    schemaVersion: 1,
+    createdAt: null,
+    updatedAt: null,
+  };
+}
+
+function profileActivityModulePayload(position: number): ProfileModulePayload {
+  return {
+    id: 0,
+    type: "activity",
+    title: "Feed",
+    config: {},
+    visibility: "public",
+    position,
+    pinned: false,
+    layout: {
+      column: 5,
+      row: 4,
+      colSpan: 4,
+      rowSpan: 6,
+    },
+    status: "active",
+    schemaVersion: 1,
+    createdAt: null,
+    updatedAt: null,
+  };
+}
+
+function profileModulesSortPayload(modules: ProfileModulePayload[]): ProfileModulePayload[] {
+  return [...modules].sort((first, second) => {
+    const positionCompare = first.position - second.position;
+
+    if (positionCompare !== 0) {
+      return positionCompare;
+    }
+
+    const typeCompare = profileModuleDefaultSortOrder(first.type) - profileModuleDefaultSortOrder(second.type);
+
+    if (typeCompare !== 0) {
+      return typeCompare;
+    }
+
+    return first.id - second.id;
+  });
+}
+
+function profileModuleDefaultSortOrder(type: string): number {
+  if (type === "profile_info") {
+    return -1;
+  }
+
+  if (type === "featured_post") {
+    return 0;
+  }
+
+  if (type === "featured_room") {
+    return 1;
+  }
+
+  return type === "activity" ? 3 : 2;
 }
 
 function buildFeaturedPostQuery(capabilities: ProfileSchemaCapabilities): string {
@@ -1046,6 +1950,41 @@ function roomSelectSql(capabilities: ProfileSchemaCapabilities): string {
         ) room_posts ON room_posts.room_id = rooms.id`;
 }
 
+function userBadgeSelectSql(): string {
+  return `SELECT
+        ub.id AS user_badge_id,
+        ub.user_id AS user_badge_user_id,
+        ub.badge_id AS user_badge_badge_id,
+        ub.reason AS user_badge_reason,
+        ub.earned_at AS user_badge_earned_at,
+        ub.featured_order AS user_badge_featured_order,
+        ub.is_visible AS user_badge_is_visible,
+        b.id AS badge_id,
+        b.badge_key AS badge_key,
+        b.name AS badge_name,
+        b.description AS badge_description,
+        b.rarity AS badge_rarity,
+        b.source AS badge_source,
+        b.icon AS badge_icon,
+        b.accent AS badge_accent,
+        b.is_active AS badge_is_active,
+        b.created_at AS badge_created_at,
+        target_user.id AS user_id,
+        target_user.handle AS handle,
+        target_profile.display_name AS display_name,
+        target_profile.avatar_url AS avatar_url,
+        grantor.id AS grantor_user_id,
+        grantor.handle AS grantor_handle,
+        grantor_profile.display_name AS grantor_display_name,
+        grantor_profile.avatar_url AS grantor_avatar_url
+      FROM user_badges ub
+      INNER JOIN badges b ON b.id = ub.badge_id
+      INNER JOIN users target_user ON target_user.id = ub.user_id
+      INNER JOIN profiles target_profile ON target_profile.user_id = target_user.id
+      LEFT JOIN users grantor ON grantor.id = ub.granted_by
+      LEFT JOIN profiles grantor_profile ON grantor_profile.user_id = grantor.id`;
+}
+
 function userPayloadFromRow(row: ProfileRow): UserPayload {
   const handle = stringValue(row.handle);
   const displayName = stringValue(row.display_name, handle);
@@ -1057,6 +1996,29 @@ function userPayloadFromRow(row: ProfileRow): UserPayload {
     initials: initialsFromName(displayName),
     aura: "frost",
     avatarUrl: nullableStringValue(row.avatar_url),
+  };
+}
+
+function compactUserPayload(
+  id: number | string | null | undefined,
+  handleValue: string | null | undefined,
+  displayNameValue: string | null | undefined,
+  avatarUrlValue: string | null | undefined,
+): UserPayload | null {
+  if (id === null || id === undefined || handleValue === null || handleValue === undefined) {
+    return null;
+  }
+
+  const handle = stringValue(handleValue);
+  const displayName = stringValue(displayNameValue, handle);
+
+  return {
+    id: numberValue(id),
+    handle,
+    displayName,
+    initials: initialsFromName(displayName),
+    aura: "frost",
+    avatarUrl: nullableStringValue(avatarUrlValue),
   };
 }
 
@@ -1451,6 +2413,175 @@ function authorRelationship(
   return null;
 }
 
+function badgeRarity(value: string | null | undefined): string {
+  return value === "common" || value === "rare" || value === "epic" || value === "legendary" || value === "founder"
+    ? value
+    : "common";
+}
+
+function followBioSnippet(value: string | null | undefined): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const trimmed = value.replace(/\s+/g, " ").trim();
+
+  if (trimmed.length <= 140) {
+    return trimmed;
+  }
+
+  return `${trimmed.slice(0, 137).trimEnd()}...`;
+}
+
+function profileModuleJson(value: string | null | undefined): Record<string, unknown> {
+  const decoded = jsonArrayOrObject(value);
+
+  return decoded !== null && !Array.isArray(decoded) ? decoded : {};
+}
+
+function profileModuleGridPinned(value: boolean | number | string | null | undefined): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return value === 1;
+  }
+
+  return value === "1";
+}
+
+function profileModuleSavedGridValue(value: boolean | number | string | null | undefined): number | null {
+  if (typeof value === "number" && Number.isInteger(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && /^[0-9]+$/.test(value)) {
+    return Number(value);
+  }
+
+  return null;
+}
+
+function profileCanvasNormalizeSpan(type: string, colSpan: number, rowSpan: number): [number, number] {
+  if (type === "creator_live" && colSpan === 3 && rowSpan === 5) {
+    return [5, 3];
+  }
+
+  return [
+    Math.max(1, Math.min(profileCanvasMaxAllowedSizeAxis(type, 0, 6), colSpan)),
+    Math.max(1, Math.min(profileCanvasMaxAllowedSizeAxis(type, 1, 6), rowSpan)),
+  ];
+}
+
+function profileCanvasSpanAllowed(type: string, colSpan: number, rowSpan: number): boolean {
+  return profileCanvasAllowedSizes(type).includes(`${colSpan}x${rowSpan}`);
+}
+
+function profileCanvasMaxAllowedSizeAxis(type: string, axis: 0 | 1, fallback: number): number {
+  let max = fallback;
+
+  for (const size of profileCanvasAllowedSizes(type)) {
+    const match = /^([1-8])x(10|[1-9])$/.exec(size);
+
+    if (match === null) {
+      continue;
+    }
+
+    max = Math.max(max, Number(match[axis + 1]));
+  }
+
+  return axis === 0 ? Math.min(8, max) : Math.min(10, max);
+}
+
+function profileCanvasAllowedSizes(type: string): string[] {
+  const wideSlimOneRowSizes = ["5x1", "6x1", "8x1"];
+  const wideSlimTwoRowSizes = ["5x2", "6x2", "8x2"];
+  const wideSlimSizes = profileCanvasUniqueSizes(wideSlimOneRowSizes, wideSlimTwoRowSizes);
+  const uploadedImageSizes = profileCanvasUniqueSizes(profileCanvasSizeRange(1, 6, 1, 6), wideSlimTwoRowSizes);
+  const gallerySlideshowSizes = profileCanvasUniqueSizes(profileCanvasSizeRange(2, 6, 2, 6), wideSlimTwoRowSizes);
+  const textSizes = profileCanvasUniqueSizes(profileCanvasSizeRange(3, 4, 2, 5), wideSlimSizes);
+  const connectionSizes = profileCanvasUniqueSizes(["2x2", "2x3", "3x2", "4x2", "3x3", "3x4"], wideSlimSizes);
+  const badgeSizes = profileCanvasUniqueSizes(["2x2", "3x2"], wideSlimSizes);
+  const providerCardSizes = profileCanvasUniqueSizes(["3x2", "4x3", "6x4"], wideSlimTwoRowSizes);
+  const videoCardSizes = profileCanvasUniqueSizes(["4x3", "6x4"], wideSlimTwoRowSizes);
+  const musicSongSizes = profileCanvasUniqueSizes(["2x1", "2x2", "3x2", "4x2", "4x3", "4x4"], wideSlimSizes);
+  const playlistSizes = profileCanvasUniqueSizes(["3x2", "4x3", "3x6", "4x6"], wideSlimTwoRowSizes);
+  const activitySizes = profileCanvasUniqueSizes(["3x4", "4x6", "6x10"], ["5x2", "6x2", "8x2", "8x3"]);
+
+  switch (type) {
+    case "profile_info":
+      return ["3x2", "3x3", "4x3", "6x3", "8x3", "8x4"];
+    case "about":
+    case "custom_text":
+    case "text":
+      return textSizes;
+    case "links":
+    case "connections":
+      return connectionSizes;
+    case "featured_badges":
+    case "badge_display":
+      return badgeSizes;
+    case "featured_post":
+      return ["3x4", "4x5"];
+    case "featured_room":
+      return ["3x1", "4x2"];
+    case "gallery_media":
+    case "gallery_slideshow":
+      return gallerySlideshowSizes;
+    case "uploaded_image":
+      return uploadedImageSizes;
+    case "gallery_feed":
+      return profileCanvasUniqueSizes(["3x6", "4x6"], wideSlimTwoRowSizes);
+    case "creator_live":
+      return profileCanvasUniqueSizes(["2x1", "3x2", "4x3", "5x3", "6x4"], wideSlimTwoRowSizes);
+    case "twitch_channel":
+      return profileCanvasUniqueSizes(["2x1", "3x2", "4x3", "5x3", "6x4", "8x6"], wideSlimTwoRowSizes);
+    case "youtube_video":
+      return profileCanvasUniqueSizes(["3x4"], videoCardSizes);
+    case "youtube_stream":
+      return profileCanvasUniqueSizes(["4x3", "5x3", "6x4"], wideSlimTwoRowSizes);
+    case "youtube_playlist":
+      return profileCanvasUniqueSizes(["4x3", "5x3", "2x4", "3x6"], wideSlimTwoRowSizes);
+    case "uploaded_video":
+      return profileCanvasUniqueSizes(["4x3", "6x4", "4x6"], wideSlimTwoRowSizes);
+    case "music":
+    case "spotify_song":
+    case "apple_music_song":
+    case "youtube_music_song":
+      return musicSongSizes;
+    case "spotify_playlist":
+    case "apple_music_playlist":
+    case "youtube_music_playlist":
+      return playlistSizes;
+    case "spotify_artist":
+    case "apple_music_artist":
+    case "youtube_music_artist":
+    case "github_repo":
+      return providerCardSizes;
+    case "activity":
+      return activitySizes;
+    default:
+      return ["1x1"];
+  }
+}
+
+function profileCanvasUniqueSizes(...groups: string[][]): string[] {
+  return [...new Set(groups.flat())];
+}
+
+function profileCanvasSizeRange(minColumns: number, maxColumns: number, minRows: number, maxRows: number): string[] {
+  const sizes: string[] = [];
+
+  for (let column = minColumns; column <= maxColumns; column += 1) {
+    for (let row = minRows; row <= maxRows; row += 1) {
+      sizes.push(`${column}x${row}`);
+    }
+  }
+
+  return sizes;
+}
+
 function profileVisibility(value: string | null | undefined): ProfileVisibility {
   return value === "private" ? "private" : "public";
 }
@@ -1572,6 +2703,298 @@ function jsonArrayOrObject(value: string | null | undefined): Record<string, unk
   } catch {
     return null;
   }
+}
+
+function profileModuleLinkForIntegrationAccount(
+  account: ProfileIntegrationAccountRow,
+): { label: string; platform: string; url: string } | null {
+  const provider = stringValue(account.provider);
+  const handle = profileModuleIntegrationAccountHandle(account);
+  const accountId = stringValue(account.provider_account_id).trim();
+  const platform = profileIntegrationProviderToPlatform(provider);
+
+  if (platform === null) {
+    return null;
+  }
+
+  const url = (() => {
+    if (provider === "github") {
+      return handle === null ? null : `https://github.com/${encodeURIComponent(handle.replace(/^@/, ""))}`;
+    }
+
+    if (provider === "spotify") {
+      return accountId === "" ? null : `https://open.spotify.com/user/${encodeURIComponent(accountId)}`;
+    }
+
+    if (provider === "twitch") {
+      return handle === null ? null : `https://www.twitch.tv/${encodeURIComponent(handle.replace(/^@/, ""))}`;
+    }
+
+    if (provider === "youtube") {
+      if (handle !== null && /^@[A-Za-z0-9_.-]+$/.test(handle)) {
+        return `https://www.youtube.com/${handle}`;
+      }
+
+      return accountId === "" ? null : `https://www.youtube.com/channel/${encodeURIComponent(accountId)}`;
+    }
+
+    return null;
+  })();
+
+  if (url === null) {
+    return null;
+  }
+
+  return {
+    label: profileModuleIntegrationLinkLabel(account.display_name ?? handle, profileIntegrationProviderLabel(provider)),
+    platform,
+    url,
+  };
+}
+
+function profileModuleIntegrationAccountHandle(account: ProfileIntegrationAccountRow): string | null {
+  for (const value of [account.provider_handle, account.display_name, account.provider_account_id]) {
+    if (typeof value === "string" && value.trim() !== "") {
+      return value.trim();
+    }
+  }
+
+  return null;
+}
+
+function profileModuleIntegrationLinkLabel(value: string | null, fallback: string): string {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  const label = value.replace(/\s+/g, " ").trim();
+
+  return label === "" || label.length > 60 ? fallback : label;
+}
+
+function profileIntegrationProviderToPlatform(provider: string): string | null {
+  if (provider === "github" || provider === "spotify" || provider === "twitch" || provider === "youtube") {
+    return provider;
+  }
+
+  return null;
+}
+
+function profileIntegrationProviderFromPlatform(platform: string): string | null {
+  switch (platform) {
+    case "spotify":
+      return "spotify";
+    case "apple_music":
+      return "apple_music";
+    case "youtube":
+    case "youtube_music":
+      return "youtube";
+    case "twitch":
+      return "twitch";
+    case "github":
+      return "github";
+    default:
+      return null;
+  }
+}
+
+function profileIntegrationProviderLabel(provider: string): string {
+  switch (provider) {
+    case "spotify":
+      return "Spotify";
+    case "apple_music":
+      return "Apple Music";
+    case "youtube":
+      return "YouTube";
+    case "twitch":
+      return "Twitch";
+    case "github":
+      return "GitHub";
+    default:
+      return "Integration";
+  }
+}
+
+function profileIntegrationCachePayload(row: ProfileIntegrationCacheRow): Record<string, unknown> {
+  const embed = jsonRecord(row.embed_json);
+
+  return {
+    provider: stringValue(row.provider),
+    resourceType: stringValue(row.resource_type),
+    resourceId: stringValue(row.resource_id),
+    resourceKey: stringValue(row.resource_key),
+    sourceUrl: stringValue(row.source_url),
+    metadata: jsonRecord(row.metadata_json),
+    embed: embed === null || Object.keys(embed).length === 0 ? null : embed,
+    apiBacked: booleanValue(row.api_backed),
+    fetchedAt: nullableStringValue(row.fetched_at),
+    expiresAt: nullableStringValue(row.expires_at),
+    staleAt: nullableStringValue(row.stale_at),
+    stale: false,
+    lastError: nullableStringValue(row.error_message),
+  };
+}
+
+function profileIntegrationNormalizeUrl(
+  rawUrl: string,
+  preferredProvider: string | null,
+): { provider: string; resourceType: string; resourceId: string; resourceKey: string; sourceUrl: string } | null {
+  let url: URL;
+
+  try {
+    url = new URL(rawUrl.trim());
+  } catch {
+    return null;
+  }
+
+  if (url.protocol !== "https:") {
+    return null;
+  }
+
+  const host = url.hostname.toLowerCase();
+  const segments = url.pathname
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment !== "");
+  const provider = preferredProvider ?? profileIntegrationProviderFromHost(host);
+
+  if (provider === null) {
+    return null;
+  }
+
+  let resourceType = "link";
+  let resourceId = "";
+  let sourceUrl = url.toString();
+
+  if (provider === "spotify" && host === "open.spotify.com" && segments.length >= 2) {
+    resourceType = segments[0]?.toLowerCase() ?? "";
+    resourceId = segments[1]?.replace(/[^A-Za-z0-9]/g, "") ?? "";
+    sourceUrl = `https://open.spotify.com/${resourceType}/${resourceId}`;
+  } else if (provider === "apple_music" && ["music.apple.com", "itunes.apple.com"].includes(host) && segments.length >= 2) {
+    resourceType = url.pathname.includes("/artist/")
+      ? "artist"
+      : url.pathname.includes("/playlist/")
+        ? "playlist"
+        : url.pathname.includes("/album/")
+          ? "album"
+          : "song";
+    resourceId = profileIntegrationLastIdentifier(url);
+  } else if (
+    provider === "youtube" &&
+    ["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com"].includes(host)
+  ) {
+    const firstSegment = segments[0] ?? "";
+    const playlistId = profileIntegrationYoutubeIdentifier(url.searchParams.get("list") ?? "");
+    let videoId = "";
+
+    if (host === "youtu.be" && segments[0] !== undefined) {
+      videoId = profileIntegrationYoutubeIdentifier(segments[0]);
+    } else if (firstSegment === "watch") {
+      videoId = profileIntegrationYoutubeIdentifier(url.searchParams.get("v") ?? "");
+    } else if (["shorts", "live", "embed"].includes(firstSegment) && segments[1] !== undefined) {
+      videoId = profileIntegrationYoutubeIdentifier(segments[1]);
+    }
+
+    if (videoId !== "") {
+      resourceType = "video";
+      resourceId = videoId;
+      sourceUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(resourceId)}`;
+    } else if (playlistId !== "") {
+      resourceType = "playlist";
+      resourceId = playlistId;
+      sourceUrl = `https://www.youtube.com/playlist?list=${encodeURIComponent(resourceId)}`;
+    } else if (firstSegment.startsWith("@")) {
+      resourceType = "channel";
+      resourceId = profileIntegrationYoutubeIdentifier(firstSegment, true);
+      sourceUrl = `https://www.youtube.com/${resourceId}`;
+    } else if (firstSegment === "channel" && segments[1] !== undefined) {
+      resourceType = "channel";
+      resourceId = profileIntegrationYoutubeIdentifier(segments[1]);
+      sourceUrl = `https://www.youtube.com/channel/${encodeURIComponent(resourceId)}`;
+    }
+  } else if (provider === "twitch" && ["twitch.tv", "www.twitch.tv"].includes(host) && segments[0] !== undefined) {
+    resourceType = segments[0] === "videos" && segments[1] !== undefined ? "video" : "channel";
+    resourceId = resourceType === "video" ? (segments[1] ?? "") : segments[0];
+  } else if (provider === "github" && ["github.com", "www.github.com"].includes(host) && segments.length >= 2) {
+    resourceType = "repo";
+    resourceId = `${segments[0]}/${segments[1]}`.toLowerCase();
+    sourceUrl = `https://github.com/${resourceId}`;
+  }
+
+  resourceId = resourceId.trim();
+
+  if (resourceId === "") {
+    return null;
+  }
+
+  return {
+    provider,
+    resourceType,
+    resourceId,
+    resourceKey: `${provider}:${resourceType}:${resourceId}`,
+    sourceUrl,
+  };
+}
+
+function profileIntegrationProviderFromHost(host: string): string | null {
+  if (host === "open.spotify.com") {
+    return "spotify";
+  }
+
+  if (host === "music.apple.com" || host === "itunes.apple.com") {
+    return "apple_music";
+  }
+
+  if (["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com"].includes(host)) {
+    return "youtube";
+  }
+
+  if (host === "twitch.tv" || host === "www.twitch.tv") {
+    return "twitch";
+  }
+
+  if (host === "github.com" || host === "www.github.com") {
+    return "github";
+  }
+
+  return null;
+}
+
+function profileIntegrationYoutubeIdentifier(value: string, allowHandle = false): string {
+  const trimmed = value.trim();
+
+  if (allowHandle && trimmed.startsWith("@")) {
+    const handle = trimmed.slice(1).replace(/[^A-Za-z0-9._-]/g, "");
+
+    return handle === "" ? "" : `@${handle}`;
+  }
+
+  return trimmed.replace(/[^A-Za-z0-9_-]/g, "");
+}
+
+function profileIntegrationLastIdentifier(url: URL): string {
+  const queryId = url.searchParams.get("i");
+
+  if (queryId !== null && queryId !== "") {
+    return queryId.replace(/[^A-Za-z0-9._-]/g, "");
+  }
+
+  const segments = url.pathname
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment !== "");
+
+  return (segments.at(-1) ?? "").replace(/[^A-Za-z0-9._-]/g, "");
+}
+
+function jsonRecord(value: string | null | undefined): Record<string, unknown> {
+  const decoded = jsonArrayOrObject(value);
+
+  return decoded !== null && !Array.isArray(decoded) ? decoded : {};
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function booleanValue(value: boolean | number | string | null | undefined): boolean {

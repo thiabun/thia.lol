@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "./app.js";
-import type { ProfilePayload, ProfilesRepository } from "./profiles.js";
+import type {
+  FollowUserCardPayload,
+  ProfileBadgesPayload,
+  ProfileModulePayload,
+  ProfilePayload,
+  ProfilesRepository,
+} from "./profiles.js";
 import type { RoomPayload, RoomsRepository } from "./rooms.js";
 import type { PublicStatsPayload, StatsRepository } from "./stats.js";
 
@@ -117,9 +123,80 @@ const profile: ProfilePayload = {
   featuredRoom: null,
 };
 
+const profileModule: ProfileModulePayload = {
+  id: 11,
+  type: "profile_info",
+  title: null,
+  config: {
+    canvasSize: "8x3",
+  },
+  visibility: "public",
+  position: 1,
+  pinned: true,
+  layout: {
+    column: 3,
+    row: 1,
+    colSpan: 8,
+    rowSpan: 3,
+  },
+  status: "active",
+  schemaVersion: 1,
+  createdAt: "2026-06-16 18:19:39",
+  updatedAt: "2026-06-23 09:40:32",
+};
+
+const profileBadges: ProfileBadgesPayload = {
+  badges: [
+    {
+      id: 1,
+      badge: {
+        id: 1,
+        badgeKey: "founder",
+        name: "Founder",
+        description: "Founder badge",
+        rarity: "founder",
+        source: "admin-granted",
+        icon: "sparkles",
+        accent: "founder",
+        isActive: true,
+        createdAt: "2026-06-10 10:00:00",
+      },
+      reason: null,
+      earnedAt: "2026-06-10 10:00:00",
+      featuredOrder: 1,
+      isVisible: true,
+      grantedBy: null,
+      user: {
+        id: 1,
+        handle: "thia",
+        displayName: "Thia",
+        initials: "T",
+        aura: "frost",
+        avatarUrl: null,
+      },
+    },
+  ],
+  featuredBadges: [],
+};
+
+const followCard: FollowUserCardPayload = {
+  handle: "friend",
+  displayName: "Friend",
+  initials: "F",
+  avatarUrl: null,
+  bioSnippet: "Public friend.",
+  isFollowing: false,
+  isMoot: false,
+};
+
 function profilesRepositoryMock(overrides: Partial<ProfilesRepository> = {}): ProfilesRepository {
   return {
     getPublicProfile: vi.fn().mockResolvedValue(profile),
+    getPublicProfileRooms: vi.fn().mockResolvedValue([room]),
+    getPublicProfileModules: vi.fn().mockResolvedValue([profileModule]),
+    getPublicProfileBadges: vi.fn().mockResolvedValue(profileBadges),
+    getPublicProfileFollowers: vi.fn().mockResolvedValue([followCard]),
+    getPublicProfileFollowing: vi.fn().mockResolvedValue([followCard]),
     ...overrides,
   };
 }
@@ -454,6 +531,142 @@ describe("Node API profile preview route", () => {
     const response = await app.inject({
       method: "GET",
       url: "/profiles/thia",
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Internal server error.",
+    });
+  });
+});
+
+describe("Node API profile extras preview routes", () => {
+  const routes: Array<{
+    path: string;
+    methodName: keyof ProfilesRepository;
+    publicData: unknown;
+    privateData: unknown;
+  }> = [
+    {
+      path: "/profiles/thia/rooms",
+      methodName: "getPublicProfileRooms",
+      publicData: [room],
+      privateData: [],
+    },
+    {
+      path: "/profiles/thia/modules",
+      methodName: "getPublicProfileModules",
+      publicData: [profileModule],
+      privateData: [],
+    },
+    {
+      path: "/profiles/thia/badges",
+      methodName: "getPublicProfileBadges",
+      publicData: profileBadges,
+      privateData: {
+        badges: [],
+        featuredBadges: [],
+      },
+    },
+    {
+      path: "/profiles/thia/followers",
+      methodName: "getPublicProfileFollowers",
+      publicData: [followCard],
+      privateData: [],
+    },
+    {
+      path: "/profiles/thia/following",
+      methodName: "getPublicProfileFollowing",
+      publicData: [followCard],
+      privateData: [],
+    },
+  ];
+
+  it.each(routes)("returns %s in the PHP success wrapper", async ({ path, methodName, publicData }) => {
+    const repository = profilesRepositoryMock();
+    const app = buildApp({
+      profilesRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: path,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(repository[methodName]).toHaveBeenCalledWith("thia");
+    expect(response.json()).toEqual({
+      ok: true,
+      data: publicData,
+    });
+  });
+
+  it.each(routes)("returns 400 for invalid handles on %s", async ({ path, methodName }) => {
+    const repository = profilesRepositoryMock();
+    const app = buildApp({
+      profilesRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: path.replace("/thia/", "/nope!/"),
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(repository[methodName]).not.toHaveBeenCalled();
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Invalid profile handle.",
+    });
+  });
+
+  it.each(routes)("returns 404 for missing profiles on %s", async ({ path, methodName }) => {
+    const repository = profilesRepositoryMock({
+      [methodName]: vi.fn().mockResolvedValue(null),
+    });
+    const app = buildApp({
+      profilesRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: path,
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Profile not found.",
+    });
+  });
+
+  it.each(routes)("returns private-profile public data for %s", async ({ path, methodName, privateData }) => {
+    const repository = profilesRepositoryMock({
+      [methodName]: vi.fn().mockResolvedValue(privateData),
+    });
+    const app = buildApp({
+      profilesRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: path,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      ok: true,
+      data: privateData,
+    });
+  });
+
+  it.each(routes)("returns JSON 500 without raw repository details for %s", async ({ path, methodName }) => {
+    const repository = profilesRepositoryMock({
+      [methodName]: vi.fn().mockRejectedValue(new Error("sensitive profile extras detail")),
+    });
+    const app = buildApp({
+      profilesRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: path,
     });
 
     expect(response.statusCode).toBe(500);

@@ -7,6 +7,11 @@ const routePairs = [
   ["/api/rooms/general", "/api-next/rooms/general"],
   ["/api/stats", "/api-next/stats"],
   ["/api/profiles/thia", "/api-next/profiles/thia"],
+  ["/api/profiles/thia/rooms", "/api-next/profiles/thia/rooms"],
+  ["/api/profiles/thia/modules", "/api-next/profiles/thia/modules"],
+  ["/api/profiles/thia/badges", "/api-next/profiles/thia/badges"],
+  ["/api/profiles/thia/followers", "/api-next/profiles/thia/followers"],
+  ["/api/profiles/thia/following", "/api-next/profiles/thia/following"],
 ];
 
 let failed = false;
