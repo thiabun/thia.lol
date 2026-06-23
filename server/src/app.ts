@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
 
 import { normalizeRoomSlug, type RoomPayload, type RoomsRepository } from "./rooms.js";
+import type { PublicStatsPayload, StatsRepository } from "./stats.js";
 
 const healthQuerySchema = z.object({
   db: z.union([z.string(), z.array(z.string())]).optional(),
@@ -14,6 +15,7 @@ const roomParamsSchema = z.object({
 export interface AppDependencies {
   checkDatabase?: () => Promise<void>;
   roomsRepository?: RoomsRepository;
+  statsRepository?: StatsRepository;
 }
 
 export interface HealthPayload {
@@ -138,6 +140,20 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       }
 
       return reply.send(successPayload<RoomPayload>(room));
+    } catch {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+  });
+
+  app.get("/stats", async (_request, reply) => {
+    if (dependencies.statsRepository === undefined) {
+      return reply.status(500).send(errorPayload("Internal server error."));
+    }
+
+    try {
+      const stats = await dependencies.statsRepository.getPublicStats();
+
+      return reply.send(successPayload<PublicStatsPayload>(stats));
     } catch {
       return reply.status(500).send(errorPayload("Internal server error."));
     }

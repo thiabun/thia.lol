@@ -2,13 +2,16 @@ import { buildApp } from "./app.js";
 import { loadServerConfig } from "./config.js";
 import { createDatabaseClient } from "./db.js";
 import { createRoomsRepository } from "./rooms.js";
+import { createStatsRepository } from "./stats.js";
 
 const config = loadServerConfig();
 const database = createDatabaseClient(config);
 const roomsRepository = createRoomsRepository(database.pool);
+const statsRepository = createStatsRepository(database.pool);
 const app = buildApp({
   checkDatabase: database.check,
   roomsRepository,
+  statsRepository,
 });
 
 async function shutdown(signal: NodeJS.Signals): Promise<void> {

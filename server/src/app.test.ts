@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "./app.js";
 import type { RoomPayload, RoomsRepository } from "./rooms.js";
+import type { PublicStatsPayload, StatsRepository } from "./stats.js";
 
 const room: RoomPayload = {
   id: 1,
@@ -39,6 +40,20 @@ function roomsRepositoryMock(overrides: Partial<RoomsRepository> = {}): RoomsRep
   return {
     listPublicRooms: vi.fn().mockResolvedValue([room]),
     getPublicRoom: vi.fn().mockResolvedValue(room),
+    ...overrides,
+  };
+}
+
+const publicStats: PublicStatsPayload = {
+  publicRooms: 4,
+  publicPosts: 12,
+  activeUsers: 3,
+  totalReactions: 8,
+};
+
+function statsRepositoryMock(overrides: Partial<StatsRepository> = {}): StatsRepository {
+  return {
+    getPublicStats: vi.fn().mockResolvedValue(publicStats),
     ...overrides,
   };
 }
@@ -213,6 +228,45 @@ describe("Node API room preview routes", () => {
     const response = await app.inject({
       method: "GET",
       url: "/rooms",
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Internal server error.",
+    });
+  });
+});
+
+describe("Node API stats preview route", () => {
+  it("returns public stats in the PHP success wrapper", async () => {
+    const repository = statsRepositoryMock();
+    const app = buildApp({
+      statsRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/stats",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(repository.getPublicStats).toHaveBeenCalledOnce();
+    expect(response.json()).toEqual({
+      ok: true,
+      data: publicStats,
+    });
+  });
+
+  it("returns JSON 500 without raw stats repository details", async () => {
+    const repository = statsRepositoryMock({
+      getPublicStats: vi.fn().mockRejectedValue(new Error("sensitive stats detail")),
+    });
+    const app = buildApp({
+      statsRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/stats",
     });
 
     expect(response.statusCode).toBe(500);

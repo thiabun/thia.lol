@@ -149,3 +149,6 @@ jobs:
 
       - name: Smoke-test Node API preview
         run: scripts/smoke-api-next.sh
+
+      - name: Compare PHP and Node API preview parity
+        run: node scripts/compare-api-parity.mjs
