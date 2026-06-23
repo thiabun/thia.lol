@@ -1,1 +1,0 @@
-The "secrets" within config.php are "fake" and do not match the secrets for the live page, they should also never be pushed on-to the live page, they should only be used for smoke-tests and other testing purposes.

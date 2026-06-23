@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for suggesting an improvement. Please keep this focused on the user problem, not just the shiny idea gremlin whispering in the corner.
+        Thanks for suggesting an improvement. Please keep this focused on the user problem, the smaller safe version, and the real behavior needed.
   - type: textarea
     id: problem
     attributes:

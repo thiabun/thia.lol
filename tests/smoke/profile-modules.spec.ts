@@ -5738,7 +5738,6 @@ test("profile module API guardrails are present by inspection", async () => {
   const moduleRegistry = readFileSync("src/lib/profileModuleRegistry.ts", "utf8");
   const profilePage = readFileSync("src/pages/ProfilePage.tsx", "utf8");
   const profileGrid = readFileSync("src/components/social/ProfileGrid.tsx", "utf8");
-  const profileEvolution = readFileSync("docs/profile-personal-space-evolution.md", "utf8");
   const safetyRules = readFileSync("docs/profile-customization-safety-rules.md", "utf8");
   const productGuidelines = readFileSync("docs/product-ui-ux-guidelines.md", "utf8");
   const schema = readFileSync("backend/database/schema.sql", "utf8");
@@ -5886,11 +5885,10 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(moduleRegistry).toContain(
     "clampProfileGridModuleSpan(span, PROFILE_ACTIVITY_MAX_ROW_SPAN)",
   );
-  expect(profileEvolution).toContain("Module Design Rubric");
-  expect(profileEvolution).toContain("1x1` and `2x1`: one idea");
   expect(safetyRules).toContain("Module presentation metadata");
   expect(safetyRules).toContain("API-backed and timestamped");
   expect(productGuidelines).toContain("Profile Modules As Glanceable Surfaces");
+  expect(productGuidelines).toContain("`1x1` and `2x1` modules carry one idea");
   expect(productGuidelines).toContain("Live/recent labels require API-backed timestamps");
   expect(schema).toContain("CREATE TABLE IF NOT EXISTS profile_modules");
   expect(schema).toContain("CREATE TABLE IF NOT EXISTS profile_integration_accounts");

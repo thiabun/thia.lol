@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+// Disposable test config shape only. Do not put live secrets in this file.
 return [
     'app' => [
         'name' => 'thia.lol',

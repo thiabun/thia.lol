@@ -5,7 +5,8 @@
 > silently, do not commit migration tokens, and do not mark API-backed smoke as
 > passed without a working API path.
 
-This is the practical version of running database migrations for `thia.lol` without turning phpMyAdmin into a ritual sacrifice.
+This is the practical version of running database migrations for `thia.lol`
+without relying on manual phpMyAdmin edits.
 
 Use this when Codex adds a new SQL file under `backend/database/migrations/` and you need to apply it on the live VPS MariaDB database.
 
@@ -23,7 +24,9 @@ Then it applies any migration that is not already listed in the database table:
 schema_migrations
 ```
 
-Each migration should run once. If a migration is already applied with the same checksum, it is skipped. If the checksum changed, the runner stops instead of guessing. Good, because databases should not improvise.
+Each migration should run once. If a migration is already applied with the same
+checksum, it is skipped. If the checksum changed, the runner stops instead of
+guessing.
 
 Local development note: committed source migrations live under
 `backend/database/migrations/`, but the PHP runner reads the deployed/runtime
@@ -64,7 +67,21 @@ Also make sure the server config has a migration token set in:
 /srv/thia.lol/config/config.php
 ```
 
-The token is server-only. Do not paste it into GitHub, docs, Discord, screenshots, or chat. Future-you deserves fewer disasters.
+The token is server-only. Do not paste it into GitHub, docs, Discord,
+screenshots, or chat.
+
+## Authoring migrations
+
+- Put committed SQL files under `backend/database/migrations/`.
+- Use timestamped filenames, for example
+  `20260623_0001_add_example_column.sql`.
+- Prefer small migrations that map to one feature or fix.
+- Do not edit an already-applied migration. Add a new migration instead.
+- Keep migrations compatible with MariaDB while production uses MariaDB.
+- Include schema changes and safe backfills only when the task requires them.
+- Do not put secrets, tokens, local dumps, or production data in migration files.
+- After adding a migration, update related API/backend tests where practical and
+  report whether the migration was deployed and run.
 
 ## Step 1: log in as admin
 
@@ -213,7 +230,10 @@ Do not edit an already-applied migration. Add a new migration instead. If this h
 
 Only use phpMyAdmin manually if the runner is blocked.
 
-For normal migrations, prefer the runner because it records the migration in `schema_migrations`. If you manually apply SQL, you also need to carefully mark the migration as applied with the correct checksum. That is how humans summon bugs, so avoid it unless necessary.
+For normal migrations, prefer the runner because it records the migration in
+`schema_migrations`. If you manually apply SQL, you also need to carefully mark
+the migration as applied with the correct checksum. Avoid this unless the runner
+is blocked.
 
 ## Rule for Codex
 

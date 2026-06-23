@@ -11,8 +11,6 @@
     "start:api": "node server/dist/index.js",
     "test:api": "vitest run server",
     "optimize:assets": "node scripts/optimize-assets.mjs",
-    "deploy:webdisk": "node scripts/deploy-webdisk.mjs",
-    "deploy:webdisk:dry": "node scripts/deploy-webdisk.mjs --dry-run",
     "preview": "vite preview",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",

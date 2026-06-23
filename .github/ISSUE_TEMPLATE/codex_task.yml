@@ -49,8 +49,10 @@ body:
       label: Files/docs to read
       value: |
         - AGENTS.md
-        - docs/public-testing-readiness-spec.md
-        - docs/public-testing-readiness-audit.md
+        - docs/README.md
+        - docs/product-ui-ux-guidelines.md, if UI/product behavior changes
+        - docs/profile-customization-safety-rules.md, if profile customization changes
+        - docs/deployment-automation.md, if deployment behavior changes
   - type: textarea
     id: verification
     attributes:
@@ -63,6 +65,8 @@ body:
         - npm run lint
         - npm run optimize:assets
         - npm run build
+        - npm run build:api, if server TypeScript changed
+        - npm run test:api, if server TypeScript changed
         - git diff --check
 
         API-backed behavior must use a working API path or be reported as blocked with exact reason.

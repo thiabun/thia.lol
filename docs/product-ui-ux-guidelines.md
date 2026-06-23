@@ -12,10 +12,9 @@ Implementation follow-up: [#32 Product UI/UX overhaul pass](https://github.com/t
 Related context:
 
 - `AGENTS.md`
-- `docs/public-readiness-v2-plan.md`
-- `docs/platform-ui-modernization.md`
-- `docs/platform-ui-modernization-audit.md`
 - `docs/README.md`
+- `docs/brand-guidelines.md`
+- `docs/profile-customization-safety-rules.md`
 
 ## Purpose
 
@@ -47,6 +46,23 @@ Use existing primitives in `src/components/ui`, social surfaces in
 `src/components/social`, shared motion presets in `src/lib/motionPresets.ts`,
 and Tailwind tokens/classes already used by the app before inventing a new
 local pattern.
+
+## Current Product Guardrails
+
+- GitHub Issues are the active tracker. Do not turn docs into open-ended task
+  queues.
+- Do not add analytics scripts, ad scripts, trackers, payment flows, optional
+  cookies, or monetization claims without an explicit issue and policy review.
+- Do not add fake controls, fake integrations, fake media, or unsupported
+  product depth just to make a screen look fuller.
+- Keep API-backed UX honest. Auth, posts, replies, rooms, profiles, media,
+  chat, notifications, moderation, and settings need verification against a
+  working API path.
+- Profile module data is compatibility data unless a future issue defines the
+  replacement editor. Render safely; do not expose editor controls or destructive
+  migration behavior by accident.
+- Prefer performance-friendly polish: route splitting, compact surfaces, stable
+  layout, reduced duplicated chrome, and no broad framework replacement.
 
 ## Product Feel
 

@@ -23,6 +23,7 @@ function api_config(): array
         $paths[] = $configuredPath;
     }
 
+    $paths[] = '/srv/thia.lol/config/config.php';
     $paths[] = dirname(__DIR__) . '/config/config.php';
     $paths[] = dirname(__DIR__) . '/config/config.example.php';
 

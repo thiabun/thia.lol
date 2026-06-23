@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+// Example only. Copy this to a server-only config path and fill it there.
+// Never deploy committed example values as production credentials.
 return [
     'app' => [
         'environment' => 'production',

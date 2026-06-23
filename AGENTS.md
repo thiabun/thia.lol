@@ -1,64 +1,58 @@
 # Codex Collaboration Guide
 
-> **Status: Active operating guide.** This file defines repository constraints,
-> deployment invariants, verification expectations, and Codex workflow rules.
+> **Status: Required operating guide.** Read this before changing the repo.
+> Keep the work small enough to verify, but do not be timid about deleting stale
+> scaffolding when the replacement is clear.
 
-This repository is for `thia.lol`, a static-first social platform hosted on a
-PebbleHost VPS.
+`thia.lol` is a static-first social platform on a PebbleHost VPS. The app should
+feel polished, alive, and a little strange in the good way. The infrastructure
+should stay boring.
 
-Read this file before making changes. Production now runs on a VPS with Caddy,
-PHP-FPM, MariaDB, SSH deploys, and server-managed backups. Do not replace the
-architecture with a hosted edge runtime, Vercel-only workflow, or a full backend
-rewrite unless explicitly requested. The planned rewrite direction is a gradual
-TypeScript API and PostgreSQL migration, not a big-bang replacement.
-
-## Current architecture
+## Hard Invariants
 
 - Frontend: Vite, React, TypeScript, Tailwind CSS, Motion for React, React Router.
 - Static build output: `dist/`.
 - Production web root: `/srv/thia.lol/www/`.
 - PHP API deployment target: `/srv/thia.lol/www/api/`.
-- Config deployment target: `/srv/thia.lol/config/config.php`, readable by PHP and not web-served.
-- Upload deployment/runtime target: `/srv/thia.lol/www/uploads/`.
+- SQL migrations deployment target: `/srv/thia.lol/www/api/migrations/`.
+- Server config: `/srv/thia.lol/config/config.php`, readable by PHP, never web-served.
+- Uploads: `/srv/thia.lol/www/uploads/`, server-owned runtime data.
 - Database: MariaDB on the VPS.
 - Web server: Caddy with PHP-FPM.
 - Backups: daily MariaDB dumps under `/srv/thia.lol/backups/db/`.
 - Domain root: `https://thia.lol/`.
 - Vite base path: `/`.
 
-## Git sync rule
+Do not replace this with Next.js SSR, Vercel-only hosting, Composer, a hosted
+edge runtime, or a full backend rewrite unless Thia explicitly asks. The planned
+backend direction is a gradual TypeScript API and PostgreSQL strangler migration.
 
-Before starting implementation, sync with the remote branch:
+## Git Flow
+
+Before implementation:
 
 ```bash
 git pull --rebase
 ```
 
-After verification passes and the commit is created, push the commit so GitHub Actions can deploy it:
+After verification and commit:
 
 ```bash
 git push
 ```
 
-If `git pull --rebase` or `git push` fails, stop and report the error instead of continuing with hidden local-only changes.
+If pull or push fails, stop and report the exact error. Do not leave hidden
+local-only work.
 
-## GitHub issue engagement rule
+If a GitHub issue drives the work:
 
-When work is driven by a GitHub issue, treat the GitHub issue as part of the
-delivery surface:
+- Read the issue first and keep its acceptance criteria in scope.
+- Reference the issue number in the summary and commit or PR text where useful.
+- After a verified push, comment with status, commit SHA, and verification.
+- Close the issue if the pushed work fully resolves it.
+- Leave it open with clear remaining work if it does not.
 
-- Read the issue before implementation and keep its acceptance criteria in scope.
-- Reference the issue number in the work summary and, when useful, in commit or
-  PR text.
-- After verification passes, the commit is created, and `git push` succeeds,
-  update the issue with the resolution status.
-- If the issue is fully resolved, close it with a short comment that includes the
-  commit SHA and verification status.
-- If the issue is not fully resolved, leave it open and comment with the
-  remaining deferred items, blockers, or follow-up issue links.
-- Do not silently leave a completed issue open after pushing resolved work.
-
-## Deployment invariant
+## Deploy Shape
 
 The contents of `dist/` go directly into `/srv/thia.lol/www/`.
 
@@ -77,7 +71,7 @@ Wrong:
 /srv/thia.lol/www/dist/index.html
 ```
 
-The API is deployed separately:
+The PHP API is deployed separately:
 
 ```text
 /srv/thia.lol/www/api/
@@ -93,83 +87,86 @@ The API is deployed separately:
   .htaccess
 ```
 
-Config is not committed and must be created on the server:
+Never deploy real config or local uploads from the repo. Preserve:
 
 ```text
 /srv/thia.lol/config/config.php
-```
-
-Uploads are server-owned runtime data and must survive every deploy:
-
-```text
 /srv/thia.lol/www/uploads/
 ```
 
-## Do not do these things
+## Do Not Do This
 
-- Do not migrate the app to Next.js server rendering.
-- Do not introduce a full backend rewrite in-place; use the planned strangler path.
-- Do not require Composer unless explicitly asked.
-- Do not commit `config/config.php`, database passwords, FTP credentials, cookies, or secrets.
+- Do not commit secrets, cookies, database credentials, FTP credentials,
+  migration tokens, OAuth tokens, or production config.
 - Do not remove the `/api` exclusion from the frontend `.htaccess`.
 - Do not make `index.html` aggressively cached.
-- Do not create public registration features without moderation, rate limits, and CSRF checks.
+- Do not create public registration or social expansion features without
+  moderation, rate limits, and CSRF checks.
 - Do not use `dangerouslySetInnerHTML` for user content.
+- Do not turn old planning docs into new task queues. Use GitHub Issues.
 
-## Preferred change style
+## Verification
 
-Make small, verifiable changes.
+For normal code changes, run:
 
-Every implementation summary should include:
+```bash
+npm run typecheck
+npm run lint
+npm run optimize:assets
+npm run build
+```
 
-1. Files changed.
-2. Why each change was made.
-3. Commands run.
-4. Whether these passed:
-   - `npm run typecheck`
-   - `npm run lint`
-   - `npm run optimize:assets`
-   - `npm run build`
-5. Commit SHA and whether `git push` succeeded.
-6. Exact files or folders deployed to the VPS if manual upload is needed.
-7. Exact URLs to test after deployment.
+If API TypeScript changes:
 
-## Smoke test rule
+```bash
+npm run build:api
+npm run test:api
+```
 
-Do not treat a missing local API as an expected or harmless smoke-test warning.
+If PHP changes and PHP is available:
 
-If the Vite dev server logs `/api` proxy connection failures because no local PHP API is running, the smoke test environment is incomplete.
+```bash
+find api -name '*.php' -print0 | xargs -0 -n1 php -l
+```
 
-Codex must either:
+Always run:
 
-- start or configure a local PHP API server,
-- run smoke tests against a real deployed base URL, or
-- report the smoke test as blocked.
+```bash
+git diff --check
+```
 
-Do not claim smoke tests passed if API-backed behavior was not actually exercised.
+After `npm run optimize:assets`, check `git status` and make sure asset changes
+are expected.
 
-Any task touching auth, posts, replies, rooms, profiles, media, or API-backed UI must verify against a working API path.
+## Smoke Tests
 
-If local PHP cannot be started, document exactly what command or config is missing and how to unblock it.
+Do not treat a missing local API as harmless.
 
-Proxy warnings are only acceptable for purely static UI tasks that do not depend on API behavior, and this must be stated clearly.
+If Vite logs `/api` proxy connection failures because no local PHP API is
+running, API-backed smoke is blocked. Report it that way unless you either:
 
-## Backend rule
+- start/configure a working local PHP API,
+- run against a deployed base URL, or
+- are doing purely static UI work and explicitly state that API behavior was not
+  part of the smoke.
 
-Keep `/api/health` lightweight and able to respond without touching the database.
+Any task touching auth, posts, replies, rooms, profiles, media, chat,
+notifications, moderation, settings, or API-backed UI must verify against a
+working API path.
 
-Use `/api/health?db=1` for database connectivity checks.
+Keep `/api/health` lightweight and DB-free. Use `/api/health?db=1` for database
+connectivity.
 
-If production returns a generic 500 error, debug in this order:
+If production returns a generic 500, debug in this order:
 
 1. Caddy and PHP-FPM logs with `journalctl`.
 2. Caddy routing for `/api/*`.
 3. PHP version and extensions.
-4. Config file path and syntax.
+4. Config path and syntax.
 5. Database credentials.
 6. File permissions.
 
-## Security baseline
+## Security Baseline
 
 - Use PDO prepared statements for SQL.
 - Use `password_hash()` and `password_verify()` for passwords.
@@ -179,18 +176,29 @@ If production returns a generic 500 error, debug in this order:
 - Hide raw exception details in production.
 - Validate and constrain all user-submitted input.
 
-## Product direction
+## Product Direction
 
-`thia.lol` should be a polished social platform, not a personal homepage centered on Thia.
-
-Thia is represented as a secondary/founder profile, for example `/@thia`, while the platform itself remains the main identity.
+`thia.lol` is the platform identity. Thia is a founder profile, for example
+`/@thia`, not the whole product.
 
 Design language:
 
 - Light mode: `Sunveil`, warm solarised soft yellow, calm, skin-lit, fluid.
 - Dark mode: `Frostveil`, cool solarised blue, moonlit, icy, quiet.
 - Brand identity: minimal bunny mark plus `thia.lol` wordmark.
-- Pink variant: allowed for brand/social/app-icon assets, not a third selectable theme unless explicitly requested.
-- Motion should feel springy, liquid, and alive, but not distracting.
+- Pink variant: allowed for brand/social/app-icon assets, not a third selectable
+  theme unless explicitly requested.
+- Motion should feel springy, liquid, and alive without getting in the way.
 
-Build the platform like a living place, not a pile of unrelated widgets.
+Build the platform like a living place, not a stack of disconnected widgets.
+
+## Implementation Summaries
+
+Every final implementation summary should include:
+
+1. Files changed.
+2. Why each change was made.
+3. Commands run and whether they passed.
+4. Commit SHA and whether `git push` succeeded.
+5. Exact deployed files/folders if manual upload is needed.
+6. Exact URLs to test after deployment.
