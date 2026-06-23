@@ -154,8 +154,9 @@ https://thia.lol/api/profiles/thia
 https://thia.lol/@thia
 ```
 
-`/api/rooms`, `/api/rooms/:slug`, and `/api/stats` are Node-served production
-read routes and should include `X-Thia-API-Runtime: node`. Other production API
+`/api/rooms`, `/api/rooms/:slug`, `/api/stats`, and
+`/api/profiles/:handle` are Node-served production read routes and should
+include `X-Thia-API-Runtime: node`. Profile subroutes and other production API
 routes remain PHP-owned unless explicitly cut over later.
 
 For upload-sensitive changes, also check one known media URL under:

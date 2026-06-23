@@ -92,9 +92,13 @@ Current Node-served production reads:
 GET/HEAD /api/rooms
 GET/HEAD /api/rooms/:slug
 GET/HEAD /api/stats
+GET/HEAD /api/profiles/:handle
 ```
 
-All other `/api/*` traffic remains on PHP unless explicitly cut over later.
+Profile subroutes such as `/api/profiles/:handle/posts`,
+`/api/profiles/:handle/modules`, badges, follows, and share-card routes remain
+on PHP. All other `/api/*` traffic remains on PHP unless explicitly cut over
+later.
 
 ## Node API Preview
 
@@ -112,6 +116,7 @@ curl --fail-with-body https://thia.lol/api-next/health
 curl --fail-with-body 'https://thia.lol/api-next/health?db=1'
 curl --fail-with-body https://thia.lol/api/rooms
 curl --fail-with-body https://thia.lol/api/stats
+curl --fail-with-body https://thia.lol/api/profiles/thia
 ```
 
 The service reads environment variables from `/srv/thia.lol/config/node-api.env`.

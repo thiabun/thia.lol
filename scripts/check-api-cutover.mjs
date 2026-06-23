@@ -7,9 +7,15 @@ const nodeCutoverPairs = [
   ["/api/rooms", "/api-next/rooms"],
   ["/api/rooms/general", "/api-next/rooms/general"],
   ["/api/stats", "/api-next/stats"],
+  ["/api/profiles/thia", "/api-next/profiles/thia"],
 ];
 
-const phpOwnedRoutes = ["/api/posts", "/api/rooms/general/posts"];
+const phpOwnedRoutes = [
+  "/api/posts",
+  "/api/rooms/general/posts",
+  "/api/profiles/thia/posts",
+  "/api/profiles/thia/modules",
+];
 
 let failed = false;
 
