@@ -8,13 +8,25 @@ const nodeCutoverPairs = [
   ["/api/rooms/general", "/api-next/rooms/general"],
   ["/api/stats", "/api-next/stats"],
   ["/api/profiles/thia", "/api-next/profiles/thia"],
+  ["/api/profiles/thia/rooms", "/api-next/profiles/thia/rooms"],
+  ["/api/profiles/thia/modules", "/api-next/profiles/thia/modules"],
+  ["/api/profiles/thia/badges", "/api-next/profiles/thia/badges"],
+  ["/api/profiles/thia/followers", "/api-next/profiles/thia/followers"],
+  ["/api/profiles/thia/following", "/api-next/profiles/thia/following"],
 ];
 
-const phpOwnedRoutes = [
+const phpOwnedJsonRoutes = [
   "/api/posts",
   "/api/rooms/general/posts",
   "/api/profiles/thia/posts",
-  "/api/profiles/thia/modules",
+  "/api/profiles/thia/replies",
+  "/api/profiles/thia/reblogs",
+];
+
+const phpOwnedHeadRoutes = [
+  "/api/profiles/thia/share-card.png",
+  "/api/profiles/thia/follow",
+  "/api/me/profile",
 ];
 
 let failed = false;
@@ -58,7 +70,7 @@ for (const [productionPath, previewPath] of nodeCutoverPairs) {
   console.log(`OK ${label} is served by Node and matches ${previewPath}`);
 }
 
-for (const path of phpOwnedRoutes) {
+for (const path of phpOwnedJsonRoutes) {
   const response = await fetchJson(path);
 
   if (response.runtime !== null) {
@@ -68,6 +80,18 @@ for (const path of phpOwnedRoutes) {
   }
 
   const headResponse = await fetchHead(path);
+  if (headResponse.runtime !== null) {
+    failed = true;
+    console.error(`FAIL HEAD ${path}: expected PHP-owned route without ${runtimeHeader}, got ${headResponse.runtime}`);
+    continue;
+  }
+
+  console.log(`OK ${path} remains PHP-owned`);
+}
+
+for (const path of phpOwnedHeadRoutes) {
+  const headResponse = await fetchHead(path);
+
   if (headResponse.runtime !== null) {
     failed = true;
     console.error(`FAIL HEAD ${path}: expected PHP-owned route without ${runtimeHeader}, got ${headResponse.runtime}`);

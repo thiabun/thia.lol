@@ -151,13 +151,20 @@ https://thia.lol/api/rooms
 https://thia.lol/api/rooms/general
 https://thia.lol/api/stats
 https://thia.lol/api/profiles/thia
+https://thia.lol/api/profiles/thia/rooms
+https://thia.lol/api/profiles/thia/modules
+https://thia.lol/api/profiles/thia/badges
+https://thia.lol/api/profiles/thia/followers
+https://thia.lol/api/profiles/thia/following
 https://thia.lol/@thia
 ```
 
-`/api/rooms`, `/api/rooms/:slug`, `/api/stats`, and
-`/api/profiles/:handle` are Node-served production read routes and should
-include `X-Thia-API-Runtime: node`. Profile subroutes and other production API
-routes remain PHP-owned unless explicitly cut over later.
+`/api/rooms`, `/api/rooms/:slug`, `/api/stats`, `/api/profiles/:handle`, and
+the profile extras `/rooms`, `/modules`, `/badges`, `/followers`, and
+`/following` are Node-served production read routes and should include
+`X-Thia-API-Runtime: node`. Profile posts, replies, reblogs, share cards,
+mutations, and other production API routes remain PHP-owned unless explicitly
+cut over later.
 
 For upload-sensitive changes, also check one known media URL under:
 
