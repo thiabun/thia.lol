@@ -38,6 +38,16 @@ import {
   type ProfileCanvasDraftState,
   type ProfileCanvasUpdatePayload,
 } from "./editor.js";
+import {
+  IntegrationRouteError,
+  IntegrationStorageNotReadyError,
+  type IntegrationCardPayload,
+  type IntegrationDiagnosticsPayload,
+  type IntegrationOAuthStartPayload,
+  type IntegrationOwnerPayload,
+  type IntegrationSuggestionsPayload,
+  type IntegrationsRepository,
+} from "./integrations.js";
 import type {
   DiscoverPersonPayload,
   HomeFeedPayload,
@@ -67,6 +77,7 @@ import type {
 import { RoomStorageNotReadyError, type RoomMemberPayload, type RoomPayload, type RoomsRepository } from "./rooms.js";
 import type { SearchPayload, SearchRepository } from "./search.js";
 import type { RequestSession, SessionsRepository } from "./sessions.js";
+import type { ShareShellService } from "./share-shells.js";
 import type { PublicStatsPayload, StatsRepository } from "./stats.js";
 
 const room: RoomPayload = {
@@ -740,6 +751,107 @@ function privateReadsRepositoryMock(overrides: Partial<PrivateReadsRepository> =
     updateOnboardingState: vi.fn().mockResolvedValue(onboardingPayload),
     updatePrivacy: vi.fn().mockResolvedValue(settingsPayload),
     updatePreferences: vi.fn().mockResolvedValue(settingsPayload),
+    ...overrides,
+  };
+}
+
+const integrationOwnerPayload: IntegrationOwnerPayload = {
+  providers: [
+    {
+      provider: "github",
+      configured: true,
+      oauthEnabled: true,
+      linkSupported: true,
+      metadataEnabled: true,
+      missingConfigKeys: [],
+    },
+  ],
+  accounts: [],
+};
+
+const integrationDiagnosticsPayload: IntegrationDiagnosticsPayload = {
+  storageReady: true,
+  encryptionConfigured: true,
+  encryptionAvailable: true,
+  cryptoMethod: "openssl",
+  oauthStateExpiresIn: 600,
+  providers: [
+    {
+      provider: "github",
+      configured: true,
+      oauthEnabled: true,
+      linkSupported: true,
+      metadataEnabled: true,
+      missingConfigKeys: [],
+      redirectUri: "https://thia.lol/api/integrations/github/callback",
+    },
+  ],
+};
+
+const integrationStartPayload: IntegrationOAuthStartPayload = {
+  provider: "github",
+  authorizationUrl: "https://github.com/login/oauth/authorize?state=state",
+  stateExpiresIn: 600,
+};
+
+const integrationCardPayload: IntegrationCardPayload = {
+  provider: "github",
+  resourceType: "repo",
+  resourceId: "thiabun/thia.lol",
+  resourceKey: "github:repo:thiabun/thia.lol",
+  sourceUrl: "https://github.com/thiabun/thia.lol",
+  metadata: {
+    title: "thiabun/thia.lol",
+    subtitle: "GitHub repository",
+    description: null,
+    imageUrl: null,
+    live: false,
+    liveFetchedAt: null,
+    recentLabel: null,
+    recentFetchedAt: null,
+    stats: {},
+  },
+  embed: null,
+  apiBacked: false,
+  fetchedAt: "2026-06-24T10:00:00.000Z",
+  expiresAt: "2026-06-24T11:00:00.000Z",
+  staleAt: "2026-06-25T10:00:00.000Z",
+};
+
+const integrationSuggestionsPayload: IntegrationSuggestionsPayload = {
+  provider: "github",
+  status: integrationOwnerPayload.providers[0]!,
+  account: null,
+  items: [],
+  message: "Connect this provider to see suggestions, or paste a supported URL.",
+  generatedAt: "2026-06-24T10:00:00.000Z",
+};
+
+function integrationsRepositoryMock(overrides: Partial<IntegrationsRepository> = {}): IntegrationsRepository {
+  return {
+    ownerIndex: vi.fn().mockResolvedValue(integrationOwnerPayload),
+    diagnostics: vi.fn().mockResolvedValue(integrationDiagnosticsPayload),
+    startOAuth: vi.fn().mockResolvedValue(integrationStartPayload),
+    oauthCallback: vi.fn().mockResolvedValue({ location: "https://thia.lol/settings?integrationStatus=connected" }),
+    disconnect: vi.fn().mockResolvedValue(integrationOwnerPayload),
+    suggestions: vi.fn().mockResolvedValue(integrationSuggestionsPayload),
+    resolveMetadata: vi.fn().mockResolvedValue(integrationCardPayload),
+    ...overrides,
+  };
+}
+
+function shareShellServiceMock(overrides: Partial<ShareShellService> = {}): ShareShellService {
+  return {
+    postShare: vi.fn().mockResolvedValue({
+      kind: "html",
+      statusCode: 200,
+      html: "<!doctype html><title>Post</title><meta property=\"og:title\" content=\"Post\" />",
+    }),
+    profileShare: vi.fn().mockResolvedValue({
+      kind: "html",
+      statusCode: 200,
+      html: "<!doctype html><title>Profile</title><meta property=\"og:title\" content=\"Profile\" />",
+    }),
     ...overrides,
   };
 }
@@ -1830,6 +1942,188 @@ describe("Node API auth preview mutation routes", () => {
     expect(repository.enableTwoFactor).toHaveBeenCalledWith(session, { code: "123456" });
     expect(repository.disableTwoFactor).toHaveBeenCalledWith(session, { currentPassword: "correct-password" });
     expect(repository.regenerateTwoFactorRecoveryCodes).toHaveBeenCalledWith(session, { currentPassword: "correct-password" });
+  });
+});
+
+describe("Node API integrations and share shell routes", () => {
+  it("returns authenticated integration owner state", async () => {
+    const repository = integrationsRepositoryMock();
+    const app = buildApp({
+      integrationsRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/me/integrations",
+      headers: {
+        cookie: "thia_session=token",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(repository.ownerIndex).toHaveBeenCalledWith(session);
+    expect(response.json()).toEqual({
+      ok: true,
+      data: integrationOwnerPayload,
+    });
+  });
+
+  it("requires CSRF for integration mutations", async () => {
+    const app = buildApp({
+      integrationsRepository: integrationsRepositoryMock(),
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/me/integrations/github/start",
+      headers: {
+        cookie: "thia_session=token",
+      },
+      payload: {
+        redirectPath: "/settings",
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "CSRF token is required.",
+    });
+  });
+
+  it("starts provider OAuth with CSRF and returns created payload", async () => {
+    const repository = integrationsRepositoryMock();
+    const app = buildApp({
+      integrationsRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/me/integrations/github/start",
+      headers: {
+        cookie: "thia_session=token",
+        "x-csrf-token": "csrf-token",
+      },
+      payload: {
+        redirectPath: "/settings",
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(repository.startOAuth).toHaveBeenCalledWith(session, "github", { redirectPath: "/settings" });
+    expect(response.json()).toEqual({
+      ok: true,
+      data: integrationStartPayload,
+    });
+  });
+
+  it("returns storage-not-ready for integration storage failures", async () => {
+    const app = buildApp({
+      integrationsRepository: integrationsRepositoryMock({
+        ownerIndex: vi.fn().mockRejectedValue(new IntegrationStorageNotReadyError()),
+      }),
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/me/integrations",
+      headers: {
+        cookie: "thia_session=token",
+      },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Profile integration storage is not ready. Run pending migrations.",
+    });
+  });
+
+  it("returns integration route errors without raw details", async () => {
+    const app = buildApp({
+      integrationsRepository: integrationsRepositoryMock({
+        resolveMetadata: vi.fn().mockRejectedValue(new IntegrationRouteError("Choose a supported integration URL.", 422)),
+      }),
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/me/integrations/metadata/resolve",
+      headers: {
+        cookie: "thia_session=token",
+        "x-csrf-token": "csrf-token",
+      },
+      payload: {
+        url: "https://example.com",
+      },
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Choose a supported integration URL.",
+    });
+  });
+
+  it("redirects integration callbacks to the app", async () => {
+    const repository = integrationsRepositoryMock();
+    const app = buildApp({
+      integrationsRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/integrations/github/callback?state=abc&code=def",
+    });
+
+    expect(response.statusCode).toBe(303);
+    expect(response.headers.location).toBe("https://thia.lol/settings?integrationStatus=connected");
+    expect(repository.oauthCallback).toHaveBeenCalledWith("github", { state: "abc", code: "def" });
+  });
+
+  it("serves post and profile share HTML shells", async () => {
+    const service = shareShellServiceMock();
+    const app = buildApp({
+      shareShellService: service,
+    });
+    const postResponse = await app.inject({
+      method: "GET",
+      url: "/post-share.php?handle=thia&postId=pc359fe2da759",
+    });
+    const profileResponse = await app.inject({
+      method: "GET",
+      url: "/profile-share.php?handle=thia",
+    });
+
+    expect(postResponse.statusCode).toBe(200);
+    expect(postResponse.headers["content-type"]).toContain("text/html");
+    expect(postResponse.headers["cache-control"]).toBe("no-cache, no-store, must-revalidate");
+    expect(postResponse.body).toContain("og:title");
+    expect(profileResponse.statusCode).toBe(200);
+    expect(profileResponse.body).toContain("Profile");
+    expect(service.postShare).toHaveBeenCalledWith({ handle: "thia", postId: "pc359fe2da759" });
+    expect(service.profileShare).toHaveBeenCalledWith({ handle: "thia" });
+  });
+
+  it("serves share shell redirects", async () => {
+    const app = buildApp({
+      shareShellService: shareShellServiceMock({
+        postShare: vi.fn().mockResolvedValue({
+          kind: "redirect",
+          statusCode: 302,
+          location: "/@thia/posts/pc359fe2da759",
+        }),
+      }),
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/post-share.php?handle=Thia&postId=99",
+    });
+
+    expect(response.statusCode).toBe(302);
+    expect(response.headers.location).toBe("/@thia/posts/pc359fe2da759");
   });
 });
 

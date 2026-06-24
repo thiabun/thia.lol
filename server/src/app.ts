@@ -67,6 +67,16 @@ import {
   type ModerationUserPayload,
 } from "./moderation.js";
 import {
+  IntegrationRouteError,
+  IntegrationStorageNotReadyError,
+  type IntegrationCardPayload,
+  type IntegrationDiagnosticsPayload,
+  type IntegrationOAuthStartPayload,
+  type IntegrationOwnerPayload,
+  type IntegrationSuggestionsPayload,
+  type IntegrationsRepository,
+} from "./integrations.js";
+import {
   OpsRouteError,
   type AuthDiagnosticsPayload,
   type MigrationRunPayload,
@@ -125,6 +135,7 @@ import {
   type ShareCardCachePayload,
   type ShareCardService,
 } from "./share-cards.js";
+import type { ShareShellResponse, ShareShellService } from "./share-shells.js";
 import type { SitemapService } from "./sitemap.js";
 import type { PublicStatsPayload, StatsRepository } from "./stats.js";
 import {
@@ -222,6 +233,7 @@ export interface AppDependencies {
   contentMutationsRepository?: ContentMutationsRepository;
   editorRepository?: EditorRepository;
   moderationRepository?: ModerationRepository;
+  integrationsRepository?: IntegrationsRepository;
   opsService?: OpsService;
   profilesRepository?: ProfilesRepository;
   postsRepository?: PostsRepository;
@@ -231,6 +243,7 @@ export interface AppDependencies {
   searchRepository?: SearchRepository;
   sessionsRepository?: SessionsRepository;
   shareCardService?: ShareCardService;
+  shareShellService?: ShareShellService;
   sitemapService?: SitemapService;
   statsRepository?: StatsRepository;
   uploadService?: UploadService;
@@ -997,6 +1010,94 @@ async function withProtectedAuthRoute<T>(
   }
 }
 
+async function withAuthenticatedIntegrationRoute<T>(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  lookup: (repository: IntegrationsRepository, session: RequestSession) => Promise<T> | T,
+) {
+  if (dependencies.sessionsRepository === undefined || dependencies.integrationsRepository === undefined) {
+    return internalError(request, reply, routeName, new Error("Missing authenticated integration dependency."));
+  }
+
+  try {
+    const session = await dependencies.sessionsRepository.currentSession(request.headers.cookie);
+
+    if (session === null) {
+      return reply.status(401).send(errorPayload("Unauthenticated."));
+    }
+
+    const data = await lookup(dependencies.integrationsRepository, session);
+
+    return reply.send(successPayload<T>(data));
+  } catch (error) {
+    if (error instanceof IntegrationRouteError) {
+      return reply.status(error.statusCode).send(errorPayload(error.message));
+    }
+
+    if (error instanceof IntegrationStorageNotReadyError) {
+      return sendRouteError(request, reply, routeName, 503, errorPayload(error.message), error);
+    }
+
+    return internalError(request, reply, routeName, error);
+  }
+}
+
+async function withAuthenticatedIntegrationMutationRoute<T>(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  lookup: (
+    repository: IntegrationsRepository,
+    session: RequestSession,
+    body: Record<string, unknown>,
+  ) => Promise<T> | T,
+  statusCode = 200,
+) {
+  if (
+    dependencies.sessionsRepository === undefined ||
+    dependencies.privateReadsRepository === undefined ||
+    dependencies.integrationsRepository === undefined
+  ) {
+    return internalError(request, reply, routeName, new Error("Missing authenticated integration mutation dependency."));
+  }
+
+  try {
+    const session = await dependencies.sessionsRepository.currentSession(request.headers.cookie);
+
+    if (session === null) {
+      return reply.status(401).send(errorPayload("Unauthenticated."));
+    }
+
+    const providedCsrfToken = csrfTokenFromRequest(request);
+
+    if (providedCsrfToken === "") {
+      return reply.status(403).send(errorPayload("CSRF token is required."));
+    }
+
+    if (!safeStringEquals(dependencies.privateReadsRepository.csrfTokenForSession(session), providedCsrfToken)) {
+      return reply.status(403).send(errorPayload("Invalid CSRF token."));
+    }
+
+    const body = jsonBodyRecord(request.body);
+    const data = await lookup(dependencies.integrationsRepository, session, body);
+
+    return reply.status(statusCode).send(successPayload<T>(data));
+  } catch (error) {
+    if (error instanceof IntegrationRouteError || error instanceof PrivateRouteError) {
+      return reply.status(error.statusCode).send(errorPayload(error.message));
+    }
+
+    if (error instanceof IntegrationStorageNotReadyError) {
+      return sendRouteError(request, reply, routeName, 503, errorPayload(error.message), error);
+    }
+
+    return internalError(request, reply, routeName, error);
+  }
+}
+
 async function withAuthenticatedUploadRoute(
   request: FastifyRequest,
   reply: FastifyReply,
@@ -1392,6 +1493,19 @@ function sendJsonResult<T>(result: T, reply: FastifyReply): FastifyReply {
   return reply.send(successPayload(result));
 }
 
+function sendShareShellResult(result: ShareShellResponse, reply: FastifyReply): FastifyReply {
+  if (result.kind === "redirect") {
+    return reply.redirect(result.location, result.statusCode);
+  }
+
+  return reply
+    .status(result.statusCode)
+    .type("text/html; charset=utf-8")
+    .header("Cache-Control", "no-cache, no-store, must-revalidate")
+    .header("X-Content-Type-Options", "nosniff")
+    .send(result.html);
+}
+
 function positiveIntegerParam(value: string): number | null {
   if (!/^[0-9]+$/.test(value)) {
     return null;
@@ -1480,6 +1594,36 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       "share-card.image",
       (service) => service.proxyImage(typeof url === "string" ? url : ""),
     );
+  });
+
+  app.get("/post-share.php", async (request, reply) => {
+    if (dependencies.shareShellService === undefined) {
+      return internalError(request, reply, "share-shell.post", new Error("Missing share shell service dependency."));
+    }
+
+    try {
+      return sendShareShellResult(
+        await dependencies.shareShellService.postShare(jsonBodyRecord(request.query)),
+        reply,
+      );
+    } catch (error) {
+      return internalError(request, reply, "share-shell.post", error);
+    }
+  });
+
+  app.get("/profile-share.php", async (request, reply) => {
+    if (dependencies.shareShellService === undefined) {
+      return internalError(request, reply, "share-shell.profile", new Error("Missing share shell service dependency."));
+    }
+
+    try {
+      return sendShareShellResult(
+        await dependencies.shareShellService.profileShare(jsonBodyRecord(request.query)),
+        reply,
+      );
+    } catch (error) {
+      return internalError(request, reply, "share-shell.profile", error);
+    }
   });
 
   app.post("/setup/thia", async (request, reply) => {
@@ -1703,6 +1847,97 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       (repository, session, body) => repository.regenerateTwoFactorRecoveryCodes(session, body),
     ),
   );
+
+  app.get("/me/integrations", async (request, reply) =>
+    withAuthenticatedIntegrationRoute<IntegrationOwnerPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.integrations",
+      (repository, session) => repository.ownerIndex(session),
+    ),
+  );
+
+  app.get("/me/integrations/diagnostics", async (request, reply) =>
+    withAuthenticatedIntegrationRoute<IntegrationDiagnosticsPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.integrations.diagnostics",
+      (repository) => repository.diagnostics(),
+    ),
+  );
+
+  app.post("/me/integrations/metadata/resolve", async (request, reply) =>
+    withAuthenticatedIntegrationMutationRoute<IntegrationCardPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.integrations.metadata.resolve",
+      (repository, session, body) => repository.resolveMetadata(session, body),
+    ),
+  );
+
+  app.post("/me/integrations/:provider/start", async (request, reply) => {
+    const provider = (request.params as Record<string, string | undefined>).provider ?? "";
+
+    return withAuthenticatedIntegrationMutationRoute<IntegrationOAuthStartPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.integrations.start",
+      (repository, session, body) => repository.startOAuth(session, provider, body),
+      201,
+    );
+  });
+
+  app.delete("/me/integrations/:provider", async (request, reply) => {
+    const provider = (request.params as Record<string, string | undefined>).provider ?? "";
+
+    return withAuthenticatedIntegrationMutationRoute<IntegrationOwnerPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.integrations.disconnect",
+      (repository, session) => repository.disconnect(session, provider),
+    );
+  });
+
+  app.get("/me/integrations/:provider/suggestions", async (request, reply) => {
+    const provider = (request.params as Record<string, string | undefined>).provider ?? "";
+
+    return withAuthenticatedIntegrationRoute<IntegrationSuggestionsPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.integrations.suggestions",
+      (repository, session) => repository.suggestions(session, provider),
+    );
+  });
+
+  app.get("/integrations/:provider/callback", async (request, reply) => {
+    if (dependencies.integrationsRepository === undefined) {
+      return internalError(request, reply, "integrations.callback", new Error("Missing integrations repository dependency."));
+    }
+
+    const provider = (request.params as Record<string, string | undefined>).provider ?? "";
+
+    try {
+      const result = await dependencies.integrationsRepository.oauthCallback(provider, jsonBodyRecord(request.query));
+
+      return reply.redirect(result.location, 303);
+    } catch (error) {
+      if (error instanceof IntegrationRouteError) {
+        return reply.status(error.statusCode).send(errorPayload(error.message));
+      }
+
+      if (error instanceof IntegrationStorageNotReadyError) {
+        return sendRouteError(request, reply, "integrations.callback", 503, errorPayload(error.message), error);
+      }
+
+      return internalError(request, reply, "integrations.callback", error);
+    }
+  });
 
   app.get("/me/settings", async (request, reply) =>
     withAuthenticatedPrivateRoute<SettingsPayload>(

@@ -154,6 +154,52 @@ check_status() {
   echo "OK $path returned HTTP $expected_status"
 }
 
+check_redirect() {
+  local path="$1"
+  local expected_status="$2"
+  local location_pattern="$3"
+  local headers_file="$tmp_dir/$(printf '%s' "$path-$expected_status-redirect" | tr -c 'A-Za-z0-9' '_')"
+  local status
+  status="$(curl --silent --show-error --output /dev/null --dump-header "$headers_file" --write-out '%{http_code}' --max-time 20 "$BASE_URL$path")"
+
+  if [[ "$status" != "$expected_status" ]]; then
+    echo "Expected HTTP $expected_status for $path, got $status" >&2
+    sed -n '1,40p' "$headers_file" >&2
+    exit 1
+  fi
+
+  if ! grep -Eiq "^location: .*${location_pattern}" "$headers_file"; then
+    echo "Expected Location header for $path to match $location_pattern" >&2
+    sed -n '1,40p' "$headers_file" >&2
+    exit 1
+  fi
+
+  echo "OK $path returned HTTP $expected_status redirect"
+}
+
+check_html_status() {
+  local path="$1"
+  local expected_status="$2"
+  local body_pattern="$3"
+  local body_file="$tmp_dir/$(printf '%s' "$path-$expected_status-html" | tr -c 'A-Za-z0-9' '_')"
+  local status
+  status="$(curl --silent --show-error --output "$body_file" --write-out '%{http_code}' --max-time 20 "$BASE_URL$path")"
+
+  if [[ "$status" != "$expected_status" ]]; then
+    echo "Expected HTTP $expected_status for $path, got $status" >&2
+    sed -n '1,40p' "$body_file" >&2
+    exit 1
+  fi
+
+  if ! grep -Eq "$body_pattern" "$body_file"; then
+    echo "Expected HTML for $path to match $body_pattern" >&2
+    sed -n '1,40p' "$body_file" >&2
+    exit 1
+  fi
+
+  echo "OK $path returned HTTP $expected_status HTML"
+}
+
 check_json_ok "/api-next/health"
 check_json_ok "/api-next/health?db=1"
 check_json_ok "/api-next/rooms"
@@ -178,6 +224,9 @@ check_json_ok "/api-next/profiles/thia/reblogs"
 check_status "/api-next/sitemap.xml" "200"
 check_status "/api-next/posts/pc359fe2da759/share-card.png" "200"
 check_status "/api-next/profiles/thia/share-card.png" "200"
+check_html_status "/api-next/post-share.php?handle=thia&postId=pc359fe2da759" "200" "og:title"
+check_html_status "/api-next/profile-share.php?handle=thia" "200" "og:title"
+check_redirect "/api-next/integrations/github/callback" "303" "integrationStatus=error"
 
 if [[ -n "$COOKIE_HEADER" ]]; then
   check_json_ok "/api-next/auth/me"
@@ -187,6 +236,9 @@ if [[ -n "$COOKIE_HEADER" ]]; then
   check_json_ok "/api-next/me/posts"
   check_json_ok "/api-next/me/profile/modules"
   check_json_ok "/api-next/me/profile/canvas-draft"
+  check_json_ok "/api-next/me/integrations"
+  check_json_ok "/api-next/me/integrations/diagnostics"
+  check_json_ok "/api-next/me/integrations/github/suggestions"
   check_json_ok "/api-next/me/push"
   check_json_ok "/api-next/notifications"
   check_json_status_method "POST" "/api-next/notifications/read" "403"
@@ -231,6 +283,9 @@ if [[ -n "$COOKIE_HEADER" ]]; then
   check_json_status_method "POST" "/api-next/me/push/subscriptions" "403"
   check_json_status_method "DELETE" "/api-next/me/push/subscriptions" "403"
   check_json_status_method "POST" "/api-next/me/push/test" "403"
+  check_json_status_method "POST" "/api-next/me/integrations/github/start" "403"
+  check_json_status_method "DELETE" "/api-next/me/integrations/github" "403"
+  check_json_status_method "POST" "/api-next/me/integrations/metadata/resolve" "403"
   check_json_status_method "POST" "/api-next/auth/login" "422"
   check_json_status_method "POST" "/api-next/auth/register" "422"
   check_json_status_method "POST" "/api-next/auth/2fa/verify" "422"
@@ -275,6 +330,9 @@ else
   check_json_status "/api-next/me/posts" "401"
   check_json_status "/api-next/me/profile/modules" "401"
   check_json_status "/api-next/me/profile/canvas-draft" "401"
+  check_json_status "/api-next/me/integrations" "401"
+  check_json_status "/api-next/me/integrations/diagnostics" "401"
+  check_json_status "/api-next/me/integrations/github/suggestions" "401"
   check_json_status "/api-next/me/push" "401"
   check_json_status "/api-next/notifications" "401"
   check_json_status_method "POST" "/api-next/notifications/read" "401"
@@ -324,6 +382,9 @@ else
   check_json_status_method "POST" "/api-next/me/push/subscriptions" "401"
   check_json_status_method "DELETE" "/api-next/me/push/subscriptions" "401"
   check_json_status_method "POST" "/api-next/me/push/test" "401"
+  check_json_status_method "POST" "/api-next/me/integrations/github/start" "401"
+  check_json_status_method "DELETE" "/api-next/me/integrations/github" "401"
+  check_json_status_method "POST" "/api-next/me/integrations/metadata/resolve" "401"
   check_json_status_method "POST" "/api-next/auth/login" "422"
   check_json_status_method "POST" "/api-next/auth/register" "422"
   check_json_status_method "POST" "/api-next/auth/2fa/verify" "422"

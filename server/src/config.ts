@@ -36,6 +36,7 @@ const envSchema = z.object({
   THIA_PUBLIC_BASE_URL: z.string().url().default("https://thia.lol"),
   THIA_UPLOAD_ROOT: z.string().min(1).default("/srv/thia.lol/www/uploads"),
   THIA_UPLOAD_PUBLIC_PREFIX: z.string().regex(/^\/[A-Za-z0-9/_-]*$/).default("/uploads"),
+  THIA_WEB_ROOT: z.string().min(1).default("/srv/thia.lol/www"),
   THIA_API_LOG_LEVEL: z
     .enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"])
     .default("info"),
@@ -49,6 +50,22 @@ const envSchema = z.object({
   THIA_PUSH_VAPID_PUBLIC_KEY: z.string().default(""),
   THIA_PUSH_VAPID_PRIVATE_KEY: z.string().default(""),
   THIA_PUSH_SUBJECT: z.string().default("mailto:hello@thia.lol"),
+  THIA_INTEGRATION_SPOTIFY_CLIENT_ID: z.string().default(""),
+  THIA_INTEGRATION_SPOTIFY_CLIENT_SECRET: z.string().default(""),
+  THIA_INTEGRATION_SPOTIFY_REDIRECT_URI: z.string().default(""),
+  THIA_INTEGRATION_YOUTUBE_CLIENT_ID: z.string().default(""),
+  THIA_INTEGRATION_YOUTUBE_CLIENT_SECRET: z.string().default(""),
+  THIA_INTEGRATION_YOUTUBE_API_KEY: z.string().default(""),
+  THIA_INTEGRATION_YOUTUBE_REDIRECT_URI: z.string().default(""),
+  THIA_INTEGRATION_TWITCH_CLIENT_ID: z.string().default(""),
+  THIA_INTEGRATION_TWITCH_CLIENT_SECRET: z.string().default(""),
+  THIA_INTEGRATION_TWITCH_EMBED_PARENT: z.string().default("thia.lol"),
+  THIA_INTEGRATION_TWITCH_REDIRECT_URI: z.string().default(""),
+  THIA_INTEGRATION_GITHUB_CLIENT_ID: z.string().default(""),
+  THIA_INTEGRATION_GITHUB_CLIENT_SECRET: z.string().default(""),
+  THIA_INTEGRATION_GITHUB_REDIRECT_URI: z.string().default(""),
+  THIA_INTEGRATION_APPLE_MUSIC_DEVELOPER_TOKEN: z.string().default(""),
+  THIA_INTEGRATION_APPLE_MUSIC_STOREFRONT: z.string().default("us"),
 });
 
 export type ServerConfig = z.infer<typeof envSchema>;

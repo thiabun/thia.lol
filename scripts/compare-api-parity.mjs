@@ -32,6 +32,8 @@ if (cookieHeader !== "") {
     ["/api/me/onboarding", "/api-next/me/onboarding"],
     ["/api/me/follow-requests", "/api-next/me/follow-requests"],
     ["/api/me/posts", "/api-next/me/posts"],
+    ["/api/me/integrations", "/api-next/me/integrations"],
+    ["/api/me/integrations/diagnostics", "/api-next/me/integrations/diagnostics"],
     ["/api/notifications", "/api-next/notifications"],
   );
 }

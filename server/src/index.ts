@@ -6,6 +6,7 @@ import { loadServerConfig } from "./config.js";
 import { createContentMutationsRepository } from "./content.js";
 import { createDatabaseClient } from "./db.js";
 import { createEditorRepository } from "./editor.js";
+import { createIntegrationsRepository } from "./integrations.js";
 import { createModerationRepository } from "./moderation.js";
 import { createOpsService } from "./ops.js";
 import { createPostsRepository } from "./posts.js";
@@ -16,6 +17,7 @@ import { createRoomsRepository } from "./rooms.js";
 import { createSearchRepository } from "./search.js";
 import { createSessionsRepository } from "./sessions.js";
 import { createShareCardService } from "./share-cards.js";
+import { createShareShellService } from "./share-shells.js";
 import { createSitemapService } from "./sitemap.js";
 import { createStatsRepository } from "./stats.js";
 import { createUploadService } from "./uploads.js";
@@ -36,6 +38,38 @@ const contentMutationsRepository = createContentMutationsRepository(database.poo
 });
 const editorRepository = createEditorRepository(database.pool);
 const moderationRepository = createModerationRepository(database.pool);
+const integrationsRepository = createIntegrationsRepository(database.pool, {
+  publicBaseUrl: config.THIA_PUBLIC_BASE_URL,
+  encryptionKey: config.THIA_SECURITY_INTEGRATION_ENCRYPTION_KEY,
+  providers: {
+    spotify: {
+      clientId: config.THIA_INTEGRATION_SPOTIFY_CLIENT_ID,
+      clientSecret: config.THIA_INTEGRATION_SPOTIFY_CLIENT_SECRET,
+      redirectUri: config.THIA_INTEGRATION_SPOTIFY_REDIRECT_URI,
+    },
+    apple_music: {
+      developerToken: config.THIA_INTEGRATION_APPLE_MUSIC_DEVELOPER_TOKEN,
+      storefront: config.THIA_INTEGRATION_APPLE_MUSIC_STOREFRONT,
+    },
+    youtube: {
+      clientId: config.THIA_INTEGRATION_YOUTUBE_CLIENT_ID,
+      clientSecret: config.THIA_INTEGRATION_YOUTUBE_CLIENT_SECRET,
+      apiKey: config.THIA_INTEGRATION_YOUTUBE_API_KEY,
+      redirectUri: config.THIA_INTEGRATION_YOUTUBE_REDIRECT_URI,
+    },
+    twitch: {
+      clientId: config.THIA_INTEGRATION_TWITCH_CLIENT_ID,
+      clientSecret: config.THIA_INTEGRATION_TWITCH_CLIENT_SECRET,
+      embedParent: config.THIA_INTEGRATION_TWITCH_EMBED_PARENT,
+      redirectUri: config.THIA_INTEGRATION_TWITCH_REDIRECT_URI,
+    },
+    github: {
+      clientId: config.THIA_INTEGRATION_GITHUB_CLIENT_ID,
+      clientSecret: config.THIA_INTEGRATION_GITHUB_CLIENT_SECRET,
+      redirectUri: config.THIA_INTEGRATION_GITHUB_REDIRECT_URI,
+    },
+  },
+});
 const opsService = createOpsService(database.pool, {
   setupToken: config.THIA_ACCOUNT_SETUP_TOKEN,
   migrationToken: config.THIA_MIGRATION_TOKEN,
@@ -64,6 +98,13 @@ const shareCardService = createShareCardService({
   uploadRoot: config.THIA_UPLOAD_ROOT,
   publicBaseUrl: config.THIA_PUBLIC_BASE_URL,
 });
+const shareShellService = createShareShellService({
+  postsRepository,
+  profilesRepository,
+  uploadRoot: config.THIA_UPLOAD_ROOT,
+  webRoot: config.THIA_WEB_ROOT,
+  publicBaseUrl: config.THIA_PUBLIC_BASE_URL,
+});
 const sitemapService = createSitemapService(database.pool, config.THIA_PUBLIC_BASE_URL);
 const statsRepository = createStatsRepository(database.pool);
 const uploadService = createUploadService({
@@ -77,6 +118,7 @@ const app = buildApp({
   checkDatabase: database.check,
   contentMutationsRepository,
   editorRepository,
+  integrationsRepository,
   moderationRepository,
   opsService,
   logger: nodeApiLoggerOptions(config.THIA_API_LOG_LEVEL),
@@ -88,6 +130,7 @@ const app = buildApp({
   searchRepository,
   sessionsRepository,
   shareCardService,
+  shareShellService,
   sitemapService,
   statsRepository,
   uploadService,
