@@ -19,6 +19,8 @@ import {
   type AuthSessionPayload,
   type FollowRequestPayload,
   type MyPostPayload,
+  type NotificationsReadAllPayload,
+  type NotificationsReadPayload,
   type NotificationsPayload,
   type OnboardingStatePayload,
   type PrivateReadsRepository,
@@ -454,6 +456,17 @@ const notificationsPayload: NotificationsPayload = {
   unreadCount: 1,
 };
 
+const notificationsReadPayload: NotificationsReadPayload = {
+  ids: [8],
+  readAt: "2026-06-24 10:00:00",
+  unreadCount: 0,
+};
+
+const notificationsReadAllPayload: NotificationsReadAllPayload = {
+  readAt: "2026-06-24 10:00:00",
+  unreadCount: 0,
+};
+
 const followRequest: FollowRequestPayload = {
   id: 12,
   createdAt: "2026-06-22 10:00:00",
@@ -475,11 +488,17 @@ const myPost: MyPostPayload = {
 function privateReadsRepositoryMock(overrides: Partial<PrivateReadsRepository> = {}): PrivateReadsRepository {
   return {
     authSessionPayload: vi.fn().mockReturnValue(authPayload),
+    csrfTokenForSession: vi.fn().mockReturnValue("csrf-token"),
     getSettings: vi.fn().mockResolvedValue(settingsPayload),
     getOnboardingState: vi.fn().mockResolvedValue(onboardingPayload),
     getNotifications: vi.fn().mockResolvedValue(notificationsPayload),
     getFollowRequests: vi.fn().mockResolvedValue([followRequest]),
     getMyPosts: vi.fn().mockResolvedValue([myPost]),
+    markNotificationsRead: vi.fn().mockResolvedValue(notificationsReadPayload),
+    markAllNotificationsRead: vi.fn().mockResolvedValue(notificationsReadAllPayload),
+    updateOnboardingState: vi.fn().mockResolvedValue(onboardingPayload),
+    updatePrivacy: vi.fn().mockResolvedValue(settingsPayload),
+    updatePreferences: vi.fn().mockResolvedValue(settingsPayload),
     ...overrides,
   };
 }
@@ -763,6 +782,272 @@ describe("Node API private preview routes", () => {
     expect(response.json()).toEqual({
       ok: false,
       error: "Internal server error.",
+    });
+  });
+
+  it("requires authentication before CSRF for private mutations", async () => {
+    const repository = privateReadsRepositoryMock();
+    const app = buildApp({
+      privateReadsRepository: repository,
+      sessionsRepository: sessionsRepositoryMock({
+        currentSession: vi.fn().mockResolvedValue(null),
+      }),
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/notifications/read",
+      payload: {
+        id: 8,
+      },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(repository.markNotificationsRead).not.toHaveBeenCalled();
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Unauthenticated.",
+    });
+  });
+
+  it("requires a PHP-compatible CSRF header for private mutations", async () => {
+    const repository = privateReadsRepositoryMock();
+    const app = buildApp({
+      privateReadsRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+
+    const missing = await app.inject({
+      method: "POST",
+      url: "/notifications/read",
+      payload: {
+        id: 8,
+      },
+    });
+    const invalid = await app.inject({
+      method: "POST",
+      url: "/notifications/read",
+      headers: {
+        "x-csrf-token": "wrong",
+      },
+      payload: {
+        id: 8,
+      },
+    });
+
+    expect(missing.statusCode).toBe(403);
+    expect(missing.json()).toEqual({
+      ok: false,
+      error: "CSRF token is required.",
+    });
+    expect(invalid.statusCode).toBe(403);
+    expect(invalid.json()).toEqual({
+      ok: false,
+      error: "Invalid CSRF token.",
+    });
+    expect(repository.markNotificationsRead).not.toHaveBeenCalled();
+  });
+
+  it("marks selected notifications read through the PHP success wrapper", async () => {
+    const repository = privateReadsRepositoryMock();
+    const app = buildApp({
+      privateReadsRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/notifications/read",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: {
+        id: "8",
+        ids: [8, "8"],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(repository.markNotificationsRead).toHaveBeenCalledWith(42, [8]);
+    expect(response.json()).toEqual({
+      ok: true,
+      data: notificationsReadPayload,
+    });
+  });
+
+  it("marks all notifications read through the PHP success wrapper", async () => {
+    const repository = privateReadsRepositoryMock();
+    const app = buildApp({
+      privateReadsRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/notifications/read-all",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(repository.markAllNotificationsRead).toHaveBeenCalledWith(42);
+    expect(response.json()).toEqual({
+      ok: true,
+      data: notificationsReadAllPayload,
+    });
+  });
+
+  it("marks one notification read from the path id", async () => {
+    const repository = privateReadsRepositoryMock();
+    const app = buildApp({
+      privateReadsRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/notifications/8/read",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(repository.markNotificationsRead).toHaveBeenCalledWith(42, [8]);
+  });
+
+  it("updates onboarding, privacy, and preferences through private mutation wrappers", async () => {
+    const repository = privateReadsRepositoryMock();
+    const app = buildApp({
+      privateReadsRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+
+    const onboarding = await app.inject({
+      method: "PATCH",
+      url: "/me/onboarding",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: {
+        action: "complete_step",
+        step: "profile_basics",
+      },
+    });
+    const privacy = await app.inject({
+      method: "PATCH",
+      url: "/me/privacy",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: {
+        profileVisibility: "private",
+      },
+    });
+    const preferences = await app.inject({
+      method: "PATCH",
+      url: "/me/preferences",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: {
+        notifications: {
+          likes: false,
+        },
+      },
+    });
+
+    expect(onboarding.statusCode).toBe(200);
+    expect(privacy.statusCode).toBe(200);
+    expect(preferences.statusCode).toBe(200);
+    expect(repository.updateOnboardingState).toHaveBeenCalledWith(42, {
+      action: "complete_step",
+      step: "profile_basics",
+    });
+    expect(repository.updatePrivacy).toHaveBeenCalledWith(session, {
+      profileVisibility: "private",
+    });
+    expect(repository.updatePreferences).toHaveBeenCalledWith(session, {
+      notifications: {
+        likes: false,
+      },
+    });
+  });
+
+  it("maps private mutation validation and storage failures to PHP-compatible JSON", async () => {
+    const repository = privateReadsRepositoryMock({
+      updateOnboardingState: vi
+        .fn()
+        .mockRejectedValue(new PrivateStorageNotReadyError("Onboarding storage is not ready. Run pending migrations.")),
+    });
+    const app = buildApp({
+      privateReadsRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const invalidIds = await app.inject({
+      method: "POST",
+      url: "/notifications/read",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: {
+        ids: "8",
+      },
+    });
+    const storage = await app.inject({
+      method: "PATCH",
+      url: "/me/onboarding",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: {
+        action: "reset",
+      },
+    });
+
+    expect(invalidIds.statusCode).toBe(422);
+    expect(invalidIds.json()).toEqual({
+      ok: false,
+      error: "Notification ids must be an array.",
+    });
+    expect(storage.statusCode).toBe(503);
+    expect(storage.json()).toEqual({
+      ok: false,
+      error: "Onboarding storage is not ready. Run pending migrations.",
+    });
+  });
+
+  it("returns PHP-compatible JSON body errors for malformed mutation payloads", async () => {
+    const repository = privateReadsRepositoryMock();
+    const app = buildApp({
+      privateReadsRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const malformed = await app.inject({
+      method: "PATCH",
+      url: "/me/preferences",
+      headers: {
+        "content-type": "application/json",
+        "x-csrf-token": "csrf-token",
+      },
+      payload: "{",
+    });
+    const scalar = await app.inject({
+      method: "PATCH",
+      url: "/me/preferences",
+      headers: {
+        "content-type": "application/json",
+        "x-csrf-token": "csrf-token",
+      },
+      payload: '"nope"',
+    });
+
+    expect(malformed.statusCode).toBe(400);
+    expect(malformed.json()).toEqual({
+      ok: false,
+      error: "Invalid JSON body.",
+    });
+    expect(scalar.statusCode).toBe(400);
+    expect(scalar.json()).toEqual({
+      ok: false,
+      error: "JSON body must be an object.",
     });
   });
 });

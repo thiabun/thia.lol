@@ -7,11 +7,17 @@ import type { RequestSession } from "./sessions.js";
 
 export interface PrivateReadsRepository {
   authSessionPayload(session: RequestSession): AuthSessionPayload;
+  csrfTokenForSession(session: RequestSession): string;
   getSettings(session: RequestSession): Promise<SettingsPayload>;
   getOnboardingState(userId: number): Promise<OnboardingStatePayload>;
   getNotifications(userId: number): Promise<NotificationsPayload>;
   getFollowRequests(userId: number): Promise<FollowRequestPayload[]>;
   getMyPosts(userId: number, kind: string): Promise<MyPostPayload[]>;
+  markNotificationsRead(userId: number, ids: number[]): Promise<NotificationsReadPayload>;
+  markAllNotificationsRead(userId: number): Promise<NotificationsReadAllPayload>;
+  updateOnboardingState(userId: number, body: Record<string, unknown>): Promise<OnboardingStatePayload>;
+  updatePrivacy(session: RequestSession, body: Record<string, unknown>): Promise<SettingsPayload>;
+  updatePreferences(session: RequestSession, body: Record<string, unknown>): Promise<SettingsPayload>;
 }
 
 export interface PrivateReadsRepositoryOptions {
@@ -96,6 +102,17 @@ export interface NotificationsPayload {
   unreadCount: number;
 }
 
+export interface NotificationsReadPayload {
+  ids: number[];
+  readAt: string;
+  unreadCount: number;
+}
+
+export interface NotificationsReadAllPayload {
+  readAt: string;
+  unreadCount: 0;
+}
+
 export interface NotificationPayload {
   id: number;
   type: string;
@@ -133,6 +150,10 @@ export interface MyPostPayload {
 
 interface CountRow extends RowDataPacket {
   table_count?: number | string;
+}
+
+interface CurrentTimestampRow extends RowDataPacket {
+  now: string | null;
 }
 
 interface SettingsProfileRow extends RowDataPacket {
@@ -254,23 +275,27 @@ const onboardingSteps = [
 ];
 
 const profileIntegrationProviders = [
-  "website",
   "github",
   "spotify",
   "apple_music",
-  "lastfm",
-  "letterboxd",
   "twitch",
   "youtube",
-  "instagram",
-  "tiktok",
-  "discord",
 ];
 
 export class PrivateStorageNotReadyError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "PrivateStorageNotReadyError";
+  }
+}
+
+export class PrivateRouteError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode: number,
+  ) {
+    super(message);
+    this.name = "PrivateRouteError";
   }
 }
 
@@ -317,6 +342,36 @@ export function settingsPostKind(value: unknown): "all" | "posts" | "replies" {
   return value === "posts" || value === "replies" || value === "all" ? value : "all";
 }
 
+export function notificationIdsFromPayload(payload: Record<string, unknown>): number[] {
+  const ids: number[] = [];
+
+  if (payload.id !== undefined && payload.id !== null) {
+    ids.push(notificationIdFromValue(payload.id));
+  }
+
+  if (payload.ids !== undefined && payload.ids !== null) {
+    if (!Array.isArray(payload.ids)) {
+      throw new PrivateRouteError("Notification ids must be an array.", 422);
+    }
+
+    for (const id of payload.ids) {
+      ids.push(notificationIdFromValue(id));
+    }
+  }
+
+  const uniqueIds = [...new Set(ids)];
+
+  if (uniqueIds.length === 0) {
+    throw new PrivateRouteError("At least one notification id is required.", 422);
+  }
+
+  if (uniqueIds.length > 100) {
+    throw new PrivateRouteError("Too many notification ids.", 422);
+  }
+
+  return uniqueIds;
+}
+
 export function onboardingStepListForStoredJson(value: string | null): string[] {
   return onboardingStepList(value);
 }
@@ -351,6 +406,10 @@ class MysqlPrivateReadsRepository implements PrivateReadsRepository {
 
   authSessionPayload(session: RequestSession): AuthSessionPayload {
     return authSessionPayload(session, this.options.csrfSecret);
+  }
+
+  csrfTokenForSession(session: RequestSession): string {
+    return csrfTokenForSession(session, this.options.csrfSecret);
   }
 
   async getSettings(session: RequestSession): Promise<SettingsPayload> {
@@ -537,6 +596,159 @@ class MysqlPrivateReadsRepository implements PrivateReadsRepository {
     }));
   }
 
+  async markNotificationsRead(userId: number, ids: number[]): Promise<NotificationsReadPayload> {
+    await this.requireTable("notifications", "Notification storage is not ready. Run pending migrations.");
+
+    const readAt = await this.currentDatabaseTimestamp();
+    const placeholders = ids.map(() => "?").join(", ");
+
+    await this.pool.execute(
+      `UPDATE notifications
+       SET read_at = COALESCE(read_at, ?)
+       WHERE user_id = ?
+         AND id IN (${placeholders})`,
+      [readAt, userId, ...ids],
+    );
+
+    return {
+      ids,
+      readAt,
+      unreadCount: await this.unreadNotificationCount(userId),
+    };
+  }
+
+  async markAllNotificationsRead(userId: number): Promise<NotificationsReadAllPayload> {
+    await this.requireTable("notifications", "Notification storage is not ready. Run pending migrations.");
+
+    const readAt = await this.currentDatabaseTimestamp();
+
+    await this.pool.execute(
+      `UPDATE notifications
+       SET read_at = COALESCE(read_at, ?)
+       WHERE user_id = ?
+         AND read_at IS NULL`,
+      [readAt, userId],
+    );
+
+    return {
+      readAt,
+      unreadCount: 0,
+    };
+  }
+
+  async updateOnboardingState(userId: number, body: Record<string, unknown>): Promise<OnboardingStatePayload> {
+    await this.requireTable("user_onboarding_state", "Onboarding storage is not ready. Run pending migrations.");
+    rejectUnknownKeys(body, ["action", "step", "provider", "url"], "Unsupported onboarding field was provided.");
+    await this.ensureOnboardingState(userId);
+
+    const state = await this.getOnboardingState(userId);
+    const action = onboardingAction(body.action);
+    let completed = state.completedSteps;
+    let skipped = state.skippedSteps;
+    let providerLinks = { ...state.providerLinks };
+    let finishedAt = state.finishedAt;
+    let dismissedAt = state.dismissedAt;
+
+    if (action === "complete_step") {
+      const step = onboardingStep(body.step);
+      completed = addOnboardingStep(completed, step);
+      skipped = removeOnboardingStep(skipped, step);
+    } else if (action === "skip_step") {
+      const step = onboardingStep(body.step);
+      skipped = addOnboardingStep(skipped, step);
+      completed = removeOnboardingStep(completed, step);
+    } else if (action === "save_provider_link") {
+      const link = onboardingProviderLink(body.provider, body.url);
+      providerLinks = {
+        ...providerLinks,
+        [link.provider]: link,
+      };
+      completed = addOnboardingStep(completed, link.provider);
+      skipped = removeOnboardingStep(skipped, link.provider);
+    } else if (action === "finish") {
+      finishedAt = utcDatabaseTimestamp();
+      dismissedAt = null;
+    } else if (action === "dismiss") {
+      dismissedAt = utcDatabaseTimestamp();
+    } else if (action === "reset") {
+      completed = [];
+      skipped = [];
+      providerLinks = {};
+      finishedAt = null;
+      dismissedAt = null;
+    }
+
+    await this.pool.execute(
+      `UPDATE user_onboarding_state
+       SET completed_steps_json = ?,
+           skipped_steps_json = ?,
+           provider_links_json = ?,
+           finished_at = ?,
+           dismissed_at = ?,
+           updated_at = CURRENT_TIMESTAMP()
+       WHERE user_id = ?`,
+      [
+        JSON.stringify(normalizedOnboardingStepList(completed)),
+        JSON.stringify(normalizedOnboardingStepList(skipped)),
+        JSON.stringify(providerLinks),
+        finishedAt,
+        dismissedAt,
+        userId,
+      ],
+    );
+
+    return this.getOnboardingState(userId);
+  }
+
+  async updatePrivacy(session: RequestSession, body: Record<string, unknown>): Promise<SettingsPayload> {
+    await this.requireSettingsStorage();
+    const visibility = updateProfileVisibility(body.profileVisibility ?? body.profile_visibility);
+
+    await this.pool.execute(
+      `UPDATE profiles
+       SET visibility = ?,
+           updated_at = CURRENT_TIMESTAMP()
+       WHERE user_id = ?`,
+      [visibility, session.userId],
+    );
+
+    return this.getSettings(session);
+  }
+
+  async updatePreferences(session: RequestSession, body: Record<string, unknown>): Promise<SettingsPayload> {
+    await this.requireSettingsStorage();
+    await this.ensurePreferences(session.userId);
+
+    const preferences = settingsPreferencesInput(body);
+
+    await this.pool.execute(
+      `UPDATE user_preferences
+       SET analytics_consent = ?,
+           personalization_consent = ?,
+           rich_embeds_consent = ?,
+           autoplay_media_consent = ?,
+           sensitive_content_visible = ?,
+           notification_preferences_json = ?,
+           email_notification_preferences_json = ?,
+           push_notification_preferences_json = ?,
+           updated_at = CURRENT_TIMESTAMP()
+       WHERE user_id = ?`,
+      [
+        preferences.analyticsConsent ? 1 : 0,
+        preferences.personalizationConsent ? 1 : 0,
+        preferences.richEmbedsConsent ? 1 : 0,
+        preferences.autoplayMediaConsent ? 1 : 0,
+        preferences.sensitiveContentVisible ? 1 : 0,
+        jsonForPhpPreferenceMap(preferences.notifications),
+        jsonForPhpPreferenceMap(preferences.emailNotifications),
+        jsonForPhpPreferenceMap(preferences.pushNotifications),
+        session.userId,
+      ],
+    );
+
+    return this.getSettings(session);
+  }
+
   private async settingsProfileRows(userId: number): Promise<SettingsProfileRow[]> {
     const [rows] = await this.pool.execute<SettingsProfileRow[]>(
       `SELECT visibility
@@ -683,6 +895,12 @@ class MysqlPrivateReadsRepository implements PrivateReadsRepository {
     }
   }
 
+  private async requireSettingsStorage(): Promise<void> {
+    if (!(await this.columnExists("profiles", "visibility")) || !(await this.tableExists("user_preferences"))) {
+      throw new PrivateStorageNotReadyError("Account settings storage is not ready. Run pending migrations.");
+    }
+  }
+
   private tableExists(tableName: string): Promise<boolean> {
     validateSchemaIdentifier(tableName);
 
@@ -698,6 +916,23 @@ class MysqlPrivateReadsRepository implements PrivateReadsRepository {
     return promise;
   }
 
+  private columnExists(tableName: string, columnName: string): Promise<boolean> {
+    validateSchemaIdentifier(tableName);
+    validateSchemaIdentifier(columnName);
+
+    const key = `${tableName}.${columnName}`;
+    const cached = this.tableCache.get(key);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const promise = this.detectColumn(tableName, columnName);
+    this.tableCache.set(key, promise);
+
+    return promise;
+  }
+
   private async detectTable(tableName: string): Promise<boolean> {
     const [rows] = await this.pool.execute<CountRow[]>(
       `SELECT COUNT(*) AS table_count
@@ -708,6 +943,37 @@ class MysqlPrivateReadsRepository implements PrivateReadsRepository {
     );
 
     return numberValue(rows[0]?.table_count) > 0;
+  }
+
+  private async detectColumn(tableName: string, columnName: string): Promise<boolean> {
+    const [rows] = await this.pool.execute<CountRow[]>(
+      `SELECT COUNT(*) AS table_count
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = ?
+         AND COLUMN_NAME = ?`,
+      [tableName, columnName],
+    );
+
+    return numberValue(rows[0]?.table_count) > 0;
+  }
+
+  private async currentDatabaseTimestamp(): Promise<string> {
+    const [rows] = await this.pool.execute<CurrentTimestampRow[]>("SELECT CURRENT_TIMESTAMP() AS now");
+
+    return nullableStringValue(rows[0]?.now) ?? utcDatabaseTimestamp();
+  }
+
+  private async unreadNotificationCount(userId: number): Promise<number> {
+    const [rows] = await this.pool.execute<UnreadCountRow[]>(
+      `SELECT COUNT(*) AS unread_count
+       FROM notifications
+       WHERE user_id = ?
+         AND read_at IS NULL`,
+      [userId],
+    );
+
+    return numberValue(rows[0]?.unread_count);
   }
 }
 
@@ -860,6 +1126,331 @@ function profileVisibility(value: string | null | undefined): "public" | "privat
   return value === "private" || value === "followers" ? value : "public";
 }
 
+function updateProfileVisibility(value: unknown): "public" | "private" {
+  return value === "private" ? "private" : "public";
+}
+
+function settingsPreferencesInput(body: Record<string, unknown>): {
+  analyticsConsent: boolean;
+  personalizationConsent: boolean;
+  richEmbedsConsent: boolean;
+  autoplayMediaConsent: boolean;
+  sensitiveContentVisible: boolean;
+  notifications: Record<string, boolean>;
+  emailNotifications: Record<string, boolean>;
+  pushNotifications: Record<string, boolean>;
+} {
+  return {
+    analyticsConsent: settingsBool(body.analyticsConsent ?? body.analytics_consent ?? false),
+    personalizationConsent: settingsBool(body.personalizationConsent ?? body.personalization_consent ?? true),
+    richEmbedsConsent: settingsBool(body.richEmbedsConsent ?? body.rich_embeds_consent ?? true),
+    autoplayMediaConsent: settingsBool(body.autoplayMediaConsent ?? body.autoplay_media_consent ?? false),
+    sensitiveContentVisible: settingsBool(body.sensitiveContentVisible ?? body.sensitive_content_visible ?? false),
+    notifications: settingsPreferenceMap(body.notifications ?? {}),
+    emailNotifications: settingsPreferenceMap(body.emailNotifications ?? body.email_notifications ?? {}),
+    pushNotifications: settingsPreferenceMap(body.pushNotifications ?? body.push_notifications ?? {}),
+  };
+}
+
+function settingsPreferenceMap(value: unknown): Record<string, boolean> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const allowed = ["mentions", "follows", "moots", "messages", "likes", "replies", "reblogs", "badges", "reports"];
+  const record = value as Record<string, unknown>;
+  const result: Record<string, boolean> = {};
+
+  for (const key of allowed) {
+    if (Object.hasOwn(record, key)) {
+      result[key] = settingsBool(record[key]);
+    }
+  }
+
+  return result;
+}
+
+function settingsBool(value: unknown): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) && Math.trunc(value) === 1;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+
+    if (trimmed !== "" && !Number.isNaN(Number(trimmed))) {
+      return Number.parseInt(trimmed, 10) === 1;
+    }
+
+    return ["1", "true", "yes", "on"].includes(trimmed.toLowerCase());
+  }
+
+  return false;
+}
+
+function jsonForPhpPreferenceMap(value: Record<string, boolean>): string {
+  return Object.keys(value).length === 0 ? "[]" : JSON.stringify(value);
+}
+
+function notificationIdFromValue(value: unknown): number {
+  if (typeof value === "number") {
+    if (!Number.isInteger(value) || value < 1) {
+      throw new PrivateRouteError("Notification id must be numeric.", 422);
+    }
+
+    return value;
+  }
+
+  if (typeof value !== "string" || !/^\d+$/.test(value)) {
+    throw new PrivateRouteError("Notification id must be numeric.", 422);
+  }
+
+  const id = Number(value);
+
+  if (!Number.isSafeInteger(id) || id < 1) {
+    throw new PrivateRouteError("Notification id must be numeric.", 422);
+  }
+
+  return id;
+}
+
+function onboardingAction(value: unknown): "complete_step" | "skip_step" | "save_provider_link" | "finish" | "dismiss" | "reset" {
+  if (typeof value !== "string") {
+    throw new PrivateRouteError("Choose an onboarding action.", 422);
+  }
+
+  const action = value.trim();
+
+  if (
+    action !== "complete_step" &&
+    action !== "skip_step" &&
+    action !== "save_provider_link" &&
+    action !== "finish" &&
+    action !== "dismiss" &&
+    action !== "reset"
+  ) {
+    throw new PrivateRouteError("Choose an onboarding action.", 422);
+  }
+
+  return action;
+}
+
+function onboardingStep(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new PrivateRouteError("Choose an onboarding step.", 422);
+  }
+
+  const step = value.trim();
+
+  if (!onboardingSteps.includes(step)) {
+    throw new PrivateRouteError("Choose an onboarding step.", 422);
+  }
+
+  return step;
+}
+
+function onboardingProvider(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new PrivateRouteError("Choose a supported integration provider.", 422);
+  }
+
+  const provider = value.trim().toLowerCase() === "google" ? "youtube" : value.trim().toLowerCase();
+
+  if (!profileIntegrationProviders.includes(provider)) {
+    throw new PrivateRouteError("Choose a supported integration provider.", 422);
+  }
+
+  return provider;
+}
+
+function onboardingProviderLink(providerValue: unknown, urlValue: unknown): {
+  provider: string;
+  url: string;
+  resourceType: string;
+  resourceId: string;
+  savedAt: string;
+} {
+  const provider = onboardingProvider(providerValue);
+  const url = integrationUrl(urlValue);
+  const normalized = normalizeIntegrationUrl(url, provider);
+
+  if (normalized === null || normalized.provider !== provider) {
+    throw new PrivateRouteError("Choose a supported integration URL.", 422);
+  }
+
+  return {
+    provider,
+    url: normalized.sourceUrl,
+    resourceType: normalized.resourceType,
+    resourceId: normalized.resourceId,
+    savedAt: utcIsoPhp(),
+  };
+}
+
+function integrationUrl(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new PrivateRouteError("Integration URL is invalid.", 422);
+  }
+
+  const trimmed = value.trim();
+
+  let url: URL;
+
+  try {
+    url = new URL(trimmed);
+  } catch {
+    throw new PrivateRouteError("Integration URL is invalid.", 422);
+  }
+
+  if (trimmed.length > 500) {
+    throw new PrivateRouteError("Integration URL is invalid.", 422);
+  }
+
+  if (url.protocol !== "https:") {
+    throw new PrivateRouteError("Integration URL must use HTTPS.", 422);
+  }
+
+  return trimmed;
+}
+
+function normalizeIntegrationUrl(rawUrl: string, preferredProvider: string): {
+  provider: string;
+  resourceType: string;
+  resourceId: string;
+  sourceUrl: string;
+} | null {
+  const url = new URL(rawUrl);
+  const host = url.hostname.toLowerCase();
+  const segments = url.pathname.replace(/^\/+|\/+$/gu, "") === ""
+    ? []
+    : url.pathname.replace(/^\/+|\/+$/gu, "").split("/");
+  let resourceType = "link";
+  let resourceId = "";
+  let sourceUrl = rawUrl;
+
+  if (preferredProvider === "spotify" && host === "open.spotify.com" && segments.length >= 2) {
+    resourceType = segments[0]?.toLowerCase() ?? "";
+    resourceId = (segments[1] ?? "").replace(/[^A-Za-z0-9]/gu, "");
+    sourceUrl = `https://open.spotify.com/${resourceType}/${resourceId}`;
+  } else if (
+    preferredProvider === "apple_music" &&
+    (host === "music.apple.com" || host === "itunes.apple.com") &&
+    segments.length >= 2
+  ) {
+    resourceType = url.pathname.includes("/artist/")
+      ? "artist"
+      : url.pathname.includes("/playlist/")
+        ? "playlist"
+        : url.pathname.includes("/album/")
+          ? "album"
+          : "song";
+    resourceId = lastPathIdentifier(rawUrl);
+  } else if (
+    preferredProvider === "youtube" &&
+    ["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com"].includes(host)
+  ) {
+    const playlistId = youtubeIdentifier(url.searchParams.get("list") ?? "");
+    const firstSegment = segments[0] ?? "";
+    let videoId = "";
+
+    if (host === "youtu.be" && firstSegment !== "") {
+      videoId = youtubeIdentifier(firstSegment);
+    } else if (firstSegment === "watch") {
+      videoId = youtubeIdentifier(url.searchParams.get("v") ?? "");
+    } else if (["shorts", "live", "embed"].includes(firstSegment) && segments[1] !== undefined) {
+      videoId = youtubeIdentifier(segments[1]);
+    }
+
+    if (videoId !== "") {
+      resourceType = "video";
+      resourceId = videoId;
+      sourceUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(resourceId)}`;
+    } else if (playlistId !== "") {
+      resourceType = "playlist";
+      resourceId = playlistId;
+      sourceUrl = `https://www.youtube.com/playlist?list=${encodeURIComponent(resourceId)}`;
+    } else if (firstSegment.startsWith("@")) {
+      resourceType = "channel";
+      resourceId = youtubeIdentifier(firstSegment, true);
+      sourceUrl = `https://www.youtube.com/${resourceId}`;
+    } else if (firstSegment === "channel" && segments[1] !== undefined) {
+      resourceType = "channel";
+      resourceId = youtubeIdentifier(segments[1]);
+      sourceUrl = `https://www.youtube.com/channel/${encodeURIComponent(resourceId)}`;
+    }
+  } else if (preferredProvider === "twitch" && (host === "twitch.tv" || host === "www.twitch.tv") && segments[0] !== undefined) {
+    resourceType = segments[0] === "videos" && segments[1] !== undefined ? "video" : "channel";
+    resourceId = resourceType === "video" ? segments[1] ?? "" : segments[0] ?? "";
+  } else if (preferredProvider === "github" && (host === "github.com" || host === "www.github.com") && segments.length >= 2) {
+    resourceType = "repo";
+    resourceId = `${segments[0] ?? ""}/${segments[1] ?? ""}`.toLowerCase();
+    sourceUrl = `https://github.com/${resourceId}`;
+  }
+
+  resourceId = resourceId.trim();
+
+  if (resourceId === "") {
+    return null;
+  }
+
+  return {
+    provider: preferredProvider,
+    resourceType,
+    resourceId,
+    sourceUrl,
+  };
+}
+
+function youtubeIdentifier(value: string, allowHandle = false): string {
+  const trimmed = value.trim();
+
+  if (allowHandle && trimmed.startsWith("@")) {
+    const handle = trimmed.slice(1).replace(/[^A-Za-z0-9._-]/gu, "");
+
+    return handle === "" ? "" : `@${handle}`;
+  }
+
+  return trimmed.replace(/[^A-Za-z0-9_-]/gu, "");
+}
+
+function lastPathIdentifier(rawUrl: string): string {
+  const url = new URL(rawUrl);
+  const segments = url.pathname.replace(/^\/+|\/+$/gu, "").split("/").filter(Boolean);
+  const last = segments.at(-1) ?? "";
+  const match = /(?:^|[?&])i=(\d+)/u.exec(url.search);
+
+  return match?.[1] ?? last;
+}
+
+function addOnboardingStep(steps: string[], step: string): string[] {
+  return normalizedOnboardingStepList([...steps, step]);
+}
+
+function removeOnboardingStep(steps: string[], step: string): string[] {
+  return normalizedOnboardingStepList(steps.filter((item) => item !== step));
+}
+
+function normalizedOnboardingStepList(steps: string[]): string[] {
+  const allowed = new Map(onboardingSteps.map((step, index) => [step, index]));
+  const unique = [...new Set(steps.filter((step) => allowed.has(step)))];
+
+  return unique.sort((left, right) => (allowed.get(left) ?? 0) - (allowed.get(right) ?? 0));
+}
+
+function rejectUnknownKeys(body: Record<string, unknown>, allowedKeys: string[], message: string): void {
+  const allowed = new Set(allowedKeys);
+
+  for (const key of Object.keys(body)) {
+    if (!allowed.has(key)) {
+      throw new PrivateRouteError(message, 422);
+    }
+  }
+}
+
 function onboardingStepList(value: string | null): string[] {
   const decoded = jsonObjectOrArrayValue(value);
 
@@ -973,6 +1564,14 @@ function stringValue(value: string | null | undefined, fallback = ""): string {
 
 function nullableStringValue(value: string | null | undefined): string | null {
   return value ?? null;
+}
+
+function utcDatabaseTimestamp(date = new Date()): string {
+  return date.toISOString().slice(0, 19).replace("T", " ");
+}
+
+function utcIsoPhp(date = new Date()): string {
+  return `${date.toISOString().slice(0, 19)}+00:00`;
 }
 
 function validateSchemaIdentifier(identifier: string): void {

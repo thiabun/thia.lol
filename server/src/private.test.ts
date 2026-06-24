@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   authSessionPayload,
   csrfTokenForSession,
+  notificationIdsFromPayload,
   notificationPayloadFromRow,
   onboardingStepListForStoredJson,
+  PrivateRouteError,
   settingsPostKind,
 } from "./private.js";
 import type { RequestSession } from "./sessions.js";
@@ -69,6 +71,22 @@ describe("private preview auth helpers", () => {
     expect(
       onboardingStepListForStoredJson('["profile_canvas","unknown","profile_basics","apple_music"]'),
     ).toEqual(["profile_basics", "apple_music", "profile_canvas"]);
+  });
+
+  it("normalizes notification read ids like PHP", () => {
+    expect(notificationIdsFromPayload({
+      id: "8",
+      ids: [8, "9", "8"],
+    })).toEqual([8, 9]);
+  });
+
+  it("rejects invalid notification read id payloads with PHP-compatible errors", () => {
+    expect(() => notificationIdsFromPayload({})).toThrow(new PrivateRouteError("At least one notification id is required.", 422));
+    expect(() => notificationIdsFromPayload({ ids: "8" })).toThrow(new PrivateRouteError("Notification ids must be an array.", 422));
+    expect(() => notificationIdsFromPayload({ id: 0 })).toThrow(new PrivateRouteError("Notification id must be numeric.", 422));
+    expect(() => notificationIdsFromPayload({ ids: Array.from({ length: 101 }, (_, index) => index + 1) })).toThrow(
+      new PrivateRouteError("Too many notification ids.", 422),
+    );
   });
 });
 

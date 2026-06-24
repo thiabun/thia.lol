@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 
 import Fastify, {
   type FastifyInstance,
@@ -17,11 +17,15 @@ import {
   type PostsRepository,
 } from "./posts.js";
 import {
+  notificationIdsFromPayload,
+  PrivateRouteError,
   PrivateStorageNotReadyError,
   settingsPostKind,
   type AuthSessionPayload,
   type FollowRequestPayload,
   type MyPostPayload,
+  type NotificationsReadAllPayload,
+  type NotificationsReadPayload,
   type NotificationsPayload,
   type OnboardingStatePayload,
   type PrivateReadsRepository,
@@ -69,6 +73,10 @@ const postIdentifierParamsSchema = z.object({
 });
 
 const postRepliesParamsSchema = z.object({
+  id: z.string(),
+});
+
+const notificationReadParamsSchema = z.object({
   id: z.string(),
 });
 
@@ -397,6 +405,102 @@ async function withAuthenticatedPrivateRoute<T>(
   }
 }
 
+async function withAuthenticatedMutationRoute<T>(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  lookup: (
+    repository: PrivateReadsRepository,
+    session: RequestSession,
+    body: Record<string, unknown>,
+  ) => Promise<T> | T,
+) {
+  if (dependencies.sessionsRepository === undefined || dependencies.privateReadsRepository === undefined) {
+    return internalError(request, reply, routeName, new Error("Missing authenticated mutation dependency."));
+  }
+
+  try {
+    const session = await dependencies.sessionsRepository.currentSession(request.headers.cookie);
+
+    if (session === null) {
+      return reply.status(401).send(errorPayload("Unauthenticated."));
+    }
+
+    const providedCsrfToken = csrfTokenFromRequest(request);
+
+    if (providedCsrfToken === "") {
+      return reply.status(403).send(errorPayload("CSRF token is required."));
+    }
+
+    if (!safeStringEquals(dependencies.privateReadsRepository.csrfTokenForSession(session), providedCsrfToken)) {
+      return reply.status(403).send(errorPayload("Invalid CSRF token."));
+    }
+
+    const body = jsonBodyRecord(request.body);
+    const data = await lookup(dependencies.privateReadsRepository, session, body);
+
+    return reply.send(successPayload<T>(data));
+  } catch (error) {
+    if (error instanceof PrivateRouteError) {
+      return reply.status(error.statusCode).send(errorPayload(error.message));
+    }
+
+    if (error instanceof PrivateStorageNotReadyError) {
+      return sendRouteError(request, reply, routeName, 503, errorPayload(error.message), error);
+    }
+
+    return internalError(request, reply, routeName, error);
+  }
+}
+
+function csrfTokenFromRequest(request: FastifyRequest): string {
+  const value = request.headers["x-csrf-token"];
+
+  return typeof value === "string" ? value : "";
+}
+
+function safeStringEquals(expected: string, provided: string): boolean {
+  const expectedBuffer = Buffer.from(expected);
+  const providedBuffer = Buffer.from(provided);
+
+  return expectedBuffer.length === providedBuffer.length && timingSafeEqual(expectedBuffer, providedBuffer);
+}
+
+function jsonBodyRecord(body: unknown): Record<string, unknown> {
+  if (body === undefined || body === null) {
+    return {};
+  }
+
+  if (Array.isArray(body)) {
+    return {};
+  }
+
+  if (typeof body !== "object") {
+    throw new PrivateRouteError("JSON body must be an object.", 400);
+  }
+
+  return body as Record<string, unknown>;
+}
+
+function jsonBodyRequiredObject(body: Record<string, unknown>, originalBody: unknown): Record<string, unknown> {
+  if (Array.isArray(originalBody)) {
+    throw new PrivateRouteError("JSON body must be an object.", 400);
+  }
+
+  return body;
+}
+
+function isInvalidJsonBodyError(error: unknown): boolean {
+  if (error === null || typeof error !== "object") {
+    return false;
+  }
+
+  const record = error as Record<string, unknown>;
+
+  return record.statusCode === 400 && record.code === "FST_ERR_CTP_INVALID_JSON_BODY";
+}
+
 export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
   const app = Fastify({
     genReqId: generateRequestId,
@@ -457,6 +561,26 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     ),
   );
 
+  app.patch("/me/privacy", async (request, reply) =>
+    withAuthenticatedMutationRoute<SettingsPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.privacy.update",
+      (repository, session, body) => repository.updatePrivacy(session, body),
+    ),
+  );
+
+  app.patch("/me/preferences", async (request, reply) =>
+    withAuthenticatedMutationRoute<SettingsPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.preferences.update",
+      (repository, session, body) => repository.updatePreferences(session, body),
+    ),
+  );
+
   app.get("/me/onboarding", async (request, reply) =>
     withAuthenticatedPrivateRoute<OnboardingStatePayload>(
       request,
@@ -464,6 +588,19 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       dependencies,
       "me.onboarding",
       (repository, session) => repository.getOnboardingState(session.userId),
+    ),
+  );
+
+  app.patch("/me/onboarding", async (request, reply) =>
+    withAuthenticatedMutationRoute<OnboardingStatePayload>(
+      request,
+      reply,
+      dependencies,
+      "me.onboarding.update",
+      (repository, session, body) => repository.updateOnboardingState(
+        session.userId,
+        jsonBodyRequiredObject(body, request.body),
+      ),
     ),
   );
 
@@ -496,6 +633,43 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       (repository, session) => repository.getNotifications(session.userId),
     ),
   );
+
+  app.post("/notifications/read", async (request, reply) =>
+    withAuthenticatedMutationRoute<NotificationsReadPayload>(
+      request,
+      reply,
+      dependencies,
+      "notifications.read",
+      (repository, session, body) => repository.markNotificationsRead(session.userId, notificationIdsFromPayload(body)),
+    ),
+  );
+
+  app.post("/notifications/read-all", async (request, reply) =>
+    withAuthenticatedMutationRoute<NotificationsReadAllPayload>(
+      request,
+      reply,
+      dependencies,
+      "notifications.read-all",
+      (repository, session) => repository.markAllNotificationsRead(session.userId),
+    ),
+  );
+
+  app.post("/notifications/:id/read", async (request, reply) => {
+    const parsedParams = notificationReadParamsSchema.safeParse(request.params);
+    const id = parsedParams.success ? parsedParams.data.id : "";
+
+    if (!/^[0-9]+$/.test(id)) {
+      return reply.status(405).send(errorPayload("Method not allowed."));
+    }
+
+    return withAuthenticatedMutationRoute<NotificationsReadPayload>(
+      request,
+      reply,
+      dependencies,
+      "notifications.read-one",
+      (repository, session) => repository.markNotificationsRead(session.userId, [Number(id)]),
+    );
+  });
 
   app.get("/rooms", async (request, reply) => {
     if (dependencies.roomsRepository === undefined) {
@@ -902,6 +1076,10 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
   });
 
   app.setErrorHandler((error, request, reply) => {
+    if (isInvalidJsonBodyError(error)) {
+      return reply.status(400).send(errorPayload("Invalid JSON body."));
+    }
+
     return internalError(request, reply, "unhandled", error);
   });
 

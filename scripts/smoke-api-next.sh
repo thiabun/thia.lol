@@ -68,6 +68,41 @@ check_json_status() {
   echo "OK $path returned HTTP $expected_status and JSON ok:false"
 }
 
+check_json_status_method() {
+  local method="$1"
+  local path="$2"
+  local expected_status="$3"
+  local body_file="$tmp_dir/$(printf '%s' "$method-$path-$expected_status" | tr -c 'A-Za-z0-9' '_')"
+  local status
+  local curl_args=(--request "$method" --location --silent --show-error --output "$body_file" --write-out '%{http_code}' --max-time 20)
+
+  if [[ -n "$COOKIE_HEADER" ]]; then
+    curl_args+=(--header "Cookie: $COOKIE_HEADER")
+  fi
+
+  if [[ "$method" == "PATCH" || "$method" == "POST" ]]; then
+    curl_args+=(--header "Content-Type: application/json" --data '{}')
+  fi
+
+  status="$(curl "${curl_args[@]}" "$BASE_URL$path")"
+
+  if [[ "$status" != "$expected_status" ]]; then
+    echo "Expected HTTP $expected_status for $method $path, got $status" >&2
+    echo "Response body:" >&2
+    sed -n '1,80p' "$body_file" >&2
+    exit 1
+  fi
+
+  if ! grep -Eq '"ok"[[:space:]]*:[[:space:]]*false' "$body_file"; then
+    echo "Expected JSON containing \"ok\":false for $method $path" >&2
+    echo "Response body:" >&2
+    sed -n '1,80p' "$body_file" >&2
+    exit 1
+  fi
+
+  echo "OK $method $path returned HTTP $expected_status and JSON ok:false"
+}
+
 check_json_ok "/api-next/health"
 check_json_ok "/api-next/health?db=1"
 check_json_ok "/api-next/rooms"
@@ -97,6 +132,12 @@ if [[ -n "$COOKIE_HEADER" ]]; then
   check_json_ok "/api-next/me/follow-requests"
   check_json_ok "/api-next/me/posts"
   check_json_ok "/api-next/notifications"
+  check_json_status_method "POST" "/api-next/notifications/read" "403"
+  check_json_status_method "POST" "/api-next/notifications/read-all" "403"
+  check_json_status_method "POST" "/api-next/notifications/1/read" "403"
+  check_json_status_method "PATCH" "/api-next/me/onboarding" "403"
+  check_json_status_method "PATCH" "/api-next/me/privacy" "403"
+  check_json_status_method "PATCH" "/api-next/me/preferences" "403"
 else
   check_json_status "/api-next/auth/me" "401"
   check_json_status "/api-next/me/settings" "401"
@@ -104,4 +145,10 @@ else
   check_json_status "/api-next/me/follow-requests" "401"
   check_json_status "/api-next/me/posts" "401"
   check_json_status "/api-next/notifications" "401"
+  check_json_status_method "POST" "/api-next/notifications/read" "401"
+  check_json_status_method "POST" "/api-next/notifications/read-all" "401"
+  check_json_status_method "POST" "/api-next/notifications/1/read" "401"
+  check_json_status_method "PATCH" "/api-next/me/onboarding" "401"
+  check_json_status_method "PATCH" "/api-next/me/privacy" "401"
+  check_json_status_method "PATCH" "/api-next/me/preferences" "401"
 fi
