@@ -1888,8 +1888,8 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       context.starCount = numberValue(starRows[0]?.star_count);
 
       if (viewerUserId !== targetUserId) {
-        const [starStateRows] = await this.pool.execute<IdRow[]>(
-          `SELECT id
+        const [starStateRows] = await this.pool.execute<RowDataPacket[]>(
+          `SELECT 1
            FROM profile_stars
            WHERE starrer_id = ?
              AND starred_user_id = ?
