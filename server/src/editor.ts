@@ -326,7 +326,7 @@ class MysqlEditorRepository implements EditorRepository {
     );
 
     if (bioForTextEntities !== undefined && capabilities.hasTextEntities) {
-      await this.storeTextEntities("profile", session.userId, "bio", bioForTextEntities, session.userId);
+      await this.storeTextEntities("profile", session.userId, "bio", bioForTextEntities);
     }
 
     return this.fetchProfilePayload(session.userId);
@@ -421,7 +421,7 @@ class MysqlEditorRepository implements EditorRepository {
       ],
     );
 
-    await this.storeModuleTextEntities(insert.insertId, session, config, visibility, status);
+    await this.storeModuleTextEntities(insert.insertId, config, visibility, status);
 
     return this.modulesForOwner(session.userId, false);
   }
@@ -491,7 +491,6 @@ class MysqlEditorRepository implements EditorRepository {
     if (nextConfig !== null || "visibility" in body || "status" in body) {
       await this.storeModuleTextEntities(
         moduleId,
-        session,
         nextConfig ?? jsonObject(module.config_json),
         nextVisibility,
         nextStatus,
@@ -1664,7 +1663,6 @@ class MysqlEditorRepository implements EditorRepository {
 
   private async storeModuleTextEntities(
     moduleId: number,
-    session: RequestSession,
     config: Record<string, unknown>,
     visibility: string,
     status: string,
@@ -1682,7 +1680,7 @@ class MysqlEditorRepository implements EditorRepository {
       return;
     }
 
-    await this.storeTextEntities("profile_module", moduleId, "body", body, session.userId);
+    await this.storeTextEntities("profile_module", moduleId, "body", body);
   }
 
   private async storeTextEntities(
@@ -1690,7 +1688,6 @@ class MysqlEditorRepository implements EditorRepository {
     contentId: number,
     fieldName: string,
     body: string | null,
-    createdBy: number,
   ): Promise<void> {
     await this.deleteTextEntities(contentType, contentId, fieldName);
 
@@ -1701,8 +1698,8 @@ class MysqlEditorRepository implements EditorRepository {
     for (const entity of extractTextEntities(body)) {
       await this.pool.execute<ResultSetHeader>(
         `INSERT INTO text_entities
-            (content_type, content_id, field_name, entity_type, entity_start, entity_length, text_value, url, target_user_id, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            (content_type, content_id, field_name, entity_type, entity_start, entity_length, text_value, url, target_user_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           contentType,
           contentId,
@@ -1713,7 +1710,6 @@ class MysqlEditorRepository implements EditorRepository {
           entity.text,
           entity.url,
           entity.targetUserId,
-          createdBy,
         ],
       );
     }
