@@ -10,8 +10,10 @@ $readSource = file_get_contents($root . '/api/read.php');
 $shareRendererSource = file_get_contents($root . '/api/post-share.php');
 $profileShareRendererSource = file_get_contents($root . '/api/profile-share.php');
 $indexSource = file_get_contents($root . '/api/index.php');
+$nodeAppSource = file_get_contents($root . '/server/src/app.ts');
 $htaccessSource = file_get_contents($root . '/public/.htaccess');
 $apiHtaccessSource = file_get_contents($root . '/api/.htaccess');
+$smokeLiveSource = file_get_contents($root . '/scripts/smoke-live.sh');
 $shareSceneSource = file_get_contents($root . '/src/components/share/ShareCardScene.tsx');
 $shareCaptureSource = file_get_contents($root . '/src/lib/shareCardCapture.ts');
 $shareRenderPageSource = file_get_contents($root . '/src/pages/ShareRenderPage.tsx');
@@ -162,8 +164,9 @@ assert_true(str_contains($shareCaptureSource, 'const pixelRatio = options.pixelR
 assert_true(str_contains($shareCaptureSource, 'type?: "image/jpeg" | "image/png"'), 'share-card capture should support compact JPEG social cache output');
 assert_true(str_contains($shareCaptureSource, 'type,'), 'share-card capture should pass the requested image type to html-to-image');
 assert_true(str_contains($shareCaptureSource, 'includeQueryParams: true'), 'share-card capture must keep proxied image query params distinct');
-assert_true(str_contains($shareCaptureSource, 'canvasWidth: SHARE_CARD_WIDTH * pixelRatio'), 'share-card capture should output high-resolution width');
-assert_true(str_contains($shareCaptureSource, 'canvasHeight: SHARE_CARD_HEIGHT * pixelRatio'), 'share-card capture should output high-resolution height');
+assert_true(str_contains($shareCaptureSource, 'pixelRatio,'), 'share-card capture should output high-resolution cards through html-to-image pixel ratio');
+assert_true(!str_contains($shareCaptureSource, 'canvasWidth:'), 'share-card capture should not double-size output with canvasWidth');
+assert_true(!str_contains($shareCaptureSource, 'canvasHeight:'), 'share-card capture should not double-size output with canvasHeight');
 assert_true(str_contains($shareCaptureSource, 'waitForShareCardCanvas'), 'share-card capture should wait for the render scene to be ready');
 assert_true(str_contains($shareCaptureSource, 'waitForImages'), 'share-card capture should wait for proxied images before screenshotting');
 assert_true(str_contains($shareRenderPageSource, 'ShareRenderPostPage'), 'share-render page source should expose a post card scene');
@@ -230,5 +233,10 @@ assert_true(str_contains($htaccessSource, 'api/profile-share.php?handle=$1'), 'p
 assert_true(str_contains($htaccessSource, 'REQUEST_URI} ^/api'), 'API exclusion should remain ahead of SPA rewrite');
 assert_true(is_string($apiHtaccessSource), 'API htaccess should be readable');
 assert_true(str_contains($apiHtaccessSource, '^(?:post-share|profile-share|sitemap)\.php$'), 'API htaccess should allow metadata/sitemap scripts to execute instead of rewriting them to index.php');
+assert_true(is_string($nodeAppSource), 'Node app source should be readable');
+assert_true(str_contains($nodeAppSource, 'app.get("/@:handle/posts/:postId"'), 'Node app should serve canonical post share shells for Caddy-routed social previews');
+assert_true(str_contains($nodeAppSource, 'app.get("/@:handle"'), 'Node app should serve canonical profile share shells for Caddy-routed social previews');
+assert_true(is_string($smokeLiveSource), 'live smoke script should be readable');
+assert_true(str_contains($smokeLiveSource, 'check_profile_share_meta "/@thia" "thia"'), 'live smoke should verify canonical profile Open Graph metadata uses generated share cards');
 
 echo "post sharing regression ok\n";

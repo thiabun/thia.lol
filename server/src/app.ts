@@ -1506,6 +1506,48 @@ function sendShareShellResult(result: ShareShellResponse, reply: FastifyReply): 
     .send(result.html);
 }
 
+async function sendPostShareShell(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  input: Record<string, unknown>,
+): Promise<FastifyReply> {
+  if (dependencies.shareShellService === undefined) {
+    return internalError(request, reply, routeName, new Error("Missing share shell service dependency."));
+  }
+
+  try {
+    return sendShareShellResult(
+      await dependencies.shareShellService.postShare(input),
+      reply,
+    );
+  } catch (error) {
+    return internalError(request, reply, routeName, error);
+  }
+}
+
+async function sendProfileShareShell(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  input: Record<string, unknown>,
+): Promise<FastifyReply> {
+  if (dependencies.shareShellService === undefined) {
+    return internalError(request, reply, routeName, new Error("Missing share shell service dependency."));
+  }
+
+  try {
+    return sendShareShellResult(
+      await dependencies.shareShellService.profileShare(input),
+      reply,
+    );
+  } catch (error) {
+    return internalError(request, reply, routeName, error);
+  }
+}
+
 function positiveIntegerParam(value: string): number | null {
   if (!/^[0-9]+$/.test(value)) {
     return null;
@@ -1596,35 +1638,36 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     );
   });
 
-  app.get("/post-share.php", async (request, reply) => {
-    if (dependencies.shareShellService === undefined) {
-      return internalError(request, reply, "share-shell.post", new Error("Missing share shell service dependency."));
-    }
+  const canonicalPostShareHandler = async (request: FastifyRequest, reply: FastifyReply) => {
+    const params = request.params as Record<string, string | undefined>;
 
-    try {
-      return sendShareShellResult(
-        await dependencies.shareShellService.postShare(jsonBodyRecord(request.query)),
-        reply,
-      );
-    } catch (error) {
-      return internalError(request, reply, "share-shell.post", error);
-    }
-  });
+    return sendPostShareShell(request, reply, dependencies, "share-shell.post.canonical", {
+      handle: params.handle ?? "",
+      postId: params.postId ?? "",
+    });
+  };
 
-  app.get("/profile-share.php", async (request, reply) => {
-    if (dependencies.shareShellService === undefined) {
-      return internalError(request, reply, "share-shell.profile", new Error("Missing share shell service dependency."));
-    }
+  app.get("/@:handle/posts/:postId", canonicalPostShareHandler);
+  app.get("/@:handle/posts/:postId/", canonicalPostShareHandler);
 
-    try {
-      return sendShareShellResult(
-        await dependencies.shareShellService.profileShare(jsonBodyRecord(request.query)),
-        reply,
-      );
-    } catch (error) {
-      return internalError(request, reply, "share-shell.profile", error);
-    }
-  });
+  const canonicalProfileShareHandler = async (request: FastifyRequest, reply: FastifyReply) => {
+    const params = request.params as Record<string, string | undefined>;
+
+    return sendProfileShareShell(request, reply, dependencies, "share-shell.profile.canonical", {
+      handle: params.handle ?? "",
+    });
+  };
+
+  app.get("/@:handle", canonicalProfileShareHandler);
+  app.get("/@:handle/", canonicalProfileShareHandler);
+
+  app.get("/post-share.php", async (request, reply) =>
+    sendPostShareShell(request, reply, dependencies, "share-shell.post", jsonBodyRecord(request.query)),
+  );
+
+  app.get("/profile-share.php", async (request, reply) =>
+    sendProfileShareShell(request, reply, dependencies, "share-shell.profile", jsonBodyRecord(request.query)),
+  );
 
   app.post("/setup/thia", async (request, reply) => {
     if (dependencies.opsService === undefined) {

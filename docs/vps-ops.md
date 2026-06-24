@@ -81,6 +81,30 @@ sudo systemctl reload caddy
 Caddy owns HTTPS for `thia.lol` and redirects `www.thia.lol` to the apex.
 The TypeScript API preview is proxied under `/api-next/*`.
 
+Canonical profile and post URLs must be routed to the Node share-shell service
+before the static SPA fallback so social crawlers see profile/post metadata
+instead of the default `index.html` Open Graph tags:
+
+```caddy
+@canonicalPostShare {
+	method GET HEAD
+	path_regexp canonicalPostShare ^/@[A-Za-z0-9_-]{1,40}/posts/[A-Za-z0-9_-]{1,40}/?$
+}
+handle @canonicalPostShare {
+	header X-Thia-API-Runtime node
+	reverse_proxy 127.0.0.1:3100
+}
+
+@canonicalProfileShare {
+	method GET HEAD
+	path_regexp canonicalProfileShare ^/@[A-Za-z0-9_-]{1,40}/?$
+}
+handle @canonicalProfileShare {
+	header X-Thia-API-Runtime node
+	reverse_proxy 127.0.0.1:3100
+}
+```
+
 Selected production read routes are served by the Node API and marked with:
 
 ```text
@@ -144,6 +168,8 @@ GET/HEAD /api/me/integrations/:provider/suggestions
 GET /api/integrations/:provider/callback
 GET/HEAD /api/post-share.php
 GET/HEAD /api/profile-share.php
+GET/HEAD /@:handle
+GET/HEAD /@:handle/posts/:postId
 GET/HEAD /sitemap.xml
 GET/HEAD /api/sitemap.php
 ```

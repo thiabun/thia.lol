@@ -2096,6 +2096,22 @@ describe("Node API integrations and share shell routes", () => {
       method: "GET",
       url: "/profile-share.php?handle=thia",
     });
+    const canonicalPostResponse = await app.inject({
+      method: "GET",
+      url: "/@thia/posts/pc359fe2da759",
+    });
+    const canonicalProfileResponse = await app.inject({
+      method: "GET",
+      url: "/@thia",
+    });
+    const canonicalPostSlashResponse = await app.inject({
+      method: "GET",
+      url: "/@thia/posts/pc359fe2da759/",
+    });
+    const canonicalProfileSlashResponse = await app.inject({
+      method: "GET",
+      url: "/@thia/",
+    });
 
     expect(postResponse.statusCode).toBe(200);
     expect(postResponse.headers["content-type"]).toContain("text/html");
@@ -2103,8 +2119,18 @@ describe("Node API integrations and share shell routes", () => {
     expect(postResponse.body).toContain("og:title");
     expect(profileResponse.statusCode).toBe(200);
     expect(profileResponse.body).toContain("Profile");
-    expect(service.postShare).toHaveBeenCalledWith({ handle: "thia", postId: "pc359fe2da759" });
-    expect(service.profileShare).toHaveBeenCalledWith({ handle: "thia" });
+    expect(canonicalPostResponse.statusCode).toBe(200);
+    expect(canonicalPostResponse.body).toContain("Post");
+    expect(canonicalProfileResponse.statusCode).toBe(200);
+    expect(canonicalProfileResponse.body).toContain("Profile");
+    expect(canonicalPostSlashResponse.statusCode).toBe(200);
+    expect(canonicalProfileSlashResponse.statusCode).toBe(200);
+    expect(service.postShare).toHaveBeenNthCalledWith(1, { handle: "thia", postId: "pc359fe2da759" });
+    expect(service.profileShare).toHaveBeenNthCalledWith(1, { handle: "thia" });
+    expect(service.postShare).toHaveBeenNthCalledWith(2, { handle: "thia", postId: "pc359fe2da759" });
+    expect(service.profileShare).toHaveBeenNthCalledWith(2, { handle: "thia" });
+    expect(service.postShare).toHaveBeenNthCalledWith(3, { handle: "thia", postId: "pc359fe2da759" });
+    expect(service.profileShare).toHaveBeenNthCalledWith(3, { handle: "thia" });
   });
 
   it("serves share shell redirects", async () => {

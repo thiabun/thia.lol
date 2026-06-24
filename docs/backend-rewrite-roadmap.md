@@ -40,6 +40,9 @@ profile/account editor, uploads, chat, admin/moderation, share-card
 image/cache/proxy routes, integrations/OAuth, metadata resolve, push,
 setup/migrations/diagnostics, sitemap, `POST /api/me/profile`, and the legacy
 share HTML shells at `/api/post-share.php` and `/api/profile-share.php`.
+Canonical profile and post URLs (`/@handle` and `/@handle/posts/:postId`) are
+also Node-owned for social-preview HTML and must be matched before the static
+SPA fallback in Caddy.
 
 PHP API files remain deployed only as rollback material. Caddy should route
 unmatched product `/api/*` requests to the Node catch-all with

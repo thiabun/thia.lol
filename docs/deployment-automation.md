@@ -196,6 +196,10 @@ Run after every deploy:
 scripts/smoke-live.sh
 ```
 
+The live smoke checks `/@thia` with a crawler user agent and requires
+profile-specific Open Graph metadata pointing at the generated profile
+share-card, not the default `/brand/thia-og.png` fallback.
+
 Also spot-check:
 
 ```text
