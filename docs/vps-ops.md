@@ -211,10 +211,15 @@ generic auth errors, but do not require CSRF. Safe routing checks should omit
 the cookie or omit the CSRF header and assert the `X-Thia-API-Runtime: node`
 response header.
 
-Profile and post share-card routes, uploads, full chat routes, admin,
-moderation, push, integrations, setup, migrations, diagnostics, and sitemap
-remain on PHP. All other `/api/*` traffic remains on PHP unless explicitly cut
-over later.
+Uploads, full chat routes, admin/moderation, share-card generation/cache,
+push subscriptions/status, setup, migrations, diagnostics, sitemap, and
+`POST /api/me/profile` now have Node preview implementations under
+`/api-next/*`. Production `/api/*` ownership for those routes remains on PHP
+until method-specific Caddy matchers are added and `scripts/check-api-cutover.mjs`
+is expanded for the batch.
+
+Integrations remain PHP-owned until provider OAuth config and callback behavior
+are configured and smoke-tested in Node.
 
 ## Node API Preview
 
@@ -238,6 +243,8 @@ curl --fail-with-body https://thia.lol/api-next/feed/home
 curl --fail-with-body https://thia.lol/api-next/feed/discover
 curl --fail-with-body https://thia.lol/api-next/rooms/general/posts
 curl --fail-with-body https://thia.lol/api-next/profiles/thia/posts
+curl --head https://thia.lol/api-next/posts/pc359fe2da759/share-card.png
+curl --fail-with-body https://thia.lol/api-next/sitemap.xml
 curl --fail-with-body --cookie 'thia_session=<redacted>' https://thia.lol/api-next/auth/me
 curl --fail-with-body --cookie 'thia_session=<redacted>' https://thia.lol/api-next/me/settings
 curl --fail-with-body --cookie 'thia_session=<redacted>' https://thia.lol/api-next/me/onboarding
@@ -330,10 +337,12 @@ Node logs are structured and should include route name, method, sanitized URL,
 status, request id, and sanitized error metadata. They must not contain cookies,
 authorization headers, session tokens, raw SQL, stack traces, or config values.
 
-PHP remains production owner for uploads, full chat routes, admin, moderation,
-share-card generation, push, integrations, setup, migrations, diagnostics,
-sitemap, and all remaining product routes until the relevant method-specific
-Caddy route is cut over and `scripts/check-api-cutover.mjs` enforces it.
+PHP remains production owner for uploads, full chat routes, admin/moderation,
+share-card generation/cache, push, setup, migrations, diagnostics, sitemap,
+integrations, and any other non-cutover route until the relevant
+method-specific Caddy route is cut over and `scripts/check-api-cutover.mjs`
+enforces it. Node preview coverage exists for every item in that sentence
+except integrations.
 
 Cutover verification:
 

@@ -6,6 +6,7 @@ import Fastify, {
   type FastifyRequest,
   type FastifyServerOptions,
 } from "fastify";
+import multipart from "@fastify/multipart";
 import { z } from "zod";
 
 import {
@@ -40,6 +41,16 @@ import {
   type RoomDeletePayload,
 } from "./content.js";
 import {
+  ChatRouteError,
+  ChatStorageNotReadyError,
+  type ChatConversationPayload,
+  type ChatMessagesPayload,
+  type ChatMessagePayload,
+  type ChatReadPayload,
+  type ChatRepository,
+  type ChatUserPayload,
+} from "./chat.js";
+import {
   EditorRouteError,
   EditorStorageNotReadyError,
   type AccountDeletionSchedulePayload,
@@ -49,6 +60,20 @@ import {
   type ProfileCanvasDraftState,
   type ProfileCanvasUpdatePayload,
 } from "./editor.js";
+import {
+  ModerationRouteError,
+  type ModerationReportPayload,
+  type ModerationRepository,
+  type ModerationUserPayload,
+} from "./moderation.js";
+import {
+  OpsRouteError,
+  type AuthDiagnosticsPayload,
+  type MigrationRunPayload,
+  type MigrationStatusPayload,
+  type OpsService,
+  type SetupPayload,
+} from "./ops.js";
 import {
   normalizePostIdentifier,
   type DiscoverFeedPayload,
@@ -72,6 +97,12 @@ import {
   type SettingsPayload,
 } from "./private.js";
 import {
+  PushRouteError,
+  type PushRepository,
+  type PushStatusPayload,
+  type PushTestPayload,
+} from "./push.js";
+import {
   normalizeProfileHandle,
   type FollowUserCardPayload,
   type PostPayload,
@@ -89,7 +120,21 @@ import {
 } from "./rooms.js";
 import { type SearchPayload, type SearchRepository } from "./search.js";
 import type { RequestSession, SessionsRepository } from "./sessions.js";
+import {
+  ShareCardRouteError,
+  type ShareCardCachePayload,
+  type ShareCardService,
+} from "./share-cards.js";
+import type { SitemapService } from "./sitemap.js";
 import type { PublicStatsPayload, StatsRepository } from "./stats.js";
+import {
+  audioUploadMaxBytes,
+  imageUploadMaxBytes,
+  UploadRouteError,
+  type UploadPayload,
+  type UploadService,
+  videoUploadMaxBytes,
+} from "./uploads.js";
 
 const healthQuerySchema = z.object({
   db: z.union([z.string(), z.array(z.string())]).optional(),
@@ -134,6 +179,18 @@ const followRequestDecisionParamsSchema = z.object({
   id: z.string(),
 });
 
+const uploadParamsSchema = z.object({
+  kind: z.string(),
+});
+
+const chatConversationParamsSchema = z.object({
+  id: z.string(),
+});
+
+const adminEntityParamsSchema = z.object({
+  id: z.string(),
+});
+
 const privatePostsQuerySchema = z
   .object({
     kind: z.union([z.string(), z.array(z.string())]).optional(),
@@ -160,16 +217,23 @@ export const nodeApiLogRedactPaths = [
 export interface AppDependencies {
   authRepository?: AuthRepository;
   badgesRepository?: BadgesRepository;
+  chatRepository?: ChatRepository;
   checkDatabase?: () => Promise<void>;
   contentMutationsRepository?: ContentMutationsRepository;
   editorRepository?: EditorRepository;
+  moderationRepository?: ModerationRepository;
+  opsService?: OpsService;
   profilesRepository?: ProfilesRepository;
   postsRepository?: PostsRepository;
   privateReadsRepository?: PrivateReadsRepository;
+  pushRepository?: PushRepository;
   roomsRepository?: RoomsRepository;
   searchRepository?: SearchRepository;
   sessionsRepository?: SessionsRepository;
+  shareCardService?: ShareCardService;
+  sitemapService?: SitemapService;
   statsRepository?: StatsRepository;
+  uploadService?: UploadService;
   publicBaseUrl?: string;
   sessionCookieName?: string;
   sessionCookieDomain?: string | null;
@@ -524,6 +588,89 @@ async function withAuthenticatedMutationRoute<T>(
   }
 }
 
+async function withAuthenticatedPushRoute<T>(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  lookup: (repository: PushRepository, session: RequestSession) => Promise<T> | T,
+) {
+  if (dependencies.sessionsRepository === undefined || dependencies.pushRepository === undefined) {
+    return internalError(request, reply, routeName, new Error("Missing authenticated push route dependency."));
+  }
+
+  try {
+    const session = await dependencies.sessionsRepository.currentSession(request.headers.cookie);
+
+    if (session === null) {
+      return reply.status(401).send(errorPayload("Unauthenticated."));
+    }
+
+    const data = await lookup(dependencies.pushRepository, session);
+
+    return reply.send(successPayload<T>(data));
+  } catch (error) {
+    if (error instanceof PushRouteError) {
+      if (error.statusCode >= 500) {
+        return sendRouteError(request, reply, routeName, error.statusCode, errorPayload(error.message), error);
+      }
+
+      return reply.status(error.statusCode).send(errorPayload(error.message));
+    }
+
+    return internalError(request, reply, routeName, error);
+  }
+}
+
+async function withAuthenticatedPushMutationRoute<T>(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  lookup: (repository: PushRepository, session: RequestSession, body: Record<string, unknown>) => Promise<T> | T,
+) {
+  if (
+    dependencies.sessionsRepository === undefined ||
+    dependencies.privateReadsRepository === undefined ||
+    dependencies.pushRepository === undefined
+  ) {
+    return internalError(request, reply, routeName, new Error("Missing authenticated push mutation dependency."));
+  }
+
+  try {
+    const session = await dependencies.sessionsRepository.currentSession(request.headers.cookie);
+
+    if (session === null) {
+      return reply.status(401).send(errorPayload("Unauthenticated."));
+    }
+
+    const providedCsrfToken = csrfTokenFromRequest(request);
+
+    if (providedCsrfToken === "") {
+      return reply.status(403).send(errorPayload("CSRF token is required."));
+    }
+
+    if (!safeStringEquals(dependencies.privateReadsRepository.csrfTokenForSession(session), providedCsrfToken)) {
+      return reply.status(403).send(errorPayload("Invalid CSRF token."));
+    }
+
+    const body = jsonBodyRecord(request.body);
+    const data = await lookup(dependencies.pushRepository, session, body);
+
+    return reply.send(successPayload<T>(data));
+  } catch (error) {
+    if (error instanceof PushRouteError || error instanceof PrivateRouteError) {
+      if (error.statusCode >= 500) {
+        return sendRouteError(request, reply, routeName, error.statusCode, errorPayload(error.message), error);
+      }
+
+      return reply.status(error.statusCode).send(errorPayload(error.message));
+    }
+
+    return internalError(request, reply, routeName, error);
+  }
+}
+
 async function withAuthenticatedContentMutationRoute<T>(
   request: FastifyRequest,
   reply: FastifyReply,
@@ -850,6 +997,359 @@ async function withProtectedAuthRoute<T>(
   }
 }
 
+async function withAuthenticatedUploadRoute(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  kind: string,
+) {
+  if (
+    dependencies.sessionsRepository === undefined ||
+    dependencies.privateReadsRepository === undefined ||
+    dependencies.uploadService === undefined
+  ) {
+    return internalError(request, reply, routeName, new Error("Missing authenticated upload dependency."));
+  }
+
+  try {
+    const session = await dependencies.sessionsRepository.currentSession(request.headers.cookie);
+
+    if (session === null) {
+      return reply.status(401).send(errorPayload("Unauthenticated."));
+    }
+
+    const providedCsrfToken = csrfTokenFromRequest(request);
+
+    if (providedCsrfToken === "") {
+      return reply.status(403).send(errorPayload("CSRF token is required."));
+    }
+
+    if (!safeStringEquals(dependencies.privateReadsRepository.csrfTokenForSession(session), providedCsrfToken)) {
+      return reply.status(403).send(errorPayload("Invalid CSRF token."));
+    }
+
+    const file = await request.file({
+      limits: {
+        fileSize: uploadMaxBytes(kind),
+        files: 1,
+      },
+    });
+    const data = await dependencies.uploadService.store(kind, file);
+
+    return reply.status(201).send(successPayload<UploadPayload>(data));
+  } catch (error) {
+    if (error instanceof UploadRouteError) {
+      if (error.statusCode >= 500) {
+        return sendRouteError(request, reply, routeName, error.statusCode, errorPayload(error.message), error);
+      }
+
+      return reply.status(error.statusCode).send(errorPayload(error.message));
+    }
+
+    if (multipartLimitError(error)) {
+      return reply.status(413).send(errorPayload(`${uploadTitle(kind)} must be ${uploadLimitLabel(kind)} or smaller.`));
+    }
+
+    return internalError(request, reply, routeName, error);
+  }
+}
+
+function uploadMaxBytes(kind: string): number {
+  if (kind === "image") {
+    return imageUploadMaxBytes;
+  }
+
+  if (kind === "video") {
+    return videoUploadMaxBytes;
+  }
+
+  return audioUploadMaxBytes;
+}
+
+function uploadTitle(kind: string): string {
+  if (kind === "video") {
+    return "Video";
+  }
+
+  if (kind === "audio") {
+    return "Audio";
+  }
+
+  return "Image";
+}
+
+function uploadLimitLabel(kind: string): string {
+  if (kind === "video") {
+    return "30 MB";
+  }
+
+  if (kind === "audio") {
+    return "20 MB";
+  }
+
+  return "10 MB";
+}
+
+function multipartLimitError(error: unknown): boolean {
+  if (error === null || typeof error !== "object") {
+    return false;
+  }
+
+  const record = error as Record<string, unknown>;
+
+  return record.code === "FST_REQ_FILE_TOO_LARGE" || record.name === "RequestFileTooLargeError";
+}
+
+function singleHeaderValue(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) {
+    return value[0] ?? "";
+  }
+
+  return value ?? "";
+}
+
+async function withAuthenticatedChatRoute<T>(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  lookup: (repository: ChatRepository, session: RequestSession) => Promise<T> | T,
+) {
+  if (dependencies.sessionsRepository === undefined || dependencies.chatRepository === undefined) {
+    return internalError(request, reply, routeName, new Error("Missing authenticated chat route dependency."));
+  }
+
+  try {
+    const session = await dependencies.sessionsRepository.currentSession(request.headers.cookie);
+
+    if (session === null) {
+      return reply.status(401).send(errorPayload("Unauthenticated."));
+    }
+
+    const data = await lookup(dependencies.chatRepository, session);
+
+    return reply.send(successPayload<T>(data));
+  } catch (error) {
+    if (error instanceof ChatRouteError) {
+      return reply.status(error.statusCode).send(errorPayload(error.message));
+    }
+
+    if (error instanceof ChatStorageNotReadyError) {
+      return sendRouteError(request, reply, routeName, 503, errorPayload(error.message), error);
+    }
+
+    return internalError(request, reply, routeName, error);
+  }
+}
+
+async function withAuthenticatedChatMutationRoute<T>(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  lookup: (repository: ChatRepository, session: RequestSession, body: Record<string, unknown>) => Promise<T> | T,
+  statusCode = 200,
+) {
+  if (
+    dependencies.sessionsRepository === undefined ||
+    dependencies.privateReadsRepository === undefined ||
+    dependencies.chatRepository === undefined
+  ) {
+    return internalError(request, reply, routeName, new Error("Missing authenticated chat mutation dependency."));
+  }
+
+  try {
+    const session = await dependencies.sessionsRepository.currentSession(request.headers.cookie);
+
+    if (session === null) {
+      return reply.status(401).send(errorPayload("Unauthenticated."));
+    }
+
+    const providedCsrfToken = csrfTokenFromRequest(request);
+
+    if (providedCsrfToken === "") {
+      return reply.status(403).send(errorPayload("CSRF token is required."));
+    }
+
+    if (!safeStringEquals(dependencies.privateReadsRepository.csrfTokenForSession(session), providedCsrfToken)) {
+      return reply.status(403).send(errorPayload("Invalid CSRF token."));
+    }
+
+    const body = jsonBodyRecord(request.body);
+    const data = await lookup(dependencies.chatRepository, session, body);
+
+    return reply.status(statusCode).send(successPayload<T>(data));
+  } catch (error) {
+    if (error instanceof ChatRouteError || error instanceof PrivateRouteError) {
+      return reply.status(error.statusCode).send(errorPayload(error.message));
+    }
+
+    if (error instanceof ChatStorageNotReadyError) {
+      return sendRouteError(request, reply, routeName, 503, errorPayload(error.message), error);
+    }
+
+    return internalError(request, reply, routeName, error);
+  }
+}
+
+async function withAuthenticatedModerationRoute<T>(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  lookup: (repository: ModerationRepository, session: RequestSession) => Promise<T> | T,
+) {
+  if (dependencies.sessionsRepository === undefined || dependencies.moderationRepository === undefined) {
+    return internalError(request, reply, routeName, new Error("Missing moderation route dependency."));
+  }
+
+  try {
+    const session = await dependencies.sessionsRepository.currentSession(request.headers.cookie);
+
+    if (session === null) {
+      return reply.status(401).send(errorPayload("Unauthenticated."));
+    }
+
+    const data = await lookup(dependencies.moderationRepository, session);
+
+    return reply.send(successPayload<T>(data));
+  } catch (error) {
+    if (error instanceof ModerationRouteError) {
+      return reply.status(error.statusCode).send(errorPayload(error.message));
+    }
+
+    return internalError(request, reply, routeName, error);
+  }
+}
+
+async function withAuthenticatedModerationMutationRoute<T>(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  lookup: (repository: ModerationRepository, session: RequestSession, body: Record<string, unknown>) => Promise<T> | T,
+  statusCode = 200,
+) {
+  if (
+    dependencies.sessionsRepository === undefined ||
+    dependencies.privateReadsRepository === undefined ||
+    dependencies.moderationRepository === undefined
+  ) {
+    return internalError(request, reply, routeName, new Error("Missing moderation mutation dependency."));
+  }
+
+  try {
+    const session = await dependencies.sessionsRepository.currentSession(request.headers.cookie);
+
+    if (session === null) {
+      return reply.status(401).send(errorPayload("Unauthenticated."));
+    }
+
+    const providedCsrfToken = csrfTokenFromRequest(request);
+
+    if (providedCsrfToken === "") {
+      return reply.status(403).send(errorPayload("CSRF token is required."));
+    }
+
+    if (!safeStringEquals(dependencies.privateReadsRepository.csrfTokenForSession(session), providedCsrfToken)) {
+      return reply.status(403).send(errorPayload("Invalid CSRF token."));
+    }
+
+    const body = jsonBodyRecord(request.body);
+    const data = await lookup(dependencies.moderationRepository, session, body);
+
+    return reply.status(statusCode).send(successPayload<T>(data));
+  } catch (error) {
+    if (error instanceof ModerationRouteError || error instanceof PrivateRouteError) {
+      return reply.status(error.statusCode).send(errorPayload(error.message));
+    }
+
+    return internalError(request, reply, routeName, error);
+  }
+}
+
+async function withShareCardCacheRoute(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  cache: (service: ShareCardService, session: RequestSession) => Promise<ShareCardCachePayload>,
+) {
+  if (
+    dependencies.sessionsRepository === undefined ||
+    dependencies.privateReadsRepository === undefined ||
+    dependencies.shareCardService === undefined
+  ) {
+    return internalError(request, reply, routeName, new Error("Missing share card cache dependency."));
+  }
+
+  try {
+    const session = await dependencies.sessionsRepository.currentSession(request.headers.cookie);
+
+    if (session === null) {
+      return reply.status(401).send(errorPayload("Unauthenticated."));
+    }
+
+    const providedCsrfToken = csrfTokenFromRequest(request);
+
+    if (providedCsrfToken === "") {
+      return reply.status(403).send(errorPayload("CSRF token is required."));
+    }
+
+    if (!safeStringEquals(dependencies.privateReadsRepository.csrfTokenForSession(session), providedCsrfToken)) {
+      return reply.status(403).send(errorPayload("Invalid CSRF token."));
+    }
+
+    const data = await cache(dependencies.shareCardService, session);
+
+    return reply.status(201).send(successPayload(data));
+  } catch (error) {
+    if (error instanceof ShareCardRouteError) {
+      if (error.statusCode >= 500) {
+        return sendRouteError(request, reply, routeName, error.statusCode, errorPayload(error.message), error);
+      }
+
+      return reply.status(error.statusCode).send(errorPayload(error.message));
+    }
+
+    return internalError(request, reply, routeName, error);
+  }
+}
+
+async function sendShareCardImage(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  image: (service: ShareCardService) => Promise<{ body: Buffer; contentType: string; cacheControl: string } | null>,
+) {
+  if (dependencies.shareCardService === undefined) {
+    return internalError(request, reply, routeName, new Error("Missing share card service dependency."));
+  }
+
+  try {
+    const result = await image(dependencies.shareCardService);
+
+    if (result === null) {
+      return reply.status(404).send("");
+    }
+
+    return reply
+      .type(result.contentType)
+      .header("Cache-Control", result.cacheControl)
+      .header("X-Content-Type-Options", "nosniff")
+      .header("Content-Length", String(result.body.byteLength))
+      .send(request.method === "HEAD" ? undefined : result.body);
+  } catch (error) {
+    if (error instanceof ShareCardRouteError) {
+      return reply.status(error.statusCode).send(error.statusCode === 404 ? "" : errorPayload(error.message));
+    }
+
+    return internalError(request, reply, routeName, error);
+  }
+}
+
 function authRequestContext(request: FastifyRequest, dependencies: AppDependencies): AuthRequestContext {
   const forwardedFor = request.headers["x-forwarded-for"];
   const forwardedProto = request.headers["x-forwarded-proto"];
@@ -908,6 +1408,13 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     logger: dependencies.logger ?? false,
   });
 
+  void app.register(multipart, {
+    limits: {
+      files: 1,
+      fileSize: 32 * 1024 * 1024,
+    },
+  });
+
   app.addHook("onRequest", async (request, reply) => {
     reply.header(requestIdHeader, request.id);
   });
@@ -940,6 +1447,158 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     }
 
     return reply.send(payload);
+  });
+
+  const sitemapHandler = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (dependencies.sitemapService === undefined) {
+      return internalError(request, reply, "sitemap", new Error("Missing sitemap service dependency."));
+    }
+
+    try {
+      return reply
+        .type("application/xml; charset=utf-8")
+        .header("X-Content-Type-Options", "nosniff")
+        .send(await dependencies.sitemapService.xml());
+    } catch (error) {
+      return internalError(request, reply, "sitemap", error);
+    }
+  };
+
+  app.get("/sitemap.xml", sitemapHandler);
+  app.get("/sitemap", sitemapHandler);
+
+  app.get("/share-card/image", async (request, reply) => {
+    const query = request.query;
+    const url = query !== null && typeof query === "object" && !Array.isArray(query)
+      ? (query as Record<string, unknown>).url
+      : "";
+
+    return sendShareCardImage(
+      request,
+      reply,
+      dependencies,
+      "share-card.image",
+      (service) => service.proxyImage(typeof url === "string" ? url : ""),
+    );
+  });
+
+  app.post("/setup/thia", async (request, reply) => {
+    if (dependencies.opsService === undefined) {
+      return internalError(request, reply, "setup.thia", new Error("Missing ops service dependency."));
+    }
+
+    try {
+      const data = await dependencies.opsService.activateThia(
+        authJsonBodyRecord(request.body),
+        singleHeaderValue(request.headers["x-setup-token"]),
+      );
+
+      return reply.send(successPayload<SetupPayload>(data));
+    } catch (error) {
+      if (error instanceof OpsRouteError) {
+        return reply.status(error.statusCode).send(errorPayload(error.message));
+      }
+
+      return internalError(request, reply, "setup.thia", error);
+    }
+  });
+
+  app.get("/admin/auth/diagnostics", async (request, reply) => {
+    if (dependencies.opsService === undefined) {
+      return internalError(request, reply, "admin.auth.diagnostics", new Error("Missing ops service dependency."));
+    }
+
+    try {
+      const data = dependencies.opsService.authDiagnostics(
+        request.headers.cookie,
+        request.hostname,
+        singleHeaderValue(request.headers["x-migration-token"]),
+      );
+
+      return reply.send(successPayload<AuthDiagnosticsPayload>(data));
+    } catch (error) {
+      if (error instanceof OpsRouteError) {
+        return reply.status(error.statusCode).send(errorPayload(error.message));
+      }
+
+      return internalError(request, reply, "admin.auth.diagnostics", error);
+    }
+  });
+
+  app.get("/admin/auth/session-trace", async (request, reply) => {
+    if (dependencies.opsService === undefined) {
+      return internalError(request, reply, "admin.auth.session-trace", new Error("Missing ops service dependency."));
+    }
+
+    try {
+      const data = dependencies.opsService.authDiagnostics(
+        request.headers.cookie,
+        request.hostname,
+        singleHeaderValue(request.headers["x-migration-token"]),
+      );
+
+      return reply.send(successPayload<AuthDiagnosticsPayload>(data));
+    } catch (error) {
+      if (error instanceof OpsRouteError) {
+        return reply.status(error.statusCode).send(errorPayload(error.message));
+      }
+
+      return internalError(request, reply, "admin.auth.session-trace", error);
+    }
+  });
+
+  app.get("/admin/migrations/status", async (request, reply) => {
+    if (dependencies.opsService === undefined || dependencies.sessionsRepository === undefined) {
+      return internalError(request, reply, "admin.migrations.status", new Error("Missing migrations dependency."));
+    }
+
+    try {
+      const session = await dependencies.sessionsRepository.currentSession(request.headers.cookie);
+
+      if (session === null) {
+        return reply.status(401).send(errorPayload("Unauthenticated."));
+      }
+
+      const data = await dependencies.opsService.migrationStatus(
+        session,
+        singleHeaderValue(request.headers["x-migration-token"]),
+      );
+
+      return reply.send(successPayload<MigrationStatusPayload>(data));
+    } catch (error) {
+      if (error instanceof OpsRouteError) {
+        return reply.status(error.statusCode).send(errorPayload(error.message));
+      }
+
+      return internalError(request, reply, "admin.migrations.status", error);
+    }
+  });
+
+  app.post("/admin/migrations/run", async (request, reply) => {
+    if (dependencies.opsService === undefined || dependencies.sessionsRepository === undefined) {
+      return internalError(request, reply, "admin.migrations.run", new Error("Missing migrations dependency."));
+    }
+
+    try {
+      const session = await dependencies.sessionsRepository.currentSession(request.headers.cookie);
+
+      if (session === null) {
+        return reply.status(401).send(errorPayload("Unauthenticated."));
+      }
+
+      const data = await dependencies.opsService.runMigrations(
+        session,
+        singleHeaderValue(request.headers["x-migration-token"]),
+      );
+
+      return reply.send(successPayload<MigrationRunPayload>(data));
+    } catch (error) {
+      if (error instanceof OpsRouteError) {
+        return reply.status(error.statusCode).send(errorPayload(error.message));
+      }
+
+      return internalError(request, reply, "admin.migrations.run", error);
+    }
   });
 
   app.get("/auth/me", async (request, reply) =>
@@ -1098,6 +1757,46 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     ),
   );
 
+  app.get("/me/push", async (request, reply) =>
+    withAuthenticatedPushRoute<PushStatusPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.push",
+      (repository, session) => repository.status(session.userId),
+    ),
+  );
+
+  app.post("/me/push/subscriptions", async (request, reply) =>
+    withAuthenticatedPushMutationRoute<PushStatusPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.push.subscriptions.create",
+      (repository, session, body) => repository.saveSubscription(session.userId, jsonBodyRequiredObject(body, request.body)),
+    ),
+  );
+
+  app.delete("/me/push/subscriptions", async (request, reply) =>
+    withAuthenticatedPushMutationRoute<PushStatusPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.push.subscriptions.delete",
+      (repository, session, body) => repository.disableSubscription(session.userId, jsonBodyRequiredObject(body, request.body)),
+    ),
+  );
+
+  app.post("/me/push/test", async (request, reply) =>
+    withAuthenticatedPushMutationRoute<PushTestPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.push.test",
+      (repository, session) => repository.testSend(session.userId),
+    ),
+  );
+
   app.get("/me/follow-requests", async (request, reply) =>
     withAuthenticatedPrivateRoute<FollowRequestPayload[]>(
       request,
@@ -1163,6 +1862,16 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
   );
 
   app.patch("/me/profile", async (request, reply) =>
+    withAuthenticatedEditorMutationRoute<ProfilePayload>(
+      request,
+      reply,
+      dependencies,
+      "me.profile.update",
+      (repository, session, body) => repository.updateProfile(session, jsonBodyRequiredObject(body, request.body)),
+    ),
+  );
+
+  app.post("/me/profile", async (request, reply) =>
     withAuthenticatedEditorMutationRoute<ProfilePayload>(
       request,
       reply,
@@ -1374,6 +2083,199 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       (repository, session) => repository.cancelAccountDeletion(session),
     ),
   );
+
+  app.post("/uploads/:kind", async (request, reply) => {
+    const parsedParams = uploadParamsSchema.safeParse(request.params);
+    const kind = parsedParams.success ? parsedParams.data.kind : "";
+
+    if (!["image", "video", "audio"].includes(kind)) {
+      return reply.status(404).send(errorPayload("Not found."));
+    }
+
+    return withAuthenticatedUploadRoute(request, reply, dependencies, `uploads.${kind}.create`, kind);
+  });
+
+  app.get("/chat/conversations", async (request, reply) =>
+    withAuthenticatedChatRoute<ChatConversationPayload[]>(
+      request,
+      reply,
+      dependencies,
+      "chat.conversations",
+      (repository, session) => repository.listConversations(session.userId),
+    ),
+  );
+
+  app.post("/chat/conversations", async (request, reply) =>
+    withAuthenticatedChatMutationRoute<ChatConversationPayload>(
+      request,
+      reply,
+      dependencies,
+      "chat.conversations.create",
+      (repository, session, body) => repository.createConversation(session, jsonBodyRequiredObject(body, request.body)),
+      201,
+    ),
+  );
+
+  app.get("/chat/moots", async (request, reply) =>
+    withAuthenticatedChatRoute<ChatUserPayload[]>(
+      request,
+      reply,
+      dependencies,
+      "chat.moots",
+      (repository, session) => repository.listMoots(session.userId),
+    ),
+  );
+
+  app.get("/chat/conversations/:id/messages", async (request, reply) => {
+    const parsedParams = chatConversationParamsSchema.safeParse(request.params);
+    const conversationId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (conversationId === null) {
+      return reply.status(404).send(errorPayload("Conversation not found."));
+    }
+
+    return withAuthenticatedChatRoute<ChatMessagesPayload>(
+      request,
+      reply,
+      dependencies,
+      "chat.messages",
+      (repository, session) => repository.listMessages(session.userId, conversationId),
+    );
+  });
+
+  app.post("/chat/conversations/:id/messages", async (request, reply) => {
+    const parsedParams = chatConversationParamsSchema.safeParse(request.params);
+    const conversationId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (conversationId === null) {
+      return reply.status(404).send(errorPayload("Conversation not found."));
+    }
+
+    return withAuthenticatedChatMutationRoute<ChatMessagePayload>(
+      request,
+      reply,
+      dependencies,
+      "chat.messages.create",
+      (repository, session, body) => repository.createMessage(session, conversationId, jsonBodyRequiredObject(body, request.body)),
+      201,
+    );
+  });
+
+  app.post("/chat/conversations/:id/read", async (request, reply) => {
+    const parsedParams = chatConversationParamsSchema.safeParse(request.params);
+    const conversationId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (conversationId === null) {
+      return reply.status(404).send(errorPayload("Conversation not found."));
+    }
+
+    return withAuthenticatedChatMutationRoute<ChatReadPayload>(
+      request,
+      reply,
+      dependencies,
+      "chat.conversations.read",
+      (repository, session) => repository.markConversationRead(session.userId, conversationId),
+    );
+  });
+
+  app.post("/reports", async (request, reply) =>
+    withAuthenticatedModerationMutationRoute<ModerationReportPayload>(
+      request,
+      reply,
+      dependencies,
+      "reports.create",
+      (repository, session, body) => repository.createReport(session, jsonBodyRequiredObject(body, request.body)),
+      201,
+    ),
+  );
+
+  app.get("/admin/reports", async (request, reply) =>
+    withAuthenticatedModerationRoute<ModerationReportPayload[]>(
+      request,
+      reply,
+      dependencies,
+      "admin.reports",
+      (repository, session) => repository.listAdminReports(session),
+    ),
+  );
+
+  app.get("/admin/rooms", async (request, reply) =>
+    withAuthenticatedModerationRoute<RoomPayload[]>(
+      request,
+      reply,
+      dependencies,
+      "admin.rooms",
+      (repository, session) => repository.listAdminRooms(session),
+    ),
+  );
+
+  app.post("/admin/posts/:id/hide", async (request, reply) => {
+    const parsedParams = adminEntityParamsSchema.safeParse(request.params);
+    const postId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (postId === null) {
+      return reply.status(404).send(errorPayload("Post not found."));
+    }
+
+    return withAuthenticatedModerationMutationRoute<{ id: number; status: "hidden" }>(
+      request,
+      reply,
+      dependencies,
+      "admin.posts.hide",
+      (repository, session, body) => repository.hidePost(session, postId, jsonBodyRequiredObject(body, request.body)),
+    );
+  });
+
+  app.post("/admin/posts/:id/remove", async (request, reply) => {
+    const parsedParams = adminEntityParamsSchema.safeParse(request.params);
+    const postId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (postId === null) {
+      return reply.status(404).send(errorPayload("Post not found."));
+    }
+
+    return withAuthenticatedModerationMutationRoute<{ id: number; status: "removed" }>(
+      request,
+      reply,
+      dependencies,
+      "admin.posts.remove",
+      (repository, session, body) => repository.removePost(session, postId, jsonBodyRequiredObject(body, request.body)),
+    );
+  });
+
+  app.post("/admin/users/:id/suspend", async (request, reply) => {
+    const parsedParams = adminEntityParamsSchema.safeParse(request.params);
+    const userId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (userId === null) {
+      return reply.status(404).send(errorPayload("User not found."));
+    }
+
+    return withAuthenticatedModerationMutationRoute<ModerationUserPayload>(
+      request,
+      reply,
+      dependencies,
+      "admin.users.suspend",
+      (repository, session, body) => repository.suspendUser(session, userId, jsonBodyRequiredObject(body, request.body)),
+    );
+  });
+
+  app.post("/admin/reports/:id/resolve", async (request, reply) => {
+    const parsedParams = adminEntityParamsSchema.safeParse(request.params);
+    const reportId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (reportId === null) {
+      return reply.status(404).send(errorPayload("Report not found."));
+    }
+
+    return withAuthenticatedModerationMutationRoute<ModerationReportPayload>(
+      request,
+      reply,
+      dependencies,
+      "admin.reports.resolve",
+      (repository, session, body) => repository.resolveReport(session, reportId, jsonBodyRequiredObject(body, request.body)),
+    );
+  });
 
   app.get("/notifications", async (request, reply) =>
     withAuthenticatedPrivateRoute<NotificationsPayload>(
@@ -1913,6 +2815,42 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     );
   });
 
+  app.get("/posts/:identifier/share-card.png", async (request, reply) => {
+    const parsedParams = postIdentifierParamsSchema.safeParse(request.params);
+    const identifier = parsedParams.success ? parsedParams.data.identifier : "";
+
+    if (normalizePostIdentifier(identifier) === null) {
+      return reply.status(404).send("");
+    }
+
+    const viewerUserId = await currentViewerUserId(request, dependencies.sessionsRepository);
+
+    return sendShareCardImage(
+      request,
+      reply,
+      dependencies,
+      "posts.share-card",
+      (service) => service.postCard(identifier, viewerUserId),
+    );
+  });
+
+  app.post("/posts/:identifier/share-card-cache", async (request, reply) => {
+    const parsedParams = postIdentifierParamsSchema.safeParse(request.params);
+    const identifier = parsedParams.success ? parsedParams.data.identifier : "";
+
+    if (normalizePostIdentifier(identifier) === null) {
+      return reply.status(404).send(errorPayload("Post not found."));
+    }
+
+    return withShareCardCacheRoute(
+      request,
+      reply,
+      dependencies,
+      "posts.share-card-cache",
+      async (service, session) => service.cachePostCard(identifier, session, await request.file()),
+    );
+  });
+
   app.get("/posts/:identifier", async (request, reply) => {
     if (dependencies.postsRepository === undefined) {
       return internalError(request, reply, "posts.show", new Error("Missing posts repository dependency."));
@@ -2197,6 +3135,40 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       dependencies,
       "profiles.follower.delete",
       (repository, session) => repository.removeFollower(normalizedHandle, session.userId),
+    );
+  });
+
+  app.get("/profiles/:handle/share-card.png", async (request, reply) => {
+    const parsedParams = profileParamsSchema.safeParse(request.params);
+    const normalizedHandle = parsedParams.success ? normalizeProfileHandle(parsedParams.data.handle) : null;
+
+    if (normalizedHandle === null) {
+      return reply.status(404).send("");
+    }
+
+    return sendShareCardImage(
+      request,
+      reply,
+      dependencies,
+      "profiles.share-card",
+      (service) => service.profileCard(normalizedHandle),
+    );
+  });
+
+  app.post("/profiles/:handle/share-card-cache", async (request, reply) => {
+    const parsedParams = profileParamsSchema.safeParse(request.params);
+    const normalizedHandle = parsedParams.success ? normalizeProfileHandle(parsedParams.data.handle) : null;
+
+    if (normalizedHandle === null) {
+      return reply.status(404).send(errorPayload("Profile not found."));
+    }
+
+    return withShareCardCacheRoute(
+      request,
+      reply,
+      dependencies,
+      "profiles.share-card-cache",
+      async (service, session) => service.cacheProfileCard(normalizedHandle, session, await request.file()),
     );
   });
 

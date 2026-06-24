@@ -137,6 +137,23 @@ check_json_ok_method() {
   echo "OK $method $path returned HTTP 200 and JSON ok:true"
 }
 
+check_status() {
+  local path="$1"
+  local expected_status="$2"
+  local body_file="$tmp_dir/$(printf '%s' "$path-$expected_status-plain" | tr -c 'A-Za-z0-9' '_')"
+  local status
+  status="$(curl --location --silent --show-error --output "$body_file" --write-out '%{http_code}' --max-time 20 "$BASE_URL$path")"
+
+  if [[ "$status" != "$expected_status" ]]; then
+    echo "Expected HTTP $expected_status for $path, got $status" >&2
+    echo "Response body:" >&2
+    sed -n '1,20p' "$body_file" >&2
+    exit 1
+  fi
+
+  echo "OK $path returned HTTP $expected_status"
+}
+
 check_json_ok "/api-next/health"
 check_json_ok "/api-next/health?db=1"
 check_json_ok "/api-next/rooms"
@@ -158,6 +175,9 @@ check_json_ok "/api-next/rooms/general/posts"
 check_json_ok "/api-next/profiles/thia/posts"
 check_json_ok "/api-next/profiles/thia/replies"
 check_json_ok "/api-next/profiles/thia/reblogs"
+check_status "/api-next/sitemap.xml" "200"
+check_status "/api-next/posts/pc359fe2da759/share-card.png" "200"
+check_status "/api-next/profiles/thia/share-card.png" "200"
 
 if [[ -n "$COOKIE_HEADER" ]]; then
   check_json_ok "/api-next/auth/me"
@@ -167,6 +187,7 @@ if [[ -n "$COOKIE_HEADER" ]]; then
   check_json_ok "/api-next/me/posts"
   check_json_ok "/api-next/me/profile/modules"
   check_json_ok "/api-next/me/profile/canvas-draft"
+  check_json_ok "/api-next/me/push"
   check_json_ok "/api-next/notifications"
   check_json_status_method "POST" "/api-next/notifications/read" "403"
   check_json_status_method "POST" "/api-next/notifications/read-all" "403"
@@ -193,6 +214,23 @@ if [[ -n "$COOKIE_HEADER" ]]; then
   check_json_status_method "DELETE" "/api-next/me/account" "403"
   check_json_status_method "DELETE" "/api-next/me/account/deletion" "403"
   check_json_status_method "POST" "/api-next/me/account/deletion/cancel" "403"
+  check_json_status_method "POST" "/api-next/me/profile" "403"
+  check_json_status_method "POST" "/api-next/uploads/image" "403"
+  check_json_status_method "POST" "/api-next/uploads/video" "403"
+  check_json_status_method "POST" "/api-next/uploads/audio" "403"
+  check_json_status_method "POST" "/api-next/posts/pc359fe2da759/share-card-cache" "403"
+  check_json_status_method "POST" "/api-next/profiles/thia/share-card-cache" "403"
+  check_json_status_method "POST" "/api-next/chat/conversations" "403"
+  check_json_status_method "POST" "/api-next/chat/conversations/1/messages" "403"
+  check_json_status_method "POST" "/api-next/chat/conversations/1/read" "403"
+  check_json_status_method "POST" "/api-next/reports" "403"
+  check_json_status_method "POST" "/api-next/admin/posts/99/hide" "403"
+  check_json_status_method "POST" "/api-next/admin/posts/99/remove" "403"
+  check_json_status_method "POST" "/api-next/admin/users/1/suspend" "403"
+  check_json_status_method "POST" "/api-next/admin/reports/1/resolve" "403"
+  check_json_status_method "POST" "/api-next/me/push/subscriptions" "403"
+  check_json_status_method "DELETE" "/api-next/me/push/subscriptions" "403"
+  check_json_status_method "POST" "/api-next/me/push/test" "403"
   check_json_status_method "POST" "/api-next/auth/login" "422"
   check_json_status_method "POST" "/api-next/auth/register" "422"
   check_json_status_method "POST" "/api-next/auth/2fa/verify" "422"
@@ -237,6 +275,7 @@ else
   check_json_status "/api-next/me/posts" "401"
   check_json_status "/api-next/me/profile/modules" "401"
   check_json_status "/api-next/me/profile/canvas-draft" "401"
+  check_json_status "/api-next/me/push" "401"
   check_json_status "/api-next/notifications" "401"
   check_json_status_method "POST" "/api-next/notifications/read" "401"
   check_json_status_method "POST" "/api-next/notifications/read-all" "401"
@@ -263,6 +302,28 @@ else
   check_json_status_method "DELETE" "/api-next/me/account" "401"
   check_json_status_method "DELETE" "/api-next/me/account/deletion" "401"
   check_json_status_method "POST" "/api-next/me/account/deletion/cancel" "401"
+  check_json_status_method "POST" "/api-next/me/profile" "401"
+  check_json_status_method "POST" "/api-next/uploads/image" "401"
+  check_json_status_method "POST" "/api-next/uploads/video" "401"
+  check_json_status_method "POST" "/api-next/uploads/audio" "401"
+  check_json_status_method "POST" "/api-next/posts/pc359fe2da759/share-card-cache" "401"
+  check_json_status_method "POST" "/api-next/profiles/thia/share-card-cache" "401"
+  check_json_status "/api-next/chat/conversations" "401"
+  check_json_status "/api-next/chat/moots" "401"
+  check_json_status "/api-next/chat/conversations/1/messages" "401"
+  check_json_status_method "POST" "/api-next/chat/conversations" "401"
+  check_json_status_method "POST" "/api-next/chat/conversations/1/messages" "401"
+  check_json_status_method "POST" "/api-next/chat/conversations/1/read" "401"
+  check_json_status_method "POST" "/api-next/reports" "401"
+  check_json_status "/api-next/admin/reports" "401"
+  check_json_status "/api-next/admin/rooms" "401"
+  check_json_status_method "POST" "/api-next/admin/posts/99/hide" "401"
+  check_json_status_method "POST" "/api-next/admin/posts/99/remove" "401"
+  check_json_status_method "POST" "/api-next/admin/users/1/suspend" "401"
+  check_json_status_method "POST" "/api-next/admin/reports/1/resolve" "401"
+  check_json_status_method "POST" "/api-next/me/push/subscriptions" "401"
+  check_json_status_method "DELETE" "/api-next/me/push/subscriptions" "401"
+  check_json_status_method "POST" "/api-next/me/push/test" "401"
   check_json_status_method "POST" "/api-next/auth/login" "422"
   check_json_status_method "POST" "/api-next/auth/register" "422"
   check_json_status_method "POST" "/api-next/auth/2fa/verify" "422"

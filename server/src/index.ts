@@ -1,17 +1,24 @@
 import { buildApp, nodeApiLoggerOptions } from "./app.js";
 import { createAuthRepository } from "./auth.js";
 import { createBadgesRepository } from "./badges.js";
+import { createChatRepository } from "./chat.js";
 import { loadServerConfig } from "./config.js";
 import { createContentMutationsRepository } from "./content.js";
 import { createDatabaseClient } from "./db.js";
 import { createEditorRepository } from "./editor.js";
+import { createModerationRepository } from "./moderation.js";
+import { createOpsService } from "./ops.js";
 import { createPostsRepository } from "./posts.js";
 import { createPrivateReadsRepository } from "./private.js";
 import { createProfilesRepository } from "./profiles.js";
+import { createPushRepository } from "./push.js";
 import { createRoomsRepository } from "./rooms.js";
 import { createSearchRepository } from "./search.js";
 import { createSessionsRepository } from "./sessions.js";
+import { createShareCardService } from "./share-cards.js";
+import { createSitemapService } from "./sitemap.js";
 import { createStatsRepository } from "./stats.js";
+import { createUploadService } from "./uploads.js";
 
 const config = loadServerConfig();
 const database = createDatabaseClient(config);
@@ -23,10 +30,19 @@ const authRepository = createAuthRepository(database.pool, {
   sessionLifetimeSeconds: config.THIA_SESSION_LIFETIME_SECONDS,
 });
 const badgesRepository = createBadgesRepository(database.pool);
+const chatRepository = createChatRepository(database.pool, config.THIA_PUBLIC_BASE_URL);
 const contentMutationsRepository = createContentMutationsRepository(database.pool, {
   publicBaseUrl: config.THIA_PUBLIC_BASE_URL,
 });
 const editorRepository = createEditorRepository(database.pool);
+const moderationRepository = createModerationRepository(database.pool);
+const opsService = createOpsService(database.pool, {
+  setupToken: config.THIA_ACCOUNT_SETUP_TOKEN,
+  migrationToken: config.THIA_MIGRATION_TOKEN,
+  migrationsDir: config.THIA_MIGRATIONS_DIR,
+  sessionCookieName: config.THIA_SESSION_COOKIE_NAME,
+  sessionCookieDomain: config.THIA_SESSION_COOKIE_DOMAIN === "" ? null : config.THIA_SESSION_COOKIE_DOMAIN,
+});
 const postsRepository = createPostsRepository(database.pool);
 const privateReadsRepository = createPrivateReadsRepository(database.pool, {
   csrfSecret: config.THIA_CSRF_SECRET,
@@ -34,24 +50,47 @@ const privateReadsRepository = createPrivateReadsRepository(database.pool, {
   encryptionAvailable: config.THIA_SECURITY_ENCRYPTION_AVAILABLE,
 });
 const profilesRepository = createProfilesRepository(database.pool);
+const pushRepository = createPushRepository(database.pool, {
+  publicKey: config.THIA_PUSH_VAPID_PUBLIC_KEY,
+  privateKey: config.THIA_PUSH_VAPID_PRIVATE_KEY,
+  subject: config.THIA_PUSH_SUBJECT,
+});
 const roomsRepository = createRoomsRepository(database.pool);
 const searchRepository = createSearchRepository(database.pool);
 const sessionsRepository = createSessionsRepository(database.pool, config.THIA_SESSION_COOKIE_NAME);
+const shareCardService = createShareCardService({
+  postsRepository,
+  profilesRepository,
+  uploadRoot: config.THIA_UPLOAD_ROOT,
+  publicBaseUrl: config.THIA_PUBLIC_BASE_URL,
+});
+const sitemapService = createSitemapService(database.pool, config.THIA_PUBLIC_BASE_URL);
 const statsRepository = createStatsRepository(database.pool);
+const uploadService = createUploadService({
+  uploadRoot: config.THIA_UPLOAD_ROOT,
+  publicPrefix: config.THIA_UPLOAD_PUBLIC_PREFIX,
+});
 const app = buildApp({
   authRepository,
   badgesRepository,
+  chatRepository,
   checkDatabase: database.check,
   contentMutationsRepository,
   editorRepository,
+  moderationRepository,
+  opsService,
   logger: nodeApiLoggerOptions(config.THIA_API_LOG_LEVEL),
   postsRepository,
   privateReadsRepository,
   profilesRepository,
+  pushRepository,
   roomsRepository,
   searchRepository,
   sessionsRepository,
+  shareCardService,
+  sitemapService,
   statsRepository,
+  uploadService,
   publicBaseUrl: config.THIA_PUBLIC_BASE_URL,
   sessionCookieName: config.THIA_SESSION_COOKIE_NAME,
   sessionCookieDomain: config.THIA_SESSION_COOKIE_DOMAIN === "" ? null : config.THIA_SESSION_COOKIE_DOMAIN,

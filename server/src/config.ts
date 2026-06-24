@@ -34,6 +34,8 @@ const envSchema = z.object({
     .default(""),
   THIA_SESSION_LIFETIME_SECONDS: z.coerce.number().int().min(1).default(2_592_000),
   THIA_PUBLIC_BASE_URL: z.string().url().default("https://thia.lol"),
+  THIA_UPLOAD_ROOT: z.string().min(1).default("/srv/thia.lol/www/uploads"),
+  THIA_UPLOAD_PUBLIC_PREFIX: z.string().regex(/^\/[A-Za-z0-9/_-]*$/).default("/uploads"),
   THIA_API_LOG_LEVEL: z
     .enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"])
     .default("info"),
@@ -41,6 +43,12 @@ const envSchema = z.object({
   THIA_SECURITY_INTEGRATION_ENCRYPTION_KEY: z.string().default(""),
   THIA_SECURITY_ENCRYPTION_CONFIGURED: boolEnv.default(false),
   THIA_SECURITY_ENCRYPTION_AVAILABLE: boolEnv.default(true),
+  THIA_ACCOUNT_SETUP_TOKEN: z.string().default(""),
+  THIA_MIGRATION_TOKEN: z.string().default(""),
+  THIA_MIGRATIONS_DIR: z.string().min(1).default("/srv/thia.lol/www/api/migrations"),
+  THIA_PUSH_VAPID_PUBLIC_KEY: z.string().default(""),
+  THIA_PUSH_VAPID_PRIVATE_KEY: z.string().default(""),
+  THIA_PUSH_SUBJECT: z.string().default("mailto:hello@thia.lol"),
 });
 
 export type ServerConfig = z.infer<typeof envSchema>;

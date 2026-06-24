@@ -24,8 +24,8 @@ Use a strangler migration:
 2. Add a new internal Caddy route for the TypeScript service.
 3. Move low-risk read endpoints first.
 4. Add parity tests before switching public `/api/*` traffic for a route.
-5. Keep production auth, sessions, uploads, chat, and moderation on PHP until
-   explicit authenticated parity and rollback plans exist.
+5. Keep each production route on PHP until explicit preview smoke, controlled
+   mutation checks, Caddy rollback notes, and cutover verification exist.
 
 Do not replace the production API in one big cutover.
 
@@ -36,6 +36,13 @@ badges, stats, profiles/profile extras, posts, room/profile post lists, post
 detail/replies, home/discover feeds, auth/me, settings, onboarding, follow
 requests, my posts, notifications, low-risk private writes, auth/session
 writes, social/content writes, and profile/account editor writes.
+
+Preview-only Node coverage now also exists for uploads, full chat,
+admin/moderation, share-card image/cache routes, push subscription/status
+routes, setup, migrations, diagnostics, sitemap, and `POST /me/profile`.
+Those routes must not be added to production `/api/*` Caddy ownership until
+live preview smoke and route-specific rollback checks pass. Integrations remain
+PHP-owned pending a separate OAuth/provider config port.
 
 Private read previews also remain available under `/api-next/*`:
 

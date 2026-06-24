@@ -317,9 +317,12 @@ DELETE /api/me/account/deletion
 POST /api/me/account/deletion/cancel
 ```
 
-Uploads, full chat routes, admin, moderation, share cards, push, integrations,
-setup, migrations, diagnostics, sitemap, and other non-cutover production API
-routes remain PHP-owned unless explicitly cut over later.
+Uploads, full chat routes, admin/moderation, share cards, push, setup,
+migrations, diagnostics, sitemap, and `POST /api/me/profile` have Node preview
+routes under `/api-next/*`. Production `/api/*` stays PHP-owned for those
+surfaces until Caddy gets method-specific matchers and
+`scripts/check-api-cutover.mjs` is updated. Integrations remain PHP-owned until
+provider OAuth config and callbacks are ported and smoke-tested.
 
 For upload-sensitive changes, also check one known media URL under:
 
