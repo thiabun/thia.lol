@@ -62,6 +62,40 @@ const nodeMutationCutoverPairs = [
   ["PATCH", "/api/me/onboarding", "/api-next/me/onboarding", privateMutationStatus],
   ["PATCH", "/api/me/privacy", "/api-next/me/privacy", privateMutationStatus],
   ["PATCH", "/api/me/preferences", "/api-next/me/preferences", privateMutationStatus],
+  ["POST", "/api/profiles/thia/follow", "/api-next/profiles/thia/follow", privateMutationStatus],
+  ["DELETE", "/api/profiles/thia/follow", "/api-next/profiles/thia/follow", privateMutationStatus],
+  ["POST", "/api/profiles/thia/block", "/api-next/profiles/thia/block", privateMutationStatus],
+  ["DELETE", "/api/profiles/thia/block", "/api-next/profiles/thia/block", privateMutationStatus],
+  ["POST", "/api/profiles/thia/mute", "/api-next/profiles/thia/mute", privateMutationStatus],
+  ["DELETE", "/api/profiles/thia/mute", "/api-next/profiles/thia/mute", privateMutationStatus],
+  ["POST", "/api/profiles/thia/star", "/api-next/profiles/thia/star", privateMutationStatus],
+  ["DELETE", "/api/profiles/thia/star", "/api-next/profiles/thia/star", privateMutationStatus],
+  ["DELETE", "/api/profiles/thia/follower", "/api-next/profiles/thia/follower", privateMutationStatus],
+  ["POST", "/api/me/follow-requests/1/approve", "/api-next/me/follow-requests/1/approve", privateMutationStatus],
+  ["DELETE", "/api/me/follow-requests/1", "/api-next/me/follow-requests/1", privateMutationStatus],
+  ["POST", "/api/posts", "/api-next/posts", privateMutationStatus],
+  ["POST", "/api/posts/99/replies", "/api-next/posts/99/replies", privateMutationStatus],
+  ["PATCH", "/api/posts/99", "/api-next/posts/99", privateMutationStatus],
+  ["DELETE", "/api/posts/99", "/api-next/posts/99", privateMutationStatus],
+  ["POST", "/api/posts/99/like", "/api-next/posts/99/like", privateMutationStatus],
+  ["DELETE", "/api/posts/99/like", "/api-next/posts/99/like", privateMutationStatus],
+  ["POST", "/api/posts/99/reblog", "/api-next/posts/99/reblog", privateMutationStatus],
+  ["DELETE", "/api/posts/99/reblog", "/api-next/posts/99/reblog", privateMutationStatus],
+  ["POST", "/api/posts/99/reactions", "/api-next/posts/99/reactions", privateMutationStatus],
+  ["DELETE", "/api/posts/99/reactions/glow", "/api-next/posts/99/reactions/glow", privateMutationStatus],
+  [
+    "POST",
+    "/api/posts/pc359fe2da759/shares/messages",
+    "/api-next/posts/pc359fe2da759/shares/messages",
+    privateMutationStatus,
+  ],
+  ["POST", "/api/rooms", "/api-next/rooms", privateMutationStatus],
+  ["PATCH", "/api/rooms/general", "/api-next/rooms/general", privateMutationStatus],
+  ["DELETE", "/api/rooms/general", "/api-next/rooms/general", privateMutationStatus],
+  ["POST", "/api/rooms/general/join", "/api-next/rooms/general/join", privateMutationStatus],
+  ["DELETE", "/api/rooms/general/join", "/api-next/rooms/general/join", privateMutationStatus],
+  ["POST", "/api/rooms/general/moderators", "/api-next/rooms/general/moderators", privateMutationStatus],
+  ["DELETE", "/api/rooms/general/moderators", "/api-next/rooms/general/moderators", privateMutationStatus],
 ];
 
 const nodeAuthCutoverPairs = [
@@ -76,11 +110,9 @@ const nodeAuthCutoverPairs = [
 ];
 
 const phpOwnedMethodRoutes = [
-  ["POST", "/api/posts/99/like"],
-  ["POST", "/api/posts/99/reblog"],
-  ["POST", "/api/profiles/thia/follow"],
   ["POST", "/api/uploads"],
   ["POST", "/api/chat"],
+  ["POST", "/api/me/profile"],
 ];
 
 let failed = false;

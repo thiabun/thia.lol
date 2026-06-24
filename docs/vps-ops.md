@@ -156,18 +156,42 @@ These auth routes are enforced by method-specific Caddy matchers and can be
 rolled back without database changes because they use the same MariaDB users,
 sessions, CSRF, and 2FA storage as PHP.
 
-Low-risk private writes and protected 2FA settings still require a valid session
-and PHP-compatible `X-CSRF-Token` before mutating data. Public auth login,
-register, logout, and 2FA challenge verification use PHP-compatible rate
-limits, session cookies, and generic auth errors, but do not require CSRF.
-Safe routing checks should omit the cookie or omit the CSRF header and assert
-the `X-Thia-API-Runtime: node` response header.
+Current Node-served social/content writes:
 
-Profile and post share-card routes, post mutations, follow/block/mute/star
-mutations, uploads, chat, notification mutations outside the read/read-all/read-one
-batch, admin, moderation, profile/account editor mutations, and content mutations
-remain on PHP. All other `/api/*` traffic remains on PHP unless explicitly cut
-over later.
+```text
+POST/DELETE /api/profiles/:handle/follow
+POST/DELETE /api/profiles/:handle/block
+POST/DELETE /api/profiles/:handle/mute
+POST/DELETE /api/profiles/:handle/star
+DELETE /api/profiles/:handle/follower
+POST /api/me/follow-requests/:id/approve
+DELETE /api/me/follow-requests/:id
+POST /api/posts
+POST /api/posts/:id/replies
+PATCH/DELETE /api/posts/:id
+POST/DELETE /api/posts/:id/like
+POST/DELETE /api/posts/:id/reblog
+POST /api/posts/:id/reactions
+DELETE /api/posts/:id/reactions/:type
+POST /api/posts/:identifier/shares/messages
+POST /api/rooms
+PATCH/DELETE /api/rooms/:slug
+POST/DELETE /api/rooms/:slug/join
+POST/DELETE /api/rooms/:slug/moderators
+```
+
+Low-risk private writes, protected 2FA settings, social/content writes, and
+room/post/profile mutations require a valid session and PHP-compatible
+`X-CSRF-Token` before mutating data. Public auth login, register, logout, and
+2FA challenge verification use PHP-compatible rate limits, session cookies, and
+generic auth errors, but do not require CSRF. Safe routing checks should omit
+the cookie or omit the CSRF header and assert the `X-Thia-API-Runtime: node`
+response header.
+
+Profile and post share-card routes, uploads, full chat routes, admin,
+moderation, profile/account editor mutations, push, integrations, setup,
+migrations, and diagnostics remain on PHP. All other `/api/*` traffic remains
+on PHP unless explicitly cut over later.
 
 ## Node API Preview
 
@@ -281,10 +305,10 @@ Node logs are structured and should include route name, method, sanitized URL,
 status, request id, and sanitized error metadata. They must not contain cookies,
 authorization headers, session tokens, raw SQL, stack traces, or config values.
 
-PHP remains production owner for uploads, chat, notification mutations outside
-the read/read-all/read-one batch, admin, moderation, share-card generation,
-content mutations, profile/account editor mutations, and all remaining
-mutations until the relevant method-specific Caddy route is cut over and
+PHP remains production owner for uploads, full chat routes, admin, moderation,
+share-card generation, profile/account editor mutations, push, integrations,
+setup, migrations, diagnostics, and all remaining product routes until the
+relevant method-specific Caddy route is cut over and
 `scripts/check-api-cutover.mjs` enforces it.
 
 Cutover verification:
@@ -330,6 +354,17 @@ Rollback for the auth/session write cutover is Caddy-only: restore
 `nodeApiMeSecurity2faRecoveryCodes` matcher/handler blocks, then validate and
 reload Caddy. No database rollback is needed unless a separate data issue was
 introduced.
+
+Rollback for the social/content mutation cutover is Caddy-only: restore
+`/etc/caddy/Caddyfile.bak-content-mutations-20260624T124714Z` or remove the
+`nodeApiProfileSocialMutation`, `nodeApiProfileFollowerRemoval`,
+`nodeApiFollowRequestApprove`, `nodeApiFollowRequestDelete`,
+`nodeApiPostCreate`, `nodeApiPostReplyCreate`, `nodeApiPostUpdateDelete`,
+`nodeApiPostLikeMutation`, `nodeApiPostReblogMutation`,
+`nodeApiPostReactionCreate`, `nodeApiPostReactionDelete`,
+`nodeApiPostShareMessage`, `nodeApiRoomCreate`, `nodeApiRoomUpdateDelete`,
+`nodeApiRoomJoinMutation`, and `nodeApiRoomModeratorMutation` matcher/handler
+blocks, then validate and reload Caddy.
 
 Rollback for the current Node read cutover is Caddy-only: restore the backed-up
 `/etc/caddy/Caddyfile` or remove the Node read handlers, validate Caddy, reload

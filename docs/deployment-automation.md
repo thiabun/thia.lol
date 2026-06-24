@@ -85,7 +85,7 @@ The deploy job:
 - runs `scripts/smoke-live.sh` against `https://thia.lol`
 - runs `scripts/smoke-api-next.sh` against the Node preview API
 - runs `scripts/compare-api-parity.mjs` for production/preview read parity
-- runs `scripts/check-api-cutover.mjs` for Node-served production read routes
+- runs `scripts/check-api-cutover.mjs` for Node-served production read and write routes
 
 Anonymous preview/cutover smoke expects private read routes to return JSON
 `401`s and preview auth write validation failures to return JSON `401`, `403`,
@@ -104,6 +104,15 @@ submitting the same mutation to PHP and Node. The production auth/session write
 routes are Node-owned after controlled smoke, and `scripts/check-api-cutover.mjs`
 uses no-cookie validation checks to enforce routing without creating sessions or
 accounts.
+
+Social/content mutation routes should be live-smoked with
+`THIA_MUTATION_SMOKE=1 node scripts/smoke-api-next-mutations.mjs` before Caddy
+cutover, then with
+`API_PREFIX=/api THIA_MUTATION_SMOKE=1 node scripts/smoke-api-next-mutations.mjs`
+after Caddy cutover. The script uses throwaway accounts, creates reversible
+posts/rooms, checks read-back behavior, and performs API cleanup. Remove any
+remaining `codexmut*` smoke accounts from MariaDB after failures or interrupted
+runs.
 
 The `deploy` SSH user should be able to write `/srv/thia.lol/www/`,
 `/srv/thia.lol/www/api/`, `/srv/thia.lol/www/api/migrations/`, and
@@ -230,7 +239,8 @@ Node-served production read routes and should include the
 `X-Thia-API-Runtime: node` header. Node responses should also include
 `X-Thia-Request-Id` for journal correlation. Private reads for auth/me,
 settings, onboarding, follow requests, my posts, and notifications are also
-Node-served.
+Node-served. Method-specific auth, low-risk private, and social/content writes
+are also Node-served after controlled smoke.
 
 The first low-risk private writes are also Node-served and verified without
 mutating data by expecting unauthenticated `401` responses, or `403` responses
@@ -259,9 +269,35 @@ DELETE /api/me/security/2fa
 POST /api/me/security/2fa/recovery-codes
 ```
 
-Uploads, chat, admin, moderation, share cards, content mutations,
-profile/account editor mutations, and other production API routes remain
-PHP-owned unless explicitly cut over later.
+Social/content writes are Node-served and should include
+`X-Thia-API-Runtime: node` for the matching methods:
+
+```text
+POST/DELETE /api/profiles/:handle/follow
+POST/DELETE /api/profiles/:handle/block
+POST/DELETE /api/profiles/:handle/mute
+POST/DELETE /api/profiles/:handle/star
+DELETE /api/profiles/:handle/follower
+POST /api/me/follow-requests/:id/approve
+DELETE /api/me/follow-requests/:id
+POST /api/posts
+POST /api/posts/:id/replies
+PATCH/DELETE /api/posts/:id
+POST/DELETE /api/posts/:id/like
+POST/DELETE /api/posts/:id/reblog
+POST /api/posts/:id/reactions
+DELETE /api/posts/:id/reactions/:type
+POST /api/posts/:identifier/shares/messages
+POST /api/rooms
+PATCH/DELETE /api/rooms/:slug
+POST/DELETE /api/rooms/:slug/join
+POST/DELETE /api/rooms/:slug/moderators
+```
+
+Uploads, full chat routes, admin, moderation, share cards, profile/account
+editor mutations, push, integrations, setup, migrations, diagnostics, and other
+non-cutover production API routes remain PHP-owned unless explicitly cut over
+later.
 
 For upload-sensitive changes, also check one known media URL under:
 

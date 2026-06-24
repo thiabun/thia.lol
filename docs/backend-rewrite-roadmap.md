@@ -118,13 +118,43 @@ with `/api-next/*` still available for preview/smoke comparisons. Production
 verification must avoid destructive parity checks; use no-cookie validation
 checks or controlled throwaway accounts with cleanup.
 
+Social/content mutations are now Node-owned in production after controlled
+throwaway-account smoke:
+
+```text
+POST/DELETE /api/profiles/{handle}/follow
+POST/DELETE /api/profiles/{handle}/block
+POST/DELETE /api/profiles/{handle}/mute
+POST/DELETE /api/profiles/{handle}/star
+DELETE /api/profiles/{handle}/follower
+POST /api/me/follow-requests/{id}/approve
+DELETE /api/me/follow-requests/{id}
+POST /api/posts
+POST /api/posts/{id}/replies
+PATCH/DELETE /api/posts/{id}
+POST/DELETE /api/posts/{id}/like
+POST/DELETE /api/posts/{id}/reblog
+POST /api/posts/{id}/reactions
+DELETE /api/posts/{id}/reactions/{type}
+POST /api/posts/{identifier}/shares/messages
+POST /api/rooms
+PATCH/DELETE /api/rooms/{slug}
+POST/DELETE /api/rooms/{slug}/join
+POST/DELETE /api/rooms/{slug}/moderators
+```
+
+These routes use the existing MariaDB schema, PHP-compatible sessions and CSRF,
+generic mutation errors, and no-cookie or missing-CSRF routing checks in
+`scripts/check-api-cutover.mjs`. Live mutation testing must use controlled
+accounts and read-back assertions, not double-submit destructive parity checks.
+
 Avoid moving until authenticated mutation smoke accounts, upload checks, and
 side-effect rollback checks are in place:
 
 ```text
 POST /api/uploads/*
-POST/PATCH/DELETE post mutations
-chat routes
+profile/account editor routes
+full chat routes
 admin/moderation routes
 ```
 

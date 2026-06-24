@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const baseUrl = (process.env.BASE_URL ?? "https://thia.lol").replace(/\/+$/u, "");
+const apiPrefix = normalizeApiPrefix(process.env.API_PREFIX ?? "/api-next");
 
 if (process.env.THIA_MUTATION_SMOKE !== "1") {
   console.error("Set THIA_MUTATION_SMOKE=1 to run controlled write smoke checks.");
@@ -65,7 +66,7 @@ function sessionCookie(response) {
 
 async function registerUser(suffix, displayName) {
   const handle = `${prefix}${suffix}`;
-  const { response, data } = await api("/api-next/auth/register", {
+  const { response, data } = await api(`${apiPrefix}/auth/register`, {
     method: "POST",
     expected: 201,
     body: {
@@ -86,7 +87,7 @@ async function registerUser(suffix, displayName) {
 
 async function cleanupWithApi(owner, friend, roomSlug) {
   for (const postId of created.posts.toReversed()) {
-    await api(`/api-next/posts/${postId}`, {
+    await api(`${apiPrefix}/posts/${postId}`, {
       method: "DELETE",
       session: owner,
       body: {},
@@ -96,12 +97,12 @@ async function cleanupWithApi(owner, friend, roomSlug) {
   }
 
   if (roomSlug !== null) {
-    await api(`/api-next/rooms/${roomSlug}/join`, {
+    await api(`${apiPrefix}/rooms/${roomSlug}/join`, {
       method: "DELETE",
       session: friend,
       body: {},
     }).catch(() => undefined);
-    await api(`/api-next/rooms/${roomSlug}`, {
+    await api(`${apiPrefix}/rooms/${roomSlug}`, {
       method: "DELETE",
       session: owner,
       body: {},
@@ -111,7 +112,7 @@ async function cleanupWithApi(owner, friend, roomSlug) {
   }
 
   for (const session of [owner, friend]) {
-    await api("/api-next/auth/logout", {
+    await api(`${apiPrefix}/auth/logout`, {
       method: "POST",
       session,
       body: {},
@@ -120,21 +121,21 @@ async function cleanupWithApi(owner, friend, roomSlug) {
 }
 
 async function main() {
-  console.log(`Using smoke prefix ${prefix}`);
+  console.log(`Using smoke prefix ${prefix} against ${apiPrefix}`);
   const owner = await registerUser("a", "Codex Mutation A");
   const friend = await registerUser("b", "Codex Mutation B");
   const target = await registerUser("c", "Codex Mutation C");
   let roomSlug = null;
 
   try {
-    await api("/api-next/me/privacy", {
+    await api(`${apiPrefix}/me/privacy`, {
       method: "PATCH",
       session: friend,
       body: {
         profileVisibility: "private",
       },
     });
-    await api("/api-next/me/privacy", {
+    await api(`${apiPrefix}/me/privacy`, {
       method: "PATCH",
       session: target,
       body: {
@@ -142,12 +143,12 @@ async function main() {
       },
     });
 
-    await api(`/api-next/profiles/${friend.handle}/follow`, {
+    await api(`${apiPrefix}/profiles/${friend.handle}/follow`, {
       method: "POST",
       session: owner,
       body: {},
     });
-    const friendRequests = await api("/api-next/me/follow-requests", {
+    const friendRequests = await api(`${apiPrefix}/me/follow-requests`, {
       session: friend,
     });
     const friendRequest = friendRequests.data.find((request) => request.user.handle === owner.handle);
@@ -156,18 +157,18 @@ async function main() {
       throw new Error("Expected pending follow request for friend account.");
     }
 
-    await api(`/api-next/me/follow-requests/${friendRequest.id}/approve`, {
+    await api(`${apiPrefix}/me/follow-requests/${friendRequest.id}/approve`, {
       method: "POST",
       session: friend,
       body: {},
     });
 
-    await api(`/api-next/profiles/${target.handle}/follow`, {
+    await api(`${apiPrefix}/profiles/${target.handle}/follow`, {
       method: "POST",
       session: owner,
       body: {},
     });
-    const targetRequests = await api("/api-next/me/follow-requests", {
+    const targetRequests = await api(`${apiPrefix}/me/follow-requests`, {
       session: target,
     });
     const targetRequest = targetRequests.data.find((request) => request.user.handle === owner.handle);
@@ -176,59 +177,59 @@ async function main() {
       throw new Error("Expected pending follow request for target account.");
     }
 
-    await api(`/api-next/me/follow-requests/${targetRequest.id}`, {
+    await api(`${apiPrefix}/me/follow-requests/${targetRequest.id}`, {
       method: "DELETE",
       session: target,
       body: {},
     });
 
-    await api(`/api-next/profiles/${owner.handle}/follow`, {
+    await api(`${apiPrefix}/profiles/${owner.handle}/follow`, {
       method: "POST",
       session: friend,
       body: {},
     });
-    await api(`/api-next/profiles/${target.handle}/mute`, {
+    await api(`${apiPrefix}/profiles/${target.handle}/mute`, {
       method: "POST",
       session: owner,
       body: {},
     });
-    await api(`/api-next/profiles/${target.handle}/mute`, {
+    await api(`${apiPrefix}/profiles/${target.handle}/mute`, {
       method: "DELETE",
       session: owner,
       body: {},
     });
-    await api(`/api-next/profiles/${target.handle}/block`, {
+    await api(`${apiPrefix}/profiles/${target.handle}/block`, {
       method: "POST",
       session: owner,
       body: {},
     });
-    await api(`/api-next/profiles/${target.handle}/block`, {
+    await api(`${apiPrefix}/profiles/${target.handle}/block`, {
       method: "DELETE",
       session: owner,
       body: {},
     });
-    await api(`/api-next/profiles/${friend.handle}/star`, {
+    await api(`${apiPrefix}/profiles/${friend.handle}/star`, {
       method: "POST",
       session: owner,
       body: {},
     });
-    await api(`/api-next/profiles/${friend.handle}/star`, {
+    await api(`${apiPrefix}/profiles/${friend.handle}/star`, {
       method: "DELETE",
       session: owner,
       body: {},
     });
-    await api(`/api-next/profiles/${owner.handle}/follow`, {
+    await api(`${apiPrefix}/profiles/${owner.handle}/follow`, {
       method: "POST",
       session: target,
       body: {},
     });
-    await api(`/api-next/profiles/${target.handle}/follower`, {
+    await api(`${apiPrefix}/profiles/${target.handle}/follower`, {
       method: "DELETE",
       session: owner,
       body: {},
     });
 
-    const createdPost = await api("/api-next/posts", {
+    const createdPost = await api(`${apiPrefix}/posts`, {
       method: "POST",
       expected: 201,
       session: owner,
@@ -241,39 +242,39 @@ async function main() {
 
     created.posts.push(postId);
 
-    await api(`/api-next/posts/${postId}/like`, {
+    await api(`${apiPrefix}/posts/${postId}/like`, {
       method: "POST",
       session: friend,
       body: {},
     });
-    await api(`/api-next/posts/${postId}/like`, {
+    await api(`${apiPrefix}/posts/${postId}/like`, {
       method: "DELETE",
       session: friend,
       body: {},
     });
-    await api(`/api-next/posts/${postId}/reactions`, {
+    await api(`${apiPrefix}/posts/${postId}/reactions`, {
       method: "POST",
       session: friend,
       body: {
         type: "echo",
       },
     });
-    await api(`/api-next/posts/${postId}/reactions/echo`, {
+    await api(`${apiPrefix}/posts/${postId}/reactions/echo`, {
       method: "DELETE",
       session: friend,
       body: {},
     });
-    await api(`/api-next/posts/${postId}/reblog`, {
+    await api(`${apiPrefix}/posts/${postId}/reblog`, {
       method: "POST",
       session: friend,
       body: {},
     });
-    await api(`/api-next/posts/${postId}/reblog`, {
+    await api(`${apiPrefix}/posts/${postId}/reblog`, {
       method: "DELETE",
       session: friend,
       body: {},
     });
-    const reply = await api(`/api-next/posts/${postId}/replies`, {
+    const reply = await api(`${apiPrefix}/posts/${postId}/replies`, {
       method: "POST",
       expected: 201,
       session: owner,
@@ -282,14 +283,14 @@ async function main() {
       },
     });
     created.posts.push(reply.data.id);
-    await api(`/api-next/posts/${postId}`, {
+    await api(`${apiPrefix}/posts/${postId}`, {
       method: "PATCH",
       session: owner,
       body: {
         body: `Node mutation smoke ${prefix} edited`,
       },
     });
-    await api(`/api-next/posts/${createdPost.data.publicId}/shares/messages`, {
+    await api(`${apiPrefix}/posts/${createdPost.data.publicId}/shares/messages`, {
       method: "POST",
       expected: 201,
       session: owner,
@@ -301,7 +302,7 @@ async function main() {
 
     roomSlug = `${prefix}-room`;
     created.rooms.push(roomSlug);
-    await api("/api-next/rooms", {
+    await api(`${apiPrefix}/rooms`, {
       method: "POST",
       expected: 201,
       session: owner,
@@ -312,26 +313,26 @@ async function main() {
         visibility: "public",
       },
     });
-    await api(`/api-next/rooms/${roomSlug}/join`, {
+    await api(`${apiPrefix}/rooms/${roomSlug}/join`, {
       method: "POST",
       session: friend,
       body: {},
     });
-    await api(`/api-next/rooms/${roomSlug}/moderators`, {
+    await api(`${apiPrefix}/rooms/${roomSlug}/moderators`, {
       method: "POST",
       session: owner,
       body: {
         handle: friend.handle,
       },
     });
-    await api(`/api-next/rooms/${roomSlug}/moderators`, {
+    await api(`${apiPrefix}/rooms/${roomSlug}/moderators`, {
       method: "DELETE",
       session: owner,
       body: {
         handle: friend.handle,
       },
     });
-    await api(`/api-next/rooms/${roomSlug}/join`, {
+    await api(`${apiPrefix}/rooms/${roomSlug}/join`, {
       method: "DELETE",
       session: friend,
       body: {},
@@ -348,3 +349,17 @@ main().catch((error) => {
   console.error(error);
   process.exit(1);
 });
+
+function normalizeApiPrefix(value) {
+  const trimmed = value.trim().replace(/\/+$/u, "");
+
+  if (trimmed === "") {
+    return "/api-next";
+  }
+
+  if (!trimmed.startsWith("/") || trimmed.includes("?") || trimmed.includes("#")) {
+    throw new Error("API_PREFIX must be an absolute path prefix such as /api-next or /api.");
+  }
+
+  return trimmed;
+}
