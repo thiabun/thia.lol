@@ -967,7 +967,7 @@ function viewerFeedRelationshipFilterSql(
         )`;
   }
 
-  return filters;
+  return filters === "" ? "" : ` ${filters.trimStart()}`;
 }
 
 function userPubliclyAvailableSql(alias: string, capabilities: ProfileSchemaCapabilities): string {

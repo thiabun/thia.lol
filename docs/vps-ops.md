@@ -98,13 +98,20 @@ GET/HEAD /api/profiles/:handle/modules
 GET/HEAD /api/profiles/:handle/badges
 GET/HEAD /api/profiles/:handle/followers
 GET/HEAD /api/profiles/:handle/following
+GET/HEAD /api/posts
+GET/HEAD /api/posts/:identifier
+GET/HEAD /api/posts/:id/replies
+GET/HEAD /api/rooms/:slug/posts
+GET/HEAD /api/profiles/:handle/posts
+GET/HEAD /api/profiles/:handle/replies
+GET/HEAD /api/profiles/:handle/reblogs
+GET/HEAD /api/feed/home
+GET/HEAD /api/feed/discover
 ```
 
-Profile subroutes such as `/api/profiles/:handle/posts`,
-`/api/profiles/:handle/replies`, `/api/profiles/:handle/reblogs`, profile
-share-card routes, follow/block/mute/star mutations, and profile writes remain
-on PHP. All other `/api/*` traffic remains on PHP unless explicitly cut over
-later.
+Profile and post share-card routes, post mutations, follow/block/mute/star
+mutations, auth, uploads, chat, admin, moderation, and profile writes remain on
+PHP. All other `/api/*` traffic remains on PHP unless explicitly cut over later.
 
 ## Node API Preview
 
@@ -153,6 +160,11 @@ Rollback for the profile extras is Caddy-only: restore the latest
 `nodeApiProfile*` matcher/handler blocks, then run
 `sudo caddy validate --config /etc/caddy/Caddyfile` and
 `sudo systemctl reload caddy`.
+
+Rollback for the post/feed read cutover is Caddy-only: restore
+`/etc/caddy/Caddyfile.bak-post-feed-20260623143105` or remove the
+`nodeApiPosts*`, `nodeApiPost*`, `nodeApiRoomPosts`, `nodeApiProfilePosts`, and
+`nodeApiFeed*` matcher/handler blocks, then validate and reload Caddy.
 
 Rollback for the current Node read cutover is Caddy-only: restore the backed-up
 `/etc/caddy/Caddyfile` or remove the Node read handlers, validate Caddy, reload

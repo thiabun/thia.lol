@@ -13,20 +13,36 @@ const nodeCutoverPairs = [
   ["/api/profiles/thia/badges", "/api-next/profiles/thia/badges"],
   ["/api/profiles/thia/followers", "/api-next/profiles/thia/followers"],
   ["/api/profiles/thia/following", "/api-next/profiles/thia/following"],
+  ["/api/posts", "/api-next/posts"],
+  ["/api/rooms/general/posts", "/api-next/rooms/general/posts"],
+  ["/api/profiles/thia/posts", "/api-next/profiles/thia/posts"],
+  ["/api/profiles/thia/replies", "/api-next/profiles/thia/replies"],
+  ["/api/profiles/thia/reblogs", "/api-next/profiles/thia/reblogs"],
+  ["/api/feed/home", "/api-next/feed/home"],
+  ["/api/feed/discover", "/api-next/feed/discover"],
 ];
 
-const phpOwnedJsonRoutes = [
-  "/api/posts",
-  "/api/rooms/general/posts",
-  "/api/profiles/thia/posts",
-  "/api/profiles/thia/replies",
-  "/api/profiles/thia/reblogs",
-];
+const postsIndex = await fetchJson("/api-next/posts");
+const postAnchor = firstPostAnchor(postsIndex.body);
+
+if (postAnchor !== null) {
+  nodeCutoverPairs.push(
+    [`/api/posts/${encodeURIComponent(postAnchor.publicIdentifier)}`, `/api-next/posts/${encodeURIComponent(postAnchor.publicIdentifier)}`],
+    [`/api/posts/${postAnchor.id}/replies`, `/api-next/posts/${postAnchor.id}/replies`],
+  );
+}
+
+const phpOwnedJsonRoutes = ["/api/auth/me", "/api/search?q=thia", "/api/notifications"];
 
 const phpOwnedHeadRoutes = [
+  "/api/posts/99/share-card.png",
+  "/api/posts/99/like",
+  "/api/posts/99/reblog",
   "/api/profiles/thia/share-card.png",
   "/api/profiles/thia/follow",
   "/api/me/profile",
+  "/api/uploads",
+  "/api/chat",
 ];
 
 let failed = false;
@@ -124,6 +140,32 @@ async function fetchJson(path) {
       cause: error,
     });
   }
+}
+
+function firstPostAnchor(body) {
+  const posts = body?.data;
+
+  if (!Array.isArray(posts)) {
+    return null;
+  }
+
+  for (const post of posts) {
+    if (post === null || typeof post !== "object") {
+      continue;
+    }
+
+    const id = post.id;
+    const publicId = post.publicId;
+
+    if (Number.isInteger(id) && id > 0) {
+      return {
+        id,
+        publicIdentifier: typeof publicId === "string" && publicId !== "" ? publicId : String(id),
+      };
+    }
+  }
+
+  return null;
 }
 
 async function fetchHead(path) {

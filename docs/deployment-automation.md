@@ -169,14 +169,24 @@ https://thia.lol/api/profiles/thia/modules
 https://thia.lol/api/profiles/thia/badges
 https://thia.lol/api/profiles/thia/followers
 https://thia.lol/api/profiles/thia/following
+https://thia.lol/api/posts
+https://thia.lol/api/posts/pc359fe2da759
+https://thia.lol/api/posts/99/replies
+https://thia.lol/api/rooms/general/posts
+https://thia.lol/api/profiles/thia/posts
+https://thia.lol/api/profiles/thia/replies
+https://thia.lol/api/profiles/thia/reblogs
+https://thia.lol/api/feed/home
+https://thia.lol/api/feed/discover
 https://thia.lol/@thia
 ```
 
 `/api/rooms`, `/api/rooms/:slug`, `/api/stats`, `/api/profiles/:handle`, and
 the profile extras `/rooms`, `/modules`, `/badges`, `/followers`, and
-`/following` are Node-served production read routes and should include
-`X-Thia-API-Runtime: node`. Profile posts, replies, reblogs, share cards,
-mutations, and other production API routes remain PHP-owned unless explicitly
+`/following`, plus posts, room/profile post lists, and `/feed/home` and
+`/feed/discover`, are Node-served production read routes and should include
+`X-Thia-API-Runtime: node`. Share cards, mutations, auth, uploads, chat, admin,
+moderation, and other production API routes remain PHP-owned unless explicitly
 cut over later.
 
 For upload-sensitive changes, also check one known media URL under:

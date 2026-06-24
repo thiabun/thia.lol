@@ -120,6 +120,7 @@ describe("post preview SQL", () => {
     expect(sql).toContain("CASE WHEN u.id = 42 THEN -45 ELSE 0 END");
     expect(sql).toContain("FROM user_mutes feed_mutes");
     expect(sql).toContain("feed_mutes.muter_id = 42");
+    expect(sql).not.toContain("NULLAND");
   });
 
   it("matches PHP discover ranking and public wrapper constraints", () => {
@@ -129,6 +130,14 @@ describe("post preview SQL", () => {
     expect(sql).toContain("LEAST(COALESCE(room_posts.post_count, 0), 10)");
     expect(sql).toContain("TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 6");
     expect(sql).not.toContain("FROM user_mutes feed_mutes");
+  });
+
+  it("separates logged-in discover feed filters from preceding SQL", () => {
+    const sql = buildDiscoverFeedQuery(capabilities, 42);
+
+    expect(sql).toContain("p.parent_id IS NULL AND NOT EXISTS");
+    expect(sql).not.toContain("NULLAND");
+    expect(sql).toContain("FROM user_mutes feed_mutes");
   });
 
   it("matches PHP profile reblog query joins and ordering", () => {
