@@ -139,16 +139,35 @@ PATCH /api/me/privacy
 PATCH /api/me/preferences
 ```
 
-These write routes still require a valid session and PHP-compatible
-`X-CSRF-Token` before mutating data. Safe routing checks should omit the cookie
-or omit the CSRF header and assert the `X-Thia-API-Runtime: node` response
-header.
+Current Node-served auth/session writes:
+
+```text
+POST /api/auth/login
+POST /api/auth/logout
+POST /api/auth/register
+POST /api/auth/2fa/verify
+POST /api/me/security/2fa/setup
+POST /api/me/security/2fa/enable
+DELETE /api/me/security/2fa
+POST /api/me/security/2fa/recovery-codes
+```
+
+These auth routes are enforced by method-specific Caddy matchers and can be
+rolled back without database changes because they use the same MariaDB users,
+sessions, CSRF, and 2FA storage as PHP.
+
+Low-risk private writes and protected 2FA settings still require a valid session
+and PHP-compatible `X-CSRF-Token` before mutating data. Public auth login,
+register, logout, and 2FA challenge verification use PHP-compatible rate
+limits, session cookies, and generic auth errors, but do not require CSRF.
+Safe routing checks should omit the cookie or omit the CSRF header and assert
+the `X-Thia-API-Runtime: node` response header.
 
 Profile and post share-card routes, post mutations, follow/block/mute/star
-mutations, auth writes, uploads, chat, notification mutations outside the
-read/read-all/read-one batch, admin, moderation, profile/account editor
-mutations, and content mutations remain on PHP. All other `/api/*` traffic
-remains on PHP unless explicitly cut over later.
+mutations, uploads, chat, notification mutations outside the read/read-all/read-one
+batch, admin, moderation, profile/account editor mutations, and content mutations
+remain on PHP. All other `/api/*` traffic remains on PHP unless explicitly cut
+over later.
 
 ## Node API Preview
 
@@ -231,8 +250,7 @@ Authenticated private reads can be rerun with
 `COOKIE_HEADER='thia_session=...'`. Authenticated write smoke should omit
 `X-CSRF-Token` unless a controlled test account and read-back plan is being used.
 
-Auth/session preview writes are available under `/api-next/*` but remain
-PHP-owned in production until controlled smoke passes and Caddy is updated:
+Auth/session preview writes also remain available under `/api-next/*`:
 
 ```text
 POST /api-next/auth/login
@@ -245,9 +263,10 @@ DELETE /api-next/me/security/2fa
 POST /api-next/me/security/2fa/recovery-codes
 ```
 
-Use only a controlled throwaway account for live auth smoke. Verify register,
-login, `/api-next/auth/me`, logout, failed `/api-next/auth/me`, 2FA setup,
-2FA enable, 2FA challenge, and 2FA verify, then clean up the test account.
+Use only a controlled throwaway account for full live auth smoke. Verify
+register, login, `/api/auth/me`, logout, failed `/api/auth/me`, 2FA setup, 2FA
+enable, 2FA challenge, 2FA verify, recovery code regeneration, and 2FA disable,
+then clean up the test account.
 
 When a Node-served route returns 500:
 
@@ -262,11 +281,11 @@ Node logs are structured and should include route name, method, sanitized URL,
 status, request id, and sanitized error metadata. They must not contain cookies,
 authorization headers, session tokens, raw SQL, stack traces, or config values.
 
-PHP remains production owner for auth writes, uploads, chat, notification
-mutations outside the read/read-all/read-one batch, admin, moderation,
-share-card generation, content mutations, profile/account editor mutations, and
-all remaining mutations until the relevant method-specific Caddy route is cut
-over and `scripts/check-api-cutover.mjs` enforces it.
+PHP remains production owner for uploads, chat, notification mutations outside
+the read/read-all/read-one batch, admin, moderation, share-card generation,
+content mutations, profile/account editor mutations, and all remaining
+mutations until the relevant method-specific Caddy route is cut over and
+`scripts/check-api-cutover.mjs` enforces it.
 
 Cutover verification:
 
@@ -302,6 +321,15 @@ Rollback for the low-risk write cutover is Caddy-only: restore
 `nodeApiNotificationReadOne`, `nodeApiMeOnboardingUpdate`,
 `nodeApiMePrivacyUpdate`, and `nodeApiMePreferencesUpdate` matcher/handler
 blocks, then validate and reload Caddy.
+
+Rollback for the auth/session write cutover is Caddy-only: restore
+`/etc/caddy/Caddyfile.bak-auth-session-20260624T115116Z` or remove the
+`nodeApiAuthLogin`, `nodeApiAuthRegister`, `nodeApiAuthLogout`,
+`nodeApiAuth2faVerify`, `nodeApiMeSecurity2faSetup`,
+`nodeApiMeSecurity2faEnable`, `nodeApiMeSecurity2faDisable`, and
+`nodeApiMeSecurity2faRecoveryCodes` matcher/handler blocks, then validate and
+reload Caddy. No database rollback is needed unless a separate data issue was
+introduced.
 
 Rollback for the current Node read cutover is Caddy-only: restore the backed-up
 `/etc/caddy/Caddyfile` or remove the Node read handlers, validate Caddy, reload

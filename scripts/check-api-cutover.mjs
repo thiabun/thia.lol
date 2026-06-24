@@ -64,8 +64,18 @@ const nodeMutationCutoverPairs = [
   ["PATCH", "/api/me/preferences", "/api-next/me/preferences", privateMutationStatus],
 ];
 
+const nodeAuthCutoverPairs = [
+  ["POST", "/api/auth/login", "/api-next/auth/login", 422],
+  ["POST", "/api/auth/register", "/api-next/auth/register", 422],
+  ["POST", "/api/auth/logout", "/api-next/auth/logout", 200],
+  ["POST", "/api/auth/2fa/verify", "/api-next/auth/2fa/verify", 422],
+  ["POST", "/api/me/security/2fa/setup", "/api-next/me/security/2fa/setup", 401],
+  ["POST", "/api/me/security/2fa/enable", "/api-next/me/security/2fa/enable", 401],
+  ["DELETE", "/api/me/security/2fa", "/api-next/me/security/2fa", 401],
+  ["POST", "/api/me/security/2fa/recovery-codes", "/api-next/me/security/2fa/recovery-codes", 401],
+];
+
 const phpOwnedMethodRoutes = [
-  ["POST", "/api/auth/login"],
   ["POST", "/api/posts/99/like"],
   ["POST", "/api/posts/99/reblog"],
   ["POST", "/api/profiles/thia/follow"],
@@ -142,6 +152,34 @@ for (const [method, productionPath, previewPath, expectedStatus] of nodeMutation
   console.log(`OK ${label} is served by Node and matches ${previewPath} without mutating data`);
 }
 
+for (const [method, productionPath, previewPath, expectedStatus] of nodeAuthCutoverPairs) {
+  const production = await fetchJson(productionPath, method, { includeCookie: false });
+  const preview = await fetchJson(previewPath, method, { includeCookie: false });
+  const label = `${method} ${productionPath} auth cutover`;
+
+  if (production.status !== expectedStatus) {
+    failed = true;
+    console.error(`FAIL ${label}: expected HTTP ${expectedStatus}, got ${production.status}`);
+    continue;
+  }
+
+  if (production.runtime !== "node") {
+    failed = true;
+    console.error(`FAIL ${label}: expected ${runtimeHeader}: node, got ${production.runtime ?? "missing"}`);
+    continue;
+  }
+
+  if (production.status !== preview.status || !deepEqual(production.body, preview.body)) {
+    failed = true;
+    console.error(`FAIL ${label}: production route does not match ${previewPath}`);
+    console.error("Production:", JSON.stringify(production.body, null, 2));
+    console.error("Preview:", JSON.stringify(preview.body, null, 2));
+    continue;
+  }
+
+  console.log(`OK ${label} is served by Node and matches ${previewPath} without using a real session`);
+}
+
 for (const path of phpOwnedHeadRoutes) {
   const headResponse = await fetchHead(path);
 
@@ -170,12 +208,13 @@ if (failed) {
   process.exit(1);
 }
 
-async function fetchJson(path, method = "GET") {
+async function fetchJson(path, method = "GET", options = {}) {
+  const includeCookie = options.includeCookie ?? true;
   const headers = {
     accept: "application/json",
   };
 
-  if (cookieHeader !== "") {
+  if (includeCookie && cookieHeader !== "") {
     headers.cookie = cookieHeader;
   }
 

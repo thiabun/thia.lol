@@ -15,7 +15,9 @@ should stay boring.
 - Production web root: `/srv/thia.lol/www/`.
 - PHP API deployment target: `/srv/thia.lol/www/api/`.
 - SQL migrations deployment target: `/srv/thia.lol/www/api/migrations/`.
+- Node API deployment target: `/srv/thia.lol/node-api/`.
 - Server config: `/srv/thia.lol/config/config.php`, readable by PHP, never web-served.
+- Node API config: `/srv/thia.lol/config/node-api.env`, server-only, never web-served.
 - Uploads: `/srv/thia.lol/www/uploads/`, server-owned runtime data.
 - Database: MariaDB on the VPS.
 - Web server: Caddy with PHP-FPM.
@@ -87,10 +89,25 @@ The PHP API is deployed separately:
   .htaccess
 ```
 
+The Node API is deployed separately and runs behind Caddy:
+
+```text
+/srv/thia.lol/node-api/
+  package.json
+  package-lock.json
+  server/dist/
+```
+
+`/api-next/*` stays available for preview/parity. Selected parity-proven
+`/api/*` read and write routes are Node-served and should include
+`X-Thia-API-Runtime: node`; all other product and ops routes remain PHP-owned
+until a method-specific cutover is explicitly implemented.
+
 Never deploy real config or local uploads from the repo. Preserve:
 
 ```text
 /srv/thia.lol/config/config.php
+/srv/thia.lol/config/node-api.env
 /srv/thia.lol/www/uploads/
 ```
 

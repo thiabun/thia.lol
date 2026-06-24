@@ -100,7 +100,10 @@ COOKIE_HEADER='thia_session=<redacted>' node scripts/compare-api-parity.mjs
 
 Auth/session write routes should be live-smoked only with a controlled
 throwaway account and read-back checks. Do not parity-check login/register/2FA by
-submitting the same mutation to PHP and Node.
+submitting the same mutation to PHP and Node. The production auth/session write
+routes are Node-owned after controlled smoke, and `scripts/check-api-cutover.mjs`
+uses no-cookie validation checks to enforce routing without creating sessions or
+accounts.
 
 The `deploy` SSH user should be able to write `/srv/thia.lol/www/`,
 `/srv/thia.lol/www/api/`, `/srv/thia.lol/www/api/migrations/`, and
@@ -242,7 +245,21 @@ PATCH /api/me/privacy
 PATCH /api/me/preferences
 ```
 
-Auth writes, uploads, chat, admin, moderation, share cards, content mutations,
+Auth/session writes are Node-served and should include
+`X-Thia-API-Runtime: node`:
+
+```text
+POST /api/auth/login
+POST /api/auth/logout
+POST /api/auth/register
+POST /api/auth/2fa/verify
+POST /api/me/security/2fa/setup
+POST /api/me/security/2fa/enable
+DELETE /api/me/security/2fa
+POST /api/me/security/2fa/recovery-codes
+```
+
+Uploads, chat, admin, moderation, share cards, content mutations,
 profile/account editor mutations, and other production API routes remain
 PHP-owned unless explicitly cut over later.
 

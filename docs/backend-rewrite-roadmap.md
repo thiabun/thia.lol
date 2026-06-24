@@ -34,7 +34,8 @@ Do not replace the production API in one big cutover.
 Production Node ownership is limited to parity-proven reads: rooms, search,
 badges, stats, profiles/profile extras, posts, room/profile post lists, post
 detail/replies, home/discover feeds, auth/me, settings, onboarding, follow
-requests, my posts, and notifications.
+requests, my posts, notifications, low-risk private writes, and auth/session
+writes.
 
 Private read previews also remain available under `/api-next/*`:
 
@@ -97,24 +98,25 @@ These low-risk writes are now the first Node-owned mutation batch. They are
 verified with unauthenticated or missing-CSRF checks so production smoke tests do
 not mutate data.
 
-Auth/session writes are the next preview batch and must stay under
-`/api-next/*` until controlled test-account smoke passes:
+Auth/session writes are now Node-owned in production after controlled
+test-account smoke:
 
 ```text
-POST /api-next/auth/login
-POST /api-next/auth/logout
-POST /api-next/auth/register
-POST /api-next/auth/2fa/verify
-POST /api-next/me/security/2fa/setup
-POST /api-next/me/security/2fa/enable
-DELETE /api-next/me/security/2fa
-POST /api-next/me/security/2fa/recovery-codes
+POST /api/auth/login
+POST /api/auth/logout
+POST /api/auth/register
+POST /api/auth/2fa/verify
+POST /api/me/security/2fa/setup
+POST /api/me/security/2fa/enable
+DELETE /api/me/security/2fa
+POST /api/me/security/2fa/recovery-codes
 ```
 
 These routes use PHP-compatible password verification, session token hashing,
-cookie attributes, CSRF validation for protected settings, and 2FA encryption.
-Do not production-cut them over until register/login/logout/2FA have been
-smoked with a controlled account and the throwaway account has been cleaned up.
+cookie attributes, CSRF validation for protected settings, and 2FA encryption,
+with `/api-next/*` still available for preview/smoke comparisons. Production
+verification must avoid destructive parity checks; use no-cookie validation
+checks or controlled throwaway accounts with cleanup.
 
 Avoid moving until authenticated mutation smoke accounts, upload checks, and
 side-effect rollback checks are in place:
