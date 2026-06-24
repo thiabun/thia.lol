@@ -376,7 +376,7 @@ interface ProfileIntegrationAccountRow extends RowDataPacket {
   revoked_at: Date | string | null;
 }
 
-interface ProfileIntegrationCacheRow extends RowDataPacket {
+export interface ProfileIntegrationCacheRow extends RowDataPacket {
   provider: string;
   resource_type: string;
   resource_id: string;
@@ -2858,7 +2858,7 @@ function profileIntegrationProviderLabel(provider: string): string {
   }
 }
 
-function profileIntegrationCachePayload(row: ProfileIntegrationCacheRow): Record<string, unknown> {
+export function profileIntegrationCachePayload(row: ProfileIntegrationCacheRow): Record<string, unknown> {
   const embed = jsonRecord(row.embed_json);
 
   return {
@@ -2878,7 +2878,7 @@ function profileIntegrationCachePayload(row: ProfileIntegrationCacheRow): Record
   };
 }
 
-function profileIntegrationNormalizeUrl(
+export function profileIntegrationNormalizeUrl(
   rawUrl: string,
   preferredProvider: string | null,
 ): { provider: string; resourceType: string; resourceId: string; resourceKey: string; sourceUrl: string } | null {

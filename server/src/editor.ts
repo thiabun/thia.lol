@@ -10,9 +10,12 @@ import {
 import {
   buildProfileByHandleQuery,
   profileBadgesPayloadFromRows,
+  profileIntegrationCachePayload,
+  profileIntegrationNormalizeUrl,
   profileModuleLayoutPayload,
   profilePayloadWithFeatured,
   type ProfileBadgesPayload,
+  type ProfileIntegrationCacheRow,
   type ProfileModulePayload,
   type ProfileModuleRow,
   type ProfilePayload,
@@ -21,6 +24,7 @@ import {
   type ProfileSocialContext,
   type UserBadgeRow,
 } from "./profiles.js";
+import { integrationProviderFromModulePlatform } from "./integrations.js";
 import type { SettingsPayload } from "./private.js";
 import type { RequestSession } from "./sessions.js";
 
@@ -71,6 +75,25 @@ const singletonModuleTypes = new Set(["profile_info", "featured_post", "featured
 const protectedModuleTypes = new Set(["profile_info"]);
 const moduleVisibilities = new Set(["public", "hidden", "draft"]);
 const moduleStatuses = new Set(["active", "hidden", "deleted"]);
+const integrationModuleTypes = new Set([
+  "creator_live",
+  "music",
+  "github_repo",
+  "twitch_channel",
+  "youtube_video",
+  "youtube_stream",
+  "youtube_playlist",
+  "uploaded_video",
+  "spotify_song",
+  "apple_music_song",
+  "youtube_music_song",
+  "spotify_playlist",
+  "apple_music_playlist",
+  "youtube_music_playlist",
+  "spotify_artist",
+  "apple_music_artist",
+  "youtube_music_artist",
+]);
 
 export class EditorRouteError extends Error {
   constructor(
@@ -644,7 +667,7 @@ class MysqlEditorRepository implements EditorRepository {
     this.requireProfileCanvasDrafts(capabilities);
     rejectUnknownKeys(body, ["canvasVersion", "backgroundBlur", "canvasGlass", "modules", "selectedModuleId", "updatedAt"]);
     await this.ensureBuiltinModules(session.userId);
-    const current = await this.canvasDraftState(session.userId);
+    const current = await this.rawCanvasDraftState(session.userId);
     const next: ProfileCanvasDraftState = {
       ...current,
       backgroundBlur: "backgroundBlur" in body ? validateBackgroundBlur(body.backgroundBlur) : current.backgroundBlur,
@@ -672,7 +695,7 @@ class MysqlEditorRepository implements EditorRepository {
     this.requireProfileModules(capabilities);
     this.requireProfileCanvas(capabilities);
     this.requireProfileCanvasDrafts(capabilities);
-    const state = await this.canvasDraftState(session.userId);
+    const state = await this.rawCanvasDraftState(session.userId);
 
     await this.withTransaction(async (connection) => {
       await connection.execute<ResultSetHeader>(
@@ -956,7 +979,14 @@ class MysqlEditorRepository implements EditorRepository {
     };
   }
 
-  private async modulesForOwner(userId: number, includeDeleted: boolean): Promise<ProfileModulePayload[]> {
+  private async modulesForOwner(
+    userId: number,
+    includeDeleted: boolean,
+    options: { enrichIntegrations?: boolean } = {},
+  ): Promise<ProfileModulePayload[]> {
+    const enrichIntegrations = options.enrichIntegrations ?? true;
+    const capabilities = await this.schemaCapabilities();
+
     await this.ensureBuiltinModules(userId);
     const deletedWhere = includeDeleted ? "" : "AND status <> 'deleted'";
     const [rows] = await this.pool.execute<ProfileModuleRow[]>(
@@ -984,7 +1014,11 @@ class MysqlEditorRepository implements EditorRepository {
       [userId],
     );
 
-    return rows.map((row) => modulePayload(row));
+    const modules = rows.map((row) => modulePayload(row));
+
+    return enrichIntegrations
+      ? this.enrichOwnerModuleIntegrations(modules, capabilities)
+      : modules;
   }
 
   private async ensureBuiltinModules(userId: number): Promise<void> {
@@ -1131,6 +1165,17 @@ class MysqlEditorRepository implements EditorRepository {
   }
 
   private async canvasDraftState(userId: number): Promise<ProfileCanvasDraftState> {
+    return this.canvasDraftStateForOutput(userId, true);
+  }
+
+  private async rawCanvasDraftState(userId: number): Promise<ProfileCanvasDraftState> {
+    return this.canvasDraftStateForOutput(userId, false);
+  }
+
+  private async canvasDraftStateForOutput(
+    userId: number,
+    enrichIntegrations: boolean,
+  ): Promise<ProfileCanvasDraftState> {
     const [rows] = await this.pool.execute<CanvasDraftRow[]>(
       `SELECT draft_json, selected_module_id, updated_at
        FROM profile_canvas_drafts
@@ -1141,28 +1186,37 @@ class MysqlEditorRepository implements EditorRepository {
     const row = rows[0];
 
     if (row === undefined) {
-      return this.defaultCanvasDraftState(userId);
+      return this.defaultCanvasDraftState(userId, enrichIntegrations);
     }
 
     const decoded = jsonObject(row.draft_json);
-    const defaults = await this.defaultCanvasDraftState(userId);
+    const defaults = await this.defaultCanvasDraftState(userId, false);
+    const modules = Array.isArray(decoded.modules)
+      ? validateDraftModules(decoded.modules)
+      : defaults.modules;
+    const capabilities = enrichIntegrations ? await this.schemaCapabilities() : null;
 
     return {
       backgroundBlur: validateBackgroundBlur(decoded.backgroundBlur ?? defaults.backgroundBlur),
       canvasGlass: validateCanvasGlass(decoded.canvasGlass ?? defaults.canvasGlass),
       canvasVersion: profileCanvasVersion,
-      modules: Array.isArray(decoded.modules) ? validateDraftModules(decoded.modules) : defaults.modules,
+      modules: enrichIntegrations && capabilities !== null
+        ? await this.enrichOwnerModuleIntegrations(modules, capabilities)
+        : modules,
       selectedModuleId: validateSelectedModuleId(row.selected_module_id ?? decoded.selectedModuleId ?? null),
       updatedAt: row.updated_at,
     };
   }
 
-  private async defaultCanvasDraftState(userId: number): Promise<ProfileCanvasDraftState> {
+  private async defaultCanvasDraftState(
+    userId: number,
+    enrichIntegrations = true,
+  ): Promise<ProfileCanvasDraftState> {
     const preferences = await this.canvasPreferences(userId);
 
     return {
       ...preferences,
-      modules: await this.modulesForOwner(userId, false),
+      modules: await this.modulesForOwner(userId, false, { enrichIntegrations }),
       selectedModuleId: null,
       updatedAt: null,
     };
@@ -1186,6 +1240,74 @@ class MysqlEditorRepository implements EditorRepository {
          updated_at = CURRENT_TIMESTAMP()`,
       [userId, draftJson, state.selectedModuleId === null ? null : String(state.selectedModuleId)],
     );
+  }
+
+  private async enrichOwnerModuleIntegrations(
+    modules: ProfileModulePayload[],
+    capabilities: SchemaCapabilities,
+  ): Promise<ProfileModulePayload[]> {
+    const enriched: ProfileModulePayload[] = [];
+
+    for (const module of modules) {
+      const integration = await this.integrationCardForOwnerModule(
+        module.type,
+        module.config,
+        capabilities,
+      );
+
+      enriched.push(
+        integration === null
+          ? module
+          : {
+              ...module,
+              config: {
+                ...module.config,
+                integration,
+              },
+            },
+      );
+    }
+
+    return enriched;
+  }
+
+  private async integrationCardForOwnerModule(
+    type: string,
+    config: Record<string, unknown>,
+    capabilities: SchemaCapabilities,
+  ): Promise<Record<string, unknown> | null> {
+    if (
+      !capabilities.hasProfileIntegrationMetadataCache ||
+      !integrationModuleTypes.has(type) ||
+      typeof config.url !== "string" ||
+      config.url.trim() === ""
+    ) {
+      return null;
+    }
+
+    const normalized = profileIntegrationNormalizeUrl(
+      config.url,
+      typeof config.platform === "string"
+        ? integrationProviderFromModulePlatform(config.platform)
+        : null,
+    );
+
+    if (normalized === null) {
+      return null;
+    }
+
+    const [rows] = await this.pool.execute<ProfileIntegrationCacheRow[]>(
+      `SELECT provider, resource_type, resource_id, resource_key, source_url, metadata_json, embed_json,
+              api_backed, fetched_at, expires_at, stale_at, error_message
+       FROM profile_integration_metadata_cache
+       WHERE provider = ?
+         AND resource_key = ?
+       LIMIT 1`,
+      [normalized.provider, normalized.resourceKey],
+    );
+    const row = rows[0];
+
+    return row === undefined ? null : profileIntegrationCachePayload(row);
   }
 
   private async applyCanvasPlacements(
