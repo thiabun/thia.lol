@@ -126,6 +126,19 @@ GET/HEAD /api/me/onboarding
 GET/HEAD /api/me/follow-requests
 GET/HEAD /api/me/posts
 GET/HEAD /api/notifications
+GET/HEAD /api/me/push
+GET/HEAD /api/chat/conversations
+GET/HEAD /api/chat/moots
+GET/HEAD /api/chat/conversations/:id/messages
+GET/HEAD /api/admin/reports
+GET/HEAD /api/admin/rooms
+GET/HEAD /api/admin/migrations/status
+GET/HEAD /api/admin/auth/diagnostics
+GET/HEAD /api/admin/auth/session-trace
+GET/HEAD /api/posts/:identifier/share-card.png
+GET/HEAD /api/profiles/:handle/share-card.png
+GET/HEAD /api/share-card/image
+GET/HEAD /sitemap.xml
 ```
 
 Current Node-served low-risk private writes:
@@ -200,6 +213,27 @@ PATCH /api/me/account/password
 DELETE /api/me/account
 DELETE /api/me/account/deletion
 POST /api/me/account/deletion/cancel
+POST /api/me/profile
+```
+
+Current Node-served final-surface writes:
+
+```text
+POST /api/uploads/:kind
+POST /api/chat/conversations
+POST /api/chat/conversations/:id/messages
+POST /api/chat/conversations/:id/read
+POST /api/reports
+POST /api/admin/posts/:id/hide
+POST /api/admin/posts/:id/remove
+POST /api/admin/users/:id/suspend
+POST /api/admin/reports/:id/resolve
+POST /api/posts/:identifier/share-card-cache
+POST /api/profiles/:handle/share-card-cache
+POST/DELETE /api/me/push/subscriptions
+POST /api/me/push/test
+POST /api/setup/thia
+POST /api/admin/migrations/run
 ```
 
 Low-risk private writes, protected 2FA settings, social/content writes,
@@ -211,15 +245,10 @@ generic auth errors, but do not require CSRF. Safe routing checks should omit
 the cookie or omit the CSRF header and assert the `X-Thia-API-Runtime: node`
 response header.
 
-Uploads, full chat routes, admin/moderation, share-card generation/cache,
-push subscriptions/status, setup, migrations, diagnostics, sitemap, and
-`POST /api/me/profile` now have Node preview implementations under
-`/api-next/*`. Production `/api/*` ownership for those routes remains on PHP
-until method-specific Caddy matchers are added and `scripts/check-api-cutover.mjs`
-is expanded for the batch.
-
 Integrations remain PHP-owned until provider OAuth config and callback behavior
-are configured and smoke-tested in Node.
+are configured and smoke-tested in Node. The legacy social-preview HTML scripts,
+`/api/post-share.php` and `/api/profile-share.php`, also remain PHP-owned; the
+Node share-card cutover covers generated PNG, cache, and proxy API routes.
 
 ## Node API Preview
 
@@ -337,12 +366,8 @@ Node logs are structured and should include route name, method, sanitized URL,
 status, request id, and sanitized error metadata. They must not contain cookies,
 authorization headers, session tokens, raw SQL, stack traces, or config values.
 
-PHP remains production owner for uploads, full chat routes, admin/moderation,
-share-card generation/cache, push, setup, migrations, diagnostics, sitemap,
-integrations, and any other non-cutover route until the relevant
-method-specific Caddy route is cut over and `scripts/check-api-cutover.mjs`
-enforces it. Node preview coverage exists for every item in that sentence
-except integrations.
+PHP remains production owner for integrations, the legacy social-preview HTML
+scripts, and any future route not explicitly listed as Node-owned above.
 
 Cutover verification:
 
@@ -407,6 +432,14 @@ the `nodeApiProfileEditorUpdate`, `nodeApiProfileModulesIndex`,
 `nodeApiMePostsDelete`, `nodeApiAccountDelete`, and
 `nodeApiAccountDeletionCancel` matcher/handler blocks, then validate and
 reload Caddy.
+
+Rollback for the final-surface cutover is Caddy-only: restore
+`/etc/caddy/Caddyfile.bak-final-sprint-20260624T154909Z` or remove the
+`nodeApiFinalSitemap`, `nodeApiProfileEditorPostAlias`, `nodeApiUploads`,
+`nodeApiChat*`, `nodeApiReportsCreate`, `nodeApiAdmin*`,
+`nodeApiShareCardImage`, `nodeApiPostShareCard*`, `nodeApiProfileShareCard*`,
+`nodeApiMePush*`, and `nodeApiSetupThia` matcher/handler blocks, then validate
+and reload Caddy.
 
 Rollback for the current Node read cutover is Caddy-only: restore the backed-up
 `/etc/caddy/Caddyfile` or remove the Node read handlers, validate Caddy, reload

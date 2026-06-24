@@ -47,14 +47,38 @@ if (postAnchor !== null) {
 }
 
 const phpOwnedHeadRoutes = [
-  "/api/posts/99/share-card.png",
   "/api/posts/99/like",
   "/api/posts/99/reblog",
-  "/api/profiles/thia/share-card.png",
   "/api/profiles/thia/follow",
   "/api/me/profile",
   "/api/uploads",
   "/api/chat",
+  "/api/post-share.php",
+  "/api/profile-share.php",
+  "/api/me/integrations",
+];
+
+const nodeHeadCutoverPairs = [
+  ["/sitemap.xml", "/api-next/sitemap.xml", 200],
+  ["/api/posts/pc359fe2da759/share-card.png", "/api-next/posts/pc359fe2da759/share-card.png", 200],
+  ["/api/profiles/thia/share-card.png", "/api-next/profiles/thia/share-card.png", 200],
+  ["/api/share-card/image", "/api-next/share-card/image", 404],
+];
+
+const nodeUnauthenticatedCutoverPairs = [
+  ["GET", "/api/me/push", "/api-next/me/push", 401],
+  ["GET", "/api/chat/conversations", "/api-next/chat/conversations", 401],
+  ["GET", "/api/chat/moots", "/api-next/chat/moots", 401],
+  ["GET", "/api/chat/conversations/1/messages", "/api-next/chat/conversations/1/messages", 401],
+  ["GET", "/api/admin/reports", "/api-next/admin/reports", 401],
+  ["GET", "/api/admin/rooms", "/api-next/admin/rooms", 401],
+  ["GET", "/api/admin/migrations/status", "/api-next/admin/migrations/status", 401],
+];
+
+const nodeTokenGuardCutoverPairs = [
+  ["POST", "/api/setup/thia", "/api-next/setup/thia", [403, 404]],
+  ["GET", "/api/admin/auth/diagnostics", "/api-next/admin/auth/diagnostics", [403, 404]],
+  ["GET", "/api/admin/auth/session-trace", "/api-next/admin/auth/session-trace", [403, 404]],
 ];
 
 const nodeMutationCutoverPairs = [
@@ -117,6 +141,24 @@ const nodeMutationCutoverPairs = [
   ["DELETE", "/api/me/account", "/api-next/me/account", privateMutationStatus],
   ["DELETE", "/api/me/account/deletion", "/api-next/me/account/deletion", privateMutationStatus],
   ["POST", "/api/me/account/deletion/cancel", "/api-next/me/account/deletion/cancel", privateMutationStatus],
+  ["POST", "/api/me/profile", "/api-next/me/profile", privateMutationStatus],
+  ["POST", "/api/uploads/image", "/api-next/uploads/image", privateMutationStatus],
+  ["POST", "/api/uploads/video", "/api-next/uploads/video", privateMutationStatus],
+  ["POST", "/api/uploads/audio", "/api-next/uploads/audio", privateMutationStatus],
+  ["POST", "/api/posts/pc359fe2da759/share-card-cache", "/api-next/posts/pc359fe2da759/share-card-cache", privateMutationStatus],
+  ["POST", "/api/profiles/thia/share-card-cache", "/api-next/profiles/thia/share-card-cache", privateMutationStatus],
+  ["POST", "/api/chat/conversations", "/api-next/chat/conversations", privateMutationStatus],
+  ["POST", "/api/chat/conversations/1/messages", "/api-next/chat/conversations/1/messages", privateMutationStatus],
+  ["POST", "/api/chat/conversations/1/read", "/api-next/chat/conversations/1/read", privateMutationStatus],
+  ["POST", "/api/reports", "/api-next/reports", privateMutationStatus],
+  ["POST", "/api/admin/posts/99/hide", "/api-next/admin/posts/99/hide", privateMutationStatus],
+  ["POST", "/api/admin/posts/99/remove", "/api-next/admin/posts/99/remove", privateMutationStatus],
+  ["POST", "/api/admin/users/1/suspend", "/api-next/admin/users/1/suspend", privateMutationStatus],
+  ["POST", "/api/admin/reports/1/resolve", "/api-next/admin/reports/1/resolve", privateMutationStatus],
+  ["POST", "/api/me/push/subscriptions", "/api-next/me/push/subscriptions", privateMutationStatus],
+  ["DELETE", "/api/me/push/subscriptions", "/api-next/me/push/subscriptions", privateMutationStatus],
+  ["POST", "/api/me/push/test", "/api-next/me/push/test", privateMutationStatus],
+  ["POST", "/api/admin/migrations/run", "/api-next/admin/migrations/run", privateMutationStatus],
 ];
 
 const nodeAuthCutoverPairs = [
@@ -133,7 +175,8 @@ const nodeAuthCutoverPairs = [
 const phpOwnedMethodRoutes = [
   ["POST", "/api/uploads"],
   ["POST", "/api/chat"],
-  ["POST", "/api/me/profile"],
+  ["GET", "/api/me/integrations"],
+  ["POST", "/api/me/integrations/metadata/resolve"],
 ];
 
 let failed = false;
@@ -203,6 +246,88 @@ for (const [method, productionPath, previewPath, expectedStatus] of nodeMutation
   }
 
   console.log(`OK ${label} is served by Node and matches ${previewPath} without mutating data`);
+}
+
+for (const [method, productionPath, previewPath, expectedStatus] of nodeUnauthenticatedCutoverPairs) {
+  const production = await fetchJson(productionPath, method, { includeCookie: false });
+  const preview = await fetchJson(previewPath, method, { includeCookie: false });
+  const label = `${method} ${productionPath} unauthenticated cutover`;
+
+  if (!statusMatches(production.status, expectedStatus)) {
+    failed = true;
+    console.error(`FAIL ${label}: expected HTTP ${formatExpectedStatus(expectedStatus)}, got ${production.status}`);
+    continue;
+  }
+
+  if (production.runtime !== "node") {
+    failed = true;
+    console.error(`FAIL ${label}: expected ${runtimeHeader}: node, got ${production.runtime ?? "missing"}`);
+    continue;
+  }
+
+  if (production.status !== preview.status || !deepEqual(production.body, preview.body)) {
+    failed = true;
+    console.error(`FAIL ${label}: production route does not match ${previewPath}`);
+    console.error("Production:", JSON.stringify(production.body, null, 2));
+    console.error("Preview:", JSON.stringify(preview.body, null, 2));
+    continue;
+  }
+
+  console.log(`OK ${label} is served by Node and matches ${previewPath}`);
+}
+
+for (const [method, productionPath, previewPath, expectedStatus] of nodeTokenGuardCutoverPairs) {
+  const production = await fetchJson(productionPath, method, { includeCookie: false });
+  const preview = await fetchJson(previewPath, method, { includeCookie: false });
+  const label = `${method} ${productionPath} token guard cutover`;
+
+  if (!statusMatches(production.status, expectedStatus)) {
+    failed = true;
+    console.error(`FAIL ${label}: expected HTTP ${formatExpectedStatus(expectedStatus)}, got ${production.status}`);
+    continue;
+  }
+
+  if (production.runtime !== "node") {
+    failed = true;
+    console.error(`FAIL ${label}: expected ${runtimeHeader}: node, got ${production.runtime ?? "missing"}`);
+    continue;
+  }
+
+  if (production.status !== preview.status || !deepEqual(production.body, preview.body)) {
+    failed = true;
+    console.error(`FAIL ${label}: production route does not match ${previewPath}`);
+    console.error("Production:", JSON.stringify(production.body, null, 2));
+    console.error("Preview:", JSON.stringify(preview.body, null, 2));
+    continue;
+  }
+
+  console.log(`OK ${label} is served by Node and matches ${previewPath}`);
+}
+
+for (const [productionPath, previewPath, expectedStatus] of nodeHeadCutoverPairs) {
+  const production = await fetchHead(productionPath);
+  const preview = await fetchHead(previewPath);
+  const label = `HEAD ${productionPath} cutover`;
+
+  if (!statusMatches(production.status, expectedStatus)) {
+    failed = true;
+    console.error(`FAIL ${label}: expected HTTP ${formatExpectedStatus(expectedStatus)}, got ${production.status}`);
+    continue;
+  }
+
+  if (production.runtime !== "node") {
+    failed = true;
+    console.error(`FAIL ${label}: expected ${runtimeHeader}: node, got ${production.runtime ?? "missing"}`);
+    continue;
+  }
+
+  if (production.status !== preview.status) {
+    failed = true;
+    console.error(`FAIL ${label}: production HTTP ${production.status} does not match ${previewPath} HTTP ${preview.status}`);
+    continue;
+  }
+
+  console.log(`OK ${label} is served by Node and matches ${previewPath} status`);
 }
 
 for (const [method, productionPath, previewPath, expectedStatus] of nodeAuthCutoverPairs) {
@@ -298,8 +423,11 @@ async function fetchJson(path, method = "GET", options = {}) {
 async function fetchMethodHeaders(path, method) {
   const headers = {
     accept: "application/json",
-    "content-type": "application/json",
   };
+
+  if (method !== "GET" && method !== "HEAD") {
+    headers["content-type"] = "application/json";
+  }
 
   if (cookieHeader !== "") {
     headers.cookie = cookieHeader;
@@ -308,7 +436,7 @@ async function fetchMethodHeaders(path, method) {
   const response = await fetch(`${baseUrl}${path}`, {
     method,
     headers,
-    body: "{}",
+    body: method === "GET" || method === "HEAD" ? undefined : "{}",
   });
 
   return {
@@ -365,6 +493,14 @@ async function fetchHead(path) {
 
 function deepEqual(left, right) {
   return JSON.stringify(sortJson(left)) === JSON.stringify(sortJson(right));
+}
+
+function statusMatches(actual, expected) {
+  return Array.isArray(expected) ? expected.includes(actual) : actual === expected;
+}
+
+function formatExpectedStatus(expected) {
+  return Array.isArray(expected) ? expected.join("/") : String(expected);
 }
 
 function sortJson(value) {

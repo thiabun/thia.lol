@@ -317,12 +317,15 @@ DELETE /api/me/account/deletion
 POST /api/me/account/deletion/cancel
 ```
 
-Uploads, full chat routes, admin/moderation, share cards, push, setup,
-migrations, diagnostics, sitemap, and `POST /api/me/profile` have Node preview
-routes under `/api-next/*`. Production `/api/*` stays PHP-owned for those
-surfaces until Caddy gets method-specific matchers and
-`scripts/check-api-cutover.mjs` is updated. Integrations remain PHP-owned until
-provider OAuth config and callbacks are ported and smoke-tested.
+Uploads, full chat routes, admin/moderation, share-card PNG/cache/proxy routes,
+push subscription/status routes, setup, migrations, diagnostics, sitemap, and
+`POST /api/me/profile` are Node-served in production and should include
+`X-Thia-API-Runtime: node` for their method-specific Caddy matchers.
+
+Integrations remain PHP-owned until provider OAuth config and callbacks are
+ported and smoke-tested. The legacy social-preview HTML scripts
+`/api/post-share.php` and `/api/profile-share.php` also remain PHP-owned; the
+Node share-card cutover covers the generated image/cache API routes.
 
 For upload-sensitive changes, also check one known media URL under:
 

@@ -31,18 +31,16 @@ Do not replace the production API in one big cutover.
 
 ## Current Route Ownership
 
-Production Node ownership is limited to parity-proven reads: rooms, search,
-badges, stats, profiles/profile extras, posts, room/profile post lists, post
-detail/replies, home/discover feeds, auth/me, settings, onboarding, follow
-requests, my posts, notifications, low-risk private writes, auth/session
-writes, social/content writes, and profile/account editor writes.
+Production Node ownership includes parity-proven reads, private reads,
+low-risk writes, auth/session writes, social/content writes, profile/account
+editor writes, uploads, full chat, admin/moderation, share-card image/cache
+routes, push subscription/status routes, setup, migrations, diagnostics,
+sitemap, and `POST /api/me/profile`.
 
-Preview-only Node coverage now also exists for uploads, full chat,
-admin/moderation, share-card image/cache routes, push subscription/status
-routes, setup, migrations, diagnostics, sitemap, and `POST /me/profile`.
-Those routes must not be added to production `/api/*` Caddy ownership until
-live preview smoke and route-specific rollback checks pass. Integrations remain
-PHP-owned pending a separate OAuth/provider config port.
+Integrations remain PHP-owned pending a separate OAuth/provider config port.
+The legacy social-preview HTML scripts, `/api/post-share.php` and
+`/api/profile-share.php`, also remain PHP-owned; the Node share-card cutover
+covers the generated PNG/cache/proxy API routes.
 
 Private read previews also remain available under `/api-next/*`:
 
@@ -182,15 +180,20 @@ POST /api/me/account/deletion/cancel
 
 These routes reuse MariaDB, PHP-compatible sessions/CSRF, current upload URL
 fields, profile module/canvas storage, badge visibility storage, and account
-deletion/session invalidation behavior. Upload storage itself is still PHP-owned.
+deletion/session invalidation behavior.
 
-Avoid moving until authenticated mutation smoke accounts, upload checks, and
-side-effect rollback checks are in place:
+Final production cutover routes are also Node-owned after live no-cookie,
+token-disabled, and preview smoke checks:
 
 ```text
 POST /api/uploads/*
 full chat routes
 admin/moderation routes
+share-card PNG/cache/proxy routes
+push subscription/status routes
+setup, migrations, diagnostics
+GET/HEAD /sitemap.xml
+POST /api/me/profile
 ```
 
 ## Acceptance Bar For Route Cutover
