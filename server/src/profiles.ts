@@ -558,13 +558,14 @@ export function profilePayloadWithFeatured(
   bioEntities: TextEntityPayload[],
   featuredPost: PostPayload | null,
   featuredRoom: RoomPayload | null,
+  viewerCanViewOverride?: boolean,
 ): ProfilePayload {
   const payload: ProfilePayload = {
     ...profilePayloadFromRow(row, social, bioEntities),
     featuredPost,
     featuredRoom,
   };
-  const viewerCanView = payload.visibility !== "private";
+  const viewerCanView = viewerCanViewOverride ?? payload.visibility !== "private";
 
   payload.viewerCanView = viewerCanView;
 

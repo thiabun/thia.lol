@@ -28,6 +28,16 @@ import {
   type ProfileStarPayload,
   type RemoveFollowerPayload,
 } from "./content.js";
+import {
+  EditorRouteError,
+  EditorStorageNotReadyError,
+  type AccountDeletionSchedulePayload,
+  type AccountPasswordPayload,
+  type EditorRepository,
+  type MyPostsDeletePayload,
+  type ProfileCanvasDraftState,
+  type ProfileCanvasUpdatePayload,
+} from "./editor.js";
 import type {
   DiscoverPersonPayload,
   HomeFeedPayload,
@@ -734,6 +744,62 @@ function privateReadsRepositoryMock(overrides: Partial<PrivateReadsRepository> =
   };
 }
 
+const canvasUpdatePayload: ProfileCanvasUpdatePayload = {
+  backgroundBlur: "medium",
+  canvasGlass: 58,
+  canvasVersion: 2,
+  modules: [profileModule],
+};
+
+const canvasDraftPayload: ProfileCanvasDraftState = {
+  backgroundBlur: "medium",
+  canvasGlass: 58,
+  canvasVersion: 2,
+  modules: [profileModule],
+  selectedModuleId: null,
+  updatedAt: "2026-06-24 12:00:00",
+};
+
+const myPostsDeletePayload: MyPostsDeletePayload = {
+  deletedCount: 3,
+  kind: "posts",
+};
+
+const accountPasswordPayload: AccountPasswordPayload = {
+  changed: true,
+};
+
+const accountDeletionPayload: AccountDeletionSchedulePayload = {
+  scheduled: true,
+  scheduledFor: "2026-07-24 12:00:00",
+};
+
+function editorRepositoryMock(overrides: Partial<EditorRepository> = {}): EditorRepository {
+  return {
+    updateProfile: vi.fn().mockResolvedValue(profile),
+    updateFeaturedProfile: vi.fn().mockResolvedValue(profile),
+    listOwnerModules: vi.fn().mockResolvedValue([profileModule]),
+    createModule: vi.fn().mockResolvedValue([profileModule]),
+    updateModule: vi.fn().mockResolvedValue([profileModule]),
+    deleteModule: vi.fn().mockResolvedValue([profileModule]),
+    restoreModule: vi.fn().mockResolvedValue([profileModule]),
+    updateModuleOrder: vi.fn().mockResolvedValue([profileModule]),
+    updateCanvas: vi.fn().mockResolvedValue(canvasUpdatePayload),
+    getCanvasDraft: vi.fn().mockResolvedValue(canvasDraftPayload),
+    updateCanvasDraft: vi.fn().mockResolvedValue(canvasDraftPayload),
+    deleteCanvasDraft: vi.fn().mockResolvedValue(canvasDraftPayload),
+    commitCanvasDraft: vi.fn().mockResolvedValue(canvasUpdatePayload),
+    updateFeaturedBadges: vi.fn().mockResolvedValue(profileBadges),
+    deleteMyPosts: vi.fn().mockResolvedValue(myPostsDeletePayload),
+    updateAccountEmail: vi.fn().mockResolvedValue(settingsPayload),
+    updateAccountHandle: vi.fn().mockResolvedValue(settingsPayload),
+    updateAccountPassword: vi.fn().mockResolvedValue(accountPasswordPayload),
+    scheduleAccountDeletion: vi.fn().mockResolvedValue(accountDeletionPayload),
+    cancelAccountDeletion: vi.fn().mockResolvedValue(settingsPayload),
+    ...overrides,
+  };
+}
+
 function authRepositoryMock(overrides: Partial<AuthRepository> = {}): AuthRepository {
   return {
     login: vi.fn().mockResolvedValue(authSessionResult),
@@ -1294,6 +1360,260 @@ describe("Node API private preview routes", () => {
     expect(scalar.json()).toEqual({
       ok: false,
       error: "JSON body must be an object.",
+    });
+  });
+});
+
+describe("Node API profile/account editor preview routes", () => {
+  it("requires authentication before CSRF for editor mutations", async () => {
+    const repository = editorRepositoryMock();
+    const app = buildApp({
+      editorRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock({
+        currentSession: vi.fn().mockResolvedValue(null),
+      }),
+    });
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/me/profile",
+      payload: {
+        displayName: "Viewer",
+      },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(repository.updateProfile).not.toHaveBeenCalled();
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Unauthenticated.",
+    });
+  });
+
+  it("requires a PHP-compatible CSRF header for editor mutations", async () => {
+    const repository = editorRepositoryMock();
+    const app = buildApp({
+      editorRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const missing = await app.inject({
+      method: "PATCH",
+      url: "/me/profile",
+      payload: {
+        displayName: "Viewer",
+      },
+    });
+    const invalid = await app.inject({
+      method: "PATCH",
+      url: "/me/profile",
+      headers: {
+        "x-csrf-token": "wrong",
+      },
+      payload: {
+        displayName: "Viewer",
+      },
+    });
+
+    expect(missing.statusCode).toBe(403);
+    expect(missing.json()).toEqual({
+      ok: false,
+      error: "CSRF token is required.",
+    });
+    expect(invalid.statusCode).toBe(403);
+    expect(invalid.json()).toEqual({
+      ok: false,
+      error: "Invalid CSRF token.",
+    });
+    expect(repository.updateProfile).not.toHaveBeenCalled();
+  });
+
+  it("serves profile editor mutations through PHP-style wrappers", async () => {
+    const repository = editorRepositoryMock();
+    const app = buildApp({
+      editorRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+
+    for (const [method, path, payload, expectedStatus] of [
+      ["PATCH", "/me/profile", { displayName: "Viewer" }, 200],
+      ["PATCH", "/me/profile/featured", { featuredPostId: null, featuredRoomId: null }, 200],
+      ["POST", "/me/profile/modules", { type: "custom_text", title: "Note", config: { body: "Hello" } }, 201],
+      ["PATCH", "/me/profile/modules/11", { title: "Note" }, 200],
+      ["DELETE", "/me/profile/modules/11", {}, 200],
+      ["POST", "/me/profile/modules/11/restore", {}, 200],
+      ["PATCH", "/me/profile/module-order", { moduleIds: [11] }, 200],
+      ["PATCH", "/me/profile/canvas", { backgroundBlur: "medium" }, 200],
+      ["PATCH", "/me/profile/canvas-draft", { backgroundBlur: "soft" }, 200],
+      ["DELETE", "/me/profile/canvas-draft", {}, 200],
+      ["POST", "/me/profile/canvas-draft/commit", {}, 200],
+      ["PATCH", "/me/badges/featured", { featuredBadgeIds: [1] }, 200],
+      ["DELETE", "/me/posts?kind=posts", {}, 200],
+    ] as const) {
+      const response = await app.inject({
+        method,
+        url: path,
+        headers: {
+          "x-csrf-token": "csrf-token",
+        },
+        payload,
+      });
+
+      expect(response.statusCode).toBe(expectedStatus);
+      expect(response.json()).toHaveProperty("ok", true);
+    }
+
+    expect(repository.updateProfile).toHaveBeenCalledWith(session, { displayName: "Viewer" });
+    expect(repository.updateFeaturedProfile).toHaveBeenCalledWith(session, {
+      featuredPostId: null,
+      featuredRoomId: null,
+    });
+    expect(repository.createModule).toHaveBeenCalledWith(session, {
+      type: "custom_text",
+      title: "Note",
+      config: {
+        body: "Hello",
+      },
+    });
+    expect(repository.updateModule).toHaveBeenCalledWith(session, 11, { title: "Note" });
+    expect(repository.deleteModule).toHaveBeenCalledWith(session, 11);
+    expect(repository.restoreModule).toHaveBeenCalledWith(session, 11);
+    expect(repository.updateModuleOrder).toHaveBeenCalledWith(session, { moduleIds: [11] });
+    expect(repository.updateCanvas).toHaveBeenCalledWith(session, { backgroundBlur: "medium" });
+    expect(repository.updateCanvasDraft).toHaveBeenCalledWith(session, { backgroundBlur: "soft" });
+    expect(repository.deleteCanvasDraft).toHaveBeenCalledWith(session);
+    expect(repository.commitCanvasDraft).toHaveBeenCalledWith(session);
+    expect(repository.updateFeaturedBadges).toHaveBeenCalledWith(session, { featuredBadgeIds: [1] });
+    expect(repository.deleteMyPosts).toHaveBeenCalledWith(42, "posts");
+  });
+
+  it("serves profile editor reads through PHP-style wrappers", async () => {
+    const repository = editorRepositoryMock();
+    const app = buildApp({
+      editorRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const modules = await app.inject({
+      method: "GET",
+      url: "/me/profile/modules?includeDeleted=1",
+    });
+    const draft = await app.inject({
+      method: "GET",
+      url: "/me/profile/canvas-draft",
+    });
+
+    expect(modules.statusCode).toBe(200);
+    expect(modules.json()).toEqual({
+      ok: true,
+      data: [profileModule],
+    });
+    expect(repository.listOwnerModules).toHaveBeenCalledWith(42, true);
+    expect(draft.statusCode).toBe(200);
+    expect(draft.json()).toEqual({
+      ok: true,
+      data: canvasDraftPayload,
+    });
+  });
+
+  it("serves account editor mutations and clears cookies for account deletion", async () => {
+    const repository = editorRepositoryMock();
+    const app = buildApp({
+      editorRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      publicBaseUrl: "https://thia.lol",
+      sessionCookieDomain: ".thia.lol",
+      sessionCookieName: "thia_session",
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+
+    for (const [method, path, payload] of [
+      ["PATCH", "/me/account/email", { email: "viewer2@example.test", currentPassword: "correct-password" }],
+      ["PATCH", "/me/account/handle", { handle: "viewer2", currentPassword: "correct-password" }],
+      ["PATCH", "/me/account/password", { currentPassword: "correct-password", newPassword: "new-correct-password" }],
+      ["POST", "/me/account/deletion/cancel", {}],
+    ] as const) {
+      const response = await app.inject({
+        method,
+        url: path,
+        headers: {
+          "x-csrf-token": "csrf-token",
+          "x-forwarded-host": "thia.lol",
+          "x-forwarded-proto": "https",
+        },
+        payload,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toHaveProperty("ok", true);
+    }
+
+    const deletion = await app.inject({
+      method: "DELETE",
+      url: "/me/account",
+      headers: {
+        "x-csrf-token": "csrf-token",
+        "x-forwarded-host": "thia.lol",
+        "x-forwarded-proto": "https",
+      },
+      payload: {
+        currentPassword: "correct-password",
+      },
+    });
+
+    expect(deletion.statusCode).toBe(200);
+    expect(deletion.headers["set-cookie"]).toEqual(expect.arrayContaining([
+      expect.stringContaining("thia_session=;"),
+    ]));
+    expect(deletion.json()).toEqual({
+      ok: true,
+      data: accountDeletionPayload,
+    });
+    expect(repository.updateAccountEmail).toHaveBeenCalled();
+    expect(repository.updateAccountHandle).toHaveBeenCalled();
+    expect(repository.updateAccountPassword).toHaveBeenCalled();
+    expect(repository.cancelAccountDeletion).toHaveBeenCalledWith(session);
+    expect(repository.scheduleAccountDeletion).toHaveBeenCalledWith(session, {
+      currentPassword: "correct-password",
+    });
+  });
+
+  it("maps editor validation and storage errors to PHP-compatible JSON", async () => {
+    const repository = editorRepositoryMock({
+      updateProfile: vi.fn().mockRejectedValue(new EditorRouteError("Display name is required.", 422)),
+      listOwnerModules: vi
+        .fn()
+        .mockRejectedValue(new EditorStorageNotReadyError("Profile module storage is not ready. Run pending migrations.")),
+    });
+    const app = buildApp({
+      editorRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const invalid = await app.inject({
+      method: "PATCH",
+      url: "/me/profile",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: {
+        displayName: "",
+      },
+    });
+    const storage = await app.inject({
+      method: "GET",
+      url: "/me/profile/modules",
+    });
+
+    expect(invalid.statusCode).toBe(422);
+    expect(invalid.json()).toEqual({
+      ok: false,
+      error: "Display name is required.",
+    });
+    expect(storage.statusCode).toBe(503);
+    expect(storage.json()).toEqual({
+      ok: false,
+      error: "Profile module storage is not ready. Run pending migrations.",
     });
   });
 });

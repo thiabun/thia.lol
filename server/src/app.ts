@@ -10,6 +10,7 @@ import { z } from "zod";
 
 import {
   AuthRouteError,
+  buildClearSessionCookies,
   type AuthLogoutResult,
   type AuthRepository,
   type AuthRequestContext,
@@ -38,6 +39,16 @@ import {
   type RemoveFollowerPayload,
   type RoomDeletePayload,
 } from "./content.js";
+import {
+  EditorRouteError,
+  EditorStorageNotReadyError,
+  type AccountDeletionSchedulePayload,
+  type AccountPasswordPayload,
+  type EditorRepository,
+  type MyPostsDeletePayload,
+  type ProfileCanvasDraftState,
+  type ProfileCanvasUpdatePayload,
+} from "./editor.js";
 import {
   normalizePostIdentifier,
   type DiscoverFeedPayload,
@@ -111,6 +122,10 @@ const postReactionParamsSchema = z.object({
   type: z.string(),
 });
 
+const profileModuleParamsSchema = z.object({
+  id: z.string(),
+});
+
 const notificationReadParamsSchema = z.object({
   id: z.string(),
 });
@@ -147,6 +162,7 @@ export interface AppDependencies {
   badgesRepository?: BadgesRepository;
   checkDatabase?: () => Promise<void>;
   contentMutationsRepository?: ContentMutationsRepository;
+  editorRepository?: EditorRepository;
   profilesRepository?: ProfilesRepository;
   postsRepository?: PostsRepository;
   privateReadsRepository?: PrivateReadsRepository;
@@ -155,6 +171,8 @@ export interface AppDependencies {
   sessionsRepository?: SessionsRepository;
   statsRepository?: StatsRepository;
   publicBaseUrl?: string;
+  sessionCookieName?: string;
+  sessionCookieDomain?: string | null;
   logger?: FastifyServerOptions["logger"];
 }
 
@@ -416,6 +434,17 @@ function privatePostKindFromRequest(query: unknown): "all" | "posts" | "replies"
   return settingsPostKind(Array.isArray(value) ? undefined : value);
 }
 
+function includeDeletedModulesFromRequest(query: unknown): boolean {
+  if (query === null || typeof query !== "object" || Array.isArray(query)) {
+    return false;
+  }
+
+  const value = (query as Record<string, unknown>).includeDeleted;
+  const scalar = Array.isArray(value) ? value[0] : value;
+
+  return scalar === "1" || scalar === "true" || scalar === true;
+}
+
 async function withAuthenticatedPrivateRoute<T>(
   request: FastifyRequest,
   reply: FastifyReply,
@@ -542,6 +571,154 @@ async function withAuthenticatedContentMutationRoute<T>(
     }
 
     if (error instanceof ContentStorageNotReadyError) {
+      return sendRouteError(request, reply, routeName, 503, errorPayload(error.message), error);
+    }
+
+    return internalError(request, reply, routeName, error);
+  }
+}
+
+async function withAuthenticatedEditorRoute<T>(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  lookup: (repository: EditorRepository, session: RequestSession) => Promise<T> | T,
+) {
+  if (dependencies.sessionsRepository === undefined || dependencies.editorRepository === undefined) {
+    return internalError(request, reply, routeName, new Error("Missing authenticated editor route dependency."));
+  }
+
+  try {
+    const session = await dependencies.sessionsRepository.currentSession(request.headers.cookie);
+
+    if (session === null) {
+      return reply.status(401).send(errorPayload("Unauthenticated."));
+    }
+
+    const data = await lookup(dependencies.editorRepository, session);
+
+    return reply.send(successPayload<T>(data));
+  } catch (error) {
+    if (error instanceof EditorRouteError) {
+      return reply.status(error.statusCode).send(errorPayload(error.message));
+    }
+
+    if (error instanceof EditorStorageNotReadyError) {
+      return sendRouteError(request, reply, routeName, 503, errorPayload(error.message), error);
+    }
+
+    return internalError(request, reply, routeName, error);
+  }
+}
+
+async function withAuthenticatedEditorMutationRoute<T>(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  lookup: (
+    repository: EditorRepository,
+    session: RequestSession,
+    body: Record<string, unknown>,
+  ) => Promise<T> | T,
+  statusCode = 200,
+) {
+  if (
+    dependencies.sessionsRepository === undefined ||
+    dependencies.privateReadsRepository === undefined ||
+    dependencies.editorRepository === undefined
+  ) {
+    return internalError(request, reply, routeName, new Error("Missing authenticated editor mutation dependency."));
+  }
+
+  try {
+    const session = await dependencies.sessionsRepository.currentSession(request.headers.cookie);
+
+    if (session === null) {
+      return reply.status(401).send(errorPayload("Unauthenticated."));
+    }
+
+    const providedCsrfToken = csrfTokenFromRequest(request);
+
+    if (providedCsrfToken === "") {
+      return reply.status(403).send(errorPayload("CSRF token is required."));
+    }
+
+    if (!safeStringEquals(dependencies.privateReadsRepository.csrfTokenForSession(session), providedCsrfToken)) {
+      return reply.status(403).send(errorPayload("Invalid CSRF token."));
+    }
+
+    const body = jsonBodyRecord(request.body);
+    const data = await lookup(dependencies.editorRepository, session, body);
+
+    return reply.status(statusCode).send(successPayload<T>(data));
+  } catch (error) {
+    if (error instanceof AuthRouteError || error instanceof EditorRouteError || error instanceof PrivateRouteError) {
+      return reply.status(error.statusCode).send(errorPayload(error.message));
+    }
+
+    if (error instanceof EditorStorageNotReadyError) {
+      return sendRouteError(request, reply, routeName, 503, errorPayload(error.message), error);
+    }
+
+    return internalError(request, reply, routeName, error);
+  }
+}
+
+async function withAccountDeletionScheduleRoute(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+) {
+  if (
+    dependencies.sessionsRepository === undefined ||
+    dependencies.privateReadsRepository === undefined ||
+    dependencies.editorRepository === undefined
+  ) {
+    return internalError(request, reply, routeName, new Error("Missing account deletion dependency."));
+  }
+
+  try {
+    const session = await dependencies.sessionsRepository.currentSession(request.headers.cookie);
+
+    if (session === null) {
+      return reply.status(401).send(errorPayload("Unauthenticated."));
+    }
+
+    const providedCsrfToken = csrfTokenFromRequest(request);
+
+    if (providedCsrfToken === "") {
+      return reply.status(403).send(errorPayload("CSRF token is required."));
+    }
+
+    if (!safeStringEquals(dependencies.privateReadsRepository.csrfTokenForSession(session), providedCsrfToken)) {
+      return reply.status(403).send(errorPayload("Invalid CSRF token."));
+    }
+
+    const context = authRequestContext(request, dependencies);
+    const data = await dependencies.editorRepository.scheduleAccountDeletion(
+      session,
+      jsonBodyRequiredObject(jsonBodyRecord(request.body), request.body),
+    );
+
+    reply.header(
+      "Set-Cookie",
+      buildClearSessionCookies(dependencies.sessionCookieName ?? "thia_session", {
+        domain: dependencies.sessionCookieDomain ?? null,
+        host: context.host,
+        secure: context.secure,
+      }),
+    );
+
+    return reply.send(successPayload<AccountDeletionSchedulePayload>(data));
+  } catch (error) {
+    if (error instanceof AuthRouteError || error instanceof EditorRouteError || error instanceof PrivateRouteError) {
+      return reply.status(error.statusCode).send(errorPayload(error.message));
+    }
+
+    if (error instanceof EditorStorageNotReadyError) {
       return sendRouteError(request, reply, routeName, 503, errorPayload(error.message), error);
     }
 
@@ -972,6 +1149,229 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       dependencies,
       "me.posts",
       (repository, session) => repository.getMyPosts(session.userId, privatePostKindFromRequest(request.query)),
+    ),
+  );
+
+  app.delete("/me/posts", async (request, reply) =>
+    withAuthenticatedEditorMutationRoute<MyPostsDeletePayload>(
+      request,
+      reply,
+      dependencies,
+      "me.posts.delete",
+      (repository, session) => repository.deleteMyPosts(session.userId, privatePostKindFromRequest(request.query)),
+    ),
+  );
+
+  app.patch("/me/profile", async (request, reply) =>
+    withAuthenticatedEditorMutationRoute<ProfilePayload>(
+      request,
+      reply,
+      dependencies,
+      "me.profile.update",
+      (repository, session, body) => repository.updateProfile(session, jsonBodyRequiredObject(body, request.body)),
+    ),
+  );
+
+  app.patch("/me/profile/featured", async (request, reply) =>
+    withAuthenticatedEditorMutationRoute<ProfilePayload>(
+      request,
+      reply,
+      dependencies,
+      "me.profile.featured.update",
+      (repository, session, body) => repository.updateFeaturedProfile(session, jsonBodyRequiredObject(body, request.body)),
+    ),
+  );
+
+  app.get("/me/profile/modules", async (request, reply) =>
+    withAuthenticatedEditorRoute<ProfileModulePayload[]>(
+      request,
+      reply,
+      dependencies,
+      "me.profile.modules",
+      (repository, session) => repository.listOwnerModules(
+        session.userId,
+        includeDeletedModulesFromRequest(request.query),
+      ),
+    ),
+  );
+
+  app.post("/me/profile/modules", async (request, reply) =>
+    withAuthenticatedEditorMutationRoute<ProfileModulePayload[]>(
+      request,
+      reply,
+      dependencies,
+      "me.profile.modules.create",
+      (repository, session, body) => repository.createModule(session, jsonBodyRequiredObject(body, request.body)),
+      201,
+    ),
+  );
+
+  app.patch("/me/profile/modules/:id", async (request, reply) => {
+    const parsedParams = profileModuleParamsSchema.safeParse(request.params);
+    const moduleId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (moduleId === null) {
+      return reply.status(404).send(errorPayload("Profile module not found."));
+    }
+
+    return withAuthenticatedEditorMutationRoute<ProfileModulePayload[]>(
+      request,
+      reply,
+      dependencies,
+      "me.profile.modules.update",
+      (repository, session, body) => repository.updateModule(session, moduleId, jsonBodyRequiredObject(body, request.body)),
+    );
+  });
+
+  app.delete("/me/profile/modules/:id", async (request, reply) => {
+    const parsedParams = profileModuleParamsSchema.safeParse(request.params);
+    const moduleId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (moduleId === null) {
+      return reply.status(404).send(errorPayload("Profile module not found."));
+    }
+
+    return withAuthenticatedEditorMutationRoute<ProfileModulePayload[]>(
+      request,
+      reply,
+      dependencies,
+      "me.profile.modules.delete",
+      (repository, session) => repository.deleteModule(session, moduleId),
+    );
+  });
+
+  app.post("/me/profile/modules/:id/restore", async (request, reply) => {
+    const parsedParams = profileModuleParamsSchema.safeParse(request.params);
+    const moduleId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (moduleId === null) {
+      return reply.status(404).send(errorPayload("Profile module not found."));
+    }
+
+    return withAuthenticatedEditorMutationRoute<ProfileModulePayload[]>(
+      request,
+      reply,
+      dependencies,
+      "me.profile.modules.restore",
+      (repository, session) => repository.restoreModule(session, moduleId),
+    );
+  });
+
+  app.patch("/me/profile/module-order", async (request, reply) =>
+    withAuthenticatedEditorMutationRoute<ProfileModulePayload[]>(
+      request,
+      reply,
+      dependencies,
+      "me.profile.module-order.update",
+      (repository, session, body) => repository.updateModuleOrder(session, jsonBodyRequiredObject(body, request.body)),
+    ),
+  );
+
+  app.patch("/me/profile/canvas", async (request, reply) =>
+    withAuthenticatedEditorMutationRoute<ProfileCanvasUpdatePayload>(
+      request,
+      reply,
+      dependencies,
+      "me.profile.canvas.update",
+      (repository, session, body) => repository.updateCanvas(session, jsonBodyRequiredObject(body, request.body)),
+    ),
+  );
+
+  app.get("/me/profile/canvas-draft", async (request, reply) =>
+    withAuthenticatedEditorRoute<ProfileCanvasDraftState>(
+      request,
+      reply,
+      dependencies,
+      "me.profile.canvas-draft",
+      (repository, session) => repository.getCanvasDraft(session.userId),
+    ),
+  );
+
+  app.patch("/me/profile/canvas-draft", async (request, reply) =>
+    withAuthenticatedEditorMutationRoute<ProfileCanvasDraftState>(
+      request,
+      reply,
+      dependencies,
+      "me.profile.canvas-draft.update",
+      (repository, session, body) => repository.updateCanvasDraft(session, jsonBodyRequiredObject(body, request.body)),
+    ),
+  );
+
+  app.delete("/me/profile/canvas-draft", async (request, reply) =>
+    withAuthenticatedEditorMutationRoute<ProfileCanvasDraftState>(
+      request,
+      reply,
+      dependencies,
+      "me.profile.canvas-draft.delete",
+      (repository, session) => repository.deleteCanvasDraft(session),
+    ),
+  );
+
+  app.post("/me/profile/canvas-draft/commit", async (request, reply) =>
+    withAuthenticatedEditorMutationRoute<ProfileCanvasUpdatePayload>(
+      request,
+      reply,
+      dependencies,
+      "me.profile.canvas-draft.commit",
+      (repository, session) => repository.commitCanvasDraft(session),
+    ),
+  );
+
+  app.patch("/me/badges/featured", async (request, reply) =>
+    withAuthenticatedEditorMutationRoute<ProfileBadgesPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.badges.featured.update",
+      (repository, session, body) => repository.updateFeaturedBadges(session, jsonBodyRequiredObject(body, request.body)),
+    ),
+  );
+
+  app.patch("/me/account/email", async (request, reply) =>
+    withAuthenticatedEditorMutationRoute<SettingsPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.account.email.update",
+      (repository, session, body) => repository.updateAccountEmail(session, jsonBodyRequiredObject(body, request.body)),
+    ),
+  );
+
+  app.patch("/me/account/handle", async (request, reply) =>
+    withAuthenticatedEditorMutationRoute<SettingsPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.account.handle.update",
+      (repository, session, body) => repository.updateAccountHandle(session, jsonBodyRequiredObject(body, request.body)),
+    ),
+  );
+
+  app.patch("/me/account/password", async (request, reply) =>
+    withAuthenticatedEditorMutationRoute<AccountPasswordPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.account.password.update",
+      (repository, session, body) => repository.updateAccountPassword(session, jsonBodyRequiredObject(body, request.body)),
+    ),
+  );
+
+  app.delete("/me/account", async (request, reply) =>
+    withAccountDeletionScheduleRoute(request, reply, dependencies, "me.account.delete"),
+  );
+
+  app.delete("/me/account/deletion", async (request, reply) =>
+    withAccountDeletionScheduleRoute(request, reply, dependencies, "me.account.deletion.delete"),
+  );
+
+  app.post("/me/account/deletion/cancel", async (request, reply) =>
+    withAuthenticatedEditorMutationRoute<SettingsPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.account.deletion.cancel",
+      (repository, session) => repository.cancelAccountDeletion(session),
     ),
   );
 

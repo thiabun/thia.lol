@@ -85,7 +85,7 @@ async function registerUser(suffix, displayName) {
   };
 }
 
-async function cleanupWithApi(owner, friend, roomSlug) {
+async function cleanupWithApi(owner, friend, target, roomSlug) {
   for (const postId of created.posts.toReversed()) {
     await api(`${apiPrefix}/posts/${postId}`, {
       method: "DELETE",
@@ -111,13 +111,65 @@ async function cleanupWithApi(owner, friend, roomSlug) {
     });
   }
 
-  for (const session of [owner, friend]) {
+  for (const session of [owner, friend, target]) {
     await api(`${apiPrefix}/auth/logout`, {
       method: "POST",
       session,
       body: {},
     }).catch(() => undefined);
   }
+}
+
+function requireArray(value, label) {
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} was not an array.`);
+  }
+
+  return value;
+}
+
+function requireObject(value, label) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} was not an object.`);
+  }
+
+  return value;
+}
+
+function moduleIds(modules) {
+  return requireArray(modules, "Profile modules")
+    .map((module) => requireObject(module, "Profile module").id)
+    .filter((id) => Number.isInteger(id));
+}
+
+function canvasPlacements(modules) {
+  return requireArray(modules, "Profile modules").map((module, index) => {
+    const record = requireObject(module, "Profile module");
+    const layout = requireObject(record.layout, "Profile module layout");
+
+    return {
+      id: record.id,
+      column: Math.max(1, Number(layout.column) || 1),
+      row: index + 1,
+      colSpan: Math.max(1, Number(layout.colSpan) || 3),
+      rowSpan: Math.max(1, Number(layout.rowSpan) || 2),
+      pinned: Boolean(record.pinned),
+      visible: record.visibility !== "hidden",
+    };
+  });
+}
+
+function newestModuleId(modules, type) {
+  const matches = requireArray(modules, "Profile modules")
+    .filter((module) => requireObject(module, "Profile module").type === type)
+    .map((module) => requireObject(module, "Profile module").id)
+    .filter((id) => Number.isInteger(id));
+
+  if (matches.length === 0) {
+    throw new Error(`Expected a ${type} module id.`);
+  }
+
+  return Math.max(...matches);
 }
 
 async function main() {
@@ -140,6 +192,122 @@ async function main() {
       session: target,
       body: {
         profileVisibility: "private",
+      },
+    });
+
+    await api(`${apiPrefix}/me/profile`, {
+      method: "PATCH",
+      session: owner,
+      body: {
+        displayName: "Codex Editor Smoke",
+        bio: `Profile editor smoke ${prefix} https://thia.lol`,
+        location: "Codex",
+        traits: ["temporary", "node"],
+        links: [
+          {
+            label: "thia.lol",
+            url: "https://thia.lol",
+          },
+        ],
+      },
+    });
+    await api(`${apiPrefix}/profiles/${owner.handle}`, {
+      session: owner,
+    });
+    await api(`${apiPrefix}/me/profile/featured`, {
+      method: "PATCH",
+      session: owner,
+      body: {
+        featuredPostId: null,
+        featuredRoomId: null,
+      },
+    });
+
+    const createdModules = await api(`${apiPrefix}/me/profile/modules`, {
+      method: "POST",
+      expected: 201,
+      session: owner,
+      body: {
+        type: "custom_text",
+        title: "Smoke note",
+        config: {
+          body: `Temporary editor smoke module ${prefix}`,
+        },
+        visibility: "public",
+      },
+    });
+    const customModuleId = newestModuleId(createdModules.data, "custom_text");
+
+    const updatedModules = await api(`${apiPrefix}/me/profile/modules/${customModuleId}`, {
+      method: "PATCH",
+      session: owner,
+      body: {
+        title: "Smoke note edited",
+        config: {
+          body: `Temporary editor smoke module ${prefix} edited`,
+        },
+      },
+    });
+
+    await api(`${apiPrefix}/me/profile/modules/${customModuleId}`, {
+      method: "DELETE",
+      session: owner,
+      body: {},
+    });
+    await api(`${apiPrefix}/me/profile/modules/${customModuleId}/restore`, {
+      method: "POST",
+      session: owner,
+      body: {},
+    });
+
+    const ownerModules = await api(`${apiPrefix}/me/profile/modules`, {
+      session: owner,
+    });
+    await api(`${apiPrefix}/me/profile/module-order`, {
+      method: "PATCH",
+      session: owner,
+      body: {
+        moduleIds: moduleIds(ownerModules.data),
+      },
+    });
+    await api(`${apiPrefix}/me/profile/canvas`, {
+      method: "PATCH",
+      session: owner,
+      body: {
+        backgroundBlur: "soft",
+        modules: canvasPlacements(ownerModules.data),
+      },
+    });
+    await api(`${apiPrefix}/me/profile/canvas-draft`, {
+      session: owner,
+    });
+    await api(`${apiPrefix}/me/profile/canvas-draft`, {
+      method: "PATCH",
+      session: owner,
+      body: {
+        backgroundBlur: "medium",
+        canvasGlass: 62,
+        modules: updatedModules.data,
+        selectedModuleId: customModuleId,
+      },
+    });
+    await api(`${apiPrefix}/me/profile/canvas-draft/commit`, {
+      method: "POST",
+      session: owner,
+      body: {},
+    });
+    await api(`${apiPrefix}/me/profile/canvas-draft`, {
+      method: "DELETE",
+      session: owner,
+      body: {},
+    });
+    await api(`${apiPrefix}/me/badges/featured`, {
+      method: "PATCH",
+      session: owner,
+      body: {
+        featuredBadgeIds: [],
+        visibleBadgeIds: [],
+        hiddenBadgeIds: [],
       },
     });
 
@@ -299,6 +467,11 @@ async function main() {
         note: "Smoke share",
       },
     });
+    await api(`${apiPrefix}/me/posts?kind=replies`, {
+      method: "DELETE",
+      session: owner,
+      body: {},
+    });
 
     roomSlug = `${prefix}-room`;
     created.rooms.push(roomSlug);
@@ -338,9 +511,63 @@ async function main() {
       body: {},
     });
 
+    const targetEmail = `${target.handle}2@example.com`;
+    const targetHandle = `${target.handle}x`;
+    const updatedPassword = `${password}-updated`;
+
+    await api(`${apiPrefix}/me/account/email`, {
+      method: "PATCH",
+      session: target,
+      body: {
+        email: targetEmail,
+        currentPassword: password,
+      },
+    });
+    await api(`${apiPrefix}/me/account/handle`, {
+      method: "PATCH",
+      session: target,
+      body: {
+        handle: targetHandle,
+        currentPassword: password,
+      },
+    });
+    await api(`${apiPrefix}/me/account/password`, {
+      method: "PATCH",
+      session: target,
+      body: {
+        currentPassword: password,
+        newPassword: updatedPassword,
+      },
+    });
+
+    const relogin = await api(`${apiPrefix}/auth/login`, {
+      method: "POST",
+      body: {
+        email: targetEmail,
+        password: updatedPassword,
+      },
+    });
+    target.cookie = sessionCookie(relogin.response);
+    target.csrfToken = relogin.data.csrfToken;
+    target.handle = targetHandle;
+
+    await api(`${apiPrefix}/me/account/deletion/cancel`, {
+      method: "POST",
+      session: target,
+      body: {},
+    });
+    await api(`${apiPrefix}/me/account`, {
+      method: "DELETE",
+      session: target,
+      body: {
+        currentPassword: updatedPassword,
+        reason: "Controlled Node account deletion smoke.",
+      },
+    });
+
     console.log("OK controlled mutation smoke passed");
   } finally {
-    await cleanupWithApi(owner, friend, roomSlug);
+    await cleanupWithApi(owner, friend, target, roomSlug);
     console.log(`Cleanup note: remove throwaway users with handle prefix '${prefix}' after this script if account cleanup is desired.`);
   }
 }

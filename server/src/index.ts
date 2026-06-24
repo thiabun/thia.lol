@@ -4,6 +4,7 @@ import { createBadgesRepository } from "./badges.js";
 import { loadServerConfig } from "./config.js";
 import { createContentMutationsRepository } from "./content.js";
 import { createDatabaseClient } from "./db.js";
+import { createEditorRepository } from "./editor.js";
 import { createPostsRepository } from "./posts.js";
 import { createPrivateReadsRepository } from "./private.js";
 import { createProfilesRepository } from "./profiles.js";
@@ -25,6 +26,7 @@ const badgesRepository = createBadgesRepository(database.pool);
 const contentMutationsRepository = createContentMutationsRepository(database.pool, {
   publicBaseUrl: config.THIA_PUBLIC_BASE_URL,
 });
+const editorRepository = createEditorRepository(database.pool);
 const postsRepository = createPostsRepository(database.pool);
 const privateReadsRepository = createPrivateReadsRepository(database.pool, {
   csrfSecret: config.THIA_CSRF_SECRET,
@@ -41,6 +43,7 @@ const app = buildApp({
   badgesRepository,
   checkDatabase: database.check,
   contentMutationsRepository,
+  editorRepository,
   logger: nodeApiLoggerOptions(config.THIA_API_LOG_LEVEL),
   postsRepository,
   privateReadsRepository,
@@ -50,6 +53,8 @@ const app = buildApp({
   sessionsRepository,
   statsRepository,
   publicBaseUrl: config.THIA_PUBLIC_BASE_URL,
+  sessionCookieName: config.THIA_SESSION_COOKIE_NAME,
+  sessionCookieDomain: config.THIA_SESSION_COOKIE_DOMAIN === "" ? null : config.THIA_SESSION_COOKIE_DOMAIN,
 });
 
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
