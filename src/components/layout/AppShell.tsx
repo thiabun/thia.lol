@@ -98,6 +98,16 @@ function profileOnboardingStateNeedsVisit(state: OnboardingGateState): boolean {
   return state.steps.some((step) => !handled.has(step));
 }
 
+function profileThemeControlsShouldDisable(pathname: string): boolean {
+  const directProfile = matchPath({ path: "/:profileHandle", end: true }, pathname);
+
+  if (directProfile?.params.profileHandle?.startsWith("@")) {
+    return true;
+  }
+
+  return Boolean(matchPath({ path: "/@/:handle", end: true }, pathname));
+}
+
 export type AppShellOutletContext = {
   openPostComposer: (roomSlug?: string) => void;
   setTopBarAction: (action: ReactNode | undefined) => void;
@@ -122,6 +132,9 @@ export function AppShell() {
     { path: "/rooms/:slug", end: true },
     location.pathname,
   )?.params.slug;
+  const themeControlsDisabled = profileThemeControlsShouldDisable(
+    location.pathname,
+  );
 
   useEffect(() => {
     if (status !== "authenticated" || !user) {
@@ -271,6 +284,7 @@ export function AppShell() {
         navItems={publicNavItems}
         notificationUnreadCount={notificationUnreadCount}
         showNotifications={status === "authenticated"}
+        themeControlsDisabled={themeControlsDisabled}
         topBarAction={topBarAction}
       />
       <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 sm:px-6 lg:px-8">
@@ -341,11 +355,13 @@ function SiteHeader({
   navItems,
   notificationUnreadCount,
   showNotifications,
+  themeControlsDisabled,
   topBarAction,
 }: {
   navItems: NavItemProps[];
   notificationUnreadCount: number | undefined;
   showNotifications: boolean;
+  themeControlsDisabled: boolean;
   topBarAction?: ReactNode | undefined;
 }) {
   return (
@@ -383,7 +399,11 @@ function SiteHeader({
           {showNotifications ? (
             <NotificationBell unreadCount={notificationUnreadCount} />
           ) : null}
-          <ThemeToggle compact />
+          <ThemeToggle
+            compact
+            disabled={themeControlsDisabled}
+            disabledReason="Profile theme controls this page"
+          />
           <AccountMenu />
         </div>
       </div>

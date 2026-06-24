@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useTheme } from "../lib/useTheme";
 import type { ThemeName } from "../lib/types";
 import { cn } from "../lib/classNames";
@@ -85,7 +86,7 @@ export function BrandMark({
   variant?: BrandMarkVariant;
   "data-testid"?: string;
 }) {
-  const { theme } = useTheme();
+  const theme = useBrandTheme();
   const source = getBrandMarkSource({ shape, theme, variant });
   const pixels = markSizePixels[size];
 
@@ -140,7 +141,7 @@ export function BrandLockup({
   className?: string;
   "data-testid"?: string;
 }) {
-  const { theme } = useTheme();
+  const theme = useBrandTheme();
 
   return (
     <img
@@ -188,4 +189,79 @@ function getBrandMarkSource({
   }
 
   return markSources[theme];
+}
+
+function useBrandTheme(): ThemeName {
+  const { theme } = useTheme();
+  const [profileTheme, setProfileTheme] = useState<ThemeName | null>(() =>
+    activeProfileBrandTheme(),
+  );
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return undefined;
+    }
+
+    const root = document.documentElement;
+    const update = () => setProfileTheme(activeProfileBrandTheme());
+    const observer = new MutationObserver(update);
+
+    update();
+    observer.observe(root, {
+      attributeFilter: ["data-profile-theme", "style"],
+      attributes: true,
+    });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  return profileTheme ?? theme;
+}
+
+function activeProfileBrandTheme(): ThemeName | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  const root = document.documentElement;
+
+  if (!root.dataset.profileTheme) {
+    return null;
+  }
+
+  const canvas = getComputedStyle(root)
+    .getPropertyValue("--app-canvas")
+    .trim();
+  const luminance = relativeLuminance(canvas);
+
+  if (luminance === null) {
+    return null;
+  }
+
+  return luminance > 0.52 ? "sunveil" : "frostveil";
+}
+
+function relativeLuminance(hex: string): number | null {
+  const match = /^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/.exec(hex);
+
+  if (!match) {
+    return null;
+  }
+
+  const [, redHex = "00", greenHex = "00", blueHex = "00"] = match;
+  const red = linearRgbChannel(redHex);
+  const green = linearRgbChannel(greenHex);
+  const blue = linearRgbChannel(blueHex);
+
+  return red * 0.2126 + green * 0.7152 + blue * 0.0722;
+}
+
+function linearRgbChannel(hex: string): number {
+  const channel = Number.parseInt(hex, 16) / 255;
+
+  return channel <= 0.03928
+    ? channel / 12.92
+    : ((channel + 0.055) / 1.055) ** 2.4;
 }

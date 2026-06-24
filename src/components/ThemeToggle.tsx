@@ -13,17 +13,27 @@ const themes: Array<{
   { value: "frostveil", label: "Dark mode", icon: Moon },
 ];
 
-export function ThemeToggle({ compact = false }: { compact?: boolean }) {
+export function ThemeToggle({
+  compact = false,
+  disabled = false,
+  disabledReason = "Theme controls are disabled here",
+}: {
+  compact?: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
+}) {
   const { theme, setTheme } = useTheme();
 
   if (compact) {
     const Icon = theme === "sunveil" ? Moon : Sun;
     const next = theme === "sunveil" ? "Dark mode" : "Light mode";
+    const label = disabled ? disabledReason : `Switch to ${next}`;
 
     return (
       <Button
-        aria-label={`Switch to ${next}`}
-        title={`Switch to ${next}`}
+        aria-label={label}
+        disabled={disabled}
+        title={label}
         variant="secondary"
         size="icon"
         icon={<Icon aria-hidden="true" size={18} />}
@@ -35,8 +45,10 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
   return (
     <div
       className="inline-grid grid-cols-2 rounded-full border border-line bg-surface/80 p-1 shadow-soft backdrop-blur-veil"
+      aria-disabled={disabled}
       role="group"
-      aria-label="Theme"
+      aria-label={disabled ? disabledReason : "Theme"}
+      title={disabled ? disabledReason : undefined}
     >
       {themes.map(({ value, label, icon: Icon }) => (
         <button
@@ -44,10 +56,11 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
           type="button"
           aria-label={label}
           aria-pressed={theme === value}
+          disabled={disabled}
           title={label}
           onClick={() => setTheme(value)}
           className={cn(
-            "inline-flex min-h-9 min-w-9 items-center justify-center rounded-full px-2 text-xs font-medium transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+            "inline-flex min-h-9 min-w-9 items-center justify-center rounded-full px-2 text-xs font-medium transition duration-fluid ease-fluid disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
             theme === value
               ? "bg-accent text-accent-ink shadow-soft"
               : "text-muted hover:bg-surface-strong hover:text-text",

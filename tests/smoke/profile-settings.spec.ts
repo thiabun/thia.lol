@@ -86,6 +86,37 @@ test("profile appearance editor saves profile-scoped color themes", async ({ pag
     .toBe(true);
 });
 
+test("profile routes disable site theme controls and use profile contrast for branding", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("thia.lol.theme", "sunveil");
+  });
+  await mockOwnProfile(page, () => [], undefined, {
+    profileTheme: "frostveil",
+    profileThemeConfig: { mode: "preset", preset: "frostveil" },
+  });
+
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        document.documentElement.style.getPropertyValue("--app-canvas").trim(),
+      ),
+    )
+    .toBe("#0D1F29");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "sunveil");
+  await expect(
+    page.getByRole("button", { name: "Profile theme controls this page" }),
+  ).toBeDisabled();
+  await expect(page.getByTestId("brand-logo").locator("img")).toHaveAttribute(
+    "src",
+    /\/brand\/thia-mark-frostveil-96\.png$/,
+  );
+});
+
 test("profile appearance save flushes pending theme edits", async ({ page }) => {
   const saves: Record<string, unknown>[] = [];
   await mockOwnProfile(page, () => [], (payload) => saves.push(payload));

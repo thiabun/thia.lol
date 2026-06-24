@@ -169,7 +169,7 @@ function PageLoadingOverlay({
                 }}
               >
                 <BrandMark
-                  className="shadow-lift"
+                  className="rounded-full shadow-lift"
                   data-testid="route-loading-brand"
                   shape="circle"
                   size="lg"
