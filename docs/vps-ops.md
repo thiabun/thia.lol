@@ -120,12 +120,18 @@ GET/HEAD /api/profiles/:handle/replies
 GET/HEAD /api/profiles/:handle/reblogs
 GET/HEAD /api/feed/home
 GET/HEAD /api/feed/discover
+GET/HEAD /api/auth/me
+GET/HEAD /api/me/settings
+GET/HEAD /api/me/onboarding
+GET/HEAD /api/me/follow-requests
+GET/HEAD /api/me/posts
+GET/HEAD /api/notifications
 ```
 
 Profile and post share-card routes, post mutations, follow/block/mute/star
-mutations, auth, uploads, chat, notifications, admin, moderation, and profile
-writes remain on PHP. All other `/api/*` traffic remains on PHP unless
-explicitly cut over later.
+mutations, auth writes, uploads, chat, notification mutations, admin,
+moderation, and profile writes remain on PHP. All other `/api/*` traffic
+remains on PHP unless explicitly cut over later.
 
 ## Node API Preview
 
@@ -181,7 +187,8 @@ THIA_SECURITY_ENCRYPTION_AVAILABLE=true
 `fatal`, or `silent`. Keep production at `info` unless actively debugging. Do
 not commit that file or print its database password in logs.
 
-Preview-only private reads currently exist under `/api-next/*`:
+Private reads are available under `/api-next/*` for parity and are also
+Node-served in production under `/api/*`:
 
 ```text
 GET /api-next/auth/me
@@ -192,9 +199,8 @@ GET /api-next/me/posts
 GET /api-next/notifications
 ```
 
-Do not cut these over to production `/api/*` until authenticated parity has
-passed with a real browser session and `THIA_CSRF_SECRET` matches PHP. Anonymous
-smoke runs should see clean JSON `401` responses for these routes.
+Anonymous smoke runs should see clean JSON `401` responses for these routes.
+Authenticated parity can be rerun with `COOKIE_HEADER='thia_session=...'`.
 
 When a Node-served route returns 500:
 
@@ -209,8 +215,9 @@ Node logs are structured and should include route name, method, sanitized URL,
 status, request id, and sanitized error metadata. They must not contain cookies,
 authorization headers, session tokens, raw SQL, stack traces, or config values.
 
-PHP remains production owner for auth, uploads, chat, notifications, admin,
-moderation, share-card generation, and all mutations.
+PHP remains production owner for auth writes, uploads, chat, notification
+mutations, admin, moderation, share-card generation, and all remaining
+mutations.
 
 Cutover verification:
 
@@ -233,6 +240,12 @@ Rollback for the public search/badge/member cutover is Caddy-only: restore the
 latest `/etc/caddy/Caddyfile.bak-public-reads-*` backup or remove the
 `nodeApiSearch`, `nodeApiBadges`, and `nodeApiRoomMembers` matcher/handler
 blocks, then validate and reload Caddy.
+
+Rollback for the private read cutover is Caddy-only: restore the latest
+`/etc/caddy/Caddyfile.bak-private-reads-*` backup or remove the
+`nodeApiAuthMe`, `nodeApiMeSettings`, `nodeApiMeOnboarding`,
+`nodeApiMeFollowRequests`, `nodeApiMePosts`, and `nodeApiNotifications`
+matcher/handler blocks, then validate and reload Caddy.
 
 Rollback for the current Node read cutover is Caddy-only: restore the backed-up
 `/etc/caddy/Caddyfile` or remove the Node read handlers, validate Caddy, reload

@@ -31,11 +31,12 @@ Do not replace the production API in one big cutover.
 
 ## Current Route Ownership
 
-Production Node ownership is limited to parity-proven public reads: rooms,
-search, badges, stats, profiles/profile extras, posts, room/profile post lists,
-post detail/replies, and home/discover feeds.
+Production Node ownership is limited to parity-proven reads: rooms, search,
+badges, stats, profiles/profile extras, posts, room/profile post lists, post
+detail/replies, home/discover feeds, auth/me, settings, onboarding, follow
+requests, my posts, and notifications.
 
-Private read previews now exist under `/api-next/*` only:
+Private read previews also remain available under `/api-next/*`:
 
 ```text
 GET /api-next/auth/me
@@ -47,9 +48,8 @@ GET /api-next/notifications
 ```
 
 These routes use the existing MariaDB sessions table and PHP-compatible CSRF
-HMAC generation. Production cutover requires `THIA_CSRF_SECRET` in
-`/srv/thia.lol/config/node-api.env` to match PHP `security.csrf_secret`, plus
-authenticated parity with `COOKIE_HEADER='thia_session=...'`.
+HMAC generation. Re-run authenticated parity with
+`COOKIE_HEADER='thia_session=...'` before expanding into private writes.
 
 ## Database Strategy
 

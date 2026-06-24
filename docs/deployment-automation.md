@@ -83,8 +83,8 @@ The deploy job:
 - runs `scripts/compare-api-parity.mjs` for production/preview read parity
 - runs `scripts/check-api-cutover.mjs` for Node-served production read routes
 
-Anonymous preview smoke expects the private preview routes to return JSON
-`401`s. To check authenticated private previews manually, pass a real browser
+Anonymous preview/cutover smoke expects private read routes to return JSON
+`401`s. To check authenticated private read parity manually, pass a real browser
 session without storing it:
 
 ```bash
@@ -201,6 +201,12 @@ https://thia.lol/api/profiles/thia/replies
 https://thia.lol/api/profiles/thia/reblogs
 https://thia.lol/api/feed/home
 https://thia.lol/api/feed/discover
+https://thia.lol/api/auth/me
+https://thia.lol/api/me/settings
+https://thia.lol/api/me/onboarding
+https://thia.lol/api/me/follow-requests
+https://thia.lol/api/me/posts
+https://thia.lol/api/notifications
 https://thia.lol/@thia
 ```
 
@@ -209,11 +215,11 @@ https://thia.lol/@thia
 posts, room/profile post lists, and `/feed/home` and `/feed/discover` are
 Node-served production read routes and should include the
 `X-Thia-API-Runtime: node` header. Node responses should also include
-`X-Thia-Request-Id` for journal
-correlation. Private read previews exist under `/api-next/*`, but production
-auth, settings, onboarding, notifications, share cards, mutations, uploads,
-chat, admin, moderation, and other production API routes remain PHP-owned unless
-explicitly cut over later.
+`X-Thia-Request-Id` for journal correlation. Private reads for auth/me,
+settings, onboarding, follow requests, my posts, and notifications are also
+Node-served. Auth writes, settings writes, notification mutations, share cards,
+uploads, chat, admin, moderation, and other production API routes remain
+PHP-owned unless explicitly cut over later.
 
 For upload-sensitive changes, also check one known media URL under:
 
