@@ -1,4 +1,4 @@
-import { toBlob } from "html-to-image";
+import { toBlob, toJpeg } from "html-to-image";
 
 const SHARE_CARD_WIDTH = 1200;
 const SHARE_CARD_HEIGHT = 630;
@@ -52,8 +52,6 @@ export async function captureShareCard(
       type,
       width: SHARE_CARD_WIDTH,
       height: SHARE_CARD_HEIGHT,
-      canvasWidth: SHARE_CARD_WIDTH * pixelRatio,
-      canvasHeight: SHARE_CARD_HEIGHT * pixelRatio,
       style: {
         width: `${SHARE_CARD_WIDTH}px`,
         height: `${SHARE_CARD_HEIGHT}px`,
@@ -61,6 +59,10 @@ export async function captureShareCard(
       },
       ...(options.quality !== undefined ? { quality: options.quality } : {}),
     };
+
+    if (type === "image/jpeg") {
+      return dataUrlToBlob(await toJpeg(canvas, captureOptions));
+    }
 
     const blob = await toBlob(canvas, captureOptions);
 
@@ -112,6 +114,20 @@ async function loadIframe(iframe: HTMLIFrameElement, path: string) {
     iframe.addEventListener("error", onError);
     iframe.src = path;
   });
+}
+
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [header = "", data = ""] = dataUrl.split(",", 2);
+  const match = /^data:([^;]+);base64$/u.exec(header);
+  const mimeType = match?.[1] ?? "application/octet-stream";
+  const binary = window.atob(data);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return new Blob([bytes], { type: mimeType });
 }
 
 async function waitForShareCardCanvas(documentElement: Document): Promise<HTMLElement> {

@@ -1,4 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+import { Buffer } from "node:buffer";
+import sharp from "sharp";
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/auth/me", (route) =>
@@ -10,6 +12,91 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("profile share render uses module mosaic previews and skips Feed", async ({ page }) => {
+  await mockProfileShareRender(page);
+
+  await page.goto("/share-render/profile/thia");
+  await expect(page.locator("[data-share-card-canvas][data-share-card-ready='true']")).toBeVisible();
+  await expect(page.locator("[data-share-card-brand]")).toHaveCSS("height", "96px");
+  await expect(page.locator('[data-share-card-module-type="activity"]')).toHaveCount(0);
+
+  const imageModule = page.locator('[data-share-card-module-type="uploaded_image"]');
+  await expect(imageModule.locator("img")).toHaveCount(1);
+  await expect(imageModule.getByText(/uploaded image|image|module/i)).toHaveCount(0);
+
+  await expect(page.locator('[data-share-card-module-type="links"]')).toContainText("Portfolio");
+  await expect(page.locator('[data-share-card-module-type="links"]')).toContainText("example.com");
+  await expect(page.locator('[data-share-card-module-type="spotify_song"]')).toContainText("Crystal Song");
+  await expect(page.locator('[data-share-card-module-type="spotify_song"]')).toContainText("Spotify");
+});
+
+test("profile share card capture creates a server-sized JPEG", async ({ page }) => {
+  await mockProfileShareRender(page);
+
+  await page.goto("/share-render/profile/thia");
+  await expect(page.locator("[data-share-card-canvas][data-share-card-ready='true']")).toBeVisible();
+
+  const result = await page.evaluate(async () => {
+    const { captureShareCard } = await import("/src/lib/shareCardCapture.ts");
+    const blob = await captureShareCard("/share-render/profile/thia", {
+      quality: 0.9,
+      type: "image/jpeg",
+    });
+    const dataUrl = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsDataURL(blob);
+    });
+
+    return { dataUrl, size: blob.size, type: blob.type };
+  });
+  const [, encoded = ""] = result.dataUrl.split(",", 2);
+  const metadata = await sharp(Buffer.from(encoded, "base64")).metadata();
+
+  expect(result.type).toBe("image/jpeg");
+  expect(result.size).toBeGreaterThan(0);
+  expect(result.size).toBeLessThan(32 * 1024 * 1024);
+  expect(metadata.format).toBe("jpeg");
+  expect(metadata.width).toBe(2400);
+  expect(metadata.height).toBe(1260);
+});
+
+test("post share render uses the post author avatar and post media", async ({ page }) => {
+  await mockShareCardImages(page);
+  await page.route("**/api/posts/pcard123", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: postFixture(),
+      }),
+    }),
+  );
+
+  await page.goto("/share-render/post/pcard123");
+  await expect(page.locator("[data-share-card-canvas][data-share-card-ready='true']")).toBeVisible();
+  await expect(page.locator("[data-share-card-brand]")).toHaveCSS("height", "96px");
+
+  const avatarSrc = await page.locator("[data-share-card-post-author-avatar]").getAttribute("src");
+  const mediaSrc = await page.locator("[data-share-card-post-media]").getAttribute("src");
+
+  expect(decodeURIComponent(avatarSrc ?? "")).toContain("/uploads/media/2026/06/post-author.jpg");
+  expect(decodeURIComponent(mediaSrc ?? "")).toContain("/uploads/media/2026/06/post-media.jpg");
+  expect(decodeURIComponent(mediaSrc ?? "")).not.toContain("/uploads/media/2026/06/post-author.jpg");
+});
+
+async function mockShareCardImages(page: Page) {
+  await page.route("**/api/share-card/image?**", (route) =>
+    route.fulfill({
+      contentType: "image/png",
+      body: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    }),
+  );
+}
+
+async function mockProfileShareRender(page: Page) {
   await mockShareCardImages(page);
   await page.route("**/api/profiles/thia", (route) =>
     route.fulfill({
@@ -59,53 +146,6 @@ test("profile share render uses module mosaic previews and skips Feed", async ({
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ ok: true, data: [] }),
-    }),
-  );
-
-  await page.goto("/share-render/profile/thia");
-  await expect(page.locator("[data-share-card-canvas][data-share-card-ready='true']")).toBeVisible();
-  await expect(page.locator("[data-share-card-brand]")).toHaveCSS("height", "96px");
-  await expect(page.locator('[data-share-card-module-type="activity"]')).toHaveCount(0);
-
-  const imageModule = page.locator('[data-share-card-module-type="uploaded_image"]');
-  await expect(imageModule.locator("img")).toHaveCount(1);
-  await expect(imageModule.getByText(/uploaded image|image|module/i)).toHaveCount(0);
-
-  await expect(page.locator('[data-share-card-module-type="links"]')).toContainText("Portfolio");
-  await expect(page.locator('[data-share-card-module-type="links"]')).toContainText("example.com");
-  await expect(page.locator('[data-share-card-module-type="spotify_song"]')).toContainText("Crystal Song");
-  await expect(page.locator('[data-share-card-module-type="spotify_song"]')).toContainText("Spotify");
-});
-
-test("post share render uses the post author avatar and post media", async ({ page }) => {
-  await mockShareCardImages(page);
-  await page.route("**/api/posts/pcard123", (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        ok: true,
-        data: postFixture(),
-      }),
-    }),
-  );
-
-  await page.goto("/share-render/post/pcard123");
-  await expect(page.locator("[data-share-card-canvas][data-share-card-ready='true']")).toBeVisible();
-  await expect(page.locator("[data-share-card-brand]")).toHaveCSS("height", "96px");
-
-  const avatarSrc = await page.locator("[data-share-card-post-author-avatar]").getAttribute("src");
-  const mediaSrc = await page.locator("[data-share-card-post-media]").getAttribute("src");
-
-  expect(decodeURIComponent(avatarSrc ?? "")).toContain("/uploads/media/2026/06/post-author.jpg");
-  expect(decodeURIComponent(mediaSrc ?? "")).toContain("/uploads/media/2026/06/post-media.jpg");
-  expect(decodeURIComponent(mediaSrc ?? "")).not.toContain("/uploads/media/2026/06/post-author.jpg");
-});
-
-async function mockShareCardImages(page: Page) {
-  await page.route("**/api/share-card/image?**", (route) =>
-    route.fulfill({
-      contentType: "image/svg+xml",
-      body: '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800"><rect width="800" height="800" fill="#153f3a"/><circle cx="400" cy="340" r="210" fill="#65e0c5"/><rect x="180" y="520" width="440" height="120" rx="60" fill="#061820"/></svg>',
     }),
   );
 }

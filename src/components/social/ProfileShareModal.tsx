@@ -111,16 +111,10 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
           `/share-render/profile/${encodeURIComponent(profile.user.handle)}`,
           { quality: 0.9, type: "image/jpeg" },
         );
-        const publishPromise = runWithAuth(
+        await runWithAuth(
           (csrfToken) => profileShareCardCacheUpload(profile, socialCardBlob, csrfToken),
           { retryOnCsrf: true },
-        );
-
-        if (silent) {
-          await publishPromise.catch(() => undefined);
-        } else {
-          await publishPromise;
-        }
+        ).catch(() => undefined);
       }
 
       if (!silent) {
@@ -221,7 +215,7 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
       ) : null}
       {cardState === "error" ? (
         <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
-          Image generation or upload failed. You can still open the current cached card at{" "}
+          Image generation failed. You can still open the current cached card at{" "}
           <a className="underline" href={profileShareCardUrl(profile)} rel="noreferrer" target="_blank">
             this link
           </a>

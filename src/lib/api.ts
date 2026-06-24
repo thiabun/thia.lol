@@ -1544,7 +1544,11 @@ export function postShareCardCacheUpload(
   csrfToken: string,
 ): Promise<{ url: string; width: number; height: number }> {
   const body = new FormData();
-  body.set("card", card, `thia-post-${postPublicIdentifier(post)}.jpg`);
+  body.set(
+    "card",
+    card,
+    `thia-post-${postPublicIdentifier(post)}.${shareCardBlobExtension(card)}`,
+  );
 
   return apiUpload<{ url: string; width: number; height: number }>(
     `/posts/${postPublicIdentifier(post)}/share-card-cache`,
@@ -1575,13 +1579,21 @@ export function profileShareCardCacheUpload(
   csrfToken: string,
 ): Promise<{ url: string; width: number; height: number }> {
   const body = new FormData();
-  body.set("card", card, `thia-profile-${profile.user.handle}.jpg`);
+  body.set(
+    "card",
+    card,
+    `thia-profile-${profile.user.handle}.${shareCardBlobExtension(card)}`,
+  );
 
   return apiUpload<{ url: string; width: number; height: number }>(
     `/profiles/${encodeURIComponent(profile.user.handle)}/share-card-cache`,
     body,
     csrfToken,
   );
+}
+
+function shareCardBlobExtension(card: Blob): "jpg" | "png" {
+  return card.type === "image/jpeg" ? "jpg" : "png";
 }
 
 export function shareCardImageProxyUrl(url: string | null | undefined) {
