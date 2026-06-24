@@ -145,7 +145,9 @@ function moduleIds(modules) {
 function canvasPlacements(modules) {
   return requireArray(modules, "Profile modules").map((module, index) => {
     const record = requireObject(module, "Profile module");
-    const layout = requireObject(record.layout, "Profile module layout");
+    const layout = record.layout !== null && typeof record.layout === "object" && !Array.isArray(record.layout)
+      ? record.layout
+      : {};
 
     return {
       id: record.id,
@@ -155,6 +157,26 @@ function canvasPlacements(modules) {
       rowSpan: Math.max(1, Number(layout.rowSpan) || 2),
       pinned: Boolean(record.pinned),
       visible: record.visibility !== "hidden",
+    };
+  });
+}
+
+function draftModules(modules) {
+  return requireArray(modules, "Profile modules").map((module, index) => {
+    const record = requireObject(module, "Profile module");
+    const layout = record.layout !== null && typeof record.layout === "object" && !Array.isArray(record.layout)
+      ? record.layout
+      : {
+          column: 1,
+          row: index + 1,
+          colSpan: 3,
+          rowSpan: 2,
+        };
+
+    return {
+      ...record,
+      position: Number.isInteger(record.position) && record.position > 0 ? record.position : index + 1,
+      layout,
     };
   });
 }
@@ -287,7 +309,7 @@ async function main() {
       body: {
         backgroundBlur: "medium",
         canvasGlass: 62,
-        modules: updatedModules.data,
+        modules: draftModules(updatedModules.data),
         selectedModuleId: customModuleId,
       },
     });

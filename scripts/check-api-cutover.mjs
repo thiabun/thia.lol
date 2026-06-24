@@ -31,6 +31,8 @@ const nodeCutoverPairs = [
   ["/api/me/onboarding", "/api-next/me/onboarding", privateReadStatus],
   ["/api/me/follow-requests", "/api-next/me/follow-requests", privateReadStatus],
   ["/api/me/posts", "/api-next/me/posts", privateReadStatus],
+  ["/api/me/profile/modules", "/api-next/me/profile/modules", privateReadStatus],
+  ["/api/me/profile/canvas-draft", "/api-next/me/profile/canvas-draft", privateReadStatus],
   ["/api/notifications", "/api-next/notifications", privateReadStatus],
 ];
 
@@ -96,6 +98,25 @@ const nodeMutationCutoverPairs = [
   ["DELETE", "/api/rooms/general/join", "/api-next/rooms/general/join", privateMutationStatus],
   ["POST", "/api/rooms/general/moderators", "/api-next/rooms/general/moderators", privateMutationStatus],
   ["DELETE", "/api/rooms/general/moderators", "/api-next/rooms/general/moderators", privateMutationStatus],
+  ["PATCH", "/api/me/profile", "/api-next/me/profile", privateMutationStatus],
+  ["PATCH", "/api/me/profile/featured", "/api-next/me/profile/featured", privateMutationStatus],
+  ["POST", "/api/me/profile/modules", "/api-next/me/profile/modules", privateMutationStatus],
+  ["PATCH", "/api/me/profile/modules/1", "/api-next/me/profile/modules/1", privateMutationStatus],
+  ["DELETE", "/api/me/profile/modules/1", "/api-next/me/profile/modules/1", privateMutationStatus],
+  ["POST", "/api/me/profile/modules/1/restore", "/api-next/me/profile/modules/1/restore", privateMutationStatus],
+  ["PATCH", "/api/me/profile/module-order", "/api-next/me/profile/module-order", privateMutationStatus],
+  ["PATCH", "/api/me/profile/canvas", "/api-next/me/profile/canvas", privateMutationStatus],
+  ["PATCH", "/api/me/profile/canvas-draft", "/api-next/me/profile/canvas-draft", privateMutationStatus],
+  ["DELETE", "/api/me/profile/canvas-draft", "/api-next/me/profile/canvas-draft", privateMutationStatus],
+  ["POST", "/api/me/profile/canvas-draft/commit", "/api-next/me/profile/canvas-draft/commit", privateMutationStatus],
+  ["PATCH", "/api/me/badges/featured", "/api-next/me/badges/featured", privateMutationStatus],
+  ["DELETE", "/api/me/posts?kind=posts", "/api-next/me/posts?kind=posts", privateMutationStatus],
+  ["PATCH", "/api/me/account/email", "/api-next/me/account/email", privateMutationStatus],
+  ["PATCH", "/api/me/account/handle", "/api-next/me/account/handle", privateMutationStatus],
+  ["PATCH", "/api/me/account/password", "/api-next/me/account/password", privateMutationStatus],
+  ["DELETE", "/api/me/account", "/api-next/me/account", privateMutationStatus],
+  ["DELETE", "/api/me/account/deletion", "/api-next/me/account/deletion", privateMutationStatus],
+  ["POST", "/api/me/account/deletion/cancel", "/api-next/me/account/deletion/cancel", privateMutationStatus],
 ];
 
 const nodeAuthCutoverPairs = [

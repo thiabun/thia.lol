@@ -34,8 +34,8 @@ Do not replace the production API in one big cutover.
 Production Node ownership is limited to parity-proven reads: rooms, search,
 badges, stats, profiles/profile extras, posts, room/profile post lists, post
 detail/replies, home/discover feeds, auth/me, settings, onboarding, follow
-requests, my posts, notifications, low-risk private writes, and auth/session
-writes.
+requests, my posts, notifications, low-risk private writes, auth/session
+writes, social/content writes, and profile/account editor writes.
 
 Private read previews also remain available under `/api-next/*`:
 
@@ -45,6 +45,8 @@ GET /api-next/me/settings
 GET /api-next/me/onboarding
 GET /api-next/me/follow-requests
 GET /api-next/me/posts
+GET /api-next/me/profile/modules
+GET /api-next/me/profile/canvas-draft
 GET /api-next/notifications
 ```
 
@@ -148,12 +150,38 @@ generic mutation errors, and no-cookie or missing-CSRF routing checks in
 `scripts/check-api-cutover.mjs`. Live mutation testing must use controlled
 accounts and read-back assertions, not double-submit destructive parity checks.
 
+Profile/account editor writes are now Node-owned in production after controlled
+throwaway-account smoke:
+
+```text
+PATCH /api/me/profile
+PATCH /api/me/profile/featured
+GET/HEAD/POST /api/me/profile/modules
+PATCH/DELETE /api/me/profile/modules/{id}
+POST /api/me/profile/modules/{id}/restore
+PATCH /api/me/profile/module-order
+PATCH /api/me/profile/canvas
+GET/HEAD/PATCH/DELETE /api/me/profile/canvas-draft
+POST /api/me/profile/canvas-draft/commit
+PATCH /api/me/badges/featured
+DELETE /api/me/posts
+PATCH /api/me/account/email
+PATCH /api/me/account/handle
+PATCH /api/me/account/password
+DELETE /api/me/account
+DELETE /api/me/account/deletion
+POST /api/me/account/deletion/cancel
+```
+
+These routes reuse MariaDB, PHP-compatible sessions/CSRF, current upload URL
+fields, profile module/canvas storage, badge visibility storage, and account
+deletion/session invalidation behavior. Upload storage itself is still PHP-owned.
+
 Avoid moving until authenticated mutation smoke accounts, upload checks, and
 side-effect rollback checks are in place:
 
 ```text
 POST /api/uploads/*
-profile/account editor routes
 full chat routes
 admin/moderation routes
 ```

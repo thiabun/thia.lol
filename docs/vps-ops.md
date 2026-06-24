@@ -180,8 +180,31 @@ POST/DELETE /api/rooms/:slug/join
 POST/DELETE /api/rooms/:slug/moderators
 ```
 
-Low-risk private writes, protected 2FA settings, social/content writes, and
-room/post/profile mutations require a valid session and PHP-compatible
+Current Node-served profile/account editor writes:
+
+```text
+PATCH /api/me/profile
+PATCH /api/me/profile/featured
+GET/HEAD/POST /api/me/profile/modules
+PATCH/DELETE /api/me/profile/modules/:id
+POST /api/me/profile/modules/:id/restore
+PATCH /api/me/profile/module-order
+PATCH /api/me/profile/canvas
+GET/HEAD/PATCH/DELETE /api/me/profile/canvas-draft
+POST /api/me/profile/canvas-draft/commit
+PATCH /api/me/badges/featured
+DELETE /api/me/posts
+PATCH /api/me/account/email
+PATCH /api/me/account/handle
+PATCH /api/me/account/password
+DELETE /api/me/account
+DELETE /api/me/account/deletion
+POST /api/me/account/deletion/cancel
+```
+
+Low-risk private writes, protected 2FA settings, social/content writes,
+profile/account editor writes, and room/post/profile mutations require a valid
+session and PHP-compatible
 `X-CSRF-Token` before mutating data. Public auth login, register, logout, and
 2FA challenge verification use PHP-compatible rate limits, session cookies, and
 generic auth errors, but do not require CSRF. Safe routing checks should omit
@@ -189,9 +212,9 @@ the cookie or omit the CSRF header and assert the `X-Thia-API-Runtime: node`
 response header.
 
 Profile and post share-card routes, uploads, full chat routes, admin,
-moderation, profile/account editor mutations, push, integrations, setup,
-migrations, and diagnostics remain on PHP. All other `/api/*` traffic remains
-on PHP unless explicitly cut over later.
+moderation, push, integrations, setup, migrations, diagnostics, and sitemap
+remain on PHP. All other `/api/*` traffic remains on PHP unless explicitly cut
+over later.
 
 ## Node API Preview
 
@@ -220,6 +243,8 @@ curl --fail-with-body --cookie 'thia_session=<redacted>' https://thia.lol/api-ne
 curl --fail-with-body --cookie 'thia_session=<redacted>' https://thia.lol/api-next/me/onboarding
 curl --fail-with-body --cookie 'thia_session=<redacted>' https://thia.lol/api-next/me/follow-requests
 curl --fail-with-body --cookie 'thia_session=<redacted>' https://thia.lol/api-next/me/posts
+curl --fail-with-body --cookie 'thia_session=<redacted>' https://thia.lol/api-next/me/profile/modules
+curl --fail-with-body --cookie 'thia_session=<redacted>' https://thia.lol/api-next/me/profile/canvas-draft
 curl --fail-with-body --cookie 'thia_session=<redacted>' https://thia.lol/api-next/notifications
 curl --fail-with-body https://thia.lol/api/rooms
 curl --fail-with-body 'https://thia.lol/api/search?q=thia'
@@ -306,10 +331,9 @@ status, request id, and sanitized error metadata. They must not contain cookies,
 authorization headers, session tokens, raw SQL, stack traces, or config values.
 
 PHP remains production owner for uploads, full chat routes, admin, moderation,
-share-card generation, profile/account editor mutations, push, integrations,
-setup, migrations, diagnostics, and all remaining product routes until the
-relevant method-specific Caddy route is cut over and
-`scripts/check-api-cutover.mjs` enforces it.
+share-card generation, push, integrations, setup, migrations, diagnostics,
+sitemap, and all remaining product routes until the relevant method-specific
+Caddy route is cut over and `scripts/check-api-cutover.mjs` enforces it.
 
 Cutover verification:
 
@@ -365,6 +389,15 @@ Rollback for the social/content mutation cutover is Caddy-only: restore
 `nodeApiPostShareMessage`, `nodeApiRoomCreate`, `nodeApiRoomUpdateDelete`,
 `nodeApiRoomJoinMutation`, and `nodeApiRoomModeratorMutation` matcher/handler
 blocks, then validate and reload Caddy.
+
+Rollback for the profile/account editor cutover is Caddy-only: restore
+`/etc/caddy/Caddyfile.bak-profile-account-editor-20260624T143912Z` or remove
+the `nodeApiProfileEditorUpdate`, `nodeApiProfileModulesIndex`,
+`nodeApiProfileModuleMutation`, `nodeApiProfileModuleRestore`,
+`nodeApiProfileCanvasDraft`, `nodeApiProfileCanvasDraftCommit`,
+`nodeApiMePostsDelete`, `nodeApiAccountDelete`, and
+`nodeApiAccountDeletionCancel` matcher/handler blocks, then validate and
+reload Caddy.
 
 Rollback for the current Node read cutover is Caddy-only: restore the backed-up
 `/etc/caddy/Caddyfile` or remove the Node read handlers, validate Caddy, reload

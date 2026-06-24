@@ -105,14 +105,14 @@ routes are Node-owned after controlled smoke, and `scripts/check-api-cutover.mjs
 uses no-cookie validation checks to enforce routing without creating sessions or
 accounts.
 
-Social/content mutation routes should be live-smoked with
+Social/content and profile/account editor mutation routes should be live-smoked with
 `THIA_MUTATION_SMOKE=1 node scripts/smoke-api-next-mutations.mjs` before Caddy
 cutover, then with
 `API_PREFIX=/api THIA_MUTATION_SMOKE=1 node scripts/smoke-api-next-mutations.mjs`
 after Caddy cutover. The script uses throwaway accounts, creates reversible
-posts/rooms, checks read-back behavior, and performs API cleanup. Remove any
-remaining `codexmut*` smoke accounts from MariaDB after failures or interrupted
-runs.
+posts/rooms/profile edits/account edits, checks read-back behavior, and
+performs API cleanup where possible. Remove any remaining `codexmut*` smoke
+accounts from MariaDB after failures or interrupted runs.
 
 The `deploy` SSH user should be able to write `/srv/thia.lol/www/`,
 `/srv/thia.lol/www/api/`, `/srv/thia.lol/www/api/migrations/`, and
@@ -294,10 +294,32 @@ POST/DELETE /api/rooms/:slug/join
 POST/DELETE /api/rooms/:slug/moderators
 ```
 
-Uploads, full chat routes, admin, moderation, share cards, profile/account
-editor mutations, push, integrations, setup, migrations, diagnostics, and other
-non-cutover production API routes remain PHP-owned unless explicitly cut over
-later.
+Profile/account editor writes are Node-served and should include
+`X-Thia-API-Runtime: node` for the matching methods:
+
+```text
+PATCH /api/me/profile
+PATCH /api/me/profile/featured
+GET/HEAD/POST /api/me/profile/modules
+PATCH/DELETE /api/me/profile/modules/:id
+POST /api/me/profile/modules/:id/restore
+PATCH /api/me/profile/module-order
+PATCH /api/me/profile/canvas
+GET/HEAD/PATCH/DELETE /api/me/profile/canvas-draft
+POST /api/me/profile/canvas-draft/commit
+PATCH /api/me/badges/featured
+DELETE /api/me/posts
+PATCH /api/me/account/email
+PATCH /api/me/account/handle
+PATCH /api/me/account/password
+DELETE /api/me/account
+DELETE /api/me/account/deletion
+POST /api/me/account/deletion/cancel
+```
+
+Uploads, full chat routes, admin, moderation, share cards, push, integrations,
+setup, migrations, diagnostics, sitemap, and other non-cutover production API
+routes remain PHP-owned unless explicitly cut over later.
 
 For upload-sensitive changes, also check one known media URL under:
 
