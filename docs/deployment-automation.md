@@ -217,8 +217,23 @@ Node-served production read routes and should include the
 `X-Thia-API-Runtime: node` header. Node responses should also include
 `X-Thia-Request-Id` for journal correlation. Private reads for auth/me,
 settings, onboarding, follow requests, my posts, and notifications are also
-Node-served. Auth writes, settings writes, notification mutations, share cards,
-uploads, chat, admin, moderation, and other production API routes remain
+Node-served.
+
+The first low-risk private writes are also Node-served and verified without
+mutating data by expecting unauthenticated `401` responses, or `403` responses
+when a session cookie is provided without a CSRF token:
+
+```text
+POST /api/notifications/read
+POST /api/notifications/read-all
+POST /api/notifications/:id/read
+PATCH /api/me/onboarding
+PATCH /api/me/privacy
+PATCH /api/me/preferences
+```
+
+Auth writes, uploads, chat, admin, moderation, share cards, content mutations,
+profile/account editor mutations, and other production API routes remain
 PHP-owned unless explicitly cut over later.
 
 For upload-sensitive changes, also check one known media URL under:

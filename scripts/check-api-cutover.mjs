@@ -4,6 +4,7 @@ const baseUrl = (process.env.BASE_URL || "https://thia.lol").replace(/\/+$/, "")
 const cookieHeader = process.env.COOKIE_HEADER || "";
 const runtimeHeader = "x-thia-api-runtime";
 const privateReadStatus = cookieHeader === "" ? 401 : 200;
+const privateMutationStatus = cookieHeader === "" ? 401 : 403;
 
 const nodeCutoverPairs = [
   ["/api/rooms", "/api-next/rooms", 200],
@@ -54,6 +55,24 @@ const phpOwnedHeadRoutes = [
   "/api/chat",
 ];
 
+const nodeMutationCutoverPairs = [
+  ["POST", "/api/notifications/read", "/api-next/notifications/read", privateMutationStatus],
+  ["POST", "/api/notifications/read-all", "/api-next/notifications/read-all", privateMutationStatus],
+  ["POST", "/api/notifications/1/read", "/api-next/notifications/1/read", privateMutationStatus],
+  ["PATCH", "/api/me/onboarding", "/api-next/me/onboarding", privateMutationStatus],
+  ["PATCH", "/api/me/privacy", "/api-next/me/privacy", privateMutationStatus],
+  ["PATCH", "/api/me/preferences", "/api-next/me/preferences", privateMutationStatus],
+];
+
+const phpOwnedMethodRoutes = [
+  ["POST", "/api/auth/login"],
+  ["POST", "/api/posts/99/like"],
+  ["POST", "/api/posts/99/reblog"],
+  ["POST", "/api/profiles/thia/follow"],
+  ["POST", "/api/uploads"],
+  ["POST", "/api/chat"],
+];
+
 let failed = false;
 
 for (const [productionPath, previewPath, expectedStatus] of nodeCutoverPairs) {
@@ -95,6 +114,34 @@ for (const [productionPath, previewPath, expectedStatus] of nodeCutoverPairs) {
   console.log(`OK ${label} is served by Node and matches ${previewPath}`);
 }
 
+for (const [method, productionPath, previewPath, expectedStatus] of nodeMutationCutoverPairs) {
+  const production = await fetchJson(productionPath, method);
+  const preview = await fetchJson(previewPath, method);
+  const label = `${method} ${productionPath} cutover`;
+
+  if (production.status !== expectedStatus) {
+    failed = true;
+    console.error(`FAIL ${label}: expected HTTP ${expectedStatus}, got ${production.status}`);
+    continue;
+  }
+
+  if (production.runtime !== "node") {
+    failed = true;
+    console.error(`FAIL ${label}: expected ${runtimeHeader}: node, got ${production.runtime ?? "missing"}`);
+    continue;
+  }
+
+  if (production.status !== preview.status || !deepEqual(production.body, preview.body)) {
+    failed = true;
+    console.error(`FAIL ${label}: production route does not match ${previewPath}`);
+    console.error("Production:", JSON.stringify(production.body, null, 2));
+    console.error("Preview:", JSON.stringify(preview.body, null, 2));
+    continue;
+  }
+
+  console.log(`OK ${label} is served by Node and matches ${previewPath} without mutating data`);
+}
+
 for (const path of phpOwnedHeadRoutes) {
   const headResponse = await fetchHead(path);
 
@@ -107,11 +154,23 @@ for (const path of phpOwnedHeadRoutes) {
   console.log(`OK ${path} remains PHP-owned`);
 }
 
+for (const [method, path] of phpOwnedMethodRoutes) {
+  const methodResponse = await fetchMethodHeaders(path, method);
+
+  if (methodResponse.runtime !== null) {
+    failed = true;
+    console.error(`FAIL ${method} ${path}: expected PHP-owned route without ${runtimeHeader}, got ${methodResponse.runtime}`);
+    continue;
+  }
+
+  console.log(`OK ${method} ${path} remains PHP-owned`);
+}
+
 if (failed) {
   process.exit(1);
 }
 
-async function fetchJson(path) {
+async function fetchJson(path, method = "GET") {
   const headers = {
     accept: "application/json",
   };
@@ -120,8 +179,14 @@ async function fetchJson(path) {
     headers.cookie = cookieHeader;
   }
 
+  if (method !== "GET") {
+    headers["content-type"] = "application/json";
+  }
+
   const response = await fetch(`${baseUrl}${path}`, {
+    method,
     headers,
+    body: method === "GET" ? undefined : "{}",
   });
   const text = await response.text();
 
@@ -136,6 +201,28 @@ async function fetchJson(path) {
       cause: error,
     });
   }
+}
+
+async function fetchMethodHeaders(path, method) {
+  const headers = {
+    accept: "application/json",
+    "content-type": "application/json",
+  };
+
+  if (cookieHeader !== "") {
+    headers.cookie = cookieHeader;
+  }
+
+  const response = await fetch(`${baseUrl}${path}`, {
+    method,
+    headers,
+    body: "{}",
+  });
+
+  return {
+    status: response.status,
+    runtime: response.headers.get(runtimeHeader),
+  };
 }
 
 function firstPostAnchor(body) {

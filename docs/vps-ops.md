@@ -128,9 +128,26 @@ GET/HEAD /api/me/posts
 GET/HEAD /api/notifications
 ```
 
+Current Node-served low-risk private writes:
+
+```text
+POST /api/notifications/read
+POST /api/notifications/read-all
+POST /api/notifications/:id/read
+PATCH /api/me/onboarding
+PATCH /api/me/privacy
+PATCH /api/me/preferences
+```
+
+These write routes still require a valid session and PHP-compatible
+`X-CSRF-Token` before mutating data. Safe routing checks should omit the cookie
+or omit the CSRF header and assert the `X-Thia-API-Runtime: node` response
+header.
+
 Profile and post share-card routes, post mutations, follow/block/mute/star
-mutations, auth writes, uploads, chat, notification mutations, admin,
-moderation, and profile writes remain on PHP. All other `/api/*` traffic
+mutations, auth writes, uploads, chat, notification mutations outside the
+read/read-all/read-one batch, admin, moderation, profile/account editor
+mutations, and content mutations remain on PHP. All other `/api/*` traffic
 remains on PHP unless explicitly cut over later.
 
 ## Node API Preview
@@ -197,10 +214,18 @@ GET /api-next/me/onboarding
 GET /api-next/me/follow-requests
 GET /api-next/me/posts
 GET /api-next/notifications
+POST /api-next/notifications/read
+POST /api-next/notifications/read-all
+POST /api-next/notifications/:id/read
+PATCH /api-next/me/onboarding
+PATCH /api-next/me/privacy
+PATCH /api-next/me/preferences
 ```
 
 Anonymous smoke runs should see clean JSON `401` responses for these routes.
-Authenticated parity can be rerun with `COOKIE_HEADER='thia_session=...'`.
+Authenticated private reads can be rerun with
+`COOKIE_HEADER='thia_session=...'`. Authenticated write smoke should omit
+`X-CSRF-Token` unless a controlled test account and read-back plan is being used.
 
 When a Node-served route returns 500:
 
@@ -216,8 +241,9 @@ status, request id, and sanitized error metadata. They must not contain cookies,
 authorization headers, session tokens, raw SQL, stack traces, or config values.
 
 PHP remains production owner for auth writes, uploads, chat, notification
-mutations, admin, moderation, share-card generation, and all remaining
-mutations.
+mutations outside the read/read-all/read-one batch, admin, moderation,
+share-card generation, content mutations, profile/account editor mutations, and
+all remaining mutations.
 
 Cutover verification:
 
@@ -246,6 +272,13 @@ Rollback for the private read cutover is Caddy-only: restore the latest
 `nodeApiAuthMe`, `nodeApiMeSettings`, `nodeApiMeOnboarding`,
 `nodeApiMeFollowRequests`, `nodeApiMePosts`, and `nodeApiNotifications`
 matcher/handler blocks, then validate and reload Caddy.
+
+Rollback for the low-risk write cutover is Caddy-only: restore
+`/etc/caddy/Caddyfile.bak-low-risk-writes-20260624T112153Z` or remove the
+`nodeApiNotificationsRead`, `nodeApiNotificationsReadAll`,
+`nodeApiNotificationReadOne`, `nodeApiMeOnboardingUpdate`,
+`nodeApiMePrivacyUpdate`, and `nodeApiMePreferencesUpdate` matcher/handler
+blocks, then validate and reload Caddy.
 
 Rollback for the current Node read cutover is Caddy-only: restore the backed-up
 `/etc/caddy/Caddyfile` or remove the Node read handlers, validate Caddy, reload

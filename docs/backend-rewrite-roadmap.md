@@ -88,12 +88,17 @@ Next safe candidates after private-read parity:
 POST /api/notifications/read
 POST /api/notifications/read-all
 POST /api/notifications/{id}/read
+PATCH /api/me/onboarding
 PATCH /api/me/preferences
 PATCH /api/me/privacy
 ```
 
-Avoid moving until write foundations and authenticated rollback checks are in
-place:
+These low-risk writes are now the first Node-owned mutation batch. They are
+verified with unauthenticated or missing-CSRF checks so production smoke tests do
+not mutate data.
+
+Avoid moving until authenticated mutation smoke accounts, upload checks, and
+side-effect rollback checks are in place:
 
 ```text
 POST /api/auth/login
