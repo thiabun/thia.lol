@@ -18,6 +18,16 @@ import {
   type BadgePayload,
   type BadgesRepository,
 } from "./badges.js";
+import {
+  ContentRouteError,
+  ContentStorageNotReadyError,
+  type ContentMutationsRepository,
+  type FollowRelationshipPayload,
+  type PostShareMessagesPayload,
+  type ProfileControlPayload,
+  type ProfileStarPayload,
+  type RemoveFollowerPayload,
+} from "./content.js";
 import type {
   DiscoverPersonPayload,
   HomeFeedPayload,
@@ -364,6 +374,157 @@ function postsRepositoryMock(overrides: Partial<PostsRepository> = {}): PostsRep
     } satisfies HomeFeedPayload),
     listDiscoverPosts: vi.fn().mockResolvedValue([post]),
     listPeopleToWatch: vi.fn().mockResolvedValue([personToWatch]),
+    ...overrides,
+  };
+}
+
+const relationshipPayload: FollowRelationshipPayload = {
+  isFollowing: true,
+  isFollowedBy: false,
+  isMoot: false,
+  isFollowRequestPending: false,
+  isBlocked: false,
+  isMuted: false,
+  followerCount: 15,
+  followingCount: 27,
+  mootCount: 14,
+  starCount: 3,
+  isStarred: false,
+};
+
+const profileControlPayload: ProfileControlPayload = {
+  isBlocked: true,
+  isMuted: false,
+  relationship: {
+    ...relationshipPayload,
+    isFollowing: false,
+    isBlocked: true,
+  },
+};
+
+const profileStarPayload: ProfileStarPayload = {
+  isStarred: true,
+  starCount: 4,
+  relationship: {
+    ...relationshipPayload,
+    isStarred: true,
+    starCount: 4,
+  },
+  stats: {
+    followers: 15,
+    following: 27,
+    moots: 14,
+    stars: 4,
+  },
+};
+
+const removeFollowerPayload: RemoveFollowerPayload = {
+  removedFollower: true,
+  relationship: relationshipPayload,
+};
+
+const postSharePayload: PostShareMessagesPayload = {
+  post: {
+    id: post.id,
+    publicId: post.publicId,
+    canonicalPath: "/@thia/posts/pc359fe2da759",
+    canonicalUrl: "https://thia.lol/@thia/posts/pc359fe2da759",
+    bodySnippet: "A public post.",
+    createdAt: post.createdAt,
+    mediaUrl: null,
+    author: post.author,
+    room,
+  },
+  results: [
+    {
+      recipientUserId: 43,
+      recipient: {
+        id: 43,
+        handle: "friend",
+        displayName: "Friend",
+        initials: "F",
+        aura: "frost",
+        avatarUrl: null,
+      },
+      status: "sent",
+      conversationId: 5,
+      messageId: 9,
+    },
+  ],
+  sentCount: 1,
+  failedCount: 0,
+};
+
+function contentMutationsRepositoryMock(overrides: Partial<ContentMutationsRepository> = {}): ContentMutationsRepository {
+  return {
+    followProfile: vi.fn().mockResolvedValue(relationshipPayload),
+    unfollowProfile: vi.fn().mockResolvedValue(relationshipPayload),
+    blockProfile: vi.fn().mockResolvedValue(profileControlPayload),
+    unblockProfile: vi.fn().mockResolvedValue(profileControlPayload),
+    muteProfile: vi.fn().mockResolvedValue(profileControlPayload),
+    unmuteProfile: vi.fn().mockResolvedValue(profileControlPayload),
+    starProfile: vi.fn().mockResolvedValue(profileStarPayload),
+    unstarProfile: vi.fn().mockResolvedValue(profileStarPayload),
+    removeFollower: vi.fn().mockResolvedValue(removeFollowerPayload),
+    approveFollowRequest: vi.fn().mockResolvedValue({ approved: true }),
+    denyFollowRequest: vi.fn().mockResolvedValue({ denied: true }),
+    createPost: vi.fn().mockResolvedValue(post),
+    createReply: vi.fn().mockResolvedValue(post),
+    updatePost: vi.fn().mockResolvedValue(post),
+    deletePost: vi.fn().mockResolvedValue({
+      id: 99,
+      status: "removed",
+      deletedAt: "2026-06-24 10:00:00",
+    }),
+    likePost: vi.fn().mockResolvedValue({
+      postId: 99,
+      likeCount: 3,
+      likedByCurrentUser: true,
+    }),
+    unlikePost: vi.fn().mockResolvedValue({
+      postId: 99,
+      likeCount: 2,
+      likedByCurrentUser: false,
+    }),
+    reblogPost: vi.fn().mockResolvedValue({
+      postId: 99,
+      reblogCount: 2,
+      rebloggedByMe: true,
+      rebloggedByCurrentUser: true,
+    }),
+    unreblogPost: vi.fn().mockResolvedValue({
+      postId: 99,
+      reblogCount: 1,
+      rebloggedByMe: false,
+      rebloggedByCurrentUser: false,
+    }),
+    reactToPost: vi.fn().mockResolvedValue({
+      postId: 99,
+      reactions: {
+        glow: 2,
+        echo: 1,
+        hush: 0,
+      },
+    }),
+    deletePostReaction: vi.fn().mockResolvedValue({
+      postId: 99,
+      reactions: {
+        glow: 2,
+        echo: 0,
+        hush: 0,
+      },
+    }),
+    sharePostToMessages: vi.fn().mockResolvedValue(postSharePayload),
+    createRoom: vi.fn().mockResolvedValue(room),
+    updateRoom: vi.fn().mockResolvedValue(room),
+    deleteRoom: vi.fn().mockResolvedValue({
+      slug: "general",
+      deletedAt: "2026-06-24T10:00:00.000Z",
+    }),
+    joinRoom: vi.fn().mockResolvedValue(room),
+    leaveRoom: vi.fn().mockResolvedValue(room),
+    addRoomModerator: vi.fn().mockResolvedValue([roomMember]),
+    removeRoomModerator: vi.fn().mockResolvedValue([roomMember]),
     ...overrides,
   };
 }
@@ -1349,6 +1510,283 @@ describe("Node API auth preview mutation routes", () => {
     expect(repository.enableTwoFactor).toHaveBeenCalledWith(session, { code: "123456" });
     expect(repository.disableTwoFactor).toHaveBeenCalledWith(session, { currentPassword: "correct-password" });
     expect(repository.regenerateTwoFactorRecoveryCodes).toHaveBeenCalledWith(session, { currentPassword: "correct-password" });
+  });
+});
+
+describe("Node API social and content mutation preview routes", () => {
+  it("requires authentication before CSRF for content mutations", async () => {
+    const repository = contentMutationsRepositoryMock();
+    const app = buildApp({
+      contentMutationsRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock({
+        currentSession: vi.fn().mockResolvedValue(null),
+      }),
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/posts",
+      payload: {
+        body: "Hello Node.",
+      },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(repository.createPost).not.toHaveBeenCalled();
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Unauthenticated.",
+    });
+  });
+
+  it("requires a PHP-compatible CSRF header for content mutations", async () => {
+    const repository = contentMutationsRepositoryMock();
+    const app = buildApp({
+      contentMutationsRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const missing = await app.inject({
+      method: "POST",
+      url: "/profiles/thia/follow",
+      payload: {},
+    });
+    const invalid = await app.inject({
+      method: "POST",
+      url: "/profiles/thia/follow",
+      headers: {
+        "x-csrf-token": "wrong",
+      },
+      payload: {},
+    });
+
+    expect(missing.statusCode).toBe(403);
+    expect(missing.json()).toEqual({
+      ok: false,
+      error: "CSRF token is required.",
+    });
+    expect(invalid.statusCode).toBe(403);
+    expect(invalid.json()).toEqual({
+      ok: false,
+      error: "Invalid CSRF token.",
+    });
+    expect(repository.followProfile).not.toHaveBeenCalled();
+  });
+
+  it("serves social graph mutations through PHP-style wrappers", async () => {
+    const repository = contentMutationsRepositoryMock();
+    const app = buildApp({
+      contentMutationsRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+
+    for (const [method, path] of [
+      ["POST", "/profiles/thia/follow"],
+      ["DELETE", "/profiles/thia/follow"],
+      ["POST", "/profiles/thia/block"],
+      ["DELETE", "/profiles/thia/block"],
+      ["POST", "/profiles/thia/mute"],
+      ["DELETE", "/profiles/thia/mute"],
+      ["POST", "/profiles/thia/star"],
+      ["DELETE", "/profiles/thia/star"],
+      ["DELETE", "/profiles/thia/follower"],
+    ] as const) {
+      const response = await app.inject({
+        method,
+        url: path,
+        headers: {
+          "x-csrf-token": "csrf-token",
+        },
+        payload: {},
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toHaveProperty("ok", true);
+    }
+
+    expect(repository.followProfile).toHaveBeenCalledWith("thia", 42);
+    expect(repository.unfollowProfile).toHaveBeenCalledWith("thia", 42);
+    expect(repository.blockProfile).toHaveBeenCalledWith("thia", 42);
+    expect(repository.unblockProfile).toHaveBeenCalledWith("thia", 42);
+    expect(repository.muteProfile).toHaveBeenCalledWith("thia", 42);
+    expect(repository.unmuteProfile).toHaveBeenCalledWith("thia", 42);
+    expect(repository.starProfile).toHaveBeenCalledWith("thia", 42);
+    expect(repository.unstarProfile).toHaveBeenCalledWith("thia", 42);
+    expect(repository.removeFollower).toHaveBeenCalledWith("thia", 42);
+  });
+
+  it("serves follow request decisions through PHP-style wrappers", async () => {
+    const repository = contentMutationsRepositoryMock();
+    const app = buildApp({
+      contentMutationsRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const approve = await app.inject({
+      method: "POST",
+      url: "/me/follow-requests/12/approve",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: {},
+    });
+    const deny = await app.inject({
+      method: "DELETE",
+      url: "/me/follow-requests/12",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: {},
+    });
+
+    expect(approve.statusCode).toBe(200);
+    expect(approve.json()).toEqual({
+      ok: true,
+      data: {
+        approved: true,
+      },
+    });
+    expect(deny.statusCode).toBe(200);
+    expect(deny.json()).toEqual({
+      ok: true,
+      data: {
+        denied: true,
+      },
+    });
+    expect(repository.approveFollowRequest).toHaveBeenCalledWith(12, 42);
+    expect(repository.denyFollowRequest).toHaveBeenCalledWith(12, 42);
+  });
+
+  it("serves post mutations with PHP-compatible status codes", async () => {
+    const repository = contentMutationsRepositoryMock();
+    const app = buildApp({
+      contentMutationsRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+
+    for (const [method, path, expectedStatus] of [
+      ["POST", "/posts", 201],
+      ["POST", "/posts/99/replies", 201],
+      ["PATCH", "/posts/99", 200],
+      ["DELETE", "/posts/99", 200],
+      ["POST", "/posts/99/like", 200],
+      ["DELETE", "/posts/99/like", 200],
+      ["POST", "/posts/99/reblog", 200],
+      ["DELETE", "/posts/99/reblog", 200],
+      ["POST", "/posts/99/reactions", 200],
+      ["DELETE", "/posts/99/reactions/echo", 200],
+      ["POST", "/posts/pc359fe2da759/shares/messages", 201],
+    ] as const) {
+      const response = await app.inject({
+        method,
+        url: path,
+        headers: {
+          "x-csrf-token": "csrf-token",
+        },
+        payload: method === "DELETE" ? {} : { body: "Hello Node.", type: "echo", recipientUserIds: [43] },
+      });
+
+      expect(response.statusCode).toBe(expectedStatus);
+      expect(response.json()).toHaveProperty("ok", true);
+    }
+
+    expect(repository.createPost).toHaveBeenCalledWith(session, expect.objectContaining({ body: "Hello Node." }));
+    expect(repository.createReply).toHaveBeenCalledWith(session, 99, expect.any(Object));
+    expect(repository.updatePost).toHaveBeenCalledWith(session, 99, expect.any(Object));
+    expect(repository.deletePost).toHaveBeenCalledWith(session, 99);
+    expect(repository.likePost).toHaveBeenCalledWith(99, 42);
+    expect(repository.unlikePost).toHaveBeenCalledWith(99, 42);
+    expect(repository.reblogPost).toHaveBeenCalledWith(99, 42);
+    expect(repository.unreblogPost).toHaveBeenCalledWith(99, 42);
+    expect(repository.reactToPost).toHaveBeenCalledWith(99, 42, expect.any(Object));
+    expect(repository.deletePostReaction).toHaveBeenCalledWith(99, 42, "echo");
+    expect(repository.sharePostToMessages).toHaveBeenCalledWith("pc359fe2da759", 42, expect.any(Object));
+  });
+
+  it("serves room mutations through PHP-style wrappers", async () => {
+    const repository = contentMutationsRepositoryMock();
+    const app = buildApp({
+      contentMutationsRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+
+    for (const [method, path, expectedStatus] of [
+      ["POST", "/rooms", 201],
+      ["PATCH", "/rooms/general", 200],
+      ["DELETE", "/rooms/general", 200],
+      ["POST", "/rooms/general/join", 200],
+      ["DELETE", "/rooms/general/join", 200],
+      ["POST", "/rooms/general/moderators", 200],
+      ["DELETE", "/rooms/general/moderators", 200],
+    ] as const) {
+      const response = await app.inject({
+        method,
+        url: path,
+        headers: {
+          "x-csrf-token": "csrf-token",
+        },
+        payload: {
+          name: "General",
+          summary: "General public discussion.",
+          handle: "friend",
+        },
+      });
+
+      expect(response.statusCode).toBe(expectedStatus);
+      expect(response.json()).toHaveProperty("ok", true);
+    }
+
+    expect(repository.createRoom).toHaveBeenCalled();
+    expect(repository.updateRoom).toHaveBeenCalledWith(session, "general", expect.any(Object));
+    expect(repository.deleteRoom).toHaveBeenCalledWith(session, "general");
+    expect(repository.joinRoom).toHaveBeenCalledWith(session, "general");
+    expect(repository.leaveRoom).toHaveBeenCalledWith(session, "general");
+    expect(repository.addRoomModerator).toHaveBeenCalledWith(session, "general", expect.any(Object));
+    expect(repository.removeRoomModerator).toHaveBeenCalledWith(session, "general", expect.any(Object));
+  });
+
+  it("maps content validation and storage errors to PHP-compatible JSON", async () => {
+    const repository = contentMutationsRepositoryMock({
+      createPost: vi.fn().mockRejectedValue(new ContentRouteError("Post body is required.", 422)),
+      createRoom: vi
+        .fn()
+        .mockRejectedValue(new ContentStorageNotReadyError("Room membership storage is not ready. Run pending migrations.")),
+    });
+    const app = buildApp({
+      contentMutationsRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const invalid = await app.inject({
+      method: "POST",
+      url: "/posts",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: {},
+    });
+    const storage = await app.inject({
+      method: "POST",
+      url: "/rooms",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: {},
+    });
+
+    expect(invalid.statusCode).toBe(422);
+    expect(invalid.json()).toEqual({
+      ok: false,
+      error: "Post body is required.",
+    });
+    expect(storage.statusCode).toBe(503);
+    expect(storage.json()).toEqual({
+      ok: false,
+      error: "Room membership storage is not ready. Run pending migrations.",
+    });
   });
 });
 

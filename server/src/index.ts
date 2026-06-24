@@ -2,6 +2,7 @@ import { buildApp, nodeApiLoggerOptions } from "./app.js";
 import { createAuthRepository } from "./auth.js";
 import { createBadgesRepository } from "./badges.js";
 import { loadServerConfig } from "./config.js";
+import { createContentMutationsRepository } from "./content.js";
 import { createDatabaseClient } from "./db.js";
 import { createPostsRepository } from "./posts.js";
 import { createPrivateReadsRepository } from "./private.js";
@@ -21,6 +22,9 @@ const authRepository = createAuthRepository(database.pool, {
   sessionLifetimeSeconds: config.THIA_SESSION_LIFETIME_SECONDS,
 });
 const badgesRepository = createBadgesRepository(database.pool);
+const contentMutationsRepository = createContentMutationsRepository(database.pool, {
+  publicBaseUrl: config.THIA_PUBLIC_BASE_URL,
+});
 const postsRepository = createPostsRepository(database.pool);
 const privateReadsRepository = createPrivateReadsRepository(database.pool, {
   csrfSecret: config.THIA_CSRF_SECRET,
@@ -36,6 +40,7 @@ const app = buildApp({
   authRepository,
   badgesRepository,
   checkDatabase: database.check,
+  contentMutationsRepository,
   logger: nodeApiLoggerOptions(config.THIA_API_LOG_LEVEL),
   postsRepository,
   privateReadsRepository,

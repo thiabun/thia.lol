@@ -22,6 +22,23 @@ import {
 } from "./auth.js";
 import { BadgeStorageNotReadyError, type BadgePayload, type BadgesRepository } from "./badges.js";
 import {
+  ContentRouteError,
+  ContentStorageNotReadyError,
+  type ContentMutationsRepository,
+  type FollowRelationshipPayload,
+  type FollowRequestApprovePayload,
+  type FollowRequestDenyPayload,
+  type LikePayload,
+  type PostDeletePayload,
+  type PostShareMessagesPayload,
+  type ProfileControlPayload,
+  type ProfileStarPayload,
+  type ReactionPayload,
+  type ReblogPayload,
+  type RemoveFollowerPayload,
+  type RoomDeletePayload,
+} from "./content.js";
+import {
   normalizePostIdentifier,
   type DiscoverFeedPayload,
   type HomeFeedPayload,
@@ -46,6 +63,7 @@ import {
 import {
   normalizeProfileHandle,
   type FollowUserCardPayload,
+  type PostPayload,
   type ProfileBadgesPayload,
   type ProfileModulePayload,
   type ProfilePayload,
@@ -88,7 +106,16 @@ const postRepliesParamsSchema = z.object({
   id: z.string(),
 });
 
+const postReactionParamsSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+});
+
 const notificationReadParamsSchema = z.object({
+  id: z.string(),
+});
+
+const followRequestDecisionParamsSchema = z.object({
   id: z.string(),
 });
 
@@ -119,6 +146,7 @@ export interface AppDependencies {
   authRepository?: AuthRepository;
   badgesRepository?: BadgesRepository;
   checkDatabase?: () => Promise<void>;
+  contentMutationsRepository?: ContentMutationsRepository;
   profilesRepository?: ProfilesRepository;
   postsRepository?: PostsRepository;
   privateReadsRepository?: PrivateReadsRepository;
@@ -467,6 +495,60 @@ async function withAuthenticatedMutationRoute<T>(
   }
 }
 
+async function withAuthenticatedContentMutationRoute<T>(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  lookup: (
+    repository: ContentMutationsRepository,
+    session: RequestSession,
+    body: Record<string, unknown>,
+  ) => Promise<T> | T,
+  statusCode = 200,
+) {
+  if (
+    dependencies.sessionsRepository === undefined ||
+    dependencies.privateReadsRepository === undefined ||
+    dependencies.contentMutationsRepository === undefined
+  ) {
+    return internalError(request, reply, routeName, new Error("Missing authenticated content mutation dependency."));
+  }
+
+  try {
+    const session = await dependencies.sessionsRepository.currentSession(request.headers.cookie);
+
+    if (session === null) {
+      return reply.status(401).send(errorPayload("Unauthenticated."));
+    }
+
+    const providedCsrfToken = csrfTokenFromRequest(request);
+
+    if (providedCsrfToken === "") {
+      return reply.status(403).send(errorPayload("CSRF token is required."));
+    }
+
+    if (!safeStringEquals(dependencies.privateReadsRepository.csrfTokenForSession(session), providedCsrfToken)) {
+      return reply.status(403).send(errorPayload("Invalid CSRF token."));
+    }
+
+    const body = jsonBodyRecord(request.body);
+    const data = await lookup(dependencies.contentMutationsRepository, session, body);
+
+    return reply.status(statusCode).send(successPayload<T>(data));
+  } catch (error) {
+    if (error instanceof ContentRouteError || error instanceof PrivateRouteError) {
+      return reply.status(error.statusCode).send(errorPayload(error.message));
+    }
+
+    if (error instanceof ContentStorageNotReadyError) {
+      return sendRouteError(request, reply, routeName, 503, errorPayload(error.message), error);
+    }
+
+    return internalError(request, reply, routeName, error);
+  }
+}
+
 function csrfTokenFromRequest(request: FastifyRequest): string {
   const value = request.headers["x-csrf-token"];
 
@@ -631,6 +713,16 @@ function sendAuthLogoutResult(result: AuthLogoutResult, reply: FastifyReply): Fa
 
 function sendJsonResult<T>(result: T, reply: FastifyReply): FastifyReply {
   return reply.send(successPayload(result));
+}
+
+function positiveIntegerParam(value: string): number | null {
+  if (!/^[0-9]+$/.test(value)) {
+    return null;
+  }
+
+  const number = Number(value);
+
+  return Number.isSafeInteger(number) && number > 0 ? number : null;
 }
 
 export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
@@ -839,6 +931,40 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     ),
   );
 
+  app.post("/me/follow-requests/:id/approve", async (request, reply) => {
+    const parsedParams = followRequestDecisionParamsSchema.safeParse(request.params);
+    const requestId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (requestId === null) {
+      return reply.status(404).send(errorPayload("Follow request not found."));
+    }
+
+    return withAuthenticatedContentMutationRoute<FollowRequestApprovePayload>(
+      request,
+      reply,
+      dependencies,
+      "me.follow-requests.approve",
+      (repository, session) => repository.approveFollowRequest(requestId, session.userId),
+    );
+  });
+
+  app.delete("/me/follow-requests/:id", async (request, reply) => {
+    const parsedParams = followRequestDecisionParamsSchema.safeParse(request.params);
+    const requestId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (requestId === null) {
+      return reply.status(404).send(errorPayload("Follow request not found."));
+    }
+
+    return withAuthenticatedContentMutationRoute<FollowRequestDenyPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.follow-requests.deny",
+      (repository, session) => repository.denyFollowRequest(requestId, session.userId),
+    );
+  });
+
   app.get("/me/posts", async (request, reply) =>
     withAuthenticatedPrivateRoute<MyPostPayload[]>(
       request,
@@ -896,6 +1022,17 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     );
   });
 
+  app.post("/rooms", async (request, reply) =>
+    withAuthenticatedContentMutationRoute<RoomPayload>(
+      request,
+      reply,
+      dependencies,
+      "rooms.create",
+      (repository, session, body) => repository.createRoom(session, body),
+      201,
+    ),
+  );
+
   app.get("/rooms", async (request, reply) => {
     if (dependencies.roomsRepository === undefined) {
       return internalError(request, reply, "rooms.index", new Error("Missing rooms repository dependency."));
@@ -937,6 +1074,108 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
 
       return internalError(request, reply, "rooms.members", error);
     }
+  });
+
+  app.patch("/rooms/:slug", async (request, reply) => {
+    const parsedParams = roomParamsSchema.safeParse(request.params);
+    const normalizedSlug = parsedParams.success ? normalizeRoomSlug(parsedParams.data.slug) : null;
+
+    if (normalizedSlug === null) {
+      return reply.status(400).send(errorPayload("Invalid room slug."));
+    }
+
+    return withAuthenticatedContentMutationRoute<RoomPayload>(
+      request,
+      reply,
+      dependencies,
+      "rooms.update",
+      (repository, session, body) => repository.updateRoom(session, normalizedSlug, body),
+    );
+  });
+
+  app.delete("/rooms/:slug", async (request, reply) => {
+    const parsedParams = roomParamsSchema.safeParse(request.params);
+    const normalizedSlug = parsedParams.success ? normalizeRoomSlug(parsedParams.data.slug) : null;
+
+    if (normalizedSlug === null) {
+      return reply.status(400).send(errorPayload("Invalid room slug."));
+    }
+
+    return withAuthenticatedContentMutationRoute<RoomDeletePayload>(
+      request,
+      reply,
+      dependencies,
+      "rooms.delete",
+      (repository, session) => repository.deleteRoom(session, normalizedSlug),
+    );
+  });
+
+  app.post("/rooms/:slug/join", async (request, reply) => {
+    const parsedParams = roomParamsSchema.safeParse(request.params);
+    const normalizedSlug = parsedParams.success ? normalizeRoomSlug(parsedParams.data.slug) : null;
+
+    if (normalizedSlug === null) {
+      return reply.status(400).send(errorPayload("Invalid room slug."));
+    }
+
+    return withAuthenticatedContentMutationRoute<RoomPayload>(
+      request,
+      reply,
+      dependencies,
+      "rooms.join",
+      (repository, session) => repository.joinRoom(session, normalizedSlug),
+    );
+  });
+
+  app.delete("/rooms/:slug/join", async (request, reply) => {
+    const parsedParams = roomParamsSchema.safeParse(request.params);
+    const normalizedSlug = parsedParams.success ? normalizeRoomSlug(parsedParams.data.slug) : null;
+
+    if (normalizedSlug === null) {
+      return reply.status(400).send(errorPayload("Invalid room slug."));
+    }
+
+    return withAuthenticatedContentMutationRoute<RoomPayload>(
+      request,
+      reply,
+      dependencies,
+      "rooms.leave",
+      (repository, session) => repository.leaveRoom(session, normalizedSlug),
+    );
+  });
+
+  app.post("/rooms/:slug/moderators", async (request, reply) => {
+    const parsedParams = roomParamsSchema.safeParse(request.params);
+    const normalizedSlug = parsedParams.success ? normalizeRoomSlug(parsedParams.data.slug) : null;
+
+    if (normalizedSlug === null) {
+      return reply.status(400).send(errorPayload("Invalid room slug."));
+    }
+
+    return withAuthenticatedContentMutationRoute<RoomMemberPayload[]>(
+      request,
+      reply,
+      dependencies,
+      "rooms.moderators.add",
+      (repository, session, body) => repository.addRoomModerator(session, normalizedSlug, body),
+    );
+  });
+
+  app.delete("/rooms/:slug/moderators", async (request, reply) => {
+    const parsedParams = roomParamsSchema.safeParse(request.params);
+    const normalizedSlug = parsedParams.success ? normalizeRoomSlug(parsedParams.data.slug) : null;
+
+    if (normalizedSlug === null) {
+      return reply.status(400).send(errorPayload("Invalid room slug."));
+    }
+
+    return withAuthenticatedContentMutationRoute<RoomMemberPayload[]>(
+      request,
+      reply,
+      dependencies,
+      "rooms.moderators.remove",
+      (repository, session, body) => repository.removeRoomModerator(session, normalizedSlug, body),
+    );
   });
 
   app.get("/rooms/:slug", async (request, reply) => {
@@ -1050,6 +1289,17 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     }
   });
 
+  app.post("/posts", async (request, reply) =>
+    withAuthenticatedContentMutationRoute<PostPayload>(
+      request,
+      reply,
+      dependencies,
+      "posts.create",
+      (repository, session, body) => repository.createPost(session, body),
+      201,
+    ),
+  );
+
   app.get("/posts", async (request, reply) => {
     if (dependencies.postsRepository === undefined) {
       return internalError(request, reply, "posts.index", new Error("Missing posts repository dependency."));
@@ -1063,6 +1313,24 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     } catch (error) {
       return internalError(request, reply, "posts.index", error);
     }
+  });
+
+  app.post("/posts/:id/replies", async (request, reply) => {
+    const parsedParams = postRepliesParamsSchema.safeParse(request.params);
+    const postId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (postId === null) {
+      return reply.status(404).send(errorPayload("Not found."));
+    }
+
+    return withAuthenticatedContentMutationRoute<PostPayload>(
+      request,
+      reply,
+      dependencies,
+      "posts.replies.create",
+      (repository, session, body) => repository.createReply(session, postId, body),
+      201,
+    );
   });
 
   app.get("/posts/:id/replies", async (request, reply) => {
@@ -1089,6 +1357,160 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     } catch (error) {
       return internalError(request, reply, "posts.replies", error);
     }
+  });
+
+  app.patch("/posts/:id", async (request, reply) => {
+    const parsedParams = postRepliesParamsSchema.safeParse(request.params);
+    const postId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (postId === null) {
+      return reply.status(404).send(errorPayload("Not found."));
+    }
+
+    return withAuthenticatedContentMutationRoute<PostPayload>(
+      request,
+      reply,
+      dependencies,
+      "posts.update",
+      (repository, session, body) => repository.updatePost(session, postId, body),
+    );
+  });
+
+  app.delete("/posts/:id", async (request, reply) => {
+    const parsedParams = postRepliesParamsSchema.safeParse(request.params);
+    const postId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (postId === null) {
+      return reply.status(404).send(errorPayload("Not found."));
+    }
+
+    return withAuthenticatedContentMutationRoute<PostDeletePayload>(
+      request,
+      reply,
+      dependencies,
+      "posts.delete",
+      (repository, session) => repository.deletePost(session, postId),
+    );
+  });
+
+  app.post("/posts/:id/like", async (request, reply) => {
+    const parsedParams = postRepliesParamsSchema.safeParse(request.params);
+    const postId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (postId === null) {
+      return reply.status(404).send(errorPayload("Not found."));
+    }
+
+    return withAuthenticatedContentMutationRoute<LikePayload>(
+      request,
+      reply,
+      dependencies,
+      "posts.like.create",
+      (repository, session) => repository.likePost(postId, session.userId),
+    );
+  });
+
+  app.delete("/posts/:id/like", async (request, reply) => {
+    const parsedParams = postRepliesParamsSchema.safeParse(request.params);
+    const postId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (postId === null) {
+      return reply.status(404).send(errorPayload("Not found."));
+    }
+
+    return withAuthenticatedContentMutationRoute<LikePayload>(
+      request,
+      reply,
+      dependencies,
+      "posts.like.delete",
+      (repository, session) => repository.unlikePost(postId, session.userId),
+    );
+  });
+
+  app.post("/posts/:id/reblog", async (request, reply) => {
+    const parsedParams = postRepliesParamsSchema.safeParse(request.params);
+    const postId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (postId === null) {
+      return reply.status(404).send(errorPayload("Not found."));
+    }
+
+    return withAuthenticatedContentMutationRoute<ReblogPayload>(
+      request,
+      reply,
+      dependencies,
+      "posts.reblog.create",
+      (repository, session) => repository.reblogPost(postId, session.userId),
+    );
+  });
+
+  app.delete("/posts/:id/reblog", async (request, reply) => {
+    const parsedParams = postRepliesParamsSchema.safeParse(request.params);
+    const postId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (postId === null) {
+      return reply.status(404).send(errorPayload("Not found."));
+    }
+
+    return withAuthenticatedContentMutationRoute<ReblogPayload>(
+      request,
+      reply,
+      dependencies,
+      "posts.reblog.delete",
+      (repository, session) => repository.unreblogPost(postId, session.userId),
+    );
+  });
+
+  app.post("/posts/:id/reactions", async (request, reply) => {
+    const parsedParams = postRepliesParamsSchema.safeParse(request.params);
+    const postId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (postId === null) {
+      return reply.status(404).send(errorPayload("Not found."));
+    }
+
+    return withAuthenticatedContentMutationRoute<ReactionPayload>(
+      request,
+      reply,
+      dependencies,
+      "posts.reactions.create",
+      (repository, session, body) => repository.reactToPost(postId, session.userId, body),
+    );
+  });
+
+  app.delete("/posts/:id/reactions/:type", async (request, reply) => {
+    const parsedParams = postReactionParamsSchema.safeParse(request.params);
+    const postId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (!parsedParams.success || postId === null) {
+      return reply.status(404).send(errorPayload("Not found."));
+    }
+
+    return withAuthenticatedContentMutationRoute<ReactionPayload>(
+      request,
+      reply,
+      dependencies,
+      "posts.reactions.delete",
+      (repository, session) => repository.deletePostReaction(postId, session.userId, parsedParams.data.type),
+    );
+  });
+
+  app.post("/posts/:identifier/shares/messages", async (request, reply) => {
+    const parsedParams = postIdentifierParamsSchema.safeParse(request.params);
+    const identifier = parsedParams.success ? parsedParams.data.identifier : "";
+
+    if (normalizePostIdentifier(identifier) === null) {
+      return reply.status(404).send(errorPayload("Not found."));
+    }
+
+    return withAuthenticatedContentMutationRoute<PostShareMessagesPayload>(
+      request,
+      reply,
+      dependencies,
+      "posts.shares.messages",
+      (repository, session, body) => repository.sharePostToMessages(identifier, session.userId, body),
+      201,
+    );
   });
 
   app.get("/posts/:identifier", async (request, reply) => {
@@ -1223,6 +1645,159 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     } catch (error) {
       return internalError(request, reply, "profiles.reblogs", error);
     }
+  });
+
+  app.post("/profiles/:handle/follow", async (request, reply) => {
+    const parsedParams = profileParamsSchema.safeParse(request.params);
+    const normalizedHandle = parsedParams.success ? normalizeProfileHandle(parsedParams.data.handle) : null;
+
+    if (normalizedHandle === null) {
+      return reply.status(400).send(errorPayload("Invalid profile handle."));
+    }
+
+    return withAuthenticatedContentMutationRoute<FollowRelationshipPayload>(
+      request,
+      reply,
+      dependencies,
+      "profiles.follow.create",
+      (repository, session) => repository.followProfile(normalizedHandle, session.userId),
+    );
+  });
+
+  app.delete("/profiles/:handle/follow", async (request, reply) => {
+    const parsedParams = profileParamsSchema.safeParse(request.params);
+    const normalizedHandle = parsedParams.success ? normalizeProfileHandle(parsedParams.data.handle) : null;
+
+    if (normalizedHandle === null) {
+      return reply.status(400).send(errorPayload("Invalid profile handle."));
+    }
+
+    return withAuthenticatedContentMutationRoute<FollowRelationshipPayload>(
+      request,
+      reply,
+      dependencies,
+      "profiles.follow.delete",
+      (repository, session) => repository.unfollowProfile(normalizedHandle, session.userId),
+    );
+  });
+
+  app.post("/profiles/:handle/block", async (request, reply) => {
+    const parsedParams = profileParamsSchema.safeParse(request.params);
+    const normalizedHandle = parsedParams.success ? normalizeProfileHandle(parsedParams.data.handle) : null;
+
+    if (normalizedHandle === null) {
+      return reply.status(400).send(errorPayload("Invalid profile handle."));
+    }
+
+    return withAuthenticatedContentMutationRoute<ProfileControlPayload>(
+      request,
+      reply,
+      dependencies,
+      "profiles.block.create",
+      (repository, session) => repository.blockProfile(normalizedHandle, session.userId),
+    );
+  });
+
+  app.delete("/profiles/:handle/block", async (request, reply) => {
+    const parsedParams = profileParamsSchema.safeParse(request.params);
+    const normalizedHandle = parsedParams.success ? normalizeProfileHandle(parsedParams.data.handle) : null;
+
+    if (normalizedHandle === null) {
+      return reply.status(400).send(errorPayload("Invalid profile handle."));
+    }
+
+    return withAuthenticatedContentMutationRoute<ProfileControlPayload>(
+      request,
+      reply,
+      dependencies,
+      "profiles.block.delete",
+      (repository, session) => repository.unblockProfile(normalizedHandle, session.userId),
+    );
+  });
+
+  app.post("/profiles/:handle/mute", async (request, reply) => {
+    const parsedParams = profileParamsSchema.safeParse(request.params);
+    const normalizedHandle = parsedParams.success ? normalizeProfileHandle(parsedParams.data.handle) : null;
+
+    if (normalizedHandle === null) {
+      return reply.status(400).send(errorPayload("Invalid profile handle."));
+    }
+
+    return withAuthenticatedContentMutationRoute<ProfileControlPayload>(
+      request,
+      reply,
+      dependencies,
+      "profiles.mute.create",
+      (repository, session) => repository.muteProfile(normalizedHandle, session.userId),
+    );
+  });
+
+  app.delete("/profiles/:handle/mute", async (request, reply) => {
+    const parsedParams = profileParamsSchema.safeParse(request.params);
+    const normalizedHandle = parsedParams.success ? normalizeProfileHandle(parsedParams.data.handle) : null;
+
+    if (normalizedHandle === null) {
+      return reply.status(400).send(errorPayload("Invalid profile handle."));
+    }
+
+    return withAuthenticatedContentMutationRoute<ProfileControlPayload>(
+      request,
+      reply,
+      dependencies,
+      "profiles.mute.delete",
+      (repository, session) => repository.unmuteProfile(normalizedHandle, session.userId),
+    );
+  });
+
+  app.post("/profiles/:handle/star", async (request, reply) => {
+    const parsedParams = profileParamsSchema.safeParse(request.params);
+    const normalizedHandle = parsedParams.success ? normalizeProfileHandle(parsedParams.data.handle) : null;
+
+    if (normalizedHandle === null) {
+      return reply.status(400).send(errorPayload("Invalid profile handle."));
+    }
+
+    return withAuthenticatedContentMutationRoute<ProfileStarPayload>(
+      request,
+      reply,
+      dependencies,
+      "profiles.star.create",
+      (repository, session) => repository.starProfile(normalizedHandle, session.userId),
+    );
+  });
+
+  app.delete("/profiles/:handle/star", async (request, reply) => {
+    const parsedParams = profileParamsSchema.safeParse(request.params);
+    const normalizedHandle = parsedParams.success ? normalizeProfileHandle(parsedParams.data.handle) : null;
+
+    if (normalizedHandle === null) {
+      return reply.status(400).send(errorPayload("Invalid profile handle."));
+    }
+
+    return withAuthenticatedContentMutationRoute<ProfileStarPayload>(
+      request,
+      reply,
+      dependencies,
+      "profiles.star.delete",
+      (repository, session) => repository.unstarProfile(normalizedHandle, session.userId),
+    );
+  });
+
+  app.delete("/profiles/:handle/follower", async (request, reply) => {
+    const parsedParams = profileParamsSchema.safeParse(request.params);
+    const normalizedHandle = parsedParams.success ? normalizeProfileHandle(parsedParams.data.handle) : null;
+
+    if (normalizedHandle === null) {
+      return reply.status(400).send(errorPayload("Invalid profile handle."));
+    }
+
+    return withAuthenticatedContentMutationRoute<RemoveFollowerPayload>(
+      request,
+      reply,
+      dependencies,
+      "profiles.follower.delete",
+      (repository, session) => repository.removeFollower(normalizedHandle, session.userId),
+    );
   });
 
   app.get("/profiles/:handle/rooms", async (request, reply) =>
