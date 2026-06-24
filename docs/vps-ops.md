@@ -149,6 +149,12 @@ curl --fail-with-body https://thia.lol/api-next/feed/home
 curl --fail-with-body https://thia.lol/api-next/feed/discover
 curl --fail-with-body https://thia.lol/api-next/rooms/general/posts
 curl --fail-with-body https://thia.lol/api-next/profiles/thia/posts
+curl --fail-with-body --cookie 'thia_session=<redacted>' https://thia.lol/api-next/auth/me
+curl --fail-with-body --cookie 'thia_session=<redacted>' https://thia.lol/api-next/me/settings
+curl --fail-with-body --cookie 'thia_session=<redacted>' https://thia.lol/api-next/me/onboarding
+curl --fail-with-body --cookie 'thia_session=<redacted>' https://thia.lol/api-next/me/follow-requests
+curl --fail-with-body --cookie 'thia_session=<redacted>' https://thia.lol/api-next/me/posts
+curl --fail-with-body --cookie 'thia_session=<redacted>' https://thia.lol/api-next/notifications
 curl --fail-with-body https://thia.lol/api/rooms
 curl --fail-with-body 'https://thia.lol/api/search?q=thia'
 curl --fail-with-body https://thia.lol/api/badges
@@ -166,11 +172,29 @@ Besides the MariaDB connection values, the read-preview routes use:
 THIA_SESSION_COOKIE_NAME=thia_session
 THIA_PUBLIC_BASE_URL=https://thia.lol
 THIA_API_LOG_LEVEL=info
+THIA_CSRF_SECRET=<same value as PHP security.csrf_secret>
+THIA_SECURITY_ENCRYPTION_CONFIGURED=<true when PHP integration_encryption_key is configured>
+THIA_SECURITY_ENCRYPTION_AVAILABLE=true
 ```
 
 `THIA_API_LOG_LEVEL` may be `trace`, `debug`, `info`, `warn`, `error`,
 `fatal`, or `silent`. Keep production at `info` unless actively debugging. Do
 not commit that file or print its database password in logs.
+
+Preview-only private reads currently exist under `/api-next/*`:
+
+```text
+GET /api-next/auth/me
+GET /api-next/me/settings
+GET /api-next/me/onboarding
+GET /api-next/me/follow-requests
+GET /api-next/me/posts
+GET /api-next/notifications
+```
+
+Do not cut these over to production `/api/*` until authenticated parity has
+passed with a real browser session and `THIA_CSRF_SECRET` matches PHP. Anonymous
+smoke runs should see clean JSON `401` responses for these routes.
 
 When a Node-served route returns 500:
 
@@ -185,8 +209,8 @@ Node logs are structured and should include route name, method, sanitized URL,
 status, request id, and sanitized error metadata. They must not contain cookies,
 authorization headers, session tokens, raw SQL, stack traces, or config values.
 
-PHP remains owner for auth, uploads, chat, notifications, admin, moderation,
-share-card generation, and all mutations.
+PHP remains production owner for auth, uploads, chat, notifications, admin,
+moderation, share-card generation, and all mutations.
 
 Cutover verification:
 

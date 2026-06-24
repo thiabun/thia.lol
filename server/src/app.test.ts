@@ -14,6 +14,16 @@ import type {
   PostDetailPayload,
   PostsRepository,
 } from "./posts.js";
+import {
+  PrivateStorageNotReadyError,
+  type AuthSessionPayload,
+  type FollowRequestPayload,
+  type MyPostPayload,
+  type NotificationsPayload,
+  type OnboardingStatePayload,
+  type PrivateReadsRepository,
+  type SettingsPayload,
+} from "./private.js";
 import type {
   FollowUserCardPayload,
   PostPayload,
@@ -361,6 +371,119 @@ function sessionsRepositoryMock(overrides: Partial<SessionsRepository> = {}): Se
   };
 }
 
+const authPayload: AuthSessionPayload = {
+  user: {
+    id: 42,
+    handle: "viewer",
+    email: "viewer@example.test",
+    role: "member",
+    status: "active",
+    displayName: "Viewer",
+    avatarUrl: null,
+  },
+  profile: {
+    displayName: "Viewer",
+    bio: "",
+    location: "",
+    avatarUrl: null,
+    links: [],
+    traits: [],
+  },
+  csrfToken: "csrf-token",
+};
+
+const settingsPayload: SettingsPayload = {
+  account: {
+    id: 42,
+    handle: "viewer",
+    email: "viewer@example.test",
+    displayName: "Viewer",
+    status: "active",
+    handleChange: {
+      canChange: true,
+      nextAllowedAt: null,
+    },
+  },
+  privacy: {
+    profileVisibility: "public",
+  },
+  preferences: {
+    analyticsConsent: false,
+    personalizationConsent: true,
+    richEmbedsConsent: true,
+    autoplayMediaConsent: false,
+    sensitiveContentVisible: false,
+    notifications: {},
+    emailNotifications: {},
+    pushNotifications: {},
+  },
+  twoFactor: {
+    enabled: false,
+    backupCodeCount: 0,
+    encryptionConfigured: false,
+    encryptionAvailable: true,
+  },
+  deletion: null,
+};
+
+const onboardingPayload: OnboardingStatePayload = {
+  steps: ["profile"],
+  completedSteps: ["profile"],
+  skippedSteps: [],
+  providerLinks: {},
+  finishedAt: null,
+  dismissedAt: null,
+  createdAt: "2026-06-20 10:00:00",
+  updatedAt: "2026-06-22 10:00:00",
+};
+
+const notificationsPayload: NotificationsPayload = {
+  notifications: [
+    {
+      id: 8,
+      type: "follow",
+      createdAt: "2026-06-22 10:00:00",
+      readAt: null,
+      actor: roomMember.user,
+      post: null,
+      room: null,
+      targetUrl: "/@thia",
+      data: null,
+    },
+  ],
+  unreadCount: 1,
+};
+
+const followRequest: FollowRequestPayload = {
+  id: 12,
+  createdAt: "2026-06-22 10:00:00",
+  user: roomMember.user,
+  bioSnippet: "Founder profile.",
+};
+
+const myPost: MyPostPayload = {
+  id: 99,
+  publicId: "pc359fe2da759",
+  kind: "post",
+  body: "A public post.",
+  mediaUrl: null,
+  status: "published",
+  deletedAt: null,
+  createdAt: "2026-06-23 10:00:00",
+};
+
+function privateReadsRepositoryMock(overrides: Partial<PrivateReadsRepository> = {}): PrivateReadsRepository {
+  return {
+    authSessionPayload: vi.fn().mockReturnValue(authPayload),
+    getSettings: vi.fn().mockResolvedValue(settingsPayload),
+    getOnboardingState: vi.fn().mockResolvedValue(onboardingPayload),
+    getNotifications: vi.fn().mockResolvedValue(notificationsPayload),
+    getFollowRequests: vi.fn().mockResolvedValue([followRequest]),
+    getMyPosts: vi.fn().mockResolvedValue([myPost]),
+    ...overrides,
+  };
+}
+
 function capturedLogger() {
   const chunks: string[] = [];
   const stream = new Writable({
@@ -510,6 +633,137 @@ describe("Node API health routes", () => {
     expect(logs).not.toContain("secret-token");
     expect(logs).not.toContain("secret-cookie");
     expect(logs).not.toContain("SELECT password");
+  });
+});
+
+describe("Node API private preview routes", () => {
+  it("returns unauthenticated JSON when no current session exists", async () => {
+    const app = buildApp({
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock({
+        currentSession: vi.fn().mockResolvedValue(null),
+      }),
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/auth/me",
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Unauthenticated.",
+    });
+  });
+
+  it("returns the PHP-compatible auth session wrapper", async () => {
+    const repository = privateReadsRepositoryMock();
+    const app = buildApp({
+      privateReadsRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/auth/me",
+      headers: {
+        cookie: "thia_session=session-token",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(repository.authSessionPayload).toHaveBeenCalledWith(session);
+    expect(response.json()).toEqual({
+      ok: true,
+      data: authPayload,
+    });
+  });
+
+  it("returns private read payloads through PHP-style wrappers", async () => {
+    const repository = privateReadsRepositoryMock();
+    const app = buildApp({
+      privateReadsRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+
+    for (const [path, payload] of [
+      ["/me/settings", settingsPayload],
+      ["/me/onboarding", onboardingPayload],
+      ["/me/follow-requests", [followRequest]],
+      ["/notifications", notificationsPayload],
+    ] as const) {
+      const response = await app.inject({
+        method: "GET",
+        url: path,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        ok: true,
+        data: payload,
+      });
+    }
+  });
+
+  it("normalizes my-post kind filters like PHP settings", async () => {
+    const repository = privateReadsRepositoryMock();
+    const app = buildApp({
+      privateReadsRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+
+    await app.inject({
+      method: "GET",
+      url: "/me/posts?kind=replies",
+    });
+    await app.inject({
+      method: "GET",
+      url: "/me/posts?kind=unknown",
+    });
+
+    expect(repository.getMyPosts).toHaveBeenNthCalledWith(1, session.userId, "replies");
+    expect(repository.getMyPosts).toHaveBeenNthCalledWith(2, session.userId, "all");
+  });
+
+  it("maps private storage-not-ready errors to PHP-compatible 503s", async () => {
+    const repository = privateReadsRepositoryMock({
+      getNotifications: vi
+        .fn()
+        .mockRejectedValue(new PrivateStorageNotReadyError("Notification storage is not ready. Run pending migrations.")),
+    });
+    const app = buildApp({
+      privateReadsRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/notifications",
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Notification storage is not ready. Run pending migrations.",
+    });
+  });
+
+  it("returns generic JSON 500s for private repository failures", async () => {
+    const repository = privateReadsRepositoryMock({
+      getSettings: vi.fn().mockRejectedValue(new Error("raw setting failure")),
+    });
+    const app = buildApp({
+      privateReadsRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/me/settings",
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Internal server error.",
+    });
   });
 });
 

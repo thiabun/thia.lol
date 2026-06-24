@@ -3,6 +3,7 @@ set -euo pipefail
 
 BASE_URL="${BASE_URL:-https://thia.lol}"
 BASE_URL="${BASE_URL%/}"
+COOKIE_HEADER="${COOKIE_HEADER:-}"
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
@@ -12,7 +13,13 @@ check_json_ok() {
   local body_file="$tmp_dir/$(printf '%s' "$path" | tr -c 'A-Za-z0-9' '_')"
   local status
 
-  status="$(curl --location --silent --show-error --output "$body_file" --write-out '%{http_code}' --max-time 20 "$BASE_URL$path")"
+  local curl_args=(--location --silent --show-error --output "$body_file" --write-out '%{http_code}' --max-time 20)
+
+  if [[ -n "$COOKIE_HEADER" ]]; then
+    curl_args+=(--header "Cookie: $COOKIE_HEADER")
+  fi
+
+  status="$(curl "${curl_args[@]}" "$BASE_URL$path")"
 
   if [[ "$status" != "200" ]]; then
     echo "Expected HTTP 200 for $path, got $status" >&2
@@ -29,6 +36,36 @@ check_json_ok() {
   fi
 
   echo "OK $path returned HTTP 200 and JSON ok:true"
+}
+
+check_json_status() {
+  local path="$1"
+  local expected_status="$2"
+  local body_file="$tmp_dir/$(printf '%s' "$path-$expected_status" | tr -c 'A-Za-z0-9' '_')"
+  local status
+  local curl_args=(--location --silent --show-error --output "$body_file" --write-out '%{http_code}' --max-time 20)
+
+  if [[ -n "$COOKIE_HEADER" ]]; then
+    curl_args+=(--header "Cookie: $COOKIE_HEADER")
+  fi
+
+  status="$(curl "${curl_args[@]}" "$BASE_URL$path")"
+
+  if [[ "$status" != "$expected_status" ]]; then
+    echo "Expected HTTP $expected_status for $path, got $status" >&2
+    echo "Response body:" >&2
+    sed -n '1,80p' "$body_file" >&2
+    exit 1
+  fi
+
+  if ! grep -Eq '"ok"[[:space:]]*:[[:space:]]*false' "$body_file"; then
+    echo "Expected JSON containing \"ok\":false for $path" >&2
+    echo "Response body:" >&2
+    sed -n '1,80p' "$body_file" >&2
+    exit 1
+  fi
+
+  echo "OK $path returned HTTP $expected_status and JSON ok:false"
 }
 
 check_json_ok "/api-next/health"
@@ -52,3 +89,19 @@ check_json_ok "/api-next/rooms/general/posts"
 check_json_ok "/api-next/profiles/thia/posts"
 check_json_ok "/api-next/profiles/thia/replies"
 check_json_ok "/api-next/profiles/thia/reblogs"
+
+if [[ -n "$COOKIE_HEADER" ]]; then
+  check_json_ok "/api-next/auth/me"
+  check_json_ok "/api-next/me/settings"
+  check_json_ok "/api-next/me/onboarding"
+  check_json_ok "/api-next/me/follow-requests"
+  check_json_ok "/api-next/me/posts"
+  check_json_ok "/api-next/notifications"
+else
+  check_json_status "/api-next/auth/me" "401"
+  check_json_status "/api-next/me/settings" "401"
+  check_json_status "/api-next/me/onboarding" "401"
+  check_json_status "/api-next/me/follow-requests" "401"
+  check_json_status "/api-next/me/posts" "401"
+  check_json_status "/api-next/notifications" "401"
+fi

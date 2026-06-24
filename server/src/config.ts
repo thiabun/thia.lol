@@ -1,5 +1,23 @@
 import { z } from "zod";
 
+const boolEnv = z.preprocess((value) => {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+
+  return value;
+}, z.boolean());
+
 const envSchema = z.object({
   THIA_API_HOST: z.string().min(1).default("127.0.0.1"),
   THIA_API_PORT: z.coerce.number().int().min(1).max(65535).default(3100),
@@ -14,6 +32,9 @@ const envSchema = z.object({
   THIA_API_LOG_LEVEL: z
     .enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"])
     .default("info"),
+  THIA_CSRF_SECRET: z.string().min(1).default("development-csrf-secret-change-me"),
+  THIA_SECURITY_ENCRYPTION_CONFIGURED: boolEnv.default(false),
+  THIA_SECURITY_ENCRYPTION_AVAILABLE: boolEnv.default(true),
 });
 
 export type ServerConfig = z.infer<typeof envSchema>;

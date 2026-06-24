@@ -7,7 +7,15 @@ export interface RequestSession {
   userId: number;
   tokenHash: string;
   handle: string;
+  email?: string;
   role: string;
+  status?: string;
+  displayName?: string;
+  bio?: string | null;
+  location?: string | null;
+  avatarUrl?: string | null;
+  links?: string | null;
+  traits?: string | null;
 }
 
 export interface SessionsRepository {
@@ -19,7 +27,15 @@ interface SessionRow extends RowDataPacket {
   user_id: number | string;
   token_hash: string;
   handle: string;
+  email: string;
   role: string;
+  status: string;
+  display_name: string | null;
+  bio: string | null;
+  location: string | null;
+  avatar_url: string | null;
+  links: string | null;
+  traits: string | null;
 }
 
 export function createSessionsRepository(pool: Pool, cookieName: string): SessionsRepository {
@@ -96,7 +112,15 @@ class MysqlSessionsRepository implements SessionsRepository {
             s.user_id,
             s.token_hash,
             u.handle,
-            u.role
+            u.email,
+            u.role,
+            u.status,
+            p.display_name,
+            p.bio,
+            p.location,
+            p.avatar_url,
+            p.links,
+            p.traits
          FROM sessions s
          INNER JOIN users u ON u.id = s.user_id
          INNER JOIN profiles p ON p.user_id = u.id
@@ -117,7 +141,15 @@ class MysqlSessionsRepository implements SessionsRepository {
       userId: numberValue(row.user_id),
       tokenHash: row.token_hash,
       handle: row.handle,
+      email: row.email,
       role: row.role,
+      status: row.status,
+      displayName: row.display_name ?? row.handle,
+      bio: row.bio,
+      location: row.location,
+      avatarUrl: row.avatar_url,
+      links: row.links,
+      traits: row.traits,
     };
   }
 }

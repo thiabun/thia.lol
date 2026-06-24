@@ -24,10 +24,32 @@ Use a strangler migration:
 2. Add a new internal Caddy route for the TypeScript service.
 3. Move low-risk read endpoints first.
 4. Add parity tests before switching public `/api/*` traffic for a route.
-5. Keep auth, sessions, uploads, chat, and moderation on PHP until explicit
-   parity and rollback plans exist.
+5. Keep production auth, sessions, uploads, chat, and moderation on PHP until
+   explicit authenticated parity and rollback plans exist.
 
 Do not replace the production API in one big cutover.
+
+## Current Route Ownership
+
+Production Node ownership is limited to parity-proven public reads: rooms,
+search, badges, stats, profiles/profile extras, posts, room/profile post lists,
+post detail/replies, and home/discover feeds.
+
+Private read previews now exist under `/api-next/*` only:
+
+```text
+GET /api-next/auth/me
+GET /api-next/me/settings
+GET /api-next/me/onboarding
+GET /api-next/me/follow-requests
+GET /api-next/me/posts
+GET /api-next/notifications
+```
+
+These routes use the existing MariaDB sessions table and PHP-compatible CSRF
+HMAC generation. Production cutover requires `THIA_CSRF_SECRET` in
+`/srv/thia.lol/config/node-api.env` to match PHP `security.csrf_secret`, plus
+authenticated parity with `COOKIE_HEADER='thia_session=...'`.
 
 ## Database Strategy
 
@@ -60,7 +82,18 @@ GET /api/badges
 GET /api/rooms/{slug}/members
 ```
 
-Avoid early rewrites of:
+Next safe candidates after private-read parity:
+
+```text
+POST /api/notifications/read
+POST /api/notifications/read-all
+POST /api/notifications/{id}/read
+PATCH /api/me/preferences
+PATCH /api/me/privacy
+```
+
+Avoid moving until write foundations and authenticated rollback checks are in
+place:
 
 ```text
 POST /api/auth/login

@@ -17,6 +17,17 @@ import {
   type PostsRepository,
 } from "./posts.js";
 import {
+  PrivateStorageNotReadyError,
+  settingsPostKind,
+  type AuthSessionPayload,
+  type FollowRequestPayload,
+  type MyPostPayload,
+  type NotificationsPayload,
+  type OnboardingStatePayload,
+  type PrivateReadsRepository,
+  type SettingsPayload,
+} from "./private.js";
+import {
   normalizeProfileHandle,
   type FollowUserCardPayload,
   type ProfileBadgesPayload,
@@ -32,7 +43,7 @@ import {
   type RoomsRepository,
 } from "./rooms.js";
 import { type SearchPayload, type SearchRepository } from "./search.js";
-import type { SessionsRepository } from "./sessions.js";
+import type { RequestSession, SessionsRepository } from "./sessions.js";
 import type { PublicStatsPayload, StatsRepository } from "./stats.js";
 
 const healthQuerySchema = z.object({
@@ -61,6 +72,12 @@ const postRepliesParamsSchema = z.object({
   id: z.string(),
 });
 
+const privatePostsQuerySchema = z
+  .object({
+    kind: z.union([z.string(), z.array(z.string())]).optional(),
+  })
+  .passthrough();
+
 export const requestIdHeader = "X-Thia-Request-Id";
 
 export const nodeApiLogRedactPaths = [
@@ -83,6 +100,7 @@ export interface AppDependencies {
   checkDatabase?: () => Promise<void>;
   profilesRepository?: ProfilesRepository;
   postsRepository?: PostsRepository;
+  privateReadsRepository?: PrivateReadsRepository;
   roomsRepository?: RoomsRepository;
   searchRepository?: SearchRepository;
   sessionsRepository?: SessionsRepository;
@@ -337,6 +355,48 @@ async function currentViewerUserId(
   return session?.userId ?? null;
 }
 
+function privatePostKindFromRequest(query: unknown): "all" | "posts" | "replies" {
+  const parsed = privatePostsQuerySchema.safeParse(query);
+
+  if (!parsed.success) {
+    return "all";
+  }
+
+  const value = parsed.data.kind;
+
+  return settingsPostKind(Array.isArray(value) ? undefined : value);
+}
+
+async function withAuthenticatedPrivateRoute<T>(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  lookup: (repository: PrivateReadsRepository, session: RequestSession) => Promise<T> | T,
+) {
+  if (dependencies.sessionsRepository === undefined || dependencies.privateReadsRepository === undefined) {
+    return internalError(request, reply, routeName, new Error("Missing authenticated route dependency."));
+  }
+
+  try {
+    const session = await dependencies.sessionsRepository.currentSession(request.headers.cookie);
+
+    if (session === null) {
+      return reply.status(401).send(errorPayload("Unauthenticated."));
+    }
+
+    const data = await lookup(dependencies.privateReadsRepository, session);
+
+    return reply.send(successPayload<T>(data));
+  } catch (error) {
+    if (error instanceof PrivateStorageNotReadyError) {
+      return sendRouteError(request, reply, routeName, 503, errorPayload(error.message), error);
+    }
+
+    return internalError(request, reply, routeName, error);
+  }
+}
+
 export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
   const app = Fastify({
     genReqId: generateRequestId,
@@ -376,6 +436,66 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
 
     return reply.send(payload);
   });
+
+  app.get("/auth/me", async (request, reply) =>
+    withAuthenticatedPrivateRoute<AuthSessionPayload>(
+      request,
+      reply,
+      dependencies,
+      "auth.me",
+      (repository, session) => repository.authSessionPayload(session),
+    ),
+  );
+
+  app.get("/me/settings", async (request, reply) =>
+    withAuthenticatedPrivateRoute<SettingsPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.settings",
+      (repository, session) => repository.getSettings(session),
+    ),
+  );
+
+  app.get("/me/onboarding", async (request, reply) =>
+    withAuthenticatedPrivateRoute<OnboardingStatePayload>(
+      request,
+      reply,
+      dependencies,
+      "me.onboarding",
+      (repository, session) => repository.getOnboardingState(session.userId),
+    ),
+  );
+
+  app.get("/me/follow-requests", async (request, reply) =>
+    withAuthenticatedPrivateRoute<FollowRequestPayload[]>(
+      request,
+      reply,
+      dependencies,
+      "me.follow-requests",
+      (repository, session) => repository.getFollowRequests(session.userId),
+    ),
+  );
+
+  app.get("/me/posts", async (request, reply) =>
+    withAuthenticatedPrivateRoute<MyPostPayload[]>(
+      request,
+      reply,
+      dependencies,
+      "me.posts",
+      (repository, session) => repository.getMyPosts(session.userId, privatePostKindFromRequest(request.query)),
+    ),
+  );
+
+  app.get("/notifications", async (request, reply) =>
+    withAuthenticatedPrivateRoute<NotificationsPayload>(
+      request,
+      reply,
+      dependencies,
+      "notifications.index",
+      (repository, session) => repository.getNotifications(session.userId),
+    ),
+  );
 
   app.get("/rooms", async (request, reply) => {
     if (dependencies.roomsRepository === undefined) {

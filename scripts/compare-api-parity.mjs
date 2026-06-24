@@ -25,6 +25,17 @@ const routePairs = [
   ["/api/feed/discover", "/api-next/feed/discover"],
 ];
 
+if (cookieHeader !== "") {
+  routePairs.push(
+    ["/api/auth/me", "/api-next/auth/me"],
+    ["/api/me/settings", "/api-next/me/settings"],
+    ["/api/me/onboarding", "/api-next/me/onboarding"],
+    ["/api/me/follow-requests", "/api-next/me/follow-requests"],
+    ["/api/me/posts", "/api-next/me/posts"],
+    ["/api/notifications", "/api-next/notifications"],
+  );
+}
+
 const postsIndex = await fetchJson("/api/posts");
 const postAnchor = firstPostAnchor(postsIndex.body);
 

@@ -3,6 +3,7 @@ import { createBadgesRepository } from "./badges.js";
 import { loadServerConfig } from "./config.js";
 import { createDatabaseClient } from "./db.js";
 import { createPostsRepository } from "./posts.js";
+import { createPrivateReadsRepository } from "./private.js";
 import { createProfilesRepository } from "./profiles.js";
 import { createRoomsRepository } from "./rooms.js";
 import { createSearchRepository } from "./search.js";
@@ -13,6 +14,11 @@ const config = loadServerConfig();
 const database = createDatabaseClient(config);
 const badgesRepository = createBadgesRepository(database.pool);
 const postsRepository = createPostsRepository(database.pool);
+const privateReadsRepository = createPrivateReadsRepository(database.pool, {
+  csrfSecret: config.THIA_CSRF_SECRET,
+  encryptionConfigured: config.THIA_SECURITY_ENCRYPTION_CONFIGURED,
+  encryptionAvailable: config.THIA_SECURITY_ENCRYPTION_AVAILABLE,
+});
 const profilesRepository = createProfilesRepository(database.pool);
 const roomsRepository = createRoomsRepository(database.pool);
 const searchRepository = createSearchRepository(database.pool);
@@ -23,6 +29,7 @@ const app = buildApp({
   checkDatabase: database.check,
   logger: nodeApiLoggerOptions(config.THIA_API_LOG_LEVEL),
   postsRepository,
+  privateReadsRepository,
   profilesRepository,
   roomsRepository,
   searchRepository,
