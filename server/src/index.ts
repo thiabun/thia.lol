@@ -1,4 +1,5 @@
 import { buildApp, nodeApiLoggerOptions } from "./app.js";
+import { createAuthRepository } from "./auth.js";
 import { createBadgesRepository } from "./badges.js";
 import { loadServerConfig } from "./config.js";
 import { createDatabaseClient } from "./db.js";
@@ -12,6 +13,13 @@ import { createStatsRepository } from "./stats.js";
 
 const config = loadServerConfig();
 const database = createDatabaseClient(config);
+const authRepository = createAuthRepository(database.pool, {
+  cookieName: config.THIA_SESSION_COOKIE_NAME,
+  cookieDomain: config.THIA_SESSION_COOKIE_DOMAIN === "" ? null : config.THIA_SESSION_COOKIE_DOMAIN,
+  csrfSecret: config.THIA_CSRF_SECRET,
+  encryptionKey: config.THIA_SECURITY_INTEGRATION_ENCRYPTION_KEY,
+  sessionLifetimeSeconds: config.THIA_SESSION_LIFETIME_SECONDS,
+});
 const badgesRepository = createBadgesRepository(database.pool);
 const postsRepository = createPostsRepository(database.pool);
 const privateReadsRepository = createPrivateReadsRepository(database.pool, {
@@ -25,6 +33,7 @@ const searchRepository = createSearchRepository(database.pool);
 const sessionsRepository = createSessionsRepository(database.pool, config.THIA_SESSION_COOKIE_NAME);
 const statsRepository = createStatsRepository(database.pool);
 const app = buildApp({
+  authRepository,
   badgesRepository,
   checkDatabase: database.check,
   logger: nodeApiLoggerOptions(config.THIA_API_LOG_LEVEL),

@@ -8,6 +8,18 @@ import Fastify, {
 } from "fastify";
 import { z } from "zod";
 
+import {
+  AuthRouteError,
+  type AuthLogoutResult,
+  type AuthRepository,
+  type AuthRequestContext,
+  type AuthSessionResult,
+  type TwoFactorChallengePayload,
+  type TwoFactorEnablePayload,
+  type TwoFactorRecoveryCodesPayload,
+  type TwoFactorSetupPayload,
+  type TwoFactorStatusPayload,
+} from "./auth.js";
 import { BadgeStorageNotReadyError, type BadgePayload, type BadgesRepository } from "./badges.js";
 import {
   normalizePostIdentifier,
@@ -104,6 +116,7 @@ export const nodeApiLogRedactPaths = [
 ];
 
 export interface AppDependencies {
+  authRepository?: AuthRepository;
   badgesRepository?: BadgesRepository;
   checkDatabase?: () => Promise<void>;
   profilesRepository?: ProfilesRepository;
@@ -491,6 +504,16 @@ function jsonBodyRequiredObject(body: Record<string, unknown>, originalBody: unk
   return body;
 }
 
+function authJsonBodyRecord(body: unknown): Record<string, unknown> {
+  const record = jsonBodyRecord(body);
+
+  if (Array.isArray(body)) {
+    throw new AuthRouteError("JSON body must be an object.", 400);
+  }
+
+  return record;
+}
+
 function isInvalidJsonBodyError(error: unknown): boolean {
   if (error === null || typeof error !== "object") {
     return false;
@@ -499,6 +522,115 @@ function isInvalidJsonBodyError(error: unknown): boolean {
   const record = error as Record<string, unknown>;
 
   return record.statusCode === 400 && record.code === "FST_ERR_CTP_INVALID_JSON_BODY";
+}
+
+async function withPublicAuthRoute<T>(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  lookup: (repository: AuthRepository, body: Record<string, unknown>, context: AuthRequestContext) => Promise<T>,
+  send: (result: T, reply: FastifyReply) => FastifyReply,
+) {
+  if (dependencies.authRepository === undefined) {
+    return internalError(request, reply, routeName, new Error("Missing auth repository dependency."));
+  }
+
+  try {
+    const body = authJsonBodyRecord(request.body);
+    const result = await lookup(dependencies.authRepository, body, authRequestContext(request, dependencies));
+
+    return send(result, reply);
+  } catch (error) {
+    if (error instanceof AuthRouteError) {
+      return reply.status(error.statusCode).send(errorPayload(error.message));
+    }
+
+    return internalError(request, reply, routeName, error);
+  }
+}
+
+async function withProtectedAuthRoute<T>(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  lookup: (repository: AuthRepository, session: RequestSession, body: Record<string, unknown>) => Promise<T>,
+) {
+  if (dependencies.sessionsRepository === undefined || dependencies.authRepository === undefined) {
+    return internalError(request, reply, routeName, new Error("Missing protected auth route dependency."));
+  }
+
+  try {
+    const session = await dependencies.sessionsRepository.currentSession(request.headers.cookie);
+
+    if (session === null) {
+      return reply.status(401).send(errorPayload("Unauthenticated."));
+    }
+
+    const providedCsrfToken = csrfTokenFromRequest(request);
+
+    if (providedCsrfToken === "") {
+      return reply.status(403).send(errorPayload("CSRF token is required."));
+    }
+
+    if (!safeStringEquals(dependencies.authRepository.csrfTokenForSession(session), providedCsrfToken)) {
+      return reply.status(403).send(errorPayload("Invalid CSRF token."));
+    }
+
+    const body = authJsonBodyRecord(request.body);
+    const data = await lookup(dependencies.authRepository, session, body);
+
+    return reply.send(successPayload<T>(data));
+  } catch (error) {
+    if (error instanceof AuthRouteError) {
+      return reply.status(error.statusCode).send(errorPayload(error.message));
+    }
+
+    return internalError(request, reply, routeName, error);
+  }
+}
+
+function authRequestContext(request: FastifyRequest, dependencies: AppDependencies): AuthRequestContext {
+  const forwardedFor = request.headers["x-forwarded-for"];
+  const forwardedProto = request.headers["x-forwarded-proto"];
+  const forwardedHost = request.headers["x-forwarded-host"];
+  const ipAddress = typeof forwardedFor === "string" && forwardedFor.trim() !== ""
+    ? forwardedFor.split(",", 1)[0]?.trim() ?? request.ip
+    : request.ip;
+  const host = (typeof forwardedHost === "string" ? forwardedHost : request.hostname).replace(/:\d+$/u, "").toLowerCase();
+  const secure =
+    (typeof forwardedProto === "string" && forwardedProto.toLowerCase().split(",", 1)[0] === "https") ||
+    (dependencies.publicBaseUrl ?? "https://thia.lol").startsWith("https://");
+
+  return {
+    ipAddress,
+    userAgent: typeof request.headers["user-agent"] === "string" ? request.headers["user-agent"] : "",
+    host,
+    secure,
+  };
+}
+
+function sendAuthSessionResult(result: AuthSessionResult, reply: FastifyReply): FastifyReply {
+  reply.header("Set-Cookie", result.cookie);
+
+  return reply.send(successPayload(result.payload));
+}
+
+function sendCreatedAuthSessionResult(result: AuthSessionResult, reply: FastifyReply): FastifyReply {
+  reply.header("Set-Cookie", result.cookie);
+
+  return reply.status(201).send(successPayload(result.payload));
+}
+
+function sendAuthLogoutResult(result: AuthLogoutResult, reply: FastifyReply): FastifyReply {
+  reply.header("Set-Cookie", result.cookies);
+
+  return reply.send(successPayload({ loggedOut: result.loggedOut }));
+}
+
+function sendJsonResult<T>(result: T, reply: FastifyReply): FastifyReply {
+  return reply.send(successPayload(result));
 }
 
 export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
@@ -548,6 +680,99 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       dependencies,
       "auth.me",
       (repository, session) => repository.authSessionPayload(session),
+    ),
+  );
+
+  app.post("/auth/login", async (request, reply) =>
+    withPublicAuthRoute<AuthSessionResult | TwoFactorChallengePayload>(
+      request,
+      reply,
+      dependencies,
+      "auth.login",
+      (repository, body, context) => repository.login(body, context),
+      (result, routeReply) => "twoFactorRequired" in result
+        ? sendJsonResult(result, routeReply)
+        : sendAuthSessionResult(result, routeReply),
+    ),
+  );
+
+  app.post("/auth/register", async (request, reply) =>
+    withPublicAuthRoute<AuthSessionResult>(
+      request,
+      reply,
+      dependencies,
+      "auth.register",
+      (repository, body, context) => repository.register(body, context),
+      sendCreatedAuthSessionResult,
+    ),
+  );
+
+  app.post("/auth/logout", async (request, reply) => {
+    if (dependencies.authRepository === undefined) {
+      return internalError(request, reply, "auth.logout", new Error("Missing auth repository dependency."));
+    }
+
+    try {
+      const result = await dependencies.authRepository.logout(request.headers.cookie, authRequestContext(request, dependencies));
+
+      return sendAuthLogoutResult(result, reply);
+    } catch (error) {
+      if (error instanceof AuthRouteError) {
+        return reply.status(error.statusCode).send(errorPayload(error.message));
+      }
+
+      return internalError(request, reply, "auth.logout", error);
+    }
+  });
+
+  app.post("/auth/2fa/verify", async (request, reply) =>
+    withPublicAuthRoute<AuthSessionResult>(
+      request,
+      reply,
+      dependencies,
+      "auth.2fa.verify",
+      (repository, body, context) => repository.verifyTwoFactor(body, context),
+      sendAuthSessionResult,
+    ),
+  );
+
+  app.post("/me/security/2fa/setup", async (request, reply) =>
+    withProtectedAuthRoute<TwoFactorSetupPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.security.2fa.setup",
+      (repository, session, body) => repository.setupTwoFactor(session, body),
+    ),
+  );
+
+  app.post("/me/security/2fa/enable", async (request, reply) =>
+    withProtectedAuthRoute<TwoFactorEnablePayload>(
+      request,
+      reply,
+      dependencies,
+      "me.security.2fa.enable",
+      (repository, session, body) => repository.enableTwoFactor(session, body),
+    ),
+  );
+
+  app.delete("/me/security/2fa", async (request, reply) =>
+    withProtectedAuthRoute<TwoFactorStatusPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.security.2fa.disable",
+      (repository, session, body) => repository.disableTwoFactor(session, body),
+    ),
+  );
+
+  app.post("/me/security/2fa/recovery-codes", async (request, reply) =>
+    withProtectedAuthRoute<TwoFactorRecoveryCodesPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.security.2fa.recovery-codes",
+      (repository, session, body) => repository.regenerateTwoFactorRecoveryCodes(session, body),
     ),
   );
 

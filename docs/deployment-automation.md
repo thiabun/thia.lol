@@ -47,8 +47,12 @@ plus:
 
 ```text
 THIA_SESSION_COOKIE_NAME=thia_session
+THIA_SESSION_COOKIE_DOMAIN=
+THIA_SESSION_LIFETIME_SECONDS=2592000
 THIA_PUBLIC_BASE_URL=https://thia.lol
 THIA_API_LOG_LEVEL=info
+THIA_CSRF_SECRET=<same value as PHP security.csrf_secret>
+THIA_SECURITY_INTEGRATION_ENCRYPTION_KEY=<same value as PHP security.integration_encryption_key>
 ```
 
 ## GitHub Actions Deploy
@@ -84,13 +88,19 @@ The deploy job:
 - runs `scripts/check-api-cutover.mjs` for Node-served production read routes
 
 Anonymous preview/cutover smoke expects private read routes to return JSON
-`401`s. To check authenticated private read parity manually, pass a real browser
-session without storing it:
+`401`s and preview auth write validation failures to return JSON `401`, `403`,
+or `422` depending on whether the route is unauthenticated, missing CSRF, or
+missing required fields. To check authenticated private read parity manually,
+pass a real browser session without storing it:
 
 ```bash
 COOKIE_HEADER='thia_session=<redacted>' scripts/smoke-api-next.sh
 COOKIE_HEADER='thia_session=<redacted>' node scripts/compare-api-parity.mjs
 ```
+
+Auth/session write routes should be live-smoked only with a controlled
+throwaway account and read-back checks. Do not parity-check login/register/2FA by
+submitting the same mutation to PHP and Node.
 
 The `deploy` SSH user should be able to write `/srv/thia.lol/www/`,
 `/srv/thia.lol/www/api/`, `/srv/thia.lol/www/api/migrations/`, and

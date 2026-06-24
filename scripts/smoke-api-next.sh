@@ -103,6 +103,40 @@ check_json_status_method() {
   echo "OK $method $path returned HTTP $expected_status and JSON ok:false"
 }
 
+check_json_ok_method() {
+  local method="$1"
+  local path="$2"
+  local body_file="$tmp_dir/$(printf '%s' "$method-$path-ok" | tr -c 'A-Za-z0-9' '_')"
+  local status
+  local curl_args=(--request "$method" --location --silent --show-error --output "$body_file" --write-out '%{http_code}' --max-time 20)
+
+  if [[ -n "$COOKIE_HEADER" ]]; then
+    curl_args+=(--header "Cookie: $COOKIE_HEADER")
+  fi
+
+  if [[ "$method" == "DELETE" || "$method" == "PATCH" || "$method" == "POST" ]]; then
+    curl_args+=(--header "Content-Type: application/json" --data '{}')
+  fi
+
+  status="$(curl "${curl_args[@]}" "$BASE_URL$path")"
+
+  if [[ "$status" != "200" ]]; then
+    echo "Expected HTTP 200 for $method $path, got $status" >&2
+    echo "Response body:" >&2
+    sed -n '1,80p' "$body_file" >&2
+    exit 1
+  fi
+
+  if ! grep -Eq '"ok"[[:space:]]*:[[:space:]]*true' "$body_file"; then
+    echo "Expected JSON containing \"ok\":true for $method $path" >&2
+    echo "Response body:" >&2
+    sed -n '1,80p' "$body_file" >&2
+    exit 1
+  fi
+
+  echo "OK $method $path returned HTTP 200 and JSON ok:true"
+}
+
 check_json_ok "/api-next/health"
 check_json_ok "/api-next/health?db=1"
 check_json_ok "/api-next/rooms"
@@ -138,6 +172,13 @@ if [[ -n "$COOKIE_HEADER" ]]; then
   check_json_status_method "PATCH" "/api-next/me/onboarding" "403"
   check_json_status_method "PATCH" "/api-next/me/privacy" "403"
   check_json_status_method "PATCH" "/api-next/me/preferences" "403"
+  check_json_status_method "POST" "/api-next/auth/login" "422"
+  check_json_status_method "POST" "/api-next/auth/register" "422"
+  check_json_status_method "POST" "/api-next/auth/2fa/verify" "422"
+  check_json_status_method "POST" "/api-next/me/security/2fa/setup" "403"
+  check_json_status_method "POST" "/api-next/me/security/2fa/enable" "403"
+  check_json_status_method "DELETE" "/api-next/me/security/2fa" "403"
+  check_json_status_method "POST" "/api-next/me/security/2fa/recovery-codes" "403"
 else
   check_json_status "/api-next/auth/me" "401"
   check_json_status "/api-next/me/settings" "401"
@@ -151,4 +192,12 @@ else
   check_json_status_method "PATCH" "/api-next/me/onboarding" "401"
   check_json_status_method "PATCH" "/api-next/me/privacy" "401"
   check_json_status_method "PATCH" "/api-next/me/preferences" "401"
+  check_json_status_method "POST" "/api-next/auth/login" "422"
+  check_json_status_method "POST" "/api-next/auth/register" "422"
+  check_json_status_method "POST" "/api-next/auth/2fa/verify" "422"
+  check_json_ok_method "POST" "/api-next/auth/logout"
+  check_json_status_method "POST" "/api-next/me/security/2fa/setup" "401"
+  check_json_status_method "POST" "/api-next/me/security/2fa/enable" "401"
+  check_json_status_method "DELETE" "/api-next/me/security/2fa" "401"
+  check_json_status_method "POST" "/api-next/me/security/2fa/recovery-codes" "401"
 fi

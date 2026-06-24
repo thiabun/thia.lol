@@ -193,16 +193,20 @@ Besides the MariaDB connection values, the read-preview routes use:
 
 ```text
 THIA_SESSION_COOKIE_NAME=thia_session
+THIA_SESSION_COOKIE_DOMAIN=
+THIA_SESSION_LIFETIME_SECONDS=2592000
 THIA_PUBLIC_BASE_URL=https://thia.lol
 THIA_API_LOG_LEVEL=info
 THIA_CSRF_SECRET=<same value as PHP security.csrf_secret>
+THIA_SECURITY_INTEGRATION_ENCRYPTION_KEY=<same value as PHP security.integration_encryption_key>
 THIA_SECURITY_ENCRYPTION_CONFIGURED=<true when PHP integration_encryption_key is configured>
 THIA_SECURITY_ENCRYPTION_AVAILABLE=true
 ```
 
 `THIA_API_LOG_LEVEL` may be `trace`, `debug`, `info`, `warn`, `error`,
 `fatal`, or `silent`. Keep production at `info` unless actively debugging. Do
-not commit that file or print its database password in logs.
+not commit that file or print its database password, CSRF secret, encryption
+key, or session cookies in logs.
 
 Private reads are available under `/api-next/*` for parity and are also
 Node-served in production under `/api/*`:
@@ -227,6 +231,24 @@ Authenticated private reads can be rerun with
 `COOKIE_HEADER='thia_session=...'`. Authenticated write smoke should omit
 `X-CSRF-Token` unless a controlled test account and read-back plan is being used.
 
+Auth/session preview writes are available under `/api-next/*` but remain
+PHP-owned in production until controlled smoke passes and Caddy is updated:
+
+```text
+POST /api-next/auth/login
+POST /api-next/auth/logout
+POST /api-next/auth/register
+POST /api-next/auth/2fa/verify
+POST /api-next/me/security/2fa/setup
+POST /api-next/me/security/2fa/enable
+DELETE /api-next/me/security/2fa
+POST /api-next/me/security/2fa/recovery-codes
+```
+
+Use only a controlled throwaway account for live auth smoke. Verify register,
+login, `/api-next/auth/me`, logout, failed `/api-next/auth/me`, 2FA setup,
+2FA enable, 2FA challenge, and 2FA verify, then clean up the test account.
+
 When a Node-served route returns 500:
 
 ```bash
@@ -243,7 +265,8 @@ authorization headers, session tokens, raw SQL, stack traces, or config values.
 PHP remains production owner for auth writes, uploads, chat, notification
 mutations outside the read/read-all/read-one batch, admin, moderation,
 share-card generation, content mutations, profile/account editor mutations, and
-all remaining mutations.
+all remaining mutations until the relevant method-specific Caddy route is cut
+over and `scripts/check-api-cutover.mjs` enforces it.
 
 Cutover verification:
 

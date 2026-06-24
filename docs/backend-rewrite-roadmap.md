@@ -97,11 +97,29 @@ These low-risk writes are now the first Node-owned mutation batch. They are
 verified with unauthenticated or missing-CSRF checks so production smoke tests do
 not mutate data.
 
+Auth/session writes are the next preview batch and must stay under
+`/api-next/*` until controlled test-account smoke passes:
+
+```text
+POST /api-next/auth/login
+POST /api-next/auth/logout
+POST /api-next/auth/register
+POST /api-next/auth/2fa/verify
+POST /api-next/me/security/2fa/setup
+POST /api-next/me/security/2fa/enable
+DELETE /api-next/me/security/2fa
+POST /api-next/me/security/2fa/recovery-codes
+```
+
+These routes use PHP-compatible password verification, session token hashing,
+cookie attributes, CSRF validation for protected settings, and 2FA encryption.
+Do not production-cut them over until register/login/logout/2FA have been
+smoked with a controlled account and the throwaway account has been cleaned up.
+
 Avoid moving until authenticated mutation smoke accounts, upload checks, and
 side-effect rollback checks are in place:
 
 ```text
-POST /api/auth/login
 POST /api/uploads/*
 POST/PATCH/DELETE post mutations
 chat routes

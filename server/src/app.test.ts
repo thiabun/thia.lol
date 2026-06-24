@@ -2,6 +2,16 @@ import { Writable } from "node:stream";
 
 import { describe, expect, it, vi } from "vitest";
 
+import type {
+  AuthLogoutResult,
+  AuthRepository,
+  AuthSessionResult,
+  TwoFactorChallengePayload,
+  TwoFactorEnablePayload,
+  TwoFactorRecoveryCodesPayload,
+  TwoFactorSetupPayload,
+  TwoFactorStatusPayload,
+} from "./auth.js";
 import { buildApp, nodeApiLoggerOptions, requestIdHeader } from "./app.js";
 import {
   BadgeStorageNotReadyError,
@@ -394,6 +404,66 @@ const authPayload: AuthSessionPayload = {
   csrfToken: "csrf-token",
 };
 
+const authSessionResult: AuthSessionResult = {
+  payload: authPayload,
+  cookie: "thia_session=session-token; Path=/; Secure; HttpOnly; SameSite=Lax",
+};
+
+const authLogoutResult: AuthLogoutResult = {
+  loggedOut: true,
+  cookies: [
+    "thia_session=; Expires=Wed, 01 Jan 2025 00:00:00 GMT; Path=/; Secure; HttpOnly; SameSite=Lax",
+  ],
+};
+
+const twoFactorChallenge: TwoFactorChallengePayload = {
+  twoFactorRequired: true,
+  challengeId: "challenge-id",
+  expiresAt: "2026-06-24 12:00:00",
+};
+
+const twoFactorSetupPayload: TwoFactorSetupPayload = {
+  setup: {
+    manualSecret: "ABCDEFGHIJKLMNOP",
+    otpauthUri: "otpauth://totp/thia.lol%3Aviewer%40example.test?secret=ABCDEFGHIJKLMNOP&issuer=thia.lol",
+  },
+  twoFactor: {
+    enabled: false,
+    backupCodeCount: 0,
+    encryptionConfigured: true,
+    encryptionAvailable: true,
+  },
+};
+
+const twoFactorEnablePayload: TwoFactorEnablePayload = {
+  twoFactor: {
+    enabled: true,
+    backupCodeCount: 10,
+    encryptionConfigured: true,
+    encryptionAvailable: true,
+  },
+  backupCodes: ["ABC123DEF4"],
+};
+
+const twoFactorStatusPayload: TwoFactorStatusPayload = {
+  twoFactor: {
+    enabled: false,
+    backupCodeCount: 0,
+    encryptionConfigured: true,
+    encryptionAvailable: true,
+  },
+};
+
+const twoFactorRecoveryCodesPayload: TwoFactorRecoveryCodesPayload = {
+  backupCodes: ["DEF123ABC4"],
+  twoFactor: {
+    enabled: true,
+    backupCodeCount: 10,
+    encryptionConfigured: true,
+    encryptionAvailable: true,
+  },
+};
+
 const settingsPayload: SettingsPayload = {
   account: {
     id: 42,
@@ -499,6 +569,21 @@ function privateReadsRepositoryMock(overrides: Partial<PrivateReadsRepository> =
     updateOnboardingState: vi.fn().mockResolvedValue(onboardingPayload),
     updatePrivacy: vi.fn().mockResolvedValue(settingsPayload),
     updatePreferences: vi.fn().mockResolvedValue(settingsPayload),
+    ...overrides,
+  };
+}
+
+function authRepositoryMock(overrides: Partial<AuthRepository> = {}): AuthRepository {
+  return {
+    login: vi.fn().mockResolvedValue(authSessionResult),
+    register: vi.fn().mockResolvedValue(authSessionResult),
+    logout: vi.fn().mockResolvedValue(authLogoutResult),
+    verifyTwoFactor: vi.fn().mockResolvedValue(authSessionResult),
+    setupTwoFactor: vi.fn().mockResolvedValue(twoFactorSetupPayload),
+    enableTwoFactor: vi.fn().mockResolvedValue(twoFactorEnablePayload),
+    disableTwoFactor: vi.fn().mockResolvedValue(twoFactorStatusPayload),
+    regenerateTwoFactorRecoveryCodes: vi.fn().mockResolvedValue(twoFactorRecoveryCodesPayload),
+    csrfTokenForSession: vi.fn().mockReturnValue("csrf-token"),
     ...overrides,
   };
 }
@@ -1049,6 +1134,221 @@ describe("Node API private preview routes", () => {
       ok: false,
       error: "JSON body must be an object.",
     });
+  });
+});
+
+describe("Node API auth preview mutation routes", () => {
+  it("logs in with a PHP-compatible auth wrapper and session cookie", async () => {
+    const repository = authRepositoryMock();
+    const app = buildApp({
+      authRepository: repository,
+      publicBaseUrl: "https://thia.lol",
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      headers: {
+        "x-forwarded-for": "203.0.113.5",
+        "x-forwarded-host": "thia.lol",
+        "x-forwarded-proto": "https",
+        "user-agent": "vitest",
+      },
+      payload: {
+        email: "viewer@example.test",
+        password: "correct-password",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["set-cookie"]).toBe(authSessionResult.cookie);
+    expect(repository.login).toHaveBeenCalledWith(
+      {
+        email: "viewer@example.test",
+        password: "correct-password",
+      },
+      expect.objectContaining({
+        ipAddress: "203.0.113.5",
+        host: "thia.lol",
+        secure: true,
+        userAgent: "vitest",
+      }),
+    );
+    expect(response.json()).toEqual({
+      ok: true,
+      data: authPayload,
+    });
+  });
+
+  it("returns a two-factor challenge without setting a session cookie", async () => {
+    const repository = authRepositoryMock({
+      login: vi.fn().mockResolvedValue(twoFactorChallenge),
+    });
+    const app = buildApp({
+      authRepository: repository,
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      payload: {
+        email: "viewer@example.test",
+        password: "correct-password",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["set-cookie"]).toBeUndefined();
+    expect(response.json()).toEqual({
+      ok: true,
+      data: twoFactorChallenge,
+    });
+  });
+
+  it("registers with HTTP 201 and a session cookie", async () => {
+    const repository = authRepositoryMock();
+    const app = buildApp({
+      authRepository: repository,
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: {
+        email: "new@example.test",
+        password: "correct-password",
+        handle: "new_user",
+        displayName: "New User",
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.headers["set-cookie"]).toBe(authSessionResult.cookie);
+    expect(repository.register).toHaveBeenCalled();
+    expect(response.json()).toEqual({
+      ok: true,
+      data: authPayload,
+    });
+  });
+
+  it("logs out and clears session cookies", async () => {
+    const repository = authRepositoryMock();
+    const app = buildApp({
+      authRepository: repository,
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/logout",
+      headers: {
+        cookie: "thia_session=session-token",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["set-cookie"]).toEqual(authLogoutResult.cookies);
+    expect(repository.logout).toHaveBeenCalled();
+    expect(response.json()).toEqual({
+      ok: true,
+      data: {
+        loggedOut: true,
+      },
+    });
+  });
+
+  it("verifies a two-factor challenge and creates a session", async () => {
+    const repository = authRepositoryMock();
+    const app = buildApp({
+      authRepository: repository,
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/2fa/verify",
+      payload: {
+        challengeId: "challenge-id",
+        code: "123456",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["set-cookie"]).toBe(authSessionResult.cookie);
+    expect(repository.verifyTwoFactor).toHaveBeenCalledWith(
+      {
+        challengeId: "challenge-id",
+        code: "123456",
+      },
+      expect.any(Object),
+    );
+  });
+
+  it("requires auth and CSRF for protected two-factor settings mutations", async () => {
+    const repository = authRepositoryMock();
+    const app = buildApp({
+      authRepository: repository,
+      sessionsRepository: sessionsRepositoryMock({
+        currentSession: vi.fn().mockResolvedValue(null),
+      }),
+    });
+    const unauthenticated = await app.inject({
+      method: "POST",
+      url: "/me/security/2fa/setup",
+      payload: {
+        currentPassword: "correct-password",
+      },
+    });
+    const authenticatedApp = buildApp({
+      authRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const missingCsrf = await authenticatedApp.inject({
+      method: "POST",
+      url: "/me/security/2fa/setup",
+      payload: {
+        currentPassword: "correct-password",
+      },
+    });
+
+    expect(unauthenticated.statusCode).toBe(401);
+    expect(unauthenticated.json()).toEqual({
+      ok: false,
+      error: "Unauthenticated.",
+    });
+    expect(missingCsrf.statusCode).toBe(403);
+    expect(missingCsrf.json()).toEqual({
+      ok: false,
+      error: "CSRF token is required.",
+    });
+  });
+
+  it("serves protected two-factor settings mutations through PHP-style wrappers", async () => {
+    const repository = authRepositoryMock();
+    const app = buildApp({
+      authRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+
+    for (const [method, path, payload, expected] of [
+      ["POST", "/me/security/2fa/setup", { currentPassword: "correct-password" }, twoFactorSetupPayload],
+      ["POST", "/me/security/2fa/enable", { code: "123456" }, twoFactorEnablePayload],
+      ["DELETE", "/me/security/2fa", { currentPassword: "correct-password" }, twoFactorStatusPayload],
+      ["POST", "/me/security/2fa/recovery-codes", { currentPassword: "correct-password" }, twoFactorRecoveryCodesPayload],
+    ] as const) {
+      const response = await app.inject({
+        method,
+        url: path,
+        headers: {
+          "x-csrf-token": "csrf-token",
+        },
+        payload,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        ok: true,
+        data: expected,
+      });
+    }
+
+    expect(repository.setupTwoFactor).toHaveBeenCalledWith(session, { currentPassword: "correct-password" });
+    expect(repository.enableTwoFactor).toHaveBeenCalledWith(session, { code: "123456" });
+    expect(repository.disableTwoFactor).toHaveBeenCalledWith(session, { currentPassword: "correct-password" });
+    expect(repository.regenerateTwoFactorRecoveryCodes).toHaveBeenCalledWith(session, { currentPassword: "correct-password" });
   });
 });
 

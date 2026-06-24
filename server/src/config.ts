@@ -28,11 +28,17 @@ const envSchema = z.object({
   THIA_DB_PASSWORD: z.string().default(""),
   THIA_DB_CHARSET: z.string().min(1).default("utf8mb4"),
   THIA_SESSION_COOKIE_NAME: z.string().regex(/^[A-Za-z0-9_-]+$/).default("thia_session"),
+  THIA_SESSION_COOKIE_DOMAIN: z
+    .string()
+    .regex(/^$|^\.?[A-Za-z0-9.-]+$/)
+    .default(""),
+  THIA_SESSION_LIFETIME_SECONDS: z.coerce.number().int().min(1).default(2_592_000),
   THIA_PUBLIC_BASE_URL: z.string().url().default("https://thia.lol"),
   THIA_API_LOG_LEVEL: z
     .enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"])
     .default("info"),
   THIA_CSRF_SECRET: z.string().min(1).default("development-csrf-secret-change-me"),
+  THIA_SECURITY_INTEGRATION_ENCRYPTION_KEY: z.string().default(""),
   THIA_SECURITY_ENCRYPTION_CONFIGURED: boolEnv.default(false),
   THIA_SECURITY_ENCRYPTION_AVAILABLE: boolEnv.default(true),
 });
