@@ -200,6 +200,29 @@ check_html_status() {
   echo "OK $path returned HTTP $expected_status HTML"
 }
 
+first_post_share_path() {
+  local body_file="$tmp_dir/api_next_posts_for_share.json"
+  curl --silent --show-error --fail --output "$body_file" --max-time 20 "$BASE_URL/api-next/posts"
+  node - "$body_file" <<'NODE'
+const { readFileSync } = await import("node:fs");
+const body = JSON.parse(readFileSync(process.argv[2], "utf8"));
+const post = Array.isArray(body.data) ? body.data[0] : null;
+
+if (post === null || typeof post !== "object") {
+  process.exit(1);
+}
+
+const handle = post.author?.handle;
+const identifier = typeof post.publicId === "string" && post.publicId !== "" ? post.publicId : String(post.id ?? "");
+
+if (typeof handle !== "string" || handle === "" || identifier === "") {
+  process.exit(1);
+}
+
+console.log(`/api-next/post-share.php?handle=${encodeURIComponent(handle)}&postId=${encodeURIComponent(identifier)}`);
+NODE
+}
+
 check_json_ok "/api-next/health"
 check_json_ok "/api-next/health?db=1"
 check_json_ok "/api-next/rooms"
@@ -224,7 +247,7 @@ check_json_ok "/api-next/profiles/thia/reblogs"
 check_status "/api-next/sitemap.xml" "200"
 check_status "/api-next/posts/pc359fe2da759/share-card.png" "200"
 check_status "/api-next/profiles/thia/share-card.png" "200"
-check_html_status "/api-next/post-share.php?handle=thia&postId=pc359fe2da759" "200" "og:title"
+check_html_status "$(first_post_share_path)" "200" "og:title"
 check_html_status "/api-next/profile-share.php?handle=thia" "200" "og:title"
 check_redirect "/api-next/integrations/github/callback" "303" "integrationStatus=error"
 
