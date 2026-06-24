@@ -102,6 +102,18 @@ The Node API is deployed separately and runs behind Caddy:
 Node-served through Caddy and should include `X-Thia-API-Runtime: node`. PHP API
 files remain deployed as rollback material, not as the active product fallback.
 
+Local Codex desktop checkouts may already have the VPS keys, but the SSH agent
+often has no identities loaded. Use explicit identities:
+
+```bash
+ssh -i ~/.ssh/thia_lol_vps_ed25519 -o IdentitiesOnly=yes codex@45.143.196.174
+ssh -i ~/.ssh/thia_lol_github_actions_ed25519 -o IdentitiesOnly=yes deploy@45.143.196.174
+```
+
+Use `codex` for sudo-level VPS/Caddy operations. Use `deploy` for deploy-path
+checks that mirror GitHub Actions. Never commit private keys or copied secret
+values; `.env.local` is ignored and can hold local path hints only.
+
 Never deploy real config or local uploads from the repo. Preserve:
 
 ```text

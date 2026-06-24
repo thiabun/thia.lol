@@ -16,10 +16,38 @@ SSH is key-only. Use a named deploy/admin user with the minimum sudo access
 needed for operational tasks. Do not store private SSH keys, database passwords,
 session cookies, migration tokens, or production config in the repo.
 
+Local Codex desktop checkouts usually have these key files:
+
+```text
+~/.ssh/thia_lol_vps_ed25519             # codex VPS/admin key
+~/.ssh/thia_lol_github_actions_ed25519  # deploy/GitHub Actions-style key
+```
+
+The local SSH agent may be empty, so pass the identity explicitly:
+
+```bash
+ssh -i ~/.ssh/thia_lol_vps_ed25519 -o IdentitiesOnly=yes codex@45.143.196.174
+ssh -i ~/.ssh/thia_lol_github_actions_ed25519 -o IdentitiesOnly=yes deploy@45.143.196.174
+```
+
+`codex` can run passwordless sudo for Caddy and other VPS ops. `deploy` matches
+the GitHub Actions deployment surface and should be used for deploy-target
+checks when admin access is not needed.
+
+An ignored `.env.local` can hold local hints such as:
+
+```text
+THIA_VPS_HOST=45.143.196.174
+THIA_VPS_CODEX_USER=codex
+THIA_VPS_CODEX_KEY=~/.ssh/thia_lol_vps_ed25519
+THIA_VPS_DEPLOY_USER=deploy
+THIA_VPS_DEPLOY_KEY=~/.ssh/thia_lol_github_actions_ed25519
+```
+
 Useful checks:
 
 ```bash
-ssh codex@45.143.196.174
+ssh -i ~/.ssh/thia_lol_vps_ed25519 -o IdentitiesOnly=yes codex@45.143.196.174
 systemctl is-active ssh fail2ban mariadb php8.3-fpm caddy thia-db-backup.timer
 sudo ufw status verbose
 ```
