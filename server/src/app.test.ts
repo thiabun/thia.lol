@@ -414,8 +414,8 @@ const settingsPayload: SettingsPayload = {
     autoplayMediaConsent: false,
     sensitiveContentVisible: false,
     notifications: {},
-    emailNotifications: {},
-    pushNotifications: {},
+    emailNotifications: [],
+    pushNotifications: [],
   },
   twoFactor: {
     enabled: false,

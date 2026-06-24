@@ -4,6 +4,7 @@ import {
   authSessionPayload,
   csrfTokenForSession,
   notificationPayloadFromRow,
+  onboardingStepListForStoredJson,
   settingsPostKind,
 } from "./private.js";
 import type { RequestSession } from "./sessions.js";
@@ -62,6 +63,12 @@ describe("private preview auth helpers", () => {
     expect(settingsPostKind("all")).toBe("all");
     expect(settingsPostKind("unknown")).toBe("all");
     expect(settingsPostKind(["posts"])).toBe("all");
+  });
+
+  it("uses the current PHP onboarding step order and filters unknown legacy values", () => {
+    expect(
+      onboardingStepListForStoredJson('["profile_canvas","unknown","profile_basics","apple_music"]'),
+    ).toEqual(["profile_basics", "apple_music", "profile_canvas"]);
   });
 });
 

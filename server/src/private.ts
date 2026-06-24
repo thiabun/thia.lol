@@ -62,9 +62,9 @@ export interface SettingsPayload {
     richEmbedsConsent: boolean;
     autoplayMediaConsent: boolean;
     sensitiveContentVisible: boolean;
-    notifications: Record<string, unknown>;
-    emailNotifications: Record<string, unknown>;
-    pushNotifications: Record<string, unknown>;
+    notifications: Record<string, unknown> | unknown[];
+    emailNotifications: Record<string, unknown> | unknown[];
+    pushNotifications: Record<string, unknown> | unknown[];
   };
   twoFactor: {
     enabled: boolean;
@@ -243,15 +243,14 @@ interface MyPostRow extends RowDataPacket {
 
 const accountHandleCooldownSeconds = 2_592_000;
 const onboardingSteps = [
-  "profile",
-  "avatar",
-  "bio",
-  "links",
-  "first_post",
-  "first_room",
-  "follow_people",
+  "profile_basics",
+  "spotify",
+  "youtube",
+  "twitch",
+  "github",
+  "apple_music",
+  "profile_canvas",
   "desktop_notifications",
-  "privacy",
 ];
 
 const profileIntegrationProviders = [
@@ -316,6 +315,10 @@ export function authSessionPayload(session: RequestSession, csrfSecret: string):
 
 export function settingsPostKind(value: unknown): "all" | "posts" | "replies" {
   return value === "posts" || value === "replies" || value === "all" ? value : "all";
+}
+
+export function onboardingStepListForStoredJson(value: string | null): string[] {
+  return onboardingStepList(value);
 }
 
 export function notificationPayloadFromRow(row: NotificationRow): NotificationPayload {
@@ -715,9 +718,9 @@ function settingsPreferencesPayload(row: SettingsPreferencesRow | undefined): Se
     richEmbedsConsent: booleanValue(row?.rich_embeds_consent, true),
     autoplayMediaConsent: booleanValue(row?.autoplay_media_consent, false),
     sensitiveContentVisible: booleanValue(row?.sensitive_content_visible, false),
-    notifications: jsonRecordValue(row?.notification_preferences_json),
-    emailNotifications: jsonRecordValue(row?.email_notification_preferences_json),
-    pushNotifications: jsonRecordValue(row?.push_notification_preferences_json),
+    notifications: jsonSettingsObjectValue(row?.notification_preferences_json),
+    emailNotifications: jsonSettingsObjectValue(row?.email_notification_preferences_json),
+    pushNotifications: jsonSettingsObjectValue(row?.push_notification_preferences_json),
   };
 }
 
@@ -896,14 +899,14 @@ function jsonArrayValue(value: string | null | undefined): unknown[] {
   return Array.isArray(decoded) ? decoded : [];
 }
 
-function jsonRecordValue(value: string | null | undefined): Record<string, unknown> {
+function jsonSettingsObjectValue(value: string | null | undefined): Record<string, unknown> | unknown[] {
   const decoded = jsonObjectOrArrayValue(value);
 
   if (decoded !== null && !Array.isArray(decoded)) {
     return decoded;
   }
 
-  return {};
+  return [];
 }
 
 function jsonObjectOrArrayValue(value: string | null | undefined): Record<string, unknown> | unknown[] | null {
