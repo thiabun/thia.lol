@@ -1,4 +1,11 @@
-import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
+import { randomUUID } from "node:crypto";
+
+import Fastify, {
+  type FastifyInstance,
+  type FastifyReply,
+  type FastifyRequest,
+  type FastifyServerOptions,
+} from "fastify";
 import { z } from "zod";
 
 import {
@@ -40,6 +47,23 @@ const postRepliesParamsSchema = z.object({
   id: z.string(),
 });
 
+export const requestIdHeader = "X-Thia-Request-Id";
+
+export const nodeApiLogRedactPaths = [
+  "req.headers.cookie",
+  "req.headers.authorization",
+  "req.headers.proxy-authorization",
+  "req.headers.x-api-key",
+  "req.headers.x-csrf-token",
+  "req.headers.x-xsrf-token",
+  "headers.cookie",
+  "headers.authorization",
+  "headers.proxy-authorization",
+  "headers.x-api-key",
+  "headers.x-csrf-token",
+  "headers.x-xsrf-token",
+];
+
 export interface AppDependencies {
   checkDatabase?: () => Promise<void>;
   profilesRepository?: ProfilesRepository;
@@ -48,6 +72,7 @@ export interface AppDependencies {
   sessionsRepository?: SessionsRepository;
   statsRepository?: StatsRepository;
   publicBaseUrl?: string;
+  logger?: FastifyServerOptions["logger"];
 }
 
 export interface HealthPayload {
@@ -103,14 +128,152 @@ function errorPayload(error: string): ErrorPayload {
   };
 }
 
+export function nodeApiLoggerOptions(level: string): NonNullable<FastifyServerOptions["logger"]> {
+  return {
+    level,
+    redact: {
+      paths: nodeApiLogRedactPaths,
+      censor: "[redacted]",
+    },
+    serializers: {
+      req(request: FastifyRequest) {
+        const url = sanitizedUrl(request.url);
+
+        return {
+          method: request.method,
+          url,
+          host: request.hostname,
+          remoteAddress: request.ip,
+          remotePort: request.raw.socket.remotePort ?? 0,
+        };
+      },
+    },
+  };
+}
+
+function requestIdFromHeader(value: string | string[] | undefined): string | undefined {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+
+  if (rawValue === undefined || !/^[A-Za-z0-9._:-]{8,128}$/.test(rawValue)) {
+    return undefined;
+  }
+
+  return rawValue;
+}
+
+function generateRequestId(request: { headers: Record<string, string | string[] | undefined> }): string {
+  return (
+    requestIdFromHeader(request.headers["x-thia-request-id"]) ??
+    requestIdFromHeader(request.headers["x-request-id"]) ??
+    randomUUID()
+  );
+}
+
+function sanitizedUrl(rawUrl: string): string {
+  try {
+    const url = new URL(rawUrl, "https://thia.lol");
+    const queryKeys = [...new Set([...url.searchParams.keys()])].sort();
+    const query = queryKeys.map((key) => `${encodeURIComponent(key)}=[redacted]`).join("&");
+
+    return query === "" ? url.pathname : `${url.pathname}?${query}`;
+  } catch {
+    return rawUrl.split("?", 1)[0] ?? rawUrl;
+  }
+}
+
+function errorRecord(error: unknown): Record<string, string | number | boolean> {
+  if (error === null || error === undefined) {
+    return {
+      type: String(error),
+    };
+  }
+
+  if (typeof error !== "object") {
+    return {
+      type: typeof error,
+      message: String(error).slice(0, 160),
+    };
+  }
+
+  const record = error as Record<string, unknown>;
+  const metadata: Record<string, string | number | boolean> = {
+    type: error instanceof Error ? error.name : "ErrorLike",
+  };
+  const databaseLike =
+    "sql" in record ||
+    "sqlMessage" in record ||
+    "sqlState" in record ||
+    "errno" in record;
+
+  if (error instanceof Error && !databaseLike) {
+    metadata.message = error.message.slice(0, 160);
+  }
+
+  for (const key of ["code", "errno", "sqlState", "statusCode"]) {
+    const value = record[key];
+
+    if (typeof value === "string" || typeof value === "number") {
+      metadata[key] = typeof value === "string" ? value.slice(0, 80) : value;
+    }
+  }
+
+  if (databaseLike) {
+    metadata.databaseError = true;
+  }
+
+  return metadata;
+}
+
+function logRouteFailure(
+  request: FastifyRequest,
+  routeName: string,
+  statusCode: number,
+  error: unknown,
+): void {
+  request.log.error(
+    {
+      routeName,
+      requestId: request.id,
+      method: request.method,
+      url: sanitizedUrl(request.url),
+      statusCode,
+      error: errorRecord(error),
+    },
+    "Node API route failed",
+  );
+}
+
+function sendRouteError(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  routeName: string,
+  statusCode: number,
+  payload: ErrorPayload,
+  error: unknown,
+) {
+  logRouteFailure(request, routeName, statusCode, error);
+
+  return reply.status(statusCode).send(payload);
+}
+
+function internalError(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  routeName: string,
+  error: unknown,
+) {
+  return sendRouteError(request, reply, routeName, 500, errorPayload("Internal server error."), error);
+}
+
 async function withPublicProfileSubroute<T>(
-  request: { params: unknown },
+  request: FastifyRequest,
   reply: FastifyReply,
   repository: ProfilesRepository | undefined,
+  routeName: string,
   lookup: (repository: ProfilesRepository, handle: string) => Promise<T | null>,
 ) {
   if (repository === undefined) {
-    return reply.status(500).send(errorPayload("Internal server error."));
+    return internalError(request, reply, routeName, new Error("Missing profiles repository dependency."));
   }
 
   const parsedParams = profileParamsSchema.safeParse(request.params);
@@ -128,8 +291,8 @@ async function withPublicProfileSubroute<T>(
     }
 
     return reply.send(successPayload<T>(data));
-  } catch {
-    return reply.status(500).send(errorPayload("Internal server error."));
+  } catch (error) {
+    return internalError(request, reply, routeName, error);
   }
 }
 
@@ -148,7 +311,12 @@ async function currentViewerUserId(
 
 export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
   const app = Fastify({
-    logger: false,
+    genReqId: generateRequestId,
+    logger: dependencies.logger ?? false,
+  });
+
+  app.addHook("onRequest", async (request, reply) => {
+    reply.header(requestIdHeader, request.id);
   });
 
   app.get("/health", async (request, reply) => {
@@ -162,7 +330,7 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     if (wantsDatabaseCheck(request.query)) {
       try {
         await dependencies.checkDatabase?.();
-      } catch {
+      } catch (exception) {
         const error: ErrorPayload = {
           ...errorPayload("Database connection failed."),
           database: {
@@ -170,7 +338,7 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
           },
         };
 
-        return reply.status(503).send(error);
+        return sendRouteError(request, reply, "health.db", 503, error, exception);
       }
 
       payload.database = {
@@ -181,23 +349,23 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     return reply.send(payload);
   });
 
-  app.get("/rooms", async (_request, reply) => {
+  app.get("/rooms", async (request, reply) => {
     if (dependencies.roomsRepository === undefined) {
-      return reply.status(500).send(errorPayload("Internal server error."));
+      return internalError(request, reply, "rooms.index", new Error("Missing rooms repository dependency."));
     }
 
     try {
       const rooms = await dependencies.roomsRepository.listPublicRooms();
 
       return reply.send(successPayload<RoomPayload[]>(rooms));
-    } catch {
-      return reply.status(500).send(errorPayload("Internal server error."));
+    } catch (error) {
+      return internalError(request, reply, "rooms.index", error);
     }
   });
 
   app.get("/rooms/:slug", async (request, reply) => {
     if (dependencies.roomsRepository === undefined) {
-      return reply.status(500).send(errorPayload("Internal server error."));
+      return internalError(request, reply, "rooms.show", new Error("Missing rooms repository dependency."));
     }
 
     const parsedParams = roomParamsSchema.safeParse(request.params);
@@ -215,28 +383,28 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       }
 
       return reply.send(successPayload<RoomPayload>(room));
-    } catch {
-      return reply.status(500).send(errorPayload("Internal server error."));
+    } catch (error) {
+      return internalError(request, reply, "rooms.show", error);
     }
   });
 
-  app.get("/stats", async (_request, reply) => {
+  app.get("/stats", async (request, reply) => {
     if (dependencies.statsRepository === undefined) {
-      return reply.status(500).send(errorPayload("Internal server error."));
+      return internalError(request, reply, "stats.index", new Error("Missing stats repository dependency."));
     }
 
     try {
       const stats = await dependencies.statsRepository.getPublicStats();
 
       return reply.send(successPayload<PublicStatsPayload>(stats));
-    } catch {
-      return reply.status(500).send(errorPayload("Internal server error."));
+    } catch (error) {
+      return internalError(request, reply, "stats.index", error);
     }
   });
 
   app.get("/feed/home", async (request, reply) => {
     if (dependencies.postsRepository === undefined) {
-      return reply.status(500).send(errorPayload("Internal server error."));
+      return internalError(request, reply, "feed.home", new Error("Missing posts repository dependency."));
     }
 
     try {
@@ -244,14 +412,14 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       const feed = await dependencies.postsRepository.getHomeFeed(viewerUserId);
 
       return reply.send(successPayload<HomeFeedPayload>(feed));
-    } catch {
-      return reply.status(500).send(errorPayload("Internal server error."));
+    } catch (error) {
+      return internalError(request, reply, "feed.home", error);
     }
   });
 
   app.get("/feed/discover", async (request, reply) => {
     if (dependencies.postsRepository === undefined || dependencies.roomsRepository === undefined) {
-      return reply.status(500).send(errorPayload("Internal server error."));
+      return internalError(request, reply, "feed.discover", new Error("Missing feed repository dependency."));
     }
 
     try {
@@ -268,14 +436,14 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       };
 
       return reply.send(successPayload<DiscoverFeedPayload>(feed));
-    } catch {
-      return reply.status(500).send(errorPayload("Internal server error."));
+    } catch (error) {
+      return internalError(request, reply, "feed.discover", error);
     }
   });
 
   app.get("/posts", async (request, reply) => {
     if (dependencies.postsRepository === undefined) {
-      return reply.status(500).send(errorPayload("Internal server error."));
+      return internalError(request, reply, "posts.index", new Error("Missing posts repository dependency."));
     }
 
     try {
@@ -283,14 +451,14 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       const posts = await dependencies.postsRepository.listPublicPosts(viewerUserId);
 
       return reply.send(successPayload(posts));
-    } catch {
-      return reply.status(500).send(errorPayload("Internal server error."));
+    } catch (error) {
+      return internalError(request, reply, "posts.index", error);
     }
   });
 
   app.get("/posts/:id/replies", async (request, reply) => {
     if (dependencies.postsRepository === undefined) {
-      return reply.status(500).send(errorPayload("Internal server error."));
+      return internalError(request, reply, "posts.replies", new Error("Missing posts repository dependency."));
     }
 
     const parsedParams = postRepliesParamsSchema.safeParse(request.params);
@@ -309,14 +477,14 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       }
 
       return reply.send(successPayload(replies));
-    } catch {
-      return reply.status(500).send(errorPayload("Internal server error."));
+    } catch (error) {
+      return internalError(request, reply, "posts.replies", error);
     }
   });
 
   app.get("/posts/:identifier", async (request, reply) => {
     if (dependencies.postsRepository === undefined) {
-      return reply.status(500).send(errorPayload("Internal server error."));
+      return internalError(request, reply, "posts.show", new Error("Missing posts repository dependency."));
     }
 
     const parsedParams = postIdentifierParamsSchema.safeParse(request.params);
@@ -339,14 +507,14 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       }
 
       return reply.send(successPayload<PostDetailPayload>(post));
-    } catch {
-      return reply.status(500).send(errorPayload("Internal server error."));
+    } catch (error) {
+      return internalError(request, reply, "posts.show", error);
     }
   });
 
   app.get("/rooms/:slug/posts", async (request, reply) => {
     if (dependencies.postsRepository === undefined) {
-      return reply.status(500).send(errorPayload("Internal server error."));
+      return internalError(request, reply, "rooms.posts", new Error("Missing posts repository dependency."));
     }
 
     const parsedParams = roomParamsSchema.safeParse(request.params);
@@ -365,14 +533,14 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       }
 
       return reply.send(successPayload(posts));
-    } catch {
-      return reply.status(500).send(errorPayload("Internal server error."));
+    } catch (error) {
+      return internalError(request, reply, "rooms.posts", error);
     }
   });
 
   app.get("/profiles/:handle/posts", async (request, reply) => {
     if (dependencies.postsRepository === undefined) {
-      return reply.status(500).send(errorPayload("Internal server error."));
+      return internalError(request, reply, "profiles.posts", new Error("Missing posts repository dependency."));
     }
 
     const parsedParams = profileParamsSchema.safeParse(request.params);
@@ -391,14 +559,14 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       }
 
       return reply.send(successPayload(posts));
-    } catch {
-      return reply.status(500).send(errorPayload("Internal server error."));
+    } catch (error) {
+      return internalError(request, reply, "profiles.posts", error);
     }
   });
 
   app.get("/profiles/:handle/replies", async (request, reply) => {
     if (dependencies.postsRepository === undefined) {
-      return reply.status(500).send(errorPayload("Internal server error."));
+      return internalError(request, reply, "profiles.replies", new Error("Missing posts repository dependency."));
     }
 
     const parsedParams = profileParamsSchema.safeParse(request.params);
@@ -417,14 +585,14 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       }
 
       return reply.send(successPayload(posts));
-    } catch {
-      return reply.status(500).send(errorPayload("Internal server error."));
+    } catch (error) {
+      return internalError(request, reply, "profiles.replies", error);
     }
   });
 
   app.get("/profiles/:handle/reblogs", async (request, reply) => {
     if (dependencies.postsRepository === undefined) {
-      return reply.status(500).send(errorPayload("Internal server error."));
+      return internalError(request, reply, "profiles.reblogs", new Error("Missing posts repository dependency."));
     }
 
     const parsedParams = profileParamsSchema.safeParse(request.params);
@@ -443,8 +611,8 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       }
 
       return reply.send(successPayload(posts));
-    } catch {
-      return reply.status(500).send(errorPayload("Internal server error."));
+    } catch (error) {
+      return internalError(request, reply, "profiles.reblogs", error);
     }
   });
 
@@ -453,6 +621,7 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       request,
       reply,
       dependencies.profilesRepository,
+      "profiles.rooms",
       (repository, handle) => repository.getPublicProfileRooms(handle),
     ),
   );
@@ -462,6 +631,7 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       request,
       reply,
       dependencies.profilesRepository,
+      "profiles.modules",
       (repository, handle) => repository.getPublicProfileModules(handle),
     ),
   );
@@ -471,6 +641,7 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       request,
       reply,
       dependencies.profilesRepository,
+      "profiles.badges",
       (repository, handle) => repository.getPublicProfileBadges(handle),
     ),
   );
@@ -480,6 +651,7 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       request,
       reply,
       dependencies.profilesRepository,
+      "profiles.followers",
       (repository, handle) => repository.getPublicProfileFollowers(handle),
     ),
   );
@@ -489,13 +661,14 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       request,
       reply,
       dependencies.profilesRepository,
+      "profiles.following",
       (repository, handle) => repository.getPublicProfileFollowing(handle),
     ),
   );
 
   app.get("/profiles/:handle", async (request, reply) => {
     if (dependencies.profilesRepository === undefined) {
-      return reply.status(500).send(errorPayload("Internal server error."));
+      return internalError(request, reply, "profiles.show", new Error("Missing profiles repository dependency."));
     }
 
     const parsedParams = profileParamsSchema.safeParse(request.params);
@@ -513,9 +686,13 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       }
 
       return reply.send(successPayload<ProfilePayload>(profile));
-    } catch {
-      return reply.status(500).send(errorPayload("Internal server error."));
+    } catch (error) {
+      return internalError(request, reply, "profiles.show", error);
     }
+  });
+
+  app.setErrorHandler((error, request, reply) => {
+    return internalError(request, reply, "unhandled", error);
   });
 
   app.setNotFoundHandler((_request, reply) => {

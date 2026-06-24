@@ -55,7 +55,8 @@ Logs:
 
 ```bash
 sudo journalctl -u caddy -n 120 --no-pager
-sudo journalctl -u thia-node-api -n 120 --no-pager
+sudo journalctl -u thia-node-api.service -n 120 --no-pager
+sudo journalctl -u thia-node-api.service --since "30 minutes ago" --no-pager
 sudo journalctl -u php8.3-fpm -n 120 --no-pager
 sudo journalctl -u mariadb -n 120 --no-pager
 sudo journalctl -u fail2ban -n 120 --no-pager
@@ -85,6 +86,15 @@ Selected production read routes are served by the Node API and marked with:
 ```text
 X-Thia-API-Runtime: node
 ```
+
+Node responses also include:
+
+```text
+X-Thia-Request-Id: <request-id>
+```
+
+Use that id to correlate user-visible failures with
+`journalctl -u thia-node-api.service` entries.
 
 Current Node-served production reads:
 
@@ -145,9 +155,29 @@ Besides the MariaDB connection values, the read-preview routes use:
 ```text
 THIA_SESSION_COOKIE_NAME=thia_session
 THIA_PUBLIC_BASE_URL=https://thia.lol
+THIA_API_LOG_LEVEL=info
 ```
 
-Do not commit that file or print its database password in logs.
+`THIA_API_LOG_LEVEL` may be `trace`, `debug`, `info`, `warn`, `error`,
+`fatal`, or `silent`. Keep production at `info` unless actively debugging. Do
+not commit that file or print its database password in logs.
+
+When a Node-served route returns 500:
+
+```bash
+curl -i https://thia.lol/api/feed/home
+sudo journalctl -u thia-node-api.service --since "30 minutes ago" --no-pager | grep '<request-id>'
+systemctl is-active thia-node-api.service
+node scripts/check-api-cutover.mjs
+```
+
+Node logs are structured and should include route name, method, sanitized URL,
+status, request id, and sanitized error metadata. They must not contain cookies,
+authorization headers, session tokens, raw SQL, stack traces, or config values.
+
+This hardening slice does not cut over additional production routes. PHP remains
+owner for auth, uploads, chat, notifications, search, admin, moderation,
+share-card generation, and all mutations.
 
 Cutover verification:
 

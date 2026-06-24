@@ -48,6 +48,7 @@ plus:
 ```text
 THIA_SESSION_COOKIE_NAME=thia_session
 THIA_PUBLIC_BASE_URL=https://thia.lol
+THIA_API_LOG_LEVEL=info
 ```
 
 ## GitHub Actions Deploy
@@ -75,7 +76,8 @@ The deploy job:
 - rsyncs `api/` to `/srv/thia.lol/www/api/`
 - rsyncs `backend/database/migrations/` to `/srv/thia.lol/www/api/migrations/`
 - rsyncs the built Node API to `/srv/thia.lol/node-api/`
-- runs `npm ci --omit=dev` on the VPS and restarts `thia-node-api.service`
+- runs `npm ci --omit=dev` on the VPS, restarts `thia-node-api.service`, and
+  confirms the service is active
 - runs `scripts/smoke-live.sh` against `https://thia.lol`
 - runs `scripts/smoke-api-next.sh` against the Node preview API
 - runs `scripts/compare-api-parity.mjs` for production/preview read parity
@@ -132,7 +134,7 @@ cp -R server/dist .deploy-node-api/server/dist
 rsync -az --delete \
   --exclude '.DS_Store' \
   .deploy-node-api/ deploy@45.143.196.174:/srv/thia.lol/node-api/
-ssh deploy@45.143.196.174 'cd /srv/thia.lol/node-api && npm ci --omit=dev && sudo -n /bin/systemctl restart thia-node-api.service'
+ssh deploy@45.143.196.174 'cd /srv/thia.lol/node-api && npm ci --omit=dev && sudo -n /bin/systemctl restart thia-node-api.service && systemctl is-active thia-node-api.service'
 ```
 
 Do not copy `config/config.php`, database dumps, `.env` files, cookies, or local
@@ -185,9 +187,10 @@ https://thia.lol/@thia
 the profile extras `/rooms`, `/modules`, `/badges`, `/followers`, and
 `/following`, plus posts, room/profile post lists, and `/feed/home` and
 `/feed/discover`, are Node-served production read routes and should include
-`X-Thia-API-Runtime: node`. Share cards, mutations, auth, uploads, chat, admin,
-moderation, and other production API routes remain PHP-owned unless explicitly
-cut over later.
+`X-Thia-API-Runtime: node`. Node responses should also include
+`X-Thia-Request-Id` for journal correlation. Share cards, mutations, auth,
+uploads, chat, admin, moderation, and other production API routes remain
+PHP-owned unless explicitly cut over later.
 
 For upload-sensitive changes, also check one known media URL under:
 

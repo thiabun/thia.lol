@@ -11,6 +11,9 @@ const envSchema = z.object({
   THIA_DB_CHARSET: z.string().min(1).default("utf8mb4"),
   THIA_SESSION_COOKIE_NAME: z.string().regex(/^[A-Za-z0-9_-]+$/).default("thia_session"),
   THIA_PUBLIC_BASE_URL: z.string().url().default("https://thia.lol"),
+  THIA_API_LOG_LEVEL: z
+    .enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"])
+    .default("info"),
 });
 
 export type ServerConfig = z.infer<typeof envSchema>;

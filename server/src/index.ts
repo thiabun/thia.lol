@@ -1,4 +1,4 @@
-import { buildApp } from "./app.js";
+import { buildApp, nodeApiLoggerOptions } from "./app.js";
 import { loadServerConfig } from "./config.js";
 import { createDatabaseClient } from "./db.js";
 import { createPostsRepository } from "./posts.js";
@@ -16,6 +16,7 @@ const sessionsRepository = createSessionsRepository(database.pool, config.THIA_S
 const statsRepository = createStatsRepository(database.pool);
 const app = buildApp({
   checkDatabase: database.check,
+  logger: nodeApiLoggerOptions(config.THIA_API_LOG_LEVEL),
   postsRepository,
   profilesRepository,
   roomsRepository,

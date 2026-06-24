@@ -142,6 +142,7 @@ jobs:
             npm ci --omit=dev
             chmod -R a+rX /srv/thia.lol/node-api
             sudo -n /bin/systemctl restart thia-node-api.service
+            systemctl is-active thia-node-api.service
           '
 
       - name: Smoke-test live site

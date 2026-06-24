@@ -159,4 +159,19 @@ describe("post preview SQL", () => {
     expect(sql).toContain("discover_rank_score DESC");
     expect(sql).toContain("LIMIT 24");
   });
+
+  it("does not emit malformed viewer-aware SQL joins", () => {
+    const queries = [
+      buildPublicPostsQuery(capabilities, 42),
+      buildHomeFeedQuery(capabilities, 42),
+      buildDiscoverFeedQuery(capabilities, 42),
+      buildPeopleToWatchQuery(capabilities, 42),
+    ];
+
+    for (const sql of queries) {
+      expect(sql).not.toContain("NULLAND");
+      expect(sql).not.toContain(")AND");
+      expect(sql).not.toContain("42AND");
+    }
+  });
 });

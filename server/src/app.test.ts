@@ -1,6 +1,8 @@
+import { Writable } from "node:stream";
+
 import { describe, expect, it, vi } from "vitest";
 
-import { buildApp } from "./app.js";
+import { buildApp, nodeApiLoggerOptions, requestIdHeader } from "./app.js";
 import type {
   DiscoverPersonPayload,
   HomeFeedPayload,
@@ -297,6 +299,24 @@ function sessionsRepositoryMock(overrides: Partial<SessionsRepository> = {}): Se
   };
 }
 
+function capturedLogger() {
+  const chunks: string[] = [];
+  const stream = new Writable({
+    write(chunk, _encoding, callback) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk));
+      callback();
+    },
+  });
+
+  return {
+    logger: {
+      ...nodeApiLoggerOptions("info"),
+      stream,
+    },
+    output: () => chunks.join(""),
+  };
+}
+
 describe("Node API health routes", () => {
   it("returns the PHP-compatible DB-free health payload", async () => {
     const app = buildApp();
@@ -366,6 +386,68 @@ describe("Node API health routes", () => {
       ok: false,
       error: "Not found.",
     });
+  });
+
+  it("adds request ids to all Node responses", async () => {
+    const app = buildApp();
+    const response = await app.inject({
+      method: "GET",
+      url: "/health",
+      headers: {
+        "x-thia-request-id": "req-hardening-0001",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers[requestIdHeader.toLowerCase()]).toBe("req-hardening-0001");
+  });
+
+  it("logs sanitized route failures with request ids and generic JSON responses", async () => {
+    const capture = capturedLogger();
+    const databaseError = Object.assign(
+      new Error("SELECT password FROM users WHERE token = 'secret-token'"),
+      {
+        code: "ER_PARSE_ERROR",
+        errno: 1064,
+        sql: "SELECT password FROM users",
+        sqlMessage: "near secret-token",
+        sqlState: "42000",
+      },
+    );
+    const repository = postsRepositoryMock({
+      listPublicPosts: vi.fn().mockRejectedValue(databaseError),
+    });
+    const app = buildApp({
+      logger: capture.logger,
+      postsRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/posts?token=secret-token",
+      headers: {
+        "x-thia-request-id": "req-hardening-0002",
+        authorization: "Bearer secret-token",
+        cookie: "thia_session=secret-cookie",
+      },
+    });
+    await app.close();
+    const logs = capture.output();
+
+    expect(response.statusCode).toBe(500);
+    expect(response.headers[requestIdHeader.toLowerCase()]).toBe("req-hardening-0002");
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Internal server error.",
+    });
+    expect(logs).toContain("Node API route failed");
+    expect(logs).toContain("posts.index");
+    expect(logs).toContain("req-hardening-0002");
+    expect(logs).toContain("ER_PARSE_ERROR");
+    expect(logs).toContain("42000");
+    expect(logs).toContain("/posts?token=[redacted]");
+    expect(logs).not.toContain("secret-token");
+    expect(logs).not.toContain("secret-cookie");
+    expect(logs).not.toContain("SELECT password");
   });
 });
 
