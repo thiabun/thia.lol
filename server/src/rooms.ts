@@ -36,9 +36,17 @@ export interface RoomPayload {
   updatedAt: string | null;
 }
 
+export interface RoomMemberPayload {
+  id: number;
+  role: RoomRole;
+  joinedAt: string | null;
+  user: UserPayload;
+}
+
 export interface RoomsRepository {
   listPublicRooms(): Promise<RoomPayload[]>;
   getPublicRoom(slug: string): Promise<RoomPayload | null>;
+  getPublicRoomMembers(slug: string): Promise<RoomMemberPayload[] | null>;
 }
 
 export interface RoomSchemaCapabilities {
@@ -73,6 +81,20 @@ export interface RoomRow extends RowDataPacket {
   room_updated_at: Date | string | null;
 }
 
+export interface RoomMemberRow extends RowDataPacket {
+  id: number | string;
+  role: string | null;
+  joined_at: Date | string | null;
+  user_id: number | string;
+  handle: string;
+  display_name: string | null;
+  avatar_url: string | null;
+}
+
+interface RoomRecordRow extends RowDataPacket {
+  id: number | string;
+}
+
 type CountRow = RowDataPacket & {
   table_count?: number | string;
   column_count?: number | string;
@@ -81,6 +103,13 @@ type CountRow = RowDataPacket & {
 const roomSlugPattern = /^[a-z0-9-]{1,80}$/;
 
 const roomListOrder = "room_posts.latest_activity_at DESC, rooms.is_live DESC, rooms.name ASC";
+
+export class RoomStorageNotReadyError extends Error {
+  constructor() {
+    super("Room membership storage is not ready. Run pending migrations.");
+    this.name = "RoomStorageNotReadyError";
+  }
+}
 
 export function normalizeRoomSlug(slug: string): string | null {
   try {
@@ -135,6 +164,25 @@ export function roomPayloadFromRow(row: RoomRow): RoomPayload {
   };
 }
 
+export function roomMemberPayloadFromRow(row: RoomMemberRow): RoomMemberPayload {
+  const handle = stringValue(row.handle);
+  const displayName = stringValue(row.display_name, handle);
+
+  return {
+    id: numberValue(row.id),
+    role: roomRoleValue(row.role) ?? "member",
+    joinedAt: nullableStringValue(row.joined_at),
+    user: {
+      id: numberValue(row.user_id),
+      handle,
+      displayName,
+      initials: initialsFromName(displayName),
+      aura: "frost",
+      avatarUrl: nullableStringValue(row.avatar_url),
+    },
+  };
+}
+
 export function buildPublicRoomsQuery(capabilities: RoomSchemaCapabilities): string {
   return `${roomSelectSql(capabilities)}
         WHERE rooms.visibility = 'public'
@@ -148,6 +196,40 @@ export function buildPublicRoomBySlugQuery(capabilities: RoomSchemaCapabilities)
           AND rooms.visibility = 'public'
           ${roomNotDeletedSql(capabilities)}
         LIMIT 1`;
+}
+
+export function buildPublicRoomMemberRoomQuery(): string {
+  return `SELECT id
+         FROM rooms
+         WHERE slug = ?
+           AND visibility = 'public'
+           AND deleted_at IS NULL
+         LIMIT 1`;
+}
+
+export function buildPublicRoomMembersQuery(): string {
+  return `SELECT
+            memberships.id,
+            memberships.role,
+            memberships.joined_at,
+            users.id AS user_id,
+            users.handle,
+            profiles.display_name,
+            profiles.avatar_url
+         FROM room_memberships memberships
+         INNER JOIN users ON users.id = memberships.user_id
+         INNER JOIN profiles ON profiles.user_id = users.id
+         WHERE memberships.room_id = ?
+           AND memberships.banned_at IS NULL
+           AND users.status = 'active'
+         ORDER BY
+            FIELD(memberships.role, 'owner', 'moderator', 'member'),
+            memberships.joined_at ASC
+         LIMIT 100`;
+}
+
+export function roomStorageReady(capabilities: RoomSchemaCapabilities): boolean {
+  return capabilities.hasRoomMemberships && capabilities.hasRoomCustomizationColumns && capabilities.hasRoomSoftDeleteColumn;
 }
 
 export function createRoomsRepository(pool: Pool): RoomsRepository {
@@ -172,6 +254,25 @@ class MysqlRoomsRepository implements RoomsRepository {
     const row = rows[0];
 
     return row === undefined ? null : roomPayloadFromRow(row);
+  }
+
+  async getPublicRoomMembers(slug: string): Promise<RoomMemberPayload[] | null> {
+    const capabilities = await this.schemaCapabilities();
+
+    if (!roomStorageReady(capabilities)) {
+      throw new RoomStorageNotReadyError();
+    }
+
+    const [roomRows] = await this.pool.execute<RoomRecordRow[]>(buildPublicRoomMemberRoomQuery(), [slug]);
+    const room = roomRows[0];
+
+    if (room === undefined) {
+      return null;
+    }
+
+    const [memberRows] = await this.pool.execute<RoomMemberRow[]>(buildPublicRoomMembersQuery(), [numberValue(room.id)]);
+
+    return memberRows.map((row) => roomMemberPayloadFromRow(row));
   }
 
   private schemaCapabilities(): Promise<RoomSchemaCapabilities> {

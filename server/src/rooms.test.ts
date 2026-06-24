@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildPublicRoomMemberRoomQuery,
+  buildPublicRoomMembersQuery,
   buildPublicRoomBySlugQuery,
   buildPublicRoomsQuery,
   initialsFromName,
   normalizeRoomSlug,
+  roomMemberPayloadFromRow,
   roomPayloadFromRow,
+  roomStorageReady,
+  type RoomMemberRow,
   type RoomRow,
   type RoomSchemaCapabilities,
 } from "./rooms.js";
@@ -43,6 +48,19 @@ function roomRow(overrides: Partial<RoomRow> = {}): RoomRow {
     room_updated_at: "2026-06-22 10:00:00",
     ...overrides,
   } as RoomRow;
+}
+
+function roomMemberRow(overrides: Partial<RoomMemberRow> = {}): RoomMemberRow {
+  return {
+    id: "9",
+    role: "moderator",
+    joined_at: "2026-06-21 11:00:00",
+    user_id: "42",
+    handle: "thia",
+    display_name: "Thia Bun",
+    avatar_url: null,
+    ...overrides,
+  } as RoomMemberRow;
 }
 
 describe("room preview payload mapping", () => {
@@ -118,6 +136,26 @@ describe("room preview payload mapping", () => {
     expect(initialsFromName("thia")).toBe("T");
     expect(initialsFromName("   ")).toBe("TH");
   });
+
+  it("maps room member payloads like PHP", () => {
+    expect(roomMemberPayloadFromRow(roomMemberRow())).toEqual({
+      id: 9,
+      role: "moderator",
+      joinedAt: "2026-06-21 11:00:00",
+      user: {
+        id: 42,
+        handle: "thia",
+        displayName: "Thia Bun",
+        initials: "TB",
+        aura: "frost",
+        avatarUrl: null,
+      },
+    });
+  });
+
+  it("falls back unknown room member roles to member", () => {
+    expect(roomMemberPayloadFromRow(roomMemberRow({ role: "admin" })).role).toBe("member");
+  });
 });
 
 describe("room preview SQL", () => {
@@ -147,5 +185,30 @@ describe("room preview SQL", () => {
     expect(query).toContain("AND rooms.visibility = 'public'");
     expect(query).toContain("AND rooms.deleted_at IS NULL");
     expect(query).toContain("LIMIT 1");
+  });
+
+  it("builds room member queries with PHP visibility and ordering constraints", () => {
+    const roomQuery = buildPublicRoomMemberRoomQuery();
+    const membersQuery = buildPublicRoomMembersQuery();
+
+    expect(roomQuery).toContain("WHERE slug = ?");
+    expect(roomQuery).toContain("visibility = 'public'");
+    expect(roomQuery).toContain("deleted_at IS NULL");
+    expect(membersQuery).toContain("FROM room_memberships memberships");
+    expect(membersQuery).toContain("memberships.banned_at IS NULL");
+    expect(membersQuery).toContain("users.status = 'active'");
+    expect(membersQuery).toContain("FIELD(memberships.role, 'owner', 'moderator', 'member')");
+    expect(membersQuery).toContain("LIMIT 100");
+  });
+
+  it("requires full room v2 storage for room members like PHP", () => {
+    expect(roomStorageReady(fullCapabilities)).toBe(true);
+    expect(
+      roomStorageReady({
+        hasRoomMemberships: true,
+        hasRoomCustomizationColumns: true,
+        hasRoomSoftDeleteColumn: false,
+      }),
+    ).toBe(false);
   });
 });

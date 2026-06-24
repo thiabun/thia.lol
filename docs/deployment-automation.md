@@ -157,6 +157,9 @@ https://thia.lol/api/health
 https://thia.lol/api/health?db=1
 https://thia.lol/api-next/health
 https://thia.lol/api-next/health?db=1
+https://thia.lol/api-next/search?q=thia
+https://thia.lol/api-next/badges
+https://thia.lol/api-next/rooms/general/members
 https://thia.lol/api-next/posts
 https://thia.lol/api-next/feed/home
 https://thia.lol/api-next/feed/discover
@@ -164,6 +167,9 @@ https://thia.lol/api-next/rooms/general/posts
 https://thia.lol/api-next/profiles/thia/posts
 https://thia.lol/api/rooms
 https://thia.lol/api/rooms/general
+https://thia.lol/api/rooms/general/members
+https://thia.lol/api/search?q=thia
+https://thia.lol/api/badges
 https://thia.lol/api/stats
 https://thia.lol/api/profiles/thia
 https://thia.lol/api/profiles/thia/rooms
@@ -183,14 +189,15 @@ https://thia.lol/api/feed/discover
 https://thia.lol/@thia
 ```
 
-`/api/rooms`, `/api/rooms/:slug`, `/api/stats`, `/api/profiles/:handle`, and
-the profile extras `/rooms`, `/modules`, `/badges`, `/followers`, and
-`/following`, plus posts, room/profile post lists, and `/feed/home` and
-`/feed/discover`, are Node-served production read routes and should include
-`X-Thia-API-Runtime: node`. Node responses should also include
-`X-Thia-Request-Id` for journal correlation. Share cards, mutations, auth,
-uploads, chat, admin, moderation, and other production API routes remain
-PHP-owned unless explicitly cut over later.
+`/api/rooms`, `/api/rooms/:slug`, `/api/rooms/:slug/members`, `/api/search`,
+`/api/badges`, `/api/stats`, `/api/profiles/:handle`, the profile extras,
+posts, room/profile post lists, and `/feed/home` and `/feed/discover` are
+Node-served production read routes and should include the
+`X-Thia-API-Runtime: node` header. Node responses should also include
+`X-Thia-Request-Id` for journal
+correlation. Share cards, mutations, auth, uploads, chat, notifications, admin,
+moderation, and other production API routes remain PHP-owned unless explicitly
+cut over later.
 
 For upload-sensitive changes, also check one known media URL under:
 

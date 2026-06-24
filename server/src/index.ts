@@ -1,25 +1,31 @@
 import { buildApp, nodeApiLoggerOptions } from "./app.js";
+import { createBadgesRepository } from "./badges.js";
 import { loadServerConfig } from "./config.js";
 import { createDatabaseClient } from "./db.js";
 import { createPostsRepository } from "./posts.js";
 import { createProfilesRepository } from "./profiles.js";
 import { createRoomsRepository } from "./rooms.js";
+import { createSearchRepository } from "./search.js";
 import { createSessionsRepository } from "./sessions.js";
 import { createStatsRepository } from "./stats.js";
 
 const config = loadServerConfig();
 const database = createDatabaseClient(config);
+const badgesRepository = createBadgesRepository(database.pool);
 const postsRepository = createPostsRepository(database.pool);
 const profilesRepository = createProfilesRepository(database.pool);
 const roomsRepository = createRoomsRepository(database.pool);
+const searchRepository = createSearchRepository(database.pool);
 const sessionsRepository = createSessionsRepository(database.pool, config.THIA_SESSION_COOKIE_NAME);
 const statsRepository = createStatsRepository(database.pool);
 const app = buildApp({
+  badgesRepository,
   checkDatabase: database.check,
   logger: nodeApiLoggerOptions(config.THIA_API_LOG_LEVEL),
   postsRepository,
   profilesRepository,
   roomsRepository,
+  searchRepository,
   sessionsRepository,
   statsRepository,
   publicBaseUrl: config.THIA_PUBLIC_BASE_URL,

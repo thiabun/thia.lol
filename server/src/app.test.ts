@@ -3,6 +3,11 @@ import { Writable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 
 import { buildApp, nodeApiLoggerOptions, requestIdHeader } from "./app.js";
+import {
+  BadgeStorageNotReadyError,
+  type BadgePayload,
+  type BadgesRepository,
+} from "./badges.js";
 import type {
   DiscoverPersonPayload,
   HomeFeedPayload,
@@ -17,7 +22,8 @@ import type {
   ProfilePayload,
   ProfilesRepository,
 } from "./profiles.js";
-import type { RoomPayload, RoomsRepository } from "./rooms.js";
+import { RoomStorageNotReadyError, type RoomMemberPayload, type RoomPayload, type RoomsRepository } from "./rooms.js";
+import type { SearchPayload, SearchRepository } from "./search.js";
 import type { RequestSession, SessionsRepository } from "./sessions.js";
 import type { PublicStatsPayload, StatsRepository } from "./stats.js";
 
@@ -53,10 +59,66 @@ const room: RoomPayload = {
   updatedAt: "2026-06-22 10:00:00",
 };
 
+const roomMember: RoomMemberPayload = {
+  id: 5,
+  role: "owner",
+  joinedAt: "2026-06-20 09:00:00",
+  user: {
+    id: 1,
+    handle: "thia",
+    displayName: "Thia",
+    initials: "T",
+    aura: "frost",
+    avatarUrl: null,
+  },
+};
+
 function roomsRepositoryMock(overrides: Partial<RoomsRepository> = {}): RoomsRepository {
   return {
     listPublicRooms: vi.fn().mockResolvedValue([room]),
     getPublicRoom: vi.fn().mockResolvedValue(room),
+    getPublicRoomMembers: vi.fn().mockResolvedValue([roomMember]),
+    ...overrides,
+  };
+}
+
+const publicBadge: BadgePayload = {
+  id: 1,
+  badgeKey: "founder",
+  name: "Founder",
+  description: "Founder badge",
+  rarity: "founder",
+  source: "admin-granted",
+  icon: "sparkles",
+  accent: "founder",
+  isActive: true,
+  createdAt: "2026-06-10 10:00:00",
+};
+
+function badgesRepositoryMock(overrides: Partial<BadgesRepository> = {}): BadgesRepository {
+  return {
+    listPublicBadges: vi.fn().mockResolvedValue([publicBadge]),
+    ...overrides,
+  };
+}
+
+const searchPayload: SearchPayload = {
+  query: "thia",
+  minQueryLength: 2,
+  results: {
+    profiles: [
+      {
+        user: roomMember.user,
+        bioSnippet: "Founder profile.",
+      },
+    ],
+    rooms: [room],
+  },
+};
+
+function searchRepositoryMock(overrides: Partial<SearchRepository> = {}): SearchRepository {
+  return {
+    search: vi.fn().mockResolvedValue(searchPayload),
     ...overrides,
   };
 }
@@ -549,6 +611,232 @@ describe("Node API room preview routes", () => {
     const response = await app.inject({
       method: "GET",
       url: "/rooms",
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Internal server error.",
+    });
+  });
+});
+
+describe("Node API room member preview route", () => {
+  it("returns public room members in the PHP success wrapper", async () => {
+    const repository = roomsRepositoryMock();
+    const app = buildApp({
+      roomsRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/rooms/general/members",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(repository.getPublicRoomMembers).toHaveBeenCalledWith("general");
+    expect(response.json()).toEqual({
+      ok: true,
+      data: [roomMember],
+    });
+  });
+
+  it("returns 400 for invalid room member slugs", async () => {
+    const repository = roomsRepositoryMock();
+    const app = buildApp({
+      roomsRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/rooms/nope!/members",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(repository.getPublicRoomMembers).not.toHaveBeenCalled();
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Invalid room slug.",
+    });
+  });
+
+  it("returns 404 for missing public rooms", async () => {
+    const repository = roomsRepositoryMock({
+      getPublicRoomMembers: vi.fn().mockResolvedValue(null),
+    });
+    const app = buildApp({
+      roomsRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/rooms/missing/members",
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Room not found.",
+    });
+  });
+
+  it("returns 503 when room membership storage is not ready", async () => {
+    const repository = roomsRepositoryMock({
+      getPublicRoomMembers: vi.fn().mockRejectedValue(new RoomStorageNotReadyError()),
+    });
+    const app = buildApp({
+      roomsRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/rooms/general/members",
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Room membership storage is not ready. Run pending migrations.",
+    });
+  });
+
+  it("returns JSON 500 without raw room member repository details", async () => {
+    const repository = roomsRepositoryMock({
+      getPublicRoomMembers: vi.fn().mockRejectedValue(new Error("sensitive member detail")),
+    });
+    const app = buildApp({
+      roomsRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/rooms/general/members",
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Internal server error.",
+    });
+  });
+});
+
+describe("Node API search preview route", () => {
+  it("returns search results in the PHP success wrapper", async () => {
+    const repository = searchRepositoryMock();
+    const app = buildApp({
+      searchRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/search?q=thia",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(repository.search).toHaveBeenCalledWith("thia", null);
+    expect(response.json()).toEqual({
+      ok: true,
+      data: searchPayload,
+    });
+  });
+
+  it("resolves optional sessions for search reads", async () => {
+    const searchRepository = searchRepositoryMock();
+    const sessionsRepository = sessionsRepositoryMock();
+    const app = buildApp({
+      searchRepository,
+      sessionsRepository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/search?q=thia",
+      headers: {
+        cookie: "thia_session=token",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(sessionsRepository.currentSession).toHaveBeenCalledWith("thia_session=token");
+    expect(searchRepository.search).toHaveBeenCalledWith("thia", 42);
+  });
+
+  it("treats repeated q parameters like PHP's non-string query fallback", async () => {
+    const repository = searchRepositoryMock();
+    const app = buildApp({
+      searchRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/search?q=thia&q=general",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(repository.search).toHaveBeenCalledWith("", null);
+  });
+
+  it("returns JSON 500 without raw search repository details", async () => {
+    const repository = searchRepositoryMock({
+      search: vi.fn().mockRejectedValue(new Error("sensitive search detail")),
+    });
+    const app = buildApp({
+      searchRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/search?q=thia",
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Internal server error.",
+    });
+  });
+});
+
+describe("Node API badge preview route", () => {
+  it("returns public badge definitions in the PHP success wrapper", async () => {
+    const repository = badgesRepositoryMock();
+    const app = buildApp({
+      badgesRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/badges",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(repository.listPublicBadges).toHaveBeenCalledOnce();
+    expect(response.json()).toEqual({
+      ok: true,
+      data: [publicBadge],
+    });
+  });
+
+  it("returns 503 when badge storage is not ready", async () => {
+    const repository = badgesRepositoryMock({
+      listPublicBadges: vi.fn().mockRejectedValue(new BadgeStorageNotReadyError()),
+    });
+    const app = buildApp({
+      badgesRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/badges",
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Badge storage is not ready. Run pending migrations.",
+    });
+  });
+
+  it("returns JSON 500 without raw badge repository details", async () => {
+    const repository = badgesRepositoryMock({
+      listPublicBadges: vi.fn().mockRejectedValue(new Error("sensitive badge detail")),
+    });
+    const app = buildApp({
+      badgesRepository: repository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/badges",
     });
 
     expect(response.statusCode).toBe(500);

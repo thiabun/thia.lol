@@ -46,15 +46,18 @@ PostgreSQL migration needs a separate implementation plan covering:
 Do not cut over auth/session tables until password login, CSRF, cookie behavior,
 2FA, and session expiry are proven against production-like data.
 
-## First Safe Route Candidates
+## Safe Route Candidates
 
-Start with public read-only routes after the deploy path is stable:
+Public read-only routes are the preferred early migration targets:
 
 ```text
 GET /api-next/health
 GET /api/profiles/{handle}
 GET /api/rooms
 GET /api/posts
+GET /api/search
+GET /api/badges
+GET /api/rooms/{slug}/members
 ```
 
 Avoid early rewrites of:

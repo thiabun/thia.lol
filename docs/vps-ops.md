@@ -101,6 +101,9 @@ Current Node-served production reads:
 ```text
 GET/HEAD /api/rooms
 GET/HEAD /api/rooms/:slug
+GET/HEAD /api/rooms/:slug/members
+GET/HEAD /api/search
+GET/HEAD /api/badges
 GET/HEAD /api/stats
 GET/HEAD /api/profiles/:handle
 GET/HEAD /api/profiles/:handle/rooms
@@ -120,8 +123,9 @@ GET/HEAD /api/feed/discover
 ```
 
 Profile and post share-card routes, post mutations, follow/block/mute/star
-mutations, auth, uploads, chat, admin, moderation, and profile writes remain on
-PHP. All other `/api/*` traffic remains on PHP unless explicitly cut over later.
+mutations, auth, uploads, chat, notifications, admin, moderation, and profile
+writes remain on PHP. All other `/api/*` traffic remains on PHP unless
+explicitly cut over later.
 
 ## Node API Preview
 
@@ -137,12 +141,18 @@ Useful checks:
 systemctl is-active thia-node-api.service
 curl --fail-with-body https://thia.lol/api-next/health
 curl --fail-with-body 'https://thia.lol/api-next/health?db=1'
+curl --fail-with-body 'https://thia.lol/api-next/search?q=thia'
+curl --fail-with-body https://thia.lol/api-next/badges
+curl --fail-with-body https://thia.lol/api-next/rooms/general/members
 curl --fail-with-body https://thia.lol/api-next/posts
 curl --fail-with-body https://thia.lol/api-next/feed/home
 curl --fail-with-body https://thia.lol/api-next/feed/discover
 curl --fail-with-body https://thia.lol/api-next/rooms/general/posts
 curl --fail-with-body https://thia.lol/api-next/profiles/thia/posts
 curl --fail-with-body https://thia.lol/api/rooms
+curl --fail-with-body 'https://thia.lol/api/search?q=thia'
+curl --fail-with-body https://thia.lol/api/badges
+curl --fail-with-body https://thia.lol/api/rooms/general/members
 curl --fail-with-body https://thia.lol/api/stats
 curl --fail-with-body https://thia.lol/api/profiles/thia
 curl --fail-with-body https://thia.lol/api/profiles/thia/modules
@@ -175,8 +185,7 @@ Node logs are structured and should include route name, method, sanitized URL,
 status, request id, and sanitized error metadata. They must not contain cookies,
 authorization headers, session tokens, raw SQL, stack traces, or config values.
 
-This hardening slice does not cut over additional production routes. PHP remains
-owner for auth, uploads, chat, notifications, search, admin, moderation,
+PHP remains owner for auth, uploads, chat, notifications, admin, moderation,
 share-card generation, and all mutations.
 
 Cutover verification:
@@ -195,6 +204,11 @@ Rollback for the post/feed read cutover is Caddy-only: restore
 `/etc/caddy/Caddyfile.bak-post-feed-20260623143105` or remove the
 `nodeApiPosts*`, `nodeApiPost*`, `nodeApiRoomPosts`, `nodeApiProfilePosts`, and
 `nodeApiFeed*` matcher/handler blocks, then validate and reload Caddy.
+
+Rollback for the public search/badge/member cutover is Caddy-only: restore the
+latest `/etc/caddy/Caddyfile.bak-public-reads-*` backup or remove the
+`nodeApiSearch`, `nodeApiBadges`, and `nodeApiRoomMembers` matcher/handler
+blocks, then validate and reload Caddy.
 
 Rollback for the current Node read cutover is Caddy-only: restore the backed-up
 `/etc/caddy/Caddyfile` or remove the Node read handlers, validate Caddy, reload

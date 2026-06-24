@@ -6,6 +6,9 @@ const runtimeHeader = "x-thia-api-runtime";
 const nodeCutoverPairs = [
   ["/api/rooms", "/api-next/rooms"],
   ["/api/rooms/general", "/api-next/rooms/general"],
+  ["/api/rooms/general/members", "/api-next/rooms/general/members"],
+  ["/api/search?q=thia", "/api-next/search?q=thia"],
+  ["/api/badges", "/api-next/badges"],
   ["/api/stats", "/api-next/stats"],
   ["/api/profiles/thia", "/api-next/profiles/thia"],
   ["/api/profiles/thia/rooms", "/api-next/profiles/thia/rooms"],
@@ -32,7 +35,7 @@ if (postAnchor !== null) {
   );
 }
 
-const phpOwnedJsonRoutes = ["/api/auth/me", "/api/search?q=thia", "/api/notifications"];
+const phpOwnedJsonRoutes = ["/api/auth/me", "/api/notifications"];
 
 const phpOwnedHeadRoutes = [
   "/api/posts/99/share-card.png",

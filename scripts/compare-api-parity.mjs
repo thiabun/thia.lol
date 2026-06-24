@@ -6,6 +6,9 @@ const cookieHeader = process.env.COOKIE_HEADER || "";
 const routePairs = [
   ["/api/rooms", "/api-next/rooms"],
   ["/api/rooms/general", "/api-next/rooms/general"],
+  ["/api/rooms/general/members", "/api-next/rooms/general/members"],
+  ["/api/search?q=thia", "/api-next/search?q=thia"],
+  ["/api/badges", "/api-next/badges"],
   ["/api/stats", "/api-next/stats"],
   ["/api/profiles/thia", "/api-next/profiles/thia"],
   ["/api/profiles/thia/rooms", "/api-next/profiles/thia/rooms"],

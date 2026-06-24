@@ -8,6 +8,7 @@ import Fastify, {
 } from "fastify";
 import { z } from "zod";
 
+import { BadgeStorageNotReadyError, type BadgePayload, type BadgesRepository } from "./badges.js";
 import {
   normalizePostIdentifier,
   type DiscoverFeedPayload,
@@ -23,13 +24,26 @@ import {
   type ProfilePayload,
   type ProfilesRepository,
 } from "./profiles.js";
-import { normalizeRoomSlug, type RoomPayload, type RoomsRepository } from "./rooms.js";
+import {
+  normalizeRoomSlug,
+  RoomStorageNotReadyError,
+  type RoomMemberPayload,
+  type RoomPayload,
+  type RoomsRepository,
+} from "./rooms.js";
+import { type SearchPayload, type SearchRepository } from "./search.js";
 import type { SessionsRepository } from "./sessions.js";
 import type { PublicStatsPayload, StatsRepository } from "./stats.js";
 
 const healthQuerySchema = z.object({
   db: z.union([z.string(), z.array(z.string())]).optional(),
 });
+
+const searchQuerySchema = z
+  .object({
+    q: z.union([z.string(), z.array(z.string())]).optional(),
+  })
+  .passthrough();
 
 const roomParamsSchema = z.object({
   slug: z.string(),
@@ -65,10 +79,12 @@ export const nodeApiLogRedactPaths = [
 ];
 
 export interface AppDependencies {
+  badgesRepository?: BadgesRepository;
   checkDatabase?: () => Promise<void>;
   profilesRepository?: ProfilesRepository;
   postsRepository?: PostsRepository;
   roomsRepository?: RoomsRepository;
+  searchRepository?: SearchRepository;
   sessionsRepository?: SessionsRepository;
   statsRepository?: StatsRepository;
   publicBaseUrl?: string;
@@ -126,6 +142,18 @@ function errorPayload(error: string): ErrorPayload {
     ok: false,
     error,
   };
+}
+
+function searchQueryFromRequest(query: unknown): unknown {
+  const parsed = searchQuerySchema.safeParse(query);
+
+  if (!parsed.success) {
+    return "";
+  }
+
+  const value = parsed.data.q;
+
+  return Array.isArray(value) ? "" : (value ?? "");
 }
 
 export function nodeApiLoggerOptions(level: string): NonNullable<FastifyServerOptions["logger"]> {
@@ -363,6 +391,35 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     }
   });
 
+  app.get("/rooms/:slug/members", async (request, reply) => {
+    if (dependencies.roomsRepository === undefined) {
+      return internalError(request, reply, "rooms.members", new Error("Missing rooms repository dependency."));
+    }
+
+    const parsedParams = roomParamsSchema.safeParse(request.params);
+    const normalizedSlug = parsedParams.success ? normalizeRoomSlug(parsedParams.data.slug) : null;
+
+    if (normalizedSlug === null) {
+      return reply.status(400).send(errorPayload("Invalid room slug."));
+    }
+
+    try {
+      const members = await dependencies.roomsRepository.getPublicRoomMembers(normalizedSlug);
+
+      if (members === null) {
+        return reply.status(404).send(errorPayload("Room not found."));
+      }
+
+      return reply.send(successPayload<RoomMemberPayload[]>(members));
+    } catch (error) {
+      if (error instanceof RoomStorageNotReadyError) {
+        return sendRouteError(request, reply, "rooms.members", 503, errorPayload(error.message), error);
+      }
+
+      return internalError(request, reply, "rooms.members", error);
+    }
+  });
+
   app.get("/rooms/:slug", async (request, reply) => {
     if (dependencies.roomsRepository === undefined) {
       return internalError(request, reply, "rooms.show", new Error("Missing rooms repository dependency."));
@@ -385,6 +442,39 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       return reply.send(successPayload<RoomPayload>(room));
     } catch (error) {
       return internalError(request, reply, "rooms.show", error);
+    }
+  });
+
+  app.get("/search", async (request, reply) => {
+    if (dependencies.searchRepository === undefined) {
+      return internalError(request, reply, "search.index", new Error("Missing search repository dependency."));
+    }
+
+    try {
+      const viewerUserId = await currentViewerUserId(request, dependencies.sessionsRepository);
+      const results = await dependencies.searchRepository.search(searchQueryFromRequest(request.query), viewerUserId);
+
+      return reply.send(successPayload<SearchPayload>(results));
+    } catch (error) {
+      return internalError(request, reply, "search.index", error);
+    }
+  });
+
+  app.get("/badges", async (request, reply) => {
+    if (dependencies.badgesRepository === undefined) {
+      return internalError(request, reply, "badges.index", new Error("Missing badges repository dependency."));
+    }
+
+    try {
+      const badges = await dependencies.badgesRepository.listPublicBadges();
+
+      return reply.send(successPayload<BadgePayload[]>(badges));
+    } catch (error) {
+      if (error instanceof BadgeStorageNotReadyError) {
+        return sendRouteError(request, reply, "badges.index", 503, errorPayload(error.message), error);
+      }
+
+      return internalError(request, reply, "badges.index", error);
     }
   });
 
