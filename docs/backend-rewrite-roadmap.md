@@ -1,12 +1,12 @@
 # Backend Rewrite Roadmap
 
-> **Status: Planning reference.** Production remains the PHP/MariaDB API until
-> the new backend proves route parity and rollback safety.
+> **Status: Historical planning reference.** The product API now runs through
+> the Node/MariaDB service; PHP API files remain on disk as rollback material.
 
 ## Direction
 
-The target backend is a TypeScript API on Node, introduced gradually beside the
-current PHP API.
+The active backend is a TypeScript API on Node, introduced gradually beside the
+old PHP API and now serving product `/api/*` traffic through Caddy.
 
 Preferred stack:
 
@@ -18,29 +18,32 @@ Preferred stack:
 
 ## Migration Strategy
 
-Use a strangler migration:
+The migration used a strangler pattern:
 
-1. Keep the existing PHP API live.
+1. Keep the existing PHP API live during preview.
 2. Add a new internal Caddy route for the TypeScript service.
 3. Move low-risk read endpoints first.
 4. Add parity tests before switching public `/api/*` traffic for a route.
 5. Keep each production route on PHP until explicit preview smoke, controlled
    mutation checks, Caddy rollback notes, and cutover verification exist.
+6. Retire the product PHP fallback only after integrations/OAuth and share HTML
+   shells were Node-owned and `scripts/check-api-cutover.mjs` passed live.
 
-Do not replace the production API in one big cutover.
+Do not reintroduce a broad PHP product fallback without documenting the Caddy
+rollback and rerunning the cutover verifier.
 
 ## Current Route Ownership
 
-Production Node ownership includes parity-proven reads, private reads,
-low-risk writes, auth/session writes, social/content writes, profile/account
-editor writes, uploads, full chat, admin/moderation, share-card image/cache
-routes, push subscription/status routes, setup, migrations, diagnostics,
-sitemap, and `POST /api/me/profile`.
+Production Node ownership includes product `/api/*` traffic, including
+parity-proven reads, private reads, writes, auth/session, social/content,
+profile/account editor, uploads, chat, admin/moderation, share-card
+image/cache/proxy routes, integrations/OAuth, metadata resolve, push,
+setup/migrations/diagnostics, sitemap, `POST /api/me/profile`, and the legacy
+share HTML shells at `/api/post-share.php` and `/api/profile-share.php`.
 
-Integrations remain PHP-owned pending a separate OAuth/provider config port.
-The legacy social-preview HTML scripts, `/api/post-share.php` and
-`/api/profile-share.php`, also remain PHP-owned; the Node share-card cutover
-covers the generated PNG/cache/proxy API routes.
+PHP API files remain deployed only as rollback material. Caddy should route
+unmatched product `/api/*` requests to the Node catch-all with
+`X-Thia-API-Runtime: node`.
 
 Private read previews also remain available under `/api-next/*`:
 

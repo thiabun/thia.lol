@@ -13,7 +13,7 @@ should stay boring.
 - Frontend: Vite, React, TypeScript, Tailwind CSS, Motion for React, React Router.
 - Static build output: `dist/`.
 - Production web root: `/srv/thia.lol/www/`.
-- PHP API deployment target: `/srv/thia.lol/www/api/`.
+- PHP rollback files: `/srv/thia.lol/www/api/`, kept on disk for emergency rollback.
 - SQL migrations deployment target: `/srv/thia.lol/www/api/migrations/`.
 - Node API deployment target: `/srv/thia.lol/node-api/`.
 - Server config: `/srv/thia.lol/config/config.php`, readable by PHP, never web-served.
@@ -98,10 +98,9 @@ The Node API is deployed separately and runs behind Caddy:
   server/dist/
 ```
 
-`/api-next/*` stays available for preview/parity. Selected parity-proven
-`/api/*` read and write routes are Node-served and should include
-`X-Thia-API-Runtime: node`; all other product and ops routes remain PHP-owned
-until a method-specific cutover is explicitly implemented.
+`/api-next/*` stays available for preview/parity. Product `/api/*` traffic is
+Node-served through Caddy and should include `X-Thia-API-Runtime: node`. PHP API
+files remain deployed as rollback material, not as the active product fallback.
 
 Never deploy real config or local uploads from the repo. Preserve:
 

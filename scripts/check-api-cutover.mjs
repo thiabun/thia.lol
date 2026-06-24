@@ -33,7 +33,10 @@ const nodeCutoverPairs = [
   ["/api/me/posts", "/api-next/me/posts", privateReadStatus],
   ["/api/me/profile/modules", "/api-next/me/profile/modules", privateReadStatus],
   ["/api/me/profile/canvas-draft", "/api-next/me/profile/canvas-draft", privateReadStatus],
+  ["/api/me/integrations", "/api-next/me/integrations", privateReadStatus],
+  ["/api/me/integrations/diagnostics", "/api-next/me/integrations/diagnostics", privateReadStatus],
   ["/api/notifications", "/api-next/notifications", privateReadStatus],
+  ["/api/__definitely_not_real__", "/api-next/__definitely_not_real__", 404],
 ];
 
 const postsIndex = await fetchJson("/api-next/posts");
@@ -46,23 +49,33 @@ if (postAnchor !== null) {
   );
 }
 
-const phpOwnedHeadRoutes = [
-  "/api/posts/99/like",
-  "/api/posts/99/reblog",
-  "/api/profiles/thia/follow",
-  "/api/me/profile",
-  "/api/uploads",
-  "/api/chat",
-  "/api/post-share.php",
-  "/api/profile-share.php",
-  "/api/me/integrations",
-];
-
 const nodeHeadCutoverPairs = [
   ["/sitemap.xml", "/api-next/sitemap.xml", 200],
+  ["/api/sitemap.php", "/api-next/sitemap.xml", 200],
   ["/api/posts/pc359fe2da759/share-card.png", "/api-next/posts/pc359fe2da759/share-card.png", 200],
   ["/api/profiles/thia/share-card.png", "/api-next/profiles/thia/share-card.png", 200],
   ["/api/share-card/image", "/api-next/share-card/image", 404],
+];
+
+const nodeHtmlCutoverPairs = [];
+const sharePostAnchor = firstPostAnchor(postsIndex.body);
+
+if (sharePostAnchor !== null) {
+  nodeHtmlCutoverPairs.push([
+    `/api/post-share.php?handle=${encodeURIComponent(sharePostAnchor.handle)}&postId=${encodeURIComponent(sharePostAnchor.publicIdentifier)}`,
+    `/api-next/post-share.php?handle=${encodeURIComponent(sharePostAnchor.handle)}&postId=${encodeURIComponent(sharePostAnchor.publicIdentifier)}`,
+    200,
+  ]);
+}
+
+nodeHtmlCutoverPairs.push([
+  "/api/profile-share.php?handle=thia",
+  "/api-next/profile-share.php?handle=thia",
+  200,
+]);
+
+const nodeRedirectCutoverPairs = [
+  ["/api/integrations/github/callback", "/api-next/integrations/github/callback", 303],
 ];
 
 const nodeUnauthenticatedCutoverPairs = [
@@ -73,6 +86,7 @@ const nodeUnauthenticatedCutoverPairs = [
   ["GET", "/api/admin/reports", "/api-next/admin/reports", 401],
   ["GET", "/api/admin/rooms", "/api-next/admin/rooms", 401],
   ["GET", "/api/admin/migrations/status", "/api-next/admin/migrations/status", 401],
+  ["GET", "/api/me/integrations/github/suggestions", "/api-next/me/integrations/github/suggestions", 401],
 ];
 
 const nodeTokenGuardCutoverPairs = [
@@ -158,6 +172,9 @@ const nodeMutationCutoverPairs = [
   ["POST", "/api/me/push/subscriptions", "/api-next/me/push/subscriptions", privateMutationStatus],
   ["DELETE", "/api/me/push/subscriptions", "/api-next/me/push/subscriptions", privateMutationStatus],
   ["POST", "/api/me/push/test", "/api-next/me/push/test", privateMutationStatus],
+  ["POST", "/api/me/integrations/github/start", "/api-next/me/integrations/github/start", privateMutationStatus],
+  ["DELETE", "/api/me/integrations/github", "/api-next/me/integrations/github", privateMutationStatus],
+  ["POST", "/api/me/integrations/metadata/resolve", "/api-next/me/integrations/metadata/resolve", privateMutationStatus],
   ["POST", "/api/admin/migrations/run", "/api-next/admin/migrations/run", privateMutationStatus],
 ];
 
@@ -170,13 +187,6 @@ const nodeAuthCutoverPairs = [
   ["POST", "/api/me/security/2fa/enable", "/api-next/me/security/2fa/enable", 401],
   ["DELETE", "/api/me/security/2fa", "/api-next/me/security/2fa", 401],
   ["POST", "/api/me/security/2fa/recovery-codes", "/api-next/me/security/2fa/recovery-codes", 401],
-];
-
-const phpOwnedMethodRoutes = [
-  ["POST", "/api/uploads"],
-  ["POST", "/api/chat"],
-  ["GET", "/api/me/integrations"],
-  ["POST", "/api/me/integrations/metadata/resolve"],
 ];
 
 let failed = false;
@@ -330,6 +340,60 @@ for (const [productionPath, previewPath, expectedStatus] of nodeHeadCutoverPairs
   console.log(`OK ${label} is served by Node and matches ${previewPath} status`);
 }
 
+for (const [productionPath, previewPath, expectedStatus] of nodeHtmlCutoverPairs) {
+  const production = await fetchText(productionPath);
+  const preview = await fetchText(previewPath);
+  const label = `${productionPath} HTML cutover`;
+
+  if (!statusMatches(production.status, expectedStatus)) {
+    failed = true;
+    console.error(`FAIL ${label}: expected HTTP ${formatExpectedStatus(expectedStatus)}, got ${production.status}`);
+    continue;
+  }
+
+  if (production.runtime !== "node") {
+    failed = true;
+    console.error(`FAIL ${label}: expected ${runtimeHeader}: node, got ${production.runtime ?? "missing"}`);
+    continue;
+  }
+
+  if (production.status !== preview.status || production.body !== preview.body) {
+    failed = true;
+    console.error(`FAIL ${label}: production HTML does not match ${previewPath}`);
+    continue;
+  }
+
+  console.log(`OK ${label} is served by Node and matches ${previewPath}`);
+}
+
+for (const [productionPath, previewPath, expectedStatus] of nodeRedirectCutoverPairs) {
+  const production = await fetchRedirect(productionPath);
+  const preview = await fetchRedirect(previewPath);
+  const label = `${productionPath} redirect cutover`;
+
+  if (!statusMatches(production.status, expectedStatus)) {
+    failed = true;
+    console.error(`FAIL ${label}: expected HTTP ${formatExpectedStatus(expectedStatus)}, got ${production.status}`);
+    continue;
+  }
+
+  if (production.runtime !== "node") {
+    failed = true;
+    console.error(`FAIL ${label}: expected ${runtimeHeader}: node, got ${production.runtime ?? "missing"}`);
+    continue;
+  }
+
+  if (production.status !== preview.status || production.location !== preview.location) {
+    failed = true;
+    console.error(`FAIL ${label}: production redirect does not match ${previewPath}`);
+    console.error(`Production: ${production.status} ${production.location ?? ""}`);
+    console.error(`Preview: ${preview.status} ${preview.location ?? ""}`);
+    continue;
+  }
+
+  console.log(`OK ${label} is served by Node and matches ${previewPath}`);
+}
+
 for (const [method, productionPath, previewPath, expectedStatus] of nodeAuthCutoverPairs) {
   const production = await fetchJson(productionPath, method, { includeCookie: false });
   const preview = await fetchJson(previewPath, method, { includeCookie: false });
@@ -356,30 +420,6 @@ for (const [method, productionPath, previewPath, expectedStatus] of nodeAuthCuto
   }
 
   console.log(`OK ${label} is served by Node and matches ${previewPath} without using a real session`);
-}
-
-for (const path of phpOwnedHeadRoutes) {
-  const headResponse = await fetchHead(path);
-
-  if (headResponse.runtime !== null) {
-    failed = true;
-    console.error(`FAIL HEAD ${path}: expected PHP-owned route without ${runtimeHeader}, got ${headResponse.runtime}`);
-    continue;
-  }
-
-  console.log(`OK ${path} remains PHP-owned`);
-}
-
-for (const [method, path] of phpOwnedMethodRoutes) {
-  const methodResponse = await fetchMethodHeaders(path, method);
-
-  if (methodResponse.runtime !== null) {
-    failed = true;
-    console.error(`FAIL ${method} ${path}: expected PHP-owned route without ${runtimeHeader}, got ${methodResponse.runtime}`);
-    continue;
-  }
-
-  console.log(`OK ${method} ${path} remains PHP-owned`);
 }
 
 if (failed) {
@@ -420,28 +460,31 @@ async function fetchJson(path, method = "GET", options = {}) {
   }
 }
 
-async function fetchMethodHeaders(path, method) {
-  const headers = {
-    accept: "application/json",
-  };
-
-  if (method !== "GET" && method !== "HEAD") {
-    headers["content-type"] = "application/json";
-  }
-
-  if (cookieHeader !== "") {
-    headers.cookie = cookieHeader;
-  }
-
+async function fetchText(path) {
   const response = await fetch(`${baseUrl}${path}`, {
-    method,
-    headers,
-    body: method === "GET" || method === "HEAD" ? undefined : "{}",
+    headers: {
+      accept: "text/html,application/xhtml+xml",
+    },
   });
 
   return {
     status: response.status,
     runtime: response.headers.get(runtimeHeader),
+    body: await response.text(),
+  };
+}
+
+async function fetchRedirect(path) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    redirect: "manual",
+  });
+
+  await response.arrayBuffer();
+
+  return {
+    status: response.status,
+    runtime: response.headers.get(runtimeHeader),
+    location: response.headers.get("location"),
   };
 }
 
@@ -459,10 +502,12 @@ function firstPostAnchor(body) {
 
     const id = post.id;
     const publicId = post.publicId;
+    const handle = post.author?.handle;
 
-    if (Number.isInteger(id) && id > 0) {
+    if (Number.isInteger(id) && id > 0 && typeof handle === "string" && handle !== "") {
       return {
         id,
+        handle,
         publicIdentifier: typeof publicId === "string" && publicId !== "" ? publicId : String(id),
       };
     }

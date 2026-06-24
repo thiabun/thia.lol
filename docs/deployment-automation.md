@@ -53,6 +53,23 @@ THIA_PUBLIC_BASE_URL=https://thia.lol
 THIA_API_LOG_LEVEL=info
 THIA_CSRF_SECRET=<same value as PHP security.csrf_secret>
 THIA_SECURITY_INTEGRATION_ENCRYPTION_KEY=<same value as PHP security.integration_encryption_key>
+THIA_WEB_ROOT=/srv/thia.lol/www
+THIA_INTEGRATION_SPOTIFY_CLIENT_ID=<optional>
+THIA_INTEGRATION_SPOTIFY_CLIENT_SECRET=<optional>
+THIA_INTEGRATION_SPOTIFY_REDIRECT_URI=<optional override>
+THIA_INTEGRATION_YOUTUBE_CLIENT_ID=<optional>
+THIA_INTEGRATION_YOUTUBE_CLIENT_SECRET=<optional>
+THIA_INTEGRATION_YOUTUBE_API_KEY=<optional>
+THIA_INTEGRATION_YOUTUBE_REDIRECT_URI=<optional override>
+THIA_INTEGRATION_TWITCH_CLIENT_ID=<optional>
+THIA_INTEGRATION_TWITCH_CLIENT_SECRET=<optional>
+THIA_INTEGRATION_TWITCH_EMBED_PARENT=thia.lol
+THIA_INTEGRATION_TWITCH_REDIRECT_URI=<optional override>
+THIA_INTEGRATION_GITHUB_CLIENT_ID=<optional>
+THIA_INTEGRATION_GITHUB_CLIENT_SECRET=<optional>
+THIA_INTEGRATION_GITHUB_REDIRECT_URI=<optional override>
+THIA_INTEGRATION_APPLE_MUSIC_DEVELOPER_TOKEN=<optional>
+THIA_INTEGRATION_APPLE_MUSIC_STOREFRONT=us
 ```
 
 ## GitHub Actions Deploy
@@ -318,14 +335,14 @@ POST /api/me/account/deletion/cancel
 ```
 
 Uploads, full chat routes, admin/moderation, share-card PNG/cache/proxy routes,
-push subscription/status routes, setup, migrations, diagnostics, sitemap, and
-`POST /api/me/profile` are Node-served in production and should include
-`X-Thia-API-Runtime: node` for their method-specific Caddy matchers.
+integrations/OAuth, legacy share HTML shells, push subscription/status routes,
+setup, migrations, diagnostics, sitemap, and `POST /api/me/profile` are
+Node-served in production and should include `X-Thia-API-Runtime: node`.
 
-Integrations remain PHP-owned until provider OAuth config and callbacks are
-ported and smoke-tested. The legacy social-preview HTML scripts
-`/api/post-share.php` and `/api/profile-share.php` also remain PHP-owned; the
-Node share-card cutover covers the generated image/cache API routes.
+The product PHP fallback is retired. Caddy now sends unmatched product `/api/*`
+requests to the Node catch-all after stripping `/api`. PHP API files may remain
+in the deploy tree as emergency rollback references, but they are not the active
+product route owner.
 
 For upload-sensitive changes, also check one known media URL under:
 

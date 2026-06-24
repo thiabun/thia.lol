@@ -138,7 +138,14 @@ GET/HEAD /api/admin/auth/session-trace
 GET/HEAD /api/posts/:identifier/share-card.png
 GET/HEAD /api/profiles/:handle/share-card.png
 GET/HEAD /api/share-card/image
+GET/HEAD /api/me/integrations
+GET/HEAD /api/me/integrations/diagnostics
+GET/HEAD /api/me/integrations/:provider/suggestions
+GET /api/integrations/:provider/callback
+GET/HEAD /api/post-share.php
+GET/HEAD /api/profile-share.php
 GET/HEAD /sitemap.xml
+GET/HEAD /api/sitemap.php
 ```
 
 Current Node-served low-risk private writes:
@@ -232,6 +239,9 @@ POST /api/posts/:identifier/share-card-cache
 POST /api/profiles/:handle/share-card-cache
 POST/DELETE /api/me/push/subscriptions
 POST /api/me/push/test
+POST /api/me/integrations/:provider/start
+DELETE /api/me/integrations/:provider
+POST /api/me/integrations/metadata/resolve
 POST /api/setup/thia
 POST /api/admin/migrations/run
 ```
@@ -245,10 +255,10 @@ generic auth errors, but do not require CSRF. Safe routing checks should omit
 the cookie or omit the CSRF header and assert the `X-Thia-API-Runtime: node`
 response header.
 
-Integrations remain PHP-owned until provider OAuth config and callback behavior
-are configured and smoke-tested in Node. The legacy social-preview HTML scripts,
-`/api/post-share.php` and `/api/profile-share.php`, also remain PHP-owned; the
-Node share-card cutover covers generated PNG, cache, and proxy API routes.
+Integrations, OAuth callbacks, metadata resolution, and the legacy social-preview
+HTML shells are Node-owned in production. PHP copies remain on disk only as
+rollback material. The product `/api/*` fallback is a Node catch-all that strips
+`/api`, proxies to `127.0.0.1:3100`, and sets `X-Thia-API-Runtime: node`.
 
 ## Node API Preview
 
@@ -293,7 +303,7 @@ curl --fail-with-body https://thia.lol/api/profiles/thia/followers
 ```
 
 The service reads environment variables from `/srv/thia.lol/config/node-api.env`.
-Besides the MariaDB connection values, the read-preview routes use:
+Besides the MariaDB connection values, the Node API uses:
 
 ```text
 THIA_SESSION_COOKIE_NAME=thia_session
@@ -305,6 +315,23 @@ THIA_CSRF_SECRET=<same value as PHP security.csrf_secret>
 THIA_SECURITY_INTEGRATION_ENCRYPTION_KEY=<same value as PHP security.integration_encryption_key>
 THIA_SECURITY_ENCRYPTION_CONFIGURED=<true when PHP integration_encryption_key is configured>
 THIA_SECURITY_ENCRYPTION_AVAILABLE=true
+THIA_WEB_ROOT=/srv/thia.lol/www
+THIA_INTEGRATION_SPOTIFY_CLIENT_ID=<optional>
+THIA_INTEGRATION_SPOTIFY_CLIENT_SECRET=<optional>
+THIA_INTEGRATION_SPOTIFY_REDIRECT_URI=<optional override>
+THIA_INTEGRATION_YOUTUBE_CLIENT_ID=<optional>
+THIA_INTEGRATION_YOUTUBE_CLIENT_SECRET=<optional>
+THIA_INTEGRATION_YOUTUBE_API_KEY=<optional>
+THIA_INTEGRATION_YOUTUBE_REDIRECT_URI=<optional override>
+THIA_INTEGRATION_TWITCH_CLIENT_ID=<optional>
+THIA_INTEGRATION_TWITCH_CLIENT_SECRET=<optional>
+THIA_INTEGRATION_TWITCH_EMBED_PARENT=thia.lol
+THIA_INTEGRATION_TWITCH_REDIRECT_URI=<optional override>
+THIA_INTEGRATION_GITHUB_CLIENT_ID=<optional>
+THIA_INTEGRATION_GITHUB_CLIENT_SECRET=<optional>
+THIA_INTEGRATION_GITHUB_REDIRECT_URI=<optional override>
+THIA_INTEGRATION_APPLE_MUSIC_DEVELOPER_TOKEN=<optional>
+THIA_INTEGRATION_APPLE_MUSIC_STOREFRONT=us
 ```
 
 `THIA_API_LOG_LEVEL` may be `trace`, `debug`, `info`, `warn`, `error`,
@@ -366,8 +393,10 @@ Node logs are structured and should include route name, method, sanitized URL,
 status, request id, and sanitized error metadata. They must not contain cookies,
 authorization headers, session tokens, raw SQL, stack traces, or config values.
 
-PHP remains production owner for integrations, the legacy social-preview HTML
-scripts, and any future route not explicitly listed as Node-owned above.
+Product PHP fallback is retired. Any product route not matched by a more
+specific Caddy block should still hit the Node catch-all and return the Node
+runtime header. Treat missing `X-Thia-API-Runtime: node` on a product API route
+as a routing regression.
 
 Cutover verification:
 
@@ -440,6 +469,12 @@ Rollback for the final-surface cutover is Caddy-only: restore
 `nodeApiShareCardImage`, `nodeApiPostShareCard*`, `nodeApiProfileShareCard*`,
 `nodeApiMePush*`, and `nodeApiSetupThia` matcher/handler blocks, then validate
 and reload Caddy.
+
+Rollback for the product PHP fallback retirement is Caddy-only: restore
+`/etc/caddy/Caddyfile.bak-product-php-retirement-20260624T174508Z` or remove the
+integration/share-shell matchers and Node `/api/*` catch-all, then restore the
+PHP `/api/*` handler, validate, reload Caddy, and rerun `scripts/smoke-live.sh`
+plus `node scripts/check-api-cutover.mjs`.
 
 Rollback for the current Node read cutover is Caddy-only: restore the backed-up
 `/etc/caddy/Caddyfile` or remove the Node read handlers, validate Caddy, reload
