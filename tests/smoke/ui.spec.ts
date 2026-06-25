@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { mockSpotifyIframeApi, spotifyPlayCalls } from "../helpers/spotify";
 
 const retiredMockCopy = [
   "Mira Vale",
@@ -389,6 +390,8 @@ test("post composer submits Markdown and Spotify/YouTube music attachments", asy
 }) => {
   await mockAuthenticatedShell(page);
   let postPayload: Record<string, unknown> | undefined;
+  const testArtwork =
+    "data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=";
 
   await mockMusicSuggestionRoutes(page, {
     spotifyItems: [
@@ -400,13 +403,15 @@ test("post composer submits Markdown and Spotify/YouTube music attachments", asy
         moduleType: "music",
         moduleTitle: "Test Playlist",
         card: makeMusicIntegrationCard("spotify", "playlist", "test-playlist", {
+          imageUrl: testArtwork,
           title: "Test Playlist",
           subtitle: "Spotify",
         }),
       },
     ],
   });
-  await page.route(/^https:\/\/open\.spotify\.com\/embed\//, (route) =>
+  await mockSpotifyIframeApi(page);
+  await page.route(/^https:\/\/open\.spotify\.com\/embed\/(?:album|artist|episode|playlist|show|track)\//, (route) =>
     route.fulfill({
       contentType: "text/html",
       body: "<!doctype html><html><body>Spotify embed stub</body></html>",
@@ -431,6 +436,7 @@ test("post composer submits Markdown and Spotify/YouTube music attachments", asy
       body: JSON.stringify({
         ok: true,
         data: makeMusicIntegrationCard(provider, "video", "abc123", {
+          imageUrl: testArtwork,
           sourceUrl: payload.url ?? "https://www.youtube.com/watch?v=abc123",
           title: provider === "youtube" ? "YouTube Test" : "Spotify Test",
           subtitle: provider === "youtube" ? "YouTube" : "Spotify",
@@ -451,7 +457,10 @@ test("post composer submits Markdown and Spotify/YouTube music attachments", asy
             body: String(postPayload.body),
             bodyFormat: "markdown",
             contentVersion: 3,
-            attachments: postPayload.attachments,
+            attachments: mockPostAttachmentsWithArtwork(
+              postPayload.attachments,
+              testArtwork,
+            ),
           }),
         }),
       });
@@ -548,18 +557,46 @@ test("post composer submits Markdown and Spotify/YouTube music attachments", asy
     .getByTestId("post-card-open-thread")
     .filter({ hasText: "Favorite track" })
     .first();
-  await expect(createdPost.getByTestId("post-attachments-0-music-player")).toContainText(
+  const spotifyPlayer = createdPost.getByTestId("post-attachments-0-music-player");
+  await expect(spotifyPlayer).toContainText(
     "Test Playlist",
   );
-  await expect(
-    createdPost.getByTestId("post-attachments-0-music-embed-spotify"),
-  ).toHaveAttribute("src", "https://open.spotify.com/embed/playlist/test-playlist?theme=0");
-  await expect(createdPost.getByTestId("post-attachments-1-music-player")).toContainText(
+  await expect(spotifyPlayer).toContainText("Spotify");
+  await expect(spotifyPlayer.getByTestId("post-attachments-0-music-artwork")).toBeVisible();
+  await expect(createdPost.getByTestId("post-attachments-0-music-embed-spotify")).toHaveCount(0);
+  await expect(createdPost.getByTestId("post-attachments-0-provider-frame-spotify")).toHaveCSS(
+    "opacity",
+    "0",
+  );
+  await expect(createdPost.getByTestId("post-attachments-0-provider-iframe-spotify")).toBeAttached();
+  await spotifyPlayer.getByTestId("post-attachments-0-music-play-button").click();
+  await expect.poll(() => spotifyPlayCalls(page)).toBeGreaterThan(0);
+  await expect(spotifyPlayer.getByTestId("post-attachments-0-music-progress-time")).toHaveText(
+    /1:0\d \/ 3:00/,
+  );
+
+  const youtubePlayer = createdPost.getByTestId("post-attachments-1-music-player");
+  await expect(youtubePlayer).toContainText(
     "YouTube Test",
   );
+  await expect(youtubePlayer).toContainText("YouTube Music");
+  await expect(youtubePlayer.getByTestId("post-attachments-1-music-artwork")).toBeVisible();
+  await expect(createdPost.getByTestId("post-attachments-1-music-embed-youtube")).toHaveCount(0);
+  await expect(createdPost.getByTestId("post-attachments-1-provider-frame-youtube")).toHaveCSS(
+    "opacity",
+    "0",
+  );
   await expect(
-    createdPost.getByTestId("post-attachments-1-music-embed-youtube"),
-  ).toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/abc123");
+    createdPost.getByTestId("post-attachments-1-provider-iframe-youtube"),
+  ).toHaveAttribute("src", /https:\/\/www\.youtube-nocookie\.com\/embed\/abc123/);
+  await youtubePlayer.getByTestId("post-attachments-1-music-play-button").click();
+  await expect(youtubePlayer.getByTestId("post-attachments-1-music-progress-time")).toHaveText(
+    "Playing",
+  );
+  await expect(youtubePlayer.getByTestId("post-attachments-1-music-progress-bar")).toHaveAttribute(
+    "aria-valuenow",
+    "100",
+  );
 });
 
 test("public pages do not render retired social copy", async ({ page }) => {
@@ -1111,6 +1148,7 @@ function makeMusicIntegrationCard(
   resourceType: string,
   resourceId: string,
   overrides: {
+    imageUrl?: string;
     sourceUrl?: string;
     subtitle?: string;
     title?: string;
@@ -1134,8 +1172,58 @@ function makeMusicIntegrationCard(
       title: overrides.title ?? "Music item",
       subtitle: overrides.subtitle ?? (provider === "spotify" ? "Spotify" : "YouTube"),
       description: null,
-      imageUrl: null,
+      imageUrl: overrides.imageUrl ?? null,
       stats: {},
     },
   };
+}
+
+function mockPostAttachmentsWithArtwork(value: unknown, imageUrl: string): unknown {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+
+  return value.map((rawAttachment, index) => {
+    if (
+      typeof rawAttachment !== "object" ||
+      rawAttachment === null ||
+      Array.isArray(rawAttachment)
+    ) {
+      return rawAttachment;
+    }
+
+    const attachment = rawAttachment as Record<string, unknown>;
+    if (attachment.kind !== "integration") {
+      return {
+        position: index + 1,
+        ...attachment,
+      };
+    }
+
+    const card = recordValue(attachment.card);
+    const metadata = recordValue(card?.metadata);
+
+    return {
+      position: index + 1,
+      ...attachment,
+      card: {
+        provider: attachment.provider,
+        resourceType: attachment.resourceType,
+        resourceId: attachment.resourceId,
+        resourceKey: attachment.resourceKey,
+        sourceUrl: attachment.sourceUrl,
+        ...(card ?? {}),
+        metadata: {
+          ...(metadata ?? {}),
+          imageUrl: typeof metadata?.imageUrl === "string" ? metadata.imageUrl : imageUrl,
+        },
+      },
+    };
+  });
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 }

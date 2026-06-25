@@ -1506,10 +1506,22 @@ test("thread reply composer is hidden until Reply and exposes media UI", async (
   const createdReply = dialog
     .getByTestId("thread-reply-item")
     .filter({ hasText: "A compact reply." });
-  await expect(createdReply.getByTestId("post-attachments-0-music-player")).toContainText(
+  const musicPlayer = createdReply.getByTestId("post-attachments-0-music-player");
+  await expect(musicPlayer).toContainText(
     "MP3 attachment 1",
   );
-  await expect(createdReply.getByTestId("post-attachments-0-audio")).toBeVisible();
+  await expect(musicPlayer).toHaveAttribute("data-post-music-layout", "compact");
+  await expect(musicPlayer.getByTestId("post-attachments-0-music-play-button")).toBeVisible();
+  await expect(musicPlayer.getByTestId("post-attachments-0-music-progress-time")).toHaveText(
+    "Ready",
+  );
+  await expect(musicPlayer.getByTestId("post-attachments-0-music-progress-bar")).toHaveAttribute(
+    "aria-valuenow",
+    "0",
+  );
+  await expect(musicPlayer.locator("audio[controls]")).toHaveCount(0);
+  await expect(createdReply.getByTestId("post-attachments-0-audio")).toBeAttached();
+  await expect(createdReply.getByTestId("post-attachments-0-audio")).not.toBeVisible();
 });
 
 test("thread renders nested replies and gates reply delete controls", async ({

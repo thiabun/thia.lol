@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { Buffer } from "node:buffer";
 import { readFileSync } from "node:fs";
+import { mockSpotifyIframeApi, spotifyPlayCalls } from "../helpers/spotify";
 
 const PROFILE_CANVAS_VERSION = 2;
 const PROFILE_CANVAS_COLUMNS = 12;
@@ -6906,88 +6907,12 @@ async function acknowledgeCookieNotice(page: Page) {
   });
 }
 
-async function mockSpotifyIframeApi(
-  page: Page,
-  options: { rejectPlay?: boolean } = {},
-) {
-  await page.addInitScript(() => {
-    Object.assign(window, {
-      __spotifyPlayCalls: 0,
-    });
-  });
-  await page.route("https://open.spotify.com/embed/iframe-api/v1", async (route) => {
-    await route.fulfill({
-      contentType: "application/javascript",
-      status: 200,
-      body: `
-        window.onSpotifyIframeApiReady({
-          createController: function(element, options, callback) {
-            window.__spotifyControllerOptions = (window.__spotifyControllerOptions || []).concat(options);
-            var listeners = {};
-            var currentPosition = 60000;
-            var duration = 180000;
-            function addListener(event, listener) {
-              listeners[event] = listeners[event] || [];
-              listeners[event].push(listener);
-            }
-            function removeListener(event, listener) {
-              listeners[event] = (listeners[event] || []).filter(function(item) {
-                return item !== listener;
-              });
-            }
-            function emitProgress(isPaused) {
-              (listeners.playback_update || []).forEach(function(listener) {
-                listener({
-                  data: {
-                    duration: duration,
-                    isBuffering: false,
-                    isPaused: isPaused,
-                    playingURI: options.uri,
-                    position: currentPosition
-                  }
-                });
-              });
-            }
-            var parts = String(options.uri || "").split(":");
-            var iframe = document.createElement("iframe");
-            iframe.src = "https://open.spotify.com/embed/" + parts[1] + "/" + parts[2] + "?theme=0";
-            iframe.height = options.height;
-            element.appendChild(iframe);
-            callback({
-              addListener: addListener,
-              destroy: function() {},
-              pause: function() {
-                emitProgress(true);
-                return Promise.resolve();
-              },
-              play: function() {
-                window.__spotifyPlayCalls = (window.__spotifyPlayCalls || 0) + 1;
-                ${
-                  options.rejectPlay
-                    ? "return Promise.reject(new Error('blocked'));"
-                    : "emitProgress(false); return Promise.resolve();"
-                }
-              },
-              removeListener: removeListener,
-              togglePlay: function() {
-                window.__spotifyPlayCalls = (window.__spotifyPlayCalls || 0) + 1;
-                emitProgress(false);
-                return Promise.resolve();
-              }
-            });
-          }
-        });
-      `,
-    });
-  });
-}
-
 async function expectSpotifyCustomPlayer(page: Page) {
   const player = page.getByTestId("profile-spotify-custom-player");
 
   await expect(player).toBeVisible();
-  await expect(player.getByText("Focus track")).toBeVisible();
-  await expect(player.getByText("Spotify track")).toBeVisible();
+  await expect(player).toContainText("Focus track");
+  await expect(player).toContainText("Spotify track");
   await expect(page.getByTestId("profile-spotify-play-button")).toBeVisible();
   await expect(page.getByTestId("profile-spotify-play-button")).toBeEnabled();
   await expect(page.getByTestId("profile-integration-embed-spotify")).toBeAttached();
@@ -7034,14 +6959,6 @@ async function expectSpotifyProgress(
   await expect(page.getByTestId("profile-spotify-progress-time")).toHaveText(
     expectedText,
   );
-}
-
-async function spotifyPlayCalls(page: Page): Promise<number> {
-  return page.evaluate(() => {
-    const testWindow = window as Window & { __spotifyPlayCalls?: number };
-
-    return Number(testWindow.__spotifyPlayCalls ?? 0);
-  });
 }
 
 async function expectGridColumnCount(locator: Locator, expectedCount: number) {

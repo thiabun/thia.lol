@@ -19,6 +19,8 @@ import {
   LoaderCircle,
   MessageCircle,
   Music2,
+  Pause,
+  Play,
   Repeat2,
   Send,
   Share2,
@@ -75,6 +77,17 @@ import {
   type PostMediaDraft,
   type PostVisualMediaDraft,
 } from "../../lib/postMedia";
+import {
+  attachSpotifyPlaybackListeners,
+  emptySpotifyPlaybackProgress,
+  formatSpotifyPlaybackTime,
+  loadSpotifyIframeApi,
+  spotifyPlaybackProgressPercent,
+  spotifyResourceUri,
+  toggleSpotifyPlayback,
+  type SpotifyEmbedController,
+  type SpotifyPlaybackProgress,
+} from "../../lib/spotifyIframe";
 import {
   buttonHover,
   buttonTap,
@@ -406,13 +419,17 @@ function PostMedia({
 type PostAttachmentsProps = {
   className?: string;
   maxHeightClass?: string;
+  musicLayout?: PostMusicLayout;
   post: Post;
   testId?: string;
 };
 
+type PostMusicLayout = "compact" | "responsive";
+
 function PostAttachments({
   className = "mt-4",
   maxHeightClass = "max-h-[min(70vh,34rem)]",
+  musicLayout = "responsive",
   post,
   testId = "post-attachments",
 }: PostAttachmentsProps) {
@@ -438,6 +455,7 @@ function PostAttachments({
           attachment={attachment}
           index={index}
           maxHeightClass={maxHeightClass}
+          musicLayout={musicLayout}
           testId={`${testId}-${index}`}
         />
       ))}
@@ -449,16 +467,25 @@ function PostAttachmentItem({
   attachment,
   index,
   maxHeightClass,
+  musicLayout,
   testId,
 }: {
   attachment: PostAttachment;
   index: number;
   maxHeightClass: string;
+  musicLayout: PostMusicLayout;
   testId: string;
 }) {
   if (attachment.kind === "integration") {
     if (isPostMusicAttachment(attachment)) {
-      return <PostMusicPlayerAttachment attachment={attachment} index={index} testId={testId} />;
+      return (
+        <PostMusicPlayerAttachment
+          attachment={attachment}
+          index={index}
+          layout={musicLayout}
+          testId={testId}
+        />
+      );
     }
 
     return <PostIntegrationAttachment attachment={attachment} testId={testId} />;
@@ -469,7 +496,14 @@ function PostAttachmentItem({
   }
 
   if (attachment.kind === "audio") {
-    return <PostMusicPlayerAttachment attachment={attachment} index={index} testId={testId} />;
+    return (
+      <PostMusicPlayerAttachment
+        attachment={attachment}
+        index={index}
+        layout={musicLayout}
+        testId={testId}
+      />
+    );
   }
 
   return (
@@ -501,55 +535,508 @@ function PostAttachmentItem({
 
 type PostMusicAttachmentDetails = {
   description: string | null;
-  embed: PostMusicEmbed | null;
   href: string | null;
   imageUrl: string | null;
   provider: "mp3" | "spotify" | "youtube";
   providerLabel: string;
+  resourceId: string | null;
+  resourceType: string | null;
   subtitle: string | null;
+  title: string;
+  youtubeFrame: PostYouTubeMusicFrame | null;
+};
+
+type PostYouTubeMusicFrame = {
+  allow: string;
+  src: string;
   title: string;
 };
 
-type PostMusicEmbed = {
-  allow: string;
-  height: number;
-  provider: "spotify" | "youtube";
-  src: string;
-  title: string;
+type PostMusicPlayerShellProps = {
+  children?: ReactNode;
+  details: PostMusicAttachmentDetails;
+  disabled?: boolean;
+  layout: PostMusicLayout;
+  onPlayToggle: () => void;
+  playing: boolean;
+  progressLabel: string;
+  progressPercent: number;
+  statusLabel: string;
+  testId: string;
 };
 
 function PostMusicPlayerAttachment({
   attachment,
   index,
+  layout,
   testId,
 }: {
   attachment: PostAttachment;
   index: number;
+  layout: PostMusicLayout;
   testId: string;
 }) {
   const details = postMusicAttachmentDetails(attachment, index);
-  const audioUrl = attachment.kind === "audio" ? attachment.url : null;
+
+  if (details.provider === "spotify") {
+    return (
+      <PostSpotifyMusicAttachment
+        details={details}
+        layout={layout}
+        testId={testId}
+      />
+    );
+  }
+
+  if (details.provider === "youtube") {
+    return (
+      <PostYouTubeMusicAttachment
+        details={details}
+        layout={layout}
+        testId={testId}
+      />
+    );
+  }
+
+  if (attachment.kind !== "audio" || !attachment.url) {
+    return null;
+  }
+
+  return (
+    <PostAudioMusicAttachment
+      attachment={attachment}
+      audioUrl={attachment.url}
+      details={details}
+      layout={layout}
+      testId={testId}
+    />
+  );
+}
+
+function PostAudioMusicAttachment({
+  attachment,
+  audioUrl,
+  details,
+  layout,
+  testId,
+}: {
+  attachment: PostAttachment;
+  audioUrl: string;
+  details: PostMusicAttachmentDetails;
+  layout: PostMusicLayout;
+  testId: string;
+}) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [duration, setDuration] = useState(attachment.durationSeconds ?? 0);
+  const [playing, setPlaying] = useState(false);
+  const [position, setPosition] = useState(0);
+  const progressPercent =
+    duration > 0 ? Math.min(100, Math.max(0, (position / duration) * 100)) : 0;
+  const progressLabel = duration > 0
+    ? `${formatPostMediaTime(position)} / ${formatPostMediaTime(duration)}`
+    : playing
+      ? "Playing"
+      : "Ready";
+
+  useEffect(() => {
+    const element = audioRef.current;
+
+    if (!element) {
+      return undefined;
+    }
+
+    const mediaElement = element;
+
+    function syncMetadata() {
+      if (Number.isFinite(mediaElement.duration) && mediaElement.duration > 0) {
+        setDuration(mediaElement.duration);
+      }
+    }
+
+    function syncTime() {
+      setPosition(
+        Number.isFinite(mediaElement.currentTime) ? mediaElement.currentTime : 0,
+      );
+    }
+
+    function syncPlaying() {
+      setPlaying(!mediaElement.paused && !mediaElement.ended);
+    }
+
+    mediaElement.addEventListener("loadedmetadata", syncMetadata);
+    mediaElement.addEventListener("durationchange", syncMetadata);
+    mediaElement.addEventListener("timeupdate", syncTime);
+    mediaElement.addEventListener("play", syncPlaying);
+    mediaElement.addEventListener("pause", syncPlaying);
+    mediaElement.addEventListener("ended", syncPlaying);
+    syncMetadata();
+    syncTime();
+    syncPlaying();
+
+    return () => {
+      mediaElement.removeEventListener("loadedmetadata", syncMetadata);
+      mediaElement.removeEventListener("durationchange", syncMetadata);
+      mediaElement.removeEventListener("timeupdate", syncTime);
+      mediaElement.removeEventListener("play", syncPlaying);
+      mediaElement.removeEventListener("pause", syncPlaying);
+      mediaElement.removeEventListener("ended", syncPlaying);
+    };
+  }, [audioUrl]);
+
+  async function handlePlaybackToggle() {
+    const element = audioRef.current;
+
+    if (!element) {
+      return;
+    }
+
+    if (playing) {
+      element.pause();
+      return;
+    }
+
+    try {
+      await element.play();
+    } catch {
+      setPlaying(false);
+    }
+  }
+
+  return (
+    <PostMusicPlayerShell
+      details={details}
+      layout={layout}
+      onPlayToggle={handlePlaybackToggle}
+      playing={playing}
+      progressLabel={progressLabel}
+      progressPercent={progressPercent}
+      statusLabel={playing ? "Playing" : "Ready"}
+      testId={testId}
+    >
+      <audio
+        ref={audioRef}
+        className="sr-only"
+        data-thread-open-ignore
+        data-testid={`${testId}-audio`}
+        preload="metadata"
+        src={audioUrl}
+      >
+        <source src={audioUrl} type={attachment.mime ?? "audio/mpeg"} />
+      </audio>
+    </PostMusicPlayerShell>
+  );
+}
+
+function PostSpotifyMusicAttachment({
+  details,
+  layout,
+  testId,
+}: {
+  details: PostMusicAttachmentDetails;
+  layout: PostMusicLayout;
+  testId: string;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const controllerRef = useRef<SpotifyEmbedController | undefined>(undefined);
+  const removePlaybackListenersRef = useRef<(() => void) | undefined>(undefined);
+  const [controllerReady, setControllerReady] = useState(false);
+  const [playbackProgress, setPlaybackProgress] = useState<SpotifyPlaybackProgress>(
+    emptySpotifyPlaybackProgress,
+  );
+  const [playing, setPlaying] = useState(false);
+  const [fallback, setFallback] = useState(false);
+  const uri = spotifyResourceUri(details);
+
+  useEffect(() => {
+    const container = containerRef.current;
+
+    if (!container || !uri) {
+      setFallback(true);
+      return undefined;
+    }
+
+    let canceled = false;
+    setFallback(false);
+    setControllerReady(false);
+    setPlaying(false);
+    setPlaybackProgress(emptySpotifyPlaybackProgress);
+    removePlaybackListenersRef.current?.();
+    removePlaybackListenersRef.current = undefined;
+    controllerRef.current = undefined;
+    container.replaceChildren();
+
+    loadSpotifyIframeApi()
+      .then((api) => {
+        if (canceled) {
+          return;
+        }
+
+        api.createController(
+          container,
+          {
+            height: "80",
+            theme: "0",
+            uri,
+            width: "100%",
+          },
+          (controller) => {
+            if (canceled) {
+              controller.destroy?.();
+              return;
+            }
+
+            controllerRef.current = controller;
+            removePlaybackListenersRef.current = attachSpotifyPlaybackListeners(
+              controller,
+              (progress) => {
+                if (canceled) {
+                  return;
+                }
+
+                setPlaybackProgress(progress);
+                setPlaying(!progress.isPaused && !progress.isBuffering);
+              },
+            );
+            decoratePostSpotifyProviderFrame(container, details.title, testId);
+            setControllerReady(true);
+          },
+        );
+      })
+      .catch(() => {
+        if (!canceled) {
+          setFallback(true);
+        }
+      });
+
+    return () => {
+      canceled = true;
+      removePlaybackListenersRef.current?.();
+      removePlaybackListenersRef.current = undefined;
+      controllerRef.current?.destroy?.();
+      controllerRef.current = undefined;
+      setControllerReady(false);
+      container.replaceChildren();
+    };
+  }, [details.title, testId, uri]);
+
+  useEffect(() => {
+    if (!playing || !playbackProgress.known || playbackProgress.duration <= 0) {
+      return undefined;
+    }
+
+    const interval = window.setInterval(() => {
+      setPlaybackProgress((progress) => {
+        if (
+          progress.isPaused ||
+          progress.isBuffering ||
+          !progress.known ||
+          progress.duration <= 0 ||
+          progress.position >= progress.duration
+        ) {
+          return progress;
+        }
+
+        return {
+          ...progress,
+          position: Math.min(progress.duration, progress.position + 1000),
+        };
+      });
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [playbackProgress.duration, playbackProgress.known, playing]);
+
+  async function handlePlaybackToggle() {
+    const controller = controllerRef.current;
+
+    if (fallback || !controller) {
+      openPostMusicHref(details.href);
+      return;
+    }
+
+    const nextPlaying = await toggleSpotifyPlayback(controller, playing);
+
+    if (nextPlaying !== undefined) {
+      setPlaying(nextPlaying);
+    }
+  }
+
+  const progressPercent = spotifyPlaybackProgressPercent(playbackProgress);
+  const statusText = fallback
+    ? "Open to play"
+    : playbackProgress.isBuffering
+      ? "Buffering"
+      : !controllerReady
+        ? "Loading"
+        : playing
+          ? "Playing"
+          : "Ready";
+  const progressLabel = playbackProgress.known
+    ? `${formatSpotifyPlaybackTime(playbackProgress.position)} / ${formatSpotifyPlaybackTime(
+        playbackProgress.duration,
+      )}`
+    : statusText;
+
+  return (
+    <PostMusicPlayerShell
+      details={details}
+      disabled={!controllerReady && !(fallback && details.href)}
+      layout={layout}
+      onPlayToggle={handlePlaybackToggle}
+      playing={playing}
+      progressLabel={progressLabel}
+      progressPercent={progressPercent}
+      statusLabel={statusText}
+      testId={testId}
+    >
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute size-px overflow-hidden opacity-0"
+        data-testid={`${testId}-provider-frame-spotify`}
+      >
+        <div ref={containerRef} />
+      </div>
+    </PostMusicPlayerShell>
+  );
+}
+
+function PostYouTubeMusicAttachment({
+  details,
+  layout,
+  testId,
+}: {
+  details: PostMusicAttachmentDetails;
+  layout: PostMusicLayout;
+  testId: string;
+}) {
+  const [playing, setPlaying] = useState(false);
+  const [playerVersion, setPlayerVersion] = useState(0);
+  const frameSrc = details.youtubeFrame
+    ? postYouTubeMusicFrameSrc(details.youtubeFrame.src, playing, playerVersion)
+    : null;
+
+  function handlePlaybackToggle() {
+    if (!details.youtubeFrame) {
+      openPostMusicHref(details.href);
+      return;
+    }
+
+    setPlaying((current) => !current);
+    setPlayerVersion((version) => version + 1);
+  }
+
+  return (
+    <PostMusicPlayerShell
+      details={details}
+      disabled={!details.youtubeFrame && !details.href}
+      layout={layout}
+      onPlayToggle={handlePlaybackToggle}
+      playing={playing}
+      progressLabel={playing ? "Playing" : "Ready"}
+      progressPercent={playing ? 100 : 0}
+      statusLabel={playing ? "Playing" : "Ready"}
+      testId={testId}
+    >
+      {details.youtubeFrame && frameSrc ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute size-px overflow-hidden opacity-0"
+          data-testid={`${testId}-provider-frame-youtube`}
+        >
+          <iframe
+            key={frameSrc}
+            allow={details.youtubeFrame.allow}
+            allowFullScreen
+            className="block size-full border-0 bg-black"
+            data-testid={`${testId}-provider-iframe-youtube`}
+            loading="lazy"
+            referrerPolicy="strict-origin-when-cross-origin"
+            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+            src={frameSrc}
+            title={details.youtubeFrame.title}
+          />
+        </div>
+      ) : null}
+    </PostMusicPlayerShell>
+  );
+}
+
+function PostMusicPlayerShell({
+  children,
+  details,
+  disabled = false,
+  layout,
+  onPlayToggle,
+  playing,
+  progressLabel,
+  progressPercent,
+  statusLabel,
+  testId,
+}: PostMusicPlayerShellProps) {
+  const compact = layout === "compact";
+  const artworkCard = !compact && Boolean(details.imageUrl);
+  const titleClass = artworkCard ? "text-white" : "text-text";
+  const mutedClass = artworkCard ? "text-white/78" : "text-muted";
+  const controlSurfaceClass = artworkCard
+    ? "border-white/20 bg-black/42 text-white hover:border-white/35 hover:bg-black/55"
+    : "border-line bg-canvas/65 text-muted hover:border-line-strong hover:bg-surface hover:text-text";
+  const progressTrackClass = artworkCard ? "bg-white/30" : "bg-line";
 
   return (
     <div
       className="relative isolate min-w-0 overflow-hidden rounded-card border border-line bg-canvas/70 text-left shadow-inner-soft"
+      data-post-music-layout={layout}
       data-post-music-provider={details.provider}
       data-testid={`${testId}-music-player`}
     >
-      {details.imageUrl ? (
-        <img
-          alt=""
+      <div
+        className={cn(
+          "relative isolate flex min-h-0 w-full overflow-hidden",
+          compact
+            ? "items-center gap-3 p-3"
+            : "min-h-52 flex-col justify-end p-3 sm:min-h-60 sm:p-4",
+        )}
+      >
+        {details.imageUrl ? (
+          <img
+            alt=""
+            aria-hidden="true"
+            className={cn(
+              "absolute inset-0 -z-20 size-full object-cover",
+              artworkCard ? "opacity-90" : "opacity-20 blur-2xl",
+            )}
+            decoding="async"
+            loading="lazy"
+            src={details.imageUrl}
+            data-testid={artworkCard ? `${testId}-music-artwork` : undefined}
+          />
+        ) : null}
+        <span
+          className={cn(
+            "absolute inset-0 -z-10",
+            artworkCard
+              ? "bg-gradient-to-t from-black/80 via-black/42 to-black/12"
+              : "bg-canvas/78",
+          )}
           aria-hidden="true"
-          className="absolute inset-0 -z-20 size-full object-cover opacity-20 blur-2xl"
-          decoding="async"
-          loading="lazy"
-          src={details.imageUrl}
         />
-      ) : null}
-      <span className="absolute inset-0 -z-10 bg-canvas/78" aria-hidden="true" />
-      <div className="grid gap-3 p-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="grid size-14 shrink-0 place-items-center overflow-hidden rounded-card border border-line bg-surface/80 text-text shadow-soft">
+        <div
+          className={cn(
+            "min-w-0",
+            compact ? "flex min-w-0 flex-1 items-center gap-3" : "grid gap-3",
+          )}
+        >
+          <span
+            className={cn(
+              "grid shrink-0 place-items-center overflow-hidden rounded-card border shadow-soft",
+              compact
+                ? "size-16 border-line/80 bg-surface/80 text-text"
+                : details.imageUrl
+                  ? "hidden"
+                  : "size-16 border-line/80 bg-surface/80 text-text",
+            )}
+            data-testid={`${testId}-music-artwork-frame`}
+          >
             {details.imageUrl ? (
               <img
                 alt=""
@@ -557,79 +1044,113 @@ function PostMusicPlayerAttachment({
                 decoding="async"
                 loading="lazy"
                 src={details.imageUrl}
+                data-testid={!artworkCard ? `${testId}-music-artwork` : undefined}
               />
             ) : (
               <Music2 aria-hidden="true" size={23} />
             )}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted">
+            <span
+              className={cn(
+                "block text-[0.68rem] font-semibold uppercase tracking-[0.08em]",
+                mutedClass,
+              )}
+            >
               {details.providerLabel}
             </span>
-            <span className="mt-0.5 block truncate text-sm font-semibold text-text">
+            <span
+              className={cn(
+                "mt-0.5 block font-semibold",
+                compact ? "truncate text-sm" : "line-clamp-2 text-xl leading-tight sm:text-2xl",
+                titleClass,
+              )}
+            >
               {details.title}
             </span>
             {details.subtitle ? (
-              <span className="mt-0.5 block truncate text-xs text-muted">
+              <span
+                className={cn(
+                  "mt-0.5 block truncate text-xs",
+                  mutedClass,
+                )}
+              >
                 {details.subtitle}
               </span>
             ) : null}
           </span>
+        </div>
+        <div
+          className={cn(
+            "relative z-10 flex min-w-0 items-center gap-3",
+            compact ? "w-[42%] min-w-32 max-w-64" : "mt-4 w-full max-w-2xl",
+          )}
+        >
+          <button
+            type="button"
+            className={cn(
+              "grid shrink-0 place-items-center rounded-full border border-accent/35 bg-accent/90 text-accent-contrast shadow-soft transition duration-fluid ease-fluid hover:-translate-y-0.5 hover:bg-accent hover:shadow-lift focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0",
+              compact ? "size-10" : "size-12",
+            )}
+            onClick={onPlayToggle}
+            disabled={disabled}
+            aria-label={playing ? `Pause ${details.title}` : `Play ${details.title}`}
+            data-thread-open-ignore
+            data-testid={`${testId}-music-play-button`}
+          >
+            {playing ? (
+              <Pause aria-hidden="true" size={compact ? 17 : 21} />
+            ) : (
+              <Play aria-hidden="true" size={compact ? 17 : 21} />
+            )}
+          </button>
+          <div className="min-w-0 flex-1">
+            <div className={cn("h-1.5 overflow-hidden rounded-full", progressTrackClass)}>
+              <div
+                className="h-full rounded-full bg-accent transition-[width] duration-fluid ease-fluid"
+                role="progressbar"
+                aria-label={`${details.providerLabel} playback progress`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(progressPercent)}
+                style={{ width: `${progressPercent}%` }}
+                data-testid={`${testId}-music-progress-bar`}
+              />
+            </div>
+            <div
+              className={cn(
+                "mt-1 flex items-center justify-between gap-3 text-[0.68rem] font-semibold uppercase tracking-[0.08em]",
+                mutedClass,
+              )}
+            >
+              {!compact ? <span className="truncate">{details.providerLabel}</span> : null}
+              <span data-testid={`${testId}-music-progress-time`}>
+                {progressLabel}
+              </span>
+            </div>
+          </div>
           {details.href ? (
             <a
               aria-label={`Open ${details.title}`}
-              className="grid size-9 shrink-0 place-items-center rounded-card border border-line bg-canvas/65 text-muted transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              className={cn(
+                "grid size-9 shrink-0 place-items-center rounded-card transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+                compact ? controlSurfaceClass : cn(controlSurfaceClass, "absolute right-3 top-3 sm:right-4 sm:top-4"),
+              )}
               data-thread-open-ignore
               href={details.href}
               rel="noopener noreferrer"
               target={details.href.startsWith("/") ? undefined : "_blank"}
+              data-testid={`${testId}-music-open-link`}
             >
               <ExternalLink aria-hidden="true" size={16} />
             </a>
           ) : null}
         </div>
-        {details.description ? (
-          <p className="line-clamp-2 text-xs leading-5 text-muted">
-            {details.description}
-          </p>
-        ) : null}
-        {audioUrl ? (
-          <audio
-            className="w-full"
-            controls
-            data-thread-open-ignore
-            data-testid={`${testId}-audio`}
-            preload="metadata"
-          >
-            <source src={audioUrl} type={attachment.mime ?? "audio/mpeg"} />
-          </audio>
-        ) : null}
-        {details.embed ? (
-          <div
-            className={cn(
-              "overflow-hidden rounded-card bg-black",
-              details.embed.provider === "youtube" ? "aspect-video" : null,
-            )}
-            data-thread-open-ignore
-          >
-            <iframe
-              allow={details.embed.allow}
-              allowFullScreen
-              className={cn(
-                "block w-full rounded-card border-0 bg-black",
-                details.embed.provider === "youtube" ? "h-full" : null,
-              )}
-              data-testid={`${testId}-music-embed-${details.embed.provider}`}
-              height={details.embed.height}
-              loading="lazy"
-              referrerPolicy="strict-origin-when-cross-origin"
-              sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
-              src={details.embed.src}
-              title={details.embed.title}
-            />
-          </div>
-        ) : null}
       </div>
+      <span className="sr-only" data-testid={`${testId}-music-status`}>
+        {statusLabel}
+      </span>
+      {children}
     </div>
   );
 }
@@ -742,13 +1263,15 @@ function postMusicAttachmentDetails(
 
     return {
       description: null,
-      embed: null,
       href: safeAttachmentHref(attachment.url),
       imageUrl: null,
       provider: "mp3",
       providerLabel: "MP3",
+      resourceId: null,
+      resourceType: null,
       subtitle: fileLabel,
       title: `MP3 attachment ${index + 1}`,
+      youtubeFrame: null,
     };
   }
 
@@ -764,67 +1287,50 @@ function postMusicAttachmentDetails(
   const title = stringValue(metadata?.title) ?? stringValue(card?.title) ?? providerLabel;
   const subtitle = stringValue(metadata?.subtitle) ?? providerLabel;
   const sourceUrl = attachment.sourceUrl ?? stringValue(card?.sourceUrl);
+  const resourceType = stringValue(attachment.resourceType) ?? stringValue(card?.resourceType);
+  const resourceId = stringValue(attachment.resourceId) ?? stringValue(card?.resourceId);
 
   return {
     description: stringValue(metadata?.description),
-    embed: postMusicEmbedFromAttachment(attachment, card, provider, title),
     href: safeAttachmentHref(sourceUrl),
     imageUrl: stringValue(metadata?.imageUrl),
     provider,
     providerLabel,
+    resourceId,
+    resourceType,
     subtitle,
     title,
+    youtubeFrame: provider === "youtube"
+      ? postYouTubeMusicFrameFromAttachment(card, title, resourceType, resourceId)
+      : null,
   };
 }
 
-function postMusicEmbedFromAttachment(
-  attachment: PostAttachment,
+function postYouTubeMusicFrameFromAttachment(
   card: Record<string, unknown> | null,
-  provider: "spotify" | "youtube",
   title: string,
-): PostMusicEmbed | null {
+  resourceType: string | null,
+  resourceId: string | null,
+): PostYouTubeMusicFrame | null {
   const cardEmbed = attachmentCardObject(card?.embed);
   const cardEmbedSrc = stringValue(cardEmbed?.src);
-  const safeCardEmbedSrc = safePostMusicEmbedSrc(cardEmbedSrc, provider);
+  const safeCardEmbedSrc = safePostYouTubeMusicFrameSrc(cardEmbedSrc);
 
   if (safeCardEmbedSrc) {
     return {
-      allow: stringValue(cardEmbed?.allow) ?? defaultPostMusicEmbedAllow(provider),
-      height: numericValue(cardEmbed?.height) ?? defaultPostMusicEmbedHeight(provider, attachment.resourceType),
-      provider,
+      allow: stringValue(cardEmbed?.allow) ?? defaultPostYouTubeMusicFrameAllow(),
       src: safeCardEmbedSrc,
-      title: stringValue(cardEmbed?.title) ?? `${title} on ${postIntegrationProviderLabel(provider)}`,
+      title: stringValue(cardEmbed?.title) ?? `${title} on YouTube Music`,
     };
   }
-
-  const resourceType = stringValue(attachment.resourceType) ?? stringValue(card?.resourceType);
-  const resourceId = stringValue(attachment.resourceId) ?? stringValue(card?.resourceId);
 
   if (!resourceType || !resourceId) {
     return null;
   }
 
-  if (provider === "spotify") {
-    const supportedTypes = new Set(["album", "artist", "episode", "playlist", "show", "track"]);
-
-    if (!supportedTypes.has(resourceType)) {
-      return null;
-    }
-
-    return {
-      allow: defaultPostMusicEmbedAllow(provider),
-      height: defaultPostMusicEmbedHeight(provider, resourceType),
-      provider,
-      src: `https://open.spotify.com/embed/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}?theme=0`,
-      title: `${title} on Spotify`,
-    };
-  }
-
   if (resourceType === "playlist") {
     return {
-      allow: defaultPostMusicEmbedAllow(provider),
-      height: defaultPostMusicEmbedHeight(provider, resourceType),
-      provider,
+      allow: defaultPostYouTubeMusicFrameAllow(),
       src: `https://www.youtube-nocookie.com/embed/videoseries?list=${encodeURIComponent(resourceId)}`,
       title: `${title} on YouTube Music`,
     };
@@ -832,9 +1338,7 @@ function postMusicEmbedFromAttachment(
 
   if (["video", "short", "shorts", "live"].includes(resourceType)) {
     return {
-      allow: defaultPostMusicEmbedAllow(provider),
-      height: defaultPostMusicEmbedHeight(provider, resourceType),
-      provider,
+      allow: defaultPostYouTubeMusicFrameAllow(),
       src: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(resourceId)}`,
       title: `${title} on YouTube Music`,
     };
@@ -843,21 +1347,17 @@ function postMusicEmbedFromAttachment(
   return null;
 }
 
-function safePostMusicEmbedSrc(
-  value: string | null,
-  provider: "spotify" | "youtube",
-): string | null {
+function safePostYouTubeMusicFrameSrc(value: string | null): string | null {
   if (!value) {
     return null;
   }
 
   try {
     const url = new URL(value);
-    const allowedHost = provider === "spotify" ? "open.spotify.com" : "www.youtube-nocookie.com";
 
     if (
       url.protocol !== "https:" ||
-      url.hostname !== allowedHost ||
+      url.hostname !== "www.youtube-nocookie.com" ||
       url.username !== "" ||
       url.password !== ""
     ) {
@@ -870,21 +1370,92 @@ function safePostMusicEmbedSrc(
   }
 }
 
-function defaultPostMusicEmbedAllow(provider: "spotify" | "youtube"): string {
-  return provider === "spotify"
-    ? "autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-    : "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+function defaultPostYouTubeMusicFrameAllow(): string {
+  return "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
 }
 
-function defaultPostMusicEmbedHeight(
-  provider: "spotify" | "youtube",
-  resourceType: string | null | undefined,
-): number {
-  if (provider === "spotify") {
-    return resourceType === "track" ? 80 : 152;
+function decoratePostSpotifyProviderFrame(
+  container: HTMLElement,
+  title: string,
+  testId: string,
+) {
+  window.requestAnimationFrame(() => {
+    const iframe = container.querySelector("iframe");
+
+    if (!iframe) {
+      return;
+    }
+
+    iframe.className = "block size-full border-0 bg-transparent";
+    iframe.dataset.postMusicProvider = "spotify";
+    iframe.dataset.testid = `${testId}-provider-iframe-spotify`;
+    iframe.height = "80";
+    iframe.loading = "lazy";
+    iframe.referrerPolicy = "strict-origin-when-cross-origin";
+    iframe.title = `${title} on Spotify`;
+    iframe.setAttribute(
+      "allow",
+      "autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture",
+    );
+    iframe.setAttribute(
+      "sandbox",
+      "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms",
+    );
+    iframe.allowFullscreen = true;
+  });
+}
+
+function postYouTubeMusicFrameSrc(
+  src: string,
+  autoplay: boolean,
+  version: number,
+): string {
+  try {
+    const url = new URL(src);
+
+    if (url.hostname === "www.youtube-nocookie.com") {
+      url.searchParams.set("enablejsapi", "1");
+      url.searchParams.set("playsinline", "1");
+      url.searchParams.set("rel", "0");
+      url.searchParams.set("autoplay", autoplay ? "1" : "0");
+      url.searchParams.set(
+        "origin",
+        typeof window === "undefined" ? "https://thia.lol" : window.location.origin,
+      );
+      url.searchParams.set("thiaPostPlayer", String(version));
+      return url.toString();
+    }
+  } catch {
+    return src;
   }
 
-  return 220;
+  return src;
+}
+
+function formatPostMediaTime(value: number): string {
+  const totalSeconds = Math.max(0, Math.floor(value));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds
+      .toString()
+      .padStart(2, "0")}`;
+  }
+
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function openPostMusicHref(href: string | null) {
+  if (!href || typeof window === "undefined") {
+    return;
+  }
+
+  const openedWindow = window.open(href, "_blank", "noopener,noreferrer");
+  if (openedWindow) {
+    openedWindow.opener = null;
+  }
 }
 
 function safeAttachmentHref(value: string | null | undefined): string | null {
@@ -934,10 +1505,6 @@ function attachmentFileLabel(value: string | null | undefined): string | null {
   } catch {
     return filename;
   }
-}
-
-function numericValue(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 /*
@@ -2214,7 +2781,7 @@ function ReplyPreview({
             markdown={reply.bodyFormat === "markdown"}
             className="mt-2 block whitespace-pre-wrap break-words text-pretty text-sm leading-6 text-text"
           />
-          <PostAttachments className="mt-3" post={reply} />
+          <PostAttachments className="mt-3" musicLayout="compact" post={reply} />
 
           <div data-testid="thread-reply-actions">
             <ReactionControls
