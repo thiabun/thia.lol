@@ -1166,6 +1166,7 @@ function ReplyComposer({
         maxLength={2000}
         minHeightClassName="min-h-28"
         placeholder="Write with Markdown, @mentions, and HTTPS links."
+        renderedClassName="text-sm leading-6"
         testIdPrefix="reply-composer-markdown"
         textareaTestId={`reply-composer-${parentPostId}`}
         value={body}

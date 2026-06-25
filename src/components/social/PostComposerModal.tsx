@@ -424,6 +424,7 @@ export function PostComposerModal({
           className="pt-1"
           minHeightClassName="min-h-44 sm:min-h-52"
           placeholder="Write with Markdown, @mentions, and HTTPS links."
+          renderedClassName="text-base leading-7 sm:text-lg sm:leading-8"
           testIdPrefix="post-composer-markdown"
           textareaTestId="post-composer-body"
           value={body}

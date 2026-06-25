@@ -463,6 +463,14 @@ test("post composer submits Markdown and Spotify/YouTube music attachments", asy
   });
   await dialog.getByTestId("post-composer-markdown-button-bold").click();
   await expect(body).toHaveValue("**Favorite** track");
+  await expect(
+    dialog.getByTestId("post-composer-markdown-preview").locator("strong").filter({
+      hasText: "Favorite",
+    }),
+  ).toBeVisible();
+  await expect(dialog.getByTestId("post-composer-markdown-preview")).toContainText(
+    "track",
+  );
 
   await dialog.getByRole("button", { name: "Add music" }).click();
   await expect(dialog.getByTestId("post-music-picker")).toBeVisible();

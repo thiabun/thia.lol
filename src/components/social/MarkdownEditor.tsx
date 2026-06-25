@@ -31,6 +31,7 @@ type MarkdownEditorProps = {
   onValueChange: (value: string) => void;
   placeholder?: string;
   previewClassName?: string;
+  renderedClassName?: string;
   testIdPrefix?: string;
   textareaTestId?: string;
   value: string;
@@ -62,6 +63,7 @@ export const MarkdownEditor = forwardRef<HTMLTextAreaElement, MarkdownEditorProp
     onValueChange,
     placeholder = "Write with Markdown, @mentions, and HTTPS links.",
     previewClassName,
+    renderedClassName,
     testIdPrefix = "profile-markdown",
     textareaTestId,
     value,
@@ -168,7 +170,10 @@ export const MarkdownEditor = forwardRef<HTMLTextAreaElement, MarkdownEditorProp
               markdown
               text={value}
               entities={entities}
-              className="space-y-2 break-words text-sm leading-6 text-text"
+              className={cn(
+                "space-y-2 break-words text-sm leading-6 text-text",
+                renderedClassName,
+              )}
             />
           ) : (
             <p className="text-sm leading-6 text-muted">{placeholder}</p>

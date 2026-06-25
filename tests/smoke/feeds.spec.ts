@@ -1387,6 +1387,8 @@ test("thread reply composer is hidden until Reply and exposes media UI", async (
             id: 51,
             parentId: 42,
             body: String(replyPayload.body),
+            bodyFormat: "markdown",
+            contentVersion: 3,
             attachments: replyPayload.attachments,
             author: {
               id: 1,
@@ -1474,11 +1476,16 @@ test("thread reply composer is hidden until Reply and exposes media UI", async (
   await expect.poll(() => audioUploadPurpose).toBe("post_media");
   await expect(dialog.getByTestId("reply-composer-attachments")).toContainText("MP3");
 
-  await dialog.getByRole("textbox", { name: "Reply" }).fill("A compact reply.");
+  await dialog.getByRole("textbox", { name: "Reply" }).fill("A **compact** reply.");
+  await expect(
+    dialog.getByTestId("reply-composer-markdown-preview").locator("strong").filter({
+      hasText: "compact",
+    }),
+  ).toBeVisible();
   await dialog.getByRole("button", { name: "Send" }).click();
 
   await expect.poll(() => replyPayload).toMatchObject({
-    body: "A compact reply.",
+    body: "A **compact** reply.",
     attachments: [
       {
         kind: "audio",
