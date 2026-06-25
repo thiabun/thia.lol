@@ -99,6 +99,7 @@ import {
   getProfileRooms,
   getProfileCanvasDraft,
   muteProfile,
+  previewImageUpload,
   removeProfileFollower,
   resolveProfileIntegrationMetadata,
   startProfileIntegration,
@@ -130,7 +131,7 @@ import {
 import { ApiClientError } from "../lib/apiClient";
 import { cn } from "../lib/classNames";
 import { formatShortDate } from "../lib/dates";
-import { validateImageCropFile } from "../lib/imageCrop";
+import { prepareImageFileForCrop, validateImageCropFile } from "../lib/imageCrop";
 import {
   imageUploadAccept,
   isAcceptedVideoUploadFile,
@@ -139,6 +140,7 @@ import {
 } from "../lib/mediaFormats";
 import { pageEntrance } from "../lib/motionPresets";
 import { formatCountWithUnit } from "../lib/pluralize";
+import { postMediaType } from "../lib/postMedia";
 import {
   connectionPlatformLabel,
   maxProfileConnections,
@@ -202,7 +204,7 @@ const PROFILE_CANVAS_COLUMNS = PROFILE_CANVAS_DESKTOP_COLUMNS;
 const PROFILE_CANVAS_ROWS = PROFILE_CANVAS_DESKTOP_ROWS;
 const PROFILE_CONTENT_AUTOSAVE_DELAY_MS = 650;
 const PROFILE_MODULE_AUDIO_MAX_BYTES = 20971520;
-const PROFILE_MODULE_VIDEO_MAX_BYTES = 31457280;
+const PROFILE_MODULE_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
 
 type ProfileTab = "feed" | "replies" | "rooms";
 type ProfilePanel = "followers" | "following" | "badges";
@@ -1241,19 +1243,25 @@ export function ProfilePage() {
     }
   }
 
-  function handleProfileImageDraftSelection(
+  async function handleProfileImageDraftSelection(
     file: File,
     purpose: Extract<ImageUploadPurpose, "avatar" | "banner" | "profile_background">,
   ) {
-    const validationError = validateImageCropFile(file);
-
-    if (validationError) {
-      setCanvasError(validationError);
-      return;
-    }
-
     setCanvasError(undefined);
-    setPendingProfileImageCrop({ file, purpose });
+
+    try {
+      const prepared = await runWithAuth(
+        (csrfToken) =>
+          prepareImageFileForCrop(file, purpose, (sourceFile, imagePurpose) =>
+            previewImageUpload(sourceFile, imagePurpose, csrfToken),
+          ),
+        { retryOnCsrf: true },
+      );
+
+      setPendingProfileImageCrop({ file: prepared, purpose });
+    } catch (error) {
+      setCanvasError(error instanceof Error ? error.message : "Image could not be prepared.");
+    }
   }
 
   async function handleProfileImageDraftUpload(
@@ -1298,6 +1306,7 @@ export function ProfilePage() {
                 ...baseProfile,
                 profileBackground: upload.url,
                 profileBackgroundVideo: null,
+                profileBackgroundVideoPoster: null,
               };
 
       setDraftProfile(nextProfile);
@@ -1339,6 +1348,7 @@ export function ProfilePage() {
       const nextProfile = {
         ...(draftProfile ?? profile),
         profileBackgroundVideo: upload.url,
+        profileBackgroundVideoPoster: upload.posterUrl ?? null,
       };
 
       setDraftProfile(nextProfile);
@@ -1371,6 +1381,16 @@ export function ProfilePage() {
     );
 
     return upload.url;
+  }
+
+  async function handleModuleImagePrepare(file: File): Promise<File> {
+    return runWithAuth(
+      (csrfToken) =>
+        prepareImageFileForCrop(file, "post_media", (sourceFile, purpose) =>
+          previewImageUpload(sourceFile, purpose, csrfToken),
+        ),
+      { retryOnCsrf: true },
+    );
   }
 
   async function handleModuleVideoUpload(file: File): Promise<UploadedVideo> {
@@ -1854,6 +1874,7 @@ export function ProfilePage() {
               onGuideOpen={() => setProfileEditorTourOpen(true)}
               onModuleAudioUpload={handleModuleAudioUpload}
               onImageUpload={handleProfileImageDraftSelection}
+              onModuleImagePrepare={handleModuleImagePrepare}
               onModuleImageUpload={handleModuleImageUpload}
               onModuleVideoUpload={handleModuleVideoUpload}
               onNewDraftModuleId={() => nextDraftModuleIdRef.current--}
@@ -2074,7 +2095,7 @@ function validateProfileModuleVideoFile(file: File): string | undefined {
   }
 
   if (file.size > PROFILE_MODULE_VIDEO_MAX_BYTES) {
-    return "Video must be 30 MB or smaller.";
+    return "Video must be 100 MB or smaller.";
   }
 
   if (!isAcceptedVideoUploadFile(file)) {
@@ -4395,6 +4416,7 @@ type ProfileDirectCanvasEditorProps = {
   onGuideDismiss: () => void;
   onGuideOpen: () => void;
   onModuleAudioUpload: (file: File) => Promise<UploadedAudio>;
+  onModuleImagePrepare: (file: File) => Promise<File>;
   onImageUpload: (
     file: File,
     purpose: "avatar" | "banner" | "profile_background",
@@ -4770,6 +4792,7 @@ function ProfileDirectCanvasEditor({
   onGuideDismiss,
   onGuideOpen,
   onModuleAudioUpload,
+  onModuleImagePrepare,
   onImageUpload,
   onModuleImageUpload,
   onModuleVideoUpload,
@@ -6011,6 +6034,7 @@ function ProfileDirectCanvasEditor({
         onResize={handleResizeModule}
         onConnectProvider={onConnectProvider}
         onModuleAudioUpload={onModuleAudioUpload}
+        onModuleImagePrepare={onModuleImagePrepare}
         onModuleImageUpload={onModuleImageUpload}
         onModuleVideoUpload={onModuleVideoUpload}
         onProfileImageUpload={onImageUpload}
@@ -6603,6 +6627,7 @@ function ModuleSettingsModal({
   onClose,
   onConnectProvider,
   onModuleAudioUpload,
+  onModuleImagePrepare,
   onModuleImageUpload,
   onModuleVideoUpload,
   onProfileImageUpload,
@@ -6619,6 +6644,7 @@ function ModuleSettingsModal({
   onClose: () => void;
   onConnectProvider: (provider: ProfileIntegrationProvider) => void;
   onModuleAudioUpload: (file: File) => Promise<UploadedAudio>;
+  onModuleImagePrepare: (file: File) => Promise<File>;
   onModuleImageUpload: (file: File) => Promise<string>;
   onModuleVideoUpload: (file: File) => Promise<UploadedVideo>;
   onProfileImageUpload: (
@@ -6897,6 +6923,7 @@ function ModuleSettingsModal({
       const title = sanitizeUploadedMediaTitle(file.name, "Uploaded video");
       const video = {
         mime: upload.mime,
+        ...(upload.posterUrl ? { posterUrl: upload.posterUrl } : {}),
         size: upload.size,
         title,
         type: upload.type,
@@ -7007,7 +7034,7 @@ function ModuleSettingsModal({
     );
   }
 
-  function handleModuleImageSelection(files: FileList | null) {
+  async function handleModuleImageSelection(files: FileList | null) {
     if (!module || !files || !canUploadModuleImage) {
       return;
     }
@@ -7016,14 +7043,12 @@ function ModuleSettingsModal({
     const selectionLimit = singlePhotoImageModule ? 1 : moduleMediaSlots;
 
     for (const file of Array.from(files).slice(0, selectionLimit)) {
-      const validationError = validateImageCropFile(file);
-
-      if (validationError) {
-        setModuleImageError(validationError);
+      try {
+        selectedFiles.push(await onModuleImagePrepare(file));
+      } catch (error) {
+        setModuleImageError(error instanceof Error ? error.message : "Image could not be prepared.");
         continue;
       }
-
-      selectedFiles.push(file);
     }
 
     if (selectedFiles.length === 0) {
@@ -7525,6 +7550,7 @@ function ModuleSettingsModal({
                     className="aspect-video w-full bg-black object-contain"
                     controls
                     playsInline
+                    poster={module.config.video.posterUrl}
                     preload="metadata"
                   >
                     <source src={module.config.video.url} type={module.config.video.mime} />
@@ -7687,7 +7713,7 @@ function ModuleSettingsModal({
                     data-testid="profile-module-settings-image-input"
                     disabled={moduleImageUploading || !canUploadModuleImage}
                     onChange={(event) => {
-                      handleModuleImageSelection(event.currentTarget.files);
+                      void handleModuleImageSelection(event.currentTarget.files);
                       event.currentTarget.value = "";
                     }}
                   />
@@ -9164,14 +9190,27 @@ function FeaturedPostCard({ post }: { post: Post }) {
           className="mt-3 overflow-hidden rounded-card border border-line bg-canvas/70"
           data-testid="profile-featured-post-media"
         >
-          <img
-            alt=""
-            className="block max-h-44 w-full object-contain"
-            decoding="async"
-            loading="lazy"
-            src={post.mediaUrl}
-            data-testid="profile-featured-post-media-image"
-          />
+          {postMediaType(post) === "video" ? (
+            <video
+              className="block max-h-44 w-full bg-black object-contain"
+              controls
+              playsInline
+              poster={post.mediaPosterUrl ?? undefined}
+              preload="metadata"
+              data-testid="profile-featured-post-media-video"
+            >
+              <source src={post.mediaUrl} type={post.mediaMime ?? "video/mp4"} />
+            </video>
+          ) : (
+            <img
+              alt=""
+              className="block max-h-44 w-full object-contain"
+              decoding="async"
+              loading="lazy"
+              src={post.mediaUrl}
+              data-testid="profile-featured-post-media-image"
+            />
+          )}
         </div>
       ) : null}
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">

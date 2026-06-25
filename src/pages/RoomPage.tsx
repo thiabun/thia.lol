@@ -51,6 +51,7 @@ import {
   removeRoomModerator,
   updatePost,
   updateRoom,
+  previewImageUpload,
   uploadImage,
 } from "../lib/api";
 import { ApiClientError } from "../lib/apiClient";
@@ -375,6 +376,14 @@ export function RoomPage() {
     return uploadImage(file, purpose, csrfToken);
   }
 
+  async function handlePrepareImage(file: File, purpose: ImageUploadPurpose) {
+    if (!csrfToken) {
+      throw new Error("Please log in again before uploading.");
+    }
+
+    return previewImageUpload(file, purpose, csrfToken);
+  }
+
   if (roomMissing) {
     return (
       <motion.div
@@ -524,6 +533,7 @@ export function RoomPage() {
             canDeleteRoom={canDeleteRoom}
             onClose={() => setEditOpen(false)}
             onSave={handleSaveRoom}
+            onPrepareImage={handlePrepareImage}
             onUpload={handleUpload}
             onAddModerator={handleAddModerator}
             onRemoveModerator={handleRemoveModerator}

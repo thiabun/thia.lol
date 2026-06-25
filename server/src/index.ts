@@ -110,6 +110,8 @@ const statsRepository = createStatsRepository(database.pool);
 const uploadService = createUploadService({
   uploadRoot: config.THIA_UPLOAD_ROOT,
   publicPrefix: config.THIA_UPLOAD_PUBLIC_PREFIX,
+  ffmpegPath: config.THIA_FFMPEG_PATH,
+  ffprobePath: config.THIA_FFPROBE_PATH,
 });
 const app = buildApp({
   authRepository,

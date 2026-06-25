@@ -79,6 +79,7 @@ import type { SearchPayload, SearchRepository } from "./search.js";
 import type { RequestSession, SessionsRepository } from "./sessions.js";
 import type { ShareShellService } from "./share-shells.js";
 import type { PublicStatsPayload, StatsRepository } from "./stats.js";
+import type { UploadService } from "./uploads.js";
 
 const room: RoomPayload = {
   id: 1,
@@ -562,6 +563,54 @@ function sessionsRepositoryMock(overrides: Partial<SessionsRepository> = {}): Se
   return {
     currentSession: vi.fn().mockResolvedValue(session),
     ...overrides,
+  };
+}
+
+function uploadServiceMock(overrides: Partial<UploadService> = {}): UploadService {
+  return {
+    store: vi.fn().mockResolvedValue({
+      url: "/uploads/media/2026/06/post_media-upload.webp",
+      mime: "image/webp",
+      type: "image/webp",
+      size: 4,
+      purpose: "post_media",
+      mediaType: "image",
+    }),
+    previewImage: vi.fn().mockResolvedValue({
+      body: Buffer.from("WEBP"),
+      contentType: "image/webp",
+      width: 2,
+      height: 2,
+    }),
+    ...overrides,
+  };
+}
+
+function multipartPayload(fields: Record<string, string>, file: { filename: string; contentType: string; body: Buffer }) {
+  const boundary = "----thia-node-test-boundary";
+  const chunks: Buffer[] = [];
+
+  for (const [name, value] of Object.entries(fields)) {
+    chunks.push(
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`,
+        "utf8",
+      ),
+    );
+  }
+
+  chunks.push(
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.filename}"\r\nContent-Type: ${file.contentType}\r\n\r\n`,
+      "utf8",
+    ),
+    file.body,
+    Buffer.from(`\r\n--${boundary}--\r\n`, "utf8"),
+  );
+
+  return {
+    body: Buffer.concat(chunks),
+    contentType: `multipart/form-data; boundary=${boundary}`,
   };
 }
 
@@ -2343,6 +2392,113 @@ describe("Node API social and content mutation preview routes", () => {
     expect(repository.reactToPost).toHaveBeenCalledWith(99, 42, expect.any(Object));
     expect(repository.deletePostReaction).toHaveBeenCalledWith(99, 42, "echo");
     expect(repository.sharePostToMessages).toHaveBeenCalledWith("pc359fe2da759", 42, expect.any(Object));
+  });
+
+  it("passes post media metadata through create, reply, and update mutations", async () => {
+    const repository = contentMutationsRepositoryMock();
+    const app = buildApp({
+      contentMutationsRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const videoMedia = {
+      body: "Video post.",
+      mediaUrl: "/uploads/media/2026/06/post_media-abcdef1234567890abcdef1234567890.mp4",
+      mediaType: "video",
+      mediaMime: "video/mp4",
+      mediaPosterUrl: "/uploads/media/2026/06/post_media-abcdef1234567890abcdef1234567890-poster.webp",
+    };
+    const imageMedia = {
+      body: "Image reply.",
+      mediaUrl: "/uploads/media/2026/06/post_media-fedcba0987654321fedcba0987654321.webp",
+      mediaType: "image",
+      mediaMime: "image/webp",
+      mediaPosterUrl: null,
+    };
+
+    const create = await app.inject({
+      method: "POST",
+      url: "/posts",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: videoMedia,
+    });
+    const reply = await app.inject({
+      method: "POST",
+      url: "/posts/99/replies",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: imageMedia,
+    });
+    const update = await app.inject({
+      method: "PATCH",
+      url: "/posts/99",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: videoMedia,
+    });
+
+    expect(create.statusCode).toBe(201);
+    expect(reply.statusCode).toBe(201);
+    expect(update.statusCode).toBe(200);
+    expect(repository.createPost).toHaveBeenCalledWith(session, videoMedia);
+    expect(repository.createReply).toHaveBeenCalledWith(session, 99, imageMedia);
+    expect(repository.updatePost).toHaveBeenCalledWith(session, 99, videoMedia);
+  });
+
+  it("serves image preview conversion as an authenticated WebP blob", async () => {
+    const uploadService = uploadServiceMock();
+    const app = buildApp({
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+      uploadService,
+    });
+    const multipart = multipartPayload(
+      { purpose: "post_media" },
+      { filename: "crop-source.tiff", contentType: "image/tiff", body: Buffer.from("TIFF") },
+    );
+    const unauthenticated = await buildApp({
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock({ currentSession: vi.fn().mockResolvedValue(null) }),
+      uploadService,
+    }).inject({
+      method: "POST",
+      url: "/uploads/image?preview=1",
+      headers: {
+        "content-type": multipart.contentType,
+      },
+      payload: multipart.body,
+    });
+    const missingCsrf = await app.inject({
+      method: "POST",
+      url: "/uploads/image?preview=1",
+      headers: {
+        "content-type": multipart.contentType,
+        cookie: "thia_session=token",
+      },
+      payload: multipart.body,
+    });
+    const converted = await app.inject({
+      method: "POST",
+      url: "/uploads/image?preview=1",
+      headers: {
+        "content-type": multipart.contentType,
+        cookie: "thia_session=token",
+        "x-csrf-token": "csrf-token",
+      },
+      payload: multipart.body,
+    });
+
+    expect(unauthenticated.statusCode).toBe(401);
+    expect(missingCsrf.statusCode).toBe(403);
+    expect(converted.statusCode).toBe(200);
+    expect(converted.headers["content-type"]).toContain("image/webp");
+    expect(converted.headers["cache-control"]).toBe("no-store");
+    expect(converted.body).toBe("WEBP");
+    expect(uploadService.previewImage).toHaveBeenCalledOnce();
   });
 
   it("serves room mutations through PHP-style wrappers", async () => {

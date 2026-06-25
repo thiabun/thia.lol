@@ -1597,6 +1597,7 @@ function UploadedVideoPlayer({
         loop={module.config.autoplay === true}
         muted={module.config.autoplay === true}
         playsInline
+        poster={video.posterUrl}
         preload="metadata"
         title={title}
         data-testid="profile-uploaded-video-element"

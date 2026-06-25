@@ -1,52 +1,64 @@
 # Media Uploads
 
 > **Status: Operational reference.** Use this for current upload behavior,
-> VPS storage, file limits, temporary no-conversion rules, video background limits, and
-> deploy preservation requirements. Future upload work should be tracked in
-> GitHub Issues.
+> VPS storage, file limits, conversion rules, FFmpeg requirements, and deploy
+> preservation requirements. Future upload work should be tracked in GitHub
+> Issues.
 
-`thia.lol` supports authenticated image uploads for profile customization, post
-images, and room customization. It also supports restricted MP4/WebM uploads for
-profile backgrounds and profile video modules.
+`thia.lol` supports authenticated image and video uploads for profile
+customization, posts, replies, rooms, and profile media modules. Uploads are
+processed by the Node API on the VPS; the app should not rely on browser MIME
+claims or store arbitrary original files.
 
 ## Storage
 
 Uploaded public media is stored under the deployed web root:
 
 ```text
-/srv/thia.lol/www/uploads/media/yyyy/mm/generated-name.jpg|png|webp|gif|mp4|webm
+/srv/thia.lol/www/uploads/media/yyyy/mm/generated-name.webp
+/srv/thia.lol/www/uploads/media/yyyy/mm/generated-name.mp4
+/srv/thia.lol/www/uploads/media/yyyy/mm/generated-name-poster.webp
 ```
-
-The historical cPanel path was `public_html/uploads/media/...`; do not use that
-as the production target anymore.
 
 The API returns public URLs such as:
 
 ```text
-/uploads/media/2026/06/post_media-random.jpg
+/uploads/media/2026/06/post_media-random.webp
+/uploads/media/2026/06/post_media-random.mp4
 ```
 
-Do not store uploads in `src/`, `dist/`, `backend/`, or `api/`. Do not commit uploaded files. The local development equivalent is `uploads/`, which is ignored by git.
+Do not store uploads in `src/`, `dist/`, `backend/`, or `api/`. Do not commit
+uploaded files. The local development equivalent is `uploads/`, which is
+ignored by git.
 
-## Image Limits and Types
+## Images
+
+Images go through `/api/uploads/image`.
+
+Rules:
 
 - Maximum upload size: 10 MB.
-- Empty files are rejected.
-- Accepted input types: JPEG, PNG, WebP, and GIF.
-- SVG, HTML, PDF, audio, and unknown binary files are rejected by the image endpoint.
-- HEIC, HEIF, TIFF, JPEG XL, BMP, and AVIF are not enabled while server-side conversion is disabled.
-
-## Temporary No-Conversion Image Mode
-
-Uploads go through `/api/uploads/image` and are stored as safe original files.
-The current API does not convert, resize, strip metadata, or normalize
-orientation server-side. The VPS makes a future conversion pipeline practical,
-but that should ship as a separate moderated upload-processing task.
+- Purpose must be one of `avatar`, `banner`, `profile_background`,
+  `post_media`, `room_icon`, or `room_banner`.
+- Accepted input formats after server sniffing: JPEG, PNG, WebP, GIF, AVIF,
+  HEIC/HEIF, TIFF, and BMP.
+- Stored output is always WebP.
+- Server processing strips metadata, auto-orients, and resizes inside the
+  purpose limit used by the existing crop surfaces.
+- SVG, HTML, PDF, executables, documents, audio, and unknown binary files are
+  rejected.
 
 Before upload, the frontend opens a custom crop/zoom modal for current image
 surfaces: profile avatar, profile banner, profile background, post/reply media,
-room icon, and room banner. The crop is baked into the image file sent to the
-existing upload endpoint; no crop metadata is stored in this pass.
+room icon, and room banner. If the browser cannot decode the selected source
+before cropping, the frontend can call:
+
+```text
+POST /api/uploads/image?preview=1
+```
+
+That endpoint is authenticated, requires CSRF, returns a non-stored WebP blob,
+and avoids a separate Caddy route for preview conversion.
 
 Client crop defaults:
 
@@ -56,60 +68,58 @@ Client crop defaults:
 - post and reply media: original aspect by default, with square, portrait, and
   landscape presets
 
-Processing rules:
+## Videos
 
-- server output preserves the uploaded safe MIME and extension
-- accepted output extensions are `.jpg`, `.jpeg`, `.png`, `.webp`, and `.gif`
-- purpose, size, MIME sniffing, and `getimagesize()` checks still run
-- SVG and executable/document formats remain blocked
-- client-side crop output is stored as submitted
-
-The endpoint returns only the public URL and image metadata. It does not expose local server filesystem paths.
-
-## Video Uploads
-
-Video uploads go through `/api/uploads/video` and are intentionally narrower
-than image uploads.
+Videos go through `/api/uploads/video`.
 
 Rules:
 
-- Purpose must be `profile_background` or `profile_module_video`.
-- Maximum upload size: 30 MB.
-- Empty files are rejected.
-- Accepted MIME types after server sniffing: MP4 (`video/mp4`) and WebM
-  (`video/webm`).
-- Filenames are randomized and stored under
-  `/uploads/media/yyyy/mm/profile_background-random.mp4|webm` or
-  `/uploads/media/yyyy/mm/profile_module_video-random.mp4|webm`.
-- The endpoint does not transcode, resize, or inspect duration.
-- The endpoint never accepts executable script extensions.
-- Profile background and module video URLs must match generated upload path
-  patterns before they can be saved.
-- Background videos render muted, looped, playsInline, and without controls.
-- Reduced-motion users get a poster/static fallback when a poster image is
-  available.
+- Maximum upload size: 100 MB.
+- Purpose must be `profile_background`, `profile_module_video`, or
+  `post_media`.
+- Accepted input formats after server sniffing and extension fallback: MP4,
+  WebM, MOV, M4V, 3GP/3G2, MKV, AVI, MPEG/MPG, and OGG.
+- Stored output is MP4/H.264/AAC with `faststart`, capped at 720p.
+- A WebP poster is generated beside every transcoded video.
+- Profile background videos are capped at about 30 seconds and audio is
+  stripped.
+- Post media and profile module videos are capped at about 2 minutes and keep
+  audio.
+- Existing old WebM URLs should stay renderable, but new uploads should be MP4.
 
-Video uploads are not general-purpose post media, audio hosting, or provider
-embeds. If richer video media is added later, it needs separate moderation,
-duration, bandwidth, transcoding, and legal review.
+Video upload responses include `url`, `posterUrl`, `mime`, `width`, `height`,
+and `duration` when FFprobe can provide them. Post/reply/featured-post media
+renders as `<video controls playsInline poster=...>` when `mediaType` is
+`video`.
 
-## VPS Notes
+## VPS Requirements
+
+System FFmpeg and FFprobe must be installed on the VPS and visible to the Node
+API runtime. Defaults are:
+
+```text
+THIA_FFMPEG_PATH=ffmpeg
+THIA_FFPROBE_PATH=ffprobe
+```
+
+Production Caddy and Node multipart limits must be kept in sync with the app
+video limit:
+
+- Caddy `request_body max_size 100MB`
+- Fastify multipart default limit: 100 MB
+- Application video upload limit: 100 MB
 
 `/srv/thia.lol/www/uploads/` must be writable by the `thia-node-api` runtime
-user and readable by Caddy. Production currently uses `www-data` group
-ownership for uploaded media.
+user and readable by Caddy. Production uses `www-data` group ownership for
+uploaded media.
 
 Deploys must preserve `/srv/thia.lol/www/uploads/`. Do not enable rsync rules
 that delete server-owned upload folders.
 
-Profile background video currently has a 30 MB application limit. If upload
-requests fail before reaching the API, check Caddy request limits and the Node
-API multipart limits before changing application validation.
-
 If uploads fail on production, check:
 
 1. `/srv/thia.lol/www/uploads/` ownership and write permissions.
-2. Whether the uploaded file is one of the temporary safe formats.
-3. Caddy and `thia-node-api.service` logs.
-4. Caddy and Node multipart limits are large enough for the endpoint being
-   tested.
+2. `ffmpeg -version` and `ffprobe -version` for the runtime environment.
+3. Whether the uploaded file is in the accepted input set.
+4. Caddy `request_body` and Node multipart limits.
+5. Caddy and `thia-node-api.service` logs.

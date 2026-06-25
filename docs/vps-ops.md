@@ -40,6 +40,8 @@ Useful checks:
 ssh -i ~/.ssh/thia_lol_vps_ed25519 -o IdentitiesOnly=yes codex@45.143.196.174
 systemctl is-active ssh fail2ban mariadb caddy thia-node-api.service thia-db-backup.timer
 sudo ufw status verbose
+ffmpeg -version | sed -n '1p'
+ffprobe -version | sed -n '1p'
 ```
 
 ## Production Paths
@@ -162,6 +164,8 @@ ssh -i ~/.ssh/thia_lol_github_actions_ed25519 -o IdentitiesOnly=yes deploy@45.14
   test -d /srv/thia.lol/www/uploads
   test ! -w /srv/thia.lol/www/uploads
   find /srv/thia.lol/www/uploads -maxdepth 0 -type d -group www-data -perm -0020 -perm -2000 | grep -q .
+  command -v ffmpeg >/dev/null
+  command -v ffprobe >/dev/null
   systemctl is-active thia-node-api.service
 '
 ```
@@ -201,6 +205,19 @@ Uploads live under:
 The directory should be group-owned by `www-data`, group-writable, and setgid.
 The `thia-node-api` runtime user should be in the `www-data` group. Do not
 rsync over or delete this directory.
+
+The Node API converts images with Sharp and videos with system FFmpeg/FFprobe.
+New videos are stored as MP4/H.264/AAC at up to 720p with a generated WebP
+poster. Keep these limits aligned:
+
+```text
+Caddy request_body max_size 100MB
+Fastify multipart limit 100 MB
+Node video upload limit 100 MB
+```
+
+If a large upload fails before the API handles it, check `/etc/caddy/Caddyfile`
+first, then `thia-node-api.service` logs.
 
 ## Backups
 

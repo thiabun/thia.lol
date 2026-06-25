@@ -353,7 +353,7 @@ test("authenticated post button opens an accessible composer select", async ({
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Post", exact: true })).toBeVisible();
   await expect(dialog.getByRole("textbox", { name: "Post" })).toBeVisible();
-  await expect(dialog.getByTitle("Upload image")).toBeVisible();
+  await expect(dialog.getByTitle("Upload media")).toBeVisible();
   await expect(dialog.getByText("Post to a profile or room.")).toHaveCount(0);
   await expect(dialog.getByText("Post to your profile.")).toHaveCount(0);
   await expect(dialog.getByText("Images are converted to WebP")).toHaveCount(0);

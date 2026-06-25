@@ -143,6 +143,9 @@ export interface MyPostPayload {
   kind: "post" | "reply";
   body: string;
   mediaUrl: string | null;
+  mediaType: "image" | "video" | null;
+  mediaMime: string | null;
+  mediaPosterUrl: string | null;
   status: string;
   deletedAt: string | null;
   createdAt: string | null;
@@ -257,6 +260,9 @@ interface MyPostRow extends RowDataPacket {
   parent_id: number | string | null;
   body: string | null;
   media_url: string | null;
+  media_type: string | null;
+  media_mime: string | null;
+  media_poster_url: string | null;
   status: string | null;
   deleted_at: string | null;
   created_at: string | null;
@@ -574,8 +580,15 @@ class MysqlPrivateReadsRepository implements PrivateReadsRepository {
 
   async getMyPosts(userId: number, kind: string): Promise<MyPostPayload[]> {
     const where = kind === "posts" ? "AND parent_id IS NULL" : kind === "replies" ? "AND parent_id IS NOT NULL" : "";
+    const hasPostMediaMetadataColumns =
+      (await this.columnExists("posts", "media_type")) &&
+      (await this.columnExists("posts", "media_mime")) &&
+      (await this.columnExists("posts", "media_poster_url"));
+    const postMediaMetadataSelect = hasPostMediaMetadataColumns
+      ? "media_type, media_mime, media_poster_url"
+      : "NULL AS media_type, NULL AS media_mime, NULL AS media_poster_url";
     const [rows] = await this.pool.execute<MyPostRow[]>(
-      `SELECT id, public_id, parent_id, body, media_url, status, deleted_at, created_at
+      `SELECT id, public_id, parent_id, body, media_url, ${postMediaMetadataSelect}, status, deleted_at, created_at
        FROM posts
        WHERE author_id = ?
          ${where}
@@ -590,6 +603,9 @@ class MysqlPrivateReadsRepository implements PrivateReadsRepository {
       kind: row.parent_id === null ? "post" : "reply",
       body: stringValue(row.body),
       mediaUrl: nullableStringValue(row.media_url),
+      mediaType: myPostMediaType(row),
+      mediaMime: nullableStringValue(row.media_mime),
+      mediaPosterUrl: nullableStringValue(row.media_poster_url),
       status: stringValue(row.status),
       deletedAt: nullableStringValue(row.deleted_at),
       createdAt: nullableStringValue(row.created_at),
@@ -1564,6 +1580,20 @@ function stringValue(value: string | null | undefined, fallback = ""): string {
 
 function nullableStringValue(value: string | null | undefined): string | null {
   return value ?? null;
+}
+
+function myPostMediaType(row: MyPostRow): "image" | "video" | null {
+  if (row.media_type === "image" || row.media_type === "video") {
+    return row.media_type;
+  }
+
+  const mediaUrl = nullableStringValue(row.media_url);
+
+  if (mediaUrl === null) {
+    return null;
+  }
+
+  return /\.(?:mp4|webm)$/iu.test(mediaUrl) ? "video" : "image";
 }
 
 function utcDatabaseTimestamp(date = new Date()): string {

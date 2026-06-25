@@ -40,7 +40,7 @@ import type {
   User,
   UserBadge,
 } from "./types";
-import { apiDelete, apiGet, apiPatch, apiPost, apiUpload } from "./apiClient";
+import { apiDelete, apiGet, apiPatch, apiPost, apiUpload, apiUploadBlob } from "./apiClient";
 import { formatRelativeTime } from "./dates";
 import { normalizeProfileLayoutPreset } from "./profileLayoutPresets";
 import { normalizeProfileConnection } from "./profileConnections";
@@ -158,6 +158,9 @@ export type CreatePostInput = {
   roomSlug?: string;
   parentId?: number;
   mediaUrl?: string | null;
+  mediaType?: "image" | "video" | null;
+  mediaMime?: string | null;
+  mediaPosterUrl?: string | null;
 };
 
 export type UpdatePostInput = {
@@ -165,6 +168,9 @@ export type UpdatePostInput = {
   roomSlug?: string;
   parentId?: number | null;
   mediaUrl?: string | null;
+  mediaType?: "image" | "video" | null;
+  mediaMime?: string | null;
+  mediaPosterUrl?: string | null;
   status?: "published" | "hidden" | "removed";
 };
 
@@ -201,7 +207,7 @@ export type ImageUploadPurpose =
   | "room_icon"
   | "room_banner";
 
-export type VideoUploadPurpose = "profile_background" | "profile_module_video";
+export type VideoUploadPurpose = "profile_background" | "profile_module_video" | "post_media";
 
 export type AudioUploadPurpose = "profile_music";
 export type UploadedImageMime =
@@ -226,6 +232,10 @@ export type UploadedVideo = {
   type: "video/mp4" | "video/webm";
   size: number;
   purpose: VideoUploadPurpose;
+  posterUrl?: string;
+  width?: number;
+  height?: number;
+  duration?: number;
 };
 
 export type UploadedAudio = {
@@ -1362,6 +1372,24 @@ export function uploadImage(
   return apiUpload<UploadedImage>("/uploads/image", formData, csrfToken);
 }
 
+export async function previewImageUpload(
+  file: File,
+  purpose: ImageUploadPurpose,
+  csrfToken: string,
+): Promise<File> {
+  const formData = new FormData();
+  formData.set("file", file);
+  formData.set("purpose", purpose);
+
+  const blob = await apiUploadBlob("/uploads/image?preview=1", formData, csrfToken);
+  const originalName = file.name.replace(/\.[^.]+$/u, "") || "image";
+
+  return new File([blob], `${originalName}-preview.webp`, {
+    lastModified: Date.now(),
+    type: "image/webp",
+  });
+}
+
 export function uploadVideo(
   file: File,
   purpose: VideoUploadPurpose,
@@ -1706,7 +1734,7 @@ export function getPostReplies(postId: number): Promise<Post[]> {
 
 export function createPostReply(
   postId: number,
-  input: Pick<CreatePostInput, "body" | "mediaUrl">,
+  input: Pick<CreatePostInput, "body" | "mediaUrl" | "mediaType" | "mediaMime" | "mediaPosterUrl">,
   csrfToken: string,
 ): Promise<Post> {
   return apiPost<ApiPost>(`/posts/${postId}/replies`, input, csrfToken).then(
@@ -2687,6 +2715,9 @@ function normalizeProfileModuleUploadedVideo(
     ...(typeof video.duration === "number" && Number.isFinite(video.duration) && video.duration > 0
       ? { duration: video.duration }
       : {}),
+    ...(typeof video.posterUrl === "string" && video.posterUrl.trim() !== ""
+      ? { posterUrl: video.posterUrl }
+      : {}),
     ...(typeof video.uploadedAt === "string" ? { uploadedAt: video.uploadedAt } : {}),
   };
 }
@@ -3371,6 +3402,9 @@ function normalizePost(post: ApiPost): Post {
 
   if (post.mediaUrl) {
     normalized.mediaUrl = post.mediaUrl;
+    normalized.mediaType = post.mediaType ?? (/\.(?:mp4|webm)$/iu.test(post.mediaUrl) ? "video" : "image");
+    normalized.mediaMime = post.mediaMime ?? null;
+    normalized.mediaPosterUrl = post.mediaPosterUrl ?? null;
   }
 
   return normalized;

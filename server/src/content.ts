@@ -187,6 +187,9 @@ export interface PostShareSummaryPayload {
   bodySnippet: string;
   createdAt: string | null;
   mediaUrl: string | null;
+  mediaType: "image" | "video" | null;
+  mediaMime: string | null;
+  mediaPosterUrl: string | null;
   author: UserPayload;
   room: RoomPayload | null;
 }
@@ -669,7 +672,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
     const roomId = await this.resolveRoomId(body, capabilities, session);
     const parentId = await this.resolveParentId(body.parentId ?? body.parent_id, capabilities, session);
     const mood = validateOptionalText(body.mood, 80, "Mood") ?? "sunveil";
-    const mediaUrl = validatePostMediaUrl(body.mediaUrl ?? body.media_url);
+    const media = validatePostMedia(body);
     const publicId = capabilities.hasPostPublicIdColumn ? await this.generatePostPublicId() : null;
     const insertColumns = ["author_id", "room_id", "parent_id", "body", "mood", "media_url", "visibility", "status"];
     const insertValues: Array<number | string | null> = [
@@ -678,10 +681,15 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       parentId,
       postBody,
       mood,
-      mediaUrl,
+      media.url,
       "public",
       "published",
     ];
+
+    if (capabilities.hasPostMediaMetadataColumns) {
+      insertColumns.splice(6, 0, "media_type", "media_mime", "media_poster_url");
+      insertValues.splice(6, 0, media.type, media.mime, media.posterUrl);
+    }
 
     if (publicId !== null) {
       insertColumns.unshift("public_id");
@@ -714,7 +722,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
     }
 
     const postBody = validatePostBody(body.body);
-    const mediaUrl = validatePostMediaUrl(body.mediaUrl ?? body.media_url);
+    const media = validatePostMedia(body);
     const roomId = nullableNumberValue(parent.room_id);
     const publicId = capabilities.hasPostPublicIdColumn ? await this.generatePostPublicId() : null;
     const insertColumns = ["author_id", "room_id", "parent_id", "body", "mood", "media_url", "visibility", "status"];
@@ -724,10 +732,15 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       postId,
       postBody,
       parent.mood ?? "sunveil",
-      mediaUrl,
+      media.url,
       "public",
       "published",
     ];
+
+    if (capabilities.hasPostMediaMetadataColumns) {
+      insertColumns.splice(6, 0, "media_type", "media_mime", "media_poster_url");
+      insertValues.splice(6, 0, media.type, media.mime, media.posterUrl);
+    }
 
     if (publicId !== null) {
       insertColumns.unshift("public_id");
@@ -815,13 +828,32 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       params.push(parentId);
     }
 
-    if ("mediaUrl" in body || "media_url" in body) {
+    if (
+      "mediaUrl" in body ||
+      "media_url" in body ||
+      "mediaType" in body ||
+      "media_type" in body ||
+      "mediaMime" in body ||
+      "media_mime" in body ||
+      "mediaPosterUrl" in body ||
+      "media_poster_url" in body
+    ) {
       if (!isAuthor) {
-        throw new ContentRouteError("Only the author can update this post image.", 403);
+        throw new ContentRouteError("Only the author can update this post media.", 403);
       }
 
+      const media = validatePostMedia(body);
       updates.push("media_url = ?");
-      params.push(validatePostMediaUrl(body.mediaUrl ?? body.media_url));
+      params.push(media.url);
+
+      if (capabilities.hasPostMediaMetadataColumns) {
+        updates.push("media_type = ?");
+        params.push(media.type);
+        updates.push("media_mime = ?");
+        params.push(media.mime);
+        updates.push("media_poster_url = ?");
+        params.push(media.posterUrl);
+      }
     }
 
     if ("status" in body) {
@@ -3036,6 +3068,9 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       hasRoomRulesColumn,
       hasRoomSoftDeleteColumn,
       hasPostPublicIdColumn,
+      hasPostMediaTypeColumn,
+      hasPostMediaMimeColumn,
+      hasPostMediaPosterUrlColumn,
       hasPostReblogs,
       hasTextEntities,
       hasProfileModules,
@@ -3082,6 +3117,9 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       this.columnExists("rooms", "rules"),
       this.columnExists("rooms", "deleted_at"),
       this.columnExists("posts", "public_id"),
+      this.columnExists("posts", "media_type"),
+      this.columnExists("posts", "media_mime"),
+      this.columnExists("posts", "media_poster_url"),
       this.tableExists("post_reblogs"),
       this.tableExists("text_entities"),
       this.tableExists("profile_modules"),
@@ -3124,6 +3162,8 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       hasRoomCustomizationColumns: hasRoomIconUrlColumn && hasRoomBannerUrlColumn && hasRoomRulesColumn,
       hasRoomSoftDeleteColumn,
       hasPostPublicIdColumn,
+      hasPostMediaMetadataColumns:
+        hasPostMediaTypeColumn && hasPostMediaMimeColumn && hasPostMediaPosterUrlColumn,
       hasPostReblogs,
       hasTextEntities,
       hasProfileModules,
@@ -3230,6 +3270,9 @@ interface PostRow extends ProfileRow, RoomRow {
   post_body: string | null;
   post_mood: string | null;
   post_media_url: string | null;
+  post_media_type: string | null;
+  post_media_mime: string | null;
+  post_media_poster_url: string | null;
   post_visibility: string;
   post_status: string;
   post_deleted_at: string | null;
@@ -3274,6 +3317,9 @@ function postShareSummaryPayload(post: PostPayload, publicBaseUrl: string): Post
     bodySnippet: postBodySnippet(post.body, 160),
     createdAt: post.createdAt,
     mediaUrl: post.mediaUrl,
+    mediaType: post.mediaType,
+    mediaMime: post.mediaMime,
+    mediaPosterUrl: post.mediaPosterUrl,
     author: post.author,
     room: post.room,
   };
@@ -3345,13 +3391,44 @@ function validateReactionType(value: unknown): "glow" | "echo" | "hush" {
   return value as "glow" | "echo" | "hush";
 }
 
+export type ValidatedPostMedia = {
+  mime: string | null;
+  posterUrl: string | null;
+  type: "image" | "video" | null;
+  url: string | null;
+};
+
+export function validatePostMedia(body: Record<string, unknown>): ValidatedPostMedia {
+  const url = validatePostMediaUrl(body.mediaUrl ?? body.media_url);
+
+  if (url === null) {
+    return {
+      mime: null,
+      posterUrl: null,
+      type: null,
+      url: null,
+    };
+  }
+
+  const type = validatePostMediaType(body.mediaType ?? body.media_type, url);
+  const mime = validatePostMediaMime(body.mediaMime ?? body.media_mime, type, url);
+  const posterUrl = validatePostMediaPosterUrl(body.mediaPosterUrl ?? body.media_poster_url, type);
+
+  return {
+    mime,
+    posterUrl,
+    type,
+    url,
+  };
+}
+
 function validatePostMediaUrl(value: unknown): string | null {
   if (value === null || value === undefined) {
     return null;
   }
 
   if (typeof value !== "string") {
-    throw new ContentRouteError("Post image is invalid.", 422);
+    throw new ContentRouteError("Post media is invalid.", 422);
   }
 
   const trimmed = value.trim();
@@ -3361,11 +3438,79 @@ function validatePostMediaUrl(value: unknown): string | null {
   }
 
   if (trimmed.length > 255) {
-    throw new ContentRouteError("Post image URL is too long.", 422);
+    throw new ContentRouteError("Post media URL is too long.", 422);
   }
 
-  if (!/^\/uploads\/media\/[0-9]{4}\/[0-9]{2}\/[a-z0-9_-]+\.(?:jpe?g|png|webp|gif)$/u.test(trimmed)) {
-    throw new ContentRouteError("Use Upload image to attach an image.", 422);
+  if (!/^\/uploads\/media\/[0-9]{4}\/[0-9]{2}\/[a-z0-9_-]+\.(?:jpe?g|png|webp|gif|mp4|webm)$/u.test(trimmed)) {
+    throw new ContentRouteError("Use Upload media to attach a file.", 422);
+  }
+
+  return trimmed;
+}
+
+function validatePostMediaType(value: unknown, url: string): "image" | "video" {
+  if (value === "image" || value === "video") {
+    return value;
+  }
+
+  if (value !== undefined && value !== null && value !== "") {
+    throw new ContentRouteError("Post media type is invalid.", 422);
+  }
+
+  return /\.(?:mp4|webm)$/iu.test(url) ? "video" : "image";
+}
+
+function validatePostMediaMime(value: unknown, type: "image" | "video", url: string): string {
+  if (typeof value === "string" && value.trim() !== "") {
+    const mime = value.trim().toLowerCase();
+
+    if (type === "image" && ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(mime)) {
+      return mime;
+    }
+
+    if (type === "video" && ["video/mp4", "video/webm"].includes(mime)) {
+      return mime;
+    }
+
+    throw new ContentRouteError("Post media MIME is invalid.", 422);
+  }
+
+  if (type === "video") {
+    return url.endsWith(".webm") ? "video/webm" : "video/mp4";
+  }
+
+  if (url.endsWith(".png")) {
+    return "image/png";
+  }
+
+  if (url.endsWith(".gif")) {
+    return "image/gif";
+  }
+
+  if (url.endsWith(".jpg") || url.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+
+  return "image/webp";
+}
+
+function validatePostMediaPosterUrl(value: unknown, type: "image" | "video"): string | null {
+  if (type === "image") {
+    if (value !== undefined && value !== null && value !== "") {
+      throw new ContentRouteError("Post image poster URL is invalid.", 422);
+    }
+
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    throw new ContentRouteError("Post video poster is required.", 422);
+  }
+
+  const trimmed = value.trim();
+
+  if (!/^\/uploads\/media\/[0-9]{4}\/[0-9]{2}\/[a-z0-9_-]+-poster\.webp$/u.test(trimmed)) {
+    throw new ContentRouteError("Post video poster URL is invalid.", 422);
   }
 
   return trimmed;

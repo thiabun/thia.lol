@@ -18,6 +18,7 @@ import {
   postCanonicalPath,
   shareCardImageProxyUrl,
 } from "../../lib/api";
+import { postMediaType } from "../../lib/postMedia";
 import type {
   Post,
   Profile,
@@ -134,7 +135,7 @@ function ShareCardBackground({
 
 function PostShareCard({ palette, post }: { palette: SharePalette; post: Post }) {
   const linkCard = firstLinkCard(post);
-  const previewImage = post.mediaUrl ?? linkCard?.metadata.imageUrl ?? null;
+  const previewImage = postShareMediaImage(post) ?? linkCard?.metadata.imageUrl ?? null;
 
   return (
     <section
@@ -820,7 +821,15 @@ function moduleImage(module: ProfileModule) {
 function postShareBackgroundImage(post: Post) {
   const linkCard = firstLinkCard(post);
 
-  return post.mediaUrl ?? linkCard?.metadata.imageUrl ?? null;
+  return postShareMediaImage(post) ?? linkCard?.metadata.imageUrl ?? null;
+}
+
+function postShareMediaImage(post: Post): string | null {
+  if (!post.mediaUrl) {
+    return null;
+  }
+
+  return postMediaType(post) === "video" ? post.mediaPosterUrl ?? null : post.mediaUrl;
 }
 
 function isProfileShareModuleEligible(module: ProfileModule) {

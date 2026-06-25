@@ -393,6 +393,7 @@ function postCardVersion(post: PostPayload): string {
     postIdentifier(post),
     post.updatedAt ?? "",
     post.mediaUrl ?? "",
+    post.mediaPosterUrl ?? "",
   ].join("|");
 
   return sha256(basis).slice(0, 16);

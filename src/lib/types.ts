@@ -242,6 +242,7 @@ export type ProfileModuleUploadedAudio = {
 export type ProfileModuleUploadedVideo = {
   duration?: number;
   mime: "video/mp4" | "video/webm";
+  posterUrl?: string;
   size: number;
   title?: string;
   type: "video/mp4" | "video/webm";
@@ -432,6 +433,9 @@ export type Post = {
     likedByFollowedCount: number;
   };
   mediaUrl?: string;
+  mediaType?: "image" | "video" | null;
+  mediaMime?: string | null;
+  mediaPosterUrl?: string | null;
 };
 
 export type PostShareSummary = {
@@ -442,6 +446,9 @@ export type PostShareSummary = {
   bodySnippet: string;
   createdAt?: string | null;
   mediaUrl?: string | null;
+  mediaType?: "image" | "video" | null;
+  mediaMime?: string | null;
+  mediaPosterUrl?: string | null;
   author: User;
   room?: Pick<Room, "slug" | "name" | "accent"> | null;
 };

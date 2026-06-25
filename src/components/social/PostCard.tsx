@@ -39,13 +39,27 @@ import {
   getPostReplies,
   likePost,
   reblogPost,
+  previewImageUpload,
   unreblogPost,
   unlikePost,
   uploadImage,
+  uploadVideo,
 } from "../../lib/api";
 import { cn } from "../../lib/classNames";
-import { validateImageCropFile } from "../../lib/imageCrop";
-import { imageUploadAccept } from "../../lib/mediaFormats";
+import { prepareImageFileForCrop } from "../../lib/imageCrop";
+import {
+  isAcceptedVideoUploadFile,
+  isLikelyVideoUploadFile,
+  mediaUploadAccept,
+  videoUploadFormatHelp,
+} from "../../lib/mediaFormats";
+import {
+  postMediaDraftFromImage,
+  postMediaDraftFromVideo,
+  postMediaInputFromDraft,
+  postMediaType,
+  type PostMediaDraft,
+} from "../../lib/postMedia";
 import {
   buttonHover,
   buttonTap,
@@ -221,7 +235,12 @@ export function PostCard({
               className="block whitespace-pre-wrap break-words p-1 text-pretty text-base leading-7 text-text"
             />
 
-            <PostMedia mediaUrl={post.mediaUrl} />
+            <PostMedia
+              mediaMime={post.mediaMime}
+              mediaPosterUrl={post.mediaPosterUrl}
+              mediaType={postMediaType(post)}
+              mediaUrl={post.mediaUrl}
+            />
           </div>
 
           <ReactionControls
@@ -319,6 +338,9 @@ function isThreadOpenIgnoredTarget(target: EventTarget | null) {
 type PostMediaProps = {
   className?: string;
   maxHeightClass?: string;
+  mediaMime?: string | null | undefined;
+  mediaPosterUrl?: string | null | undefined;
+  mediaType?: "image" | "video" | null | undefined;
   mediaUrl: string | null | undefined;
   testId?: string;
 };
@@ -326,6 +348,9 @@ type PostMediaProps = {
 function PostMedia({
   className = "mt-4",
   maxHeightClass = "max-h-[min(70vh,34rem)]",
+  mediaMime,
+  mediaPosterUrl,
+  mediaType,
   mediaUrl,
   testId = "post-media",
 }: PostMediaProps) {
@@ -336,17 +361,30 @@ function PostMedia({
   return (
     <span className={cn("block max-w-full", className)} data-testid={testId}>
       <span className="inline-flex w-fit max-w-full overflow-hidden rounded-card border border-line bg-canvas/70 align-top">
-        <img
-          src={mediaUrl}
-          alt=""
-          className={cn(
-            "block h-auto max-w-full object-contain",
-            maxHeightClass,
-          )}
-          loading="lazy"
-          decoding="async"
-          data-testid={`${testId}-image`}
-        />
+        {mediaType === "video" || /\.(?:mp4|webm)$/iu.test(mediaUrl) ? (
+          <video
+            className={cn("block h-auto max-w-full bg-black object-contain", maxHeightClass)}
+            controls
+            playsInline
+            poster={mediaPosterUrl ?? undefined}
+            preload="metadata"
+            data-testid={`${testId}-video`}
+          >
+            <source src={mediaUrl} type={mediaMime ?? (mediaUrl.endsWith(".webm") ? "video/webm" : "video/mp4")} />
+          </video>
+        ) : (
+          <img
+            src={mediaUrl}
+            alt=""
+            className={cn(
+              "block h-auto max-w-full object-contain",
+              maxHeightClass,
+            )}
+            loading="lazy"
+            decoding="async"
+            data-testid={`${testId}-image`}
+          />
+        )}
       </span>
     </span>
   );
@@ -665,9 +703,9 @@ function ReplyComposer({
 }: ReplyComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [body, setBody] = useState("");
-  const [mediaUrl, setMediaUrl] = useState<string | undefined>();
+  const [media, setMedia] = useState<PostMediaDraft | undefined>();
   const [pendingImageCrop, setPendingImageCrop] = useState<File | undefined>();
-  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | undefined>();
   const trimmedBody = body.trim();
@@ -676,7 +714,7 @@ function ReplyComposer({
     trimmedBody.length > 0 &&
     trimmedBody.length <= 2000 &&
     !submitting &&
-    !uploadingImage;
+    !uploadingMedia;
 
   useEffect(() => {
     if (autoFocus) {
@@ -710,14 +748,14 @@ function ReplyComposer({
         (freshCsrfToken) =>
           createPostReply(
             parentPostId,
-            mediaUrl ? { body: trimmedBody, mediaUrl } : { body: trimmedBody },
+            { body: trimmedBody, ...postMediaInputFromDraft(media) },
             freshCsrfToken,
           ),
         { retryOnCsrf: true },
       );
 
       setBody("");
-      setMediaUrl(undefined);
+      setMedia(undefined);
       setPendingImageCrop(undefined);
       onCreated(reply);
     } catch (error) {
@@ -727,7 +765,7 @@ function ReplyComposer({
     }
   }
 
-  async function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
+  async function handleMediaChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = "";
 
@@ -736,28 +774,67 @@ function ReplyComposer({
     }
 
     if (!csrfToken) {
-      setMessage("Log in to upload an image.");
+      setMessage("Log in to upload media.");
       return;
     }
 
-    const validationError = validateImageCropFile(file);
+    if (isLikelyVideoUploadFile(file)) {
+      await uploadVideoMedia(file);
+      return;
+    }
+
+    setUploadingMedia(true);
+    setMessage(undefined);
+
+    try {
+      const prepared = await runWithAuth(
+        (freshCsrfToken) =>
+          prepareImageFileForCrop(file, "post_media", (sourceFile, purpose) =>
+            previewImageUpload(sourceFile, purpose, freshCsrfToken),
+          ),
+        { retryOnCsrf: true },
+      );
+      setPendingImageCrop(prepared);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Image could not be prepared.");
+    } finally {
+      setUploadingMedia(false);
+    }
+  }
+
+  async function uploadVideoMedia(file: File) {
+    const validationError = validatePostVideoFile(file);
 
     if (validationError) {
       setMessage(validationError);
       return;
     }
 
+    setUploadingMedia(true);
     setMessage(undefined);
-    setPendingImageCrop(file);
+
+    try {
+      const uploaded = await runWithAuth(
+        (freshCsrfToken) => uploadVideo(file, "post_media", freshCsrfToken),
+        { retryOnCsrf: true },
+      );
+      setMedia(postMediaDraftFromVideo(uploaded));
+      setPendingImageCrop(undefined);
+      setMessage("Media attached.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Video could not be uploaded.");
+    } finally {
+      setUploadingMedia(false);
+    }
   }
 
   async function uploadCroppedImage(file: File) {
     if (!csrfToken) {
-      setMessage("Log in to upload an image.");
-      throw new Error("Log in to upload an image.");
+      setMessage("Log in to upload media.");
+      throw new Error("Log in to upload media.");
     }
 
-    setUploadingImage(true);
+    setUploadingMedia(true);
     setMessage(undefined);
 
     try {
@@ -765,16 +842,16 @@ function ReplyComposer({
         (freshCsrfToken) => uploadImage(file, "post_media", freshCsrfToken),
         { retryOnCsrf: true },
       );
-      setMediaUrl(uploaded.url);
+      setMedia(postMediaDraftFromImage(uploaded));
       setPendingImageCrop(undefined);
-      setMessage("Image attached.");
+      setMessage("Media attached.");
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Image could not be uploaded.";
       setMessage(message);
       throw error;
     } finally {
-      setUploadingImage(false);
+      setUploadingMedia(false);
     }
   }
 
@@ -808,7 +885,10 @@ function ReplyComposer({
       <PostMedia
         className="mt-3"
         maxHeightClass="max-h-56"
-        mediaUrl={mediaUrl}
+        mediaMime={media?.mime}
+        mediaPosterUrl={media?.posterUrl}
+        mediaType={media?.type}
+        mediaUrl={media?.url}
         testId="reply-composer-media"
       />
 
@@ -816,7 +896,7 @@ function ReplyComposer({
         <p
           className={cn(
             "mt-3 rounded-card border p-3 text-sm",
-            message === "Image attached."
+            message === "Media attached."
               ? "border-leaf/30 bg-leaf/15 text-leaf-ink"
               : "border-rose/30 bg-rose/15 text-rose-ink",
           )}
@@ -830,27 +910,27 @@ function ReplyComposer({
           {body.length}/2000
         </span>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {mediaUrl ? (
+          {media ? (
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              disabled={submitting || uploadingImage}
+              disabled={submitting || uploadingMedia}
               icon={<Trash2 aria-hidden="true" size={15} />}
-              onClick={() => setMediaUrl(undefined)}
+              onClick={() => setMedia(undefined)}
             >
               Remove
             </Button>
           ) : null}
           <label className="inline-flex min-h-9 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-surface px-3 text-sm font-medium text-text shadow-soft transition duration-fluid hover:border-line-strong focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus">
             <ImagePlus aria-hidden="true" size={15} />
-            {uploadingImage ? "Uploading" : mediaUrl ? "Replace image" : "Upload image"}
+            {uploadingMedia ? "Uploading" : media ? "Replace media" : "Upload media"}
             <input
               className="sr-only"
               type="file"
-              accept={imageUploadAccept}
-              disabled={submitting || uploadingImage}
-              onChange={(event) => void handleImageChange(event)}
+              accept={mediaUploadAccept}
+              disabled={submitting || uploadingMedia}
+              onChange={(event) => void handleMediaChange(event)}
             />
           </label>
           <Button
@@ -877,7 +957,7 @@ function ReplyComposer({
         open={Boolean(pendingImageCrop)}
         file={pendingImageCrop}
         purpose="post_media"
-        busy={uploadingImage}
+        busy={uploadingMedia}
         onClose={() => setPendingImageCrop(undefined)}
         onApply={uploadCroppedImage}
       />
@@ -1150,7 +1230,13 @@ function ParentPostPreview({
             entities={post.bodyEntities}
             className="mt-3 block whitespace-pre-wrap break-words text-pretty text-base leading-7 text-text sm:text-[1.0625rem] sm:leading-8"
           />
-          <PostMedia className="mt-3" mediaUrl={post.mediaUrl} />
+          <PostMedia
+            className="mt-3"
+            mediaMime={post.mediaMime}
+            mediaPosterUrl={post.mediaPosterUrl}
+            mediaType={postMediaType(post)}
+            mediaUrl={post.mediaUrl}
+          />
           <div data-testid="thread-root-actions">{actionRow}</div>
         </div>
       </div>
@@ -1333,7 +1419,13 @@ function ReplyPreview({
             entities={reply.bodyEntities}
             className="mt-2 block whitespace-pre-wrap break-words text-pretty text-sm leading-6 text-text"
           />
-          <PostMedia className="mt-3" mediaUrl={reply.mediaUrl} />
+          <PostMedia
+            className="mt-3"
+            mediaMime={reply.mediaMime}
+            mediaPosterUrl={reply.mediaPosterUrl}
+            mediaType={postMediaType(reply)}
+            mediaUrl={reply.mediaUrl}
+          />
 
           <div data-testid="thread-reply-actions">
             <ReactionControls
@@ -1600,4 +1692,20 @@ function roomAllowsPosting(room: Post["room"] | null | undefined): boolean {
   }
 
   return room.viewerCanPost === true;
+}
+
+function validatePostVideoFile(file: File): string | undefined {
+  if (file.size <= 0) {
+    return "Video cannot be empty.";
+  }
+
+  if (file.size > 100 * 1024 * 1024) {
+    return "Video must be 100 MB or smaller.";
+  }
+
+  if (!isAcceptedVideoUploadFile(file)) {
+    return videoUploadFormatHelp;
+  }
+
+  return undefined;
 }

@@ -73,6 +73,41 @@ export async function apiUpload<T>(
   return unwrapResponse<T>(response);
 }
 
+export async function apiUploadBlob(
+  path: string,
+  body: FormData,
+  csrfToken?: string | undefined,
+): Promise<Blob> {
+  const headers: Record<string, string> = {
+    Accept: "image/webp,application/json",
+  };
+
+  if (csrfToken) {
+    headers["X-CSRF-Token"] = csrfToken;
+  }
+
+  const response = await fetch(`${apiBase}${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body,
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      dispatchAuthSessionExpired();
+    }
+
+    const json = (await response.json().catch(() => undefined)) as
+      | ApiEnvelope<unknown>
+      | undefined;
+
+    throw new ApiClientError(getErrorMessage(json, response.status), response.status);
+  }
+
+  return response.blob();
+}
+
 async function apiMutate<T>(
   method: "POST" | "PATCH" | "DELETE",
   path: string,

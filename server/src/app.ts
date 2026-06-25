@@ -143,6 +143,7 @@ import type { PublicStatsPayload, StatsRepository } from "./stats.js";
 import {
   audioUploadMaxBytes,
   imageUploadMaxBytes,
+  multipartUploadMaxBytes,
   UploadRouteError,
   type UploadPayload,
   type UploadService,
@@ -1205,6 +1206,17 @@ async function withAuthenticatedUploadRoute(
         files: 1,
       },
     });
+
+    if (kind === "image" && uploadPreviewRequested(request)) {
+      const preview = await dependencies.uploadService.previewImage(file);
+
+      return reply
+        .status(200)
+        .header("Cache-Control", "no-store")
+        .type(preview.contentType)
+        .send(preview.body);
+    }
+
     const data = await dependencies.uploadService.store(kind, file);
 
     return reply.status(201).send(successPayload<UploadPayload>(data));
@@ -1251,7 +1263,7 @@ function uploadTitle(kind: string): string {
 
 function uploadLimitLabel(kind: string): string {
   if (kind === "video") {
-    return "30 MB";
+    return "100 MB";
   }
 
   if (kind === "audio") {
@@ -1269,6 +1281,18 @@ function multipartLimitError(error: unknown): boolean {
   const record = error as Record<string, unknown>;
 
   return record.code === "FST_REQ_FILE_TOO_LARGE" || record.name === "RequestFileTooLargeError";
+}
+
+function uploadPreviewRequested(request: FastifyRequest): boolean {
+  const query = request.query;
+
+  if (query === null || typeof query !== "object" || Array.isArray(query)) {
+    return false;
+  }
+
+  const value = (query as Record<string, unknown>).preview;
+
+  return value === "1" || value === "true";
 }
 
 function singleHeaderValue(value: string | string[] | undefined): string {
@@ -1636,7 +1660,7 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
   void app.register(multipart, {
     limits: {
       files: 1,
-      fileSize: 32 * 1024 * 1024,
+      fileSize: multipartUploadMaxBytes,
     },
   });
 

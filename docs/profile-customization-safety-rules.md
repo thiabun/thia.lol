@@ -74,9 +74,11 @@ Current profile text and media constraints:
 - Bio: optional, maximum 500 characters.
 - Location: optional, maximum 120 characters.
 - Connections: maximum 10, each input maximum 300 characters.
-- Profile images: JPEG, PNG, WebP, or GIF uploads, maximum 10 MB, stored through the authenticated upload pipeline.
-- Profile background video: MP4 or WebM upload, maximum 30 MB, restricted to the
-  `profile_background` purpose.
+- Profile images: accepted image uploads are normalized to WebP, maximum 10 MB,
+  stored through the authenticated upload pipeline.
+- Profile background video: accepted video uploads are transcoded to MP4 with a
+  WebP poster, maximum 100 MB input, restricted to the `profile_background`
+  purpose and capped to about 30 seconds.
 - Upload purposes include `avatar`, `banner`, and `profile_background`.
 - Client crop targets remain 512x512 for avatars, 1600x600 for banners, and 1920x1080 for profile backgrounds when the crop UI is used.
 

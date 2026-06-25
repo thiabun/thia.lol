@@ -1421,7 +1421,7 @@ test("thread reply composer is hidden until Reply and exposes media UI", async (
 
   await dialog.getByRole("button", { name: /Open replies/ }).first().click();
   await expect(dialog.getByTestId("reply-composer")).toBeVisible();
-  await expect(dialog.getByText("Upload image")).toBeVisible();
+  await expect(dialog.getByText("Upload media")).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Send" })).toBeDisabled();
 
   await dialog.getByRole("textbox", { name: "Reply" }).fill("A compact reply.");

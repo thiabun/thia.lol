@@ -37,6 +37,8 @@ const envSchema = z.object({
   THIA_UPLOAD_ROOT: z.string().min(1).default("/srv/thia.lol/www/uploads"),
   THIA_UPLOAD_PUBLIC_PREFIX: z.string().regex(/^\/[A-Za-z0-9/_-]*$/).default("/uploads"),
   THIA_WEB_ROOT: z.string().min(1).default("/srv/thia.lol/www"),
+  THIA_FFMPEG_PATH: z.string().min(1).default("ffmpeg"),
+  THIA_FFPROBE_PATH: z.string().min(1).default("ffprobe"),
   THIA_API_LOG_LEVEL: z
     .enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"])
     .default("info"),

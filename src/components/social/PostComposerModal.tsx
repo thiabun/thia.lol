@@ -5,10 +5,21 @@ import { Button } from "../ui/Button";
 import { ImageCropModal } from "../ui/ImageCropModal";
 import { ModalSheet, ModalSheetStatus } from "../ui/ModalSheet";
 import { MentionTextarea } from "./MentionTextarea";
-import { createPost, uploadImage } from "../../lib/api";
+import { createPost, previewImageUpload, uploadImage, uploadVideo } from "../../lib/api";
 import type { CreatePostInput } from "../../lib/api";
-import { validateImageCropFile } from "../../lib/imageCrop";
-import { imageUploadAccept } from "../../lib/mediaFormats";
+import { prepareImageFileForCrop } from "../../lib/imageCrop";
+import {
+  isAcceptedVideoUploadFile,
+  isLikelyVideoUploadFile,
+  mediaUploadAccept,
+  videoUploadFormatHelp,
+} from "../../lib/mediaFormats";
+import {
+  postMediaDraftFromImage,
+  postMediaDraftFromVideo,
+  postMediaInputFromDraft,
+  type PostMediaDraft,
+} from "../../lib/postMedia";
 import type { Post, Room } from "../../lib/types";
 
 type PostComposerModalProps = {
@@ -32,14 +43,14 @@ export function PostComposerModal({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [body, setBody] = useState("");
   const [roomSlug, setRoomSlug] = useState(initialRoomSlug ?? "");
-  const [mediaUrl, setMediaUrl] = useState<string | undefined>();
+  const [media, setMedia] = useState<PostMediaDraft | undefined>();
   const [pendingImageCrop, setPendingImageCrop] = useState<File | undefined>();
-  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | undefined>();
   const postableRooms = useMemo(() => rooms.filter((room) => room.viewerCanPost), [rooms]);
   const canSubmit =
-    Boolean(csrfToken) && body.trim().length > 0 && !submitting && !uploadingImage;
+    Boolean(csrfToken) && body.trim().length > 0 && !submitting && !uploadingMedia;
   const roomOptions = [
     { value: "", label: "Profile feed" },
     ...postableRooms.map((room) => ({
@@ -56,9 +67,9 @@ export function PostComposerModal({
   const closeComposer = useCallback(() => {
     setBody("");
     setRoomSlug("");
-    setMediaUrl(undefined);
+    setMedia(undefined);
     setPendingImageCrop(undefined);
-    setUploadingImage(false);
+    setUploadingMedia(false);
     setMessage(undefined);
     setSubmitting(false);
     onClose();
@@ -82,9 +93,7 @@ export function PostComposerModal({
         input.roomSlug = effectiveRoomSlug;
       }
 
-      if (mediaUrl) {
-        input.mediaUrl = mediaUrl;
-      }
+      Object.assign(input, postMediaInputFromDraft(media));
 
       const post = await createPost(input, csrfToken);
 
@@ -97,7 +106,7 @@ export function PostComposerModal({
     }
   }
 
-  async function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
+  async function handleMediaChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = "";
 
@@ -110,15 +119,51 @@ export function PostComposerModal({
       return;
     }
 
-    const validationError = validateImageCropFile(file);
+    if (isLikelyVideoUploadFile(file)) {
+      await uploadVideoMedia(file);
+      return;
+    }
+
+    setUploadingMedia(true);
+    setMessage(undefined);
+
+    try {
+      const prepared = await prepareImageFileForCrop(file, "post_media", (sourceFile, purpose) =>
+        previewImageUpload(sourceFile, purpose, csrfToken),
+      );
+      setPendingImageCrop(prepared);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Image could not be prepared.");
+    } finally {
+      setUploadingMedia(false);
+    }
+  }
+
+  async function uploadVideoMedia(file: File) {
+    if (!csrfToken) {
+      setMessage("Sign in again before uploading.");
+      return;
+    }
+
+    const validationError = validatePostVideoFile(file);
 
     if (validationError) {
       setMessage(validationError);
       return;
     }
 
+    setUploadingMedia(true);
     setMessage(undefined);
-    setPendingImageCrop(file);
+
+    try {
+      const uploaded = await uploadVideo(file, "post_media", csrfToken);
+      setMedia(postMediaDraftFromVideo(uploaded));
+      setPendingImageCrop(undefined);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Video could not be uploaded.");
+    } finally {
+      setUploadingMedia(false);
+    }
   }
 
   async function uploadCroppedImage(file: File) {
@@ -127,12 +172,12 @@ export function PostComposerModal({
       throw new Error("Sign in again before uploading.");
     }
 
-    setUploadingImage(true);
+    setUploadingMedia(true);
     setMessage(undefined);
 
     try {
       const uploaded = await uploadImage(file, "post_media", csrfToken);
-      setMediaUrl(uploaded.url);
+      setMedia(postMediaDraftFromImage(uploaded));
       setMessage(undefined);
       setPendingImageCrop(undefined);
     } catch (error) {
@@ -141,7 +186,7 @@ export function PostComposerModal({
       setMessage(message);
       throw error;
     } finally {
-      setUploadingImage(false);
+      setUploadingMedia(false);
     }
   }
 
@@ -155,7 +200,7 @@ export function PostComposerModal({
         testId="composer-modal"
         size="md"
         mobile="full"
-        busy={submitting || uploadingImage}
+        busy={submitting || uploadingMedia}
         initialFocusRef={textareaRef}
         bodyClassName="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-5 sm:py-4"
         footerClassName="shrink-0 border-t border-line bg-surface px-4 py-3 sm:px-5"
@@ -205,35 +250,35 @@ export function PostComposerModal({
 
             <label
               className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-full text-muted transition duration-fluid hover:bg-surface-strong hover:text-text focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus has-[:disabled]:pointer-events-none has-[:disabled]:opacity-50"
-              title={mediaUrl ? "Replace image" : "Upload image"}
+              title={media ? "Replace media" : "Upload media"}
             >
               <ImagePlus aria-hidden="true" size={18} />
               <span className="sr-only">
-                {uploadingImage
-                  ? "Uploading image"
-                  : mediaUrl
-                    ? "Replace image"
-                    : "Upload image"}
+                {uploadingMedia
+                  ? "Uploading media"
+                  : media
+                    ? "Replace media"
+                    : "Upload media"}
               </span>
               <input
                 className="sr-only"
                 type="file"
-                accept={imageUploadAccept}
-                disabled={submitting || uploadingImage}
-                onChange={handleImageChange}
+                accept={mediaUploadAccept}
+                disabled={submitting || uploadingMedia}
+                onChange={handleMediaChange}
               />
             </label>
 
-            {mediaUrl ? (
+            {media ? (
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
                 className="size-9 rounded-full"
-                disabled={submitting || uploadingImage}
-                aria-label="Remove image"
-                title="Remove image"
-                onClick={() => setMediaUrl(undefined)}
+                disabled={submitting || uploadingMedia}
+                aria-label="Remove media"
+                title="Remove media"
+                onClick={() => setMedia(undefined)}
               >
                 <Trash2 aria-hidden="true" size={17} />
               </Button>
@@ -274,13 +319,25 @@ export function PostComposerModal({
           onValueChange={setBody}
         />
 
-        {mediaUrl ? (
+        {media ? (
           <div className="overflow-hidden rounded-card border border-line bg-canvas/55">
-            <img
-              alt=""
-              className="mx-auto max-h-64 max-w-full object-contain"
-              src={mediaUrl}
-            />
+            {media.type === "video" ? (
+              <video
+                className="mx-auto max-h-64 max-w-full bg-black object-contain"
+                controls
+                playsInline
+                poster={media.posterUrl ?? undefined}
+                preload="metadata"
+              >
+                <source src={media.url} type={media.mime} />
+              </video>
+            ) : (
+              <img
+                alt=""
+                className="mx-auto max-h-64 max-w-full object-contain"
+                src={media.url}
+              />
+            )}
           </div>
         ) : null}
 
@@ -291,10 +348,26 @@ export function PostComposerModal({
         open={Boolean(pendingImageCrop)}
         file={pendingImageCrop}
         purpose="post_media"
-        busy={uploadingImage}
+        busy={uploadingMedia}
         onClose={() => setPendingImageCrop(undefined)}
         onApply={uploadCroppedImage}
       />
     </>
   );
+}
+
+function validatePostVideoFile(file: File): string | undefined {
+  if (file.size <= 0) {
+    return "Video cannot be empty.";
+  }
+
+  if (file.size > 100 * 1024 * 1024) {
+    return "Video must be 100 MB or smaller.";
+  }
+
+  if (!isAcceptedVideoUploadFile(file)) {
+    return videoUploadFormatHelp;
+  }
+
+  return undefined;
 }

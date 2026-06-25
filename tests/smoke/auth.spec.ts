@@ -113,12 +113,12 @@ test.describe("authenticated smoke", () => {
     await expect(dialog).toBeVisible();
 
     const destination = dialog.getByRole("combobox", { name: "Post to" });
-    const imageUpload = dialog.getByTitle("Upload image");
+    const mediaUpload = dialog.getByTitle("Upload media");
     const body = dialog.getByRole("textbox", { name: "Post" });
 
     await expect(body).toBeVisible();
     await expect(destination).toBeVisible();
-    await expect(imageUpload).toBeVisible();
+    await expect(mediaUpload).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Post", exact: true })).toBeVisible();
     await expect(dialog.getByText(/video/i)).toHaveCount(0);
     await expect(dialog.getByText("Post to a profile or room.")).toHaveCount(0);
@@ -126,7 +126,7 @@ test.describe("authenticated smoke", () => {
     await expect(dialog.getByText("Images are converted to WebP")).toHaveCount(0);
 
     const destinationBox = await destination.boundingBox();
-    const imageUploadBox = await imageUpload.boundingBox();
+    const imageUploadBox = await mediaUpload.boundingBox();
     const bodyBox = await body.boundingBox();
 
     expect(destinationBox).not.toBeNull();

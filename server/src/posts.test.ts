@@ -32,6 +32,7 @@ const capabilities: ProfileSchemaCapabilities = {
   hasRoomCustomizationColumns: true,
   hasRoomSoftDeleteColumn: true,
   hasPostPublicIdColumn: true,
+  hasPostMediaMetadataColumns: true,
   hasPostReblogs: true,
   hasTextEntities: true,
   hasProfileModules: true,

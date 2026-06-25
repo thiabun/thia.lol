@@ -17,7 +17,7 @@ import { ImageCropModal } from "../ui/ImageCropModal";
 import { ModalSheet, ModalSheetStatus } from "../ui/ModalSheet";
 import { MarkdownEditor } from "./MarkdownEditor";
 import { UserIdentityLink } from "./UserProfileLink";
-import { validateImageCropFile } from "../../lib/imageCrop";
+import { prepareImageFileForCrop } from "../../lib/imageCrop";
 import { imageUploadAccept } from "../../lib/mediaFormats";
 import type {
   ImageUploadPurpose,
@@ -35,6 +35,7 @@ type RoomEditModalProps = {
   canDeleteRoom?: boolean;
   onClose: () => void;
   onSave: (input: RoomInput) => Promise<Room>;
+  onPrepareImage: (file: File, purpose: ImageUploadPurpose) => Promise<File>;
   onUpload: (file: File, purpose: ImageUploadPurpose) => Promise<UploadedImage>;
   onAddModerator?: (handle: string) => Promise<void>;
   onRemoveModerator?: (handle: string) => Promise<void>;
@@ -91,6 +92,7 @@ export function RoomEditModal({
   onDeleteRoom,
   onRemoveModerator,
   onSave,
+  onPrepareImage,
   onUpload,
   open,
   room,
@@ -161,15 +163,14 @@ export function RoomEditModal({
       return;
     }
 
-    const validationError = validateImageCropFile(file);
-
-    if (validationError) {
-      setMessage(validationError);
-      return;
-    }
-
     setMessage(undefined);
-    setPendingImageCrop({ file, slot });
+
+    try {
+      const prepared = await prepareImageFileForCrop(file, slot, onPrepareImage);
+      setPendingImageCrop({ file: prepared, slot });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Image could not be prepared.");
+    }
   }
 
   async function uploadCroppedImage(file: File) {

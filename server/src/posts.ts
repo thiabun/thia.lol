@@ -63,6 +63,9 @@ interface PostRow extends ProfileRow, RoomRow {
   post_body: string | null;
   post_mood: string | null;
   post_media_url: string | null;
+  post_media_type: string | null;
+  post_media_mime: string | null;
+  post_media_poster_url: string | null;
   post_visibility: string;
   post_status: string;
   post_deleted_at: string | null;
@@ -466,6 +469,9 @@ class MysqlPostsRepository implements PostsRepository {
       hasRoomRulesColumn,
       hasRoomSoftDeleteColumn,
       hasPostPublicIdColumn,
+      hasPostMediaTypeColumn,
+      hasPostMediaMimeColumn,
+      hasPostMediaPosterUrlColumn,
       hasPostReblogs,
       hasTextEntities,
       hasProfileModules,
@@ -505,6 +511,9 @@ class MysqlPostsRepository implements PostsRepository {
       this.columnExists("rooms", "rules"),
       this.columnExists("rooms", "deleted_at"),
       this.columnExists("posts", "public_id"),
+      this.columnExists("posts", "media_type"),
+      this.columnExists("posts", "media_mime"),
+      this.columnExists("posts", "media_poster_url"),
       this.tableExists("post_reblogs"),
       this.tableExists("text_entities"),
       this.tableExists("profile_modules"),
@@ -540,6 +549,8 @@ class MysqlPostsRepository implements PostsRepository {
       hasRoomCustomizationColumns: hasRoomIconUrlColumn && hasRoomBannerUrlColumn && hasRoomRulesColumn,
       hasRoomSoftDeleteColumn,
       hasPostPublicIdColumn,
+      hasPostMediaMetadataColumns:
+        hasPostMediaTypeColumn && hasPostMediaMimeColumn && hasPostMediaPosterUrlColumn,
       hasPostReblogs,
       hasTextEntities,
       hasProfileModules,

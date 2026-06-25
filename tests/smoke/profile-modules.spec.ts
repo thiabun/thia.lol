@@ -3998,11 +3998,13 @@ test("owner crops a profile background image before upload", async ({ page }) =>
     .getByTestId("profile-background-video-input")
     .getAttribute("accept");
   expect(backgroundImageAccept).toContain("image/gif");
-  expect(backgroundImageAccept).not.toContain("image/avif");
-  expect(backgroundImageAccept).not.toContain(".heic");
+  expect(backgroundImageAccept).toContain("image/avif");
+  expect(backgroundImageAccept).toContain(".heic");
+  expect(backgroundImageAccept).toContain("image/tiff");
+  expect(backgroundImageAccept).toContain(".bmp");
   expect(backgroundVideoAccept).toContain("video/webm");
-  expect(backgroundVideoAccept).not.toContain("video/quicktime");
-  expect(backgroundVideoAccept).not.toContain(".mov");
+  expect(backgroundVideoAccept).toContain("video/quicktime");
+  expect(backgroundVideoAccept).toContain(".mov");
   await page
     .getByTestId("profile-background-image-input")
     .setInputFiles(samplePngFile("profile-background.png"));
@@ -4275,10 +4277,10 @@ test("uploaded video and custom MP3 module settings use file uploads", async ({
     .getAttribute("accept");
   expect(videoAccept).toContain("video/mp4");
   expect(videoAccept).toContain("video/webm");
-  expect(videoAccept).not.toContain("video/quicktime");
-  expect(videoAccept).not.toContain(".mov");
-  expect(videoAccept).not.toContain(".mkv");
-  expect(videoAccept).not.toContain(".3gp");
+  expect(videoAccept).toContain("video/quicktime");
+  expect(videoAccept).toContain(".mov");
+  expect(videoAccept).toContain(".mkv");
+  expect(videoAccept).toContain(".3gp");
   await videoSettings
     .getByTestId("profile-module-settings-video-input")
     .setInputFiles(sampleMp4File("launch-clip.mp4"));
@@ -4288,6 +4290,7 @@ test("uploaded video and custom MP3 module settings use file uploads", async ({
     .poll(() => moduleConfigFromDraft(draftPayload, 21)?.video)
     .toMatchObject({
       url: "/uploads/media/2026/06/profile_module_video-clip.mp4",
+      posterUrl: "/uploads/media/2026/06/profile_module_video-clip-poster.webp",
       mime: "video/mp4",
       title: "launch clip",
     });
@@ -4320,8 +4323,16 @@ test("image crop modal is wired to current image upload surfaces", () => {
     "utf8",
   );
   const postCard = readFileSync("src/components/social/PostCard.tsx", "utf8");
+  const profileModules = readFileSync(
+    "src/components/social/ProfileModules.tsx",
+    "utf8",
+  );
   const roomEditor = readFileSync(
     "src/components/social/RoomEditModal.tsx",
+    "utf8",
+  );
+  const shareCardScene = readFileSync(
+    "src/components/share/ShareCardScene.tsx",
     "utf8",
   );
 
@@ -4338,16 +4349,28 @@ test("image crop modal is wired to current image upload surfaces", () => {
 
   for (const source of [profilePage, postComposer, postCard, roomEditor]) {
     expect(source).toContain("ImageCropModal");
-    expect(source).toContain("validateImageCropFile");
-    expect(source).toContain("imageUploadAccept");
+    expect(source).toContain("prepareImageFileForCrop");
   }
+
+  expect(profilePage).toContain("imageUploadAccept");
+  expect(roomEditor).toContain("imageUploadAccept");
+  expect(postComposer).toContain("mediaUploadAccept");
+  expect(postCard).toContain("mediaUploadAccept");
+  expect(postComposer).toContain("uploadVideo(file, \"post_media\"");
+  expect(postCard).toContain("uploadVideo(file, \"post_media\"");
+  expect(postCard).toContain("<video");
+  expect(postCard).toContain("poster={mediaPosterUrl ?? undefined}");
+  expect(profilePage).toContain("profileBackgroundVideoPoster: upload.posterUrl ?? null");
+  expect(profilePage).toContain("postMediaType(post) === \"video\"");
+  expect(profileModules).toContain("poster={video.posterUrl}");
+  expect(shareCardScene).toContain("postMediaType(post) === \"video\" ? post.mediaPosterUrl ?? null : post.mediaUrl");
 
   const mediaFormats = readFileSync("src/lib/mediaFormats.ts", "utf8");
   expect(mediaFormats).toContain("image/gif");
-  expect(mediaFormats).toContain("Use JPEG, PNG, WebP, or GIF.");
-  expect(mediaFormats).toContain("Use MP4 or WebM.");
-  expect(mediaFormats).not.toContain("image/heic");
-  expect(mediaFormats).not.toContain("video/quicktime");
+  expect(mediaFormats).toContain("Use JPEG, PNG, WebP, GIF, AVIF, HEIC/HEIF, TIFF, or BMP.");
+  expect(mediaFormats).toContain("Use MP4, WebM, MOV, M4V, 3GP, MKV, AVI, MPEG, or OGG.");
+  expect(mediaFormats).toContain("image/heic");
+  expect(mediaFormats).toContain("video/quicktime");
 });
 
 test("low-resolution desktop uses compact direct canvas chrome", async ({ page }) => {
@@ -6064,6 +6087,10 @@ async function mockProfileModules(
         ok: true,
         data: {
           url: `/uploads/media/2026/06/${purpose}-clip.mp4`,
+          posterUrl: `/uploads/media/2026/06/${purpose}-clip-poster.webp`,
+          width: 1280,
+          height: 720,
+          duration: purpose === "profile_background" ? 30 : 120,
           mime: "video/mp4",
           type: "video/mp4",
           size: 4096,

@@ -9,7 +9,7 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { SearchField } from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
 import { RoomCard } from "../components/social/RoomCard";
-import { createRoom, getRooms, uploadImage } from "../lib/api";
+import { createRoom, getRooms, previewImageUpload, uploadImage } from "../lib/api";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
 import type { ImageUploadPurpose, RoomInput } from "../lib/api";
 import type { Room } from "../lib/types";
@@ -69,6 +69,14 @@ export function RoomsPage() {
     }
 
     return uploadImage(file, purpose, csrfToken);
+  }
+
+  async function handlePrepareImage(file: File, purpose: ImageUploadPurpose) {
+    if (!csrfToken) {
+      throw new Error("Please log in again before uploading.");
+    }
+
+    return previewImageUpload(file, purpose, csrfToken);
   }
 
   return (
@@ -172,6 +180,7 @@ export function RoomsPage() {
             open={createOpen}
             onClose={() => setCreateOpen(false)}
             onSave={handleCreateRoom}
+            onPrepareImage={handlePrepareImage}
             onUpload={handleUpload}
           />
         </Suspense>

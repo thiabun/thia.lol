@@ -150,6 +150,9 @@ export interface PostPayload {
   bodyEntities: TextEntityPayload[];
   mood: string;
   mediaUrl: string | null;
+  mediaType: "image" | "video" | null;
+  mediaMime: string | null;
+  mediaPosterUrl: string | null;
   visibility: string;
   status: string;
   parentId: number | null;
@@ -198,6 +201,7 @@ export interface ProfileSchemaCapabilities {
   hasRoomCustomizationColumns: boolean;
   hasRoomSoftDeleteColumn: boolean;
   hasPostPublicIdColumn: boolean;
+  hasPostMediaMetadataColumns: boolean;
   hasPostReblogs: boolean;
   hasTextEntities: boolean;
   hasProfileModules: boolean;
@@ -273,6 +277,9 @@ interface PostRow extends ProfileRow, RoomRow {
   post_body: string | null;
   post_mood: string | null;
   post_media_url: string | null;
+  post_media_type: string | null;
+  post_media_mime: string | null;
+  post_media_poster_url: string | null;
   post_visibility: string;
   post_status: string;
   post_deleted_at: string | null;
@@ -1180,6 +1187,9 @@ class MysqlProfilesRepository implements ProfilesRepository {
       hasRoomRulesColumn,
       hasRoomSoftDeleteColumn,
       hasPostPublicIdColumn,
+      hasPostMediaTypeColumn,
+      hasPostMediaMimeColumn,
+      hasPostMediaPosterUrlColumn,
       hasPostReblogs,
       hasTextEntities,
       hasProfileModules,
@@ -1219,6 +1229,9 @@ class MysqlProfilesRepository implements ProfilesRepository {
       this.columnExists("rooms", "rules"),
       this.columnExists("rooms", "deleted_at"),
       this.columnExists("posts", "public_id"),
+      this.columnExists("posts", "media_type"),
+      this.columnExists("posts", "media_mime"),
+      this.columnExists("posts", "media_poster_url"),
       this.tableExists("post_reblogs"),
       this.tableExists("text_entities"),
       this.tableExists("profile_modules"),
@@ -1254,6 +1267,8 @@ class MysqlProfilesRepository implements ProfilesRepository {
       hasRoomCustomizationColumns: hasRoomIconUrlColumn && hasRoomBannerUrlColumn && hasRoomRulesColumn,
       hasRoomSoftDeleteColumn,
       hasPostPublicIdColumn,
+      hasPostMediaMetadataColumns:
+        hasPostMediaTypeColumn && hasPostMediaMimeColumn && hasPostMediaPosterUrlColumn,
       hasPostReblogs,
       hasTextEntities,
       hasProfileModules,
@@ -1744,6 +1759,7 @@ export function postSelectSql(
         p.body AS post_body,
         p.mood AS post_mood,
         p.media_url AS post_media_url,
+        ${postMediaMetadataSelectSql(capabilities)}
         p.visibility AS post_visibility,
         p.status AS post_status,
         p.deleted_at AS post_deleted_at,
@@ -1920,6 +1936,9 @@ export function postPayloadFromRow(
     bodyEntities,
     mood: stringValue(row.post_mood),
     mediaUrl: nullableStringValue(row.post_media_url),
+    mediaType: postMediaTypeFromRow(row),
+    mediaMime: nullableStringValue(row.post_media_mime),
+    mediaPosterUrl: nullableStringValue(row.post_media_poster_url),
     visibility: stringValue(row.post_visibility),
     status: stringValue(row.post_status),
     parentId: nullableNumberValue(row.post_parent_id),
@@ -2183,6 +2202,30 @@ function profileVisibilitySelectSql(alias: string, capabilities: ProfileSchemaCa
 
 function postPublicIdSelectSql(capabilities: ProfileSchemaCapabilities): string {
   return capabilities.hasPostPublicIdColumn ? "p.public_id AS post_public_id," : "NULL AS post_public_id,";
+}
+
+function postMediaMetadataSelectSql(capabilities: ProfileSchemaCapabilities): string {
+  return capabilities.hasPostMediaMetadataColumns
+    ? `p.media_type AS post_media_type,
+        p.media_mime AS post_media_mime,
+        p.media_poster_url AS post_media_poster_url,`
+    : `NULL AS post_media_type,
+        NULL AS post_media_mime,
+        NULL AS post_media_poster_url,`;
+}
+
+function postMediaTypeFromRow(row: PostRow): "image" | "video" | null {
+  if (row.post_media_type === "image" || row.post_media_type === "video") {
+    return row.post_media_type;
+  }
+
+  const mediaUrl = nullableStringValue(row.post_media_url);
+
+  if (mediaUrl === null) {
+    return null;
+  }
+
+  return /\.(?:mp4|webm)$/iu.test(mediaUrl) ? "video" : "image";
 }
 
 function roomMembershipCountSelectSql(capabilities: ProfileSchemaCapabilities): string {
