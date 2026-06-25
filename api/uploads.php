@@ -7,6 +7,7 @@ require_once __DIR__ . '/auth.php';
 const IMAGE_UPLOAD_MAX_BYTES = 10485760;
 const VIDEO_UPLOAD_MAX_BYTES = 31457280;
 const AUDIO_UPLOAD_MAX_BYTES = 20971520;
+const UPLOAD_DIRECTORY_MODE = 02775;
 const IMAGE_UPLOAD_MIME_EXTENSIONS = [
     'image/jpeg' => 'jpg',
     'image/png' => 'png',
@@ -466,12 +467,15 @@ function create_upload_destination(string $purpose, string $extension = 'webp'):
 function ensure_upload_directory(string $path): void
 {
     if (is_dir($path)) {
+        @chmod($path, UPLOAD_DIRECTORY_MODE);
         return;
     }
 
-    if (!mkdir($path, 0755, true) && !is_dir($path)) {
+    if (!mkdir($path, UPLOAD_DIRECTORY_MODE, true) && !is_dir($path)) {
         json_error('Upload storage is not writable.', 500);
     }
+
+    @chmod($path, UPLOAD_DIRECTORY_MODE);
 }
 
 function ensure_upload_htaccess(string $path): void

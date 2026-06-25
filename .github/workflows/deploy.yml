@@ -77,11 +77,14 @@ jobs:
             test -w /srv/thia.lol/www
             test -d /srv/thia.lol/www/uploads
             test ! -w /srv/thia.lol/www/uploads
+            find /srv/thia.lol/www/uploads -maxdepth 0 -type d -group www-data -perm -0020 -perm -2000 | grep -q .
+            getent group www-data | awk -F: "{print \$4}" | tr "," "\n" | grep -qx thia-node-api
             test -w /srv/thia.lol/www/api
             test -w /srv/thia.lol/www/api/migrations
             test -w /srv/thia.lol/node-api
             test ! -e /srv/thia.lol/www/config/config.php
             test -r /etc/systemd/system/thia-node-api.service
+            sudo -n /bin/systemctl cat thia-node-api.service | grep -F /srv/thia.lol/www/uploads >/dev/null
           '
 
       - name: Deploy frontend to VPS web root

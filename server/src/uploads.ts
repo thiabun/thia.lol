@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { fileTypeFromBuffer } from "file-type";
@@ -24,6 +24,7 @@ const videoMimes = new Map([
 
 const imagePurposes = new Set(["avatar", "banner", "profile_background", "post_media", "room_icon", "room_banner"]);
 const videoPurposes = new Set(["profile_background", "profile_module_video"]);
+const sharedUploadDirectoryMode = 0o2775;
 
 export class UploadRouteError extends Error {
   constructor(
@@ -164,12 +165,20 @@ class NodeUploadService implements UploadService {
     const absoluteDir = path.join(this.uploadRoot, "media", year, month);
     const filename = `${purpose}-${randomBytes(16).toString("hex")}.${safeExtension(extension)}`;
 
-    await mkdir(absoluteDir, { recursive: true, mode: 0o755 });
+    await this.ensureUploadDirectory(this.uploadRoot);
+    await this.ensureUploadDirectory(path.join(this.uploadRoot, "media"));
+    await this.ensureUploadDirectory(path.join(this.uploadRoot, "media", year));
+    await this.ensureUploadDirectory(absoluteDir);
     await writeFile(path.join(absoluteDir, filename), buffer, { mode: 0o644 });
 
     return {
       url: `/${path.posix.join(relativeDir, filename)}`,
     };
+  }
+
+  private async ensureUploadDirectory(directory: string): Promise<void> {
+    await mkdir(directory, { recursive: true, mode: sharedUploadDirectoryMode });
+    await chmod(directory, sharedUploadDirectoryMode).catch(() => undefined);
   }
 }
 
@@ -186,7 +195,11 @@ async function uploadedFileBuffer(
 
   try {
     buffer = await file.toBuffer();
-  } catch {
+  } catch (error) {
+    if (uploadLimitError(error)) {
+      throw error;
+    }
+
     throw new UploadRouteError(`${titleKind(kind)} could not be uploaded.`, 400);
   }
 
@@ -253,6 +266,16 @@ function normalizeMime(mime: string, kind: "image" | "video" | "audio"): string 
   }
 
   return null;
+}
+
+function uploadLimitError(error: unknown): boolean {
+  if (error === null || typeof error !== "object") {
+    return false;
+  }
+
+  const record = error as Record<string, unknown>;
+
+  return record.code === "FST_REQ_FILE_TOO_LARGE" || record.name === "RequestFileTooLargeError";
 }
 
 function safeExtension(extension: string): string {

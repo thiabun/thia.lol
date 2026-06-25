@@ -136,6 +136,10 @@ The `deploy` SSH user should be able to write `/srv/thia.lol/www/`,
 `/srv/thia.lol/node-api/`. It should be able to restart only
 `thia-node-api.service` through passwordless sudo. It should not be able to
 write `/srv/thia.lol/www/uploads/` or read `/srv/thia.lol/config/config.php`.
+The `thia-node-api` runtime user should be in the `www-data` group, the uploads
+directory should be `www-data` group-owned with group write and setgid bits, and
+the Node service sandbox should include `/srv/thia.lol/www/uploads` in
+`ReadWritePaths`.
 
 The frontend rsync uses `--delete` but excludes `/api/`, `/config/`, and
 `/uploads/`. API deploy excludes `/migrations/` because migrations are deployed

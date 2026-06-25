@@ -64,6 +64,7 @@ assert_true(!str_contains($uploadsSource, 'ffprobe_path'), 'upload path should n
 assert_true(!str_contains($uploadsSource, 'transcode_uploaded_video_to_mp4'), 'video uploads should not transcode on cPanel');
 assert_true(!str_contains($uploadsSource, 'assert_uploaded_video_stream'), 'video uploads should not require ffprobe validation on cPanel');
 assert_true(!str_contains($uploadsSource, 'imagewebp('), 'image uploads should not re-encode to WebP while conversion is disabled');
+assert_true(str_contains($uploadsSource, 'const UPLOAD_DIRECTORY_MODE = 02775'), 'upload directories should stay group-writable setgid runtime directories');
 assert_true(str_contains($uploadsSource, 'move_uploaded_file'), 'image and video uploads should store accepted originals');
 assert_true(str_contains($uploadsSource, 'AddType image/jpeg .jpg .jpeg'), 'upload htaccess should serve JPEG originals');
 assert_true(str_contains($uploadsSource, 'AddType image/png .png'), 'upload htaccess should serve PNG originals');
