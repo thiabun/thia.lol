@@ -196,7 +196,7 @@ class MariaDbPushRepository implements PushRepository {
       subscriptions,
       diagnostics: {
         missingConfigKeys: this.missingConfigKeys(),
-        curlAvailable: false,
+        curlAvailable: true,
         opensslAvailable: true,
       },
     };
