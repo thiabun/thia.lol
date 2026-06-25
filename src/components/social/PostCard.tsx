@@ -13,6 +13,7 @@ import {
   ArrowDown,
   ArrowUp,
   EyeOff,
+  ExternalLink,
   Heart,
   ImagePlus,
   LoaderCircle,
@@ -416,6 +417,7 @@ function PostAttachments({
   testId = "post-attachments",
 }: PostAttachmentsProps) {
   const attachments = postAttachmentsForDisplay(post);
+  const hasPlayerAttachment = attachments.some(isPostMusicAttachment);
 
   if (attachments.length === 0) {
     return null;
@@ -425,7 +427,7 @@ function PostAttachments({
     <div
       className={cn(
         "grid max-w-full gap-2",
-        attachments.length > 1 ? "sm:grid-cols-2" : null,
+        attachments.length > 1 && !hasPlayerAttachment ? "sm:grid-cols-2" : null,
         className,
       )}
       data-testid={testId}
@@ -455,6 +457,10 @@ function PostAttachmentItem({
   testId: string;
 }) {
   if (attachment.kind === "integration") {
+    if (isPostMusicAttachment(attachment)) {
+      return <PostMusicPlayerAttachment attachment={attachment} index={index} testId={testId} />;
+    }
+
     return <PostIntegrationAttachment attachment={attachment} testId={testId} />;
   }
 
@@ -463,17 +469,7 @@ function PostAttachmentItem({
   }
 
   if (attachment.kind === "audio") {
-    return (
-      <div
-        className="grid min-w-0 gap-2 rounded-card border border-line bg-canvas/70 p-3"
-        data-testid={`${testId}-audio`}
-      >
-        <p className="truncate text-sm font-semibold text-text">MP3 attachment {index + 1}</p>
-        <audio className="w-full" controls preload="metadata">
-          <source src={attachment.url} type={attachment.mime ?? "audio/mpeg"} />
-        </audio>
-      </div>
-    );
+    return <PostMusicPlayerAttachment attachment={attachment} index={index} testId={testId} />;
   }
 
   return (
@@ -500,6 +496,141 @@ function PostAttachmentItem({
         />
       )}
     </span>
+  );
+}
+
+type PostMusicAttachmentDetails = {
+  description: string | null;
+  embed: PostMusicEmbed | null;
+  href: string | null;
+  imageUrl: string | null;
+  provider: "mp3" | "spotify" | "youtube";
+  providerLabel: string;
+  subtitle: string | null;
+  title: string;
+};
+
+type PostMusicEmbed = {
+  allow: string;
+  height: number;
+  provider: "spotify" | "youtube";
+  src: string;
+  title: string;
+};
+
+function PostMusicPlayerAttachment({
+  attachment,
+  index,
+  testId,
+}: {
+  attachment: PostAttachment;
+  index: number;
+  testId: string;
+}) {
+  const details = postMusicAttachmentDetails(attachment, index);
+  const audioUrl = attachment.kind === "audio" ? attachment.url : null;
+
+  return (
+    <div
+      className="relative isolate min-w-0 overflow-hidden rounded-card border border-line bg-canvas/70 text-left shadow-inner-soft"
+      data-post-music-provider={details.provider}
+      data-testid={`${testId}-music-player`}
+    >
+      {details.imageUrl ? (
+        <img
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 -z-20 size-full object-cover opacity-20 blur-2xl"
+          decoding="async"
+          loading="lazy"
+          src={details.imageUrl}
+        />
+      ) : null}
+      <span className="absolute inset-0 -z-10 bg-canvas/78" aria-hidden="true" />
+      <div className="grid gap-3 p-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid size-14 shrink-0 place-items-center overflow-hidden rounded-card border border-line bg-surface/80 text-text shadow-soft">
+            {details.imageUrl ? (
+              <img
+                alt=""
+                className="size-full object-cover"
+                decoding="async"
+                loading="lazy"
+                src={details.imageUrl}
+              />
+            ) : (
+              <Music2 aria-hidden="true" size={23} />
+            )}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted">
+              {details.providerLabel}
+            </span>
+            <span className="mt-0.5 block truncate text-sm font-semibold text-text">
+              {details.title}
+            </span>
+            {details.subtitle ? (
+              <span className="mt-0.5 block truncate text-xs text-muted">
+                {details.subtitle}
+              </span>
+            ) : null}
+          </span>
+          {details.href ? (
+            <a
+              aria-label={`Open ${details.title}`}
+              className="grid size-9 shrink-0 place-items-center rounded-card border border-line bg-canvas/65 text-muted transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              data-thread-open-ignore
+              href={details.href}
+              rel="noopener noreferrer"
+              target={details.href.startsWith("/") ? undefined : "_blank"}
+            >
+              <ExternalLink aria-hidden="true" size={16} />
+            </a>
+          ) : null}
+        </div>
+        {details.description ? (
+          <p className="line-clamp-2 text-xs leading-5 text-muted">
+            {details.description}
+          </p>
+        ) : null}
+        {audioUrl ? (
+          <audio
+            className="w-full"
+            controls
+            data-thread-open-ignore
+            data-testid={`${testId}-audio`}
+            preload="metadata"
+          >
+            <source src={audioUrl} type={attachment.mime ?? "audio/mpeg"} />
+          </audio>
+        ) : null}
+        {details.embed ? (
+          <div
+            className={cn(
+              "overflow-hidden rounded-card bg-black",
+              details.embed.provider === "youtube" ? "aspect-video" : null,
+            )}
+            data-thread-open-ignore
+          >
+            <iframe
+              allow={details.embed.allow}
+              allowFullScreen
+              className={cn(
+                "block w-full rounded-card border-0 bg-black",
+                details.embed.provider === "youtube" ? "h-full" : null,
+              )}
+              data-testid={`${testId}-music-embed-${details.embed.provider}`}
+              height={details.embed.height}
+              loading="lazy"
+              referrerPolicy="strict-origin-when-cross-origin"
+              sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+              src={details.embed.src}
+              title={details.embed.title}
+            />
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -545,7 +676,9 @@ function PostIntegrationAttachment({
 
 function postAttachmentsForDisplay(post: Post): PostAttachment[] {
   if (post.attachments && post.attachments.length > 0) {
-    return [...post.attachments].sort((first, second) => first.position - second.position);
+    return [...post.attachments].sort(
+      (first, second) => (first.position ?? 0) - (second.position ?? 0),
+    );
   }
 
   if (!post.mediaUrl) {
@@ -589,6 +722,222 @@ function postIntegrationProviderLabel(provider: string | null | undefined): stri
   }
 
   return "Music";
+}
+
+function isPostMusicAttachment(attachment: PostAttachment): boolean {
+  return attachment.kind === "audio" ||
+    (attachment.kind === "integration" && isPostMusicProvider(attachment.provider));
+}
+
+function isPostMusicProvider(provider: string | null | undefined): provider is "spotify" | "youtube" {
+  return provider === "spotify" || provider === "youtube";
+}
+
+function postMusicAttachmentDetails(
+  attachment: PostAttachment,
+  index: number,
+): PostMusicAttachmentDetails {
+  if (attachment.kind === "audio") {
+    const fileLabel = attachmentFileLabel(attachment.url);
+
+    return {
+      description: null,
+      embed: null,
+      href: safeAttachmentHref(attachment.url),
+      imageUrl: null,
+      provider: "mp3",
+      providerLabel: "MP3",
+      subtitle: fileLabel,
+      title: `MP3 attachment ${index + 1}`,
+    };
+  }
+
+  const card = attachmentCardObject(attachment.card);
+  const metadata = attachmentCardObject(card?.metadata);
+  const cardProvider = stringValue(card?.provider);
+  const provider = isPostMusicProvider(attachment.provider)
+    ? attachment.provider
+    : isPostMusicProvider(cardProvider)
+      ? cardProvider
+      : "spotify";
+  const providerLabel = postIntegrationProviderLabel(provider);
+  const title = stringValue(metadata?.title) ?? stringValue(card?.title) ?? providerLabel;
+  const subtitle = stringValue(metadata?.subtitle) ?? providerLabel;
+  const sourceUrl = attachment.sourceUrl ?? stringValue(card?.sourceUrl);
+
+  return {
+    description: stringValue(metadata?.description),
+    embed: postMusicEmbedFromAttachment(attachment, card, provider, title),
+    href: safeAttachmentHref(sourceUrl),
+    imageUrl: stringValue(metadata?.imageUrl),
+    provider,
+    providerLabel,
+    subtitle,
+    title,
+  };
+}
+
+function postMusicEmbedFromAttachment(
+  attachment: PostAttachment,
+  card: Record<string, unknown> | null,
+  provider: "spotify" | "youtube",
+  title: string,
+): PostMusicEmbed | null {
+  const cardEmbed = attachmentCardObject(card?.embed);
+  const cardEmbedSrc = stringValue(cardEmbed?.src);
+  const safeCardEmbedSrc = safePostMusicEmbedSrc(cardEmbedSrc, provider);
+
+  if (safeCardEmbedSrc) {
+    return {
+      allow: stringValue(cardEmbed?.allow) ?? defaultPostMusicEmbedAllow(provider),
+      height: numericValue(cardEmbed?.height) ?? defaultPostMusicEmbedHeight(provider, attachment.resourceType),
+      provider,
+      src: safeCardEmbedSrc,
+      title: stringValue(cardEmbed?.title) ?? `${title} on ${postIntegrationProviderLabel(provider)}`,
+    };
+  }
+
+  const resourceType = stringValue(attachment.resourceType) ?? stringValue(card?.resourceType);
+  const resourceId = stringValue(attachment.resourceId) ?? stringValue(card?.resourceId);
+
+  if (!resourceType || !resourceId) {
+    return null;
+  }
+
+  if (provider === "spotify") {
+    const supportedTypes = new Set(["album", "artist", "episode", "playlist", "show", "track"]);
+
+    if (!supportedTypes.has(resourceType)) {
+      return null;
+    }
+
+    return {
+      allow: defaultPostMusicEmbedAllow(provider),
+      height: defaultPostMusicEmbedHeight(provider, resourceType),
+      provider,
+      src: `https://open.spotify.com/embed/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}?theme=0`,
+      title: `${title} on Spotify`,
+    };
+  }
+
+  if (resourceType === "playlist") {
+    return {
+      allow: defaultPostMusicEmbedAllow(provider),
+      height: defaultPostMusicEmbedHeight(provider, resourceType),
+      provider,
+      src: `https://www.youtube-nocookie.com/embed/videoseries?list=${encodeURIComponent(resourceId)}`,
+      title: `${title} on YouTube Music`,
+    };
+  }
+
+  if (["video", "short", "shorts", "live"].includes(resourceType)) {
+    return {
+      allow: defaultPostMusicEmbedAllow(provider),
+      height: defaultPostMusicEmbedHeight(provider, resourceType),
+      provider,
+      src: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(resourceId)}`,
+      title: `${title} on YouTube Music`,
+    };
+  }
+
+  return null;
+}
+
+function safePostMusicEmbedSrc(
+  value: string | null,
+  provider: "spotify" | "youtube",
+): string | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const url = new URL(value);
+    const allowedHost = provider === "spotify" ? "open.spotify.com" : "www.youtube-nocookie.com";
+
+    if (
+      url.protocol !== "https:" ||
+      url.hostname !== allowedHost ||
+      url.username !== "" ||
+      url.password !== ""
+    ) {
+      return null;
+    }
+
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function defaultPostMusicEmbedAllow(provider: "spotify" | "youtube"): string {
+  return provider === "spotify"
+    ? "autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+    : "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+}
+
+function defaultPostMusicEmbedHeight(
+  provider: "spotify" | "youtube",
+  resourceType: string | null | undefined,
+): number {
+  if (provider === "spotify") {
+    return resourceType === "track" ? 80 : 152;
+  }
+
+  return 220;
+}
+
+function safeAttachmentHref(value: string | null | undefined): string | null {
+  const candidate = stringValue(value);
+
+  if (!candidate) {
+    return null;
+  }
+
+  if (candidate.startsWith("/")) {
+    return candidate;
+  }
+
+  try {
+    const url = new URL(candidate);
+
+    if (
+      (url.protocol === "https:" || url.protocol === "http:") &&
+      url.username === "" &&
+      url.password === ""
+    ) {
+      return url.toString();
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function attachmentFileLabel(value: string | null | undefined): string | null {
+  const candidate = stringValue(value);
+
+  if (!candidate) {
+    return null;
+  }
+
+  const path = candidate.split(/[?#]/u)[0] ?? "";
+  const filename = path.split("/").filter(Boolean).at(-1);
+
+  if (!filename) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(filename);
+  } catch {
+    return filename;
+  }
+}
+
+function numericValue(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 /*

@@ -346,6 +346,7 @@ test("authenticated post button opens an accessible composer select", async ({
 }) => {
   await mockAuthenticatedShell(page, { rooms: [makeRoom()] });
   await page.goto("/");
+  await expect(page.getByRole("button", { name: "Account menu for @viewer" })).toBeVisible();
 
   await page.getByRole("button", { name: "Post" }).click();
 
@@ -405,6 +406,18 @@ test("post composer submits Markdown and Spotify/YouTube music attachments", asy
       },
     ],
   });
+  await page.route(/^https:\/\/open\.spotify\.com\/embed\//, (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><html><body>Spotify embed stub</body></html>",
+    }),
+  );
+  await page.route(/^https:\/\/www\.youtube-nocookie\.com\/embed\//, (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><html><body>YouTube embed stub</body></html>",
+    }),
+  );
 
   await page.route("**/api/me/integrations/metadata/resolve", async (route) => {
     const payload = (await route.request().postDataJSON()) as {
@@ -452,6 +465,7 @@ test("post composer submits Markdown and Spotify/YouTube music attachments", asy
   });
 
   await page.goto("/");
+  await expect(page.getByRole("button", { name: "Account menu for @viewer" })).toBeVisible();
   await page.getByRole("button", { name: "Post", exact: true }).click();
 
   const dialog = page.getByTestId("composer-modal");
@@ -530,6 +544,22 @@ test("post composer submits Markdown and Spotify/YouTube music attachments", asy
       { kind: "integration", provider: "youtube" },
     ],
   });
+  const createdPost = page
+    .getByTestId("post-card-open-thread")
+    .filter({ hasText: "Favorite track" })
+    .first();
+  await expect(createdPost.getByTestId("post-attachments-0-music-player")).toContainText(
+    "Test Playlist",
+  );
+  await expect(
+    createdPost.getByTestId("post-attachments-0-music-embed-spotify"),
+  ).toHaveAttribute("src", "https://open.spotify.com/embed/playlist/test-playlist?theme=0");
+  await expect(createdPost.getByTestId("post-attachments-1-music-player")).toContainText(
+    "YouTube Test",
+  );
+  await expect(
+    createdPost.getByTestId("post-attachments-1-music-embed-youtube"),
+  ).toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/abc123");
 });
 
 test("public pages do not render retired social copy", async ({ page }) => {
@@ -771,6 +801,34 @@ async function mockShell(
         data: {
           notifications: [],
           unreadCount: 0,
+        },
+      }),
+    }),
+  );
+
+  await page.route("**/api/me/onboarding", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          steps: [
+            "profile_basics",
+            "spotify",
+            "youtube",
+            "twitch",
+            "github",
+            "apple_music",
+            "profile_canvas",
+            "desktop_notifications",
+          ],
+          completedSteps: [],
+          skippedSteps: [],
+          providerLinks: {},
+          finishedAt: "2026-06-10 10:00:00",
+          dismissedAt: null,
+          createdAt: "2026-06-10 09:00:00",
+          updatedAt: "2026-06-10 10:00:00",
         },
       }),
     }),

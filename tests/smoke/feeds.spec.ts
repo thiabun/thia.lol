@@ -1503,6 +1503,13 @@ test("thread reply composer is hidden until Reply and exposes media UI", async (
   await expect(
     dialog.getByTestId("thread-reply-content").filter({ hasText: "A compact reply." }),
   ).toBeVisible();
+  const createdReply = dialog
+    .getByTestId("thread-reply-item")
+    .filter({ hasText: "A compact reply." });
+  await expect(createdReply.getByTestId("post-attachments-0-music-player")).toContainText(
+    "MP3 attachment 1",
+  );
+  await expect(createdReply.getByTestId("post-attachments-0-audio")).toBeVisible();
 });
 
 test("thread renders nested replies and gates reply delete controls", async ({

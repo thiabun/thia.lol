@@ -1759,7 +1759,10 @@ export function getPostReplies(postId: number): Promise<Post[]> {
 
 export function createPostReply(
   postId: number,
-  input: Pick<CreatePostInput, "body" | "mediaUrl" | "mediaType" | "mediaMime" | "mediaPosterUrl">,
+  input: Pick<
+    CreatePostInput,
+    "attachments" | "body" | "mediaUrl" | "mediaType" | "mediaMime" | "mediaPosterUrl"
+  >,
   csrfToken: string,
 ): Promise<Post> {
   return apiPost<ApiPost>(`/posts/${postId}/replies`, input, csrfToken).then(
