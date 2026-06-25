@@ -2671,7 +2671,7 @@ function profile_module_featured_post_can_restore(int $postId, int $userId): boo
         || (
             $post['room_id'] !== null
             && (
-                (string) ($post['room_visibility'] ?? '') !== 'public'
+                !in_array((string) ($post['room_visibility'] ?? ''), ['public', 'view_only'], true)
                 || $roomDeletedAt !== null
             )
         )
@@ -2687,7 +2687,7 @@ function profile_module_featured_room_can_restore(int $roomId, int $userId): boo
     $room = profile_featured_room_record($roomId, $userId);
 
     return is_array($room)
-        && (string) $room['visibility'] === 'public'
+        && in_array((string) $room['visibility'], ['public', 'view_only'], true)
         && ($room['deleted_at'] ?? null) === null
         && (bool) ($room['is_eligible'] ?? false);
 }

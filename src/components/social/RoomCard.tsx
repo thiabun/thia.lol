@@ -69,6 +69,10 @@ export function RoomCard({ index = 0, room }: RoomCardProps) {
                   <span className="shrink-0 rounded-full bg-leaf/15 px-2 py-0.5 text-[0.68rem] font-semibold text-leaf-ink">
                     Joined
                   </span>
+                ) : room.visibility !== "public" ? (
+                  <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[0.68rem] font-semibold text-text">
+                    {roomVisibilityLabel(room.visibility)}
+                  </span>
                 ) : room.live ? (
                   <span className="shrink-0 rounded-full bg-leaf/15 px-2 py-0.5 text-[0.68rem] font-semibold text-leaf-ink">
                     Active
@@ -123,6 +127,22 @@ export function RoomCard({ index = 0, room }: RoomCardProps) {
       </Panel>
     </motion.article>
   );
+}
+
+function roomVisibilityLabel(visibility: Room["visibility"]): string {
+  if (visibility === "private") {
+    return "Private";
+  }
+
+  if (visibility === "invite") {
+    return "Invite";
+  }
+
+  if (visibility === "view_only") {
+    return "View-only";
+  }
+
+  return "Public";
 }
 
 function formatActivityTime(value: string): string {

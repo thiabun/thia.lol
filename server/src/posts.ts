@@ -47,7 +47,7 @@ export interface PostsRepository {
   listPublicPosts(viewerUserId: number | null): Promise<PostPayload[]>;
   getPublicPost(identifier: string, viewerUserId: number | null, publicBaseUrl: string): Promise<PostDetailPayload | null>;
   listPostReplies(postId: number, viewerUserId: number | null): Promise<PostPayload[] | null>;
-  listRoomPosts(slug: string, viewerUserId: number | null): Promise<PostPayload[] | null>;
+  listRoomPosts(slug: string, viewerUserId: number | null, viewerRole?: string | null): Promise<PostPayload[] | null>;
   listProfilePosts(handle: string, viewerUserId: number | null): Promise<PostPayload[] | null>;
   listProfileReplies(handle: string, viewerUserId: number | null): Promise<PostPayload[] | null>;
   listProfileReblogs(handle: string, viewerUserId: number | null): Promise<PostPayload[] | null>;
@@ -116,6 +116,12 @@ interface PeopleToWatchRow extends RowDataPacket {
   star_count: number | string | null;
   post_count: number | string | null;
   follower_count: number | string | null;
+}
+
+interface RoomAccessRow extends RowDataPacket {
+  id: number | string;
+  visibility: string | null;
+  viewer_member_id: number | string | null;
 }
 
 type CountRow = RowDataPacket & {
@@ -206,7 +212,11 @@ class MysqlPostsRepository implements PostsRepository {
     return this.postsFromQuery(query, [postId]);
   }
 
-  async listRoomPosts(slug: string, viewerUserId: number | null): Promise<PostPayload[] | null> {
+  async listRoomPosts(
+    slug: string,
+    viewerUserId: number | null,
+    viewerRole: string | null = null,
+  ): Promise<PostPayload[] | null> {
     const normalizedSlug = normalizeRoomSlug(slug);
 
     if (normalizedSlug === null) {
@@ -215,11 +225,11 @@ class MysqlPostsRepository implements PostsRepository {
 
     const capabilities = await this.schemaCapabilities();
 
-    if (!(await this.publicRoomExists(normalizedSlug, capabilities))) {
+    if (!(await this.viewerCanViewRoomPosts(normalizedSlug, viewerUserId, viewerRole, capabilities))) {
       return null;
     }
 
-    return this.postsFromQuery(buildPublicRoomPostsQuery(capabilities, viewerUserId), [normalizedSlug]);
+    return this.postsFromQuery(buildRoomPostsQuery(capabilities, viewerUserId), [normalizedSlug]);
   }
 
   async listProfilePosts(handle: string, viewerUserId: number | null): Promise<PostPayload[] | null> {
@@ -379,18 +389,47 @@ class MysqlPostsRepository implements PostsRepository {
     return rows[0] !== undefined;
   }
 
-  private async publicRoomExists(slug: string, capabilities: ProfileSchemaCapabilities): Promise<boolean> {
-    const [rows] = await this.pool.execute<RowDataPacket[]>(
-      `SELECT id
+  private async viewerCanViewRoomPosts(
+    slug: string,
+    viewerUserId: number | null,
+    viewerRole: string | null,
+    capabilities: ProfileSchemaCapabilities,
+  ): Promise<boolean> {
+    const viewerSql = viewerUserId === null ? "NULL" : String(viewerUserId);
+    const membershipSelect = capabilities.hasRoomMemberships
+      ? "viewer_membership.id AS viewer_member_id"
+      : "NULL AS viewer_member_id";
+    const membershipJoin = capabilities.hasRoomMemberships
+      ? `LEFT JOIN room_memberships viewer_membership
+           ON viewer_membership.room_id = rooms.id
+          AND viewer_membership.user_id = ${viewerSql}
+          AND viewer_membership.banned_at IS NULL`
+      : "";
+    const [rows] = await this.pool.execute<RoomAccessRow[]>(
+      `SELECT rooms.id, rooms.visibility, ${membershipSelect}
        FROM rooms
+       ${membershipJoin}
        WHERE slug = ?
-         AND visibility = 'public'
          ${roomNotDeletedSql("rooms", capabilities)}
        LIMIT 1`,
       [slug],
     );
 
-    return rows[0] !== undefined;
+    const room = rows[0];
+
+    if (room === undefined) {
+      return false;
+    }
+
+    if (room.visibility === "public" || room.visibility === "view_only") {
+      return true;
+    }
+
+    if (viewerRole === "admin") {
+      return true;
+    }
+
+    return viewerUserId !== null && room.viewer_member_id !== null;
   }
 
   private schemaCapabilities(): Promise<ProfileSchemaCapabilities> {
@@ -594,16 +633,25 @@ export function buildPublicPostsQuery(capabilities: ProfileSchemaCapabilities, v
   return postSelectSql("AND p.parent_id IS NULL", "p.created_at DESC, p.id DESC", "", capabilities, viewerUserId);
 }
 
-export function buildPublicRoomPostsQuery(
+export function buildRoomPostsQuery(
   capabilities: ProfileSchemaCapabilities,
   viewerUserId: number | null,
 ): string {
+  const roomScopedVisibleSql = `p.visibility = 'public'
+        AND p.status = 'published'
+        AND p.deleted_at IS NULL
+        AND p.room_id IS NOT NULL
+        AND r.id IS NOT NULL
+        ${roomNotDeletedSql("r", capabilities)}`;
+
   return postSelectSql(
     "AND r.slug = ? AND p.parent_id IS NULL",
     "p.created_at DESC, p.id DESC",
     "",
     capabilities,
     viewerUserId,
+    "",
+    roomScopedVisibleSql,
   );
 }
 
@@ -786,7 +834,7 @@ export function buildPeopleToWatchQuery(
               AND posts.visibility = 'public'
               AND posts.status = 'published'
               AND posts.deleted_at IS NULL
-              AND (posts.room_id IS NULL OR (post_rooms.visibility = 'public' ${roomNotDeletedSql("post_rooms", capabilities)}))
+              AND (posts.room_id IS NULL OR (post_rooms.visibility IN ('public', 'view_only') ${roomNotDeletedSql("post_rooms", capabilities)}))
             GROUP BY posts.author_id
          ) profile_posts ON profile_posts.author_id = u.id
          LEFT JOIN (

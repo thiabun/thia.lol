@@ -24,7 +24,7 @@ import type {
   RoomInput,
   UploadedImage,
 } from "../../lib/api";
-import type { Room, RoomMember } from "../../lib/types";
+import type { Room, RoomMember, RoomVisibility } from "../../lib/types";
 
 type RoomEditModalProps = {
   mode: "create" | "edit";
@@ -51,7 +51,35 @@ type FormState = {
   iconUrl: string;
   bannerUrl: string;
   rules: string;
+  visibility: RoomVisibility;
 };
+
+const roomVisibilityOptions: Array<{
+  value: RoomVisibility;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "public",
+    label: "Public",
+    description: "Listed, joinable, and open for signed-in posting.",
+  },
+  {
+    value: "private",
+    label: "Private",
+    description: "Hidden unless someone is already a member.",
+  },
+  {
+    value: "invite",
+    label: "Invite",
+    description: "Listed as a requestable shell until staff approve access.",
+  },
+  {
+    value: "view_only",
+    label: "View-only",
+    description: "Readable and reactable, with posting limited to staff.",
+  },
+];
 
 export function RoomEditModal({
   mode,
@@ -103,6 +131,7 @@ export function RoomEditModal({
         iconUrl: form.iconUrl || null,
         bannerUrl: form.bannerUrl || null,
         rules: form.rules || null,
+        visibility: form.visibility,
       };
 
       if (mode === "create") {
@@ -167,7 +196,7 @@ export function RoomEditModal({
     }
   }
 
-  function updateForm(field: keyof FormState, value: string) {
+  function updateForm<K extends keyof FormState>(field: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
@@ -336,6 +365,30 @@ export function RoomEditModal({
             ]}
             onChange={(event) => updateForm("accent", event.currentTarget.value)}
           />
+
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-semibold text-text">Visibility</legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {roomVisibilityOptions.map((option) => (
+                <label
+                  key={option.value}
+                  className="cursor-pointer rounded-card border border-line bg-canvas/45 p-3 transition duration-fluid has-[:checked]:border-accent/55 has-[:checked]:bg-accent/10 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60"
+                >
+                  <input
+                    className="sr-only"
+                    type="radio"
+                    name="room-visibility"
+                    value={option.value}
+                    checked={form.visibility === option.value}
+                    disabled={busy}
+                    onChange={() => updateForm("visibility", option.value)}
+                  />
+                  <span className="block text-sm font-semibold text-text">{option.label}</span>
+                  <span className="mt-1 block text-xs leading-5 text-muted">{option.description}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
 
           <MarkdownEditor
             label="Room rules"
@@ -567,6 +620,7 @@ function roomToForm(room: Room | undefined): FormState {
     iconUrl: room?.iconUrl ?? "",
     bannerUrl: room?.bannerUrl ?? "",
     rules: room?.rules ?? "",
+    visibility: room?.visibility ?? "public",
   };
 }
 

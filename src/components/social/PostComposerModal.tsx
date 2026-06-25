@@ -1,5 +1,5 @@
 import type { ChangeEvent, FormEvent } from "react";
-import { useCallback, useId, useRef, useState } from "react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import { ChevronDown, ImagePlus, Radio, Send, Trash2 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { ImageCropModal } from "../ui/ImageCropModal";
@@ -37,21 +37,21 @@ export function PostComposerModal({
   const [uploadingImage, setUploadingImage] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | undefined>();
-  const selectedRoom = rooms.find((room) => room.slug === roomSlug);
+  const postableRooms = useMemo(() => rooms.filter((room) => room.viewerCanPost), [rooms]);
   const canSubmit =
     Boolean(csrfToken) && body.trim().length > 0 && !submitting && !uploadingImage;
   const roomOptions = [
     { value: "", label: "Profile feed" },
-    ...(roomSlug && !selectedRoom
-      ? [{ value: roomSlug, label: `/${roomSlug}` }]
-      : []),
-    ...rooms.map((room) => ({
+    ...postableRooms.map((room) => ({
       value: room.slug,
       label: `/${room.slug}`,
     })),
   ];
+  const effectiveRoomSlug = postableRooms.some((room) => room.slug === roomSlug)
+    ? roomSlug
+    : "";
   const selectedRoomOptionLabel =
-    roomOptions.find((option) => option.value === roomSlug)?.label ?? "Profile feed";
+    roomOptions.find((option) => option.value === effectiveRoomSlug)?.label ?? "Profile feed";
 
   const closeComposer = useCallback(() => {
     setBody("");
@@ -78,8 +78,8 @@ export function PostComposerModal({
     try {
       const input: CreatePostInput = { body: body.trim() };
 
-      if (roomSlug) {
-        input.roomSlug = roomSlug;
+      if (effectiveRoomSlug) {
+        input.roomSlug = effectiveRoomSlug;
       }
 
       if (mediaUrl) {
@@ -183,7 +183,7 @@ export function PostComposerModal({
                 aria-label="Post to"
                 data-testid="composer-room-selector"
                 className="absolute inset-0 z-10 h-full w-full cursor-pointer appearance-none opacity-0 outline-none disabled:cursor-not-allowed"
-                value={roomSlug}
+                value={effectiveRoomSlug}
                 disabled={submitting}
                 onChange={(event) => {
                   setRoomSlug(event.currentTarget.value);

@@ -244,6 +244,29 @@ function profile_canvas_glass(mixed $value): int
 function room_payload(array $row): array
 {
     $summary = (string) ($row['room_summary'] ?? '');
+    $visibility = room_visibility_value($row['room_visibility'] ?? 'public');
+    $joinedByMe = (bool) ($row['current_room_joined'] ?? false);
+    $myRoomRole = $row['current_room_role'] ?? null;
+    $session = function_exists('current_session') ? current_session() : null;
+    $viewerSignedIn = $session !== null;
+    $viewerIsAdmin = is_array($session) && (string) ($session['role'] ?? '') === 'admin';
+    $viewerIsStaff = $viewerIsAdmin || in_array((string) $myRoomRole, ['owner', 'moderator'], true);
+    $viewerCanViewPosts = in_array($visibility, ['public', 'view_only'], true) || $viewerIsAdmin || $joinedByMe;
+    $viewerCanPost = $viewerSignedIn
+        && (
+            $visibility === 'public'
+            || $viewerIsStaff
+            || (in_array($visibility, ['private', 'invite'], true) && $joinedByMe)
+        );
+    $viewerCanReact = $viewerSignedIn && $viewerCanViewPosts;
+    $accessRequestStatus = room_access_request_status_value($row['current_room_access_request_status'] ?? null);
+    $viewerCanRequestAccess = $visibility === 'invite'
+        && $viewerSignedIn
+        && !$joinedByMe
+        && !$viewerIsAdmin
+        && !in_array($accessRequestStatus, ['pending', 'approved'], true);
+    $memberCount = $viewerCanViewPosts ? (int) ($row['room_member_count'] ?? 0) : 0;
+    $postCount = $viewerCanViewPosts ? (int) ($row['room_post_count'] ?? 0) : 0;
     $owner = null;
 
     if (($row['owner_user_id'] ?? null) !== null) {
@@ -262,25 +285,43 @@ function room_payload(array $row): array
         'summary' => $summary,
         'description' => $summary,
         'mood' => (string) ($row['room_mood'] ?? ''),
-        'members' => (int) ($row['room_member_count'] ?? 0),
-        'memberCount' => (int) ($row['room_member_count'] ?? 0),
+        'members' => $memberCount,
+        'memberCount' => $memberCount,
         'live' => (bool) ($row['room_is_live'] ?? false),
         'accent' => (string) ($row['room_accent'] ?? ''),
         'iconUrl' => $row['room_icon_url'] ?? null,
         'bannerUrl' => $row['room_banner_url'] ?? null,
         'rules' => (string) ($row['room_rules'] ?? ''),
-        'visibility' => (string) ($row['room_visibility'] ?? 'public'),
+        'visibility' => $visibility,
         'createdBy' => ($row['room_created_by'] ?? null) === null
             ? null
             : (int) $row['room_created_by'],
         'owner' => $owner,
-        'joinedByMe' => (bool) ($row['current_room_joined'] ?? false),
-        'myRoomRole' => $row['current_room_role'] ?? null,
-        'postCount' => (int) ($row['room_post_count'] ?? 0),
+        'joinedByMe' => $joinedByMe,
+        'myRoomRole' => $myRoomRole,
+        'viewerCanViewPosts' => $viewerCanViewPosts,
+        'viewerCanPost' => $viewerCanPost,
+        'viewerCanReact' => $viewerCanReact,
+        'viewerCanRequestAccess' => $viewerCanRequestAccess,
+        'accessRequestStatus' => $accessRequestStatus,
+        'pendingAccessRequestCount' => ($row['room_pending_access_request_count'] ?? null) === null
+            ? null
+            : (int) $row['room_pending_access_request_count'],
+        'postCount' => $postCount,
         'latestActivityAt' => $row['room_latest_activity_at'] ?? null,
         'createdAt' => $row['room_created_at'] ?? null,
         'updatedAt' => $row['room_updated_at'] ?? null,
     ];
+}
+
+function room_visibility_value(mixed $value): string
+{
+    return in_array($value, ['public', 'private', 'invite', 'view_only'], true) ? (string) $value : 'public';
+}
+
+function room_access_request_status_value(mixed $value): ?string
+{
+    return in_array($value, ['pending', 'approved', 'denied', 'canceled'], true) ? (string) $value : null;
 }
 
 function nullable_room_payload(array $row): ?array
@@ -983,7 +1024,7 @@ function public_post_visible_sql(string $postAlias, string $roomAlias): string
         AND {$postAlias}.deleted_at IS NULL
         AND (
             {$postAlias}.room_id IS NULL
-            OR ({$roomAlias}.visibility = 'public' " . room_not_deleted_sql($roomAlias) . ")
+            OR ({$roomAlias}.visibility IN ('public', 'view_only') " . room_not_deleted_sql($roomAlias) . ")
         )";
 }
 
@@ -1175,6 +1216,59 @@ function room_viewer_membership_join_sql(string $alias, ?int $viewerUserId): str
             ON viewer_room_membership.room_id = {$alias}.id
            AND viewer_room_membership.user_id = {$viewerSql}
            AND viewer_room_membership.banned_at IS NULL";
+}
+
+function room_access_requests_table_exists(): bool
+{
+    return database_table_exists('room_access_requests');
+}
+
+function room_viewer_access_request_select_sql(): string
+{
+    if (!room_access_requests_table_exists()) {
+        return 'NULL AS current_room_access_request_status,';
+    }
+
+    return 'viewer_room_access_request.status AS current_room_access_request_status,';
+}
+
+function room_viewer_access_request_join_sql(string $alias, ?int $viewerUserId): string
+{
+    if (!room_access_requests_table_exists()) {
+        return '';
+    }
+
+    $viewerSql = $viewerUserId === null ? '0' : (string) $viewerUserId;
+
+    return "LEFT JOIN room_access_requests viewer_room_access_request
+            ON viewer_room_access_request.room_id = {$alias}.id
+           AND viewer_room_access_request.requester_id = {$viewerSql}";
+}
+
+function room_access_request_count_select_sql(): string
+{
+    if (!room_access_requests_table_exists() || !room_memberships_table_exists()) {
+        return 'NULL AS room_pending_access_request_count,';
+    }
+
+    return "CASE
+                WHEN viewer_room_membership.role IN ('owner', 'moderator') THEN COALESCE(room_access_request_counts.pending_count, 0)
+                ELSE NULL
+            END AS room_pending_access_request_count,";
+}
+
+function room_access_request_count_join_sql(string $alias): string
+{
+    if (!room_access_requests_table_exists()) {
+        return '';
+    }
+
+    return "LEFT JOIN (
+            SELECT room_id, COUNT(*) AS pending_count
+            FROM room_access_requests
+            WHERE status = 'pending'
+            GROUP BY room_id
+        ) room_access_request_counts ON room_access_request_counts.room_id = {$alias}.id";
 }
 
 function profile_social_context(int $profileUserId, ?int $viewerUserId = null): array
@@ -1406,7 +1500,7 @@ function fetch_profile_by_handle(string $handle): ?array
                   AND profile_posts.deleted_at IS NULL
                   AND (
                     profile_posts.room_id IS NULL
-                    OR (profile_post_rooms.visibility = 'public' " . room_not_deleted_sql('profile_post_rooms') . ")
+                    OR (profile_post_rooms.visibility IN ('public', 'view_only') " . room_not_deleted_sql('profile_post_rooms') . ")
                   )
             ) AS post_count,
             (
@@ -1423,7 +1517,7 @@ function fetch_profile_by_handle(string $handle): ?array
                 SELECT COUNT(*)
                 FROM rooms profile_rooms
                 WHERE profile_rooms.created_by = u.id
-                  AND profile_rooms.visibility = 'public'
+                  AND profile_rooms.visibility IN ('public', 'view_only')
                   " . room_not_deleted_sql('profile_rooms') . "
             ) AS room_count,
             " . profile_received_likes_count_sql('u.id') . " AS profile_like_count,
@@ -1491,10 +1585,12 @@ function fetch_profile_featured_room(mixed $roomId, int $profileUserId, ?int $vi
             rooms.visibility AS room_visibility,
             rooms.created_by AS room_created_by,
             " . room_viewer_membership_select_sql() . "
+            " . room_viewer_access_request_select_sql() . "
             owner.id AS owner_user_id,
             owner.handle AS owner_handle,
             owner_profile.display_name AS owner_display_name,
             owner_profile.avatar_url AS owner_avatar_url,
+            " . room_access_request_count_select_sql() . "
             COALESCE(room_posts.post_count, 0) AS room_post_count,
             room_posts.latest_activity_at AS room_latest_activity_at,
             rooms.created_at AS room_created_at,
@@ -1504,6 +1600,8 @@ function fetch_profile_featured_room(mixed $roomId, int $profileUserId, ?int $vi
         LEFT JOIN profiles owner_profile ON owner_profile.user_id = owner.id
         " . room_membership_count_join_sql('rooms') . "
         " . room_viewer_membership_join_sql('rooms', $viewerUserId) . "
+        " . room_viewer_access_request_join_sql('rooms', $viewerUserId) . "
+        " . room_access_request_count_join_sql('rooms') . "
         LEFT JOIN (
             SELECT
                 room_id,
@@ -1517,7 +1615,7 @@ function fetch_profile_featured_room(mixed $roomId, int $profileUserId, ?int $vi
             GROUP BY room_id
         ) room_posts ON room_posts.room_id = rooms.id
         WHERE rooms.id = :room_id
-          AND rooms.visibility = 'public'
+          AND rooms.visibility IN ('public', 'view_only')
           " . room_not_deleted_sql('rooms') . "
           AND " . profile_featured_room_eligibility_sql($profileUserId, 'rooms') . "
           {$viewerProfileFilter}
@@ -1566,10 +1664,12 @@ function fetch_public_rooms(): array
             rooms.visibility AS room_visibility,
             rooms.created_by AS room_created_by,
             " . room_viewer_membership_select_sql() . "
+            " . room_viewer_access_request_select_sql() . "
             owner.id AS owner_user_id,
             owner.handle AS owner_handle,
             owner_profile.display_name AS owner_display_name,
             owner_profile.avatar_url AS owner_avatar_url,
+            " . room_access_request_count_select_sql() . "
             COALESCE(room_posts.post_count, 0) AS room_post_count,
             room_posts.latest_activity_at AS room_latest_activity_at,
             rooms.created_at AS room_created_at,
@@ -1579,6 +1679,8 @@ function fetch_public_rooms(): array
         LEFT JOIN profiles owner_profile ON owner_profile.user_id = owner.id
         " . room_membership_count_join_sql('rooms') . "
         " . room_viewer_membership_join_sql('rooms', $viewerUserId) . "
+        " . room_viewer_access_request_join_sql('rooms', $viewerUserId) . "
+        " . room_access_request_count_join_sql('rooms') . "
         LEFT JOIN (
             SELECT
                 room_id,
@@ -1591,7 +1693,8 @@ function fetch_public_rooms(): array
               AND deleted_at IS NULL
             GROUP BY room_id
         ) room_posts ON room_posts.room_id = rooms.id
-        WHERE rooms.visibility = 'public'
+        WHERE (rooms.visibility IN ('public', 'invite', 'view_only')
+          OR viewer_room_membership.id IS NOT NULL)
           " . room_not_deleted_sql('rooms') . "
         ORDER BY room_posts.latest_activity_at DESC, rooms.is_live DESC, rooms.name ASC"
     );
@@ -1616,10 +1719,12 @@ function fetch_public_room_by_slug(string $slug): ?array
             rooms.visibility AS room_visibility,
             rooms.created_by AS room_created_by,
             " . room_viewer_membership_select_sql() . "
+            " . room_viewer_access_request_select_sql() . "
             owner.id AS owner_user_id,
             owner.handle AS owner_handle,
             owner_profile.display_name AS owner_display_name,
             owner_profile.avatar_url AS owner_avatar_url,
+            " . room_access_request_count_select_sql() . "
             COALESCE(room_posts.post_count, 0) AS room_post_count,
             room_posts.latest_activity_at AS room_latest_activity_at,
             rooms.created_at AS room_created_at,
@@ -1629,6 +1734,8 @@ function fetch_public_room_by_slug(string $slug): ?array
         LEFT JOIN profiles owner_profile ON owner_profile.user_id = owner.id
         " . room_membership_count_join_sql('rooms') . "
         " . room_viewer_membership_join_sql('rooms', $viewerUserId) . "
+        " . room_viewer_access_request_join_sql('rooms', $viewerUserId) . "
+        " . room_access_request_count_join_sql('rooms') . "
         LEFT JOIN (
             SELECT
                 room_id,
@@ -1642,7 +1749,8 @@ function fetch_public_room_by_slug(string $slug): ?array
             GROUP BY room_id
         ) room_posts ON room_posts.room_id = rooms.id
         WHERE rooms.slug = :slug
-          AND rooms.visibility = 'public'
+          AND (rooms.visibility <> 'private'
+            OR viewer_room_membership.id IS NOT NULL)
           " . room_not_deleted_sql('rooms') . "
         LIMIT 1",
         ['slug' => $slug]
@@ -1796,7 +1904,7 @@ function post_select_sql(
           AND profile_posts.deleted_at IS NULL
           AND (
             profile_posts.room_id IS NULL
-            OR (profile_post_rooms.visibility = 'public' " . room_not_deleted_sql('profile_post_rooms') . ")
+            OR (profile_post_rooms.visibility IN ('public', 'view_only') " . room_not_deleted_sql('profile_post_rooms') . ")
           )
         GROUP BY author_id
     ) profile_posts ON profile_posts.author_id = u.id
@@ -1813,7 +1921,7 @@ function post_select_sql(
     LEFT JOIN (
         SELECT created_by, COUNT(*) AS room_count
         FROM rooms
-        WHERE visibility = 'public'
+        WHERE visibility IN ('public', 'view_only')
           " . room_not_deleted_sql('rooms') . "
         GROUP BY created_by
     ) profile_rooms ON profile_rooms.created_by = u.id
@@ -2150,10 +2258,12 @@ function fetch_public_profile_rooms(string $handle): array
             rooms.visibility AS room_visibility,
             rooms.created_by AS room_created_by,
             " . room_viewer_membership_select_sql() . "
+            " . room_viewer_access_request_select_sql() . "
             owner.id AS owner_user_id,
             owner.handle AS owner_handle,
             owner_profile.display_name AS owner_display_name,
             owner_profile.avatar_url AS owner_avatar_url,
+            " . room_access_request_count_select_sql() . "
             COALESCE(room_posts.post_count, 0) AS room_post_count,
             room_posts.latest_activity_at AS room_latest_activity_at,
             rooms.created_at AS room_created_at,
@@ -2163,6 +2273,8 @@ function fetch_public_profile_rooms(string $handle): array
         LEFT JOIN profiles owner_profile ON owner_profile.user_id = owner.id
         " . room_membership_count_join_sql('rooms') . "
         " . room_viewer_membership_join_sql('rooms', $viewerUserId) . "
+        " . room_viewer_access_request_join_sql('rooms', $viewerUserId) . "
+        " . room_access_request_count_join_sql('rooms') . "
         LEFT JOIN (
             SELECT
                 room_id,
@@ -2176,7 +2288,7 @@ function fetch_public_profile_rooms(string $handle): array
             GROUP BY room_id
         ) room_posts ON room_posts.room_id = rooms.id
         WHERE owner.handle = :handle
-          AND rooms.visibility = 'public'
+          AND rooms.visibility IN ('public', 'view_only')
           " . room_not_deleted_sql('rooms') . "
         ORDER BY rooms.created_at DESC, rooms.name ASC",
         ['handle' => $handle]
@@ -2192,7 +2304,7 @@ function fetch_public_stats(): array
             (
                 SELECT COUNT(*)
                 FROM rooms
-                WHERE visibility = :public_visibility
+                WHERE visibility IN ('public', 'view_only')
                   " . room_not_deleted_sql('rooms') . "
             ) AS public_rooms,
             (
@@ -2205,7 +2317,7 @@ function fetch_public_stats(): array
                   AND stat_posts.deleted_at IS NULL
                   AND (
                     stat_posts.room_id IS NULL
-                    OR (stat_rooms.visibility = :room_visibility " . room_not_deleted_sql('stat_rooms') . ")
+                    OR (stat_rooms.visibility IN ('public', 'view_only') " . room_not_deleted_sql('stat_rooms') . ")
                   )
             ) AS public_posts,
             (
@@ -2224,19 +2336,16 @@ function fetch_public_stats(): array
                   AND reaction_posts.deleted_at IS NULL
                   AND (
                     reaction_posts.room_id IS NULL
-                    OR (reaction_rooms.visibility = :reaction_room_visibility " . room_not_deleted_sql('reaction_rooms') . ")
+                    OR (reaction_rooms.visibility IN ('public', 'view_only') " . room_not_deleted_sql('reaction_rooms') . ")
                   )
             ) AS total_reactions",
         [
-            'public_visibility' => 'public',
             'post_visibility' => 'public',
             'post_status' => 'published',
-            'room_visibility' => 'public',
             'user_status' => 'active',
             'reaction_type' => 'glow',
             'reaction_post_visibility' => 'public',
             'reaction_post_status' => 'published',
-            'reaction_room_visibility' => 'public',
         ]
     );
 
@@ -2396,7 +2505,7 @@ function fetch_people_to_watch(): array
               AND posts.visibility = 'public'
               AND posts.status = 'published'
               AND posts.deleted_at IS NULL
-              AND (posts.room_id IS NULL OR (post_rooms.visibility = 'public' " . room_not_deleted_sql('post_rooms') . "))
+              AND (posts.room_id IS NULL OR (post_rooms.visibility IN ('public', 'view_only') " . room_not_deleted_sql('post_rooms') . "))
             GROUP BY posts.author_id
          ) profile_posts ON profile_posts.author_id = u.id
          LEFT JOIN (
@@ -2425,9 +2534,14 @@ function fetch_people_to_watch(): array
 
 function fetch_discover_feed(): array
 {
+    $activeRooms = array_values(array_filter(
+        fetch_public_rooms(),
+        static fn (array $room): bool => (bool) ($room['viewerCanViewPosts'] ?? false)
+    ));
+
     return [
         'posts' => fetch_discover_posts(),
-        'activeRooms' => array_slice(fetch_public_rooms(), 0, 6),
+        'activeRooms' => array_slice($activeRooms, 0, 6),
         'peopleToWatch' => fetch_people_to_watch(),
     ];
 }
@@ -2556,8 +2670,9 @@ function stats_index(): void
 function room_posts_index(string $slug): void
 {
     $normalizedSlug = normalize_slug($slug);
+    $room = fetch_public_room_by_slug($normalizedSlug);
 
-    if (fetch_public_room_by_slug($normalizedSlug) === null) {
+    if ($room === null || !($room['viewerCanViewPosts'] ?? false)) {
         json_error('Room not found.', 404);
     }
 

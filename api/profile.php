@@ -350,7 +350,7 @@ function profile_featured_post_id_for_user(mixed $value, int $userId): ?int
         || (
             $post['room_id'] !== null
             && (
-                (string) ($post['room_visibility'] ?? '') !== 'public'
+                !in_array((string) ($post['room_visibility'] ?? ''), ['public', 'view_only'], true)
                 || $roomDeletedAt !== null
             )
         )

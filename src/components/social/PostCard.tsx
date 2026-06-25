@@ -88,6 +88,7 @@ export function PostCard({
   const [localDeletePending, setLocalDeletePending] = useState(false);
   const [localDeleteError, setLocalDeleteError] = useState<string>();
   const [locallyDeleted, setLocallyDeleted] = useState(false);
+  const canReplyToPost = roomAllowsPosting(post.room);
 
   async function handleDeletePost(): Promise<boolean> {
     if (!effectiveCanDelete || actionPending || localDeletePending) {
@@ -120,7 +121,7 @@ export function PostCard({
   }
 
   function openThread(options?: { compose?: boolean }) {
-    setThreadComposerOpen(Boolean(options?.compose));
+    setThreadComposerOpen(Boolean(options?.compose && canReplyToPost));
     setThreadOpen(true);
   }
 
@@ -916,8 +917,9 @@ function ThreadModal({
   onReplyCreated,
   onReplyDeleted,
 }: ThreadModalProps) {
+  const canReplyToThread = roomAllowsPosting(post.room);
   const [replies, setReplies] = useState<Post[]>([]);
-  const [composerOpen, setComposerOpen] = useState(initialComposerOpen);
+  const [composerOpen, setComposerOpen] = useState(initialComposerOpen && canReplyToThread);
   const [modalCommentCount, setModalCommentCount] = useState(post.commentCount);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string>();
@@ -1006,7 +1008,11 @@ function ThreadModal({
                       commentCount={modalCommentCount}
                       initialLikeCount={post.likeCount}
                       initiallyLiked={post.likedByCurrentUser}
-                      onOpenThread={() => setComposerOpen(true)}
+                      onOpenThread={() => {
+                        if (canReplyToThread) {
+                          setComposerOpen(true);
+                        }
+                      }}
                       compact
                       actions={
                         canDeleteRoot ? (
@@ -1023,7 +1029,7 @@ function ThreadModal({
                   }
                 />
 
-                {isAuthenticated && composerOpen ? (
+                {isAuthenticated && composerOpen && canReplyToThread ? (
                   <div className="border-b border-line/70 px-4 py-3 sm:px-5">
                     <ReplyComposer
                       autoFocus
@@ -1034,7 +1040,7 @@ function ThreadModal({
                       onCreated={handleReplyCreated}
                     />
                   </div>
-                ) : isCheckingAuth ? (
+                ) : canReplyToThread && isCheckingAuth ? (
                   <div className="border-b border-line/70 px-4 py-3 sm:px-5">
                     <ThreadStateNotice
                       kind="loading"
@@ -1042,7 +1048,7 @@ function ThreadModal({
                       text="Confirming you can reply."
                     />
                   </div>
-                ) : !isAuthenticated ? (
+                ) : canReplyToThread && !isAuthenticated ? (
                   <div className="flex flex-col gap-3 border-b border-line/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                     <p className="text-sm text-muted">Log in to reply.</p>
                     <ButtonLink to="/login" size="sm" onClick={onClose}>
@@ -1203,6 +1209,7 @@ function ReplyPreview({
   const [localCommentCount, setLocalCommentCount] = useState(reply.commentCount);
   const isAuthenticated = status === "authenticated" && Boolean(csrfToken);
   const allowDelete = canDeletePost(user, reply);
+  const canReplyToReply = roomAllowsPosting(reply.room);
   const canNest = depth < 3;
   const hasNextVisibleSibling = index < siblingCount - 1;
   const hasVisibleNestedReplies = childrenOpen && childReplies.length > 0;
@@ -1334,7 +1341,11 @@ function ReplyPreview({
               commentCount={localCommentCount}
               initialLikeCount={reply.likeCount}
               initiallyLiked={reply.likedByCurrentUser}
-              onOpenThread={() => setComposerOpen(true)}
+              onOpenThread={() => {
+                if (canReplyToReply) {
+                  setComposerOpen(true);
+                }
+              }}
               compact
               actions={
                 allowDelete ? (
@@ -1390,7 +1401,7 @@ function ReplyPreview({
         </div>
       </div>
 
-      {isAuthenticated && composerOpen ? (
+      {isAuthenticated && composerOpen && canReplyToReply ? (
         <div className="mt-2 grid grid-cols-[2.75rem_1fr] gap-3 sm:grid-cols-[3rem_1fr]">
           <span aria-hidden="true" />
           <ReplyComposer
@@ -1581,4 +1592,12 @@ function PostActionIconButton({
       {icon}
     </motion.button>
   );
+}
+
+function roomAllowsPosting(room: Post["room"] | null | undefined): boolean {
+  if (room === null || room === undefined || !("viewerCanPost" in room)) {
+    return true;
+  }
+
+  return room.viewerCanPost === true;
 }

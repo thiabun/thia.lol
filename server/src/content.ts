@@ -8,11 +8,8 @@ import {
 } from "./posts.js";
 import {
   normalizeProfileHandle,
-  postAncestorVisibilityJoinsSql,
-  postAncestorVisibilitySql,
   postPayloadFromRow,
   postSelectSql,
-  publicPostVisibleSql,
   type PostPayload,
   type ProfileRow,
   type ProfileSchemaCapabilities,
@@ -26,11 +23,14 @@ import {
   roomMemberPayloadFromRow,
   roomPayloadFromRow,
   roomStorageReady,
+  type RoomAccessRequestStatus,
   type RoomMemberPayload,
   type RoomMemberRow,
   type RoomPayload,
   type RoomRow,
   type RoomSchemaCapabilities,
+  type RoomVisibility,
+  type RoomViewer,
   type UserPayload,
 } from "./rooms.js";
 import type { RequestSession } from "./sessions.js";
@@ -70,8 +70,8 @@ export interface ContentMutationsRepository {
   deletePost(session: RequestSession, postId: number): Promise<PostDeletePayload>;
   likePost(postId: number, viewerUserId: number): Promise<LikePayload>;
   unlikePost(postId: number, viewerUserId: number): Promise<LikePayload>;
-  reblogPost(postId: number, viewerUserId: number): Promise<ReblogPayload>;
-  unreblogPost(postId: number, viewerUserId: number): Promise<ReblogPayload>;
+  reblogPost(postId: number, session: RequestSession): Promise<ReblogPayload>;
+  unreblogPost(postId: number, session: RequestSession): Promise<ReblogPayload>;
   reactToPost(postId: number, viewerUserId: number, body: Record<string, unknown>): Promise<ReactionPayload>;
   deletePostReaction(postId: number, viewerUserId: number, type: string): Promise<ReactionPayload>;
   sharePostToMessages(
@@ -84,6 +84,13 @@ export interface ContentMutationsRepository {
   deleteRoom(session: RequestSession, slug: string): Promise<RoomDeletePayload>;
   joinRoom(session: RequestSession, slug: string): Promise<RoomPayload>;
   leaveRoom(session: RequestSession, slug: string): Promise<RoomPayload>;
+  requestRoomAccess(session: RequestSession, slug: string): Promise<RoomPayload>;
+  cancelRoomAccessRequest(session: RequestSession, slug: string): Promise<RoomPayload>;
+  listRoomAccessRequests(session: RequestSession, slug: string): Promise<RoomAccessRequestPayload[]>;
+  approveRoomAccessRequest(session: RequestSession, slug: string, requestId: number): Promise<RoomAccessRequestPayload[]>;
+  denyRoomAccessRequest(session: RequestSession, slug: string, requestId: number): Promise<RoomAccessRequestPayload[]>;
+  addRoomMember(session: RequestSession, slug: string, body: Record<string, unknown>): Promise<RoomMemberPayload[]>;
+  removeRoomMember(session: RequestSession, slug: string, body: Record<string, unknown>): Promise<RoomMemberPayload[]>;
   addRoomModerator(session: RequestSession, slug: string, body: Record<string, unknown>): Promise<RoomMemberPayload[]>;
   removeRoomModerator(session: RequestSession, slug: string, body: Record<string, unknown>): Promise<RoomMemberPayload[]>;
 }
@@ -203,6 +210,16 @@ export interface RoomDeletePayload {
   deletedAt: string;
 }
 
+export interface RoomAccessRequestPayload {
+  id: number;
+  status: RoomAccessRequestStatus;
+  createdAt: string | null;
+  updatedAt: string | null;
+  reviewedAt: string | null;
+  requester: UserPayload;
+  reviewedBy: UserPayload | null;
+}
+
 interface ContentCapabilities extends ProfileSchemaCapabilities {
   hasNotifications: boolean;
   hasUserPreferences: boolean;
@@ -210,6 +227,7 @@ interface ContentCapabilities extends ProfileSchemaCapabilities {
   hasConversationMembers: boolean;
   hasMessages: boolean;
   hasMessageAttachments: boolean;
+  hasRoomAccessRequests: boolean;
 }
 
 interface CountRow extends RowDataPacket {
@@ -337,6 +355,22 @@ interface UserRow extends RowDataPacket {
   handle: string;
   display_name: string | null;
   avatar_url: string | null;
+}
+
+interface RoomAccessRequestRow extends RowDataPacket {
+  id: number | string;
+  status: string | null;
+  reviewed_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  requester_user_id: number | string;
+  requester_handle: string;
+  requester_display_name: string | null;
+  requester_avatar_url: string | null;
+  reviewer_user_id: number | string | null;
+  reviewer_handle: string | null;
+  reviewer_display_name: string | null;
+  reviewer_avatar_url: string | null;
 }
 
 interface ConversationRow extends RowDataPacket {
@@ -632,8 +666,8 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
   async createPost(session: RequestSession, body: Record<string, unknown>): Promise<PostPayload> {
     const capabilities = await this.schemaCapabilities();
     const postBody = validatePostBody(body.body);
-    const roomId = await this.resolveRoomId(body, capabilities);
-    const parentId = await this.resolveParentId(body.parentId ?? body.parent_id, capabilities);
+    const roomId = await this.resolveRoomId(body, capabilities, session);
+    const parentId = await this.resolveParentId(body.parentId ?? body.parent_id, capabilities, session);
     const mood = validateOptionalText(body.mood, 80, "Mood") ?? "sunveil";
     const mediaUrl = validatePostMediaUrl(body.mediaUrl ?? body.media_url);
     const publicId = capabilities.hasPostPublicIdColumn ? await this.generatePostPublicId() : null;
@@ -669,10 +703,14 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
 
   async createReply(session: RequestSession, postId: number, body: Record<string, unknown>): Promise<PostPayload> {
     const capabilities = await this.schemaCapabilities();
-    const parent = await this.fetchReplyablePostRecord(postId, capabilities);
+    const parent = await this.fetchReplyablePostRecord(postId, capabilities, session);
 
     if (parent === null) {
       throw new ContentRouteError("Post not found.", 404);
+    }
+
+    if (parent.room_id !== null) {
+      await this.requireRoomPostPermission(numberValue(parent.room_id), session, capabilities);
     }
 
     const postBody = validatePostBody(body.body);
@@ -757,7 +795,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
         throw new ContentRouteError("Only the author can move this post.", 403);
       }
 
-      updatedRoomId = await this.resolveRoomId(body, capabilities);
+      updatedRoomId = await this.resolveRoomId(body, capabilities, session);
       updates.push("room_id = ?");
       params.push(updatedRoomId);
     }
@@ -767,7 +805,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
         throw new ContentRouteError("Only the author can update the parent post.", 403);
       }
 
-      const parentId = await this.resolveParentId(body.parentId ?? body.parent_id, capabilities);
+      const parentId = await this.resolveParentId(body.parentId ?? body.parent_id, capabilities, session);
 
       if (parentId === postId) {
         throw new ContentRouteError("A post cannot be its own parent.", 422);
@@ -863,7 +901,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
 
   async likePost(postId: number, viewerUserId: number): Promise<LikePayload> {
     const capabilities = await this.schemaCapabilities();
-    const post = await this.fetchReactablePostRecord(postId, capabilities);
+    const post = await this.fetchReactablePostRecord(postId, capabilities, { userId: viewerUserId, role: null });
 
     if (post === null) {
       throw new ContentRouteError("Post not found.", 404);
@@ -894,7 +932,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
   async unlikePost(postId: number, viewerUserId: number): Promise<LikePayload> {
     const capabilities = await this.schemaCapabilities();
 
-    await this.requireReactablePost(postId, capabilities);
+    await this.requireReactablePost(postId, capabilities, { userId: viewerUserId, role: null });
     await this.pool.execute<ResultSetHeader>(
       `DELETE FROM post_reactions
        WHERE post_id = ?
@@ -906,10 +944,10 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
     return this.likePayloadForPost(postId, viewerUserId);
   }
 
-  async reblogPost(postId: number, viewerUserId: number): Promise<ReblogPayload> {
+  async reblogPost(postId: number, session: RequestSession): Promise<ReblogPayload> {
     const capabilities = await this.schemaCapabilities();
     this.requireTable(capabilities.hasPostReblogs, "Reblog storage is not ready. Run pending migrations.");
-    const post = await this.fetchReactablePostRecord(postId, capabilities);
+    const post = await this.fetchRebloggablePostRecord(postId, capabilities, session);
 
     if (post === null) {
       throw new ContentRouteError("Post not found.", 404);
@@ -917,20 +955,20 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
 
     const postAuthorId = numberValue(post.author_id);
 
-    if (postAuthorId === viewerUserId) {
+    if (postAuthorId === session.userId) {
       throw new ContentRouteError("You cannot reblog your own post.", 409);
     }
 
     const [insert] = await this.pool.execute<ResultSetHeader>(
       `INSERT IGNORE INTO post_reblogs (post_id, user_id)
        VALUES (?, ?)`,
-      [postId, viewerUserId],
+      [postId, session.userId],
     );
 
     if (insert.affectedRows > 0) {
       await this.createNotification(
         postAuthorId,
-        viewerUserId,
+        session.userId,
         "reblog",
         postId,
         nullableNumberValue(post.room_id),
@@ -940,26 +978,31 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       );
     }
 
-    return this.reblogPayloadForPost(postId, viewerUserId);
+    return this.reblogPayloadForPost(postId, session.userId);
   }
 
-  async unreblogPost(postId: number, viewerUserId: number): Promise<ReblogPayload> {
+  async unreblogPost(postId: number, session: RequestSession): Promise<ReblogPayload> {
     const capabilities = await this.schemaCapabilities();
     this.requireTable(capabilities.hasPostReblogs, "Reblog storage is not ready. Run pending migrations.");
-    await this.requireReactablePost(postId, capabilities);
+    const post = await this.fetchRebloggablePostRecord(postId, capabilities, session);
+
+    if (post === null) {
+      throw new ContentRouteError("Post not found.", 404);
+    }
+
     await this.pool.execute<ResultSetHeader>(
       `DELETE FROM post_reblogs
        WHERE post_id = ?
          AND user_id = ?`,
-      [postId, viewerUserId],
+      [postId, session.userId],
     );
 
-    return this.reblogPayloadForPost(postId, viewerUserId);
+    return this.reblogPayloadForPost(postId, session.userId);
   }
 
   async reactToPost(postId: number, viewerUserId: number, body: Record<string, unknown>): Promise<ReactionPayload> {
     const capabilities = await this.schemaCapabilities();
-    const post = await this.fetchReactablePostRecord(postId, capabilities);
+    const post = await this.fetchReactablePostRecord(postId, capabilities, { userId: viewerUserId, role: null });
 
     if (post === null) {
       throw new ContentRouteError("Post not found.", 404);
@@ -993,7 +1036,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
 
   async deletePostReaction(postId: number, viewerUserId: number, type: string): Promise<ReactionPayload> {
     const capabilities = await this.schemaCapabilities();
-    await this.requireReactablePost(postId, capabilities);
+    await this.requireReactablePost(postId, capabilities, { userId: viewerUserId, role: null });
     const reactionType = validateReactionType(safeDecodeURIComponent(type));
 
     await this.pool.execute<ResultSetHeader>(
@@ -1131,7 +1174,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       throw error;
     }
 
-    return this.fetchPublicRoomBySlug(slug, capabilities);
+    return this.fetchRoomBySlugForSession(slug, session, capabilities);
   }
 
   async updateRoom(session: RequestSession, slug: string, body: Record<string, unknown>): Promise<RoomPayload> {
@@ -1187,6 +1230,10 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
     }
 
     if ("visibility" in body) {
+      if (!(await this.roomCanManageModerators(room, session))) {
+        throw new ContentRouteError("You cannot change room visibility.", 403);
+      }
+
       updates.push("visibility = ?");
       params.push(roomVisibility(body.visibility));
     }
@@ -1202,7 +1249,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       );
     }
 
-    return this.fetchPublicRoomBySlug(room.slug, capabilities);
+    return this.fetchRoomBySlugForSession(room.slug, session, capabilities);
   }
 
   async deleteRoom(session: RequestSession, slug: string): Promise<RoomDeletePayload> {
@@ -1261,7 +1308,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
     );
     await this.syncRoomMemberCount(numberValue(room.id), this.pool);
 
-    return this.fetchPublicRoomBySlug(room.slug, capabilities);
+    return this.fetchRoomBySlugForSession(room.slug, session, capabilities);
   }
 
   async leaveRoom(session: RequestSession, slug: string): Promise<RoomPayload> {
@@ -1270,14 +1317,14 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
     this.requireRoomStorage(capabilities);
     const room = await this.roomRecordBySlug(slug);
 
-    if (room === null || room.visibility !== "public") {
+    if (room === null) {
       throw new ContentRouteError("Room not found.", 404);
     }
 
     const membership = await this.roomMembershipRecord(numberValue(room.id), session.userId);
 
     if (membership === null || membership.banned_at !== null) {
-      return this.fetchPublicRoomBySlug(room.slug, capabilities);
+      return this.fetchRoomBySlugForSession(room.slug, session, capabilities);
     }
 
     if (membership.role === "owner") {
@@ -1292,7 +1339,268 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
     );
     await this.syncRoomMemberCount(numberValue(room.id), this.pool);
 
-    return this.fetchPublicRoomBySlug(room.slug, capabilities);
+    return this.fetchRoomBySlugForSession(room.slug, session, capabilities);
+  }
+
+  async requestRoomAccess(session: RequestSession, slug: string): Promise<RoomPayload> {
+    const capabilities = await this.schemaCapabilities();
+
+    this.requireRoomStorage(capabilities);
+    this.requireTable(capabilities.hasRoomAccessRequests, "Room access request storage is not ready. Run pending migrations.");
+    const room = await this.roomRecordBySlug(slug);
+
+    if (room === null || room.visibility !== "invite") {
+      throw new ContentRouteError("Room not found.", 404);
+    }
+
+    const roomId = numberValue(room.id);
+    const membership = await this.roomMembershipRecord(roomId, session.userId);
+
+    if (membership !== null && membership.banned_at !== null) {
+      throw new ContentRouteError("You cannot request access to this room.", 403);
+    }
+
+    if (membership !== null) {
+      return this.fetchRoomBySlugForSession(room.slug, session, capabilities);
+    }
+
+    await this.pool.execute<ResultSetHeader>(
+      `INSERT INTO room_access_requests (room_id, requester_id, status, reviewed_by, reviewed_at)
+       VALUES (?, ?, 'pending', NULL, NULL)
+       ON DUPLICATE KEY UPDATE
+         status = IF(room_access_requests.status = 'approved', room_access_requests.status, 'pending'),
+         reviewed_by = IF(room_access_requests.status = 'approved', room_access_requests.reviewed_by, NULL),
+         reviewed_at = IF(room_access_requests.status = 'approved', room_access_requests.reviewed_at, NULL),
+         updated_at = CURRENT_TIMESTAMP()`,
+      [roomId, session.userId],
+    );
+
+    return this.fetchRoomBySlugForSession(room.slug, session, capabilities);
+  }
+
+  async cancelRoomAccessRequest(session: RequestSession, slug: string): Promise<RoomPayload> {
+    const capabilities = await this.schemaCapabilities();
+
+    this.requireRoomStorage(capabilities);
+    this.requireTable(capabilities.hasRoomAccessRequests, "Room access request storage is not ready. Run pending migrations.");
+    const room = await this.roomRecordBySlug(slug);
+
+    if (room === null || room.visibility !== "invite") {
+      throw new ContentRouteError("Room not found.", 404);
+    }
+
+    await this.pool.execute<ResultSetHeader>(
+      `UPDATE room_access_requests
+       SET status = 'canceled',
+           updated_at = CURRENT_TIMESTAMP()
+       WHERE room_id = ?
+         AND requester_id = ?
+         AND status = 'pending'`,
+      [numberValue(room.id), session.userId],
+    );
+
+    return this.fetchRoomBySlugForSession(room.slug, session, capabilities);
+  }
+
+  async listRoomAccessRequests(session: RequestSession, slug: string): Promise<RoomAccessRequestPayload[]> {
+    const capabilities = await this.schemaCapabilities();
+
+    this.requireRoomStorage(capabilities);
+    this.requireTable(capabilities.hasRoomAccessRequests, "Room access request storage is not ready. Run pending migrations.");
+    const room = await this.roomRecordBySlug(slug);
+
+    if (room === null) {
+      throw new ContentRouteError("Room not found.", 404);
+    }
+
+    if (!(await this.roomCanManageMembers(room, session))) {
+      throw new ContentRouteError("You cannot manage access for this room.", 403);
+    }
+
+    return this.fetchRoomAccessRequests(numberValue(room.id));
+  }
+
+  async approveRoomAccessRequest(session: RequestSession, slug: string, requestId: number): Promise<RoomAccessRequestPayload[]> {
+    const capabilities = await this.schemaCapabilities();
+
+    this.requireRoomStorage(capabilities);
+    this.requireTable(capabilities.hasRoomAccessRequests, "Room access request storage is not ready. Run pending migrations.");
+    const room = await this.roomRecordBySlug(slug);
+
+    if (room === null) {
+      throw new ContentRouteError("Room not found.", 404);
+    }
+
+    if (!(await this.roomCanManageMembers(room, session))) {
+      throw new ContentRouteError("You cannot manage access for this room.", 403);
+    }
+
+    const roomId = numberValue(room.id);
+    const request = await this.roomAccessRequestRecord(roomId, requestId);
+
+    if (request === null) {
+      throw new ContentRouteError("Access request not found.", 404);
+    }
+
+    const requesterId = numberValue(request.requester_user_id);
+    const existing = await this.roomMembershipRecord(roomId, requesterId);
+
+    if (existing !== null && existing.banned_at !== null) {
+      throw new ContentRouteError("Banned members cannot be approved.", 422);
+    }
+
+    await this.withTransaction(async (connection) => {
+      await connection.execute<ResultSetHeader>(
+        `INSERT INTO room_memberships (room_id, user_id, role)
+         VALUES (?, ?, 'member')
+         ON DUPLICATE KEY UPDATE
+           role = IF(role IN ('owner', 'moderator'), role, 'member'),
+           banned_at = banned_at`,
+        [roomId, requesterId],
+      );
+      await connection.execute<ResultSetHeader>(
+        `UPDATE room_access_requests
+         SET status = 'approved',
+             reviewed_by = ?,
+             reviewed_at = UTC_TIMESTAMP(),
+             updated_at = CURRENT_TIMESTAMP()
+         WHERE id = ?`,
+        [session.userId, requestId],
+      );
+      await this.syncRoomMemberCount(roomId, connection);
+    });
+
+    return this.fetchRoomAccessRequests(roomId);
+  }
+
+  async denyRoomAccessRequest(session: RequestSession, slug: string, requestId: number): Promise<RoomAccessRequestPayload[]> {
+    const capabilities = await this.schemaCapabilities();
+
+    this.requireRoomStorage(capabilities);
+    this.requireTable(capabilities.hasRoomAccessRequests, "Room access request storage is not ready. Run pending migrations.");
+    const room = await this.roomRecordBySlug(slug);
+
+    if (room === null) {
+      throw new ContentRouteError("Room not found.", 404);
+    }
+
+    if (!(await this.roomCanManageMembers(room, session))) {
+      throw new ContentRouteError("You cannot manage access for this room.", 403);
+    }
+
+    const roomId = numberValue(room.id);
+
+    if ((await this.roomAccessRequestRecord(roomId, requestId)) === null) {
+      throw new ContentRouteError("Access request not found.", 404);
+    }
+
+    await this.pool.execute<ResultSetHeader>(
+      `UPDATE room_access_requests
+       SET status = 'denied',
+           reviewed_by = ?,
+           reviewed_at = UTC_TIMESTAMP(),
+           updated_at = CURRENT_TIMESTAMP()
+       WHERE id = ?`,
+      [session.userId, requestId],
+    );
+
+    return this.fetchRoomAccessRequests(roomId);
+  }
+
+  async addRoomMember(session: RequestSession, slug: string, body: Record<string, unknown>): Promise<RoomMemberPayload[]> {
+    const capabilities = await this.schemaCapabilities();
+
+    this.requireRoomStorage(capabilities);
+    const room = await this.roomRecordBySlug(slug);
+
+    if (room === null) {
+      throw new ContentRouteError("Room not found.", 404);
+    }
+
+    if (!(await this.roomCanManageMembers(room, session))) {
+      throw new ContentRouteError("You cannot manage members for this room.", 403);
+    }
+
+    const user = await this.roomUserByHandle(body.handle);
+
+    if (user === null) {
+      throw new ContentRouteError("Profile not found.", 404);
+    }
+
+    const roomId = numberValue(room.id);
+    const userId = numberValue(user.user_id);
+    const existing = await this.roomMembershipRecord(roomId, userId);
+
+    if (existing !== null && existing.banned_at !== null) {
+      throw new ContentRouteError("Banned members cannot be added.", 422);
+    }
+
+    await this.pool.execute<ResultSetHeader>(
+      `INSERT INTO room_memberships (room_id, user_id, role)
+       VALUES (?, ?, 'member')
+       ON DUPLICATE KEY UPDATE
+         role = IF(role IN ('owner', 'moderator'), role, 'member'),
+         banned_at = banned_at`,
+      [roomId, userId],
+    );
+
+    if (capabilities.hasRoomAccessRequests) {
+      await this.pool.execute<ResultSetHeader>(
+        `UPDATE room_access_requests
+         SET status = 'approved',
+             reviewed_by = ?,
+             reviewed_at = UTC_TIMESTAMP(),
+             updated_at = CURRENT_TIMESTAMP()
+         WHERE room_id = ?
+           AND requester_id = ?
+           AND status = 'pending'`,
+        [session.userId, roomId, userId],
+      );
+    }
+
+    await this.syncRoomMemberCount(roomId, this.pool);
+
+    return this.fetchRoomMembers(roomId);
+  }
+
+  async removeRoomMember(session: RequestSession, slug: string, body: Record<string, unknown>): Promise<RoomMemberPayload[]> {
+    const capabilities = await this.schemaCapabilities();
+
+    this.requireRoomStorage(capabilities);
+    const room = await this.roomRecordBySlug(slug);
+
+    if (room === null) {
+      throw new ContentRouteError("Room not found.", 404);
+    }
+
+    if (!(await this.roomCanManageMembers(room, session))) {
+      throw new ContentRouteError("You cannot manage members for this room.", 403);
+    }
+
+    const user = await this.roomUserByHandle(body.handle);
+
+    if (user === null) {
+      throw new ContentRouteError("Profile not found.", 404);
+    }
+
+    const roomId = numberValue(room.id);
+    const userId = numberValue(user.user_id);
+    const membership = await this.roomMembershipRecord(roomId, userId);
+
+    if (membership !== null && membership.role === "owner") {
+      throw new ContentRouteError("Room owners cannot be removed without ownership transfer.", 422);
+    }
+
+    await this.pool.execute<ResultSetHeader>(
+      `DELETE FROM room_memberships
+       WHERE room_id = ?
+         AND user_id = ?
+         AND role <> 'owner'`,
+      [roomId, userId],
+    );
+    await this.syncRoomMemberCount(roomId, this.pool);
+
+    return this.fetchRoomMembers(roomId);
   }
 
   async addRoomModerator(session: RequestSession, slug: string, body: Record<string, unknown>): Promise<RoomMemberPayload[]> {
@@ -1607,48 +1915,86 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
   private async fetchReplyablePostRecord(
     postId: number,
     capabilities: ContentCapabilities,
+    session: RequestSession,
   ): Promise<PostRecordRow | null> {
     const [rows] = await this.pool.execute<PostRecordRow[]>(
       `SELECT p.id, p.author_id, p.room_id, p.mood, p.status
        FROM posts p
        LEFT JOIN rooms r ON r.id = p.room_id
-       ${postAncestorVisibilityJoinsSql("p")}
        WHERE p.id = ?
-         AND ${publicPostVisibleSql("p", "r", capabilities)}
-         AND ${postAncestorVisibilitySql("p", capabilities)}
+         AND p.visibility = 'public'
+         AND p.status = 'published'
+         AND p.deleted_at IS NULL
+         AND (p.room_id IS NULL OR (r.id IS NOT NULL ${roomNotDeletedSql("r", capabilities)}))
        LIMIT 1`,
       [postId],
     );
 
-    return rows[0] ?? null;
+    const post = rows[0] ?? null;
+
+    if (post?.room_id !== null && post !== null) {
+      await this.requireRoomViewPermission(numberValue(post.room_id), session, capabilities);
+    }
+
+    return post;
   }
 
   private async fetchReactablePostRecord(
     postId: number,
     capabilities: ContentCapabilities,
+    viewer: RoomViewer,
   ): Promise<PostRecordRow | null> {
     const [rows] = await this.pool.execute<PostRecordRow[]>(
       `SELECT p.id, p.author_id, p.room_id, p.status
        FROM posts p
        LEFT JOIN rooms r ON r.id = p.room_id
-       ${postAncestorVisibilityJoinsSql("p")}
        WHERE p.id = ?
-         AND ${publicPostVisibleSql("p", "r", capabilities)}
-         AND ${postAncestorVisibilitySql("p", capabilities)}
+         AND p.visibility = 'public'
+         AND p.status = 'published'
+         AND p.deleted_at IS NULL
+         AND (p.room_id IS NULL OR (r.id IS NOT NULL ${roomNotDeletedSql("r", capabilities)}))
        LIMIT 1`,
       [postId],
     );
 
-    return rows[0] ?? null;
+    const post = rows[0] ?? null;
+
+    if (post?.room_id !== null && post !== null) {
+      await this.requireRoomReactPermission(numberValue(post.room_id), viewer, capabilities);
+    }
+
+    return post;
   }
 
-  private async requireReactablePost(postId: number, capabilities: ContentCapabilities): Promise<void> {
-    if ((await this.fetchReactablePostRecord(postId, capabilities)) === null) {
+  private async fetchRebloggablePostRecord(
+    postId: number,
+    capabilities: ContentCapabilities,
+    session: RequestSession,
+  ): Promise<PostRecordRow | null> {
+    const post = await this.fetchReactablePostRecord(postId, capabilities, this.roomViewerFromSession(session));
+
+    if (post?.room_id !== null && post !== null) {
+      await this.requireRoomPostPermission(numberValue(post.room_id), session, capabilities);
+    }
+
+    return post;
+  }
+
+  private async requireReactablePost(
+    postId: number,
+    capabilities: ContentCapabilities,
+    viewer: RoomViewer,
+  ): Promise<void> {
+    if ((await this.fetchReactablePostRecord(postId, capabilities, viewer)) === null) {
       throw new ContentRouteError("Post not found.", 404);
     }
   }
 
-  private async resolveRoomId(body: Record<string, unknown>, capabilities: ContentCapabilities): Promise<number | null> {
+  private async resolveRoomId(
+    body: Record<string, unknown>,
+    capabilities: ContentCapabilities,
+    session: RequestSession,
+  ): Promise<number | null> {
     if ("roomId" in body || "room_id" in body) {
       const rawRoomId = body.roomId ?? body.room_id;
 
@@ -1656,7 +2002,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
         throw new ContentRouteError("Room id must be numeric.", 422);
       }
 
-      return this.requireRoomId(Number(rawRoomId), capabilities);
+      return this.requireRoomId(Number(rawRoomId), capabilities, session);
     }
 
     if ("roomSlug" in body || "room_slug" in body) {
@@ -1666,31 +2012,26 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
         throw new ContentRouteError("Room slug must be text.", 422);
       }
 
-      return this.requireRoomSlug(rawSlug, capabilities);
+      return this.requireRoomSlug(rawSlug, capabilities, session);
     }
 
     return null;
   }
 
-  private async requireRoomId(roomId: number, capabilities: ContentCapabilities): Promise<number> {
-    const [rows] = await this.pool.execute<IdRow[]>(
-      `SELECT id
-       FROM rooms
-       WHERE id = ?
-         AND visibility = 'public'
-         ${roomNotDeletedSql("rooms", capabilities)}
-       LIMIT 1`,
-      [roomId],
-    );
-
-    if (rows[0] === undefined) {
-      throw new ContentRouteError("Room not found.", 422);
-    }
-
+  private async requireRoomId(
+    roomId: number,
+    capabilities: ContentCapabilities,
+    session: RequestSession,
+  ): Promise<number> {
+    await this.requireRoomPostPermission(roomId, session, capabilities, 422);
     return roomId;
   }
 
-  private async requireRoomSlug(roomSlug: string, capabilities: ContentCapabilities): Promise<number> {
+  private async requireRoomSlug(
+    roomSlug: string,
+    capabilities: ContentCapabilities,
+    session: RequestSession,
+  ): Promise<number> {
     const slug = normalizeRoomSlug(roomSlug);
 
     if (slug === null) {
@@ -1701,7 +2042,6 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       `SELECT id
        FROM rooms
        WHERE slug = ?
-         AND visibility = 'public'
          ${roomNotDeletedSql("rooms", capabilities)}
        LIMIT 1`,
       [slug],
@@ -1712,10 +2052,17 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       throw new ContentRouteError("Room not found.", 422);
     }
 
-    return numberValue(row.id);
+    const roomId = numberValue(row.id);
+    await this.requireRoomPostPermission(roomId, session, capabilities, 422);
+
+    return roomId;
   }
 
-  private async resolveParentId(value: unknown, capabilities: ContentCapabilities): Promise<number | null> {
+  private async resolveParentId(
+    value: unknown,
+    capabilities: ContentCapabilities,
+    session: RequestSession,
+  ): Promise<number | null> {
     if (value === null || value === undefined || value === "") {
       return null;
     }
@@ -1725,20 +2072,27 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
     }
 
     const parentId = Number(value);
-    const [rows] = await this.pool.execute<IdRow[]>(
-      `SELECT p.id
+    const [rows] = await this.pool.execute<PostRecordRow[]>(
+      `SELECT p.id, p.author_id, p.room_id, p.status
        FROM posts p
        LEFT JOIN rooms r ON r.id = p.room_id
-       ${postAncestorVisibilityJoinsSql("p")}
        WHERE p.id = ?
-         AND ${publicPostVisibleSql("p", "r", capabilities)}
-         AND ${postAncestorVisibilitySql("p", capabilities)}
+         AND p.visibility = 'public'
+         AND p.status = 'published'
+         AND p.deleted_at IS NULL
+         AND (p.room_id IS NULL OR (r.id IS NOT NULL ${roomNotDeletedSql("r", capabilities)}))
        LIMIT 1`,
       [parentId],
     );
 
-    if (rows[0] === undefined) {
+    const parent = rows[0];
+
+    if (parent === undefined) {
       throw new ContentRouteError("Parent post not found.", 422);
+    }
+
+    if (parent.room_id !== null) {
+      await this.requireRoomPostPermission(numberValue(parent.room_id), session, capabilities, 422);
     }
 
     return parentId;
@@ -2275,6 +2629,19 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
     return rows[0] ?? null;
   }
 
+  private async roomRecordById(roomId: number): Promise<RoomRecordRow | null> {
+    const [rows] = await this.pool.execute<RoomRecordRow[]>(
+      `SELECT id, slug, name, summary, mood, accent, visibility, created_by, deleted_at
+       FROM rooms
+       WHERE id = ?
+         AND deleted_at IS NULL
+       LIMIT 1`,
+      [roomId],
+    );
+
+    return rows[0] ?? null;
+  }
+
   private async roomMembershipRecord(roomId: number, userId: number): Promise<RoomMembershipRow | null> {
     const [rows] = await this.pool.execute<RoomMembershipRow[]>(
       `SELECT id, room_id, user_id, role, muted_at, banned_at
@@ -2310,6 +2677,163 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
 
   private async roomCanManageModerators(room: RoomRecordRow, session: RequestSession): Promise<boolean> {
     return this.roomCanDelete(room, session);
+  }
+
+  private async roomCanManageMembers(room: RoomRecordRow, session: RequestSession): Promise<boolean> {
+    return this.roomCanEdit(room, session);
+  }
+
+  private roomViewerFromSession(session: RequestSession | RoomViewer | null): RoomViewer {
+    if (session === null) {
+      return { userId: null, role: null };
+    }
+
+    return {
+      userId: session.userId,
+      role: session.role ?? null,
+    };
+  }
+
+  private roomViewerIsAdmin(session: RequestSession | RoomViewer | null): boolean {
+    return this.roomViewerFromSession(session).role === "admin";
+  }
+
+  private roomMembershipIsActive(membership: RoomMembershipRow | null): boolean {
+    return membership !== null && membership.banned_at === null;
+  }
+
+  private roomMembershipIsStaff(membership: RoomMembershipRow | null): boolean {
+    return membership !== null && membership.banned_at === null && ["owner", "moderator"].includes(String(membership.role));
+  }
+
+  private async roomCanViewPostsForViewer(room: RoomRecordRow, viewer: RoomViewer): Promise<boolean> {
+    if (room.visibility === "public" || room.visibility === "view_only" || this.roomViewerIsAdmin(viewer)) {
+      return true;
+    }
+
+    if (viewer.userId === null) {
+      return false;
+    }
+
+    return this.roomMembershipIsActive(await this.roomMembershipRecord(numberValue(room.id), viewer.userId));
+  }
+
+  private async roomCanPostForSession(room: RoomRecordRow, session: RequestSession): Promise<boolean> {
+    if (this.roomViewerIsAdmin(session)) {
+      return true;
+    }
+
+    const membership = await this.roomMembershipRecord(numberValue(room.id), session.userId);
+
+    if (room.visibility === "view_only") {
+      return this.roomMembershipIsStaff(membership);
+    }
+
+    if (room.visibility === "public") {
+      return membership === null || membership.banned_at === null;
+    }
+
+    return this.roomMembershipIsActive(membership);
+  }
+
+  private async roomCanReactForViewer(room: RoomRecordRow, viewer: RoomViewer): Promise<boolean> {
+    return viewer.userId !== null && await this.roomCanViewPostsForViewer(room, viewer);
+  }
+
+  private async requireRoomViewPermission(
+    roomId: number,
+    session: RequestSession | RoomViewer,
+    capabilities: ContentCapabilities,
+    statusCode = 404,
+  ): Promise<void> {
+    this.requireRoomStorage(capabilities);
+    const room = await this.roomRecordById(roomId);
+
+    if (room === null || !(await this.roomCanViewPostsForViewer(room, this.roomViewerFromSession(session)))) {
+      throw new ContentRouteError("Post not found.", statusCode);
+    }
+  }
+
+  private async requireRoomPostPermission(
+    roomId: number,
+    session: RequestSession,
+    capabilities: ContentCapabilities,
+    statusCode = 403,
+  ): Promise<void> {
+    this.requireRoomStorage(capabilities);
+    const room = await this.roomRecordById(roomId);
+
+    if (room === null) {
+      throw new ContentRouteError("Room not found.", statusCode);
+    }
+
+    if (!(await this.roomCanPostForSession(room, session))) {
+      throw new ContentRouteError(
+        room.visibility === "view_only" ? "Only room staff can post in view-only rooms." : "You cannot post in this room.",
+        403,
+      );
+    }
+  }
+
+  private async requireRoomReactPermission(
+    roomId: number,
+    viewer: RoomViewer,
+    capabilities: ContentCapabilities,
+  ): Promise<void> {
+    this.requireRoomStorage(capabilities);
+    const room = await this.roomRecordById(roomId);
+
+    if (room === null || !(await this.roomCanReactForViewer(room, viewer))) {
+      throw new ContentRouteError("Post not found.", 404);
+    }
+  }
+
+  private async fetchRoomBySlugForSession(
+    slug: string,
+    session: RequestSession,
+    capabilities: ContentCapabilities,
+  ): Promise<RoomPayload> {
+    const roomCapabilities = roomCapabilitiesFromContent(capabilities);
+    const [rows] = await this.pool.execute<RoomRow[]>(
+      buildPublicRoomBySlugQuery(roomCapabilities, this.roomViewerFromSession(session)),
+      [slug],
+    );
+    const row = rows[0];
+
+    if (row === undefined) {
+      throw new ContentRouteError("Room not found.", 404);
+    }
+
+    return roomPayloadFromRow(row);
+  }
+
+  private async roomAccessRequestRecord(roomId: number, requestId: number): Promise<RoomAccessRequestRow | null> {
+    if (requestId < 1) {
+      return null;
+    }
+
+    const [rows] = await this.pool.execute<RoomAccessRequestRow[]>(
+      `${roomAccessRequestSelectSql()}
+       WHERE requests.room_id = ?
+         AND requests.id = ?
+       LIMIT 1`,
+      [roomId, requestId],
+    );
+
+    return rows[0] ?? null;
+  }
+
+  private async fetchRoomAccessRequests(roomId: number): Promise<RoomAccessRequestPayload[]> {
+    const [rows] = await this.pool.execute<RoomAccessRequestRow[]>(
+      `${roomAccessRequestSelectSql()}
+       WHERE requests.room_id = ?
+         AND requests.status = 'pending'
+       ORDER BY requests.created_at ASC, requests.id ASC
+       LIMIT 100`,
+      [roomId],
+    );
+
+    return rows.map((row) => roomAccessRequestPayloadFromRow(row));
   }
 
   private async roomUserByHandle(rawHandle: unknown): Promise<UserRow | null> {
@@ -2383,18 +2907,6 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
        LIMIT 1`,
       [userId],
     );
-  }
-
-  private async fetchPublicRoomBySlug(slug: string, capabilities: ContentCapabilities): Promise<RoomPayload> {
-    const roomCapabilities = roomCapabilitiesFromContent(capabilities);
-    const [rows] = await this.pool.execute<RoomRow[]>(buildPublicRoomBySlugQuery(roomCapabilities), [slug]);
-    const row = rows[0];
-
-    if (row === undefined) {
-      throw new ContentRouteError("Room not found.", 404);
-    }
-
-    return roomPayloadFromRow(row);
   }
 
   private async fetchRoomMembers(roomId: number): Promise<RoomMemberPayload[]> {
@@ -2542,6 +3054,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       hasConversationMembers,
       hasMessages,
       hasMessageAttachments,
+      hasRoomAccessRequests,
     ] = await Promise.all([
       this.tableExists("account_deletion_requests"),
       this.tableExists("user_follows"),
@@ -2587,6 +3100,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       this.tableExists("conversation_members"),
       this.tableExists("messages"),
       this.tableExists("message_attachments"),
+      this.tableExists("room_access_requests"),
     ]);
 
     return {
@@ -2629,6 +3143,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       hasConversationMembers,
       hasMessages,
       hasMessageAttachments,
+      hasRoomAccessRequests,
     };
   }
 
@@ -3000,12 +3515,12 @@ function roomUploadUrl(value: unknown, label: string): string | null {
   return url;
 }
 
-function roomVisibility(value: unknown): "public" {
-  if (typeof value !== "string" || value !== "public") {
-    throw new ContentRouteError("Only public rooms are supported right now.", 422);
+function roomVisibility(value: unknown): RoomVisibility {
+  if (value === "public" || value === "private" || value === "invite" || value === "view_only") {
+    return value;
   }
 
-  return "public";
+  throw new ContentRouteError("Choose a supported room visibility.", 422);
 }
 
 function bodyValue(body: Record<string, unknown>, primaryKey: string, secondaryKey: string): unknown {
@@ -3018,6 +3533,69 @@ function bodyValue(body: Record<string, unknown>, primaryKey: string, secondaryK
   }
 
   return undefined;
+}
+
+function roomAccessRequestSelectSql(): string {
+  return `SELECT
+            requests.id,
+            requests.status,
+            requests.reviewed_at,
+            requests.created_at,
+            requests.updated_at,
+            requester.id AS requester_user_id,
+            requester.handle AS requester_handle,
+            requester_profile.display_name AS requester_display_name,
+            requester_profile.avatar_url AS requester_avatar_url,
+            reviewer.id AS reviewer_user_id,
+            reviewer.handle AS reviewer_handle,
+            reviewer_profile.display_name AS reviewer_display_name,
+            reviewer_profile.avatar_url AS reviewer_avatar_url
+          FROM room_access_requests requests
+          INNER JOIN users requester ON requester.id = requests.requester_id
+          INNER JOIN profiles requester_profile ON requester_profile.user_id = requester.id
+          LEFT JOIN users reviewer ON reviewer.id = requests.reviewed_by
+          LEFT JOIN profiles reviewer_profile ON reviewer_profile.user_id = reviewer.id`;
+}
+
+function roomAccessRequestPayloadFromRow(row: RoomAccessRequestRow): RoomAccessRequestPayload {
+  const requesterHandle = stringValue(row.requester_handle);
+  const requesterDisplayName = stringValue(row.requester_display_name, requesterHandle);
+  const requester: UserPayload = {
+    id: numberValue(row.requester_user_id),
+    handle: requesterHandle,
+    displayName: requesterDisplayName,
+    initials: initialsFromName(requesterDisplayName),
+    aura: "frost",
+    avatarUrl: nullableStringValue(row.requester_avatar_url),
+  };
+  let reviewedBy: UserPayload | null = null;
+
+  if (row.reviewer_user_id !== null && row.reviewer_handle !== null) {
+    const reviewerHandle = stringValue(row.reviewer_handle);
+    const reviewerDisplayName = stringValue(row.reviewer_display_name, reviewerHandle);
+    reviewedBy = {
+      id: numberValue(row.reviewer_user_id),
+      handle: reviewerHandle,
+      displayName: reviewerDisplayName,
+      initials: initialsFromName(reviewerDisplayName),
+      aura: "frost",
+      avatarUrl: nullableStringValue(row.reviewer_avatar_url),
+    };
+  }
+
+  return {
+    id: numberValue(row.id),
+    status: roomAccessRequestStatus(row.status),
+    createdAt: nullableStringValue(row.created_at),
+    updatedAt: nullableStringValue(row.updated_at),
+    reviewedAt: nullableStringValue(row.reviewed_at),
+    requester,
+    reviewedBy,
+  };
+}
+
+function roomAccessRequestStatus(value: string | null): RoomAccessRequestStatus {
+  return value === "approved" || value === "denied" || value === "canceled" ? value : "pending";
 }
 
 function textEntityPayloadFromRow(row: TextEntityRow): TextEntityPayload | null {
@@ -3091,6 +3669,7 @@ function roomCapabilitiesFromContent(capabilities: ContentCapabilities): RoomSch
     hasRoomMemberships: capabilities.hasRoomMemberships,
     hasRoomCustomizationColumns: capabilities.hasRoomCustomizationColumns,
     hasRoomSoftDeleteColumn: capabilities.hasRoomSoftDeleteColumn,
+    hasRoomAccessRequests: capabilities.hasRoomAccessRequests,
   };
 }
 

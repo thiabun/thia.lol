@@ -83,7 +83,7 @@ class MariaDbSitemapService implements SitemapService {
     const [rows] = await this.pool.execute<SitemapRow[]>(
       `SELECT slug, created_at, updated_at
        FROM rooms
-       WHERE visibility = 'public'
+       WHERE visibility IN ('public', 'view_only')
          ${deletedFilter}
        ORDER BY updated_at DESC
        LIMIT 1000`,
@@ -107,7 +107,7 @@ class MariaDbSitemapService implements SitemapService {
          AND p.deleted_at IS NULL
          AND u.status = 'active'
          ${profileVisibilityFilter}
-         AND (p.room_id IS NULL OR (r.visibility = 'public' ${roomDeletedFilter}))
+         AND (p.room_id IS NULL OR (r.visibility IN ('public', 'view_only') ${roomDeletedFilter}))
        ORDER BY p.updated_at DESC
        LIMIT 1000`,
     );

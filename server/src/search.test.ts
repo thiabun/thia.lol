@@ -19,6 +19,7 @@ const capabilities: SearchSchemaCapabilities = {
   hasRoomMemberships: true,
   hasRoomCustomizationColumns: true,
   hasRoomSoftDeleteColumn: true,
+  hasRoomAccessRequests: true,
 };
 
 describe("search preview helpers", () => {
@@ -98,7 +99,7 @@ describe("search preview SQL", () => {
     const query = buildSearchRoomsQuery(capabilities);
 
     expect(query).toContain("FROM rooms");
-    expect(query).toContain("rooms.visibility = 'public'");
+    expect(query).toContain("rooms.visibility IN ('public', 'invite', 'view_only')");
     expect(query).toContain("AND rooms.deleted_at IS NULL");
     expect(query).toContain("COALESCE(room_member_counts.member_count, 0) AS room_member_count");
     expect(query).toContain("rooms.icon_url AS room_icon_url");
@@ -113,6 +114,7 @@ describe("search preview SQL", () => {
       hasRoomMemberships: false,
       hasRoomCustomizationColumns: false,
       hasRoomSoftDeleteColumn: false,
+      hasRoomAccessRequests: false,
     });
 
     expect(query).toContain("rooms.member_count AS room_member_count");

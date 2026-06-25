@@ -352,16 +352,26 @@ export type Room = {
   iconUrl?: string | null;
   bannerUrl?: string | null;
   rules?: string;
-  visibility?: string;
+  visibility: RoomVisibility;
   createdBy?: number | null;
   owner?: User | null;
   joinedByMe?: boolean;
   myRoomRole?: "owner" | "moderator" | "member" | null;
+  viewerCanViewPosts: boolean;
+  viewerCanPost: boolean;
+  viewerCanReact: boolean;
+  viewerCanRequestAccess: boolean;
+  accessRequestStatus?: RoomAccessRequestStatus | null;
+  pendingAccessRequestCount?: number | undefined;
   postCount: number;
   latestActivityAt?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
 };
+
+export type RoomVisibility = "public" | "private" | "invite" | "view_only";
+
+export type RoomAccessRequestStatus = "pending" | "approved" | "denied" | "canceled";
 
 export type RoomMemberRole = "owner" | "moderator" | "member";
 
@@ -370,6 +380,16 @@ export type RoomMember = {
   role: RoomMemberRole;
   joinedAt?: string | null;
   user: User;
+};
+
+export type RoomAccessRequest = {
+  id: number;
+  status: RoomAccessRequestStatus;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  reviewedAt?: string | null;
+  requester: User;
+  reviewedBy?: User | null;
 };
 
 export type ReactionCounts = {

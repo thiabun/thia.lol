@@ -164,7 +164,7 @@ function search_rooms(string $query): array
               AND deleted_at IS NULL
             GROUP BY room_id
         ) room_posts ON room_posts.room_id = rooms.id
-        WHERE rooms.visibility = 'public'
+        WHERE rooms.visibility IN ('public', 'invite', 'view_only')
           " . room_not_deleted_sql('rooms') . "
           AND (
                 LOWER(rooms.slug) LIKE :slug_match

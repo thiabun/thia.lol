@@ -124,6 +124,43 @@ test("room deletion flow requires confirmation and calls delete", async ({ page 
   await expect(page).toHaveURL(/\/rooms$/);
 });
 
+test("room edit saves each visibility mode", async ({ page }) => {
+  let summary = "Original room summary.";
+  let rules = "Keep it useful.";
+  let visibility = "public";
+  const patches: Record<string, unknown>[] = [];
+
+  await mockOwnedRoom(page, () => summary, (payload) => {
+    patches.push(payload);
+    summary = String(payload.summary ?? summary);
+    rules = String(payload.rules ?? rules);
+    visibility = String(payload.visibility ?? visibility);
+  }, {
+    rules: () => rules,
+    visibility: () => visibility,
+  });
+
+  await acknowledgeCookieNotice(page);
+  await page.goto("/rooms/sun-room");
+  await expect(page.getByRole("button", { name: "Edit room" })).toBeVisible();
+
+  for (const [index, option] of [
+    ["Public", "public"],
+    ["Private", "private"],
+    ["Invite", "invite"],
+    ["View-only", "view_only"],
+  ].entries()) {
+    await page.getByRole("button", { name: "Edit room" }).click();
+
+    const modal = page.getByTestId("room-edit-modal");
+    await modal.locator(`label:has(input[name="room-visibility"][value="${option[1]}"])`).click();
+    await modal.getByRole("button", { name: "Save changes" }).click();
+
+    await expect.poll(() => patches.length).toBe(index + 1);
+    expect(patches[index]).toMatchObject({ visibility: option[1] });
+  }
+});
+
 async function mockOwnedRoom(
   page: Page,
   summary: () => string,
@@ -133,6 +170,7 @@ async function mockOwnedRoom(
     onRemoveModerator?: (handle: string) => void;
     onDeleteRoom?: () => void;
     rules?: () => string;
+    visibility?: () => string;
   } = {},
 ) {
   await page.route("**/api/auth/me", async (route) => {
@@ -184,11 +222,11 @@ async function mockOwnedRoom(
     });
   });
 
-  await page.route("**/api/rooms", async (route) => {
+  await page.route(/\/api\/rooms$/, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: [roomBody(summary(), callbacks.rules?.())] }),
+      body: JSON.stringify({ ok: true, data: [roomBody(summary(), callbacks.rules?.(), callbacks.visibility?.())] }),
     });
   });
 
@@ -201,7 +239,11 @@ async function mockOwnedRoom(
         contentType: "application/json",
         body: JSON.stringify({
           ok: true,
-          data: roomBody(String(payload.summary), String(payload.rules ?? "")),
+          data: roomBody(
+            String(payload.summary ?? summary()),
+            String(payload.rules ?? callbacks.rules?.() ?? ""),
+            String(payload.visibility ?? callbacks.visibility?.() ?? "public"),
+          ),
         }),
       });
       return;
@@ -223,7 +265,7 @@ async function mockOwnedRoom(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: roomBody(summary(), callbacks.rules?.()) }),
+      body: JSON.stringify({ ok: true, data: roomBody(summary(), callbacks.rules?.(), callbacks.visibility?.()) }),
     });
   });
 
@@ -240,6 +282,14 @@ async function mockOwnedRoom(
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ ok: true, data: roomMembers() }),
+    });
+  });
+
+  await page.route("**/api/rooms/sun-room/access-requests", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
     });
   });
 
@@ -297,7 +347,7 @@ function completedOnboardingState() {
   };
 }
 
-function roomBody(summary: string, rules = "Keep it useful.") {
+function roomBody(summary: string, rules = "Keep it useful.", visibility = "public") {
   return {
     id: 1,
     slug: "sun-room",
@@ -312,7 +362,7 @@ function roomBody(summary: string, rules = "Keep it useful.") {
     iconUrl: null,
     bannerUrl: null,
     rules,
-    visibility: "public",
+    visibility,
     createdBy: 1,
     owner: {
       id: 1,
@@ -324,6 +374,12 @@ function roomBody(summary: string, rules = "Keep it useful.") {
     },
     joinedByMe: true,
     myRoomRole: "owner",
+    viewerCanViewPosts: true,
+    viewerCanPost: true,
+    viewerCanReact: true,
+    viewerCanRequestAccess: false,
+    accessRequestStatus: null,
+    pendingAccessRequestCount: 0,
     postCount: 0,
     latestActivityAt: null,
     createdAt: "2026-06-10 00:00:00",

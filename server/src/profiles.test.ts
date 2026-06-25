@@ -49,6 +49,7 @@ const fullCapabilities: ProfileSchemaCapabilities = {
   hasUserBadges: true,
   hasProfileIntegrationAccounts: true,
   hasProfileIntegrationMetadataCache: true,
+  hasRoomAccessRequests: true,
 };
 
 const social: ProfileSocialContext = {
@@ -429,7 +430,7 @@ describe("profile preview SQL", () => {
     const query = buildPublicProfileRoomsQuery(fullCapabilities);
 
     expect(query).toContain("WHERE owner.handle = ?");
-    expect(query).toContain("rooms.visibility = 'public'");
+    expect(query).toContain("rooms.visibility IN ('public', 'view_only')");
     expect(query).toContain("rooms.deleted_at IS NULL");
     expect(query).toContain("ORDER BY rooms.created_at DESC, rooms.name ASC");
   });
@@ -475,7 +476,7 @@ describe("profile preview SQL", () => {
     expect(query).toContain("profile_posts.status = 'published'");
     expect(query).toContain("profile_posts.deleted_at IS NULL");
     expect(query).toContain("profile_replies.parent_id IS NOT NULL");
-    expect(query).toContain("profile_rooms.visibility = 'public'");
+    expect(query).toContain("profile_rooms.visibility IN ('public', 'view_only')");
     expect(query).toContain("profile_rooms.deleted_at IS NULL");
     expect(query).toContain("profile_star_users.status = 'active'");
     expect(query).toContain("FROM user_blocks pair_blocks");
@@ -497,6 +498,7 @@ describe("profile preview SQL", () => {
       hasProfileStars: false,
       hasUserBlocks: false,
       hasRoomSoftDeleteColumn: false,
+      hasRoomAccessRequests: false,
     });
 
     expect(query).toContain("NULL AS banner_url");

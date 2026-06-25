@@ -186,7 +186,7 @@ test("search endpoint uses prepared queries and public safety filters", async ()
   expect(searchSource).toContain(":summary_match");
   expect(searchSource).toContain("user_publicly_available_sql('u')");
   expect(searchSource).toContain("viewer_feed_relationship_filter_sql");
-  expect(searchSource).toContain("rooms.visibility = 'public'");
+  expect(searchSource).toContain("rooms.visibility IN ('public', 'invite', 'view_only')");
   expect(searchSource).toContain("room_not_deleted_sql('rooms')");
   expect(searchSource).not.toContain("messages");
 });

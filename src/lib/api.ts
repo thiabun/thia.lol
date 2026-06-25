@@ -33,7 +33,9 @@ import type {
   RichLinkCard,
   RichTextEntity,
   Room,
+  RoomAccessRequest,
   RoomMember,
+  RoomVisibility,
   SearchResults,
   User,
   UserBadge,
@@ -62,6 +64,12 @@ type ApiRoom = Room & {
   rules?: string;
   joinedByMe?: boolean;
   myRoomRole?: Room["myRoomRole"];
+  viewerCanViewPosts?: boolean;
+  viewerCanPost?: boolean;
+  viewerCanReact?: boolean;
+  viewerCanRequestAccess?: boolean;
+  accessRequestStatus?: Room["accessRequestStatus"];
+  pendingAccessRequestCount?: number | undefined;
   postCount?: number;
   latestActivityAt?: string | null;
   createdAt?: string | null;
@@ -418,6 +426,7 @@ export type RoomInput = {
   iconUrl?: string | null;
   bannerUrl?: string | null;
   rules?: string | null;
+  visibility?: RoomVisibility;
 };
 
 export type UpdateFeaturedBadgesInput = {
@@ -829,8 +838,75 @@ export function leaveRoom(slug: string, csrfToken: string): Promise<Room> {
   ).then(normalizeRoom);
 }
 
+export function requestRoomAccess(slug: string, csrfToken: string): Promise<Room> {
+  return apiPost<ApiRoom>(
+    `/rooms/${encodeURIComponent(slug)}/access-requests`,
+    {},
+    csrfToken,
+  ).then(normalizeRoom);
+}
+
+export function cancelRoomAccessRequest(slug: string, csrfToken: string): Promise<Room> {
+  return apiDelete<ApiRoom>(
+    `/rooms/${encodeURIComponent(slug)}/access-requests/me`,
+    csrfToken,
+  ).then(normalizeRoom);
+}
+
+export function getRoomAccessRequests(slug: string): Promise<RoomAccessRequest[]> {
+  return apiGet<RoomAccessRequest[]>(`/rooms/${encodeURIComponent(slug)}/access-requests`);
+}
+
+export function approveRoomAccessRequest(
+  slug: string,
+  requestId: number,
+  csrfToken: string,
+): Promise<RoomAccessRequest[]> {
+  return apiPost<RoomAccessRequest[]>(
+    `/rooms/${encodeURIComponent(slug)}/access-requests/${requestId}/approve`,
+    {},
+    csrfToken,
+  );
+}
+
+export function denyRoomAccessRequest(
+  slug: string,
+  requestId: number,
+  csrfToken: string,
+): Promise<RoomAccessRequest[]> {
+  return apiPost<RoomAccessRequest[]>(
+    `/rooms/${encodeURIComponent(slug)}/access-requests/${requestId}/deny`,
+    {},
+    csrfToken,
+  );
+}
+
 export function getRoomMembers(slug: string): Promise<RoomMember[]> {
   return apiGet<RoomMember[]>(`/rooms/${encodeURIComponent(slug)}/members`);
+}
+
+export function addRoomMember(
+  slug: string,
+  handle: string,
+  csrfToken: string,
+): Promise<RoomMember[]> {
+  return apiPost<RoomMember[]>(
+    `/rooms/${encodeURIComponent(slug)}/members`,
+    { handle },
+    csrfToken,
+  );
+}
+
+export function removeRoomMember(
+  slug: string,
+  handle: string,
+  csrfToken: string,
+): Promise<RoomMember[]> {
+  return apiDelete<RoomMember[]>(
+    `/rooms/${encodeURIComponent(slug)}/members`,
+    csrfToken,
+    { handle },
+  );
 }
 
 export function addRoomModerator(
@@ -1897,6 +1973,21 @@ export function resolveAdminReport(
 
 function normalizeRoom(room: ApiRoom): Room {
   const memberCount = room.memberCount ?? room.members ?? 0;
+  const visibility = normalizeRoomVisibility(room.visibility);
+  const joinedByMe = room.joinedByMe ?? false;
+  const myRoomRole = room.myRoomRole ?? null;
+  const viewerCanViewPosts =
+    room.viewerCanViewPosts ??
+    (visibility === "public" ||
+      visibility === "view_only" ||
+      joinedByMe);
+  const viewerCanPost =
+    room.viewerCanPost ??
+    (visibility === "public" ||
+      myRoomRole === "owner" ||
+      myRoomRole === "moderator" ||
+      ((visibility === "private" || visibility === "invite") && joinedByMe));
+  const viewerCanReact = room.viewerCanReact ?? viewerCanViewPosts;
 
   return {
     id: room.id,
@@ -1912,16 +2003,26 @@ function normalizeRoom(room: ApiRoom): Room {
     iconUrl: room.iconUrl ?? null,
     bannerUrl: room.bannerUrl ?? null,
     rules: room.rules ?? "",
-    visibility: room.visibility ?? "public",
+    visibility,
     createdBy: room.createdBy ?? null,
     owner: room.owner ?? null,
-    joinedByMe: room.joinedByMe ?? false,
-    myRoomRole: room.myRoomRole ?? null,
+    joinedByMe,
+    myRoomRole,
+    viewerCanViewPosts,
+    viewerCanPost,
+    viewerCanReact,
+    viewerCanRequestAccess: room.viewerCanRequestAccess ?? false,
+    accessRequestStatus: room.accessRequestStatus ?? null,
+    pendingAccessRequestCount: room.pendingAccessRequestCount,
     postCount: room.postCount ?? 0,
     latestActivityAt: room.latestActivityAt ?? null,
     createdAt: room.createdAt ?? null,
     updatedAt: room.updatedAt ?? null,
   };
+}
+
+function normalizeRoomVisibility(value: unknown): RoomVisibility {
+  return value === "private" || value === "invite" || value === "view_only" ? value : "public";
 }
 
 function roomInputBody(input: Partial<RoomInput>): Record<string, unknown> {
@@ -1959,7 +2060,9 @@ function roomInputBody(input: Partial<RoomInput>): Record<string, unknown> {
     body.rules = input.rules?.trim() || null;
   }
 
-  body.visibility = "public";
+  if (input.visibility !== undefined) {
+    body.visibility = input.visibility;
+  }
 
   return body;
 }

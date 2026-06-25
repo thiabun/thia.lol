@@ -19,6 +19,7 @@ const fullCapabilities: RoomSchemaCapabilities = {
   hasRoomMemberships: true,
   hasRoomCustomizationColumns: true,
   hasRoomSoftDeleteColumn: true,
+  hasRoomAccessRequests: true,
 };
 
 function roomRow(overrides: Partial<RoomRow> = {}): RoomRow {
@@ -91,6 +92,11 @@ describe("room preview payload mapping", () => {
       },
       joinedByMe: false,
       myRoomRole: null,
+      viewerCanViewPosts: true,
+      viewerCanPost: false,
+      viewerCanReact: false,
+      viewerCanRequestAccess: false,
+      accessRequestStatus: null,
       postCount: 5,
       latestActivityAt: "2026-06-23 11:00:00",
       createdAt: "2026-06-20 09:00:00",
@@ -170,6 +176,7 @@ describe("room preview SQL", () => {
       hasRoomMemberships: false,
       hasRoomCustomizationColumns: false,
       hasRoomSoftDeleteColumn: false,
+      hasRoomAccessRequests: false,
     });
 
     expect(query).toContain("rooms.member_count AS room_member_count");
@@ -182,7 +189,7 @@ describe("room preview SQL", () => {
     const query = buildPublicRoomBySlugQuery(fullCapabilities);
 
     expect(query).toContain("WHERE rooms.slug = ?");
-    expect(query).toContain("AND rooms.visibility = 'public'");
+    expect(query).toContain("AND (rooms.visibility <> 'private'");
     expect(query).toContain("AND rooms.deleted_at IS NULL");
     expect(query).toContain("LIMIT 1");
   });
@@ -191,8 +198,8 @@ describe("room preview SQL", () => {
     const roomQuery = buildPublicRoomMemberRoomQuery();
     const membersQuery = buildPublicRoomMembersQuery();
 
-    expect(roomQuery).toContain("WHERE slug = ?");
-    expect(roomQuery).toContain("visibility = 'public'");
+    expect(roomQuery).toContain("WHERE rooms.slug = ?");
+    expect(roomQuery).toContain("rooms.visibility IN ('public', 'view_only')");
     expect(roomQuery).toContain("deleted_at IS NULL");
     expect(membersQuery).toContain("FROM room_memberships memberships");
     expect(membersQuery).toContain("memberships.banned_at IS NULL");
@@ -208,6 +215,7 @@ describe("room preview SQL", () => {
         hasRoomMemberships: true,
         hasRoomCustomizationColumns: true,
         hasRoomSoftDeleteColumn: false,
+        hasRoomAccessRequests: true,
       }),
     ).toBe(false);
   });

@@ -6,6 +6,7 @@ import {
   ScrollText,
   Settings,
   Shield,
+  Sparkles,
   UserRound,
   UsersRound,
 } from "lucide-react";
@@ -36,12 +37,17 @@ import { Panel } from "../components/ui/Panel";
 import {
   deletePost,
   deleteRoom,
+  approveRoomAccessRequest,
+  cancelRoomAccessRequest,
+  denyRoomAccessRequest,
+  getRoomAccessRequests,
   getRoom,
   getRoomMembers,
   getRoomPosts,
   joinRoom,
   leaveRoom,
   addRoomModerator,
+  requestRoomAccess,
   removeRoomModerator,
   updatePost,
   updateRoom,
@@ -55,7 +61,7 @@ import { cardEntrance, pageEntrance } from "../lib/motionPresets";
 import { formatCountWithUnit } from "../lib/pluralize";
 import type { AppShellOutletContext } from "../components/layout/AppShell";
 import type { ImageUploadPurpose, RoomInput } from "../lib/api";
-import type { Post, Room, RoomMember } from "../lib/types";
+import type { Post, Room, RoomAccessRequest, RoomMember, RoomVisibility } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
 
@@ -96,13 +102,18 @@ export function RoomPage() {
   const [pendingRoomAction, setPendingRoomAction] = useState<string | undefined>();
   const [editOpen, setEditOpen] = useState(false);
   const [postActionError, setPostActionError] = useState<string | undefined>();
+  const [accessRequests, setAccessRequests] = useState<RoomAccessRequest[]>([]);
+  const [accessRequestsLoading, setAccessRequestsLoading] = useState(false);
+  const [accessRequestsError, setAccessRequestsError] = useState<string | undefined>();
+  const [pendingAccessRequestId, setPendingAccessRequestId] = useState<number | undefined>();
   const room = roomOverride?.slug === normalizedSlug ? roomOverride : roomState.data;
-  const members = membersOverride ?? membersState.data ?? [];
+  const members = room?.viewerCanViewPosts ? membersOverride ?? membersState.data ?? [] : [];
   const canEditRoom =
     Boolean(room) &&
     (user?.role === "admin" ||
       room?.myRoomRole === "owner" ||
       room?.myRoomRole === "moderator");
+  const canManageAccessRequests = canEditRoom;
   const canManageRoomModerators =
     Boolean(room) && (user?.role === "admin" || room?.myRoomRole === "owner");
   const canDeleteRoom =
@@ -126,6 +137,7 @@ export function RoomPage() {
   );
   const roomMissing =
     roomState.error instanceof ApiClientError && roomState.error.status === 404;
+  const postsAccessGated = Boolean(room && !room.viewerCanViewPosts);
 
   const handlePostCreated = useCallback(
     (post: Post) => {
@@ -156,6 +168,44 @@ export function RoomPage() {
 
     return () => window.removeEventListener(postCreatedEventName, handleCreated);
   }, [handlePostCreated]);
+
+  useEffect(() => {
+    if (!room || !canManageAccessRequests) {
+      return undefined;
+    }
+
+    let active = true;
+
+    queueMicrotask(() => {
+      if (active) {
+        setAccessRequestsLoading(true);
+      }
+    });
+    getRoomAccessRequests(room.slug)
+      .then((requests) => {
+        if (active) {
+          setAccessRequests(requests);
+          setAccessRequestsError(undefined);
+        }
+      })
+      .catch((caught) => {
+        if (active) {
+          setAccessRequests([]);
+          setAccessRequestsError(
+            caught instanceof Error ? caught.message : "Access requests could not be loaded.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setAccessRequestsLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [canManageAccessRequests, room]);
 
   async function handleDeletePost(post: Post) {
     if (!csrfToken) {
@@ -224,6 +274,58 @@ export function RoomPage() {
       );
     } finally {
       setPendingRoomAction(undefined);
+    }
+  }
+
+  async function handleAccessRequestToggle() {
+    if (!room || !csrfToken) {
+      setPostActionError("Please log in again before requesting access.");
+      return;
+    }
+
+    const cancel = room.accessRequestStatus === "pending";
+
+    setPendingRoomAction(cancel ? "cancel-request" : "request-access");
+    setPostActionError(undefined);
+
+    try {
+      const updated = cancel
+        ? await cancelRoomAccessRequest(room.slug, csrfToken)
+        : await requestRoomAccess(room.slug, csrfToken);
+      setRoomOverride(updated);
+    } catch (caught) {
+      setPostActionError(
+        caught instanceof Error ? caught.message : "Access request could not be updated.",
+      );
+    } finally {
+      setPendingRoomAction(undefined);
+    }
+  }
+
+  async function handleReviewAccessRequest(requestId: number, decision: "approve" | "deny") {
+    if (!room || !csrfToken) {
+      setAccessRequestsError("Please log in again before managing access.");
+      return;
+    }
+
+    setPendingAccessRequestId(requestId);
+    setAccessRequestsError(undefined);
+
+    try {
+      const updated = decision === "approve"
+        ? await approveRoomAccessRequest(room.slug, requestId, csrfToken)
+        : await denyRoomAccessRequest(room.slug, requestId, csrfToken);
+      setAccessRequests(updated);
+      setRoomOverride({
+        ...room,
+        pendingAccessRequestCount: updated.length,
+      });
+    } catch (caught) {
+      setAccessRequestsError(
+        caught instanceof Error ? caught.message : "Access request could not be reviewed.",
+      );
+    } finally {
+      setPendingAccessRequestId(undefined);
     }
   }
 
@@ -318,6 +420,7 @@ export function RoomPage() {
           pendingAction={pendingRoomAction}
           postCount={posts.length > room.postCount ? posts.length : room.postCount}
           userSignedIn={Boolean(user)}
+          onAccessRequestToggle={() => void handleAccessRequestToggle()}
           onEdit={() => setEditOpen(true)}
           onJoinToggle={() => void handleJoinToggle()}
           onPost={() => openPostComposer(room.slug)}
@@ -344,7 +447,7 @@ export function RoomPage() {
         />
       ) : null}
 
-      {postsState.error && !postsState.loading ? (
+      {postsState.error && !postsState.loading && !postsAccessGated ? (
         <ApiStateNotice
           kind="error"
           title="Posts are not available"
@@ -359,10 +462,33 @@ export function RoomPage() {
       ) : null}
 
       {room ? (
-        <RoomAbout room={room} members={members} membersError={membersState.error} />
+        <RoomAbout
+          room={room}
+          members={members}
+          membersError={room.viewerCanViewPosts ? membersState.error : undefined}
+        />
       ) : null}
 
-      {!postsState.loading && !postsState.error && room && posts.length === 0 ? (
+      {room && canManageAccessRequests ? (
+        <RoomAccessRequestsPanel
+          error={accessRequestsError}
+          loading={accessRequestsLoading}
+          pendingRequestId={pendingAccessRequestId}
+          requests={accessRequests}
+          onApprove={(requestId) => void handleReviewAccessRequest(requestId, "approve")}
+          onDeny={(requestId) => void handleReviewAccessRequest(requestId, "deny")}
+        />
+      ) : null}
+
+      {room && postsAccessGated ? (
+        <EmptyState
+          icon={Sparkles}
+          title={room.visibility === "invite" ? "Access required" : "Room is private"}
+          text={room.visibility === "invite" ? "Request access to read posts in this room." : "Posts are visible to room members."}
+        />
+      ) : null}
+
+      {!postsAccessGated && !postsState.loading && !postsState.error && room && posts.length === 0 ? (
         <EmptyState
           icon={MessageCircle}
           title="No posts yet"
@@ -420,9 +546,80 @@ function RoomEditorLoadingNotice() {
   );
 }
 
+function RoomAccessRequestsPanel({
+  error,
+  loading,
+  onApprove,
+  onDeny,
+  pendingRequestId,
+  requests,
+}: {
+  error: string | undefined;
+  loading: boolean;
+  onApprove: (requestId: number) => void;
+  onDeny: (requestId: number) => void;
+  pendingRequestId: number | undefined;
+  requests: RoomAccessRequest[];
+}) {
+  if (!loading && requests.length === 0 && !error) {
+    return null;
+  }
+
+  return (
+    <Panel className="p-4" data-testid="room-access-requests">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Shield aria-hidden="true" size={16} className="text-muted" />
+          <h2 className="text-sm font-semibold text-text">Access requests</h2>
+        </div>
+        <Badge tone="cool">{loading ? "Loading" : formatCountWithUnit(requests.length, "request")}</Badge>
+      </div>
+      {error ? (
+        <p className="mt-3 rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
+          {error}
+        </p>
+      ) : null}
+      {requests.length > 0 ? (
+        <div className="mt-3 space-y-2">
+          {requests.map((request) => (
+            <div
+              key={request.id}
+              className="flex flex-col gap-3 rounded-card border border-line bg-canvas/45 p-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <UserIdentityLink user={request.requester} showAvatar={false} className="min-w-0 flex-1" />
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={pendingRequestId !== undefined}
+                  onClick={() => onDeny(request.id)}
+                >
+                  {pendingRequestId === request.id ? "Denying" : "Deny"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={pendingRequestId !== undefined}
+                  onClick={() => onApprove(request.id)}
+                >
+                  {pendingRequestId === request.id ? "Approving" : "Approve"}
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : loading ? (
+        <p className="mt-3 text-sm text-muted">Loading access requests.</p>
+      ) : null}
+    </Panel>
+  );
+}
+
 function RoomHeader({
   canEdit,
   canReport,
+  onAccessRequestToggle,
   onPost,
   onEdit,
   onJoinToggle,
@@ -433,6 +630,7 @@ function RoomHeader({
 }: {
   canEdit: boolean;
   canReport: boolean;
+  onAccessRequestToggle: () => void;
   onPost: () => void;
   onEdit: () => void;
   onJoinToggle: () => void;
@@ -451,6 +649,18 @@ function RoomHeader({
     : pendingAction === "join"
       ? "Joining"
       : "Join";
+  const canJoinPublicRoom = userSignedIn && room.visibility === "public";
+  const canLeaveRoom = userSignedIn && Boolean(room.joinedByMe) && !isOwner;
+  const showJoinAction = canJoinPublicRoom || canLeaveRoom || isOwner;
+  const accessRequestPending = room.accessRequestStatus === "pending";
+  const showAccessRequestAction = userSignedIn && (room.viewerCanRequestAccess || accessRequestPending);
+  const accessRequestLabel = accessRequestPending
+    ? pendingAction === "cancel-request"
+      ? "Canceling"
+      : "Access requested"
+    : pendingAction === "request-access"
+      ? "Requesting"
+      : "Request access";
 
   return (
     <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
@@ -490,6 +700,9 @@ function RoomHeader({
                       {roleLabel(room.myRoomRole)}
                     </Badge>
                   ) : null}
+                  <Badge className="min-h-6 px-2 text-[0.7rem]" tone={room.visibility === "public" ? "cool" : "warm"}>
+                    {roomVisibilityLabel(room.visibility)}
+                  </Badge>
                 </div>
                 <p className="mt-0.5 text-sm text-muted">/{room.slug}</p>
                 {room.description || room.summary ? (
@@ -524,30 +737,46 @@ function RoomHeader({
               </div>
             </div>
             <div className="flex w-full shrink-0 flex-wrap gap-2 sm:w-auto lg:justify-end">
-              {userSignedIn ? (
+              {showJoinAction ? (
                 <Button
                   type="button"
                   variant={room.joinedByMe ? "secondary" : "primary"}
                   size="sm"
                   className="w-full sm:w-auto"
                   data-testid="room-join-button"
-                  disabled={Boolean(pendingAction) || isOwner}
+                  disabled={Boolean(pendingAction) || isOwner || (!room.joinedByMe && room.visibility !== "public")}
                   icon={<UsersRound aria-hidden="true" size={17} />}
                   onClick={onJoinToggle}
                 >
                   {joinLabel}
                 </Button>
               ) : null}
-              <Button
-                type="button"
-                size="sm"
-                className="hidden w-full sm:inline-flex sm:w-auto"
-                data-testid="room-post-button"
-                icon={<PenLine aria-hidden="true" size={17} />}
-                onClick={onPost}
-              >
-                Post
-              </Button>
+              {showAccessRequestAction ? (
+                <Button
+                  type="button"
+                  variant={accessRequestPending ? "secondary" : "primary"}
+                  size="sm"
+                  className="w-full sm:w-auto"
+                  data-testid="room-request-access-button"
+                  disabled={Boolean(pendingAction)}
+                  icon={<Shield aria-hidden="true" size={17} />}
+                  onClick={onAccessRequestToggle}
+                >
+                  {accessRequestLabel}
+                </Button>
+              ) : null}
+              {room.viewerCanPost ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="hidden w-full sm:inline-flex sm:w-auto"
+                  data-testid="room-post-button"
+                  icon={<PenLine aria-hidden="true" size={17} />}
+                  onClick={onPost}
+                >
+                  Post
+                </Button>
+              ) : null}
               {canEdit ? (
                 <Button
                   type="button"
@@ -687,4 +916,20 @@ function roleLabel(role: "owner" | "moderator" | "member"): string {
   }
 
   return "Member";
+}
+
+function roomVisibilityLabel(visibility: RoomVisibility): string {
+  if (visibility === "private") {
+    return "Private";
+  }
+
+  if (visibility === "invite") {
+    return "Invite";
+  }
+
+  if (visibility === "view_only") {
+    return "View-only";
+  }
+
+  return "Public";
 }

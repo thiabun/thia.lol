@@ -3,7 +3,7 @@ import type { Pool, RowDataPacket } from "mysql2/promise";
 import { initialsFromName, roomPayloadFromRow, type RoomPayload, type RoomRow, type UserPayload } from "./rooms.js";
 
 export interface SearchRepository {
-  search(rawQuery: unknown, viewerUserId: number | null): Promise<SearchPayload>;
+  search(rawQuery: unknown, viewerUserId: number | null, viewerRole?: string | null): Promise<SearchPayload>;
 }
 
 export interface SearchPayload {
@@ -28,6 +28,7 @@ export interface SearchSchemaCapabilities {
   hasRoomMemberships: boolean;
   hasRoomCustomizationColumns: boolean;
   hasRoomSoftDeleteColumn: boolean;
+  hasRoomAccessRequests: boolean;
 }
 
 export interface SearchProfileRow extends RowDataPacket {
@@ -132,7 +133,38 @@ export function buildSearchProfilesQuery(
          LIMIT ${searchResultLimit}`;
 }
 
-export function buildSearchRoomsQuery(capabilities: SearchSchemaCapabilities): string {
+export function buildSearchRoomsQuery(
+  capabilities: SearchSchemaCapabilities,
+  viewerUserId: number | null = null,
+  viewerRole: string | null = null,
+): string {
+  const viewerSql = viewerUserId === null ? "NULL" : String(viewerUserId);
+  const viewerIsAdmin = viewerRole === "admin";
+  const viewerMembershipSelect = capabilities.hasRoomMemberships
+    ? `viewer_room_membership.role AS current_room_role,
+            IF(viewer_room_membership.id IS NULL, 0, 1) AS current_room_joined,`
+    : `NULL AS current_room_role,
+            0 AS current_room_joined,`;
+  const viewerMembershipJoin = capabilities.hasRoomMemberships
+    ? `LEFT JOIN room_memberships viewer_room_membership
+            ON viewer_room_membership.room_id = rooms.id
+           AND viewer_room_membership.user_id = ${viewerSql}
+           AND viewer_room_membership.banned_at IS NULL`
+    : "";
+  const accessRequestSelect = capabilities.hasRoomAccessRequests
+    ? "viewer_room_access_request.status AS current_room_access_request_status,"
+    : "NULL AS current_room_access_request_status,";
+  const accessRequestJoin = capabilities.hasRoomAccessRequests
+    ? `LEFT JOIN room_access_requests viewer_room_access_request
+            ON viewer_room_access_request.room_id = rooms.id
+           AND viewer_room_access_request.requester_id = ${viewerSql}`
+    : "";
+  const memberRoomSql = viewerIsAdmin
+    ? "OR 1 = 1"
+    : capabilities.hasRoomMemberships
+      ? "OR viewer_room_membership.id IS NOT NULL"
+      : "";
+
   return `SELECT
             rooms.id AS room_id,
             rooms.slug AS room_slug,
@@ -145,12 +177,15 @@ export function buildSearchRoomsQuery(capabilities: SearchSchemaCapabilities): s
             ${roomCustomizationSelectSql(capabilities)}
             rooms.visibility AS room_visibility,
             rooms.created_by AS room_created_by,
-            NULL AS current_room_joined,
-            NULL AS current_room_role,
+            ${viewerMembershipSelect}
+            IF(${viewerSql} IS NULL, 0, 1) AS current_viewer_signed_in,
+            ${viewerIsAdmin ? "1" : "0"} AS current_viewer_is_admin,
+            ${accessRequestSelect}
             owner.id AS owner_user_id,
             owner.handle AS owner_handle,
             owner_profile.display_name AS owner_display_name,
             owner_profile.avatar_url AS owner_avatar_url,
+            NULL AS room_pending_access_request_count,
             COALESCE(room_posts.post_count, 0) AS room_post_count,
             room_posts.latest_activity_at AS room_latest_activity_at,
             rooms.created_at AS room_created_at,
@@ -167,6 +202,8 @@ export function buildSearchRoomsQuery(capabilities: SearchSchemaCapabilities): s
         LEFT JOIN users owner ON owner.id = rooms.created_by
         LEFT JOIN profiles owner_profile ON owner_profile.user_id = owner.id
         ${roomMembershipCountJoinSql(capabilities)}
+        ${viewerMembershipJoin}
+        ${accessRequestJoin}
         LEFT JOIN (
             SELECT
                 room_id,
@@ -179,7 +216,8 @@ export function buildSearchRoomsQuery(capabilities: SearchSchemaCapabilities): s
               AND deleted_at IS NULL
             GROUP BY room_id
         ) room_posts ON room_posts.room_id = rooms.id
-        WHERE rooms.visibility = 'public'
+        WHERE (rooms.visibility IN ('public', 'invite', 'view_only')
+          ${memberRoomSql})
           ${roomNotDeletedSql("rooms", capabilities)}
           AND (
                 LOWER(rooms.slug) LIKE ?
@@ -199,7 +237,7 @@ class MysqlSearchRepository implements SearchRepository {
 
   constructor(private readonly pool: Pool) {}
 
-  async search(rawQuery: unknown, viewerUserId: number | null): Promise<SearchPayload> {
+  async search(rawQuery: unknown, viewerUserId: number | null, viewerRole: string | null = null): Promise<SearchPayload> {
     const query = normalizeSearchQuery(rawQuery);
 
     if ([...query].length < searchMinQueryLength) {
@@ -215,7 +253,7 @@ class MysqlSearchRepository implements SearchRepository {
       [exact, likePrefix, likePrefix, likeAnywhere, likeAnywhere, likeAnywhere, likeAnywhere, likeAnywhere],
     );
     const [roomRows] = await this.pool.execute<(RoomRow & RowDataPacket)[]>(
-      buildSearchRoomsQuery(capabilities),
+      buildSearchRoomsQuery(capabilities, viewerUserId, viewerRole),
       [exact, likePrefix, likePrefix, likeAnywhere, likeAnywhere, likeAnywhere, likeAnywhere, likeAnywhere],
     );
 
@@ -243,6 +281,7 @@ class MysqlSearchRepository implements SearchRepository {
       hasBannerUrlColumn,
       hasRulesColumn,
       hasRoomSoftDeleteColumn,
+      hasRoomAccessRequests,
     ] = await Promise.all([
       this.tableExists("account_deletion_requests"),
       this.columnExists("profiles", "visibility"),
@@ -253,6 +292,7 @@ class MysqlSearchRepository implements SearchRepository {
       this.columnExists("rooms", "banner_url"),
       this.columnExists("rooms", "rules"),
       this.columnExists("rooms", "deleted_at"),
+      this.tableExists("room_access_requests"),
     ]);
 
     return {
@@ -263,6 +303,7 @@ class MysqlSearchRepository implements SearchRepository {
       hasRoomMemberships,
       hasRoomCustomizationColumns: hasIconUrlColumn && hasBannerUrlColumn && hasRulesColumn,
       hasRoomSoftDeleteColumn,
+      hasRoomAccessRequests,
     };
   }
 

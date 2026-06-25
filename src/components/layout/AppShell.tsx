@@ -19,7 +19,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from "react-router";
-import { BrandLockup, BrandLogo, BrandMark } from "../BrandLogo";
+import { BrandLogo, BrandMark } from "../BrandLogo";
 import { ThemeToggle } from "../ThemeToggle";
 import { Button, ButtonLink } from "../ui/Button";
 import { getNotifications, getOnboardingState, getRooms } from "../../lib/api";
@@ -246,7 +246,7 @@ export function AppShell() {
     getRooms()
       .then((rooms) => {
         if (active) {
-          setComposerRooms(rooms);
+          setComposerRooms(rooms.filter((room) => room.viewerCanPost));
           setComposerRoomsLoaded(true);
         }
       })
@@ -692,15 +692,6 @@ function SiteFooter() {
     >
       <div className="flex flex-col gap-4 border-t border-line py-4 text-xs text-muted sm:flex-row sm:items-start sm:justify-between">
         <div className="max-w-3xl space-y-3 leading-5">
-          <div
-            className="inline-flex items-center gap-2 text-text"
-            data-testid="site-footer-brand"
-          >
-            <BrandLockup
-              className="h-9 w-auto max-w-[10rem] sm:h-10 sm:max-w-[11rem]"
-              data-testid="site-footer-brand-lockup"
-            />
-          </div>
           <div className="space-y-1">
             <p>
               © 2026 Thia Markussen. Alle rettigheter forbeholdt / All rights

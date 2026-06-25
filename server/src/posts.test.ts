@@ -41,6 +41,7 @@ const capabilities: ProfileSchemaCapabilities = {
   hasUserBadges: true,
   hasProfileIntegrationAccounts: true,
   hasProfileIntegrationMetadataCache: true,
+  hasRoomAccessRequests: true,
 };
 
 describe("post preview route helpers", () => {
@@ -108,7 +109,7 @@ describe("post preview SQL", () => {
     expect(sql).toContain("pr.visibility = 'public'");
     expect(sql).toContain("OR u.id = 42");
     expect(sql).toContain("profile_posts.room_id IS NULL");
-    expect(sql).toContain("profile_post_rooms.visibility = 'public'");
+    expect(sql).toContain("profile_post_rooms.visibility IN ('public', 'view_only')");
     expect(sql).toContain("profile_post_rooms.deleted_at IS NULL");
   });
 

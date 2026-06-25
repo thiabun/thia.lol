@@ -181,7 +181,7 @@ function posts_replies_index(int $postId): void
              AND p.visibility = 'public'
              AND p.status = 'published'
              AND p.deleted_at IS NULL
-             AND (p.room_id IS NULL OR (r.visibility = 'public' " . room_not_deleted_sql('r') . "))",
+             AND (p.room_id IS NULL OR (r.visibility IN ('public', 'view_only') " . room_not_deleted_sql('r') . "))",
             'ORDER BY p.created_at ASC, p.id ASC LIMIT 100'
         ),
         [
@@ -202,6 +202,14 @@ function posts_reply_create(int $postId): void
 
     if ($parent === null) {
         json_error('Post not found.', 404);
+    }
+
+    if ($parent['room_id'] !== null) {
+        $parentRoom = post_room_record_by_id((int) $parent['room_id']);
+
+        if ($parentRoom === null || !post_room_viewer_can_post($parentRoom)) {
+            json_error($parentRoom !== null && (string) $parentRoom['visibility'] === 'view_only' ? 'Only room staff can post in view-only rooms.' : 'You cannot post in this room.', 403);
+        }
     }
 
     $body = request_json_body();
@@ -2157,7 +2165,7 @@ function profile_share_card_activity_items(int $userId): array
                AND p.deleted_at IS NULL
                AND (
                  p.room_id IS NULL
-                 OR (r.visibility = 'public' AND r.deleted_at IS NULL)
+                 OR (r.visibility IN ('public', 'view_only') AND r.deleted_at IS NULL)
                )
              ORDER BY p.created_at DESC, p.id DESC
              LIMIT 3",
@@ -3557,7 +3565,7 @@ function posts_reblog_create(int $postId): void
     $session = require_authenticated_session();
     require_csrf_token($session);
     require_reblogs_table();
-    $post = fetch_reactable_post_record($postId);
+    $post = fetch_rebloggable_post_record($postId);
 
     if ($post === null) {
         json_error('Post not found.', 404);
@@ -3599,7 +3607,11 @@ function posts_reblog_delete(int $postId): void
     $session = require_authenticated_session();
     require_csrf_token($session);
     require_reblogs_table();
-    require_reactable_post($postId);
+    $post = fetch_rebloggable_post_record($postId);
+
+    if ($post === null) {
+        json_error('Post not found.', 404);
+    }
 
     $actorId = (int) $session['user_id'];
 
@@ -3813,18 +3825,14 @@ function resolve_room_id(array $body): ?int
 
 function require_room_id(int $roomId): int
 {
-    $statement = db_query(
-        "SELECT id
-         FROM rooms
-         WHERE id = :id
-           AND visibility = 'public'
-           " . room_not_deleted_sql('rooms') . "
-         LIMIT 1",
-        ['id' => $roomId]
-    );
+    $room = post_room_record_by_id($roomId);
 
-    if (!$statement->fetch()) {
+    if ($room === null) {
         json_error('Room not found.', 422);
+    }
+
+    if (!post_room_viewer_can_post($room)) {
+        json_error((string) $room['visibility'] === 'view_only' ? 'Only room staff can post in view-only rooms.' : 'You cannot post in this room.', 403);
     }
 
     return $roomId;
@@ -3834,10 +3842,9 @@ function require_room_slug(string $roomSlug): int
 {
     $slug = normalize_slug($roomSlug);
     $statement = db_query(
-        "SELECT id
+        "SELECT id, visibility, created_by
          FROM rooms
          WHERE slug = :slug
-           AND visibility = 'public'
            " . room_not_deleted_sql('rooms') . "
          LIMIT 1",
         ['slug' => $slug]
@@ -3848,7 +3855,121 @@ function require_room_slug(string $roomSlug): int
         json_error('Room not found.', 422);
     }
 
+    if (!post_room_viewer_can_post($room)) {
+        json_error((string) $room['visibility'] === 'view_only' ? 'Only room staff can post in view-only rooms.' : 'You cannot post in this room.', 403);
+    }
+
     return (int) $room['id'];
+}
+
+function post_room_record_by_id(int $roomId): ?array
+{
+    $row = db_query(
+        "SELECT id, visibility, created_by
+         FROM rooms
+         WHERE id = :id
+           " . room_not_deleted_sql('rooms') . "
+         LIMIT 1",
+        ['id' => $roomId]
+    )->fetch();
+
+    return is_array($row) ? $row : null;
+}
+
+function post_room_viewer_can_post(array $room): bool
+{
+    $session = function_exists('current_session') ? current_session() : null;
+
+    if ($session === null) {
+        return false;
+    }
+
+    if ((string) ($session['role'] ?? '') === 'admin') {
+        return true;
+    }
+
+    $visibility = (string) ($room['visibility'] ?? 'public');
+    $membership = function_exists('room_membership_record')
+        ? room_membership_record((int) $room['id'], (int) $session['user_id'])
+        : null;
+
+    if ($visibility === 'public') {
+        return $membership === null || $membership['banned_at'] === null;
+    }
+
+    if ($visibility === 'view_only') {
+        return $membership !== null
+            && $membership['banned_at'] === null
+            && in_array((string) $membership['role'], ['owner', 'moderator'], true);
+    }
+
+    return $membership !== null && $membership['banned_at'] === null;
+}
+
+function post_room_viewer_can_view_posts(array $room): bool
+{
+    $visibility = (string) ($room['visibility'] ?? 'public');
+
+    if (in_array($visibility, ['public', 'view_only'], true)) {
+        return true;
+    }
+
+    $session = function_exists('current_session') ? current_session() : null;
+
+    if ($session === null) {
+        return false;
+    }
+
+    if ((string) ($session['role'] ?? '') === 'admin') {
+        return true;
+    }
+
+    $membership = function_exists('room_membership_record')
+        ? room_membership_record((int) $room['id'], (int) $session['user_id'])
+        : null;
+
+    return $membership !== null && $membership['banned_at'] === null;
+}
+
+function mutation_post_visible_sql(string $postAlias, string $roomAlias): string
+{
+    return "{$postAlias}.visibility = 'public'
+        AND {$postAlias}.status = 'published'
+        AND {$postAlias}.deleted_at IS NULL
+        AND (
+            {$postAlias}.room_id IS NULL
+            OR ({$roomAlias}.id IS NOT NULL " . room_not_deleted_sql($roomAlias) . ")
+        )";
+}
+
+function post_mutation_ancestor_visibility_sql(string $postAlias): string
+{
+    $parentVisible = mutation_post_visible_sql('parent_post', 'parent_post_room');
+    $grandparentVisible = mutation_post_visible_sql('grandparent_post', 'grandparent_post_room');
+    $greatGrandparentVisible = mutation_post_visible_sql('great_grandparent_post', 'great_grandparent_post_room');
+
+    return "(
+        {$postAlias}.parent_id IS NULL
+        OR (
+            parent_post.id IS NOT NULL
+            AND {$parentVisible}
+            AND (
+                parent_post.parent_id IS NULL
+                OR (
+                    grandparent_post.id IS NOT NULL
+                    AND {$grandparentVisible}
+                    AND (
+                        grandparent_post.parent_id IS NULL
+                        OR (
+                            great_grandparent_post.id IS NOT NULL
+                            AND {$greatGrandparentVisible}
+                            AND great_grandparent_post.parent_id IS NULL
+                        )
+                    )
+                )
+            )
+        )
+    )";
 }
 
 function resolve_parent_id(mixed $value): ?int
@@ -3868,8 +3989,8 @@ function resolve_parent_id(mixed $value): ?int
          LEFT JOIN rooms r ON r.id = p.room_id
          " . post_ancestor_visibility_joins_sql('p') . "
          WHERE p.id = :id
-           AND " . public_post_visible_sql('p', 'r') . "
-           AND " . post_ancestor_visibility_sql('p') . "
+           AND " . mutation_post_visible_sql('p', 'r') . "
+           AND " . post_mutation_ancestor_visibility_sql('p') . "
          LIMIT 1",
         ['id' => $parentId]
     );
@@ -3912,14 +4033,49 @@ function fetch_reactable_post_record(int $postId): ?array
          LEFT JOIN rooms r ON r.id = p.room_id
          " . post_ancestor_visibility_joins_sql('p') . "
          WHERE p.id = :id
-           AND " . public_post_visible_sql('p', 'r') . "
-           AND " . post_ancestor_visibility_sql('p') . "
+           AND " . mutation_post_visible_sql('p', 'r') . "
+           AND " . post_mutation_ancestor_visibility_sql('p') . "
          LIMIT 1",
         ['id' => $postId]
     );
     $post = $statement->fetch();
 
-    return is_array($post) ? $post : null;
+    if (!is_array($post)) {
+        return null;
+    }
+
+    if ($post['room_id'] !== null) {
+        $room = post_room_record_by_id((int) $post['room_id']);
+
+        if ($room === null || !post_room_viewer_can_view_posts($room)) {
+            return null;
+        }
+    }
+
+    return $post;
+}
+
+function fetch_rebloggable_post_record(int $postId): ?array
+{
+    $post = fetch_reactable_post_record($postId);
+
+    if ($post === null) {
+        return null;
+    }
+
+    if ($post['room_id'] !== null) {
+        $room = post_room_record_by_id((int) $post['room_id']);
+
+        if ($room === null) {
+            return null;
+        }
+
+        if (!post_room_viewer_can_post($room)) {
+            json_error((string) $room['visibility'] === 'view_only' ? 'Only room staff can post in view-only rooms.' : 'You cannot post in this room.', 403);
+        }
+    }
+
+    return $post;
 }
 
 function fetch_replyable_post_record(int $postId): ?array
@@ -3930,8 +4086,8 @@ function fetch_replyable_post_record(int $postId): ?array
          LEFT JOIN rooms r ON r.id = p.room_id
          " . post_ancestor_visibility_joins_sql('p') . "
          WHERE p.id = :id
-           AND " . public_post_visible_sql('p', 'r') . "
-           AND " . post_ancestor_visibility_sql('p') . "
+           AND " . mutation_post_visible_sql('p', 'r') . "
+           AND " . post_mutation_ancestor_visibility_sql('p') . "
          LIMIT 1",
         ['id' => $postId]
     );
@@ -4070,14 +4226,14 @@ function post_payload_select_sql(string $whereClause, string $tailClause = 'LIMI
           AND profile_posts.deleted_at IS NULL
           AND (
             profile_posts.room_id IS NULL
-            OR (profile_post_rooms.visibility = 'public' " . room_not_deleted_sql('profile_post_rooms') . ")
+            OR (profile_post_rooms.visibility IN ('public', 'view_only') " . room_not_deleted_sql('profile_post_rooms') . ")
           )
         GROUP BY author_id
     ) profile_posts ON profile_posts.author_id = u.id
     LEFT JOIN (
         SELECT created_by, COUNT(*) AS room_count
         FROM rooms
-        WHERE visibility = 'public'
+        WHERE visibility IN ('public', 'view_only')
           " . room_not_deleted_sql('rooms') . "
         GROUP BY created_by
     ) profile_rooms ON profile_rooms.created_by = u.id

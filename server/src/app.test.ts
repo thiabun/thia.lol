@@ -2338,8 +2338,8 @@ describe("Node API social and content mutation preview routes", () => {
     expect(repository.deletePost).toHaveBeenCalledWith(session, 99);
     expect(repository.likePost).toHaveBeenCalledWith(99, 42);
     expect(repository.unlikePost).toHaveBeenCalledWith(99, 42);
-    expect(repository.reblogPost).toHaveBeenCalledWith(99, 42);
-    expect(repository.unreblogPost).toHaveBeenCalledWith(99, 42);
+    expect(repository.reblogPost).toHaveBeenCalledWith(99, session);
+    expect(repository.unreblogPost).toHaveBeenCalledWith(99, session);
     expect(repository.reactToPost).toHaveBeenCalledWith(99, 42, expect.any(Object));
     expect(repository.deletePostReaction).toHaveBeenCalledWith(99, 42, "echo");
     expect(repository.sharePostToMessages).toHaveBeenCalledWith("pc359fe2da759", 42, expect.any(Object));
@@ -2645,7 +2645,7 @@ describe("Node API search preview route", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(repository.search).toHaveBeenCalledWith("thia", null);
+    expect(repository.search).toHaveBeenCalledWith("thia", null, null);
     expect(response.json()).toEqual({
       ok: true,
       data: searchPayload,
@@ -2669,7 +2669,7 @@ describe("Node API search preview route", () => {
 
     expect(response.statusCode).toBe(200);
     expect(sessionsRepository.currentSession).toHaveBeenCalledWith("thia_session=token");
-    expect(searchRepository.search).toHaveBeenCalledWith("thia", 42);
+    expect(searchRepository.search).toHaveBeenCalledWith("thia", 42, "member");
   });
 
   it("treats repeated q parameters like PHP's non-string query fallback", async () => {
@@ -2683,7 +2683,7 @@ describe("Node API search preview route", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(repository.search).toHaveBeenCalledWith("", null);
+    expect(repository.search).toHaveBeenCalledWith("", null, null);
   });
 
   it("returns JSON 500 without raw search repository details", async () => {
@@ -3203,7 +3203,7 @@ describe("Node API post and feed preview routes", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(repository.listRoomPosts).toHaveBeenCalledWith("general", null);
+    expect(repository.listRoomPosts).toHaveBeenCalledWith("general", null, null);
     expect(response.json()).toEqual({
       ok: true,
       data: [post],

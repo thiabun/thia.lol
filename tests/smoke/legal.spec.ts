@@ -53,9 +53,8 @@ test("footer and account menu expose legal links discreetly", async ({ page }) =
   );
 
   const footerLinks = page.getByTestId("legal-footer-links");
-  const footerBrand = page.getByTestId("site-footer-brand");
-  await expect(footerBrand).toBeVisible();
-  await expect(footerBrand).toContainText("thia.lol");
+  await expect(page.getByTestId("site-footer-brand")).toHaveCount(0);
+  await expect(page.getByTestId("site-footer-brand-lockup")).toHaveCount(0);
   await expect(footerLinks).toBeVisible();
 
   for (const label of [

@@ -612,7 +612,7 @@ export function buildProfileByHandleQuery(capabilities: ProfileSchemaCapabilitie
                   AND profile_posts.deleted_at IS NULL
                   AND (
                     profile_posts.room_id IS NULL
-                    OR (profile_post_rooms.visibility = 'public' ${roomNotDeletedSql("profile_post_rooms", capabilities)})
+                    OR (profile_post_rooms.visibility IN ('public', 'view_only') ${roomNotDeletedSql("profile_post_rooms", capabilities)})
                   )
             ) AS post_count,
             (
@@ -629,7 +629,7 @@ export function buildProfileByHandleQuery(capabilities: ProfileSchemaCapabilitie
                 SELECT COUNT(*)
                 FROM rooms profile_rooms
                 WHERE profile_rooms.created_by = u.id
-                  AND profile_rooms.visibility = 'public'
+                  AND profile_rooms.visibility IN ('public', 'view_only')
                   ${roomNotDeletedSql("profile_rooms", capabilities)}
             ) AS room_count,
             ${profileReceivedLikesCountSql("u.id", capabilities)} AS profile_like_count,
@@ -644,7 +644,7 @@ export function buildProfileByHandleQuery(capabilities: ProfileSchemaCapabilitie
 export function buildPublicProfileRoomsQuery(capabilities: ProfileSchemaCapabilities): string {
   return `${roomSelectSql(capabilities)}
         WHERE owner.handle = ?
-          AND rooms.visibility = 'public'
+          AND rooms.visibility IN ('public', 'view_only')
           ${roomNotDeletedSql("rooms", capabilities)}
         ORDER BY rooms.created_at DESC, rooms.name ASC`;
 }
@@ -1680,7 +1680,7 @@ function buildFeaturedPostQuery(capabilities: ProfileSchemaCapabilities): string
 function buildFeaturedRoomQuery(profileUserId: number, capabilities: ProfileSchemaCapabilities): string {
   return `${roomSelectSql(capabilities)}
         WHERE rooms.id = ?
-          AND rooms.visibility = 'public'
+          AND rooms.visibility IN ('public', 'view_only')
           ${roomNotDeletedSql("rooms", capabilities)}
           AND ${profileFeaturedRoomEligibilitySql(profileUserId, "rooms", capabilities)}
         LIMIT 1`;
@@ -1693,6 +1693,7 @@ export function postSelectSql(
   capabilities: ProfileSchemaCapabilities,
   viewerUserId: number | null = null,
   extraJoins = "",
+  visibilitySqlOverride: string | null = null,
 ): string {
   const viewerSql = viewerUserId === null ? "NULL" : String(viewerUserId);
   const followSelect = capabilities.hasUserFollows
@@ -1782,10 +1783,14 @@ export function postSelectSql(
         r.created_by AS room_created_by,
         NULL AS current_room_role,
         0 AS current_room_joined,
+        0 AS current_viewer_signed_in,
+        0 AS current_viewer_is_admin,
+        NULL AS current_room_access_request_status,
         owner.id AS owner_user_id,
         owner.handle AS owner_handle,
         owner_profile.display_name AS owner_display_name,
         owner_profile.avatar_url AS owner_avatar_url,
+        NULL AS room_pending_access_request_count,
         COALESCE(room_posts.post_count, 0) AS room_post_count,
         room_posts.latest_activity_at AS room_latest_activity_at,
         r.created_at AS room_created_at,
@@ -1833,7 +1838,7 @@ export function postSelectSql(
           AND profile_posts.deleted_at IS NULL
           AND (
             profile_posts.room_id IS NULL
-            OR (profile_post_rooms.visibility = 'public' ${roomNotDeletedSql("profile_post_rooms", capabilities)})
+            OR (profile_post_rooms.visibility IN ('public', 'view_only') ${roomNotDeletedSql("profile_post_rooms", capabilities)})
           )
         GROUP BY author_id
     ) profile_posts ON profile_posts.author_id = u.id
@@ -1850,7 +1855,7 @@ export function postSelectSql(
     LEFT JOIN (
         SELECT created_by, COUNT(*) AS room_count
         FROM rooms
-        WHERE visibility = 'public'
+        WHERE visibility IN ('public', 'view_only')
           ${roomNotDeletedSql("rooms", capabilities)}
         GROUP BY created_by
     ) profile_rooms ON profile_rooms.created_by = u.id
@@ -1886,7 +1891,7 @@ export function postSelectSql(
     ${followJoins}
     ${reblogJoins}
     ${extraJoins}
-    WHERE ${publicPostVisibleSql("p", "r", capabilities)}
+    WHERE ${visibilitySqlOverride ?? publicPostVisibleSql("p", "r", capabilities)}
       AND ${userPubliclyAvailableSql("u", capabilities)}
       AND ${postAncestorVisibilitySql("p", capabilities)}
       ${profileAuthorVisibilitySql("u", "pr", capabilities, viewerUserId)}
@@ -1959,10 +1964,14 @@ function roomSelectSql(capabilities: ProfileSchemaCapabilities): string {
             rooms.created_by AS room_created_by,
             NULL AS current_room_role,
             0 AS current_room_joined,
+            0 AS current_viewer_signed_in,
+            0 AS current_viewer_is_admin,
+            NULL AS current_room_access_request_status,
             owner.id AS owner_user_id,
             owner.handle AS owner_handle,
             owner_profile.display_name AS owner_display_name,
             owner_profile.avatar_url AS owner_avatar_url,
+            NULL AS room_pending_access_request_count,
             COALESCE(room_posts.post_count, 0) AS room_post_count,
             room_posts.latest_activity_at AS room_latest_activity_at,
             rooms.created_at AS room_created_at,
@@ -2226,7 +2235,7 @@ export function publicPostVisibleSql(
         AND ${postAlias}.deleted_at IS NULL
         AND (
             ${postAlias}.room_id IS NULL
-            OR (${roomAlias}.visibility = 'public' ${roomNotDeletedSql(roomAlias, capabilities)})
+            OR (${roomAlias}.visibility IN ('public', 'view_only') ${roomNotDeletedSql(roomAlias, capabilities)})
         )`;
 }
 

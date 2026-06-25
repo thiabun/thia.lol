@@ -1,6 +1,13 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
 
 export type RoomRole = "owner" | "moderator" | "member";
+export type RoomVisibility = "public" | "private" | "invite" | "view_only";
+export type RoomAccessRequestStatus = "pending" | "approved" | "denied" | "canceled";
+
+export interface RoomViewer {
+  userId: number | null;
+  role?: string | null;
+}
 
 export interface UserPayload {
   id: number;
@@ -25,11 +32,17 @@ export interface RoomPayload {
   iconUrl: string | null;
   bannerUrl: string | null;
   rules: string;
-  visibility: string;
+  visibility: RoomVisibility;
   createdBy: number | null;
   owner: UserPayload | null;
   joinedByMe: boolean;
   myRoomRole: RoomRole | null;
+  viewerCanViewPosts: boolean;
+  viewerCanPost: boolean;
+  viewerCanReact: boolean;
+  viewerCanRequestAccess: boolean;
+  accessRequestStatus: RoomAccessRequestStatus | null;
+  pendingAccessRequestCount?: number;
   postCount: number;
   latestActivityAt: string | null;
   createdAt: string | null;
@@ -44,15 +57,16 @@ export interface RoomMemberPayload {
 }
 
 export interface RoomsRepository {
-  listPublicRooms(): Promise<RoomPayload[]>;
-  getPublicRoom(slug: string): Promise<RoomPayload | null>;
-  getPublicRoomMembers(slug: string): Promise<RoomMemberPayload[] | null>;
+  listPublicRooms(viewer?: RoomViewer): Promise<RoomPayload[]>;
+  getPublicRoom(slug: string, viewer?: RoomViewer): Promise<RoomPayload | null>;
+  getPublicRoomMembers(slug: string, viewer?: RoomViewer): Promise<RoomMemberPayload[] | null>;
 }
 
 export interface RoomSchemaCapabilities {
   hasRoomMemberships: boolean;
   hasRoomCustomizationColumns: boolean;
   hasRoomSoftDeleteColumn: boolean;
+  hasRoomAccessRequests: boolean;
 }
 
 export interface RoomRow extends RowDataPacket {
@@ -71,10 +85,14 @@ export interface RoomRow extends RowDataPacket {
   room_created_by: number | string | null;
   current_room_role: string | null;
   current_room_joined: number | boolean | null;
+  current_viewer_signed_in: number | boolean | null;
+  current_viewer_is_admin: number | boolean | null;
+  current_room_access_request_status: string | null;
   owner_user_id: number | string | null;
   owner_handle: string | null;
   owner_display_name: string | null;
   owner_avatar_url: string | null;
+  room_pending_access_request_count: number | string | null;
   room_post_count: number | string | null;
   room_latest_activity_at: Date | string | null;
   room_created_at: Date | string | null;
@@ -103,6 +121,14 @@ type CountRow = RowDataPacket & {
 const roomSlugPattern = /^[a-z0-9-]{1,80}$/;
 
 const roomListOrder = "room_posts.latest_activity_at DESC, rooms.is_live DESC, rooms.name ASC";
+const publicRoomVisibilitySql = "('public', 'view_only')";
+const listedRoomVisibilitySql = "('public', 'invite', 'view_only')";
+const defaultRoomSchemaCapabilities: RoomSchemaCapabilities = {
+  hasRoomMemberships: true,
+  hasRoomCustomizationColumns: true,
+  hasRoomSoftDeleteColumn: true,
+  hasRoomAccessRequests: false,
+};
 
 export class RoomStorageNotReadyError extends Error {
   constructor() {
@@ -137,31 +163,70 @@ export function roomPayloadFromRow(row: RoomRow): RoomPayload {
   const summary = stringValue(row.room_summary);
   const memberCount = numberValue(row.room_member_count);
   const owner = ownerPayloadFromRow(row);
+  const visibility = roomVisibilityValue(row.room_visibility);
+  const joinedByMe = booleanValue(row.current_room_joined);
+  const myRoomRole = roomRoleValue(row.current_room_role);
+  const viewerSignedIn = booleanValue(row.current_viewer_signed_in);
+  const viewerIsAdmin = booleanValue(row.current_viewer_is_admin);
+  const viewerIsStaff = viewerIsAdmin || myRoomRole === "owner" || myRoomRole === "moderator";
+  const viewerCanViewPosts =
+    visibility === "public" ||
+    visibility === "view_only" ||
+    viewerIsAdmin ||
+    joinedByMe;
+  const viewerCanPost =
+    viewerSignedIn &&
+    (visibility === "public" ||
+      viewerIsStaff ||
+      ((visibility === "private" || visibility === "invite") && joinedByMe));
+  const viewerCanReact = viewerSignedIn && viewerCanViewPosts;
+  const accessRequestStatus = roomAccessRequestStatusValue(row.current_room_access_request_status);
+  const viewerCanRequestAccess =
+    visibility === "invite" &&
+    viewerSignedIn &&
+    !joinedByMe &&
+    !viewerIsAdmin &&
+    accessRequestStatus !== "pending" &&
+    accessRequestStatus !== "approved";
+  const pendingAccessRequestCount = nullableNumberValue(row.room_pending_access_request_count);
+  const visibleMemberCount = viewerCanViewPosts ? memberCount : 0;
+  const visiblePostCount = viewerCanViewPosts ? numberValue(row.room_post_count) : 0;
 
-  return {
+  const payload: RoomPayload = {
     id: numberValue(row.room_id),
     slug: stringValue(row.room_slug),
     name: stringValue(row.room_name),
     summary,
     description: summary,
     mood: stringValue(row.room_mood),
-    members: memberCount,
-    memberCount,
+    members: visibleMemberCount,
+    memberCount: visibleMemberCount,
     live: booleanValue(row.room_is_live),
     accent: stringValue(row.room_accent),
     iconUrl: nullableStringValue(row.room_icon_url),
     bannerUrl: nullableStringValue(row.room_banner_url),
     rules: stringValue(row.room_rules),
-    visibility: stringValue(row.room_visibility, "public"),
+    visibility,
     createdBy: nullableNumberValue(row.room_created_by),
     owner,
-    joinedByMe: booleanValue(row.current_room_joined),
-    myRoomRole: roomRoleValue(row.current_room_role),
-    postCount: numberValue(row.room_post_count),
+    joinedByMe,
+    myRoomRole,
+    viewerCanViewPosts,
+    viewerCanPost,
+    viewerCanReact,
+    viewerCanRequestAccess,
+    accessRequestStatus,
+    postCount: visiblePostCount,
     latestActivityAt: nullableStringValue(row.room_latest_activity_at),
     createdAt: nullableStringValue(row.room_created_at),
     updatedAt: nullableStringValue(row.room_updated_at),
   };
+
+  if (pendingAccessRequestCount !== null) {
+    payload.pendingAccessRequestCount = pendingAccessRequestCount;
+  }
+
+  return payload;
 }
 
 export function roomMemberPayloadFromRow(row: RoomMemberRow): RoomMemberPayload {
@@ -183,27 +248,40 @@ export function roomMemberPayloadFromRow(row: RoomMemberRow): RoomMemberPayload 
   };
 }
 
-export function buildPublicRoomsQuery(capabilities: RoomSchemaCapabilities): string {
-  return `${roomSelectSql(capabilities)}
-        WHERE rooms.visibility = 'public'
+export function buildPublicRoomsQuery(
+  capabilities: RoomSchemaCapabilities = defaultRoomSchemaCapabilities,
+  viewer: RoomViewer = anonymousRoomViewer,
+): string {
+  return `${roomSelectSql(capabilities, viewer)}
+        WHERE (rooms.visibility IN ${listedRoomVisibilitySql}
+          ${roomViewerAccessOrSql(capabilities, viewer)})
           ${roomNotDeletedSql(capabilities)}
         ORDER BY ${roomListOrder}`;
 }
 
-export function buildPublicRoomBySlugQuery(capabilities: RoomSchemaCapabilities): string {
-  return `${roomSelectSql(capabilities)}
+export function buildPublicRoomBySlugQuery(
+  capabilities: RoomSchemaCapabilities = defaultRoomSchemaCapabilities,
+  viewer: RoomViewer = anonymousRoomViewer,
+): string {
+  return `${roomSelectSql(capabilities, viewer)}
         WHERE rooms.slug = ?
-          AND rooms.visibility = 'public'
+          AND (rooms.visibility <> 'private'
+            ${roomViewerAccessOrSql(capabilities, viewer)})
           ${roomNotDeletedSql(capabilities)}
         LIMIT 1`;
 }
 
-export function buildPublicRoomMemberRoomQuery(): string {
-  return `SELECT id
+export function buildPublicRoomMemberRoomQuery(
+  capabilities: RoomSchemaCapabilities = defaultRoomSchemaCapabilities,
+  viewer: RoomViewer = anonymousRoomViewer,
+): string {
+  return `SELECT rooms.id
          FROM rooms
-         WHERE slug = ?
-           AND visibility = 'public'
-           AND deleted_at IS NULL
+         ${roomViewerMembershipJoinSql(capabilities, viewer)}
+         WHERE rooms.slug = ?
+           AND (rooms.visibility IN ${publicRoomVisibilitySql}
+             ${roomViewerAccessOrSql(capabilities, viewer)})
+           ${roomNotDeletedSql(capabilities)}
          LIMIT 1`;
 }
 
@@ -241,29 +319,29 @@ class MysqlRoomsRepository implements RoomsRepository {
 
   constructor(private readonly pool: Pool) {}
 
-  async listPublicRooms(): Promise<RoomPayload[]> {
+  async listPublicRooms(viewer: RoomViewer = anonymousRoomViewer): Promise<RoomPayload[]> {
     const capabilities = await this.schemaCapabilities();
-    const [rows] = await this.pool.execute<RoomRow[]>(buildPublicRoomsQuery(capabilities));
+    const [rows] = await this.pool.execute<RoomRow[]>(buildPublicRoomsQuery(capabilities, viewer));
 
     return rows.map((row) => roomPayloadFromRow(row));
   }
 
-  async getPublicRoom(slug: string): Promise<RoomPayload | null> {
+  async getPublicRoom(slug: string, viewer: RoomViewer = anonymousRoomViewer): Promise<RoomPayload | null> {
     const capabilities = await this.schemaCapabilities();
-    const [rows] = await this.pool.execute<RoomRow[]>(buildPublicRoomBySlugQuery(capabilities), [slug]);
+    const [rows] = await this.pool.execute<RoomRow[]>(buildPublicRoomBySlugQuery(capabilities, viewer), [slug]);
     const row = rows[0];
 
     return row === undefined ? null : roomPayloadFromRow(row);
   }
 
-  async getPublicRoomMembers(slug: string): Promise<RoomMemberPayload[] | null> {
+  async getPublicRoomMembers(slug: string, viewer: RoomViewer = anonymousRoomViewer): Promise<RoomMemberPayload[] | null> {
     const capabilities = await this.schemaCapabilities();
 
     if (!roomStorageReady(capabilities)) {
       throw new RoomStorageNotReadyError();
     }
 
-    const [roomRows] = await this.pool.execute<RoomRecordRow[]>(buildPublicRoomMemberRoomQuery(), [slug]);
+    const [roomRows] = await this.pool.execute<RoomRecordRow[]>(buildPublicRoomMemberRoomQuery(capabilities, viewer), [slug]);
     const room = roomRows[0];
 
     if (room === undefined) {
@@ -288,18 +366,21 @@ class MysqlRoomsRepository implements RoomsRepository {
       hasBannerUrlColumn,
       hasRulesColumn,
       hasRoomSoftDeleteColumn,
+      hasRoomAccessRequests,
     ] = await Promise.all([
       this.tableExists("room_memberships"),
       this.columnExists("rooms", "icon_url"),
       this.columnExists("rooms", "banner_url"),
       this.columnExists("rooms", "rules"),
       this.columnExists("rooms", "deleted_at"),
+      this.tableExists("room_access_requests"),
     ]);
 
     return {
       hasRoomMemberships,
       hasRoomCustomizationColumns: hasIconUrlColumn && hasBannerUrlColumn && hasRulesColumn,
       hasRoomSoftDeleteColumn,
+      hasRoomAccessRequests,
     };
   }
 
@@ -336,7 +417,10 @@ class MysqlRoomsRepository implements RoomsRepository {
   }
 }
 
-function roomSelectSql(capabilities: RoomSchemaCapabilities): string {
+function roomSelectSql(
+  capabilities: RoomSchemaCapabilities,
+  viewer: RoomViewer = anonymousRoomViewer,
+): string {
   return `SELECT
             rooms.id AS room_id,
             rooms.slug AS room_slug,
@@ -349,12 +433,12 @@ function roomSelectSql(capabilities: RoomSchemaCapabilities): string {
             ${roomCustomizationSelectSql(capabilities)}
             rooms.visibility AS room_visibility,
             rooms.created_by AS room_created_by,
-            NULL AS current_room_role,
-            0 AS current_room_joined,
+            ${roomViewerSelectSql(capabilities, viewer)}
             owner.id AS owner_user_id,
             owner.handle AS owner_handle,
             owner_profile.display_name AS owner_display_name,
             owner_profile.avatar_url AS owner_avatar_url,
+            ${roomAccessRequestCountSelectSql(capabilities, viewer)}
             COALESCE(room_posts.post_count, 0) AS room_post_count,
             room_posts.latest_activity_at AS room_latest_activity_at,
             rooms.created_at AS room_created_at,
@@ -363,6 +447,9 @@ function roomSelectSql(capabilities: RoomSchemaCapabilities): string {
         LEFT JOIN users owner ON owner.id = rooms.created_by
         LEFT JOIN profiles owner_profile ON owner_profile.user_id = owner.id
         ${roomMembershipCountJoinSql(capabilities)}
+        ${roomViewerMembershipJoinSql(capabilities, viewer)}
+        ${roomAccessRequestJoinSql(capabilities, viewer)}
+        ${roomAccessRequestCountJoinSql(capabilities)}
         LEFT JOIN (
             SELECT
                 room_id,
@@ -375,6 +462,94 @@ function roomSelectSql(capabilities: RoomSchemaCapabilities): string {
               AND deleted_at IS NULL
             GROUP BY room_id
         ) room_posts ON room_posts.room_id = rooms.id`;
+}
+
+function roomViewerSelectSql(
+  capabilities: RoomSchemaCapabilities,
+  viewer: RoomViewer,
+): string {
+  const signedInSql = viewer.userId === null ? "0" : "1";
+  const adminSql = roomViewerIsAdmin(viewer) ? "1" : "0";
+
+  if (!capabilities.hasRoomMemberships) {
+    return `NULL AS current_room_role,
+            0 AS current_room_joined,
+            ${signedInSql} AS current_viewer_signed_in,
+            ${adminSql} AS current_viewer_is_admin,
+            ${roomAccessRequestStatusSelectSql(capabilities)},`;
+  }
+
+  return `viewer_room_membership.role AS current_room_role,
+            IF(viewer_room_membership.id IS NULL, 0, 1) AS current_room_joined,
+            ${signedInSql} AS current_viewer_signed_in,
+            ${adminSql} AS current_viewer_is_admin,
+            ${roomAccessRequestStatusSelectSql(capabilities)},`;
+}
+
+function roomAccessRequestStatusSelectSql(capabilities: RoomSchemaCapabilities): string {
+  return capabilities.hasRoomAccessRequests
+    ? "viewer_room_access_request.status AS current_room_access_request_status"
+    : "NULL AS current_room_access_request_status";
+}
+
+function roomAccessRequestCountSelectSql(
+  capabilities: RoomSchemaCapabilities,
+  viewer: RoomViewer,
+): string {
+  if (!capabilities.hasRoomAccessRequests) {
+    return "NULL AS room_pending_access_request_count,";
+  }
+
+  const staffSql = roomViewerIsAdmin(viewer)
+    ? "1 = 1"
+    : capabilities.hasRoomMemberships
+      ? "viewer_room_membership.role IN ('owner', 'moderator')"
+      : "1 = 0";
+
+  return `CASE
+              WHEN ${staffSql} THEN COALESCE(room_access_request_counts.pending_count, 0)
+              ELSE NULL
+            END AS room_pending_access_request_count,`;
+}
+
+function roomViewerMembershipJoinSql(
+  capabilities: RoomSchemaCapabilities,
+  viewer: RoomViewer,
+): string {
+  if (!capabilities.hasRoomMemberships) {
+    return "";
+  }
+
+  return `LEFT JOIN room_memberships viewer_room_membership
+            ON viewer_room_membership.room_id = rooms.id
+           AND viewer_room_membership.user_id = ${roomViewerSqlValue(viewer)}
+           AND viewer_room_membership.banned_at IS NULL`;
+}
+
+function roomAccessRequestJoinSql(
+  capabilities: RoomSchemaCapabilities,
+  viewer: RoomViewer,
+): string {
+  if (!capabilities.hasRoomAccessRequests) {
+    return "";
+  }
+
+  return `LEFT JOIN room_access_requests viewer_room_access_request
+            ON viewer_room_access_request.room_id = rooms.id
+           AND viewer_room_access_request.requester_id = ${roomViewerSqlValue(viewer)}`;
+}
+
+function roomAccessRequestCountJoinSql(capabilities: RoomSchemaCapabilities): string {
+  if (!capabilities.hasRoomAccessRequests) {
+    return "";
+  }
+
+  return `LEFT JOIN (
+            SELECT room_id, COUNT(*) AS pending_count
+            FROM room_access_requests
+            WHERE status = 'pending'
+            GROUP BY room_id
+        ) room_access_request_counts ON room_access_request_counts.room_id = rooms.id`;
 }
 
 function roomMembershipCountSelectSql(capabilities: RoomSchemaCapabilities): string {
@@ -412,6 +587,21 @@ function roomNotDeletedSql(capabilities: RoomSchemaCapabilities): string {
   return capabilities.hasRoomSoftDeleteColumn ? "AND rooms.deleted_at IS NULL" : "";
 }
 
+function roomViewerAccessOrSql(
+  capabilities: RoomSchemaCapabilities,
+  viewer: RoomViewer,
+): string {
+  if (roomViewerIsAdmin(viewer)) {
+    return " OR 1 = 1";
+  }
+
+  if (!capabilities.hasRoomMemberships || viewer.userId === null) {
+    return "";
+  }
+
+  return " OR viewer_room_membership.id IS NOT NULL";
+}
+
 function ownerPayloadFromRow(row: RoomRow): UserPayload | null {
   if (row.owner_user_id === null || row.owner_handle === null) {
     return null;
@@ -432,6 +622,31 @@ function ownerPayloadFromRow(row: RoomRow): UserPayload | null {
 
 function roomRoleValue(value: string | null): RoomRole | null {
   return value === "owner" || value === "moderator" || value === "member" ? value : null;
+}
+
+function roomVisibilityValue(value: string | null): RoomVisibility {
+  return value === "private" || value === "invite" || value === "view_only"
+    ? value
+    : "public";
+}
+
+function roomAccessRequestStatusValue(value: string | null): RoomAccessRequestStatus | null {
+  return value === "pending" || value === "approved" || value === "denied" || value === "canceled"
+    ? value
+    : null;
+}
+
+const anonymousRoomViewer: RoomViewer = {
+  userId: null,
+  role: null,
+};
+
+function roomViewerIsAdmin(viewer: RoomViewer): boolean {
+  return viewer.role === "admin";
+}
+
+function roomViewerSqlValue(viewer: RoomViewer): string {
+  return viewer.userId === null ? "NULL" : String(Math.max(0, Math.trunc(viewer.userId)));
 }
 
 function booleanValue(value: boolean | number | string | null | undefined): boolean {

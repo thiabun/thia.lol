@@ -38,6 +38,7 @@ import {
   type ReactionPayload,
   type ReblogPayload,
   type RemoveFollowerPayload,
+  type RoomAccessRequestPayload,
   type RoomDeletePayload,
 } from "./content.js";
 import {
@@ -126,6 +127,7 @@ import {
   RoomStorageNotReadyError,
   type RoomMemberPayload,
   type RoomPayload,
+  type RoomViewer,
   type RoomsRepository,
 } from "./rooms.js";
 import { type SearchPayload, type SearchRepository } from "./search.js";
@@ -159,6 +161,11 @@ const searchQuerySchema = z
 
 const roomParamsSchema = z.object({
   slug: z.string(),
+});
+
+const roomAccessRequestParamsSchema = z.object({
+  slug: z.string(),
+  id: z.string(),
 });
 
 const profileParamsSchema = z.object({
@@ -499,6 +506,28 @@ async function currentViewerUserId(
   return session?.userId ?? null;
 }
 
+async function currentViewerSession(
+  request: { headers: { cookie?: string | undefined } },
+  repository: SessionsRepository | undefined,
+): Promise<RequestSession | null> {
+  if (repository === undefined) {
+    return null;
+  }
+
+  return repository.currentSession(request.headers.cookie);
+}
+
+function roomViewerFromSession(session: RequestSession | null): RoomViewer {
+  return {
+    userId: session?.userId ?? null,
+    role: session?.role ?? null,
+  };
+}
+
+function optionalRoomViewerFromSession(session: RequestSession | null): RoomViewer | undefined {
+  return session === null ? undefined : roomViewerFromSession(session);
+}
+
 function privatePostKindFromRequest(query: unknown): "all" | "posts" | "replies" {
   const parsed = privatePostsQuerySchema.safeParse(query);
 
@@ -725,6 +754,46 @@ async function withAuthenticatedContentMutationRoute<T>(
     const data = await lookup(dependencies.contentMutationsRepository, session, body);
 
     return reply.status(statusCode).send(successPayload<T>(data));
+  } catch (error) {
+    if (error instanceof ContentRouteError || error instanceof PrivateRouteError) {
+      return reply.status(error.statusCode).send(errorPayload(error.message));
+    }
+
+    if (error instanceof ContentStorageNotReadyError) {
+      return sendRouteError(request, reply, routeName, 503, errorPayload(error.message), error);
+    }
+
+    return internalError(request, reply, routeName, error);
+  }
+}
+
+async function withAuthenticatedContentRoute<T>(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  lookup: (
+    repository: ContentMutationsRepository,
+    session: RequestSession,
+  ) => Promise<T> | T,
+) {
+  if (
+    dependencies.sessionsRepository === undefined ||
+    dependencies.contentMutationsRepository === undefined
+  ) {
+    return internalError(request, reply, routeName, new Error("Missing authenticated content route dependency."));
+  }
+
+  try {
+    const session = await dependencies.sessionsRepository.currentSession(request.headers.cookie);
+
+    if (session === null) {
+      return reply.status(401).send(errorPayload("Unauthenticated."));
+    }
+
+    const data = await lookup(dependencies.contentMutationsRepository, session);
+
+    return reply.send(successPayload<T>(data));
   } catch (error) {
     if (error instanceof ContentRouteError || error instanceof PrivateRouteError) {
       return reply.status(error.statusCode).send(errorPayload(error.message));
@@ -2619,7 +2688,11 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     }
 
     try {
-      const rooms = await dependencies.roomsRepository.listPublicRooms();
+      const viewerSession = await currentViewerSession(request, dependencies.sessionsRepository);
+      const viewer = optionalRoomViewerFromSession(viewerSession);
+      const rooms = viewer === undefined
+        ? await dependencies.roomsRepository.listPublicRooms()
+        : await dependencies.roomsRepository.listPublicRooms(viewer);
 
       return reply.send(successPayload<RoomPayload[]>(rooms));
     } catch (error) {
@@ -2640,7 +2713,11 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     }
 
     try {
-      const members = await dependencies.roomsRepository.getPublicRoomMembers(normalizedSlug);
+      const viewerSession = await currentViewerSession(request, dependencies.sessionsRepository);
+      const viewer = optionalRoomViewerFromSession(viewerSession);
+      const members = viewer === undefined
+        ? await dependencies.roomsRepository.getPublicRoomMembers(normalizedSlug)
+        : await dependencies.roomsRepository.getPublicRoomMembers(normalizedSlug, viewer);
 
       if (members === null) {
         return reply.status(404).send(errorPayload("Room not found."));
@@ -2724,6 +2801,136 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     );
   });
 
+  app.post("/rooms/:slug/access-requests", async (request, reply) => {
+    const parsedParams = roomParamsSchema.safeParse(request.params);
+    const normalizedSlug = parsedParams.success ? normalizeRoomSlug(parsedParams.data.slug) : null;
+
+    if (normalizedSlug === null) {
+      return reply.status(400).send(errorPayload("Invalid room slug."));
+    }
+
+    return withAuthenticatedContentMutationRoute<RoomPayload>(
+      request,
+      reply,
+      dependencies,
+      "rooms.access-requests.create",
+      (repository, session) => repository.requestRoomAccess(session, normalizedSlug),
+      201,
+    );
+  });
+
+  app.delete("/rooms/:slug/access-requests/me", async (request, reply) => {
+    const parsedParams = roomParamsSchema.safeParse(request.params);
+    const normalizedSlug = parsedParams.success ? normalizeRoomSlug(parsedParams.data.slug) : null;
+
+    if (normalizedSlug === null) {
+      return reply.status(400).send(errorPayload("Invalid room slug."));
+    }
+
+    return withAuthenticatedContentMutationRoute<RoomPayload>(
+      request,
+      reply,
+      dependencies,
+      "rooms.access-requests.cancel",
+      (repository, session) => repository.cancelRoomAccessRequest(session, normalizedSlug),
+    );
+  });
+
+  app.get("/rooms/:slug/access-requests", async (request, reply) => {
+    const parsedParams = roomParamsSchema.safeParse(request.params);
+    const normalizedSlug = parsedParams.success ? normalizeRoomSlug(parsedParams.data.slug) : null;
+
+    if (normalizedSlug === null) {
+      return reply.status(400).send(errorPayload("Invalid room slug."));
+    }
+
+    return withAuthenticatedContentRoute<RoomAccessRequestPayload[]>(
+      request,
+      reply,
+      dependencies,
+      "rooms.access-requests.index",
+      (repository, session) => repository.listRoomAccessRequests(session, normalizedSlug),
+    );
+  });
+
+  app.post("/rooms/:slug/access-requests/:id/approve", async (request, reply) => {
+    const parsedParams = roomAccessRequestParamsSchema.safeParse(request.params);
+    const normalizedSlug = parsedParams.success ? normalizeRoomSlug(parsedParams.data.slug) : null;
+    const requestId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (normalizedSlug === null) {
+      return reply.status(400).send(errorPayload("Invalid room slug."));
+    }
+
+    if (requestId === null) {
+      return reply.status(404).send(errorPayload("Access request not found."));
+    }
+
+    return withAuthenticatedContentMutationRoute<RoomAccessRequestPayload[]>(
+      request,
+      reply,
+      dependencies,
+      "rooms.access-requests.approve",
+      (repository, session) => repository.approveRoomAccessRequest(session, normalizedSlug, requestId),
+    );
+  });
+
+  app.post("/rooms/:slug/access-requests/:id/deny", async (request, reply) => {
+    const parsedParams = roomAccessRequestParamsSchema.safeParse(request.params);
+    const normalizedSlug = parsedParams.success ? normalizeRoomSlug(parsedParams.data.slug) : null;
+    const requestId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
+
+    if (normalizedSlug === null) {
+      return reply.status(400).send(errorPayload("Invalid room slug."));
+    }
+
+    if (requestId === null) {
+      return reply.status(404).send(errorPayload("Access request not found."));
+    }
+
+    return withAuthenticatedContentMutationRoute<RoomAccessRequestPayload[]>(
+      request,
+      reply,
+      dependencies,
+      "rooms.access-requests.deny",
+      (repository, session) => repository.denyRoomAccessRequest(session, normalizedSlug, requestId),
+    );
+  });
+
+  app.post("/rooms/:slug/members", async (request, reply) => {
+    const parsedParams = roomParamsSchema.safeParse(request.params);
+    const normalizedSlug = parsedParams.success ? normalizeRoomSlug(parsedParams.data.slug) : null;
+
+    if (normalizedSlug === null) {
+      return reply.status(400).send(errorPayload("Invalid room slug."));
+    }
+
+    return withAuthenticatedContentMutationRoute<RoomMemberPayload[]>(
+      request,
+      reply,
+      dependencies,
+      "rooms.members.add",
+      (repository, session, body) => repository.addRoomMember(session, normalizedSlug, body),
+    );
+  });
+
+  app.delete("/rooms/:slug/members", async (request, reply) => {
+    const parsedParams = roomParamsSchema.safeParse(request.params);
+    const normalizedSlug = parsedParams.success ? normalizeRoomSlug(parsedParams.data.slug) : null;
+
+    if (normalizedSlug === null) {
+      return reply.status(400).send(errorPayload("Invalid room slug."));
+    }
+
+    return withAuthenticatedContentMutationRoute<RoomMemberPayload[]>(
+      request,
+      reply,
+      dependencies,
+      "rooms.members.remove",
+      (repository, session, body) => repository.removeRoomMember(session, normalizedSlug, body),
+    );
+  });
+
   app.post("/rooms/:slug/moderators", async (request, reply) => {
     const parsedParams = roomParamsSchema.safeParse(request.params);
     const normalizedSlug = parsedParams.success ? normalizeRoomSlug(parsedParams.data.slug) : null;
@@ -2771,7 +2978,11 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     }
 
     try {
-      const room = await dependencies.roomsRepository.getPublicRoom(normalizedSlug);
+      const viewerSession = await currentViewerSession(request, dependencies.sessionsRepository);
+      const viewer = optionalRoomViewerFromSession(viewerSession);
+      const room = viewer === undefined
+        ? await dependencies.roomsRepository.getPublicRoom(normalizedSlug)
+        : await dependencies.roomsRepository.getPublicRoom(normalizedSlug, viewer);
 
       if (room === null) {
         return reply.status(404).send(errorPayload("Room not found."));
@@ -2789,8 +3000,12 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     }
 
     try {
-      const viewerUserId = await currentViewerUserId(request, dependencies.sessionsRepository);
-      const results = await dependencies.searchRepository.search(searchQueryFromRequest(request.query), viewerUserId);
+      const viewerSession = await currentViewerSession(request, dependencies.sessionsRepository);
+      const results = await dependencies.searchRepository.search(
+        searchQueryFromRequest(request.query),
+        viewerSession?.userId ?? null,
+        viewerSession?.role ?? null,
+      );
 
       return reply.send(successPayload<SearchPayload>(results));
     } catch (error) {
@@ -2859,7 +3074,7 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       ]);
       const feed: DiscoverFeedPayload = {
         posts,
-        activeRooms: rooms.slice(0, 6),
+        activeRooms: rooms.filter((room) => room.viewerCanViewPosts || room.visibility === "public" || room.visibility === "view_only").slice(0, 6),
         peopleToWatch,
       };
 
@@ -3020,7 +3235,7 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "posts.reblog.create",
-      (repository, session) => repository.reblogPost(postId, session.userId),
+      (repository, session) => repository.reblogPost(postId, session),
     );
   });
 
@@ -3037,7 +3252,7 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "posts.reblog.delete",
-      (repository, session) => repository.unreblogPost(postId, session.userId),
+      (repository, session) => repository.unreblogPost(postId, session),
     );
   });
 
@@ -3172,8 +3387,12 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     }
 
     try {
-      const viewerUserId = await currentViewerUserId(request, dependencies.sessionsRepository);
-      const posts = await dependencies.postsRepository.listRoomPosts(normalizedSlug, viewerUserId);
+      const viewerSession = await currentViewerSession(request, dependencies.sessionsRepository);
+      const posts = await dependencies.postsRepository.listRoomPosts(
+        normalizedSlug,
+        viewerSession?.userId ?? null,
+        viewerSession?.role ?? null,
+      );
 
       if (posts === null) {
         return reply.status(404).send(errorPayload("Room not found."));

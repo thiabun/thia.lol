@@ -97,7 +97,7 @@ function sitemap_room_rows(): array
     return db_query(
         "SELECT slug, created_at, updated_at
          FROM rooms
-         WHERE visibility = 'public'
+         WHERE visibility IN ('public', 'view_only')
            " . room_not_deleted_sql('rooms') . "
          ORDER BY updated_at DESC
          LIMIT 1000"
@@ -120,7 +120,7 @@ function sitemap_post_rows(): array
            AND p.deleted_at IS NULL
            AND " . user_publicly_available_sql('u') . "
            {$profileVisibilityFilter}
-           AND (p.room_id IS NULL OR (r.visibility = 'public' " . room_not_deleted_sql('r') . "))
+           AND (p.room_id IS NULL OR (r.visibility IN ('public', 'view_only') " . room_not_deleted_sql('r') . "))
          ORDER BY p.updated_at DESC
          LIMIT 1000"
     )->fetchAll();

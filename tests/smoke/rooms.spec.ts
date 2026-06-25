@@ -2,10 +2,11 @@ import { expect, test, type Page } from "@playwright/test";
 import { fetchAuthMe, loginWithEnv, skipWithoutCredentials } from "../helpers/auth";
 
 test("/rooms renders API rooms or the real empty state", async ({ page }) => {
+  await mockRoomCards(page);
   await page.goto("/rooms");
 
   await expect(page.getByTestId("rooms-page")).toBeVisible();
-  await expect(page.getByRole("heading", { level: 1, name: "Rooms" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Rooms", exact: true })).toBeVisible();
 
   await expect
     .poll(async () => {
@@ -18,6 +19,7 @@ test("/rooms renders API rooms or the real empty state", async ({ page }) => {
 });
 
 test("clicking a room opens its detail page", async ({ page }) => {
+  await mockRoomCards(page);
   await page.goto("/rooms");
 
   await expect
@@ -114,6 +116,98 @@ test("Create room button shows for logged-in users", async ({ page }) => {
   await expect(modal.locator("label", { hasText: "Change banner" })).toBeVisible();
 });
 
+test("creating rooms can submit each visibility mode", async ({ page }) => {
+  const createdPayloads: Record<string, unknown>[] = [];
+
+  await mockRoomCreation(page, createdPayloads);
+  await acknowledgeCookieNotice(page);
+
+  for (const [index, mode] of [
+    ["Public", "public"],
+    ["Private", "private"],
+    ["Invite", "invite"],
+    ["View-only", "view_only"],
+  ].entries()) {
+    await page.goto("/rooms");
+    await page.getByTestId("create-room-button").click();
+
+    const modal = page.getByTestId("room-edit-modal");
+    await modal.getByLabel("Name").fill(`${mode[0]} room`);
+    await modal.getByLabel("Slug").fill(`${mode[1].replace("_", "-")}-room`);
+    await modal.getByLabel("Summary").fill(`A ${mode[0].toLowerCase()} room for smoke testing.`);
+    await modal.locator(`label:has(input[name="room-visibility"][value="${mode[1]}"])`).click();
+    await modal.getByRole("button", { name: "Create room" }).click();
+
+    await expect.poll(() => createdPayloads.length).toBe(index + 1);
+    expect(createdPayloads[index]).toMatchObject({ visibility: mode[1] });
+  }
+});
+
+test("invite room access requests can be requested and canceled", async ({ page }) => {
+  const actions = await mockInviteRequestRoom(page);
+
+  await acknowledgeCookieNotice(page);
+  await page.goto("/rooms/invite-room");
+
+  await expect(page.getByTestId("room-page")).toBeVisible();
+  await expect(page.getByText("Access required")).toBeVisible();
+  await expect(page.getByTestId("room-request-access-button")).toContainText("Request access");
+
+  await page.getByTestId("room-request-access-button").click();
+  await expect.poll(() => actions.requested()).toBe(1);
+  await expect(page.getByTestId("room-request-access-button")).toContainText("Access requested");
+
+  await page.getByTestId("room-request-access-button").click();
+  await expect.poll(() => actions.canceled()).toBe(1);
+  await expect(page.getByTestId("room-request-access-button")).toContainText("Request access");
+});
+
+test("room staff can approve and deny invite access requests", async ({ page }) => {
+  const actions = await mockStaffInviteRoom(page);
+
+  await acknowledgeCookieNotice(page);
+  await page.goto("/rooms/invite-room");
+
+  const panel = page.getByTestId("room-access-requests");
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText("Asha");
+  await expect(panel).toContainText("Ben");
+
+  await panel.getByRole("button", { name: "Deny" }).first().click();
+  await expect.poll(() => actions.denied()).toEqual([101]);
+  await expect(panel).not.toContainText("Asha");
+
+  await panel.getByRole("button", { name: "Approve" }).first().click();
+  await expect.poll(() => actions.approved()).toEqual([102]);
+  await expect(page.getByTestId("room-access-requests")).toHaveCount(0);
+});
+
+test("view-only rooms hide posting but keep reaction affordances", async ({ page }) => {
+  await mockViewOnlyRoom(page);
+  await acknowledgeCookieNotice(page);
+
+  await page.goto("/rooms/read-room");
+
+  await expect(page.getByTestId("room-page")).toBeVisible();
+  await expect(page.getByTestId("room-header").getByText("View-only")).toBeVisible();
+  await expect(page.getByTestId("room-post-button")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Like this post/i })).toBeVisible();
+
+  await page.getByRole("button", { name: /Open replies/i }).click();
+  await expect(page.getByTestId("thread-conversation")).toBeVisible();
+  await expect(page.getByTestId("reply-composer")).toHaveCount(0);
+});
+
+test("rooms footer keeps legal links without the footer brand lockup", async ({ page }) => {
+  await mockRoomCards(page);
+  await page.goto("/rooms");
+
+  await expect(page.getByTestId("site-footer")).toBeVisible();
+  await expect(page.getByTestId("site-footer-brand-lockup")).toHaveCount(0);
+  await expect(page.getByTestId("site-footer-brand")).toHaveCount(0);
+  await expect(page.getByTestId("legal-footer-links").getByRole("link", { name: "Terms" })).toBeVisible();
+});
+
 test("join and leave room API require auth", async ({ page }) => {
   await page.goto("/rooms");
 
@@ -200,7 +294,7 @@ async function mockRoomCards(page: Page) {
       body: JSON.stringify({ ok: false, error: "Unauthenticated." }),
     });
   });
-  await page.route("**/api/rooms", async (route) => {
+  await page.route(/\/api\/rooms$/, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -229,9 +323,438 @@ async function mockRoomCards(page: Page) {
       body: JSON.stringify({ ok: true, data: { notifications: [], unreadCount: 0 } }),
     });
   });
+  await page.route("**/api/rooms/sun-room", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: mockRoom() }),
+    });
+  });
+  await page.route("**/api/rooms/sun-room/posts", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+  await page.route("**/api/rooms/sun-room/members", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
 }
 
-function mockRoom() {
+async function mockRoomCreation(page: Page, createdPayloads: Record<string, unknown>[]) {
+  let createdRoom = mockRoom({ joinedByMe: true, myRoomRole: "owner", viewerCanPost: true });
+
+  await mockAuthenticatedShell(page);
+  await mockStats(page);
+  await page.route(/\/api\/rooms$/, async (route) => {
+    if (route.request().method() === "POST") {
+      const payload = (await route.request().postDataJSON()) as Record<string, unknown>;
+      createdPayloads.push(payload);
+      createdRoom = mockRoom({
+        slug: String(payload.slug ?? "created-room"),
+        name: String(payload.name ?? "Created room"),
+        summary: String(payload.summary ?? ""),
+        description: String(payload.summary ?? ""),
+        visibility: String(payload.visibility ?? "public"),
+        joinedByMe: true,
+        myRoomRole: "owner",
+        viewerCanViewPosts: true,
+        viewerCanPost: true,
+        viewerCanReact: true,
+        viewerCanRequestAccess: false,
+        accessRequestStatus: null,
+      });
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: createdRoom }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+  await page.route(/\/api\/rooms\/[^/]+$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: createdRoom }),
+    });
+  });
+  await page.route(/\/api\/rooms\/[^/]+\/posts$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+  await page.route(/\/api\/rooms\/[^/]+\/members$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+}
+
+async function mockInviteRequestRoom(page: Page) {
+  let accessRequestStatus: "pending" | null = null;
+  let requested = 0;
+  let canceled = 0;
+  const room = () =>
+    mockRoom({
+      slug: "invite-room",
+      name: "Invite Room",
+      summary: "Requestable shell.",
+      description: "Requestable shell.",
+      visibility: "invite",
+      members: 0,
+      memberCount: 0,
+      postCount: 0,
+      viewerCanViewPosts: false,
+      viewerCanPost: false,
+      viewerCanReact: false,
+      viewerCanRequestAccess: accessRequestStatus !== "pending",
+      accessRequestStatus,
+    });
+
+  await mockAuthenticatedShell(page);
+  await page.route("**/api/rooms/invite-room", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: room() }),
+    });
+  });
+  await page.route("**/api/rooms/invite-room/posts", async (route) => {
+    await route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "Room not found." }),
+    });
+  });
+  await page.route("**/api/rooms/invite-room/members", async (route) => {
+    await route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "Room not found." }),
+    });
+  });
+  await page.route("**/api/rooms/invite-room/access-requests", async (route) => {
+    if (route.request().method() === "POST") {
+      requested += 1;
+      accessRequestStatus = "pending";
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: room() }),
+    });
+  });
+  await page.route("**/api/rooms/invite-room/access-requests/me", async (route) => {
+    if (route.request().method() === "DELETE") {
+      canceled += 1;
+      accessRequestStatus = null;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: room() }),
+    });
+  });
+
+  return {
+    requested: () => requested,
+    canceled: () => canceled,
+  };
+}
+
+async function mockStaffInviteRoom(page: Page) {
+  let requests = [roomAccessRequest(101, "asha", "Asha"), roomAccessRequest(102, "ben", "Ben")];
+  const deniedIds: number[] = [];
+  const approvedIds: number[] = [];
+  const room = () =>
+    mockRoom({
+      slug: "invite-room",
+      name: "Invite Room",
+      visibility: "invite",
+      joinedByMe: true,
+      myRoomRole: "moderator",
+      viewerCanViewPosts: true,
+      viewerCanPost: true,
+      viewerCanReact: true,
+      viewerCanRequestAccess: false,
+      accessRequestStatus: null,
+      pendingAccessRequestCount: requests.length,
+    });
+
+  await mockAuthenticatedShell(page);
+  await page.route("**/api/rooms/invite-room", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: room() }),
+    });
+  });
+  await page.route("**/api/rooms/invite-room/posts", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+  await page.route("**/api/rooms/invite-room/members", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+  await page.route(/\/api\/rooms\/invite-room\/access-requests(?:\/(\d+)\/(approve|deny))?$/, async (route) => {
+    const match = route.request().url().match(/\/access-requests(?:\/(\d+)\/(approve|deny))?$/);
+    const requestId = match?.[1] ? Number(match[1]) : undefined;
+    const action = match?.[2];
+
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: requests }),
+      });
+      return;
+    }
+
+    if (requestId && action === "deny") {
+      deniedIds.push(requestId);
+      requests = requests.filter((request) => request.id !== requestId);
+    }
+
+    if (requestId && action === "approve") {
+      approvedIds.push(requestId);
+      requests = requests.filter((request) => request.id !== requestId);
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: requests }),
+    });
+  });
+
+  return {
+    approved: () => approvedIds,
+    denied: () => deniedIds,
+  };
+}
+
+async function mockViewOnlyRoom(page: Page) {
+  const room = mockRoom({
+    slug: "read-room",
+    name: "Read Room",
+    summary: "Read-only community room.",
+    description: "Read-only community room.",
+    visibility: "view_only",
+    viewerCanViewPosts: true,
+    viewerCanPost: false,
+    viewerCanReact: true,
+    viewerCanRequestAccess: false,
+    accessRequestStatus: null,
+  });
+
+  await mockAuthenticatedShell(page);
+  await page.route("**/api/rooms/read-room", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: room }),
+    });
+  });
+  await page.route("**/api/rooms/read-room/posts", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [mockPost(room)] }),
+    });
+  });
+  await page.route("**/api/rooms/read-room/members", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+  await page.route("**/api/posts/501/replies", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+}
+
+async function mockAuthenticatedShell(page: Page) {
+  await page.route("**/api/auth/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          user: {
+            id: 9,
+            handle: "viewer",
+            email: "viewer@example.test",
+            role: "member",
+            status: "active",
+            displayName: "Viewer",
+            avatarUrl: null,
+          },
+          profile: {
+            displayName: "Viewer",
+            bio: "",
+            location: "",
+            avatarUrl: null,
+            links: [],
+            traits: [],
+          },
+          csrfToken: "test-csrf",
+        },
+      }),
+    });
+  });
+  await page.route("**/api/notifications", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: { notifications: [], unreadCount: 0 } }),
+    });
+  });
+  await page.route("**/api/me/onboarding", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: completedOnboardingState() }),
+    });
+  });
+}
+
+async function mockStats(page: Page) {
+  await page.route("**/api/stats", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          publicRooms: 1,
+          publicPosts: 0,
+          activeUsers: 1,
+          totalReactions: 0,
+        },
+      }),
+    });
+  });
+}
+
+async function acknowledgeCookieNotice(page: Page) {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("thia_cookie_notice_ack", "1");
+  });
+}
+
+function completedOnboardingState() {
+  const steps = [
+    "profile_basics",
+    "spotify",
+    "youtube",
+    "twitch",
+    "github",
+    "apple_music",
+    "profile_canvas",
+  ];
+
+  return {
+    steps,
+    completedSteps: steps,
+    skippedSteps: [],
+    providerLinks: {},
+    finishedAt: "2026-06-19 12:00:00",
+    dismissedAt: null,
+    createdAt: "2026-06-19 12:00:00",
+    updatedAt: "2026-06-19 12:00:00",
+  };
+}
+
+function roomAccessRequest(id: number, handle: string, displayName: string) {
+  return {
+    id,
+    status: "pending",
+    requester: {
+      id,
+      handle,
+      displayName,
+      initials: displayName.slice(0, 1),
+      aura: "frost",
+      avatarUrl: null,
+    },
+    reviewedBy: null,
+    reviewedAt: null,
+    createdAt: "2026-06-10 00:00:00",
+    updatedAt: "2026-06-10 00:00:00",
+  };
+}
+
+function mockPost(room: Record<string, unknown>) {
+  return {
+    id: 501,
+    publicId: "pcviewonly501",
+    author: {
+      id: 2,
+      handle: "author",
+      displayName: "Author",
+      initials: "A",
+      aura: "frost",
+      avatarUrl: null,
+    },
+    room,
+    body: "View-only rooms still allow reactions.",
+    bodyEntities: [],
+    createdAt: "2026-06-10 00:00:00",
+    updatedAt: "2026-06-10 00:00:00",
+    mood: "",
+    parentId: null,
+    commentCount: 0,
+    reactions: {
+      glow: 0,
+      echo: 0,
+      hush: 0,
+    },
+    likeCount: 0,
+    likedByCurrentUser: false,
+    reblogCount: 0,
+    rebloggedByMe: false,
+    rebloggedByCurrentUser: false,
+    rebloggedBy: null,
+    rebloggedAt: null,
+    socialContext: {
+      authorRelationship: null,
+      likedByFollowedCount: 0,
+    },
+  };
+}
+
+function mockRoom(overrides: Record<string, unknown> = {}) {
   return {
     id: 1,
     slug: "sun-room",
@@ -247,6 +770,7 @@ function mockRoom() {
     bannerUrl: null,
     rules: "",
     visibility: "public",
+    createdBy: 1,
     owner: {
       id: 1,
       handle: "owner",
@@ -257,10 +781,16 @@ function mockRoom() {
     },
     joinedByMe: false,
     myRoomRole: null,
+    viewerCanViewPosts: true,
+    viewerCanPost: false,
+    viewerCanReact: false,
+    viewerCanRequestAccess: false,
+    accessRequestStatus: null,
     postCount: 0,
     latestActivityAt: null,
     createdAt: "2026-06-10 00:00:00",
     updatedAt: "2026-06-10 00:00:00",
+    ...overrides,
   };
 }
 
