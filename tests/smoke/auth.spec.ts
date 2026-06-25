@@ -113,12 +113,15 @@ test.describe("authenticated smoke", () => {
     await expect(dialog).toBeVisible();
 
     const destination = dialog.getByRole("combobox", { name: "Post to" });
-    const mediaUpload = dialog.getByTitle("Upload media");
+    const mediaUpload = dialog.getByTitle("Upload image or video");
+    const musicButton = dialog.getByRole("button", { name: "Add music" });
     const body = dialog.getByRole("textbox", { name: "Post" });
 
     await expect(body).toBeVisible();
     await expect(destination).toBeVisible();
     await expect(mediaUpload).toBeVisible();
+    await expect(musicButton).toBeVisible();
+    await expect(dialog.getByTestId("post-composer-markdown-toolbar")).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Post", exact: true })).toBeVisible();
     await expect(dialog.getByText(/video/i)).toHaveCount(0);
     await expect(dialog.getByText("Post to a profile or room.")).toHaveCount(0);

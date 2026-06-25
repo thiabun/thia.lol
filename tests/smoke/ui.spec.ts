@@ -353,7 +353,9 @@ test("authenticated post button opens an accessible composer select", async ({
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Post", exact: true })).toBeVisible();
   await expect(dialog.getByRole("textbox", { name: "Post" })).toBeVisible();
-  await expect(dialog.getByTitle("Upload media")).toBeVisible();
+  await expect(dialog.getByTestId("post-composer-markdown-toolbar")).toBeVisible();
+  await expect(dialog.getByTitle("Upload image or video")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Add music" })).toBeVisible();
   await expect(dialog.getByText("Post to a profile or room.")).toHaveCount(0);
   await expect(dialog.getByText("Post to your profile.")).toHaveCount(0);
   await expect(dialog.getByText("Images are converted to WebP")).toHaveCount(0);
@@ -379,6 +381,110 @@ test("authenticated post button opens an accessible composer select", async ({
 
   await dialog.getByRole("button", { name: "Close post composer" }).click();
   await expect(dialog).toBeHidden();
+});
+
+test("post composer submits Markdown and Spotify/YouTube music attachments", async ({
+  page,
+}) => {
+  await mockAuthenticatedShell(page);
+  let postPayload: Record<string, unknown> | undefined;
+
+  await mockMusicSuggestionRoutes(page, {
+    spotifyItems: [
+      {
+        id: "spotify-playlist-1",
+        label: "Test Playlist",
+        description: "Saved from Spotify",
+        sourceUrl: "https://open.spotify.com/playlist/test-playlist",
+        moduleType: "music",
+        moduleTitle: "Test Playlist",
+        card: makeMusicIntegrationCard("spotify", "playlist", "test-playlist", {
+          title: "Test Playlist",
+          subtitle: "Spotify",
+        }),
+      },
+    ],
+  });
+
+  await page.route("**/api/me/integrations/metadata/resolve", async (route) => {
+    const payload = (await route.request().postDataJSON()) as {
+      provider?: "spotify" | "youtube";
+      url?: string;
+    };
+    const provider = payload.provider ?? "youtube";
+
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: makeMusicIntegrationCard(provider, "video", "abc123", {
+          sourceUrl: payload.url ?? "https://www.youtube.com/watch?v=abc123",
+          title: provider === "youtube" ? "YouTube Test" : "Spotify Test",
+          subtitle: provider === "youtube" ? "YouTube" : "Spotify",
+        }),
+      }),
+    });
+  });
+
+  await page.route("**/api/posts", async (route) => {
+    if (route.request().method() === "POST") {
+      postPayload = (await route.request().postDataJSON()) as Record<string, unknown>;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: makePost({
+            id: 99,
+            body: String(postPayload.body),
+            bodyFormat: "markdown",
+            contentVersion: 3,
+            attachments: postPayload.attachments,
+          }),
+        }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Post", exact: true }).click();
+
+  const dialog = page.getByTestId("composer-modal");
+  const body = dialog.getByTestId("post-composer-body");
+  await body.fill("Favorite track");
+  await body.evaluate((element) => {
+    const textarea = element as HTMLTextAreaElement;
+    textarea.setSelectionRange(0, "Favorite".length);
+  });
+  await dialog.getByTestId("post-composer-markdown-button-bold").click();
+  await expect(body).toHaveValue("**Favorite** track");
+
+  await dialog.getByRole("button", { name: "Add music" }).click();
+  await expect(dialog.getByTestId("post-music-picker")).toBeVisible();
+  await dialog.getByTestId("post-music-suggestion-spotify-0").click();
+  await expect(dialog.getByTestId("composer-attachments")).toContainText("Test Playlist");
+
+  await dialog.getByRole("button", { name: "Add music" }).click();
+  await dialog
+    .getByTestId("post-music-url-input")
+    .fill("https://www.youtube.com/watch?v=abc123");
+  await dialog.getByTestId("post-music-url-submit").click();
+  await expect(dialog.getByTestId("composer-attachments")).toContainText("YouTube Test");
+
+  await dialog.getByRole("button", { name: "Post", exact: true }).click();
+
+  await expect.poll(() => postPayload).toMatchObject({
+    body: "**Favorite** track",
+    attachments: [
+      { kind: "integration", provider: "spotify" },
+      { kind: "integration", provider: "youtube" },
+    ],
+  });
 });
 
 test("public pages do not render retired social copy", async ({ page }) => {
@@ -528,6 +634,45 @@ async function mockPublicShell(page: Page, options: ShellOptions = {}) {
 
 async function mockAuthenticatedShell(page: Page, options: ShellOptions = {}) {
   await mockShell(page, { ...options, authenticated: true });
+}
+
+async function mockMusicSuggestionRoutes(
+  page: Page,
+  options: {
+    spotifyItems?: Array<Record<string, unknown>>;
+    youtubeItems?: Array<Record<string, unknown>>;
+  } = {},
+) {
+  for (const provider of ["spotify", "youtube"] as const) {
+    await page.route(`**/api/me/integrations/${provider}/suggestions`, (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            provider,
+            status: {
+              provider,
+              configured: true,
+              oauthEnabled: true,
+              metadataEnabled: true,
+            },
+            account: {
+              provider,
+              providerAccountId: `${provider}-viewer`,
+              displayName: `${provider} viewer`,
+              scopes: [],
+            },
+            items:
+              provider === "spotify"
+                ? options.spotifyItems ?? []
+                : options.youtubeItems ?? [],
+            generatedAt: "2026-06-25T12:00:00.000Z",
+          },
+        }),
+      }),
+    );
+  }
 }
 
 async function mockShell(
@@ -855,5 +1000,39 @@ function makePost(overrides: Record<string, unknown> = {}) {
       likedByFollowedCount: 0,
     },
     ...overrides,
+  };
+}
+
+function makeMusicIntegrationCard(
+  provider: "spotify" | "youtube",
+  resourceType: string,
+  resourceId: string,
+  overrides: {
+    sourceUrl?: string;
+    subtitle?: string;
+    title?: string;
+  } = {},
+) {
+  const sourceUrl =
+    overrides.sourceUrl ??
+    (provider === "spotify"
+      ? `https://open.spotify.com/${resourceType}/${resourceId}`
+      : `https://www.youtube.com/watch?v=${resourceId}`);
+
+  return {
+    provider,
+    resourceType,
+    resourceId,
+    resourceKey: `${provider}:${resourceType}:${resourceId}`,
+    sourceUrl,
+    apiBacked: true,
+    embed: null,
+    metadata: {
+      title: overrides.title ?? "Music item",
+      subtitle: overrides.subtitle ?? (provider === "spotify" ? "Spotify" : "YouTube"),
+      description: null,
+      imageUrl: null,
+      stats: {},
+    },
   };
 }

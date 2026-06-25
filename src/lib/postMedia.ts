@@ -5,15 +5,31 @@ import type {
   UploadedImage,
   UploadedVideo,
 } from "./api";
-import type { Post } from "./types";
+import type { Post, ProfileIntegrationCard } from "./types";
 
-export type PostMediaDraft = {
+export type PostUploadedMediaDraft = {
   mime: string;
   posterUrl?: string | null;
   size?: number | null;
   type: "image" | "video" | "audio";
   url: string;
 };
+
+export type PostVisualMediaDraft = PostUploadedMediaDraft & {
+  type: "image" | "video";
+};
+
+export type PostMediaDraft =
+  | PostUploadedMediaDraft
+  | {
+      card: ProfileIntegrationCard;
+      provider: "spotify" | "youtube";
+      resourceId: string;
+      resourceKey: string;
+      resourceType: string;
+      sourceUrl: string;
+      type: "integration";
+    };
 
 export function postMediaDraftFromImage(upload: UploadedImage): PostMediaDraft {
   return {
@@ -43,6 +59,22 @@ export function postMediaDraftFromAudio(upload: UploadedAudio): PostMediaDraft {
   };
 }
 
+export function postMediaDraftFromIntegration(card: ProfileIntegrationCard): PostMediaDraft {
+  if (card.provider !== "spotify" && card.provider !== "youtube") {
+    throw new Error("Only Spotify and YouTube music cards can be attached to posts.");
+  }
+
+  return {
+    card,
+    provider: card.provider,
+    resourceId: card.resourceId,
+    resourceKey: card.resourceKey,
+    resourceType: card.resourceType,
+    sourceUrl: card.sourceUrl,
+    type: "integration",
+  };
+}
+
 export function postMediaInputFromDraft(
   media: PostMediaDraft | PostMediaDraft[] | undefined,
 ): Pick<CreatePostInput, "attachments" | "mediaUrl" | "mediaType" | "mediaMime" | "mediaPosterUrl"> {
@@ -52,14 +84,28 @@ export function postMediaInputFromDraft(
     return {};
   }
 
-  const firstLegacy = attachments.find((attachment) => attachment.type === "image" || attachment.type === "video");
-  const attachmentInputs: PostAttachmentInput[] = attachments.map((attachment) => ({
-    kind: attachment.type,
-    url: attachment.url,
-    mime: attachment.mime,
-    sizeBytes: attachment.size ?? null,
-    posterUrl: attachment.posterUrl ?? null,
-  }));
+  const firstLegacy = attachments.find(isLegacyPostMediaDraft);
+  const attachmentInputs: PostAttachmentInput[] = attachments.map((attachment) => {
+    if (attachment.type === "integration") {
+      return {
+        kind: "integration",
+        provider: attachment.provider,
+        resourceType: attachment.resourceType,
+        resourceId: attachment.resourceId,
+        resourceKey: attachment.resourceKey,
+        sourceUrl: attachment.sourceUrl,
+        card: attachment.card,
+      };
+    }
+
+    return {
+      kind: attachment.type,
+      url: attachment.url,
+      mime: attachment.mime,
+      sizeBytes: attachment.size ?? null,
+      posterUrl: attachment.posterUrl ?? null,
+    };
+  });
 
   return {
     attachments: attachmentInputs,
@@ -80,4 +126,10 @@ export function postMediaType(post: Pick<Post, "mediaType" | "mediaUrl">): "imag
   }
 
   return /\.(?:mp4|webm)$/iu.test(post.mediaUrl) ? "video" : "image";
+}
+
+function isLegacyPostMediaDraft(
+  attachment: PostMediaDraft,
+): attachment is PostVisualMediaDraft {
+  return attachment.type === "image" || attachment.type === "video";
 }

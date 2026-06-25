@@ -1365,6 +1365,7 @@ test("thread reply composer is hidden until Reply and exposes media UI", async (
 }) => {
   await mockAuthenticatedApi(page);
   let replyPayload: Record<string, unknown> | undefined;
+  let audioUploadPurpose: string | undefined;
 
   await page.route("**/api/feed/home", (route) =>
     route.fulfill({
@@ -1386,6 +1387,7 @@ test("thread reply composer is hidden until Reply and exposes media UI", async (
             id: 51,
             parentId: 42,
             body: String(replyPayload.body),
+            attachments: replyPayload.attachments,
             author: {
               id: 1,
               handle: "viewer",
@@ -1405,6 +1407,46 @@ test("thread reply composer is hidden until Reply and exposes media UI", async (
       body: JSON.stringify({ ok: true, data: [] }),
     });
   });
+  for (const provider of ["spotify", "youtube"] as const) {
+    await page.route(`**/api/me/integrations/${provider}/suggestions`, (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            provider,
+            status: {
+              provider,
+              configured: true,
+              oauthEnabled: true,
+              metadataEnabled: true,
+            },
+            account: null,
+            items: [],
+          },
+        }),
+      }),
+    );
+  }
+  await page.route("**/api/uploads/audio", async (route) => {
+    const postData = route.request().postData() ?? "";
+    audioUploadPurpose =
+      postData.match(/name="purpose"\r\n\r\n([^\r\n]+)/)?.[1] ?? undefined;
+
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          url: "/uploads/media/2026/06/post_media-track.mp3",
+          mime: "audio/mpeg",
+          type: "audio/mpeg",
+          size: 3072,
+          purpose: "post_media",
+        },
+      }),
+    });
+  });
 
   await page.goto("/");
   await page.getByTestId("post-body-open-thread").first().click();
@@ -1422,13 +1464,32 @@ test("thread reply composer is hidden until Reply and exposes media UI", async (
   await dialog.getByRole("button", { name: /Open replies/ }).first().click();
   await expect(dialog.getByTestId("reply-composer")).toBeVisible();
   await expect(dialog.getByText("Upload media")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Music" })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Send" })).toBeDisabled();
+
+  await dialog.getByRole("button", { name: "Music" }).click();
+  await dialog
+    .getByTestId("post-music-audio-input")
+    .setInputFiles(sampleMp3File("reply-track.mp3"));
+  await expect.poll(() => audioUploadPurpose).toBe("post_media");
+  await expect(dialog.getByTestId("reply-composer-attachments")).toContainText("MP3");
 
   await dialog.getByRole("textbox", { name: "Reply" }).fill("A compact reply.");
   await dialog.getByRole("button", { name: "Send" }).click();
 
-  await expect.poll(() => replyPayload).toMatchObject({ body: "A compact reply." });
-  await expect(dialog.getByText("A compact reply.")).toBeVisible();
+  await expect.poll(() => replyPayload).toMatchObject({
+    body: "A compact reply.",
+    attachments: [
+      {
+        kind: "audio",
+        mime: "audio/mpeg",
+        url: "/uploads/media/2026/06/post_media-track.mp3",
+      },
+    ],
+  });
+  await expect(
+    dialog.getByTestId("thread-reply-content").filter({ hasText: "A compact reply." }),
+  ).toBeVisible();
 });
 
 test("thread renders nested replies and gates reply delete controls", async ({
@@ -2205,6 +2266,14 @@ function makePost(overrides: Record<string, unknown> = {}) {
       likedByFollowedCount: 0,
     },
     ...overrides,
+  };
+}
+
+function sampleMp3File(name: string) {
+  return {
+    name,
+    mimeType: "audio/mpeg",
+    buffer: Buffer.from("SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjYwLjMuMTAwAAAAAAAA", "base64"),
   };
 }
 

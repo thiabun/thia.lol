@@ -4354,8 +4354,10 @@ test("image crop modal is wired to current image upload surfaces", () => {
 
   expect(profilePage).toContain("imageUploadAccept");
   expect(roomEditor).toContain("imageUploadAccept");
-  expect(postComposer).toContain("mediaUploadAccept");
-  expect(postCard).toContain("mediaUploadAccept");
+  expect(postComposer).toContain("visualMediaUploadAccept");
+  expect(postCard).toContain("visualMediaUploadAccept");
+  expect(postComposer).toContain("PostMusicAttachmentPicker");
+  expect(postCard).toContain("PostMusicAttachmentPicker");
   expect(postComposer).toContain("uploadVideo(file, \"post_media\"");
   expect(postCard).toContain("uploadVideo(file, \"post_media\"");
   expect(postCard).toContain("<video");

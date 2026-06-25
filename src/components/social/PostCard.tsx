@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -16,6 +17,7 @@ import {
   ImagePlus,
   LoaderCircle,
   MessageCircle,
+  Music2,
   Repeat2,
   Send,
   Share2,
@@ -31,17 +33,20 @@ import { ModalSheet } from "../ui/ModalSheet";
 import { Panel } from "../ui/Panel";
 import { CompactStateNotice } from "../ui/RouteState";
 import { InlineUserProfileLink } from "./UserProfileLink";
-import { MentionTextarea } from "./MentionTextarea";
+import { MarkdownEditor } from "./MarkdownEditor";
 import { PostShareModal } from "./PostShareModal";
 import { ReportForm } from "./ReportForm";
 import { RichText } from "./RichText";
 import {
   deletePost,
   createPostReply,
+  getProfileIntegrationSuggestions,
   getPostReplies,
   likePost,
   reblogPost,
   previewImageUpload,
+  resolveProfileIntegrationMetadata,
+  startProfileIntegration,
   unreblogPost,
   unlikePost,
   uploadAudio,
@@ -52,19 +57,22 @@ import { cn } from "../../lib/classNames";
 import { prepareImageFileForCrop } from "../../lib/imageCrop";
 import {
   audioUploadFormatHelp,
+  imageUploadFormatHelp,
+  isAcceptedImageUploadFile,
   isAcceptedAudioUploadFile,
   isAcceptedVideoUploadFile,
-  isLikelyAudioUploadFile,
   isLikelyVideoUploadFile,
-  mediaUploadAccept,
+  visualMediaUploadAccept,
   videoUploadFormatHelp,
 } from "../../lib/mediaFormats";
 import {
   postMediaDraftFromAudio,
   postMediaDraftFromImage,
+  postMediaDraftFromIntegration,
   postMediaDraftFromVideo,
   postMediaInputFromDraft,
   type PostMediaDraft,
+  type PostVisualMediaDraft,
 } from "../../lib/postMedia";
 import {
   buttonHover,
@@ -79,6 +87,8 @@ import type { AuthStatus } from "../../lib/authTypes";
 import type { Post, PostAttachment } from "../../lib/types";
 import { useAuth } from "../../lib/useAuth";
 import { canDeletePost } from "../../lib/postPermissions";
+import type { PostMusicAttachmentProvider } from "./PostMusicAttachmentPicker";
+import { PostMusicAttachmentPicker } from "./PostMusicAttachmentPicker";
 
 type PostCardProps = {
   post: Post;
@@ -895,6 +905,7 @@ function ReplyComposer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [body, setBody] = useState("");
   const [media, setMedia] = useState<PostMediaDraft[]>([]);
+  const [musicPickerOpen, setMusicPickerOpen] = useState(false);
   const [pendingImageCrop, setPendingImageCrop] = useState<File | undefined>();
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -948,6 +959,7 @@ function ReplyComposer({
 
       setBody("");
       setMedia([]);
+      setMusicPickerOpen(false);
       setPendingImageCrop(undefined);
       onCreated(reply);
     } catch (error) {
@@ -975,13 +987,13 @@ function ReplyComposer({
       return;
     }
 
-    if (isLikelyAudioUploadFile(file)) {
-      await uploadAudioMedia(file);
+    if (isLikelyVideoUploadFile(file)) {
+      await uploadVideoMedia(file);
       return;
     }
 
-    if (isLikelyVideoUploadFile(file)) {
-      await uploadVideoMedia(file);
+    if (!isAcceptedImageUploadFile(file)) {
+      setMessage(`${imageUploadFormatHelp} ${videoUploadFormatHelp}`);
       return;
     }
 
@@ -1030,12 +1042,12 @@ function ReplyComposer({
     }
   }
 
-  async function uploadAudioMedia(file: File) {
+  async function createAudioAttachmentDraft(file: File): Promise<PostMediaDraft> {
     const validationError = validatePostAudioFile(file);
 
     if (validationError) {
       setMessage(validationError);
-      return;
+      throw new Error(validationError);
     }
 
     setUploadingMedia(true);
@@ -1046,15 +1058,52 @@ function ReplyComposer({
         (freshCsrfToken) => uploadAudio(file, "post_media", freshCsrfToken),
         { retryOnCsrf: true },
       );
-      appendMedia(postMediaDraftFromAudio(uploaded));
       setPendingImageCrop(undefined);
-      setMessage("Media attached.");
+      return postMediaDraftFromAudio(uploaded);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Audio could not be uploaded.");
+      throw error;
     } finally {
       setUploadingMedia(false);
     }
   }
+
+  const resolveMusicAttachmentDraft = useCallback(
+    async (input: {
+      provider?: PostMusicAttachmentProvider;
+      url: string;
+    }): Promise<PostMediaDraft> => {
+      const card = await runWithAuth(
+        (freshCsrfToken) => resolveProfileIntegrationMetadata(input, freshCsrfToken),
+        { retryOnCsrf: true },
+      );
+
+      return postMediaDraftFromIntegration(card);
+    },
+    [runWithAuth],
+  );
+
+  const connectMusicProvider = useCallback(
+    async (provider: PostMusicAttachmentProvider) => {
+      const redirectPath = `${window.location.pathname}${window.location.search}`;
+      const result = await runWithAuth(
+        (freshCsrfToken) =>
+          startProfileIntegration(provider, freshCsrfToken, redirectPath),
+        { retryOnCsrf: true },
+      );
+
+      if (result.authorizationUrl) {
+        window.location.assign(result.authorizationUrl);
+      }
+    },
+    [runWithAuth],
+  );
+
+  const loadMusicSuggestions = useCallback(
+    (provider: PostMusicAttachmentProvider) =>
+      getProfileIntegrationSuggestions(provider),
+    [],
+  );
 
   async function uploadCroppedImage(file: File) {
     if (!csrfToken) {
@@ -1089,9 +1138,17 @@ function ReplyComposer({
     );
   }
 
+  function handleMusicAttachmentAdd(draft: PostMediaDraft) {
+    appendMedia(draft);
+    setMessage("Music attached.");
+    setMusicPickerOpen(false);
+  }
+
   function moveMediaAttachment(index: number, offset: -1 | 1) {
     setMedia((current) => movePostMediaDraft(current, index, index + offset));
   }
+
+  const firstVisualMedia = media.find(isVisualPostMediaDraft);
 
   return (
     <>
@@ -1103,33 +1160,43 @@ function ReplyComposer({
         data-testid="reply-composer"
         onSubmit={(event) => void handleSubmit(event)}
       >
-      <label className="block" htmlFor={`reply-composer-${parentPostId}`}>
-        <span className="mb-2 flex items-center gap-2 text-sm font-medium text-text">
-          Reply
-        </span>
-        <MentionTextarea
-          ref={textareaRef}
-          id={`reply-composer-${parentPostId}`}
-          rows={3}
-          maxLength={2000}
-          className="min-h-20 w-full resize-none rounded-card border border-line bg-surface/70 px-4 py-3 text-sm leading-6 text-text shadow-inner-soft outline-none transition duration-fluid placeholder:text-muted/70 focus:border-line-strong focus:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-          placeholder="Write a reply"
-          value={body}
-          disabled={submitting}
-          onValueChange={setBody}
-        />
-      </label>
+      <MarkdownEditor
+        ref={textareaRef}
+        label="Reply"
+        maxLength={2000}
+        minHeightClassName="min-h-28"
+        placeholder="Write with Markdown, @mentions, and HTTPS links."
+        testIdPrefix="reply-composer-markdown"
+        textareaTestId={`reply-composer-${parentPostId}`}
+        value={body}
+        disabled={submitting}
+        onValueChange={setBody}
+      />
+
+      <PostMusicAttachmentPicker
+        attachmentCount={media.length}
+        disabled={submitting || uploadingMedia || !csrfToken}
+        limitMessage={`Replies can include up to ${maxPostComposerAttachments} attachments.`}
+        loadSuggestions={loadMusicSuggestions}
+        maxAttachments={maxPostComposerAttachments}
+        onAddAttachment={handleMusicAttachmentAdd}
+        onClose={() => setMusicPickerOpen(false)}
+        onConnectProvider={connectMusicProvider}
+        onResolveMusicUrl={resolveMusicAttachmentDraft}
+        onUploadAudio={createAudioAttachmentDraft}
+        open={musicPickerOpen}
+      />
 
       <PostMedia
         className="mt-3"
         maxHeightClass="max-h-56"
-        mediaMime={media[0]?.mime}
-        mediaPosterUrl={media[0]?.posterUrl}
-        mediaType={media[0]?.type === "image" || media[0]?.type === "video" ? media[0].type : null}
-        mediaUrl={media[0]?.type === "audio" ? undefined : media[0]?.url}
+        mediaMime={firstVisualMedia?.mime}
+        mediaPosterUrl={firstVisualMedia?.posterUrl}
+        mediaType={firstVisualMedia?.type ?? null}
+        mediaUrl={firstVisualMedia?.url}
         testId="reply-composer-media"
       />
-      {media.length > 1 || media[0]?.type === "audio" ? (
+      {media.length > 1 || (media[0] && !isVisualPostMediaDraft(media[0])) ? (
         <PostAttachmentDraftList
           attachments={media}
           disabled={submitting || uploadingMedia}
@@ -1170,15 +1237,29 @@ function ReplyComposer({
           ) : null}
           <label className="inline-flex min-h-9 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-surface px-3 text-sm font-medium text-text shadow-soft transition duration-fluid hover:border-line-strong focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus">
             <ImagePlus aria-hidden="true" size={15} />
-            {uploadingMedia ? "Uploading" : media.length > 0 ? "Add media" : "Upload media"}
+            {uploadingMedia
+              ? "Uploading"
+              : media.length > 0
+                ? "Add media"
+                : "Upload media"}
             <input
               className="sr-only"
               type="file"
-              accept={mediaUploadAccept}
+              accept={visualMediaUploadAccept}
               disabled={submitting || uploadingMedia || !canAddMedia}
               onChange={(event) => void handleMediaChange(event)}
             />
           </label>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={submitting || uploadingMedia || !canAddMedia || !csrfToken}
+            icon={<Music2 aria-hidden="true" size={15} />}
+            onClick={() => setMusicPickerOpen((current) => !current)}
+          >
+            Music
+          </Button>
           <Button
             type="button"
             variant="secondary"
@@ -1230,18 +1311,26 @@ function PostAttachmentDraftList({
     <div className="mt-3 grid gap-2" data-testid="reply-composer-attachments">
       {attachments.map((attachment, index) => (
         <div
-          key={`${attachment.url}-${index}`}
+          key={`${postMediaDraftKey(attachment)}-${index}`}
           className="flex min-w-0 items-center gap-3 rounded-card border border-line bg-canvas/45 p-2"
           data-testid="reply-composer-attachment"
         >
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-semibold uppercase tracking-[0.08em] text-muted">
-              {attachment.type === "audio" ? "MP3" : attachment.type}
+              {attachment.type === "audio"
+                ? "MP3"
+                : attachment.type === "integration"
+                  ? providerLabel(attachment.provider)
+                  : attachment.type}
             </p>
             {attachment.type === "audio" ? (
               <audio className="mt-1 w-full" controls preload="metadata">
                 <source src={attachment.url} type={attachment.mime} />
               </audio>
+            ) : attachment.type === "integration" ? (
+              <p className="truncate text-sm text-text">
+                {attachment.card.metadata.title ?? providerLabel(attachment.provider)}
+              </p>
             ) : (
               <p className="truncate text-sm text-text">Attachment {index + 1}</p>
             )}
@@ -1307,6 +1396,22 @@ function movePostMediaDraft(
   next.splice(toIndex, 0, item);
 
   return next;
+}
+
+function isVisualPostMediaDraft(
+  attachment: PostMediaDraft,
+): attachment is PostVisualMediaDraft {
+  return attachment.type === "image" || attachment.type === "video";
+}
+
+function postMediaDraftKey(attachment: PostMediaDraft): string {
+  return attachment.type === "integration"
+    ? attachment.resourceKey
+    : attachment.url;
+}
+
+function providerLabel(provider: "spotify" | "youtube"): string {
+  return provider === "spotify" ? "Spotify" : "YouTube";
 }
 
 type ThreadModalProps = {

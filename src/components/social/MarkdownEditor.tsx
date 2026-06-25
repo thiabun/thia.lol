@@ -9,7 +9,13 @@ import {
   Minus,
   Quote,
 } from "lucide-react";
-import { useMemo, useRef, type UIEvent } from "react";
+import {
+  forwardRef,
+  useMemo,
+  useRef,
+  type ForwardedRef,
+  type UIEvent,
+} from "react";
 import { cn } from "../../lib/classNames";
 import type { RichTextEntity } from "../../lib/types";
 import { MentionTextarea } from "./MentionTextarea";
@@ -21,8 +27,11 @@ type MarkdownEditorProps = {
   entities?: RichTextEntity[] | undefined;
   label?: string;
   maxLength?: number;
+  minHeightClassName?: string;
   onValueChange: (value: string) => void;
   placeholder?: string;
+  previewClassName?: string;
+  testIdPrefix?: string;
   textareaTestId?: string;
   value: string;
 };
@@ -42,24 +51,34 @@ const markdownActions = [
 
 type MarkdownAction = (typeof markdownActions)[number]["id"];
 
-export function MarkdownEditor({
-  className,
-  disabled = false,
-  entities,
-  label = "Text",
-  maxLength = 2000,
-  onValueChange,
-  placeholder = "Write with Markdown, @mentions, and HTTPS links.",
-  textareaTestId = "profile-markdown-body",
-  value,
-}: MarkdownEditorProps) {
+export const MarkdownEditor = forwardRef<HTMLTextAreaElement, MarkdownEditorProps>(
+  function MarkdownEditor({
+    className,
+    disabled = false,
+    entities,
+    label = "Text",
+    maxLength = 2000,
+    minHeightClassName = "min-h-44",
+    onValueChange,
+    placeholder = "Write with Markdown, @mentions, and HTTPS links.",
+    previewClassName,
+    testIdPrefix = "profile-markdown",
+    textareaTestId,
+    value,
+  }: MarkdownEditorProps, forwardedRef) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
   const remaining = maxLength - value.length;
+  const effectiveTextareaTestId = textareaTestId ?? `${testIdPrefix}-body`;
   const countText = useMemo(
     () => `${value.length}/${maxLength}`,
     [maxLength, value.length],
   );
+
+  function setTextareaNode(node: HTMLTextAreaElement | null) {
+    textareaRef.current = node;
+    assignForwardedRef(forwardedRef, node);
+  }
 
   function applyAction(action: MarkdownAction) {
     const textarea = textareaRef.current;
@@ -93,7 +112,7 @@ export function MarkdownEditor({
   return (
     <div
       className={cn("space-y-2", className)}
-      data-testid="profile-markdown-editor"
+      data-testid={`${testIdPrefix}-editor`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs font-semibold uppercase text-muted">{label}</span>
@@ -108,7 +127,7 @@ export function MarkdownEditor({
       </div>
       <div
         className="flex flex-wrap gap-1 rounded-card border border-line bg-canvas/38 p-1"
-        data-testid="profile-markdown-toolbar"
+        data-testid={`${testIdPrefix}-toolbar`}
       >
         {markdownActions.map((action) => {
           const Icon = action.icon;
@@ -121,7 +140,7 @@ export function MarkdownEditor({
               title={action.label}
               aria-label={action.label}
               disabled={disabled}
-              data-testid={`profile-markdown-button-${action.id}`}
+              data-testid={`${testIdPrefix}-button-${action.id}`}
               onClick={() => applyAction(action.id)}
             >
               <Icon aria-hidden="true" size={15} />
@@ -130,13 +149,19 @@ export function MarkdownEditor({
         })}
       </div>
       <div
-        className="relative min-h-44 overflow-hidden rounded-control border border-line bg-canvas/45 transition focus-within:border-line-strong focus-within:outline-2 focus-within:outline-focus"
-        data-testid="profile-markdown-surface"
+        className={cn(
+          "relative overflow-hidden rounded-control border border-line bg-canvas/45 transition focus-within:border-line-strong focus-within:outline-2 focus-within:outline-focus",
+          minHeightClassName,
+        )}
+        data-testid={`${testIdPrefix}-surface`}
       >
         <div
           ref={previewRef}
-          className="pointer-events-none absolute inset-0 overflow-hidden px-3 py-2"
-          data-testid="profile-markdown-preview"
+          className={cn(
+            "pointer-events-none absolute inset-0 overflow-hidden px-3 py-2",
+            previewClassName,
+          )}
+          data-testid={`${testIdPrefix}-preview`}
         >
           {value.trim() ? (
             <RichText
@@ -150,21 +175,35 @@ export function MarkdownEditor({
           )}
         </div>
         <MentionTextarea
-          ref={textareaRef}
+          ref={setTextareaNode}
           wrapperClassName="relative z-10"
-          className="min-h-44 w-full resize-y border-0 bg-transparent px-3 py-2 text-sm leading-6 text-transparent caret-accent-strong outline-none selection:bg-accent-soft/65"
+          className={cn(
+            "w-full resize-y border-0 bg-transparent px-3 py-2 text-sm leading-6 text-transparent caret-accent-strong outline-none selection:bg-accent-soft/65",
+            minHeightClassName,
+          )}
           maxLength={maxLength}
           placeholder=""
           value={value}
           aria-label={label}
           disabled={disabled}
-          data-testid={textareaTestId}
+          data-testid={effectiveTextareaTestId}
           onScroll={handleEditorScroll}
           onValueChange={onValueChange}
         />
       </div>
     </div>
   );
+});
+
+function assignForwardedRef<T>(ref: ForwardedRef<T>, value: T | null) {
+  if (typeof ref === "function") {
+    ref(value);
+    return;
+  }
+
+  if (ref) {
+    ref.current = value;
+  }
 }
 
 function markdownInsertion(

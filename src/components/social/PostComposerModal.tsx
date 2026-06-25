@@ -1,18 +1,28 @@
 import type { ChangeEvent, FormEvent } from "react";
 import { useCallback, useId, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronDown, ImagePlus, Radio, Send, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ImagePlus, Music2, Radio, Send, Trash2, WifiOff } from "lucide-react";
 import { Button } from "../ui/Button";
 import { ImageCropModal } from "../ui/ImageCropModal";
 import { ModalSheet, ModalSheetStatus } from "../ui/ModalSheet";
-import { MentionTextarea } from "./MentionTextarea";
-import { createPost, previewImageUpload, uploadAudio, uploadImage, uploadVideo } from "../../lib/api";
+import { MarkdownEditor } from "./MarkdownEditor";
+import {
+  createPost,
+  getProfileIntegrationSuggestions,
+  previewImageUpload,
+  resolveProfileIntegrationMetadata,
+  startProfileIntegration,
+  uploadAudio,
+  uploadImage,
+  uploadVideo,
+} from "../../lib/api";
 import type { CreatePostInput } from "../../lib/api";
 import { prepareImageFileForCrop } from "../../lib/imageCrop";
 import {
+  imageUploadFormatHelp,
+  isAcceptedImageUploadFile,
   isAcceptedVideoUploadFile,
-  isLikelyAudioUploadFile,
   isLikelyVideoUploadFile,
-  mediaUploadAccept,
+  visualMediaUploadAccept,
   audioUploadFormatHelp,
   videoUploadFormatHelp,
   isAcceptedAudioUploadFile,
@@ -20,11 +30,14 @@ import {
 import {
   postMediaDraftFromAudio,
   postMediaDraftFromImage,
+  postMediaDraftFromIntegration,
   postMediaDraftFromVideo,
   postMediaInputFromDraft,
   type PostMediaDraft,
 } from "../../lib/postMedia";
 import type { Post, Room } from "../../lib/types";
+import type { PostMusicAttachmentProvider } from "./PostMusicAttachmentPicker";
+import { PostMusicAttachmentPicker } from "./PostMusicAttachmentPicker";
 
 type PostComposerModalProps = {
   csrfToken: string | undefined;
@@ -48,6 +61,7 @@ export function PostComposerModal({
   const [body, setBody] = useState("");
   const [roomSlug, setRoomSlug] = useState(initialRoomSlug ?? "");
   const [media, setMedia] = useState<PostMediaDraft[]>([]);
+  const [musicPickerOpen, setMusicPickerOpen] = useState(false);
   const [pendingImageCrop, setPendingImageCrop] = useState<File | undefined>();
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -73,6 +87,7 @@ export function PostComposerModal({
     setBody("");
     setRoomSlug("");
     setMedia([]);
+    setMusicPickerOpen(false);
     setPendingImageCrop(undefined);
     setUploadingMedia(false);
     setMessage(undefined);
@@ -129,13 +144,13 @@ export function PostComposerModal({
       return;
     }
 
-    if (isLikelyAudioUploadFile(file)) {
-      await uploadAudioMedia(file);
+    if (isLikelyVideoUploadFile(file)) {
+      await uploadVideoMedia(file);
       return;
     }
 
-    if (isLikelyVideoUploadFile(file)) {
-      await uploadVideoMedia(file);
+    if (!isAcceptedImageUploadFile(file)) {
+      setMessage(`${imageUploadFormatHelp} ${videoUploadFormatHelp}`);
       return;
     }
 
@@ -181,17 +196,17 @@ export function PostComposerModal({
     }
   }
 
-  async function uploadAudioMedia(file: File) {
+  async function createAudioAttachmentDraft(file: File): Promise<PostMediaDraft> {
     if (!csrfToken) {
       setMessage("Sign in again before uploading.");
-      return;
+      throw new Error("Sign in again before uploading.");
     }
 
     const validationError = validatePostAudioFile(file);
 
     if (validationError) {
       setMessage(validationError);
-      return;
+      throw new Error(validationError);
     }
 
     setUploadingMedia(true);
@@ -199,12 +214,41 @@ export function PostComposerModal({
 
     try {
       const uploaded = await uploadAudio(file, "post_media", csrfToken);
-      appendMedia(postMediaDraftFromAudio(uploaded));
       setPendingImageCrop(undefined);
+      return postMediaDraftFromAudio(uploaded);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Audio could not be uploaded.");
+      throw error;
     } finally {
       setUploadingMedia(false);
+    }
+  }
+
+  async function resolveMusicAttachmentDraft(input: {
+    provider?: PostMusicAttachmentProvider;
+    url: string;
+  }): Promise<PostMediaDraft> {
+    if (!csrfToken) {
+      setMessage("Sign in again before attaching music.");
+      throw new Error("Sign in again before attaching music.");
+    }
+
+    const card = await resolveProfileIntegrationMetadata(input, csrfToken);
+
+    return postMediaDraftFromIntegration(card);
+  }
+
+  async function connectMusicProvider(provider: PostMusicAttachmentProvider) {
+    if (!csrfToken) {
+      setMessage("Sign in again before connecting music.");
+      throw new Error("Sign in again before connecting music.");
+    }
+
+    const redirectPath = `${window.location.pathname}${window.location.search}`;
+    const result = await startProfileIntegration(provider, csrfToken, redirectPath);
+
+    if (result.authorizationUrl) {
+      window.location.assign(result.authorizationUrl);
     }
   }
 
@@ -240,6 +284,12 @@ export function PostComposerModal({
     setMedia((current) =>
       current.length >= maxPostComposerAttachments ? current : [...current, draft],
     );
+  }
+
+  function handleMusicAttachmentAdd(draft: PostMediaDraft) {
+    appendMedia(draft);
+    setMessage(undefined);
+    setMusicPickerOpen(false);
   }
 
   return (
@@ -302,24 +352,37 @@ export function PostComposerModal({
 
             <label
               className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-full text-muted transition duration-fluid hover:bg-surface-strong hover:text-text focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus has-[:disabled]:pointer-events-none has-[:disabled]:opacity-50"
-              title={media.length > 0 ? "Add media" : "Upload media"}
+              title={media.length > 0 ? "Add image or video" : "Upload image or video"}
             >
               <ImagePlus aria-hidden="true" size={18} />
               <span className="sr-only">
                 {uploadingMedia
                   ? "Uploading media"
                   : media.length > 0
-                    ? "Add media"
-                    : "Upload media"}
+                    ? "Add image or video"
+                    : "Upload image or video"}
               </span>
               <input
                 className="sr-only"
                 type="file"
-                accept={mediaUploadAccept}
+                accept={visualMediaUploadAccept}
                 disabled={submitting || uploadingMedia || !canAddMedia}
                 onChange={handleMediaChange}
               />
             </label>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-9 rounded-full"
+              disabled={submitting || uploadingMedia || !canAddMedia || !csrfToken}
+              aria-label="Add music"
+              title="Add music"
+              onClick={() => setMusicPickerOpen((current) => !current)}
+            >
+              <Music2 aria-hidden="true" size={18} />
+            </Button>
 
             {media.length > 0 ? (
               <Button
@@ -355,27 +418,39 @@ export function PostComposerModal({
         }
       >
         <form id={formId} className="space-y-3" onSubmit={handleSubmit}>
-        <label htmlFor="post-composer-body" className="sr-only">
-          Post
-        </label>
-        <MentionTextarea
+        <MarkdownEditor
           ref={textareaRef}
-          id="post-composer-body"
-          name="body"
-          className="min-h-44 w-full resize-none bg-transparent text-base leading-7 text-text outline-none placeholder:text-muted/75 disabled:opacity-60 sm:min-h-52 sm:text-lg"
-          placeholder="Write a post"
+          label="Post"
+          className="pt-1"
+          minHeightClassName="min-h-44 sm:min-h-52"
+          placeholder="Write with Markdown, @mentions, and HTTPS links."
+          testIdPrefix="post-composer-markdown"
+          textareaTestId="post-composer-body"
           value={body}
           maxLength={2000}
           disabled={submitting}
-          required
           onValueChange={setBody}
+        />
+
+        <PostMusicAttachmentPicker
+          attachmentCount={media.length}
+          disabled={submitting || uploadingMedia || !csrfToken}
+          limitMessage={`Posts can include up to ${maxPostComposerAttachments} attachments.`}
+          loadSuggestions={getProfileIntegrationSuggestions}
+          maxAttachments={maxPostComposerAttachments}
+          onAddAttachment={handleMusicAttachmentAdd}
+          onClose={() => setMusicPickerOpen(false)}
+          onConnectProvider={connectMusicProvider}
+          onResolveMusicUrl={resolveMusicAttachmentDraft}
+          onUploadAudio={createAudioAttachmentDraft}
+          open={musicPickerOpen}
         />
 
         {media.length > 0 ? (
           <div className="grid gap-2 sm:grid-cols-2" data-testid="composer-attachments">
             {media.map((item, index) => (
               <PostComposerAttachmentPreview
-                key={`${item.url}-${index}`}
+                key={`${postMediaDraftKey(item)}-${index}`}
                 attachment={item}
                 index={index}
                 disabled={submitting || uploadingMedia}
@@ -429,7 +504,9 @@ function PostComposerAttachmentPreview({
 }: PostComposerAttachmentPreviewProps) {
   return (
     <div className="relative overflow-hidden rounded-card border border-line bg-canvas/55" data-testid="composer-attachment">
-      {attachment.type === "video" ? (
+      {attachment.type === "integration" ? (
+        <PostComposerIntegrationPreview attachment={attachment} />
+      ) : attachment.type === "video" ? (
         <video
           className="mx-auto max-h-64 max-w-full bg-black object-contain"
           controls
@@ -495,6 +572,34 @@ function PostComposerAttachmentPreview({
   );
 }
 
+function PostComposerIntegrationPreview({
+  attachment,
+}: {
+  attachment: Extract<PostMediaDraft, { type: "integration" }>;
+}) {
+  const title = attachment.card.metadata.title ?? providerLabel(attachment.provider);
+  const subtitle = attachment.card.metadata.subtitle ?? providerLabel(attachment.provider);
+  const imageUrl = attachment.card.metadata.imageUrl;
+
+  return (
+    <div className="grid min-h-28 grid-cols-[4rem_1fr] gap-3 p-3 pr-28">
+      <span className="grid size-16 overflow-hidden rounded-card border border-line bg-surface">
+        {imageUrl ? (
+          <img src={imageUrl} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <span className="grid place-items-center text-muted">
+            <WifiOff aria-hidden="true" size={18} />
+          </span>
+        )}
+      </span>
+      <span className="min-w-0 self-center">
+        <span className="block truncate text-sm font-semibold text-text">{title}</span>
+        <span className="mt-1 block truncate text-xs text-muted">{subtitle}</span>
+      </span>
+    </div>
+  );
+}
+
 function movePostMediaDraft(
   attachments: PostMediaDraft[],
   fromIndex: number,
@@ -514,6 +619,16 @@ function movePostMediaDraft(
   next.splice(toIndex, 0, item);
 
   return next;
+}
+
+function postMediaDraftKey(attachment: PostMediaDraft): string {
+  return attachment.type === "integration"
+    ? attachment.resourceKey
+    : attachment.url;
+}
+
+function providerLabel(provider: "spotify" | "youtube"): string {
+  return provider === "spotify" ? "Spotify" : "YouTube";
 }
 
 function validatePostVideoFile(file: File): string | undefined {

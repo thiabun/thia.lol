@@ -68,6 +68,13 @@ export const videoUploadAccept = [
 export const videoUploadFormatHelp =
   "Use MP4, WebM, MOV, M4V, 3GP, MKV, AVI, MPEG, or OGG.";
 
+export const visualMediaUploadAccept = [
+  ...acceptedImageUploadTypes,
+  ...acceptedImageUploadExtensions,
+  ...acceptedVideoUploadTypes,
+  ...acceptedVideoUploadExtensions,
+].join(",");
+
 export const acceptedAudioUploadTypes = [
   "audio/mpeg",
   "audio/mp3",
