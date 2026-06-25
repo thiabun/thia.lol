@@ -172,7 +172,11 @@ function renderMarkdownRichText(text: string, entities: RichTextEntity[]) {
       const contentStart = (lineStarts[lineIndex] ?? 0) + markerLength;
       const headingClass = cn(
         "font-semibold leading-tight text-text",
-        depth === 1 ? "text-lg" : depth === 2 ? "text-base" : "text-sm",
+        depth === 1
+          ? "text-[1.55em]"
+          : depth === 2
+            ? "text-[1.35em]"
+            : "text-[1.18em]",
       );
 
       blocks.push(
@@ -282,6 +286,21 @@ function renderMarkdownRichText(text: string, entities: RichTextEntity[]) {
 
       paragraphLines.push(paragraphLine);
       lineIndex += 1;
+    }
+
+    if (paragraphLines.length === 0) {
+      blocks.push(
+        <p key={`p:${startLine}`} className="min-w-0 break-words">
+          {renderMarkdownInline(
+            line,
+            entities,
+            lineStarts[startLine] ?? 0,
+            `p:${startLine}`,
+          )}
+        </p>,
+      );
+      lineIndex += 1;
+      continue;
     }
 
     blocks.push(

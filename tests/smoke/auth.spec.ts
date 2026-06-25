@@ -129,6 +129,28 @@ test.describe("authenticated smoke", () => {
         hasText: "preview",
       }),
     ).toBeVisible();
+    await body.fill("API-backed heading check\n## ");
+    await expect(dialog.getByTestId("post-composer-markdown-preview")).toContainText(
+      "##",
+    );
+    await body.fill("# Live heading\nPlain copy");
+    const liveHeadingSizes = await dialog
+      .getByTestId("post-composer-markdown-preview")
+      .evaluate((element) => {
+        const heading = element.querySelector<HTMLElement>("h3");
+        const paragraph = element.querySelector<HTMLElement>("p");
+
+        return {
+          heading: heading
+            ? Number.parseFloat(window.getComputedStyle(heading).fontSize)
+            : 0,
+          paragraph: paragraph
+            ? Number.parseFloat(window.getComputedStyle(paragraph).fontSize)
+            : 0,
+        };
+      });
+
+    expect(liveHeadingSizes.heading).toBeGreaterThan(liveHeadingSizes.paragraph);
     await expect(destination).toBeVisible();
     await expect(mediaUpload).toBeVisible();
     await expect(musicButton).toBeVisible();

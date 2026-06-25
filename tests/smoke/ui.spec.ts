@@ -476,6 +476,38 @@ test("post composer submits Markdown and Spotify/YouTube music attachments", asy
   await expect(dialog.getByTestId("post-composer-markdown-preview")).toContainText(
     "track",
   );
+  await body.fill("Oh so if i do\n## ");
+  await expect(dialog.getByTestId("post-composer-markdown-preview")).toContainText(
+    "##",
+  );
+  await body.fill("# Alpha\n## Beta\n### Gamma\nPlain paragraph");
+  await expect(
+    dialog.getByTestId("post-composer-markdown-preview").getByRole("heading", {
+      name: "Alpha",
+    }),
+  ).toBeVisible();
+  const headingSizes = await dialog
+    .getByTestId("post-composer-markdown-preview")
+    .evaluate((element) => {
+      const byText = (selector: string, text: string) =>
+        Array.from(element.querySelectorAll<HTMLElement>(selector)).find((node) =>
+          node.textContent?.includes(text),
+        );
+      const sizeOf = (node: HTMLElement | undefined) =>
+        node ? Number.parseFloat(window.getComputedStyle(node).fontSize) : 0;
+
+      return {
+        h1: sizeOf(byText("h3", "Alpha")),
+        h2: sizeOf(byText("h4", "Beta")),
+        h3: sizeOf(byText("h4", "Gamma")),
+        paragraph: sizeOf(byText("p", "Plain paragraph")),
+      };
+    });
+
+  expect(headingSizes.h1).toBeGreaterThan(headingSizes.h2);
+  expect(headingSizes.h2).toBeGreaterThan(headingSizes.h3);
+  expect(headingSizes.h3).toBeGreaterThan(headingSizes.paragraph);
+  await body.fill("**Favorite** track");
 
   await dialog.getByRole("button", { name: "Add music" }).click();
   await expect(dialog.getByTestId("post-music-picker")).toBeVisible();
