@@ -23,14 +23,14 @@ GitHub Issue with acceptance criteria.
 | `docs/product-ui-ux-guidelines.md` | Product feel, UI density, copy, component expectations, and current implementation guardrails. |
 | `docs/brand-guidelines.md` | Logo, favicon, app icon, Open Graph image, and brand usage rules. |
 | `docs/profile-customization-safety-rules.md` | Profile modules, media, links, integrations, customization safety, and the current profile-editing surface. |
-| `docs/backend-rewrite-roadmap.md` | TypeScript API and PostgreSQL strangler-migration direction. |
+| `docs/backend-rewrite-roadmap.md` | Current Node API ownership and future PostgreSQL migration notes. |
 
 ## Operations
 
 | Doc | Use For |
 | --- | --- |
 | `docs/deployment-automation.md` | GitHub Actions SSH deploy workflow, deploy paths, server-only files, and post-deploy checks. |
-| `docs/vps-ops.md` | Production VPS paths, SSH, Caddy, PHP-FPM, MariaDB backups, restore, and incidents. |
+| `docs/vps-ops.md` | Production VPS paths, SSH, Caddy, Node API, MariaDB backups, restore, and incidents. |
 | `docs/thia-migration-runner-guide.md` | Writing, deploying, checking, and running SQL migrations. |
 | `docs/media-uploads.md` | Upload limits, storage paths, deploy preservation, and media troubleshooting. |
 | `docs/admin-setup.md` | One-time seeded admin activation and setup-token handling. |
@@ -38,17 +38,17 @@ GitHub Issue with acceptance criteria.
 
 ## Current Cross-Cutting Rules
 
-- Production stays VPS-first: Caddy, PHP-FPM, MariaDB, static Vite output, and
+- Production stays VPS-first: Caddy, Node API, MariaDB, static Vite output, and
   SSH deploys.
 - `dist/` contents deploy directly to `/srv/thia.lol/www/`.
-- PHP API files deploy to `/srv/thia.lol/www/api/`.
-- SQL migrations deploy to `/srv/thia.lol/www/api/migrations/`.
-- Real config stays at `/srv/thia.lol/config/config.php`, outside the web root.
+- Node API files deploy to `/srv/thia.lol/node-api/`.
+- SQL migrations deploy to `/srv/thia.lol/migrations/`.
+- Real Node config stays at `/srv/thia.lol/config/node-api.env`, outside the web root.
 - Uploads stay at `/srv/thia.lol/www/uploads/` and must survive deploys.
 - No third-party analytics, ads, trackers, payment features, optional cookies,
   public registration expansion, or broad backend migration without an explicit
   issue and product/security review.
-- API-backed smoke tests require a working API path. Missing local PHP is a
+- API-backed smoke tests require a working API path. Missing local Node API is a
   blocked smoke test, not a pass.
 - Profile module data remains compatibility data unless a future issue defines
   a replacement editor and migration path.

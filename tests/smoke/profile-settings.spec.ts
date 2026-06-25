@@ -1,6 +1,4 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 
 test.beforeEach(async ({ context }) => {
   await context.route("**/api/**", async (route) => {
@@ -201,27 +199,6 @@ test("profile banners stay behind identity in public header", async ({ page }) =
     page.getByRole("heading", { name: "Thia" }),
     ["profile-info-content-cluster", "profile-info-identity-row"],
   );
-});
-
-test("profile API keeps legacy link saves guarded by source inspection", async () => {
-  const profileApi = readFileSync("api/profile.php", "utf8");
-
-  expect(profileApi).toContain("function profile_connection_from_legacy_map");
-  expect(profileApi).toContain("!array_key_exists('platform', $value)");
-  expect(profileApi).toContain("profile_website_connection($trimmed)");
-  expect(profileApi).toContain("Website URL must be a valid https URL.");
-  expect(profileApi).toContain("profile_update_failed_on_missing_customization_column");
-  expect(profileApi).toContain("Profile customization migration has not been applied.");
-  expect(profileApi).toContain("profile_update_failed_on_invalid_json");
-  expect(profileApi).toContain("Profile data could not be saved. Check profile links and try again.");
-});
-
-test("profile API accepts null optional fields by backend regression fixture", async () => {
-  const output = execFileSync("php", ["tests/backend/profile-save-regression.php"], {
-    encoding: "utf8",
-  });
-
-  expect(output).toContain("profile save regression ok");
 });
 
 test("profile followers and following use compact panels", async ({ page }) => {

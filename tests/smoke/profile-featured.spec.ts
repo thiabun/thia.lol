@@ -1,5 +1,4 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 test.beforeEach(async ({ context }) => {
@@ -207,36 +206,17 @@ test("owner empty featured state stays compact on mobile", async ({ page }) => {
   expect(hasHorizontalOverflow).toBe(false);
 });
 
-test("featured content API guardrails are present by inspection", async () => {
-  const profileApi = readFileSync("api/profile.php", "utf8");
-  const readApi = readFileSync("api/read.php", "utf8");
+test("featured content storage guardrails are present by inspection", async () => {
   const schema = readFileSync("backend/database/schema.sql", "utf8");
   const migration = readFileSync(
     "backend/database/migrations/20260613_0001_add_profile_featured_content.sql",
     "utf8",
   );
 
-  expect(profileApi).toContain("profile_featured_post_id_for_user");
-  expect(profileApi).toContain("You can only feature your own posts.");
-  expect(profileApi).toContain("Featured post is not available.");
-  expect(profileApi).toContain("You can only feature rooms you own or belong to.");
-  expect(profileApi).toContain("public_post_visible_sql('posts', 'rooms')");
-  expect(profileApi).toContain("post_ancestor_visibility_sql('posts')");
-  expect(readApi).toContain("fetch_profile_featured_post");
-  expect(readApi).toContain("fetch_profile_featured_room");
-  expect(readApi).toContain("viewer_feed_relationship_filter_sql");
   expect(schema).toContain("featured_post_id BIGINT UNSIGNED NULL");
   expect(schema).toContain("featured_room_id BIGINT UNSIGNED NULL");
   expect(migration).toContain("profiles_featured_post_idx");
   expect(migration).toContain("profiles_featured_room_idx");
-});
-
-test("profile featured validation passes backend regression fixture", async () => {
-  const output = execFileSync("php", ["tests/backend/profile-featured-regression.php"], {
-    encoding: "utf8",
-  });
-
-  expect(output).toContain("profile featured regression ok");
 });
 
 async function mockFeaturedProfile(

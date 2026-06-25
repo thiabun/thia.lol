@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const baseUrl = (process.env.BASE_URL ?? "https://thia.lol").replace(/\/+$/u, "");
-const apiPrefix = normalizeApiPrefix(process.env.API_PREFIX ?? "/api-next");
+const apiPrefix = normalizeApiPrefix(process.env.API_PREFIX ?? "/api");
 
 if (process.env.THIA_MUTATION_SMOKE !== "1") {
   console.error("Set THIA_MUTATION_SMOKE=1 to run controlled write smoke checks.");
@@ -603,11 +603,11 @@ function normalizeApiPrefix(value) {
   const trimmed = value.trim().replace(/\/+$/u, "");
 
   if (trimmed === "") {
-    return "/api-next";
+    return "/api";
   }
 
   if (!trimmed.startsWith("/") || trimmed.includes("?") || trimmed.includes("#")) {
-    throw new Error("API_PREFIX must be an absolute path prefix such as /api-next or /api.");
+    throw new Error("API_PREFIX must be an absolute path prefix such as /api.");
   }
 
   return trimmed;

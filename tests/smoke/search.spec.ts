@@ -1,6 +1,4 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 
 test("/search renders an empty query state", async ({ page }) => {
   await mockShellRequests(page);
@@ -173,22 +171,6 @@ test("navigation exposes Search without overcrowding the mobile dock", async ({
   for (const label of ["Home", "Discover", "Rooms", "Chat"]) {
     await expect(mobileNav.getByRole("link", { name: label })).toBeVisible();
   }
-});
-
-test("search endpoint uses prepared queries and public safety filters", async () => {
-  const searchSource = await readFile(
-    path.join(process.cwd(), "api/search.php"),
-    "utf8",
-  );
-
-  expect(searchSource).toContain("db_query(");
-  expect(searchSource).toContain(":handle_match");
-  expect(searchSource).toContain(":summary_match");
-  expect(searchSource).toContain("user_publicly_available_sql('u')");
-  expect(searchSource).toContain("viewer_feed_relationship_filter_sql");
-  expect(searchSource).toContain("rooms.visibility IN ('public', 'invite', 'view_only')");
-  expect(searchSource).toContain("room_not_deleted_sql('rooms')");
-  expect(searchSource).not.toContain("messages");
 });
 
 async function mockShellRequests(page: Page) {

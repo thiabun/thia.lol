@@ -1,6 +1,5 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { Buffer } from "node:buffer";
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 const PROFILE_CANVAS_VERSION = 2;
@@ -5728,13 +5727,12 @@ test("mobile profile modules stay stable with compact profile editing", async ({
   expect(hasHorizontalOverflow).toBe(false);
 });
 
-test("profile module API guardrails are present by inspection", async () => {
-  const router = readFileSync("api/index.php", "utf8");
-  const integrationsApi = readFileSync("api/integrations.php", "utf8");
-  const profileApi = readFileSync("api/profile.php", "utf8");
-  const modulesApi = readFileSync("api/profile_modules.php", "utf8");
-  const uploadsApi = readFileSync("api/uploads.php", "utf8");
-  const configExample = readFileSync("backend/config/config.example.php", "utf8");
+test("profile module registry and Node storage guardrails are present by inspection", async () => {
+  const app = readFileSync("server/src/app.ts", "utf8");
+  const editor = readFileSync("server/src/editor.ts", "utf8");
+  const integrations = readFileSync("server/src/integrations.ts", "utf8");
+  const uploads = readFileSync("server/src/uploads.ts", "utf8");
+  const serverEnv = readFileSync("server/env.example", "utf8");
   const moduleRegistry = readFileSync("src/lib/profileModuleRegistry.ts", "utf8");
   const profilePage = readFileSync("src/pages/ProfilePage.tsx", "utf8");
   const profileGrid = readFileSync("src/components/social/ProfileGrid.tsx", "utf8");
@@ -5758,26 +5756,17 @@ test("profile module API guardrails are present by inspection", async () => {
     "utf8",
   );
 
-  expect(router).toContain("profile_modules.php");
-  expect(router).toContain("integrations.php");
-  expect(router).toContain("profile_modules_dispatch($segments, $method)");
-  expect(router).toContain("integrations_dispatch($segments, $method)");
-  expect(router).toContain("'canvas'");
-  expect(router).toContain("'canvas-draft'");
-  expect(modulesApi).toContain("const PROFILE_INFO_MODULE_TYPE = 'profile_info'");
-  expect(modulesApi).toContain("const PROFILE_ACTIVITY_MODULE_TYPE = 'activity'");
-  expect(modulesApi).toContain("const PROFILE_FEATURED_POST_MODULE_TYPE = 'featured_post'");
-  expect(modulesApi).toContain("const PROFILE_FEATURED_ROOM_MODULE_TYPE = 'featured_room'");
-  expect(modulesApi).toContain("const PROFILE_GALLERY_MEDIA_MODULE_TYPE = 'gallery_media'");
-  expect(modulesApi).toContain("const PROFILE_CREATOR_LIVE_MODULE_TYPE = 'creator_live'");
-  expect(modulesApi).toContain("const PROFILE_MUSIC_MODULE_TYPE = 'music'");
+  expect(app).toContain('app.post("/me/profile/modules"');
+  expect(app).toContain('app.patch("/me/profile/modules/:id"');
+  expect(app).toContain('app.post("/me/profile/modules/:id/restore"');
+  expect(app).toContain('app.patch("/me/profile/canvas"');
+  expect(app).toContain('app.post("/me/profile/canvas-draft/commit"');
+  expect(app).toContain('app.post("/me/integrations/:provider/start"');
+  expect(app).toContain('app.get("/integrations/:provider/callback"');
+  expect(moduleRegistry).toContain('profile_info: {\n    allowedSizes: ["3x2", "3x3", "4x3", "6x3", "8x3", "8x4"]');
   expect(moduleRegistry).toContain(
     'const connectionSizes = uniqueSizes(\n  ["2x2", "2x3", "3x2", "4x2", "3x3", "3x4"],\n  wideSlimSizes',
   );
-  expect(modulesApi).toContain(
-    "$connectionSizes = profile_canvas_unique_sizes(['2x2', '2x3', '3x2', '4x2', '3x3', '3x4'], $wideSlimSizes)",
-  );
-  expect(moduleRegistry).toContain('profile_info: {\n    allowedSizes: ["3x2", "3x3", "4x3", "6x3", "8x3", "8x4"]');
   expect(profileGrid).toContain("fitRowsToContent\n      ? new MutationObserver");
   expect(profileGrid).toContain("mutationObserver?.observe");
   expect(profilePage).toContain("requestAnimationFrame");
@@ -5785,94 +5774,34 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(profilePage).toContain("profile-canvas-mobile-actions");
   expect(profilePage).toContain('data-profile-editor-render-mode="light"');
   expect(profilePage).toContain('data-profile-editor-input-mode={editorGrid.mobile ? "touch" : "pointer"}');
-  expect(modulesApi).toContain(
-    "PROFILE_INFO_MODULE_TYPE => ['3x2', '3x3', '4x3', '6x3', '8x3', '8x4']",
-  );
-  expect(modulesApi).toContain("const PROFILE_FEATURED_LEGACY_MODULE_TYPE = 'featured'");
-  expect(modulesApi).toContain("PROFILE_BUILT_IN_MODULE_TYPES");
-  expect(modulesApi).toContain("PROFILE_PROTECTED_MODULE_TYPES = [PROFILE_INFO_MODULE_TYPE]");
-  expect(modulesApi).toContain("PROFILE_SINGLETON_MODULE_TYPES");
-  expect(modulesApi).toContain("PROFILE_RETIRED_MODULE_TYPES");
-  expect(modulesApi).toContain("ensure_profile_canvas_builtin_modules");
-  expect(modulesApi).toContain("ensure_profile_info_module");
-  expect(modulesApi).toContain("ensure_profile_feed_module($userId);");
-  expect(modulesApi).toContain("function profile_activity_module_payload");
-  expect(modulesApi).toContain("PROFILE_ACTIVITY_MODULE_TYPE => 'Feed'");
-  expect(modulesApi).toContain("PROFILE_ACTIVITY_MODULE_TYPE => '4x6'");
-  expect(modulesApi).toContain(
-    "profile_module_preference_exists_including_deleted($userId, PROFILE_ACTIVITY_MODULE_TYPE)",
-  );
-  expect(modulesApi).toContain("profile_upgrade_default_feed_module($userId);");
+  expect(editor).toContain('const singletonModuleTypes = new Set(["profile_info", "featured_post", "featured_room", "activity"])');
+  expect(editor).toContain("async restoreModule(session: RequestSession, moduleId: number)");
+  expect(editor).toContain("Profile module storage is not ready. Run pending migrations.");
+  expect(editor).toContain("Module type cannot be changed.");
+  expect(editor).toContain("profile_canvas_glass_opacity");
+  expect(editor).toContain("profile_background_blur");
+  expect(editor).toContain('this.columnExists("profiles", "featured_post_id")');
+  expect(editor).toContain('updates.push("featured_room_id = ?")');
   expect(moduleRegistry).toContain("label: \"Feed\"");
   expect(moduleRegistry).toContain("fallbackTitle: \"Feed\"");
   expect(moduleRegistry).toContain("defaultSize: \"4x6\"");
-  expect(modulesApi).toContain("includeDeleted");
-  expect(modulesApi).toContain("profile_modules_restore");
-  expect(modulesApi).toContain("profile_canvas_reflow_existing_modules");
-  expect(modulesApi).toContain("restoreFeaturedPostId");
-  expect(modulesApi).toContain("restoreFeaturedRoomId");
-  expect(modulesApi).toContain("visibility = 'hidden'");
-  expect(modulesApi).toContain("profile_module_gallery_media_config");
-  expect(modulesApi).toContain("profile_module_music_config");
-  expect(modulesApi).toContain("profile_module_uploaded_audio");
-  expect(modulesApi).toContain("profile_module_uploaded_video_config");
   expect(moduleRegistry).toContain('"music",\n    "spotify_song"');
   expect(moduleRegistry).toContain('description: "Upload and play a custom MP3 track."');
   expect(profilePage).toContain('music: "MP3"');
   expect(profilePage).toContain('music: "MP3 music upload"');
   expect(profilePage).toContain('platform: "custom", sourceMode: "upload"');
-  expect(modulesApi).toContain("profile_integration_card_for_module");
-  expect(modulesApi).toContain("profile_module_validate_url_platform");
-  expect(modulesApi).toContain("require_csrf_token($session)");
-  expect(modulesApi).toContain("Profile module storage is not ready. Run pending migrations.");
-  expect(modulesApi).toContain("profile_module_reject_unknown_keys");
-  expect(modulesApi).toContain("profile_module_text_is_unsafe");
-  expect(modulesApi).toContain("profile_canvas_update");
-  expect(modulesApi).toContain("profile_canvas_draft_commit");
-  expect(modulesApi).toContain("profile_canvas_glass_opacity");
-  expect(modulesApi).toContain("max(0, min(92");
-  expect(modulesApi).toContain("PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE");
-  expect(modulesApi).toContain("profile_canvas_placeholder_config");
-  expect(modulesApi).toContain("module['type'] ?? null) === PROFILE_CANVAS_PLACEHOLDER_MODULE_TYPE");
-  expect(modulesApi).toContain("profile_canvas_background_blur");
-  expect(modulesApi).toContain("anchorModuleId");
-  expect(modulesApi).toContain("profile_canvas_push_collisions");
-  expect(modulesApi).toContain("Canvas layout does not fit the %d by %d grid.");
-  expect(modulesApi).toContain("profile_canvas_span_allowed");
-  expect(modulesApi).toContain("Module type cannot be changed.");
-  expect(modulesApi).toContain("visibility = :visibility");
-  expect(modulesApi).toContain("status = 'deleted'");
-  expect(modulesApi).toContain("featured_post_id = NULL");
-  expect(modulesApi).toContain("featured_room_id = NULL");
-  expect(modulesApi).toContain("profile_module_type_is_supported");
-  expect(profileApi).toContain("const PROFILE_LAYOUT_PRESETS = ['balanced', 'compact', 'showcase']");
-  expect(profileApi).toContain("validate_profile_layout_preset");
-  expect(profileApi).toContain("validate_profile_video_url");
-  expect(profileApi).toContain("profile_background_video_url");
-  expect(uploadsApi).toContain("uploads_video_create");
-  expect(uploadsApi).toContain("uploads_audio_create");
-  expect(uploadsApi).toContain("VIDEO_UPLOAD_MAX_BYTES");
-  expect(uploadsApi).toContain("AUDIO_UPLOAD_MAX_BYTES");
-  expect(uploadsApi).toContain("profile_background");
-  expect(uploadsApi).toContain("profile_module_video");
-  expect(uploadsApi).toContain("profile_music");
-  expect(integrationsApi).toContain("profile_integration_encrypt");
-  expect(integrationsApi).toContain("profile_integrations_oauth_start");
-  expect(integrationsApi).toContain("profile_integrations_oauth_callback");
-  expect(integrationsApi).toContain("profile_integrations_provider_suggestions");
-  expect(integrationsApi).toContain("profile_integration_redirect_to_app");
-  expect(integrationsApi).toContain("profile_integrations_metadata_resolve");
-  expect(integrationsApi).toContain("profile_integration_card_for_module");
-  expect(integrationsApi).toContain("sodium_crypto_secretbox");
-  expect(integrationsApi).toContain("https://www.youtube-nocookie.com/embed/");
-  expect(integrationsApi).toContain("embed_parent");
-  expect(integrationsApi).toContain("parent=' . rawurlencode($parent)");
-  expect(configExample).toContain("integration_encryption_key");
-  expect(configExample).toContain("'spotify'");
-  expect(configExample).toContain("'apple_music'");
-  expect(configExample).toContain("'youtube'");
-  expect(configExample).toContain("'twitch'");
-  expect(configExample).toContain("'github'");
+  expect(uploads).toContain('"profile_module_video"');
+  expect(uploads).toContain('"profile_music"');
+  expect(integrations).toContain('integrationProviders = ["spotify", "apple_music", "youtube", "twitch", "github"]');
+  expect(integrations).toContain("nacl.secretbox");
+  expect(integrations).toContain("https://www.youtube-nocookie.com/embed/");
+  expect(serverEnv).toContain("THIA_SECURITY_INTEGRATION_ENCRYPTION_KEY=");
+  expect(serverEnv).toContain("THIA_INTEGRATION_TWITCH_EMBED_PARENT=");
+  expect(serverEnv).toContain("THIA_INTEGRATION_SPOTIFY_CLIENT_ID=");
+  expect(serverEnv).toContain("THIA_INTEGRATION_APPLE_MUSIC_DEVELOPER_TOKEN=");
+  expect(serverEnv).toContain("THIA_INTEGRATION_YOUTUBE_CLIENT_ID=");
+  expect(serverEnv).toContain("THIA_INTEGRATION_TWITCH_CLIENT_ID=");
+  expect(serverEnv).toContain("THIA_INTEGRATION_GITHUB_CLIENT_ID=");
   expect(moduleRegistry).toContain(
     "export const PROFILE_ACTIVITY_MAX_ROW_SPAN =\n  PROFILE_CANVAS_ACTIVITY_MAX_MODULE_ROWS",
   );
@@ -5907,22 +5836,6 @@ test("profile module API guardrails are present by inspection", async () => {
   expect(integrationsMigration).toContain("profile_integration_oauth_states");
   expect(integrationsMigration).toContain("profile_integration_metadata_cache");
   expect(integrationsMigration).toContain("profile_background_video_url");
-});
-
-test("profile module validation passes backend regression fixture", async () => {
-  const output = execFileSync("php", ["tests/backend/profile-modules-regression.php"], {
-    encoding: "utf8",
-  });
-
-  expect(output).toContain("profile modules regression ok");
-});
-
-test("profile integration validation passes backend regression fixture", async () => {
-  const output = execFileSync("php", ["tests/backend/profile-integrations-regression.php"], {
-    encoding: "utf8",
-  });
-
-  expect(output).toContain("profile integrations regression ok");
 });
 
 async function mockProfileModules(

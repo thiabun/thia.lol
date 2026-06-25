@@ -14,7 +14,6 @@
 - [ ] `npm run build`
 - [ ] `npm run build:api`, if server TypeScript changed
 - [ ] `npm run test:api`, if server TypeScript changed
-- [ ] PHP syntax checks, if API files changed
 - [ ] Smoke/e2e tests, or blocked reason, if API-backed behavior changed
 
 ## Risk notes

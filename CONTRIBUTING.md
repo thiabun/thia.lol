@@ -37,9 +37,7 @@ docs/README.md
 Important constraints:
 
 - The frontend is Vite + React + TypeScript + Tailwind CSS.
-- The production API is PHP + MySQL/MariaDB on a PebbleHost VPS.
-- A TypeScript API exists as a gradual route-by-route migration path, not a
-  replacement mandate.
+- The production API is Node + TypeScript + MariaDB on a PebbleHost VPS.
 - Do not migrate the project to Next.js, Vercel-only hosting, or a new server
   architecture.
 - Do not commit secrets, cookies, database credentials, migration tokens, or
@@ -62,6 +60,12 @@ Start the frontend:
 npm run dev
 ```
 
+Start the Node API:
+
+```bash
+npm run dev:api
+```
+
 Run basic verification:
 
 ```bash
@@ -78,12 +82,6 @@ npm run build:api
 npm run test:api
 ```
 
-If PHP is available, check API syntax:
-
-```bash
-find api -name '*.php' -print0 | xargs -0 -n1 php -l
-```
-
 Playwright tests:
 
 ```bash
@@ -93,7 +91,7 @@ npm run test:smoke
 ```
 
 API-backed smoke tests need a working API target. If local `/api` requests fail
-because no PHP API is running, report the smoke test as blocked instead of
+because no Node API is running, report the smoke test as blocked instead of
 claiming it passed.
 
 ## Choosing An Issue
@@ -139,7 +137,6 @@ Use this checklist:
 - [ ] `npm run build`
 - [ ] `npm run build:api`, if server TypeScript changed
 - [ ] `npm run test:api`, if server TypeScript changed
-- [ ] PHP syntax checks, if API files changed
 - [ ] Smoke/e2e tests, if relevant
 
 ## Notes

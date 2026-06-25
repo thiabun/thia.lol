@@ -392,7 +392,7 @@ function desktopNotificationState(
   ) {
     return {
       label: "server unavailable",
-      description: "Desktop notifications need PHP cURL and OpenSSL enabled on the server.",
+      description: "Desktop notifications need server-side HTTP and crypto support enabled.",
       icon: ShieldAlert,
       tone: "error",
     };

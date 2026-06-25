@@ -1,7 +1,7 @@
 # thia.lol
 
 `thia.lol` is a small public-testing social platform built around profiles,
-posts, rooms, follows, moots, reblogs, notifications, badges, image uploads,
+posts, rooms, follows, moots, reblogs, notifications, badges, media uploads,
 and moots-only chat.
 
 The goal is simple: make a fun, personal, slightly chaotic social space with
@@ -42,13 +42,13 @@ Current foundation includes:
 - accounts and sessions
 - public profiles and profile editing
 - profile media customization
-- image uploads with safe-original storage
+- image, video, and audio uploads for supported profile/post surfaces
 - posts with media
 - replies/thread foundations
 - likes and reblogs
 - follows, followers, following, and moots
 - rooms with creation, editing, joining, owners, and moderators
-- notifications
+- notifications and Web Push foundations
 - moots-only chat foundation
 - badges and featured badges
 - reports and moderation foundation
@@ -85,10 +85,9 @@ docs/vps-ops.md
 
 ## How It Works
 
-The app is static-first on the frontend and currently uses a PHP/MariaDB API on
-a PebbleHost VPS. The next backend direction is a gradual TypeScript API and
-PostgreSQL rewrite, but production stays on the current PHP API until routes are
-moved safely one at a time.
+The app is static-first on the frontend and uses a Node/MariaDB API on a
+PebbleHost VPS. Product API traffic is served at same-origin `/api/*`; the old
+`/api-next/*` preview path is retired.
 
 Frontend:
 
@@ -101,19 +100,18 @@ Frontend:
 
 Backend/API:
 
-- PHP
-- MySQL/MariaDB
-- PDO prepared statements
+- Node.js
+- Fastify
+- TypeScript
+- MariaDB
 - cookie sessions
 - CSRF-protected mutations
-- SQL migrations through a protected migration runner
+- SQL migrations through a protected Node migration runner
 
 Uploads:
 
-- authenticated image uploads only
-- JPEG, PNG, WebP, and GIF accepted
-- 10 MB image max
-- stored as safe originals
+- authenticated uploads only
+- image, profile video, and profile audio endpoints
 - stored under `/srv/thia.lol/www/uploads/` on the VPS
 
 ## Contributing And Testing
@@ -132,6 +130,7 @@ Basic local commands:
 ```bash
 npm install
 npm run dev
+npm run dev:api
 ```
 
 Verification commands:
@@ -150,12 +149,6 @@ npm run build:api
 npm run test:api
 ```
 
-PHP syntax checks, when PHP is available:
-
-```bash
-find api -name '*.php' -print0 | xargs -0 -n1 php -l
-```
-
 Playwright smoke tests:
 
 ```bash
@@ -164,8 +157,9 @@ npm run test:e2e
 npm run test:smoke
 ```
 
-API-backed smoke tests require a real API target. If local `/api` proxy requests
-fail because no PHP API is running, that smoke test is blocked, not passed.
+API-backed smoke tests require a real API target. Local Vite proxies `/api/*`
+to the Node API on `127.0.0.1:3100` and strips the `/api` prefix. If the Node
+API is not running or configured, API-backed smoke is blocked, not passed.
 `npm run test:smoke` uses the committed disposable smoke config in
 `tests/test-config.ts` by default. You can override it with environment
 variables for another deployed target.
@@ -187,11 +181,11 @@ or production config.
 Production is VPS-oriented:
 
 - `dist/` contents go directly into `/srv/thia.lol/www/`
-- `api/` files go into `/srv/thia.lol/www/api/`
-- migrations go into `/srv/thia.lol/www/api/migrations/`
-- `/srv/thia.lol/config/config.php` is server-only and must not be committed
+- Node API build output goes into `/srv/thia.lol/node-api/`
+- migrations go into `/srv/thia.lol/migrations/`
+- `/srv/thia.lol/config/node-api.env` is server-only and must not be committed
 - `/srv/thia.lol/www/uploads/` must be preserved
-- Caddy, PHP-FPM, MariaDB, SSH deploys, and daily DB backups are part of production
+- Caddy, Node, MariaDB, SSH deploys, and daily DB backups are part of production
 
 Detailed deployment docs:
 
@@ -225,7 +219,8 @@ legal review.
 
 ## Copyright
 
-© 2026 Thia Markussen. Alle rettigheter forbeholdt / All rights reserved.
+Copyright 2026 Thia Markussen. Alle rettigheter forbeholdt / All rights
+reserved.
 
 Beskyttet etter norsk opphavsrett og internasjonal opphavsrett / Protected under
 Norwegian and international copyright law.

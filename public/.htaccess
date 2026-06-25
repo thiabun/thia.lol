@@ -48,17 +48,9 @@ AddType video/webm .webm
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
-  # Keep future PHP/MySQL API routes outside the React SPA rewrite.
+  # Keep API routes outside the React SPA rewrite.
   RewriteCond %{REQUEST_URI} ^/api(?:/|$) [NC]
   RewriteRule ^ - [L]
-
-  RewriteRule ^sitemap\.xml$ api/sitemap.php [QSA,L]
-
-  # Serve post-specific Open Graph metadata before the React app hydrates.
-  RewriteRule ^@([A-Za-z0-9_-]{1,40})/posts/([A-Za-z0-9_-]{1,40})/?$ api/post-share.php?handle=$1&postId=$2 [QSA,L]
-
-  # Serve profile-specific Open Graph metadata before the React app hydrates.
-  RewriteRule ^@([A-Za-z0-9_-]{1,40})/?$ api/profile-share.php?handle=$1 [QSA,L]
 
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d

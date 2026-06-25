@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { loginWithEnv, skipWithoutCredentials } from "../helpers/auth";
 
@@ -429,24 +428,6 @@ test("authenticated chat moots API requires login", async ({ page }) => {
 
   expect(response.ok).toBe(false);
   expect(response.status).toBe(401);
-});
-
-test("chat moots endpoint is authenticated and reciprocal-follow only by inspection", async () => {
-  const chatApi = readFileSync("api/chat.php", "utf8");
-  const mootsIndexStart = chatApi.indexOf("function chat_moots_index()");
-  const mootsIndexEnd = chatApi.indexOf("function chat_conversations_create()");
-  const mootsIndex = chatApi.slice(mootsIndexStart, mootsIndexEnd);
-
-  expect(mootsIndexStart).toBeGreaterThan(-1);
-  expect(mootsIndex).toContain("require_authenticated_session()");
-  expect(mootsIndex).toContain("require_chat_follows_table()");
-  expect(mootsIndex).toContain("INNER JOIN user_follows reciprocal");
-  expect(mootsIndex).toContain("reciprocal.follower_id = mine.following_id");
-  expect(mootsIndex).toContain("reciprocal.following_id = mine.follower_id");
-  expect(mootsIndex).toContain("u.status = 'active'");
-
-  expect(chatApi).toContain("if (!chat_users_are_moots($viewerUserId, $targetUserId))");
-  expect(chatApi).toContain("json_error('Follow each other to chat.', 403)");
 });
 
 test("non-member cannot read a conversation", async ({ page }) => {

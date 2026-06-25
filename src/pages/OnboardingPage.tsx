@@ -1551,7 +1551,7 @@ function providerAvailability(
     return {
       disabled: true,
       label: "Encryption unavailable",
-      message: "Enable PHP Sodium or OpenSSL for OAuth token storage.",
+      message: "Enable server-side encryption support for OAuth token storage.",
     };
   }
 

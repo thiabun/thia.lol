@@ -1,8 +1,8 @@
 # Codex Collaboration Guide
 
 > **Status: Required operating guide.** Read this before changing the repo.
-> Keep the work small enough to verify, but do not be timid about deleting stale
-> scaffolding when the replacement is clear.
+> Keep work small enough to verify, but delete stale scaffolding when the
+> replacement is clear.
 
 `thia.lol` is a static-first social platform on a PebbleHost VPS. The app should
 feel polished, alive, and a little strange in the good way. The infrastructure
@@ -13,21 +13,22 @@ should stay boring.
 - Frontend: Vite, React, TypeScript, Tailwind CSS, Motion for React, React Router.
 - Static build output: `dist/`.
 - Production web root: `/srv/thia.lol/www/`.
-- PHP rollback files: `/srv/thia.lol/www/api/`, kept on disk for emergency rollback.
-- SQL migrations deployment target: `/srv/thia.lol/www/api/migrations/`.
 - Node API deployment target: `/srv/thia.lol/node-api/`.
-- Server config: `/srv/thia.lol/config/config.php`, readable by PHP, never web-served.
 - Node API config: `/srv/thia.lol/config/node-api.env`, server-only, never web-served.
+- SQL migrations deployment target: `/srv/thia.lol/migrations/`.
 - Uploads: `/srv/thia.lol/www/uploads/`, server-owned runtime data.
 - Database: MariaDB on the VPS.
-- Web server: Caddy with PHP-FPM.
+- Web server: Caddy reverse-proxying the Node API.
 - Backups: daily MariaDB dumps under `/srv/thia.lol/backups/db/`.
 - Domain root: `https://thia.lol/`.
+- Product API: `/api/*`, always Node-served and marked with `X-Thia-API-Runtime: node`.
+- Retired preview API: `/api-next/*` should return `404`.
 - Vite base path: `/`.
 
 Do not replace this with Next.js SSR, Vercel-only hosting, Composer, a hosted
-edge runtime, or a full backend rewrite unless Thia explicitly asks. The planned
-backend direction is a gradual TypeScript API and PostgreSQL strangler migration.
+edge runtime, or a full backend rewrite unless Thia explicitly asks. The
+long-term database direction can still be PostgreSQL, but the current production
+API is Node on MariaDB.
 
 ## Git Flow
 
@@ -51,8 +52,7 @@ If a GitHub issue drives the work:
 - Read the issue first and keep its acceptance criteria in scope.
 - Reference the issue number in the summary and commit or PR text where useful.
 - After a verified push, comment with status, commit SHA, and verification.
-- Close the issue if the pushed work fully resolves it.
-- Leave it open with clear remaining work if it does not.
+- Close the issue only if the pushed work fully resolves it.
 
 ## Deploy Shape
 
@@ -65,28 +65,13 @@ Correct:
   .htaccess
   index.html
   assets/
+  uploads/
 ```
 
 Wrong:
 
 ```text
 /srv/thia.lol/www/dist/index.html
-```
-
-The PHP API is deployed separately:
-
-```text
-/srv/thia.lol/www/api/
-  index.php
-  bootstrap.php
-  db.php
-  auth.php
-  read.php
-  posts.php
-  moderation.php
-  migrations.php
-  migrations/
-  .htaccess
 ```
 
 The Node API is deployed separately and runs behind Caddy:
@@ -98,9 +83,12 @@ The Node API is deployed separately and runs behind Caddy:
   server/dist/
 ```
 
-`/api-next/*` stays available for preview/parity. Product `/api/*` traffic is
-Node-served through Caddy and should include `X-Thia-API-Runtime: node`. PHP API
-files remain deployed as rollback material, not as the active product fallback.
+SQL migrations are deployed separately:
+
+```text
+/srv/thia.lol/migrations/
+  20260625_0001_example.sql
+```
 
 Local Codex desktop checkouts may already have the VPS keys, but the SSH agent
 often has no identities loaded. Use explicit identities:
@@ -117,9 +105,9 @@ values; `.env.local` is ignored and can hold local path hints only.
 Never deploy real config or local uploads from the repo. Preserve:
 
 ```text
-/srv/thia.lol/config/config.php
 /srv/thia.lol/config/node-api.env
 /srv/thia.lol/www/uploads/
+/srv/thia.lol/backups/
 ```
 
 ## Do Not Do This
@@ -151,12 +139,6 @@ npm run build:api
 npm run test:api
 ```
 
-If PHP changes and PHP is available:
-
-```bash
-find api -name '*.php' -print0 | xargs -0 -n1 php -l
-```
-
 Always run:
 
 ```bash
@@ -170,10 +152,10 @@ are expected.
 
 Do not treat a missing local API as harmless.
 
-If Vite logs `/api` proxy connection failures because no local PHP API is
-running, API-backed smoke is blocked. Report it that way unless you either:
+Local `/api/*` requests should proxy to the Node API on `127.0.0.1:3100`.
+API-backed smoke is blocked unless you either:
 
-- start/configure a working local PHP API,
+- start/configure a working local Node API,
 - run against a deployed base URL, or
 - are doing purely static UI work and explicitly state that API behavior was not
   part of the smoke.
@@ -187,17 +169,16 @@ connectivity.
 
 If production returns a generic 500, debug in this order:
 
-1. Caddy and PHP-FPM logs with `journalctl`.
+1. `journalctl -u thia-node-api.service`.
 2. Caddy routing for `/api/*`.
-3. PHP version and extensions.
-4. Config path and syntax.
-5. Database credentials.
-6. File permissions.
+3. Node API environment and file permissions.
+4. Database credentials and MariaDB connectivity.
+5. Migration status and storage-readiness errors.
 
 ## Security Baseline
 
-- Use PDO prepared statements for SQL.
-- Use `password_hash()` and `password_verify()` for passwords.
+- Use parameterized SQL through the Node database helpers.
+- Use `bcrypt`/existing password-hash compatibility helpers for passwords.
 - Use HttpOnly, Secure, SameSite=Lax cookies for sessions.
 - Hash session tokens in the database.
 - Require CSRF tokens for authenticated mutating requests.

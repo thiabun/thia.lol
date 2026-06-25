@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 
 test("report modal opens with categories and legal links", async ({ page }) => {
@@ -239,27 +238,6 @@ test("admin report queue renders profile, room, and message summaries", async ({
   await expect(page.getByText("/general · public · not live")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Reported message" })).toBeVisible();
   await expect(page.getByText("unsafe private message")).toBeVisible();
-});
-
-test("report API validates message membership by source inspection", async () => {
-  const moderationApi = readFileSync("api/moderation.php", "utf8");
-  const messageRecordStart = moderationApi.indexOf(
-    "function moderation_message_record",
-  );
-  const messageRecordEnd = moderationApi.indexOf(
-    "function moderation_report_actioned",
-  );
-  const messageRecord = moderationApi.slice(messageRecordStart, messageRecordEnd);
-
-  expect(messageRecordStart).toBeGreaterThan(-1);
-  expect(messageRecord).toContain("INNER JOIN conversation_members viewer_member");
-  expect(messageRecord).toContain("viewer_member.conversation_id = m.conversation_id");
-  expect(messageRecord).toContain("viewer_member.user_id = :viewer_user_id");
-  expect(moderationApi).toContain(
-    "moderation_message_record($targetId, (int) $session['user_id'])",
-  );
-  expect(moderationApi).toContain("if ($message === null)");
-  expect(moderationApi).toContain("json_error('Message not found.', 404)");
 });
 
 test("moderation policy copy does not claim unavailable report targets", async ({

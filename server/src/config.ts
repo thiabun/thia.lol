@@ -46,7 +46,7 @@ const envSchema = z.object({
   THIA_SECURITY_ENCRYPTION_AVAILABLE: boolEnv.default(true),
   THIA_ACCOUNT_SETUP_TOKEN: z.string().default(""),
   THIA_MIGRATION_TOKEN: z.string().default(""),
-  THIA_MIGRATIONS_DIR: z.string().min(1).default("/srv/thia.lol/www/api/migrations"),
+  THIA_MIGRATIONS_DIR: z.string().min(1).default("/srv/thia.lol/migrations"),
   THIA_PUSH_VAPID_PUBLIC_KEY: z.string().default(""),
   THIA_PUSH_VAPID_PRIVATE_KEY: z.string().default(""),
   THIA_PUSH_SUBJECT: z.string().default("mailto:hello@thia.lol"),

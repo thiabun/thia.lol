@@ -1,5 +1,4 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { readFileSync } from "node:fs";
 import { loginWithEnv, skipWithoutCredentials } from "../helpers/auth";
 
 const portraitMediaFixture = `data:image/svg+xml,${encodeURIComponent(
@@ -19,22 +18,6 @@ test("Home loads the feed empty state", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
   await expect(page.getByText("No posts yet").first()).toBeVisible();
-});
-
-test("API reply queries require visible ancestors by inspection", async () => {
-  const readApi = readFileSync("api/read.php", "utf8");
-  const postsApi = readFileSync("api/posts.php", "utf8");
-
-  expect(readApi).toContain("function post_ancestor_visibility_sql");
-  expect(readApi).toContain("post_ancestor_visibility_sql('p')");
-  expect(readApi).toContain("post_ancestor_visibility_sql('profile_replies')");
-  expect(readApi).toContain("SELECT profile_replies.author_id AS author_id, COUNT(*) AS reply_count");
-  expect(readApi).toContain("GROUP BY profile_replies.author_id");
-  expect(readApi).not.toContain("SELECT author_id, COUNT(*) AS reply_count");
-  expect(readApi).toContain("stat_posts.parent_id IS NULL");
-  expect(postsApi).toContain("validate_post_media_url($body['mediaUrl']");
-  expect(postsApi).toContain("post_ancestor_visibility_sql('p')");
-  expect(postsApi).toContain("post_ancestor_visibility_sql('reply_posts')");
 });
 
 test("Discover loads the feed empty state without unbacked sections", async ({
@@ -530,23 +513,6 @@ test("post permalink route shows unavailable state", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "Post not found" })).toBeVisible();
   await expect(page.getByText("Post not found.")).toBeVisible();
-});
-
-test("post permalink server renderer emits social metadata by inspection", async () => {
-  const renderer = readFileSync("api/post-share.php", "utf8");
-  const htaccess = readFileSync("public/.htaccess", "utf8");
-
-  expect(htaccess).toContain("api/post-share.php?handle=$1&postId=$2");
-  expect(renderer).toContain('<meta property="og:title"');
-  expect(renderer).toContain('<meta property="og:description"');
-  expect(renderer).toContain('<meta property="og:url"');
-  expect(renderer).toContain('<meta property="og:image"');
-  expect(renderer).toContain('<meta property="og:image:secure_url"');
-  expect(renderer).toContain('<meta property="og:image:type" content="image/png"');
-  expect(renderer).toContain('<meta name="twitter:card" content="summary_large_image"');
-  expect(renderer).toContain('<meta name="twitter:image"');
-  expect(renderer).toContain("post_share_page_fallback_html");
-  expect(renderer).toContain("post_share_page_escape");
 });
 
 test("PostCard author avatar, name, and handle navigate to profile", async ({

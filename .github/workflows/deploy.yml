@@ -79,8 +79,7 @@ jobs:
             test ! -w /srv/thia.lol/www/uploads
             find /srv/thia.lol/www/uploads -maxdepth 0 -type d -group www-data -perm -0020 -perm -2000 | grep -q .
             getent group www-data | awk -F: "{print \$4}" | tr "," "\n" | grep -qx thia-node-api
-            test -w /srv/thia.lol/www/api
-            test -w /srv/thia.lol/www/api/migrations
+            test -w /srv/thia.lol/migrations
             test -w /srv/thia.lol/node-api
             test ! -e /srv/thia.lol/www/config/config.php
             test -r /etc/systemd/system/thia-node-api.service
@@ -101,19 +100,6 @@ jobs:
             -e 'ssh -o BatchMode=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -i ~/.ssh/thia_lol_deploy' \
             dist/ "$VPS_USER@$VPS_HOST:/srv/thia.lol/www/"
 
-      - name: Deploy PHP API
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-        run: |
-          set -euo pipefail
-          rsync -az --delete \
-            --exclude '/migrations/' \
-            --exclude '.DS_Store' \
-            --exclude 'config.php' \
-            -e 'ssh -o BatchMode=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -i ~/.ssh/thia_lol_deploy' \
-            api/ "$VPS_USER@$VPS_HOST:/srv/thia.lol/www/api/"
-
       - name: Deploy database migrations
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
@@ -123,7 +109,7 @@ jobs:
           rsync -az --delete \
             --exclude '.DS_Store' \
             -e 'ssh -o BatchMode=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -i ~/.ssh/thia_lol_deploy' \
-            backend/database/migrations/ "$VPS_USER@$VPS_HOST:/srv/thia.lol/www/api/migrations/"
+            backend/database/migrations/ "$VPS_USER@$VPS_HOST:/srv/thia.lol/migrations/"
 
       - name: Deploy Node API
         env:
@@ -151,11 +137,5 @@ jobs:
       - name: Smoke-test live site
         run: scripts/smoke-live.sh
 
-      - name: Smoke-test Node API preview
-        run: scripts/smoke-api-next.sh
-
-      - name: Compare PHP and Node API preview parity
-        run: node scripts/compare-api-parity.mjs
-
-      - name: Verify Node API production cutover
+      - name: Verify Node API production routing
         run: node scripts/check-api-cutover.mjs

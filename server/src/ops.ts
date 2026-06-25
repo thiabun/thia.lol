@@ -23,12 +23,12 @@ export interface SetupPayload {
 }
 
 export interface MigrationStatusPayload {
-  path: "api/migrations";
+  path: "migrations";
   migrations: MigrationStatusRow[];
 }
 
 export interface MigrationRunPayload {
-  path: "api/migrations";
+  path: "migrations";
   appliedCount: number;
   skippedCount: number;
   migrations: MigrationRunRow[];
@@ -120,7 +120,7 @@ class NodeOpsService implements OpsService {
     await this.ensureSchemaMigrationsTable();
 
     return {
-      path: "api/migrations",
+      path: "migrations",
       migrations: await this.migrationStatusRows(),
     };
   }
@@ -161,7 +161,7 @@ class NodeOpsService implements OpsService {
     }
 
     return {
-      path: "api/migrations",
+      path: "migrations",
       appliedCount,
       skippedCount,
       migrations: results,

@@ -60,7 +60,6 @@ body:
       value: |
         Run:
         - git pull --rebase
-        - php -l changed api/*.php, if PHP changed
         - npm run typecheck
         - npm run lint
         - npm run optimize:assets

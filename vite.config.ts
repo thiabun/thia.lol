@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 const apiHost = process.env.THIA_LOCAL_API_HOST ?? "127.0.0.1";
-const apiPort = process.env.THIA_LOCAL_API_PORT ?? "8090";
+const apiPort = process.env.THIA_LOCAL_API_PORT ?? "3100";
 
 export default defineConfig({
   base: "/",
@@ -44,6 +44,7 @@ export default defineConfig({
       "/api": {
         target: `http://${apiHost}:${apiPort}`,
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api(?=\/|$)/, ""),
       },
     },
   },

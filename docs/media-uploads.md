@@ -82,7 +82,7 @@ Rules:
   `/uploads/media/yyyy/mm/profile_background-random.mp4|webm` or
   `/uploads/media/yyyy/mm/profile_module_video-random.mp4|webm`.
 - The endpoint does not transcode, resize, or inspect duration.
-- The endpoint never accepts PHP-executable extensions.
+- The endpoint never accepts executable script extensions.
 - Profile background and module video URLs must match generated upload path
   patterns before they can be saved.
 - Background videos render muted, looped, playsInline, and without controls.
@@ -95,31 +95,21 @@ duration, bandwidth, transcoding, and legal review.
 
 ## VPS Notes
 
-`/srv/thia.lol/www/uploads/` must be writable by PHP-FPM and readable by Caddy.
-Production currently uses `www-data` ownership for uploaded media.
+`/srv/thia.lol/www/uploads/` must be writable by the `thia-node-api` runtime
+user and readable by Caddy. Production currently uses `www-data` group
+ownership for uploaded media.
 
 Deploys must preserve `/srv/thia.lol/www/uploads/`. Do not enable rsync rules
 that delete server-owned upload folders.
 
-The committed `api/.user.ini` requests:
-
-```ini
-upload_max_filesize = 30M
-post_max_size = 32M
-```
-
-`post_max_size` must be larger than the upload limit so PHP can parse the
-request and the API can return clean JSON errors. On the VPS, check PHP-FPM
-configuration if `.user.ini` behavior changes.
-
-Profile background video currently has a 30 MB application limit. If PHP
-request limits are lower than that, increase `upload_max_filesize` and
-`post_max_size` before enabling large video uploads.
+Profile background video currently has a 30 MB application limit. If upload
+requests fail before reaching the API, check Caddy request limits and the Node
+API multipart limits before changing application validation.
 
 If uploads fail on production, check:
 
 1. `/srv/thia.lol/www/uploads/` ownership and write permissions.
 2. Whether the uploaded file is one of the temporary safe formats.
-3. Caddy and PHP-FPM logs.
-4. `upload_max_filesize` and `post_max_size` are large enough for the endpoint
-   being tested.
+3. Caddy and `thia-node-api.service` logs.
+4. Caddy and Node multipart limits are large enough for the endpoint being
+   tested.

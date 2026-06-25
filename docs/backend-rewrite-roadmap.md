@@ -1,69 +1,44 @@
-# Backend Rewrite Roadmap
+# Backend API Ownership
 
-> **Status: Historical planning reference.** The product API now runs through
-> the Node/MariaDB service; PHP API files remain on disk as rollback material.
+> **Status: Current architecture note.** The product API runs through the
+> Node/MariaDB service. The old staged preview path is retired.
 
-## Direction
+## Current Direction
 
-The active backend is a TypeScript API on Node, introduced gradually beside the
-old PHP API and now serving product `/api/*` traffic through Caddy.
-
-Preferred stack:
+The active backend is a TypeScript API on Node:
 
 - Fastify for HTTP routing.
-- PostgreSQL 16 for the long-term database.
-- Drizzle for schema and migrations.
-- Zod for request validation.
+- MariaDB for current production storage.
+- Zod-style validation and explicit route payload mapping where useful.
 - Vitest for backend tests.
+- Caddy routes product `/api/*` traffic to the Node service and adds
+  `X-Thia-API-Runtime: node`.
 
-## Migration Strategy
-
-The migration used a strangler pattern:
-
-1. Keep the existing PHP API live during preview.
-2. Add a new internal Caddy route for the TypeScript service.
-3. Move low-risk read endpoints first.
-4. Add parity tests before switching public `/api/*` traffic for a route.
-5. Keep each production route on PHP until explicit preview smoke, controlled
-   mutation checks, Caddy rollback notes, and cutover verification exist.
-6. Retire the product PHP fallback only after integrations/OAuth and share HTML
-   shells were Node-owned and `scripts/check-api-cutover.mjs` passed live.
-
-Do not reintroduce a broad PHP product fallback without documenting the Caddy
-rollback and rerunning the cutover verifier.
+The long-term database direction can still be PostgreSQL with Drizzle, but that
+needs a separate implementation plan and migration window. Do not start a broad
+database rewrite inside a feature task.
 
 ## Current Route Ownership
 
-Production Node ownership includes product `/api/*` traffic, including
-parity-proven reads, private reads, writes, auth/session, social/content,
-profile/account editor, uploads, chat, admin/moderation, share-card
-image/cache/proxy routes, integrations/OAuth, metadata resolve, push,
-setup/migrations/diagnostics, sitemap, `POST /api/me/profile`, and the legacy
-share HTML shells at `/api/post-share.php` and `/api/profile-share.php`.
+Production Node ownership includes product `/api/*` traffic, including:
+
+- public reads for profiles, posts, rooms, badges, stats, search, feeds, and
+  share cards
+- private reads for auth, settings, onboarding, follow requests, notifications,
+  integrations, push, and chat
+- auth/session writes
+- profile/account editor writes
+- social/content and room mutations
+- uploads
+- chat, reports, admin/moderation, setup, diagnostics, and migrations
+- sitemap and social-preview HTML compatibility aliases such as
+  `/api/post-share.php`, `/api/profile-share.php`, and `/api/sitemap.php`
+
 Canonical profile and post URLs (`/@handle` and `/@handle/posts/:postId`) are
 also Node-owned for social-preview HTML and must be matched before the static
 SPA fallback in Caddy.
 
-PHP API files remain deployed only as rollback material. Caddy should route
-unmatched product `/api/*` requests to the Node catch-all with
-`X-Thia-API-Runtime: node`.
-
-Private read previews also remain available under `/api-next/*`:
-
-```text
-GET /api-next/auth/me
-GET /api-next/me/settings
-GET /api-next/me/onboarding
-GET /api-next/me/follow-requests
-GET /api-next/me/posts
-GET /api-next/me/profile/modules
-GET /api-next/me/profile/canvas-draft
-GET /api-next/notifications
-```
-
-These routes use the existing MariaDB sessions table and PHP-compatible CSRF
-HMAC generation. Re-run authenticated parity with
-`COOKIE_HEADER='thia_session=...'` before expanding into private writes.
+`/api-next/*` is retired and should return `404`.
 
 ## Database Strategy
 
@@ -82,133 +57,14 @@ PostgreSQL migration needs a separate implementation plan covering:
 Do not cut over auth/session tables until password login, CSRF, cookie behavior,
 2FA, and session expiry are proven against production-like data.
 
-## Safe Route Candidates
+## Acceptance Bar For API Changes
 
-Public read-only routes are the preferred early migration targets:
+Before changing an API route:
 
-```text
-GET /api-next/health
-GET /api/profiles/{handle}
-GET /api/rooms
-GET /api/posts
-GET /api/search
-GET /api/badges
-GET /api/rooms/{slug}/members
-```
-
-Next safe candidates after private-read parity:
-
-```text
-POST /api/notifications/read
-POST /api/notifications/read-all
-POST /api/notifications/{id}/read
-PATCH /api/me/onboarding
-PATCH /api/me/preferences
-PATCH /api/me/privacy
-```
-
-These low-risk writes are now the first Node-owned mutation batch. They are
-verified with unauthenticated or missing-CSRF checks so production smoke tests do
-not mutate data.
-
-Auth/session writes are now Node-owned in production after controlled
-test-account smoke:
-
-```text
-POST /api/auth/login
-POST /api/auth/logout
-POST /api/auth/register
-POST /api/auth/2fa/verify
-POST /api/me/security/2fa/setup
-POST /api/me/security/2fa/enable
-DELETE /api/me/security/2fa
-POST /api/me/security/2fa/recovery-codes
-```
-
-These routes use PHP-compatible password verification, session token hashing,
-cookie attributes, CSRF validation for protected settings, and 2FA encryption,
-with `/api-next/*` still available for preview/smoke comparisons. Production
-verification must avoid destructive parity checks; use no-cookie validation
-checks or controlled throwaway accounts with cleanup.
-
-Social/content mutations are now Node-owned in production after controlled
-throwaway-account smoke:
-
-```text
-POST/DELETE /api/profiles/{handle}/follow
-POST/DELETE /api/profiles/{handle}/block
-POST/DELETE /api/profiles/{handle}/mute
-POST/DELETE /api/profiles/{handle}/star
-DELETE /api/profiles/{handle}/follower
-POST /api/me/follow-requests/{id}/approve
-DELETE /api/me/follow-requests/{id}
-POST /api/posts
-POST /api/posts/{id}/replies
-PATCH/DELETE /api/posts/{id}
-POST/DELETE /api/posts/{id}/like
-POST/DELETE /api/posts/{id}/reblog
-POST /api/posts/{id}/reactions
-DELETE /api/posts/{id}/reactions/{type}
-POST /api/posts/{identifier}/shares/messages
-POST /api/rooms
-PATCH/DELETE /api/rooms/{slug}
-POST/DELETE /api/rooms/{slug}/join
-POST/DELETE /api/rooms/{slug}/moderators
-```
-
-These routes use the existing MariaDB schema, PHP-compatible sessions and CSRF,
-generic mutation errors, and no-cookie or missing-CSRF routing checks in
-`scripts/check-api-cutover.mjs`. Live mutation testing must use controlled
-accounts and read-back assertions, not double-submit destructive parity checks.
-
-Profile/account editor writes are now Node-owned in production after controlled
-throwaway-account smoke:
-
-```text
-PATCH /api/me/profile
-PATCH /api/me/profile/featured
-GET/HEAD/POST /api/me/profile/modules
-PATCH/DELETE /api/me/profile/modules/{id}
-POST /api/me/profile/modules/{id}/restore
-PATCH /api/me/profile/module-order
-PATCH /api/me/profile/canvas
-GET/HEAD/PATCH/DELETE /api/me/profile/canvas-draft
-POST /api/me/profile/canvas-draft/commit
-PATCH /api/me/badges/featured
-DELETE /api/me/posts
-PATCH /api/me/account/email
-PATCH /api/me/account/handle
-PATCH /api/me/account/password
-DELETE /api/me/account
-DELETE /api/me/account/deletion
-POST /api/me/account/deletion/cancel
-```
-
-These routes reuse MariaDB, PHP-compatible sessions/CSRF, current upload URL
-fields, profile module/canvas storage, badge visibility storage, and account
-deletion/session invalidation behavior.
-
-Final production cutover routes are also Node-owned after live no-cookie,
-token-disabled, and preview smoke checks:
-
-```text
-POST /api/uploads/*
-full chat routes
-admin/moderation routes
-share-card PNG/cache/proxy routes
-push subscription/status routes
-setup, migrations, diagnostics
-GET/HEAD /sitemap.xml
-POST /api/me/profile
-```
-
-## Acceptance Bar For Route Cutover
-
-Before a route moves to the TypeScript API:
-
-- PHP and TypeScript responses match the documented public shape.
-- Existing frontend calls require no behavior change.
+- Existing frontend calls require no behavior change unless the issue asks for
+  one.
 - Tests cover success, not found, invalid input, and auth requirements where
   relevant.
-- Caddy rollback is one config change.
-- `scripts/smoke-live.sh` still passes after deployment.
+- Protected writes require authentication and CSRF.
+- `npm run build:api` and `npm run test:api` pass.
+- Live deploy verification checks `/api/*` for `X-Thia-API-Runtime: node`.
