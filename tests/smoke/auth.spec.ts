@@ -118,6 +118,17 @@ test.describe("authenticated smoke", () => {
     const body = dialog.getByRole("textbox", { name: "Post" });
 
     await expect(body).toBeVisible();
+    await body.fill("API-backed **preview** check.");
+    await expect(body).not.toHaveCSS("color", "rgba(0, 0, 0, 0)");
+    await expect(dialog.getByTestId("post-composer-markdown-preview")).not.toHaveCSS(
+      "position",
+      "absolute",
+    );
+    await expect(
+      dialog.getByTestId("post-composer-markdown-preview").locator("strong").filter({
+        hasText: "preview",
+      }),
+    ).toBeVisible();
     await expect(destination).toBeVisible();
     await expect(mediaUpload).toBeVisible();
     await expect(musicButton).toBeVisible();

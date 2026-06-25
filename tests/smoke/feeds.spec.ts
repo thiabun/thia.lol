@@ -1476,7 +1476,13 @@ test("thread reply composer is hidden until Reply and exposes media UI", async (
   await expect.poll(() => audioUploadPurpose).toBe("post_media");
   await expect(dialog.getByTestId("reply-composer-attachments")).toContainText("MP3");
 
-  await dialog.getByRole("textbox", { name: "Reply" }).fill("A **compact** reply.");
+  const replyBody = dialog.getByRole("textbox", { name: "Reply" });
+  await replyBody.fill("A **compact** reply.");
+  await expect(replyBody).not.toHaveCSS("color", "rgba(0, 0, 0, 0)");
+  await expect(dialog.getByTestId("reply-composer-markdown-preview")).not.toHaveCSS(
+    "position",
+    "absolute",
+  );
   await expect(
     dialog.getByTestId("reply-composer-markdown-preview").locator("strong").filter({
       hasText: "compact",

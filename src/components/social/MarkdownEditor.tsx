@@ -14,7 +14,6 @@ import {
   useMemo,
   useRef,
   type ForwardedRef,
-  type UIEvent,
 } from "react";
 import { cn } from "../../lib/classNames";
 import type { RichTextEntity } from "../../lib/types";
@@ -69,7 +68,6 @@ export const MarkdownEditor = forwardRef<HTMLTextAreaElement, MarkdownEditorProp
     value,
   }: MarkdownEditorProps, forwardedRef) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const previewRef = useRef<HTMLDivElement | null>(null);
   const remaining = maxLength - value.length;
   const effectiveTextareaTestId = textareaTestId ?? `${testIdPrefix}-body`;
   const countText = useMemo(
@@ -98,17 +96,6 @@ export const MarkdownEditor = forwardRef<HTMLTextAreaElement, MarkdownEditorProp
       textareaRef.current?.focus();
       textareaRef.current?.setSelectionRange(cursor, cursor);
     });
-  }
-
-  function handleEditorScroll(event: UIEvent<HTMLTextAreaElement>) {
-    const preview = previewRef.current;
-
-    if (!preview) {
-      return;
-    }
-
-    preview.scrollTop = event.currentTarget.scrollTop;
-    preview.scrollLeft = event.currentTarget.scrollLeft;
   }
 
   return (
@@ -151,21 +138,32 @@ export const MarkdownEditor = forwardRef<HTMLTextAreaElement, MarkdownEditorProp
         })}
       </div>
       <div
-        className={cn(
-          "relative overflow-hidden rounded-control border border-line bg-canvas/45 transition focus-within:border-line-strong focus-within:outline-2 focus-within:outline-focus",
-          minHeightClassName,
-        )}
+        className="overflow-hidden rounded-control border border-line bg-canvas/45 transition focus-within:border-line-strong focus-within:outline-2 focus-within:outline-focus"
         data-testid={`${testIdPrefix}-surface`}
       >
-        <div
-          ref={previewRef}
+        <MentionTextarea
+          ref={setTextareaNode}
+          wrapperClassName="block"
           className={cn(
-            "pointer-events-none absolute inset-0 overflow-hidden px-3 py-2",
-            previewClassName,
+            "w-full resize-y border-0 bg-transparent px-3 py-2 text-sm leading-6 text-text caret-accent-strong outline-none placeholder:text-muted/70 selection:bg-accent-soft/65 disabled:opacity-60",
+            minHeightClassName,
           )}
-          data-testid={`${testIdPrefix}-preview`}
-        >
-          {value.trim() ? (
+          maxLength={maxLength}
+          placeholder={placeholder}
+          value={value}
+          aria-label={label}
+          disabled={disabled}
+          data-testid={effectiveTextareaTestId}
+          onValueChange={onValueChange}
+        />
+        {value.trim() ? (
+          <div
+            className={cn(
+              "border-t border-line/70 bg-surface/42 px-3 py-2",
+              previewClassName,
+            )}
+            data-testid={`${testIdPrefix}-preview`}
+          >
             <RichText
               markdown
               text={value}
@@ -175,26 +173,8 @@ export const MarkdownEditor = forwardRef<HTMLTextAreaElement, MarkdownEditorProp
                 renderedClassName,
               )}
             />
-          ) : (
-            <p className="text-sm leading-6 text-muted">{placeholder}</p>
-          )}
-        </div>
-        <MentionTextarea
-          ref={setTextareaNode}
-          wrapperClassName="relative z-10"
-          className={cn(
-            "w-full resize-y border-0 bg-transparent px-3 py-2 text-sm leading-6 text-transparent caret-accent-strong outline-none selection:bg-accent-soft/65",
-            minHeightClassName,
-          )}
-          maxLength={maxLength}
-          placeholder=""
-          value={value}
-          aria-label={label}
-          disabled={disabled}
-          data-testid={effectiveTextareaTestId}
-          onScroll={handleEditorScroll}
-          onValueChange={onValueChange}
-        />
+          </div>
+        ) : null}
       </div>
     </div>
   );

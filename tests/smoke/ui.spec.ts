@@ -457,12 +457,17 @@ test("post composer submits Markdown and Spotify/YouTube music attachments", asy
   const dialog = page.getByTestId("composer-modal");
   const body = dialog.getByTestId("post-composer-body");
   await body.fill("Favorite track");
+  await expect(body).not.toHaveCSS("color", "rgba(0, 0, 0, 0)");
   await body.evaluate((element) => {
     const textarea = element as HTMLTextAreaElement;
     textarea.setSelectionRange(0, "Favorite".length);
   });
   await dialog.getByTestId("post-composer-markdown-button-bold").click();
   await expect(body).toHaveValue("**Favorite** track");
+  await expect(dialog.getByTestId("post-composer-markdown-preview")).not.toHaveCSS(
+    "position",
+    "absolute",
+  );
   await expect(
     dialog.getByTestId("post-composer-markdown-preview").locator("strong").filter({
       hasText: "Favorite",
