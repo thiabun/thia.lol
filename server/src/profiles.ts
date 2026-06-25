@@ -143,16 +143,42 @@ export interface TextEntityPayload {
   };
 }
 
+export type PostAttachmentKind = "image" | "video" | "audio" | "integration";
+
+export interface PostAttachmentPayload {
+  id: number;
+  position: number;
+  kind: PostAttachmentKind;
+  url: string | null;
+  mime: string | null;
+  sizeBytes: number | null;
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
+  posterUrl: string | null;
+  provider: string | null;
+  resourceType: string | null;
+  resourceId: string | null;
+  resourceKey: string | null;
+  sourceUrl: string | null;
+  card: Record<string, unknown> | unknown[] | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
 export interface PostPayload {
   id: number;
   publicId: string;
   body: string;
+  bodyFormat: "plain" | "markdown";
+  contentVersion: number;
   bodyEntities: TextEntityPayload[];
   mood: string;
   mediaUrl: string | null;
   mediaType: "image" | "video" | null;
   mediaMime: string | null;
   mediaPosterUrl: string | null;
+  attachments: PostAttachmentPayload[];
   visibility: string;
   status: string;
   parentId: number | null;
@@ -201,7 +227,10 @@ export interface ProfileSchemaCapabilities {
   hasRoomCustomizationColumns: boolean;
   hasRoomSoftDeleteColumn: boolean;
   hasPostPublicIdColumn: boolean;
+  hasPostBodyFormatColumn: boolean;
+  hasPostContentVersionColumn: boolean;
   hasPostMediaMetadataColumns: boolean;
+  hasPostAttachments: boolean;
   hasPostReblogs: boolean;
   hasTextEntities: boolean;
   hasProfileModules: boolean;
@@ -275,6 +304,8 @@ interface PostRow extends ProfileRow, RoomRow {
   post_public_id: string | null;
   post_parent_id: number | string | null;
   post_body: string | null;
+  post_body_format: string | null;
+  post_content_version: number | string | null;
   post_mood: string | null;
   post_media_url: string | null;
   post_media_type: string | null;
@@ -301,6 +332,28 @@ interface PostRow extends ProfileRow, RoomRow {
   reblogged_by_display_name: string | null;
   reblogged_by_avatar_url: string | null;
   reblogged_at: string | null;
+}
+
+interface PostAttachmentRow extends RowDataPacket {
+  id: number | string;
+  post_id: number | string;
+  position: number | string;
+  kind: string;
+  url: string | null;
+  mime: string | null;
+  size_bytes: number | string | null;
+  width: number | string | null;
+  height: number | string | null;
+  duration_seconds: number | string | null;
+  poster_url: string | null;
+  provider: string | null;
+  resource_type: string | null;
+  resource_id: string | null;
+  resource_key: string | null;
+  source_url: string | null;
+  card_json: string | null;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 interface TextEntityRow extends RowDataPacket {
@@ -1187,9 +1240,12 @@ class MysqlProfilesRepository implements ProfilesRepository {
       hasRoomRulesColumn,
       hasRoomSoftDeleteColumn,
       hasPostPublicIdColumn,
+      hasPostBodyFormatColumn,
+      hasPostContentVersionColumn,
       hasPostMediaTypeColumn,
       hasPostMediaMimeColumn,
       hasPostMediaPosterUrlColumn,
+      hasPostAttachments,
       hasPostReblogs,
       hasTextEntities,
       hasProfileModules,
@@ -1229,9 +1285,12 @@ class MysqlProfilesRepository implements ProfilesRepository {
       this.columnExists("rooms", "rules"),
       this.columnExists("rooms", "deleted_at"),
       this.columnExists("posts", "public_id"),
+      this.columnExists("posts", "body_format"),
+      this.columnExists("posts", "content_version"),
       this.columnExists("posts", "media_type"),
       this.columnExists("posts", "media_mime"),
       this.columnExists("posts", "media_poster_url"),
+      this.tableExists("post_attachments"),
       this.tableExists("post_reblogs"),
       this.tableExists("text_entities"),
       this.tableExists("profile_modules"),
@@ -1267,8 +1326,11 @@ class MysqlProfilesRepository implements ProfilesRepository {
       hasRoomCustomizationColumns: hasRoomIconUrlColumn && hasRoomBannerUrlColumn && hasRoomRulesColumn,
       hasRoomSoftDeleteColumn,
       hasPostPublicIdColumn,
+      hasPostBodyFormatColumn,
+      hasPostContentVersionColumn,
       hasPostMediaMetadataColumns:
         hasPostMediaTypeColumn && hasPostMediaMimeColumn && hasPostMediaPosterUrlColumn,
+      hasPostAttachments,
       hasPostReblogs,
       hasTextEntities,
       hasProfileModules,
@@ -1374,7 +1436,13 @@ class MysqlProfilesRepository implements ProfilesRepository {
       this.textEntities("profile", numberValue(postRow.user_id), "bio", capabilities),
     ]);
 
-    return postPayloadFromRow(postRow, postEntities, profileEntities);
+    const [post] = await hydratePostAttachments(
+      this.pool,
+      capabilities,
+      [postPayloadFromRow(postRow, postEntities, profileEntities)],
+    );
+
+    return post ?? null;
   }
 
   private async featuredRoom(row: ProfileRow, capabilities: ProfileSchemaCapabilities): Promise<RoomPayload | null> {
@@ -1757,6 +1825,7 @@ export function postSelectSql(
         ${postPublicIdSelectSql(capabilities)}
         p.parent_id AS post_parent_id,
         p.body AS post_body,
+        ${postBodyVersionSelectSql(capabilities)}
         p.mood AS post_mood,
         p.media_url AS post_media_url,
         ${postMediaMetadataSelectSql(capabilities)}
@@ -1933,12 +2002,15 @@ export function postPayloadFromRow(
     id: numberValue(row.post_id),
     publicId: postRowPublicId(row),
     body: stringValue(row.post_body),
+    bodyFormat: postBodyFormatFromRow(row),
+    contentVersion: postContentVersionFromRow(row),
     bodyEntities,
     mood: stringValue(row.post_mood),
     mediaUrl: nullableStringValue(row.post_media_url),
     mediaType: postMediaTypeFromRow(row),
     mediaMime: nullableStringValue(row.post_media_mime),
     mediaPosterUrl: nullableStringValue(row.post_media_poster_url),
+    attachments: legacyPostAttachmentsFromRow(row),
     visibility: stringValue(row.post_visibility),
     status: stringValue(row.post_status),
     parentId: nullableNumberValue(row.post_parent_id),
@@ -1966,6 +2038,58 @@ export function postPayloadFromRow(
       likedByFollowedCount: numberValue(row.followed_like_count),
     },
   };
+}
+
+export async function hydratePostAttachments(
+  pool: Pool,
+  capabilities: ProfileSchemaCapabilities,
+  posts: PostPayload[],
+): Promise<PostPayload[]> {
+  if (posts.length === 0 || !capabilities.hasPostAttachments) {
+    return posts;
+  }
+
+  const postIds = posts.map((post) => post.id);
+  const placeholders = postIds.map(() => "?").join(", ");
+  const [rows] = await pool.execute<PostAttachmentRow[]>(
+    `SELECT
+        id,
+        post_id,
+        position,
+        kind,
+        url,
+        mime,
+        size_bytes,
+        width,
+        height,
+        duration_seconds,
+        poster_url,
+        provider,
+        resource_type,
+        resource_id,
+        resource_key,
+        source_url,
+        card_json,
+        created_at,
+        updated_at
+     FROM post_attachments
+     WHERE post_id IN (${placeholders})
+     ORDER BY post_id ASC, position ASC, id ASC`,
+    postIds,
+  );
+  const attachmentsByPostId = new Map<number, PostAttachmentPayload[]>();
+
+  for (const row of rows) {
+    const postId = numberValue(row.post_id);
+    const attachments = attachmentsByPostId.get(postId) ?? [];
+
+    attachments.push(postAttachmentPayloadFromRow(row));
+    attachmentsByPostId.set(postId, attachments);
+  }
+
+  return posts.map((post) =>
+    postPayloadWithAttachments(post, attachmentsByPostId.get(post.id) ?? []),
+  );
 }
 
 function roomSelectSql(capabilities: ProfileSchemaCapabilities): string {
@@ -2204,6 +2328,18 @@ function postPublicIdSelectSql(capabilities: ProfileSchemaCapabilities): string 
   return capabilities.hasPostPublicIdColumn ? "p.public_id AS post_public_id," : "NULL AS post_public_id,";
 }
 
+function postBodyVersionSelectSql(capabilities: ProfileSchemaCapabilities): string {
+  const bodyFormat = capabilities.hasPostBodyFormatColumn
+    ? "p.body_format AS post_body_format"
+    : "'plain' AS post_body_format";
+  const contentVersion = capabilities.hasPostContentVersionColumn
+    ? "p.content_version AS post_content_version"
+    : "1 AS post_content_version";
+
+  return `${bodyFormat},
+        ${contentVersion},`;
+}
+
 function postMediaMetadataSelectSql(capabilities: ProfileSchemaCapabilities): string {
   return capabilities.hasPostMediaMetadataColumns
     ? `p.media_type AS post_media_type,
@@ -2212,6 +2348,16 @@ function postMediaMetadataSelectSql(capabilities: ProfileSchemaCapabilities): st
     : `NULL AS post_media_type,
         NULL AS post_media_mime,
         NULL AS post_media_poster_url,`;
+}
+
+function postBodyFormatFromRow(row: PostRow): "plain" | "markdown" {
+  return row.post_body_format === "markdown" ? "markdown" : "plain";
+}
+
+function postContentVersionFromRow(row: PostRow): number {
+  const version = numberValue(row.post_content_version);
+
+  return version > 0 ? version : 1;
 }
 
 function postMediaTypeFromRow(row: PostRow): "image" | "video" | null {
@@ -2226,6 +2372,102 @@ function postMediaTypeFromRow(row: PostRow): "image" | "video" | null {
   }
 
   return /\.(?:mp4|webm)$/iu.test(mediaUrl) ? "video" : "image";
+}
+
+function legacyPostAttachmentsFromRow(row: PostRow): PostAttachmentPayload[] {
+  const mediaUrl = nullableStringValue(row.post_media_url);
+  const mediaType = postMediaTypeFromRow(row);
+
+  if (mediaUrl === null || mediaType === null) {
+    return [];
+  }
+
+  return [
+    {
+      id: 0,
+      position: 1,
+      kind: mediaType,
+      url: mediaUrl,
+      mime: nullableStringValue(row.post_media_mime),
+      sizeBytes: null,
+      width: null,
+      height: null,
+      durationSeconds: null,
+      posterUrl: nullableStringValue(row.post_media_poster_url),
+      provider: null,
+      resourceType: null,
+      resourceId: null,
+      resourceKey: null,
+      sourceUrl: null,
+      card: null,
+      createdAt: null,
+      updatedAt: null,
+    },
+  ];
+}
+
+function postAttachmentPayloadFromRow(row: PostAttachmentRow): PostAttachmentPayload {
+  const kind = postAttachmentKind(row.kind);
+
+  return {
+    id: numberValue(row.id),
+    position: numberValue(row.position),
+    kind,
+    url: nullableStringValue(row.url),
+    mime: nullableStringValue(row.mime),
+    sizeBytes: nullableNumberValue(row.size_bytes),
+    width: nullableNumberValue(row.width),
+    height: nullableNumberValue(row.height),
+    durationSeconds: nullableNumberValue(row.duration_seconds),
+    posterUrl: nullableStringValue(row.poster_url),
+    provider: nullableStringValue(row.provider),
+    resourceType: nullableStringValue(row.resource_type),
+    resourceId: nullableStringValue(row.resource_id),
+    resourceKey: nullableStringValue(row.resource_key),
+    sourceUrl: nullableStringValue(row.source_url),
+    card: jsonArrayOrObject(row.card_json),
+    createdAt: nullableStringValue(row.created_at),
+    updatedAt: nullableStringValue(row.updated_at),
+  };
+}
+
+function postAttachmentKind(value: string): PostAttachmentKind {
+  if (value === "video" || value === "audio" || value === "integration") {
+    return value;
+  }
+
+  return "image";
+}
+
+function postPayloadWithAttachments(post: PostPayload, attachments: PostAttachmentPayload[]): PostPayload {
+  const resolvedAttachments = attachments.length > 0 ? attachments : post.attachments;
+  const compatibleMedia = resolvedAttachments.find(
+    (attachment) =>
+      attachment.url !== null &&
+      (attachment.kind === "image" || attachment.kind === "video"),
+  );
+
+  if (compatibleMedia === undefined) {
+    return {
+      ...post,
+      mediaUrl: null,
+      mediaType: null,
+      mediaMime: null,
+      mediaPosterUrl: null,
+      attachments: resolvedAttachments,
+    };
+  }
+
+  const compatibleMediaKind = compatibleMedia.kind === "video" ? "video" : "image";
+
+  return {
+    ...post,
+    mediaUrl: compatibleMedia.url,
+    mediaType: compatibleMediaKind,
+    mediaMime: compatibleMedia.mime,
+    mediaPosterUrl: compatibleMedia.posterUrl,
+    attachments: resolvedAttachments,
+  };
 }
 
 function roomMembershipCountSelectSql(capabilities: ProfileSchemaCapabilities): string {

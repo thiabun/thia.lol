@@ -147,6 +147,38 @@ describe("upload service", () => {
     });
   });
 
+  it("stores post MP3 uploads in shared runtime directories", async () => {
+    const uploadRoot = await mkdtemp(path.join(tmpdir(), "thia-uploads-"));
+
+    try {
+      const service = createUploadService({
+        uploadRoot,
+        publicPrefix: "/uploads",
+      });
+      const buffer = Buffer.from([0xff, 0xfb, 0x90, 0x64, 0x00, 0x0f, 0xf0, 0x00]);
+
+      const result = await service.store("audio", multipartFile(buffer, "post_media", "fixture.mp3"));
+      const match = /^\/uploads\/media\/([0-9]{4})\/([0-9]{2})\/post_media-[a-f0-9]{32}\.mp3$/u.exec(
+        result.url,
+      );
+
+      expect(match).not.toBeNull();
+      expect(result).toMatchObject({
+        mime: "audio/mpeg",
+        type: "audio/mpeg",
+        size: buffer.byteLength,
+        purpose: "post_media",
+        mediaType: "audio",
+      });
+
+      const filePath = path.join(uploadRoot, result.url.replace(/^\/uploads\//u, ""));
+
+      await expect(readFile(filePath)).resolves.toEqual(buffer);
+    } finally {
+      await rm(uploadRoot, { recursive: true, force: true });
+    }
+  });
+
   it("preserves multipart limit errors for route-level 413 handling", async () => {
     const service = createUploadService({
       uploadRoot: "/tmp/thia-unused-uploads",

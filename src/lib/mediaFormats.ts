@@ -68,14 +68,32 @@ export const videoUploadAccept = [
 export const videoUploadFormatHelp =
   "Use MP4, WebM, MOV, M4V, 3GP, MKV, AVI, MPEG, or OGG.";
 
+export const acceptedAudioUploadTypes = [
+  "audio/mpeg",
+  "audio/mp3",
+] as const;
+
+export const acceptedAudioUploadExtensions = [
+  ".mp3",
+] as const;
+
+export const audioUploadAccept = [
+  ...acceptedAudioUploadTypes,
+  ...acceptedAudioUploadExtensions,
+].join(",");
+
+export const audioUploadFormatHelp = "Use MP3.";
+
 export const mediaUploadAccept = [
   ...acceptedImageUploadTypes,
   ...acceptedImageUploadExtensions,
   ...acceptedVideoUploadTypes,
   ...acceptedVideoUploadExtensions,
+  ...acceptedAudioUploadTypes,
+  ...acceptedAudioUploadExtensions,
 ].join(",");
 
-export const mediaUploadFormatHelp = `${imageUploadFormatHelp} ${videoUploadFormatHelp}`;
+export const mediaUploadFormatHelp = `${imageUploadFormatHelp} ${videoUploadFormatHelp} ${audioUploadFormatHelp}`;
 
 export function isAcceptedImageUploadFile(file: File): boolean {
   return fileMatchesAcceptedMedia(
@@ -93,8 +111,16 @@ export function isAcceptedVideoUploadFile(file: File): boolean {
   );
 }
 
+export function isAcceptedAudioUploadFile(file: File): boolean {
+  return fileMatchesAcceptedMedia(
+    file,
+    acceptedAudioUploadTypes,
+    acceptedAudioUploadExtensions,
+  );
+}
+
 export function isAcceptedMediaUploadFile(file: File): boolean {
-  return isAcceptedImageUploadFile(file) || isAcceptedVideoUploadFile(file);
+  return isAcceptedImageUploadFile(file) || isAcceptedVideoUploadFile(file) || isAcceptedAudioUploadFile(file);
 }
 
 export function isLikelyVideoUploadFile(file: File): boolean {
@@ -102,6 +128,14 @@ export function isLikelyVideoUploadFile(file: File): boolean {
     file,
     acceptedVideoUploadTypes,
     acceptedVideoUploadExtensions,
+  );
+}
+
+export function isLikelyAudioUploadFile(file: File): boolean {
+  return fileMatchesAcceptedMedia(
+    file,
+    acceptedAudioUploadTypes,
+    acceptedAudioUploadExtensions,
   );
 }
 

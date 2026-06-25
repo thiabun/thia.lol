@@ -206,7 +206,7 @@ class NodeUploadService implements UploadService {
 
   private async storeAudio(file: MultipartFile | undefined): Promise<UploadPayload> {
     const buffer = await uploadedFileBuffer(file, "audio", audioUploadMaxBytes);
-    const purpose = uploadPurpose(file, new Set(["profile_music"]), "audio");
+    const purpose = uploadPurpose(file, new Set(["profile_music", "post_media"]), "audio");
     const mime = await detectedMime(buffer, "audio", file?.filename);
 
     if (mime !== "audio/mpeg") {

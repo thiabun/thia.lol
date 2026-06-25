@@ -9,6 +9,8 @@ import {
   type ReactNode,
 } from "react";
 import {
+  ArrowDown,
+  ArrowUp,
   EyeOff,
   Heart,
   ImagePlus,
@@ -42,22 +44,26 @@ import {
   previewImageUpload,
   unreblogPost,
   unlikePost,
+  uploadAudio,
   uploadImage,
   uploadVideo,
 } from "../../lib/api";
 import { cn } from "../../lib/classNames";
 import { prepareImageFileForCrop } from "../../lib/imageCrop";
 import {
+  audioUploadFormatHelp,
+  isAcceptedAudioUploadFile,
   isAcceptedVideoUploadFile,
+  isLikelyAudioUploadFile,
   isLikelyVideoUploadFile,
   mediaUploadAccept,
   videoUploadFormatHelp,
 } from "../../lib/mediaFormats";
 import {
+  postMediaDraftFromAudio,
   postMediaDraftFromImage,
   postMediaDraftFromVideo,
   postMediaInputFromDraft,
-  postMediaType,
   type PostMediaDraft,
 } from "../../lib/postMedia";
 import {
@@ -70,7 +76,7 @@ import {
   softSpring,
 } from "../../lib/motionPresets";
 import type { AuthStatus } from "../../lib/authTypes";
-import type { Post } from "../../lib/types";
+import type { Post, PostAttachment } from "../../lib/types";
 import { useAuth } from "../../lib/useAuth";
 import { canDeletePost } from "../../lib/postPermissions";
 
@@ -232,15 +238,11 @@ export function PostCard({
             <RichText
               text={post.body}
               entities={post.bodyEntities}
+              markdown={post.bodyFormat === "markdown"}
               className="block whitespace-pre-wrap break-words p-1 text-pretty text-base leading-7 text-text"
             />
 
-            <PostMedia
-              mediaMime={post.mediaMime}
-              mediaPosterUrl={post.mediaPosterUrl}
-              mediaType={postMediaType(post)}
-              mediaUrl={post.mediaUrl}
-            />
+            <PostAttachments post={post} />
           </div>
 
           <ReactionControls
@@ -388,6 +390,195 @@ function PostMedia({
       </span>
     </span>
   );
+}
+
+type PostAttachmentsProps = {
+  className?: string;
+  maxHeightClass?: string;
+  post: Post;
+  testId?: string;
+};
+
+function PostAttachments({
+  className = "mt-4",
+  maxHeightClass = "max-h-[min(70vh,34rem)]",
+  post,
+  testId = "post-attachments",
+}: PostAttachmentsProps) {
+  const attachments = postAttachmentsForDisplay(post);
+
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      className={cn(
+        "grid max-w-full gap-2",
+        attachments.length > 1 ? "sm:grid-cols-2" : null,
+        className,
+      )}
+      data-testid={testId}
+    >
+      {attachments.map((attachment, index) => (
+        <PostAttachmentItem
+          key={`${attachment.kind}-${attachment.url ?? attachment.sourceUrl ?? index}-${index}`}
+          attachment={attachment}
+          index={index}
+          maxHeightClass={maxHeightClass}
+          testId={`${testId}-${index}`}
+        />
+      ))}
+    </div>
+  );
+}
+
+function PostAttachmentItem({
+  attachment,
+  index,
+  maxHeightClass,
+  testId,
+}: {
+  attachment: PostAttachment;
+  index: number;
+  maxHeightClass: string;
+  testId: string;
+}) {
+  if (attachment.kind === "integration") {
+    return <PostIntegrationAttachment attachment={attachment} testId={testId} />;
+  }
+
+  if (!attachment.url || attachment.url === "/ambient-veil.webp") {
+    return null;
+  }
+
+  if (attachment.kind === "audio") {
+    return (
+      <div
+        className="grid min-w-0 gap-2 rounded-card border border-line bg-canvas/70 p-3"
+        data-testid={`${testId}-audio`}
+      >
+        <p className="truncate text-sm font-semibold text-text">MP3 attachment {index + 1}</p>
+        <audio className="w-full" controls preload="metadata">
+          <source src={attachment.url} type={attachment.mime ?? "audio/mpeg"} />
+        </audio>
+      </div>
+    );
+  }
+
+  return (
+    <span className="inline-flex w-fit max-w-full overflow-hidden rounded-card border border-line bg-canvas/70 align-top" data-testid={testId}>
+      {attachment.kind === "video" ? (
+        <video
+          className={cn("block h-auto max-w-full bg-black object-contain", maxHeightClass)}
+          controls
+          playsInline
+          poster={attachment.posterUrl ?? undefined}
+          preload="metadata"
+          data-testid={`${testId}-video`}
+        >
+          <source src={attachment.url} type={attachment.mime ?? (attachment.url.endsWith(".webm") ? "video/webm" : "video/mp4")} />
+        </video>
+      ) : (
+        <img
+          src={attachment.url}
+          alt=""
+          className={cn("block h-auto max-w-full object-contain", maxHeightClass)}
+          loading="lazy"
+          decoding="async"
+          data-testid={`${testId}-image`}
+        />
+      )}
+    </span>
+  );
+}
+
+function PostIntegrationAttachment({
+  attachment,
+  testId,
+}: {
+  attachment: PostAttachment;
+  testId: string;
+}) {
+  const card = attachmentCardObject(attachment.card);
+  const metadata = attachmentCardObject(card?.metadata);
+  const title = stringValue(metadata?.title) ?? stringValue(card?.title) ?? postIntegrationProviderLabel(attachment.provider);
+  const subtitle = stringValue(metadata?.subtitle) ?? postIntegrationProviderLabel(attachment.provider);
+  const imageUrl = stringValue(metadata?.imageUrl);
+  const href = attachment.sourceUrl ?? stringValue(card?.sourceUrl) ?? "#";
+
+  return (
+    <a
+      className="grid min-h-24 min-w-0 grid-cols-[4rem_1fr] gap-3 rounded-card border border-line bg-canvas/70 p-3 text-left shadow-inner-soft transition duration-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      href={href}
+      rel="noreferrer"
+      target="_blank"
+      data-thread-open-ignore
+      data-testid={`${testId}-integration`}
+    >
+      <span className="grid size-16 overflow-hidden rounded-card border border-line bg-surface">
+        {imageUrl ? (
+          <img src={imageUrl} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
+        ) : (
+          <span className="grid place-items-center text-muted">
+            <WifiOff aria-hidden="true" size={18} />
+          </span>
+        )}
+      </span>
+      <span className="min-w-0 self-center">
+        <span className="block truncate text-sm font-semibold text-text">{title}</span>
+        <span className="mt-1 block truncate text-xs text-muted">{subtitle}</span>
+      </span>
+    </a>
+  );
+}
+
+function postAttachmentsForDisplay(post: Post): PostAttachment[] {
+  if (post.attachments && post.attachments.length > 0) {
+    return [...post.attachments].sort((first, second) => first.position - second.position);
+  }
+
+  if (!post.mediaUrl) {
+    return [];
+  }
+
+  const kind = post.mediaType === "video" || /\.(?:mp4|webm)$/iu.test(post.mediaUrl) ? "video" : "image";
+
+  return [
+    {
+      position: 1,
+      kind,
+      url: post.mediaUrl,
+      mime: post.mediaMime ?? null,
+      posterUrl: post.mediaPosterUrl ?? null,
+    },
+  ];
+}
+
+function attachmentCardObject(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() !== "" ? value : null;
+}
+
+function postIntegrationProviderLabel(provider: string | null | undefined): string {
+  if (provider === "spotify") {
+    return "Spotify";
+  }
+
+  if (provider === "youtube") {
+    return "YouTube Music";
+  }
+
+  if (provider === "apple_music") {
+    return "Apple Music";
+  }
+
+  return "Music";
 }
 
 /*
@@ -703,7 +894,7 @@ function ReplyComposer({
 }: ReplyComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [body, setBody] = useState("");
-  const [media, setMedia] = useState<PostMediaDraft | undefined>();
+  const [media, setMedia] = useState<PostMediaDraft[]>([]);
   const [pendingImageCrop, setPendingImageCrop] = useState<File | undefined>();
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -715,6 +906,7 @@ function ReplyComposer({
     trimmedBody.length <= 2000 &&
     !submitting &&
     !uploadingMedia;
+  const canAddMedia = media.length < maxPostComposerAttachments;
 
   useEffect(() => {
     if (autoFocus) {
@@ -755,7 +947,7 @@ function ReplyComposer({
       );
 
       setBody("");
-      setMedia(undefined);
+      setMedia([]);
       setPendingImageCrop(undefined);
       onCreated(reply);
     } catch (error) {
@@ -775,6 +967,16 @@ function ReplyComposer({
 
     if (!csrfToken) {
       setMessage("Log in to upload media.");
+      return;
+    }
+
+    if (!canAddMedia) {
+      setMessage(`Replies can include up to ${maxPostComposerAttachments} attachments.`);
+      return;
+    }
+
+    if (isLikelyAudioUploadFile(file)) {
+      await uploadAudioMedia(file);
       return;
     }
 
@@ -818,11 +1020,37 @@ function ReplyComposer({
         (freshCsrfToken) => uploadVideo(file, "post_media", freshCsrfToken),
         { retryOnCsrf: true },
       );
-      setMedia(postMediaDraftFromVideo(uploaded));
+      appendMedia(postMediaDraftFromVideo(uploaded));
       setPendingImageCrop(undefined);
       setMessage("Media attached.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Video could not be uploaded.");
+    } finally {
+      setUploadingMedia(false);
+    }
+  }
+
+  async function uploadAudioMedia(file: File) {
+    const validationError = validatePostAudioFile(file);
+
+    if (validationError) {
+      setMessage(validationError);
+      return;
+    }
+
+    setUploadingMedia(true);
+    setMessage(undefined);
+
+    try {
+      const uploaded = await runWithAuth(
+        (freshCsrfToken) => uploadAudio(file, "post_media", freshCsrfToken),
+        { retryOnCsrf: true },
+      );
+      appendMedia(postMediaDraftFromAudio(uploaded));
+      setPendingImageCrop(undefined);
+      setMessage("Media attached.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Audio could not be uploaded.");
     } finally {
       setUploadingMedia(false);
     }
@@ -842,7 +1070,7 @@ function ReplyComposer({
         (freshCsrfToken) => uploadImage(file, "post_media", freshCsrfToken),
         { retryOnCsrf: true },
       );
-      setMedia(postMediaDraftFromImage(uploaded));
+      appendMedia(postMediaDraftFromImage(uploaded));
       setPendingImageCrop(undefined);
       setMessage("Media attached.");
     } catch (error) {
@@ -853,6 +1081,16 @@ function ReplyComposer({
     } finally {
       setUploadingMedia(false);
     }
+  }
+
+  function appendMedia(draft: PostMediaDraft) {
+    setMedia((current) =>
+      current.length >= maxPostComposerAttachments ? current : [...current, draft],
+    );
+  }
+
+  function moveMediaAttachment(index: number, offset: -1 | 1) {
+    setMedia((current) => movePostMediaDraft(current, index, index + offset));
   }
 
   return (
@@ -885,12 +1123,20 @@ function ReplyComposer({
       <PostMedia
         className="mt-3"
         maxHeightClass="max-h-56"
-        mediaMime={media?.mime}
-        mediaPosterUrl={media?.posterUrl}
-        mediaType={media?.type}
-        mediaUrl={media?.url}
+        mediaMime={media[0]?.mime}
+        mediaPosterUrl={media[0]?.posterUrl}
+        mediaType={media[0]?.type === "image" || media[0]?.type === "video" ? media[0].type : null}
+        mediaUrl={media[0]?.type === "audio" ? undefined : media[0]?.url}
         testId="reply-composer-media"
       />
+      {media.length > 1 || media[0]?.type === "audio" ? (
+        <PostAttachmentDraftList
+          attachments={media}
+          disabled={submitting || uploadingMedia}
+          onMove={(index, offset) => moveMediaAttachment(index, offset)}
+          onRemove={(index) => setMedia((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+        />
+      ) : null}
 
       {message ? (
         <p
@@ -910,26 +1156,26 @@ function ReplyComposer({
           {body.length}/2000
         </span>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {media ? (
+          {media.length > 0 ? (
             <Button
               type="button"
               variant="ghost"
               size="sm"
               disabled={submitting || uploadingMedia}
               icon={<Trash2 aria-hidden="true" size={15} />}
-              onClick={() => setMedia(undefined)}
+              onClick={() => setMedia([])}
             >
-              Remove
+              Remove all
             </Button>
           ) : null}
           <label className="inline-flex min-h-9 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-surface px-3 text-sm font-medium text-text shadow-soft transition duration-fluid hover:border-line-strong focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus">
             <ImagePlus aria-hidden="true" size={15} />
-            {uploadingMedia ? "Uploading" : media ? "Replace media" : "Upload media"}
+            {uploadingMedia ? "Uploading" : media.length > 0 ? "Add media" : "Upload media"}
             <input
               className="sr-only"
               type="file"
               accept={mediaUploadAccept}
-              disabled={submitting || uploadingMedia}
+              disabled={submitting || uploadingMedia || !canAddMedia}
               onChange={(event) => void handleMediaChange(event)}
             />
           </label>
@@ -963,6 +1209,104 @@ function ReplyComposer({
       />
     </>
   );
+}
+
+const maxPostComposerAttachments = 8;
+
+type PostAttachmentDraftListProps = {
+  attachments: PostMediaDraft[];
+  disabled: boolean;
+  onMove: (index: number, offset: -1 | 1) => void;
+  onRemove: (index: number) => void;
+};
+
+function PostAttachmentDraftList({
+  attachments,
+  disabled,
+  onMove,
+  onRemove,
+}: PostAttachmentDraftListProps) {
+  return (
+    <div className="mt-3 grid gap-2" data-testid="reply-composer-attachments">
+      {attachments.map((attachment, index) => (
+        <div
+          key={`${attachment.url}-${index}`}
+          className="flex min-w-0 items-center gap-3 rounded-card border border-line bg-canvas/45 p-2"
+          data-testid="reply-composer-attachment"
+        >
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-semibold uppercase tracking-[0.08em] text-muted">
+              {attachment.type === "audio" ? "MP3" : attachment.type}
+            </p>
+            {attachment.type === "audio" ? (
+              <audio className="mt-1 w-full" controls preload="metadata">
+                <source src={attachment.url} type={attachment.mime} />
+              </audio>
+            ) : (
+              <p className="truncate text-sm text-text">Attachment {index + 1}</p>
+            )}
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 rounded-full"
+            disabled={disabled || index === 0}
+            aria-label={`Move attachment ${index + 1} earlier`}
+            title="Move earlier"
+            onClick={() => onMove(index, -1)}
+          >
+            <ArrowUp aria-hidden="true" size={14} />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 rounded-full"
+            disabled={disabled || index === attachments.length - 1}
+            aria-label={`Move attachment ${index + 1} later`}
+            title="Move later"
+            onClick={() => onMove(index, 1)}
+          >
+            <ArrowDown aria-hidden="true" size={14} />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 rounded-full"
+            disabled={disabled}
+            aria-label={`Remove attachment ${index + 1}`}
+            title="Remove attachment"
+            onClick={() => onRemove(index)}
+          >
+            <Trash2 aria-hidden="true" size={14} />
+          </Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function movePostMediaDraft(
+  attachments: PostMediaDraft[],
+  fromIndex: number,
+  toIndex: number,
+): PostMediaDraft[] {
+  if (toIndex < 0 || toIndex >= attachments.length || fromIndex === toIndex) {
+    return attachments;
+  }
+
+  const next = [...attachments];
+  const [item] = next.splice(fromIndex, 1);
+
+  if (item === undefined) {
+    return attachments;
+  }
+
+  next.splice(toIndex, 0, item);
+
+  return next;
 }
 
 type ThreadModalProps = {
@@ -1228,15 +1572,10 @@ function ParentPostPreview({
           <RichText
             text={post.body}
             entities={post.bodyEntities}
+            markdown={post.bodyFormat === "markdown"}
             className="mt-3 block whitespace-pre-wrap break-words text-pretty text-base leading-7 text-text sm:text-[1.0625rem] sm:leading-8"
           />
-          <PostMedia
-            className="mt-3"
-            mediaMime={post.mediaMime}
-            mediaPosterUrl={post.mediaPosterUrl}
-            mediaType={postMediaType(post)}
-            mediaUrl={post.mediaUrl}
-          />
+          <PostAttachments className="mt-3" post={post} />
           <div data-testid="thread-root-actions">{actionRow}</div>
         </div>
       </div>
@@ -1417,15 +1756,10 @@ function ReplyPreview({
           <RichText
             text={reply.body}
             entities={reply.bodyEntities}
+            markdown={reply.bodyFormat === "markdown"}
             className="mt-2 block whitespace-pre-wrap break-words text-pretty text-sm leading-6 text-text"
           />
-          <PostMedia
-            className="mt-3"
-            mediaMime={reply.mediaMime}
-            mediaPosterUrl={reply.mediaPosterUrl}
-            mediaType={postMediaType(reply)}
-            mediaUrl={reply.mediaUrl}
-          />
+          <PostAttachments className="mt-3" post={reply} />
 
           <div data-testid="thread-reply-actions">
             <ReactionControls
@@ -1705,6 +2039,22 @@ function validatePostVideoFile(file: File): string | undefined {
 
   if (!isAcceptedVideoUploadFile(file)) {
     return videoUploadFormatHelp;
+  }
+
+  return undefined;
+}
+
+function validatePostAudioFile(file: File): string | undefined {
+  if (file.size <= 0) {
+    return "Audio cannot be empty.";
+  }
+
+  if (file.size > 20 * 1024 * 1024) {
+    return "Audio must be 20 MB or smaller.";
+  }
+
+  if (!isAcceptedAudioUploadFile(file)) {
+    return audioUploadFormatHelp;
   }
 
   return undefined;

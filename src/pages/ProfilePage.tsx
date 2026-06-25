@@ -9178,13 +9178,14 @@ function FeaturedPostCard({ post }: { post: Post }) {
         <span className="text-muted/50">·</span>
         <span>{post.createdAt}</span>
       </div>
-      <p className="mt-2 line-clamp-3 break-words whitespace-pre-wrap text-sm leading-6 text-text">
+      <div className="mt-2 line-clamp-3 break-words whitespace-pre-wrap text-sm leading-6 text-text">
         <RichText
           text={post.body}
           entities={post.bodyEntities}
+          markdown={post.bodyFormat === "markdown"}
           showPreviews={false}
         />
-      </p>
+      </div>
       {post.mediaUrl && post.mediaUrl !== "/ambient-veil.webp" ? (
         <div
           className="mt-3 overflow-hidden rounded-card border border-line bg-canvas/70"

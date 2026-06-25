@@ -5,7 +5,7 @@
 > preservation requirements. Future upload work should be tracked in GitHub
 > Issues.
 
-`thia.lol` supports authenticated image and video uploads for profile
+`thia.lol` supports authenticated image, video, and MP3 uploads for profile
 customization, posts, replies, rooms, and profile media modules. Uploads are
 processed by the Node API on the VPS; the app should not rely on browser MIME
 claims or store arbitrary original files.
@@ -17,6 +17,7 @@ Uploaded public media is stored under the deployed web root:
 ```text
 /srv/thia.lol/www/uploads/media/yyyy/mm/generated-name.webp
 /srv/thia.lol/www/uploads/media/yyyy/mm/generated-name.mp4
+/srv/thia.lol/www/uploads/media/yyyy/mm/generated-name.mp3
 /srv/thia.lol/www/uploads/media/yyyy/mm/generated-name-poster.webp
 ```
 
@@ -25,6 +26,7 @@ The API returns public URLs such as:
 ```text
 /uploads/media/2026/06/post_media-random.webp
 /uploads/media/2026/06/post_media-random.mp4
+/uploads/media/2026/06/post_media-random.mp3
 ```
 
 Do not store uploads in `src/`, `dist/`, `backend/`, or `api/`. Do not commit
@@ -92,6 +94,43 @@ and `duration` when FFprobe can provide them. Post/reply/featured-post media
 renders as `<video controls playsInline poster=...>` when `mediaType` is
 `video`.
 
+## Audio
+
+Audio goes through `/api/uploads/audio`.
+
+Rules:
+
+- Maximum upload size: 20 MB.
+- Purpose must be `profile_music` or `post_media`.
+- Accepted input after server sniffing: MP3 only.
+- Stored output is the original MP3 bytes with `audio/mpeg`.
+- WAV, M4A, FLAC, OGG, browser-only MIME claims, and unknown binaries are
+  rejected.
+
+Audio upload responses include `url`, `mime`, `size`, `purpose`, and
+`mediaType: "audio"`. Post and reply composers attach MP3s through the same
+ordered attachment tray as images and videos.
+
+## Post and Reply Attachments
+
+New posts and replies write `body_format = markdown` and `content_version = 3`.
+Existing rows remain `plain` and version `1`. Render Markdown only when the API
+payload says `bodyFormat: "markdown"`.
+
+Posts and replies can include up to 8 ordered attachments. Supported attachment
+kinds are:
+
+- `image`: uploaded post media WebP/JPEG/PNG/GIF.
+- `video`: uploaded post media MP4/WebM with a WebP poster.
+- `audio`: uploaded post media MP3.
+- `integration`: allowlisted music cards for Spotify, YouTube, and Apple Music
+  URLs/catalog-backed cards.
+
+During rollout, the API still accepts old single-media `mediaUrl`, `mediaType`,
+`mediaMime`, and `mediaPosterUrl` input. Responses still expose those legacy
+fields from the first image or video attachment so older UI surfaces keep
+working.
+
 ## VPS Requirements
 
 System FFmpeg and FFprobe must be installed on the VPS and visible to the Node
@@ -103,7 +142,7 @@ THIA_FFPROBE_PATH=ffprobe
 ```
 
 Production Caddy and Node multipart limits must be kept in sync with the app
-video limit:
+largest upload limit:
 
 - Caddy `request_body max_size 100MB`
 - Fastify multipart default limit: 100 MB

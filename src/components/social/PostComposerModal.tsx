@@ -1,20 +1,24 @@
 import type { ChangeEvent, FormEvent } from "react";
 import { useCallback, useId, useMemo, useRef, useState } from "react";
-import { ChevronDown, ImagePlus, Radio, Send, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ImagePlus, Radio, Send, Trash2 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { ImageCropModal } from "../ui/ImageCropModal";
 import { ModalSheet, ModalSheetStatus } from "../ui/ModalSheet";
 import { MentionTextarea } from "./MentionTextarea";
-import { createPost, previewImageUpload, uploadImage, uploadVideo } from "../../lib/api";
+import { createPost, previewImageUpload, uploadAudio, uploadImage, uploadVideo } from "../../lib/api";
 import type { CreatePostInput } from "../../lib/api";
 import { prepareImageFileForCrop } from "../../lib/imageCrop";
 import {
   isAcceptedVideoUploadFile,
+  isLikelyAudioUploadFile,
   isLikelyVideoUploadFile,
   mediaUploadAccept,
+  audioUploadFormatHelp,
   videoUploadFormatHelp,
+  isAcceptedAudioUploadFile,
 } from "../../lib/mediaFormats";
 import {
+  postMediaDraftFromAudio,
   postMediaDraftFromImage,
   postMediaDraftFromVideo,
   postMediaInputFromDraft,
@@ -43,7 +47,7 @@ export function PostComposerModal({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [body, setBody] = useState("");
   const [roomSlug, setRoomSlug] = useState(initialRoomSlug ?? "");
-  const [media, setMedia] = useState<PostMediaDraft | undefined>();
+  const [media, setMedia] = useState<PostMediaDraft[]>([]);
   const [pendingImageCrop, setPendingImageCrop] = useState<File | undefined>();
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -51,6 +55,7 @@ export function PostComposerModal({
   const postableRooms = useMemo(() => rooms.filter((room) => room.viewerCanPost), [rooms]);
   const canSubmit =
     Boolean(csrfToken) && body.trim().length > 0 && !submitting && !uploadingMedia;
+  const canAddMedia = media.length < maxPostComposerAttachments;
   const roomOptions = [
     { value: "", label: "Profile feed" },
     ...postableRooms.map((room) => ({
@@ -67,7 +72,7 @@ export function PostComposerModal({
   const closeComposer = useCallback(() => {
     setBody("");
     setRoomSlug("");
-    setMedia(undefined);
+    setMedia([]);
     setPendingImageCrop(undefined);
     setUploadingMedia(false);
     setMessage(undefined);
@@ -119,6 +124,16 @@ export function PostComposerModal({
       return;
     }
 
+    if (!canAddMedia) {
+      setMessage(`Posts can include up to ${maxPostComposerAttachments} attachments.`);
+      return;
+    }
+
+    if (isLikelyAudioUploadFile(file)) {
+      await uploadAudioMedia(file);
+      return;
+    }
+
     if (isLikelyVideoUploadFile(file)) {
       await uploadVideoMedia(file);
       return;
@@ -157,10 +172,37 @@ export function PostComposerModal({
 
     try {
       const uploaded = await uploadVideo(file, "post_media", csrfToken);
-      setMedia(postMediaDraftFromVideo(uploaded));
+      appendMedia(postMediaDraftFromVideo(uploaded));
       setPendingImageCrop(undefined);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Video could not be uploaded.");
+    } finally {
+      setUploadingMedia(false);
+    }
+  }
+
+  async function uploadAudioMedia(file: File) {
+    if (!csrfToken) {
+      setMessage("Sign in again before uploading.");
+      return;
+    }
+
+    const validationError = validatePostAudioFile(file);
+
+    if (validationError) {
+      setMessage(validationError);
+      return;
+    }
+
+    setUploadingMedia(true);
+    setMessage(undefined);
+
+    try {
+      const uploaded = await uploadAudio(file, "post_media", csrfToken);
+      appendMedia(postMediaDraftFromAudio(uploaded));
+      setPendingImageCrop(undefined);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Audio could not be uploaded.");
     } finally {
       setUploadingMedia(false);
     }
@@ -177,7 +219,7 @@ export function PostComposerModal({
 
     try {
       const uploaded = await uploadImage(file, "post_media", csrfToken);
-      setMedia(postMediaDraftFromImage(uploaded));
+      appendMedia(postMediaDraftFromImage(uploaded));
       setMessage(undefined);
       setPendingImageCrop(undefined);
     } catch (error) {
@@ -188,6 +230,16 @@ export function PostComposerModal({
     } finally {
       setUploadingMedia(false);
     }
+  }
+
+  function moveMediaAttachment(index: number, offset: -1 | 1) {
+    setMedia((current) => movePostMediaDraft(current, index, index + offset));
+  }
+
+  function appendMedia(draft: PostMediaDraft) {
+    setMedia((current) =>
+      current.length >= maxPostComposerAttachments ? current : [...current, draft],
+    );
   }
 
   return (
@@ -250,35 +302,35 @@ export function PostComposerModal({
 
             <label
               className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-full text-muted transition duration-fluid hover:bg-surface-strong hover:text-text focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus has-[:disabled]:pointer-events-none has-[:disabled]:opacity-50"
-              title={media ? "Replace media" : "Upload media"}
+              title={media.length > 0 ? "Add media" : "Upload media"}
             >
               <ImagePlus aria-hidden="true" size={18} />
               <span className="sr-only">
                 {uploadingMedia
                   ? "Uploading media"
-                  : media
-                    ? "Replace media"
+                  : media.length > 0
+                    ? "Add media"
                     : "Upload media"}
               </span>
               <input
                 className="sr-only"
                 type="file"
                 accept={mediaUploadAccept}
-                disabled={submitting || uploadingMedia}
+                disabled={submitting || uploadingMedia || !canAddMedia}
                 onChange={handleMediaChange}
               />
             </label>
 
-            {media ? (
+            {media.length > 0 ? (
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
                 className="size-9 rounded-full"
                 disabled={submitting || uploadingMedia}
-                aria-label="Remove media"
-                title="Remove media"
-                onClick={() => setMedia(undefined)}
+                aria-label="Remove all media"
+                title="Remove all media"
+                onClick={() => setMedia([])}
               >
                 <Trash2 aria-hidden="true" size={17} />
               </Button>
@@ -319,25 +371,21 @@ export function PostComposerModal({
           onValueChange={setBody}
         />
 
-        {media ? (
-          <div className="overflow-hidden rounded-card border border-line bg-canvas/55">
-            {media.type === "video" ? (
-              <video
-                className="mx-auto max-h-64 max-w-full bg-black object-contain"
-                controls
-                playsInline
-                poster={media.posterUrl ?? undefined}
-                preload="metadata"
-              >
-                <source src={media.url} type={media.mime} />
-              </video>
-            ) : (
-              <img
-                alt=""
-                className="mx-auto max-h-64 max-w-full object-contain"
-                src={media.url}
+        {media.length > 0 ? (
+          <div className="grid gap-2 sm:grid-cols-2" data-testid="composer-attachments">
+            {media.map((item, index) => (
+              <PostComposerAttachmentPreview
+                key={`${item.url}-${index}`}
+                attachment={item}
+                index={index}
+                disabled={submitting || uploadingMedia}
+                canMoveDown={index < media.length - 1}
+                canMoveUp={index > 0}
+                onMoveDown={() => moveMediaAttachment(index, 1)}
+                onMoveUp={() => moveMediaAttachment(index, -1)}
+                onRemove={() => setMedia((current) => current.filter((_, itemIndex) => itemIndex !== index))}
               />
-            )}
+            ))}
           </div>
         ) : null}
 
@@ -356,6 +404,118 @@ export function PostComposerModal({
   );
 }
 
+const maxPostComposerAttachments = 8;
+
+type PostComposerAttachmentPreviewProps = {
+  attachment: PostMediaDraft;
+  canMoveDown: boolean;
+  canMoveUp: boolean;
+  disabled: boolean;
+  index: number;
+  onMoveDown: () => void;
+  onMoveUp: () => void;
+  onRemove: () => void;
+};
+
+function PostComposerAttachmentPreview({
+  attachment,
+  canMoveDown,
+  canMoveUp,
+  disabled,
+  index,
+  onMoveDown,
+  onMoveUp,
+  onRemove,
+}: PostComposerAttachmentPreviewProps) {
+  return (
+    <div className="relative overflow-hidden rounded-card border border-line bg-canvas/55" data-testid="composer-attachment">
+      {attachment.type === "video" ? (
+        <video
+          className="mx-auto max-h-64 max-w-full bg-black object-contain"
+          controls
+          playsInline
+          poster={attachment.posterUrl ?? undefined}
+          preload="metadata"
+        >
+          <source src={attachment.url} type={attachment.mime} />
+        </video>
+      ) : attachment.type === "audio" ? (
+        <div className="grid min-h-24 gap-2 p-3">
+          <p className="truncate text-sm font-semibold text-text">MP3 attachment {index + 1}</p>
+          <audio className="w-full" controls preload="metadata">
+            <source src={attachment.url} type={attachment.mime} />
+          </audio>
+        </div>
+      ) : (
+        <img
+          alt=""
+          className="mx-auto max-h-64 max-w-full object-contain"
+          src={attachment.url}
+        />
+      )}
+      <div className="absolute right-2 top-2 flex gap-1">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-8 rounded-full border border-line bg-surface/90"
+          disabled={disabled || !canMoveUp}
+          aria-label={`Move attachment ${index + 1} earlier`}
+          title="Move earlier"
+          onClick={onMoveUp}
+        >
+          <ArrowUp aria-hidden="true" size={14} />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-8 rounded-full border border-line bg-surface/90"
+          disabled={disabled || !canMoveDown}
+          aria-label={`Move attachment ${index + 1} later`}
+          title="Move later"
+          onClick={onMoveDown}
+        >
+          <ArrowDown aria-hidden="true" size={14} />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-8 rounded-full border border-line bg-surface/90"
+          disabled={disabled}
+          aria-label={`Remove attachment ${index + 1}`}
+          title="Remove attachment"
+          onClick={onRemove}
+        >
+          <Trash2 aria-hidden="true" size={15} />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function movePostMediaDraft(
+  attachments: PostMediaDraft[],
+  fromIndex: number,
+  toIndex: number,
+): PostMediaDraft[] {
+  if (toIndex < 0 || toIndex >= attachments.length || fromIndex === toIndex) {
+    return attachments;
+  }
+
+  const next = [...attachments];
+  const [item] = next.splice(fromIndex, 1);
+
+  if (item === undefined) {
+    return attachments;
+  }
+
+  next.splice(toIndex, 0, item);
+
+  return next;
+}
+
 function validatePostVideoFile(file: File): string | undefined {
   if (file.size <= 0) {
     return "Video cannot be empty.";
@@ -367,6 +527,22 @@ function validatePostVideoFile(file: File): string | undefined {
 
   if (!isAcceptedVideoUploadFile(file)) {
     return videoUploadFormatHelp;
+  }
+
+  return undefined;
+}
+
+function validatePostAudioFile(file: File): string | undefined {
+  if (file.size <= 0) {
+    return "Audio cannot be empty.";
+  }
+
+  if (file.size > 20 * 1024 * 1024) {
+    return "Audio must be 20 MB or smaller.";
+  }
+
+  if (!isAcceptedAudioUploadFile(file)) {
+    return audioUploadFormatHelp;
   }
 
   return undefined;

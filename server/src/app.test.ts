@@ -2449,6 +2449,119 @@ describe("Node API social and content mutation preview routes", () => {
     expect(repository.updatePost).toHaveBeenCalledWith(session, 99, videoMedia);
   });
 
+  it("passes ordered post attachments through create, reply, and update mutations", async () => {
+    const repository = contentMutationsRepositoryMock();
+    const app = buildApp({
+      contentMutationsRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const attachmentPost = {
+      body: "Markdown **post** with music.",
+      bodyFormat: "markdown",
+      contentVersion: 3,
+      attachments: [
+        {
+          kind: "audio",
+          url: "/uploads/media/2026/06/post_media-fedcba0987654321fedcba0987654321.mp3",
+          mime: "audio/mpeg",
+          sizeBytes: 4096,
+          durationSeconds: 33.5,
+        },
+        {
+          kind: "integration",
+          provider: "spotify",
+          resourceType: "track",
+          resourceId: "spotify-track",
+          resourceKey: "spotify:track:spotify-track",
+          sourceUrl: "https://open.spotify.com/track/spotify-track",
+          card: {
+            title: "Track title",
+            subtitle: "Artist",
+          },
+        },
+      ],
+    };
+
+    const create = await app.inject({
+      method: "POST",
+      url: "/posts",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: attachmentPost,
+    });
+    const reply = await app.inject({
+      method: "POST",
+      url: "/posts/99/replies",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: attachmentPost,
+    });
+    const update = await app.inject({
+      method: "PATCH",
+      url: "/posts/99",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: attachmentPost,
+    });
+
+    expect(create.statusCode).toBe(201);
+    expect(reply.statusCode).toBe(201);
+    expect(update.statusCode).toBe(200);
+    expect(repository.createPost).toHaveBeenCalledWith(session, attachmentPost);
+    expect(repository.createReply).toHaveBeenCalledWith(session, 99, attachmentPost);
+    expect(repository.updatePost).toHaveBeenCalledWith(session, 99, attachmentPost);
+  });
+
+  it("serves MP3 uploads as authenticated post media", async () => {
+    const uploadService = uploadServiceMock({
+      store: vi.fn().mockResolvedValue({
+        url: "/uploads/media/2026/06/post_media-audio.mp3",
+        mime: "audio/mpeg",
+        type: "audio/mpeg",
+        size: 8,
+        purpose: "post_media",
+        mediaType: "audio",
+      }),
+    });
+    const app = buildApp({
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+      uploadService,
+    });
+    const multipart = multipartPayload(
+      { purpose: "post_media" },
+      { filename: "post.mp3", contentType: "audio/mpeg", body: Buffer.from([0xff, 0xfb, 0x90, 0x64]) },
+    );
+    const response = await app.inject({
+      method: "POST",
+      url: "/uploads/audio",
+      headers: {
+        "content-type": multipart.contentType,
+        cookie: "thia_session=token",
+        "x-csrf-token": "csrf-token",
+      },
+      payload: multipart.body,
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toEqual({
+      ok: true,
+      data: {
+        url: "/uploads/media/2026/06/post_media-audio.mp3",
+        mime: "audio/mpeg",
+        type: "audio/mpeg",
+        size: 8,
+        purpose: "post_media",
+        mediaType: "audio",
+      },
+    });
+    expect(uploadService.store).toHaveBeenCalledWith("audio", expect.any(Object));
+  });
+
   it("serves image preview conversion as an authenticated WebP blob", async () => {
     const uploadService = uploadServiceMock();
     const app = buildApp({

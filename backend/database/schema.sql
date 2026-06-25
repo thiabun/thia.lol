@@ -452,6 +452,8 @@ CREATE TABLE IF NOT EXISTS posts (
   room_id BIGINT UNSIGNED NULL,
   parent_id BIGINT UNSIGNED NULL,
   body TEXT NOT NULL,
+  body_format ENUM('plain', 'markdown') NOT NULL DEFAULT 'plain',
+  content_version SMALLINT UNSIGNED NOT NULL DEFAULT 1,
   mood VARCHAR(80) NULL,
   media_url VARCHAR(255) NULL,
   media_type ENUM('image', 'video') NULL,
@@ -477,6 +479,34 @@ CREATE TABLE IF NOT EXISTS posts (
   CONSTRAINT posts_parent_fk
     FOREIGN KEY (parent_id) REFERENCES posts(id)
     ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS post_attachments (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  post_id BIGINT UNSIGNED NOT NULL,
+  position TINYINT UNSIGNED NOT NULL,
+  kind ENUM('image', 'video', 'audio', 'integration') NOT NULL,
+  url VARCHAR(500) NULL,
+  mime VARCHAR(80) NULL,
+  size_bytes BIGINT UNSIGNED NULL,
+  width INT UNSIGNED NULL,
+  height INT UNSIGNED NULL,
+  duration_seconds DECIMAL(10,3) NULL,
+  poster_url VARCHAR(500) NULL,
+  provider VARCHAR(40) NULL,
+  resource_type VARCHAR(40) NULL,
+  resource_id VARCHAR(191) NULL,
+  resource_key VARCHAR(255) NULL,
+  source_url VARCHAR(500) NULL,
+  card_json JSON NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY post_attachments_post_position_unique (post_id, position),
+  KEY post_attachments_post_kind_idx (post_id, kind),
+  KEY post_attachments_provider_resource_idx (provider, resource_key),
+  CONSTRAINT post_attachments_post_fk
+    FOREIGN KEY (post_id) REFERENCES posts(id)
+    ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS post_reactions (

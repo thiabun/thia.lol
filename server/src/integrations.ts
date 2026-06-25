@@ -1055,7 +1055,7 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
     }
 
     if (provider === "youtube") {
-      return this.youtubeSuggestions(account);
+      return this.youtubeSuggestions(account, userId);
     }
 
     if (provider === "twitch") {
@@ -1076,31 +1076,66 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
       return [];
     }
 
-    const response = await this.httpJson(
+    const items: IntegrationSuggestionItemPayload[] = [];
+    const seenUrls = new Set<string>();
+
+    const addSpotifyUrl = async (url: string | null, label: string, description: string) => {
+      if (url === null || url === "" || seenUrls.has(url)) {
+        return;
+      }
+
+      seenUrls.add(url);
+      const card = await this.resolveUrl(url, "spotify", userId);
+      items.push(suggestionItem(`spotify:${md5(url)}`, label, description, url, "music", card));
+    };
+
+    const recent = await this.httpJson(
       "GET",
       "https://api.spotify.com/v1/me/player/recently-played?limit=5",
       [`Authorization: Bearer ${token}`],
-    );
-    const rows = Array.isArray(nestedValue(response, ["items"])) ? nestedValue(response, ["items"]) as unknown[] : [];
-    const items: IntegrationSuggestionItemPayload[] = [];
+    ).catch(() => null);
+    const recentRows = Array.isArray(nestedValue(recent, ["items"])) ? nestedValue(recent, ["items"]) as unknown[] : [];
 
-    for (const item of rows) {
+    for (const item of recentRows) {
       const track = isRecord(item) ? item.track : null;
-      const url = nestedString(track, ["external_urls", "spotify"]);
-
-      if (url === null || url === "") {
-        continue;
-      }
-
-      const card = await this.resolveUrl(url, "spotify", userId);
       const title = isRecord(track) && typeof track.name === "string" ? track.name : "Spotify track";
-      items.push(suggestionItem(`spotify:${md5(url)}`, title, "Recently played on Spotify", url, "music", card));
+
+      await addSpotifyUrl(nestedString(track, ["external_urls", "spotify"]), title, "Recently played on Spotify");
+    }
+
+    const top = await this.httpJson(
+      "GET",
+      "https://api.spotify.com/v1/me/top/tracks?limit=5&time_range=short_term",
+      [`Authorization: Bearer ${token}`],
+    ).catch(() => null);
+    const topRows = Array.isArray(nestedValue(top, ["items"])) ? nestedValue(top, ["items"]) as unknown[] : [];
+
+    for (const track of topRows) {
+      const title = isRecord(track) && typeof track.name === "string" ? track.name : "Spotify track";
+
+      await addSpotifyUrl(nestedString(track, ["external_urls", "spotify"]), title, "Top track on Spotify");
+    }
+
+    const playlists = await this.httpJson(
+      "GET",
+      "https://api.spotify.com/v1/me/playlists?limit=5",
+      [`Authorization: Bearer ${token}`],
+    ).catch(() => null);
+    const playlistRows = Array.isArray(nestedValue(playlists, ["items"])) ? nestedValue(playlists, ["items"]) as unknown[] : [];
+
+    for (const playlist of playlistRows) {
+      const title = isRecord(playlist) && typeof playlist.name === "string" ? playlist.name : "Spotify playlist";
+
+      await addSpotifyUrl(nestedString(playlist, ["external_urls", "spotify"]), title, "Spotify playlist");
     }
 
     return items;
   }
 
-  private youtubeSuggestions(account: IntegrationAccountPayload): IntegrationSuggestionItemPayload[] {
+  private async youtubeSuggestions(
+    account: IntegrationAccountPayload,
+    userId: number,
+  ): Promise<IntegrationSuggestionItemPayload[]> {
     const handle = accountHandle(account);
 
     if (handle === null) {
@@ -1111,8 +1146,33 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
       ? `https://www.youtube.com/${handle.replace(/[^A-Za-z0-9_@.-]/gu, "")}`
       : `https://www.youtube.com/channel/${encodeURIComponent(account.providerAccountId)}`;
     const card = this.generatedCard(sourceUrl, "youtube");
+    const items: IntegrationSuggestionItemPayload[] = [];
+    const token = await this.accessToken(userId, "youtube");
 
-    return [
+    if (token !== null) {
+      const playlists = await this.httpJson(
+        "GET",
+        "https://www.googleapis.com/youtube/v3/playlists?part=snippet&mine=true&maxResults=5",
+        [`Authorization: Bearer ${token}`],
+      ).catch(() => null);
+      const rows = Array.isArray(nestedValue(playlists, ["items"])) ? nestedValue(playlists, ["items"]) as unknown[] : [];
+
+      for (const playlist of rows) {
+        const playlistId = nestedString(playlist, ["id"]);
+
+        if (playlistId === null || playlistId === "") {
+          continue;
+        }
+
+        const playlistUrl = `https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}`;
+        const playlistCard = await this.resolveUrl(playlistUrl, "youtube", userId);
+        const title = nestedString(playlist, ["snippet", "title"]) ?? "YouTube playlist";
+
+        items.push(suggestionItem(`youtube:playlist:${playlistId}`, title, "YouTube playlist", playlistUrl, "music", playlistCard));
+      }
+    }
+
+    items.push(
       suggestionItem(
         `youtube:channel:${account.providerAccountId}`,
         account.displayName ?? handle,
@@ -1121,7 +1181,9 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
         "creator_live",
         card,
       ),
-    ];
+    );
+
+    return items;
   }
 
   private async twitchSuggestions(
@@ -1545,7 +1607,7 @@ function jsonList(value: string | null | undefined): string[] {
 
 function integrationScope(provider: IntegrationProvider): string {
   if (provider === "spotify") {
-    return "user-read-currently-playing user-read-recently-played";
+    return "user-read-private user-read-email user-read-recently-played user-top-read playlist-read-private playlist-read-collaborative";
   }
 
   if (provider === "youtube") {

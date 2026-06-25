@@ -156,6 +156,7 @@ function PostShareCard({ palette, post }: { palette: SharePalette; post: Post })
         <RichText
           className="mt-9 line-clamp-5 whitespace-pre-wrap break-words text-[38px] leading-[1.14] tracking-normal"
           entities={post.bodyEntities}
+          markdown={post.bodyFormat === "markdown"}
           showPreviews={false}
           text={post.body}
         />

@@ -412,6 +412,8 @@ export type Post = {
   author: User;
   room: Pick<Room, "slug" | "name" | "accent">;
   body: string;
+  bodyFormat?: "plain" | "markdown";
+  contentVersion?: number;
   bodyEntities?: RichTextEntity[];
   createdAt: string;
   mood: string;
@@ -436,6 +438,28 @@ export type Post = {
   mediaType?: "image" | "video" | null;
   mediaMime?: string | null;
   mediaPosterUrl?: string | null;
+  attachments?: PostAttachment[];
+};
+
+export type PostAttachment = {
+  id?: number;
+  position: number;
+  kind: "image" | "video" | "audio" | "integration";
+  url?: string | null;
+  mime?: string | null;
+  sizeBytes?: number | null;
+  width?: number | null;
+  height?: number | null;
+  durationSeconds?: number | null;
+  posterUrl?: string | null;
+  provider?: "spotify" | "youtube" | "apple_music" | string | null;
+  resourceType?: string | null;
+  resourceId?: string | null;
+  resourceKey?: string | null;
+  sourceUrl?: string | null;
+  card?: ProfileIntegrationCard | RichLinkCard | Record<string, unknown> | unknown[] | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 };
 
 export type PostShareSummary = {
@@ -449,6 +473,7 @@ export type PostShareSummary = {
   mediaType?: "image" | "video" | null;
   mediaMime?: string | null;
   mediaPosterUrl?: string | null;
+  attachments?: PostAttachment[];
   author: User;
   room?: Pick<Room, "slug" | "name" | "accent"> | null;
 };

@@ -10,6 +10,7 @@ import type {
   NotificationItem,
   NotificationsResult,
   Post,
+  PostAttachment,
   PostShareSummary,
   Profile,
   ProfileBadgesResult,
@@ -155,8 +156,11 @@ type ApiSearchResults = Omit<SearchResults, "results"> & {
 
 export type CreatePostInput = {
   body: string;
+  bodyFormat?: "plain" | "markdown";
+  contentVersion?: number;
   roomSlug?: string;
   parentId?: number;
+  attachments?: PostAttachmentInput[];
   mediaUrl?: string | null;
   mediaType?: "image" | "video" | null;
   mediaMime?: string | null;
@@ -165,14 +169,35 @@ export type CreatePostInput = {
 
 export type UpdatePostInput = {
   body?: string;
+  bodyFormat?: "plain" | "markdown";
+  contentVersion?: number;
   roomSlug?: string;
   parentId?: number | null;
+  attachments?: PostAttachmentInput[];
   mediaUrl?: string | null;
   mediaType?: "image" | "video" | null;
   mediaMime?: string | null;
   mediaPosterUrl?: string | null;
   status?: "published" | "hidden" | "removed";
 };
+
+export type PostAttachmentInput = Pick<
+  PostAttachment,
+  | "kind"
+  | "url"
+  | "mime"
+  | "sizeBytes"
+  | "width"
+  | "height"
+  | "durationSeconds"
+  | "posterUrl"
+  | "provider"
+  | "resourceType"
+  | "resourceId"
+  | "resourceKey"
+  | "sourceUrl"
+  | "card"
+>;
 
 export type SharePostToMessagesInput = {
   recipientUserIds: number[];
@@ -209,7 +234,7 @@ export type ImageUploadPurpose =
 
 export type VideoUploadPurpose = "profile_background" | "profile_module_video" | "post_media";
 
-export type AudioUploadPurpose = "profile_music";
+export type AudioUploadPurpose = "profile_music" | "post_media";
 export type UploadedImageMime =
   | "image/jpeg"
   | "image/png"
@@ -3368,6 +3393,10 @@ function normalizePost(post: ApiPost): Post {
     author: post.author,
     room: post.room ? normalizeRoom(post.room) : makeFallbackRoom(),
     body: post.body,
+    bodyFormat: post.bodyFormat === "markdown" ? "markdown" : "plain",
+    contentVersion: typeof post.contentVersion === "number" && Number.isFinite(post.contentVersion)
+      ? post.contentVersion
+      : 1,
     bodyEntities: normalizeRichTextEntities(post.bodyEntities),
     createdAt: formatRelativeTime(post.createdAt),
     mood: post.mood,
@@ -3407,12 +3436,71 @@ function normalizePost(post: ApiPost): Post {
     normalized.mediaPosterUrl = post.mediaPosterUrl ?? null;
   }
 
+  normalized.attachments = normalizePostAttachments(post.attachments);
+
   return normalized;
+}
+
+function normalizePostAttachments(value: unknown): PostAttachment[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((attachment, index) => normalizePostAttachment(attachment, index + 1))
+    .filter((attachment): attachment is PostAttachment => attachment !== undefined);
+}
+
+function normalizePostAttachment(value: unknown, fallbackPosition: number): PostAttachment | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const attachment = value as Record<string, unknown>;
+  const kind = attachment.kind;
+
+  if (kind !== "image" && kind !== "video" && kind !== "audio" && kind !== "integration") {
+    return undefined;
+  }
+
+  const position = typeof attachment.position === "number" && Number.isFinite(attachment.position)
+    ? attachment.position
+    : fallbackPosition;
+  const card = ("card" in attachment && attachment.card !== undefined ? attachment.card : null) as Exclude<
+    PostAttachment["card"],
+    undefined
+  >;
+
+  return {
+    ...(typeof attachment.id === "number" ? { id: attachment.id } : {}),
+    position,
+    kind,
+    url: typeof attachment.url === "string" ? attachment.url : null,
+    mime: typeof attachment.mime === "string" ? attachment.mime : null,
+    sizeBytes: numberOrNull(attachment.sizeBytes),
+    width: numberOrNull(attachment.width),
+    height: numberOrNull(attachment.height),
+    durationSeconds: numberOrNull(attachment.durationSeconds),
+    posterUrl: typeof attachment.posterUrl === "string" ? attachment.posterUrl : null,
+    provider: typeof attachment.provider === "string" ? attachment.provider : null,
+    resourceType: typeof attachment.resourceType === "string" ? attachment.resourceType : null,
+    resourceId: typeof attachment.resourceId === "string" ? attachment.resourceId : null,
+    resourceKey: typeof attachment.resourceKey === "string" ? attachment.resourceKey : null,
+    sourceUrl: typeof attachment.sourceUrl === "string" ? attachment.sourceUrl : null,
+    card,
+    createdAt: typeof attachment.createdAt === "string" ? attachment.createdAt : null,
+    updatedAt: typeof attachment.updatedAt === "string" ? attachment.updatedAt : null,
+  };
+}
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function normalizePostShareSummary(post: ApiPostShareSummary): PostShareSummary {
   return {
     ...post,
+    attachments: normalizePostAttachments(post.attachments),
     room: post.room ? normalizeRoom(post.room) : null,
   };
 }

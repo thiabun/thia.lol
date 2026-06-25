@@ -7,9 +7,11 @@ import {
   postCanonicalPath,
 } from "./posts.js";
 import {
+  hydratePostAttachments,
   normalizeProfileHandle,
   postPayloadFromRow,
   postSelectSql,
+  type PostAttachmentKind,
   type PostPayload,
   type ProfileRow,
   type ProfileSchemaCapabilities,
@@ -672,23 +674,39 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
     const roomId = await this.resolveRoomId(body, capabilities, session);
     const parentId = await this.resolveParentId(body.parentId ?? body.parent_id, capabilities, session);
     const mood = validateOptionalText(body.mood, 80, "Mood") ?? "sunveil";
-    const media = validatePostMedia(body);
+    const attachments = validatePostAttachments(body);
+    const media = legacyPostMediaFromAttachments(attachments);
     const publicId = capabilities.hasPostPublicIdColumn ? await this.generatePostPublicId() : null;
-    const insertColumns = ["author_id", "room_id", "parent_id", "body", "mood", "media_url", "visibility", "status"];
+    this.requirePostAttachmentStorage(attachments, capabilities);
+    const insertColumns = ["author_id", "room_id", "parent_id", "body"];
     const insertValues: Array<number | string | null> = [
       session.userId,
       roomId,
       parentId,
       postBody,
+    ];
+
+    if (capabilities.hasPostBodyFormatColumn) {
+      insertColumns.push("body_format");
+      insertValues.push("markdown");
+    }
+
+    if (capabilities.hasPostContentVersionColumn) {
+      insertColumns.push("content_version");
+      insertValues.push(3);
+    }
+
+    insertColumns.push("mood", "media_url", "visibility", "status");
+    insertValues.push(
       mood,
       media.url,
       "public",
       "published",
-    ];
+    );
 
     if (capabilities.hasPostMediaMetadataColumns) {
-      insertColumns.splice(6, 0, "media_type", "media_mime", "media_poster_url");
-      insertValues.splice(6, 0, media.type, media.mime, media.posterUrl);
+      insertColumns.push("media_type", "media_mime", "media_poster_url");
+      insertValues.push(media.type, media.mime, media.posterUrl);
     }
 
     if (publicId !== null) {
@@ -704,6 +722,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
     );
     const postId = result.insertId;
 
+    await this.replacePostAttachments(postId, attachments, capabilities);
     await this.storeTextEntitiesForPost(postId, postBody, session.userId, roomId, postId, capabilities);
 
     return this.fetchPostPayloadById(postId, session.userId, capabilities);
@@ -722,24 +741,40 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
     }
 
     const postBody = validatePostBody(body.body);
-    const media = validatePostMedia(body);
+    const attachments = validatePostAttachments(body);
+    const media = legacyPostMediaFromAttachments(attachments);
     const roomId = nullableNumberValue(parent.room_id);
     const publicId = capabilities.hasPostPublicIdColumn ? await this.generatePostPublicId() : null;
-    const insertColumns = ["author_id", "room_id", "parent_id", "body", "mood", "media_url", "visibility", "status"];
+    this.requirePostAttachmentStorage(attachments, capabilities);
+    const insertColumns = ["author_id", "room_id", "parent_id", "body"];
     const insertValues: Array<number | string | null> = [
       session.userId,
       roomId,
       postId,
       postBody,
+    ];
+
+    if (capabilities.hasPostBodyFormatColumn) {
+      insertColumns.push("body_format");
+      insertValues.push("markdown");
+    }
+
+    if (capabilities.hasPostContentVersionColumn) {
+      insertColumns.push("content_version");
+      insertValues.push(3);
+    }
+
+    insertColumns.push("mood", "media_url", "visibility", "status");
+    insertValues.push(
       parent.mood ?? "sunveil",
       media.url,
       "public",
       "published",
-    ];
+    );
 
     if (capabilities.hasPostMediaMetadataColumns) {
-      insertColumns.splice(6, 0, "media_type", "media_mime", "media_poster_url");
-      insertValues.splice(6, 0, media.type, media.mime, media.posterUrl);
+      insertColumns.push("media_type", "media_mime", "media_poster_url");
+      insertValues.push(media.type, media.mime, media.posterUrl);
     }
 
     if (publicId !== null) {
@@ -754,6 +789,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
     );
     const replyId = result.insertId;
 
+    await this.replacePostAttachments(replyId, attachments, capabilities);
     await this.storeTextEntitiesForPost(replyId, postBody, session.userId, roomId, replyId, capabilities);
 
     const parentAuthorId = numberValue(parent.author_id);
@@ -788,6 +824,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
     const isAuthor = numberValue(post.author_id) === session.userId;
     let updatedPostBody: string | null = null;
     let updatedRoomId = nullableNumberValue(post.room_id);
+    let updatedAttachments: ValidatedPostAttachment[] | null = null;
 
     if ("body" in body) {
       if (!isAuthor) {
@@ -836,13 +873,16 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       "mediaMime" in body ||
       "media_mime" in body ||
       "mediaPosterUrl" in body ||
-      "media_poster_url" in body
+      "media_poster_url" in body ||
+      "attachments" in body
     ) {
       if (!isAuthor) {
         throw new ContentRouteError("Only the author can update this post media.", 403);
       }
 
-      const media = validatePostMedia(body);
+      updatedAttachments = validatePostAttachments(body);
+      this.requirePostAttachmentStorage(updatedAttachments, capabilities);
+      const media = legacyPostMediaFromAttachments(updatedAttachments);
       updates.push("media_url = ?");
       params.push(media.url);
 
@@ -892,6 +932,10 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
 
     if (updatedPostBody !== null) {
       await this.storeTextEntitiesForPost(postId, updatedPostBody, session.userId, updatedRoomId, postId, capabilities);
+    }
+
+    if (updatedAttachments !== null) {
+      await this.replacePostAttachments(postId, updatedAttachments, capabilities);
     }
 
     return this.fetchPostPayloadById(postId, session.userId, capabilities);
@@ -1764,7 +1808,86 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       this.textEntities("profile", numberValue(row.user_id), "bio", capabilities),
     ]);
 
-    return postPayloadFromRow(row, postEntities, profileEntities);
+    const [post] = await hydratePostAttachments(
+      this.pool,
+      capabilities,
+      [postPayloadFromRow(row, postEntities, profileEntities)],
+    );
+
+    return post ?? postPayloadFromRow(row, postEntities, profileEntities);
+  }
+
+  private requirePostAttachmentStorage(
+    attachments: ValidatedPostAttachment[],
+    capabilities: ContentCapabilities,
+  ): void {
+    if (
+      capabilities.hasPostAttachments ||
+      attachments.length === 0 ||
+      (attachments.length === 1 && legacyPostMediaFromAttachments(attachments).url !== null)
+    ) {
+      return;
+    }
+
+    throw new ContentStorageNotReadyError("Post attachment storage is not ready. Run pending migrations.");
+  }
+
+  private async replacePostAttachments(
+    postId: number,
+    attachments: ValidatedPostAttachment[],
+    capabilities: ContentCapabilities,
+  ): Promise<void> {
+    if (!capabilities.hasPostAttachments) {
+      return;
+    }
+
+    await this.pool.execute<ResultSetHeader>(
+      `DELETE FROM post_attachments
+       WHERE post_id = ?`,
+      [postId],
+    );
+
+    for (const attachment of attachments) {
+      await this.pool.execute<ResultSetHeader>(
+        `INSERT INTO post_attachments (
+            post_id,
+            position,
+            kind,
+            url,
+            mime,
+            size_bytes,
+            width,
+            height,
+            duration_seconds,
+            poster_url,
+            provider,
+            resource_type,
+            resource_id,
+            resource_key,
+            source_url,
+            card_json
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          postId,
+          attachment.position,
+          attachment.kind,
+          attachment.url,
+          attachment.mime,
+          attachment.sizeBytes,
+          attachment.width,
+          attachment.height,
+          attachment.durationSeconds,
+          attachment.posterUrl,
+          attachment.provider,
+          attachment.resourceType,
+          attachment.resourceId,
+          attachment.resourceKey,
+          attachment.sourceUrl,
+          attachment.cardJson,
+        ],
+      );
+    }
   }
 
   private async textEntities(
@@ -3068,9 +3191,12 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       hasRoomRulesColumn,
       hasRoomSoftDeleteColumn,
       hasPostPublicIdColumn,
+      hasPostBodyFormatColumn,
+      hasPostContentVersionColumn,
       hasPostMediaTypeColumn,
       hasPostMediaMimeColumn,
       hasPostMediaPosterUrlColumn,
+      hasPostAttachments,
       hasPostReblogs,
       hasTextEntities,
       hasProfileModules,
@@ -3117,9 +3243,12 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       this.columnExists("rooms", "rules"),
       this.columnExists("rooms", "deleted_at"),
       this.columnExists("posts", "public_id"),
+      this.columnExists("posts", "body_format"),
+      this.columnExists("posts", "content_version"),
       this.columnExists("posts", "media_type"),
       this.columnExists("posts", "media_mime"),
       this.columnExists("posts", "media_poster_url"),
+      this.tableExists("post_attachments"),
       this.tableExists("post_reblogs"),
       this.tableExists("text_entities"),
       this.tableExists("profile_modules"),
@@ -3162,8 +3291,11 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       hasRoomCustomizationColumns: hasRoomIconUrlColumn && hasRoomBannerUrlColumn && hasRoomRulesColumn,
       hasRoomSoftDeleteColumn,
       hasPostPublicIdColumn,
+      hasPostBodyFormatColumn,
+      hasPostContentVersionColumn,
       hasPostMediaMetadataColumns:
         hasPostMediaTypeColumn && hasPostMediaMimeColumn && hasPostMediaPosterUrlColumn,
+      hasPostAttachments,
       hasPostReblogs,
       hasTextEntities,
       hasProfileModules,
@@ -3268,6 +3400,8 @@ interface PostRow extends ProfileRow, RoomRow {
   post_public_id: string | null;
   post_parent_id: number | string | null;
   post_body: string | null;
+  post_body_format: string | null;
+  post_content_version: number | string | null;
   post_mood: string | null;
   post_media_url: string | null;
   post_media_type: string | null;
@@ -3398,6 +3532,26 @@ export type ValidatedPostMedia = {
   url: string | null;
 };
 
+type ValidatedPostAttachment = {
+  position: number;
+  kind: PostAttachmentKind;
+  url: string | null;
+  mime: string | null;
+  sizeBytes: number | null;
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
+  posterUrl: string | null;
+  provider: string | null;
+  resourceType: string | null;
+  resourceId: string | null;
+  resourceKey: string | null;
+  sourceUrl: string | null;
+  cardJson: string | null;
+};
+
+const maxPostAttachments = 8;
+
 export function validatePostMedia(body: Record<string, unknown>): ValidatedPostMedia {
   const url = validatePostMediaUrl(body.mediaUrl ?? body.media_url);
 
@@ -3420,6 +3574,368 @@ export function validatePostMedia(body: Record<string, unknown>): ValidatedPostM
     type,
     url,
   };
+}
+
+export function validatePostAttachments(body: Record<string, unknown>): ValidatedPostAttachment[] {
+  if ("attachments" in body) {
+    if (!Array.isArray(body.attachments)) {
+      throw new ContentRouteError("Post attachments must be a list.", 422);
+    }
+
+    if (body.attachments.length > maxPostAttachments) {
+      throw new ContentRouteError(`Posts can include up to ${maxPostAttachments} attachments.`, 422);
+    }
+
+    return body.attachments.map((attachment, index) =>
+      validatePostAttachment(attachment, index + 1),
+    );
+  }
+
+  const legacyMedia = validatePostMedia(body);
+
+  if (legacyMedia.url === null || legacyMedia.type === null) {
+    return [];
+  }
+
+  return [
+    {
+      position: 1,
+      kind: legacyMedia.type,
+      url: legacyMedia.url,
+      mime: legacyMedia.mime,
+      sizeBytes: null,
+      width: null,
+      height: null,
+      durationSeconds: null,
+      posterUrl: legacyMedia.posterUrl,
+      provider: null,
+      resourceType: null,
+      resourceId: null,
+      resourceKey: null,
+      sourceUrl: null,
+      cardJson: null,
+    },
+  ];
+}
+
+function validatePostAttachment(value: unknown, position: number): ValidatedPostAttachment {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new ContentRouteError("Post attachment is invalid.", 422);
+  }
+
+  const attachment = value as Record<string, unknown>;
+  const kind = validatePostAttachmentKind(attachment.kind ?? attachment.type, attachment.url);
+
+  if (kind === "integration") {
+    return validatePostIntegrationAttachment(attachment, position);
+  }
+
+  const url = validatePostAttachmentUploadUrl(attachment.url, kind);
+  const mime = validatePostAttachmentMime(attachment.mime ?? attachment.type, kind, url);
+  const posterUrl = validatePostAttachmentPosterUrl(attachment.posterUrl ?? attachment.poster_url, kind);
+
+  return {
+    position,
+    kind,
+    url,
+    mime,
+    sizeBytes: validateOptionalPositiveInteger(attachment.sizeBytes ?? attachment.size_bytes ?? attachment.size, "Attachment size"),
+    width: validateOptionalPositiveInteger(attachment.width, "Attachment width"),
+    height: validateOptionalPositiveInteger(attachment.height, "Attachment height"),
+    durationSeconds: validateOptionalPositiveNumber(
+      attachment.durationSeconds ?? attachment.duration_seconds ?? attachment.duration,
+      "Attachment duration",
+    ),
+    posterUrl,
+    provider: null,
+    resourceType: null,
+    resourceId: null,
+    resourceKey: null,
+    sourceUrl: null,
+    cardJson: null,
+  };
+}
+
+function validatePostIntegrationAttachment(
+  attachment: Record<string, unknown>,
+  position: number,
+): ValidatedPostAttachment {
+  const provider = validatePostIntegrationProvider(attachment.provider);
+  const resourceType = validateOptionalToken(attachment.resourceType ?? attachment.resource_type, "Integration resource type", 40);
+  const resourceId = validateOptionalToken(attachment.resourceId ?? attachment.resource_id, "Integration resource id", 191);
+  const resourceKey = validateOptionalToken(attachment.resourceKey ?? attachment.resource_key, "Integration resource key", 255);
+  const sourceUrl = validateIntegrationSourceUrl(attachment.sourceUrl ?? attachment.source_url);
+  const cardJson = validateAttachmentCardJson(attachment.card ?? attachment.integration);
+
+  return {
+    position,
+    kind: "integration",
+    url: null,
+    mime: null,
+    sizeBytes: null,
+    width: null,
+    height: null,
+    durationSeconds: null,
+    posterUrl: null,
+    provider,
+    resourceType,
+    resourceId,
+    resourceKey,
+    sourceUrl,
+    cardJson,
+  };
+}
+
+function legacyPostMediaFromAttachments(attachments: ValidatedPostAttachment[]): ValidatedPostMedia {
+  const compatible = attachments.find(
+    (attachment) =>
+      attachment.url !== null &&
+      (attachment.kind === "image" || attachment.kind === "video"),
+  );
+
+  if (compatible === undefined || (compatible.kind !== "image" && compatible.kind !== "video")) {
+    return {
+      mime: null,
+      posterUrl: null,
+      type: null,
+      url: null,
+    };
+  }
+
+  return {
+    mime: compatible.mime,
+    posterUrl: compatible.posterUrl,
+    type: compatible.kind,
+    url: compatible.url,
+  };
+}
+
+function validatePostAttachmentKind(value: unknown, url: unknown): PostAttachmentKind {
+  if (value === "image" || value === "video" || value === "audio" || value === "integration") {
+    return value;
+  }
+
+  if (value !== undefined && value !== null && value !== "") {
+    throw new ContentRouteError("Post attachment type is invalid.", 422);
+  }
+
+  if (typeof url === "string") {
+    const trimmed = url.trim();
+
+    if (/\.mp3$/iu.test(trimmed)) {
+      return "audio";
+    }
+
+    if (/\.(?:mp4|webm)$/iu.test(trimmed)) {
+      return "video";
+    }
+  }
+
+  return "image";
+}
+
+function validatePostAttachmentUploadUrl(value: unknown, kind: Exclude<PostAttachmentKind, "integration">): string {
+  if (typeof value !== "string") {
+    throw new ContentRouteError("Post attachment URL is invalid.", 422);
+  }
+
+  const trimmed = value.trim();
+
+  if (trimmed.length > 500) {
+    throw new ContentRouteError("Post attachment URL is too long.", 422);
+  }
+
+  const extensionPattern =
+    kind === "audio"
+      ? "mp3"
+      : kind === "video"
+        ? "mp4|webm"
+        : "jpe?g|png|webp|gif";
+  const pattern = new RegExp(
+    `^/uploads/media/[0-9]{4}/[0-9]{2}/[a-z0-9_-]+\\.(?:${extensionPattern})$`,
+    "u",
+  );
+
+  if (!pattern.test(trimmed)) {
+    throw new ContentRouteError("Use Upload media to attach a file.", 422);
+  }
+
+  return trimmed;
+}
+
+function validatePostAttachmentMime(
+  value: unknown,
+  kind: Exclude<PostAttachmentKind, "integration">,
+  url: string,
+): string {
+  if (typeof value === "string" && value.trim() !== "") {
+    const mime = value.trim().toLowerCase();
+
+    if (kind === "image" && ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(mime)) {
+      return mime;
+    }
+
+    if (kind === "video" && ["video/mp4", "video/webm"].includes(mime)) {
+      return mime;
+    }
+
+    if (kind === "audio" && mime === "audio/mpeg") {
+      return mime;
+    }
+
+    throw new ContentRouteError("Post attachment MIME is invalid.", 422);
+  }
+
+  if (kind === "audio") {
+    return "audio/mpeg";
+  }
+
+  return kind === "video" ? (url.endsWith(".webm") ? "video/webm" : "video/mp4") : imageMimeFromUrl(url);
+}
+
+function imageMimeFromUrl(url: string): string {
+  if (url.endsWith(".png")) {
+    return "image/png";
+  }
+
+  if (url.endsWith(".gif")) {
+    return "image/gif";
+  }
+
+  if (url.endsWith(".jpg") || url.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+
+  return "image/webp";
+}
+
+function validatePostAttachmentPosterUrl(
+  value: unknown,
+  kind: Exclude<PostAttachmentKind, "integration">,
+): string | null {
+  if (kind !== "video") {
+    if (value !== undefined && value !== null && value !== "") {
+      throw new ContentRouteError("Post attachment poster URL is invalid.", 422);
+    }
+
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    throw new ContentRouteError("Post video poster is required.", 422);
+  }
+
+  const trimmed = value.trim();
+
+  if (!/^\/uploads\/media\/[0-9]{4}\/[0-9]{2}\/[a-z0-9_-]+-poster\.webp$/u.test(trimmed)) {
+    throw new ContentRouteError("Post video poster URL is invalid.", 422);
+  }
+
+  return trimmed;
+}
+
+function validatePostIntegrationProvider(value: unknown): string {
+  if (value === "spotify" || value === "youtube" || value === "apple_music") {
+    return value;
+  }
+
+  throw new ContentRouteError("Post music integration provider is invalid.", 422);
+}
+
+function validateIntegrationSourceUrl(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new ContentRouteError("Post music integration URL is invalid.", 422);
+  }
+
+  const trimmed = value.trim();
+
+  if (trimmed.length > 500) {
+    throw new ContentRouteError("Post music integration URL is too long.", 422);
+  }
+
+  try {
+    const url = new URL(trimmed);
+    const host = url.hostname.replace(/^www\./u, "").toLowerCase();
+
+    if (
+      url.protocol === "https:" &&
+      ["open.spotify.com", "music.youtube.com", "youtube.com", "youtu.be", "music.apple.com", "itunes.apple.com"].includes(host)
+    ) {
+      return url.toString();
+    }
+  } catch {
+    // Fall through to a user-facing route error.
+  }
+
+  throw new ContentRouteError("Choose a supported music integration URL.", 422);
+}
+
+function validateOptionalToken(value: unknown, label: string, maxLength: number): string | null {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    throw new ContentRouteError(`${label} is invalid.`, 422);
+  }
+
+  const trimmed = value.trim();
+
+  if (trimmed === "") {
+    return null;
+  }
+
+  if (trimmed.length > maxLength || !/^[A-Za-z0-9:_./-]+$/u.test(trimmed)) {
+    throw new ContentRouteError(`${label} is invalid.`, 422);
+  }
+
+  return trimmed;
+}
+
+function validateOptionalPositiveInteger(value: unknown, label: string): number | null {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const number = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+
+  if (!Number.isInteger(number) || number <= 0) {
+    throw new ContentRouteError(`${label} is invalid.`, 422);
+  }
+
+  return number;
+}
+
+function validateOptionalPositiveNumber(value: unknown, label: string): number | null {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const number = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+
+  if (!Number.isFinite(number) || number <= 0) {
+    throw new ContentRouteError(`${label} is invalid.`, 422);
+  }
+
+  return number;
+}
+
+function validateAttachmentCardJson(value: unknown): string | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (typeof value !== "object") {
+    throw new ContentRouteError("Post music integration card is invalid.", 422);
+  }
+
+  const json = JSON.stringify(value);
+
+  if (json.length > 16000) {
+    throw new ContentRouteError("Post music integration card is too large.", 422);
+  }
+
+  return json;
 }
 
 function validatePostMediaUrl(value: unknown): string | null {

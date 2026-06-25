@@ -1,6 +1,7 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
 
 import {
+  hydratePostAttachments,
   normalizeProfileHandle,
   postAncestorVisibilityJoinsSql,
   postAncestorVisibilitySql,
@@ -61,6 +62,8 @@ interface PostRow extends ProfileRow, RoomRow {
   post_public_id: string | null;
   post_parent_id: number | string | null;
   post_body: string | null;
+  post_body_format: string | null;
+  post_content_version: number | string | null;
   post_mood: string | null;
   post_media_url: string | null;
   post_media_type: string | null;
@@ -363,8 +366,9 @@ class MysqlPostsRepository implements PostsRepository {
   ): Promise<PostPayload[]> {
     const capabilities = await this.schemaCapabilities();
     const [rows] = await this.pool.execute<PostRow[]>(query, params);
+    const posts = await Promise.all(rows.map((row) => this.postPayload(row, capabilities)));
 
-    return Promise.all(rows.map((row) => this.postPayload(row, capabilities)));
+    return hydratePostAttachments(this.pool, capabilities, posts);
   }
 
   private async postPayload(row: PostRow, capabilities: ProfileSchemaCapabilities): Promise<PostPayload> {
@@ -469,9 +473,12 @@ class MysqlPostsRepository implements PostsRepository {
       hasRoomRulesColumn,
       hasRoomSoftDeleteColumn,
       hasPostPublicIdColumn,
+      hasPostBodyFormatColumn,
+      hasPostContentVersionColumn,
       hasPostMediaTypeColumn,
       hasPostMediaMimeColumn,
       hasPostMediaPosterUrlColumn,
+      hasPostAttachments,
       hasPostReblogs,
       hasTextEntities,
       hasProfileModules,
@@ -511,9 +518,12 @@ class MysqlPostsRepository implements PostsRepository {
       this.columnExists("rooms", "rules"),
       this.columnExists("rooms", "deleted_at"),
       this.columnExists("posts", "public_id"),
+      this.columnExists("posts", "body_format"),
+      this.columnExists("posts", "content_version"),
       this.columnExists("posts", "media_type"),
       this.columnExists("posts", "media_mime"),
       this.columnExists("posts", "media_poster_url"),
+      this.tableExists("post_attachments"),
       this.tableExists("post_reblogs"),
       this.tableExists("text_entities"),
       this.tableExists("profile_modules"),
@@ -549,8 +559,11 @@ class MysqlPostsRepository implements PostsRepository {
       hasRoomCustomizationColumns: hasRoomIconUrlColumn && hasRoomBannerUrlColumn && hasRoomRulesColumn,
       hasRoomSoftDeleteColumn,
       hasPostPublicIdColumn,
+      hasPostBodyFormatColumn,
+      hasPostContentVersionColumn,
       hasPostMediaMetadataColumns:
         hasPostMediaTypeColumn && hasPostMediaMimeColumn && hasPostMediaPosterUrlColumn,
+      hasPostAttachments,
       hasPostReblogs,
       hasTextEntities,
       hasProfileModules,
