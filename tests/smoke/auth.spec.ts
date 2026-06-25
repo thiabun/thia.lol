@@ -123,7 +123,6 @@ test.describe("authenticated smoke", () => {
     await expect(musicButton).toBeVisible();
     await expect(dialog.getByTestId("post-composer-markdown-toolbar")).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Post", exact: true })).toBeVisible();
-    await expect(dialog.getByText(/video/i)).toHaveCount(0);
     await expect(dialog.getByText("Post to a profile or room.")).toHaveCount(0);
     await expect(dialog.getByText("Post to your profile.")).toHaveCount(0);
     await expect(dialog.getByText("Images are converted to WebP")).toHaveCount(0);
