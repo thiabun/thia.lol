@@ -6,6 +6,7 @@ import { loadServerConfig } from "./config.js";
 import { createContentMutationsRepository } from "./content.js";
 import { createDatabaseClient } from "./db.js";
 import { createEditorRepository } from "./editor.js";
+import { createGrowthRepository } from "./growth.js";
 import { createIntegrationsRepository } from "./integrations.js";
 import { createModerationRepository } from "./moderation.js";
 import { createOpsService } from "./ops.js";
@@ -37,6 +38,7 @@ const contentMutationsRepository = createContentMutationsRepository(database.poo
   publicBaseUrl: config.THIA_PUBLIC_BASE_URL,
 });
 const editorRepository = createEditorRepository(database.pool);
+const growthRepository = createGrowthRepository(database.pool);
 const moderationRepository = createModerationRepository(database.pool);
 const integrationsRepository = createIntegrationsRepository(database.pool, {
   publicBaseUrl: config.THIA_PUBLIC_BASE_URL,
@@ -95,12 +97,14 @@ const sessionsRepository = createSessionsRepository(database.pool, config.THIA_S
 const shareCardService = createShareCardService({
   postsRepository,
   profilesRepository,
+  roomsRepository,
   uploadRoot: config.THIA_UPLOAD_ROOT,
   publicBaseUrl: config.THIA_PUBLIC_BASE_URL,
 });
 const shareShellService = createShareShellService({
   postsRepository,
   profilesRepository,
+  roomsRepository,
   uploadRoot: config.THIA_UPLOAD_ROOT,
   webRoot: config.THIA_WEB_ROOT,
   publicBaseUrl: config.THIA_PUBLIC_BASE_URL,
@@ -120,6 +124,7 @@ const app = buildApp({
   checkDatabase: database.check,
   contentMutationsRepository,
   editorRepository,
+  growthRepository,
   integrationsRepository,
   moderationRepository,
   opsService,

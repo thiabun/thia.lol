@@ -4,6 +4,7 @@ import net from "node:net";
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import nacl from "tweetnacl";
 
+import { normalizeSignupAttribution, type GrowthAttributionPayload } from "./growth.js";
 import { hashPhpPassword, verifyPhpPassword } from "./passwords.js";
 import { authSessionPayload, csrfTokenForSession, type AuthSessionPayload } from "./private.js";
 import { hashSessionToken, type RequestSession } from "./sessions.js";
@@ -327,6 +328,7 @@ class MysqlAuthRepository implements AuthRepository {
     const password = validateAuthPassword(body.password);
     const handle = validateAuthHandle(body.handle);
     const displayName = validateAuthDisplayName(body.displayName ?? body.display_name);
+    const attribution = normalizeSignupAttribution(body.attribution);
 
     await this.consumeRateLimit("register", context.ipAddress, 5, 3_600);
 
@@ -350,6 +352,7 @@ class MysqlAuthRepository implements AuthRepository {
 
       await this.ensureOnboardingState(connection, userId);
       await this.ensurePreferences(connection, userId);
+      await this.storeSignupAttribution(connection, userId, attribution);
       await connection.commit();
 
       return this.createSessionForUser(userId, context);
@@ -922,6 +925,36 @@ class MysqlAuthRepository implements AuthRepository {
        VALUES (?, JSON_OBJECT(), JSON_OBJECT(), JSON_OBJECT())`,
       [userId],
     );
+  }
+
+  private async storeSignupAttribution(
+    connection: PoolConnection,
+    userId: number,
+    attribution: GrowthAttributionPayload | null,
+  ): Promise<void> {
+    if (attribution === null || !(await this.tableExists("user_signup_attributions"))) {
+      return;
+    }
+
+    try {
+      await connection.execute(
+        `INSERT IGNORE INTO user_signup_attributions
+            (user_id, source, medium, campaign, share_kind, share_ref, referrer_host, landing_path)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          userId,
+          attribution.source,
+          attribution.medium,
+          attribution.campaign,
+          attribution.shareKind,
+          attribution.shareRef,
+          attribution.referrerHost,
+          attribution.landingPath,
+        ],
+      );
+    } catch {
+      // Attribution is auxiliary and must never block account creation.
+    }
   }
 
   private tableExists(tableName: string): Promise<boolean> {

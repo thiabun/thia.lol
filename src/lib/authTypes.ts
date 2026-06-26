@@ -1,3 +1,5 @@
+import type { GrowthAttribution } from "./types";
+
 export type AuthUser = {
   id: number;
   handle: string;
@@ -43,6 +45,7 @@ export type LoginInput = {
 export type RegisterInput = LoginInput & {
   handle: string;
   displayName: string;
+  attribution?: GrowthAttribution;
 };
 
 export type AuthStatus = "loading" | "authenticated" | "anonymous";

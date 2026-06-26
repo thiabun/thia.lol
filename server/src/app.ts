@@ -78,6 +78,11 @@ import {
   type IntegrationsRepository,
 } from "./integrations.js";
 import {
+  GrowthRouteError,
+  type AdminGrowthMetricsPayload,
+  type GrowthRepository,
+} from "./growth.js";
+import {
   OpsRouteError,
   type AuthDiagnosticsPayload,
   type MigrationRunPayload,
@@ -243,6 +248,7 @@ export interface AppDependencies {
   editorRepository?: EditorRepository;
   moderationRepository?: ModerationRepository;
   integrationsRepository?: IntegrationsRepository;
+  growthRepository?: GrowthRepository;
   opsService?: OpsService;
   profilesRepository?: ProfilesRepository;
   postsRepository?: PostsRepository;
@@ -1642,6 +1648,27 @@ async function sendProfileShareShell(
   }
 }
 
+async function sendRoomShareShell(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dependencies: AppDependencies,
+  routeName: string,
+  input: Record<string, unknown>,
+): Promise<FastifyReply> {
+  if (dependencies.shareShellService === undefined) {
+    return internalError(request, reply, routeName, new Error("Missing share shell service dependency."));
+  }
+
+  try {
+    return sendShareShellResult(
+      await dependencies.shareShellService.roomShare(input),
+      reply,
+    );
+  } catch (error) {
+    return internalError(request, reply, routeName, error);
+  }
+}
+
 function positiveIntegerParam(value: string): number | null {
   if (!/^[0-9]+$/.test(value)) {
     return null;
@@ -1761,6 +1788,10 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
 
   app.get("/profile-share.php", async (request, reply) =>
     sendProfileShareShell(request, reply, dependencies, "share-shell.profile", jsonBodyRecord(request.query)),
+  );
+
+  app.get("/room-share.php", async (request, reply) =>
+    sendRoomShareShell(request, reply, dependencies, "share-shell.room", jsonBodyRecord(request.query)),
   );
 
   app.post("/setup/thia", async (request, reply) => {
@@ -2591,6 +2622,30 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     ),
   );
 
+  app.get("/admin/growth", async (request, reply) => {
+    if (dependencies.sessionsRepository === undefined || dependencies.growthRepository === undefined) {
+      return internalError(request, reply, "admin.growth", new Error("Missing growth route dependency."));
+    }
+
+    try {
+      const session = await dependencies.sessionsRepository.currentSession(request.headers.cookie);
+
+      if (session === null) {
+        return reply.status(401).send(errorPayload("Unauthenticated."));
+      }
+
+      const data = await dependencies.growthRepository.adminMetrics(session);
+
+      return reply.send(successPayload<AdminGrowthMetricsPayload>(data));
+    } catch (error) {
+      if (error instanceof GrowthRouteError) {
+        return reply.status(error.statusCode).send(errorPayload(error.message));
+      }
+
+      return internalError(request, reply, "admin.growth", error);
+    }
+  });
+
   app.post("/admin/posts/:id/hide", async (request, reply) => {
     const parsedParams = adminEntityParamsSchema.safeParse(request.params);
     const postId = parsedParams.success ? positiveIntegerParam(parsedParams.data.id) : null;
@@ -3027,6 +3082,23 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     } catch (error) {
       return internalError(request, reply, "rooms.show", error);
     }
+  });
+
+  app.get("/rooms/:slug/share-card.png", async (request, reply) => {
+    const parsedParams = roomParamsSchema.safeParse(request.params);
+    const normalizedSlug = parsedParams.success ? normalizeRoomSlug(parsedParams.data.slug) : null;
+
+    if (normalizedSlug === null) {
+      return reply.status(404).send("");
+    }
+
+    return sendShareCardImage(
+      request,
+      reply,
+      dependencies,
+      "rooms.share-card",
+      (service) => service.roomCard(normalizedSlug),
+    );
   });
 
   app.get("/search", async (request, reply) => {

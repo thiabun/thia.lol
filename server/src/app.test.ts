@@ -48,6 +48,11 @@ import {
   type IntegrationSuggestionsPayload,
   type IntegrationsRepository,
 } from "./integrations.js";
+import {
+  GrowthRouteError,
+  type AdminGrowthMetricsPayload,
+  type GrowthRepository,
+} from "./growth.js";
 import type {
   DiscoverPersonPayload,
   HomeFeedPayload,
@@ -78,6 +83,7 @@ import type {
 } from "./profiles.js";
 import { RoomStorageNotReadyError, type RoomMemberPayload, type RoomPayload, type RoomsRepository } from "./rooms.js";
 import type { SearchPayload, SearchRepository } from "./search.js";
+import type { ShareCardService } from "./share-cards.js";
 import type { RequestSession, SessionsRepository } from "./sessions.js";
 import type { ShareShellService } from "./share-shells.js";
 import type { PublicStatsPayload, StatsRepository } from "./stats.js";
@@ -985,6 +991,60 @@ function shareShellServiceMock(overrides: Partial<ShareShellService> = {}): Shar
       statusCode: 200,
       html: "<!doctype html><title>Profile</title><meta property=\"og:title\" content=\"Profile\" />",
     }),
+    roomShare: vi.fn().mockResolvedValue({
+      kind: "html",
+      statusCode: 200,
+      html: "<!doctype html><title>Room</title><meta property=\"og:title\" content=\"Room\" />",
+    }),
+    ...overrides,
+  };
+}
+
+function shareCardServiceMock(overrides: Partial<ShareCardService> = {}): ShareCardService {
+  return {
+    postCard: vi.fn().mockResolvedValue({
+      body: Buffer.from("PNG"),
+      contentType: "image/png",
+      cacheControl: "public, max-age=1800",
+    }),
+    profileCard: vi.fn().mockResolvedValue({
+      body: Buffer.from("PNG"),
+      contentType: "image/png",
+      cacheControl: "public, max-age=1800",
+    }),
+    roomCard: vi.fn().mockResolvedValue({
+      body: Buffer.from("ROOM"),
+      contentType: "image/png",
+      cacheControl: "public, max-age=1800",
+    }),
+    cachePostCard: vi.fn().mockResolvedValue({
+      url: "/uploads/share-cards/posts/card.png",
+      width: 2400,
+      height: 1260,
+    }),
+    cacheProfileCard: vi.fn().mockResolvedValue({
+      url: "/uploads/share-cards/profiles/card.png",
+      width: 2400,
+      height: 1260,
+    }),
+    proxyImage: vi.fn().mockResolvedValue(null),
+    ...overrides,
+  };
+}
+
+const growthMetrics: AdminGrowthMetricsPayload = {
+  windowDays: 30,
+  totalSignups: 5,
+  attributedSignups: 3,
+  bySource: [{ key: "thia.lol", count: 3 }],
+  byCampaign: [{ key: "profile-share", count: 2 }],
+  byShareKind: [{ key: "profile", count: 2 }],
+  topSharedEntities: [{ shareKind: "profile", shareRef: "thia", count: 2 }],
+};
+
+function growthRepositoryMock(overrides: Partial<GrowthRepository> = {}): GrowthRepository {
+  return {
+    adminMetrics: vi.fn().mockResolvedValue(growthMetrics),
     ...overrides,
   };
 }
@@ -2057,12 +2117,30 @@ describe("Node API auth preview mutation routes", () => {
         password: "correct-password",
         handle: "new_user",
         displayName: "New User",
+        attribution: {
+          source: "thia.lol",
+          medium: "share",
+          campaign: "profile-share",
+          shareKind: "profile",
+          shareRef: "thia",
+          referrerHost: null,
+          landingPath: "/@thia",
+        },
       },
     });
 
     expect(response.statusCode).toBe(201);
     expect(response.headers["set-cookie"]).toBe(authSessionResult.cookie);
-    expect(repository.register).toHaveBeenCalled();
+    expect(repository.register).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attribution: expect.objectContaining({
+          source: "thia.lol",
+          shareKind: "profile",
+          shareRef: "thia",
+        }),
+      }),
+      expect.any(Object),
+    );
     expect(response.json()).toEqual({
       ok: true,
       data: authPayload,
@@ -2360,6 +2438,10 @@ describe("Node API integrations and share shell routes", () => {
       method: "GET",
       url: "/@thia/",
     });
+    const roomResponse = await app.inject({
+      method: "GET",
+      url: "/room-share.php?slug=general",
+    });
 
     expect(postResponse.statusCode).toBe(200);
     expect(postResponse.headers["content-type"]).toContain("text/html");
@@ -2373,12 +2455,15 @@ describe("Node API integrations and share shell routes", () => {
     expect(canonicalProfileResponse.body).toContain("Profile");
     expect(canonicalPostSlashResponse.statusCode).toBe(200);
     expect(canonicalProfileSlashResponse.statusCode).toBe(200);
+    expect(roomResponse.statusCode).toBe(200);
+    expect(roomResponse.body).toContain("Room");
     expect(service.postShare).toHaveBeenNthCalledWith(1, { handle: "thia", postId: "pc359fe2da759" });
     expect(service.profileShare).toHaveBeenNthCalledWith(1, { handle: "thia" });
     expect(service.postShare).toHaveBeenNthCalledWith(2, { handle: "thia", postId: "pc359fe2da759" });
     expect(service.profileShare).toHaveBeenNthCalledWith(2, { handle: "thia" });
     expect(service.postShare).toHaveBeenNthCalledWith(3, { handle: "thia", postId: "pc359fe2da759" });
     expect(service.profileShare).toHaveBeenNthCalledWith(3, { handle: "thia" });
+    expect(service.roomShare).toHaveBeenCalledWith({ slug: "general" });
   });
 
   it("serves share shell redirects", async () => {
@@ -2398,6 +2483,52 @@ describe("Node API integrations and share shell routes", () => {
 
     expect(response.statusCode).toBe(302);
     expect(response.headers.location).toBe("/@thia/posts/pc359fe2da759");
+  });
+});
+
+describe("Node API growth preview route", () => {
+  it("returns admin-only aggregate growth metrics", async () => {
+    const repository = growthRepositoryMock();
+    const app = buildApp({
+      growthRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/admin/growth",
+      headers: {
+        cookie: "thia_session=token",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(repository.adminMetrics).toHaveBeenCalledWith(session);
+    expect(response.json()).toEqual({
+      ok: true,
+      data: growthMetrics,
+    });
+  });
+
+  it("rejects growth metrics for non-admin sessions", async () => {
+    const app = buildApp({
+      growthRepository: growthRepositoryMock({
+        adminMetrics: vi.fn().mockRejectedValue(new GrowthRouteError("Admin access required.", 403)),
+      }),
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/admin/growth",
+      headers: {
+        cookie: "thia_session=token",
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Admin access required.",
+    });
   });
 });
 
@@ -2933,6 +3064,22 @@ describe("Node API room preview routes", () => {
       ok: true,
       data: room,
     });
+  });
+
+  it("serves public room share cards", async () => {
+    const service = shareCardServiceMock();
+    const app = buildApp({
+      shareCardService: service,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/rooms/general/share-card.png",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("image/png");
+    expect(response.body).toBe("ROOM");
+    expect(service.roomCard).toHaveBeenCalledWith("general");
   });
 
   it("normalizes room slugs before lookup", async () => {

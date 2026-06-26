@@ -5,17 +5,20 @@ import path from "node:path";
 
 import { normalizePostIdentifier, postCanonicalPath, type PostsRepository } from "./posts.js";
 import { normalizeProfileHandle, type ProfilePayload, type ProfilesRepository, type PostPayload } from "./profiles.js";
+import { normalizeRoomSlug, type RoomPayload, type RoomsRepository } from "./rooms.js";
 
 const shareCardCacheVersion = "mosaic-v6";
 
 export interface ShareShellService {
   postShare(query: Record<string, unknown>): Promise<ShareShellResponse>;
   profileShare(query: Record<string, unknown>): Promise<ShareShellResponse>;
+  roomShare(query: Record<string, unknown>): Promise<ShareShellResponse>;
 }
 
 export interface ShareShellServiceOptions {
   postsRepository: PostsRepository;
   profilesRepository: ProfilesRepository;
+  roomsRepository: RoomsRepository;
   publicBaseUrl: string;
   webRoot: string;
   uploadRoot: string;
@@ -96,6 +99,31 @@ class NodeShareShellService implements ShareShellService {
     return this.profileHtml(profile);
   }
 
+  async roomShare(query: Record<string, unknown>): Promise<ShareShellResponse> {
+    const rawSlug = scalarString(query.slug);
+    const normalizedSlug = normalizeRoomSlug(rawSlug);
+
+    if (normalizedSlug === null) {
+      return this.roomNotFound();
+    }
+
+    const room = await this.options.roomsRepository.getPublicRoom(normalizedSlug);
+
+    if (room === null || !room.viewerCanViewPosts) {
+      return this.roomNotFound();
+    }
+
+    if (rawSlug.toLowerCase() !== room.slug.toLowerCase()) {
+      return {
+        kind: "redirect",
+        statusCode: 302,
+        location: roomCanonicalPath(room),
+      };
+    }
+
+    return this.roomHtml(room);
+  }
+
   private async postHtml(post: PostPayload): Promise<ShareShellResponse> {
     const authorName = post.author.displayName ?? post.author.handle ?? "thia.lol";
     const authorHandle = post.author.handle ?? "profile";
@@ -124,6 +152,21 @@ class NodeShareShellService implements ShareShellService {
       metaName("twitter:image", imageUrl),
       metaName("twitter:image:alt", imageAlt),
       canonicalLink(canonicalUrl),
+      jsonLd({
+        "@context": "https://schema.org",
+        "@type": "SocialMediaPosting",
+        headline: title,
+        text: description,
+        url: canonicalUrl,
+        image: imageUrl,
+        datePublished: post.createdAt ? isoDate(post.createdAt) : undefined,
+        author: {
+          "@type": "Person",
+          name: authorName,
+          identifier: authorHandle,
+        },
+        publisher: sitePublisherJsonLd(),
+      }),
       titleTag(title),
     ];
 
@@ -183,6 +226,20 @@ class NodeShareShellService implements ShareShellService {
       metaName("twitter:image", imageUrl),
       metaName("twitter:image:alt", imageAlt),
       canonicalLink(canonicalUrl),
+      jsonLd({
+        "@context": "https://schema.org",
+        "@type": "ProfilePage",
+        name: title,
+        description,
+        url: canonicalUrl,
+        image: imageUrl,
+        mainEntity: {
+          "@type": "Person",
+          name: displayName,
+          alternateName: `@${handle}`,
+          identifier: handle,
+        },
+      }),
       titleTag(title),
     ].join("\n    ");
 
@@ -207,7 +264,82 @@ class NodeShareShellService implements ShareShellService {
     };
   }
 
-  private async emitShell(metaHtml: string, fallback: string, kind: "post" | "profile"): Promise<string> {
+  private async roomHtml(room: RoomPayload): Promise<ShareShellResponse> {
+    const title = `${room.name} /${room.slug} | thia.lol`;
+    const description = roomDescription(room);
+    const canonicalUrl = httpsUrl(`${this.publicBaseUrl()}${roomCanonicalPath(room)}`);
+    const imageUrl = httpsUrl(`${this.publicBaseUrl()}${roomShareCardPath(room)}?v=${roomCardVersion(room)}`);
+    const imageAlt = `Room card for /${room.slug} on thia.lol.`;
+    const meta = [
+      metaName("description", description),
+      metaName("theme-color", "#223454"),
+      metaProperty("og:site_name", "thia.lol"),
+      metaProperty("og:type", "website"),
+      metaProperty("og:title", title),
+      metaProperty("og:description", description),
+      metaProperty("og:url", canonicalUrl),
+      metaProperty("og:image", imageUrl),
+      metaProperty("og:image:secure_url", imageUrl),
+      metaProperty("og:image:type", "image/png"),
+      metaProperty("og:image:width", "2400"),
+      metaProperty("og:image:height", "1260"),
+      metaProperty("og:image:alt", imageAlt),
+      metaName("twitter:card", "summary_large_image"),
+      metaName("twitter:title", title),
+      metaName("twitter:description", description),
+      metaName("twitter:image", imageUrl),
+      metaName("twitter:image:alt", imageAlt),
+      canonicalLink(canonicalUrl),
+      jsonLd({
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        name: title,
+        description,
+        url: canonicalUrl,
+        image: imageUrl,
+        about: {
+          "@type": "DiscussionForumPosting",
+          name: room.name,
+          url: canonicalUrl,
+        },
+        interactionStatistic: [
+          {
+            "@type": "InteractionCounter",
+            interactionType: "https://schema.org/CommentAction",
+            userInteractionCount: room.postCount,
+          },
+          {
+            "@type": "InteractionCounter",
+            interactionType: "https://schema.org/JoinAction",
+            userInteractionCount: room.memberCount,
+          },
+        ],
+      }),
+      titleTag(title),
+    ].join("\n    ");
+
+    return {
+      kind: "html",
+      statusCode: 200,
+      html: await this.emitShell(meta, fallbackHtml(title, description, canonicalUrl, imageUrl, imageAlt, "Open room on thia.lol"), "room"),
+    };
+  }
+
+  private async roomNotFound(): Promise<ShareShellResponse> {
+    const title = "Room not found | thia.lol";
+    const description = "This room is not available on thia.lol.";
+    const canonicalUrl = httpsUrl(`${this.publicBaseUrl()}/rooms`);
+    const imageUrl = httpsUrl(`${this.publicBaseUrl()}/brand/thia-og.png`);
+    const imageAlt = "thia.lol bunny mark and wordmark.";
+
+    return {
+      kind: "html",
+      statusCode: 404,
+      html: await this.emitShell(notFoundMeta(title, description, canonicalUrl, imageUrl, imageAlt), fallbackHtml(title, description, canonicalUrl, imageUrl, imageAlt, "Open rooms on thia.lol"), "room"),
+    };
+  }
+
+  private async emitShell(metaHtml: string, fallback: string, kind: "post" | "profile" | "room"): Promise<string> {
     const indexPath = path.join(this.options.webRoot, "index.html");
     let html: string | null;
 
@@ -289,6 +421,14 @@ function profileCanonicalPath(profile: ProfilePayload): string {
   return `/@${encodeURIComponent(profile.user.handle)}`;
 }
 
+function roomCanonicalPath(room: RoomPayload): string {
+  return `/rooms/${encodeURIComponent(room.slug)}`;
+}
+
+function roomShareCardPath(room: RoomPayload): string {
+  return `/api/rooms/${encodeURIComponent(room.slug)}/share-card.png`;
+}
+
 function profileDescription(profile: ProfilePayload): string {
   const bio = profile.bio.trim();
 
@@ -297,6 +437,16 @@ function profileDescription(profile: ProfilePayload): string {
   }
 
   return `@${profile.user.handle ?? "profile"} on thia.lol.`;
+}
+
+function roomDescription(room: RoomPayload): string {
+  const summary = (room.summary || room.description || "").trim();
+
+  if (summary !== "") {
+    return bodySnippet(summary, 180);
+  }
+
+  return `/${room.slug} on thia.lol.`;
 }
 
 function bodySnippet(body: string, maxLength: number): string {
@@ -371,6 +521,10 @@ function titleTag(title: string): string {
   return `<title>${escapeHtml(title)}</title>`;
 }
 
+function jsonLd(value: Record<string, unknown>): string {
+  return `<script type="application/ld+json">${scriptSafeJson(removeUndefined(value))}</script>`;
+}
+
 function httpsUrl(url: string): string {
   const trimmed = url.trim();
 
@@ -397,6 +551,51 @@ function postCardVersion(post: PostPayload): string {
   ].join("|");
 
   return sha256(basis).slice(0, 16);
+}
+
+function roomCardVersion(room: RoomPayload): string {
+  const basis = [
+    shareCardCacheVersion,
+    room.slug,
+    room.updatedAt ?? "",
+    room.iconUrl ?? "",
+    room.bannerUrl ?? "",
+    room.postCount,
+    room.memberCount,
+  ].join("|");
+
+  return sha256(basis).slice(0, 16);
+}
+
+function sitePublisherJsonLd(): Record<string, unknown> {
+  return {
+    "@type": "Organization",
+    name: "thia.lol",
+    url: "https://thia.lol/",
+  };
+}
+
+function removeUndefined(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => removeUndefined(item));
+  }
+
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, item]) => item !== undefined)
+        .map(([key, item]) => [key, removeUndefined(item)]),
+    );
+  }
+
+  return value;
+}
+
+function scriptSafeJson(value: unknown): string {
+  return JSON.stringify(value)
+    .replaceAll("<", "\\u003c")
+    .replaceAll(">", "\\u003e")
+    .replaceAll("&", "\\u0026");
 }
 
 function cachedProfileCardPath(uploadRoot: string, handle: string): string | null {

@@ -7,6 +7,7 @@ import {
   profileShareCardCacheUpload,
   profileShareCardUrl,
 } from "../../lib/api";
+import { shareUrlWithAttribution } from "../../lib/growthAttribution";
 import { captureShareCard, downloadBlob } from "../../lib/shareCardCapture";
 import type { Profile } from "../../lib/types";
 import { useAuth } from "../../lib/useAuth";
@@ -29,6 +30,10 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
   );
   const canonicalPath = profileCanonicalPath(profile);
   const canonicalUrl = profileCanonicalUrl(profile);
+  const shareUrl = shareUrlWithAttribution(canonicalUrl, {
+    kind: "profile",
+    ref: profile.user.handle,
+  });
   const canPublishCard = status === "authenticated" && user?.id === profile.user.id;
 
   useEffect(() => {
@@ -55,7 +60,7 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
         await generateProfileCard({ publish: true, silent: true }).catch(() => undefined);
       }
 
-      await copyText(canonicalUrl);
+      await copyText(shareUrl);
       setCopyState("copied");
     } catch {
       setCopyState("error");
@@ -74,7 +79,7 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
       await navigator.share({
         title: `${profile.user.displayName} (@${profile.user.handle}) on thia.lol`,
         text: profile.bio || `@${profile.user.handle} on thia.lol`,
-        url: canonicalUrl,
+        url: shareUrl,
       });
     } catch {
       // User cancellation is expected and should stay quiet.
@@ -210,7 +215,7 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
 
       {copyState === "error" ? (
         <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
-          Copy failed. The link is {canonicalUrl}
+          Copy failed. The link is {shareUrl}
         </p>
       ) : null}
       {cardState === "error" ? (

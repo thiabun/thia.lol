@@ -25,6 +25,7 @@ import {
   sharePostToMessages,
 } from "../../lib/api";
 import { cn } from "../../lib/classNames";
+import { shareUrlWithAttribution } from "../../lib/growthAttribution";
 import { captureShareCard, downloadBlob } from "../../lib/shareCardCapture";
 import type { ChatMoot, Post } from "../../lib/types";
 import { useAuth } from "../../lib/useAuth";
@@ -54,6 +55,10 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
   const canonicalPath = postCanonicalPath(post);
   const canonicalUrl = postCanonicalUrl(post);
   const publicIdentifier = postPublicIdentifier(post);
+  const shareUrl = shareUrlWithAttribution(canonicalUrl, {
+    kind: "post",
+    ref: publicIdentifier,
+  });
   const canPublishCard = status === "authenticated" && user?.id === post.author.id;
   const selectedCount = selectedIds.size;
   const filteredMoots = useMemo(() => {
@@ -170,7 +175,7 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
       void generatePostCard({ publish: canPublishCard, silent: true }).catch(
         () => undefined,
       );
-      await copyText(canonicalUrl);
+      await copyText(shareUrl);
       setCopyState("copied");
     } catch {
       setCopyState("error");
@@ -189,7 +194,7 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
       await navigator.share({
         title: `${post.author.displayName} on thia.lol`,
         text: post.body,
-        url: canonicalUrl,
+        url: shareUrl,
       });
     } catch {
       // User cancellation is not an error worth surfacing.
@@ -378,7 +383,7 @@ export function PostShareModal({ open, post, onClose }: PostShareModalProps) {
 
       {copyState === "error" ? (
         <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
-          Copy failed. The link is {canonicalUrl}
+          Copy failed. The link is {shareUrl}
         </p>
       ) : null}
       {cardState === "error" ? (

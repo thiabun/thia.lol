@@ -2,6 +2,7 @@ import { MotionConfig } from "motion/react";
 import { Navigate, Route, Routes, useLocation, useParams } from "react-router";
 import { lazy, Suspense, useEffect, type ReactNode } from "react";
 import { AppShell } from "./components/layout/AppShell";
+import { captureGrowthAttribution } from "./lib/growthAttribution";
 import { PageLoadingProvider } from "./lib/pageLoading";
 import { usePageLoadSignal } from "./lib/pageLoadingContext";
 import { useAuth } from "./lib/useAuth";
@@ -83,6 +84,7 @@ export default function App() {
       <PageLoadingProvider>
         <AuthLoadingSignal />
         <ScrollToTop />
+        <GrowthAttributionCapture />
         <Routes>
           <Route path="share-render/post/:postId" element={<RouteSuspense><ShareRenderPostPage /></RouteSuspense>} />
           <Route path="share-render/profile/:handle" element={<RouteSuspense><ShareRenderProfilePage /></RouteSuspense>} />
@@ -163,6 +165,16 @@ function ScrollToTop() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [pathname]);
+
+  return null;
+}
+
+function GrowthAttributionCapture() {
+  const { pathname, search } = useLocation();
+
+  useEffect(() => {
+    captureGrowthAttribution();
+  }, [pathname, search]);
 
   return null;
 }

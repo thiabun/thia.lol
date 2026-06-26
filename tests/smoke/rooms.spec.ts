@@ -45,6 +45,44 @@ test("clicking a room opens its detail page", async ({ page }) => {
   await expect(page.getByTestId("room-page")).toBeVisible();
 });
 
+test("public room page copies an attributed share URL", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          (window as unknown as { __copiedText?: string }).__copiedText = text;
+        },
+      },
+    });
+  });
+  await mockRoomCards(page);
+
+  await page.goto("/rooms/sun-room");
+
+  await page.getByTestId("room-share-button").click();
+  const modal = page.getByTestId("room-share-modal");
+  await expect(modal).toBeVisible();
+  await expect(modal.getByRole("link", { name: "/rooms/sun-room" })).toHaveAttribute(
+    "href",
+    "/rooms/sun-room",
+  );
+  await expect(modal.getByTestId("room-share-card-link")).toHaveAttribute(
+    "href",
+    "/api/rooms/sun-room/share-card.png",
+  );
+
+  await modal.getByTestId("room-share-copy-link").click();
+  await expect(modal.getByTestId("room-share-copy-link")).toContainText("Copied");
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as { __copiedText?: string }).__copiedText),
+    )
+    .toContain(
+      "/rooms/sun-room?utm_source=thia.lol&utm_medium=share&utm_campaign=room-share&thia_share=room%3Asun-room",
+    );
+});
+
 test("room cards keep room navigation and owner profile navigation separate", async ({
   page,
 }) => {

@@ -5,6 +5,7 @@ import {
   Radio,
   ScrollText,
   Settings,
+  Share2,
   Shield,
   Sparkles,
   UserRound,
@@ -24,6 +25,7 @@ import { useNavigate, useOutletContext, useParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { PostCard } from "../components/social/PostCard";
 import { ReportForm } from "../components/social/ReportForm";
+import { RoomShareModal } from "../components/social/RoomShareModal";
 import { RichText } from "../components/social/RichText";
 import {
   InlineUserProfileLink,
@@ -104,6 +106,7 @@ export function RoomPage() {
   const [pendingPostId, setPendingPostId] = useState<number | undefined>();
   const [pendingRoomAction, setPendingRoomAction] = useState<string | undefined>();
   const [editOpen, setEditOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [postActionError, setPostActionError] = useState<string | undefined>();
   const [accessRequests, setAccessRequests] = useState<RoomAccessRequest[]>([]);
   const [accessRequestsLoading, setAccessRequestsLoading] = useState(false);
@@ -443,6 +446,7 @@ export function RoomPage() {
           onEdit={() => setEditOpen(true)}
           onJoinToggle={() => void handleJoinToggle()}
           onPost={() => openPostComposer(room.slug)}
+          onShare={() => setShareOpen(true)}
         />
       ) : roomState.loading ? (
         <ApiStateNotice
@@ -551,6 +555,13 @@ export function RoomPage() {
           />
         </Suspense>
       ) : null}
+      {room && shareOpen ? (
+        <RoomShareModal
+          open={shareOpen}
+          room={room}
+          onClose={() => setShareOpen(false)}
+        />
+      ) : null}
     </motion.div>
   );
 }
@@ -647,6 +658,7 @@ function RoomHeader({
   postCount,
   room,
   userSignedIn,
+  onShare,
 }: {
   canEdit: boolean;
   canReport: boolean;
@@ -654,6 +666,7 @@ function RoomHeader({
   onPost: () => void;
   onEdit: () => void;
   onJoinToggle: () => void;
+  onShare: () => void;
   pendingAction: string | undefined;
   postCount: number;
   room: Room;
@@ -674,6 +687,9 @@ function RoomHeader({
   const showJoinAction = canJoinPublicRoom || canLeaveRoom || isOwner;
   const accessRequestPending = room.accessRequestStatus === "pending";
   const showAccessRequestAction = userSignedIn && (room.viewerCanRequestAccess || accessRequestPending);
+  const showShareAction =
+    room.viewerCanViewPosts &&
+    (room.visibility === "public" || room.visibility === "view_only");
   const accessRequestLabel = accessRequestPending
     ? pendingAction === "cancel-request"
       ? "Canceling"
@@ -795,6 +811,19 @@ function RoomHeader({
                   onClick={onPost}
                 >
                   Post
+                </Button>
+              ) : null}
+              {showShareAction ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="w-full sm:w-auto"
+                  data-testid="room-share-button"
+                  icon={<Share2 aria-hidden="true" size={17} />}
+                  onClick={onShare}
+                >
+                  Share
                 </Button>
               ) : null}
               {canEdit ? (

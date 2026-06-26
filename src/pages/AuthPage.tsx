@@ -11,6 +11,10 @@ import { HandleField, TextField } from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
 import { verifyTwoFactorLogin, type TwoFactorChallenge } from "../lib/api";
+import {
+  clearGrowthAttribution,
+  currentGrowthAttribution,
+} from "../lib/growthAttribution";
 import { useAuth } from "../lib/useAuth";
 
 type AuthPageProps = {
@@ -40,12 +44,16 @@ export function AuthPage({ mode }: AuthPageProps) {
 
     try {
       if (isRegister) {
+        const attribution = currentGrowthAttribution();
+
         await register({
           displayName: stringField(form, "displayName"),
           handle: normalizeHandleInput(stringField(form, "handle")),
           email: stringField(form, "email"),
           password: stringField(form, "password", false),
+          ...(attribution ? { attribution } : {}),
         });
+        clearGrowthAttribution();
       } else {
         const result = await login({
           email: stringField(form, "email"),

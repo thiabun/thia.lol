@@ -31,6 +31,7 @@ import type {
   ProfileModuleUploadedVideo,
   ProfileModuleVisibility,
   PublicStats,
+  AdminGrowthMetrics,
   RichLinkCard,
   RichTextEntity,
   Room,
@@ -879,6 +880,10 @@ export function getRooms(): Promise<Room[]> {
 
 export function getStats(): Promise<PublicStats> {
   return apiGet<PublicStats>("/stats");
+}
+
+export function getAdminGrowthMetrics(): Promise<AdminGrowthMetrics> {
+  return apiGet<AdminGrowthMetrics>("/admin/growth");
 }
 
 export function getSearchResults(query: string): Promise<SearchResults> {
@@ -1773,6 +1778,22 @@ export function profileCanonicalUrl(profile: Pick<Profile, "user">) {
 
 export function profileShareCardUrl(profile: Pick<Profile, "user">) {
   return `/api/profiles/${encodeURIComponent(profile.user.handle)}/share-card.png`;
+}
+
+export function roomCanonicalPath(room: Pick<Room, "slug">) {
+  return `/rooms/${room.slug}`;
+}
+
+export function roomCanonicalUrl(room: Pick<Room, "slug">) {
+  if (typeof window === "undefined") {
+    return `https://thia.lol${roomCanonicalPath(room)}`;
+  }
+
+  return new URL(roomCanonicalPath(room), window.location.origin).toString();
+}
+
+export function roomShareCardUrl(room: Pick<Room, "slug">) {
+  return `/api/rooms/${encodeURIComponent(room.slug)}/share-card.png`;
 }
 
 export function profileShareCardCacheUpload(

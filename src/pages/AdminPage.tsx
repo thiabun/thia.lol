@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Shield,
   Trash2,
+  UserPlus,
   WifiOff,
   XCircle,
 } from "lucide-react";
@@ -31,6 +32,7 @@ import {
 import { Panel } from "../components/ui/Panel";
 import { CompactStateNotice } from "../components/ui/RouteState";
 import {
+  getAdminGrowthMetrics,
   getAdminBadges,
   getAdminRooms,
   getAdminReports,
@@ -52,7 +54,7 @@ import { pageEntrance } from "../lib/motionPresets";
 import { usePageLoadSignal } from "../lib/pageLoadingContext";
 import { formatCountWithUnit } from "../lib/pluralize";
 import { roomThemeSwatchCssProperties } from "../lib/roomThemes";
-import type { BadgeDefinition, Room, UserBadge } from "../lib/types";
+import type { AdminGrowthMetrics, BadgeDefinition, Room, UserBadge } from "../lib/types";
 import { useAuth } from "../lib/useAuth";
 
 type ActionName = "hide" | "remove" | "suspend" | "review" | "dismiss";
@@ -66,12 +68,15 @@ export function AdminPage() {
     badges: [],
     recentGrants: [],
   });
+  const [growth, setGrowth] = useState<AdminGrowthMetrics | undefined>();
   const [loading, setLoading] = useState(false);
   const [loadingRooms, setLoadingRooms] = useState(false);
   const [loadingBadges, setLoadingBadges] = useState(false);
+  const [loadingGrowth, setLoadingGrowth] = useState(false);
   const [error, setError] = useState<string>();
   const [roomsError, setRoomsError] = useState<string>();
   const [badgesError, setBadgesError] = useState<string>();
+  const [growthError, setGrowthError] = useState<string>();
   const [pendingAction, setPendingAction] = useState<string>();
   const [pendingBadgeAction, setPendingBadgeAction] = useState<string>();
   const [badgeHandle, setBadgeHandle] = useState("");
@@ -80,6 +85,7 @@ export function AdminPage() {
   const [badgeMessage, setBadgeMessage] = useState<string>();
   const [notesByReport, setNotesByReport] = useState<Record<number, string>>({});
   const isModerator = user?.role === "moderator" || user?.role === "admin";
+  const isAdmin = user?.role === "admin";
 
   const loadReports = useCallback(async () => {
     setLoading(true);
@@ -126,6 +132,21 @@ export function AdminPage() {
     }
   }, []);
 
+  const loadGrowth = useCallback(async () => {
+    setLoadingGrowth(true);
+    setGrowthError(undefined);
+
+    try {
+      setGrowth(await getAdminGrowthMetrics());
+    } catch (loadError) {
+      setGrowthError(
+        loadError instanceof Error ? loadError.message : "Could not load growth metrics.",
+      );
+    } finally {
+      setLoadingGrowth(false);
+    }
+  }, []);
+
   useEffect(() => {
     let active = true;
 
@@ -135,6 +156,9 @@ export function AdminPage() {
           void loadReports();
           void loadRooms();
           void loadBadges();
+          if (isAdmin) {
+            void loadGrowth();
+          }
         }
       });
     }
@@ -142,7 +166,7 @@ export function AdminPage() {
     return () => {
       active = false;
     };
-  }, [isModerator, loadBadges, loadReports, loadRooms]);
+  }, [isAdmin, isModerator, loadBadges, loadGrowth, loadReports, loadRooms]);
 
   const metrics = useMemo(() => {
     const open = reports.filter((report) => report.status === "open").length;
@@ -326,12 +350,15 @@ export function AdminPage() {
             size="icon"
             aria-label="Refresh admin data"
             title="Refresh admin data"
-            disabled={loading || loadingRooms || loadingBadges}
+            disabled={loading || loadingRooms || loadingBadges || loadingGrowth}
             icon={<RefreshCw aria-hidden="true" size={15} />}
             onClick={() => {
               void loadReports();
               void loadRooms();
               void loadBadges();
+              if (isAdmin) {
+                void loadGrowth();
+              }
             }}
           />
         </div>
@@ -360,6 +387,14 @@ export function AdminPage() {
           value={String(metrics.badges)}
         />
       </section>
+
+      {isAdmin ? (
+        <GrowthMetricsPanel
+          error={growthError}
+          growth={growth}
+          loading={loadingGrowth}
+        />
+      ) : null}
 
       <AdminSection
         badge="reports"
@@ -497,6 +532,119 @@ export function AdminPage() {
         />
       </section>
     </AdminShell>
+  );
+}
+
+function GrowthMetricsPanel({
+  error,
+  growth,
+  loading,
+}: {
+  error: string | undefined;
+  growth: AdminGrowthMetrics | undefined;
+  loading: boolean;
+}) {
+  return (
+    <AdminSection
+      badge="growth"
+      badgeTone="cool"
+      title="Growth"
+      meta={
+        growth ? (
+          <span className="text-sm text-muted">
+            Last {growth.windowDays} days
+          </span>
+        ) : undefined
+      }
+    >
+      {loading ? (
+        <ApiStateNotice
+          kind="loading"
+          title="Loading growth metrics"
+          text="Loading signup attribution."
+        />
+      ) : null}
+      {error ? (
+        <ApiStateNotice
+          kind="error"
+          title="Growth metrics are not available"
+          text={error}
+        />
+      ) : null}
+      {growth ? (
+        <div className="grid gap-3 lg:grid-cols-[240px_minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+            <AdminMetric
+              icon={UserPlus}
+              label="Signups"
+              value={String(growth.totalSignups)}
+            />
+            <AdminMetric
+              icon={Activity}
+              label="Attributed"
+              value={String(growth.attributedSignups)}
+            />
+          </div>
+          <GrowthBucketList title="Sources" items={growth.bySource} />
+          <GrowthSharedList items={growth.topSharedEntities} />
+        </div>
+      ) : null}
+    </AdminSection>
+  );
+}
+
+function GrowthBucketList({
+  items,
+  title,
+}: {
+  items: AdminGrowthMetrics["bySource"];
+  title: string;
+}) {
+  return (
+    <div className="rounded-card border border-line bg-canvas/35 p-3">
+      <h3 className="text-sm font-semibold text-text">{title}</h3>
+      <div className="mt-3 space-y-2">
+        {items.length === 0 ? (
+          <p className="text-sm text-muted">No attributed signups yet.</p>
+        ) : (
+          items.map((item) => (
+            <div key={item.key} className="flex items-center justify-between gap-3 text-sm">
+              <span className="min-w-0 truncate text-muted">{item.key}</span>
+              <span className="font-semibold text-text">{item.count}</span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GrowthSharedList({
+  items,
+}: {
+  items: AdminGrowthMetrics["topSharedEntities"];
+}) {
+  return (
+    <div className="rounded-card border border-line bg-canvas/35 p-3">
+      <h3 className="text-sm font-semibold text-text">Shared links</h3>
+      <div className="mt-3 space-y-2">
+        {items.length === 0 ? (
+          <p className="text-sm text-muted">No share-attributed signups yet.</p>
+        ) : (
+          items.map((item) => (
+            <div
+              key={`${item.shareKind}:${item.shareRef}`}
+              className="flex items-center justify-between gap-3 text-sm"
+            >
+              <span className="min-w-0 truncate text-muted">
+                {item.shareKind}:{item.shareRef}
+              </span>
+              <span className="font-semibold text-text">{item.count}</span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
   );
 }
 

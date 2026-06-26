@@ -407,6 +407,39 @@ export type PublicStats = {
   totalReactions: number;
 };
 
+export type GrowthShareKind = "profile" | "post" | "room";
+
+export type GrowthAttribution = {
+  source: string | null;
+  medium: string | null;
+  campaign: string | null;
+  shareKind: GrowthShareKind | null;
+  shareRef: string | null;
+  referrerHost: string | null;
+  landingPath: string | null;
+};
+
+export type AdminGrowthMetricBucket = {
+  key: string;
+  count: number;
+};
+
+export type AdminGrowthSharedEntityMetric = {
+  shareKind: GrowthShareKind;
+  shareRef: string;
+  count: number;
+};
+
+export type AdminGrowthMetrics = {
+  windowDays: number;
+  totalSignups: number;
+  attributedSignups: number;
+  bySource: AdminGrowthMetricBucket[];
+  byCampaign: AdminGrowthMetricBucket[];
+  byShareKind: AdminGrowthMetricBucket[];
+  topSharedEntities: AdminGrowthSharedEntityMetric[];
+};
+
 export type Post = {
   id: number;
   publicId?: string;

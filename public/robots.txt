@@ -8,5 +8,9 @@ Disallow: /chat
 Disallow: /notifications
 Disallow: /login
 Disallow: /register
+Disallow: /share-render/
+Disallow: /post-share.php
+Disallow: /profile-share.php
+Disallow: /room-share.php
 
 Sitemap: https://thia.lol/sitemap.xml

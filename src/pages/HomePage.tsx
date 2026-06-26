@@ -1,33 +1,47 @@
 import {
+  ArrowRight,
   Compass,
   MessageCircle,
   PenLine,
   Radio,
   Search,
-  UsersRound,
+  Sparkles,
+  UserPlus,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useOutletContext } from "react-router";
+import { Link, useOutletContext } from "react-router";
 import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
+import { BrandLogoMain } from "../components/BrandLogo";
 import { FeedRefreshControls } from "../components/social/FeedRefreshControls";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
+import { Avatar } from "../components/ui/Avatar";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
 import { PostCard } from "../components/social/PostCard";
 import { RoomCard } from "../components/social/RoomCard";
-import { deletePost, getHomeFeed, getRooms, updatePost } from "../lib/api";
+import { deletePost, getDiscoverFeed, getHomeFeed, getRooms, getStats, updatePost } from "../lib/api";
 import { postCreatedEventName } from "../lib/postEvents";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
-import type { Post } from "../lib/types";
+import type { DiscoverPerson, Post, Room } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
 
 export function HomePage() {
-  const { csrfToken, status, user } = useAuth();
+  const { status } = useAuth();
+
+  if (status === "anonymous") {
+    return <AnonymousHomePage />;
+  }
+
+  return <AuthenticatedHomePage />;
+}
+
+function AuthenticatedHomePage() {
+  const { csrfToken, user } = useAuth();
   const { openPostComposer } = useOutletContext<AppShellOutletContext>();
   const feedState = useAsyncData(getHomeFeed);
   const roomsState = useAsyncData(getRooms);
@@ -52,7 +66,6 @@ export function HomePage() {
     [createdPosts, feedState.data, removedPostIds],
   );
   const rooms = roomsState.data ?? [];
-  const isAnonymous = status === "anonymous";
 
   const handlePostCreated = useCallback((post: Post) => {
     setCreatedPosts((current) => [post, ...current]);
@@ -155,9 +168,7 @@ export function HomePage() {
                   </span>
                 </div>
                 <p className="mt-2 text-sm leading-6 text-muted">
-                  {isAnonymous
-                    ? "Recent posts from thia.lol."
-                    : "Posts from follows, moots, rooms, and recent conversations."}
+                  Posts from follows, moots, rooms, and recent conversations.
                 </p>
               </div>
               <div className="flex flex-col gap-3 md:items-end">
@@ -168,15 +179,6 @@ export function HomePage() {
                   disabled={feedState.loading}
                   onRefresh={feedState.reload}
                 />
-                {isAnonymous ? (
-                  <ButtonLink
-                    to="/login"
-                    size="sm"
-                    icon={<UsersRound aria-hidden="true" size={16} />}
-                  >
-                    Sign in
-                  </ButtonLink>
-                ) : null}
               </div>
             </div>
           </Panel>
@@ -269,6 +271,204 @@ export function HomePage() {
       </aside>
     </motion.div>
   );
+}
+
+function AnonymousHomePage() {
+  const discoverState = useAsyncData(getDiscoverFeed);
+  const statsState = useAsyncData(getStats);
+  const posts = discoverState.data?.posts.slice(0, 4) ?? [];
+  const rooms = discoverState.data?.activeRooms.slice(0, 3) ?? [];
+  const people = (discoverState.data?.peopleToWatch ?? [])
+    .filter((person) => !/^smoketest[0-9]+$/i.test(person.handle))
+    .slice(0, 4);
+  const stats = statsState.data;
+
+  return (
+    <motion.div
+      className="mx-auto max-w-6xl space-y-5"
+      variants={pageEntrance}
+      initial="hidden"
+      animate="show"
+      data-testid="anonymous-home"
+    >
+      <PageMeta
+        title="thia.lol"
+        description="A living social place for public profiles, rooms, posts, and shared presence."
+        path="/"
+      />
+
+      <Panel className="p-5 sm:p-6">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+          <div className="min-w-0">
+            <BrandLogoMain size="md" data-testid="home-brand-logo-main" />
+            <h1 className="mt-5 max-w-3xl text-3xl font-semibold tracking-normal text-text sm:text-4xl">
+              A small social place for profiles, rooms, and public posts.
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-muted sm:text-base sm:leading-7">
+              Find people, follow conversations, and make a public profile that feels like a place instead of a dashboard.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 lg:justify-end">
+            <ButtonLink
+              to="/register"
+              icon={<UserPlus aria-hidden="true" size={16} />}
+            >
+              Create account
+            </ButtonLink>
+            <ButtonLink
+              to="/discover"
+              variant="secondary"
+              icon={<Compass aria-hidden="true" size={16} />}
+            >
+              Discover
+            </ButtonLink>
+            <ButtonLink
+              to="/search"
+              variant="secondary"
+              icon={<Search aria-hidden="true" size={16} />}
+            >
+              Search
+            </ButtonLink>
+          </div>
+        </div>
+      </Panel>
+
+      <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4" aria-label="thia.lol public stats">
+        <StatTile label="Public posts" value={stats?.publicPosts} loading={statsState.loading} />
+        <StatTile label="Public rooms" value={stats?.publicRooms} loading={statsState.loading} />
+        <StatTile label="Active members" value={stats?.activeUsers} loading={statsState.loading} />
+        <StatTile label="Reactions" value={stats?.totalReactions} loading={statsState.loading} />
+      </section>
+
+      {discoverState.error && !discoverState.data ? (
+        <ApiStateNotice
+          kind="error"
+          title="Public activity is not available"
+          text="Try refreshing in a moment."
+        />
+      ) : null}
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <section className="space-y-4" aria-label="Public posts">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold text-text">Rising now</h2>
+              <p className="mt-1 text-sm text-muted">Public posts people can open from anywhere.</p>
+            </div>
+            <ButtonLink
+              to="/discover"
+              variant="quiet"
+              size="sm"
+              icon={<ArrowRight aria-hidden="true" size={15} />}
+            >
+              Discover
+            </ButtonLink>
+          </div>
+          {discoverState.loading ? (
+            <ApiStateNotice kind="loading" title="Loading public posts" text="Loading public posts." />
+          ) : null}
+          {!discoverState.loading && !discoverState.error && posts.length === 0 ? (
+            <EmptyState icon={MessageCircle} title="No posts yet" text="No public posts." />
+          ) : null}
+          {posts.map((post, index) => (
+            <PostCard key={post.id} post={post} index={index} />
+          ))}
+        </section>
+
+        <aside className="space-y-5" aria-label="Public discovery">
+          <AnonymousRooms rooms={rooms} loading={discoverState.loading} />
+          <AnonymousPeople people={people} loading={discoverState.loading} />
+        </aside>
+      </div>
+    </motion.div>
+  );
+}
+
+function StatTile({
+  label,
+  loading,
+  value,
+}: {
+  label: string;
+  loading: boolean;
+  value: number | undefined;
+}) {
+  return (
+    <Panel className="p-3">
+      <p className="text-xs font-medium uppercase tracking-normal text-muted">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-text">
+        {loading && value === undefined ? "..." : formatPublicStat(value ?? 0)}
+      </p>
+    </Panel>
+  );
+}
+
+function AnonymousRooms({
+  loading,
+  rooms,
+}: {
+  loading: boolean;
+  rooms: Room[];
+}) {
+  return (
+    <section className="space-y-3" aria-label="Rooms to explore">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold text-text">Rooms</h2>
+        <ButtonLink to="/rooms" variant="quiet" size="sm">
+          Browse
+        </ButtonLink>
+      </div>
+      <div className="space-y-2">
+        {rooms.map((room, index) => (
+          <RoomCard key={room.id} room={room} index={index} />
+        ))}
+      </div>
+      {!loading && rooms.length === 0 ? (
+        <EmptyState icon={Radio} title="No rooms yet" text="No public rooms." />
+      ) : null}
+    </section>
+  );
+}
+
+function AnonymousPeople({
+  loading,
+  people,
+}: {
+  loading: boolean;
+  people: DiscoverPerson[];
+}) {
+  return (
+    <section className="space-y-3" aria-label="People to find">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold text-text">People</h2>
+        <ButtonLink to="/search" variant="quiet" size="sm">
+          Search
+        </ButtonLink>
+      </div>
+      <div className="grid gap-2">
+        {people.map((person) => (
+          <Link
+            key={person.handle}
+            to={`/@${person.handle}`}
+            className="flex items-center gap-3 rounded-card border border-line bg-surface/70 p-3 shadow-soft transition duration-fluid hover:border-line-strong"
+          >
+            <Avatar user={{ ...person, aura: "frost" }} size="sm" />
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold text-text">{person.displayName}</span>
+              <span className="block truncate text-xs text-muted">@{person.handle}</span>
+            </span>
+          </Link>
+        ))}
+      </div>
+      {!loading && people.length === 0 ? (
+        <EmptyState icon={Sparkles} title="No people yet" text="No public profiles." />
+      ) : null}
+    </section>
+  );
+}
+
+function formatPublicStat(value: number): string {
+  return new Intl.NumberFormat("en", { notation: "compact" }).format(value);
 }
 
 function HomeExploreRail({ onPostClick }: { onPostClick: () => void }) {

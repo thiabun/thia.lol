@@ -96,9 +96,9 @@ sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 ```
 
-Canonical profile and post URLs must be routed to the Node share-shell service
-before the static SPA fallback so social crawlers see profile/post metadata
-instead of the default `index.html` Open Graph tags.
+Canonical profile, post, and room URLs must be routed to the Node share-shell
+service before the static SPA fallback so social crawlers see entity-specific
+metadata instead of the default `index.html` Open Graph tags.
 
 The product API route should strip `/api`, proxy to `127.0.0.1:3100`, and set:
 

@@ -44,6 +44,7 @@ const jsonRoutes = [
   ["GET", "/api/chat/conversations/1/messages", 401],
   ["GET", "/api/admin/reports", 401],
   ["GET", "/api/admin/rooms", 401],
+  ["GET", "/api/admin/growth", 401],
   ["GET", "/api/admin/migrations/status", 401],
   ["GET", "/api/me/integrations/github/suggestions", 401],
   ["GET", "/api/__definitely_not_real__", 404],
@@ -140,6 +141,7 @@ const headRoutes = [
   ["/api/sitemap.php", 200],
   ["/api/posts/pc359fe2da759/share-card.png", 200],
   ["/api/profiles/thia/share-card.png", 200],
+  ["/api/rooms/general/share-card.png", 200],
   ["/api/share-card/image", 404],
 ];
 
@@ -170,6 +172,7 @@ if (sharePostAnchor !== null) {
 }
 
 htmlRoutes.push(["/api/profile-share.php?handle=thia", 200]);
+htmlRoutes.push(["/api/room-share.php?slug=general", 200]);
 
 let failed = false;
 

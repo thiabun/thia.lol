@@ -5,8 +5,57 @@ const portraitMediaFixture = `data:image/svg+xml,${encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920"><rect width="1080" height="1920" fill="#f6e8b8"/><circle cx="540" cy="500" r="320" fill="#8fb7b1"/><rect x="360" y="980" width="360" height="640" rx="120" fill="#42526b"/></svg>',
 )}`;
 
-test("Home loads the feed empty state", async ({ page }) => {
+test("Anonymous home renders conversion actions and public discovery", async ({
+  page,
+}) => {
   await mockCommonApi(page);
+  await page.route("**/api/feed/discover", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          posts: [makePost({ body: "Public launch note." })],
+          activeRooms: [makeDiscoverRoom({ name: "Garden", slug: "garden" })],
+          peopleToWatch: [
+            makeDiscoverPerson({ handle: "alex", displayName: "Alex" }),
+          ],
+        },
+      }),
+    }),
+  );
+
+  await page.goto("/");
+
+  await expect(page.getByTestId("anonymous-home")).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "A small social place for profiles, rooms, and public posts.",
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Create account" })).toHaveAttribute(
+    "href",
+    "/register",
+  );
+  await expect(page.getByRole("link", { name: "Discover" }).first()).toHaveAttribute(
+    "href",
+    "/discover",
+  );
+  await expect(page.getByRole("link", { name: "Search" }).first()).toHaveAttribute(
+    "href",
+    "/search",
+  );
+  await expect(page.getByText("Public posts", { exact: true })).toBeVisible();
+  await expect(page.getByText("Public rooms", { exact: true })).toBeVisible();
+  await expect(page.getByText("Public launch note.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Garden" })).toBeVisible();
+  await expect(
+    page.locator('aside[aria-label="Public discovery"]').getByText("@alex"),
+  ).toBeVisible();
+});
+
+test("Authenticated home loads the feed empty state", async ({ page }) => {
+  await mockAuthenticatedApi(page);
   await page.route("**/api/feed/home", (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -23,7 +72,7 @@ test("Home loads the feed empty state", async ({ page }) => {
 test("Home refresh keeps the current feed visible until new posts arrive", async ({
   page,
 }) => {
-  await mockCommonApi(page);
+  await mockAuthenticatedApi(page);
   let refreshRequested = false;
   let releaseRefresh: (() => void) | undefined;
 
@@ -70,7 +119,7 @@ test("Home refresh keeps the current feed visible until new posts arrive", async
 });
 
 test("Home refresh failure preserves posts and offers retry", async ({ page }) => {
-  await mockCommonApi(page);
+  await mockAuthenticatedApi(page);
   let refreshRequested = false;
 
   await page.route("**/api/feed/home", async (route) => {
@@ -114,7 +163,7 @@ test("Home refresh failure preserves posts and offers retry", async ({ page }) =
 test("Home renders feed context labels and real discovery paths", async ({
   page,
 }) => {
-  await mockCommonApi(page);
+  await mockAuthenticatedApi(page);
   await page.route("**/api/feed/home", (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -637,7 +686,9 @@ test("PostCard share modal copies, saves, and sends typed post attachments", asy
     .poll(() =>
       page.evaluate(() => (window as unknown as { __copiedText?: string }).__copiedText),
     )
-    .toBe(`https://thia.lol/@alex/posts/${publicId}`);
+    .toBe(
+      `https://thia.lol/@alex/posts/${publicId}?utm_source=thia.lol&utm_medium=share&utm_campaign=post-share&thia_share=post%3A${publicId}`,
+    );
 
   const downloadPromise = page.waitForEvent("download");
   await modal.getByTestId("post-share-save-image").click();

@@ -7,6 +7,7 @@ import sharp from "sharp";
 
 import type { PostsRepository } from "./posts.js";
 import type { ProfilesRepository } from "./profiles.js";
+import type { RoomsRepository } from "./rooms.js";
 import type { RequestSession } from "./sessions.js";
 
 export const shareCardWidth = 2400;
@@ -39,6 +40,7 @@ export interface ShareCardCachePayload {
 export interface ShareCardService {
   postCard(identifier: string, viewerUserId: number | null): Promise<ShareCardImage>;
   profileCard(handle: string): Promise<ShareCardImage>;
+  roomCard(slug: string): Promise<ShareCardImage>;
   cachePostCard(identifier: string, session: RequestSession, file: MultipartFile | undefined): Promise<ShareCardCachePayload>;
   cacheProfileCard(handle: string, session: RequestSession, file: MultipartFile | undefined): Promise<ShareCardCachePayload>;
   proxyImage(rawUrl: string): Promise<ShareCardImage | null>;
@@ -47,6 +49,7 @@ export interface ShareCardService {
 export interface ShareCardServiceOptions {
   postsRepository: PostsRepository;
   profilesRepository: ProfilesRepository;
+  roomsRepository: RoomsRepository;
   uploadRoot: string;
   publicBaseUrl: string;
 }
@@ -113,6 +116,26 @@ class NodeShareCardService implements ShareCardService {
       statLine: `${Number(stats.posts ?? 0)} posts  ·  ${Number(stats.followers ?? 0)} followers  ·  ${Number(stats.stars ?? 0)} stars`,
       canonical: `/@${encodeURIComponent(profileHandle)}`,
       accent: "#58e2e0",
+    });
+
+    return pngImage(await sharp(Buffer.from(svg)).png().toBuffer());
+  }
+
+  async roomCard(slug: string): Promise<ShareCardImage> {
+    const room = await this.options.roomsRepository.getPublicRoom(slug);
+
+    if (room === null || !room.viewerCanViewPosts) {
+      throw new ShareCardRouteError("Room not found.", 404);
+    }
+
+    const svg = shareCardSvg({
+      eyebrow: "thia.lol room",
+      title: room.name,
+      subtitle: `/${room.slug}`,
+      body: bodySnippet(room.summary || room.description || "A public room on thia.lol.", 220),
+      statLine: `${Number(room.postCount ?? 0)} posts  ·  ${Number(room.memberCount ?? 0)} members`,
+      canonical: `/rooms/${encodeURIComponent(room.slug)}`,
+      accent: "#f8e8a9",
     });
 
     return pngImage(await sharp(Buffer.from(svg)).png().toBuffer());

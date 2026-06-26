@@ -32,11 +32,12 @@ Production Node ownership includes product `/api/*` traffic, including:
 - uploads
 - chat, reports, admin/moderation, setup, diagnostics, and migrations
 - sitemap and social-preview HTML compatibility aliases such as
-  `/api/post-share.php`, `/api/profile-share.php`, and `/api/sitemap.php`
+  `/api/post-share.php`, `/api/profile-share.php`, `/api/room-share.php`, and
+  `/api/sitemap.php`
 
-Canonical profile and post URLs (`/@handle` and `/@handle/posts/:postId`) are
-also Node-owned for social-preview HTML and must be matched before the static
-SPA fallback in Caddy.
+Canonical profile, post, and room URLs (`/@handle`, `/@handle/posts/:postId`,
+and `/rooms/:slug`) are also Node-owned for social-preview HTML and must be
+matched before the static SPA fallback in Caddy.
 
 `/api-next/*` is retired and should return `404`.
 
