@@ -926,13 +926,10 @@ export function ProfilePage() {
       setProfileEditorTourOpen(true);
       params.delete("tour");
       const nextSearch = params.toString();
-
-      navigate(
-        {
-          pathname: location.pathname,
-          search: nextSearch ? `?${nextSearch}` : "",
-        },
-        { replace: true },
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${location.pathname}${nextSearch ? `?${nextSearch}` : ""}${location.hash}`,
       );
     });
 
@@ -942,9 +939,9 @@ export function ProfilePage() {
   }, [
     canvasEditing,
     isOwnProfile,
+    location.hash,
     location.pathname,
     location.search,
-    navigate,
   ]);
 
   useEffect(() => {
@@ -1216,6 +1213,7 @@ export function ProfilePage() {
       setCanvasEditing(false);
       setCanvasDraftAutosaveState("idle");
       setCanvasDraftAutosaveError(undefined);
+      void markProfileEditorTourStep("complete_step");
     } catch (error) {
       setCanvasError(
         error instanceof Error ? error.message : "Could not save canvas changes.",
@@ -4493,47 +4491,47 @@ const profileCanvasResizeDirectionLabels: Record<
 const profileEditorCoachmarkSteps = [
   {
     title: "Set the stage",
-    body: "Use background settings for profile media and glass. This changes the mood before modules are added.",
+    body: "Use background, appearance, and glass controls to set the mood before you place modules.",
     target: "Background",
   },
   {
     title: "Pick a space",
-    body: "Click one grid cell, then another cell to draw the rectangle your next module should occupy.",
+    body: "Select two cells to choose where your first module lives.",
     target: "Grid",
   },
   {
     title: "Choose a module",
-    body: "The picker only shows modules that fit the selected size. Brand icons tell you the provider at a glance.",
+    body: "The picker shows modules that fit your selected space, so start with one useful piece.",
     target: "Picker",
   },
   {
     title: "Configure it",
-    body: "Module settings handle uploads, text, links, providers, and the Done button returns you to the canvas.",
+    body: "Use settings to write, upload, connect, or adjust the module before returning to the canvas.",
     target: "Settings",
   },
   {
-    title: "Arrange the room",
-    body: "Drag modules, resize supported cards, and pin important modules so the profile keeps its structure.",
-    target: "Layout",
-  },
-  {
     title: "Save the canvas",
-    body: "Drafts autosave while you work. Use Save when the public profile should get the final layout.",
+    body: "Drafts autosave while you work. Use Save when the public profile should get this layout.",
     target: "Save",
   },
 ] as const;
 
 function ProfileEditorCoachmarkTour({
+  className,
+  index,
+  onIndexChange,
   onComplete,
   onDismiss,
   open,
 }: {
+  className?: string | undefined;
+  index: number;
+  onIndexChange: (index: number) => void;
   onComplete: () => void;
   onDismiss: () => void;
   open: boolean;
 }) {
-  const [index, setIndex] = useState(0);
-  const step = profileEditorCoachmarkSteps[index] ?? profileEditorCoachmarkSteps[0];
+  const step = profileEditorCoachmarkSteps[index] ?? profileEditorCoachmarkSteps[0]!;
   const last = index >= profileEditorCoachmarkSteps.length - 1;
 
   if (!open) {
@@ -4542,14 +4540,14 @@ function ProfileEditorCoachmarkTour({
 
   return (
     <motion.div
-      className="rounded-card border border-focus/45 bg-surface/92 p-4 shadow-lift backdrop-blur-veil"
+      className={cn(
+        "rounded-card border border-focus/45 bg-surface/94 p-4 shadow-lift backdrop-blur-veil",
+        className,
+      )}
       role="dialog"
       aria-label="Profile editor guide"
       data-testid="profile-editor-guide"
       data-profile-editor-guide-step={step.target.toLowerCase()}
-      initial={{ opacity: 0, y: -8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
@@ -4570,7 +4568,7 @@ function ProfileEditorCoachmarkTour({
           size="sm"
           data-testid="profile-editor-guide-dismiss"
           onClick={() => {
-            setIndex(0);
+            onIndexChange(0);
             onDismiss();
           }}
         >
@@ -4582,7 +4580,8 @@ function ProfileEditorCoachmarkTour({
             variant="secondary"
             size="sm"
             disabled={index === 0}
-            onClick={() => setIndex((current) => Math.max(0, current - 1))}
+            data-testid="profile-editor-guide-back"
+            onClick={() => onIndexChange(Math.max(0, index - 1))}
           >
             Back
           </Button>
@@ -4599,14 +4598,12 @@ function ProfileEditorCoachmarkTour({
             }
             onClick={() => {
               if (last) {
-                setIndex(0);
+                onIndexChange(0);
                 onComplete();
                 return;
               }
 
-              setIndex((current) =>
-                Math.min(profileEditorCoachmarkSteps.length - 1, current + 1),
-              );
+              onIndexChange(Math.min(profileEditorCoachmarkSteps.length - 1, index + 1));
             }}
           >
             {last ? "Done" : "Next"}
@@ -4615,6 +4612,28 @@ function ProfileEditorCoachmarkTour({
       </div>
     </motion.div>
   );
+}
+
+function profileEditorCoachmarkPositionClass(
+  target: (typeof profileEditorCoachmarkSteps)[number]["target"],
+): string {
+  if (target === "Background") {
+    return "absolute left-4 top-4 z-50 max-w-sm";
+  }
+
+  if (target === "Grid") {
+    return "absolute left-[44%] top-[43%] z-50 w-[min(23rem,calc(100%-2rem))]";
+  }
+
+  if (target === "Picker") {
+    return "absolute right-4 top-4 z-50 max-w-sm";
+  }
+
+  if (target === "Settings") {
+    return "absolute bottom-4 right-4 z-50 max-w-sm";
+  }
+
+  return "absolute right-4 top-4 z-50 max-w-sm";
 }
 
 function ProfileCanvasSelectionExamples({
@@ -4806,6 +4825,7 @@ function ProfileDirectCanvasEditor({
   const [pickerModuleId, setPickerModuleId] = useState<number | undefined>();
   const [settingsModuleId, setSettingsModuleId] = useState<number | undefined>();
   const [mobileMoveModuleId, setMobileMoveModuleId] = useState<number | undefined>();
+  const [guideStepIndex, setGuideStepIndex] = useState(0);
   const [dragState, setDragState] = useState<ProfileCanvasDragState | undefined>();
   const [resizeState, setResizeState] = useState<
     ProfileCanvasResizeState | undefined
@@ -4861,7 +4881,10 @@ function ProfileDirectCanvasEditor({
           ? "Draft pending..."
           : autosaveState === "saved"
             ? "Draft saved."
-            : "Draft autosaves.";
+          : "Draft autosaves.";
+  const guideStep =
+    profileEditorCoachmarkSteps[guideStepIndex] ?? profileEditorCoachmarkSteps[0]!;
+  const guideTarget = guideOpen ? guideStep.target : undefined;
   const updateDraftModules = useCallback(
     (updater: (currentModules: ProfileModule[]) => ProfileModule[]) => {
       onChange((currentDraft) => ({
@@ -4871,6 +4894,11 @@ function ProfileDirectCanvasEditor({
     },
     [onChange],
   );
+
+  function handleGuideOpen() {
+    setGuideStepIndex(0);
+    onGuideOpen();
+  }
 
   useEffect(() => {
     if (integrationConnectionLinks.length === 0) {
@@ -5449,7 +5477,19 @@ function ProfileDirectCanvasEditor({
       aria-label="Profile canvas editor"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
+        <div
+          className={cn(
+            "flex flex-wrap items-center gap-2 rounded-card",
+            guideTarget === "Background"
+              ? "outline outline-2 outline-focus/70 ring-4 ring-focus/15"
+              : undefined,
+          )}
+          data-testid={
+            guideTarget === "Background"
+              ? "profile-editor-guide-target-highlight"
+              : undefined
+          }
+        >
           <ProfileCanvasBackgroundControls
             backgroundBlur={draft.backgroundBlur}
             profile={profile}
@@ -5502,7 +5542,7 @@ function ProfileDirectCanvasEditor({
             variant="secondary"
             icon={<Sparkles aria-hidden="true" size={16} />}
             data-testid="profile-editor-guide-button"
-            onClick={onGuideOpen}
+            onClick={handleGuideOpen}
           >
             Guide
           </Button>
@@ -5520,6 +5560,11 @@ function ProfileDirectCanvasEditor({
             type="button"
             size="sm"
             disabled={busy}
+            className={
+              guideTarget === "Save"
+                ? "outline outline-2 outline-focus/70 ring-4 ring-focus/15"
+                : undefined
+            }
             icon={<Save aria-hidden="true" size={16} />}
             data-testid="profile-canvas-save-button"
             onClick={onSave}
@@ -5536,11 +5581,6 @@ function ProfileDirectCanvasEditor({
           {error}
         </p>
       ) : null}
-      <ProfileEditorCoachmarkTour
-        open={guideOpen}
-        onComplete={onGuideComplete}
-        onDismiss={onGuideDismiss}
-      />
       <ProfileGrid
         canvasGlass={draft.canvasGlass}
         gridRef={gridRef}
@@ -5549,6 +5589,17 @@ function ProfileDirectCanvasEditor({
         maxRows={editorGrid.rows}
         testId="profile-canvas-direct-grid"
       >
+        {guideTarget === "Grid" ? (
+          <ProfileGridModule
+            className="pointer-events-none z-20 rounded-[1.1rem] border border-focus/80 bg-focus/14 shadow-glow"
+            layout={{ column: 5, row: 5, colSpan: 3, rowSpan: 2 }}
+            layoutAnimation={false}
+            size="3x2"
+            testId="profile-editor-guide-target-highlight"
+          >
+            <div className="h-full rounded-[1.1rem] border border-focus/40 bg-focus/10" />
+          </ProfileGridModule>
+        ) : null}
         <div
           className={cn(
             "pointer-events-auto absolute inset-2 z-0 grid",
@@ -6012,6 +6063,14 @@ function ProfileDirectCanvasEditor({
             </ProfileGridModule>
           );
         })}
+        <ProfileEditorCoachmarkTour
+          className={profileEditorCoachmarkPositionClass(guideStep.target)}
+          index={guideStepIndex}
+          open={guideOpen}
+          onComplete={onGuideComplete}
+          onDismiss={onGuideDismiss}
+          onIndexChange={setGuideStepIndex}
+        />
       </ProfileGrid>
       <ModulePickerModal
         module={pickerModule}

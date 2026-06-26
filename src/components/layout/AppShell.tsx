@@ -77,8 +77,16 @@ function profileOnboardingGateShouldSkip(
     return true;
   }
 
-  if (userHandle && pathname.toLowerCase() === `/@${userHandle.toLowerCase()}`) {
-    return true;
+  if (userHandle) {
+    const normalizedPathname = pathname.replace(/\/+$/, "").toLowerCase();
+    const normalizedUserHandle = userHandle.toLowerCase();
+
+    if (
+      normalizedPathname === `/@${normalizedUserHandle}` ||
+      normalizedPathname === `/@/${normalizedUserHandle}`
+    ) {
+      return true;
+    }
   }
 
   const params = new URLSearchParams(search);

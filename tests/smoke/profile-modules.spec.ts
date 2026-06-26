@@ -2957,10 +2957,13 @@ test("direct canvas renders configured modules as light previews", async ({ page
 test("profile editor guide launches from onboarding tour query and can replay", async ({
   page,
 }) => {
+  const onboardingPatches: Array<Record<string, unknown>> = [];
+
   await page.setViewportSize({ width: 1366, height: 900 });
   await mockProfileModules(page, {
     authenticated: true,
     modules: [aboutModule({ id: 1, body: "Guide target." })],
+    onOnboardingUpdate: (payload) => onboardingPatches.push(payload),
   });
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia?editCanvas=1&tour=profile-editor");
@@ -2968,20 +2971,74 @@ test("profile editor guide launches from onboarding tour query and can replay", 
   await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
   await expect(page.getByTestId("profile-editor-guide")).toBeVisible();
   await expect(page.getByTestId("profile-editor-guide")).toContainText("Set the stage");
+  await expect(page.getByTestId("profile-editor-guide")).toContainText("1/5");
+  await expect(page.getByTestId("profile-editor-guide-target-highlight")).toBeVisible();
   await expect(page).toHaveURL(/editCanvas=1/);
   await expect(page).not.toHaveURL(/tour=profile-editor/);
+  await expect(page.getByTestId("page-loading-overlay")).toHaveCount(0);
 
-  for (let step = 0; step < 5; step += 1) {
+  await page.getByTestId("profile-editor-guide-next").click();
+  await expect(page.getByTestId("profile-editor-guide")).toContainText("Pick a space");
+  await expect(page.getByTestId("profile-editor-guide")).toContainText(
+    "Select two cells to choose where your first module lives.",
+  );
+  await expect(page.getByTestId("profile-editor-guide")).toContainText("2/5");
+  await expect(page.getByTestId("profile-editor-guide")).toHaveAttribute(
+    "data-profile-editor-guide-step",
+    "grid",
+  );
+  await expect(page.getByTestId("profile-editor-guide-target-highlight")).toBeVisible();
+
+  await page.getByTestId("profile-editor-guide-back").click();
+  await expect(page.getByTestId("profile-editor-guide")).toContainText("Set the stage");
+
+  for (let step = 0; step < 4; step += 1) {
     await page.getByTestId("profile-editor-guide-next").click();
   }
 
+  await expect(page.getByTestId("profile-editor-guide")).toContainText("Save the canvas");
   await page.getByTestId("profile-editor-guide-done").click();
   await expect(page.getByTestId("profile-editor-guide")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      onboardingPatches.some(
+        (patch) =>
+          patch.action === "complete_step" && patch.step === "profile_canvas",
+      ),
+    )
+    .toBe(true);
 
   await page.getByTestId("profile-editor-guide-button").click();
   await expect(page.getByTestId("profile-editor-guide")).toBeVisible();
   await page.getByTestId("profile-editor-guide-dismiss").click();
   await expect(page.getByTestId("profile-editor-guide")).toHaveCount(0);
+});
+
+test("saving the profile canvas marks onboarding canvas complete", async ({
+  page,
+}) => {
+  const onboardingPatches: Array<Record<string, unknown>> = [];
+
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [aboutModule({ id: 1, body: "Save target." })],
+    onOnboardingUpdate: (payload) => onboardingPatches.push(payload),
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia?editCanvas=1");
+
+  await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
+  await page.getByTestId("profile-canvas-save-button").click();
+
+  await expect
+    .poll(() =>
+      onboardingPatches.some(
+        (patch) =>
+          patch.action === "complete_step" && patch.step === "profile_canvas",
+      ),
+    )
+    .toBe(true);
 });
 
 test("direct canvas selection examples adapt to tiny selections", async ({ page }) => {
@@ -6029,6 +6086,7 @@ async function mockProfileModules(
     authenticated: boolean;
     modules: unknown[];
     onCreate?: (payload: Record<string, unknown>) => void;
+    onOnboardingUpdate?: (payload: Record<string, unknown>) => void;
     onCanvasSave?: (payload: Record<string, unknown>) => void;
     onCanvasDraftSave?: (payload: Record<string, unknown>) => void;
     onDelete?: (id: number) => void;
@@ -6125,6 +6183,47 @@ async function mockProfileModules(
   });
 
   await page.route("**/api/me/onboarding", async (route) => {
+    if (route.request().method() === "PATCH") {
+      const payload = (await route.request().postDataJSON()) as Record<
+        string,
+        unknown
+      >;
+      options.onOnboardingUpdate?.(payload);
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            steps: [
+              "profile_basics",
+              "spotify",
+              "youtube",
+              "twitch",
+              "github",
+              "apple_music",
+              "profile_canvas",
+              "desktop_notifications",
+            ],
+            completedSteps:
+              payload.action === "complete_step" && payload.step === "profile_canvas"
+                ? ["profile_canvas"]
+                : [],
+            skippedSteps:
+              payload.action === "skip_step" && payload.step === "profile_canvas"
+                ? ["profile_canvas"]
+                : [],
+            providerLinks: {},
+            finishedAt: null,
+            dismissedAt: "2026-06-19T00:00:00Z",
+            createdAt: "2026-06-19T00:00:00Z",
+            updatedAt: "2026-06-19T00:00:00Z",
+          },
+        }),
+      });
+      return;
+    }
+
     await route.fulfill({
       status: 200,
       contentType: "application/json",

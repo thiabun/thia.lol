@@ -5,10 +5,10 @@ import {
   Check,
   CheckCircle2,
   ExternalLink,
+  LayoutGrid,
   Link2,
   Music2,
-  RefreshCw,
-  SkipForward,
+  Save,
   Sparkles,
   UserRound,
 } from "lucide-react";
@@ -17,6 +17,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -50,17 +51,14 @@ import { useAuth } from "../lib/useAuth";
 
 const oauthProviders = ["spotify", "youtube", "twitch", "github"] as const;
 const providerSteps = [...oauthProviders, "apple_music"] as const;
-const wizardSteps = [
-  "welcome",
-  "profile_basics",
-  "integrations",
-  "apple_music",
-  "profile_canvas",
-  "desktop_notifications",
-  "finish",
-] as const;
-
-type WizardStep = (typeof wizardSteps)[number];
+type WizardStep =
+  | "welcome"
+  | "profile_basics"
+  | "integrations"
+  | "apple_music"
+  | "profile_canvas"
+  | "desktop_notifications"
+  | "finish";
 
 type ReturnNotice = {
   kind: "success" | "error";
@@ -68,11 +66,52 @@ type ReturnNotice = {
 };
 
 type ProviderProblemMap = Partial<Record<ProfileIntegrationProvider, string>>;
+type SetupPathId = "identity" | "connect" | "module" | "save";
+
+type SetupPathItem = {
+  description: string;
+  icon: ReactNode;
+  id: SetupPathId;
+  label: string;
+  step: WizardStep;
+};
+
+const onboardingPathItems: SetupPathItem[] = [
+  {
+    description: "Tell the world who you are.",
+    icon: <UserRound aria-hidden="true" size={17} />,
+    id: "identity",
+    label: "Identity",
+    step: "profile_basics",
+  },
+  {
+    description: "Link the places you are on.",
+    icon: <Link2 aria-hidden="true" size={17} />,
+    id: "connect",
+    label: "Connect",
+    step: "integrations",
+  },
+  {
+    description: "Add something to your canvas.",
+    icon: <LayoutGrid aria-hidden="true" size={17} />,
+    id: "module",
+    label: "Place a module",
+    step: "profile_canvas",
+  },
+  {
+    description: "Publish your space to the world.",
+    icon: <Save aria-hidden="true" size={17} />,
+    id: "save",
+    label: "Save",
+    step: "finish",
+  },
+];
 
 export function OnboardingPage() {
   const { runWithAuth, status, user } = useAuth();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
+  const integrationReturnHandledRef = useRef<string | undefined>(undefined);
   const [state, setState] = useState<OnboardingState | undefined>();
   const [providers, setProviders] = useState<ProfileIntegrationProviderStatus[]>([]);
   const [diagnostics, setDiagnostics] = useState<
@@ -202,6 +241,14 @@ export function OnboardingPage() {
       return;
     }
 
+    const returnKey = `${provider}:${integrationStatus}:${
+      searchParams.get("integrationError") ?? ""
+    }`;
+
+    if (integrationReturnHandledRef.current === returnKey) {
+      return;
+    }
+
     let active = true;
 
     queueMicrotask(() => {
@@ -209,6 +256,7 @@ export function OnboardingPage() {
         return;
       }
 
+      integrationReturnHandledRef.current = returnKey;
       setActiveStep(provider === "apple_music" ? "apple_music" : "integrations");
 
       if (integrationStatus === "connected") {
@@ -247,7 +295,14 @@ export function OnboardingPage() {
       nextParams.delete("integrationProvider");
       nextParams.delete("integrationStatus");
       nextParams.delete("integrationError");
-      setSearchParams(nextParams, { replace: true });
+      const nextSearch = nextParams.toString();
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${
+          window.location.hash
+        }`,
+      );
     });
 
     return () => {
@@ -257,7 +312,6 @@ export function OnboardingPage() {
     loadIntegrations,
     runWithAuth,
     searchParams,
-    setSearchParams,
     status,
   ]);
 
@@ -307,23 +361,6 @@ export function OnboardingPage() {
       navigate(target);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not finish setup.");
-    } finally {
-      setBusyAction(undefined);
-    }
-  }
-
-  async function dismissOnboarding() {
-    setBusyAction("dismiss");
-    setError(undefined);
-
-    try {
-      await runWithAuth(
-        (csrfToken) => updateOnboardingState({ action: "dismiss" }, csrfToken),
-        { retryOnCsrf: true },
-      );
-      navigate(profileUrl);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not skip setup.");
     } finally {
       setBusyAction(undefined);
     }
@@ -396,21 +433,24 @@ export function OnboardingPage() {
     }
   }
 
-  const providerCompleteCount = providerSteps.filter((provider) =>
-    providerComplete(provider, completed, connectedProviders, state),
-  ).length;
   const profileBasicsDone =
     completed.has("profile_basics") || skipped.has("profile_basics");
   const canvasDone = completed.has("profile_canvas") || skipped.has("profile_canvas");
   const desktopNotificationsDone =
     completed.has("desktop_notifications") || skipped.has("desktop_notifications");
+  const connectionsDone = providerSteps.some(
+    (provider) =>
+      providerComplete(provider, completed, connectedProviders, state) ||
+      skipped.has(provider),
+  );
   const progressDone =
-    providerCompleteCount +
     Number(profileBasicsDone) +
+    Number(connectionsDone) +
     Number(canvasDone) +
-    Number(desktopNotificationsDone);
-  const progressTotal = providerSteps.length + 3;
-  const activeStepIndex = wizardSteps.indexOf(activeStep);
+    Number(Boolean(state?.finishedAt));
+  const progressTotal = onboardingPathItems.length;
+  const activePathItem = onboardingPathItemForStep(activeStep);
+  const welcomeActive = activeStep === "welcome";
 
   return (
     <motion.div
@@ -420,41 +460,20 @@ export function OnboardingPage() {
       animate="show"
     >
       <PageMeta
-        title="Profile setup"
-        description="Set up your thia.lol profile."
+        title="Build your first profile"
+        description="Build your first thia.lol profile."
         path="/onboarding"
       />
 
-      <section className="flex flex-wrap items-center justify-between gap-3">
+      <section>
         <div className="min-w-0">
-          <Badge tone="warm">guided setup</Badge>
-          <h1 className="mt-3 text-3xl font-semibold tracking-normal text-text">
-            Profile setup
+          <h1 className="text-3xl font-semibold tracking-normal text-text">
+            Build your first profile
           </h1>
-          <p className="mt-2 text-sm font-medium text-muted">
-            {progressDone}/{progressTotal} setup items handled
+          <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-muted">
+            Your profile is a space you compose: start with who you are,
+            connect what matters, then place modules on your canvas.
           </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={Boolean(busyAction)}
-            icon={<RefreshCw aria-hidden="true" size={16} />}
-            onClick={reloadAll}
-          >
-            Refresh
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            disabled={Boolean(busyAction)}
-            icon={<SkipForward aria-hidden="true" size={16} />}
-            data-testid="onboarding-skip-all"
-            onClick={() => void dismissOnboarding()}
-          >
-            Skip setup
-          </Button>
         </div>
       </section>
 
@@ -484,39 +503,59 @@ export function OnboardingPage() {
       {loadingState ? (
         <OnboardingLoading />
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
-          <OnboardingProgressRail
-            activeStep={activeStep}
-            canvasDone={canvasDone}
-            desktopNotificationsDone={desktopNotificationsDone}
-            connectedProviders={connectedProviders}
-            profileBasicsDone={profileBasicsDone}
-            state={state}
-            onSelect={setActiveStep}
-          />
+        <div
+          className={cn(
+            "grid gap-4",
+            welcomeActive
+              ? "mx-auto max-w-5xl"
+              : "lg:grid-cols-[17rem_minmax(0,1fr)]",
+          )}
+        >
+          {welcomeActive ? null : (
+            <OnboardingProgressRail
+              activeStep={activeStep}
+              canvasDone={canvasDone}
+              connectionsDone={connectionsDone}
+              profileBasicsDone={profileBasicsDone}
+              state={state}
+              onSelect={setActiveStep}
+            />
+          )}
 
-          <Panel className="min-h-[34rem] overflow-hidden p-0">
-            <div className="border-b border-line bg-canvas/42 px-4 py-3 sm:px-5">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
-                  Step {activeStepIndex + 1} of {wizardSteps.length}
-                </p>
-                <div className="flex min-w-0 flex-1 justify-end lg:hidden">
-                  <span className="truncate text-xs font-semibold text-muted">
-                    {wizardStepLabel(activeStep)}
-                  </span>
+          <Panel
+            className={cn(
+              "overflow-hidden p-0",
+              welcomeActive ? "min-h-0" : "min-h-[34rem]",
+            )}
+          >
+            {welcomeActive ? null : (
+              <div className="border-b border-line bg-canvas/42 px-4 py-3 sm:px-5">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
+                    {progressDone}/{progressTotal} profile moves handled
+                  </p>
+                  <div className="flex min-w-0 flex-1 justify-end lg:hidden">
+                    <span className="truncate text-xs font-semibold text-muted">
+                      {activePathItem.label}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-line/45">
+                  <motion.div
+                    className="h-full rounded-full bg-accent"
+                    initial={false}
+                    animate={{
+                      width: `${Math.max(
+                        8,
+                        ((onboardingPathItems.indexOf(activePathItem) + 1) /
+                          onboardingPathItems.length) *
+                          100,
+                      )}%`,
+                    }}
+                  />
                 </div>
               </div>
-              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-line/45">
-                <motion.div
-                  className="h-full rounded-full bg-accent"
-                  initial={false}
-                  animate={{
-                    width: `${((activeStepIndex + 1) / wizardSteps.length) * 100}%`,
-                  }}
-                />
-              </div>
-            </div>
+            )}
 
             <AnimatePresence mode="wait">
               <motion.div
@@ -530,8 +569,10 @@ export function OnboardingPage() {
               >
                 {activeStep === "welcome" ? (
                   <WelcomeStep
+                    displayName={user?.displayName ?? user?.handle ?? "you"}
+                    handle={user?.handle ?? "you"}
+                    profileTourUrl={profileTourUrl}
                     onContinue={() => setActiveStep("profile_basics")}
-                    onSkip={() => void dismissOnboarding()}
                   />
                 ) : null}
 
@@ -540,14 +581,6 @@ export function OnboardingPage() {
                     busyAction={busyAction}
                     done={profileBasicsDone}
                     profileTourUrl={profileTourUrl}
-                    profileUrl={profileUrl}
-                    onComplete={() =>
-                      void updateStep(
-                        "complete_step",
-                        "profile_basics",
-                        "integrations",
-                      )
-                    }
                     onSkip={() =>
                       void updateStep(
                         "skip_step",
@@ -606,15 +639,7 @@ export function OnboardingPage() {
                     busyAction={busyAction}
                     done={canvasDone}
                     profileTourUrl={profileTourUrl}
-                    profileUrl={profileUrl}
                     onBack={() => setActiveStep("apple_music")}
-                    onComplete={() =>
-                      void updateStep(
-                        "complete_step",
-                        "profile_canvas",
-                        "desktop_notifications",
-                      )
-                    }
                     onSkip={() =>
                       void updateStep(
                         "skip_step",
@@ -681,16 +706,14 @@ function OnboardingLoading() {
 function OnboardingProgressRail({
   activeStep,
   canvasDone,
-  desktopNotificationsDone,
-  connectedProviders,
+  connectionsDone,
   onSelect,
   profileBasicsDone,
   state,
 }: {
   activeStep: WizardStep;
   canvasDone: boolean;
-  desktopNotificationsDone: boolean;
-  connectedProviders: Set<ProfileIntegrationProvider>;
+  connectionsDone: boolean;
   onSelect: (step: WizardStep) => void;
   profileBasicsDone: boolean;
   state: OnboardingState | undefined;
@@ -698,33 +721,32 @@ function OnboardingProgressRail({
   return (
     <aside className="hidden lg:block">
       <Panel className="sticky top-24 grid gap-2 p-3" data-testid="onboarding-progress-rail">
-        {wizardSteps.map((step, index) => {
-          const complete = wizardStepComplete(
-            step,
+        {onboardingPathItems.map((item, index) => {
+          const complete = onboardingPathComplete(
+            item.id,
             profileBasicsDone,
+            connectionsDone,
             canvasDone,
-            desktopNotificationsDone,
-            connectedProviders,
             state,
           );
-          const active = activeStep === step;
+          const active = onboardingPathItemForStep(activeStep).id === item.id;
 
           return (
             <button
-              key={step}
+              key={item.id}
               type="button"
               className={cn(
-                "flex min-h-11 items-center gap-3 rounded-control px-3 text-left text-sm font-semibold transition",
+                "flex min-h-16 items-center gap-3 rounded-control px-3 text-left text-sm font-semibold transition",
                 active
                   ? "bg-accent text-accent-ink shadow-soft"
                   : "text-muted hover:bg-surface hover:text-text",
               )}
-              data-testid={`onboarding-nav-${step}`}
-              onClick={() => onSelect(step)}
+              data-testid={`onboarding-nav-${item.step}`}
+              onClick={() => onSelect(item.step)}
             >
               <span
                 className={cn(
-                  "grid size-6 shrink-0 place-items-center rounded-full border text-xs",
+                  "grid size-8 shrink-0 place-items-center rounded-full border text-xs",
                   complete
                     ? "border-leaf/35 bg-leaf/18 text-leaf-ink"
                     : active
@@ -732,9 +754,19 @@ function OnboardingProgressRail({
                       : "border-line",
                 )}
               >
-                {complete ? <Check aria-hidden="true" size={13} /> : index + 1}
+                {complete ? <Check aria-hidden="true" size={14} /> : index + 1}
               </span>
-              <span className="truncate">{wizardStepLabel(step)}</span>
+              <span className="min-w-0">
+                <span className="block truncate">{item.label}</span>
+                <span
+                  className={cn(
+                    "mt-0.5 block truncate text-xs font-medium",
+                    active ? "text-accent-ink/78" : "text-muted",
+                  )}
+                >
+                  {item.description}
+                </span>
+              </span>
             </button>
           );
         })}
@@ -744,54 +776,114 @@ function OnboardingProgressRail({
 }
 
 function WelcomeStep({
+  displayName,
+  handle,
   onContinue,
-  onSkip,
+  profileTourUrl,
 }: {
+  displayName: string;
+  handle: string;
   onContinue: () => void;
-  onSkip: () => void;
+  profileTourUrl: string;
 }) {
   return (
-    <div className="grid min-h-[27rem] content-center gap-6">
-      <div className="max-w-2xl">
-        <Badge tone="warm">start here</Badge>
-        <h2 className="mt-3 text-3xl font-semibold text-text">
-          Make your profile feel like yours.
-        </h2>
-        <p className="mt-3 text-base leading-7 text-muted">
-          This setup walks through the pieces that make a profile useful:
-          identity, connected accounts, music links, and the canvas editor.
-        </p>
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,0.82fr)_minmax(22rem,1.18fr)]">
+      <div className="grid content-center gap-6">
+        <div className="max-w-2xl">
+          <h2 className="text-3xl font-semibold text-text">
+            Start by making the canvas real.
+          </h2>
+          <p className="mt-3 text-base leading-7 text-muted">
+            A profile is not a form. It is your identity, the places you are on
+            the internet, and modules you can move around until the page feels
+            like yours.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <ButtonLink
+            to={profileTourUrl}
+            icon={<ArrowRight aria-hidden="true" size={16} />}
+            data-testid="onboarding-start"
+          >
+            Open guided editor
+          </ButtonLink>
+          <Button type="button" variant="ghost" onClick={onContinue}>
+            Setup checklist
+          </Button>
+        </div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-3">
-        <SetupPreviewCard icon={<UserRound size={18} />} title="Basics" />
-        <SetupPreviewCard icon={<Link2 size={18} />} title="Integrations" />
-        <SetupPreviewCard icon={<Sparkles size={18} />} title="Profile canvas" />
-        <SetupPreviewCard icon={<BellRing size={18} />} title="Notifications" />
+      <ProfileCanvasPreview displayName={displayName} handle={handle} />
+    </div>
+  );
+}
+
+function ProfileCanvasPreview({
+  displayName,
+  handle,
+}: {
+  displayName: string;
+  handle: string;
+}) {
+  return (
+    <div
+      className="overflow-hidden rounded-card border border-line bg-surface/82 shadow-soft"
+      data-testid="onboarding-profile-preview"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-canvas/50 px-4 py-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-text">thia.lol / {handle}</p>
+          <p className="mt-0.5 text-xs font-medium text-muted">Profile preview</p>
+        </div>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          icon={<ArrowRight aria-hidden="true" size={16} />}
-          data-testid="onboarding-start"
-          onClick={onContinue}
-        >
-          Start setup
-        </Button>
-        <Button type="button" variant="ghost" onClick={onSkip}>
-          Skip for now
-        </Button>
+      <div className="grid gap-4 p-4 sm:grid-cols-[7rem_minmax(0,1fr)]">
+        <aside className="min-w-0 space-y-3">
+          <span className="grid size-20 place-items-center rounded-full border border-line bg-surface text-3xl shadow-soft">
+            {displayName.trim().charAt(0).toUpperCase() || "T"}
+          </span>
+          <div>
+            <p className="truncate text-base font-semibold text-text">
+              {displayName}
+            </p>
+            <p className="truncate text-xs font-semibold text-muted">@{handle}</p>
+          </div>
+          <p className="text-xs font-medium leading-5 text-muted">
+            Start with a name, a little context, and one thing worth placing.
+          </p>
+        </aside>
+        <div className="relative min-h-[22rem] overflow-hidden rounded-card border border-line bg-[linear-gradient(90deg,color-mix(in_oklab,var(--line)_55%,transparent)_1px,transparent_1px),linear-gradient(180deg,color-mix(in_oklab,var(--line)_55%,transparent)_1px,transparent_1px)] bg-[size:3.5rem_3.5rem] p-5">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_45%,color-mix(in_oklab,var(--app-accent)_16%,transparent),transparent_34%)]" />
+          <PreviewModule className="left-[18%] top-[16%]" title="About me" text="A short hello that tells people what kind of space this is." />
+          <PreviewModule className="right-[8%] top-[24%]" title="Links" text="GitHub, website, and the places you want visible." />
+          <PreviewModule className="bottom-[10%] left-[10%]" title="Now playing" text="A song, playlist, or album that sets the mood." />
+          <div className="absolute bottom-[16%] right-[10%] grid size-24 place-items-center rounded-card border border-line bg-canvas/70 text-xs font-semibold text-muted shadow-soft">
+            Image
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-function SetupPreviewCard({ icon, title }: { icon: ReactNode; title: string }) {
+function PreviewModule({
+  className,
+  text,
+  title,
+}: {
+  className: string;
+  text: string;
+  title: string;
+}) {
   return (
-    <div className="rounded-card border border-line bg-canvas/45 p-4">
-      <span className="grid size-10 place-items-center rounded-card border border-line bg-surface text-text">
-        {icon}
-      </span>
-      <p className="mt-3 text-sm font-semibold text-text">{title}</p>
+    <div
+      className={cn(
+        "absolute z-10 w-36 rounded-card border border-line bg-surface/90 p-3 shadow-soft backdrop-blur-veil",
+        className,
+      )}
+    >
+      <p className="truncate text-xs font-semibold text-text">{title}</p>
+      <p className="mt-2 text-[0.68rem] font-medium leading-4 text-muted">
+        {text}
+      </p>
     </div>
   );
 }
@@ -799,64 +891,42 @@ function SetupPreviewCard({ icon, title }: { icon: ReactNode; title: string }) {
 function ProfileBasicsStep({
   busyAction,
   done,
-  onComplete,
   onSkip,
   profileTourUrl,
-  profileUrl,
 }: {
   busyAction: string | undefined;
   done: boolean;
-  onComplete: () => void;
   onSkip: () => void;
   profileTourUrl: string;
-  profileUrl: string;
 }) {
   return (
     <StepScaffold
       badge={done ? "done" : "profile"}
       title="Start with your identity"
-      text="Add a profile picture, banner, name, and a short bio. You can do the full canvas tour now or just mark this step done."
+      text="Your name, picture, bio, and first modules all live in the editor. Open the guided editor when you are ready to shape the real profile surface."
       icon={<UserRound aria-hidden="true" size={20} />}
       footer={
         <WizardActions
           back={undefined}
           primary={
-            <Button
-              type="button"
-              icon={<Check aria-hidden="true" size={16} />}
-              disabled={busyAction === "complete_step:profile_basics"}
-              onClick={onComplete}
+            <ButtonLink
+              to={profileTourUrl}
+              icon={<Sparkles aria-hidden="true" size={16} />}
+              data-testid="onboarding-open-profile-tour"
             >
-              Done
-            </Button>
+              Open guided editor
+            </ButtonLink>
           }
           secondary={
-            <>
-              <ButtonLink
-                to={profileTourUrl}
-                variant="secondary"
-                icon={<Sparkles aria-hidden="true" size={16} />}
-                data-testid="onboarding-open-profile-tour"
-              >
-                Open editor guide
-              </ButtonLink>
-              <ButtonLink
-                to={profileUrl}
-                variant="ghost"
-                icon={<ExternalLink aria-hidden="true" size={16} />}
-              >
-                View profile
-              </ButtonLink>
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={busyAction === "skip_step:profile_basics"}
-                data-testid="onboarding-profile-basics-skip"
-                onClick={onSkip}
-              >
-                Skip
-              </Button>
-            </>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={busyAction === "skip_step:profile_basics"}
+              data-testid="onboarding-profile-basics-skip"
+              onClick={onSkip}
+            >
+              Skip
+            </Button>
           }
         />
       }
@@ -1150,81 +1220,43 @@ function ProfileCanvasStep({
   busyAction,
   done,
   onBack,
-  onComplete,
   onSkip,
   profileTourUrl,
-  profileUrl,
 }: {
   busyAction: string | undefined;
   done: boolean;
   onBack: () => void;
-  onComplete: () => void;
   onSkip: () => void;
   profileTourUrl: string;
-  profileUrl: string;
 }) {
   return (
     <StepScaffold
       badge={done ? "done" : "editor"}
-      title="Learn the profile canvas"
-      text="The editor lets you place modules, resize them, connect providers, upload media, and save the whole profile canvas."
+      title="Place your first module"
+      text="Open the real editor. This step completes when you finish the editor guide or save the canvas."
       icon={<Sparkles aria-hidden="true" size={20} />}
-      body={
-        <div className="grid gap-3 md:grid-cols-2">
-          {[
-            "Pick a rectangle on the grid.",
-            "Choose a module that fits that size.",
-            "Use settings to connect, upload, or write.",
-            "Drag, pin, resize, then save.",
-          ].map((item) => (
-            <div
-              key={item}
-              className="rounded-card border border-line bg-canvas/45 p-4 text-sm font-semibold text-muted"
-            >
-              {item}
-            </div>
-          ))}
-        </div>
-      }
       footer={
         <WizardActions
           back={onBack}
           primary={
-            <Button
-              type="button"
-              icon={<Check aria-hidden="true" size={16} />}
-              disabled={busyAction === "complete_step:profile_canvas"}
-              onClick={onComplete}
+            <ButtonLink
+              to={profileTourUrl}
+              icon={<Sparkles aria-hidden="true" size={16} />}
+              data-testid="onboarding-open-profile-tour"
             >
-              Done
-            </Button>
+              Open guided editor
+            </ButtonLink>
           }
           secondary={
-            <>
-              <ButtonLink
-                to={profileTourUrl}
-                variant="secondary"
-                icon={<Sparkles aria-hidden="true" size={16} />}
-                data-testid="onboarding-open-profile-tour"
-              >
-                Open guided editor
-              </ButtonLink>
-              <ButtonLink
-                to={profileUrl}
-                variant="ghost"
-                icon={<ExternalLink aria-hidden="true" size={16} />}
-              >
-                View profile
-              </ButtonLink>
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={busyAction === "skip_step:profile_canvas"}
-                onClick={onSkip}
-              >
-                Skip
-              </Button>
-            </>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={busyAction === "skip_step:profile_canvas"}
+              data-testid="onboarding-skip-profile_canvas"
+              onClick={onSkip}
+            >
+              Skip
+            </Button>
           }
         />
       }
@@ -1431,48 +1463,6 @@ function providerComplete(
   );
 }
 
-function wizardStepComplete(
-  step: WizardStep,
-  profileBasicsDone: boolean,
-  canvasDone: boolean,
-  desktopNotificationsDone: boolean,
-  connectedProviders: Set<ProfileIntegrationProvider>,
-  state: OnboardingState | undefined,
-): boolean {
-  if (step === "welcome") {
-    return true;
-  }
-
-  if (step === "profile_basics") {
-    return profileBasicsDone;
-  }
-
-  if (step === "integrations") {
-    return oauthProviders.some((provider) =>
-      providerComplete(provider, new Set(state?.completedSteps ?? []), connectedProviders, state),
-    );
-  }
-
-  if (step === "apple_music") {
-    return providerComplete(
-      "apple_music",
-      new Set(state?.completedSteps ?? []),
-      connectedProviders,
-      state,
-    );
-  }
-
-  if (step === "profile_canvas") {
-    return canvasDone;
-  }
-
-  if (step === "desktop_notifications") {
-    return desktopNotificationsDone;
-  }
-
-  return Boolean(state?.finishedAt);
-}
-
 function defaultWizardStep(state: OnboardingState): WizardStep {
   const completed = new Set(state.completedSteps);
   const skipped = new Set(state.skippedSteps);
@@ -1503,18 +1493,42 @@ function defaultWizardStep(state: OnboardingState): WizardStep {
   return "finish";
 }
 
-function wizardStepLabel(step: WizardStep): string {
-  const labels: Record<WizardStep, string> = {
-    apple_music: "Apple Music",
-    desktop_notifications: "Notifications",
-    finish: "Finish",
-    integrations: "Integrations",
-    profile_basics: "Profile basics",
-    profile_canvas: "Profile editor",
-    welcome: "Welcome",
-  };
+function onboardingPathItemForStep(step: WizardStep): SetupPathItem {
+  if (step === "profile_basics" || step === "welcome") {
+    return onboardingPathItems[0]!;
+  }
 
-  return labels[step];
+  if (step === "integrations" || step === "apple_music") {
+    return onboardingPathItems[1]!;
+  }
+
+  if (step === "profile_canvas") {
+    return onboardingPathItems[2]!;
+  }
+
+  return onboardingPathItems[3]!;
+}
+
+function onboardingPathComplete(
+  id: SetupPathId,
+  profileBasicsDone: boolean,
+  connectionsDone: boolean,
+  canvasDone: boolean,
+  state: OnboardingState | undefined,
+): boolean {
+  if (id === "identity") {
+    return profileBasicsDone;
+  }
+
+  if (id === "connect") {
+    return connectionsDone;
+  }
+
+  if (id === "module") {
+    return canvasDone;
+  }
+
+  return Boolean(state?.finishedAt);
 }
 
 function providerAvailability(

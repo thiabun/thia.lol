@@ -57,7 +57,10 @@ test("registration lands in the guided onboarding flow", async ({ page }) => {
 
   await expect.poll(() => registerPayload?.handle).toBe("onboardtester");
   await expect(page).toHaveURL(/\/onboarding$/);
-  await expect(page.getByRole("heading", { name: "Profile setup" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Build your first profile" }),
+  ).toBeVisible();
+  await expect(page.getByTestId("onboarding-profile-preview")).toBeVisible();
   await expect(page.getByTestId("onboarding-step-welcome")).toBeVisible();
 });
 
@@ -109,7 +112,9 @@ test("existing authenticated users are routed into onboarding when unfinished", 
 
   await page.goto("/discover");
   await expect(page).toHaveURL(/\/onboarding$/);
-  await expect(page.getByRole("heading", { name: "Profile setup" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Build your first profile" }),
+  ).toBeVisible();
 });
 
 test("unfinished users can open their profile and editor from onboarding", async ({
@@ -123,17 +128,20 @@ test("unfinished users can open their profile and editor from onboarding", async
   await mockIntegrations(page);
 
   await page.goto("/onboarding");
-  await page.getByTestId("onboarding-nav-profile_basics").click();
-  await page.getByTestId("onboarding-open-profile-tour").click();
+  await expect(page.getByTestId("page-loading-overlay")).toHaveCount(0);
+  await expect(page.getByText("Start by making the canvas real.")).toBeVisible();
+  await page.getByTestId("onboarding-start").click();
 
   await expect(page).toHaveURL(/\/@thia\?editCanvas=1&tour=profile-editor$/);
   await page.waitForTimeout(250);
   await expect(page).not.toHaveURL(/\/onboarding$/);
 
   await page.goto("/onboarding");
-  await page.getByTestId("onboarding-nav-profile_basics").click();
-  await page.getByRole("link", { name: "View profile" }).click();
+  await expect(page.getByTestId("page-loading-overlay")).toHaveCount(0);
+  await page.getByRole("button", { name: "Setup checklist" }).click();
+  await expect(page.getByTestId("onboarding-step-profile_basics")).toBeVisible();
 
+  await page.goto("/@thia");
   await expect(page).toHaveURL(/\/@thia$/);
   await page.waitForTimeout(250);
   await expect(page).not.toHaveURL(/\/onboarding$/);
@@ -205,7 +213,10 @@ test("onboarding handles OAuth returns, manual links, skip, connect, and finish"
     .poll(() => patches.some((patch) => patch.action === "skip_step" && patch.step === "profile_basics"))
     .toBe(true);
 
-  await page.getByTestId("onboarding-nav-apple_music").click();
+  await page
+    .getByTestId("onboarding-step-integrations")
+    .getByRole("button", { name: "Continue" })
+    .click();
   await page
     .getByTestId("onboarding-apple-music-url")
     .fill("https://music.apple.com/us/album/example/1?i=2");
@@ -225,7 +236,8 @@ test("onboarding handles OAuth returns, manual links, skip, connect, and finish"
   await page.getByTestId("onboarding-connect-spotify").click();
   await expect.poll(() => spotifyStartPayload?.redirectPath).toBe("/onboarding");
 
-  await page.getByTestId("onboarding-nav-desktop_notifications").click();
+  await page.getByTestId("onboarding-nav-profile_canvas").click();
+  await page.getByTestId("onboarding-skip-profile_canvas").click();
   await expect(page.getByTestId("desktop-notifications-card")).toBeVisible();
   await expect(page.getByTestId("desktop-notifications-state")).toContainText(
     /setup needed|unsupported|blocked/,
@@ -241,7 +253,6 @@ test("onboarding handles OAuth returns, manual links, skip, connect, and finish"
     )
     .toBe(true);
 
-  await page.getByTestId("onboarding-nav-finish").click();
   await page.getByTestId("onboarding-finish").click();
   await expect
     .poll(() => patches.some((patch) => patch.action === "finish"))
@@ -271,6 +282,8 @@ test("onboarding stays usable when integration storage is unavailable", async ({
   });
 
   await page.goto("/onboarding");
+  await expect(page.getByTestId("page-loading-overlay")).toHaveCount(0);
+  await page.getByRole("button", { name: "Setup checklist" }).click();
   await page.getByTestId("onboarding-nav-integrations").click();
 
   await expect(page.getByTestId("onboarding-step-integrations")).toBeVisible();
