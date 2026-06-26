@@ -603,6 +603,65 @@ export type AccountSettings = {
   } | null;
 };
 
+export type AccountDataExport = {
+  schemaVersion: 1;
+  generatedAt: string;
+  account: Record<string, unknown> | null;
+  profile: {
+    details: Record<string, unknown> | null;
+    modules: Record<string, unknown>[];
+    canvasDraft: Record<string, unknown> | null;
+    badges: Record<string, unknown>[];
+  };
+  preferences: {
+    settings: Record<string, unknown> | null;
+    onboarding: Record<string, unknown> | null;
+  };
+  deletion: Record<string, unknown> | null;
+  content: {
+    postsAndReplies: Record<string, unknown>[];
+    attachments: Record<string, unknown>[];
+    reactions: Record<string, unknown>[];
+    reblogs: Record<string, unknown>[];
+  };
+  media: {
+    profileMedia: Record<string, unknown> | null;
+    postMedia: Record<string, unknown>[];
+    attachments: Record<string, unknown>[];
+  };
+  rooms: {
+    created: Record<string, unknown>[];
+    memberships: Record<string, unknown>[];
+  };
+  relationships: {
+    following: Record<string, unknown>[];
+    followers: Record<string, unknown>[];
+    blocks: Record<string, unknown>[];
+    mutes: Record<string, unknown>[];
+    stars: Record<string, unknown>[];
+    followRequestsSent: Record<string, unknown>[];
+    followRequestsReceived: Record<string, unknown>[];
+  };
+  messages: {
+    sentMessages: Record<string, unknown>[];
+  };
+  moderation: {
+    submittedReports: Record<string, unknown>[];
+    accountReportStatuses: Record<string, unknown>[];
+  };
+  integrations: {
+    accounts: Record<string, unknown>[];
+  };
+  purchases: {
+    purchases: never[];
+    note: string;
+  };
+  limits: {
+    perSection: number;
+    note: string;
+  };
+};
+
 export type AccountPreferences = {
   analyticsConsent: boolean;
   personalizationConsent: boolean;
@@ -1633,6 +1692,17 @@ export function cancelAccountDeletion(
   csrfToken: string,
 ): Promise<AccountSettings> {
   return apiPost<AccountSettings>("/me/account/deletion/cancel", {}, csrfToken);
+}
+
+export function requestAccountDataExport(
+  currentPassword: string,
+  csrfToken: string,
+): Promise<AccountDataExport> {
+  return apiPost<AccountDataExport>(
+    "/me/data-export",
+    { currentPassword },
+    csrfToken,
+  );
 }
 
 export function createPost(

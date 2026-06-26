@@ -97,6 +97,7 @@ import {
   PrivateRouteError,
   PrivateStorageNotReadyError,
   settingsPostKind,
+  type AccountDataExportPayload,
   type AuthSessionPayload,
   type FollowRequestPayload,
   type MyPostPayload,
@@ -2082,6 +2083,16 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       dependencies,
       "me.settings",
       (repository, session) => repository.getSettings(session),
+    ),
+  );
+
+  app.post("/me/data-export", async (request, reply) =>
+    withAuthenticatedMutationRoute<AccountDataExportPayload>(
+      request,
+      reply,
+      dependencies,
+      "me.data-export.create",
+      (repository, session, body) => repository.exportAccountData(session, jsonBodyRequiredObject(body, request.body)),
     ),
   );
 

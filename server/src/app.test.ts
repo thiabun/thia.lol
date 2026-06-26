@@ -55,7 +55,9 @@ import type {
   PostsRepository,
 } from "./posts.js";
 import {
+  PrivateRouteError,
   PrivateStorageNotReadyError,
+  type AccountDataExportPayload,
   type AuthSessionPayload,
   type FollowRequestPayload,
   type MyPostPayload,
@@ -787,6 +789,86 @@ const myPost: MyPostPayload = {
   createdAt: "2026-06-23 10:00:00",
 };
 
+const accountDataExportPayload: AccountDataExportPayload = {
+  schemaVersion: 1,
+  generatedAt: "2026-06-26 12:00:00",
+  account: {
+    id: 42,
+    handle: "viewer",
+    email: "viewer@example.test",
+    role: "member",
+    status: "active",
+  },
+  profile: {
+    details: {
+      display_name: "Viewer",
+      visibility: "public",
+    },
+    modules: [],
+    canvasDraft: null,
+    badges: [],
+  },
+  preferences: {
+    settings: {
+      analytics_consent: 0,
+    },
+    onboarding: null,
+  },
+  deletion: null,
+  content: {
+    postsAndReplies: [
+      {
+        id: 99,
+        body: "A public post.",
+      },
+    ],
+    attachments: [],
+    reactions: [],
+    reblogs: [],
+  },
+  media: {
+    profileMedia: null,
+    postMedia: [],
+    attachments: [],
+  },
+  rooms: {
+    created: [],
+    memberships: [],
+  },
+  relationships: {
+    following: [],
+    followers: [],
+    blocks: [],
+    mutes: [],
+    stars: [],
+    followRequestsSent: [],
+    followRequestsReceived: [],
+  },
+  messages: {
+    sentMessages: [],
+  },
+  moderation: {
+    submittedReports: [],
+    accountReportStatuses: [],
+  },
+  integrations: {
+    accounts: [
+      {
+        provider: "github",
+        provider_handle: "viewer",
+      },
+    ],
+  },
+  purchases: {
+    purchases: [],
+    note: "No purchase history.",
+  },
+  limits: {
+    perSection: 500,
+    note: "Large sections are capped per export request.",
+  },
+};
+
 function privateReadsRepositoryMock(overrides: Partial<PrivateReadsRepository> = {}): PrivateReadsRepository {
   return {
     authSessionPayload: vi.fn().mockReturnValue(authPayload),
@@ -796,6 +878,7 @@ function privateReadsRepositoryMock(overrides: Partial<PrivateReadsRepository> =
     getNotifications: vi.fn().mockResolvedValue(notificationsPayload),
     getFollowRequests: vi.fn().mockResolvedValue([followRequest]),
     getMyPosts: vi.fn().mockResolvedValue([myPost]),
+    exportAccountData: vi.fn().mockResolvedValue(accountDataExportPayload),
     markNotificationsRead: vi.fn().mockResolvedValue(notificationsReadPayload),
     markAllNotificationsRead: vi.fn().mockResolvedValue(notificationsReadAllPayload),
     updateOnboardingState: vi.fn().mockResolvedValue(onboardingPayload),
@@ -1319,6 +1402,121 @@ describe("Node API private preview routes", () => {
       error: "Invalid CSRF token.",
     });
     expect(repository.markNotificationsRead).not.toHaveBeenCalled();
+  });
+
+  it("creates account data exports through the PHP success wrapper", async () => {
+    const repository = privateReadsRepositoryMock();
+    const app = buildApp({
+      privateReadsRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/me/data-export",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: {
+        currentPassword: "correct-password",
+      },
+    });
+    const text = response.body;
+
+    expect(response.statusCode).toBe(200);
+    expect(repository.exportAccountData).toHaveBeenCalledWith(session, {
+      currentPassword: "correct-password",
+    });
+    expect(response.json()).toEqual({
+      ok: true,
+      data: accountDataExportPayload,
+    });
+    expect(text).not.toContain("password_hash");
+    expect(text).not.toContain("token_hash");
+    expect(text).not.toContain("access_token_cipher");
+    expect(text).not.toContain("refresh_token_cipher");
+  });
+
+  it("requires authentication and CSRF before account data export", async () => {
+    const unauthenticatedRepository = privateReadsRepositoryMock();
+    const unauthenticatedApp = buildApp({
+      privateReadsRepository: unauthenticatedRepository,
+      sessionsRepository: sessionsRepositoryMock({
+        currentSession: vi.fn().mockResolvedValue(null),
+      }),
+    });
+    const unauthenticated = await unauthenticatedApp.inject({
+      method: "POST",
+      url: "/me/data-export",
+      payload: {
+        currentPassword: "correct-password",
+      },
+    });
+    const repository = privateReadsRepositoryMock();
+    const app = buildApp({
+      privateReadsRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const missingCsrf = await app.inject({
+      method: "POST",
+      url: "/me/data-export",
+      payload: {
+        currentPassword: "correct-password",
+      },
+    });
+    const invalidCsrf = await app.inject({
+      method: "POST",
+      url: "/me/data-export",
+      headers: {
+        "x-csrf-token": "wrong",
+      },
+      payload: {
+        currentPassword: "correct-password",
+      },
+    });
+
+    expect(unauthenticated.statusCode).toBe(401);
+    expect(unauthenticated.json()).toEqual({
+      ok: false,
+      error: "Unauthenticated.",
+    });
+    expect(missingCsrf.statusCode).toBe(403);
+    expect(missingCsrf.json()).toEqual({
+      ok: false,
+      error: "CSRF token is required.",
+    });
+    expect(invalidCsrf.statusCode).toBe(403);
+    expect(invalidCsrf.json()).toEqual({
+      ok: false,
+      error: "Invalid CSRF token.",
+    });
+    expect(unauthenticatedRepository.exportAccountData).not.toHaveBeenCalled();
+    expect(repository.exportAccountData).not.toHaveBeenCalled();
+  });
+
+  it("maps account data export password failures to safe JSON", async () => {
+    const repository = privateReadsRepositoryMock({
+      exportAccountData: vi.fn().mockRejectedValue(new PrivateRouteError("Current password is incorrect.", 403)),
+    });
+    const app = buildApp({
+      privateReadsRepository: repository,
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/me/data-export",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: {
+        currentPassword: "wrong-password",
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({
+      ok: false,
+      error: "Current password is incorrect.",
+    });
   });
 
   it("marks selected notifications read through the PHP success wrapper", async () => {

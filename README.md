@@ -200,22 +200,38 @@ docs/backend-rewrite-roadmap.md
 The README is intentionally not the full operations manual. The machinery lives
 in `docs/`.
 
-## Safety And Legal Pages
+## Trust Center And Policy Pages
 
-Public policy pages are available on the live site:
+The public Trust Center is available on the live site:
 
 ```text
+/legal
 /terms
 /privacy
 /cookies
 /community-guidelines
 /copyright
 /moderation
-/legal
+/data-export
+/account-deletion
+/refunds
+/appeals
+/safety
+/content-ownership
+/no-dark-patterns
+/monetization-ethics
+/ai-policy
+/security
+/vulnerability-disclosure
+/transparency
+/law-enforcement
+/creator-marketplace
+/accessibility
+/incident-response
 ```
 
-They are practical policy pages for public testing, not a replacement for formal
-legal review.
+They are practical Trust Center and policy pages for public testing, not a
+replacement for formal legal review.
 
 ## Copyright
 

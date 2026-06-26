@@ -1,15 +1,14 @@
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import net from "node:net";
 
-import bcrypt from "bcryptjs";
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import nacl from "tweetnacl";
 
+import { hashPhpPassword, verifyPhpPassword } from "./passwords.js";
 import { authSessionPayload, csrfTokenForSession, type AuthSessionPayload } from "./private.js";
 import { hashSessionToken, type RequestSession } from "./sessions.js";
 
 const genericLoginError = "Invalid email or password.";
-const passwordHashCost = 10;
 const twoFactorIssuer = "thia.lol";
 const twoFactorStepSeconds = 30;
 const twoFactorChallengeSeconds = 600;
@@ -162,17 +161,7 @@ export function createAuthRepository(pool: Pool, options: AuthRepositoryOptions)
   return new MysqlAuthRepository(pool, options);
 }
 
-export async function hashPhpPassword(password: string): Promise<string> {
-  const hash = await bcrypt.hash(password, passwordHashCost);
-
-  return hash.replace(/^\$2[ab]\$/u, "$2y$");
-}
-
-export async function verifyPhpPassword(password: string, hash: string): Promise<boolean> {
-  const normalizedHash = hash.replace(/^\$2y\$/u, "$2b$");
-
-  return bcrypt.compare(password, normalizedHash);
-}
+export { hashPhpPassword, verifyPhpPassword } from "./passwords.js";
 
 export function validateAuthEmail(value: unknown): string {
   if (typeof value !== "string") {

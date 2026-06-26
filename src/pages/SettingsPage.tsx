@@ -3,6 +3,7 @@ import {
   BellRing,
   ChevronDown,
   Clock3,
+  Download,
   FileText,
   Fingerprint,
   KeyRound,
@@ -20,7 +21,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Navigate } from "react-router";
+import { Link, Navigate } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { DesktopNotificationsCard } from "../components/notifications/DesktopNotificationsCard";
 import { Button } from "../components/ui/Button";
@@ -43,6 +44,7 @@ import {
   getFollowRequests,
   getMyPosts,
   regenerateTwoFactorRecoveryCodes,
+  requestAccountDataExport,
   scheduleAccountDeletion,
   startTwoFactorSetup,
   updateAccountEmail,
@@ -75,6 +77,7 @@ const settingsNavItems = [
   { id: "account", label: "Account", icon: UserRound },
   { id: "security", label: "Security", icon: ShieldCheck },
   { id: "privacy", label: "Privacy", icon: Lock },
+  { id: "data-rights", label: "Data rights", icon: Download },
   { id: "consent", label: "Consent", icon: SlidersHorizontal },
   { id: "content", label: "Content", icon: FileText },
   { id: "danger", label: "Danger", icon: Trash2 },
@@ -376,6 +379,26 @@ export function SettingsPage() {
       });
       setSettings(next);
       setMessage("Account deletion canceled.");
+    });
+  }
+
+  async function handleDataExportSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const exportHandle = settings?.account.handle ?? user?.handle ?? "account";
+
+    await runAction("data-export", async () => {
+      const exported = await runWithAuth(
+        (token) =>
+          requestAccountDataExport(
+            stringField(form, "currentPassword", false),
+            token,
+          ),
+        { retryOnCsrf: true },
+      );
+
+      downloadJsonExport(exported, exportHandle);
+      setMessage("Data export downloaded.");
     });
   }
 
@@ -756,6 +779,60 @@ export function SettingsPage() {
           </SettingsSection>
 
           <SettingsSection
+            id="data-rights"
+            title="Data rights"
+            kicker="Export"
+            icon={Download}
+            badge="download"
+          >
+            <ActionDetails
+              icon={Download}
+              title="Download account data"
+              meta="JSON export"
+              defaultOpen
+            >
+              <form className="space-y-3" onSubmit={handleDataExportSubmit}>
+                <p className="text-sm leading-6 text-muted">
+                  Download a readable JSON snapshot of account, profile, content,
+                  room, moderation, integration, and settings data we can safely
+                  provide through self-service.
+                </p>
+                <TextField
+                  id="settings-data-export-password"
+                  name="currentPassword"
+                  label="Current password"
+                  type="password"
+                  autoComplete="current-password"
+                  density="compact"
+                  required
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    icon={<Download size={15} />}
+                    disabled={busy === "data-export"}
+                  >
+                    Download export
+                  </Button>
+                  <Link
+                    className="text-sm font-medium text-muted underline-offset-4 transition duration-fluid hover:text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                    to="/data-export"
+                  >
+                    Data Export Policy
+                  </Link>
+                  <Link
+                    className="text-sm font-medium text-muted underline-offset-4 transition duration-fluid hover:text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                    to="/account-deletion"
+                  >
+                    Account Deletion Policy
+                  </Link>
+                </div>
+              </form>
+            </ActionDetails>
+          </SettingsSection>
+
+          <SettingsSection
             id="consent"
             title="Consent"
             kicker="Preferences"
@@ -1088,6 +1165,23 @@ function StatusTile({
       </div>
     </div>
   );
+}
+
+function downloadJsonExport(data: unknown, handle: string) {
+  const date = new Date().toISOString().slice(0, 10);
+  const safeHandle = handle.replace(/[^a-zA-Z0-9_-]/g, "-") || "account";
+  const blob = new Blob([`${JSON.stringify(data, null, 2)}\n`], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = `thia-lol-data-export-${safeHandle}-${date}.json`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function ActionDetails({

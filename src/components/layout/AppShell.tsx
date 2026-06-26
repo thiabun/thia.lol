@@ -51,13 +51,10 @@ const publicNavItems = [
 ];
 
 const legalLinks = [
+  { to: "/legal", label: "Trust Center" },
   { to: "/terms", label: "Terms" },
   { to: "/privacy", label: "Privacy" },
-  { to: "/cookies", label: "Cookies" },
   { to: "/community-guidelines", label: "Guidelines" },
-  { to: "/copyright", label: "Copyright" },
-  { to: "/moderation", label: "Moderation" },
-  { to: "/legal", label: "Legal" },
 ];
 
 const bugReportUrl =

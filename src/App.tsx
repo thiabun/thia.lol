@@ -61,19 +61,6 @@ const ShareRenderProfilePage = lazy(() =>
 const SettingsPage = lazy(() =>
   import("./pages/SettingsPage").then((module) => ({ default: module.SettingsPage })),
 );
-const CommunityGuidelinesPage = lazy(() =>
-  import("./pages/LegalPage").then((module) => ({
-    default: module.CommunityGuidelinesPage,
-  })),
-);
-const CookiesPage = lazy(() =>
-  import("./pages/LegalPage").then((module) => ({ default: module.CookiesPage })),
-);
-const CopyrightPage = lazy(() =>
-  import("./pages/LegalPage").then((module) => ({
-    default: module.CopyrightPage,
-  })),
-);
 const LegalContactRedirect = lazy(() =>
   import("./pages/LegalPage").then((module) => ({
     default: module.LegalContactRedirect,
@@ -84,16 +71,10 @@ const LegalIndexPage = lazy(() =>
     default: module.LegalIndexPage,
   })),
 );
-const ModerationPage = lazy(() =>
+const PolicyRoutePage = lazy(() =>
   import("./pages/LegalPage").then((module) => ({
-    default: module.ModerationPage,
+    default: module.PolicyRoutePage,
   })),
-);
-const PrivacyPage = lazy(() =>
-  import("./pages/LegalPage").then((module) => ({ default: module.PrivacyPage })),
-);
-const TermsPage = lazy(() =>
-  import("./pages/LegalPage").then((module) => ({ default: module.TermsPage })),
 );
 
 export default function App() {
@@ -117,12 +98,28 @@ export default function App() {
             <Route path="onboarding" element={<RouteSuspense><OnboardingPage /></RouteSuspense>} />
             <Route path=":profileHandle/posts/:postId" element={<RouteSuspense><PostPage /></RouteSuspense>} />
             <Route path="@/:handle" element={<RouteSuspense><ProfilePage /></RouteSuspense>} />
-            <Route path="terms" element={<RouteSuspense><TermsPage /></RouteSuspense>} />
-            <Route path="privacy" element={<RouteSuspense><PrivacyPage /></RouteSuspense>} />
-            <Route path="cookies" element={<RouteSuspense><CookiesPage /></RouteSuspense>} />
-            <Route path="community-guidelines" element={<RouteSuspense><CommunityGuidelinesPage /></RouteSuspense>} />
-            <Route path="copyright" element={<RouteSuspense><CopyrightPage /></RouteSuspense>} />
-            <Route path="moderation" element={<RouteSuspense><ModerationPage /></RouteSuspense>} />
+            <Route path="terms" element={<RouteSuspense><PolicyRoutePage slug="terms" /></RouteSuspense>} />
+            <Route path="privacy" element={<RouteSuspense><PolicyRoutePage slug="privacy" /></RouteSuspense>} />
+            <Route path="cookies" element={<RouteSuspense><PolicyRoutePage slug="cookies" /></RouteSuspense>} />
+            <Route path="community-guidelines" element={<RouteSuspense><PolicyRoutePage slug="community-guidelines" /></RouteSuspense>} />
+            <Route path="copyright" element={<RouteSuspense><PolicyRoutePage slug="copyright" /></RouteSuspense>} />
+            <Route path="moderation" element={<RouteSuspense><PolicyRoutePage slug="moderation" /></RouteSuspense>} />
+            <Route path="data-export" element={<RouteSuspense><PolicyRoutePage slug="data-export" /></RouteSuspense>} />
+            <Route path="account-deletion" element={<RouteSuspense><PolicyRoutePage slug="account-deletion" /></RouteSuspense>} />
+            <Route path="refunds" element={<RouteSuspense><PolicyRoutePage slug="refunds" /></RouteSuspense>} />
+            <Route path="appeals" element={<RouteSuspense><PolicyRoutePage slug="appeals" /></RouteSuspense>} />
+            <Route path="safety" element={<RouteSuspense><PolicyRoutePage slug="safety" /></RouteSuspense>} />
+            <Route path="content-ownership" element={<RouteSuspense><PolicyRoutePage slug="content-ownership" /></RouteSuspense>} />
+            <Route path="no-dark-patterns" element={<RouteSuspense><PolicyRoutePage slug="no-dark-patterns" /></RouteSuspense>} />
+            <Route path="monetization-ethics" element={<RouteSuspense><PolicyRoutePage slug="monetization-ethics" /></RouteSuspense>} />
+            <Route path="ai-policy" element={<RouteSuspense><PolicyRoutePage slug="ai-policy" /></RouteSuspense>} />
+            <Route path="security" element={<RouteSuspense><PolicyRoutePage slug="security" /></RouteSuspense>} />
+            <Route path="vulnerability-disclosure" element={<RouteSuspense><PolicyRoutePage slug="vulnerability-disclosure" /></RouteSuspense>} />
+            <Route path="transparency" element={<RouteSuspense><PolicyRoutePage slug="transparency" /></RouteSuspense>} />
+            <Route path="law-enforcement" element={<RouteSuspense><PolicyRoutePage slug="law-enforcement" /></RouteSuspense>} />
+            <Route path="creator-marketplace" element={<RouteSuspense><PolicyRoutePage slug="creator-marketplace" /></RouteSuspense>} />
+            <Route path="accessibility" element={<RouteSuspense><PolicyRoutePage slug="accessibility" /></RouteSuspense>} />
+            <Route path="incident-response" element={<RouteSuspense><PolicyRoutePage slug="incident-response" /></RouteSuspense>} />
             <Route path="legal" element={<RouteSuspense><LegalIndexPage /></RouteSuspense>} />
             <Route path="legal/contact" element={<RouteSuspense><LegalContactRedirect /></RouteSuspense>} />
             <Route path="studio" element={<Navigate to="/discover" replace />} />

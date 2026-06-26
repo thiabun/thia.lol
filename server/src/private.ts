@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 
 import type { Pool, RowDataPacket } from "mysql2/promise";
 
+import { verifyPhpPassword } from "./passwords.js";
 import { initialsFromName, roomPayloadFromRow, type RoomPayload, type RoomRow, type UserPayload } from "./rooms.js";
 import type { RequestSession } from "./sessions.js";
 
@@ -13,6 +14,7 @@ export interface PrivateReadsRepository {
   getNotifications(userId: number): Promise<NotificationsPayload>;
   getFollowRequests(userId: number): Promise<FollowRequestPayload[]>;
   getMyPosts(userId: number, kind: string): Promise<MyPostPayload[]>;
+  exportAccountData(session: RequestSession, body: Record<string, unknown>): Promise<AccountDataExportPayload>;
   markNotificationsRead(userId: number, ids: number[]): Promise<NotificationsReadPayload>;
   markAllNotificationsRead(userId: number): Promise<NotificationsReadAllPayload>;
   updateOnboardingState(userId: number, body: Record<string, unknown>): Promise<OnboardingStatePayload>;
@@ -151,6 +153,65 @@ export interface MyPostPayload {
   createdAt: string | null;
 }
 
+export interface AccountDataExportPayload {
+  schemaVersion: 1;
+  generatedAt: string;
+  account: Record<string, unknown> | null;
+  profile: {
+    details: Record<string, unknown> | null;
+    modules: Record<string, unknown>[];
+    canvasDraft: Record<string, unknown> | null;
+    badges: Record<string, unknown>[];
+  };
+  preferences: {
+    settings: Record<string, unknown> | null;
+    onboarding: Record<string, unknown> | null;
+  };
+  deletion: Record<string, unknown> | null;
+  content: {
+    postsAndReplies: Record<string, unknown>[];
+    attachments: Record<string, unknown>[];
+    reactions: Record<string, unknown>[];
+    reblogs: Record<string, unknown>[];
+  };
+  media: {
+    profileMedia: Record<string, unknown> | null;
+    postMedia: Record<string, unknown>[];
+    attachments: Record<string, unknown>[];
+  };
+  rooms: {
+    created: Record<string, unknown>[];
+    memberships: Record<string, unknown>[];
+  };
+  relationships: {
+    following: Record<string, unknown>[];
+    followers: Record<string, unknown>[];
+    blocks: Record<string, unknown>[];
+    mutes: Record<string, unknown>[];
+    stars: Record<string, unknown>[];
+    followRequestsSent: Record<string, unknown>[];
+    followRequestsReceived: Record<string, unknown>[];
+  };
+  messages: {
+    sentMessages: Record<string, unknown>[];
+  };
+  moderation: {
+    submittedReports: Record<string, unknown>[];
+    accountReportStatuses: Record<string, unknown>[];
+  };
+  integrations: {
+    accounts: Record<string, unknown>[];
+  };
+  purchases: {
+    purchases: never[];
+    note: string;
+  };
+  limits: {
+    perSection: number;
+    note: string;
+  };
+}
+
 interface CountRow extends RowDataPacket {
   table_count?: number | string;
 }
@@ -270,7 +331,18 @@ interface MyPostRow extends RowDataPacket {
   created_at: string | null;
 }
 
+interface ExportRow extends RowDataPacket {
+  [key: string]: unknown;
+}
+
+interface ExportPasswordRow extends RowDataPacket {
+  password_hash: string | null;
+}
+
+type ExportSqlValue = string | number | null;
+
 const accountHandleCooldownSeconds = 2_592_000;
+const accountDataExportLimit = 500;
 const onboardingSteps = [
   "profile_basics",
   "spotify",
@@ -615,6 +687,308 @@ class MysqlPrivateReadsRepository implements PrivateReadsRepository {
     }));
   }
 
+  async exportAccountData(session: RequestSession, body: Record<string, unknown>): Promise<AccountDataExportPayload> {
+    await this.requireCurrentPassword(session.userId, body.currentPassword ?? body.current_password);
+
+    const [
+      accountRows,
+      profileRows,
+      moduleRows,
+      canvasDraftRows,
+      badgeRows,
+      preferenceRows,
+      onboardingRows,
+      deletionRows,
+      postRows,
+      attachmentRows,
+      reactionRows,
+      reblogRows,
+      createdRoomRows,
+      membershipRows,
+      followingRows,
+      followerRows,
+      blockRows,
+      muteRows,
+      starRows,
+      followRequestsSentRows,
+      followRequestsReceivedRows,
+      sentMessageRows,
+      submittedReportRows,
+      accountReportRows,
+      integrationRows,
+    ] = await Promise.all([
+      this.exportRows(
+        `SELECT id, handle, email, role, status, created_at, updated_at
+         FROM users
+         WHERE id = ?
+         LIMIT 1`,
+        [session.userId],
+      ),
+      this.exportRows(
+        `SELECT display_name, bio, location, avatar_url, banner_url, profile_accent,
+                profile_background, profile_background_video_url,
+                profile_background_video_poster_url, profile_background_blur,
+                profile_theme, profile_theme_config_json, profile_layout_preset,
+                profile_canvas_version, profile_canvas_glass_opacity, visibility,
+                links, traits, featured_post_id, featured_room_id, created_at, updated_at
+         FROM profiles
+         WHERE user_id = ?
+         LIMIT 1`,
+        [session.userId],
+        ["profile_theme_config_json", "links", "traits"],
+      ),
+      this.exportTableRows(
+        "profile_modules",
+        `SELECT id, type, title, config_json, visibility, position, grid_column, grid_row,
+                grid_col_span, grid_row_span, grid_pinned, status, schema_version,
+                created_at, updated_at
+         FROM profile_modules
+         WHERE user_id = ?
+         ORDER BY position ASC, id ASC
+         LIMIT ${accountDataExportLimit}`,
+        [session.userId],
+        ["config_json"],
+      ),
+      this.exportTableRows(
+        "profile_canvas_drafts",
+        `SELECT draft_json, selected_module_id, created_at, updated_at
+         FROM profile_canvas_drafts
+         WHERE user_id = ?
+         LIMIT 1`,
+        [session.userId],
+        ["draft_json"],
+      ),
+      this.exportTableRows(
+        "user_badges",
+        `SELECT user_badges.id, badges.badge_key, badges.name, badges.description,
+                badges.rarity, badges.source, badges.icon, badges.accent,
+                user_badges.reason, user_badges.earned_at, user_badges.featured_order,
+                user_badges.is_visible
+         FROM user_badges
+         INNER JOIN badges ON badges.id = user_badges.badge_id
+         WHERE user_badges.user_id = ?
+         ORDER BY user_badges.earned_at DESC
+         LIMIT ${accountDataExportLimit}`,
+        [session.userId],
+      ),
+      this.exportTableRows(
+        "user_preferences",
+        `SELECT analytics_consent, personalization_consent, rich_embeds_consent,
+                autoplay_media_consent, sensitive_content_visible,
+                notification_preferences_json, email_notification_preferences_json,
+                push_notification_preferences_json, created_at, updated_at
+         FROM user_preferences
+         WHERE user_id = ?
+         LIMIT 1`,
+        [session.userId],
+        [
+          "notification_preferences_json",
+          "email_notification_preferences_json",
+          "push_notification_preferences_json",
+        ],
+      ),
+      this.exportTableRows(
+        "user_onboarding_state",
+        `SELECT completed_steps_json, skipped_steps_json, provider_links_json,
+                finished_at, dismissed_at, created_at, updated_at
+         FROM user_onboarding_state
+         WHERE user_id = ?
+         LIMIT 1`,
+        [session.userId],
+        ["completed_steps_json", "skipped_steps_json", "provider_links_json"],
+      ),
+      this.exportTableRows(
+        "account_deletion_requests",
+        `SELECT requested_at, scheduled_for, canceled_at, completed_at, reason,
+                created_at, updated_at
+         FROM account_deletion_requests
+         WHERE user_id = ?
+         ORDER BY requested_at DESC
+         LIMIT 1`,
+        [session.userId],
+      ),
+      this.exportRows(
+        `SELECT id, public_id, room_id, parent_id, body, body_format, content_version,
+                mood, media_url, media_type, media_mime, media_poster_url,
+                visibility, status, deleted_at, created_at, updated_at
+         FROM posts
+         WHERE author_id = ?
+         ORDER BY created_at DESC
+         LIMIT ${accountDataExportLimit}`,
+        [session.userId],
+      ),
+      this.exportTableRows(
+        "post_attachments",
+        `SELECT post_attachments.id, post_attachments.post_id, post_attachments.position,
+                post_attachments.kind, post_attachments.url, post_attachments.mime,
+                post_attachments.size_bytes, post_attachments.width, post_attachments.height,
+                post_attachments.duration_seconds, post_attachments.poster_url,
+                post_attachments.provider, post_attachments.resource_type,
+                post_attachments.resource_id, post_attachments.resource_key,
+                post_attachments.source_url, post_attachments.card_json,
+                post_attachments.created_at, post_attachments.updated_at
+         FROM post_attachments
+         INNER JOIN posts ON posts.id = post_attachments.post_id
+         WHERE posts.author_id = ?
+         ORDER BY post_attachments.post_id DESC, post_attachments.position ASC
+         LIMIT ${accountDataExportLimit}`,
+        [session.userId],
+        ["card_json"],
+      ),
+      this.exportTableRows(
+        "post_reactions",
+        `SELECT post_id, type, created_at
+         FROM post_reactions
+         WHERE user_id = ?
+         ORDER BY created_at DESC
+         LIMIT ${accountDataExportLimit}`,
+        [session.userId],
+      ),
+      this.exportTableRows(
+        "post_reblogs",
+        `SELECT post_id, created_at
+         FROM post_reblogs
+         WHERE user_id = ?
+         ORDER BY created_at DESC
+         LIMIT ${accountDataExportLimit}`,
+        [session.userId],
+      ),
+      this.exportTableRows(
+        "rooms",
+        `SELECT id, slug, name, summary, mood, member_count, is_live, theme,
+                theme_config_json, icon_url, banner_url, rules, visibility,
+                created_at, updated_at, deleted_at
+         FROM rooms
+         WHERE created_by = ?
+         ORDER BY created_at DESC
+         LIMIT ${accountDataExportLimit}`,
+        [session.userId],
+        ["theme_config_json"],
+      ),
+      this.exportTableRows(
+        "room_memberships",
+        `SELECT room_memberships.room_id, rooms.slug, rooms.name, room_memberships.role,
+                room_memberships.joined_at, room_memberships.muted_at,
+                room_memberships.banned_at, room_memberships.created_at
+         FROM room_memberships
+         INNER JOIN rooms ON rooms.id = room_memberships.room_id
+         WHERE room_memberships.user_id = ?
+         ORDER BY room_memberships.joined_at DESC
+         LIMIT ${accountDataExportLimit}`,
+        [session.userId],
+      ),
+      this.exportUserRelationshipRows("following", session.userId),
+      this.exportUserRelationshipRows("followers", session.userId),
+      this.exportUserRelationshipRows("blocks", session.userId),
+      this.exportUserRelationshipRows("mutes", session.userId),
+      this.exportUserRelationshipRows("stars", session.userId),
+      this.exportFollowRequestRows("sent", session.userId),
+      this.exportFollowRequestRows("received", session.userId),
+      this.exportTableRows(
+        "messages",
+        `SELECT id, conversation_id, body, deleted_at, created_at
+         FROM messages
+         WHERE sender_id = ?
+         ORDER BY created_at DESC
+         LIMIT ${accountDataExportLimit}`,
+        [session.userId],
+      ),
+      this.exportTableRows(
+        "reports",
+        `SELECT id, target_type, target_id, reported_user_id, post_id, category,
+                details, status, reviewed_at, action_taken, created_at, updated_at
+         FROM reports
+         WHERE reporter_id = ?
+         ORDER BY created_at DESC
+         LIMIT ${accountDataExportLimit}`,
+        [session.userId],
+      ),
+      this.exportTableRows(
+        "reports",
+        `SELECT id, target_type, target_id, category, status, reviewed_at,
+                action_taken, created_at, updated_at
+         FROM reports
+         WHERE reported_user_id = ?
+         ORDER BY created_at DESC
+         LIMIT ${accountDataExportLimit}`,
+        [session.userId],
+      ),
+      this.exportTableRows(
+        "profile_integration_accounts",
+        `SELECT provider, provider_account_id, provider_handle, display_name,
+                avatar_url, scopes_json, token_expires_at, connected_at,
+                refreshed_at, revoked_at, last_error, error_at, created_at, updated_at
+         FROM profile_integration_accounts
+         WHERE user_id = ?
+         ORDER BY provider ASC
+         LIMIT ${accountDataExportLimit}`,
+        [session.userId],
+        ["scopes_json"],
+      ),
+    ]);
+
+    return {
+      schemaVersion: 1,
+      generatedAt: utcDatabaseTimestamp(),
+      account: accountRows[0] ?? null,
+      profile: {
+        details: profileRows[0] ?? null,
+        modules: moduleRows,
+        canvasDraft: canvasDraftRows[0] ?? null,
+        badges: badgeRows,
+      },
+      preferences: {
+        settings: preferenceRows[0] ?? null,
+        onboarding: onboardingRows[0] ?? null,
+      },
+      deletion: deletionRows[0] ?? null,
+      content: {
+        postsAndReplies: postRows,
+        attachments: attachmentRows,
+        reactions: reactionRows,
+        reblogs: reblogRows,
+      },
+      media: {
+        profileMedia: profileMediaExport(profileRows[0] ?? null),
+        postMedia: postRows
+          .filter((row) => row.media_url !== null || row.media_type !== null || row.media_poster_url !== null)
+          .map((row) => pickExportFields(row, ["id", "public_id", "media_url", "media_type", "media_mime", "media_poster_url"])),
+        attachments: attachmentRows,
+      },
+      rooms: {
+        created: createdRoomRows,
+        memberships: membershipRows,
+      },
+      relationships: {
+        following: followingRows,
+        followers: followerRows,
+        blocks: blockRows,
+        mutes: muteRows,
+        stars: starRows,
+        followRequestsSent: followRequestsSentRows,
+        followRequestsReceived: followRequestsReceivedRows,
+      },
+      messages: {
+        sentMessages: sentMessageRows,
+      },
+      moderation: {
+        submittedReports: submittedReportRows,
+        accountReportStatuses: accountReportRows,
+      },
+      integrations: {
+        accounts: integrationRows,
+      },
+      purchases: {
+        purchases: [],
+        note: "thia.lol does not currently offer paid products, so there is no purchase history in this export.",
+      },
+      limits: {
+        perSection: accountDataExportLimit,
+        note: "Large sections are capped per export request. Contact hello@thia.lol if you need a fuller manual export.",
+      },
+    };
+  }
+
   async markNotificationsRead(userId: number, ids: number[]): Promise<NotificationsReadPayload> {
     await this.requireTable("notifications", "Notification storage is not ready. Run pending migrations.");
 
@@ -838,6 +1212,25 @@ class MysqlPrivateReadsRepository implements PrivateReadsRepository {
     };
   }
 
+  private async requireCurrentPassword(userId: number, value: unknown): Promise<void> {
+    if (typeof value !== "string") {
+      throw new PrivateRouteError("Current password is required.", 422);
+    }
+
+    const [rows] = await this.pool.execute<ExportPasswordRow[]>(
+      `SELECT password_hash
+       FROM users
+       WHERE id = ?
+       LIMIT 1`,
+      [userId],
+    );
+    const passwordHash = rows[0]?.password_hash;
+
+    if (typeof passwordHash !== "string" || !(await verifyPhpPassword(value, passwordHash))) {
+      throw new PrivateRouteError("Current password is incorrect.", 403);
+    }
+  }
+
   private async handleChangePayload(userId: number): Promise<SettingsPayload["account"]["handleChange"]> {
     if (!(await this.tableExists("user_handle_history"))) {
       return {
@@ -1003,6 +1396,117 @@ class MysqlPrivateReadsRepository implements PrivateReadsRepository {
     const [rows] = await this.pool.execute<CurrentTimestampRow[]>("SELECT CURRENT_TIMESTAMP() AS now");
 
     return nullableStringValue(rows[0]?.now) ?? utcDatabaseTimestamp();
+  }
+
+  private async exportTableRows(
+    tableName: string,
+    sql: string,
+    values: ExportSqlValue[],
+    jsonFields: string[] = [],
+  ): Promise<Record<string, unknown>[]> {
+    if (!(await this.tableExists(tableName))) {
+      return [];
+    }
+
+    return this.exportRows(sql, values, jsonFields);
+  }
+
+  private async exportRows(
+    sql: string,
+    values: ExportSqlValue[],
+    jsonFields: string[] = [],
+  ): Promise<Record<string, unknown>[]> {
+    const [rows] = await this.pool.execute<ExportRow[]>(sql, values);
+    const jsonFieldSet = new Set(jsonFields);
+
+    return rows.map((row) => normalizeExportRow(row, jsonFieldSet));
+  }
+
+  private async exportUserRelationshipRows(
+    kind: "following" | "followers" | "blocks" | "mutes" | "stars",
+    userId: number,
+  ): Promise<Record<string, unknown>[]> {
+    const config = {
+      following: {
+        table: "user_follows",
+        sql: `SELECT users.id, users.handle, profiles.display_name, profiles.avatar_url,
+                     user_follows.created_at
+              FROM user_follows
+              INNER JOIN users ON users.id = user_follows.following_id
+              LEFT JOIN profiles ON profiles.user_id = users.id
+              WHERE user_follows.follower_id = ?
+              ORDER BY user_follows.created_at DESC
+              LIMIT ${accountDataExportLimit}`,
+      },
+      followers: {
+        table: "user_follows",
+        sql: `SELECT users.id, users.handle, profiles.display_name, profiles.avatar_url,
+                     user_follows.created_at
+              FROM user_follows
+              INNER JOIN users ON users.id = user_follows.follower_id
+              LEFT JOIN profiles ON profiles.user_id = users.id
+              WHERE user_follows.following_id = ?
+              ORDER BY user_follows.created_at DESC
+              LIMIT ${accountDataExportLimit}`,
+      },
+      blocks: {
+        table: "user_blocks",
+        sql: `SELECT users.id, users.handle, profiles.display_name, profiles.avatar_url,
+                     user_blocks.created_at
+              FROM user_blocks
+              INNER JOIN users ON users.id = user_blocks.blocked_id
+              LEFT JOIN profiles ON profiles.user_id = users.id
+              WHERE user_blocks.blocker_id = ?
+              ORDER BY user_blocks.created_at DESC
+              LIMIT ${accountDataExportLimit}`,
+      },
+      mutes: {
+        table: "user_mutes",
+        sql: `SELECT users.id, users.handle, profiles.display_name, profiles.avatar_url,
+                     user_mutes.created_at
+              FROM user_mutes
+              INNER JOIN users ON users.id = user_mutes.muted_id
+              LEFT JOIN profiles ON profiles.user_id = users.id
+              WHERE user_mutes.muter_id = ?
+              ORDER BY user_mutes.created_at DESC
+              LIMIT ${accountDataExportLimit}`,
+      },
+      stars: {
+        table: "profile_stars",
+        sql: `SELECT users.id, users.handle, profiles.display_name, profiles.avatar_url,
+                     profile_stars.created_at
+              FROM profile_stars
+              INNER JOIN users ON users.id = profile_stars.starred_user_id
+              LEFT JOIN profiles ON profiles.user_id = users.id
+              WHERE profile_stars.starrer_id = ?
+              ORDER BY profile_stars.created_at DESC
+              LIMIT ${accountDataExportLimit}`,
+      },
+    }[kind];
+
+    return this.exportTableRows(config.table, config.sql, [userId]);
+  }
+
+  private async exportFollowRequestRows(
+    direction: "sent" | "received",
+    userId: number,
+  ): Promise<Record<string, unknown>[]> {
+    const userColumn = direction === "sent" ? "target_user_id" : "requester_id";
+    const whereColumn = direction === "sent" ? "requester_id" : "target_user_id";
+
+    return this.exportTableRows(
+      "user_follow_requests",
+      `SELECT user_follow_requests.id, users.id AS user_id, users.handle,
+              profiles.display_name, profiles.avatar_url, user_follow_requests.status,
+              user_follow_requests.created_at, user_follow_requests.updated_at
+       FROM user_follow_requests
+       INNER JOIN users ON users.id = user_follow_requests.${userColumn}
+       LEFT JOIN profiles ON profiles.user_id = users.id
+       WHERE user_follow_requests.${whereColumn} = ?
+       ORDER BY user_follow_requests.created_at DESC
+       LIMIT ${accountDataExportLimit}`,
+      [userId],
+    );
   }
 
   private async unreadNotificationCount(userId: number): Promise<number> {
@@ -1607,6 +2111,64 @@ function stringValue(value: string | null | undefined, fallback = ""): string {
 
 function nullableStringValue(value: string | null | undefined): string | null {
   return value ?? null;
+}
+
+function normalizeExportRow(row: ExportRow, jsonFields: Set<string>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(row)) {
+    result[key] = jsonFields.has(key) ? exportJsonValue(value) : exportScalarValue(value);
+  }
+
+  return result;
+}
+
+function exportJsonValue(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return exportScalarValue(value);
+  }
+
+  return jsonObjectOrArrayValue(value) ?? value;
+}
+
+function exportScalarValue(value: unknown): unknown {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+
+  if (Buffer.isBuffer(value)) {
+    return `[binary:${value.byteLength}]`;
+  }
+
+  return value ?? null;
+}
+
+function pickExportFields(row: Record<string, unknown>, fields: string[]): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+
+  for (const field of fields) {
+    result[field] = row[field] ?? null;
+  }
+
+  return result;
+}
+
+function profileMediaExport(profile: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (profile === null) {
+    return null;
+  }
+
+  return pickExportFields(profile, [
+    "avatar_url",
+    "banner_url",
+    "profile_background",
+    "profile_background_video_url",
+    "profile_background_video_poster_url",
+  ]);
 }
 
 function myPostMediaType(row: MyPostRow): "image" | "video" | null {
