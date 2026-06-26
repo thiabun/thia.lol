@@ -3041,6 +3041,51 @@ test("saving the profile canvas marks onboarding canvas complete", async ({
     .toBe(true);
 });
 
+test("saving the profile canvas repairs invalid draft module positions", async ({
+  page,
+}) => {
+  let draftPayload: Record<string, unknown> | undefined;
+
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      aboutModule({
+        id: 1,
+        body: "Position should be repaired before draft save.",
+      }),
+    ],
+    invalidCanvasDraftPositions: true,
+    onCanvasDraftSave: (payload) => {
+      draftPayload = payload;
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia?editCanvas=1");
+
+  await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
+  await page.getByTestId("profile-canvas-save-button").click();
+
+  await expect
+    .poll(() => {
+      const modules = Array.isArray(draftPayload?.modules)
+        ? (draftPayload.modules as Array<Record<string, unknown>>)
+        : [];
+
+      return modules.map((module) => module.position);
+    })
+    .toEqual(expect.arrayContaining([1, 2]));
+  const modules = draftPayload?.modules as Array<Record<string, unknown>>;
+  expect(
+    modules.every(
+      (module) =>
+        typeof module.position === "number" &&
+        Number.isSafeInteger(module.position) &&
+        module.position > 0,
+    ),
+  ).toBe(true);
+});
+
 test("direct canvas selection examples adapt to tiny selections", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await mockProfileModules(page, {
@@ -6100,6 +6145,7 @@ async function mockProfileModules(
       accounts?: unknown[];
       providers?: unknown[];
     };
+    invalidCanvasDraftPositions?: boolean;
     profilePosts?: unknown[];
     profileOverrides?: Record<string, unknown>;
     profileReblogs?: unknown[];
@@ -6626,10 +6672,19 @@ async function mockProfileModules(
 
     if (method === "GET") {
       canvasDraft = profileCanvasDraftState(ownerModules, profileOverrides, canvasDraft);
+      const responseDraft = options.invalidCanvasDraftPositions
+        ? {
+            ...canvasDraft,
+            modules: canvasDraft.modules.map((module) => ({
+              ...module,
+              position: 0,
+            })),
+          }
+        : canvasDraft;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ ok: true, data: canvasDraft }),
+        body: JSON.stringify({ ok: true, data: responseDraft }),
       });
       return;
     }

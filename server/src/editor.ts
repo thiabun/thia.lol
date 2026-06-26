@@ -1216,7 +1216,9 @@ class MysqlEditorRepository implements EditorRepository {
 
     return {
       ...preferences,
-      modules: await this.modulesForOwner(userId, false, { enrichIntegrations }),
+      modules: normalizeDraftModulePositions(
+        await this.modulesForOwner(userId, false, { enrichIntegrations }),
+      ),
       selectedModuleId: null,
       updatedAt: null,
     };
@@ -1227,7 +1229,7 @@ class MysqlEditorRepository implements EditorRepository {
       backgroundBlur: state.backgroundBlur,
       canvasGlass: state.canvasGlass,
       canvasVersion: profileCanvasVersion,
-      modules: state.modules,
+      modules: normalizeDraftModulePositions(state.modules),
       selectedModuleId: state.selectedModuleId,
     });
 
@@ -2405,7 +2407,7 @@ function validateDraftModules(value: unknown): ProfileModulePayload[] {
       title: validateModuleTitle(record.title),
       config: validateModuleConfig(record.config),
       visibility: validateModuleVisibility(record.visibility ?? "public"),
-      position: positiveInteger(record.position ?? index + 1, "Position"),
+      position: draftModulePosition(record.position, index + 1),
       pinned: booleanValue(record.pinned),
       layout: layout === null
         ? null
@@ -2421,6 +2423,27 @@ function validateDraftModules(value: unknown): ProfileModulePayload[] {
       updatedAt: stringOrNull(record.updatedAt),
     };
   });
+}
+
+function normalizeDraftModulePositions(
+  modules: ProfileModulePayload[],
+): ProfileModulePayload[] {
+  return modules.map((module, index) => ({
+    ...module,
+    position: draftModulePosition(module.position, index + 1),
+  }));
+}
+
+function draftModulePosition(value: unknown, fallback: number): number {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
+    return value;
+  }
+
+  if (typeof value === "string" && /^[0-9]+$/u.test(value) && Number(value) > 0) {
+    return Number(value);
+  }
+
+  return fallback;
 }
 
 function validateBackgroundBlur(value: unknown): string {

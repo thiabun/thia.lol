@@ -2392,14 +2392,17 @@ function normalizeProfileCanvasGlass(value: unknown): number {
     : 58;
 }
 
-function normalizeProfileModule(module: ApiProfileModule): ProfileModule {
+function normalizeProfileModule(
+  module: ApiProfileModule,
+  index = 0,
+): ProfileModule {
   return {
     id: module.id,
     type: module.type,
     title: module.title ?? null,
     config: normalizeProfileModuleConfig(module.config),
     visibility: module.visibility,
-    position: module.position,
+    position: normalizeProfileModulePosition(module.position, index + 1),
     pinned: module.pinned === true,
     layout: normalizeProfileModuleLayout(module.layout, module.type),
     status: module.status,
@@ -2408,6 +2411,17 @@ function normalizeProfileModule(module: ApiProfileModule): ProfileModule {
     createdAt: module.createdAt ?? null,
     updatedAt: module.updatedAt ?? null,
   };
+}
+
+function normalizeProfileModulePosition(value: unknown, fallback: number): number {
+  const number =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : fallback;
+
+  return Number.isSafeInteger(number) && number > 0 ? number : fallback;
 }
 
 function normalizeProfileCanvasDraftState(
@@ -2445,6 +2459,7 @@ function profileCanvasDraftInputForWrite(
 
 function profileCanvasDraftModuleForWrite(
   module: ProfileCanvasDraftModule,
+  index = 0,
 ): ProfileCanvasDraftModule {
   return {
     id: module.id,
@@ -2453,7 +2468,7 @@ function profileCanvasDraftModuleForWrite(
     title: module.title,
     config: profileModuleConfigForWrite(module.type, module.config),
     visibility: module.visibility,
-    position: module.position,
+    position: normalizeProfileModulePosition(module.position, index + 1),
     pinned: module.pinned,
     layout: module.layout ?? null,
     status: module.status,

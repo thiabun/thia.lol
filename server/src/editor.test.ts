@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import { createEditorRepository } from "./editor.js";
+import type { RequestSession } from "./sessions.js";
 
 type ExecuteCall = {
   query: string;
   params?: unknown[];
+};
+
+type FakePoolOptions = {
+  draftJson?: string;
+  moduleRows?: Array<Record<string, unknown>>;
 };
 
 const tableNames = new Set([
@@ -46,8 +52,34 @@ const columnNames = new Set([
   "grid_pinned",
 ]);
 
-function fakePool() {
+function fakePool(options: FakePoolOptions = {}) {
   const calls: ExecuteCall[] = [];
+  let draftJson = options.draftJson;
+  let selectedModuleId: string | null = null;
+  const defaultModuleRows = [
+    {
+      id: 20,
+      user_id: 1,
+      type: "music",
+      title: "Focus",
+      config_json: JSON.stringify({
+        label: "Focus track",
+        platform: "spotify",
+        url: "https://open.spotify.com/track/profile-test?si=ignored",
+      }),
+      visibility: "public",
+      position: 1,
+      grid_column: 1,
+      grid_row: 1,
+      grid_col_span: 4,
+      grid_row_span: 3,
+      grid_pinned: 0,
+      status: "active",
+      schema_version: 1,
+      created_at: "2026-06-24 11:00:00",
+      updated_at: "2026-06-24 12:00:00",
+    },
+  ];
   const pool = {
     async execute(query: string, params?: unknown[]) {
       calls.push({ query, params });
@@ -66,6 +98,41 @@ function fakePool() {
 
       if (query.includes("COUNT(*) AS module_count") && query.includes("type NOT IN")) {
         return [[{ module_count: 1 }], undefined];
+      }
+
+      if (query.includes("SELECT profile_background_blur")) {
+        return [
+          [
+            {
+              profile_background_blur: "medium",
+              profile_canvas_version: 2,
+              profile_canvas_glass_opacity: 58,
+            },
+          ],
+          undefined,
+        ];
+      }
+
+      if (query.includes("FROM profile_canvas_drafts")) {
+        return [
+          draftJson === undefined
+            ? []
+            : [
+                {
+                  draft_json: draftJson,
+                  selected_module_id: selectedModuleId,
+                  updated_at: "2026-06-25 10:00:00",
+                },
+              ],
+          undefined,
+        ];
+      }
+
+      if (query.includes("INSERT INTO profile_canvas_drafts")) {
+        draftJson = String(params?.[1] ?? "");
+        selectedModuleId = params?.[2] === null ? null : String(params?.[2]);
+
+        return [{ affectedRows: 1 }, undefined];
       }
 
       if (query.includes("FROM profile_integration_metadata_cache")) {
@@ -97,41 +164,65 @@ function fakePool() {
       }
 
       if (query.includes("FROM profile_modules") && query.includes("ORDER BY position ASC, id ASC")) {
-        return [
-          [
-            {
-              id: 20,
-              user_id: 1,
-              type: "music",
-              title: "Focus",
-              config_json: JSON.stringify({
-                label: "Focus track",
-                platform: "spotify",
-                url: "https://open.spotify.com/track/profile-test?si=ignored",
-              }),
-              visibility: "public",
-              position: 1,
-              grid_column: 1,
-              grid_row: 1,
-              grid_col_span: 4,
-              grid_row_span: 3,
-              grid_pinned: 0,
-              status: "active",
-              schema_version: 1,
-              created_at: "2026-06-24 11:00:00",
-              updated_at: "2026-06-24 12:00:00",
-            },
-          ],
-          undefined,
-        ];
+        return [options.moduleRows ?? defaultModuleRows, undefined];
       }
 
       throw new Error(`Unhandled fake pool query: ${query}`);
     },
   };
 
-  return { calls, pool };
+  return {
+    calls,
+    pool,
+    draftJson: () => draftJson,
+  };
 }
+
+function profileInfoPayload(position: number) {
+  return {
+    id: 10,
+    type: "profile_info",
+    title: "Profile info",
+    config: {},
+    visibility: "public",
+    position,
+    pinned: false,
+    layout: null,
+    status: "active",
+    schemaVersion: 1,
+    createdAt: "2026-06-24 11:00:00",
+    updatedAt: "2026-06-24 12:00:00",
+  };
+}
+
+function profileInfoRow(position: number) {
+  return {
+    id: 10,
+    user_id: 1,
+    type: "profile_info",
+    title: "Profile info",
+    config_json: JSON.stringify({}),
+    visibility: "public",
+    position,
+    grid_column: null,
+    grid_row: null,
+    grid_col_span: null,
+    grid_row_span: null,
+    grid_pinned: 0,
+    status: "active",
+    schema_version: 1,
+    created_at: "2026-06-24 11:00:00",
+    updated_at: "2026-06-24 12:00:00",
+  };
+}
+
+const session: RequestSession = {
+  sessionId: 1,
+  userId: 1,
+  tokenHash: "hash",
+  handle: "thia",
+  role: "user",
+};
 
 describe("editor profile module payloads", () => {
   it("keeps cached rich integration cards on owner module responses", async () => {
@@ -159,5 +250,37 @@ describe("editor profile module payloads", () => {
     expect(
       calls.some((call) => call.query.includes("FROM profile_integration_metadata_cache")),
     ).toBe(true);
+  });
+
+  it("repairs non-positive positions when reading stored canvas drafts", async () => {
+    const { pool } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [profileInfoPayload(0)],
+        selectedModuleId: null,
+      }),
+    });
+    const repository = createEditorRepository(pool as never);
+
+    const draft = await repository.getCanvasDraft(1);
+
+    expect(draft.modules).toHaveLength(1);
+    expect(draft.modules[0]?.position).toBe(1);
+  });
+
+  it("stores repaired positions for background-only canvas draft updates", async () => {
+    const { draftJson, pool } = fakePool({
+      moduleRows: [profileInfoRow(0)],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await repository.updateCanvasDraft(session, { backgroundBlur: "soft" });
+
+    const savedDraft = JSON.parse(draftJson() ?? "{}") as {
+      modules?: Array<{ position?: unknown }>;
+    };
+    expect(savedDraft.modules?.[0]?.position).toBe(1);
   });
 });
