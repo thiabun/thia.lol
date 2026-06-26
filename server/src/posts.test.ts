@@ -6,11 +6,12 @@ import {
   buildPeopleToWatchQuery,
   buildPublicPostsQuery,
   buildPublicProfileReblogsQuery,
+  diversifyDiscoverPosts,
   normalizePostIdentifier,
   postCanonicalPath,
   type PostDetailPayload,
 } from "./posts.js";
-import type { ProfileSchemaCapabilities } from "./profiles.js";
+import type { PostPayload, ProfileSchemaCapabilities } from "./profiles.js";
 
 const capabilities: ProfileSchemaCapabilities = {
   hasAccountDeletionRequests: true,
@@ -122,6 +123,9 @@ describe("post preview SQL", () => {
     expect(sql).toContain("feed_rank_score DESC, p.created_at DESC, p.id DESC");
     expect(sql).toContain("home_reblog_follows.follower_id = 42");
     expect(sql).toContain("CASE WHEN u.id = 42 THEN -45 ELSE 0 END");
+    expect(sql).toContain("feed_viewer_room_membership.user_id = 42");
+    expect(sql).toContain("CASE WHEN feed_viewer_room_membership.id IS NULL THEN 0 ELSE 55 END");
+    expect(sql).toContain("COALESCE(followed_likes.followed_like_count, 0) * 8");
     expect(sql).toContain("FROM user_mutes feed_mutes");
     expect(sql).toContain("feed_mutes.muter_id = 42");
     expect(sql).not.toContain("NULLAND");
@@ -131,8 +135,11 @@ describe("post preview SQL", () => {
     const sql = buildDiscoverFeedQuery(capabilities, null);
 
     expect(sql).toContain("feed_rank_score DESC, p.created_at DESC, p.id DESC");
-    expect(sql).toContain("LEAST(COALESCE(room_posts.post_count, 0), 10)");
-    expect(sql).toContain("TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 6");
+    expect(sql).toContain("LEAST(COALESCE(room_posts.post_count, 0), 8)");
+    expect(sql).toContain("COALESCE(replies.reply_count, 0) * 5");
+    expect(sql).toContain("BETWEEN 1 AND 3 THEN 16");
+    expect(sql).toContain("TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 6 THEN 34");
+    expect(sql).not.toContain("feed_viewer_room_membership");
     expect(sql).not.toContain("FROM user_mutes feed_mutes");
   });
 
@@ -140,6 +147,9 @@ describe("post preview SQL", () => {
     const sql = buildDiscoverFeedQuery(capabilities, 42);
 
     expect(sql).toContain("p.parent_id IS NULL AND NOT EXISTS");
+    expect(sql).toContain("feed_viewer_room_membership.user_id = 42");
+    expect(sql).toContain("CASE WHEN feed_viewer_room_membership.id IS NULL THEN 0 ELSE 10 END");
+    expect(sql).toContain("COALESCE(followed_likes.followed_like_count, 0) * 4");
     expect(sql).not.toContain("NULLAND");
     expect(sql).toContain("FROM user_mutes feed_mutes");
   });
@@ -160,8 +170,30 @@ describe("post preview SQL", () => {
     expect(sql).toContain("u.id <> 42");
     expect(sql).toContain("profile_modules.module_count");
     expect(sql).toContain("featured_badges.badge_count");
+    expect(sql).toContain("WHEN viewer_follows.following_id IS NOT NULL THEN -60");
+    expect(sql).toContain("BETWEEN 1 AND 4 THEN 18");
+    expect(sql).toContain("LEAST(COALESCE(profile_posts.post_count, 0), 18) * 3");
     expect(sql).toContain("discover_rank_score DESC");
     expect(sql).toContain("LIMIT 24");
+  });
+
+  it("diversifies the top discover window by author and room", () => {
+    const posts = [
+      discoverPost(1, 1, 10),
+      discoverPost(2, 1, 10),
+      discoverPost(3, 1, 10),
+      discoverPost(4, 1, 10),
+      discoverPost(5, 2, 10),
+      discoverPost(6, 3, 10),
+      discoverPost(7, 4, 10),
+      discoverPost(8, 5, 20),
+    ];
+
+    const diversified = diversifyDiscoverPosts(posts, 5);
+
+    expect(diversified.slice(0, 5).map((post) => post.id)).toEqual([1, 2, 3, 5, 8]);
+    expect(diversified.slice(0, 5).filter((post) => post.author.id === 1)).toHaveLength(3);
+    expect(diversified.slice(0, 5).filter((post) => post.room?.id === 10)).toHaveLength(4);
   });
 
   it("does not emit malformed viewer-aware SQL joins", () => {
@@ -179,3 +211,24 @@ describe("post preview SQL", () => {
     }
   });
 });
+
+function discoverPost(id: number, authorId: number, roomId: number | null): PostPayload {
+  return {
+    id,
+    author: {
+      id: authorId,
+      handle: `author-${authorId}`,
+      displayName: `Author ${authorId}`,
+      initials: "A",
+      aura: "frost",
+      avatarUrl: null,
+    },
+    room: roomId === null
+      ? null
+      : {
+          id: roomId,
+          slug: `room-${roomId}`,
+          name: `Room ${roomId}`,
+        },
+  } as PostPayload;
+}

@@ -260,7 +260,9 @@ class MysqlPostsRepository implements PostsRepository {
   }
 
   async listDiscoverPosts(viewerUserId: number | null): Promise<PostPayload[]> {
-    return this.postsFromQuery(buildDiscoverFeedQuery(await this.schemaCapabilities(), viewerUserId), []);
+    return diversifyDiscoverPosts(
+      await this.postsFromQuery(buildDiscoverFeedQuery(await this.schemaCapabilities(), viewerUserId), []),
+    );
   }
 
   async listPeopleToWatch(viewerUserId: number | null): Promise<DiscoverPersonPayload[]> {
@@ -744,11 +746,12 @@ export function buildHomeFeedQuery(capabilities: ProfileSchemaCapabilities, view
             ${followedReblogContextSelectSql(capabilities, viewerUserId)}`,
     capabilities,
     viewerUserId,
+    viewerRoomMembershipJoinSql(capabilities, viewerUserId),
   );
 }
 
 export function buildDiscoverFeedQuery(capabilities: ProfileSchemaCapabilities, viewerUserId: number | null): string {
-  const scoreSql = discoverRankScoreSql(capabilities);
+  const scoreSql = discoverRankScoreSql(capabilities, viewerUserId);
 
   return postSelectSql(
     `AND p.parent_id IS NULL${viewerFeedRelationshipFilterSql(capabilities, viewerUserId)}`,
@@ -756,7 +759,46 @@ export function buildDiscoverFeedQuery(capabilities: ProfileSchemaCapabilities, 
     `${scoreSql} AS feed_rank_score`,
     capabilities,
     viewerUserId,
+    viewerRoomMembershipJoinSql(capabilities, viewerUserId),
   );
+}
+
+export function diversifyDiscoverPosts(posts: PostPayload[], windowSize = 12): PostPayload[] {
+  const selected: PostPayload[] = [];
+  const deferred: PostPayload[] = [];
+  const authorCounts = new Map<number, number>();
+  const roomCounts = new Map<number, number>();
+
+  for (const post of posts) {
+    if (selected.length >= windowSize) {
+      deferred.push(post);
+      continue;
+    }
+
+    const authorCount = authorCounts.get(post.author.id) ?? 0;
+    const roomId = post.room?.id ?? null;
+    const roomCount = roomId === null ? 0 : roomCounts.get(roomId) ?? 0;
+
+    if (authorCount >= 3 || roomCount >= 4) {
+      deferred.push(post);
+      continue;
+    }
+
+    selected.push(post);
+    authorCounts.set(post.author.id, authorCount + 1);
+
+    if (roomId !== null) {
+      roomCounts.set(roomId, roomCount + 1);
+    }
+  }
+
+  const targetWindowSize = Math.min(windowSize, posts.length);
+
+  while (selected.length < targetWindowSize && deferred.length > 0) {
+    selected.push(deferred.shift()!);
+  }
+
+  return [...selected, ...deferred];
 }
 
 export function buildPeopleToWatchQuery(
@@ -827,13 +869,33 @@ export function buildPeopleToWatchQuery(
         WHEN TIMESTAMPDIFF(DAY, profile_posts.latest_post_at, UTC_TIMESTAMP()) <= 30 THEN 5
         ELSE 0
     END`;
+  const relationshipScore = capabilities.hasUserFollows
+    ? `CASE
+            WHEN viewer_follows.following_id IS NOT NULL THEN -60
+            WHEN viewer_followed_by.follower_id IS NOT NULL THEN 16
+            ELSE 0
+          END`
+    : "0";
+  const freshVoiceScore = `CASE
+        WHEN COALESCE(profile_posts.post_count, 0) BETWEEN 1 AND 4 THEN 18
+        WHEN COALESCE(profile_posts.post_count, 0) BETWEEN 5 AND 12 THEN 10
+        ELSE 0
+    END`;
+  const smallAudienceScore = `CASE
+        WHEN ${followerCountSql} BETWEEN 1 AND 5 THEN 10
+        WHEN ${followerCountSql} BETWEEN 6 AND 20 THEN 5
+        ELSE 0
+    END`;
   const rankScore = `(
-        COALESCE(profile_stars.star_count, 0) * 12
+        COALESCE(profile_stars.star_count, 0) * 9
         + COALESCE(profile_posts.like_count, 0) * 2
-        + ${followerCountSql} * 3
-        + COALESCE(profile_posts.post_count, 0) * 4
+        + LEAST(${followerCountSql}, 40) * 2
+        + LEAST(COALESCE(profile_posts.post_count, 0), 18) * 3
         + ${profileQualityScore}
         + ${recentActivityScore}
+        + ${relationshipScore}
+        + ${freshVoiceScore}
+        + ${smallAudienceScore}
     )`;
 
   return `SELECT
@@ -890,33 +952,45 @@ export function buildPeopleToWatchQuery(
          LIMIT 24`;
 }
 
-function discoverRankScoreSql(capabilities: ProfileSchemaCapabilities): string {
-  const relationshipScore = relationshipScoreSql(capabilities, 8, 12);
+function discoverRankScoreSql(capabilities: ProfileSchemaCapabilities, viewerUserId: number | null): string {
+  const relationshipScore = relationshipScoreSql(capabilities, 5, 8);
   const reblogScore = reblogScoreSql(capabilities);
+  const followedLikesScore = followedLikesScoreSql(capabilities, 4);
+  const roomMembershipScore = viewerRoomMembershipScoreSql(capabilities, viewerUserId, 10);
+  const freshVoiceScore = `CASE
+            WHEN COALESCE(profile_posts.post_count, 0) BETWEEN 1 AND 3 THEN 16
+            WHEN COALESCE(profile_posts.post_count, 0) BETWEEN 4 AND 8 THEN 8
+            ELSE 0
+          END`;
 
   return `(
-        COALESCE(reactions.glow_count, 0) * 3
-        + COALESCE(replies.reply_count, 0) * 4
-        + ${reblogScore} * 5
-        + LEAST(COALESCE(room_posts.post_count, 0), 10)
+        COALESCE(reactions.glow_count, 0) * 2
+        + COALESCE(replies.reply_count, 0) * 5
+        + ${reblogScore} * 4
+        + ${followedLikesScore}
+        + LEAST(COALESCE(room_posts.post_count, 0), 8)
         + ${relationshipScore}
+        + ${roomMembershipScore}
+        + ${freshVoiceScore}
         + CASE
-            WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 6 THEN 30
-            WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 24 THEN 18
-            WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 72 THEN 8
+            WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 6 THEN 34
+            WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 24 THEN 20
+            WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 72 THEN 9
             ELSE 0
           END
-        - LEAST(40, TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) / 6)
+        - LEAST(48, TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) / 5)
     )`;
 }
 
 function homeRankScoreSql(capabilities: ProfileSchemaCapabilities, viewerUserId: number | null): string {
   if (viewerUserId === null) {
-    return discoverRankScoreSql(capabilities);
+    return discoverRankScoreSql(capabilities, viewerUserId);
   }
 
   const relationshipScore = relationshipScoreSql(capabilities, 80, 120);
   const reblogScore = reblogScoreSql(capabilities);
+  const followedLikesScore = followedLikesScoreSql(capabilities, 8);
+  const roomMembershipScore = viewerRoomMembershipScoreSql(capabilities, viewerUserId, 55);
   const followedReblogScore = capabilities.hasPostReblogs && capabilities.hasUserFollows
     ? `CASE WHEN EXISTS (
             SELECT 1
@@ -931,14 +1005,16 @@ function homeRankScoreSql(capabilities: ProfileSchemaCapabilities, viewerUserId:
   return `(
         ${relationshipScore}
         + ${followedReblogScore}
+        + ${roomMembershipScore}
         + CASE WHEN u.id = ${viewerUserId} THEN -45 ELSE 0 END
-        + COALESCE(reactions.glow_count, 0) * 3
-        + COALESCE(replies.reply_count, 0) * 4
-        + ${reblogScore} * 5
-        + LEAST(COALESCE(room_posts.post_count, 0), 12)
+        + ${followedLikesScore}
+        + COALESCE(reactions.glow_count, 0) * 2
+        + COALESCE(replies.reply_count, 0) * 5
+        + ${reblogScore} * 4
+        + LEAST(COALESCE(room_posts.post_count, 0), 10)
         + CASE
-            WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 24 THEN 24
-            WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 72 THEN 12
+            WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 24 THEN 28
+            WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 72 THEN 14
             WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 168 THEN 6
             ELSE 0
           END
@@ -1020,6 +1096,37 @@ function relationshipScoreSql(capabilities: ProfileSchemaCapabilities, followBon
         WHEN viewer_follows_author.following_id IS NOT NULL THEN ${followBonus}
         ELSE 0
     END`;
+}
+
+function viewerRoomMembershipJoinSql(capabilities: ProfileSchemaCapabilities, viewerUserId: number | null): string {
+  if (viewerUserId === null || !capabilities.hasRoomMemberships) {
+    return "";
+  }
+
+  return `LEFT JOIN room_memberships feed_viewer_room_membership
+        ON feed_viewer_room_membership.room_id = p.room_id
+       AND feed_viewer_room_membership.user_id = ${viewerUserId}
+       AND feed_viewer_room_membership.banned_at IS NULL`;
+}
+
+function viewerRoomMembershipScoreSql(
+  capabilities: ProfileSchemaCapabilities,
+  viewerUserId: number | null,
+  bonus: number,
+): string {
+  if (viewerUserId === null || !capabilities.hasRoomMemberships) {
+    return "0";
+  }
+
+  return `CASE WHEN feed_viewer_room_membership.id IS NULL THEN 0 ELSE ${bonus} END`;
+}
+
+function followedLikesScoreSql(capabilities: ProfileSchemaCapabilities, multiplier: number): string {
+  if (!capabilities.hasUserFollows) {
+    return "0";
+  }
+
+  return `COALESCE(followed_likes.followed_like_count, 0) * ${multiplier}`;
 }
 
 function reblogScoreSql(capabilities: ProfileSchemaCapabilities): string {

@@ -1,12 +1,18 @@
 import {
+  Compass,
   MessageCircle,
+  PenLine,
   Radio,
+  Search,
   UsersRound,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useOutletContext } from "react-router";
+import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
-import { ButtonLink } from "../components/ui/Button";
+import { FeedRefreshControls } from "../components/social/FeedRefreshControls";
+import { Button, ButtonLink } from "../components/ui/Button";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
@@ -22,6 +28,7 @@ import { useAuth } from "../lib/useAuth";
 
 export function HomePage() {
   const { csrfToken, status, user } = useAuth();
+  const { openPostComposer } = useOutletContext<AppShellOutletContext>();
   const feedState = useAsyncData(getHomeFeed);
   const roomsState = useAsyncData(getRooms);
   const [createdPosts, setCreatedPosts] = useState<Post[]>([]);
@@ -137,19 +144,31 @@ export function HomePage() {
           animate="show"
         >
           <Panel className="p-4 sm:p-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div className="max-w-2xl">
-                <h1 className="text-3xl font-semibold tracking-normal text-text">
-                  Home
-                </h1>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <h1 className="text-3xl font-semibold tracking-normal text-text">
+                    Home
+                  </h1>
+                  <span className="rounded-control border border-line bg-canvas/65 px-2.5 py-1 text-xs font-medium text-muted">
+                    For you
+                  </span>
+                </div>
                 <p className="mt-2 text-sm leading-6 text-muted">
                   {isAnonymous
                     ? "Recent posts from thia.lol."
                     : "Posts from follows, moots, rooms, and recent conversations."}
                 </p>
               </div>
-              {isAnonymous ? (
-                <div className="flex flex-wrap gap-2 sm:flex-nowrap sm:justify-end">
+              <div className="flex flex-col gap-3 md:items-end">
+                <FeedRefreshControls
+                  lastLoadedAt={feedState.lastLoadedAt}
+                  refreshError={feedState.refreshError}
+                  refreshing={feedState.refreshing}
+                  disabled={feedState.loading}
+                  onRefresh={feedState.reload}
+                />
+                {isAnonymous ? (
                   <ButtonLink
                     to="/login"
                     size="sm"
@@ -157,25 +176,35 @@ export function HomePage() {
                   >
                     Sign in
                   </ButtonLink>
-                </div>
-              ) : null}
+                ) : null}
+              </div>
             </div>
           </Panel>
         </motion.div>
 
         {feedState.loading ? (
-        <ApiStateNotice
-          kind="loading"
-          title="Loading posts"
-          text="Loading posts."
+          <ApiStateNotice
+            kind="loading"
+            title="Loading posts"
+            text="Loading posts."
           />
         ) : null}
 
-        {feedState.error ? (
+        {feedState.error && posts.length === 0 ? (
           <ApiStateNotice
             kind="error"
             title="Home feed is not available"
             text="Try refreshing in a moment."
+            actions={
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => void feedState.reload()}
+              >
+                Retry
+              </Button>
+            }
           />
         ) : null}
 
@@ -185,7 +214,7 @@ export function HomePage() {
           </p>
         ) : null}
 
-        <h2 className="text-xl font-semibold text-text">Recent posts</h2>
+        <h2 className="text-xl font-semibold text-text">For you</h2>
 
         {!feedState.loading && !feedState.error && posts.length === 0 ? (
           <EmptyState
@@ -236,7 +265,55 @@ export function HomePage() {
             </div>
           ) : null}
         </div>
+        <HomeExploreRail onPostClick={() => openPostComposer()} />
       </aside>
     </motion.div>
+  );
+}
+
+function HomeExploreRail({ onPostClick }: { onPostClick: () => void }) {
+  return (
+    <Panel className="p-3">
+      <h2 className="mb-3 text-base font-semibold text-text">Explore</h2>
+      <div className="grid gap-2">
+        <ButtonLink
+          to="/search"
+          variant="secondary"
+          size="sm"
+          className="justify-start"
+          icon={<Search aria-hidden="true" size={16} />}
+        >
+          Search
+        </ButtonLink>
+        <ButtonLink
+          to="/rooms"
+          variant="secondary"
+          size="sm"
+          className="justify-start"
+          icon={<Radio aria-hidden="true" size={16} />}
+        >
+          Browse rooms
+        </ButtonLink>
+        <ButtonLink
+          to="/discover"
+          variant="secondary"
+          size="sm"
+          className="justify-start"
+          icon={<Compass aria-hidden="true" size={16} />}
+        >
+          Discover
+        </ButtonLink>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="justify-start"
+          icon={<PenLine aria-hidden="true" size={16} />}
+          onClick={onPostClick}
+        >
+          Write a post
+        </Button>
+      </div>
+    </Panel>
   );
 }

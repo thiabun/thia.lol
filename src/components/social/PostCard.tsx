@@ -1558,28 +1558,68 @@ const threadRailLineClass =
 const metaChipClass =
   "inline-flex min-h-5 items-center rounded-full border px-1.5 text-[0.68rem] font-medium leading-none";
 const roomMetaChipClass = "border-warm/25 bg-warm/10 text-warm-ink";
+const coolMetaChipClass = "border-cool/25 bg-cool/10 text-cool-ink";
+const leafMetaChipClass = "border-leaf/25 bg-leaf/10 text-leaf-ink";
+const roseMetaChipClass = "border-rose/25 bg-rose/10 text-rose-ink";
 
 function PostMetaChips({ post }: { post: Post }) {
-  if (!post.room) {
+  const chips = postContextChips(post);
+
+  if (!post.room && chips.length === 0) {
     return null;
   }
 
   return (
     <span className="contents">
-      <span className="text-muted/50">·</span>
-      <Link
-        to={`/rooms/${post.room.slug}`}
-        title={`Posted in ${post.room.name}`}
-        className={cn(
-          metaChipClass,
-          roomMetaChipClass,
-          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-        )}
-      >
-        {post.room.name}
-      </Link>
+      {chips.map((chip) => (
+        <span key={chip.label} className="contents">
+          <span className="text-muted/50">·</span>
+          <span className={cn(metaChipClass, chip.className)}>{chip.label}</span>
+        </span>
+      ))}
+      {post.room ? (
+        <span className="contents">
+          <span className="text-muted/50">·</span>
+          <Link
+            to={`/rooms/${post.room.slug}`}
+            title={`Posted in ${post.room.name}`}
+            className={cn(
+              metaChipClass,
+              roomMetaChipClass,
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+            )}
+          >
+            {post.room.name}
+          </Link>
+        </span>
+      ) : null}
     </span>
   );
+}
+
+function postContextChips(post: Post) {
+  const chips: Array<{ className: string; label: string }> = [];
+  const relationship = post.socialContext?.authorRelationship;
+
+  if (relationship === "moot") {
+    chips.push({ className: leafMetaChipClass, label: "Moot" });
+  } else if (relationship === "following") {
+    chips.push({ className: coolMetaChipClass, label: "Following" });
+  }
+
+  if ((post.socialContext?.likedByFollowedCount ?? 0) > 0) {
+    chips.push({ className: coolMetaChipClass, label: "Liked by follows" });
+  }
+
+  if (isRecentPostLabel(post.createdAt)) {
+    chips.push({ className: roseMetaChipClass, label: "Recent" });
+  }
+
+  return chips;
+}
+
+function isRecentPostLabel(createdAt: string) {
+  return createdAt === "now" || /(?:minute|minutes) ago/u.test(createdAt);
 }
 
 type ReactionControlsProps = {

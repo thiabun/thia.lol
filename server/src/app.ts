@@ -3090,10 +3090,14 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     }
 
     try {
-      const viewerUserId = await currentViewerUserId(request, dependencies.sessionsRepository);
+      const viewerSession = await currentViewerSession(request, dependencies.sessionsRepository);
+      const viewerUserId = viewerSession?.userId ?? null;
+      const roomViewer = optionalRoomViewerFromSession(viewerSession);
       const [posts, rooms, peopleToWatch] = await Promise.all([
         dependencies.postsRepository.listDiscoverPosts(viewerUserId),
-        dependencies.roomsRepository.listPublicRooms(),
+        roomViewer === undefined
+          ? dependencies.roomsRepository.listPublicRooms()
+          : dependencies.roomsRepository.listPublicRooms(roomViewer),
         dependencies.postsRepository.listPeopleToWatch(viewerUserId),
       ]);
       const feed: DiscoverFeedPayload = {

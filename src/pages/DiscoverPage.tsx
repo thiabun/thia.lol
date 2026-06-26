@@ -1,13 +1,15 @@
-import { Hash, MessageCircle, Star, UsersRound } from "lucide-react";
+import { Hash, MessageCircle, Radio, Search, Star, UsersRound } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { PageMeta } from "../components/PageMeta";
+import { FeedRefreshControls } from "../components/social/FeedRefreshControls";
 import { PostCard } from "../components/social/PostCard";
 import { RoomCard } from "../components/social/RoomCard";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Avatar } from "../components/ui/Avatar";
 import { Badge } from "../components/ui/Badge";
+import { Button, ButtonLink } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
 import { deletePost, getDiscoverFeed, updatePost } from "../lib/api";
@@ -94,12 +96,47 @@ export function DiscoverPage() {
       <section>
         <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
           <Panel className="p-4 sm:p-5">
-            <h1 className="text-3xl font-semibold tracking-normal text-text">
-              Discover
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-              Public posts, active rooms, and members.
-            </p>
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="max-w-2xl">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <h1 className="text-3xl font-semibold tracking-normal text-text">
+                    Discover
+                  </h1>
+                  <span className="rounded-control border border-line bg-canvas/65 px-2.5 py-1 text-xs font-medium text-muted">
+                    For everyone
+                  </span>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-muted">
+                  Public posts, active rooms, and members.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <ButtonLink
+                    to="/search"
+                    variant="secondary"
+                    size="sm"
+                    icon={<Search aria-hidden="true" size={15} />}
+                  >
+                    Search
+                  </ButtonLink>
+                  <ButtonLink
+                    to="/rooms"
+                    variant="secondary"
+                    size="sm"
+                    icon={<Radio aria-hidden="true" size={15} />}
+                  >
+                    Browse rooms
+                  </ButtonLink>
+                </div>
+              </div>
+              <FeedRefreshControls
+                className="md:self-end"
+                lastLoadedAt={discoverState.lastLoadedAt}
+                refreshError={discoverState.refreshError}
+                refreshing={discoverState.refreshing}
+                disabled={discoverState.loading}
+                onRefresh={discoverState.reload}
+              />
+            </div>
           </Panel>
         </motion.div>
       </section>
@@ -112,11 +149,21 @@ export function DiscoverPage() {
         />
       ) : null}
 
-      {discoverState.error ? (
+      {discoverState.error && !discoverState.data ? (
         <ApiStateNotice
           kind="error"
           title="Discovery feed is not available"
           text="Try refreshing in a moment."
+          actions={
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => void discoverState.reload()}
+            >
+              Retry
+            </Button>
+          }
         />
       ) : null}
 
@@ -188,7 +235,10 @@ function DiscoverRisingSection({
       data-testid="discover-rising-feed"
     >
       <div className="mb-3 flex items-center justify-between gap-4">
-        <h2 className="text-xl font-semibold text-text">Rising</h2>
+        <div>
+          <h2 className="text-xl font-semibold text-text">Rising</h2>
+          <p className="mt-1 text-sm text-muted">Fresh voices and active conversations.</p>
+        </div>
       </div>
       <div className="space-y-4">
         {!loading && !error && posts.length === 0 ? (
@@ -231,6 +281,12 @@ function DiscoverRoomsSection({
     >
       <div className="mb-3 flex items-center justify-between gap-4">
         <h2 className="text-xl font-semibold text-text">Active rooms</h2>
+        <Link
+          to="/rooms"
+          className="text-sm font-medium text-accent-strong underline-offset-4 hover:underline"
+        >
+          View all
+        </Link>
       </div>
       <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-1">
         {rooms.map((room, index) => (
@@ -256,6 +312,12 @@ function DiscoverPeopleSection({
     >
       <div className="mb-3 flex items-center justify-between gap-4">
         <h2 className="text-xl font-semibold text-text">People</h2>
+        <Link
+          to="/search"
+          className="text-sm font-medium text-accent-strong underline-offset-4 hover:underline"
+        >
+          Search
+        </Link>
       </div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-1">
         {people.map((person, index) => (

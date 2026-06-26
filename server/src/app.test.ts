@@ -3539,6 +3539,32 @@ describe("Node API post and feed preview routes", () => {
     });
   });
 
+  it("passes viewer context into discover rooms when a session exists", async () => {
+    const postsRepository = postsRepositoryMock();
+    const roomsRepository = roomsRepositoryMock();
+    const sessionsRepository = sessionsRepositoryMock();
+    const app = buildApp({
+      postsRepository,
+      roomsRepository,
+      sessionsRepository,
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/feed/discover",
+      headers: {
+        cookie: "thia_session=token",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(postsRepository.listDiscoverPosts).toHaveBeenCalledWith(42);
+    expect(postsRepository.listPeopleToWatch).toHaveBeenCalledWith(42);
+    expect(roomsRepository.listPublicRooms).toHaveBeenCalledWith({
+      role: "member",
+      userId: 42,
+    });
+  });
+
   it("returns JSON 500 without raw post repository details", async () => {
     const repository = postsRepositoryMock({
       listPublicPosts: vi.fn().mockRejectedValue(new Error("sensitive post detail")),

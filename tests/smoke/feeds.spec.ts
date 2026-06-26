@@ -20,6 +20,148 @@ test("Home loads the feed empty state", async ({ page }) => {
   await expect(page.getByText("No posts yet").first()).toBeVisible();
 });
 
+test("Home refresh keeps the current feed visible until new posts arrive", async ({
+  page,
+}) => {
+  await mockCommonApi(page);
+  let refreshRequested = false;
+  let releaseRefresh: (() => void) | undefined;
+
+  await page.route("**/api/feed/home", async (route) => {
+    if (refreshRequested) {
+      await new Promise<void>((resolve) => {
+        releaseRefresh = resolve;
+      });
+    }
+
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          posts: [
+            makePost({
+              body: refreshRequested ? "Fresh refreshed post." : "First visible post.",
+            }),
+          ],
+          personalized: false,
+        },
+      }),
+    });
+  });
+
+  await page.goto("/");
+
+  await expect(page.getByText("First visible post.")).toBeVisible();
+  await expect(page.getByTestId("page-loading-overlay")).toBeHidden({
+    timeout: 5000,
+  });
+  refreshRequested = true;
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect(page.getByText("First visible post.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Refreshing" })).toBeVisible();
+
+  releaseRefresh?.();
+
+  await expect(page.getByText("Fresh refreshed post.")).toBeVisible();
+  await expect(page.getByTestId("feed-refresh-controls-updated")).toContainText(
+    "Updated",
+  );
+});
+
+test("Home refresh failure preserves posts and offers retry", async ({ page }) => {
+  await mockCommonApi(page);
+  let refreshRequested = false;
+
+  await page.route("**/api/feed/home", async (route) => {
+    if (refreshRequested) {
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: false, error: "Refresh failed." }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          posts: [makePost({ body: "Keep this post visible." })],
+          personalized: false,
+        },
+      }),
+    });
+  });
+
+  await page.goto("/");
+
+  await expect(page.getByText("Keep this post visible.")).toBeVisible();
+  await expect(page.getByTestId("page-loading-overlay")).toBeHidden({
+    timeout: 5000,
+  });
+  refreshRequested = true;
+  await page.getByRole("button", { name: "Refresh" }).click();
+
+  await expect(page.getByText("Keep this post visible.")).toBeVisible();
+  await expect(page.getByTestId("feed-refresh-controls-error")).toContainText(
+    "Could not refresh.",
+  );
+  await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+});
+
+test("Home renders feed context labels and real discovery paths", async ({
+  page,
+}) => {
+  await mockCommonApi(page);
+  await page.route("**/api/feed/home", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          posts: [
+            makePost({
+              room: makeDiscoverRoom({
+                name: "Garden",
+                slug: "garden",
+              }),
+              socialContext: {
+                authorRelationship: "following",
+                likedByFollowedCount: 2,
+              },
+            }),
+          ],
+          personalized: false,
+        },
+      }),
+    }),
+  );
+
+  await page.goto("/");
+
+  await expect(page.getByText("Following")).toBeVisible();
+  await expect(page.getByText("Liked by follows")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Garden" })).toHaveAttribute(
+    "href",
+    "/rooms/garden",
+  );
+  const main = page.locator("main");
+  await expect(main.getByRole("link", { name: "Search" })).toHaveAttribute(
+    "href",
+    "/search",
+  );
+  await expect(main.getByRole("link", { name: "Browse rooms" })).toHaveAttribute(
+    "href",
+    "/rooms",
+  );
+  await expect(main.getByRole("link", { name: "Discover" })).toHaveAttribute(
+    "href",
+    "/discover",
+  );
+});
+
 test("Discover loads the feed empty state without unbacked sections", async ({
   page,
 }) => {
@@ -44,6 +186,15 @@ test("Discover loads the feed empty state without unbacked sections", async ({
   await expect(page.getByText("No posts yet").first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Active rooms" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "People" })).toHaveCount(0);
+  const main = page.locator("main");
+  await expect(main.getByRole("link", { name: "Search" })).toHaveAttribute(
+    "href",
+    "/search",
+  );
+  await expect(main.getByRole("link", { name: "Browse rooms" })).toHaveAttribute(
+    "href",
+    "/rooms",
+  );
   await expect
     .poll(async () =>
       page
@@ -56,6 +207,59 @@ test("Discover loads the feed empty state without unbacked sections", async ({
         ),
     )
     .toBe(1);
+});
+
+test("Discover refresh updates the rising feed without losing existing posts", async ({
+  page,
+}) => {
+  await mockCommonApi(page);
+  let refreshRequested = false;
+  let releaseRefresh: (() => void) | undefined;
+
+  await page.route("**/api/feed/discover", async (route) => {
+    if (refreshRequested) {
+      await new Promise<void>((resolve) => {
+        releaseRefresh = resolve;
+      });
+    }
+
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          posts: [
+            makePost({
+              body:
+                refreshRequested
+                  ? "Updated rising post."
+                  : "Original rising post.",
+            }),
+          ],
+          activeRooms: [],
+          peopleToWatch: [],
+        },
+      }),
+    });
+  });
+
+  await page.goto("/discover");
+
+  await expect(page.getByText("Original rising post.")).toBeVisible();
+  await expect(page.getByTestId("page-loading-overlay")).toBeHidden({
+    timeout: 5000,
+  });
+  refreshRequested = true;
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect(page.getByText("Original rising post.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Refreshing" })).toBeVisible();
+
+  releaseRefresh?.();
+
+  await expect(page.getByText("Updated rising post.")).toBeVisible();
+  await expect(page.getByTestId("feed-refresh-controls-updated")).toContainText(
+    "Updated",
+  );
 });
 
 test("global loading overlay waits for route data and grace timer", async ({
@@ -938,7 +1142,7 @@ test("post body opens thread while controls keep their own behavior", async ({
   expect(postBox!.width).toBeLessThanOrEqual(610);
   expect(bodyBox!.width).toBeGreaterThan(postBox!.width * 0.8);
 
-  await page.mouse.click(postBox!.x + postBox!.width - 24, postBox!.y + 24);
+  await bodyOpenTarget.click({ position: { x: 24, y: 24 } });
 
   const dialog = page.getByTestId("thread-modal");
   await expect(dialog).toBeVisible();
@@ -950,11 +1154,6 @@ test("post body opens thread while controls keep their own behavior", async ({
   const box = await dialog.boundingBox();
   expect(box?.width).toBeGreaterThan(850);
 
-  await dialog.getByRole("button", { name: "Close thread" }).click();
-  await expect(dialog).toBeHidden();
-
-  await bodyOpenTarget.click();
-  await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Close thread" }).click();
   await expect(dialog).toBeHidden();
 
@@ -1015,8 +1214,8 @@ test("post body and media hover stay visually flat in Sunveil and Frostveil", as
 
     const post = page.getByTestId("post-card-open-thread").first();
     const bodyOpenTarget = post.getByTestId("post-body-open-thread");
-    const mediaFrame = bodyOpenTarget.getByTestId("post-media");
-    const mediaImage = bodyOpenTarget.getByTestId("post-media-image");
+    const mediaFrame = bodyOpenTarget.getByTestId("post-attachments-0");
+    const mediaImage = bodyOpenTarget.getByTestId("post-attachments-0-image");
 
     await expect(bodyOpenTarget).toBeVisible();
     await expect(mediaFrame).toBeVisible();
