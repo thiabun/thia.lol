@@ -219,8 +219,11 @@ test("guidelines, moderation, appeals, and AI policy cover trust promises", asyn
   await expect(
     page.getByRole("heading", { name: "Community Guidelines", level: 1 }),
   ).toBeVisible();
-  await expect(page.getByText("The constitution")).toBeVisible();
-  await expect(page.locator("body")).toContainText("Adults can be messy, funny, flirty, weird");
+  await expect(page.getByText("Community constitution")).toBeVisible();
+  const communityGuidelinesText = await page.locator("body").innerText();
+  expect(
+    communityGuidelinesText.match(/Adults can be messy, funny, flirty, weird/g) ?? [],
+  ).toHaveLength(1);
   await expect(page.locator("body")).toContainText("mature European 16+ baseline");
   await expect(page.locator("body")).toContainText("adult-first in tone");
   await expect(page.locator("body")).toContainText("You should be mature in your jurisdiction");

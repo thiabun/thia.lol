@@ -371,14 +371,11 @@ const policies = {
     label: "your safety",
     description:
       "The rules for posts, replies, rooms, profiles, uploads, reports, and DMs on a 16+ social platform.",
-    stance: communityConstitution,
+    stance:
+      "A mature 16+ social space needs clear consent rules, strong boundaries, and real reporting paths.",
     updated,
     icon: HeartHandshake,
     sections: [
-      {
-        title: "The constitution",
-        body: communityConstitution,
-      },
       {
         title: "16+ platform boundaries",
         items: [
