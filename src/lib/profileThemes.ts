@@ -4,6 +4,7 @@ import type {
   ProfileThemeColors,
   ProfileThemeConfig,
 } from "./types";
+import { withRootThemeTransition } from "./themeTransitions";
 
 export const profileThemeColorKeys: ProfileThemeColorKey[] = [
   "canvas",
@@ -291,32 +292,36 @@ export function applyProfileThemeToRoot(
   const root = document.documentElement;
   const previous = new Map<string, string>();
   const properties = profileThemeColorsToCssProperties(colors);
-
-  Object.entries(properties).forEach(([property, value]) => {
-    if (typeof value !== "string") {
-      return;
-    }
-
-    previous.set(property, root.style.getPropertyValue(property));
-    root.style.setProperty(property, value);
-  });
   const previousDataset = root.dataset.profileTheme;
-  root.dataset.profileTheme = config?.mode ?? "custom";
+
+  withRootThemeTransition(() => {
+    Object.entries(properties).forEach(([property, value]) => {
+      if (typeof value !== "string") {
+        return;
+      }
+
+      previous.set(property, root.style.getPropertyValue(property));
+      root.style.setProperty(property, value);
+    });
+    root.dataset.profileTheme = config?.mode ?? "custom";
+  });
 
   return () => {
-    previous.forEach((value, property) => {
-      if (value) {
-        root.style.setProperty(property, value);
+    withRootThemeTransition(() => {
+      previous.forEach((value, property) => {
+        if (value) {
+          root.style.setProperty(property, value);
+        } else {
+          root.style.removeProperty(property);
+        }
+      });
+
+      if (previousDataset) {
+        root.dataset.profileTheme = previousDataset;
       } else {
-        root.style.removeProperty(property);
+        delete root.dataset.profileTheme;
       }
     });
-
-    if (previousDataset) {
-      root.dataset.profileTheme = previousDataset;
-    } else {
-      delete root.dataset.profileTheme;
-    }
   };
 }
 

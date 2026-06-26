@@ -12,35 +12,49 @@ import { cn } from "./classNames";
 import { fluidEase, softSpring } from "./motionPresets";
 import { PageLoadingContext } from "./pageLoadingContext";
 
-const pageLoadingGraceMs = 1000;
+const protectedPageLoadingGraceMs = 1500;
 
 export function PageLoadingProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [activeTasks, setActiveTasks] = useState<Set<symbol>>(() => new Set());
   const locationKey = pageLoadingLocationKey(location.pathname, location.search);
   const routeLabel = pageLoadingLabel(location.pathname);
+  const graceMs = pageLoadingGraceMs(location.pathname);
+  const usesProtectedLoading = graceMs > 0;
   const [graceState, setGraceState] = useState(() => ({
-    complete: false,
+    complete: graceMs === 0,
     key: locationKey,
   }));
   const [assetState, setAssetState] = useState(() => ({
     key: locationKey,
-    ready: false,
+    ready: graceMs === 0,
   }));
-  const graceComplete = graceState.key === locationKey && graceState.complete;
-  const routeAssetsReady = assetState.key === locationKey && assetState.ready;
+  const graceComplete =
+    !usesProtectedLoading ||
+    (graceState.key === locationKey && graceState.complete);
+  const routeAssetsReady =
+    !usesProtectedLoading ||
+    (assetState.key === locationKey && assetState.ready);
 
   useEffect(() => {
+    if (graceMs === 0) {
+      return undefined;
+    }
+
     const timer = window.setTimeout(() => {
       setGraceState({ complete: true, key: locationKey });
-    }, pageLoadingGraceMs);
+    }, graceMs);
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [locationKey]);
+  }, [graceMs, locationKey]);
 
   useEffect(() => {
+    if (!usesProtectedLoading) {
+      return undefined;
+    }
+
     if (!graceComplete || activeTasks.size > 0) {
       return undefined;
     }
@@ -56,7 +70,7 @@ export function PageLoadingProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [activeTasks.size, graceComplete, locationKey]);
+  }, [activeTasks.size, graceComplete, locationKey, usesProtectedLoading]);
 
   const registerTask = useCallback(() => {
     const id = Symbol("page-load-task");
@@ -87,7 +101,9 @@ export function PageLoadingProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(() => ({ registerTask }), [registerTask]);
-  const visible = activeTasks.size > 0 || !graceComplete || !routeAssetsReady;
+  const visible =
+    activeTasks.size > 0 ||
+    (usesProtectedLoading && (!graceComplete || !routeAssetsReady));
 
   return (
     <PageLoadingContext.Provider value={value}>
@@ -280,6 +296,14 @@ function pageLoadingLocationKey(pathname: string, search: string): string {
   }
 
   return `${pathname}${search}`;
+}
+
+function pageLoadingGraceMs(pathname: string): number {
+  return pageUsesProtectedLoading(pathname) ? protectedPageLoadingGraceMs : 0;
+}
+
+function pageUsesProtectedLoading(pathname: string): boolean {
+  return pathname === "/rooms" || pathname.startsWith("/rooms/") || pathname.startsWith("/@");
 }
 
 async function waitForRouteAssets() {

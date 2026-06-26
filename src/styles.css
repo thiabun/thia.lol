@@ -115,6 +115,27 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+:where(
+  :root[data-theme-transition="true"],
+  :root[data-theme-transition="true"] body,
+  :root[data-theme-transition="true"] #root,
+  :root[data-theme-transition="true"] *,
+  :root[data-theme-transition="true"] *::before,
+  :root[data-theme-transition="true"] *::after
+) {
+  transition-duration: 560ms;
+  transition-property:
+    background-color,
+    border-color,
+    box-shadow,
+    color,
+    fill,
+    outline-color,
+    stroke,
+    text-decoration-color;
+  transition-timing-function: var(--ease-fluid);
+}
+
 button,
 input,
 select,

@@ -311,15 +311,19 @@ test("Discover refresh updates the rising feed without losing existing posts", a
   );
 });
 
-test("global loading overlay waits for route data and grace timer", async ({
+test("global loading overlay skips non-protected grace after route data", async ({
   page,
 }) => {
   await mockCommonApi(page);
-  let releaseDiscover: (() => void) | undefined;
+  let discoverReleased = false;
+  const pendingDiscoverResolvers: Array<() => void> = [];
   await page.route("**/api/feed/discover", async (route) => {
-    await new Promise<void>((resolve) => {
-      releaseDiscover = resolve;
-    });
+    if (!discoverReleased) {
+      await new Promise<void>((resolve) => {
+        pendingDiscoverResolvers.push(resolve);
+      });
+    }
+
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -335,11 +339,83 @@ test("global loading overlay waits for route data and grace timer", async ({
   await expect(overlay).toBeVisible();
   await expect(page.getByRole("heading", { name: "Loading Discover" })).toBeVisible();
 
-  await page.waitForTimeout(1000);
-  releaseDiscover?.();
+  discoverReleased = true;
+  pendingDiscoverResolvers.splice(0).forEach((resolve) => resolve());
   await expect(page.getByRole("heading", { name: "Rising" })).toBeVisible();
-  await expect(overlay).toBeVisible();
-  await expect(overlay).toBeHidden({ timeout: 5000 });
+  await expect(overlay).toBeHidden({ timeout: 1000 });
+});
+
+test("site theme changes mark the root transition state", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("thia.lol.theme", "sunveil");
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: (query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        dispatchEvent: () => false,
+      }),
+    });
+  });
+  await mockCommonApi(page);
+  await page.route("**/api/feed/discover", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { posts: [], activeRooms: [], peopleToWatch: [] },
+      }),
+    }),
+  );
+
+  await page.goto("/discover");
+  await expect(page.getByTestId("page-loading-overlay")).toHaveCount(0);
+
+  const transitionSeen = page.evaluate(
+    () =>
+      new Promise<boolean>((resolve) => {
+        const root = document.documentElement;
+
+        if (root.dataset.themeTransition === "true") {
+          resolve(true);
+          return;
+        }
+
+        const observer = new MutationObserver(() => {
+          if (root.dataset.themeTransition === "true") {
+            observer.disconnect();
+            resolve(true);
+          }
+        });
+
+        observer.observe(root, {
+          attributes: true,
+          attributeFilter: ["data-theme-transition"],
+        });
+
+        window.setTimeout(() => {
+          observer.disconnect();
+          resolve(false);
+        }, 1000);
+      }),
+  );
+
+  await page.getByRole("button", { name: "Switch to Dark mode" }).click();
+
+  expect(await transitionSeen).toBe(true);
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "frostveil");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.dataset.themeTransition ?? "",
+      ),
+    )
+    .toBe("");
 });
 
 test("Discover renders primary sections only when backed by data", async ({

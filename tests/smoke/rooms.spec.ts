@@ -18,6 +18,30 @@ test("/rooms renders API rooms or the real empty state", async ({ page }) => {
     .toBe(true);
 });
 
+test("/rooms keeps the protected loading grace before revealing rooms", async ({
+  page,
+}) => {
+  let releaseRooms: (() => void) | undefined;
+  const roomsResponseDelay = new Promise<void>((resolve) => {
+    releaseRooms = resolve;
+  });
+  await mockRoomCards(page, { roomsResponseDelay });
+
+  await page.goto("/rooms");
+
+  const overlay = page.getByTestId("page-loading-overlay");
+  await expect(overlay).toBeVisible();
+  await expect(
+    overlay.getByRole("heading", { name: "Loading Rooms" }),
+  ).toBeVisible();
+
+  releaseRooms?.();
+  await expect(page.getByTestId("rooms-page")).toBeVisible();
+  await expect(page.getByTestId("room-card").first()).toBeVisible();
+  await expect(overlay).toBeVisible();
+  await expect(overlay).toBeHidden({ timeout: 5000 });
+});
+
 test("clicking a room opens its detail page", async ({ page }) => {
   await mockRoomCards(page);
   await page.goto("/rooms");
@@ -369,7 +393,10 @@ test("rooms do not render retired room copy", async ({ page }) => {
   await expect(page.getByText("demo", { exact: false })).toHaveCount(0);
 });
 
-async function mockRoomCards(page: Page) {
+async function mockRoomCards(
+  page: Page,
+  options: { roomsResponseDelay?: Promise<void> } = {},
+) {
   await page.route("**/api/auth/me", async (route) => {
     await route.fulfill({
       status: 401,
@@ -378,6 +405,7 @@ async function mockRoomCards(page: Page) {
     });
   });
   await page.route(/\/api\/rooms$/, async (route) => {
+    await options.roomsResponseDelay;
     await route.fulfill({
       status: 200,
       contentType: "application/json",
