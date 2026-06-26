@@ -136,6 +136,14 @@ test("profile routes disable site theme controls and use profile contrast for br
     "src",
     /\/brand\/thia-mark-frostveil-96\.png$/,
   );
+  await page.waitForTimeout(250);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        document.documentElement.style.getPropertyValue("--app-canvas").trim(),
+      ),
+    )
+    .toBe("#0D1F29");
 
   await page.getByRole("link", { name: "Discover" }).first().click();
 

@@ -6,6 +6,13 @@ import type {
 } from "./types";
 import { withRootThemeTransition } from "./themeTransitions";
 
+const rootThemeCleanupDelayMs = 80;
+let rootThemeActiveSignature: string | undefined;
+let rootThemeActiveToken: symbol | undefined;
+let rootThemeRestoreDataset: string | undefined;
+let rootThemeRestoreValues: Map<string, string> | undefined;
+let rootThemeCleanupTimer: number | undefined;
+
 export const profileThemeColorKeys: ProfileThemeColorKey[] = [
   "canvas",
   "canvasSoft",
@@ -279,7 +286,7 @@ export function profileThemeColorsToCssProperties(
 export function applyProfileThemeToRoot(
   config: ProfileThemeConfig | null | undefined,
 ): () => void {
-  if (typeof document === "undefined") {
+  if (typeof document === "undefined" || typeof window === "undefined") {
     return () => undefined;
   }
 
@@ -290,38 +297,80 @@ export function applyProfileThemeToRoot(
   }
 
   const root = document.documentElement;
-  const previous = new Map<string, string>();
   const properties = profileThemeColorsToCssProperties(colors);
-  const previousDataset = root.dataset.profileTheme;
+  const signature = JSON.stringify(config ?? null);
+  const token = Symbol("profile-theme-root");
 
-  withRootThemeTransition(() => {
+  if (rootThemeCleanupTimer !== undefined) {
+    window.clearTimeout(rootThemeCleanupTimer);
+    rootThemeCleanupTimer = undefined;
+  }
+
+  if (!rootThemeActiveSignature) {
+    rootThemeRestoreValues = new Map(
+      Object.keys(properties).map((property) => [
+        property,
+        root.style.getPropertyValue(property),
+      ]),
+    );
+    rootThemeRestoreDataset = root.dataset.profileTheme;
+  }
+
+  function applyProperties() {
     Object.entries(properties).forEach(([property, value]) => {
       if (typeof value !== "string") {
         return;
       }
 
-      previous.set(property, root.style.getPropertyValue(property));
       root.style.setProperty(property, value);
     });
     root.dataset.profileTheme = config?.mode ?? "custom";
-  });
+  }
+
+  if (rootThemeActiveSignature === signature) {
+    applyProperties();
+  } else {
+    rootThemeActiveSignature = signature;
+    withRootThemeTransition(applyProperties);
+  }
+
+  rootThemeActiveToken = token;
 
   return () => {
-    withRootThemeTransition(() => {
-      previous.forEach((value, property) => {
-        if (value) {
-          root.style.setProperty(property, value);
+    if (rootThemeActiveToken !== token) {
+      return;
+    }
+
+    rootThemeActiveToken = undefined;
+    rootThemeCleanupTimer = window.setTimeout(() => {
+      if (rootThemeActiveToken) {
+        return;
+      }
+
+      const restoreValues = rootThemeRestoreValues;
+      const restoreDataset = rootThemeRestoreDataset;
+
+      withRootThemeTransition(() => {
+        restoreValues?.forEach((value, property) => {
+          if (value) {
+            root.style.setProperty(property, value);
+          } else {
+            root.style.removeProperty(property);
+          }
+        });
+
+        if (restoreDataset) {
+          root.dataset.profileTheme = restoreDataset;
         } else {
-          root.style.removeProperty(property);
+          delete root.dataset.profileTheme;
         }
       });
 
-      if (previousDataset) {
-        root.dataset.profileTheme = previousDataset;
-      } else {
-        delete root.dataset.profileTheme;
-      }
-    });
+      rootThemeActiveSignature = undefined;
+      rootThemeCleanupTimer = undefined;
+      rootThemeRestoreDataset = undefined;
+      rootThemeRestoreValues = undefined;
+    }, rootThemeCleanupDelayMs);
   };
 }
 
