@@ -2,7 +2,7 @@ import { LockKeyhole, Mail, UserRound, UserPlus } from "lucide-react";
 import { motion } from "motion/react";
 import type { FormEvent } from "react";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { BrandLogoMain } from "../components/BrandLogo";
 import { PageMeta } from "../components/PageMeta";
 import { Badge } from "../components/ui/Badge";
@@ -19,7 +19,11 @@ type AuthPageProps = {
 
 export function AuthPage({ mode }: AuthPageProps) {
   const isRegister = mode === "register";
+  const location = useLocation();
   const navigate = useNavigate();
+  const loginReturnTo = safeLoginReturnTo(
+    new URLSearchParams(location.search).get("returnTo"),
+  );
   const { login, logout, refreshSession, register, status, user } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -54,7 +58,7 @@ export function AuthPage({ mode }: AuthPageProps) {
         }
       }
 
-      navigate(isRegister ? "/onboarding" : "/", { replace: true });
+      navigate(isRegister ? "/onboarding" : loginReturnTo, { replace: true });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Something went wrong.");
     } finally {
@@ -79,7 +83,7 @@ export function AuthPage({ mode }: AuthPageProps) {
         code: stringField(form, "code"),
       });
       await refreshSession();
-      navigate("/", { replace: true });
+      navigate(loginReturnTo, { replace: true });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Code could not be verified.");
     } finally {
@@ -305,4 +309,12 @@ function stringField(form: FormData, name: string, trim = true): string {
 
 function normalizeHandleInput(value: string): string {
   return value.trim().replace(/^@/, "");
+}
+
+function safeLoginReturnTo(value: string | null): string {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return "/";
+  }
+
+  return value;
 }

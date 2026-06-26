@@ -1369,7 +1369,7 @@ test("desktop module spans render with square-cell geometry", async ({ page }) =
   );
 });
 
-test("public visitor continues before Spotify profile music starts", async ({
+test("anonymous visitor can skip Spotify connect before profile music starts", async ({
   page,
 }) => {
   await mockSpotifyIframeApi(page);
@@ -1380,20 +1380,31 @@ test("public visitor continues before Spotify profile music starts", async ({
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  const overlay = page.getByTestId("profile-music-continue-overlay");
-  await expect(overlay).toBeVisible();
+  const prompt = page.getByTestId("profile-spotify-entry-prompt");
+  await expect(prompt).toBeVisible();
+  await expect(page.getByTestId("profile-entry-gate")).toHaveAttribute(
+    "data-profile-entry-gate-mode",
+    "spotify-signin",
+  );
+  await expect(page.getByTestId("profile-spotify-entry-signin-link")).toHaveAttribute(
+    "href",
+    "/login?returnTo=%2F%40thia",
+  );
   await expectSpotifyCustomPlayer(page);
   await expect.poll(() => spotifyPlayCalls(page)).toBe(0);
 
-  const button = page.getByTestId("profile-music-continue-button");
+  const button = page.getByTestId("profile-spotify-entry-skip-button");
   await button.focus();
   await page.keyboard.press("Enter");
 
-  await expect(overlay).toHaveCount(0);
+  await expect(prompt).toHaveCount(0);
   await expect.poll(() => spotifyPlayCalls(page)).toBe(1);
   await expectSpotifyProgress(page, { max: 38, min: 33 }, /1:0\d \/ 3:00/);
   const stored = await page.evaluate(() =>
     window.localStorage.getItem("thia.profile.musicAutoplayConsent.v1:1"),
+  );
+  const spotifySkip = await page.evaluate(() =>
+    window.localStorage.getItem("thia.profile.spotifyConnectPromptSkip.v1:1"),
   );
 
   expect(stored).not.toBeNull();
@@ -1402,9 +1413,14 @@ test("public visitor continues before Spotify profile music starts", async ({
     profileId: 1,
     provider: "spotify",
   });
+  expect(spotifySkip).not.toBeNull();
+  expect(JSON.parse(spotifySkip ?? "{}")).toMatchObject({
+    handle: "thia",
+    profileId: 1,
+  });
 });
 
-test("profile music continue button ignores rapid duplicate clicks", async ({
+test("Spotify entry skip ignores rapid duplicate clicks", async ({
   page,
 }) => {
   await mockSpotifyIframeApi(page);
@@ -1415,19 +1431,27 @@ test("profile music continue button ignores rapid duplicate clicks", async ({
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  const button = page.getByTestId("profile-music-continue-button");
+  const button = page.getByTestId("profile-spotify-entry-skip-button");
   await expect(button).toBeVisible();
 
   await button.dblclick();
 
-  await expect(page.getByTestId("profile-music-continue-overlay")).toHaveCount(0);
+  await expect(page.getByTestId("profile-spotify-entry-prompt")).toHaveCount(0);
   await expect.poll(() => spotifyPlayCalls(page)).toBe(1);
 });
 
-test("stored Spotify music consent skips the continue overlay", async ({
+test("stored Spotify entry skip and music consent skip the entry gate", async ({
   page,
 }) => {
   await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "thia.profile.spotifyConnectPromptSkip.v1:1",
+      JSON.stringify({
+        handle: "thia",
+        profileId: 1,
+        skippedAt: "2026-06-17T00:00:00.000Z",
+      }),
+    );
     window.localStorage.setItem(
       "thia.profile.musicAutoplayConsent.v1:1",
       JSON.stringify({
@@ -1446,13 +1470,15 @@ test("stored Spotify music consent skips the continue overlay", async ({
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
+  await expect(page.getByTestId("profile-entry-gate")).toHaveCount(0);
+  await expect(page.getByTestId("profile-spotify-entry-prompt")).toHaveCount(0);
   await expect(page.getByTestId("profile-music-continue-overlay")).toHaveCount(0);
   await expectSpotifyCustomPlayer(page);
   await expect.poll(() => spotifyPlayCalls(page)).toBe(1);
   await expectSpotifyProgress(page, { max: 38, min: 33 }, /1:0\d \/ 3:00/);
 });
 
-test("invalid Spotify music consent falls back to the continue overlay", async ({
+test("invalid Spotify music consent falls back to the Spotify entry prompt", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -1466,8 +1492,138 @@ test("invalid Spotify music consent falls back to the continue overlay", async (
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await expect(page.getByTestId("profile-music-continue-overlay")).toBeVisible();
+  await expect(page.getByTestId("profile-spotify-entry-prompt")).toBeVisible();
   await expect.poll(() => spotifyPlayCalls(page)).toBe(0);
+});
+
+test("stored Spotify entry skip suppresses the prompt on revisit", async ({
+  page,
+}) => {
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [spotifyArtistModule({ id: 67 })],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expect(page.getByTestId("profile-spotify-entry-prompt")).toBeVisible();
+  await page.getByTestId("profile-spotify-entry-skip-button").click();
+  await expect(page.getByTestId("profile-entry-gate")).toHaveCount(0);
+
+  const spotifySkip = await page.evaluate(() =>
+    window.localStorage.getItem("thia.profile.spotifyConnectPromptSkip.v1:1"),
+  );
+
+  expect(spotifySkip).not.toBeNull();
+  expect(JSON.parse(spotifySkip ?? "{}")).toMatchObject({
+    handle: "thia",
+    profileId: 1,
+  });
+
+  await page.goto("/@thia");
+  await expect(page.getByTestId("profile-entry-gate")).toHaveCount(0);
+  await expect(page.getByTestId("profile-spotify-entry-prompt")).toHaveCount(0);
+});
+
+test("signed-in disconnected visitors can start Spotify OAuth from profile entry", async ({
+  page,
+}) => {
+  let oauthStartPayload: Record<string, unknown> | undefined;
+
+  await mockSpotifyIframeApi(page);
+  await mockProfileModules(page, {
+    authenticated: true,
+    viewerHandle: "viewer",
+    modules: [spotifyEmbedMusicModule()],
+    integrations: {
+      providers: [
+        {
+          provider: "spotify",
+          configured: true,
+          oauthEnabled: true,
+          linkSupported: true,
+          metadataEnabled: true,
+          missingConfigKeys: [],
+        },
+      ],
+      accounts: [],
+    },
+  });
+  await page.route("**/api/me/integrations/spotify/start", async (route) => {
+    oauthStartPayload = (await route.request().postDataJSON()) as Record<
+      string,
+      unknown
+    >;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          provider: "spotify",
+          authorizationUrl: "/@thia?integrationProvider=spotify&integrationStatus=connected",
+          stateExpiresIn: 600,
+        },
+      }),
+    });
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expect(page.getByTestId("profile-spotify-entry-prompt")).toBeVisible();
+  await expect(page.getByTestId("profile-entry-gate")).toHaveAttribute(
+    "data-profile-entry-gate-mode",
+    "spotify-connect",
+  );
+  await page.getByTestId("profile-spotify-entry-connect-button").click();
+
+  await expect
+    .poll(() => oauthStartPayload?.redirectPath)
+    .toBe("/@thia");
+});
+
+test("connected Spotify visitors do not see the OAuth prompt", async ({
+  page,
+}) => {
+  await mockSpotifyIframeApi(page);
+  await mockProfileModules(page, {
+    authenticated: true,
+    viewerHandle: "viewer",
+    modules: [spotifyEmbedMusicModule()],
+    integrations: {
+      providers: [
+        {
+          provider: "spotify",
+          configured: true,
+          oauthEnabled: true,
+          linkSupported: true,
+          metadataEnabled: true,
+          missingConfigKeys: [],
+        },
+      ],
+      accounts: [
+        {
+          provider: "spotify",
+          providerAccountId: "spotify-viewer",
+          providerHandle: "viewer",
+          displayName: "Viewer",
+          avatarUrl: null,
+          scopes: ["user-read-private"],
+          tokenExpiresAt: null,
+          connectedAt: "2026-06-17T00:00:00Z",
+          refreshedAt: null,
+          revokedAt: null,
+          lastError: null,
+          errorAt: null,
+        },
+      ],
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expect(page.getByTestId("profile-spotify-entry-prompt")).toHaveCount(0);
+  await expect(page.getByTestId("profile-music-continue-overlay")).toBeVisible();
 });
 
 test("profile music continue overlay excludes owners and non-Spotify embeds", async ({
@@ -1492,7 +1648,7 @@ test("profile music continue overlay excludes owners and non-Spotify embeds", as
   await expect(page.getByTestId("profile-music-continue-overlay")).toHaveCount(0);
 });
 
-test("profile music continue overlay only follows the first visible music module", async ({
+test("Spotify entry prompt can appear even when autoplay follows the first music module", async ({
   page,
 }) => {
   await mockSpotifyIframeApi(page);
@@ -1506,7 +1662,10 @@ test("profile music continue overlay only follows the first visible music module
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
+  await expect(page.getByTestId("profile-spotify-entry-prompt")).toBeVisible();
   await expect(page.getByTestId("profile-music-continue-overlay")).toHaveCount(0);
+  await page.getByTestId("profile-spotify-entry-skip-button").click();
+  await expect(page.getByTestId("profile-entry-gate")).toHaveCount(0);
   await expectSpotifyCustomPlayer(page);
   await expect.poll(() => spotifyPlayCalls(page)).toBe(0);
 });
@@ -1520,9 +1679,9 @@ test("Spotify playback failure still opens the profile", async ({ page }) => {
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await page.getByTestId("profile-music-continue-button").click();
+  await page.getByTestId("profile-spotify-entry-skip-button").click();
 
-  await expect(page.getByTestId("profile-music-continue-overlay")).toHaveCount(0);
+  await expect(page.getByTestId("profile-entry-gate")).toHaveCount(0);
   await expectSpotifyCustomPlayer(page);
   await expect.poll(() => spotifyPlayCalls(page)).toBe(1);
   await expectSpotifyProgress(page, 0, "Ready");
@@ -5888,6 +6047,7 @@ async function mockProfileModules(
     profileReblogs?: unknown[];
     profileReplies?: unknown[];
     profileRooms?: unknown[];
+    viewerHandle?: string;
   },
 ) {
   let ownerModules = ensureTestBuiltInModules(
@@ -5895,6 +6055,7 @@ async function mockProfileModules(
   );
   let profileOverrides = { ...(options.profileOverrides ?? {}) };
   let canvasDraft = profileCanvasDraftState(ownerModules, profileOverrides);
+  const viewerHandle = options.viewerHandle ?? "thia";
   let nextModuleId = Math.max(
     10,
     ...ownerModules.map((module) =>
@@ -5931,16 +6092,19 @@ async function mockProfileModules(
         data: {
           user: {
             id: 1,
-            handle: "thia",
-            email: "thia@example.test",
+            handle: viewerHandle,
+            email: `${viewerHandle}@example.test`,
             role: "member",
             status: "active",
-            displayName: "Thia",
+            displayName: viewerHandle === "thia" ? "Thia" : "Viewer",
             avatarUrl: null,
           },
           profile: {
-            displayName: "Thia",
-            bio: "Founder profile for thia.lol.",
+            displayName: viewerHandle === "thia" ? "Thia" : "Viewer",
+            bio:
+              viewerHandle === "thia"
+                ? "Founder profile for thia.lol."
+                : "Signed-in visitor.",
             location: "Oslo",
             avatarUrl: null,
             links: [],

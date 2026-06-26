@@ -221,6 +221,58 @@ test("auth pages show compact brand identity without horizontal overflow", async
   }
 });
 
+test("login returnTo accepts internal paths", async ({ page }) => {
+  const authState = { authenticated: false };
+
+  await mockPublicShell(page, { authState });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/login?returnTo=%2F%40thia");
+
+  await page.getByRole("textbox", { name: "Email" }).fill("viewer@example.test");
+  await page.getByLabel("Password").fill("password12345");
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  await expect(page).toHaveURL(/\/@thia$/);
+});
+
+test("login returnTo rejects external paths", async ({ page }) => {
+  const authState = { authenticated: false };
+
+  await mockPublicShell(page, { authState });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/login?returnTo=https%3A%2F%2Fevil.test%2Fprofile");
+
+  await page.getByRole("textbox", { name: "Email" }).fill("viewer@example.test");
+  await page.getByLabel("Password").fill("password12345");
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  await expect(page).toHaveURL(/\/$/);
+  expect(new URL(page.url()).pathname).toBe("/");
+  expect(new URL(page.url()).origin).not.toBe("https://evil.test");
+});
+
+test("two-factor login preserves safe returnTo", async ({ page }) => {
+  const authState = { authenticated: false };
+
+  await mockPublicShell(page, { authState });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/login?returnTo=%2F%40thia%3Ffrom%3Dspotify");
+
+  await page.getByRole("textbox", { name: "Email" }).fill("twofactor@example.test");
+  await page.getByLabel("Password").fill("password12345");
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  await expect(
+    page.getByRole("textbox", { name: "Authenticator or recovery code" }),
+  ).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Authenticator or recovery code" })
+    .fill("123456");
+  await page.getByRole("button", { name: "Verify code" }).click();
+
+  await expect(page).toHaveURL(/\/@thia\?from=spotify$/);
+});
+
 test("mobile primary nav shows one Post affordance and no Admin", async ({ page }) => {
   await mockPublicShell(page);
   await acknowledgeCookieNotice(page);
@@ -734,6 +786,7 @@ async function expectChatHitTargetClear(page: Page) {
 }
 
 type ShellOptions = {
+  authState?: { authenticated: boolean };
   authenticated?: boolean;
   discoverPosts?: ReturnType<typeof makePost>[];
   homePosts?: ReturnType<typeof makePost>[];
@@ -790,45 +843,85 @@ async function mockMusicSuggestionRoutes(
 async function mockShell(
   page: Page,
   {
+    authState,
     authenticated = false,
     discoverPosts = [],
     homePosts = [],
     rooms = [],
   }: ShellOptions = {},
 ) {
+  const currentAuthenticated = () => authState?.authenticated ?? authenticated;
+  const authSession = () => ({
+    ok: true,
+    data: {
+      user: {
+        id: 1,
+        handle: "viewer",
+        email: "viewer@example.test",
+        role: "member",
+        status: "active",
+        displayName: "Viewer",
+        avatarUrl: null,
+      },
+      profile: {
+        displayName: "Viewer",
+        bio: "",
+        location: "",
+        avatarUrl: null,
+        links: [],
+        traits: [],
+      },
+      csrfToken: "test-csrf",
+    },
+  });
+
   await page.route("**/api/auth/me", (route) =>
     route.fulfill({
-      status: authenticated ? 200 : 401,
+      status: currentAuthenticated() ? 200 : 401,
       contentType: "application/json",
       body: JSON.stringify(
-        authenticated
-          ? {
-              ok: true,
-              data: {
-                user: {
-                  id: 1,
-                  handle: "viewer",
-                  email: "viewer@example.test",
-                  role: "member",
-                  status: "active",
-                  displayName: "Viewer",
-                  avatarUrl: null,
-                },
-                profile: {
-                  displayName: "Viewer",
-                  bio: "",
-                  location: "",
-                  avatarUrl: null,
-                  links: [],
-                  traits: [],
-                },
-                csrfToken: "test-csrf",
-              },
-            }
+        currentAuthenticated()
+          ? authSession()
           : { ok: false, error: "Not authenticated." },
       ),
     }),
   );
+
+  if (authState) {
+    await page.route("**/api/auth/login", async (route) => {
+      const payload = (await route.request().postDataJSON()) as {
+        email?: string;
+      };
+
+      if (payload.email === "twofactor@example.test") {
+        await route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true,
+            data: {
+              twoFactorRequired: true,
+              challengeId: "challenge-return",
+            },
+          }),
+        });
+        return;
+      }
+
+      authState.authenticated = true;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: {} }),
+      });
+    });
+
+    await page.route("**/api/auth/2fa/verify", async (route) => {
+      authState.authenticated = true;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(authSession()),
+      });
+    });
+  }
 
   await page.route("**/api/notifications", (route) =>
     route.fulfill({
@@ -871,12 +964,25 @@ async function mockShell(
     }),
   );
 
+  await page.route("**/api/me/integrations", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          providers: [],
+          accounts: [],
+        },
+      }),
+    }),
+  );
+
   await page.route("**/api/feed/home", (route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         ok: true,
-        data: { posts: homePosts, personalized: authenticated },
+        data: { posts: homePosts, personalized: currentAuthenticated() },
       }),
     }),
   );

@@ -78,7 +78,7 @@ import { UserIdentityLink } from "../components/social/UserProfileLink";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Avatar } from "../components/ui/Avatar";
 import { Badge } from "../components/ui/Badge";
-import { Button } from "../components/ui/Button";
+import { Button, ButtonLink } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { ImageCropModal } from "../components/ui/ImageCropModal";
 import { ModalSheet } from "../components/ui/ModalSheet";
@@ -330,6 +330,14 @@ export function ProfilePage() {
     setMusicAutoplayDismissedProfileId,
   ] = useState<number | undefined>(undefined);
   const [musicAutoplayRequestId, setMusicAutoplayRequestId] = useState(0);
+  const [
+    spotifyEntryPromptDismissedProfileId,
+    setSpotifyEntryPromptDismissedProfileId,
+  ] = useState<number | undefined>(undefined);
+  const [spotifyEntryPromptPendingHandle, setSpotifyEntryPromptPendingHandle] =
+    useState<string | undefined>();
+  const [spotifyEntryPromptError, setSpotifyEntryPromptError] =
+    useState<{ handle: string; message: string } | undefined>();
   const [followState, setFollowState] = useState<
     { handle: string; relationship: FollowRelationship } | undefined
   >();
@@ -374,6 +382,12 @@ export function ProfilePage() {
   const normalizedHandle = (handle ?? profileHandle ?? "thia")
     .replace(/^@/, "")
     .toLowerCase();
+  const activeSpotifyEntryPromptPending =
+    spotifyEntryPromptPendingHandle === normalizedHandle;
+  const activeSpotifyEntryPromptError =
+    spotifyEntryPromptError?.handle === normalizedHandle
+      ? spotifyEntryPromptError.message
+      : undefined;
   const isOwnProfile =
     status === "authenticated" &&
     Boolean(user) &&
@@ -412,11 +426,11 @@ export function ProfilePage() {
     return () => {
       void reloadKey;
 
-      return isOwnProfile
+      return status === "authenticated"
         ? getMyProfileIntegrations()
         : Promise.resolve({ providers: [], accounts: [] });
     };
-  }, [integrationReloadKey, isOwnProfile]);
+  }, [integrationReloadKey, status]);
   const profileState = useAsyncData(profileLoader);
   const postsState = useAsyncData(postsLoader);
   const repliesState = useAsyncData(repliesLoader);
@@ -471,6 +485,7 @@ export function ProfilePage() {
   useEffect(() => {
     return applyProfileThemeToRoot(activeProfileThemeConfig);
   }, [activeProfileThemeConfig]);
+
   const musicAutoplayTarget = useMemo(() => {
     if (!profile || canvasEditing || status === "loading" || isOwnProfile) {
       return undefined;
@@ -530,6 +545,66 @@ export function ProfilePage() {
     });
     setMusicAutoplayDismissedProfileId(profile.user.id);
     setMusicAutoplayRequestId((requestId) => requestId + 1);
+  }
+
+  function handleSkipSpotifyEntryPrompt() {
+    if (!profile || !spotifyEntryPromptTarget) {
+      return;
+    }
+
+    writeProfileSpotifyPromptSkip(profileSpotifyPromptSkipKey(profile.user.id), {
+      handle: profile.user.handle,
+      profileId: profile.user.id,
+      skippedAt: new Date().toISOString(),
+    });
+    setSpotifyEntryPromptDismissedProfileId(profile.user.id);
+    setSpotifyEntryPromptError(undefined);
+
+    if (musicAutoplayTarget && !musicAutoplayAllowed) {
+      handleContinueToProfileMusic();
+    }
+  }
+
+  async function handleConnectProfileSpotify() {
+    if (!profile || activeSpotifyEntryPromptPending) {
+      return;
+    }
+
+    setSpotifyEntryPromptPendingHandle(normalizedHandle);
+    setSpotifyEntryPromptError(undefined);
+
+    try {
+      const redirectPath = profileEntryRedirectPath(
+        location.pathname,
+        location.search,
+      );
+      const result = await runWithAuth(
+        (csrfToken) => startProfileIntegration("spotify", csrfToken, redirectPath),
+        { retryOnCsrf: true },
+      );
+
+      if (result.authorizationUrl) {
+        window.location.assign(result.authorizationUrl);
+        return;
+      }
+
+      setSpotifyEntryPromptError({
+        handle: normalizedHandle,
+        message: "Spotify did not return a connection link.",
+      });
+    } catch (error) {
+      setSpotifyEntryPromptError({
+        handle: normalizedHandle,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Could not start Spotify connection.",
+      });
+    } finally {
+      setSpotifyEntryPromptPendingHandle((current) =>
+        current === normalizedHandle ? undefined : current,
+      );
+    }
   }
 
   async function handleFollowToggle() {
@@ -1689,6 +1764,49 @@ export function ProfilePage() {
   const hasVisibleProfileInfoModule = profileCanvasModules.some(
     (module) => module.type === "profile_info",
   );
+  const spotifyEntryPromptTarget =
+    firstProfileSpotifyEntryPromptModule(profileCanvasModules);
+  const spotifyEntryProviderStatus = integrationsState.data?.providers.find(
+    (item) => item.provider === "spotify",
+  );
+  const spotifyEntryConnectedAccount = integrationsState.data?.accounts.find(
+    (item) => item.provider === "spotify" && !item.revokedAt,
+  );
+  const spotifyEntryPromptSkipped = Boolean(
+    spotifyEntryPromptTarget &&
+      (spotifyEntryPromptDismissedProfileId === renderedProfile.user.id ||
+        readProfileSpotifyPromptSkip(
+          profileSpotifyPromptSkipKey(renderedProfile.user.id),
+          renderedProfile.user.id,
+          renderedProfile.user.handle,
+        )),
+  );
+  const spotifyEntryPromptMode: ProfileEntryGateMode | undefined =
+    !spotifyEntryPromptTarget ||
+    canvasEditing ||
+    isOwnProfile ||
+    status === "loading" ||
+    spotifyEntryPromptSkipped
+      ? undefined
+      : status === "anonymous"
+        ? "spotify-signin"
+        : integrationsState.loading
+          ? undefined
+          : spotifyEntryConnectedAccount
+            ? undefined
+            : spotifyEntryProviderStatus?.oauthEnabled
+              ? "spotify-connect"
+              : undefined;
+  const profileEntryGateMode: ProfileEntryGateMode | undefined =
+    spotifyEntryPromptMode ??
+    (musicAutoplayTarget && !musicAutoplayAllowed ? "music" : undefined);
+  const profileEntryGateSignInPath =
+    profileEntryGateMode === "spotify-signin"
+      ? profileEntryLoginPath(
+          profileEntryRedirectPath(location.pathname, location.search),
+        )
+      : undefined;
+
   function renderProfileModuleContent(
     module: ProfileModule,
     size: ProfileGridModuleSize,
@@ -1916,10 +2034,19 @@ export function ProfilePage() {
       ) : null}
         </div>
       </div>
-      {musicAutoplayTarget && !musicAutoplayAllowed ? (
-        <ProfileMusicContinueOverlay
+      {profileEntryGateMode ? (
+        <ProfileEntryGateOverlay
+          connectError={activeSpotifyEntryPromptError}
+          connectPending={activeSpotifyEntryPromptPending}
+          mode={profileEntryGateMode}
           profile={renderedProfile}
-          onContinue={handleContinueToProfileMusic}
+          signInPath={profileEntryGateSignInPath}
+          onConnectSpotify={() => void handleConnectProfileSpotify()}
+          onContinue={
+            profileEntryGateMode === "music"
+              ? handleContinueToProfileMusic
+              : handleSkipSpotifyEntryPrompt
+          }
         />
       ) : null}
       <ImageCropModal
@@ -1949,15 +2076,37 @@ export function ProfilePage() {
   );
 }
 
-function ProfileMusicContinueOverlay({
+type ProfileEntryGateMode = "music" | "spotify-connect" | "spotify-signin";
+
+function ProfileEntryGateOverlay({
+  connectError,
+  connectPending,
+  mode,
+  onConnectSpotify,
   onContinue,
   profile,
+  signInPath,
 }: {
+  connectError?: string | undefined;
+  connectPending?: boolean | undefined;
+  mode: ProfileEntryGateMode;
+  onConnectSpotify: () => void;
   onContinue: () => void;
   profile: Profile;
+  signInPath?: string | undefined;
 }) {
   const continueClickedRef = useRef(false);
   const [continuePending, setContinuePending] = useState(false);
+  const spotifyPrompt = mode !== "music";
+  const title = spotifyPrompt
+    ? "Best with Spotify connected"
+    : "Continue to profile";
+  const text =
+    mode === "spotify-connect"
+      ? "Connect Spotify before entering for the smoothest music experience on this profile."
+      : mode === "spotify-signin"
+        ? "Sign in to connect Spotify before entering, or skip and keep browsing."
+        : "Profile music may start after you continue. Embedded or uploaded music is available on this profile.";
 
   if (typeof document === "undefined") {
     return null;
@@ -1976,28 +2125,78 @@ function ProfileMusicContinueOverlay({
   return createPortal(
     <div
       className="fixed inset-0 z-[95] flex items-center justify-center bg-canvas/72 p-4 backdrop-blur-xl"
-      data-testid="profile-music-continue-overlay"
+      data-profile-entry-gate-mode={mode}
+      data-testid="profile-entry-gate"
     >
-      <div className="w-full max-w-sm rounded-panel border border-line bg-surface/86 p-4 text-center shadow-lift backdrop-blur-veil">
+      <div
+        className="w-full max-w-sm rounded-panel border border-line bg-surface/86 p-4 text-center shadow-lift backdrop-blur-veil"
+        data-testid={
+          spotifyPrompt
+            ? "profile-spotify-entry-prompt"
+            : "profile-music-continue-overlay"
+        }
+      >
         <span className="mx-auto grid size-11 place-items-center rounded-card border border-line bg-canvas/70 text-text">
           <Music2 aria-hidden="true" size={22} />
         </span>
         <p className="mt-3 text-xs font-semibold uppercase text-muted">
           @{profile.user.handle}
         </p>
-        <h2 className="mt-1 text-xl font-semibold text-text">Continue to profile</h2>
+        <h2 className="mt-1 text-xl font-semibold text-text">{title}</h2>
         <p className="mt-2 text-sm leading-6 text-muted">
-          Profile music may start after you continue. Embedded or uploaded music is available on this profile.
+          {text}
         </p>
-        <Button
-          type="button"
-          className="mt-4 w-full justify-center"
-          data-testid="profile-music-continue-button"
-          disabled={continuePending}
-          onClick={handleContinueClick}
-        >
-          Continue to profile
-        </Button>
+        {connectError ? (
+          <p
+            className="mt-3 rounded-card border border-rose/30 bg-rose/12 px-3 py-2 text-sm text-rose-ink"
+            data-testid="profile-spotify-entry-error"
+            role="alert"
+          >
+            {connectError}
+          </p>
+        ) : null}
+        {mode === "spotify-connect" ? (
+          <Button
+            type="button"
+            className="mt-4 w-full justify-center"
+            data-testid="profile-spotify-entry-connect-button"
+            disabled={connectPending}
+            onClick={onConnectSpotify}
+          >
+            {connectPending ? "Opening Spotify" : "Connect Spotify"}
+          </Button>
+        ) : null}
+        {mode === "spotify-signin" ? (
+          <ButtonLink
+            className="mt-4 w-full justify-center"
+            data-testid="profile-spotify-entry-signin-link"
+            to={signInPath ?? "/login"}
+          >
+            Sign in to connect Spotify
+          </ButtonLink>
+        ) : null}
+        {spotifyPrompt ? (
+          <Button
+            type="button"
+            className="mt-2 w-full justify-center"
+            data-testid="profile-spotify-entry-skip-button"
+            disabled={continuePending}
+            variant="secondary"
+            onClick={handleContinueClick}
+          >
+            Skip and continue
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            className="mt-4 w-full justify-center"
+            data-testid="profile-music-continue-button"
+            disabled={continuePending}
+            onClick={handleContinueClick}
+          >
+            Continue to profile
+          </Button>
+        )}
       </div>
     </div>,
     document.body,
@@ -2010,6 +2209,27 @@ type ProfileMusicAutoplayConsent = {
   profileId: number;
   provider: "spotify" | "youtube" | "upload";
 };
+
+type ProfileSpotifyPromptSkip = {
+  handle: string;
+  profileId: number;
+  skippedAt: string;
+};
+
+function firstProfileSpotifyEntryPromptModule(
+  modules: ProfileModule[],
+): ProfileModule | undefined {
+  return modules.find((module) => {
+    const integration = module.config.integration;
+
+    return (
+      module.status === "active" &&
+      module.visibility === "public" &&
+      integration?.provider === "spotify" &&
+      integration.apiBacked === true
+    );
+  });
+}
 
 function firstProfileMusicAutoplayModule(
   modules: ProfileModule[],
@@ -2157,6 +2377,26 @@ function profileMusicAutoplayConsentKey(profileId: number): string {
   return `thia.profile.musicAutoplayConsent.v1:${profileId}`;
 }
 
+function profileSpotifyPromptSkipKey(profileId: number): string {
+  return `thia.profile.spotifyConnectPromptSkip.v1:${profileId}`;
+}
+
+function profileEntryRedirectPath(pathname: string, search: string): string {
+  const params = new URLSearchParams(search);
+
+  params.delete("integrationProvider");
+  params.delete("integrationStatus");
+  params.delete("integrationError");
+
+  const nextSearch = params.toString();
+
+  return nextSearch ? `${pathname}?${nextSearch}` : pathname;
+}
+
+function profileEntryLoginPath(returnTo: string): string {
+  return `/login?returnTo=${encodeURIComponent(returnTo)}`;
+}
+
 function readProfileMusicAutoplayConsent(
   key: string,
   profileId: number,
@@ -2184,6 +2424,50 @@ function readProfileMusicAutoplayConsent(
     );
   } catch {
     return false;
+  }
+}
+
+function readProfileSpotifyPromptSkip(
+  key: string,
+  profileId: number,
+  handle: string,
+): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    const value = window.localStorage.getItem(key);
+
+    if (!value) {
+      return false;
+    }
+
+    const parsed = JSON.parse(value) as Partial<ProfileSpotifyPromptSkip>;
+
+    return (
+      parsed.profileId === profileId &&
+      parsed.handle === handle &&
+      typeof parsed.skippedAt === "string" &&
+      parsed.skippedAt.length > 0
+    );
+  } catch {
+    return false;
+  }
+}
+
+function writeProfileSpotifyPromptSkip(
+  key: string,
+  skip: ProfileSpotifyPromptSkip,
+) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(key, JSON.stringify(skip));
+  } catch {
+    // If localStorage is unavailable, the current skip still applies to this view.
   }
 }
 
