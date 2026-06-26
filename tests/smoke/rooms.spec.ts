@@ -111,6 +111,8 @@ test("Create room button shows for logged-in users", async ({ page }) => {
   await expect(modal.getByLabel("Name")).toBeVisible();
   await expect(modal.getByLabel("Slug")).toBeVisible();
   await expect(modal.getByLabel("Summary")).toBeVisible();
+  await expect(modal.getByTestId("room-theme-trigger")).toBeVisible();
+  await expect(modal.getByLabel("Accent")).toHaveCount(0);
   await expect(modal.getByLabel("Room rules")).toBeVisible();
   await expect(modal.locator("label", { hasText: "Change icon" })).toBeVisible();
   await expect(modal.locator("label", { hasText: "Change banner" })).toBeVisible();
@@ -765,7 +767,8 @@ function mockRoom(overrides: Record<string, unknown> = {}) {
     members: 1,
     memberCount: 1,
     live: false,
-    accent: "var(--accent-sun)",
+    theme: "sunveil",
+    themeConfig: { mode: "preset", preset: "sunveil" },
     iconUrl: null,
     bannerUrl: null,
     rules: "",

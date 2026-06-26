@@ -229,7 +229,9 @@ interface NotificationRow extends RowDataPacket {
   room_mood: string | null;
   room_member_count: number | string | null;
   room_is_live: number | boolean | null;
-  room_accent: string | null;
+  room_theme: string | null;
+  room_theme_config_json: string | null;
+  room_legacy_accent: string | null;
   room_visibility: string | null;
   room_created_by: number | string | null;
   owner_user_id: number | string | null;
@@ -484,6 +486,7 @@ class MysqlPrivateReadsRepository implements PrivateReadsRepository {
 
   async getNotifications(userId: number): Promise<NotificationsPayload> {
     await this.requireTable("notifications", "Notification storage is not ready. Run pending migrations.");
+    const roomThemeSelect = await this.roomThemeSelectSql("r");
 
     const [notificationRows, countRows] = await Promise.all([
       this.pool.execute<NotificationRow[]>(
@@ -513,7 +516,7 @@ class MysqlPrivateReadsRepository implements PrivateReadsRepository {
             r.mood AS room_mood,
             r.member_count AS room_member_count,
             r.is_live AS room_is_live,
-            r.accent AS room_accent,
+            ${roomThemeSelect}
             r.visibility AS room_visibility,
             r.created_by AS room_created_by,
             room_owner.id AS owner_user_id,
@@ -917,6 +920,28 @@ class MysqlPrivateReadsRepository implements PrivateReadsRepository {
     }
   }
 
+  private async roomThemeSelectSql(alias: string): Promise<string> {
+    validateSchemaIdentifier(alias);
+    const [hasThemeColumn, hasThemeConfigColumn, hasLegacyAccentColumn] = await Promise.all([
+      this.columnExists("rooms", "theme"),
+      this.columnExists("rooms", "theme_config_json"),
+      this.columnExists("rooms", "accent"),
+    ]);
+    const legacyAccentSelect = hasLegacyAccentColumn
+      ? `${alias}.accent AS room_legacy_accent,`
+      : "NULL AS room_legacy_accent,";
+
+    if (hasThemeColumn && hasThemeConfigColumn) {
+      return `${alias}.theme AS room_theme,
+            ${alias}.theme_config_json AS room_theme_config_json,
+            ${legacyAccentSelect}`;
+    }
+
+    return `NULL AS room_theme,
+            NULL AS room_theme_config_json,
+            ${legacyAccentSelect}`;
+  }
+
   private tableExists(tableName: string): Promise<boolean> {
     validateSchemaIdentifier(tableName);
 
@@ -1056,7 +1081,9 @@ function notificationRoomPayload(row: NotificationRow): RoomPayload | null {
     room_mood: row.room_mood,
     room_member_count: row.room_member_count,
     room_is_live: row.room_is_live,
-    room_accent: row.room_accent,
+    room_theme: row.room_theme,
+    room_theme_config_json: row.room_theme_config_json,
+    room_legacy_accent: row.room_legacy_accent,
     room_icon_url: null,
     room_banner_url: null,
     room_rules: null,

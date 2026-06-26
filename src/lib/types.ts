@@ -349,7 +349,8 @@ export type Room = {
   members: number;
   memberCount: number;
   live: boolean;
-  accent: string;
+  theme: string | null;
+  themeConfig: ProfileThemeConfig | null;
   iconUrl?: string | null;
   bannerUrl?: string | null;
   rules?: string;
@@ -410,7 +411,7 @@ export type Post = {
   id: number;
   publicId?: string;
   author: User;
-  room: Pick<Room, "slug" | "name" | "accent">;
+  room: Pick<Room, "slug" | "name" | "theme" | "themeConfig">;
   body: string;
   bodyFormat?: "plain" | "markdown";
   contentVersion?: number;
@@ -475,7 +476,7 @@ export type PostShareSummary = {
   mediaPosterUrl?: string | null;
   attachments?: PostAttachment[];
   author: User;
-  room?: Pick<Room, "slug" | "name" | "accent"> | null;
+  room?: Pick<Room, "slug" | "name" | "theme" | "themeConfig"> | null;
 };
 
 export type ChatMessageAttachment =

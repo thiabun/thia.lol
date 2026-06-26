@@ -105,6 +105,10 @@ function profileThemeControlsShouldDisable(pathname: string): boolean {
     return true;
   }
 
+  if (matchPath({ path: "/rooms/:slug", end: true }, pathname)) {
+    return true;
+  }
+
   return Boolean(matchPath({ path: "/@/:handle", end: true }, pathname));
 }
 

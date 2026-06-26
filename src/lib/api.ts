@@ -55,7 +55,7 @@ import {
   profileModuleAllowedSizes,
 } from "./profileModuleRegistry";
 
-type ApiRoom = Room & {
+type ApiRoom = Omit<Room, "theme" | "themeConfig"> & {
   description?: string;
   visibility?: string;
   memberCount?: number;
@@ -63,6 +63,8 @@ type ApiRoom = Room & {
   iconUrl?: string | null;
   bannerUrl?: string | null;
   rules?: string;
+  theme?: string | null;
+  themeConfig?: unknown;
   joinedByMe?: boolean;
   myRoomRole?: Room["myRoomRole"];
   viewerCanViewPosts?: boolean;
@@ -457,7 +459,8 @@ export type RoomInput = {
   slug?: string;
   summary: string;
   mood?: string | null;
-  accent?: string | null;
+  theme?: string | null;
+  themeConfig?: ProfileThemeConfig | null;
   iconUrl?: string | null;
   bannerUrl?: string | null;
   rules?: string | null;
@@ -2032,6 +2035,15 @@ function normalizeRoom(room: ApiRoom): Room {
   const visibility = normalizeRoomVisibility(room.visibility);
   const joinedByMe = room.joinedByMe ?? false;
   const myRoomRole = room.myRoomRole ?? null;
+  const themeConfig = normalizeProfileThemeConfig(room.themeConfig);
+  const theme =
+    typeof room.theme === "string"
+      ? room.theme
+      : themeConfig?.mode === "preset"
+        ? themeConfig.preset
+        : themeConfig?.mode === "custom"
+          ? "custom"
+          : null;
   const viewerCanViewPosts =
     room.viewerCanViewPosts ??
     (visibility === "public" ||
@@ -2055,7 +2067,8 @@ function normalizeRoom(room: ApiRoom): Room {
     members: memberCount,
     memberCount,
     live: room.live ?? false,
-    accent: room.accent || "var(--accent-sun)",
+    theme,
+    themeConfig,
     iconUrl: room.iconUrl ?? null,
     bannerUrl: room.bannerUrl ?? null,
     rules: room.rules ?? "",
@@ -2100,8 +2113,12 @@ function roomInputBody(input: Partial<RoomInput>): Record<string, unknown> {
     body.mood = input.mood?.trim() || null;
   }
 
-  if (input.accent !== undefined) {
-    body.accent = input.accent || undefined;
+  if (input.theme !== undefined) {
+    body.theme = input.theme || null;
+  }
+
+  if (input.themeConfig !== undefined) {
+    body.themeConfig = input.themeConfig ?? null;
   }
 
   if (input.iconUrl !== undefined) {
@@ -3598,11 +3615,12 @@ function normalizePushSubscriptionSummary(
   };
 }
 
-function makeFallbackRoom(): Pick<Room, "slug" | "name" | "accent"> {
+function makeFallbackRoom(): Pick<Room, "slug" | "name" | "theme" | "themeConfig"> {
   return {
     slug: "profile",
     name: "Profile feed",
-    accent: "var(--accent-frost)",
+    theme: null,
+    themeConfig: null,
   };
 }
 

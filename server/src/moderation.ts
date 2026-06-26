@@ -300,6 +300,7 @@ class MariaDbModerationRepository implements ModerationRepository {
   async listAdminRooms(session: RequestSession): Promise<RoomPayload[]> {
     requireModeratorSession(session);
     const deletedSelect = await this.hasColumn("rooms", "deleted_at") ? "rooms.deleted_at IS NULL OR rooms.deleted_at IS NOT NULL" : "1 = 1";
+    const roomThemeSelect = await this.roomThemeSelectSql("rooms");
     const [rows] = await this.pool.execute<RoomRow[]>(
       `SELECT
           rooms.id AS room_id,
@@ -309,7 +310,7 @@ class MariaDbModerationRepository implements ModerationRepository {
           rooms.mood AS room_mood,
           COALESCE(membership_counts.member_count, rooms.member_count, 0) AS room_member_count,
           rooms.is_live AS room_is_live,
-          rooms.accent AS room_accent,
+          ${roomThemeSelect}
           rooms.icon_url AS room_icon_url,
           rooms.banner_url AS room_banner_url,
           rooms.rules AS room_rules,
@@ -639,6 +640,27 @@ class MariaDbModerationRepository implements ModerationRepository {
     );
 
     return numberValue(rows[0]?.value ?? 0) > 0;
+  }
+
+  private async roomThemeSelectSql(alias: string): Promise<string> {
+    const [hasThemeColumn, hasThemeConfigColumn, hasLegacyAccentColumn] = await Promise.all([
+      this.hasColumn("rooms", "theme"),
+      this.hasColumn("rooms", "theme_config_json"),
+      this.hasColumn("rooms", "accent"),
+    ]);
+    const legacyAccentSelect = hasLegacyAccentColumn
+      ? `${alias}.accent AS room_legacy_accent,`
+      : "NULL AS room_legacy_accent,";
+
+    if (hasThemeColumn && hasThemeConfigColumn) {
+      return `${alias}.theme AS room_theme,
+          ${alias}.theme_config_json AS room_theme_config_json,
+          ${legacyAccentSelect}`;
+    }
+
+    return `NULL AS room_theme,
+          NULL AS room_theme_config_json,
+          ${legacyAccentSelect}`;
   }
 }
 

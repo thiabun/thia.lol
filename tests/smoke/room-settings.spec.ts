@@ -51,6 +51,44 @@ test("room edit save uses the API and updates the header", async ({ page }) => {
   );
 });
 
+test("room edit saves room themes and applies them to the room page", async ({ page }) => {
+  const patches: Record<string, unknown>[] = [];
+  let theme: string | null = "sunveil";
+  let themeConfig: unknown = { mode: "preset", preset: "sunveil" };
+
+  await mockOwnedRoom(page, () => "Original room summary.", (payload) => {
+    patches.push(payload);
+    theme = typeof payload.theme === "string" ? payload.theme : null;
+    themeConfig = payload.themeConfig ?? null;
+  }, {
+    theme: () => theme,
+    themeConfig: () => themeConfig,
+  });
+
+  await acknowledgeCookieNotice(page);
+  await page.goto("/rooms/sun-room");
+  await page.getByRole("button", { name: "Edit room" }).click();
+
+  const modal = page.getByTestId("room-edit-modal");
+  await modal.getByTestId("room-theme-trigger").click();
+  await expect(modal.getByTestId("room-theme-popover")).toBeVisible();
+  await modal.getByTestId("room-theme-preset-roseveil").click();
+  await modal.getByRole("button", { name: "Save changes" }).click();
+
+  await expect.poll(() => patches.length).toBe(1);
+  expect(patches[0]).toMatchObject({
+    theme: "roseveil",
+    themeConfig: { mode: "preset", preset: "roseveil" },
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        document.documentElement.style.getPropertyValue("--app-accent").trim(),
+      ),
+    )
+    .toBe("#F48CA2");
+});
+
 test("room moderator controls are gated to owners and admins", async ({ page }) => {
   let addedHandle: string | undefined;
   let removedHandle: string | undefined;
@@ -176,6 +214,8 @@ async function mockOwnedRoom(
     onDeleteRoom?: () => void;
     rules?: () => string;
     visibility?: () => string;
+    theme?: () => string | null;
+    themeConfig?: () => unknown;
   } = {},
 ) {
   await page.route("**/api/auth/me", async (route) => {
@@ -231,7 +271,7 @@ async function mockOwnedRoom(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: [roomBody(summary(), callbacks.rules?.(), callbacks.visibility?.())] }),
+      body: JSON.stringify({ ok: true, data: [roomBody(summary(), callbacks)] }),
     });
   });
 
@@ -246,8 +286,13 @@ async function mockOwnedRoom(
           ok: true,
           data: roomBody(
             String(payload.summary ?? summary()),
-            String(payload.rules ?? callbacks.rules?.() ?? ""),
-            String(payload.visibility ?? callbacks.visibility?.() ?? "public"),
+            {
+              ...callbacks,
+              rules: () => String(payload.rules ?? callbacks.rules?.() ?? ""),
+              visibility: () => String(payload.visibility ?? callbacks.visibility?.() ?? "public"),
+              theme: () => (typeof payload.theme === "string" ? payload.theme : callbacks.theme?.() ?? null),
+              themeConfig: () => payload.themeConfig ?? callbacks.themeConfig?.() ?? null,
+            },
           ),
         }),
       });
@@ -270,7 +315,7 @@ async function mockOwnedRoom(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: roomBody(summary(), callbacks.rules?.(), callbacks.visibility?.()) }),
+      body: JSON.stringify({ ok: true, data: roomBody(summary(), callbacks) }),
     });
   });
 
@@ -352,7 +397,18 @@ function completedOnboardingState() {
   };
 }
 
-function roomBody(summary: string, rules = "Keep it useful.", visibility = "public") {
+function roomBody(
+  summary: string,
+  callbacks: {
+    rules?: () => string;
+    visibility?: () => string;
+    theme?: () => string | null;
+    themeConfig?: () => unknown;
+  } = {},
+) {
+  const theme = callbacks.theme?.() ?? "sunveil";
+  const themeConfig = callbacks.themeConfig?.() ?? { mode: "preset", preset: "sunveil" };
+
   return {
     id: 1,
     slug: "sun-room",
@@ -363,11 +419,12 @@ function roomBody(summary: string, rules = "Keep it useful.", visibility = "publ
     members: 2,
     memberCount: 2,
     live: false,
-    accent: "var(--accent-sun)",
+    theme,
+    themeConfig,
     iconUrl: null,
     bannerUrl: null,
-    rules,
-    visibility,
+    rules: callbacks.rules?.() ?? "Keep it useful.",
+    visibility: callbacks.visibility?.() ?? "public",
     createdBy: 1,
     owner: {
       id: 1,

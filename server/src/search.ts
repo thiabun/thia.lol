@@ -27,6 +27,8 @@ export interface SearchSchemaCapabilities {
   hasUserMutes: boolean;
   hasRoomMemberships: boolean;
   hasRoomCustomizationColumns: boolean;
+  hasRoomThemeColumns: boolean;
+  hasLegacyRoomAccentColumn: boolean;
   hasRoomSoftDeleteColumn: boolean;
   hasRoomAccessRequests: boolean;
 }
@@ -173,7 +175,7 @@ export function buildSearchRoomsQuery(
             rooms.mood AS room_mood,
             ${roomMembershipCountSelectSql(capabilities)}
             rooms.is_live AS room_is_live,
-            rooms.accent AS room_accent,
+            ${roomThemeSelectSql(capabilities)}
             ${roomCustomizationSelectSql(capabilities)}
             rooms.visibility AS room_visibility,
             rooms.created_by AS room_created_by,
@@ -280,6 +282,9 @@ class MysqlSearchRepository implements SearchRepository {
       hasIconUrlColumn,
       hasBannerUrlColumn,
       hasRulesColumn,
+      hasRoomThemeColumn,
+      hasRoomThemeConfigColumn,
+      hasLegacyRoomAccentColumn,
       hasRoomSoftDeleteColumn,
       hasRoomAccessRequests,
     ] = await Promise.all([
@@ -291,6 +296,9 @@ class MysqlSearchRepository implements SearchRepository {
       this.columnExists("rooms", "icon_url"),
       this.columnExists("rooms", "banner_url"),
       this.columnExists("rooms", "rules"),
+      this.columnExists("rooms", "theme"),
+      this.columnExists("rooms", "theme_config_json"),
+      this.columnExists("rooms", "accent"),
       this.columnExists("rooms", "deleted_at"),
       this.tableExists("room_access_requests"),
     ]);
@@ -302,6 +310,8 @@ class MysqlSearchRepository implements SearchRepository {
       hasUserMutes,
       hasRoomMemberships,
       hasRoomCustomizationColumns: hasIconUrlColumn && hasBannerUrlColumn && hasRulesColumn,
+      hasRoomThemeColumns: hasRoomThemeColumn && hasRoomThemeConfigColumn,
+      hasLegacyRoomAccentColumn,
       hasRoomSoftDeleteColumn,
       hasRoomAccessRequests,
     };
@@ -413,6 +423,22 @@ function roomMembershipCountJoinSql(capabilities: SearchSchemaCapabilities): str
             WHERE banned_at IS NULL
             GROUP BY room_id
         ) room_member_counts ON room_member_counts.room_id = rooms.id`;
+}
+
+function roomThemeSelectSql(capabilities: SearchSchemaCapabilities): string {
+  const legacyAccentSelect = capabilities.hasLegacyRoomAccentColumn
+    ? "rooms.accent AS room_legacy_accent,"
+    : "NULL AS room_legacy_accent,";
+
+  if (capabilities.hasRoomThemeColumns) {
+    return `rooms.theme AS room_theme,
+            rooms.theme_config_json AS room_theme_config_json,
+            ${legacyAccentSelect}`;
+  }
+
+  return `NULL AS room_theme,
+            NULL AS room_theme_config_json,
+            ${legacyAccentSelect}`;
 }
 
 function roomCustomizationSelectSql(capabilities: SearchSchemaCapabilities): string {

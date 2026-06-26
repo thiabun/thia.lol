@@ -60,6 +60,8 @@ import { canDeletePost, canHidePost } from "../lib/postPermissions";
 import { formatRelativeTime } from "../lib/dates";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
 import { formatCountWithUnit } from "../lib/pluralize";
+import { applyProfileThemeToRoot } from "../lib/profileThemes";
+import { roomThemeConfig, roomThemeSwatchCssProperties } from "../lib/roomThemes";
 import type { AppShellOutletContext } from "../components/layout/AppShell";
 import type { ImageUploadPurpose, RoomInput } from "../lib/api";
 import type { Post, Room, RoomAccessRequest, RoomMember, RoomVisibility } from "../lib/types";
@@ -108,6 +110,10 @@ export function RoomPage() {
   const [accessRequestsError, setAccessRequestsError] = useState<string | undefined>();
   const [pendingAccessRequestId, setPendingAccessRequestId] = useState<number | undefined>();
   const room = roomOverride?.slug === normalizedSlug ? roomOverride : roomState.data;
+  const activeRoomThemeConfig = useMemo(
+    () => roomThemeConfig(room),
+    [room],
+  );
   const members = room?.viewerCanViewPosts ? membersOverride ?? membersState.data ?? [] : [];
   const canEditRoom =
     Boolean(room) &&
@@ -119,6 +125,10 @@ export function RoomPage() {
     Boolean(room) && (user?.role === "admin" || room?.myRoomRole === "owner");
   const canDeleteRoom =
     Boolean(room) && (user?.role === "admin" || room?.myRoomRole === "owner");
+
+  useEffect(() => {
+    return applyProfileThemeToRoot(activeRoomThemeConfig);
+  }, [activeRoomThemeConfig]);
   const posts = useMemo(
     () => {
       const roomPosts = postsState.data ?? [];
@@ -677,7 +687,7 @@ function RoomHeader({
       <Panel
         className="overflow-hidden"
         data-testid="room-header"
-        style={{ ["--room-accent" as string]: room.accent }}
+        style={roomThemeSwatchCssProperties(room)}
       >
         {room.bannerUrl ? (
           <img alt="" src={room.bannerUrl} className="h-24 w-full object-cover sm:h-28" />
@@ -689,9 +699,9 @@ function RoomHeader({
                 className="grid size-14 shrink-0 place-items-center overflow-hidden rounded-card border bg-canvas/65 shadow-inner-soft sm:size-16"
                 style={{
                   borderColor:
-                    "color-mix(in oklab, var(--room-accent) 42%, var(--app-line))",
+                    "color-mix(in oklab, var(--room-accent) 42%, var(--room-line))",
                   background:
-                    "linear-gradient(135deg, color-mix(in oklab, var(--room-accent) 34%, transparent), var(--app-canvas))",
+                    "linear-gradient(135deg, color-mix(in oklab, var(--room-accent) 34%, transparent), var(--room-canvas))",
                 }}
               >
                 {room.iconUrl ? (

@@ -11,6 +11,7 @@ import {
   cardTap,
   roomCardHover,
 } from "../../lib/motionPresets";
+import { roomThemeSwatchCssProperties } from "../../lib/roomThemes";
 
 type RoomCardProps = {
   room: Room;
@@ -31,7 +32,7 @@ export function RoomCard({ index = 0, room }: RoomCardProps) {
     >
       <Panel
         className="relative h-full overflow-hidden p-3 shadow-none transition duration-fluid ease-fluid group-hover:border-line-strong"
-        style={{ ["--room-accent" as string]: room.accent }}
+        style={roomThemeSwatchCssProperties(room)}
       >
         <span
           aria-hidden="true"
@@ -46,7 +47,7 @@ export function RoomCard({ index = 0, room }: RoomCardProps) {
               className="mt-0.5 grid size-10 shrink-0 place-items-center overflow-hidden rounded-card border border-line bg-canvas/65"
               style={{
                 background:
-                  "linear-gradient(135deg, color-mix(in oklab, var(--room-accent) 38%, transparent), var(--app-surface))",
+                  "linear-gradient(135deg, color-mix(in oklab, var(--room-accent) 38%, transparent), var(--room-surface))",
               }}
             >
               {room.iconUrl ? (

@@ -1,4 +1,9 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
+import {
+  roomThemeConfigPayload,
+  roomThemeFromLegacyAccent,
+  type RoomThemeConfig,
+} from "./room-themes.js";
 
 export type RoomRole = "owner" | "moderator" | "member";
 export type RoomVisibility = "public" | "private" | "invite" | "view_only";
@@ -28,7 +33,8 @@ export interface RoomPayload {
   members: number;
   memberCount: number;
   live: boolean;
-  accent: string;
+  theme: string | null;
+  themeConfig: RoomThemeConfig | null;
   iconUrl: string | null;
   bannerUrl: string | null;
   rules: string;
@@ -65,6 +71,8 @@ export interface RoomsRepository {
 export interface RoomSchemaCapabilities {
   hasRoomMemberships: boolean;
   hasRoomCustomizationColumns: boolean;
+  hasRoomThemeColumns: boolean;
+  hasLegacyRoomAccentColumn: boolean;
   hasRoomSoftDeleteColumn: boolean;
   hasRoomAccessRequests: boolean;
 }
@@ -77,7 +85,9 @@ export interface RoomRow extends RowDataPacket {
   room_mood: string | null;
   room_member_count: number | string | null;
   room_is_live: number | boolean | null;
-  room_accent: string | null;
+  room_theme: string | null;
+  room_theme_config_json: string | null;
+  room_legacy_accent: string | null;
   room_icon_url: string | null;
   room_banner_url: string | null;
   room_rules: string | null;
@@ -126,6 +136,8 @@ const listedRoomVisibilitySql = "('public', 'invite', 'view_only')";
 const defaultRoomSchemaCapabilities: RoomSchemaCapabilities = {
   hasRoomMemberships: true,
   hasRoomCustomizationColumns: true,
+  hasRoomThemeColumns: true,
+  hasLegacyRoomAccentColumn: false,
   hasRoomSoftDeleteColumn: true,
   hasRoomAccessRequests: false,
 };
@@ -191,6 +203,13 @@ export function roomPayloadFromRow(row: RoomRow): RoomPayload {
   const pendingAccessRequestCount = nullableNumberValue(row.room_pending_access_request_count);
   const visibleMemberCount = viewerCanViewPosts ? memberCount : 0;
   const visiblePostCount = viewerCanViewPosts ? numberValue(row.room_post_count) : 0;
+  const rawThemeConfig = roomThemeConfigPayload(row.room_theme_config_json);
+  const theme =
+    nullableStringValue(row.room_theme) ??
+    (rawThemeConfig?.mode === "preset" ? rawThemeConfig.preset : null) ??
+    roomThemeFromLegacyAccent(row.room_legacy_accent);
+  const themeConfig =
+    rawThemeConfig ?? (theme && theme !== "custom" ? { mode: "preset", preset: theme } : null);
 
   const payload: RoomPayload = {
     id: numberValue(row.room_id),
@@ -202,7 +221,8 @@ export function roomPayloadFromRow(row: RoomRow): RoomPayload {
     members: visibleMemberCount,
     memberCount: visibleMemberCount,
     live: booleanValue(row.room_is_live),
-    accent: stringValue(row.room_accent),
+    theme,
+    themeConfig,
     iconUrl: nullableStringValue(row.room_icon_url),
     bannerUrl: nullableStringValue(row.room_banner_url),
     rules: stringValue(row.room_rules),
@@ -365,6 +385,9 @@ class MysqlRoomsRepository implements RoomsRepository {
       hasIconUrlColumn,
       hasBannerUrlColumn,
       hasRulesColumn,
+      hasRoomThemeColumn,
+      hasRoomThemeConfigColumn,
+      hasLegacyRoomAccentColumn,
       hasRoomSoftDeleteColumn,
       hasRoomAccessRequests,
     ] = await Promise.all([
@@ -372,6 +395,9 @@ class MysqlRoomsRepository implements RoomsRepository {
       this.columnExists("rooms", "icon_url"),
       this.columnExists("rooms", "banner_url"),
       this.columnExists("rooms", "rules"),
+      this.columnExists("rooms", "theme"),
+      this.columnExists("rooms", "theme_config_json"),
+      this.columnExists("rooms", "accent"),
       this.columnExists("rooms", "deleted_at"),
       this.tableExists("room_access_requests"),
     ]);
@@ -379,6 +405,8 @@ class MysqlRoomsRepository implements RoomsRepository {
     return {
       hasRoomMemberships,
       hasRoomCustomizationColumns: hasIconUrlColumn && hasBannerUrlColumn && hasRulesColumn,
+      hasRoomThemeColumns: hasRoomThemeColumn && hasRoomThemeConfigColumn,
+      hasLegacyRoomAccentColumn,
       hasRoomSoftDeleteColumn,
       hasRoomAccessRequests,
     };
@@ -429,7 +457,7 @@ function roomSelectSql(
             rooms.mood AS room_mood,
             ${roomMembershipCountSelectSql(capabilities)}
             rooms.is_live AS room_is_live,
-            rooms.accent AS room_accent,
+            ${roomThemeSelectSql(capabilities)}
             ${roomCustomizationSelectSql(capabilities)}
             rooms.visibility AS room_visibility,
             rooms.created_by AS room_created_by,
@@ -569,6 +597,22 @@ function roomMembershipCountJoinSql(capabilities: RoomSchemaCapabilities): strin
             WHERE banned_at IS NULL
             GROUP BY room_id
         ) room_member_counts ON room_member_counts.room_id = rooms.id`;
+}
+
+function roomThemeSelectSql(capabilities: RoomSchemaCapabilities): string {
+  const legacyAccentSelect = capabilities.hasLegacyRoomAccentColumn
+    ? "rooms.accent AS room_legacy_accent,"
+    : "NULL AS room_legacy_accent,";
+
+  if (capabilities.hasRoomThemeColumns) {
+    return `rooms.theme AS room_theme,
+            rooms.theme_config_json AS room_theme_config_json,
+            ${legacyAccentSelect}`;
+  }
+
+  return `NULL AS room_theme,
+            NULL AS room_theme_config_json,
+            ${legacyAccentSelect}`;
 }
 
 function roomCustomizationSelectSql(capabilities: RoomSchemaCapabilities): string {

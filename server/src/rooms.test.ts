@@ -18,6 +18,8 @@ import {
 const fullCapabilities: RoomSchemaCapabilities = {
   hasRoomMemberships: true,
   hasRoomCustomizationColumns: true,
+  hasRoomThemeColumns: true,
+  hasLegacyRoomAccentColumn: false,
   hasRoomSoftDeleteColumn: true,
   hasRoomAccessRequests: true,
 };
@@ -31,7 +33,9 @@ function roomRow(overrides: Partial<RoomRow> = {}): RoomRow {
     room_mood: "warm",
     room_member_count: "12",
     room_is_live: 0,
-    room_accent: "var(--accent-sun)",
+    room_theme: "sunveil",
+    room_theme_config_json: '{"mode":"preset","preset":"sunveil"}',
+    room_legacy_accent: null,
     room_icon_url: "/uploads/rooms/general.png",
     room_banner_url: null,
     room_rules: null,
@@ -76,7 +80,8 @@ describe("room preview payload mapping", () => {
       members: 12,
       memberCount: 12,
       live: false,
-      accent: "var(--accent-sun)",
+      theme: "sunveil",
+      themeConfig: { mode: "preset", preset: "sunveil" },
       iconUrl: "/uploads/rooms/general.png",
       bannerUrl: null,
       rules: "",
@@ -130,6 +135,21 @@ describe("room preview payload mapping", () => {
     expect(payload.postCount).toBe(0);
   });
 
+  it("derives a preset theme from legacy room accents before migration", () => {
+    expect(
+      roomPayloadFromRow(
+        roomRow({
+          room_theme: null,
+          room_theme_config_json: null,
+          room_legacy_accent: "var(--accent-leaf)",
+        }),
+      ),
+    ).toMatchObject({
+      theme: "leafveil",
+      themeConfig: { mode: "preset", preset: "leafveil" },
+    });
+  });
+
   it("normalizes slugs with the same public room constraints as PHP", () => {
     expect(normalizeRoomSlug("General")).toBe("general");
     expect(normalizeRoomSlug("room-123")).toBe("room-123");
@@ -175,11 +195,14 @@ describe("room preview SQL", () => {
     const query = buildPublicRoomsQuery({
       hasRoomMemberships: false,
       hasRoomCustomizationColumns: false,
+      hasRoomThemeColumns: false,
+      hasLegacyRoomAccentColumn: true,
       hasRoomSoftDeleteColumn: false,
       hasRoomAccessRequests: false,
     });
 
     expect(query).toContain("rooms.member_count AS room_member_count");
+    expect(query).toContain("rooms.accent AS room_legacy_accent");
     expect(query).toContain("NULL AS room_icon_url");
     expect(query).not.toContain("room_member_counts");
     expect(query).not.toContain("rooms.deleted_at IS NULL");
@@ -214,6 +237,8 @@ describe("room preview SQL", () => {
       roomStorageReady({
         hasRoomMemberships: true,
         hasRoomCustomizationColumns: true,
+        hasRoomThemeColumns: true,
+        hasLegacyRoomAccentColumn: false,
         hasRoomSoftDeleteColumn: false,
         hasRoomAccessRequests: true,
       }),

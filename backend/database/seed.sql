@@ -127,7 +127,8 @@ INSERT INTO rooms (
   mood,
   member_count,
   is_live,
-  accent,
+  theme,
+  theme_config_json,
   visibility,
   created_by
 )
@@ -139,7 +140,8 @@ VALUES
     'open',
     0,
     1,
-    'var(--accent-sun)',
+    'sunveil',
+    JSON_OBJECT('mode', 'preset', 'preset', 'sunveil'),
     'public',
     @thia_user_id
   ),
@@ -150,7 +152,8 @@ VALUES
     'updates',
     0,
     1,
-    'var(--accent-frost)',
+    'frostveil',
+    JSON_OBJECT('mode', 'preset', 'preset', 'frostveil'),
     'public',
     @thia_user_id
   ),
@@ -161,7 +164,8 @@ VALUES
     'help',
     0,
     0,
-    'var(--accent-leaf)',
+    'leafveil',
+    JSON_OBJECT('mode', 'preset', 'preset', 'leafveil'),
     'public',
     @thia_user_id
   ),
@@ -172,7 +176,8 @@ VALUES
     'media',
     0,
     0,
-    'var(--accent-rose)',
+    'roseveil',
+    JSON_OBJECT('mode', 'preset', 'preset', 'roseveil'),
     'public',
     @thia_user_id
   )
@@ -182,7 +187,8 @@ ON DUPLICATE KEY UPDATE
   mood = VALUES(mood),
   member_count = VALUES(member_count),
   is_live = VALUES(is_live),
-  accent = VALUES(accent),
+  theme = VALUES(theme),
+  theme_config_json = VALUES(theme_config_json),
   visibility = VALUES(visibility),
   created_by = VALUES(created_by),
   updated_at = CURRENT_TIMESTAMP;

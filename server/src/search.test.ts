@@ -18,6 +18,8 @@ const capabilities: SearchSchemaCapabilities = {
   hasUserMutes: true,
   hasRoomMemberships: true,
   hasRoomCustomizationColumns: true,
+  hasRoomThemeColumns: true,
+  hasLegacyRoomAccentColumn: false,
   hasRoomSoftDeleteColumn: true,
   hasRoomAccessRequests: true,
 };
@@ -113,6 +115,8 @@ describe("search preview SQL", () => {
       ...capabilities,
       hasRoomMemberships: false,
       hasRoomCustomizationColumns: false,
+      hasRoomThemeColumns: false,
+      hasLegacyRoomAccentColumn: true,
       hasRoomSoftDeleteColumn: false,
       hasRoomAccessRequests: false,
     });

@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   Hash,
   ImagePlus,
-  Palette,
   Plus,
   Radio,
   Save,
@@ -12,10 +11,11 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button } from "../ui/Button";
-import { HandleField, SelectField, TextareaField, TextField } from "../ui/Field";
+import { HandleField, TextareaField, TextField } from "../ui/Field";
 import { ImageCropModal } from "../ui/ImageCropModal";
 import { ModalSheet, ModalSheetStatus } from "../ui/ModalSheet";
 import { MarkdownEditor } from "./MarkdownEditor";
+import { ThemeAppearanceControl } from "./ThemeAppearanceControl";
 import { UserIdentityLink } from "./UserProfileLink";
 import { prepareImageFileForCrop } from "../../lib/imageCrop";
 import { imageUploadAccept } from "../../lib/mediaFormats";
@@ -24,7 +24,12 @@ import type {
   RoomInput,
   UploadedImage,
 } from "../../lib/api";
-import type { Room, RoomMember, RoomVisibility } from "../../lib/types";
+import type {
+  ProfileThemeConfig,
+  Room,
+  RoomMember,
+  RoomVisibility,
+} from "../../lib/types";
 
 type RoomEditModalProps = {
   mode: "create" | "edit";
@@ -48,7 +53,8 @@ type FormState = {
   name: string;
   slug: string;
   summary: string;
-  accent: string;
+  theme: string | null;
+  themeConfig: ProfileThemeConfig | null;
   iconUrl: string;
   bannerUrl: string;
   rules: string;
@@ -129,7 +135,8 @@ export function RoomEditModal({
       const input: RoomInput = {
         name: form.name,
         summary: form.summary,
-        accent: form.accent || null,
+        theme: form.theme,
+        themeConfig: form.themeConfig,
         iconUrl: form.iconUrl || null,
         bannerUrl: form.bannerUrl || null,
         rules: form.rules || null,
@@ -206,6 +213,19 @@ export function RoomEditModal({
       ...current,
       name: value,
       slug: mode === "create" ? slugFromName(value) : current.slug,
+    }));
+  }
+
+  function applyRoomThemeConfig(config: ProfileThemeConfig | null) {
+    setForm((current) => ({
+      ...current,
+      theme:
+        config?.mode === "preset"
+          ? config.preset
+          : config?.mode === "custom"
+            ? "custom"
+            : null,
+      themeConfig: config,
     }));
   }
 
@@ -351,20 +371,16 @@ export function RoomEditModal({
             onChange={(event) => updateForm("summary", event.currentTarget.value)}
           />
 
-          <SelectField
-            id="room-accent"
-            label="Accent"
-            icon={Palette}
-            value={form.accent}
-            disabled={busy}
-            options={[
-              { value: "var(--accent-sun)", label: "Sunveil" },
-              { value: "var(--accent-frost)", label: "Frostveil" },
-              { value: "var(--accent-leaf)", label: "Leaf" },
-              { value: "var(--accent-rose)", label: "Rose" },
-              { value: "var(--app-accent)", label: "Default" },
-            ]}
-            onChange={(event) => updateForm("accent", event.currentTarget.value)}
+          <ThemeAppearanceControl
+            config={form.themeConfig}
+            controlAttribute="data-room-edit-control"
+            description="Override Sunveil/Frostveil while people view this room."
+            label="Theme"
+            previewTitle={form.name || "Room"}
+            previewSubtitle={`/${form.slug || "room"}`}
+            previewLinkLabel="Room link"
+            testIdKind="room"
+            onChange={applyRoomThemeConfig}
           />
 
           <fieldset className="space-y-2">
@@ -617,7 +633,8 @@ function roomToForm(room: Room | undefined): FormState {
     name: room?.name ?? "",
     slug: room?.slug ?? "",
     summary: room?.summary ?? "",
-    accent: room?.accent || "var(--accent-sun)",
+    theme: room?.theme ?? null,
+    themeConfig: room?.themeConfig ?? null,
     iconUrl: room?.iconUrl ?? "",
     bannerUrl: room?.bannerUrl ?? "",
     rules: room?.rules ?? "",

@@ -35,6 +35,11 @@ import {
   type RoomViewer,
   type UserPayload,
 } from "./rooms.js";
+import {
+  normalizeRoomThemeConfig,
+  validateRoomThemeToken,
+  type RoomThemeConfig,
+} from "./room-themes.js";
 import type { RequestSession } from "./sessions.js";
 
 export class ContentRouteError extends Error {
@@ -340,7 +345,6 @@ interface RoomRecordRow extends RowDataPacket {
   name: string;
   summary: string | null;
   mood: string | null;
-  accent: string | null;
   visibility: string;
   created_by: number | string | null;
   deleted_at: string | null;
@@ -383,14 +387,6 @@ interface ConversationRow extends RowDataPacket {
 }
 
 const reactionTypes = ["glow", "echo", "hush"] as const;
-const roomAccents = new Set([
-  "var(--accent-sun)",
-  "var(--accent-frost)",
-  "var(--accent-leaf)",
-  "var(--accent-rose)",
-  "var(--app-accent)",
-]);
-
 export function createContentMutationsRepository(
   pool: Pool,
   options: ContentMutationsRepositoryOptions,
@@ -1215,11 +1211,13 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
     const capabilities = await this.schemaCapabilities();
 
     this.requireRoomStorage(capabilities);
+    this.requireRoomThemeStorage(capabilities);
+    rejectDeprecatedRoomAccent(body);
     const name = roomText(body.name, "Name", 2, 80);
     const slug = roomSlugFromValue(body.slug, name);
     const summary = roomText(bodyValue(body, "summary", "description"), "Summary", 5, 500);
     const mood = roomOptionalToken(body.mood, "Mood", 40);
-    const accent = roomAccent(body.accent);
+    const theme = roomThemeValues(body, true) ?? { theme: null, themeConfigJson: null };
     const iconUrl = roomUploadUrl(bodyValue(body, "iconUrl", "icon_url"), "Icon URL");
     const bannerUrl = roomUploadUrl(bodyValue(body, "bannerUrl", "banner_url"), "Banner URL");
     const rules = roomOptionalText(body.rules, "Room rules", 3000);
@@ -1228,9 +1226,9 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
     try {
       await this.withTransaction(async (connection) => {
         const [result] = await connection.execute<ResultSetHeader>(
-          `INSERT INTO rooms (slug, name, summary, mood, member_count, is_live, accent, icon_url, banner_url, rules, visibility, created_by)
-           VALUES (?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?)`,
-          [slug, name, summary, mood, accent, iconUrl, bannerUrl, rules, visibility, session.userId],
+          `INSERT INTO rooms (slug, name, summary, mood, member_count, is_live, theme, theme_config_json, icon_url, banner_url, rules, visibility, created_by)
+           VALUES (?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?)`,
+          [slug, name, summary, mood, theme.theme, theme.themeConfigJson, iconUrl, bannerUrl, rules, visibility, session.userId],
         );
         const roomId = result.insertId;
 
@@ -1269,6 +1267,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
 
     const updates: string[] = [];
     const params: Array<number | string | null> = [];
+    rejectDeprecatedRoomAccent(body);
 
     if ("name" in body) {
       updates.push("name = ?");
@@ -1285,9 +1284,13 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       params.push(roomOptionalToken(body.mood, "Mood", 40));
     }
 
-    if ("accent" in body) {
-      updates.push("accent = ?");
-      params.push(roomAccent(body.accent));
+    const themeUpdate = roomThemeValues(body, false);
+    if (themeUpdate) {
+      this.requireRoomThemeStorage(capabilities);
+      updates.push("theme = ?");
+      params.push(themeUpdate.theme);
+      updates.push("theme_config_json = ?");
+      params.push(themeUpdate.themeConfigJson);
     }
 
     if ("iconUrl" in body || "icon_url" in body) {
@@ -2773,7 +2776,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
     }
 
     const [rows] = await this.pool.execute<RoomRecordRow[]>(
-      `SELECT id, slug, name, summary, mood, accent, visibility, created_by, deleted_at
+      `SELECT id, slug, name, summary, mood, visibility, created_by, deleted_at
        FROM rooms
        WHERE slug = ?
          AND deleted_at IS NULL
@@ -2786,7 +2789,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
 
   private async roomRecordById(roomId: number): Promise<RoomRecordRow | null> {
     const [rows] = await this.pool.execute<RoomRecordRow[]>(
-      `SELECT id, slug, name, summary, mood, accent, visibility, created_by, deleted_at
+      `SELECT id, slug, name, summary, mood, visibility, created_by, deleted_at
        FROM rooms
        WHERE id = ?
          AND deleted_at IS NULL
@@ -3189,6 +3192,9 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       hasRoomIconUrlColumn,
       hasRoomBannerUrlColumn,
       hasRoomRulesColumn,
+      hasRoomThemeColumn,
+      hasRoomThemeConfigColumn,
+      hasLegacyRoomAccentColumn,
       hasRoomSoftDeleteColumn,
       hasPostPublicIdColumn,
       hasPostBodyFormatColumn,
@@ -3241,6 +3247,9 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       this.columnExists("rooms", "icon_url"),
       this.columnExists("rooms", "banner_url"),
       this.columnExists("rooms", "rules"),
+      this.columnExists("rooms", "theme"),
+      this.columnExists("rooms", "theme_config_json"),
+      this.columnExists("rooms", "accent"),
       this.columnExists("rooms", "deleted_at"),
       this.columnExists("posts", "public_id"),
       this.columnExists("posts", "body_format"),
@@ -3289,6 +3298,8 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       hasProfileVisibilityColumn,
       hasRoomMemberships,
       hasRoomCustomizationColumns: hasRoomIconUrlColumn && hasRoomBannerUrlColumn && hasRoomRulesColumn,
+      hasRoomThemeColumns: hasRoomThemeColumn && hasRoomThemeConfigColumn,
+      hasLegacyRoomAccentColumn,
       hasRoomSoftDeleteColumn,
       hasPostPublicIdColumn,
       hasPostBodyFormatColumn,
@@ -3358,6 +3369,12 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
   private requireRoomStorage(capabilities: ContentCapabilities): void {
     if (!roomStorageReady(roomCapabilitiesFromContent(capabilities))) {
       throw new ContentStorageNotReadyError("Room membership storage is not ready. Run pending migrations.");
+    }
+  }
+
+  private requireRoomThemeStorage(capabilities: ContentCapabilities): void {
+    if (!capabilities.hasRoomThemeColumns) {
+      throw new ContentStorageNotReadyError("Room theme storage is not ready. Run pending migrations.");
     }
   }
 
@@ -4146,16 +4163,111 @@ function roomSlugFromValue(value: unknown, name: string): string {
   return slug;
 }
 
-function roomAccent(value: unknown): string {
-  if (value === null || value === undefined || value === "") {
-    return "var(--accent-sun)";
+function rejectDeprecatedRoomAccent(body: Record<string, unknown>): void {
+  if ("accent" in body || "room_accent" in body) {
+    throw new ContentRouteError("Room Accent is deprecated. Choose a supported room theme.", 422);
+  }
+}
+
+function roomThemeValues(
+  body: Record<string, unknown>,
+  create: boolean,
+): { theme: string | null; themeConfigJson: string | null } | undefined {
+  const hasTheme = "theme" in body || "roomTheme" in body || "room_theme" in body;
+  const hasThemeConfig =
+    "themeConfig" in body ||
+    "roomThemeConfig" in body ||
+    "theme_config_json" in body ||
+    "room_theme_config_json" in body;
+
+  if (!create && !hasTheme && !hasThemeConfig) {
+    return undefined;
   }
 
-  if (typeof value !== "string" || !roomAccents.has(value)) {
-    throw new ContentRouteError("Choose a supported room accent.", 422);
+  const theme = hasTheme
+    ? roomThemeToken(bodyValue(body, "theme", "roomTheme", "room_theme"))
+    : undefined;
+  const config = hasThemeConfig
+    ? roomThemeConfig(
+        bodyValue(
+          body,
+          "themeConfig",
+          "roomThemeConfig",
+          "theme_config_json",
+          "room_theme_config_json",
+        ),
+      )
+    : undefined;
+
+  if (config === undefined) {
+    if (theme === undefined || theme === null) {
+      return { theme: null, themeConfigJson: null };
+    }
+
+    if (theme === "custom") {
+      throw new ContentRouteError("Custom room theme colors are required.", 422);
+    }
+
+    return {
+      theme,
+      themeConfigJson: JSON.stringify({ mode: "preset", preset: theme }),
+    };
   }
 
-  return value;
+  if (config === null) {
+    if (theme && theme !== "custom") {
+      return {
+        theme,
+        themeConfigJson: JSON.stringify({ mode: "preset", preset: theme }),
+      };
+    }
+
+    return { theme: null, themeConfigJson: null };
+  }
+
+  if (config.mode === "preset") {
+    if (theme && theme !== config.preset) {
+      throw new ContentRouteError("Room theme does not match its saved colors.", 422);
+    }
+
+    return {
+      theme: config.preset,
+      themeConfigJson: JSON.stringify(config),
+    };
+  }
+
+  if (theme && theme !== "custom") {
+    throw new ContentRouteError("Custom room theme must use the custom theme token.", 422);
+  }
+
+  return {
+    theme: "custom",
+    themeConfigJson: JSON.stringify(config),
+  };
+}
+
+function roomThemeToken(value: unknown): string | null | undefined {
+  const normalized = validateRoomThemeToken(value);
+
+  if (normalized !== undefined) {
+    return normalized;
+  }
+
+  if (value === "custom") {
+    return "custom";
+  }
+
+  throw new ContentRouteError("Choose a supported room theme.", 422);
+}
+
+function roomThemeConfig(value: unknown): RoomThemeConfig | null {
+  const normalized = normalizeRoomThemeConfig(value);
+
+  if (normalized === undefined) {
+    throw new ContentRouteError("Room theme config is invalid.", 422);
+  }
+
+  return normalized;
 }
 
 function roomUploadUrl(value: unknown, label: string): string | null {
@@ -4184,13 +4296,11 @@ function roomVisibility(value: unknown): RoomVisibility {
   throw new ContentRouteError("Choose a supported room visibility.", 422);
 }
 
-function bodyValue(body: Record<string, unknown>, primaryKey: string, secondaryKey: string): unknown {
-  if (primaryKey in body) {
-    return body[primaryKey];
-  }
-
-  if (secondaryKey in body) {
-    return body[secondaryKey];
+function bodyValue(body: Record<string, unknown>, primaryKey: string, ...otherKeys: string[]): unknown {
+  for (const key of [primaryKey, ...otherKeys]) {
+    if (key in body) {
+      return body[key];
+    }
   }
 
   return undefined;
@@ -4329,6 +4439,8 @@ function roomCapabilitiesFromContent(capabilities: ContentCapabilities): RoomSch
   return {
     hasRoomMemberships: capabilities.hasRoomMemberships,
     hasRoomCustomizationColumns: capabilities.hasRoomCustomizationColumns,
+    hasRoomThemeColumns: capabilities.hasRoomThemeColumns,
+    hasLegacyRoomAccentColumn: capabilities.hasLegacyRoomAccentColumn,
     hasRoomSoftDeleteColumn: capabilities.hasRoomSoftDeleteColumn,
     hasRoomAccessRequests: capabilities.hasRoomAccessRequests,
   };

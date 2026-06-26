@@ -51,6 +51,7 @@ import { cn } from "../lib/classNames";
 import { pageEntrance } from "../lib/motionPresets";
 import { usePageLoadSignal } from "../lib/pageLoadingContext";
 import { formatCountWithUnit } from "../lib/pluralize";
+import { roomThemeSwatchCssProperties } from "../lib/roomThemes";
 import type { BadgeDefinition, Room, UserBadge } from "../lib/types";
 import { useAuth } from "../lib/useAuth";
 
@@ -1089,7 +1090,10 @@ function AdminRoomRow({ room }: { room: Room }) {
         <div className="flex min-w-0 items-start gap-3">
           <div
             className="mt-1 size-6 shrink-0 rounded-full border border-line"
-            style={{ backgroundColor: room.accent }}
+            style={{
+              ...roomThemeSwatchCssProperties(room),
+              backgroundColor: "var(--room-accent)",
+            }}
             aria-hidden="true"
           />
           <div className="min-w-0">
