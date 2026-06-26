@@ -263,6 +263,15 @@ export function profileThemeColorsToCssProperties(
     "--app-accent": colors.accent,
     "--app-accent-ink": colors.accentInk,
     "--app-accent-strong": colors.accentStrong,
+    "--app-accent-contrast": colors.accentInk,
+    "--accent-sun": colors.accent,
+    "--accent-sun-ink": colors.accentStrong,
+    "--accent-frost": colors.accent,
+    "--accent-frost-ink": colors.accentStrong,
+    "--accent-leaf": colors.accent,
+    "--accent-leaf-ink": colors.accentStrong,
+    "--accent-rose": colors.accent,
+    "--accent-rose-ink": colors.accentStrong,
   } as CSSProperties;
 }
 

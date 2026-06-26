@@ -52,6 +52,10 @@ test("room edit save uses the API and updates the header", async ({ page }) => {
 });
 
 test("room edit saves room themes and applies them to the room page", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("thia.lol.theme", "frostveil");
+  });
+
   const patches: Record<string, unknown>[] = [];
   let theme: string | null = "sunveil";
   let themeConfig: unknown = { mode: "preset", preset: "sunveil" };
@@ -87,6 +91,25 @@ test("room edit saves room themes and applies them to the room page", async ({ p
       ),
     )
     .toBe("#F48CA2");
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        accentContrast: document.documentElement.style
+          .getPropertyValue("--app-accent-contrast")
+          .trim(),
+        leafInk: document.documentElement.style
+          .getPropertyValue("--accent-leaf-ink")
+          .trim(),
+        roseInk: document.documentElement.style
+          .getPropertyValue("--accent-rose-ink")
+          .trim(),
+      })),
+    )
+    .toEqual({
+      accentContrast: "#32131D",
+      leafInk: "#FFB0C2",
+      roseInk: "#FFB0C2",
+    });
 });
 
 test("room moderator controls are gated to owners and admins", async ({ page }) => {

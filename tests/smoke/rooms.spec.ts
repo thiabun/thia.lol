@@ -200,6 +200,49 @@ test("view-only rooms hide posting but keep reaction affordances", async ({ page
   await expect(page.getByTestId("reply-composer")).toHaveCount(0);
 });
 
+test("room themes recolor active post reactions against the saved site theme", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("thia.lol.theme", "frostveil");
+  });
+  await mockViewOnlyRoom(page, {
+    post: {
+      likedByCurrentUser: true,
+      likeCount: 1,
+      rebloggedByMe: true,
+      reblogCount: 1,
+    },
+  });
+  await acknowledgeCookieNotice(page);
+
+  await page.goto("/rooms/read-room");
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        leafInk: document.documentElement.style
+          .getPropertyValue("--accent-leaf-ink")
+          .trim(),
+        roseInk: document.documentElement.style
+          .getPropertyValue("--accent-rose-ink")
+          .trim(),
+      })),
+    )
+    .toEqual({
+      leafInk: "#A56B18",
+      roseInk: "#A56B18",
+    });
+  await expect(page.getByRole("button", { name: /Unlike this post/i })).toHaveCSS(
+    "color",
+    "rgb(165, 107, 24)",
+  );
+  await expect(page.getByRole("button", { name: /Undo reblog/i })).toHaveCSS(
+    "color",
+    "rgb(165, 107, 24)",
+  );
+});
+
 test("rooms footer keeps legal links without the footer brand lockup", async ({ page }) => {
   await mockRoomCards(page);
   await page.goto("/rooms");
@@ -560,7 +603,13 @@ async function mockStaffInviteRoom(page: Page) {
   };
 }
 
-async function mockViewOnlyRoom(page: Page) {
+async function mockViewOnlyRoom(
+  page: Page,
+  options: {
+    post?: Record<string, unknown>;
+    room?: Record<string, unknown>;
+  } = {},
+) {
   const room = mockRoom({
     slug: "read-room",
     name: "Read Room",
@@ -572,6 +621,7 @@ async function mockViewOnlyRoom(page: Page) {
     viewerCanReact: true,
     viewerCanRequestAccess: false,
     accessRequestStatus: null,
+    ...options.room,
   });
 
   await mockAuthenticatedShell(page);
@@ -586,7 +636,7 @@ async function mockViewOnlyRoom(page: Page) {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: [mockPost(room)] }),
+      body: JSON.stringify({ ok: true, data: [mockPost(room, options.post)] }),
     });
   });
   await page.route("**/api/rooms/read-room/members", async (route) => {
@@ -717,7 +767,10 @@ function roomAccessRequest(id: number, handle: string, displayName: string) {
   };
 }
 
-function mockPost(room: Record<string, unknown>) {
+function mockPost(
+  room: Record<string, unknown>,
+  overrides: Record<string, unknown> = {},
+) {
   return {
     id: 501,
     publicId: "pcviewonly501",
@@ -753,6 +806,7 @@ function mockPost(room: Record<string, unknown>) {
       authorRelationship: null,
       likedByFollowedCount: 0,
     },
+    ...overrides,
   };
 }
 

@@ -105,6 +105,29 @@ test("profile routes disable site theme controls and use profile contrast for br
       ),
     )
     .toBe("#0D1F29");
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        accentContrast: document.documentElement.style
+          .getPropertyValue("--app-accent-contrast")
+          .trim(),
+        leafInk: document.documentElement.style
+          .getPropertyValue("--accent-leaf-ink")
+          .trim(),
+        roseInk: document.documentElement.style
+          .getPropertyValue("--accent-rose-ink")
+          .trim(),
+      })),
+    )
+    .toEqual({
+      accentContrast: "#08232D",
+      leafInk: "#92F4F2",
+      roseInk: "#92F4F2",
+    });
+  await expect(page.locator("[data-profile-info-badge='founder']").first()).toHaveCSS(
+    "color",
+    "rgb(146, 244, 242)",
+  );
   await expect(page.locator("html")).toHaveAttribute("data-theme", "sunveil");
   await expect(
     page.getByRole("button", { name: "Profile theme controls this page" }),
@@ -644,6 +667,7 @@ async function expectElementAtPointBelongsTo(
   locator: Locator,
   testIds: string | string[],
 ) {
+  await expect(page.getByTestId("page-loading-overlay")).toHaveCount(0);
   const box = await locator.boundingBox();
   expect(box).not.toBeNull();
 

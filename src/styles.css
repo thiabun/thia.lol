@@ -13,6 +13,7 @@
   --color-accent: var(--app-accent);
   --color-accent-ink: var(--app-accent-ink);
   --color-accent-strong: var(--app-accent-strong);
+  --color-accent-contrast: var(--app-accent-contrast, var(--app-accent-ink));
   --color-warm: var(--accent-sun);
   --color-warm-ink: var(--accent-sun-ink);
   --color-cool: var(--accent-frost);
@@ -47,6 +48,7 @@
   --app-accent: oklch(0.86 0.118 82);
   --app-accent-ink: oklch(0.25 0.042 49);
   --app-accent-strong: oklch(0.52 0.125 58);
+  --app-accent-contrast: var(--app-accent-ink);
   --accent-sun: oklch(0.86 0.118 82);
   --accent-sun-ink: oklch(0.33 0.065 53);
   --accent-frost: oklch(0.72 0.112 213);
@@ -70,6 +72,7 @@
   --app-accent: oklch(0.72 0.13 202);
   --app-accent-ink: oklch(0.14 0.035 235);
   --app-accent-strong: oklch(0.82 0.125 196);
+  --app-accent-contrast: var(--app-accent-ink);
   --accent-sun: oklch(0.82 0.108 78);
   --accent-sun-ink: oklch(0.95 0.028 86);
   --accent-frost: oklch(0.72 0.13 202);
