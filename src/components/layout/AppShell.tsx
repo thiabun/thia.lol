@@ -62,6 +62,7 @@ const legalLinks = [
 
 const bugReportUrl =
   "https://github.com/thiabun/thia.lol/issues/new?template=bug_report.yml";
+const supportUrl = "https://ko-fi.com/thiabun";
 
 const cookieNoticeStorageKey = "thia_cookie_notice_ack";
 type OnboardingGateState = Awaited<ReturnType<typeof getOnboardingState>>;
@@ -722,6 +723,14 @@ function SiteFooter() {
                 {link.label}
               </Link>
             ))}
+            <a
+              href={supportUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium underline-offset-4 transition duration-fluid hover:text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            >
+              Hey, want to support thia.lol?
+            </a>
             <a
               href={bugReportUrl}
               target="_blank"

@@ -2,6 +2,7 @@ import { expect, type Page, test } from "@playwright/test";
 
 const bugReportUrl =
   "https://github.com/thiabun/thia.lol/issues/new?template=bug_report.yml";
+const supportUrl = "https://ko-fi.com/thiabun";
 
 const legalPages = [
   { path: "/terms", heading: "Terms of Service" },
@@ -73,6 +74,9 @@ test("footer and account menu expose legal links discreetly", async ({ page }) =
     "href",
     bugReportUrl,
   );
+  await expect(
+    footerLinks.getByRole("link", { name: "Hey, want to support thia.lol?" }),
+  ).toHaveAttribute("href", supportUrl);
 
   await page.getByRole("button", { name: /account menu/i }).click();
   await expect(page.getByTestId("account-menu")).toBeVisible();
