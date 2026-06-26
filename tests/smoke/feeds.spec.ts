@@ -343,6 +343,8 @@ test("global loading overlay skips non-protected grace after route data", async 
   pendingDiscoverResolvers.splice(0).forEach((resolve) => resolve());
   await expect(page.getByRole("heading", { name: "Rising" })).toBeVisible();
   await expect(overlay).toBeHidden({ timeout: 1000 });
+  await page.waitForTimeout(350);
+  await expect(overlay).toHaveCount(0);
 });
 
 test("site theme changes mark the root transition state", async ({ page }) => {

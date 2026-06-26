@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -13,6 +14,8 @@ import { fluidEase, softSpring } from "./motionPresets";
 import { PageLoadingContext } from "./pageLoadingContext";
 
 const protectedPageLoadingGraceMs = 1500;
+const pageLoadingShowDelayMs = 120;
+const pageLoadingHideDelayMs = 180;
 
 export function PageLoadingProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
@@ -101,9 +104,44 @@ export function PageLoadingProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(() => ({ registerTask }), [registerTask]);
-  const visible =
+  const rawVisible =
     activeTasks.size > 0 ||
     (usesProtectedLoading && (!graceComplete || !routeAssetsReady));
+  const [visible, setVisible] = useState(rawVisible);
+  const visibleRef = useRef(visible);
+
+  useEffect(() => {
+    visibleRef.current = visible;
+  }, [visible]);
+
+  useEffect(() => {
+    if (rawVisible) {
+      if (visibleRef.current) {
+        return undefined;
+      }
+
+      const delay = usesProtectedLoading ? 0 : pageLoadingShowDelayMs;
+      const timer = window.setTimeout(() => {
+        setVisible(true);
+      }, delay);
+
+      return () => {
+        window.clearTimeout(timer);
+      };
+    }
+
+    if (!visibleRef.current) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      setVisible(false);
+    }, pageLoadingHideDelayMs);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [rawVisible, usesProtectedLoading]);
 
   return (
     <PageLoadingContext.Provider value={value}>
