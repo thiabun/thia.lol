@@ -14,3 +14,4 @@ Disallow: /profile-share.php
 Disallow: /room-share.php
 
 Sitemap: https://thia.lol/sitemap.xml
+Sitemap: https://thia.lol/sitemap-gsc.xml

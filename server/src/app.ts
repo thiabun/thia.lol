@@ -1742,6 +1742,7 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
   };
 
   app.get("/sitemap.xml", sitemapHandler);
+  app.get("/sitemap-gsc.xml", sitemapHandler);
   app.get("/sitemap", sitemapHandler);
 
   app.get("/share-card/image", async (request, reply) => {
