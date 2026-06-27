@@ -1,5 +1,12 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
 
+import {
+  postAncestorVisibilityJoinsSql,
+  postAncestorVisibilitySql,
+  publicPostVisibleSql,
+  type ProfileSchemaCapabilities,
+} from "./profiles.js";
+
 export interface SitemapService {
   xml(): Promise<string>;
 }
@@ -111,21 +118,25 @@ class MariaDbSitemapService implements SitemapService {
   }
 
   private async postRows(): Promise<SitemapRow[]> {
-    const profileVisibilityFilter = await this.hasColumn("profiles", "visibility") ? "AND pr.visibility = 'public'" : "";
-    const publicIdSelect = await this.hasColumn("posts", "public_id") ? "p.public_id" : "NULL AS public_id";
-    const roomDeletedFilter = await this.hasColumn("rooms", "deleted_at") ? "AND r.deleted_at IS NULL" : "";
+    const [hasProfileVisibilityColumn, hasPostPublicIdColumn, hasRoomSoftDeleteColumn] = await Promise.all([
+      this.hasColumn("profiles", "visibility"),
+      this.hasColumn("posts", "public_id"),
+      this.hasColumn("rooms", "deleted_at"),
+    ]);
+    const capabilities = { hasRoomSoftDeleteColumn } as ProfileSchemaCapabilities;
+    const profileVisibilityFilter = hasProfileVisibilityColumn ? "AND pr.visibility = 'public'" : "";
+    const publicIdSelect = hasPostPublicIdColumn ? "p.public_id" : "NULL AS public_id";
     const [rows] = await this.pool.execute<SitemapRow[]>(
       `SELECT p.id, ${publicIdSelect}, p.created_at, p.updated_at, u.handle
        FROM posts p
        INNER JOIN users u ON u.id = p.author_id
        INNER JOIN profiles pr ON pr.user_id = u.id
        LEFT JOIN rooms r ON r.id = p.room_id
-       WHERE p.visibility = 'public'
-         AND p.status = 'published'
-         AND p.deleted_at IS NULL
+       ${postAncestorVisibilityJoinsSql("p")}
+       WHERE ${publicPostVisibleSql("p", "r", capabilities)}
          AND u.status = 'active'
          ${profileVisibilityFilter}
-         AND (p.room_id IS NULL OR (r.visibility IN ('public', 'view_only') ${roomDeletedFilter}))
+         AND ${postAncestorVisibilitySql("p", capabilities)}
        ORDER BY p.updated_at DESC
        LIMIT 1000`,
     );
