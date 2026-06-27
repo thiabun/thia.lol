@@ -137,6 +137,7 @@ const jsonRoutes = [
 ];
 
 const headRoutes = [
+  ["/sitemap", 200],
   ["/sitemap.xml", 200],
   ["/api/sitemap.php", 200],
   ["/api/posts/pc359fe2da759/share-card.png", 200],
