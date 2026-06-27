@@ -4019,6 +4019,44 @@ test("direct canvas commit drops unpicked placeholder envelopes", async ({ page 
   ]);
 });
 
+test("direct canvas commit persists a chosen temporary draft module", async ({
+  page,
+}) => {
+  let commitPayload: Record<string, unknown> | undefined;
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+    onCanvasSave: (payload) => {
+      commitPayload = payload;
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-cell-1-10").click();
+  await page.getByTestId("profile-canvas-cell-3-11").click();
+  await expect(page.getByTestId("profile-module-picker")).toBeVisible();
+  await page.getByRole("tab", { name: "Info" }).click();
+  await page.getByTestId("profile-module-picker-text").click();
+  await expect(page.getByTestId("profile-module-settings")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.getByTestId("profile-canvas-save-button").click();
+
+  await expect.poll(() => commitPayload).toBeDefined();
+  const committedModules = commitPayload?.modules as Array<Record<string, unknown>>;
+  const textModule = committedModules.find((module) => module.type === "text");
+  expect(textModule).toBeDefined();
+  expect(textModule?.id).toEqual(expect.any(Number));
+  expect(textModule?.id).not.toBeLessThan(1);
+  expect(textModule).toMatchObject({
+    position: 3,
+    visibility: "hidden",
+    status: "active",
+  });
+});
+
 test("blank draft modules can be pinned moved and deleted in the editor", async ({
   page,
 }) => {

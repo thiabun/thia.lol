@@ -56,6 +56,9 @@ function fakePool(options: FakePoolOptions = {}) {
   const calls: ExecuteCall[] = [];
   let draftJson = options.draftJson;
   let selectedModuleId: string | null = null;
+  let nextInsertedModuleId = 100;
+  const insertedModules: Array<Record<string, unknown>> = [];
+  const placementUpdates: Array<Record<string, unknown>> = [];
   const defaultModuleRows = [
     {
       id: 20,
@@ -80,94 +83,165 @@ function fakePool(options: FakePoolOptions = {}) {
       updated_at: "2026-06-24 12:00:00",
     },
   ];
+  async function execute(query: string, params?: unknown[]) {
+    calls.push({ query, params });
+
+    if (query.includes("INFORMATION_SCHEMA.TABLES")) {
+      return [[{ table_count: tableNames.has(String(params?.[0])) ? 1 : 0 }], undefined];
+    }
+
+    if (query.includes("INFORMATION_SCHEMA.COLUMNS")) {
+      return [[{ column_count: columnNames.has(String(params?.[1])) ? 1 : 0 }], undefined];
+    }
+
+    if (query.includes("SELECT id") && query.includes("WHERE user_id = ?") && query.includes("AND type = ?")) {
+      return [[params?.[1] === "profile_info" ? { id: 10 } : undefined].filter(Boolean), undefined];
+    }
+
+    if (query.includes("COUNT(*) AS module_count") && query.includes("type NOT IN")) {
+      return [[{ module_count: 1 }], undefined];
+    }
+
+    if (query.includes("COUNT(*) AS module_count")) {
+      return [[{ module_count: options.moduleRows?.length ?? defaultModuleRows.length }], undefined];
+    }
+
+    if (query.includes("SELECT profile_background_blur")) {
+      return [
+        [
+          {
+            profile_background_blur: "medium",
+            profile_canvas_version: 2,
+            profile_canvas_glass_opacity: 58,
+          },
+        ],
+        undefined,
+      ];
+    }
+
+    if (query.includes("FROM profile_canvas_drafts")) {
+      return [
+        draftJson === undefined
+          ? []
+          : [
+              {
+                draft_json: draftJson,
+                selected_module_id: selectedModuleId,
+                updated_at: "2026-06-25 10:00:00",
+              },
+            ],
+        undefined,
+      ];
+    }
+
+    if (query.includes("INSERT INTO profile_canvas_drafts")) {
+      draftJson = String(params?.[1] ?? "");
+      selectedModuleId = params?.[2] === null ? null : String(params?.[2]);
+
+      return [{ affectedRows: 1 }, undefined];
+    }
+
+    if (query.includes("DELETE FROM profile_canvas_drafts")) {
+      draftJson = undefined;
+      selectedModuleId = null;
+
+      return [{ affectedRows: 1 }, undefined];
+    }
+
+    if (query.includes("INSERT INTO profile_modules")) {
+      const insertId = nextInsertedModuleId++;
+      insertedModules.push({
+        id: insertId,
+        userId: params?.[0],
+        type: params?.[1],
+        title: params?.[2],
+        configJson: params?.[3],
+        visibility: params?.[4],
+        position: params?.[5],
+        gridColumn: params?.[6],
+        gridRow: params?.[7],
+        gridColSpan: params?.[8],
+        gridRowSpan: params?.[9],
+        gridPinned: params?.[10],
+        status: params?.[11],
+        schemaVersion: params?.[12],
+      });
+
+      return [{ affectedRows: 1, insertId }, undefined];
+    }
+
+    if (query.includes("UPDATE profiles")) {
+      return [{ affectedRows: 1 }, undefined];
+    }
+
+    if (query.includes("UPDATE profile_modules") && query.includes("grid_column")) {
+      placementUpdates.push({
+        column: params?.[0],
+        row: params?.[1],
+        colSpan: params?.[2],
+        rowSpan: params?.[3],
+        pinned: params?.[4],
+        visibility: params?.[5],
+        id: params?.[6],
+        userId: params?.[7],
+      });
+
+      return [{ affectedRows: 1 }, undefined];
+    }
+
+    if (query.includes("DELETE FROM text_entities")) {
+      return [{ affectedRows: 1 }, undefined];
+    }
+
+    if (query.includes("INSERT INTO text_entities")) {
+      return [{ affectedRows: 1, insertId: 1 }, undefined];
+    }
+
+    if (query.includes("FROM profile_integration_metadata_cache")) {
+      return [
+        [
+          {
+            provider: "spotify",
+            resource_type: "track",
+            resource_id: "profile-test",
+            resource_key: "spotify:track:profile-test",
+            source_url: "https://open.spotify.com/track/profile-test",
+            metadata_json: JSON.stringify({
+              title: "Focus track",
+              subtitle: "Spotify track",
+            }),
+            embed_json: JSON.stringify({
+              type: "iframe",
+              src: "https://open.spotify.com/embed/track/profile-test",
+            }),
+            api_backed: 1,
+            fetched_at: "2026-06-24 12:00:00",
+            expires_at: null,
+            stale_at: null,
+            error_message: null,
+          },
+        ],
+        undefined,
+      ];
+    }
+
+    if (query.includes("FROM profile_modules") && query.includes("ORDER BY position ASC, id ASC")) {
+      return [options.moduleRows ?? defaultModuleRows, undefined];
+    }
+
+    throw new Error(`Unhandled fake pool query: ${query}`);
+  }
+
   const pool = {
-    async execute(query: string, params?: unknown[]) {
-      calls.push({ query, params });
-
-      if (query.includes("INFORMATION_SCHEMA.TABLES")) {
-        return [[{ table_count: tableNames.has(String(params?.[0])) ? 1 : 0 }], undefined];
-      }
-
-      if (query.includes("INFORMATION_SCHEMA.COLUMNS")) {
-        return [[{ column_count: columnNames.has(String(params?.[1])) ? 1 : 0 }], undefined];
-      }
-
-      if (query.includes("SELECT id") && query.includes("WHERE user_id = ?") && query.includes("AND type = ?")) {
-        return [[{ id: params?.[1] === "profile_info" ? 10 : 12 }], undefined];
-      }
-
-      if (query.includes("COUNT(*) AS module_count") && query.includes("type NOT IN")) {
-        return [[{ module_count: 1 }], undefined];
-      }
-
-      if (query.includes("SELECT profile_background_blur")) {
-        return [
-          [
-            {
-              profile_background_blur: "medium",
-              profile_canvas_version: 2,
-              profile_canvas_glass_opacity: 58,
-            },
-          ],
-          undefined,
-        ];
-      }
-
-      if (query.includes("FROM profile_canvas_drafts")) {
-        return [
-          draftJson === undefined
-            ? []
-            : [
-                {
-                  draft_json: draftJson,
-                  selected_module_id: selectedModuleId,
-                  updated_at: "2026-06-25 10:00:00",
-                },
-              ],
-          undefined,
-        ];
-      }
-
-      if (query.includes("INSERT INTO profile_canvas_drafts")) {
-        draftJson = String(params?.[1] ?? "");
-        selectedModuleId = params?.[2] === null ? null : String(params?.[2]);
-
-        return [{ affectedRows: 1 }, undefined];
-      }
-
-      if (query.includes("FROM profile_integration_metadata_cache")) {
-        return [
-          [
-            {
-              provider: "spotify",
-              resource_type: "track",
-              resource_id: "profile-test",
-              resource_key: "spotify:track:profile-test",
-              source_url: "https://open.spotify.com/track/profile-test",
-              metadata_json: JSON.stringify({
-                title: "Focus track",
-                subtitle: "Spotify track",
-              }),
-              embed_json: JSON.stringify({
-                type: "iframe",
-                src: "https://open.spotify.com/embed/track/profile-test",
-              }),
-              api_backed: 1,
-              fetched_at: "2026-06-24 12:00:00",
-              expires_at: null,
-              stale_at: null,
-              error_message: null,
-            },
-          ],
-          undefined,
-        ];
-      }
-
-      if (query.includes("FROM profile_modules") && query.includes("ORDER BY position ASC, id ASC")) {
-        return [options.moduleRows ?? defaultModuleRows, undefined];
-      }
-
-      throw new Error(`Unhandled fake pool query: ${query}`);
+    execute,
+    async getConnection() {
+      return {
+        execute,
+        async beginTransaction() {},
+        async commit() {},
+        async rollback() {},
+        release() {},
+      };
     },
   };
 
@@ -175,6 +249,8 @@ function fakePool(options: FakePoolOptions = {}) {
     calls,
     pool,
     draftJson: () => draftJson,
+    insertedModules,
+    placementUpdates,
   };
 }
 
@@ -187,11 +263,67 @@ function profileInfoPayload(position: number) {
     visibility: "public",
     position,
     pinned: false,
-    layout: null,
+    layout: {
+      column: 1,
+      row: 1,
+      colSpan: 4,
+      rowSpan: 3,
+    },
     status: "active",
     schemaVersion: 1,
     createdAt: "2026-06-24 11:00:00",
     updatedAt: "2026-06-24 12:00:00",
+  };
+}
+
+function draftCustomTextPayload() {
+  return {
+    id: -1000,
+    type: "custom_text",
+    title: null,
+    config: {
+      body: "Draft note",
+      configured: true,
+    },
+    visibility: "public",
+    position: 2,
+    pinned: true,
+    layout: {
+      column: 3,
+      row: 4,
+      colSpan: 2,
+      rowSpan: 2,
+    },
+    status: "active",
+    schemaVersion: 1,
+    createdAt: null,
+    updatedAt: null,
+  };
+}
+
+function draftPlaceholderPayload() {
+  return {
+    id: -1001,
+    type: "placeholder",
+    title: null,
+    config: {
+      canvasSize: "2x2",
+      configured: false,
+      placeholder: true,
+    },
+    visibility: "draft",
+    position: 2,
+    pinned: false,
+    layout: {
+      column: 3,
+      row: 4,
+      colSpan: 2,
+      rowSpan: 2,
+    },
+    status: "active",
+    schemaVersion: 1,
+    createdAt: null,
+    updatedAt: null,
   };
 }
 
@@ -282,5 +414,63 @@ describe("editor profile module payloads", () => {
       modules?: Array<{ position?: unknown }>;
     };
     expect(savedDraft.modules?.[0]?.position).toBe(1);
+  });
+
+  it("creates chosen canvas draft modules before applying placements", async () => {
+    const { insertedModules, placementUpdates, pool } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [profileInfoPayload(1), draftCustomTextPayload()],
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(0)],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await repository.commitCanvasDraft(session);
+
+    expect(insertedModules).toHaveLength(1);
+    expect(insertedModules[0]).toMatchObject({
+      id: 100,
+      type: "custom_text",
+      visibility: "public",
+      position: 2,
+      gridColumn: 3,
+      gridRow: 4,
+      gridColSpan: 2,
+      gridRowSpan: 2,
+      gridPinned: 1,
+      status: "active",
+    });
+    expect(placementUpdates.map((update) => update.id)).toEqual([10, 100]);
+    expect(placementUpdates.at(-1)).toMatchObject({
+      column: 3,
+      row: 4,
+      colSpan: 2,
+      rowSpan: 2,
+      pinned: 1,
+      visibility: "public",
+    });
+  });
+
+  it("drops unpicked placeholder draft modules during commit", async () => {
+    const { insertedModules, placementUpdates, pool } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [profileInfoPayload(1), draftPlaceholderPayload()],
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(0)],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await repository.commitCanvasDraft(session);
+
+    expect(insertedModules).toHaveLength(0);
+    expect(placementUpdates.map((update) => update.id)).toEqual([10]);
   });
 });

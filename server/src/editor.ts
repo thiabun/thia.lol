@@ -71,6 +71,7 @@ const profileModuleTypes = new Set([
   "gallery_slideshow",
   "gallery_feed",
 ]);
+const draftProfileModuleTypes = new Set([...profileModuleTypes, "placeholder"]);
 const singletonModuleTypes = new Set(["profile_info", "featured_post", "featured_room", "activity"]);
 const protectedModuleTypes = new Set(["profile_info"]);
 const moduleVisibilities = new Set(["public", "hidden", "draft"]);
@@ -696,6 +697,34 @@ class MysqlEditorRepository implements EditorRepository {
     this.requireProfileCanvas(capabilities);
     this.requireProfileCanvasDrafts(capabilities);
     const state = await this.rawCanvasDraftState(session.userId);
+    const modulesForCommit = canvasDraftModulesForCommit(state.modules);
+    const newDraftModules = modulesForCommit.filter(
+      (module) => !isPersistedModuleId(module.id),
+    );
+
+    if (
+      newDraftModules.length > 0 &&
+      (await this.activeModuleCount(session.userId)) + newDraftModules.length >
+        profileModuleMaxPerProfile
+    ) {
+      throw new EditorRouteError("Profiles can have up to 8 modules.", 422);
+    }
+
+    for (const module of newDraftModules) {
+      if (
+        singletonModuleTypes.has(module.type) &&
+        (await this.singletonModuleExists(session.userId, module.type))
+      ) {
+        throw new EditorRouteError(`${moduleTypeLabel(module.type)} module already exists.`, 422);
+      }
+    }
+
+    const textEntityUpdates: Array<{
+      moduleId: number;
+      config: Record<string, unknown>;
+      visibility: string;
+      status: string;
+    }> = [];
 
     await this.withTransaction(async (connection) => {
       await connection.execute<ResultSetHeader>(
@@ -708,10 +737,67 @@ class MysqlEditorRepository implements EditorRepository {
         [state.backgroundBlur, profileCanvasVersion, state.canvasGlass, session.userId],
       );
 
-      const placements = validateCanvasPlacements(state.modules);
+      const committedModules = [...modulesForCommit];
+
+      for (const [index, module] of committedModules.entries()) {
+        if (isPersistedModuleId(module.id)) {
+          continue;
+        }
+
+        const visibility = canvasCommitModuleVisibility(module);
+        const status = canvasCommitModuleStatus(module);
+        const [insert] = await connection.execute<ResultSetHeader>(
+          `INSERT INTO profile_modules
+              (user_id, type, title, config_json, visibility, position,
+               grid_column, grid_row, grid_col_span, grid_row_span, grid_pinned,
+               status, schema_version)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            session.userId,
+            module.type,
+            module.title,
+            JSON.stringify(module.config),
+            visibility,
+            module.position,
+            module.layout?.column ?? null,
+            module.layout?.row ?? null,
+            module.layout?.colSpan ?? null,
+            module.layout?.rowSpan ?? null,
+            module.pinned ? 1 : 0,
+            status,
+            profileModuleSchemaVersion,
+          ],
+        );
+
+        committedModules[index] = {
+          ...module,
+          id: insert.insertId,
+          visibility,
+          status,
+        };
+        textEntityUpdates.push({
+          moduleId: insert.insertId,
+          config: module.config,
+          visibility,
+          status,
+        });
+      }
+
+      const placements = validateCanvasPlacements(
+        committedModules.filter((module) => module.layout !== null),
+      );
       await this.applyCanvasPlacements(connection, session.userId, placements);
       await connection.execute<ResultSetHeader>(`DELETE FROM profile_canvas_drafts WHERE user_id = ?`, [session.userId]);
     });
+
+    for (const update of textEntityUpdates) {
+      await this.storeModuleTextEntities(
+        update.moduleId,
+        update.config,
+        update.visibility,
+        update.status,
+      );
+    }
 
     return this.canvasUpdatePayload(session.userId);
   }
@@ -2302,6 +2388,14 @@ function validateModuleType(value: unknown): string {
   return value;
 }
 
+function validateDraftModuleType(value: unknown): string {
+  if (typeof value !== "string" || !draftProfileModuleTypes.has(value)) {
+    throw new EditorRouteError("Profile module type is invalid.", 422);
+  }
+
+  return value;
+}
+
 function validateModuleTitle(value: unknown): string | null {
   return validateNullableText(value ?? null, 80, "Module title");
 }
@@ -2403,7 +2497,7 @@ function validateDraftModules(value: unknown): ProfileModulePayload[] {
 
     return {
       id: typeof record.id === "number" && Number.isInteger(record.id) ? record.id : -1 - index,
-      type: validateModuleType(record.type),
+      type: validateDraftModuleType(record.type),
       title: validateModuleTitle(record.title),
       config: validateModuleConfig(record.config),
       visibility: validateModuleVisibility(record.visibility ?? "public"),
@@ -2423,6 +2517,36 @@ function validateDraftModules(value: unknown): ProfileModulePayload[] {
       updatedAt: stringOrNull(record.updatedAt),
     };
   });
+}
+
+function canvasDraftModulesForCommit(
+  modules: ProfileModulePayload[],
+): ProfileModulePayload[] {
+  return modules.filter(
+    (module) => module.status !== "deleted" && module.type !== "placeholder",
+  );
+}
+
+function isPersistedModuleId(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+function canvasCommitModuleVisibility(module: ProfileModulePayload): string {
+  if (module.type === "profile_info") {
+    return "public";
+  }
+
+  if (module.visibility === "draft" || module.config.configured === false) {
+    return "hidden";
+  }
+
+  return validateModuleVisibility(module.visibility ?? "public");
+}
+
+function canvasCommitModuleStatus(module: ProfileModulePayload): string {
+  const status = validateModuleStatus(module.status ?? "active");
+
+  return status === "deleted" ? "active" : status;
 }
 
 function normalizeDraftModulePositions(
