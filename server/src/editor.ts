@@ -11,6 +11,7 @@ import {
   buildProfileByHandleQuery,
   profileBadgesPayloadFromRows,
   profileIntegrationCachePayload,
+  profileIntegrationGeneratedCardPayload,
   profileIntegrationNormalizeUrl,
   profileModuleLayoutPayload,
   profilePayloadWithFeatured,
@@ -545,6 +546,23 @@ class MysqlEditorRepository implements EditorRepository {
        WHERE id = ?`,
       [moduleId],
     );
+    if (module.type === "featured_post") {
+      await this.pool.execute<ResultSetHeader>(
+        `UPDATE profiles
+         SET featured_post_id = NULL,
+             updated_at = CURRENT_TIMESTAMP()
+         WHERE user_id = ?`,
+        [session.userId],
+      );
+    } else if (module.type === "featured_room") {
+      await this.pool.execute<ResultSetHeader>(
+        `UPDATE profiles
+         SET featured_room_id = NULL,
+             updated_at = CURRENT_TIMESTAMP()
+         WHERE user_id = ?`,
+        [session.userId],
+      );
+    }
     await this.deleteTextEntities("profile_module", moduleId, "body");
 
     return this.modulesForOwner(session.userId, false);
@@ -697,15 +715,19 @@ class MysqlEditorRepository implements EditorRepository {
     this.requireProfileCanvas(capabilities);
     this.requireProfileCanvasDrafts(capabilities);
     const state = await this.rawCanvasDraftState(session.userId);
-    const modulesForCommit = canvasDraftModulesForCommit(state.modules);
+    const deletedPersistedModules = canvasDraftPersistedModulesForDelete(state.modules);
+    const modulesForCommit = normalizeDraftModulePositions(canvasDraftModulesForCommit(state.modules));
     const newDraftModules = modulesForCommit.filter(
       (module) => !isPersistedModuleId(module.id),
+    );
+    const activeCountAfterDeletes = Math.max(
+      0,
+      (await this.activeModuleCount(session.userId)) - deletedPersistedModules.length,
     );
 
     if (
       newDraftModules.length > 0 &&
-      (await this.activeModuleCount(session.userId)) + newDraftModules.length >
-        profileModuleMaxPerProfile
+      activeCountAfterDeletes + newDraftModules.length > profileModuleMaxPerProfile
     ) {
       throw new EditorRouteError("Profiles can have up to 8 modules.", 422);
     }
@@ -725,6 +747,7 @@ class MysqlEditorRepository implements EditorRepository {
       visibility: string;
       status: string;
     }> = [];
+    const deletedTextEntityModuleIds: number[] = [];
 
     await this.withTransaction(async (connection) => {
       await connection.execute<ResultSetHeader>(
@@ -739,13 +762,33 @@ class MysqlEditorRepository implements EditorRepository {
 
       const committedModules = [...modulesForCommit];
 
+      for (const module of deletedPersistedModules) {
+        await this.softDeleteCanvasDraftModule(connection, session.userId, module);
+        deletedTextEntityModuleIds.push(module.id);
+      }
+
       for (const [index, module] of committedModules.entries()) {
+        const visibility = canvasCommitModuleVisibility(module);
+        const status = canvasCommitModuleStatus(module);
+        const committedModule = {
+          ...module,
+          visibility,
+          status,
+          position: index + 1,
+        };
+
         if (isPersistedModuleId(module.id)) {
+          committedModules[index] = committedModule;
+          await this.updateCanvasDraftModule(connection, session.userId, committedModule);
+          textEntityUpdates.push({
+            moduleId: module.id,
+            config: module.config,
+            visibility,
+            status,
+          });
           continue;
         }
 
-        const visibility = canvasCommitModuleVisibility(module);
-        const status = canvasCommitModuleStatus(module);
         const [insert] = await connection.execute<ResultSetHeader>(
           `INSERT INTO profile_modules
               (user_id, type, title, config_json, visibility, position,
@@ -758,7 +801,7 @@ class MysqlEditorRepository implements EditorRepository {
             module.title,
             JSON.stringify(module.config),
             visibility,
-            module.position,
+            committedModule.position,
             module.layout?.column ?? null,
             module.layout?.row ?? null,
             module.layout?.colSpan ?? null,
@@ -770,10 +813,8 @@ class MysqlEditorRepository implements EditorRepository {
         );
 
         committedModules[index] = {
-          ...module,
+          ...committedModule,
           id: insert.insertId,
-          visibility,
-          status,
         };
         textEntityUpdates.push({
           moduleId: insert.insertId,
@@ -783,12 +824,12 @@ class MysqlEditorRepository implements EditorRepository {
         });
       }
 
-      const placements = validateCanvasPlacements(
-        committedModules.filter((module) => module.layout !== null),
-      );
-      await this.applyCanvasPlacements(connection, session.userId, placements);
       await connection.execute<ResultSetHeader>(`DELETE FROM profile_canvas_drafts WHERE user_id = ?`, [session.userId]);
     });
+
+    for (const moduleId of deletedTextEntityModuleIds) {
+      await this.deleteTextEntities("profile_module", moduleId, "body");
+    }
 
     for (const update of textEntityUpdates) {
       await this.storeModuleTextEntities(
@@ -1395,7 +1436,81 @@ class MysqlEditorRepository implements EditorRepository {
     );
     const row = rows[0];
 
-    return row === undefined ? null : profileIntegrationCachePayload(row);
+    return row === undefined ? profileIntegrationGeneratedCardPayload(normalized) : profileIntegrationCachePayload(row);
+  }
+
+  private async softDeleteCanvasDraftModule(
+    connection: PoolConnection,
+    userId: number,
+    module: ProfileModulePayload,
+  ): Promise<void> {
+    await connection.execute<ResultSetHeader>(
+      `UPDATE profile_modules
+       SET status = 'deleted',
+           visibility = 'hidden',
+           updated_at = CURRENT_TIMESTAMP()
+       WHERE id = ?
+         AND user_id = ?
+         AND type <> 'profile_info'`,
+      [module.id, userId],
+    );
+
+    if (module.type === "featured_post") {
+      await connection.execute<ResultSetHeader>(
+        `UPDATE profiles
+         SET featured_post_id = NULL,
+             updated_at = CURRENT_TIMESTAMP()
+         WHERE user_id = ?`,
+        [userId],
+      );
+    } else if (module.type === "featured_room") {
+      await connection.execute<ResultSetHeader>(
+        `UPDATE profiles
+         SET featured_room_id = NULL,
+             updated_at = CURRENT_TIMESTAMP()
+         WHERE user_id = ?`,
+        [userId],
+      );
+    }
+  }
+
+  private async updateCanvasDraftModule(
+    connection: PoolConnection,
+    userId: number,
+    module: ProfileModulePayload,
+  ): Promise<void> {
+    await connection.execute<ResultSetHeader>(
+      `UPDATE profile_modules
+       SET title = ?,
+           config_json = ?,
+           visibility = ?,
+           position = ?,
+           grid_column = ?,
+           grid_row = ?,
+           grid_col_span = ?,
+           grid_row_span = ?,
+           grid_pinned = ?,
+           status = ?,
+           schema_version = ?,
+           updated_at = CURRENT_TIMESTAMP()
+       WHERE id = ?
+         AND user_id = ?`,
+      [
+        module.title,
+        JSON.stringify(module.config),
+        module.visibility,
+        module.position,
+        module.layout?.column ?? null,
+        module.layout?.row ?? null,
+        module.layout?.colSpan ?? null,
+        module.layout?.rowSpan ?? null,
+        module.pinned ? 1 : 0,
+        module.status,
+        profileModuleSchemaVersion,
+        module.id,
+        userId,
+      ],
+    );
   }
 
   private async applyCanvasPlacements(
@@ -2523,7 +2638,20 @@ function canvasDraftModulesForCommit(
   modules: ProfileModulePayload[],
 ): ProfileModulePayload[] {
   return modules.filter(
-    (module) => module.status !== "deleted" && module.type !== "placeholder",
+    (module) =>
+      module.type !== "placeholder" &&
+      (module.status !== "deleted" || module.type === "profile_info"),
+  );
+}
+
+function canvasDraftPersistedModulesForDelete(
+  modules: ProfileModulePayload[],
+): ProfileModulePayload[] {
+  return modules.filter(
+    (module) =>
+      isPersistedModuleId(module.id) &&
+      module.status === "deleted" &&
+      module.type !== "profile_info",
   );
 }
 

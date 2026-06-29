@@ -9,10 +9,14 @@ import {
   followUserCardPayloadFromRow,
   normalizeProfileHandle,
   profileBadgesPayloadFromRows,
+  profileIntegrationCachePayload,
+  profileIntegrationGeneratedCardPayload,
+  profileIntegrationNormalizeUrl,
   profileModuleLayoutPayload,
   profilePayloadFromRow,
   profilePayloadWithFeatured,
   type FollowUserRow,
+  type ProfileIntegrationCacheRow,
   type ProfileModuleRow,
   type ProfileRow,
   type ProfileSchemaCapabilities,
@@ -511,5 +515,60 @@ describe("profile preview SQL", () => {
     expect(query).not.toContain("account_deletion_requests");
     expect(query).not.toContain("pair_blocks");
     expect(query).not.toContain("profile_rooms.deleted_at IS NULL");
+  });
+});
+
+describe("profile integration payloads", () => {
+  it("generates YouTube iframe embeds when cached rows have empty embed JSON", () => {
+    const payload = profileIntegrationCachePayload({
+      provider: "youtube",
+      resource_type: "video",
+      resource_id: "watch123",
+      resource_key: "youtube:video:watch123",
+      source_url: "https://www.youtube.com/watch?v=watch123",
+      metadata_json: JSON.stringify({
+        title: "Build log",
+        subtitle: "YouTube",
+      }),
+      embed_json: null,
+      api_backed: 0,
+      fetched_at: "2026-06-24 12:00:00",
+      expires_at: null,
+      stale_at: null,
+      error_message: null,
+    } as ProfileIntegrationCacheRow);
+
+    expect(payload).toMatchObject({
+      provider: "youtube",
+      resourceType: "video",
+      embed: {
+        type: "iframe",
+        src: "https://www.youtube-nocookie.com/embed/watch123",
+        title: "YouTube embed",
+      },
+    });
+  });
+
+  it("generates YouTube iframe cards from normalized URLs when cache is missing", () => {
+    const normalized = profileIntegrationNormalizeUrl(
+      "https://www.youtube.com/playlist?list=PL123",
+      "youtube",
+    );
+
+    expect(normalized).not.toBeNull();
+    expect(profileIntegrationGeneratedCardPayload(normalized!)).toMatchObject({
+      provider: "youtube",
+      resourceType: "playlist",
+      sourceUrl: "https://www.youtube.com/playlist?list=PL123",
+      metadata: {
+        title: "YouTube playlist",
+        subtitle: "YouTube",
+      },
+      embed: {
+        type: "iframe",
+        src: "https://www.youtube-nocookie.com/embed/videoseries?list=PL123",
+      },
+      apiBacked: false,
+    });
   });
 });

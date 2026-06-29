@@ -453,6 +453,14 @@ export interface ProfileIntegrationCacheRow extends RowDataPacket {
   error_message: string | null;
 }
 
+export interface ProfileIntegrationNormalizedResource {
+  provider: string;
+  resourceType: string;
+  resourceId: string;
+  resourceKey: string;
+  sourceUrl: string;
+}
+
 interface PublicProfileContext {
   row: ProfileRow;
   userId: number;
@@ -1173,7 +1181,7 @@ class MysqlProfilesRepository implements ProfilesRepository {
     const row = rows[0];
 
     if (row === undefined) {
-      return null;
+      return profileIntegrationGeneratedCardPayload(normalized);
     }
 
     return profileIntegrationCachePayload(row);
@@ -3181,15 +3189,19 @@ function profileIntegrationProviderLabel(provider: string): string {
 
 export function profileIntegrationCachePayload(row: ProfileIntegrationCacheRow): Record<string, unknown> {
   const embed = jsonRecord(row.embed_json);
+  const provider = stringValue(row.provider);
+  const resourceType = stringValue(row.resource_type);
+  const resourceId = stringValue(row.resource_id);
+  const generatedEmbed = profileIntegrationGeneratedEmbedPayload(provider, resourceType, resourceId);
 
   return {
-    provider: stringValue(row.provider),
-    resourceType: stringValue(row.resource_type),
-    resourceId: stringValue(row.resource_id),
+    provider,
+    resourceType,
+    resourceId,
     resourceKey: stringValue(row.resource_key),
     sourceUrl: stringValue(row.source_url),
     metadata: jsonRecord(row.metadata_json),
-    embed: embed === null || Object.keys(embed).length === 0 ? null : embed,
+    embed: Object.keys(embed).length === 0 ? generatedEmbed : embed,
     apiBacked: booleanValue(row.api_backed),
     fetchedAt: nullableStringValue(row.fetched_at),
     expiresAt: nullableStringValue(row.expires_at),
@@ -3199,10 +3211,95 @@ export function profileIntegrationCachePayload(row: ProfileIntegrationCacheRow):
   };
 }
 
+export function profileIntegrationGeneratedCardPayload(
+  normalized: ProfileIntegrationNormalizedResource,
+): Record<string, unknown> | null {
+  const embed = profileIntegrationGeneratedEmbedPayload(
+    normalized.provider,
+    normalized.resourceType,
+    normalized.resourceId,
+  );
+
+  if (embed === null) {
+    return null;
+  }
+
+  return {
+    provider: normalized.provider,
+    resourceType: normalized.resourceType,
+    resourceId: normalized.resourceId,
+    resourceKey: normalized.resourceKey,
+    sourceUrl: normalized.sourceUrl,
+    metadata: {
+      title: profileIntegrationGeneratedTitle(normalized),
+      subtitle: profileIntegrationProviderLabel(normalized.provider),
+      description: null,
+      imageUrl: null,
+      live: false,
+      liveFetchedAt: null,
+      recentLabel: null,
+      recentFetchedAt: null,
+      stats: {},
+    },
+    embed,
+    apiBacked: false,
+    fetchedAt: null,
+    expiresAt: null,
+    staleAt: null,
+    stale: false,
+    lastError: null,
+  };
+}
+
+function profileIntegrationGeneratedTitle(
+  normalized: ProfileIntegrationNormalizedResource,
+): string {
+  if (normalized.provider === "youtube") {
+    return normalized.resourceType === "playlist" ? "YouTube playlist" : "YouTube video";
+  }
+
+  return profileIntegrationProviderLabel(normalized.provider);
+}
+
+function profileIntegrationGeneratedEmbedPayload(
+  provider: string,
+  resourceType: string,
+  resourceId: string,
+): Record<string, unknown> | null {
+  if (provider !== "youtube") {
+    return null;
+  }
+
+  const safeResourceId = profileIntegrationYoutubeIdentifier(resourceId);
+
+  if (safeResourceId === "") {
+    return null;
+  }
+
+  const src =
+    resourceType === "playlist"
+      ? `https://www.youtube-nocookie.com/embed/videoseries?list=${encodeURIComponent(safeResourceId)}`
+      : resourceType === "video" || resourceType === "stream"
+        ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(safeResourceId)}`
+        : null;
+
+  if (src === null) {
+    return null;
+  }
+
+  return {
+    type: "iframe",
+    src,
+    title: "YouTube embed",
+    allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+    height: 220,
+  };
+}
+
 export function profileIntegrationNormalizeUrl(
   rawUrl: string,
   preferredProvider: string | null,
-): { provider: string; resourceType: string; resourceId: string; resourceKey: string; sourceUrl: string } | null {
+): ProfileIntegrationNormalizedResource | null {
   let url: URL;
 
   try {

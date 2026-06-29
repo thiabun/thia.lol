@@ -1099,25 +1099,35 @@ test("YouTube video modules render allowlisted nocookie embeds", async ({ page }
   await page.setViewportSize({ width: 1366, height: 900 });
   await mockProfileModules(page, {
     authenticated: false,
-    modules: [youtubeVideoModule({ id: 8 })],
+    modules: [
+      withAuditLayout(youtubeVideoModule({ id: 8, position: 1 }), "4x3", 4, 1),
+      withAuditLayout(youtubeVideoModule({ id: 9, position: 2 }), "6x4", 4, 6),
+    ],
   });
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  const module = page.getByTestId("profile-grid-module-youtube_video");
-  await expect(module).toBeVisible();
-  await expect(module).toHaveAttribute("data-profile-grid-size", "4x3");
-  const embed = module.getByTestId("profile-integration-embed-youtube");
-  await expect(embed).toBeVisible();
-  await expect(embed).toHaveAttribute(
-    "src",
-    "https://www.youtube-nocookie.com/embed/watch123",
-  );
-  await expect(embed).toHaveAttribute("data-profile-media-only-embed", "true");
-  await expect(embed).toHaveAttribute(
-    "sandbox",
-    /allow-scripts allow-same-origin/,
-  );
+  const modules = page.locator('[data-testid="profile-grid-module-youtube_video"]');
+  await expect(modules).toHaveCount(2);
+
+  for (const [index, size] of ["4x3", "6x4"].entries()) {
+    const module = modules.nth(index);
+    await expect(module).toBeVisible();
+    await expect(module).toHaveAttribute("data-profile-grid-size", size);
+    await expect(module.locator("a")).toHaveCount(0);
+
+    const embed = module.getByTestId("profile-integration-embed-youtube");
+    await expect(embed).toBeVisible();
+    await expect(embed).toHaveAttribute(
+      "src",
+      "https://www.youtube-nocookie.com/embed/watch123",
+    );
+    await expect(embed).toHaveAttribute("data-profile-media-only-embed", "true");
+    await expect(embed).toHaveAttribute(
+      "sandbox",
+      /allow-scripts allow-same-origin/,
+    );
+  }
 });
 
 test("Spotify music player fills each allowed music module span", async ({

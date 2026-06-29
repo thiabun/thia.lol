@@ -59,6 +59,9 @@ function fakePool(options: FakePoolOptions = {}) {
   let nextInsertedModuleId = 100;
   const insertedModules: Array<Record<string, unknown>> = [];
   const placementUpdates: Array<Record<string, unknown>> = [];
+  const moduleUpdates: Array<Record<string, unknown>> = [];
+  const deletedModuleUpdates: Array<Record<string, unknown>> = [];
+  const profileFeaturedClears: string[] = [];
   const defaultModuleRows = [
     {
       id: 20,
@@ -83,6 +86,7 @@ function fakePool(options: FakePoolOptions = {}) {
       updated_at: "2026-06-24 12:00:00",
     },
   ];
+  const moduleRows: Array<Record<string, unknown>> = (options.moduleRows ?? defaultModuleRows).map((row) => ({ ...row }));
   async function execute(query: string, params?: unknown[]) {
     calls.push({ query, params });
 
@@ -95,15 +99,44 @@ function fakePool(options: FakePoolOptions = {}) {
     }
 
     if (query.includes("SELECT id") && query.includes("WHERE user_id = ?") && query.includes("AND type = ?")) {
+      const row = moduleRows.find(
+        (item) =>
+          Number(item.user_id) === Number(params?.[0]) &&
+          String(item.type) === String(params?.[1]),
+      );
+
+      if (row !== undefined) {
+        return [[{ id: row.id }], undefined];
+      }
+
       return [[params?.[1] === "profile_info" ? { id: 10 } : undefined].filter(Boolean), undefined];
     }
 
     if (query.includes("COUNT(*) AS module_count") && query.includes("type NOT IN")) {
-      return [[{ module_count: 1 }], undefined];
+      return [
+        [
+          {
+            module_count: moduleRows.filter(
+              (row) =>
+                row.status !== "deleted" &&
+                row.type !== "profile_info" &&
+                row.type !== "activity",
+            ).length,
+          },
+        ],
+        undefined,
+      ];
     }
 
     if (query.includes("COUNT(*) AS module_count")) {
-      return [[{ module_count: options.moduleRows?.length ?? defaultModuleRows.length }], undefined];
+      return [
+        [
+          {
+            module_count: moduleRows.filter((row) => row.status !== "deleted").length,
+          },
+        ],
+        undefined,
+      ];
     }
 
     if (query.includes("SELECT profile_background_blur")) {
@@ -149,8 +182,12 @@ function fakePool(options: FakePoolOptions = {}) {
     }
 
     if (query.includes("INSERT INTO profile_modules")) {
+      if ((params?.length ?? 0) <= 6) {
+        return [{ affectedRows: 1, insertId: 1 }, undefined];
+      }
+
       const insertId = nextInsertedModuleId++;
-      insertedModules.push({
+      const insertedModule = {
         id: insertId,
         userId: params?.[0],
         type: params?.[1],
@@ -165,9 +202,96 @@ function fakePool(options: FakePoolOptions = {}) {
         gridPinned: params?.[10],
         status: params?.[11],
         schemaVersion: params?.[12],
+      };
+      insertedModules.push(insertedModule);
+      moduleRows.push({
+        id: insertId,
+        user_id: params?.[0],
+        type: params?.[1],
+        title: params?.[2],
+        config_json: params?.[3],
+        visibility: params?.[4],
+        position: params?.[5],
+        grid_column: params?.[6] ?? null,
+        grid_row: params?.[7] ?? null,
+        grid_col_span: params?.[8] ?? null,
+        grid_row_span: params?.[9] ?? null,
+        grid_pinned: params?.[10] ?? 0,
+        status: params?.[11],
+        schema_version: params?.[12],
+        created_at: "2026-06-24 13:00:00",
+        updated_at: "2026-06-24 13:00:00",
       });
 
       return [{ affectedRows: 1, insertId }, undefined];
+    }
+
+    if (query.includes("UPDATE profile_modules") && query.includes("status = 'deleted'")) {
+      const moduleId = Number(params?.[0]);
+      const userId = params?.[1];
+      const row = moduleRows.find(
+        (item) =>
+          Number(item.id) === moduleId &&
+          (userId === undefined || Number(item.user_id) === Number(userId)) &&
+          item.type !== "profile_info",
+      );
+
+      if (row !== undefined) {
+        row.status = "deleted";
+        row.visibility = "hidden";
+      }
+
+      deletedModuleUpdates.push({ id: moduleId, userId });
+
+      return [{ affectedRows: row === undefined ? 0 : 1 }, undefined];
+    }
+
+    if (query.includes("UPDATE profile_modules") && query.includes("config_json")) {
+      const moduleId = Number(params?.[11]);
+      const row = moduleRows.find((item) => Number(item.id) === moduleId);
+      const update = {
+        title: params?.[0],
+        configJson: params?.[1],
+        visibility: params?.[2],
+        position: params?.[3],
+        gridColumn: params?.[4],
+        gridRow: params?.[5],
+        gridColSpan: params?.[6],
+        gridRowSpan: params?.[7],
+        gridPinned: params?.[8],
+        status: params?.[9],
+        schemaVersion: params?.[10],
+        id: params?.[11],
+        userId: params?.[12],
+      };
+
+      moduleUpdates.push(update);
+
+      if (row !== undefined) {
+        row.title = params?.[0];
+        row.config_json = params?.[1];
+        row.visibility = params?.[2];
+        row.position = params?.[3];
+        row.grid_column = params?.[4];
+        row.grid_row = params?.[5];
+        row.grid_col_span = params?.[6];
+        row.grid_row_span = params?.[7];
+        row.grid_pinned = params?.[8];
+        row.status = params?.[9];
+        row.schema_version = params?.[10];
+      }
+
+      return [{ affectedRows: row === undefined ? 0 : 1 }, undefined];
+    }
+
+    if (query.includes("UPDATE profiles") && query.includes("featured_post_id = NULL")) {
+      profileFeaturedClears.push("featured_post");
+      return [{ affectedRows: 1 }, undefined];
+    }
+
+    if (query.includes("UPDATE profiles") && query.includes("featured_room_id = NULL")) {
+      profileFeaturedClears.push("featured_room");
+      return [{ affectedRows: 1 }, undefined];
     }
 
     if (query.includes("UPDATE profiles")) {
@@ -226,7 +350,12 @@ function fakePool(options: FakePoolOptions = {}) {
     }
 
     if (query.includes("FROM profile_modules") && query.includes("ORDER BY position ASC, id ASC")) {
-      return [options.moduleRows ?? defaultModuleRows, undefined];
+      return [
+        query.includes("AND status <> 'deleted'")
+          ? moduleRows.filter((row) => row.status !== "deleted")
+          : moduleRows,
+        undefined,
+      ];
     }
 
     throw new Error(`Unhandled fake pool query: ${query}`);
@@ -249,8 +378,12 @@ function fakePool(options: FakePoolOptions = {}) {
     calls,
     pool,
     draftJson: () => draftJson,
+    deletedModuleUpdates,
     insertedModules,
+    moduleRows,
+    moduleUpdates,
     placementUpdates,
+    profileFeaturedClears,
   };
 }
 
@@ -327,6 +460,63 @@ function draftPlaceholderPayload() {
   };
 }
 
+function persistedMusicPayload(
+  overrides: {
+    config?: Record<string, unknown>;
+    status?: string;
+    visibility?: string;
+  } = {},
+) {
+  return {
+    id: 20,
+    type: "music",
+    title: "Focus",
+    config: overrides.config ?? {
+      label: "Focus track",
+      platform: "spotify",
+      url: "https://open.spotify.com/track/profile-test?si=ignored",
+    },
+    visibility: overrides.visibility ?? "public",
+    position: 2,
+    pinned: false,
+    layout: {
+      column: 5,
+      row: 1,
+      colSpan: 4,
+      rowSpan: 3,
+    },
+    status: overrides.status ?? "active",
+    schemaVersion: 1,
+    createdAt: "2026-06-24 11:00:00",
+    updatedAt: "2026-06-24 12:00:00",
+  };
+}
+
+function featuredModulePayload(
+  type: "featured_post" | "featured_room",
+  id: number,
+) {
+  return {
+    id,
+    type,
+    title: type === "featured_post" ? "Featured post" : "Featured room",
+    config: type === "featured_post" ? { featuredPostId: 42 } : { featuredRoomId: 7 },
+    visibility: "hidden",
+    position: id,
+    pinned: false,
+    layout: {
+      column: 1,
+      row: id,
+      colSpan: type === "featured_post" ? 3 : 4,
+      rowSpan: type === "featured_post" ? 4 : 2,
+    },
+    status: "deleted",
+    schemaVersion: 1,
+    createdAt: "2026-06-24 11:00:00",
+    updatedAt: "2026-06-24 12:00:00",
+  };
+}
+
 function profileInfoRow(position: number) {
   return {
     id: 10,
@@ -340,6 +530,54 @@ function profileInfoRow(position: number) {
     grid_row: null,
     grid_col_span: null,
     grid_row_span: null,
+    grid_pinned: 0,
+    status: "active",
+    schema_version: 1,
+    created_at: "2026-06-24 11:00:00",
+    updated_at: "2026-06-24 12:00:00",
+  };
+}
+
+function musicRow() {
+  return {
+    id: 20,
+    user_id: 1,
+    type: "music",
+    title: "Focus",
+    config_json: JSON.stringify({
+      label: "Focus track",
+      platform: "spotify",
+      url: "https://open.spotify.com/track/profile-test?si=ignored",
+    }),
+    visibility: "public",
+    position: 2,
+    grid_column: 5,
+    grid_row: 1,
+    grid_col_span: 4,
+    grid_row_span: 3,
+    grid_pinned: 0,
+    status: "active",
+    schema_version: 1,
+    created_at: "2026-06-24 11:00:00",
+    updated_at: "2026-06-24 12:00:00",
+  };
+}
+
+function featuredModuleRow(type: "featured_post" | "featured_room", id: number) {
+  return {
+    id,
+    user_id: 1,
+    type,
+    title: type === "featured_post" ? "Featured post" : "Featured room",
+    config_json: JSON.stringify(
+      type === "featured_post" ? { featuredPostId: 42 } : { featuredRoomId: 7 },
+    ),
+    visibility: "public",
+    position: id,
+    grid_column: 1,
+    grid_row: id,
+    grid_col_span: type === "featured_post" ? 3 : 4,
+    grid_row_span: type === "featured_post" ? 4 : 2,
     grid_pinned: 0,
     status: "active",
     schema_version: 1,
@@ -417,7 +655,7 @@ describe("editor profile module payloads", () => {
   });
 
   it("creates chosen canvas draft modules before applying placements", async () => {
-    const { insertedModules, placementUpdates, pool } = fakePool({
+    const { insertedModules, moduleUpdates, pool } = fakePool({
       draftJson: JSON.stringify({
         backgroundBlur: "medium",
         canvasGlass: 58,
@@ -444,19 +682,20 @@ describe("editor profile module payloads", () => {
       gridPinned: 1,
       status: "active",
     });
-    expect(placementUpdates.map((update) => update.id)).toEqual([10, 100]);
-    expect(placementUpdates.at(-1)).toMatchObject({
-      column: 3,
-      row: 4,
-      colSpan: 2,
-      rowSpan: 2,
-      pinned: 1,
+    expect(moduleUpdates.map((update) => update.id)).toEqual([10]);
+    expect(moduleUpdates[0]).toMatchObject({
+      gridColumn: 1,
+      gridRow: 1,
+      gridColSpan: 4,
+      gridRowSpan: 3,
+      gridPinned: 0,
       visibility: "public",
+      status: "active",
     });
   });
 
   it("drops unpicked placeholder draft modules during commit", async () => {
-    const { insertedModules, placementUpdates, pool } = fakePool({
+    const { insertedModules, moduleUpdates, pool } = fakePool({
       draftJson: JSON.stringify({
         backgroundBlur: "medium",
         canvasGlass: 58,
@@ -471,6 +710,85 @@ describe("editor profile module payloads", () => {
     await repository.commitCanvasDraft(session);
 
     expect(insertedModules).toHaveLength(0);
-    expect(placementUpdates.map((update) => update.id)).toEqual([10]);
+    expect(moduleUpdates.map((update) => update.id)).toEqual([10]);
+  });
+
+  it("soft-deletes persisted modules marked deleted in canvas drafts", async () => {
+    const { deletedModuleUpdates, moduleRows, pool } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [
+          profileInfoPayload(1),
+          persistedMusicPayload({ status: "deleted", visibility: "hidden" }),
+        ],
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(1), musicRow()],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    const result = await repository.commitCanvasDraft(session);
+
+    expect(deletedModuleUpdates).toContainEqual({ id: 20, userId: 1 });
+    expect(moduleRows.find((row) => row.id === 20)).toMatchObject({
+      status: "deleted",
+      visibility: "hidden",
+    });
+    expect(result.modules.some((module) => module.id === 20)).toBe(false);
+  });
+
+  it("persists config changes for existing canvas draft modules", async () => {
+    const nextConfig = {
+      label: "Updated focus track",
+      platform: "spotify",
+      url: "https://open.spotify.com/track/profile-test",
+    };
+    const { moduleUpdates, pool } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [profileInfoPayload(1), persistedMusicPayload({ config: nextConfig })],
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(1), musicRow()],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    const result = await repository.commitCanvasDraft(session);
+    const musicUpdate = moduleUpdates.find((update) => update.id === 20);
+    const musicModule = result.modules.find((module) => module.id === 20);
+
+    expect(JSON.parse(String(musicUpdate?.configJson))).toMatchObject(nextConfig);
+    expect(musicModule?.config).toMatchObject(nextConfig);
+  });
+
+  it("clears featured profile references when featured modules are deleted in canvas drafts", async () => {
+    const { deletedModuleUpdates, pool, profileFeaturedClears } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [
+          profileInfoPayload(1),
+          featuredModulePayload("featured_post", 30),
+          featuredModulePayload("featured_room", 31),
+        ],
+        selectedModuleId: null,
+      }),
+      moduleRows: [
+        profileInfoRow(1),
+        featuredModuleRow("featured_post", 30),
+        featuredModuleRow("featured_room", 31),
+      ],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await repository.commitCanvasDraft(session);
+
+    expect(deletedModuleUpdates.map((update) => update.id)).toEqual([30, 31]);
+    expect(profileFeaturedClears).toEqual(["featured_post", "featured_room"]);
   });
 });
