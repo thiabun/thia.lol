@@ -335,16 +335,13 @@ test("global loading overlay skips non-protected grace after route data", async 
 
   await page.goto("/discover");
 
-  const overlay = page.getByTestId("page-loading-overlay");
-  await expect(overlay).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Loading Discover" })).toBeVisible();
+  await expect(page.getByTestId("page-loading-overlay")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Loading activity" })).toBeVisible();
 
   discoverReleased = true;
   pendingDiscoverResolvers.splice(0).forEach((resolve) => resolve());
   await expect(page.getByRole("heading", { name: "Rising" })).toBeVisible();
-  await expect(overlay).toBeHidden({ timeout: 1000 });
-  await page.waitForTimeout(350);
-  await expect(overlay).toHaveCount(0);
+  await expect(page.getByTestId("page-loading-overlay")).toHaveCount(0);
 });
 
 test("site theme changes mark the root transition state", async ({ page }) => {
@@ -1256,7 +1253,7 @@ test("post body opens thread while controls keep their own behavior", async ({
   const bodyOpenTarget = post.getByTestId("post-body-open-thread");
   await expect(bodyOpenTarget).toBeVisible();
   await expect(bodyOpenTarget).toHaveJSProperty("tagName", "DIV");
-  await expect(bodyOpenTarget).toHaveAttribute("class", "mt-4 block w-full text-left");
+  await expect(bodyOpenTarget).toHaveAttribute("class", "mt-3 block w-full text-left");
   await expect(bodyOpenTarget).not.toHaveAttribute(
     "class",
     /hover:|focus-visible:|rounded|ring|shadow|border|bg-/,

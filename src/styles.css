@@ -180,6 +180,33 @@ body[data-profile-canvas-editing="true"] [data-app-mobile-nav="true"] {
   transform-origin: left top;
 }
 
+@supports (content-visibility: auto) {
+  [data-render-deferred="post"] {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 280px;
+  }
+
+  [data-render-deferred="post-reply"] {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 180px;
+  }
+
+  [data-render-deferred="profile-module"] {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 220px;
+  }
+
+  [data-render-deferred="room-list-item"] {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 112px;
+  }
+
+  [data-render-deferred="side-rail"] {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 420px;
+  }
+}
+
 @utility bg-page-wash {
   background:
     linear-gradient(

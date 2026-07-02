@@ -18,7 +18,7 @@ test("/rooms renders API rooms or the real empty state", async ({ page }) => {
     .toBe(true);
 });
 
-test("/rooms keeps the protected loading grace before revealing rooms", async ({
+test("/rooms uses inline loading before revealing rooms", async ({
   page,
 }) => {
   let releaseRooms: (() => void) | undefined;
@@ -29,17 +29,14 @@ test("/rooms keeps the protected loading grace before revealing rooms", async ({
 
   await page.goto("/rooms");
 
-  const overlay = page.getByTestId("page-loading-overlay");
-  await expect(overlay).toBeVisible();
-  await expect(
-    overlay.getByRole("heading", { name: "Loading Rooms" }),
-  ).toBeVisible();
+  await expect(page.getByTestId("page-loading-overlay")).toHaveCount(0);
+  await expect(page.getByTestId("rooms-page")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Loading rooms" })).toBeVisible();
 
   releaseRooms?.();
   await expect(page.getByTestId("rooms-page")).toBeVisible();
   await expect(page.getByTestId("room-card").first()).toBeVisible();
-  await expect(overlay).toBeVisible();
-  await expect(overlay).toBeHidden({ timeout: 5000 });
+  await expect(page.getByTestId("page-loading-overlay")).toHaveCount(0);
 });
 
 test("clicking a room opens its detail page", async ({ page }) => {

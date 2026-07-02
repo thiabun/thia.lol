@@ -9,7 +9,6 @@ import { formatCountWithUnit } from "../../lib/pluralize";
 import {
   cardEntrance,
   cardTap,
-  roomCardHover,
 } from "../../lib/motionPresets";
 import { roomThemeSwatchCssProperties } from "../../lib/roomThemes";
 
@@ -26,12 +25,12 @@ export function RoomCard({ index = 0, room }: RoomCardProps) {
       custom={index}
       initial="hidden"
       animate="show"
-      whileHover={roomCardHover}
       whileTap={cardTap}
+      data-render-deferred="room-list-item"
       data-testid="room-card"
     >
       <Panel
-        className="relative h-full overflow-hidden p-3 shadow-none transition duration-fluid ease-fluid group-hover:border-line-strong"
+        className="relative h-full overflow-hidden p-2.5 shadow-none transition duration-fluid ease-fluid group-hover:border-line-strong"
         style={roomThemeSwatchCssProperties(room)}
       >
         <span
@@ -67,15 +66,15 @@ export function RoomCard({ index = 0, room }: RoomCardProps) {
                   {room.name}
                 </h2>
                 {room.joinedByMe ? (
-                  <span className="shrink-0 rounded-full bg-leaf/15 px-2 py-0.5 text-[0.68rem] font-semibold text-leaf-ink">
+                  <span className="shrink-0 rounded-control bg-leaf/15 px-1.5 py-0.5 text-[0.66rem] font-semibold text-leaf-ink">
                     Joined
                   </span>
                 ) : room.visibility !== "public" ? (
-                  <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[0.68rem] font-semibold text-text">
+                  <span className="shrink-0 rounded-control bg-accent/15 px-1.5 py-0.5 text-[0.66rem] font-semibold text-text">
                     {roomVisibilityLabel(room.visibility)}
                   </span>
                 ) : room.live ? (
-                  <span className="shrink-0 rounded-full bg-leaf/15 px-2 py-0.5 text-[0.68rem] font-semibold text-leaf-ink">
+                  <span className="shrink-0 rounded-control bg-leaf/15 px-1.5 py-0.5 text-[0.66rem] font-semibold text-leaf-ink">
                     Active
                   </span>
                 ) : null}

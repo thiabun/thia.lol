@@ -31,7 +31,6 @@ import { cn } from "../lib/classNames";
 import { formatRelativeTime } from "../lib/dates";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
 import { emitNotificationsUpdated } from "../lib/notificationEvents";
-import { usePageLoadSignal } from "../lib/pageLoadingContext";
 import type { NotificationItem, NotificationsResult } from "../lib/types";
 import { useAuth } from "../lib/useAuth";
 
@@ -52,11 +51,6 @@ export function NotificationsPage() {
   const [actionError, setActionError] = useState<string | undefined>();
   const notifications = state.data?.notifications ?? [];
   const unreadCount = state.data?.unreadCount ?? 0;
-  usePageLoadSignal(
-    status === "loading" || (state.loading && !state.data),
-    "notifications",
-  );
-
   const loadNotifications = useCallback(() => {
     if (status !== "authenticated") {
       setState({ data: undefined, loading: false, error: undefined });

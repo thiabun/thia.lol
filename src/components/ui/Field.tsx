@@ -227,7 +227,7 @@ export function SearchField({ id, label, className, ...props }: SearchFieldProps
   return (
     <label className={cn("block", className)} htmlFor={id}>
       <span className="sr-only">{label}</span>
-      <span className="flex min-h-12 items-center gap-3 rounded-full border border-line bg-canvas/55 px-4 shadow-inner-soft transition duration-fluid focus-within:border-line-strong focus-within:bg-surface focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus">
+      <span className="flex min-h-10 items-center gap-2 rounded-control border border-line bg-canvas/55 px-3 shadow-inner-soft transition duration-fluid focus-within:border-line-strong focus-within:bg-surface focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus">
         <Search aria-hidden="true" size={18} className="text-muted" />
         <input
           id={id}

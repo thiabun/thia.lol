@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link, type LinkProps } from "react-router";
 import { motion } from "motion/react";
 import { cn } from "../../lib/classNames";
-import { buttonHover, buttonTap } from "../../lib/motionPresets";
+import { buttonTap } from "../../lib/motionPresets";
 import type { HTMLMotionProps } from "motion/react";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "quiet";
@@ -17,18 +17,18 @@ const displayClassPattern =
 
 const variants: Record<ButtonVariant, string> = {
   primary:
-    "bg-accent text-accent-ink shadow-soft hover:-translate-y-0.5 hover:shadow-lift motion-reduce:hover:translate-y-0",
+    "bg-accent text-accent-ink hover:bg-accent-strong",
   secondary:
-    "border border-line bg-surface text-text shadow-soft hover:-translate-y-0.5 hover:border-line-strong motion-reduce:hover:translate-y-0",
+    "border border-line bg-surface text-text hover:border-line-strong hover:bg-surface-strong",
   ghost:
     "text-muted hover:bg-surface-strong hover:text-text",
   quiet: "text-text underline-offset-4 hover:text-accent-strong hover:underline",
 };
 
 const sizes: Record<ButtonSize, string> = {
-  sm: "min-h-9 px-3 text-sm",
-  md: "min-h-11 px-4 text-sm",
-  icon: "size-10 p-0",
+  sm: "min-h-8 px-2.5 text-sm",
+  md: "min-h-10 px-3 text-sm",
+  icon: "size-9 p-0",
 };
 
 type ButtonProps = Omit<HTMLMotionProps<"button">, "children"> & {
@@ -49,7 +49,7 @@ export function Button({
   ...props
 }: ButtonProps) {
   const isInteractive = !props.disabled;
-  const resolvedWhileHover = whileHover ?? (isInteractive ? buttonHover : undefined);
+  const resolvedWhileHover = whileHover;
   const resolvedWhileTap = whileTap ?? (isInteractive ? buttonTap : undefined);
   const motionProps = {
     ...(resolvedWhileHover ? { whileHover: resolvedWhileHover } : {}),

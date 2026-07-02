@@ -1,4 +1,6 @@
 const apiBase = "/api";
+const apiGetTimeoutMs = 12_000;
+const apiMutationTimeoutMs = 20_000;
 export const authSessionExpiredEventName = "thia:auth-session-expired";
 
 type ApiEnvelope<T> = {
@@ -18,10 +20,10 @@ export class ApiClientError extends Error {
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
-  const response = await fetch(`${apiBase}${path}`, {
+  const response = await fetchWithTimeout(`${apiBase}${path}`, {
     credentials: "include",
     headers: { Accept: "application/json" },
-  });
+  }, apiGetTimeoutMs);
 
   return unwrapResponse<T>(response);
 }
@@ -136,9 +138,34 @@ async function apiMutate<T>(
     request.body = JSON.stringify(body);
   }
 
-  const response = await fetch(`${apiBase}${path}`, request);
+  const response = await fetchWithTimeout(
+    `${apiBase}${path}`,
+    request,
+    apiMutationTimeoutMs,
+  );
 
   return unwrapResponse<T>(response);
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error: unknown) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new ApiClientError("Could not load this right now. (timeout)");
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 async function unwrapResponse<T>(response: Response): Promise<T> {

@@ -139,7 +139,7 @@ function AuthenticatedHomePage() {
 
   return (
     <motion.div
-      className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]"
+      className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
@@ -149,25 +149,25 @@ function AuthenticatedHomePage() {
         description="A small social place for posts, rooms, and profiles."
         path="/"
       />
-      <section className="space-y-4" aria-label="Home feed">
+      <section className="space-y-3" aria-label="Home feed">
         <motion.div
           variants={cardEntrance}
           custom={0}
           initial="hidden"
           animate="show"
         >
-          <Panel className="p-4 sm:p-5">
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <Panel className="p-3 sm:p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div className="max-w-2xl">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <h1 className="text-3xl font-semibold tracking-normal text-text">
+                  <h1 className="text-2xl font-semibold tracking-normal text-text">
                     Home
                   </h1>
                   <span className="rounded-control border border-line bg-canvas/65 px-2.5 py-1 text-xs font-medium text-muted">
                     For you
                   </span>
                 </div>
-                <p className="mt-2 text-sm leading-6 text-muted">
+                <p className="mt-1 text-sm leading-6 text-muted">
                   Posts from follows, moots, rooms, and recent conversations.
                 </p>
               </div>
@@ -216,7 +216,7 @@ function AuthenticatedHomePage() {
           </p>
         ) : null}
 
-        <h2 className="text-xl font-semibold text-text">For you</h2>
+        <h2 className="text-lg font-semibold text-text">For you</h2>
 
         {!feedState.loading && !feedState.error && posts.length === 0 ? (
           <EmptyState
@@ -297,14 +297,14 @@ function AnonymousHomePage() {
         path="/"
       />
 
-      <Panel className="p-5 sm:p-6">
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+      <Panel className="p-4 sm:p-5">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
           <div className="min-w-0">
             <BrandLogoMain size="md" data-testid="home-brand-logo-main" />
-            <h1 className="mt-5 max-w-3xl text-3xl font-semibold tracking-normal text-text sm:text-4xl">
+            <h1 className="mt-4 max-w-3xl text-2xl font-semibold tracking-normal text-text sm:text-3xl">
               A small social place for profiles, rooms, and public posts.
             </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-muted sm:text-base sm:leading-7">
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
               Find people, follow conversations, and make a public profile that feels like a place instead of a dashboard.
             </p>
           </div>
@@ -348,12 +348,11 @@ function AnonymousHomePage() {
         />
       ) : null}
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <section className="space-y-4" aria-label="Public posts">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <section className="space-y-3" aria-label="Public posts">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-xl font-semibold text-text">Rising now</h2>
-              <p className="mt-1 text-sm text-muted">Public posts people can open from anywhere.</p>
+              <h2 className="text-lg font-semibold text-text">Rising now</h2>
             </div>
             <ButtonLink
               to="/discover"
@@ -375,7 +374,7 @@ function AnonymousHomePage() {
           ))}
         </section>
 
-        <aside className="space-y-5" aria-label="Public discovery">
+        <aside className="space-y-4" aria-label="Public discovery" data-render-deferred="side-rail">
           <AnonymousRooms rooms={rooms} loading={discoverState.loading} />
           <AnonymousPeople people={people} loading={discoverState.loading} />
         </aside>

@@ -46,7 +46,6 @@ import {
 } from "../lib/api";
 import { cn } from "../lib/classNames";
 import { pageEntrance } from "../lib/motionPresets";
-import { usePageLoadSignal } from "../lib/pageLoadingContext";
 import { useAuth } from "../lib/useAuth";
 
 const oauthProviders = ["spotify", "youtube", "twitch", "github"] as const;
@@ -146,12 +145,6 @@ export function OnboardingPage() {
   );
   const profileUrl = user ? `/@${user.handle}` : "/";
   const profileTourUrl = `${profileUrl}?editCanvas=1&tour=profile-editor`;
-  usePageLoadSignal(
-    status === "loading" ||
-      (status === "authenticated" && (loadingState || loadingIntegrations)),
-    "setup",
-  );
-
   const loadOnboarding = useCallback(async () => {
     setLoadingState(true);
     setError(undefined);

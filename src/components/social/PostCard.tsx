@@ -204,6 +204,7 @@ export function PostCard({
         id={`post-${post.id}`}
         aria-label={`Open thread by ${post.author.displayName}`}
         className="group mx-auto w-full max-w-[38rem] cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus"
+        data-render-deferred="post"
         data-testid="post-card-open-thread"
         tabIndex={0}
         variants={cardEntrance}
@@ -214,7 +215,7 @@ export function PostCard({
         onKeyDown={handleCardKeyDown}
         {...cardMotionProps}
       >
-        <Panel className="overflow-hidden p-4 transition duration-fluid ease-fluid group-hover:border-line-strong group-hover:shadow-lift sm:p-5">
+        <Panel className="overflow-hidden p-3 transition duration-fluid ease-fluid group-hover:border-line-strong group-hover:bg-surface/90 sm:p-4">
           {post.rebloggedBy ? (
             <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-muted">
               <Repeat2 aria-hidden="true" size={14} />
@@ -257,13 +258,13 @@ export function PostCard({
 
           <div
             data-testid="post-body-open-thread"
-            className="mt-4 block w-full text-left"
+            className="mt-3 block w-full text-left"
           >
             <RichText
               text={post.body}
               entities={post.bodyEntities}
               markdown={post.bodyFormat === "markdown"}
-              className="block whitespace-pre-wrap break-words p-1 text-pretty text-base leading-7 text-text"
+              className="block whitespace-pre-wrap break-words text-pretty text-[0.95rem] leading-6 text-text"
             />
 
             <PostAttachments post={post} />
@@ -2765,6 +2766,7 @@ function ReplyPreview({
         "relative py-2.5 first:pt-3 last:pb-3 sm:py-3",
         depth > 0 && nestedReplyOffsetClass(depth),
       )}
+      data-render-deferred="post-reply"
       data-testid="thread-reply-item"
     >
       {hasSameDepthLineBefore ? (

@@ -2011,7 +2011,7 @@ function ProfileIntegrationRichCard({
             title={primaryEmbed.title}
             src={primaryEmbedSrc}
             height={360}
-            loading="eager"
+            loading="lazy"
             referrerPolicy="strict-origin-when-cross-origin"
             allow={primaryEmbed.allow}
             sandbox={twitchEmbedSandbox}
@@ -2024,7 +2024,7 @@ function ProfileIntegrationRichCard({
             title="Twitch chat"
             src={twitchChatSrc}
             height={360}
-            loading="eager"
+            loading="lazy"
             referrerPolicy="strict-origin-when-cross-origin"
             sandbox={twitchEmbedSandbox}
             data-testid="profile-integration-embed-twitch-chat"
@@ -2047,7 +2047,7 @@ function ProfileIntegrationRichCard({
           title={primaryEmbed.title}
           src={primaryEmbedSrc}
           height={primaryEmbedHeight}
-          loading={integration.provider === "twitch" ? "eager" : "lazy"}
+          loading="lazy"
           referrerPolicy="strict-origin-when-cross-origin"
           allow={primaryEmbed.allow}
           sandbox={

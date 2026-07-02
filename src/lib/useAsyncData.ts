@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRegisterPageLoadTask } from "./pageLoadingContext";
 
 type AsyncState<T> = {
   data: T | undefined;
@@ -12,7 +11,6 @@ type AsyncState<T> = {
 };
 
 export function useAsyncData<T>(load: () => Promise<T>): AsyncState<T> {
-  const registerPageLoadTask = useRegisterPageLoadTask();
   const mountedRef = useRef(true);
   const requestIdRef = useRef(0);
   const [state, setState] = useState<Omit<AsyncState<T>, "reload">>({
@@ -91,7 +89,6 @@ export function useAsyncData<T>(load: () => Promise<T>): AsyncState<T> {
 
   useEffect(() => {
     let active = true;
-    const finishPageLoadTask = registerPageLoadTask();
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
 
@@ -132,14 +129,12 @@ export function useAsyncData<T>(load: () => Promise<T>): AsyncState<T> {
             refreshing: false,
           });
         }
-      })
-      .finally(finishPageLoadTask);
+      });
 
     return () => {
       active = false;
-      finishPageLoadTask();
     };
-  }, [load, registerPageLoadTask]);
+  }, [load]);
 
   return { ...state, reload };
 }

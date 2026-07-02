@@ -1185,17 +1185,22 @@ test("Spotify music player fills each allowed music module span", async ({
     expect.arrayContaining([
       expect.objectContaining({ layout: "compact", size: "2x1" }),
       expect.objectContaining({ layout: "compact", size: "2x2" }),
-      expect.objectContaining({ layout: "rich", size: "3x2" }),
-      expect.objectContaining({ layout: "rich", size: "4x2" }),
+      expect.objectContaining({ layout: "row", size: "3x2" }),
+      expect.objectContaining({ layout: "row", size: "4x2" }),
     ]),
   );
 
   for (const metric of metrics) {
     expect(metric.heightCoverage).toBeGreaterThanOrEqual(0.94);
     expect(metric.widthCoverage).toBeGreaterThanOrEqual(0.94);
-    expect(metric.artworkHeight).toBeGreaterThanOrEqual(
-      metric.size === "3x2" || metric.size === "4x2" ? 88 : 52,
-    );
+    const expectedArtworkHeight =
+      metric.layout === "row"
+        ? 48
+        : metric.size === "3x2" || metric.size === "4x2"
+          ? 88
+          : 52;
+
+    expect(metric.artworkHeight).toBeGreaterThanOrEqual(expectedArtworkHeight);
   }
 });
 
@@ -2685,7 +2690,8 @@ test("direct canvas point selection creates a draft module through picker and se
 
   const hoverCell = page.getByTestId("profile-canvas-cell-7-5");
   await hoverCell.hover();
-  await expect(page.getByTestId("profile-canvas-selection-preview")).toBeVisible();
+  const selectionPreview = page.getByTestId("profile-canvas-selection-preview");
+  await expect(selectionPreview).toBeVisible();
   await expect(page.getByTestId("profile-canvas-selection-examples")).toBeVisible();
   await expect(page.getByTestId("profile-canvas-selection-examples")).toContainText(
     "Fits 3x2",
@@ -2729,21 +2735,11 @@ test("direct canvas point selection creates a draft module through picker and se
       }),
     )
     .toBe(true);
-  await expect
-    .poll(() =>
-      hoverCell.evaluate((element) => window.getComputedStyle(element).opacity),
-    )
-    .toBe("0");
-  await hoverCell.click();
+  await selectionPreview.click();
 
   const blankModule = page.locator('[data-testid^="profile-canvas-add-module-"]');
   await expect(blankModule).toBeVisible();
   await expect(blankModule).toContainText("Click to add module");
-  await expect
-    .poll(() =>
-      startCell.evaluate((element) => window.getComputedStyle(element).opacity),
-    )
-    .toBe("0");
   await expect(
     blankModule.evaluate((element) => window.getComputedStyle(element).filter),
   ).resolves.toBe("none");

@@ -32,6 +32,7 @@ type ProfileGridProps = {
   layoutPreset?: ProfileLayoutPreset | undefined;
   maxColumns?: 6 | 12;
   maxRows?: 16 | 32;
+  contentScaleMax?: number | undefined;
   gridRef?: Ref<HTMLDivElement> | undefined;
   onClick?: MouseEventHandler<HTMLDivElement> | undefined;
   testId?: string | undefined;
@@ -45,6 +46,7 @@ export function ProfileGrid({
   layoutPreset = defaultProfileLayoutPreset,
   maxColumns = PROFILE_CANVAS_DESKTOP_COLUMNS,
   maxRows = PROFILE_CANVAS_DESKTOP_ROWS,
+  contentScaleMax = 1.12,
   gridRef,
   onClick,
   testId = "profile-grid",
@@ -137,7 +139,8 @@ export function ProfileGrid({
   const moduleSurfacePercent = Math.round(
     78 - (normalizedCanvasGlass / 92) * 42,
   );
-  const contentScale = measuredCellSize === undefined ? 1 : measuredCellSize / 86;
+  const rawContentScale = measuredCellSize === undefined ? 1 : measuredCellSize / 86;
+  const contentScale = Math.min(contentScaleMax, rawContentScale);
   const contentScaleInverse = 1 / contentScale;
   const gridStyle = {
     "--profile-canvas-glass": String(normalizedCanvasGlass),
@@ -164,8 +167,8 @@ export function ProfileGrid({
     <div
       ref={setGridElement}
       className={cn(
-        "profile-grid-canvas grid min-w-0 rounded-panel border border-line bg-surface/34 p-2 shadow-soft backdrop-blur-veil",
-        layoutPreset === "compact" ? "gap-2" : "gap-3",
+        "profile-grid-canvas grid min-w-0 rounded-panel border border-line bg-surface/30 p-1.5",
+        layoutPreset === "compact" ? "gap-1.5" : "gap-2",
         className,
       )}
       data-profile-canvas-columns={maxColumns}
@@ -299,6 +302,7 @@ export function ProfileGridSection({
 type ProfileGridModuleProps = {
   children: ReactNode;
   className?: string | undefined;
+  deferRender?: boolean | undefined;
   dragging?: boolean | undefined;
   layout?: ProfileModuleLayout | null | undefined;
   layoutAnimation?: boolean | undefined;
@@ -323,9 +327,10 @@ type ProfileGridModuleProps = {
 export function ProfileGridModule({
   children,
   className,
+  deferRender = true,
   dragging = false,
   layout,
-  layoutAnimation = true,
+  layoutAnimation = false,
   presentation,
   pinned = false,
   selected = false,
@@ -368,6 +373,9 @@ export function ProfileGridModule({
       data-profile-grid-placement={layout ? "manual" : "auto"}
       data-profile-grid-layout-animation={layoutAnimation ? "true" : "false"}
       data-profile-grid-module="true"
+      data-render-deferred={
+        deferRender && !dragging && !selected ? "profile-module" : undefined
+      }
       data-profile-module-pinned={pinned ? "true" : undefined}
       data-profile-grid-column-span={span.columns}
       data-profile-grid-row-span={span.rows}

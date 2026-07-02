@@ -26,15 +26,15 @@ export function RouteHeader({
   title,
 }: RouteHeaderProps) {
   return (
-    <Panel className={cn("p-4 sm:p-5", className)}>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <Panel className={cn("p-3 sm:p-4", className)}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="max-w-2xl">
           <Badge tone={badgeTone}>{badge}</Badge>
-          <h1 className="mt-3 text-2xl font-semibold tracking-normal text-text sm:text-3xl">
+          <h1 className="mt-2 text-2xl font-semibold tracking-normal text-text">
             {title}
           </h1>
-          <p className="mt-2 text-sm leading-6 text-muted">{description}</p>
-          {meta ? <div className="mt-3">{meta}</div> : null}
+          <p className="mt-1 text-sm leading-6 text-muted">{description}</p>
+          {meta ? <div className="mt-2">{meta}</div> : null}
         </div>
         {actions ? (
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -74,11 +74,11 @@ export function RouteStateNotice({
   title,
 }: RouteStateNoticeProps) {
   return (
-    <Panel className={cn("p-5 sm:p-6", className)} data-testid={testId}>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+    <Panel className={cn("p-4", className)} data-testid={testId}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
         <div
           className={cn(
-            "grid size-11 shrink-0 place-items-center rounded-full",
+            "grid size-9 shrink-0 place-items-center rounded-control",
             iconStyles[kind],
           )}
         >
@@ -92,7 +92,7 @@ export function RouteStateNotice({
           <h2 className="text-base font-semibold text-text">{title}</h2>
           <p className="mt-1 max-w-xl text-sm leading-6 text-muted">{text}</p>
           {actions ? (
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
               {actions}
             </div>
           ) : null}
@@ -128,7 +128,7 @@ export function CompactStateNotice({
       className={cn(
         centered
           ? "grid flex-1 place-items-center p-6 text-center"
-          : "rounded-card bg-canvas/55 p-3",
+          : "rounded-card bg-canvas/55 p-2.5",
         className,
       )}
       data-testid={testId}
@@ -137,7 +137,7 @@ export function CompactStateNotice({
       <div className={cn(centered ? "mx-auto max-w-sm" : "flex items-start gap-3")}>
         <div
           className={cn(
-            "grid size-11 shrink-0 place-items-center rounded-full",
+            "grid size-9 shrink-0 place-items-center rounded-control",
             centered ? "mx-auto" : "",
             iconStyles[kind],
           )}
@@ -148,11 +148,11 @@ export function CompactStateNotice({
             className={kind === "loading" ? "animate-spin motion-reduce:animate-none" : undefined}
           />
         </div>
-        <div className={cn("min-w-0", centered ? "mt-4" : "")}>
+        <div className={cn("min-w-0", centered ? "mt-3" : "")}>
           <h2 className="text-sm font-semibold text-text">{title}</h2>
           <p className="mt-1 text-sm leading-6 text-muted">{text}</p>
           {actions ? (
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
               {actions}
             </div>
           ) : null}

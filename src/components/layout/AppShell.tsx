@@ -27,7 +27,6 @@ import { cn } from "../../lib/classNames";
 import { desktopNotificationSupport, ensureNotificationServiceWorkerRegistration } from "../../lib/desktopNotifications";
 import {
   buttonTap,
-  fluidEase,
   popoverPanel,
   snappySpring,
 } from "../../lib/motionPresets";
@@ -297,24 +296,15 @@ export function AppShell() {
         themeControlsDisabled={themeControlsDisabled}
         topBarAction={topBarAction}
       />
-      <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 sm:px-6 lg:px-8">
-        <main className="flex-1 pb-6 pt-5 lg:pb-16">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={`${location.pathname}${location.search}`}
-              className="min-h-full"
-              initial={{ opacity: 0, y: 10, filter: "blur(8px)" }}
-              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-              exit={{ opacity: 0, y: -8, filter: "blur(6px)" }}
-              transition={{ duration: 0.24, ease: fluidEase }}
-            >
-              <Outlet
-                context={
-                  { openPostComposer, setTopBarAction } satisfies AppShellOutletContext
-                }
-              />
-            </motion.div>
-          </AnimatePresence>
+      <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-3 sm:px-5 lg:px-7">
+        <main className="flex-1 pb-4 pt-3 lg:pb-10 lg:pt-4">
+          <div className="min-h-full">
+            <Outlet
+              context={
+                { openPostComposer, setTopBarAction } satisfies AppShellOutletContext
+              }
+            />
+          </div>
         </main>
         <MobileDock
           navItems={publicNavItems}
@@ -325,7 +315,7 @@ export function AppShell() {
       <SiteFooter />
       <Button
         type="button"
-        className="fixed bottom-6 right-6 z-40 hidden rounded-full px-5 shadow-lift lg:inline-flex"
+        className="fixed bottom-5 right-5 z-40 hidden rounded-full px-4 shadow-soft lg:inline-flex"
         disabled={postingDisabled}
         icon={<PenLine aria-hidden="true" size={18} />}
         onClick={handlePostClick}
@@ -353,7 +343,7 @@ export function AppShell() {
 function ComposerLoadingNotice() {
   return (
     <div
-      className="fixed inset-x-4 bottom-24 z-50 mx-auto max-w-sm rounded-panel border border-line bg-surface/96 px-4 py-3 text-sm text-muted shadow-lift backdrop-blur-veil lg:bottom-6 lg:right-6 lg:left-auto"
+      className="fixed inset-x-4 bottom-20 z-50 mx-auto max-w-xs rounded-panel border border-line bg-surface/96 px-3 py-2 text-sm text-muted shadow-soft lg:bottom-5 lg:right-5 lg:left-auto"
       role="status"
     >
       Opening composer.
@@ -375,8 +365,8 @@ function SiteHeader({
   topBarAction?: ReactNode | undefined;
 }) {
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-canvas/78 backdrop-blur-veil">
-      <div className="mx-auto flex min-h-16 w-full max-w-7xl items-center gap-2 px-4 sm:gap-3 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-40 border-b border-line bg-canvas/86 backdrop-blur-veil">
+      <div className="mx-auto flex min-h-14 w-full max-w-7xl items-center gap-2 px-3 sm:px-5 lg:px-7">
         <NavLink
           to="/"
           className="flex min-w-0 shrink-0 items-center rounded-md px-1 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
@@ -386,7 +376,7 @@ function SiteHeader({
         </NavLink>
 
         <nav
-          className="ml-4 hidden items-center gap-1 lg:flex"
+          className="ml-3 hidden items-center gap-0.5 lg:flex"
           aria-label="Primary"
           data-testid="desktop-nav"
         >
@@ -395,7 +385,7 @@ function SiteHeader({
           ))}
         </nav>
 
-        <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
           {topBarAction ? <div className="shrink-0">{topBarAction}</div> : null}
           <ButtonLink
             to="/search"
@@ -569,7 +559,7 @@ function AccountMenu() {
 }
 
 const accountMenuItemClass =
-  "flex min-h-10 w-full items-center gap-2 rounded-card px-3 text-left text-sm font-medium text-muted transition duration-fluid ease-fluid hover:bg-surface-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
+  "flex min-h-9 w-full items-center gap-2 rounded-card px-2.5 text-left text-sm font-medium text-muted transition duration-fluid ease-fluid hover:bg-surface-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
 
 function AccountMenuItem({
   children,
@@ -620,9 +610,9 @@ function DesktopNavItem({ to, label, icon: Icon }: NavItemProps) {
       end={to === "/"}
       className={({ isActive }) =>
         cn(
-          "inline-flex min-h-10 items-center gap-2 rounded-full px-3 text-sm font-medium transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+          "inline-flex min-h-[2.125rem] items-center gap-1.5 rounded-control px-2.5 text-sm font-medium transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
           isActive
-            ? "bg-surface-strong text-text shadow-soft"
+            ? "bg-surface-strong text-text"
             : "text-muted hover:bg-surface hover:text-text",
         )
       }
@@ -650,7 +640,7 @@ function MobileDock({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={snappySpring}
-      className="sticky bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30 mx-auto mb-[calc(0.75rem+env(safe-area-inset-bottom))] grid w-full max-w-md grid-cols-5 items-center gap-0.5 rounded-[1.35rem] border border-line/80 bg-surface/82 px-2 py-1.5 shadow-[0_16px_44px_oklch(0_0_0_/_0.13)] backdrop-blur-veil lg:hidden"
+      className="sticky bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-30 mx-auto mb-[calc(0.5rem+env(safe-area-inset-bottom))] grid w-full max-w-sm grid-cols-5 items-center gap-0.5 rounded-panel border border-line/80 bg-surface/88 px-1.5 py-1 shadow-soft backdrop-blur-veil lg:hidden"
       aria-label="Primary"
       data-app-mobile-nav="true"
       data-testid="mobile-nav"
@@ -666,27 +656,27 @@ function MobileDock({
             end={to === "/"}
             className={({ isActive }) =>
               cn(
-                "grid min-h-11 w-full max-w-[4.9rem] place-items-center rounded-full px-1 py-1 text-[0.69rem] font-medium leading-none transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+                "grid min-h-10 w-full max-w-[4.25rem] place-items-center rounded-control px-1 py-1 text-[0.66rem] font-medium leading-none transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
                 isActive
-                  ? "bg-accent/18 text-text shadow-inner-soft ring-1 ring-accent/25"
+                  ? "bg-accent/16 text-text ring-1 ring-accent/20"
                   : "text-muted hover:bg-surface-strong/70 hover:text-text",
               )
             }
           >
             <Icon aria-hidden="true" size={18} />
-            <span className="mt-1.5">{label}</span>
+            <span className="mt-1">{label}</span>
           </NavLink>
         </motion.div>
       ))}
-      <div className="relative col-start-3 row-start-1 mx-auto flex h-[3.25rem] items-center justify-center">
+      <div className="relative col-start-3 row-start-1 mx-auto flex h-12 items-center justify-center">
         <Button
           type="button"
-          className="size-11 rounded-full border border-white/45 p-0 shadow-[0_14px_34px_color-mix(in_oklab,var(--app-accent)_38%,transparent)] ring-1 ring-accent/20"
+          className="size-10 rounded-full border border-white/45 p-0 shadow-soft ring-1 ring-accent/20"
           disabled={postDisabled}
           aria-label="Post"
           data-testid="mobile-post-action"
           title="Post"
-          icon={<PenLine aria-hidden="true" size={20} />}
+          icon={<PenLine aria-hidden="true" size={18} />}
           onClick={onPostClick}
         />
       </div>

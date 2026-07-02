@@ -16,12 +16,12 @@ export function EmptyState({
   className,
 }: EmptyStateProps) {
   return (
-    <Panel className={cn("p-6 text-center sm:p-8", className)}>
-      <div className="mx-auto grid size-12 place-items-center rounded-full bg-surface-strong text-accent-strong">
-        <Icon aria-hidden="true" size={22} />
+    <Panel className={cn("p-4 text-center sm:p-5", className)}>
+      <div className="mx-auto grid size-10 place-items-center rounded-control bg-surface-strong text-accent-strong">
+        <Icon aria-hidden="true" size={20} />
       </div>
-      <h2 className="mt-4 text-lg font-semibold text-text">{title}</h2>
-      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted">{text}</p>
+      <h2 className="mt-3 text-base font-semibold text-text">{title}</h2>
+      <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-muted">{text}</p>
     </Panel>
   );
 }

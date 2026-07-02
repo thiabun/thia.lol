@@ -83,7 +83,7 @@ export function DiscoverPage() {
 
   return (
     <motion.div
-      className="space-y-5"
+      className="space-y-4"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
@@ -95,21 +95,21 @@ export function DiscoverPage() {
       />
       <section>
         <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
-          <Panel className="p-4 sm:p-5">
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <Panel className="p-3 sm:p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div className="max-w-2xl">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <h1 className="text-3xl font-semibold tracking-normal text-text">
+                  <h1 className="text-2xl font-semibold tracking-normal text-text">
                     Discover
                   </h1>
                   <span className="rounded-control border border-line bg-canvas/65 px-2.5 py-1 text-xs font-medium text-muted">
                     For everyone
                   </span>
                 </div>
-                <p className="mt-2 text-sm leading-6 text-muted">
+                <p className="mt-1 text-sm leading-6 text-muted">
                   Public posts, active rooms, and members.
                 </p>
-                <div className="mt-3 flex flex-wrap gap-2">
+                <div className="mt-2 flex flex-wrap gap-2">
                   <ButtonLink
                     to="/search"
                     variant="secondary"
@@ -330,7 +330,7 @@ function DiscoverPeopleSection({
 
 function discoverLayoutClass(hasRooms: boolean, hasPeople: boolean) {
   return cn(
-    "grid gap-5 xl:items-start xl:justify-center",
+    "grid gap-4 xl:items-start xl:justify-center",
     hasRooms && hasPeople &&
       "xl:grid-cols-[minmax(14rem,18rem)_minmax(0,38rem)_minmax(14rem,18rem)]",
     hasRooms && !hasPeople &&
@@ -342,7 +342,7 @@ function discoverLayoutClass(hasRooms: boolean, hasPeople: boolean) {
 }
 
 function discoverRoomsSectionClass() {
-  return "order-2 min-w-0 xl:sticky xl:top-24 xl:order-none xl:col-start-1 xl:row-start-1 xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto xl:pr-1";
+  return "order-2 min-w-0 xl:sticky xl:top-20 xl:order-none xl:col-start-1 xl:row-start-1 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto xl:pr-1";
 }
 
 function discoverRisingSectionClass(hasRooms: boolean) {
@@ -354,7 +354,7 @@ function discoverRisingSectionClass(hasRooms: boolean) {
 
 function discoverPeopleSectionClass(hasRooms: boolean) {
   return cn(
-    "order-3 min-w-0 xl:sticky xl:top-24 xl:order-none xl:row-start-1 xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto xl:pl-1",
+    "order-3 min-w-0 xl:sticky xl:top-20 xl:order-none xl:row-start-1 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto xl:pl-1",
     hasRooms ? "xl:col-start-3" : "xl:col-start-2",
   );
 }
@@ -372,6 +372,7 @@ function PersonCard({
       custom={index}
       initial="hidden"
       animate="show"
+      data-render-deferred="side-rail"
     >
       <Panel interactive className="h-full p-3 shadow-none">
         <Link
@@ -407,15 +408,15 @@ function PersonCard({
             </p>
           ) : null}
           <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-canvas/55 px-2 py-1">
+            <span className="inline-flex items-center gap-1 rounded-control bg-canvas/55 px-1.5 py-0.5">
               <MessageCircle aria-hidden="true" size={14} />
               {formatCountWithUnit(person.postCount, "post")}
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-canvas/55 px-2 py-1">
+            <span className="inline-flex items-center gap-1 rounded-control bg-canvas/55 px-1.5 py-0.5">
               <Star aria-hidden="true" size={14} />
               {formatCountWithUnit(person.starCount, "star")}
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-canvas/55 px-2 py-1">
+            <span className="inline-flex items-center gap-1 rounded-control bg-canvas/55 px-1.5 py-0.5">
               <UsersRound aria-hidden="true" size={14} />
               {formatCountWithUnit(person.followerCount, "follower")}
             </span>

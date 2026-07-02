@@ -2,16 +2,23 @@ import type { HTMLAttributes } from "react";
 import { cn } from "../../lib/classNames";
 
 type PanelProps = HTMLAttributes<HTMLDivElement> & {
+  elevated?: boolean;
   interactive?: boolean;
 };
 
-export function Panel({ className, interactive = false, ...props }: PanelProps) {
+export function Panel({
+  className,
+  elevated = false,
+  interactive = false,
+  ...props
+}: PanelProps) {
   return (
     <div
       className={cn(
-        "rounded-panel border border-line bg-surface/84 shadow-soft backdrop-blur-veil",
+        "rounded-panel border border-line bg-surface/78",
+        elevated && "shadow-soft backdrop-blur-veil",
         interactive &&
-          "transition duration-fluid ease-fluid hover:-translate-y-1 hover:border-line-strong hover:shadow-lift motion-reduce:hover:translate-y-0",
+          "transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface/90",
         className,
       )}
       {...props}

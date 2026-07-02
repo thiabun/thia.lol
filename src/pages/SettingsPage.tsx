@@ -59,7 +59,6 @@ import {
   type TwoFactorSetupResult,
 } from "../lib/api";
 import { cn } from "../lib/classNames";
-import { usePageLoadSignal } from "../lib/pageLoadingContext";
 import { useAuth } from "../lib/useAuth";
 
 const notificationKeys = [
@@ -94,10 +93,6 @@ export function SettingsPage() {
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState<string>();
-  const settingsLoading =
-    status === "loading" || (status === "authenticated" && !settings && !error);
-  usePageLoadSignal(settingsLoading, "settings");
-
   useEffect(() => {
     if (status !== "authenticated") {
       return undefined;
@@ -1131,7 +1126,7 @@ function InlineStatus({
   return (
     <div
       className={cn(
-        "flex min-h-11 items-center gap-2 rounded-card border px-3 text-sm font-semibold",
+        "flex min-h-9 items-center gap-2 rounded-card border px-2.5 text-sm font-semibold",
         tone === "cool" && "border-cool/30 bg-cool/12 text-cool-ink",
         tone === "warm" && "border-warm/35 bg-warm/12 text-warm-ink",
         tone === "default" && "border-line bg-canvas/45 text-text",

@@ -81,7 +81,7 @@ export function RoomsPage() {
 
   return (
     <motion.div
-      className="space-y-4"
+      className="space-y-3"
       data-testid="rooms-page"
       variants={pageEntrance}
       initial="hidden"
@@ -94,13 +94,13 @@ export function RoomsPage() {
       />
 
       <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
-        <Panel className="p-4 sm:p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <Panel className="p-3 sm:p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="max-w-2xl">
-              <h1 className="text-3xl font-semibold tracking-normal text-text">
+              <h1 className="text-2xl font-semibold tracking-normal text-text">
                 Rooms
               </h1>
-              <p className="mt-2 text-sm leading-6 text-muted">
+              <p className="mt-1 text-sm leading-6 text-muted">
                 Public rooms for shared posts.
               </p>
             </div>
@@ -192,7 +192,7 @@ export function RoomsPage() {
 function RoomEditorLoadingNotice() {
   return (
     <div
-      className="fixed inset-x-4 bottom-24 z-50 mx-auto max-w-sm rounded-panel border border-line bg-surface/96 px-4 py-3 text-sm text-muted shadow-lift backdrop-blur-veil"
+      className="fixed inset-x-4 bottom-20 z-50 mx-auto max-w-xs rounded-panel border border-line bg-surface/96 px-3 py-2 text-sm text-muted shadow-soft"
       role="status"
     >
       Opening room editor.
