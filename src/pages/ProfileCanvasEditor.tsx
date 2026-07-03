@@ -8,13 +8,13 @@ import {
   Info,
   MoreHorizontal,
   Minus,
+  Move,
   Music2,
   Pencil,
   Pin,
   PinOff,
   Plus,
   Save,
-  Settings2,
   Sparkles,
   Trash2,
   Upload,
@@ -1215,10 +1215,13 @@ export function ProfileDirectCanvasEditor({
       data-profile-editor-render-mode="light"
       aria-label="Profile canvas editor"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div
+        className="space-y-2 lg:max-w-xl"
+        data-testid="profile-canvas-editor-toolbar"
+      >
         <div
           className={cn(
-            "flex flex-wrap items-center gap-2 rounded-card",
+            "grid grid-cols-2 gap-2 rounded-card",
             guideTarget === "Background"
               ? "outline outline-2 outline-focus/70 ring-4 ring-focus/15"
               : undefined,
@@ -1231,6 +1234,7 @@ export function ProfileDirectCanvasEditor({
         >
           <ProfileCanvasBackgroundControls
             backgroundBlur={draft.backgroundBlur}
+            compact
             profile={profile}
             uploading={uploading}
             onBackgroundBlurChange={onBackgroundBlurChange}
@@ -1239,36 +1243,37 @@ export function ProfileDirectCanvasEditor({
             onVideoUpload={onVideoUpload}
           />
           <ProfileAppearanceControls
+            compact
             profile={profile}
             onProfileDraftChange={onProfileDraftChange}
           />
-          <label className="flex min-h-11 items-center gap-2 rounded-control border border-line bg-surface/72 px-3 text-sm font-semibold text-text shadow-soft backdrop-blur-veil">
-            <span>Glass</span>
-            <span
-              aria-hidden="true"
-              className="size-4 rounded-[0.3rem] border border-line-strong bg-surface-strong shadow-inner-soft"
-            />
-            <input
-              className="w-28 accent-[var(--app-accent)]"
-              type="range"
-              min={0}
-              max={92}
-              value={draft.canvasGlass}
-              data-testid="profile-canvas-glass-slider"
-              onChange={(event) =>
-                onCanvasGlassChange(Number(event.currentTarget.value))
-              }
-            />
-            <span
-              aria-hidden="true"
-              className="size-4 rounded-[0.3rem] border border-line-strong bg-transparent shadow-inner-soft"
-            />
-          </label>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <label className="flex min-h-9 items-center gap-2 rounded-control border border-line bg-surface/72 px-2 text-xs font-semibold text-text shadow-soft backdrop-blur-veil">
+          <span className="shrink-0">Glass</span>
+          <span
+            aria-hidden="true"
+            className="size-3.5 shrink-0 rounded-[0.25rem] border border-line-strong bg-surface-strong shadow-inner-soft"
+          />
+          <input
+            className="min-w-0 flex-1 accent-[var(--app-accent)]"
+            type="range"
+            min={0}
+            max={92}
+            value={draft.canvasGlass}
+            data-testid="profile-canvas-glass-slider"
+            onChange={(event) =>
+              onCanvasGlassChange(Number(event.currentTarget.value))
+            }
+          />
+          <span
+            aria-hidden="true"
+            className="size-3.5 shrink-0 rounded-[0.25rem] border border-line-strong bg-transparent shadow-inner-soft"
+          />
+        </label>
+        <div className="flex items-center gap-1.5">
           <p
             className={cn(
-              "text-xs font-semibold",
+              "min-w-0 flex-1 truncate text-xs font-semibold",
               autosaveState === "error" ? "text-rose-ink" : "text-muted",
             )}
             role={autosaveState === "error" ? "alert" : "status"}
@@ -1277,33 +1282,34 @@ export function ProfileDirectCanvasEditor({
           </p>
           <Button
             type="button"
-            size="sm"
+            size="icon"
             variant="secondary"
+            aria-label="Open editor guide"
+            title="Guide"
             icon={<Sparkles aria-hidden="true" size={16} />}
             data-testid="profile-editor-guide-button"
             onClick={handleGuideOpen}
-          >
-            Guide
-          </Button>
+          />
           <Button
             type="button"
-            size="sm"
+            size="icon"
             variant="secondary"
+            aria-label="Cancel profile canvas edits"
+            title="Cancel"
             disabled={busy}
             icon={<X aria-hidden="true" size={16} />}
             onClick={onCancel}
-          >
-            Cancel
-          </Button>
+          />
           <Button
             type="button"
             size="sm"
             disabled={busy}
-            className={
+            className={cn(
+              "shrink-0 px-3",
               guideTarget === "Save"
                 ? "outline outline-2 outline-focus/70 ring-4 ring-focus/15"
-                : undefined
-            }
+                : undefined,
+            )}
             icon={<Save aria-hidden="true" size={16} />}
             data-testid="profile-canvas-save-button"
             onClick={onSave}
@@ -1355,6 +1361,29 @@ export function ProfileDirectCanvasEditor({
             }
           }}
         >
+          {editorGrid.mobile ? (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 z-0 grid gap-2"
+              data-testid="profile-canvas-grid-backdrop"
+              style={{
+                gridTemplateColumns: `repeat(${editorGrid.columns}, minmax(0, 1fr))`,
+                gridTemplateRows: `repeat(${editorGrid.rows}, minmax(0, 1fr))`,
+              }}
+            >
+              {editorCells.map((point) => (
+                <span
+                  key={`backdrop-${point.column}:${point.row}`}
+                  className="rounded-card border border-line/45 bg-surface/18"
+                  data-testid="profile-canvas-grid-backdrop-cell"
+                  style={{
+                    gridColumn: point.column,
+                    gridRow: point.row,
+                  }}
+                />
+              ))}
+            </div>
+          ) : null}
           <AnimatePresence initial={false}>
             {selectionPreviewRect ? (
               <motion.div
@@ -1519,6 +1548,10 @@ export function ProfileDirectCanvasEditor({
             : `Remove ${moduleTitle}`;
           const editControlSize = placeholderMicro ? "size-6" : "size-8";
           const editControlIconSize = placeholderMicro ? 12 : 15;
+          const mobileActionControlSize = placeholderMicro ? "size-7" : "size-8";
+          const mobileActionIconSize = placeholderMicro ? 13 : 15;
+          const mobileActionsStacked =
+            layout.rowSpan <= 1 || layout.colSpan <= 2;
 
           return (
             <ProfileGridModule
@@ -1674,7 +1707,7 @@ export function ProfileDirectCanvasEditor({
               ) : null}
               <div
                 className={cn(
-                  "absolute right-1.5 top-1.5 z-40 flex items-center gap-1",
+                  "absolute right-1.5 top-1.5 z-50 flex items-center gap-1",
                   placeholderMicro ? "right-1 top-1 gap-0.5" : undefined,
                 )}
                 data-profile-edit-control="true"
@@ -1725,19 +1758,35 @@ export function ProfileDirectCanvasEditor({
               </div>
               {editorGrid.mobile ? (
                 <div
-                  className="absolute inset-x-1.5 bottom-1.5 z-40 flex items-center justify-center gap-1 rounded-full border border-line bg-surface/92 p-1 shadow-soft backdrop-blur-veil"
+                  className={cn(
+                    "absolute left-1 z-40 flex items-center justify-center rounded-full border border-line bg-surface/92 p-0.5 shadow-soft backdrop-blur-veil",
+                    mobileActionsStacked
+                      ? "bottom-1 flex-col gap-0.5"
+                      : "bottom-1.5 flex-row gap-1",
+                  )}
                   data-profile-edit-control="true"
                   data-testid="profile-canvas-mobile-actions"
                 >
                   <button
                     type="button"
                     className={cn(
-                      "inline-flex min-h-8 min-w-0 flex-1 touch-manipulation items-center justify-center gap-1 rounded-full px-2 text-[0.68rem] font-semibold text-muted transition hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus",
+                      "grid shrink-0 touch-manipulation place-items-center rounded-full text-muted transition hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus",
+                      mobileActionControlSize,
                       mobileMoveModuleId === module.id
                         ? "bg-focus/18 text-text shadow-inner-soft"
                         : undefined,
                     )}
+                    aria-label={
+                      mobileMoveModuleId === module.id
+                        ? `Stop moving ${placeholder ? "blank module" : moduleTitle}`
+                        : `Move ${placeholder ? "blank module" : moduleTitle}`
+                    }
                     aria-pressed={mobileMoveModuleId === module.id}
+                    title={
+                      mobileMoveModuleId === module.id
+                        ? "Stop moving"
+                        : "Move"
+                    }
                     data-profile-edit-control="true"
                     data-testid={`profile-canvas-mobile-move-${module.id}`}
                     onClick={() => {
@@ -1748,43 +1797,20 @@ export function ProfileDirectCanvasEditor({
                       );
                     }}
                   >
-                    <ArrowRight aria-hidden="true" size={13} />
-                    Move
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex min-h-8 min-w-0 flex-1 touch-manipulation items-center justify-center gap-1 rounded-full px-2 text-[0.68rem] font-semibold text-muted transition hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
-                    data-profile-edit-control="true"
-                    data-testid={`profile-canvas-mobile-size-${module.id}`}
-                    onClick={() => {
-                      setPickerModuleId(undefined);
-                      setSettingsModuleId(module.id);
-                    }}
-                  >
-                    <Settings2 aria-hidden="true" size={13} />
-                    Size
+                    <Move aria-hidden="true" size={mobileActionIconSize} />
                   </button>
                   <button
                     type="button"
                     className={cn(
-                      "inline-flex min-h-8 min-w-0 flex-1 touch-manipulation items-center justify-center gap-1 rounded-full px-2 text-[0.68rem] font-semibold text-muted transition hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus",
-                      module.pinned ? "bg-rose/14 text-rose-ink" : undefined,
+                      "grid shrink-0 touch-manipulation place-items-center rounded-full text-muted transition hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus",
+                      mobileActionControlSize,
                     )}
-                    aria-pressed={module.pinned}
-                    data-profile-edit-control="true"
-                    data-testid={`profile-canvas-mobile-pin-${module.id}`}
-                    onClick={() => handleTogglePin(module)}
-                  >
-                    {module.pinned ? (
-                      <PinOff aria-hidden="true" size={13} />
-                    ) : (
-                      <Pin aria-hidden="true" size={13} />
-                    )}
-                    Pin
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex min-h-8 min-w-0 flex-1 touch-manipulation items-center justify-center gap-1 rounded-full px-2 text-[0.68rem] font-semibold text-muted transition hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
+                    aria-label={
+                      placeholder
+                        ? "Add module"
+                        : `Edit ${moduleTitle}`
+                    }
+                    title={placeholder ? "Add" : "Edit"}
                     data-profile-edit-control="true"
                     data-testid={`profile-canvas-mobile-settings-${module.id}`}
                     onClick={() => {
@@ -1798,8 +1824,11 @@ export function ProfileDirectCanvasEditor({
                       setSettingsModuleId(module.id);
                     }}
                   >
-                    <MoreHorizontal aria-hidden="true" size={13} />
-                    {placeholder ? "Add" : "Edit"}
+                    {placeholder ? (
+                      <Plus aria-hidden="true" size={mobileActionIconSize + 1} />
+                    ) : (
+                      <Pencil aria-hidden="true" size={mobileActionIconSize} />
+                    )}
                   </button>
                 </div>
               ) : null}

@@ -4767,6 +4767,19 @@ test.describe("mobile touch direct canvas", () => {
     await expectGridColumnCount(grid, PROFILE_CANVAS_MOBILE_COLUMNS);
     await expect(page.getByTestId("profile-canvas-cell-6-32")).toBeVisible();
     await expect(page.getByTestId("profile-canvas-cell-7-1")).toHaveCount(0);
+    await expect(page.getByTestId("profile-canvas-grid-backdrop")).toBeVisible();
+    await expect(page.getByTestId("profile-canvas-grid-backdrop-cell")).toHaveCount(
+      PROFILE_CANVAS_MOBILE_COLUMNS * PROFILE_CANVAS_MOBILE_ROWS,
+    );
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            document.documentElement.scrollWidth >
+            document.documentElement.clientWidth,
+        ),
+      )
+      .toBe(false);
 
     await page.getByTestId("profile-canvas-cell-1-19").tap();
     await page.getByTestId("profile-canvas-cell-2-19").tap();
@@ -4777,11 +4790,33 @@ test.describe("mobile touch direct canvas", () => {
       has: page.locator('[data-testid^="profile-canvas-blank-module-"]'),
     });
     await expect(blankModuleShell).toBeVisible();
-    await expect(blankModuleShell.getByTestId("profile-canvas-mobile-actions")).toBeVisible();
+    const mobileActions = blankModuleShell.getByTestId("profile-canvas-mobile-actions");
+    await expect(mobileActions).toBeVisible();
+    await expect(mobileActions).not.toContainText("Move");
+    await expect(mobileActions).not.toContainText("Size");
+    await expect(mobileActions).not.toContainText("Pin");
+    await expect(mobileActions).not.toContainText("Edit");
+    await expect(
+      blankModuleShell.locator('[data-testid^="profile-canvas-mobile-size-"]'),
+    ).toHaveCount(0);
+    await expect(
+      blankModuleShell.locator('[data-testid^="profile-canvas-mobile-pin-"]'),
+    ).toHaveCount(0);
+    await expect(
+      mobileActions.getByRole("button", { name: "Move blank module" }),
+    ).toBeVisible();
+    await expect(
+      mobileActions.getByRole("button", { name: "Add module" }),
+    ).toBeVisible();
     await expect(page.locator('[data-testid^="profile-canvas-resize-handle-"]')).toHaveCount(0);
-    await blankModuleShell.locator('[data-testid^="profile-canvas-mobile-size-"]').tap();
-    await expect(page.getByTestId("profile-module-settings")).toBeVisible();
-    await page.keyboard.press("Escape");
+    const pinButton = blankModuleShell.locator(
+      '[data-testid^="profile-canvas-pin-module-"]',
+    );
+    await expect(pinButton).toBeVisible();
+    await pinButton.tap();
+    await expect(pinButton).toHaveAttribute("aria-pressed", "true");
+    await pinButton.tap();
+    await expect(pinButton).toHaveAttribute("aria-pressed", "false");
     await expect
       .poll(() => {
         const layout = placeholderDraftModule(draftPayload)?.layout as
@@ -4791,6 +4826,13 @@ test.describe("mobile touch direct canvas", () => {
         return `${layout?.column}:${layout?.row}:${layout?.colSpan}:${layout?.rowSpan}`;
       })
       .toBe("1:10:2:1");
+    await mobileActions.getByRole("button", { name: "Add module" }).tap();
+    await expect(page.getByTestId("profile-module-picker")).toBeVisible();
+    await page.getByRole("tab", { name: "Music" }).tap();
+    await page.getByTestId("profile-module-picker-music").tap();
+    await expect(page.getByTestId("profile-module-settings")).toBeVisible();
+    await expect(page.getByTestId("profile-module-size-stepper")).toBeVisible();
+    await page.keyboard.press("Escape");
   });
 });
 

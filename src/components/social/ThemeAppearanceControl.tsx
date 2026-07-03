@@ -15,6 +15,7 @@ import {
 import type { ProfileThemeColors, ProfileThemeConfig } from "../../lib/types";
 
 type ThemeAppearanceControlProps = {
+  compact?: boolean | undefined;
   config: ProfileThemeConfig | null | undefined;
   controlAttribute: "data-profile-edit-control" | "data-room-edit-control";
   description: string;
@@ -27,6 +28,7 @@ type ThemeAppearanceControlProps = {
 };
 
 export function ThemeAppearanceControl({
+  compact = false,
   config,
   controlAttribute,
   description,
@@ -96,7 +98,10 @@ export function ThemeAppearanceControl({
     <div className="relative" data-testid={rootTestId}>
       <button
         type="button"
-        className="flex min-h-11 w-full items-center gap-3 rounded-control border border-line bg-canvas/50 px-3 text-left transition duration-fluid ease-fluid hover:border-line-strong hover:bg-canvas/70 focus-visible:outline-2 focus-visible:outline-focus"
+        className={cn(
+          "flex w-full items-center rounded-control border border-line bg-canvas/50 text-left transition duration-fluid ease-fluid hover:border-line-strong hover:bg-canvas/70 focus-visible:outline-2 focus-visible:outline-focus",
+          compact ? "min-h-9 gap-2 px-2" : "min-h-11 gap-3 px-3",
+        )}
         aria-haspopup="dialog"
         aria-expanded={open}
         data-testid={triggerTestId}
@@ -104,15 +109,18 @@ export function ThemeAppearanceControl({
         {...controlAttrs}
       >
         <span
-          className="grid size-8 shrink-0 place-items-center rounded-card border border-line text-text"
+          className={cn(
+            "grid shrink-0 place-items-center rounded-card border border-line text-text",
+            compact ? "size-7" : "size-8",
+          )}
           style={{
             background: `linear-gradient(135deg, ${swatchColors.accent}, ${swatchColors.surface})`,
           }}
         >
-          <Palette aria-hidden="true" size={17} />
+          <Palette aria-hidden="true" size={compact ? 15 : 17} />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-semibold text-text">
+          <span className={cn("block truncate font-semibold text-text", compact ? "text-xs" : "text-sm")}>
             {label}
           </span>
           <span className="block truncate text-xs text-muted">{activeLabel}</span>

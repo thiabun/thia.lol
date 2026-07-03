@@ -2966,6 +2966,7 @@ function ProfileInfoAutosaveStatus({
 
 export function ProfileCanvasBackgroundControls({
   backgroundBlur,
+  compact = false,
   onBackgroundBlurChange,
   onClear,
   onImageUpload,
@@ -2974,6 +2975,7 @@ export function ProfileCanvasBackgroundControls({
   uploading,
 }: {
   backgroundBlur: ProfileBackgroundBlur;
+  compact?: boolean | undefined;
   onBackgroundBlurChange: (blur: ProfileBackgroundBlur) => void;
   onClear: () => void;
   onImageUpload: (file: File) => void;
@@ -2996,18 +2998,26 @@ export function ProfileCanvasBackgroundControls({
     >
       <button
         type="button"
-        className="flex min-h-11 w-full items-center gap-3 rounded-control border border-line bg-canvas/50 px-3 text-left transition duration-fluid ease-fluid hover:border-line-strong hover:bg-canvas/70 focus-visible:outline-2 focus-visible:outline-focus"
+        className={cn(
+          "flex w-full items-center rounded-control border border-line bg-canvas/50 text-left transition duration-fluid ease-fluid hover:border-line-strong hover:bg-canvas/70 focus-visible:outline-2 focus-visible:outline-focus",
+          compact ? "min-h-9 gap-2 px-2" : "min-h-11 gap-3 px-3",
+        )}
         aria-haspopup="dialog"
         aria-expanded={open}
         data-profile-edit-control="true"
         data-testid="profile-canvas-background-trigger"
         onClick={() => setOpen((current) => !current)}
       >
-        <span className="grid size-8 shrink-0 place-items-center rounded-card border border-line bg-surface/70 text-text">
-          <ImagePlus aria-hidden="true" size={17} />
+        <span
+          className={cn(
+            "grid shrink-0 place-items-center rounded-card border border-line bg-surface/70 text-text",
+            compact ? "size-7" : "size-8",
+          )}
+        >
+          <ImagePlus aria-hidden="true" size={compact ? 15 : 17} />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-semibold text-text">
+          <span className={cn("block truncate font-semibold text-text", compact ? "text-xs" : "text-sm")}>
             Background
           </span>
           <span className="block truncate text-xs text-muted">
@@ -3144,9 +3154,11 @@ export function ProfileCanvasBackgroundControls({
 }
 
 export function ProfileAppearanceControls({
+  compact = false,
   profile,
   onProfileDraftChange,
 }: {
+  compact?: boolean | undefined;
   profile: Profile;
   onProfileDraftChange: (updater: (profile: Profile) => Profile) => void;
 }) {
@@ -3171,6 +3183,7 @@ export function ProfileAppearanceControls({
 
   return (
     <ThemeAppearanceControl
+      compact={compact}
       config={profile.profileThemeConfig}
       controlAttribute="data-profile-edit-control"
       description="Override Sunveil/Frostveil while people view your profile."
