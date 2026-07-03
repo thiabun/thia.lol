@@ -4790,12 +4790,11 @@ test.describe("mobile touch direct canvas", () => {
       has: page.locator('[data-testid^="profile-canvas-blank-module-"]'),
     });
     await expect(blankModuleShell).toBeVisible();
-    const mobileActions = blankModuleShell.getByTestId("profile-canvas-mobile-actions");
-    await expect(mobileActions).toBeVisible();
-    await expect(mobileActions).not.toContainText("Move");
-    await expect(mobileActions).not.toContainText("Size");
-    await expect(mobileActions).not.toContainText("Pin");
-    await expect(mobileActions).not.toContainText("Edit");
+    await expect(blankModuleShell).toHaveAttribute(
+      "data-profile-module-selected",
+      "true",
+    );
+    await expect(blankModuleShell.getByTestId("profile-canvas-mobile-actions")).toHaveCount(0);
     await expect(
       blankModuleShell.locator('[data-testid^="profile-canvas-mobile-size-"]'),
     ).toHaveCount(0);
@@ -4803,20 +4802,31 @@ test.describe("mobile touch direct canvas", () => {
       blankModuleShell.locator('[data-testid^="profile-canvas-mobile-pin-"]'),
     ).toHaveCount(0);
     await expect(
-      mobileActions.getByRole("button", { name: "Move blank module" }),
+      blankModuleShell.locator('[data-testid^="profile-canvas-pin-module-"]'),
+    ).toHaveCount(0);
+    await expect(
+      page.locator('[data-testid^="profile-canvas-delete-placeholder-"]'),
+    ).toHaveCount(0);
+    await expect(page.locator('[data-testid^="profile-canvas-resize-handle-"]')).toHaveCount(0);
+    const selectedActions = page.getByTestId("profile-canvas-selected-actions");
+    await expect(selectedActions).toBeVisible();
+    await expect(
+      selectedActions.getByRole("button", { name: /Move blank module/i }),
     ).toBeVisible();
     await expect(
-      mobileActions.getByRole("button", { name: "Add module" }),
+      selectedActions.getByRole("button", { name: "Add module" }),
     ).toBeVisible();
-    await expect(page.locator('[data-testid^="profile-canvas-resize-handle-"]')).toHaveCount(0);
-    const pinButton = blankModuleShell.locator(
-      '[data-testid^="profile-canvas-pin-module-"]',
-    );
+    const pinButton = selectedActions.getByTestId("profile-canvas-selected-pin");
     await expect(pinButton).toBeVisible();
     await pinButton.tap();
     await expect(pinButton).toHaveAttribute("aria-pressed", "true");
     await pinButton.tap();
     await expect(pinButton).toHaveAttribute("aria-pressed", "false");
+    const moveButton = selectedActions.getByTestId("profile-canvas-selected-move");
+    await moveButton.tap();
+    await expect(moveButton).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("profile-canvas-cell-3-19").tap();
+    await expect(moveButton).toHaveAttribute("aria-pressed", "false");
     await expect
       .poll(() => {
         const layout = placeholderDraftModule(draftPayload)?.layout as
@@ -4825,14 +4835,89 @@ test.describe("mobile touch direct canvas", () => {
 
         return `${layout?.column}:${layout?.row}:${layout?.colSpan}:${layout?.rowSpan}`;
       })
-      .toBe("1:10:2:1");
-    await mobileActions.getByRole("button", { name: "Add module" }).tap();
+      .toBe("3:10:2:1");
+    await selectedActions.getByRole("button", { name: "Add module" }).tap();
     await expect(page.getByTestId("profile-module-picker")).toBeVisible();
     await page.getByRole("tab", { name: "Music" }).tap();
     await page.getByTestId("profile-module-picker-music").tap();
     await expect(page.getByTestId("profile-module-settings")).toBeVisible();
     await expect(page.getByTestId("profile-module-size-stepper")).toBeVisible();
     await page.keyboard.press("Escape");
+  });
+
+  test("small configured modules use compact selected controls", async ({ page }) => {
+    await mockProfileModules(page, {
+      authenticated: true,
+      modules: [
+        withAuditLayout(spotifyEmbedMusicModule({ id: 21, position: 1 }), "2x2", 4, 1),
+        withAuditLayout(
+          {
+            id: 22,
+            type: "connections",
+            title: "Connections",
+            config: {
+              links: [
+                { label: "GitHub", platform: "github", url: "https://github.com/thiabun" },
+                { label: "Spotify", platform: "spotify", url: "https://open.spotify.com/user/thia" },
+              ],
+            },
+            visibility: "public",
+            position: 2,
+            status: "active",
+            schemaVersion: 1,
+            createdAt: "2026-06-12 00:00:00",
+            updatedAt: "2026-06-12 00:00:00",
+          },
+          "2x2",
+          4,
+          3,
+        ),
+        withAuditLayout(galleryModule({ id: 23, position: 3 }), "2x1", 6, 1),
+      ],
+    });
+    await acknowledgeCookieNotice(page);
+    await page.goto("/@thia?editCanvas=1");
+
+    await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
+    await expect(page.getByTestId("profile-canvas-selected-actions")).toHaveCount(0);
+    await expect(page.locator('[data-testid="profile-canvas-mobile-actions"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid^="profile-canvas-pin-module-"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid^="profile-canvas-remove-module-"]')).toHaveCount(0);
+    await expect(page.getByTestId("profile-canvas-light-preview-21")).toHaveAttribute(
+      "data-profile-canvas-preview-role",
+      "tiny",
+    );
+    await expect(page.getByTestId("profile-canvas-light-preview-22")).toHaveAttribute(
+      "data-profile-canvas-preview-role",
+      "tiny",
+    );
+    await expect(page.getByTestId("profile-canvas-light-preview-23")).toHaveAttribute(
+      "data-profile-canvas-preview-role",
+      "micro",
+    );
+    await expect(page.getByTestId("profile-canvas-light-preview-23")).not.toContainText(
+      "2x1",
+    );
+
+    await page.getByTestId("profile-canvas-module-21").tap();
+    const selectedActions = page.getByTestId("profile-canvas-selected-actions");
+    await expect(selectedActions).toBeVisible();
+    const selectedActionsBox = await selectedActions.boundingBox();
+    expect(selectedActionsBox?.y ?? -1).toBeGreaterThanOrEqual(0);
+    expect(
+      (selectedActionsBox?.y ?? 0) + (selectedActionsBox?.height ?? 0),
+    ).toBeLessThanOrEqual(844);
+    await expect(selectedActions.getByRole("button", { name: /Edit/i })).toBeVisible();
+    await expect(selectedActions.getByTestId("profile-canvas-selected-delete")).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            document.documentElement.scrollWidth >
+            document.documentElement.clientWidth,
+        ),
+      )
+      .toBe(false);
   });
 });
 
@@ -6144,7 +6229,8 @@ test("profile module registry and Node storage guardrails are present by inspect
   expect(profileGrid).toContain("mutationObserver?.observe");
   expect(profilePage).toContain("requestAnimationFrame");
   expect(profilePage).toContain("profile-canvas-drag-preview");
-  expect(profilePage).toContain("profile-canvas-mobile-actions");
+  expect(profilePage).toContain("profile-canvas-selected-actions");
+  expect(profilePage).toContain("data-profile-canvas-preview-role");
   expect(profilePage).toContain('data-profile-editor-render-mode="light"');
   expect(profilePage).toContain('data-profile-editor-input-mode={editorGrid.mobile ? "touch" : "pointer"}');
   expect(editor).toContain('const singletonModuleTypes = new Set(["profile_info", "featured_post", "featured_room", "activity"])');

@@ -563,6 +563,9 @@ export function ProfileDirectCanvasEditor({
   const [selectionHover, setSelectionHover] = useState<CanvasPoint | undefined>();
   const [pickerModuleId, setPickerModuleId] = useState<number | undefined>();
   const [settingsModuleId, setSettingsModuleId] = useState<number | undefined>();
+  const [selectedMobileModuleId, setSelectedMobileModuleId] = useState<
+    number | undefined
+  >();
   const [mobileMoveModuleId, setMobileMoveModuleId] = useState<number | undefined>();
   const [guideStepIndex, setGuideStepIndex] = useState(0);
   const [dragState, setDragState] = useState<ProfileCanvasDragState | undefined>();
@@ -607,6 +610,9 @@ export function ProfileDirectCanvasEditor({
   }, [editorGrid.mobile, sortedModules]);
   const pickerModule = sortedModules.find((module) => module.id === pickerModuleId);
   const settingsModule = sortedModules.find((module) => module.id === settingsModuleId);
+  const selectedMobileModule = editorGrid.mobile
+    ? sortedModules.find((module) => module.id === selectedMobileModuleId)
+    : undefined;
   const integrationConnectionLinks = useMemo(
     () => profileCanvasConnectionLinksFromIntegrationAccounts(integrationAccounts),
     [integrationAccounts],
@@ -911,7 +917,7 @@ export function ProfileDirectCanvasEditor({
   ]);
 
   function handleCellClick(point: CanvasPoint) {
-    if (mobileMoveModuleId !== undefined) {
+    if (editorGrid.mobile && mobileMoveModuleId !== undefined) {
       const movingModule = sortedModules.find(
         (module) => module.id === mobileMoveModuleId,
       );
@@ -956,10 +962,13 @@ export function ProfileDirectCanvasEditor({
         ),
       );
       setMobileMoveModuleId(undefined);
+      setSelectedMobileModuleId(movingModule.id);
       setSelectionStart(undefined);
       setSelectionHover(undefined);
       return;
     }
+
+    setSelectedMobileModuleId(undefined);
 
     if (!selectionStart) {
       setSelectionStart(point);
@@ -1012,6 +1021,7 @@ export function ProfileDirectCanvasEditor({
       profileCanvasResolveDraftCollisions([...currentModules, blankModule], id),
     );
     setMobileMoveModuleId(undefined);
+    setSelectedMobileModuleId(id);
     setSettingsModuleId(undefined);
     setPickerModuleId(id);
     setSelectionStart(undefined);
@@ -1061,6 +1071,7 @@ export function ProfileDirectCanvasEditor({
       ),
     );
     setPickerModuleId(undefined);
+    setSelectedMobileModuleId(module.id);
     setSettingsModuleId(undefined);
     window.setTimeout(() => setSettingsModuleId(module.id), 0);
 
@@ -1113,6 +1124,10 @@ export function ProfileDirectCanvasEditor({
     );
     setPickerModuleId((current) => (current === module.id ? undefined : current));
     setSettingsModuleId(undefined);
+    setSelectedMobileModuleId((current) =>
+      current === module.id ? undefined : current,
+    );
+    setMobileMoveModuleId((current) => (current === module.id ? undefined : current));
   }
 
   function handleTogglePin(module: ProfileModule) {
@@ -1184,6 +1199,37 @@ export function ProfileDirectCanvasEditor({
     });
   }
 
+  const selectedMobilePlaceholder = selectedMobileModule?.type === "placeholder";
+  const selectedMobileTitle = selectedMobileModule
+    ? selectedMobilePlaceholder
+      ? "Blank module"
+      : profileCanvasModulePreviewTitle(selectedMobileModule)
+    : "";
+  const selectedMobileCanRemove =
+    selectedMobileModule !== undefined && selectedMobileModule.type !== "profile_info";
+  const selectedMobileMoveActive =
+    selectedMobileModule !== undefined && mobileMoveModuleId === selectedMobileModule.id;
+  const selectedMobileMoveDisabled = selectedMobileModule?.pinned === true;
+  const selectedMobilePinLabel = selectedMobileModule
+    ? selectedMobileModule.pinned
+      ? `Unpin ${selectedMobileTitle}`
+      : `Pin ${selectedMobileTitle}`
+    : "";
+  const selectedMobileMoveLabel = selectedMobileModule
+    ? selectedMobileMoveActive
+      ? `Stop moving ${selectedMobileTitle}`
+      : `Move ${selectedMobileTitle}`
+    : "";
+  const selectedMobileSettingsLabel = selectedMobileModule
+    ? selectedMobilePlaceholder
+      ? "Add module"
+      : `Edit ${selectedMobileTitle}`
+    : "";
+  const selectedMobileRemoveLabel = selectedMobileModule
+    ? selectedMobilePlaceholder
+      ? "Delete blank module"
+      : `Remove ${selectedMobileTitle}`
+    : "";
   const selectionRect =
     selectionStart && selectionHover
       ? profileCanvasRectFromPoints(selectionStart, selectionHover)
@@ -1539,6 +1585,7 @@ export function ProfileDirectCanvasEditor({
               ? "Add module"
               : "Click to add module";
           const moduleTitle = profileModuleFallbackTitle(module.type);
+          const selectedMobile = editorGrid.mobile && selectedMobileModuleId === module.id;
           const pinLabel = module.pinned
             ? `Unpin ${placeholder ? "blank module" : moduleTitle}`
             : `Pin ${placeholder ? "blank module" : moduleTitle}`;
@@ -1548,10 +1595,6 @@ export function ProfileDirectCanvasEditor({
             : `Remove ${moduleTitle}`;
           const editControlSize = placeholderMicro ? "size-6" : "size-8";
           const editControlIconSize = placeholderMicro ? 12 : 15;
-          const mobileActionControlSize = placeholderMicro ? "size-7" : "size-8";
-          const mobileActionIconSize = placeholderMicro ? 13 : 15;
-          const mobileActionsStacked =
-            layout.rowSpan <= 1 || layout.colSpan <= 2;
 
           return (
             <ProfileGridModule
@@ -1562,12 +1605,19 @@ export function ProfileDirectCanvasEditor({
                 module.pinned
                   ? "outline outline-2 outline-rose/70 ring-2 ring-rose/20"
                   : undefined,
+                selectedMobile
+                  ? "outline outline-2 outline-focus/85 ring-4 ring-focus/18"
+                  : undefined,
+                editorGrid.mobile && mobileMoveModuleId === module.id
+                  ? "outline outline-2 outline-accent/80 ring-4 ring-accent/18"
+                  : undefined,
               )}
               deferRender={false}
               data-profile-canvas-preview-blurred={configured ? "true" : undefined}
               layout={layout}
               layoutAnimation={false}
               pinned={module.pinned}
+              selected={selectedMobile}
               size={size}
               testId={`profile-canvas-module-${module.id}`}
             >
@@ -1578,6 +1628,25 @@ export function ProfileDirectCanvasEditor({
                     ? "overflow-hidden border border-line-strong bg-surface/90 p-2 shadow-inner-soft"
                     : undefined,
                 )}
+                onClick={(event) => {
+                  if (!editorGrid.mobile) {
+                    return;
+                  }
+
+                  const target = event.target;
+
+                  if (
+                    target instanceof HTMLElement &&
+                    target.closest('[data-profile-edit-control="true"]')
+                  ) {
+                    return;
+                  }
+
+                  event.stopPropagation();
+                  setSelectionStart(undefined);
+                  setSelectionHover(undefined);
+                  setSelectedMobileModuleId(module.id);
+                }}
                 onPointerDown={(event) => {
                   const target = event.target;
 
@@ -1632,6 +1701,13 @@ export function ProfileDirectCanvasEditor({
                       data-profile-edit-control="true"
                       data-testid={`profile-canvas-add-module-${module.id}`}
                       onClick={() => {
+                        if (editorGrid.mobile) {
+                          setSelectionStart(undefined);
+                          setSelectionHover(undefined);
+                          setSelectedMobileModuleId(module.id);
+                          return;
+                        }
+
                         setSettingsModuleId(undefined);
                         setPickerModuleId(module.id);
                       }}
@@ -1692,7 +1768,11 @@ export function ProfileDirectCanvasEditor({
                     data-testid={`profile-canvas-module-content-${module.id}`}
                     inert
                   >
-                    <ProfileCanvasModulePreview module={module} size={size} />
+                    <ProfileCanvasModulePreview
+                      module={module}
+                      mobile={editorGrid.mobile}
+                      size={size}
+                    />
                   </div>
                 )}
               </div>
@@ -1705,129 +1785,55 @@ export function ProfileDirectCanvasEditor({
                   onResizeStart={handleResizePointerStart}
                 />
               ) : null}
-              <div
-                className={cn(
-                  "absolute right-1.5 top-1.5 z-50 flex items-center gap-1",
-                  placeholderMicro ? "right-1 top-1 gap-0.5" : undefined,
-                )}
-                data-profile-edit-control="true"
-              >
-                {removable ? (
-                  <button
-                    type="button"
-                    className={cn(
-                      "grid place-items-center rounded-full border border-line bg-surface/92 text-rose-ink shadow-soft backdrop-blur-veil transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
-                      editControlSize,
-                    )}
-                    aria-label={removeLabel}
-                    title={removeLabel}
-                    data-profile-edit-control="true"
-                    data-testid={
-                      placeholder
-                        ? `profile-canvas-delete-placeholder-${module.id}`
-                        : `profile-canvas-remove-module-${module.id}`
-                    }
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      handleRemoveModule(module);
-                    }}
-                  >
-                    <Trash2 aria-hidden="true" size={editControlIconSize} />
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  className={cn(
-                    "grid place-items-center rounded-full border border-line bg-surface/92 text-text shadow-soft backdrop-blur-veil transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
-                    module.pinned ? "border-rose/50 bg-rose/18 text-rose-ink" : undefined,
-                    editControlSize,
-                  )}
-                  aria-label={pinLabel}
-                  aria-pressed={module.pinned}
-                  title={pinLabel}
-                  data-testid={`profile-canvas-pin-module-${module.id}`}
-                  onClick={() => handleTogglePin(module)}
-                >
-                  {module.pinned ? (
-                    <PinOff aria-hidden="true" size={editControlIconSize} />
-                  ) : (
-                    <Pin aria-hidden="true" size={editControlIconSize} />
-                  )}
-                </button>
-              </div>
-              {editorGrid.mobile ? (
+              {!editorGrid.mobile ? (
                 <div
                   className={cn(
-                    "absolute left-1 z-40 flex items-center justify-center rounded-full border border-line bg-surface/92 p-0.5 shadow-soft backdrop-blur-veil",
-                    mobileActionsStacked
-                      ? "bottom-1 flex-col gap-0.5"
-                      : "bottom-1.5 flex-row gap-1",
+                    "absolute right-1.5 top-1.5 z-50 flex items-center gap-1",
+                    placeholderMicro ? "right-1 top-1 gap-0.5" : undefined,
                   )}
                   data-profile-edit-control="true"
-                  data-testid="profile-canvas-mobile-actions"
                 >
-                  <button
-                    type="button"
-                    className={cn(
-                      "grid shrink-0 touch-manipulation place-items-center rounded-full text-muted transition hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus",
-                      mobileActionControlSize,
-                      mobileMoveModuleId === module.id
-                        ? "bg-focus/18 text-text shadow-inner-soft"
-                        : undefined,
-                    )}
-                    aria-label={
-                      mobileMoveModuleId === module.id
-                        ? `Stop moving ${placeholder ? "blank module" : moduleTitle}`
-                        : `Move ${placeholder ? "blank module" : moduleTitle}`
-                    }
-                    aria-pressed={mobileMoveModuleId === module.id}
-                    title={
-                      mobileMoveModuleId === module.id
-                        ? "Stop moving"
-                        : "Move"
-                    }
-                    data-profile-edit-control="true"
-                    data-testid={`profile-canvas-mobile-move-${module.id}`}
-                    onClick={() => {
-                      setSelectionStart(undefined);
-                      setSelectionHover(undefined);
-                      setMobileMoveModuleId((current) =>
-                        current === module.id ? undefined : module.id,
-                      );
-                    }}
-                  >
-                    <Move aria-hidden="true" size={mobileActionIconSize} />
-                  </button>
-                  <button
-                    type="button"
-                    className={cn(
-                      "grid shrink-0 touch-manipulation place-items-center rounded-full text-muted transition hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus",
-                      mobileActionControlSize,
-                    )}
-                    aria-label={
-                      placeholder
-                        ? "Add module"
-                        : `Edit ${moduleTitle}`
-                    }
-                    title={placeholder ? "Add" : "Edit"}
-                    data-profile-edit-control="true"
-                    data-testid={`profile-canvas-mobile-settings-${module.id}`}
-                    onClick={() => {
-                      if (placeholder) {
-                        setSettingsModuleId(undefined);
-                        setPickerModuleId(module.id);
-                        return;
+                  {removable ? (
+                    <button
+                      type="button"
+                      className={cn(
+                        "grid place-items-center rounded-full border border-line bg-surface/92 text-rose-ink shadow-soft backdrop-blur-veil transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
+                        editControlSize,
+                      )}
+                      aria-label={removeLabel}
+                      title={removeLabel}
+                      data-profile-edit-control="true"
+                      data-testid={
+                        placeholder
+                          ? `profile-canvas-delete-placeholder-${module.id}`
+                          : `profile-canvas-remove-module-${module.id}`
                       }
-
-                      setPickerModuleId(undefined);
-                      setSettingsModuleId(module.id);
-                    }}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        handleRemoveModule(module);
+                      }}
+                    >
+                      <Trash2 aria-hidden="true" size={editControlIconSize} />
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className={cn(
+                      "grid place-items-center rounded-full border border-line bg-surface/92 text-text shadow-soft backdrop-blur-veil transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
+                      module.pinned ? "border-rose/50 bg-rose/18 text-rose-ink" : undefined,
+                      editControlSize,
+                    )}
+                    aria-label={pinLabel}
+                    aria-pressed={module.pinned}
+                    title={pinLabel}
+                    data-testid={`profile-canvas-pin-module-${module.id}`}
+                    onClick={() => handleTogglePin(module)}
                   >
-                    {placeholder ? (
-                      <Plus aria-hidden="true" size={mobileActionIconSize + 1} />
+                    {module.pinned ? (
+                      <PinOff aria-hidden="true" size={editControlIconSize} />
                     ) : (
-                      <Pencil aria-hidden="true" size={mobileActionIconSize} />
+                      <Pin aria-hidden="true" size={editControlIconSize} />
                     )}
                   </button>
                 </div>
@@ -1860,6 +1866,109 @@ export function ProfileDirectCanvasEditor({
           onIndexChange={setGuideStepIndex}
         />
       </ProfileGrid>
+      {editorGrid.mobile && selectedMobileModule ? (
+        <div
+          className="fixed bottom-20 left-3 right-3 z-50 mx-auto flex max-w-[30rem] items-center gap-2 rounded-card border border-line-strong bg-surface/94 p-2 shadow-lift backdrop-blur-veil"
+          data-profile-edit-control="true"
+          data-testid="profile-canvas-selected-actions"
+        >
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-semibold text-text">
+              {selectedMobileTitle}
+            </p>
+            <p className="truncate text-[0.68rem] font-medium text-muted">
+              {selectedMobileMoveActive ? "Tap a grid square to move" : "Selected"}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              className={cn(
+                "grid size-9 touch-manipulation place-items-center rounded-full border border-line bg-canvas/70 text-text shadow-soft transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-45",
+                selectedMobileMoveActive ? "border-focus/60 bg-focus/18" : undefined,
+              )}
+              aria-label={selectedMobileMoveLabel}
+              aria-pressed={selectedMobileMoveActive}
+              title={
+                selectedMobileMoveDisabled
+                  ? "Unpin before moving"
+                  : selectedMobileMoveActive
+                    ? "Stop moving"
+                    : "Move"
+              }
+              disabled={selectedMobileMoveDisabled}
+              data-testid="profile-canvas-selected-move"
+              onClick={() => {
+                setSelectionStart(undefined);
+                setSelectionHover(undefined);
+                setMobileMoveModuleId((current) =>
+                  current === selectedMobileModule.id
+                    ? undefined
+                    : selectedMobileModule.id,
+                );
+              }}
+            >
+              <Move aria-hidden="true" size={16} />
+            </button>
+            <button
+              type="button"
+              className="grid size-9 touch-manipulation place-items-center rounded-full border border-line bg-canvas/70 text-text shadow-soft transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus"
+              aria-label={selectedMobileSettingsLabel}
+              title={selectedMobilePlaceholder ? "Add" : "Edit"}
+              data-testid="profile-canvas-selected-settings"
+              onClick={() => {
+                setMobileMoveModuleId(undefined);
+                if (selectedMobilePlaceholder) {
+                  setSettingsModuleId(undefined);
+                  setPickerModuleId(selectedMobileModule.id);
+                  return;
+                }
+
+                setPickerModuleId(undefined);
+                setSettingsModuleId(selectedMobileModule.id);
+              }}
+            >
+              {selectedMobilePlaceholder ? (
+                <Plus aria-hidden="true" size={17} />
+              ) : (
+                <Pencil aria-hidden="true" size={15} />
+              )}
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "grid size-9 touch-manipulation place-items-center rounded-full border border-line bg-canvas/70 text-text shadow-soft transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
+                selectedMobileModule.pinned
+                  ? "border-rose/50 bg-rose/18 text-rose-ink"
+                  : undefined,
+              )}
+              aria-label={selectedMobilePinLabel}
+              aria-pressed={selectedMobileModule.pinned}
+              title={selectedMobileModule.pinned ? "Unpin" : "Pin"}
+              data-testid="profile-canvas-selected-pin"
+              onClick={() => handleTogglePin(selectedMobileModule)}
+            >
+              {selectedMobileModule.pinned ? (
+                <PinOff aria-hidden="true" size={15} />
+              ) : (
+                <Pin aria-hidden="true" size={15} />
+              )}
+            </button>
+            {selectedMobileCanRemove ? (
+              <button
+                type="button"
+                className="grid size-9 touch-manipulation place-items-center rounded-full border border-line bg-canvas/70 text-rose-ink shadow-soft transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus"
+                aria-label={selectedMobileRemoveLabel}
+                title={selectedMobilePlaceholder ? "Delete" : "Remove"}
+                data-testid="profile-canvas-selected-delete"
+                onClick={() => handleRemoveModule(selectedMobileModule)}
+              >
+                <Trash2 aria-hidden="true" size={15} />
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       <ModulePickerModal
         module={pickerModule}
         onChoose={handleChooseModule}
@@ -1888,9 +1997,11 @@ export function ProfileDirectCanvasEditor({
 }
 
 const ProfileCanvasModulePreview = memo(function ProfileCanvasModulePreview({
+  mobile,
   module,
   size,
 }: {
+  mobile: boolean;
   module: ProfileModule;
   size: ProfileGridModuleSize;
 }) {
@@ -1899,8 +2010,95 @@ const ProfileCanvasModulePreview = memo(function ProfileCanvasModulePreview({
   const subtitle = profileCanvasModulePreviewSubtitle(module, size);
   const imageUrl = profileCanvasModulePreviewImage(module);
   const span = profileGridModuleSizeSpan(size);
-  const slim = span.rows <= 1 || (span.columns >= 5 && span.rows <= 2);
+  const micro = mobile && (span.columns <= 1 || span.rows <= 1);
+  const tiny =
+    mobile && !micro && span.columns <= 2 && span.rows <= 2;
+  const compact =
+    mobile &&
+    !micro &&
+    !tiny &&
+    (span.columns <= 3 || span.rows <= 2);
+  const slim = !mobile && (span.rows <= 1 || (span.columns >= 5 && span.rows <= 2));
+  const previewRole = micro
+    ? "micro"
+    : tiny
+      ? "tiny"
+      : compact
+        ? "compact"
+        : slim
+          ? "slim"
+          : "full";
   const configured = profileCanvasModuleIsConfiguredForEditor(module);
+  const showImageBackground = Boolean(imageUrl && !slim && !micro && !tiny);
+  const showImageTile = Boolean(imageUrl && (slim || compact));
+  const showIcon = !imageUrl || showImageBackground || !micro;
+  const showTitle = !micro;
+  const showSubtitle = !mobile || (!tiny && !compact);
+  const showSize = !mobile;
+
+  if (micro || tiny || compact) {
+    return (
+      <div
+        className={cn(
+          "relative h-full min-h-0 w-full overflow-hidden rounded-card border border-line bg-canvas/60 text-text shadow-inner-soft",
+          micro
+            ? "grid place-items-center p-1"
+            : tiny
+              ? "grid place-items-center p-1.5 text-center"
+              : "flex items-center gap-1.5 p-1.5",
+        )}
+        data-profile-canvas-preview-role={previewRole}
+        data-profile-editor-render-mode="light"
+        data-profile-editor-preview-mobile="true"
+        data-testid={`profile-canvas-light-preview-${module.id}`}
+      >
+        {imageUrl && micro ? (
+          <img
+            alt=""
+            className="pointer-events-none absolute inset-0 size-full select-none object-cover opacity-75"
+            loading="lazy"
+            src={imageUrl}
+          />
+        ) : null}
+        {showImageTile ? (
+          <img
+            alt=""
+            className="pointer-events-none size-8 shrink-0 select-none rounded-[0.6rem] border border-line object-cover"
+            loading="lazy"
+            src={imageUrl}
+          />
+        ) : null}
+        {showIcon ? (
+          <span
+            className={cn(
+              "relative z-10 grid shrink-0 place-items-center rounded-[0.6rem] border border-line bg-surface/78 text-text shadow-soft",
+              micro ? "size-8" : tiny ? "size-9" : "size-8",
+              imageUrl && micro ? "bg-canvas/80 backdrop-blur-veil" : undefined,
+            )}
+          >
+            <ProfileModulePickerIcon
+              category={category}
+              disabled={false}
+              type={module.type}
+            />
+          </span>
+        ) : null}
+        {showTitle ? (
+          <span
+            className={cn(
+              "relative z-10 min-w-0 font-semibold text-text",
+              tiny
+                ? "mt-1 block max-w-full truncate text-[0.68rem] leading-3"
+                : "block flex-1 truncate text-[0.72rem] leading-4",
+            )}
+            data-testid={`profile-canvas-preview-title-${module.id}`}
+          >
+            {title}
+          </span>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -1908,7 +2106,9 @@ const ProfileCanvasModulePreview = memo(function ProfileCanvasModulePreview({
         "relative h-full min-h-0 w-full overflow-hidden rounded-card border border-line bg-canvas/60 text-text shadow-inner-soft",
         slim ? "flex items-center gap-2 p-2" : "p-3",
       )}
+      data-profile-canvas-preview-role={previewRole}
       data-profile-editor-render-mode="light"
+      data-profile-editor-preview-mobile={mobile ? "true" : undefined}
       data-testid={`profile-canvas-light-preview-${module.id}`}
     >
       {imageUrl ? (
@@ -1924,7 +2124,7 @@ const ProfileCanvasModulePreview = memo(function ProfileCanvasModulePreview({
           src={imageUrl}
         />
       ) : null}
-      {imageUrl && !slim ? (
+      {showImageBackground ? (
         <div className="absolute inset-0 bg-gradient-to-br from-canvas/92 via-canvas/70 to-canvas/38" />
       ) : null}
       <div
@@ -1954,26 +2154,30 @@ const ProfileCanvasModulePreview = memo(function ProfileCanvasModulePreview({
           >
             {title}
           </span>
+          {showSubtitle ? (
+            <span
+              className={cn(
+                "block truncate font-medium text-muted",
+                slim ? "text-[0.68rem]" : "mt-1 text-xs",
+              )}
+            >
+              {subtitle}
+            </span>
+          ) : null}
+        </span>
+        {showSize ? (
           <span
             className={cn(
-              "block truncate font-medium text-muted",
-              slim ? "text-[0.68rem]" : "mt-1 text-xs",
+              "shrink-0 rounded-full border px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.08em]",
+              configured
+                ? "border-line bg-surface/70 text-muted"
+                : "border-focus/40 bg-focus/15 text-text",
+              slim ? "ml-auto" : "mt-auto self-start",
             )}
           >
-            {subtitle}
+            {size}
           </span>
-        </span>
-        <span
-          className={cn(
-            "shrink-0 rounded-full border px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.08em]",
-            configured
-              ? "border-line bg-surface/70 text-muted"
-              : "border-focus/40 bg-focus/15 text-text",
-            slim ? "ml-auto" : "mt-auto self-start",
-          )}
-        >
-          {size}
-        </span>
+        ) : null}
       </div>
     </div>
   );
