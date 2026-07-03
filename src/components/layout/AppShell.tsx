@@ -22,6 +22,7 @@ import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from "reac
 import { BrandLogo, BrandMark } from "../BrandLogo";
 import { ThemeToggle } from "../ThemeToggle";
 import { Button, ButtonLink } from "../ui/Button";
+import { StrokeJokePopup } from "./StrokeJokePopup";
 import { getNotifications, getOnboardingState, getRooms } from "../../lib/api";
 import { cn } from "../../lib/classNames";
 import { desktopNotificationSupport, ensureNotificationServiceWorkerRegistration } from "../../lib/desktopNotifications";
@@ -62,6 +63,14 @@ const supportUrl = "https://ko-fi.com/thiabun";
 
 const cookieNoticeStorageKey = "thia_cookie_notice_ack";
 type OnboardingGateState = Awaited<ReturnType<typeof getOnboardingState>>;
+
+function cookieNoticeShouldShow(): boolean {
+  try {
+    return window.localStorage.getItem(cookieNoticeStorageKey) !== "1";
+  } catch {
+    return true;
+  }
+}
 
 function profileOnboardingGateShouldSkip(
   pathname: string,
@@ -132,6 +141,9 @@ export function AppShell() {
   const [composerRooms, setComposerRooms] = useState<Room[]>([]);
   const [composerRoomsLoaded, setComposerRoomsLoaded] = useState(false);
   const [composerKey, setComposerKey] = useState(0);
+  const [cookieNoticeVisible, setCookieNoticeVisible] = useState(
+    cookieNoticeShouldShow,
+  );
   const [topBarAction, setTopBarAction] = useState<ReactNode | undefined>();
   const [notificationUnreadCount, setNotificationUnreadCount] = useState<
     number | undefined
@@ -335,7 +347,14 @@ export function AppShell() {
           />
         </Suspense>
       ) : null}
-      <CookieNotice />
+      <StrokeJokePopup
+        cookieNoticeVisible={cookieNoticeVisible}
+        pathname={location.pathname}
+      />
+      <CookieNotice
+        onDismiss={() => setCookieNoticeVisible(false)}
+        visible={cookieNoticeVisible}
+      />
     </div>
   );
 }
@@ -741,15 +760,13 @@ function SiteFooter() {
   );
 }
 
-function CookieNotice() {
-  const [visible, setVisible] = useState(() => {
-    try {
-      return window.localStorage.getItem(cookieNoticeStorageKey) !== "1";
-    } catch {
-      return true;
-    }
-  });
-
+function CookieNotice({
+  onDismiss,
+  visible,
+}: {
+  onDismiss: () => void;
+  visible: boolean;
+}) {
   function handleContinue() {
     try {
       window.localStorage.setItem(cookieNoticeStorageKey, "1");
@@ -757,7 +774,7 @@ function CookieNotice() {
       // If localStorage is unavailable, hide the notice for this page view.
     }
 
-    setVisible(false);
+    onDismiss();
   }
 
   if (!visible) {

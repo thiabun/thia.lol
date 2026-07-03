@@ -1,6 +1,8 @@
 import { expect, type Page, test } from "@playwright/test";
 import { mockSpotifyIframeApi, spotifyPlayCalls } from "../helpers/spotify";
 
+const strokeJokeCooldownStorageKey = "thia.strokeJoke.cooldownUntil:v1";
+
 const retiredMockCopy = [
   "Mira Vale",
   "Sol Anka",
@@ -115,6 +117,66 @@ test("mobile header, account menu, and bottom nav fit the viewport", async ({
   await expect(nav.getByRole("button", { name: "Post" })).toHaveCount(1);
   await expectRefinedMobileDock(page);
   await expectChatHitTargetClear(page);
+});
+
+test("stroke joke popup celebrates with confetti", async ({ page }) => {
+  await mockPublicShell(page);
+  await forceStrokeJokeRoll(page);
+  await page.goto("/discover");
+
+  const popup = page.getByTestId("stroke-joke-popup");
+  await expect(popup).toBeVisible();
+  await expect(popup).toContainText(
+    "Congrats on reaching 200000 strokes! Most people finish after only 100!",
+  );
+  await expect(popup.getByRole("button", { name: "Celebrate!" })).toBeVisible();
+  await expect(popup.getByRole("button", { name: /close/i })).toHaveCount(0);
+
+  await popup.getByRole("button", { name: "Celebrate!" }).click();
+  await expect(popup).toBeHidden();
+  await expect(page.getByTestId("stroke-joke-confetti")).toBeVisible();
+
+  const cooldownUntil = await page.evaluate(
+    (key) => window.localStorage.getItem(key),
+    strokeJokeCooldownStorageKey,
+  );
+
+  expect(Number(cooldownUntil)).toBeGreaterThan(Date.now());
+});
+
+test("stroke joke popup waits for cookie notice dismissal", async ({ page }) => {
+  await mockPublicShell(page);
+  await forceStrokeJokeRoll(page, { acknowledgeCookieNotice: false });
+  await page.goto("/discover");
+
+  const popup = page.getByTestId("stroke-joke-popup");
+  await expect(page.getByTestId("cookie-notice")).toBeVisible();
+  await expect(popup).toHaveCount(0);
+
+  await page.getByTestId("cookie-notice").getByRole("button", { name: "Continue" }).click();
+  await expect(popup).toBeVisible();
+});
+
+test("stroke joke popup respects cooldown storage", async ({ page }) => {
+  await mockPublicShell(page);
+  await forceStrokeJokeRoll(page, {
+    cooldownUntil: Date.now() + 14 * 24 * 60 * 60 * 1000,
+  });
+  await page.goto("/discover");
+
+  await expect(page.getByLabel("thia.lol home")).toBeVisible();
+  await expect(page.getByTestId("stroke-joke-popup")).toHaveCount(0);
+  await expect(page.getByTestId("stroke-joke-confetti")).toHaveCount(0);
+});
+
+test("stroke joke popup stays off excluded routes", async ({ page }) => {
+  await mockPublicShell(page);
+  await forceStrokeJokeRoll(page);
+  await page.goto("/login");
+
+  await expect(page.getByLabel("thia.lol home")).toBeVisible();
+  await expect(page.getByTestId("stroke-joke-popup")).toHaveCount(0);
+  await expect(page.getByTestId("stroke-joke-confetti")).toHaveCount(0);
 });
 
 test("authenticated account menu uses one row pattern", async ({ page }) => {
@@ -685,6 +747,40 @@ async function acknowledgeCookieNotice(page: Page) {
   await page.addInitScript(() => {
     window.localStorage.setItem("thia_cookie_notice_ack", "1");
   });
+}
+
+async function forceStrokeJokeRoll(
+  page: Page,
+  options: {
+    acknowledgeCookieNotice?: boolean;
+    cooldownUntil?: number;
+    roll?: number;
+  } = {},
+) {
+  await page.addInitScript(
+    ({ acknowledgeCookieNotice, cooldownKey, cooldownUntil, roll }) => {
+      if (acknowledgeCookieNotice) {
+        window.localStorage.setItem("thia_cookie_notice_ack", "1");
+      } else {
+        window.localStorage.removeItem("thia_cookie_notice_ack");
+      }
+
+      window.localStorage.removeItem(cooldownKey);
+      window.sessionStorage.removeItem("thia.strokeJoke.roll:v1");
+
+      if (typeof cooldownUntil === "number") {
+        window.localStorage.setItem(cooldownKey, String(cooldownUntil));
+      }
+
+      Math.random = () => roll;
+    },
+    {
+      acknowledgeCookieNotice: options.acknowledgeCookieNotice ?? true,
+      cooldownKey: strokeJokeCooldownStorageKey,
+      cooldownUntil: options.cooldownUntil,
+      roll: options.roll ?? 0.01,
+    },
+  );
 }
 
 async function expectRefinedMobileDock(page: Page) {

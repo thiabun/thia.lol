@@ -34,6 +34,7 @@ type ModalSheetProps = {
   onClose: () => void;
   open: boolean;
   panelClassName?: string;
+  showCloseButton?: boolean;
   size?: ModalSheetSize;
   testId?: string;
   title: string;
@@ -78,6 +79,7 @@ export function ModalSheet({
   onClose,
   open,
   panelClassName,
+  showCloseButton = true,
   size = "md",
   testId,
   title,
@@ -207,6 +209,7 @@ export function ModalSheet({
               description={description}
               descriptionId={descriptionId}
               onClose={onClose}
+              showCloseButton={showCloseButton}
               title={title}
               titleId={titleId}
             />
@@ -245,6 +248,7 @@ function ModalSheetHeader({
   description,
   descriptionId,
   onClose,
+  showCloseButton,
   title,
   titleId,
 }: {
@@ -254,6 +258,7 @@ function ModalSheetHeader({
   description?: ReactNode;
   descriptionId: string | undefined;
   onClose: () => void;
+  showCloseButton: boolean;
   title: string;
   titleId: string;
 }) {
@@ -281,7 +286,7 @@ function ModalSheetHeader({
       ) : null}
     </div>
   );
-  const closeButton = (
+  const closeButton = showCloseButton ? (
     <Button
       type="button"
       variant="ghost"
@@ -292,7 +297,7 @@ function ModalSheetHeader({
       disabled={busy}
       onClick={onClose}
     />
-  );
+  ) : null;
 
   return (
     <div className="shrink-0 border-b border-line bg-surface px-4 py-3 sm:px-5">
@@ -300,7 +305,7 @@ function ModalSheetHeader({
         <div className="grid grid-cols-[2.5rem_1fr_2.5rem] items-center gap-3">
           <span aria-hidden="true" />
           {copy}
-          {closeButton}
+          {closeButton ?? <span aria-hidden="true" />}
         </div>
       ) : (
         <div className="flex items-start justify-between gap-4">
