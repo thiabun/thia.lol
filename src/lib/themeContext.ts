@@ -2,8 +2,8 @@ import { createContext } from "react";
 import type { ThemeName } from "./types";
 
 export const themeLabels: Record<ThemeName, string> = {
-  sunveil: "Sunveil",
-  frostveil: "Frostveil",
+  light: "Light",
+  dark: "Dark",
 };
 
 export type ThemeContextValue = {

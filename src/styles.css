@@ -35,62 +35,64 @@
 }
 
 :root,
+:root[data-theme="light"],
 :root[data-theme="sunveil"] {
-  --app-canvas: oklch(0.988 0.024 89);
-  --app-canvas-soft: oklch(0.965 0.039 84);
-  --app-surface: oklch(0.998 0.012 95);
-  --app-surface-strong: oklch(0.954 0.037 82);
-  --app-text: oklch(0.24 0.032 52);
-  --app-muted: oklch(0.47 0.034 62);
-  --app-line: oklch(0.855 0.038 78 / 0.74);
-  --app-line-strong: oklch(0.71 0.055 70 / 0.82);
-  --app-focus: oklch(0.61 0.13 60);
-  --app-accent: oklch(0.84 0.12 81);
-  --app-accent-ink: oklch(0.25 0.042 49);
-  --app-accent-strong: oklch(0.55 0.12 60);
+  --app-canvas: oklch(0.992 0.013 350);
+  --app-canvas-soft: oklch(0.964 0.032 352);
+  --app-surface: oklch(0.998 0.006 350);
+  --app-surface-strong: oklch(0.938 0.044 350);
+  --app-text: oklch(0.245 0.034 349);
+  --app-muted: oklch(0.49 0.046 350);
+  --app-line: oklch(0.87 0.035 350 / 0.72);
+  --app-line-strong: oklch(0.74 0.06 350 / 0.84);
+  --app-focus: oklch(0.63 0.165 354);
+  --app-accent: oklch(0.67 0.17 354);
+  --app-accent-ink: oklch(0.985 0.01 350);
+  --app-accent-strong: oklch(0.58 0.18 354);
   --app-accent-contrast: var(--app-accent-ink);
-  --accent-sun: oklch(0.84 0.12 81);
-  --accent-sun-ink: oklch(0.33 0.065 53);
-  --accent-frost: oklch(0.72 0.112 213);
-  --accent-frost-ink: oklch(0.25 0.07 230);
+  --accent-sun: oklch(0.82 0.12 68);
+  --accent-sun-ink: oklch(0.32 0.055 48);
+  --accent-frost: oklch(0.7 0.1 215);
+  --accent-frost-ink: oklch(0.27 0.07 225);
   --accent-leaf: oklch(0.76 0.12 151);
   --accent-leaf-ink: oklch(0.26 0.06 155);
-  --accent-rose: oklch(0.77 0.118 25);
-  --accent-rose-ink: oklch(0.35 0.076 24);
+  --accent-rose: oklch(0.69 0.16 354);
+  --accent-rose-ink: oklch(0.33 0.09 350);
 }
 
+:root[data-theme="dark"],
 :root[data-theme="frostveil"] {
-  --app-canvas: oklch(0.155 0.039 238);
-  --app-canvas-soft: oklch(0.195 0.047 230);
-  --app-surface: oklch(0.225 0.041 232);
-  --app-surface-strong: oklch(0.285 0.052 224);
-  --app-text: oklch(0.925 0.028 218);
-  --app-muted: oklch(0.72 0.04 219);
-  --app-line: oklch(0.47 0.052 223 / 0.54);
-  --app-line-strong: oklch(0.65 0.06 214 / 0.68);
-  --app-focus: oklch(0.76 0.145 200);
-  --app-accent: oklch(0.73 0.12 207);
-  --app-accent-ink: oklch(0.13 0.034 235);
-  --app-accent-strong: oklch(0.83 0.12 200);
+  --app-canvas: oklch(0.145 0.039 158);
+  --app-canvas-soft: oklch(0.185 0.05 158);
+  --app-surface: oklch(0.215 0.045 158);
+  --app-surface-strong: oklch(0.28 0.06 156);
+  --app-text: oklch(0.935 0.026 148);
+  --app-muted: oklch(0.725 0.05 154);
+  --app-line: oklch(0.43 0.065 156 / 0.56);
+  --app-line-strong: oklch(0.6 0.075 154 / 0.7);
+  --app-focus: oklch(0.76 0.16 150);
+  --app-accent: oklch(0.68 0.155 150);
+  --app-accent-ink: oklch(0.13 0.038 158);
+  --app-accent-strong: oklch(0.78 0.16 150);
   --app-accent-contrast: var(--app-accent-ink);
   --accent-sun: oklch(0.82 0.108 78);
   --accent-sun-ink: oklch(0.95 0.028 86);
-  --accent-frost: oklch(0.72 0.13 202);
+  --accent-frost: oklch(0.72 0.11 205);
   --accent-frost-ink: oklch(0.95 0.028 214);
-  --accent-leaf: oklch(0.74 0.13 163);
+  --accent-leaf: oklch(0.72 0.15 150);
   --accent-leaf-ink: oklch(0.93 0.035 158);
-  --accent-rose: oklch(0.73 0.122 14);
-  --accent-rose-ink: oklch(0.95 0.03 20);
+  --accent-rose: oklch(0.74 0.14 354);
+  --accent-rose-ink: oklch(0.96 0.026 350);
 }
 
 :root {
   --radius-control: 0.5rem;
   --radius-card: 0.5rem;
   --radius-panel: 0.5rem;
-  --shadow-soft: 0 8px 28px oklch(0 0 0 / 0.07);
-  --shadow-lift: 0 14px 40px oklch(0 0 0 / 0.12);
-  --shadow-glow: 0 0 18px color-mix(in oklab, var(--app-accent) 38%, transparent);
-  --shadow-inner-soft: inset 0 1px 0 oklch(1 0 0 / 0.28);
+  --shadow-soft: 0 8px 24px oklch(0 0 0 / 0.06);
+  --shadow-lift: 0 14px 36px oklch(0 0 0 / 0.14);
+  --shadow-glow: 0 0 18px color-mix(in oklab, var(--app-accent) 32%, transparent);
+  --shadow-inner-soft: inset 0 1px 0 oklch(1 0 0 / 0.24);
   --blur-veil: 16px;
   --duration-fluid: 180ms;
   --ease-fluid: cubic-bezier(0.22, 1, 0.36, 1);
@@ -219,7 +221,7 @@ body[data-profile-canvas-editing="true"] [data-app-mobile-nav="true"] {
     linear-gradient(
       25deg,
       transparent 0%,
-      color-mix(in oklab, var(--accent-frost) 12%, transparent) 54%,
+      color-mix(in oklab, var(--accent-leaf) 10%, transparent) 54%,
       transparent 82%
     ),
     linear-gradient(180deg, var(--app-canvas), var(--app-canvas-soft));

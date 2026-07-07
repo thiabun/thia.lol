@@ -40,8 +40,8 @@ export const roomThemeColorKeys: RoomThemeColorKey[] = [
 ];
 
 export const roomThemePresetIds = new Set([
-  "frostveil",
-  "sunveil",
+  "elphaba",
+  "glinda",
   "roseveil",
   "leafveil",
   "violet",
@@ -49,12 +49,25 @@ export const roomThemePresetIds = new Set([
   "ocean",
 ]);
 
+const legacyRoomThemePresetAliases = new Map([
+  ["frostveil", "elphaba"],
+  ["sunveil", "glinda"],
+]);
+
+export function canonicalRoomThemePreset(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  return legacyRoomThemePresetAliases.get(value) ?? value;
+}
+
 export function roomThemeFromLegacyAccent(value: string | null | undefined): string | null {
   switch (value) {
     case "var(--accent-sun)":
-      return "sunveil";
+      return "glinda";
     case "var(--accent-frost)":
-      return "frostveil";
+      return "elphaba";
     case "var(--accent-leaf)":
       return "leafveil";
     case "var(--accent-rose)":
@@ -74,9 +87,11 @@ export function roomThemeConfigPayload(
   }
 
   if (decoded.mode === "preset") {
-    const preset = decoded.preset;
+    const preset = canonicalRoomThemePreset(
+      typeof decoded.preset === "string" ? decoded.preset : undefined,
+    );
 
-    return typeof preset === "string" && roomThemePresetIds.has(preset)
+    return preset && roomThemePresetIds.has(preset)
       ? { mode: "preset", preset }
       : null;
   }
@@ -106,7 +121,13 @@ export function validateRoomThemeToken(value: unknown): string | null | undefine
     return null;
   }
 
-  return typeof value === "string" && roomThemePresetIds.has(value) ? value : undefined;
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const preset = canonicalRoomThemePreset(value);
+
+  return preset && roomThemePresetIds.has(preset) ? preset : undefined;
 }
 
 export function normalizeRoomThemeConfig(value: unknown): RoomThemeConfig | null | undefined {
@@ -121,7 +142,9 @@ export function normalizeRoomThemeConfig(value: unknown): RoomThemeConfig | null
   const record = value as Record<string, unknown>;
 
   if (record.mode === "preset") {
-    const preset = typeof record.preset === "string" ? record.preset : undefined;
+    const preset = canonicalRoomThemePreset(
+      typeof record.preset === "string" ? record.preset : undefined,
+    );
 
     return preset && roomThemePresetIds.has(preset) ? { mode: "preset", preset } : undefined;
   }

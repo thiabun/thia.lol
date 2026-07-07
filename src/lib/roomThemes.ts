@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import {
+  canonicalProfileThemePresetId,
   profileThemeConfigColors,
   profileThemeConfigToCssProperties,
 } from "./profileThemes";
@@ -10,12 +11,21 @@ export function roomThemeConfig(room: Pick<Room, "theme" | "themeConfig"> | null
     return null;
   }
 
+  if (room.themeConfig?.mode === "preset") {
+    return {
+      mode: "preset",
+      preset: canonicalProfileThemePresetId(room.themeConfig.preset) ?? room.themeConfig.preset,
+    };
+  }
+
   if (room.themeConfig) {
     return room.themeConfig;
   }
 
-  return room.theme && room.theme !== "custom"
-    ? { mode: "preset", preset: room.theme }
+  const preset = canonicalProfileThemePresetId(room.theme);
+
+  return preset && preset !== "custom"
+    ? { mode: "preset", preset }
     : null;
 }
 

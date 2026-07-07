@@ -3307,7 +3307,7 @@ function rarityChipClass(rarity: BadgeRarity): string {
   }
 
   if (rarity === "legendary") {
-    return "border-frostveil/40 bg-frostveil/15 text-frostveil-ink";
+    return "border-cool/40 bg-cool/15 text-cool-ink";
   }
 
   if (rarity === "epic") {

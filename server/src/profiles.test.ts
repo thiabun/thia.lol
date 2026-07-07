@@ -140,10 +140,10 @@ describe("profile preview payload mapping", () => {
       profileBackgroundVideo: "/uploads/background.mp4",
       profileBackgroundVideoPoster: "/uploads/background-poster.jpg",
       profileBackgroundBlur: "heavy",
-      profileTheme: "sunveil",
+      profileTheme: "glinda",
       profileThemeConfig: {
         mode: "preset",
-        preset: "sunveil",
+        preset: "glinda",
       },
       profileLayoutPreset: "showcase",
       profileCanvasVersion: 2,

@@ -9,8 +9,8 @@ const themes: Array<{
   label: string;
   icon: typeof Sun;
 }> = [
-  { value: "sunveil", label: "Light mode", icon: Sun },
-  { value: "frostveil", label: "Dark mode", icon: Moon },
+  { value: "light", label: "Light mode", icon: Sun },
+  { value: "dark", label: "Dark mode", icon: Moon },
 ];
 
 export function ThemeToggle({
@@ -25,8 +25,8 @@ export function ThemeToggle({
   const { theme, setTheme } = useTheme();
 
   if (compact) {
-    const Icon = theme === "sunveil" ? Moon : Sun;
-    const next = theme === "sunveil" ? "Dark mode" : "Light mode";
+    const Icon = theme === "light" ? Moon : Sun;
+    const next = theme === "light" ? "Dark mode" : "Light mode";
     const label = disabled ? disabledReason : `Switch to ${next}`;
 
     return (
@@ -37,7 +37,7 @@ export function ThemeToggle({
         variant="secondary"
         size="icon"
         icon={<Icon aria-hidden="true" size={18} />}
-        onClick={() => setTheme(theme === "sunveil" ? "frostveil" : "sunveil")}
+        onClick={() => setTheme(theme === "light" ? "dark" : "light")}
       />
     );
   }

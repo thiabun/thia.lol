@@ -593,7 +593,7 @@ export function profilePayloadFromRow(
     profileBackgroundVideo: nullableStringValue(row.profile_background_video_url),
     profileBackgroundVideoPoster: nullableStringValue(row.profile_background_video_poster_url),
     profileBackgroundBlur: profileBackgroundBlur(row.profile_background_blur),
-    profileTheme: nullableStringValue(row.profile_theme),
+    profileTheme: canonicalProfileThemePreset(nullableStringValue(row.profile_theme)),
     profileThemeConfig: profileThemeConfigPayload(row.profile_theme_config_json),
     profileLayoutPreset: profileLayoutPreset(row.profile_layout_preset),
     profileCanvasVersion: 2,
@@ -3000,7 +3000,9 @@ function profileThemeConfigPayload(value: string | null | undefined): ProfileThe
   const mode = decoded.mode;
 
   if (mode === "preset") {
-    const preset = decoded.preset;
+    const preset = canonicalProfileThemePreset(
+      typeof decoded.preset === "string" ? decoded.preset : null,
+    );
 
     return typeof preset === "string" && /^[a-z0-9_-]{1,40}$/.test(preset)
       ? {
@@ -3035,6 +3037,17 @@ function profileThemeConfigPayload(value: string | null | undefined): ProfileThe
     mode,
     colors: colors as Record<(typeof profileThemeColorKeys)[number], string>,
   };
+}
+
+function canonicalProfileThemePreset(value: string | null | undefined): string | null {
+  switch (value) {
+    case "sunveil":
+      return "glinda";
+    case "frostveil":
+      return "elphaba";
+    default:
+      return value ?? null;
+  }
 }
 
 function profileNullableId(value: number | string | null | undefined): number | null {

@@ -3197,7 +3197,7 @@ export function ProfileAppearanceControls({
       compact={compact}
       config={profile.profileThemeConfig}
       controlAttribute="data-profile-edit-control"
-      description="Override Sunveil/Frostveil while people view your profile."
+      description="Choose how your profile looks while people view it."
       label="Appearance"
       previewTitle={profile.user.displayName}
       previewSubtitle={`@${profile.user.handle}`}

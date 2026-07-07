@@ -134,7 +134,7 @@ class NodeShareShellService implements ShareShellService {
     const imageAlt = `Post by @${authorHandle} on thia.lol.`;
     const meta = [
       metaName("description", description),
-      metaName("theme-color", "#223454"),
+      metaName("theme-color", "#092119"),
       metaProperty("og:site_name", "thia.lol"),
       metaProperty("og:type", "article"),
       metaProperty("og:title", title),
@@ -207,7 +207,7 @@ class NodeShareShellService implements ShareShellService {
     const imageAlt = `Profile card for @${handle} on thia.lol.`;
     const meta = [
       metaName("description", description),
-      metaName("theme-color", "#223454"),
+      metaName("theme-color", "#092119"),
       metaProperty("og:site_name", "thia.lol"),
       metaProperty("og:type", "profile"),
       metaProperty("profile:username", handle),
@@ -272,7 +272,7 @@ class NodeShareShellService implements ShareShellService {
     const imageAlt = `Room card for /${room.slug} on thia.lol.`;
     const meta = [
       metaName("description", description),
-      metaName("theme-color", "#223454"),
+      metaName("theme-color", "#092119"),
       metaProperty("og:site_name", "thia.lol"),
       metaProperty("og:type", "website"),
       metaProperty("og:title", title),
@@ -483,7 +483,7 @@ function notFoundMeta(
 ): string {
   return [
     metaName("description", description),
-    metaName("theme-color", "#223454"),
+    metaName("theme-color", "#092119"),
     metaProperty("og:site_name", "thia.lol"),
     metaProperty("og:type", "website"),
     metaProperty("og:title", title),

@@ -263,7 +263,7 @@ test("room themes recolor active post reactions against the saved site theme", a
   page,
 }) => {
   await page.addInitScript(() => {
-    window.localStorage.setItem("thia.lol.theme", "frostveil");
+    window.localStorage.setItem("thia.lol.theme", "dark");
   });
   await mockViewOnlyRoom(page, {
     post: {
@@ -884,8 +884,8 @@ function mockRoom(overrides: Record<string, unknown> = {}) {
     members: 1,
     memberCount: 1,
     live: false,
-    theme: "sunveil",
-    themeConfig: { mode: "preset", preset: "sunveil" },
+    theme: "glinda",
+    themeConfig: { mode: "preset", preset: "glinda" },
     iconUrl: null,
     bannerUrl: null,
     rules: "",

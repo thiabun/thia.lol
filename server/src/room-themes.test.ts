@@ -9,8 +9,8 @@ import {
 
 describe("room theme helpers", () => {
   it("maps legacy room accents to preset theme ids", () => {
-    expect(roomThemeFromLegacyAccent("var(--accent-sun)")).toBe("sunveil");
-    expect(roomThemeFromLegacyAccent("var(--accent-frost)")).toBe("frostveil");
+    expect(roomThemeFromLegacyAccent("var(--accent-sun)")).toBe("glinda");
+    expect(roomThemeFromLegacyAccent("var(--accent-frost)")).toBe("elphaba");
     expect(roomThemeFromLegacyAccent("var(--accent-leaf)")).toBe("leafveil");
     expect(roomThemeFromLegacyAccent("var(--accent-rose)")).toBe("roseveil");
     expect(roomThemeFromLegacyAccent("var(--app-accent)")).toBeNull();
@@ -54,7 +54,8 @@ describe("room theme helpers", () => {
   });
 
   it("rejects unsupported tokens and malformed configs", () => {
-    expect(validateRoomThemeToken("sunveil")).toBe("sunveil");
+    expect(validateRoomThemeToken("sunveil")).toBe("glinda");
+    expect(validateRoomThemeToken("glinda")).toBe("glinda");
     expect(validateRoomThemeToken("var(--accent-sun)")).toBeUndefined();
     expect(normalizeRoomThemeConfig({ mode: "custom", colors: { accent: "#ffffff" } })).toBeUndefined();
     expect(roomThemeConfigPayload("not json")).toBeNull();

@@ -8,28 +8,28 @@ type BrandMarkShape = "plain" | "circle" | "squircle";
 type BrandSize = "sm" | "md" | "lg";
 
 const markSources: Record<ThemeName, string> = {
-  frostveil: "/brand/thia-mark-frostveil-96.png",
-  sunveil: "/brand/thia-mark-sunveil-96.png",
+  dark: "/brand/thia-mark-dark-96.png",
+  light: "/brand/thia-mark-light-96.png",
 };
 
 const circleMarkSources: Record<ThemeName, string> = {
-  frostveil: "/brand/thia-mark-frostveil-circle-96.png",
-  sunveil: "/brand/thia-mark-sunveil-circle-96.png",
+  dark: "/brand/thia-mark-dark-circle-96.png",
+  light: "/brand/thia-mark-light-circle-96.png",
 };
 
 const squircleMarkSources: Record<ThemeName, string> = {
-  frostveil: "/brand/thia-mark-frostveil-squircle-96.png",
-  sunveil: "/brand/thia-mark-sunveil-squircle-96.png",
+  dark: "/brand/thia-mark-dark-squircle-96.png",
+  light: "/brand/thia-mark-light-squircle-96.png",
 };
 
 const lockupSources: Record<ThemeName, string> = {
-  frostveil: "/brand/thia-lockup-frostveil.png",
-  sunveil: "/brand/thia-lockup-sunveil.png",
+  dark: "/brand/thia-lockup-dark.png",
+  light: "/brand/thia-lockup-light.png",
 };
 
 const tMarkSources: Record<ThemeName, string> = {
-  frostveil: "/brand/thia-t-frostveil-96.png",
-  sunveil: "/brand/thia-t-sunveil-96.png",
+  dark: "/brand/thia-t-dark-96.png",
+  light: "/brand/thia-t-light-96.png",
 };
 
 const markSizeClasses: Record<BrandSize, string> = {
@@ -147,8 +147,8 @@ export function BrandLockup({
     <img
       src={lockupSources[theme]}
       alt={alt}
-      width={theme === "sunveil" ? 560 : 720}
-      height={theme === "sunveil" ? 160 : 320}
+      width={theme === "light" ? 560 : 720}
+      height={theme === "light" ? 160 : 320}
       className={cn("block shrink-0 object-contain", className)}
       data-testid={testId}
     />
@@ -240,7 +240,7 @@ function activeProfileBrandTheme(): ThemeName | null {
     return null;
   }
 
-  return luminance > 0.52 ? "sunveil" : "frostveil";
+  return luminance > 0.52 ? "light" : "dark";
 }
 
 function relativeLuminance(hex: string): number | null {

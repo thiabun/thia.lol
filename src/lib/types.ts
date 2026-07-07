@@ -1,4 +1,4 @@
-export type ThemeName = "sunveil" | "frostveil";
+export type ThemeName = "light" | "dark";
 
 export type ProfileLayoutPreset = "balanced" | "compact" | "showcase";
 

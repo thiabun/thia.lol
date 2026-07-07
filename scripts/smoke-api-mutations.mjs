@@ -425,7 +425,7 @@ async function main() {
       session: owner,
       body: {
         body: `Node mutation smoke ${prefix}`,
-        mood: "sunveil",
+        mood: "glinda",
       },
     });
     const postId = createdPost.data.id;

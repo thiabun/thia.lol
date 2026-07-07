@@ -357,7 +357,7 @@ export function ChatPage() {
           badgeTone="cool"
           className="p-4 sm:p-5"
           title="Chat"
-          description="Messages."
+          description="Private messages with moots."
         />
         <RouteStateNotice
           icon={MessageCircle}
@@ -383,7 +383,7 @@ export function ChatPage() {
           badgeTone="cool"
           className="p-4 sm:p-5"
           title="Chat"
-          description="Messages."
+          description="Private messages with moots."
         />
         <RouteStateNotice
           kind="loading"
@@ -610,7 +610,7 @@ export function ChatPage() {
                 centered
                 icon={MessageCircle}
                 title="Choose a conversation"
-                text="Select a chat."
+                text="Select a chat to read or reply."
               />
             )}
           </Panel>

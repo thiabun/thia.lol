@@ -11,26 +11,38 @@ import { beginRootThemeTransition } from "./themeTransitions";
 
 const storageKey = "thia.lol.theme";
 
+function normalizeStoredTheme(value: string | null | undefined): ThemeName | null {
+  if (value === "light" || value === "sunveil") {
+    return "light";
+  }
+
+  if (value === "dark" || value === "frostveil") {
+    return "dark";
+  }
+
+  return null;
+}
+
 export function ThemeProvider({ children }: PropsWithChildren) {
   const [theme, setThemeState] = useState<ThemeName>(() => {
     if (typeof window === "undefined") {
-      return "sunveil";
+      return "light";
     }
 
-    const stored = window.localStorage.getItem(storageKey);
-    if (stored === "sunveil" || stored === "frostveil") {
+    const stored = normalizeStoredTheme(window.localStorage.getItem(storageKey));
+    if (stored) {
       return stored;
     }
 
     return window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "frostveil"
-      : "sunveil";
+      ? "dark"
+      : "light";
   });
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.documentElement.style.colorScheme =
-      theme === "frostveil" ? "dark" : "light";
+      theme === "dark" ? "dark" : "light";
     window.localStorage.setItem(storageKey, theme);
   }, [theme]);
 
@@ -48,7 +60,7 @@ export function ThemeProvider({ children }: PropsWithChildren) {
   const toggleTheme = useCallback(() => {
     beginRootThemeTransition();
     setThemeState((current) =>
-      current === "sunveil" ? "frostveil" : "sunveil",
+      current === "light" ? "dark" : "light",
     );
   }, []);
 

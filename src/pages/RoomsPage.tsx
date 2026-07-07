@@ -97,7 +97,7 @@ export function RoomsPage() {
         <RouteHeader
           surface="bare"
           title="Rooms"
-          description="Public rooms for shared posts."
+          description="Shared places for posts."
           actions={
             <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto lg:min-w-[28rem]">
               <SearchField

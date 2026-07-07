@@ -220,7 +220,7 @@ export function NotificationsPage() {
           badge="private"
           badgeTone="cool"
           title="Notifications"
-          description="Updates."
+          description="Activity from posts, rooms, and people."
         />
         <RouteStateNotice
           icon={Bell}
@@ -256,7 +256,7 @@ export function NotificationsPage() {
           badge="private"
           badgeTone="cool"
           title="Notifications"
-          description="Updates."
+          description="Activity from posts, rooms, and people."
         />
         <RouteStateNotice
           kind="loading"
@@ -382,7 +382,7 @@ export function NotificationsPage() {
         <RouteStateNotice
           icon={Bell}
           title="No notifications yet"
-          text="No updates."
+          text="New activity will show up here."
         />
       ) : null}
 

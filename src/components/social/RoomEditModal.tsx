@@ -374,7 +374,7 @@ export function RoomEditModal({
           <ThemeAppearanceControl
             config={form.themeConfig}
             controlAttribute="data-room-edit-control"
-            description="Override Sunveil/Frostveil while people view this room."
+            description="Choose how this room looks while people view it."
             label="Theme"
             previewTitle={form.name || "Room"}
             previewSubtitle={`/${form.slug || "room"}`}
@@ -629,17 +629,44 @@ function ImageUploadControl({
 }
 
 function roomToForm(room: Room | undefined): FormState {
+  const themeConfig = canonicalRoomThemeConfig(room?.themeConfig);
+  const theme = themeConfig?.mode === "preset"
+    ? themeConfig.preset
+    : room?.theme === "sunveil"
+      ? "glinda"
+      : room?.theme === "frostveil"
+        ? "elphaba"
+        : room?.theme ?? null;
+
   return {
     name: room?.name ?? "",
     slug: room?.slug ?? "",
     summary: room?.summary ?? "",
-    theme: room?.theme ?? null,
-    themeConfig: room?.themeConfig ?? null,
+    theme,
+    themeConfig,
     iconUrl: room?.iconUrl ?? "",
     bannerUrl: room?.bannerUrl ?? "",
     rules: room?.rules ?? "",
     visibility: room?.visibility ?? "public",
   };
+}
+
+function canonicalRoomThemeConfig(
+  config: ProfileThemeConfig | null | undefined,
+): ProfileThemeConfig | null {
+  if (config?.mode !== "preset") {
+    return config ?? null;
+  }
+
+  if (config.preset === "sunveil") {
+    return { mode: "preset", preset: "glinda" };
+  }
+
+  if (config.preset === "frostveil") {
+    return { mode: "preset", preset: "elphaba" };
+  }
+
+  return config;
 }
 
 function slugFromName(name: string): string {

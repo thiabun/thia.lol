@@ -192,8 +192,8 @@ If production returns a generic 500, debug in this order:
 
 Design language:
 
-- Light mode: `Sunveil`, warm solarised soft yellow, calm, skin-lit, fluid.
-- Dark mode: `Frostveil`, cool solarised blue, moonlit, icy, quiet.
+- Light mode: `Light`, Glinda mood, warm pink, calm, skin-lit, fluid.
+- Dark mode: `Dark`, Elphaba mood, deep green, moonlit, verdant, quiet.
 - Brand identity: minimal bunny mark plus `thia.lol` wordmark.
 - Pink variant: allowed for brand/social/app-icon assets, not a third selectable
   theme unless explicitly requested.

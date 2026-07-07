@@ -1,4 +1,4 @@
-import { SearchX } from "lucide-react";
+import { Compass, Radio, Search, SearchX } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -6,6 +6,7 @@ import { Link, useSearchParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Avatar } from "../components/ui/Avatar";
+import { ButtonLink } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { SearchField } from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
@@ -134,6 +135,34 @@ export function SearchPage() {
 
       {trimmedQuery && !queryReady ? (
         <p className="text-sm text-muted">Use at least {minimumQueryLength} characters.</p>
+      ) : null}
+
+      {!trimmedQuery ? (
+        <EmptyState
+          icon={Search}
+          title="Search profiles and rooms"
+          text="Type a handle, name, room, or topic."
+          actions={
+            <div className="flex flex-wrap justify-center gap-2">
+              <ButtonLink
+                to="/discover"
+                variant="secondary"
+                size="sm"
+                icon={<Compass aria-hidden="true" size={15} />}
+              >
+                Discover
+              </ButtonLink>
+              <ButtonLink
+                to="/rooms"
+                variant="secondary"
+                size="sm"
+                icon={<Radio aria-hidden="true" size={15} />}
+              >
+                Rooms
+              </ButtonLink>
+            </div>
+          }
+        />
       ) : null}
 
       {queryReady && loading ? (

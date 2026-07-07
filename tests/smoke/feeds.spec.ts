@@ -352,7 +352,7 @@ test("global loading overlay skips non-protected grace after route data", async 
 
 test("site theme changes mark the root transition state", async ({ page }) => {
   await page.addInitScript(() => {
-    window.localStorage.setItem("thia.lol.theme", "sunveil");
+    window.localStorage.setItem("thia.lol.theme", "light");
     Object.defineProperty(window, "matchMedia", {
       writable: true,
       value: (query: string) => ({
@@ -413,7 +413,7 @@ test("site theme changes mark the root transition state", async ({ page }) => {
   await page.getByRole("button", { name: "Switch to Dark mode" }).click();
 
   expect(await transitionSeen).toBe(true);
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "frostveil");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await expect
     .poll(() =>
       page.evaluate(
@@ -440,11 +440,11 @@ test("Discover renders primary sections only when backed by data", async ({
               slug: "general",
               name: "General",
               summary: "Open conversation.",
-              mood: "sunveil",
+              mood: "glinda",
               members: 0,
               live: false,
-              theme: "sunveil",
-              themeConfig: { mode: "preset", preset: "sunveil" },
+              theme: "glinda",
+              themeConfig: { mode: "preset", preset: "glinda" },
               visibility: "public",
               postCount: 2,
               latestActivityAt: "2026-06-10 10:00:00",
@@ -1208,8 +1208,8 @@ test("post body opens thread while controls keep their own behavior", async ({
                 id: 1,
                 slug: "general",
                 name: "General",
-                theme: "frostveil",
-                themeConfig: { mode: "preset", preset: "frostveil" },
+                theme: "elphaba",
+                themeConfig: { mode: "preset", preset: "elphaba" },
               },
             }),
           ],
@@ -1310,7 +1310,7 @@ test("post body opens thread while controls keep their own behavior", async ({
   expect(reblogCalled).toBe(true);
 });
 
-test("post body and media hover stay visually flat in Sunveil and Frostveil", async ({
+test("post body and media hover stay visually flat in Light and Dark", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -1335,13 +1335,13 @@ test("post body and media hover stay visually flat in Sunveil and Frostveil", as
     }),
   );
 
-  for (const theme of ["sunveil", "frostveil"] as const) {
+  for (const theme of ["light", "dark"] as const) {
     await page.goto("/");
     await page.evaluate((nextTheme) => {
       window.localStorage.setItem("thia.lol.theme", nextTheme);
       document.documentElement.dataset.theme = nextTheme;
       document.documentElement.style.colorScheme =
-        nextTheme === "frostveil" ? "dark" : "light";
+        nextTheme === "dark" ? "dark" : "light";
     }, theme);
 
     const post = page.getByTestId("post-card-open-thread").first();
@@ -1406,8 +1406,8 @@ test("post profile and room links do not open the thread target", async ({
                 id: 1,
                 slug: "general",
                 name: "General",
-                theme: "frostveil",
-                themeConfig: { mode: "preset", preset: "frostveil" },
+                theme: "elphaba",
+                themeConfig: { mode: "preset", preset: "elphaba" },
               },
             }),
           ],
@@ -1580,8 +1580,8 @@ test("thread modal root and reply identities navigate to profiles", async ({ pag
                 id: 1,
                 slug: "general",
                 name: "General",
-                theme: "frostveil",
-                themeConfig: { mode: "preset", preset: "frostveil" },
+                theme: "elphaba",
+                themeConfig: { mode: "preset", preset: "elphaba" },
               },
             }),
           ],
@@ -2403,12 +2403,12 @@ async function mockRoomRoutes(page: Page, slug: string) {
           name: "General",
           summary: "Open conversation.",
           description: "A public room.",
-          mood: "sunveil",
+          mood: "glinda",
           members: 1,
           memberCount: 1,
           live: false,
-          theme: "frostveil",
-          themeConfig: { mode: "preset", preset: "frostveil" },
+          theme: "elphaba",
+          themeConfig: { mode: "preset", preset: "elphaba" },
           iconUrl: null,
           bannerUrl: null,
           rules: "",
@@ -2570,7 +2570,7 @@ function makePost(overrides: Record<string, unknown> = {}) {
   return {
     id: 42,
     body: "A public post.",
-    mood: "sunveil",
+    mood: "glinda",
     mediaUrl: null,
     visibility: "public",
     status: "published",
@@ -2687,11 +2687,11 @@ function makeDiscoverRoom(overrides: Record<string, unknown> = {}) {
     slug: "general",
     name: "General",
     summary: "Open conversation.",
-    mood: "sunveil",
+    mood: "glinda",
     members: 0,
     live: false,
-    theme: "sunveil",
-    themeConfig: { mode: "preset", preset: "sunveil" },
+    theme: "glinda",
+    themeConfig: { mode: "preset", preset: "glinda" },
     visibility: "public",
     postCount: 2,
     latestActivityAt: "2026-06-10 10:00:00",

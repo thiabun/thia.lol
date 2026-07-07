@@ -283,7 +283,7 @@ test("P2 expressive modules render compact link-first cards", async ({ page }) =
         }),
         config: {
           body: "Current profile mood.",
-          statusText: "Frostveil focus",
+          statusText: "Elphaba focus",
           workingOn: "Expressive profile modules",
         },
       },
@@ -312,7 +312,7 @@ test("P2 expressive modules render compact link-first cards", async ({ page }) =
   await page.goto("/@thia");
 
   const modules = page.getByTestId("profile-modules");
-  await expect(modules.getByText("Frostveil focus")).toBeVisible();
+  await expect(modules.getByText("Elphaba focus")).toBeVisible();
   await expect(modules.getByText("Expressive profile modules")).toBeVisible();
   await expect(modules.getByTestId("connection-icon-github")).toBeVisible();
   await expect(modules.getByRole("link", { name: /GitHub/ })).toHaveAttribute(
@@ -8860,8 +8860,8 @@ function roomFixture(overrides: Record<string, unknown> = {}) {
     members: 1,
     memberCount: 1,
     live: false,
-    theme: "frostveil",
-    themeConfig: { mode: "preset", preset: "frostveil" },
+    theme: "elphaba",
+    themeConfig: { mode: "preset", preset: "elphaba" },
     iconUrl: null,
     bannerUrl: null,
     visibility: "public",
@@ -8881,7 +8881,7 @@ function postFixture(overrides: Record<string, unknown> = {}) {
   return {
     id: 42,
     body: "A profile post.",
-    mood: "sunveil",
+    mood: "glinda",
     mediaUrl: null,
     visibility: "public",
     status: "published",
@@ -8907,8 +8907,8 @@ function postFixture(overrides: Record<string, unknown> = {}) {
       members: 1,
       memberCount: 1,
       live: false,
-      theme: "frostveil",
-      themeConfig: { mode: "preset", preset: "frostveil" },
+      theme: "elphaba",
+      themeConfig: { mode: "preset", preset: "elphaba" },
       postCount: 1,
     },
     commentCount: 0,

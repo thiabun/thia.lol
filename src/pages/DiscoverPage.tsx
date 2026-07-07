@@ -99,7 +99,7 @@ export function DiscoverPage() {
           <RouteHeader
             surface="bare"
             title="Discover"
-            description="Public posts, active rooms, and members."
+            description="Public posts, rooms, and people."
             meta={
               <div className="flex flex-wrap gap-2">
                 <ButtonLink
@@ -230,7 +230,6 @@ function DiscoverRisingSection({
       <div className="mb-3 flex items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-text">Rising</h2>
-          <p className="mt-1 text-sm text-muted">Fresh voices and active conversations.</p>
         </div>
       </div>
       <div className="space-y-4">

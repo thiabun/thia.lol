@@ -1,5 +1,6 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
 import {
+  canonicalRoomThemePreset,
   roomThemeConfigPayload,
   roomThemeFromLegacyAccent,
   type RoomThemeConfig,
@@ -204,8 +205,9 @@ export function roomPayloadFromRow(row: RoomRow): RoomPayload {
   const visibleMemberCount = viewerCanViewPosts ? memberCount : 0;
   const visiblePostCount = viewerCanViewPosts ? numberValue(row.room_post_count) : 0;
   const rawThemeConfig = roomThemeConfigPayload(row.room_theme_config_json);
+  const rowTheme = canonicalRoomThemePreset(nullableStringValue(row.room_theme));
   const theme =
-    nullableStringValue(row.room_theme) ??
+    rowTheme ??
     (rawThemeConfig?.mode === "preset" ? rawThemeConfig.preset : null) ??
     roomThemeFromLegacyAccent(row.room_legacy_accent);
   const themeConfig =

@@ -669,7 +669,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
     const postBody = validatePostBody(body.body);
     const roomId = await this.resolveRoomId(body, capabilities, session);
     const parentId = await this.resolveParentId(body.parentId ?? body.parent_id, capabilities, session);
-    const mood = validateOptionalText(body.mood, 80, "Mood") ?? "sunveil";
+    const mood = validateOptionalText(body.mood, 80, "Mood") ?? "glinda";
     const attachments = validatePostAttachments(body);
     const media = legacyPostMediaFromAttachments(attachments);
     const publicId = capabilities.hasPostPublicIdColumn ? await this.generatePostPublicId() : null;
@@ -762,7 +762,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
 
     insertColumns.push("mood", "media_url", "visibility", "status");
     insertValues.push(
-      parent.mood ?? "sunveil",
+      parent.mood ?? "glinda",
       media.url,
       "public",
       "published",

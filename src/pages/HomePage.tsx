@@ -23,7 +23,7 @@ import { Panel } from "../components/ui/Panel";
 import { RouteHeader } from "../components/ui/RouteState";
 import { PostCard } from "../components/social/PostCard";
 import { RoomCard } from "../components/social/RoomCard";
-import { deletePost, getDiscoverFeed, getHomeFeed, getRooms, getStats, updatePost } from "../lib/api";
+import { deletePost, getDiscoverFeed, getHomeFeed, getRooms, updatePost } from "../lib/api";
 import { postCreatedEventName } from "../lib/postEvents";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
@@ -160,7 +160,7 @@ function AuthenticatedHomePage() {
           <RouteHeader
             surface="bare"
             title="Home"
-            description="Posts from follows, moots, rooms, and recent conversations."
+            description="Posts from follows, rooms, and recent conversations."
             actions={
               <FeedRefreshControls
                 lastLoadedAt={feedState.lastLoadedAt}
@@ -205,7 +205,7 @@ function AuthenticatedHomePage() {
           </p>
         ) : null}
 
-        <h2 className="text-lg font-semibold text-text">For you</h2>
+        <h2 className="text-base font-semibold text-text">For you</h2>
 
         {!feedState.loading && !feedState.error && posts.length === 0 ? (
           <EmptyState
@@ -265,7 +265,6 @@ function AuthenticatedHomePage() {
 function AnonymousHomePage() {
   const discoverState = useAsyncData(getDiscoverFeed);
   const publicHomeState = useAsyncData(getHomeFeed);
-  const statsState = useAsyncData(getStats);
   const discoverPosts = discoverState.data?.posts ?? [];
   const publicHomePosts = publicHomeState.data?.posts ?? [];
   const posts = (discoverPosts.length > 0 ? discoverPosts : publicHomePosts).slice(0, 4);
@@ -273,7 +272,6 @@ function AnonymousHomePage() {
   const people = (discoverState.data?.peopleToWatch ?? [])
     .filter((person) => !/^smoketest[0-9]+$/i.test(person.handle))
     .slice(0, 4);
-  const stats = statsState.data;
 
   return (
     <motion.div
@@ -297,7 +295,7 @@ function AnonymousHomePage() {
               A small social place for profiles, rooms, and public posts.
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-              Find people, follow conversations, and make a public profile that feels like a place instead of a dashboard.
+              Find people, follow conversations, and make a public profile that feels like a place.
             </p>
           </div>
           <div className="flex flex-wrap gap-2 lg:justify-end">
@@ -324,13 +322,6 @@ function AnonymousHomePage() {
           </div>
         </div>
       </Panel>
-
-      <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4" aria-label="thia.lol public stats">
-        <StatTile label="Public posts" value={stats?.publicPosts} loading={statsState.loading} />
-        <StatTile label="Public rooms" value={stats?.publicRooms} loading={statsState.loading} />
-        <StatTile label="Active members" value={stats?.activeUsers} loading={statsState.loading} />
-        <StatTile label="Reactions" value={stats?.totalReactions} loading={statsState.loading} />
-      </section>
 
       {discoverState.error && !discoverState.data ? (
         <ApiStateNotice
@@ -372,25 +363,6 @@ function AnonymousHomePage() {
         </aside>
       </div>
     </motion.div>
-  );
-}
-
-function StatTile({
-  label,
-  loading,
-  value,
-}: {
-  label: string;
-  loading: boolean;
-  value: number | undefined;
-}) {
-  return (
-    <Panel className="p-3">
-      <p className="text-xs font-medium uppercase tracking-normal text-muted">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-text">
-        {loading && value === undefined ? "..." : formatPublicStat(value ?? 0)}
-      </p>
-    </Panel>
   );
 }
 
@@ -456,10 +428,6 @@ function AnonymousPeople({
       ) : null}
     </section>
   );
-}
-
-function formatPublicStat(value: number): string {
-  return new Intl.NumberFormat("en", { notation: "compact" }).format(value);
 }
 
 function HomeExploreRail({ onPostClick }: { onPostClick: () => void }) {

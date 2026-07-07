@@ -53,12 +53,12 @@ test("room edit save uses the API and updates the header", async ({ page }) => {
 
 test("room edit saves room themes and applies them to the room page", async ({ page }) => {
   await page.addInitScript(() => {
-    window.localStorage.setItem("thia.lol.theme", "frostveil");
+    window.localStorage.setItem("thia.lol.theme", "dark");
   });
 
   const patches: Record<string, unknown>[] = [];
-  let theme: string | null = "sunveil";
-  let themeConfig: unknown = { mode: "preset", preset: "sunveil" };
+  let theme: string | null = "glinda";
+  let themeConfig: unknown = { mode: "preset", preset: "glinda" };
 
   await mockOwnedRoom(page, () => "Original room summary.", (payload) => {
     patches.push(payload);
@@ -429,8 +429,8 @@ function roomBody(
     themeConfig?: () => unknown;
   } = {},
 ) {
-  const theme = callbacks.theme?.() ?? "sunveil";
-  const themeConfig = callbacks.themeConfig?.() ?? { mode: "preset", preset: "sunveil" };
+  const theme = callbacks.theme?.() ?? "glinda";
+  const themeConfig = callbacks.themeConfig?.() ?? { mode: "preset", preset: "glinda" };
 
   return {
     id: 1,

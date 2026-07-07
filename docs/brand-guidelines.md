@@ -59,15 +59,19 @@ explicitly calls for that surface.
 
 ## Theme Usage
 
-Sunveil and Frostveil remain the only selectable site themes:
+Light and Dark are the selectable site themes. Their product mood names are:
 
-- Sunveil uses the darker bunny mark so it holds contrast on warm light UI.
-- Frostveil uses the lighter bunny mark so it holds contrast on cool dark UI.
-- The pink variant is a brand/social/app-icon variant, not a third app theme.
+- Light: `Glinda`, a pink-toned light mode that is soft, bright, clean,
+  friendly, refined, elegant, and modern.
+- Dark: `Elphaba`, a green-toned dark mode that is rich, sleek, calm, sharp,
+  alive, modern, and refined.
 
-Pink should feel like a signature accent. Use it for `.lol`, app icons, social
-previews, and occasional brand material. Do not turn whole product surfaces into
-pink unless a specific campaign or special page calls for it.
+These are product tone names only. Do not add character art, fandom jokes,
+stage styling, magic props, or theme literalism to the brand system.
+
+Pink remains a signature accent in Light mode and brand/social/app-icon assets.
+Green gives Dark mode its identity. Neither color should overrun whole product
+surfaces.
 
 ## Asset Locations
 
@@ -88,21 +92,25 @@ public/site.webmanifest
 
 Runtime product assets currently include:
 
-- `/brand/thia-mark-sunveil-96.png`
-- `/brand/thia-mark-frostveil-96.png`
+- `/brand/thia-mark-light-96.png`
+- `/brand/thia-mark-dark-96.png`
 - `/brand/thia-mark-pink-96.png`
 - `/brand/thia-logo-main-256.png`
-- `/brand/thia-mark-sunveil-circle-96.png`
-- `/brand/thia-mark-frostveil-circle-96.png`
+- `/brand/thia-mark-light-circle-96.png`
+- `/brand/thia-mark-dark-circle-96.png`
 - `/brand/thia-mark-pink-circle-96.png`
-- `/brand/thia-mark-sunveil-squircle-96.png`
-- `/brand/thia-mark-frostveil-squircle-96.png`
+- `/brand/thia-mark-light-squircle-96.png`
+- `/brand/thia-mark-dark-squircle-96.png`
 - `/brand/thia-mark-pink-squircle-96.png`
-- `/brand/thia-t-sunveil-96.png`
-- `/brand/thia-t-frostveil-96.png`
-- `/brand/thia-lockup-sunveil.png`
-- `/brand/thia-lockup-frostveil.png`
+- `/brand/thia-t-light-96.png`
+- `/brand/thia-t-dark-96.png`
+- `/brand/thia-lockup-light.png`
+- `/brand/thia-lockup-dark.png`
 - `/brand/thia-og.png`
+
+The `sunveil` and `frostveil` asset filenames are still generated as legacy
+compatibility aliases. Product-facing copy should use Light/Dark and
+Glinda/Elphaba, and new code should reference the Light/Dark filenames.
 
 Regenerate public assets with:
 
@@ -116,7 +124,8 @@ all have the same favicon, app icon, header mark, and Open Graph image.
 ## Do Not
 
 - Do not add a third selectable pink theme without an explicit product decision.
-- Do not replace Sunveil/Frostveil tokens with brand image colors.
+- Do not replace app theme tokens with brand image colors.
+- Do not use Glinda/Elphaba as a reason to add character art or theatrical UI.
 - Do not use the bunny mark as a decorative repeated pattern.
 - Do not stretch, recolor, outline, or manually redraw the raster marks in app
   code.

@@ -88,11 +88,11 @@ test("profile routes disable site theme controls and use profile contrast for br
   page,
 }) => {
   await page.addInitScript(() => {
-    window.localStorage.setItem("thia.lol.theme", "sunveil");
+    window.localStorage.setItem("thia.lol.theme", "light");
   });
   await mockOwnProfile(page, () => [], undefined, {
-    profileTheme: "frostveil",
-    profileThemeConfig: { mode: "preset", preset: "frostveil" },
+    profileTheme: "elphaba",
+    profileThemeConfig: { mode: "preset", preset: "elphaba" },
   });
 
   await acknowledgeCookieNotice(page);
@@ -104,7 +104,7 @@ test("profile routes disable site theme controls and use profile contrast for br
         document.documentElement.style.getPropertyValue("--app-canvas").trim(),
       ),
     )
-    .toBe("#0D1F29");
+    .toBe("#092119");
   await expect
     .poll(() =>
       page.evaluate(() => ({
@@ -120,21 +120,21 @@ test("profile routes disable site theme controls and use profile contrast for br
       })),
     )
     .toEqual({
-      accentContrast: "#08232D",
-      leafInk: "#92F4F2",
-      roseInk: "#92F4F2",
+      accentContrast: "#062116",
+      leafInk: "#8CF0B5",
+      roseInk: "#8CF0B5",
     });
   await expect(page.locator("[data-profile-info-badge='founder']").first()).toHaveCSS(
     "color",
-    "rgb(146, 244, 242)",
+    "rgb(140, 240, 181)",
   );
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "sunveil");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await expect(
     page.getByRole("button", { name: "Profile theme controls this page" }),
   ).toBeDisabled();
   await expect(page.getByTestId("brand-logo").locator("img")).toHaveAttribute(
     "src",
-    /\/brand\/thia-mark-frostveil-96\.png$/,
+    /\/brand\/thia-mark-dark-96\.png$/,
   );
   await page.waitForTimeout(250);
   await expect
@@ -143,7 +143,7 @@ test("profile routes disable site theme controls and use profile contrast for br
         document.documentElement.style.getPropertyValue("--app-canvas").trim(),
       ),
     )
-    .toBe("#0D1F29");
+    .toBe("#092119");
 
   await page.getByRole("link", { name: "Discover" }).first().click();
 

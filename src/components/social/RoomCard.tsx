@@ -1,4 +1,4 @@
-import { ArrowRight, Clock3, MessageCircle, Radio, UsersRound } from "lucide-react";
+import { Clock3, MessageCircle, Radio, UsersRound } from "lucide-react";
 import { motion } from "motion/react";
 import { Link } from "react-router";
 import { Panel } from "../ui/Panel";
@@ -30,23 +30,16 @@ export function RoomCard({ index = 0, room }: RoomCardProps) {
       data-testid="room-card"
     >
       <Panel
-        className="relative h-full overflow-hidden p-2.5 shadow-none transition duration-fluid ease-fluid group-hover:border-line-strong"
+        className="relative h-full overflow-hidden p-3 shadow-none transition duration-fluid ease-fluid group-hover:border-line-strong group-hover:bg-surface/86"
         style={roomThemeSwatchCssProperties(room)}
       >
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-y-2 left-0 w-1 rounded-r-full opacity-55"
-          style={{
-            background: "var(--room-accent)",
-          }}
-        />
-        <div className="relative flex h-full min-w-0 flex-col gap-2 pl-1">
+        <div className="relative flex h-full min-w-0 flex-col gap-2">
           <div className="flex min-w-0 items-start gap-3">
             <div
               className="mt-0.5 grid size-10 shrink-0 place-items-center overflow-hidden rounded-card border border-line bg-canvas/65"
               style={{
                 background:
-                  "linear-gradient(135deg, color-mix(in oklab, var(--room-accent) 38%, transparent), var(--room-surface))",
+                  "linear-gradient(135deg, color-mix(in oklab, var(--room-accent) 24%, transparent), var(--room-surface))",
               }}
             >
               {room.iconUrl ? (
@@ -85,18 +78,6 @@ export function RoomCard({ index = 0, room }: RoomCardProps) {
               <span className="mt-1 block line-clamp-1 text-sm leading-5 text-muted">
                 {room.summary}
               </span>
-            </Link>
-            <Link
-              to={`/rooms/${room.slug}`}
-              aria-label={`Open ${room.name}`}
-              title={`Open ${room.name}`}
-              className="grid size-8 shrink-0 place-items-center rounded-full text-muted transition duration-fluid ease-fluid hover:bg-canvas/70 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-            >
-              <ArrowRight
-                aria-hidden="true"
-                size={16}
-                className="transition duration-fluid ease-fluid group-hover:translate-x-0.5"
-              />
             </Link>
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-[3.25rem] text-xs text-muted">

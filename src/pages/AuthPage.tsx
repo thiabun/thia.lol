@@ -6,7 +6,7 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { BrandLogoMain } from "../components/BrandLogo";
 import { PageMeta } from "../components/PageMeta";
 import { Badge } from "../components/ui/Badge";
-import { Button } from "../components/ui/Button";
+import { Button, ButtonLink } from "../components/ui/Button";
 import { HandleField, TextField } from "../components/ui/Field";
 import { Panel } from "../components/ui/Panel";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
@@ -99,6 +99,58 @@ export function AuthPage({ mode }: AuthPageProps) {
     }
   }
 
+  if (status === "authenticated" && user && !twoFactorChallenge) {
+    return (
+      <motion.div
+        className="mx-auto grid min-h-[calc(100dvh-9rem)] max-w-5xl place-items-center"
+        variants={pageEntrance}
+        initial="hidden"
+        animate="show"
+      >
+        <PageMeta
+          title={isRegister ? "Create account" : "Sign in"}
+          description={isRegister ? "Create account." : "Sign in."}
+          path={isRegister ? "/register" : "/login"}
+        />
+        <motion.div
+          className="w-full max-w-lg"
+          variants={cardEntrance}
+          custom={0}
+          initial="hidden"
+          animate="show"
+        >
+          <Panel className="w-full p-5 text-center sm:p-6">
+            <BrandLogoMain
+              className="mx-auto mb-5"
+              data-testid="auth-brand-logo-main"
+              size="md"
+            />
+            <Badge tone="leaf">Signed in</Badge>
+            <h1 className="mt-4 text-2xl font-semibold tracking-normal text-text">
+              You are signed in as {user.displayName}
+            </h1>
+            <p className="mt-2 text-sm text-muted">@{user.handle}</p>
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
+              <ButtonLink to={`/@${user.handle}`} variant="primary">
+                View profile
+              </ButtonLink>
+              <ButtonLink to="/" variant="secondary">
+                Home
+              </ButtonLink>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => void logout()}
+              >
+                Log out
+              </Button>
+            </div>
+          </Panel>
+        </motion.div>
+      </motion.div>
+    );
+  }
+
   return (
     <motion.div
       className="mx-auto grid min-h-[calc(100dvh-9rem)] max-w-5xl place-items-center"
@@ -141,23 +193,6 @@ export function AuthPage({ mode }: AuthPageProps) {
                   ? "Enter your authenticator or recovery code."
                   : "Use your account."}
             </p>
-
-            {status === "authenticated" && user ? (
-              <div className="mt-5 rounded-card border border-line bg-surface-strong p-4">
-                <p className="text-sm font-semibold text-text">
-                  Signed in as {user.displayName}
-                </p>
-                <p className="mt-1 text-sm text-muted">@{user.handle}</p>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="mt-4"
-                  onClick={() => void logout()}
-                >
-                  Log out
-                </Button>
-              </div>
-            ) : null}
 
             {error ? (
               <div

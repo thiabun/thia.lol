@@ -14,8 +14,8 @@ type PageMetaProps = {
 };
 
 const themeColors = {
-  sunveil: "#f8e8a9",
-  frostveil: "#223454",
+  light: "#fff6fb",
+  dark: "#092119",
 };
 
 export function PageMeta({ title, description, path }: PageMetaProps) {

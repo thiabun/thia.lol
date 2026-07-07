@@ -28,6 +28,14 @@ const sourceFiles = {
 await fs.mkdir(publicBrandDir, { recursive: true });
 
 const pngAssets = [
+  [sourceFiles.markSunveil, "brand/thia-mark-light-96.png", {
+    height: 96,
+    width: 96,
+  }],
+  [sourceFiles.markFrostveil, "brand/thia-mark-dark-96.png", {
+    height: 96,
+    width: 96,
+  }],
   [sourceFiles.markSunveil, "brand/thia-mark-sunveil-96.png", {
     height: 96,
     width: 96,
@@ -48,7 +56,15 @@ const pngAssets = [
     height: 96,
     width: 96,
   }],
+  [sourceFiles.tMarkSunveil, "brand/thia-t-light-96.png", {
+    height: 96,
+    width: 96,
+  }],
   [sourceFiles.tMarkFrostveil, "brand/thia-t-frostveil-96.png", {
+    height: 96,
+    width: 96,
+  }],
+  [sourceFiles.tMarkFrostveil, "brand/thia-t-dark-96.png", {
     height: 96,
     width: 96,
   }],
@@ -56,7 +72,15 @@ const pngAssets = [
     height: 160,
     width: 560,
   }],
+  [sourceFiles.lockupSunveil, "brand/thia-lockup-light.png", {
+    height: 160,
+    width: 560,
+  }],
   [sourceFiles.lockupFrostveil, "brand/thia-lockup-frostveil.png", {
+    height: 320,
+    width: 720,
+  }],
+  [sourceFiles.lockupFrostveil, "brand/thia-lockup-dark.png", {
     height: 320,
     width: 720,
   }],
@@ -81,6 +105,16 @@ for (const [sourceName, outputName, size] of pngAssets) {
 await writeSquirclePng(sourceFiles.appIcon, "favicon-32x32.png", 32);
 await writeSquirclePng(
   sourceFiles.markSunveilSquare,
+  "brand/thia-mark-light-squircle-96.png",
+  96,
+);
+await writeSquirclePng(
+  sourceFiles.markFrostveilSquare,
+  "brand/thia-mark-dark-squircle-96.png",
+  96,
+);
+await writeSquirclePng(
+  sourceFiles.markSunveilSquare,
   "brand/thia-mark-sunveil-squircle-96.png",
   96,
 );
@@ -92,6 +126,16 @@ await writeSquirclePng(
 await writeSquirclePng(
   sourceFiles.markPink,
   "brand/thia-mark-pink-squircle-96.png",
+  96,
+);
+await writeCirclePng(
+  sourceFiles.markSunveilSquare,
+  "brand/thia-mark-light-circle-96.png",
+  96,
+);
+await writeCirclePng(
+  sourceFiles.markFrostveilSquare,
+  "brand/thia-mark-dark-circle-96.png",
   96,
 );
 await writeCirclePng(

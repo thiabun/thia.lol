@@ -51,16 +51,16 @@ type SharePalette = {
 };
 
 const fallbackPalette: SharePalette = {
-  canvas: "#071820",
-  surface: "rgba(17, 49, 58, 0.78)",
-  surfaceStrong: "rgba(7, 24, 32, 0.82)",
-  text: "#ecfbfb",
-  muted: "#a9c8cf",
-  line: "rgba(105, 202, 213, 0.42)",
-  accent: "#61e2d4",
+  canvas: "#092119",
+  surface: "rgba(19, 55, 42, 0.78)",
+  surfaceStrong: "rgba(9, 33, 25, 0.82)",
+  text: "#eafbf1",
+  muted: "#a3ceb6",
+  line: "rgba(73, 147, 110, 0.42)",
+  accent: "#55d989",
 };
 
-const SHARE_CARD_RENDER_VERSION = "mosaic-v6";
+const SHARE_CARD_RENDER_VERSION = "mosaic-v7";
 
 export function ShareCardScene(props: ShareCardSceneProps) {
   const palette =
@@ -88,7 +88,7 @@ export function ShareCardScene(props: ShareCardSceneProps) {
         alt="thia.lol"
         className="absolute left-[36px] top-[12px] h-[96px] w-auto"
         data-share-card-brand="true"
-        src="/brand/thia-lockup-frostveil.png"
+        src="/brand/thia-lockup-dark.png"
       />
       {props.kind === "post" ? (
         <PostShareCard post={props.post} palette={palette} />
@@ -974,15 +974,18 @@ function paletteFromTheme(config?: ProfileThemeConfig | null): SharePalette {
     };
   }
 
-  if (config?.mode === "preset" && config.preset === "sunveil") {
+  if (
+    config?.mode === "preset" &&
+    (config.preset === "glinda" || config.preset === "sunveil")
+  ) {
     return {
-      canvas: "#fff6d8",
-      surface: "rgba(255,253,242,0.82)",
-      surfaceStrong: "rgba(255,248,220,0.86)",
-      text: "#3f3324",
-      muted: "#77694e",
-      line: "rgba(205,187,131,0.58)",
-      accent: "#d99c25",
+      canvas: "#fff7fb",
+      surface: "rgba(255,253,254,0.82)",
+      surfaceStrong: "rgba(248,230,239,0.86)",
+      text: "#39242f",
+      muted: "#785667",
+      line: "rgba(216,170,189,0.58)",
+      accent: "#e94b82",
     };
   }
 
@@ -1005,7 +1008,7 @@ function hexToRgba(hex: string, alpha: number) {
   const match = hex.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
 
   if (!match) {
-    return `rgba(13,31,41,${alpha})`;
+    return `rgba(9,33,25,${alpha})`;
   }
 
   const r = match[1] ?? "0d";

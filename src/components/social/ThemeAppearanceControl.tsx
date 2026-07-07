@@ -3,6 +3,7 @@ import { useState } from "react";
 import { cn } from "../../lib/classNames";
 import {
   defaultProfileThemePresetId,
+  canonicalProfileThemePresetId,
   profileThemeColorKeys,
   profileThemeConfigColors,
   profileThemeConfigToCssProperties,
@@ -40,7 +41,10 @@ export function ThemeAppearanceControl({
   onChange,
 }: ThemeAppearanceControlProps) {
   const [open, setOpen] = useState(false);
-  const activeConfig = config ?? null;
+  const activeConfig =
+    config?.mode === "preset"
+      ? { mode: "preset" as const, preset: canonicalProfileThemePresetId(config.preset) ?? config.preset }
+      : config ?? null;
   const activeColors = profileThemeConfigColors(activeConfig);
   const activeLabel = activeConfig
     ? activeConfig.mode === "custom"

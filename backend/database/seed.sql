@@ -68,7 +68,7 @@ VALUES
     'rare',
     'admin-granted',
     'calendar-days',
-    'sunveil',
+    'glinda',
     1
   ),
   (
@@ -88,7 +88,7 @@ VALUES
     'legendary',
     'admin-granted',
     'shield',
-    'frostveil',
+    'elphaba',
     1
   ),
   (
@@ -140,8 +140,8 @@ VALUES
     'open',
     0,
     1,
-    'sunveil',
-    JSON_OBJECT('mode', 'preset', 'preset', 'sunveil'),
+    'glinda',
+    JSON_OBJECT('mode', 'preset', 'preset', 'glinda'),
     'public',
     @thia_user_id
   ),
@@ -152,8 +152,8 @@ VALUES
     'updates',
     0,
     1,
-    'frostveil',
-    JSON_OBJECT('mode', 'preset', 'preset', 'frostveil'),
+    'elphaba',
+    JSON_OBJECT('mode', 'preset', 'preset', 'elphaba'),
     'public',
     @thia_user_id
   ),

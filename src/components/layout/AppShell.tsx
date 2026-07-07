@@ -308,6 +308,10 @@ export function AppShell() {
         themeControlsDisabled={themeControlsDisabled}
         topBarAction={topBarAction}
       />
+      <CookieNotice
+        onDismiss={() => setCookieNoticeVisible(false)}
+        visible={cookieNoticeVisible}
+      />
       <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-3 sm:px-5 lg:px-7">
         <main className="flex-1 pb-4 pt-3 lg:pb-10 lg:pt-4">
           <div className="min-h-full">
@@ -350,10 +354,6 @@ export function AppShell() {
       <StrokeJokePopup
         cookieNoticeVisible={cookieNoticeVisible}
         pathname={location.pathname}
-      />
-      <CookieNotice
-        onDismiss={() => setCookieNoticeVisible(false)}
-        visible={cookieNoticeVisible}
       />
     </div>
   );
@@ -783,7 +783,7 @@ function CookieNotice({
 
   return (
     <div
-      className="fixed inset-x-3 bottom-24 z-50 mx-auto max-w-2xl rounded-panel border border-line bg-surface/96 p-4 text-sm text-muted shadow-lift backdrop-blur-veil lg:bottom-5"
+      className="relative z-20 mx-3 mt-3 max-w-2xl rounded-panel border border-line bg-surface/96 p-4 text-sm text-muted shadow-lift backdrop-blur-veil lg:fixed lg:inset-x-3 lg:bottom-5 lg:z-50 lg:mx-auto lg:mt-0"
       data-testid="cookie-notice"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start">

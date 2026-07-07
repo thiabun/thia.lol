@@ -1,13 +1,9 @@
 # Product UI/UX Guidelines
 
 > **Status: Active canonical reference.** Future product, frontend, and Codex
-> implementation issues should use this document as required context.
+> implementation work should use this document as required context.
 
-Date: 2026-06-14
-
-Source issue: [#14 Product UI/UX guidelines and component inventory](https://github.com/thiabun/thia.lol/issues/14)
-
-Implementation follow-up: [#32 Product UI/UX overhaul pass](https://github.com/thiabun/thia.lol/issues/32)
+Date: 2026-07-08
 
 Related context:
 
@@ -18,51 +14,58 @@ Related context:
 
 ## Purpose
 
-This is the product UI/UX guideline for `thia.lol` after the Public Readiness
-V2 work. It is not a design-system rewrite and does not approve a new frontend
-stack, server architecture, Tailwind replacement, analytics, ads, or fake
-feature expansion.
+`thia.lol` is a compact social place for posts, rooms, profiles, messages, and
+trust surfaces. The interface should feel clear, easy, modern, sleek, refined,
+friendly, compact, and alive.
 
-Use this document to keep future changes coherent, compact, and practical. The
-standard is based on real V2 lessons: cards and panels became too common, copy
-often explained obvious UI, similar actions drifted into different behavior,
-and local modal/state/menu patterns made the platform feel less intentional
-than the underlying product.
+This document is the product design standard for the app. It does not approve a
+new frontend stack, server architecture, analytics layer, ad system, payment
+flow, or fake feature expansion. Improve the existing Vite, React, TypeScript,
+Tailwind CSS, Motion for React, and React Router app.
 
-## Implementation Grounding
+The standard is based on the current product shape:
 
-These guidelines assume the existing architecture:
+- The app should feel like a living place, not a stack of disconnected widgets.
+- Compactness matters because social content is scanned repeatedly.
+- Real state matters more than decorative metrics.
+- Shared primitives should carry polish across routes.
+- Public claims, controls, integrations, and stats must be honest.
 
-- Vite
-- React
-- TypeScript
-- Tailwind CSS
-- Motion for React
-- React Router
-- static build output deployed to the PebbleHost VPS
+## Design Principles
 
-Future work should improve the current component stack instead of replacing it.
-Use existing primitives in `src/components/ui`, social surfaces in
-`src/components/social`, shared motion presets in `src/lib/motionPresets.ts`,
-and Tailwind tokens/classes already used by the app before inventing a new
-local pattern.
+### Purpose
 
-## Current Product Guardrails
+Every screen should answer three questions quickly:
 
-- GitHub Issues are the active tracker. Do not turn docs into open-ended task
-  queues.
-- Do not add analytics scripts, ad scripts, trackers, payment flows, optional
-  cookies, or monetization claims without an explicit issue and policy review.
-- Do not add fake controls, fake integrations, fake media, or unsupported
-  product depth just to make a screen look fuller.
-- Keep API-backed UX honest. Auth, posts, replies, rooms, profiles, media,
-  chat, notifications, moderation, and settings need verification against a
-  working API path.
-- Profile module data is compatibility data unless a future issue defines the
-  replacement editor. Render safely; do not expose editor controls or destructive
-  migration behavior by accident.
-- Prefer performance-friendly polish: route splitting, compact surfaces, stable
-  layout, reduced duplicated chrome, and no broad framework replacement.
+1. What is this?
+2. What matters here?
+3. What can I do next?
+
+If a section, metric, sentence, or visual treatment does not help answer those
+questions, remove it or reduce it.
+
+### Responsibility
+
+Act in people's best interest. Do not add misleading stats, fake live states,
+fake integrations, fake trust signals, or controls that imply behavior that does
+not exist. API-backed UI must be verified against a working API path.
+
+### Simplicity
+
+Use direct labels, clear hierarchy, and fewer sections. Prefer compact rows,
+lists, and restrained panels over sprawling dashboards or decorative grids.
+
+### Craft
+
+Spacing, type, focus, hover, loading, empty, error, disabled, and selected
+states are part of the feature. Do not leave them to browser defaults or route
+local drift.
+
+### Delight
+
+The product can feel springy and alive through motion, hover response, soft
+state transitions, and small interaction details. Delight should never make the
+app louder, slower, harder to read, or more theatrical.
 
 ## Product Feel
 
@@ -77,11 +80,7 @@ local pattern.
 - compact
 - alive
 
-It should feel like a living social place. The product can breathe through
-hierarchy, spacing, subtle motion, and interaction polish, but it should not
-become loud, theatrical, or decorative.
-
-`thia.lol` should not feel:
+It should not feel:
 
 - bulky
 - overbuilt
@@ -92,61 +91,90 @@ become loud, theatrical, or decorative.
 - overexplained
 - card-heavy
 - needlessly verbose
+- fake-polished
 
-## Visual Mood
+## Themes
 
-Sunveil and Frostveil describe mood, contrast, and warmth. They are not an
-excuse to make the interface one-note.
+The selectable site themes are generic Light and Dark modes. Their product mood
+names are:
 
-Light mode should feel like Sunveil:
+- Light: `Glinda`
+- Dark: `Elphaba`
 
-- warm solarised soft yellow
+These are tonal product names only. Do not add character art, fandom jokes,
+theatrical styling, stage imagery, magic props, or any other theme literalism.
+`thia.lol` should still feel like `thia.lol`.
+
+### Glinda, Light Mode
+
+Glinda is pink-toned light mode:
+
+- soft
+- bright
+- clean
+- friendly
+- refined
+- elegant
+- modern
+
+Pink guides the tone through accents, focus states, selected states, and small
+brand details. It must not contaminate every surface. The base UI should still
+use readable light neutrals, disciplined borders, and strong text contrast.
+
+### Elphaba, Dark Mode
+
+Elphaba is green-toned dark mode:
+
+- rich
+- sleek
 - calm
-- skin-lit
-- fluid
+- sharp
+- alive
+- modern
+- refined
 
-Dark mode should feel like Frostveil:
+Green creates identity through action states, focus, selected navigation, and
+status surfaces. It must not become neon sludge. The dark base should stay calm,
+deep, and legible.
 
-- cool solarised blue
-- moonlit
-- icy
-- quiet
+### Theme Migration
 
-Use these moods through subtle surfaces, accents, focus states, and motion.
-Avoid turning whole pages into a single yellow, blue, beige, slate, or purple
-wash. Important controls and content should remain legible before they feel
-atmospheric.
+Older persisted values may still contain `sunveil` or `frostveil`. Runtime code,
+API validation, and migrations should map old values to the new model:
+
+- `sunveil` -> `light` for the global site theme
+- `frostveil` -> `dark` for the global site theme
+- `sunveil` -> `glinda` for profile and room presets
+- `frostveil` -> `elphaba` for profile and room presets
+
+Old names may appear only in compatibility code, tests that prove migration, or
+historical SQL migrations. Product-facing copy and active design docs should use
+Light, Dark, Glinda, and Elphaba.
 
 ## Brand Identity
 
-The primary brand system is the minimal bunny mark plus `thia.lol` wordmark.
-The bunny subtly hides a `T` in its nose and mouth, which makes the mark
-distinct without needing extra explanation in the UI.
+The primary identity remains the minimal bunny mark plus `thia.lol` wordmark.
+Thia is a founder profile, for example `/@thia`, not the whole product.
 
 Use the brand compactly:
 
-- Header: bunny mark plus wordmark, once.
-- Footer: compact bunny/wordmark treatment near legal and copyright context.
-- Auth and legal entry points: one restrained `logo-main` image or contained
-  bunny mark where it builds trust and orientation.
-- Cookie and loading states: one small circle or squircle bunny mark is
-  acceptable when it does not compete with the action or message.
-- Favicons/app icons: bunny mark, with the pink variant allowed.
-- Social previews and docs: horizontal lockups are appropriate, but avoid them
-  in compact in-app surfaces outside the top bar.
-- Routine product surfaces: do not repeat the bunny as decoration across feeds,
-  post cards, profile modules, rooms, or repeated list items.
+- Header: bunny mark plus wordmark once.
+- Footer: compact brand treatment near legal and copyright context.
+- Auth and legal entry points: one restrained logo or mark where it builds
+  trust and orientation.
+- Cookie and loading states: one small mark is acceptable when it does not
+  compete with the action or message.
+- Social previews and docs: horizontal lockups are appropriate.
 
-The pink background variant is a brand/social/app-icon asset, not a selectable
-product theme. Sunveil and Frostveil remain the only app themes unless a future
-issue explicitly changes the theme model.
+Avoid repeating the bunny as decoration across feeds, post cards, profile
+modules, room cards, empty states, or backgrounds.
 
-## Core Rules
+## Layout And Density
 
-### 1. Compact By Default
+### Compact By Default
 
 Default toward compact layouts. Optimize for scanability, density, and
-readability before adding more vertical space.
+readability before adding vertical space.
 
 Prefer:
 
@@ -154,7 +182,7 @@ Prefer:
 - dense but readable rows
 - grouped controls with clear hierarchy
 - modest panel padding
-- compact empty, loading, and error states inside dense tools
+- compact empty, loading, and error states
 - type sizes that match the surface size
 
 Avoid:
@@ -162,243 +190,216 @@ Avoid:
 - giant cards
 - giant pills
 - giant buttons
-- page sections that look like floating cards
+- page sections styled as floating cards
 - excessive whitespace used as a substitute for hierarchy
 - repeated panels with the same visual weight
 
-Large space is allowed when the task needs it, such as profile customization,
-room editing, thread reading, or a focused modal/sheet. Even then, the content
-should stay crisp.
+Large space is allowed for focused editors, thread reading, room editing,
+profile customization, and full-screen mobile sheets. Even then, keep the
+content crisp.
 
-### 2. One Pattern Per Action Family
+### Container Rules
 
-Identical actions should use identical interaction patterns, spacing, motion,
-and visual treatment unless there is a clear product reason.
+Cards and panels are for real containers:
 
-Examples:
-
-- Menu items should behave like menu items whether they navigate or call a
-  function. The account menu logout row should not feel different from profile,
-  legal, or admin menu rows.
-- Report actions should use the shared report trigger and `ModalSheet` flow,
-  not route-local inline forms.
-- Editor status messages should use shared sheet/status primitives, not plain
-  paragraphs in one editor and bordered alerts in another.
-- Delete, hide, block, mute, and remove-follower flows should share a
-  confirmation pattern appropriate to their risk.
-
-If a component needs a local variant, document the product reason in the issue
-or PR summary.
-
-### 3. Cards Are For Real Containers
-
-Cards and panels are useful, but overuse makes the app feel assembled from
-feature blocks.
-
-Use cards/panels for:
-
-- repeated social items, such as posts, rooms, search results, and rows
+- repeated social items
+- rooms and search results
 - modals, sheets, dialogs, and framed tools
-- focused states that need a clear boundary
+- focused state notices
 - data groups that compare equivalent items
 
-Avoid cards/panels for:
+Do not wrap every subsection in a panel. Do not put UI cards inside decorative
+cards. When hierarchy feels weak, remove chrome before adding a new panel.
 
-- every subsection on a page
-- decorative wrapper sections
-- explanatory copy blocks
-- nested boxes inside boxes unless the nested element is an actual control or
-  repeated item
-- fake content, fake media, or placeholder identity surfaces
+### Rows And Columns
 
-When hierarchy feels weak, remove chrome before adding another panel.
+Rows should be easy to scan:
 
-### 4. Copy Must Earn Its Place
+- primary identity first
+- short secondary metadata
+- one action cluster
+- stable icon sizing
+- compact edit or overflow actions where appropriate
+- no duplicated action for the same context
 
-Public copy should be short, direct, useful, and honest.
+Columns should have a real purpose. Side rails are for related navigation,
+rooms, people, or state summaries. Do not use side rails for filler text or fake
+metrics.
+
+## Component Standards
+
+Use existing shared primitives first:
+
+- `Button` and `ButtonLink`
+- `IconButton`
+- shared field components
+- `ModalSheet`
+- `Panel`
+- `RouteHeader`
+- `RouteStateNotice`
+- `CompactStateNotice`
+- `ApiStateNotice`
+- `EmptyState`
+- `Badge`
+- `SegmentedControl`
+
+When a local variant is needed, keep it small and reuse token values for color,
+radius, border, shadow, spacing, type, and focus behavior.
+
+### Buttons
+
+Buttons should be compact, direct, and stateful:
+
+- Primary: one clear next action.
+- Secondary: safe supporting action.
+- Ghost or quiet: low-emphasis navigation or inline action.
+- Danger: destructive action only.
+- Icon-only: familiar compact actions such as close, search, theme,
+  notifications, report, overflow, remove, and refresh.
+
+Every icon-only control needs `aria-label`, focus state, and a stable hit area.
+
+### Forms And Inputs
+
+Form controls should use shared field primitives unless the surface has a
+special interaction need, such as chat composition or mention editing.
+
+Inputs need:
+
+- visible label or accessible label
+- clear focus ring
+- useful placeholder, not instructions repeated from the label
+- inline error or owning sheet error
+- stable height across default, focus, disabled, and error states
+
+### Tabs And Segmented Controls
+
+Tabs should be compact and predictable. Selected state should use color, weight,
+or a small indicator, not a large block that overwhelms content.
+
+Use tabs for view changes such as Feed, Replies, Rooms, and profile module
+filters. Use segmented controls for compact mode choices.
+
+### Menus, Modals, And Sheets
+
+Menus should use one row pattern for equivalent links and actions. Close on item
+selection, support Escape, support outside click, and keep rows compact.
+
+Use `ModalSheet` for new dialogs, editors, reports, confirmations, and pickers.
+Headers should be short. Footers should be action-oriented. Busy sheets should
+prevent accidental close until pending work resolves.
+
+### State Notices
+
+Empty, loading, and error states should be proportional to their context.
+
+Use route-level notices for whole-page states and compact notices for embedded
+tools, panes, threads, and lists.
+
+Good:
+
+- "No rooms found"
+- "Try a shorter search."
+- "Replies are not available"
+- "Try refreshing in a moment."
+
+Bad:
+
+- "Something went wrong" when the affected surface is known
+- repeated title and body with the same phrase
+- raw `Loading` text inside a card
+- decorative empty-state copy that adds no action or context
+
+### Toasts And Status
+
+Toasts and inline statuses should say what changed and what remains possible.
+They should not praise the app or use vague product fluff.
+
+## Copy Tone
+
+Copy should be short, direct, useful, and honest.
 
 Prefer:
 
 - concrete labels
-- one clear sentence when context is needed
-- route descriptions that explain scope, not marketing value
+- one useful sentence when context is needed
+- route descriptions that explain scope
 - button text that describes the command
-- empty-state text that says what is missing and, when useful, what to do next
+- empty-state text that says what is missing
 
 Avoid:
 
 - unnecessary subheadings
 - repetitive explanations
 - obvious instructions
-- placeholder-feeling marketing text
+- placeholder marketing text
 - implementation language
-- filler statements such as "Small for now, easy to follow."
+- filler statements
 
 If a heading already explains the section, do not add a second sentence that
-repeats it. If a state is already visually obvious, skip the explanation.
-
-### 5. Ambient Veil Is Retired
-
-`AmbientImage` and `ambient-veil.webp` are retired from active UI and build
-assets. Do not reintroduce them as fake content, fake media, fake user
-identity, fake room identity, or a placeholder for something the user expects
-to inspect.
-
-Future placeholders should be:
-
-- neutral
-- honest
-- visually quiet
-- clearly different from user-uploaded media
-
-Good placeholders include dashed upload slots, initials, simple icons, muted
-empty states, and explicit "No image yet" style states when needed.
-
-### 6. Icon-First Actions
-
-When an action is represented by a widely recognizable icon, prefer an
-icon-only control with accessible labeling.
-
-Requirements:
-
-- `aria-label`
-- `title` when helpful for mouse users
-- keyboard focus state
-- correct button/link semantics
-- no layout shift between default, hover, active, and disabled states
-
-Prefer icon-only controls for:
-
-- close
-- search in compact nav
-- notifications
-- theme
-- account menu trigger
-- report in dense post/chat metadata
-- remove image
-- remove moderator
-- compact overflow/more actions
-
-Avoid:
-
-- icon plus redundant text in dense action rows
-- oversized action rows for familiar commands
-- text labels that make repeated controls wrap unnecessarily
-
-Exceptions:
-
-- menus
-- lists
-- destructive confirmations
-- onboarding or first-run flows
-- places where text genuinely improves comprehension
+repeats it.
 
 ## Navigation
 
-Navigation should feel lightweight. It should help people move without
-dominating the content.
+Navigation should feel lightweight and calm.
 
-### Desktop Nav
+### Desktop
 
-- Keep the brand compact. `thia.lol` is enough; do not add a generic subtitle
-  under it.
-- Keep primary nav items short and stable: Home, Discover, Search, Rooms, Chat.
-- Keep Admin, Legal, and account-specific destinations out of primary nav.
-- Active states should be subtle: soft surface, text weight, or a quiet ring,
-  not a large branded block.
-- Do not add nav copy that explains each destination inline.
-- Preserve clear focus states and link semantics.
+- Keep the brand compact.
+- Keep primary nav stable: Home, Discover, Search, Rooms, Chat.
+- Keep Admin, Legal, and account destinations out of primary nav.
+- Active state should be subtle and readable.
+- Do not add explanatory copy to nav items.
 
-### Mobile Dock
+### Mobile
 
-- The dock should be visually compact and leave content feeling primary.
-- Active states should be subtle.
-- The center Post action may be emphasized, but it should not become a large
-  floating hero control that competes with content.
-- Search can remain in the mobile header unless a stronger mobile search
-  affordance is deliberately designed.
-- The dock, footer, and cookie notice must not fight for the same bottom space.
-- Short pages must still make the footer feel like the page ending, not a second
-  surface trapped below navigation.
-
-### Menus
-
-- Use one menu item pattern for equivalent rows, whether the row is a link or a
-  button.
-- Close menus on item selection.
-- Support Escape and outside click where the menu is popover-like.
-- Keep rows compact, with one icon and one label unless a destructive or
-  safety-sensitive action needs more context.
-- Do not put long policy copy inside routine action menus.
-- If a menu action opens a confirmation, keep the confirmation in a shared
-  dialog/sheet pattern.
-
-### Panels And Sheets
-
-- Use `ModalSheet` for new modal, dialog, and mobile sheet work.
-- Use mobile `full` for larger editors and pickers that need room.
-- Use mobile `sheet` or `dialog` only for smaller, focused tasks.
-- Keep headers short and footers action-oriented.
-- Busy sheets should prevent accidental close until the pending task resolves.
-- Status inside sheets should use `ModalSheetStatus` or a future shared status
-  primitive, not one-off paragraphs.
+- The dock should leave content primary.
+- The center Post action may be emphasized, but should not become a floating
+  hero control.
+- Search can remain in the mobile header.
+- Dock, footer, cookie notice, and modals must not fight for the same bottom
+  space.
 
 ## Social Surfaces
 
-### Conversations
+### Feeds And Posts
 
-Conversations should feel connected. Parent posts, replies, and nested replies
-should read as one thread, not unrelated cards stacked in a modal.
-
-Preserve:
-
-- thread rails and visual connection cues
-- compact reply nesting
-- one clear primary reply entry point per context
-- click behavior where the post body opens the thread while explicit controls
-  remain isolated
-- compact loading, empty, and error states in the thread
+Feeds should feel readable and conversational. Repeated post cards need clear
+identity, body, media, and one action row. Keep metadata compact.
 
 Avoid:
 
-- duplicate reply controls
-- reply/report/delete controls repeated in multiple places for the same context
-- isolated cards that break the conversation rhythm
-- narrow desktop thread layouts that waste usable width
+- duplicated reply/report/delete controls
+- large action rows for repeated posts
+- fake popularity indicators
+- route copy that competes with the feed
 
-### Identity
+### Rooms
 
-Identity should be easy to scan without crowding content.
+Rooms are shared places. Room cards should show name, slug, summary, member/post
+context, and owner when useful. Room theme should tint the surface without
+making the card feel like a separate product.
 
-Show:
+Avoid decorative stripes, oversized arrows, or repeated badges when the room
+identity already carries enough signal.
 
-- avatar
-- display name
-- handle
-- badges or relationship context only when relevant
-- room context for posts when it affects navigation
+### Chat
 
-Avoid:
+Chat should feel like a focused workspace:
 
-- repeated metadata in multiple adjacent places
-- many badges with equal visual weight
-- large identity panels where a compact row would work
-- decorative identity placeholders that look like real media
+- conversation list
+- selected conversation
+- readable message bubbles
+- compact composer
+- clear empty state
 
-### Actions
+Do not turn messages into cards. Preserve density and keyboard usability.
 
-Actions should appear where the user expects them, once per context.
+### Notifications
 
-Rules:
-
-- Primary actions can include text when they start a larger task: Post, Create
-  room, Message a moot.
-- Dense repeated actions should be icon-first when recognizable.
-- Destructive actions require clear labeling and, when risk is meaningful, a
-  confirmation pattern.
-- Auth-required actions should navigate to login or show a concise state, not
-  fail silently.
-- Action errors must be visible near the action or in the owning sheet.
+Notifications should read as a compact activity list. Unread state should be
+obvious but calm. Mark-read actions should stay close to the affected row or in
+one route-level action.
 
 ## Profiles
 
@@ -407,10 +408,10 @@ without becoming cluttered dashboards.
 
 Prefer:
 
-- a strong identity hierarchy
-- compact stats and social context
+- strong identity hierarchy
+- compact social context
 - optional featured content that feels intentional
-- modules that add personality without overwhelming the main identity
+- modules that add personality without overwhelming identity
 - owner-only prompts that are useful and short
 
 Avoid:
@@ -419,143 +420,113 @@ Avoid:
 - unnecessary sections
 - too many pills
 - too many equal-weight panels
-- hidden technical or editor language on public profile views
-- making Thia's profile the platform's center of gravity
+- hidden technical/editor language on public profile views
+- making Thia's profile the platform center of gravity
 
-Profile surfaces should support richer personal spaces over time, but every new
-block should answer a product question: what does this help visitors understand
-about this member?
+Profile modules are glanceable surfaces:
 
-### Profile Modules As Glanceable Surfaces
+- one module, one clear purpose
+- most relevant content first
+- public empty modules are hidden
+- owner empty states are compact
+- larger spans must add real media, activity, metadata, or controls
+- module shells keep padding, title treatment, focus states, and overflow
+  consistent
+- no nested decorative cards
 
-Use a glanceable module rubric for profile modules: modules should be
-personalized, single-purpose, adaptive to size, and honest about freshness.
-They should not copy platform chrome.
+Do not resurrect retired profile editor patterns. Future profile customization
+work should use the current constrained model and real backend/API persistence.
 
-Rules:
+## Auth And Trust
 
-- One module, one clear purpose.
-- Put the most relevant content or action first.
-- Hide public empty modules; owners get compact edit-mode empty states.
-- Larger spans must add real media, activity, metadata, or controls.
-- `1x1` and `2x1` modules carry one idea; `3x1` adds one supporting detail;
-  `2x2` and `3x2` are for richer previews; `4x3` and `6x3` are for larger
-  identity layouts or rich creator embeds; `3x4`, `3x6`, and `6x5` are for
-  activity or stream-plus-chat creator embeds that earn the height.
-- Live/recent labels require API-backed timestamps. Plain links and embeds stay
-  static link cards.
-- Module shells should keep padding, title treatment, focus states, and
-  internal overflow consistent. Avoid nested decorative cards.
+Auth pages should orient people quickly. If someone is already signed in, show
+the current account state clearly and keep forms secondary or out of the way.
 
-## Empty, Loading, And Error States
+Legal and trust pages can carry more text, but their index should stay scannable
+with clear categories and direct policy links.
 
-State surfaces should be calm, specific, and proportional to the context.
+## Accessibility
 
-Use:
+Accessibility is part of the visual standard:
 
-- route-level state for whole-page loading, empty, or unavailable states
-- compact state for chat panes, thread sections, picker lists, and embedded tools
-- error states with a recovery action when retry is possible
-- direct language that names the affected surface
+- readable contrast in both themes
+- visible focus states
+- keyboard paths for menus, sheets, tabs, forms, and action rows
+- semantic headings
+- accurate labels for icon-only buttons
+- reduced-motion support
+- no horizontal page scroll on mobile
+- controls do not overlap content or each other
+- text does not clip or overflow its container
 
-Avoid:
-
-- raw `Loading` text inside cards
-- repeated titles and descriptions, such as "No badges yet" twice
-- dashed boxes with placeholder-feeling copy
-- generic "Something went wrong" copy when the affected surface is known
-- claiming a smoke test passed if API-backed behavior was not exercised
-
-`RouteStateNotice`, `CompactStateNotice`, `ApiStateNotice`, and `EmptyState`
-are current foundations. Future work should converge these into one coherent
-state family instead of adding route-local variants.
+Profile and room custom themes must preserve text, action, report, and
+moderation readability.
 
 ## Motion
 
-Motion should make the interface feel alive, but it must clarify instead of
-perform.
+Motion should clarify:
 
-Use motion to:
+- route entry
+- hover and tap response
+- menu and sheet anchoring
+- thread relationships
+- state changes
 
-- show entry and exit
-- reinforce hover, tap, and active states
-- clarify nested thread relationships
-- make sheets and menus feel anchored
-- improve perceived quality during state changes
+Do not use motion to hide layout instability, delay interaction, or decorate
+empty space. Respect reduced-motion settings and prefer shared presets from
+`src/lib/motionPresets.ts`.
 
-Do not use motion to:
+## Good And Bad Patterns
 
-- draw attention to itself
-- delay interaction
-- animate decorative filler
-- make reading or replying harder
-- hide layout instability
+| Good | Bad |
+| --- | --- |
+| One route header, one clear action group. | Route header plus multiple equal subheaders before content. |
+| Compact post rows with one action row. | Repeated oversized action buttons under every post. |
+| Room cards with identity, summary, and one calm theme tint. | Decorative stripes, arrows, badges, and stats all competing. |
+| Real counts from API-backed data. | Fake metrics added for visual balance. |
+| Empty state names the missing content and recovery action. | Generic "Something went wrong" or repeated "No items yet" copy. |
+| Shared `ModalSheet` confirmation. | `window.confirm` or route-local dialog behavior. |
+| Light/Dark UI labels with Glinda/Elphaba documented as mood names. | Sunveil/Frostveil in product-facing copy. |
+| Settings changes use existing recent design patterns. | Reworking settings only because adjacent surfaces changed. |
 
-Respect reduced-motion settings. Prefer shared motion presets from
-`src/lib/motionPresets.ts` over one-off animation values.
+## Surface Inventory
 
-## Component Inventory
+Core routes that should stay coherent:
 
-### Keep Direction
+- `/`
+- `/discover`
+- `/search`
+- `/rooms`
+- `/rooms/:slug`
+- `/chat`
+- `/notifications`
+- `/settings`
+- `/onboarding`
+- `/@/:handle`
+- `/:profileHandle`
+- `/:profileHandle/posts/:postId`
+- `/login`
+- `/register`
+- `/legal`
+- policy routes such as `/terms`, `/privacy`, `/cookies`, and safety pages
+- share render routes used for generated cards
 
-| Surface or component | Why it works | Rule for future work |
-| --- | --- | --- |
-| Chat message bubbles | Compact, readable, and clearly conversational. Report is tucked into metadata as a compact icon. | Preserve bubble density and metadata hierarchy. Do not turn messages into cards. |
-| Thread modal connected layout | Root and replies use rails, compact nesting, and a wider sheet. | Keep conversations connected. Extend this direction for thread work. |
-| New `ModalSheet` system | Handles focus, Escape, outside click, busy state, mobile full/sheet/dialog variants, and accessible close buttons. | Use this for new dialogs, editors, reports, and pickers. |
-| Compact report icons | Dense surfaces can report without adding heavy rows or inline forms. | Keep report triggers icon-first in posts, threads, chat, profiles, and rooms where space is tight. |
-| Shared `Button` and `ButtonLink` | Variants and sizes cover most actions and include motion/focus behavior. | Prefer these before composing local button classes. Add variants only when repeated need proves it. |
-| Shared field components | Text, textarea, select, and search fields have consistent labeling and focus treatment. | Reuse them for forms. Move custom textareas and inputs toward these primitives. |
-| Profile header direction | Strong identity first, with owner actions, follow/message, social context, links, and badges grouped. | Keep the identity hierarchy, but reduce secondary clutter where possible. |
-| Room cards | Good public discovery object with icon, room identity, metrics, and subtle hover. | Keep as repeated discovery cards, but avoid using this much chrome for every room subsection. |
-| `RouteHeader` and compact state direction | Chat shows stronger route hierarchy and more coherent states. | Continue converging route headers and state notices across sparse routes. |
-
-### Modernize
-
-| Surface or component | Current issue | Direction |
-| --- | --- | --- |
-| Account and profile menus | Local implementations can drift, including link rows versus action rows. | Create one menu/popover primitive with consistent row behavior, Escape, outside click, and mobile fallback rules. |
-| Home stats and sidebar | Metric cards plus filler copy add visual weight. | Make stats compact, remove filler, and use shared loading/error treatment. |
-| Profile tabs and segmented controls | Route-local horizontal tab patterns are repeated. | Create a shared compact tab/segmented-control pattern. |
-| Profile focused panels | Followers, following, and badges panels are useful but copy and confirmations vary. | Normalize empty/loading/error copy and destructive confirmation behavior. |
-| Profile customization modules | Powerful but dense, with nested cards and local controls. | Extract primitives before copying this pattern to other editors. |
-| Room editor | Uses `ModalSheet`, but upload, moderator, and delete sections still feel locally built. | Share upload controls and status patterns across profile and room editing. |
-| Chat composer | Uses a custom textarea. | Move toward shared `TextareaField` behavior without hurting chat density. |
-| Search result cards | Clean but route-local. | Consider shared compact person/room result rows. |
-| Admin/moderation workspace | Functional but visually dense and same-weight. | Reorganize into a clearer workspace while preserving behavior. |
-| State notices | Multiple good primitives exist, but usage is uneven. | Consolidate into route, compact, inline, and sheet variants. |
-| Upload controls | Profile, room, and post upload controls repeat similar logic and copy. | Create one image-upload control family. |
-
-### Avoid Repeating
-
-| Pattern | Why to avoid it | Replacement direction |
-| --- | --- | --- |
-| Old bulky cards and panels | They make routes feel heavy and fragmented. | Use unboxed sections, compact rows, or one purposeful panel. |
-| Excessive explanatory copy | It makes the product feel generated and unsure. | Use direct labels and one useful sentence at most. |
-| Filler copy like "Small for now, easy to follow." | It does not help the user decide or act. | Remove it or replace it with specific state/data context. |
-| Ambient Veil as fake media or content | It implies identity or content that does not exist. | Use honest placeholders, initials, icons, or quiet empty states. |
-| Route-local modal/sheet systems | Different close, scroll, focus, and mobile behavior weakens trust. | Use `ModalSheet` and shared confirmation/status patterns. |
-| Inline report forms in dense rows | They make posts, profiles, rooms, and chat bubbles cramped. | Open the shared report sheet from compact triggers. |
-| Browser `window.confirm` | It breaks product tone and is hard to style or explain. | Use shared confirmation dialogs/sheets. |
-| Native-looking controls where custom primitives exist | They make polished surfaces feel unfinished. | Use shared fields, buttons, tabs, menus, and selectors. |
-| Giant pills and oversized action rows | They reduce scanability and make social surfaces feel bulky. | Use compact icon controls, compact buttons, and list rows. |
-| Duplicate controls for the same context | They make actions feel uncertain. | Show one clear action per context. |
+Implementation should audit both anonymous and authenticated states where the
+route differs.
 
 ## Future Codex Task Checklist
 
-Before changing UI, a future issue or Codex task should answer:
+Before changing UI, answer:
 
 1. Does this preserve compactness and scanability?
 2. Does it use an existing shared primitive before creating a local variant?
 3. Are identical actions using identical behavior?
 4. Is the copy useful, short, and non-repetitive?
 5. Are cards or panels framing real content rather than filling space?
-6. Are icon-only actions accessible with `aria-label`, title where useful, and
-   keyboard support?
+6. Are icon-only actions accessible?
 7. Does motion clarify state, hierarchy, or interaction?
 8. Does the change respect mobile dock, footer, and sheet constraints?
 9. If the change touches API-backed behavior, was it verified against a working
    API path or clearly marked blocked?
-
-Future issues can link this document directly as the product standard for
-Public Readiness V2 UI work.
+10. Are old theme values migrated or aliased without exposing old names in
+    product-facing copy?

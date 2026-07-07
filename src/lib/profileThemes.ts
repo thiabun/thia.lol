@@ -37,41 +37,41 @@ export type ProfileThemePreset = {
 
 export const profileThemePresets: ProfileThemePreset[] = [
   {
-    id: "frostveil",
-    label: "Frostveil",
-    description: "Icy blue dark profile.",
+    id: "elphaba",
+    label: "Elphaba",
+    description: "Sleek green dark profile.",
     colors: {
-      canvas: "#0D1F29",
-      canvasSoft: "#102B39",
-      surface: "#16333D",
-      surfaceStrong: "#22485A",
-      text: "#E8F7F8",
-      muted: "#9EC0CA",
-      line: "#2D6172",
-      lineStrong: "#417E92",
-      accent: "#58E2E0",
-      accentInk: "#08232D",
-      accentStrong: "#92F4F2",
-      focus: "#6DEBFF",
+      canvas: "#092119",
+      canvasSoft: "#0E2E22",
+      surface: "#13372A",
+      surfaceStrong: "#1C4A38",
+      text: "#EAFBF1",
+      muted: "#A3CEB6",
+      line: "#2F6B51",
+      lineStrong: "#49936E",
+      accent: "#55D989",
+      accentInk: "#062116",
+      accentStrong: "#8CF0B5",
+      focus: "#74ECA4",
     },
   },
   {
-    id: "sunveil",
-    label: "Sunveil",
-    description: "Warm soft light profile.",
+    id: "glinda",
+    label: "Glinda",
+    description: "Soft pink light profile.",
     colors: {
-      canvas: "#FFF6D8",
-      canvasSoft: "#F5E7BC",
-      surface: "#FFFDF2",
-      surfaceStrong: "#F0E0B5",
-      text: "#3F3324",
-      muted: "#77694E",
-      line: "#E0CC93",
-      lineStrong: "#CDBB83",
-      accent: "#E5B843",
-      accentInk: "#3E2F12",
-      accentStrong: "#A56B18",
-      focus: "#B67E1F",
+      canvas: "#FFF7FB",
+      canvasSoft: "#F8E6EF",
+      surface: "#FFFDFE",
+      surfaceStrong: "#F4D8E5",
+      text: "#39242F",
+      muted: "#785667",
+      line: "#E7C7D5",
+      lineStrong: "#D8AABD",
+      accent: "#E94B82",
+      accentInk: "#FFF9FC",
+      accentStrong: "#C82F68",
+      focus: "#D83C74",
     },
   },
   {
@@ -171,15 +171,29 @@ export const profileThemePresets: ProfileThemePreset[] = [
   },
 ];
 
-export const defaultProfileThemePresetId = "frostveil";
+export const defaultProfileThemePresetId = "elphaba";
+
+const profileThemePresetAliases = new Map([
+  ["frostveil", "elphaba"],
+  ["sunveil", "glinda"],
+]);
 
 const profileThemePresetMap = new Map(
   profileThemePresets.map((preset) => [preset.id, preset]),
 );
 
+export function canonicalProfileThemePresetId(id: string | undefined | null): string | undefined {
+  if (!id) {
+    return undefined;
+  }
+
+  return profileThemePresetAliases.get(id) ?? id;
+}
+
 export function profileThemePresetById(id: string | undefined | null): ProfileThemePreset {
+  const canonicalId = canonicalProfileThemePresetId(id);
   const preset =
-    (id ? profileThemePresetMap.get(id) : undefined) ??
+    (canonicalId ? profileThemePresetMap.get(canonicalId) : undefined) ??
     profileThemePresetMap.get(defaultProfileThemePresetId) ??
     profileThemePresets[0];
 
@@ -200,7 +214,9 @@ export function normalizeProfileThemeConfig(
   const record = value as Record<string, unknown>;
 
   if (record.mode === "preset") {
-    const preset = typeof record.preset === "string" ? record.preset : undefined;
+    const preset = canonicalProfileThemePresetId(
+      typeof record.preset === "string" ? record.preset : undefined,
+    );
 
     if (!preset || !profileThemePresetMap.has(preset)) {
       return null;

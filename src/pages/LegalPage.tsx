@@ -350,7 +350,7 @@ const policies = {
       {
         title: "Local preferences",
         items: [
-          "Theme preference may be stored locally so the site can remember Sunveil or Frostveil.",
+          "Theme preference may be stored locally so the site can remember Light or Dark mode.",
           "Cookie notice acknowledgement may be stored in your browser so the same notice is not shown every visit.",
           "Per-profile music continue choices may be stored locally. These preferences are not used for advertising.",
         ],
