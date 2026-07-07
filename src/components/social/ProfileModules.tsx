@@ -25,18 +25,18 @@ import {
   PROFILE_CANVAS_DESKTOP_COLUMNS,
   PROFILE_CANVAS_DESKTOP_ROWS,
   isProfileModuleType,
+  profileModulePresentation,
   profileModuleBadges,
   profileModuleFallbackTitle,
   profileModuleGridSpan,
   profileModuleHasContent,
-  profileModuleSizeHasRoomForDetails,
-  profileModuleSizeIsCompact,
   profileModuleSpanRole,
   profileGridModuleSizeSpan,
   renderableProfileModules,
   type ProfileGridModuleSize,
   type ProfileModuleFreshness,
-  type ProfileModuleSpanRole,
+  type ProfileModulePresentation,
+  type ProfileModulePresentationTier,
 } from "../../lib/profileModuleRegistry";
 import {
   defaultProfileLayoutPreset,
@@ -505,6 +505,7 @@ export function ProfileModuleGrid({
           definition.freshness,
         );
         const spanRole = profileModuleSpanRole(span.size);
+        const modulePresentation = profileModulePresentation(span.size);
         const selected = editing?.selectedModuleId === module.id;
         const selectedControls = selected
           ? editing?.renderSelectedControls?.(module, span.size)
@@ -540,13 +541,16 @@ export function ProfileModuleGrid({
             dragging={editing && dragState?.moduleId === module.id}
             pinned={module.pinned}
             presentation={{
-              compact: profileModuleSizeIsCompact(span.size),
+              compact:
+                modulePresentation.tier === "micro" ||
+                modulePresentation.tier === "compact",
               density: definition.density,
               emptyPolicy: definition.emptyPolicy,
               freshness,
               primaryAction: definition.primaryAction,
               purpose: definition.purpose,
               spanRole,
+              tier: modulePresentation.tier,
             }}
             selected={selected}
             size={span.size}
@@ -765,11 +769,10 @@ export function ProfileModuleCard({
 }: ProfileModuleCardProps) {
   const title = module.title ?? profileModuleFallbackTitle(module.type);
   const definition = getProfileModuleDefinition(module.type);
-  const span = profileGridModuleSizeSpan(size);
-  const slim = span.columns >= 5 && span.rows <= 2;
-  const compact = profileModuleSizeIsCompact(size);
-  const hasDetails = profileModuleSizeHasRoomForDetails(size);
-  const spanRole = profileModuleSpanRole(size);
+  const presentation = profileModulePresentation(size);
+  const { spanRole } = presentation;
+  const slim = presentation.isSlim;
+  const compact = profilePresentationIsCompact(presentation.tier);
   const publicSurface = module.type === "gallery_media";
   const transparentCollectionSurface =
     module.type === "links" ||
@@ -800,9 +803,11 @@ export function ProfileModuleCard({
       data-profile-module-density={definition.density}
       data-profile-module-empty-policy={definition.emptyPolicy}
       data-profile-module-freshness={definition.freshness}
+      data-profile-module-fit-tier={presentation.tier}
       data-profile-module-purpose={definition.purpose}
       data-profile-module-shell="true"
       data-profile-module-span-role={spanRole}
+      data-profile-module-tier={presentation.tier}
       data-profile-module-transparent-surface={
         transparentCollectionSurface ? "true" : undefined
       }
@@ -819,10 +824,8 @@ export function ProfileModuleCard({
           editing={editing}
           musicAutoplayRequestId={musicAutoplayRequestId}
           badges={badges}
-          compact={compact}
-          hasDetails={hasDetails}
+          presentation={presentation}
           size={size}
-          spanRole={spanRole}
         />
       </div>
     </article>
@@ -831,23 +834,21 @@ export function ProfileModuleCard({
 
 function ProfileModuleContent({
   badges,
-  compact,
-  hasDetails,
   editing,
   musicAutoplayRequestId = 0,
   module,
+  presentation,
   size,
-  spanRole,
 }: Omit<ProfileModuleCardProps, "editing"> & {
-  compact: boolean;
   editing: boolean;
-  hasDetails: boolean;
-  spanRole: ProfileModuleSpanRole;
+  presentation: ProfileModulePresentation;
 }) {
   const moduleCategory = getProfileModuleDefinition(module.type).category;
-  const span = profileGridModuleSizeSpan(size);
-  const slim = span.columns >= 5 && span.rows <= 2;
-  const singleRow = span.rows <= 1;
+  const { span, spanRole } = presentation;
+  const slim = presentation.isSlim;
+  const singleRow = presentation.isSingleRow;
+  const compact = profilePresentationIsCompact(presentation.tier);
+  const hasDetails = presentation.showSecondaryText;
 
   if (module.type === "activity") {
     return (
@@ -872,13 +873,17 @@ function ProfileModuleContent({
   if (module.type === "links" || module.type === "connections") {
     const links = module.config.links ?? [];
     const narrowStack = span.columns <= 2 && span.rows >= 3;
-    const visibleConnectionLimit = 5;
+    const compactConnectionLimit = presentation.tier === "micro" ? 2 : 4;
+    const narrowConnectionLimit =
+      presentation.tier === "spacious" || presentation.tier === "showcase"
+        ? 6
+        : 5;
     const visibleLinks = compact
-      ? links.slice(0, visibleConnectionLimit)
+      ? links.slice(0, compactConnectionLimit)
       : slim
         ? links.slice(0, singleRow ? 4 : 6)
       : narrowStack
-        ? links.slice(0, visibleConnectionLimit)
+        ? links.slice(0, narrowConnectionLimit)
         : links;
     const hiddenCount = Math.max(0, links.length - visibleLinks.length);
 
@@ -975,7 +980,7 @@ function ProfileModuleContent({
   if (module.type === "featured_badges" || module.type === "badge_display") {
     const selectedBadges = profileModuleBadges(module, badges);
     const visibleBadges = compact
-      ? selectedBadges.slice(0, 4)
+      ? selectedBadges.slice(0, presentation.tier === "micro" ? 2 : 3)
       : slim
         ? selectedBadges.slice(0, singleRow ? 4 : 6)
         : selectedBadges;
@@ -1062,7 +1067,7 @@ function ProfileModuleContent({
       );
     }
 
-    const visibleMediaItems = compact ? mediaItems.slice(0, 2) : mediaItems;
+    const visibleMediaItems = compact ? mediaItems.slice(0, 1) : mediaItems;
 
     return (
       <div
@@ -1163,7 +1168,9 @@ function ProfileModuleContent({
     <div
       className={cn(
         "max-h-full space-y-2",
-        slim ? "overflow-hidden pr-0" : "overflow-y-auto pr-1",
+        slim || !presentation.allowInternalScroll
+          ? "overflow-hidden pr-0"
+          : "overflow-y-auto pr-1",
       )}
     >
       {module.config.body ? (
@@ -1183,13 +1190,17 @@ function ProfileModuleContent({
                 : "whitespace-pre-wrap",
             compact && !slim
               ? "line-clamp-2"
-              : spanRole === "summary" && !slim
+              : presentation.tier === "showcase"
+                ? "line-clamp-none"
+                : presentation.tier === "spacious"
+                  ? "line-clamp-6"
+                  : spanRole === "summary" && !slim
                 ? "line-clamp-4"
                 : undefined,
           )}
         />
       ) : null}
-      {module.config.statusText ? (
+      {presentation.showSecondaryText && module.config.statusText ? (
         <p
           className={cn(
             "rounded-card bg-canvas/55 px-3 py-2 text-sm leading-5 text-text",
@@ -1199,7 +1210,7 @@ function ProfileModuleContent({
           {module.config.statusText}
         </p>
       ) : null}
-      {module.config.workingOn ? (
+      {presentation.showSecondaryText && module.config.workingOn ? (
         <p
           className={cn(
             "text-sm leading-6 text-muted",
@@ -1210,7 +1221,7 @@ function ProfileModuleContent({
           {module.config.workingOn}
         </p>
       ) : null}
-      {module.config.link ? (
+      {presentation.tier !== "micro" && module.config.link ? (
         <a
           className="inline-flex max-w-full rounded-control border border-line bg-canvas/55 px-3 py-1.5 text-sm font-semibold text-text transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
           href={module.config.link.url}
@@ -1505,9 +1516,11 @@ function ProfileModuleStaticCard({
   size?: ProfileGridModuleSize | undefined;
 }) {
   const url = module.config.url;
-  const span = profileGridModuleSizeSpan(size);
-  const micro = span.columns <= 2 && span.rows <= 1;
-  const compactTile = span.columns <= 2 && span.rows <= 2;
+  const presentation = profileModulePresentation(size);
+  const micro = presentation.tier === "micro";
+  const compactTile =
+    micro ||
+    (presentation.span.columns <= 2 && presentation.span.rows <= 2);
 
   if (!url) {
     return null;
@@ -1534,6 +1547,7 @@ function ProfileModuleStaticCard({
           "relative isolate h-full min-h-0 min-w-0 overflow-hidden rounded-card border border-line bg-canvas/55 p-2 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
           micro ? "flex items-center gap-2" : "flex flex-col justify-end gap-2",
         )}
+        data-profile-static-card-tier={presentation.tier}
         href={url}
         rel="noopener noreferrer"
         target="_blank"
@@ -1557,11 +1571,13 @@ function ProfileModuleStaticCard({
           >
             {module.config.label ?? fallbackLabel}
           </span>
-          <span className="block truncate text-[0.68rem] text-muted">
-            {module.config.platform
-              ? platformDisplayName(module.config.platform)
-              : moduleLinkPreview(url)}
-          </span>
+          {presentation.showSecondaryText ? (
+            <span className="block truncate text-[0.68rem] text-muted">
+              {module.config.platform
+                ? platformDisplayName(module.config.platform)
+                : moduleLinkPreview(url)}
+            </span>
+          ) : null}
         </span>
       </a>
     );
@@ -1569,7 +1585,8 @@ function ProfileModuleStaticCard({
 
   return (
     <a
-      className="flex min-w-0 items-center gap-3 rounded-card border border-line bg-canvas/55 p-3 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      className="flex h-full min-h-0 min-w-0 items-center gap-3 rounded-card border border-line bg-canvas/55 p-3 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      data-profile-static-card-tier={presentation.tier}
       href={url}
       rel="noopener noreferrer"
       target="_blank"
@@ -1581,10 +1598,12 @@ function ProfileModuleStaticCard({
         <span className="block truncate text-sm font-semibold text-text">
           {module.config.label ?? fallbackLabel}
         </span>
-        <span className="mt-0.5 block truncate text-xs text-muted">
-          {module.config.platform ? platformDisplayName(module.config.platform) : moduleLinkPreview(url)}
-        </span>
-        {module.config.description ? (
+        {presentation.showSecondaryText ? (
+          <span className="mt-0.5 block truncate text-xs text-muted">
+            {module.config.platform ? platformDisplayName(module.config.platform) : moduleLinkPreview(url)}
+          </span>
+        ) : null}
+        {presentation.showSecondaryText && module.config.description ? (
           <span className="mt-1 line-clamp-2 block text-sm leading-5 text-muted">
             {module.config.description}
           </span>
@@ -1606,8 +1625,8 @@ function UploadedVideoPlayer({
   size?: ProfileGridModuleSize | undefined;
   video: ProfileModuleUploadedVideo;
 }) {
-  const span = profileGridModuleSizeSpan(size);
-  const compact = span.columns <= 2 && span.rows <= 2;
+  const presentation = profileModulePresentation(size);
+  const compact = profilePresentationIsCompact(presentation.tier);
   const title = video.title ?? module.config.label ?? fallbackLabel;
 
   return (
@@ -1615,6 +1634,7 @@ function UploadedVideoPlayer({
       className="grid h-full min-h-0 overflow-hidden rounded-card border border-line bg-black"
       data-testid="profile-uploaded-video-player"
       data-profile-uploaded-video-layout={compact ? "compact" : "player"}
+      data-profile-uploaded-video-tier={presentation.tier}
     >
       <video
         className="size-full min-h-0 bg-black object-contain"
@@ -1651,19 +1671,21 @@ function UploadedAudioPlayer({
   const [duration, setDuration] = useState(audio.duration ?? 0);
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
-  const span = profileGridModuleSizeSpan(size);
-  const compactPlayer = span.columns <= 2 && span.rows <= 2;
-  const richPlayer = span.rows >= 3 && !compactPlayer;
+  const presentation = profileModulePresentation(size);
+  const compactPlayer = profilePresentationIsCompact(presentation.tier);
   const title = audio.title ?? module.config.label ?? fallbackLabel;
-  const subtitle = module.config.description ?? "Uploaded MP3";
+  const subtitle = presentation.showSecondaryText
+    ? module.config.description ?? null
+    : null;
   const progressPercent =
     duration > 0 ? Math.min(100, Math.max(0, (position / duration) * 100)) : 0;
-  const layout: MediaPlayerLayout = compactPlayer ? "compact" : richPlayer ? "rich" : "row";
-  const progressLabel = duration > 0
-    ? `${formatMediaTime(position)} / ${formatMediaTime(duration)}`
-    : playing
-      ? "Playing"
-      : "Ready";
+  const layout = profileMusicPlayerLayout(presentation);
+  const progressLabel = profileUploadedAudioProgressLabel(
+    position,
+    duration,
+    playing,
+    presentation.tier,
+  );
 
   useEffect(() => {
     const element = audioRef.current;
@@ -1747,6 +1769,7 @@ function UploadedAudioPlayer({
   return (
     <MediaPlayer
       className="h-full"
+      density={presentation.tier}
       layout={layout}
       onPlayToggle={handlePlaybackToggle}
       pauseLabel="Pause uploaded music"
@@ -1757,7 +1780,10 @@ function UploadedAudioPlayer({
       progressPercent={progressPercent}
       rootProps={{
         "data-profile-uploaded-audio-layout": layout,
+        "data-profile-uploaded-audio-tier": presentation.tier,
       }}
+      showOpenLink={!compactPlayer}
+      showSubtitle={presentation.showSecondaryText}
       statusLabel={playing ? "Playing" : "Ready"}
       subtitle={subtitle}
       testIdPrefix="profile-uploaded-audio"
@@ -1819,8 +1845,11 @@ function ProfileIntegrationRichCard({
         ? "minmax(0, 5.75fr) minmax(min(22rem, 31%), 2.25fr)"
         : "minmax(0, 4fr) minmax(min(19rem, 36%), 2fr)",
   } satisfies CSSProperties;
-  const micro = span.columns <= 2 && span.rows <= 1;
-  const compactTile = span.columns <= 2 && span.rows <= 2;
+  const presentation = profileModulePresentation(size);
+  const micro = presentation.tier === "micro";
+  const compactTile =
+    micro ||
+    (presentation.span.columns <= 2 && presentation.span.rows <= 2);
   const compactTextTone = useAlbumArtworkTextTone(
     metadata.imageUrl ?? undefined,
     compactTile,
@@ -1879,6 +1908,7 @@ function ProfileIntegrationRichCard({
       <a
         className="relative isolate flex h-full min-h-0 min-w-0 items-end overflow-hidden rounded-card border border-line bg-canvas/55 p-2 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         data-profile-music-text-tone={compactTextTone}
+        data-profile-integration-card-tier={presentation.tier}
         href={integration.sourceUrl}
         rel="noopener noreferrer"
         target="_blank"
@@ -1920,9 +1950,11 @@ function ProfileIntegrationRichCard({
           >
             {title}
           </span>
-          <span className={cn("block truncate text-[0.68rem]", compactMutedTextClass)}>
-            {subtitle}
-          </span>
+          {presentation.showSecondaryText ? (
+            <span className={cn("block truncate text-[0.68rem]", compactMutedTextClass)}>
+              {subtitle}
+            </span>
+          ) : null}
         </span>
       </a>
     );
@@ -2007,6 +2039,7 @@ function ProfileIntegrationRichCard({
           ? "flex h-full min-h-0 flex-col"
           : undefined,
       )}
+      data-profile-integration-card-tier={presentation.tier}
     >
       <a
         className="flex min-w-0 items-center gap-3 p-3 transition duration-fluid ease-fluid hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
@@ -2035,7 +2068,7 @@ function ProfileIntegrationRichCard({
             {subtitle}
             {fetchedAt ? ` · ${formatIntegrationAge(fetchedAt)}` : ""}
           </span>
-          {metadata.description ? (
+          {presentation.showSecondaryText && metadata.description ? (
             <span className="mt-1 line-clamp-2 block text-sm leading-5 text-muted">
               {metadata.description}
             </span>
@@ -2083,9 +2116,14 @@ function ProfileIntegrationArtistCard({
   size?: ProfileGridModuleSize | undefined;
 }) {
   const metadata = integration.metadata;
-  const span = profileGridModuleSizeSpan(size);
-  const compact = span.columns <= 3 && span.rows <= 2;
-  const spacious = span.columns >= 6 || span.rows >= 4;
+  const presentation = profileModulePresentation(size);
+  const compact =
+    profilePresentationIsCompact(presentation.tier) ||
+    (presentation.span.columns <= 3 && presentation.span.rows <= 2);
+  const spacious =
+    presentation.tier === "showcase" ||
+    presentation.span.columns >= 6 ||
+    presentation.span.rows >= 4;
   const title = metadata.title ?? module.config.label ?? fallbackLabel;
   const subtitle = metadata.subtitle ?? platformDisplayName(integration.provider);
   const description = metadata.description ?? module.config.description;
@@ -2104,6 +2142,7 @@ function ProfileIntegrationArtistCard({
       rel="noopener noreferrer"
       target="_blank"
       data-profile-artist-card-layout={compact ? "compact" : spacious ? "spacious" : "standard"}
+      data-profile-artist-card-tier={presentation.tier}
       data-testid="profile-integration-artist-card"
     >
       {metadata.imageUrl ? (
@@ -2159,7 +2198,7 @@ function ProfileIntegrationArtistCard({
           </span>
         </span>
 
-        {!compact && description ? (
+        {presentation.showDescription && description ? (
           <span
             className={cn(
               "block max-w-[42rem] text-sm leading-5 text-white/82",
@@ -2236,9 +2275,11 @@ function YouTubeMusicPlayer({
   const title = metadata.title ?? module.config.label ?? fallbackLabel;
   const subtitle = metadata.subtitle ?? "YouTube Music";
   const description = metadata.description ?? module.config.description;
-  const playerSpan = profileGridModuleSizeSpan(size);
-  const compactPlayer = playerSpan.columns <= 2 && playerSpan.rows <= 2;
-  const richPlayer = playerSpan.rows >= 3 && !compactPlayer;
+  const presentation = profileModulePresentation(size);
+  const microPlayer = presentation.tier === "micro";
+  const compactPlayer = profilePresentationIsCompact(presentation.tier);
+  const richPlayer = presentation.preferLargeMedia;
+  const playerLayout = profileMusicPlayerLayout(presentation);
   const compactTextTone = useAlbumArtworkTextTone(
     metadata.imageUrl ?? undefined,
     compactPlayer,
@@ -2268,9 +2309,8 @@ function YouTubeMusicPlayer({
   return (
     <div
       className="flex h-full min-h-0 overflow-hidden rounded-card border border-line bg-canvas/55 shadow-inner-soft"
-      data-profile-youtube-music-layout={
-        compactPlayer ? "compact" : richPlayer ? "rich" : "row"
-      }
+      data-profile-youtube-music-layout={playerLayout}
+      data-profile-youtube-music-tier={presentation.tier}
       data-profile-youtube-music-text-tone={compactPlayer ? compactTextTone : undefined}
       data-testid="profile-youtube-music-player"
     >
@@ -2284,7 +2324,7 @@ function YouTubeMusicPlayer({
               : "items-center gap-3 p-3",
         )}
       >
-        {metadata.imageUrl ? (
+        {metadata.imageUrl && !microPlayer ? (
           <img
             alt=""
             aria-hidden="true"
@@ -2351,12 +2391,12 @@ function YouTubeMusicPlayer({
             >
               {title}
             </span>
-            {!compactPlayer ? (
+            {presentation.showSecondaryText ? (
               <span className="mt-0.5 block truncate text-xs text-muted">
                 {subtitle}
               </span>
             ) : null}
-            {!compactPlayer && description ? (
+            {presentation.showDescription && description ? (
               <span
                 className={cn(
                   "mt-1 block text-xs leading-5 text-muted",
@@ -2505,9 +2545,11 @@ function SpotifyMusicPlayer({
       : undefined;
   const playerTitle = integration.embed?.title ?? `${title} on Spotify`;
   const playerHeight = profileIntegrationEmbedHeight(integration);
-  const playerSpan = profileGridModuleSizeSpan(size);
-  const compactPlayer = playerSpan.columns <= 2 && playerSpan.rows <= 2;
-  const richPlayer = playerSpan.rows >= 3 && !compactPlayer;
+  const presentation = profileModulePresentation(size);
+  const microPlayer = presentation.tier === "micro";
+  const compactPlayer = profilePresentationIsCompact(presentation.tier);
+  const richPlayer = presentation.preferLargeMedia;
+  const playerLayout = profileMusicPlayerLayout(presentation);
   const compactTextTone = useAlbumArtworkTextTone(
     metadata.imageUrl ?? undefined,
     compactPlayer,
@@ -2657,18 +2699,17 @@ function SpotifyMusicPlayer({
       : playing
         ? "Playing"
         : "Ready";
-  const progressLabel = playbackProgress.known
-    ? `${formatSpotifyPlaybackTime(playbackProgress.position)} / ${formatSpotifyPlaybackTime(
-        playbackProgress.duration,
-      )}`
-    : statusText;
+  const progressLabel = profileSpotifyProgressLabel(
+    playbackProgress,
+    statusText,
+    presentation.tier,
+  );
 
   return (
     <div
       className="flex h-full min-h-0 overflow-hidden rounded-card border border-line bg-canvas/55 shadow-inner-soft"
-      data-profile-spotify-layout={
-        compactPlayer ? "compact" : richPlayer ? "rich" : "row"
-      }
+      data-profile-spotify-layout={playerLayout}
+      data-profile-spotify-tier={presentation.tier}
       data-profile-spotify-text-tone={compactPlayer ? compactTextTone : undefined}
       data-testid="profile-spotify-custom-player"
     >
@@ -2682,7 +2723,7 @@ function SpotifyMusicPlayer({
               : "items-center gap-3 p-3",
         )}
       >
-        {metadata.imageUrl ? (
+        {metadata.imageUrl && !microPlayer ? (
           <img
             alt=""
             aria-hidden="true"
@@ -2698,7 +2739,7 @@ function SpotifyMusicPlayer({
         <div
           className={cn(
             "absolute inset-0 -z-10",
-            compactPlayer
+            compactPlayer && !microPlayer
               ? albumArtworkOverlayClass(compactTextTone)
               : "bg-canvas/72",
           )}
@@ -2713,22 +2754,24 @@ function SpotifyMusicPlayer({
                 : "flex min-w-0 flex-1 items-center gap-3",
           )}
         >
-          <span
-            className={cn(
-              "grid shrink-0 place-items-center overflow-hidden border border-line/80 bg-surface/70 text-text shadow-soft",
-              compactPlayer
-                ? "absolute inset-0 -z-10 size-full rounded-card opacity-80"
-                : richPlayer
-                  ? "size-20 rounded-card sm:size-24 lg:size-28"
-                  : "size-14 rounded-card",
-            )}
-            data-testid="profile-spotify-artwork-frame"
-          >
-            <SpotifyArtwork
-              fallbackIcon={icon}
-              imageUrl={metadata.imageUrl ?? undefined}
-            />
-          </span>
+          {!microPlayer ? (
+            <span
+              className={cn(
+                "grid shrink-0 place-items-center overflow-hidden border border-line/80 bg-surface/70 text-text shadow-soft",
+                compactPlayer
+                  ? "absolute inset-0 -z-10 size-full rounded-card opacity-80"
+                  : richPlayer
+                    ? "size-20 rounded-card sm:size-24 lg:size-28"
+                    : "size-14 rounded-card",
+              )}
+              data-testid="profile-spotify-artwork-frame"
+            >
+              <SpotifyArtwork
+                fallbackIcon={icon}
+                imageUrl={metadata.imageUrl ?? undefined}
+              />
+            </span>
+          ) : null}
           <span
             className={cn(
               "min-w-0",
@@ -2746,13 +2789,13 @@ function SpotifyMusicPlayer({
             >
               {title}
             </span>
-            {!compactPlayer ? (
+            {presentation.showSecondaryText ? (
               <span className="mt-0.5 block truncate text-xs text-muted">
                 {subtitle}
                 {fetchedAt ? ` · ${formatIntegrationAge(fetchedAt)}` : ""}
               </span>
             ) : null}
-            {!compactPlayer && description ? (
+            {presentation.showDescription && description ? (
               <span
                 className={cn(
                   "mt-1 block text-xs leading-5 text-muted",
@@ -2917,6 +2960,59 @@ function formatMediaTime(value: number): string {
   }
 
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function profilePresentationIsCompact(
+  tier: ProfileModulePresentationTier,
+): boolean {
+  return tier === "micro" || tier === "compact";
+}
+
+function profileMusicPlayerLayout(
+  presentation: ProfileModulePresentation,
+): MediaPlayerLayout {
+  if (profilePresentationIsCompact(presentation.tier)) {
+    return "compact";
+  }
+
+  return presentation.preferLargeMedia ? "rich" : "row";
+}
+
+function profileUploadedAudioProgressLabel(
+  position: number,
+  duration: number,
+  playing: boolean,
+  tier: ProfileModulePresentationTier,
+): string {
+  if (tier === "micro") {
+    return "";
+  }
+
+  if (duration > 0) {
+    return tier === "compact"
+      ? formatMediaTime(position)
+      : `${formatMediaTime(position)} / ${formatMediaTime(duration)}`;
+  }
+
+  return playing ? "Playing" : "Ready";
+}
+
+function profileSpotifyProgressLabel(
+  progress: SpotifyPlaybackProgress,
+  statusText: string,
+  tier: ProfileModulePresentationTier,
+): string {
+  if (!progress.known) {
+    return statusText;
+  }
+
+  if (tier === "micro" || tier === "compact") {
+    return formatSpotifyPlaybackTime(progress.position);
+  }
+
+  return `${formatSpotifyPlaybackTime(progress.position)} / ${formatSpotifyPlaybackTime(
+    progress.duration,
+  )}`;
 }
 
 function youtubeMusicEmbedSrc(

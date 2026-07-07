@@ -67,6 +67,7 @@ import {
   profileModuleAllowedSizes,
   profileModuleCatalog,
   profileModuleFallbackTitle,
+  profileModulePresentation,
   profileModuleSizeLabel,
   type ProfileGridModuleSize,
   type ProfileModuleCategory,
@@ -2030,7 +2031,12 @@ const ProfileCanvasModulePreview = memo(function ProfileCanvasModulePreview({
 }) {
   const category = profileCanvasModulePreviewCategory(module.type);
   const title = profileCanvasModulePreviewTitle(module);
-  const subtitle = profileCanvasModulePreviewSubtitle(module, size);
+  const presentation = profileModulePresentation(size);
+  const subtitle = profileCanvasModulePreviewSubtitle(
+    module,
+    size,
+    presentation.showSecondaryText,
+  );
   const imageUrl = profileCanvasModulePreviewImage(module);
   const span = profileGridModuleSizeSpan(size);
   const micro = mobile && (span.columns <= 1 || span.rows <= 1);
@@ -2056,7 +2062,7 @@ const ProfileCanvasModulePreview = memo(function ProfileCanvasModulePreview({
   const showImageTile = Boolean(imageUrl && (slim || compact));
   const showIcon = !imageUrl || showImageBackground || !micro;
   const showTitle = !micro;
-  const showSubtitle = !mobile || (!tiny && !compact);
+  const showSubtitle = Boolean(subtitle) && (!mobile || (!tiny && !compact));
   const showSize = !mobile;
 
   if (micro || tiny || compact) {
@@ -2273,9 +2279,18 @@ function profileCanvasModulePreviewTitle(module: ProfileModule): string {
 function profileCanvasModulePreviewSubtitle(
   module: ProfileModule,
   size: ProfileGridModuleSize,
+  showSecondaryText = true,
 ): string {
   if (!profileCanvasModuleIsConfiguredForEditor(module)) {
     return `Draft ${profileModuleSizeLabel(module.type, size)}`;
+  }
+
+  if (module.config.body?.trim()) {
+    return profileCanvasPlainTextSnippet(module.config.body, 72);
+  }
+
+  if (!showSecondaryText) {
+    return "";
   }
 
   if (module.config.integration) {
@@ -2286,7 +2301,7 @@ function profileCanvasModulePreviewSubtitle(
   }
 
   if (module.config.audio) {
-    return "Uploaded MP3";
+    return module.config.description?.trim() || "";
   }
 
   if (module.config.video) {
@@ -2303,10 +2318,6 @@ function profileCanvasModulePreviewSubtitle(
     const count = module.config.links.length;
 
     return count === 1 ? "1 link" : `${count} links`;
-  }
-
-  if (module.config.body?.trim()) {
-    return profileCanvasPlainTextSnippet(module.config.body, 72);
   }
 
   return profileModuleSizeLabel(module.type, size);

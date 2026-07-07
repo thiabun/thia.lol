@@ -138,6 +138,7 @@ import {
   getProfileModuleDefinition,
   profileModuleAllowedSizes,
   profileModuleCatalog,
+  profileModulePresentation,
   profileGridModuleSizeSpan,
   profileGridModuleSpanSize,
   type ProfileModuleCategory,
@@ -1863,6 +1864,7 @@ export function ProfilePage() {
         <FeaturedRoomModuleCard
           editing={editing}
           profile={renderedProfile}
+          size={size}
           title={module.title ?? "Featured room"}
         />
       );
@@ -5671,10 +5673,12 @@ function FeaturedPostModuleCard({
 function FeaturedRoomModuleCard({
   editing = false,
   profile,
+  size,
   title,
 }: {
   editing?: boolean | undefined;
   profile: Profile;
+  size: ProfileGridModuleSize;
   title: string;
 }) {
   const featuredRoom = profile.featuredRoom;
@@ -5692,7 +5696,7 @@ function FeaturedRoomModuleCard({
       {editing ? <h3 className="text-sm font-semibold text-text">{title}</h3> : null}
       {featuredRoom ? (
         <div className={editing ? "mt-3" : "h-full min-h-0"}>
-          <FeaturedRoomCard room={featuredRoom} />
+          <FeaturedRoomCard room={featuredRoom} size={size} />
         </div>
       ) : (
         <p className="mt-2 text-sm leading-6 text-muted">No featured room.</p>
@@ -5776,17 +5780,36 @@ function FeaturedPostCard({ post }: { post: Post }) {
   );
 }
 
-function FeaturedRoomCard({ room }: { room: Room }) {
+function FeaturedRoomCard({
+  room,
+  size,
+}: {
+  room: Room;
+  size: ProfileGridModuleSize;
+}) {
+  const presentation = profileModulePresentation(size);
+  const compact =
+    presentation.tier === "micro" || presentation.tier === "compact";
+  const showStats = presentation.showSecondaryText && !presentation.isSingleRow;
+  const showSummary = presentation.showDescription;
+
   return (
     <Link
-      className="group min-w-0 rounded-card border border-line bg-surface/74 p-3 shadow-soft backdrop-blur-veil transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      className={cn(
+        "group flex h-full min-h-0 min-w-0 overflow-hidden rounded-card border border-line bg-surface/74 shadow-soft backdrop-blur-veil transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+        compact ? "items-center gap-2 p-2" : "flex-col justify-between gap-2 p-3",
+      )}
+      data-profile-featured-room-tier={presentation.tier}
       data-testid="profile-featured-room"
       style={roomThemeSwatchCssProperties(room)}
       to={`/rooms/${room.slug}`}
     >
-      <div className="flex min-w-0 items-start gap-3">
+      <div className={cn("flex min-w-0", compact ? "flex-1 items-center gap-2" : "items-start gap-3")}>
         <span
-          className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-card border border-line bg-canvas/65"
+          className={cn(
+            "grid shrink-0 place-items-center overflow-hidden rounded-card border border-line bg-canvas/65",
+            compact ? "size-9" : "size-10",
+          )}
           style={{
             background:
               "linear-gradient(135deg, color-mix(in oklab, var(--room-accent) 36%, transparent), var(--room-surface))",
@@ -5799,34 +5822,48 @@ function FeaturedRoomCard({ room }: { room: Room }) {
           )}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2 text-xs font-semibold uppercase text-muted">
-            <Star aria-hidden="true" size={14} className="text-accent-strong" />
-            <h3 className="text-xs font-semibold uppercase text-muted">Featured room</h3>
-          </div>
-          <span className="mt-1 block truncate text-sm font-semibold text-text">
+          {!compact ? (
+            <div className="flex min-w-0 items-center gap-2 text-xs font-semibold uppercase text-muted">
+              <Star aria-hidden="true" size={14} className="text-accent-strong" />
+              <h3 className="text-xs font-semibold uppercase text-muted">Featured room</h3>
+            </div>
+          ) : null}
+          <span
+            className={cn(
+              "block truncate font-semibold text-text",
+              compact ? "text-sm leading-5" : "mt-1 text-sm",
+            )}
+          >
             {room.name}
           </span>
           <span className="mt-0.5 block truncate text-xs text-muted">/{room.slug}</span>
-          <span className="mt-1 block line-clamp-2 text-sm leading-5 text-muted">
-            {room.summary}
-          </span>
+          {showSummary ? (
+            <span className="mt-1 block line-clamp-2 text-sm leading-5 text-muted">
+              {room.summary}
+            </span>
+          ) : null}
         </div>
         <ArrowRight
           aria-hidden="true"
           size={16}
-          className="mt-1 shrink-0 text-muted transition duration-fluid ease-fluid group-hover:translate-x-0.5 group-hover:text-text"
+          className={cn(
+            "shrink-0 text-muted transition duration-fluid ease-fluid group-hover:translate-x-0.5 group-hover:text-text",
+            compact ? undefined : "mt-1",
+          )}
         />
       </div>
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 pl-[3.25rem] text-xs text-muted">
-        <span className="inline-flex items-center gap-1.5">
-          <MessageCircle aria-hidden="true" size={13} />
-          {formatCountWithUnit(room.postCount, "post")}
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Users aria-hidden="true" size={13} />
-          {formatCountWithUnit(room.memberCount, "member")}
-        </span>
-      </div>
+      {showStats ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-[3.25rem] text-xs text-muted">
+          <span className="inline-flex items-center gap-1.5">
+            <MessageCircle aria-hidden="true" size={13} />
+            {formatCountWithUnit(room.postCount, "post")}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Users aria-hidden="true" size={13} />
+            {formatCountWithUnit(room.memberCount, "member")}
+          </span>
+        </div>
+      ) : null}
     </Link>
   );
 }

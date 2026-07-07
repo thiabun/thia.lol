@@ -3,6 +3,12 @@ import type { HTMLAttributes, ReactNode } from "react";
 import { cn } from "../../lib/classNames";
 
 export type MediaPlayerLayout = "compact" | "row" | "rich";
+export type MediaPlayerDensity =
+  | "micro"
+  | "compact"
+  | "standard"
+  | "spacious"
+  | "showcase";
 export type MediaPlayerVariant = "surface" | "soft";
 
 type MediaPlayerTestIds = {
@@ -23,6 +29,7 @@ type MediaPlayerProps = {
   artworkUrl?: string | null;
   children?: ReactNode;
   className?: string;
+  density?: MediaPlayerDensity;
   disabled?: boolean;
   href?: string | null;
   ignoreThreadOpen?: boolean;
@@ -37,6 +44,9 @@ type MediaPlayerProps = {
   progressPercent: number;
   rootProps?: MediaPlayerRootProps;
   statusLabel: string;
+  showArtwork?: boolean;
+  showOpenLink?: boolean;
+  showSubtitle?: boolean;
   subtitle?: string | null;
   testIdPrefix: string;
   testIds?: MediaPlayerTestIds;
@@ -49,6 +59,7 @@ export function MediaPlayer({
   artworkUrl,
   children,
   className,
+  density,
   disabled = false,
   href,
   ignoreThreadOpen = false,
@@ -63,6 +74,9 @@ export function MediaPlayer({
   progressPercent,
   rootProps,
   statusLabel,
+  showArtwork,
+  showOpenLink,
+  showSubtitle,
   subtitle,
   testIdPrefix,
   testIds,
@@ -71,6 +85,14 @@ export function MediaPlayer({
 }: MediaPlayerProps) {
   const compact = layout === "compact";
   const rich = layout === "rich";
+  const densityTier = density ?? (compact ? "compact" : rich ? "spacious" : "standard");
+  const micro = densityTier === "micro";
+  const compactDensity = micro || densityTier === "compact";
+  const showArtworkFrame = showArtwork ?? !micro;
+  const showSubtitleText =
+    showSubtitle ?? (!compactDensity && Boolean(subtitle));
+  const showOpen = showOpenLink ?? (!micro && Boolean(href));
+  const showProgressLabel = !micro && progressLabel.trim().length > 0;
   const ids = {
     artwork: testIds?.artwork ?? `${testIdPrefix}-artwork`,
     artworkFrame: testIds?.artworkFrame ?? `${testIdPrefix}-artwork-frame`,
@@ -91,49 +113,74 @@ export function MediaPlayer({
           variant === "soft" ? "bg-canvas/62" : "bg-surface/74",
           "hover:border-line-strong",
           rich ? "flex h-full min-h-0" : undefined,
+          micro ? "border-transparent bg-transparent shadow-none" : undefined,
           className,
           rootProps?.className,
         )}
+        data-media-player-density={densityTier}
         data-testid={ids.root}
       >
         <div
           className={cn(
             "flex min-h-0 w-full min-w-0 items-center",
-            compact ? "gap-2 p-2" : rich ? "gap-3 p-3 sm:gap-4 sm:p-4" : "gap-3 p-2.5 sm:p-3",
+            micro
+              ? "gap-2 p-1.5"
+              : compact
+                ? "gap-2 p-2"
+                : rich
+                  ? "gap-3 p-3 sm:gap-4 sm:p-4"
+                  : "gap-3 p-2.5 sm:p-3",
+            rich ? "flex-col items-stretch" : undefined,
           )}
         >
-          <span
-            className={cn(
-              "grid shrink-0 place-items-center overflow-hidden rounded-card border border-line bg-canvas/68 text-muted shadow-inner-soft",
-              compact ? "size-12" : rich ? "size-16 sm:size-20" : "size-16",
-            )}
-            data-testid={ids.artworkFrame}
-          >
-            {artworkUrl ? (
-              <img
-                alt={artworkAlt}
-                className="size-full object-cover"
-                decoding="async"
-                loading="lazy"
-                src={artworkUrl}
-                data-testid={ids.artwork}
-              />
-            ) : (
-              <Music2 aria-hidden="true" size={compact ? 19 : 22} />
-            )}
-          </span>
+          {showArtworkFrame ? (
+            <span
+              className={cn(
+                "grid place-items-center overflow-hidden rounded-card border border-line bg-canvas/68 text-muted shadow-inner-soft",
+                compact
+                  ? "size-12"
+                  : rich
+                    ? "w-full min-h-0 flex-1"
+                    : "size-16",
+                rich ? "shrink" : "shrink-0",
+              )}
+              data-testid={ids.artworkFrame}
+            >
+              {artworkUrl ? (
+                <img
+                  alt={artworkAlt}
+                  className="size-full object-cover"
+                  decoding="async"
+                  loading="lazy"
+                  src={artworkUrl}
+                  data-testid={ids.artwork}
+                />
+              ) : (
+                <Music2 aria-hidden="true" size={compact ? 19 : rich ? 28 : 22} />
+              )}
+            </span>
+          ) : null}
 
-          <div className="grid min-w-0 flex-1 gap-2">
+          <div
+            className={cn(
+              "grid min-w-0 flex-1 gap-2",
+              rich ? "w-full flex-none" : undefined,
+            )}
+          >
             <div className="min-w-0">
               <span
                 className={cn(
                   "block font-semibold leading-snug text-text",
-                  compact ? "truncate text-sm" : "line-clamp-2 text-sm sm:text-base",
+                  micro
+                    ? "truncate text-xs"
+                    : compact
+                      ? "truncate text-sm"
+                      : "line-clamp-2 text-sm sm:text-base",
                 )}
               >
                 {title}
               </span>
-              {subtitle ? (
+              {showSubtitleText && subtitle ? (
                 <span className="mt-0.5 block truncate text-xs leading-5 text-muted">
                   {subtitle}
                 </span>
@@ -147,7 +194,7 @@ export function MediaPlayer({
                   "grid shrink-0 place-items-center rounded-full border border-accent/28 bg-accent text-accent-contrast shadow-soft transition duration-fluid ease-fluid",
                   "hover:-translate-y-0.5 hover:bg-accent-strong hover:shadow-lift focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
                   "disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0",
-                  compact ? "size-8" : "size-9",
+                  micro ? "size-7" : compact ? "size-8" : "size-9",
                 )}
                 aria-label={playing ? (pauseLabel ?? `Pause ${title}`) : (playLabel ?? `Play ${title}`)}
                 data-thread-open-ignore={ignoreThreadOpen ? true : undefined}
@@ -156,9 +203,9 @@ export function MediaPlayer({
                 onClick={onPlayToggle}
               >
                 {playing ? (
-                  <Pause aria-hidden="true" size={compact ? 15 : 17} />
+                  <Pause aria-hidden="true" size={micro ? 14 : compact ? 15 : 17} />
                 ) : (
-                  <Play aria-hidden="true" size={compact ? 15 : 17} />
+                  <Play aria-hidden="true" size={micro ? 14 : compact ? 15 : 17} />
                 )}
               </button>
 
@@ -175,15 +222,21 @@ export function MediaPlayer({
                     data-testid={ids.progressBar}
                   />
                 </div>
-                <span
-                  className="truncate text-xs font-medium tabular-nums leading-none text-muted"
-                  data-testid={ids.progressTime}
-                >
-                  {progressLabel}
-                </span>
+                {showProgressLabel ? (
+                  <span
+                    className="truncate text-xs font-medium tabular-nums leading-none text-muted"
+                    data-testid={ids.progressTime}
+                  >
+                    {progressLabel}
+                  </span>
+                ) : (
+                  <span className="sr-only" data-testid={ids.progressTime}>
+                    {progressLabel || statusLabel}
+                  </span>
+                )}
               </div>
 
-              {href ? (
+              {showOpen && href ? (
                 <a
                   aria-label={openLabel ?? `Open ${title}`}
                   className={cn(

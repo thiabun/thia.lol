@@ -533,10 +533,11 @@ test("module shells keep compact content glanceable without public overflow", as
   const links = page.getByTestId("profile-module-links");
   await expect(links.locator("[data-profile-module-visible-links]")).toHaveAttribute(
     "data-profile-module-visible-links",
-    "5",
+    "4",
   );
   await expect(links.locator('[data-profile-connections-compact="icons"]')).toBeVisible();
   await expect(links.getByText("+1 more")).toHaveCount(0);
+  await expect(links.getByText("+1")).toBeVisible();
 
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -1163,19 +1164,21 @@ test("Spotify music player fills each allowed music module span", async ({
           '[data-testid="profile-spotify-artwork-frame"]',
         );
 
-        if (!player || !artwork) {
+        if (!player) {
           throw new Error("Music player did not render.");
         }
 
         const moduleRect = module.getBoundingClientRect();
         const playerRect = player.getBoundingClientRect();
-        const artworkRect = artwork.getBoundingClientRect();
+        const artworkRect = artwork?.getBoundingClientRect();
 
         return {
-          artworkHeight: Math.round(artworkRect.height),
+          artworkHeight: artworkRect ? Math.round(artworkRect.height) : 0,
           heightCoverage: playerRect.height / moduleRect.height,
           layout: player.dataset.profileSpotifyLayout,
           size: module.dataset.profileGridSize,
+          text: module.textContent ?? "",
+          tier: player.dataset.profileSpotifyTier,
           widthCoverage: playerRect.width / moduleRect.width,
         };
       }),
@@ -1193,6 +1196,12 @@ test("Spotify music player fills each allowed music module span", async ({
   for (const metric of metrics) {
     expect(metric.heightCoverage).toBeGreaterThanOrEqual(0.94);
     expect(metric.widthCoverage).toBeGreaterThanOrEqual(0.94);
+    if (metric.size === "2x1" || metric.size === "2x2") {
+      expect(metric.text).not.toContain("Spotify track");
+    }
+    if (metric.size === "2x1") {
+      expect(metric.tier).toBe("micro");
+    }
     const expectedArtworkHeight =
       metric.layout === "row"
         ? 48
@@ -1200,7 +1209,9 @@ test("Spotify music player fills each allowed music module span", async ({
           ? 88
           : 52;
 
-    expect(metric.artworkHeight).toBeGreaterThanOrEqual(expectedArtworkHeight);
+    if (metric.tier !== "micro") {
+      expect(metric.artworkHeight).toBeGreaterThanOrEqual(expectedArtworkHeight);
+    }
   }
 });
 
@@ -1726,6 +1737,74 @@ test("uploaded MP3 music modules use the continue overlay", async ({ page }) => 
     profileId: 1,
     provider: "upload",
   });
+});
+
+test("uploaded MP3 music modules adapt density across supported sizes", async ({
+  page,
+}) => {
+  const placements = [
+    { column: 1, row: 1, size: "2x1" },
+    { column: 4, row: 1, size: "2x2" },
+    { column: 7, row: 1, size: "3x2" },
+    { column: 1, row: 4, size: "4x4" },
+    { column: 1, row: 9, size: "8x2" },
+  ];
+  const modules = placements.map((placement, index) =>
+    withAuditLayout(
+      uploadedMp3MusicModule({ id: 700 + index, position: index + 1 }),
+      placement.size,
+      placement.row,
+      placement.column,
+    ),
+  );
+
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules,
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const metrics = await page
+    .getByTestId("profile-module-grid")
+    .evaluate(() =>
+      Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="profile-grid-module-music"]',
+        ),
+      ).map((module) => {
+        const player = module.querySelector<HTMLElement>(
+          '[data-testid="profile-uploaded-audio-player"]',
+        );
+
+        if (!player) {
+          throw new Error("Uploaded audio player did not render.");
+        }
+
+        return {
+          layout: player.dataset.profileUploadedAudioLayout,
+          size: module.dataset.profileGridSize,
+          text: module.textContent ?? "",
+          tier: player.dataset.profileUploadedAudioTier,
+        };
+      }),
+    );
+
+  expect(metrics).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ layout: "compact", size: "2x1", tier: "micro" }),
+      expect.objectContaining({ layout: "compact", size: "2x2", tier: "compact" }),
+      expect.objectContaining({ layout: "row", size: "3x2", tier: "standard" }),
+      expect.objectContaining({ layout: "rich", size: "4x4", tier: "spacious" }),
+      expect.objectContaining({ layout: "row", size: "8x2", tier: "standard" }),
+    ]),
+  );
+
+  for (const metric of metrics) {
+    if (metric.size === "2x1" || metric.size === "2x2") {
+      expect(metric.text).not.toContain("Uploaded MP3");
+    }
+  }
 });
 
 test("integration modules do not fake live or recent labels without API backing", async ({
@@ -3688,6 +3767,41 @@ test("YouTube Music modules render working players across song sizes", async ({
       ),
     ).toBeVisible();
   }
+
+  const layoutMetrics = await page
+    .getByTestId("profile-module-grid")
+    .evaluate(() =>
+      Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="profile-grid-module-youtube_music_song"]',
+        ),
+      ).map((module) => {
+        const player = module.querySelector<HTMLElement>(
+          '[data-testid="profile-youtube-music-player"]',
+        );
+
+        if (!player) {
+          throw new Error("YouTube Music player did not render.");
+        }
+
+        return {
+          layout: player.dataset.profileYoutubeMusicLayout,
+          size: module.dataset.profileGridSize,
+          tier: player.dataset.profileYoutubeMusicTier,
+        };
+      }),
+    );
+
+  expect(layoutMetrics).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ layout: "compact", size: "2x1", tier: "micro" }),
+      expect.objectContaining({ layout: "compact", size: "2x2", tier: "compact" }),
+      expect.objectContaining({ layout: "row", size: "3x2", tier: "standard" }),
+      expect.objectContaining({ layout: "row", size: "4x2", tier: "standard" }),
+      expect.objectContaining({ layout: "rich", size: "4x3", tier: "spacious" }),
+      expect.objectContaining({ layout: "rich", size: "4x4", tier: "spacious" }),
+    ]),
+  );
 
   const firstPlayer = page.getByTestId("profile-youtube-music-player").first();
   await expect(page.getByTestId("profile-music-continue-overlay")).toBeVisible();
@@ -7575,6 +7689,10 @@ type ProfileModuleSizeAuditType =
   | "gallery_media"
   | "creator_live"
   | "music"
+  | "uploaded_audio"
+  | "spotify_song"
+  | "youtube_music_song"
+  | "spotify_artist"
   | "activity";
 
 type ProfileModuleSizeAuditMock = Parameters<typeof mockProfileModules>[1];
@@ -7596,6 +7714,10 @@ const profileModuleSizeAuditMatrix: Array<{
     sizes: ["2x1", "3x2", "4x3", "5x3", "6x4", "8x2"],
   },
   { type: "music", sizes: ["2x1", "2x2", "3x2", "4x2", "4x3", "4x4", "8x1", "8x2"] },
+  { type: "uploaded_audio", sizes: ["2x1", "2x2", "3x2", "4x4", "8x2"] },
+  { type: "spotify_song", sizes: ["2x1", "2x2", "3x2", "4x3", "8x2"] },
+  { type: "youtube_music_song", sizes: ["2x1", "2x2", "3x2", "4x3", "4x4", "8x2"] },
+  { type: "spotify_artist", sizes: ["3x2", "4x3", "6x4", "8x2"] },
   { type: "activity", sizes: ["5x2", "8x2", "8x3", "3x4", "4x6", "6x10"] },
 ];
 
@@ -7775,6 +7897,22 @@ function profileModuleSizeAuditModule(
     return withAuditLayout(musicModule({ id }), size, row);
   }
 
+  if (type === "uploaded_audio") {
+    return withAuditLayout(uploadedMp3MusicModule({ id }), size, row);
+  }
+
+  if (type === "spotify_song") {
+    return withAuditLayout(spotifyEmbedMusicModule({ id }), size, row);
+  }
+
+  if (type === "youtube_music_song") {
+    return withAuditLayout(youtubeMusicEmbedModule({ id }), size, row);
+  }
+
+  if (type === "spotify_artist") {
+    return withAuditLayout(spotifyArtistModule({ id }), size, row);
+  }
+
   return withAuditLayout(activityModule({ id }), size, row);
 }
 
@@ -7837,6 +7975,9 @@ test.describe("allowed module sizes smoke render one at a time without overflow"
   for (const auditCase of profileModuleSizeAuditCases()) {
     test(`${auditCase.type} ${auditCase.size}`, async ({ page }) => {
       await page.setViewportSize({ width: 1366, height: 1100 });
+      if (auditCase.type === "spotify_song") {
+        await mockSpotifyIframeApi(page);
+      }
       await acknowledgeCookieNotice(page);
       await mockProfileModules(page, auditCase.mock);
       await page.goto(`/@thia?sizeAudit=${auditCase.type}-${auditCase.size}`);
@@ -7850,7 +7991,9 @@ async function expectAuditModule(
   page: Page,
   auditCase: { size: string; type: ProfileModuleSizeAuditType },
 ) {
-  const module = page.getByTestId(`profile-grid-module-${auditCase.type}`);
+  const module = page.getByTestId(
+    `profile-grid-module-${profileModuleSizeAuditGridType(auditCase.type)}`,
+  );
   await expect(module).toBeVisible();
   await expect(module).toHaveAttribute("data-profile-grid-size", auditCase.size);
 
@@ -7872,6 +8015,92 @@ async function expectAuditModule(
       );
     });
 
+    const visibleDescendants = Array.from(
+      element.querySelectorAll<HTMLElement>("*"),
+    ).filter((item) => {
+      const itemRect = item.getBoundingClientRect();
+      const styles = window.getComputedStyle(item);
+
+      return (
+        itemRect.width > 1 &&
+        itemRect.height > 1 &&
+        styles.visibility !== "hidden" &&
+        styles.display !== "none" &&
+        styles.opacity !== "0" &&
+        !item.closest("[aria-hidden='true']")
+      );
+    });
+    const overflowingDescendants = visibleDescendants
+      .filter((item) => {
+        const itemRect = item.getBoundingClientRect();
+        const internalScrollBoundary = item.closest(
+          "[data-profile-activity-scroll='internal']",
+        );
+
+        if (internalScrollBoundary) {
+          return false;
+        }
+
+        return (
+          itemRect.left < rect.left - 1 ||
+          itemRect.right > rect.right + 1 ||
+          itemRect.top < rect.top - 1 ||
+          itemRect.bottom > rect.bottom + 1
+        );
+      })
+      .slice(0, 5)
+      .map((item) => ({
+        className: item.className.toString().slice(0, 80),
+        tagName: item.tagName.toLowerCase(),
+        testId: item.dataset.testid ?? null,
+      }));
+    const horizontalOverflowingContainers = Array.from(
+      element.querySelectorAll<HTMLElement>(
+        "[data-profile-module-shell], [data-testid^='profile-module-'], [data-testid^='profile-'][data-testid$='player']",
+      ),
+    )
+      .filter((item) => item.scrollWidth > item.clientWidth + 1)
+      .slice(0, 5)
+      .map((item) => item.dataset.testid ?? item.dataset.profileModuleShell ?? item.tagName);
+    const largeSurfaceCandidates = Array.from(
+      element.querySelectorAll<HTMLElement>(
+        [
+          "img:not([aria-hidden='true'])",
+          "video",
+          "iframe:not([aria-hidden='true'])",
+          "[data-testid='profile-uploaded-audio-player']",
+          "[data-testid='profile-spotify-custom-player']",
+          "[data-testid='profile-youtube-music-player']",
+          "[data-testid='profile-integration-artist-card']",
+          "[data-testid='profile-image-module-photo']",
+          "[data-testid='profile-activity']",
+          "[data-profile-static-card-tier]",
+        ].join(","),
+      ),
+    ).filter((item) => {
+      const itemRect = item.getBoundingClientRect();
+      const styles = window.getComputedStyle(item);
+
+      return (
+        itemRect.width > 4 &&
+        itemRect.height > 4 &&
+        styles.visibility !== "hidden" &&
+        styles.display !== "none" &&
+        styles.opacity !== "0"
+      );
+    });
+    const largestSurfaceCoverage = largeSurfaceCandidates.reduce(
+      (coverage, item) => {
+        const itemRect = item.getBoundingClientRect();
+
+        return Math.max(
+          coverage,
+          (itemRect.width * itemRect.height) / Math.max(1, rect.width * rect.height),
+        );
+      },
+      0,
+    );
+
     return {
       documentOverflowX:
         document.documentElement.scrollWidth >
@@ -7880,14 +8109,64 @@ async function expectAuditModule(
       hasVisibleContent:
         meaningfulContent.length > 0 ||
         (element.textContent?.trim().length ?? 0) > 0,
+      horizontalOverflowingContainers,
+      largestSurfaceCoverage,
+      overflowingDescendants,
       width: Math.round(rect.width),
     };
   });
 
   expect(metrics.documentOverflowX).toBe(false);
   expect(metrics.hasVisibleContent).toBe(true);
+  expect(metrics.horizontalOverflowingContainers).toEqual([]);
+  expect(metrics.overflowingDescendants).toEqual([]);
   expect(metrics.height).toBeGreaterThan(56);
   expect(metrics.width).toBeGreaterThan(80);
+
+  if (
+    auditCase.type === "uploaded_audio" &&
+    (auditCase.size === "2x1" || auditCase.size === "2x2")
+  ) {
+    await expect(module).not.toContainText("Uploaded MP3");
+  }
+
+  if (
+    auditCase.type === "spotify_song" &&
+    (auditCase.size === "2x1" || auditCase.size === "2x2")
+  ) {
+    await expect(module).not.toContainText("Spotify track");
+  }
+
+  if (profileModuleSizeAuditNeedsLargeSurface(auditCase)) {
+    expect(metrics.largestSurfaceCoverage).toBeGreaterThan(0.42);
+  }
+}
+
+function profileModuleSizeAuditGridType(
+  type: ProfileModuleSizeAuditType,
+): string {
+  if (type === "uploaded_audio" || type === "spotify_song") {
+    return "music";
+  }
+
+  return type;
+}
+
+function profileModuleSizeAuditNeedsLargeSurface(auditCase: {
+  size: string;
+  type: ProfileModuleSizeAuditType;
+}): boolean {
+  const { colSpan, rowSpan } = profileModuleSizeAuditSpan(auditCase.size);
+  const mediaTypes: ProfileModuleSizeAuditType[] = [
+    "gallery_media",
+    "creator_live",
+    "uploaded_audio",
+    "spotify_song",
+    "youtube_music_song",
+    "spotify_artist",
+  ];
+
+  return mediaTypes.includes(auditCase.type) && (colSpan >= 4 || rowSpan >= 3);
 }
 
 async function mockMediaMetadata(page: Page) {

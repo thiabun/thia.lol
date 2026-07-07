@@ -315,6 +315,7 @@ type ProfileGridModuleProps = {
         primaryAction: string;
         purpose: string;
         spanRole: string;
+        tier?: string | undefined;
       }
     | undefined;
   pinned?: boolean | undefined;
@@ -391,6 +392,7 @@ export function ProfileGridModule({
       data-profile-module-purpose={presentation?.purpose}
       data-profile-module-selected={selected ? "true" : undefined}
       data-profile-module-span-role={presentation?.spanRole}
+      data-profile-module-tier={presentation?.tier}
       data-testid={testId}
       onClickCapture={onClickCapture}
       style={moduleStyle as MotionStyle}

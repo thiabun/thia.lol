@@ -53,6 +53,24 @@ export type ProfileModuleEmptyPolicy =
   | "owner-compact";
 
 export type ProfileModuleSpanRole = "glance" | "summary" | "rich" | "hero";
+export type ProfileModulePresentationTier =
+  | "micro"
+  | "compact"
+  | "standard"
+  | "spacious"
+  | "showcase";
+
+export type ProfileModulePresentation = {
+  allowInternalScroll: boolean;
+  isSingleRow: boolean;
+  isSlim: boolean;
+  preferLargeMedia: boolean;
+  showDescription: boolean;
+  showSecondaryText: boolean;
+  span: ProfileGridModuleSpan;
+  spanRole: ProfileModuleSpanRole;
+  tier: ProfileModulePresentationTier;
+};
 
 export type ProfileModuleCategory =
   | "video"
@@ -915,6 +933,43 @@ export function profileModuleSizeHasRoomForDetails(
   const spanRole = profileModuleSpanRole(size);
 
   return spanRole === "summary" || spanRole === "rich" || spanRole === "hero";
+}
+
+export function profileModulePresentation(
+  size: ProfileGridModuleSize | undefined,
+): ProfileModulePresentation {
+  const span = profileGridModuleSizeSpan(size);
+  const spanRole = profileModuleSpanRole(size);
+  const isSingleRow = span.rows <= 1;
+  const isSlim = span.columns >= 5 && span.rows <= 2;
+  const tier: ProfileModulePresentationTier = isSingleRow
+    ? span.columns <= 4
+      ? "micro"
+      : "compact"
+    : span.rows <= 2
+      ? span.columns <= 2
+        ? "compact"
+        : "standard"
+      : span.rows >= 6 || (span.columns >= 6 && span.rows >= 4)
+        ? "showcase"
+        : span.rows >= 3 || span.columns >= 5
+          ? "spacious"
+          : "standard";
+  const showSecondaryText =
+    tier === "standard" || tier === "spacious" || tier === "showcase";
+  const showDescription = tier === "spacious" || tier === "showcase";
+
+  return {
+    allowInternalScroll: showSecondaryText,
+    isSingleRow,
+    isSlim,
+    preferLargeMedia: tier === "spacious" || tier === "showcase",
+    showDescription,
+    showSecondaryText,
+    span,
+    spanRole,
+    tier,
+  };
 }
 
 export function clampProfileGridModuleSpan(
