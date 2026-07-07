@@ -105,6 +105,10 @@ test("Home refresh keeps the current feed visible until new posts arrive", async
   await expect(page.getByTestId("page-loading-overlay")).toBeHidden({
     timeout: 5000,
   });
+  await expectCircularControl(page.getByRole("button", { name: "Refresh" }));
+  await expectSquircleControl(
+    page.getByRole("button", { name: /Open replies/ }).first(),
+  );
   refreshRequested = true;
   await page.getByRole("button", { name: "Refresh" }).click();
   await expect(page.getByText("First visible post.")).toBeVisible();
@@ -116,6 +120,7 @@ test("Home refresh keeps the current feed visible until new posts arrive", async
   await expect(page.getByTestId("feed-refresh-controls-updated")).toContainText(
     "Updated",
   );
+  await expectVisuallyClipped(page.getByTestId("feed-refresh-controls-updated"));
 });
 
 test("Home refresh failure preserves posts and offers retry", async ({ page }) => {
@@ -309,6 +314,7 @@ test("Discover refresh updates the rising feed without losing existing posts", a
   await expect(page.getByTestId("feed-refresh-controls-updated")).toContainText(
     "Updated",
   );
+  await expectVisuallyClipped(page.getByTestId("feed-refresh-controls-updated"));
 });
 
 test("global loading overlay skips non-protected grace after route data", async ({
@@ -2629,6 +2635,42 @@ function makePost(overrides: Record<string, unknown> = {}) {
     },
     ...overrides,
   };
+}
+
+async function expectCircularControl(locator: Locator) {
+  const shape = await readControlShape(locator);
+
+  expect(shape.radius).toBeGreaterThanOrEqual(shape.height / 2 - 1);
+}
+
+async function expectSquircleControl(locator: Locator) {
+  const shape = await readControlShape(locator);
+
+  expect(shape.radius).toBeGreaterThanOrEqual(6);
+  expect(shape.radius).toBeLessThan(shape.height / 2 - 2);
+}
+
+async function expectVisuallyClipped(locator: Locator) {
+  await expect(locator).toHaveClass(/sr-only/);
+
+  const box = await locator.boundingBox();
+  expect(box?.width ?? 0).toBeLessThanOrEqual(1);
+  expect(box?.height ?? 0).toBeLessThanOrEqual(1);
+}
+
+async function readControlShape(locator: Locator) {
+  await expect(locator).toBeVisible();
+
+  return locator.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const styles = window.getComputedStyle(element);
+
+    return {
+      height: rect.height,
+      radius: Number.parseFloat(styles.borderTopLeftRadius),
+      width: rect.width,
+    };
+  });
 }
 
 function sampleMp3File(name: string) {

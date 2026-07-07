@@ -3523,7 +3523,7 @@ function ModuleSettingsModal({
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            className="grid size-8 place-items-center rounded-control border border-line bg-surface/72 text-muted transition hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-45"
+                            className="grid size-8 place-items-center rounded-full border border-line bg-surface/72 text-muted transition hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-45"
                             aria-label={`Move ${link.label || platformLabel} up`}
                             disabled={index === 0}
                             data-testid={`profile-connection-move-up-${index}`}
@@ -3533,7 +3533,7 @@ function ModuleSettingsModal({
                           </button>
                           <button
                             type="button"
-                            className="grid size-8 place-items-center rounded-control border border-line bg-surface/72 text-muted transition hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-45"
+                            className="grid size-8 place-items-center rounded-full border border-line bg-surface/72 text-muted transition hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-45"
                             aria-label={`Move ${link.label || platformLabel} down`}
                             disabled={index === connectionLinks.length - 1}
                             data-testid={`profile-connection-move-down-${index}`}
@@ -3543,7 +3543,7 @@ function ModuleSettingsModal({
                           </button>
                           <button
                             type="button"
-                            className="grid size-8 place-items-center rounded-control border border-rose/35 bg-rose/12 text-rose-ink transition hover:border-rose/60 focus-visible:outline-2 focus-visible:outline-focus"
+                            className="grid size-8 place-items-center rounded-full border border-rose/35 bg-rose/12 text-rose-ink transition hover:border-rose/60 focus-visible:outline-2 focus-visible:outline-focus"
                             aria-label={`Remove ${link.label || platformLabel}`}
                             data-testid={`profile-connection-remove-${index}`}
                             onClick={() => handleRemoveConnection(index)}
@@ -3688,7 +3688,7 @@ function ModuleSettingsModal({
                     </p>
                     <button
                       type="button"
-                      className="grid size-8 shrink-0 place-items-center rounded-control border border-rose/35 bg-rose/12 text-rose-ink transition hover:border-rose/60 focus-visible:outline-2 focus-visible:outline-focus"
+                      className="grid size-8 shrink-0 place-items-center rounded-full border border-rose/35 bg-rose/12 text-rose-ink transition hover:border-rose/60 focus-visible:outline-2 focus-visible:outline-focus"
                       aria-label="Remove video"
                       data-testid="profile-module-video-remove"
                       onClick={handleRemoveModuleVideo}
@@ -3758,7 +3758,7 @@ function ModuleSettingsModal({
                       </div>
                       <button
                         type="button"
-                        className="grid size-8 shrink-0 place-items-center rounded-control border border-rose/35 bg-rose/12 text-rose-ink transition hover:border-rose/60 focus-visible:outline-2 focus-visible:outline-focus"
+                        className="grid size-8 shrink-0 place-items-center rounded-full border border-rose/35 bg-rose/12 text-rose-ink transition hover:border-rose/60 focus-visible:outline-2 focus-visible:outline-focus"
                         aria-label="Remove MP3"
                         data-testid="profile-module-audio-remove"
                         onClick={handleRemoveModuleAudio}

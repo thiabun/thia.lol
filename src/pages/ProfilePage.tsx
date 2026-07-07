@@ -3050,7 +3050,7 @@ export function ProfileCanvasBackgroundControls({
             </div>
             <button
               type="button"
-              className="grid size-8 shrink-0 place-items-center rounded-control border border-line bg-canvas/55 text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
+              className="grid size-8 shrink-0 place-items-center rounded-full border border-line bg-canvas/55 text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
               aria-label="Close background settings"
               data-profile-edit-control="true"
               onClick={() => setOpen(false)}
@@ -5321,8 +5321,10 @@ function ProfileInfoActions({
       {messageToHandle && !disabled ? (
         <Link
           className={cn(
-            "inline-flex items-center justify-center gap-1.5 rounded-control border border-line bg-surface text-text shadow-soft transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
-            iconOnly ? "size-8 p-0" : "h-9 min-h-9 px-3 text-xs font-semibold",
+            "inline-flex items-center justify-center gap-1.5 border border-line bg-surface text-text shadow-soft transition duration-fluid ease-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
+            iconOnly
+              ? "size-8 rounded-full p-0"
+              : "h-9 min-h-9 rounded-control px-3 text-xs font-semibold",
           )}
           data-testid="profile-message-button"
           to={`/chat?with=${encodeURIComponent(messageToHandle)}`}

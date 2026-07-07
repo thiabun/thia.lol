@@ -1,7 +1,6 @@
 import { AlertCircle, RefreshCw } from "lucide-react";
 import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
-import { StatusChip } from "../ui/StatusChip";
 import { cn } from "../../lib/classNames";
 
 type FeedRefreshControlsProps = {
@@ -40,14 +39,18 @@ export function FeedRefreshControls({
           onClick={() => void onRefresh()}
         />
 
-        {lastLoadedAt ? (
-          <StatusChip
-            tone={refreshing ? "loading" : "success"}
+        {refreshing || lastLoadedAt ? (
+          <span
+            className="sr-only"
             data-testid={`${testId}-updated`}
             aria-live="polite"
           >
-            {refreshing ? "Refreshing..." : formatLoadedAt(lastLoadedAt)}
-          </StatusChip>
+            {refreshing
+              ? "Refreshing..."
+              : lastLoadedAt
+                ? formatLoadedAt(lastLoadedAt)
+                : ""}
+          </span>
         ) : null}
       </div>
 

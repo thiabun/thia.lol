@@ -26,6 +26,7 @@ import { PageMeta } from "../components/PageMeta";
 import { DesktopNotificationsCard } from "../components/notifications/DesktopNotificationsCard";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
+import { ModalSheet } from "../components/ui/ModalSheet";
 import { Panel } from "../components/ui/Panel";
 import {
   HandleField,
@@ -90,6 +91,7 @@ export function SettingsPage() {
   const [postKind, setPostKind] = useState<"posts" | "replies" | "all">("all");
   const [twoFactorSetup, setTwoFactorSetup] = useState<TwoFactorSetupResult>();
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState<string>();
@@ -338,13 +340,14 @@ export function SettingsPage() {
     });
   }
 
-  async function handleDeletePosts() {
+  async function handleDeleteAllPosts() {
     await runAction("posts-delete", async () => {
       const result = await runWithAuth(
-        (token) => deleteMyPosts(postKind, token),
+        (token) => deleteMyPosts("all", token),
         { retryOnCsrf: true },
       );
       setPosts(await getMyPosts(postKind));
+      setBulkDeleteConfirmOpen(false);
       setMessage(`${result.deletedCount} item${result.deletedCount === 1 ? "" : "s"} deleted.`);
     });
   }
@@ -947,24 +950,6 @@ export function SettingsPage() {
               )}
             </div>
 
-            <div className="mt-3">
-              <ActionDetails icon={Trash2} title="Bulk delete" meta="Selected content" danger>
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-rose/25 bg-rose/10 p-3">
-                  <p className="text-sm text-rose-ink">
-                    Delete all currently shown {postKind === "all" ? "posts and replies" : postKind}.
-                  </p>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    icon={<Trash2 size={14} />}
-                    onClick={() => void handleDeletePosts()}
-                  >
-                    Delete shown
-                  </Button>
-                </div>
-              </ActionDetails>
-            </div>
           </SettingsSection>
 
           <SettingsSection
@@ -975,8 +960,25 @@ export function SettingsPage() {
             badge={deletionActive ? "pending" : "available"}
             danger
           >
+            <DangerAction
+              icon={Trash2}
+              title="Delete all posts and replies"
+              description="Remove every post and reply from your account."
+              action={
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="danger"
+                  icon={<Trash2 size={14} />}
+                  onClick={() => setBulkDeleteConfirmOpen(true)}
+                >
+                  Delete all posts and replies
+                </Button>
+              }
+            />
+
             {deletionActive ? (
-              <div className="rounded-card border border-amber/40 bg-amber/10 p-3 text-sm text-text">
+              <div className="mt-3 rounded-card border border-amber/40 bg-amber/10 p-3 text-sm text-text">
                 Deletion is scheduled for {deletionScheduledFor}.
                 <Button
                   type="button"
@@ -1014,7 +1016,7 @@ export function SettingsPage() {
                   <Button
                     type="submit"
                     size="sm"
-                    variant="secondary"
+                    variant="danger"
                     icon={<Trash2 size={14} />}
                     disabled={busy === "account-delete"}
                   >
@@ -1029,6 +1031,43 @@ export function SettingsPage() {
           </SettingsSection>
         </div>
       </div>
+
+      <ModalSheet
+        open={bulkDeleteConfirmOpen}
+        onClose={() => setBulkDeleteConfirmOpen(false)}
+        title="Delete all posts and replies?"
+        description="This removes your posts and replies from thia.lol."
+        closeLabel="Close bulk delete confirmation"
+        size="sm"
+        mobile="dialog"
+        busy={busy === "posts-delete"}
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={busy === "posts-delete"}
+              onClick={() => setBulkDeleteConfirmOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              disabled={busy === "posts-delete"}
+              icon={<Trash2 size={14} />}
+              onClick={() => void handleDeleteAllPosts()}
+            >
+              {busy === "posts-delete" ? "Deleting" : "Delete all"}
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm leading-6 text-muted">
+          This affects every post and reply, not just the current Content filter.
+          Profile modules, media files, account settings, rooms, and messages are unchanged.
+        </p>
+      </ModalSheet>
     </main>
   );
 }
@@ -1086,9 +1125,7 @@ function SettingsSection({
           </Badge>
         ) : null}
       </div>
-      <div className="p-3 sm:p-4">
-      {children}
-      </div>
+      <div className="p-3 sm:p-4">{children}</div>
     </Panel>
   );
 }
@@ -1148,12 +1185,15 @@ function StatusTile({
   value: string;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-3 rounded-card border border-line bg-canvas/38 px-3 py-2.5">
-      <span className="grid size-8 shrink-0 place-items-center rounded-control border border-line bg-surface/70 text-muted">
+    <div
+      className="flex min-w-0 items-center gap-3 rounded-control bg-canvas/26 px-2.5 py-2"
+      data-testid={`settings-readout-${label.toLowerCase()}`}
+    >
+      <span className="grid size-8 shrink-0 place-items-center rounded-full bg-surface/58 text-muted">
         <Icon aria-hidden="true" size={15} />
       </span>
       <div className="min-w-0">
-        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-muted">
+        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-muted/90">
           {label}
         </p>
         <p className="truncate text-sm font-semibold text-text">{value}</p>
@@ -1199,16 +1239,16 @@ function ActionDetails({
   return (
     <details
       className={cn(
-        "group overflow-hidden rounded-card border bg-canvas/34",
-        danger ? "border-rose/25" : "border-line",
+        "group overflow-hidden rounded-control border border-transparent bg-canvas/18",
+        danger ? "bg-rose/5" : undefined,
       )}
       open={defaultOpen ? true : undefined}
     >
-      <summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 px-3 py-2 transition duration-fluid hover:bg-surface/60 focus-visible:outline-2 focus-visible:outline-focus [&::-webkit-details-marker]:hidden">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 rounded-control px-2.5 py-2 transition duration-fluid hover:bg-surface/55 focus-visible:outline-2 focus-visible:outline-focus [&::-webkit-details-marker]:hidden">
         <span
           className={cn(
-            "grid size-8 shrink-0 place-items-center rounded-control border bg-surface/70",
-            danger ? "border-rose/25 text-rose-ink" : "border-line text-muted",
+            "grid size-8 shrink-0 place-items-center rounded-full bg-surface/58",
+            danger ? "text-rose-ink" : "text-muted",
           )}
         >
           <Icon aria-hidden="true" size={15} />
@@ -1224,8 +1264,35 @@ function ActionDetails({
           size={16}
         />
       </summary>
-      <div className="border-t border-line/70 p-3">{children}</div>
+      <div className="border-t border-line/55 px-2.5 py-3">{children}</div>
     </details>
+  );
+}
+
+function DangerAction({
+  action,
+  description,
+  icon: Icon,
+  title,
+}: {
+  action: ReactNode;
+  description: string;
+  icon: LucideIcon;
+  title: string;
+}) {
+  return (
+    <div className="flex flex-col gap-3 rounded-card border border-rose/25 bg-rose/10 p-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-rose/15 text-rose-ink">
+          <Icon aria-hidden="true" size={16} />
+        </span>
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-text">{title}</h3>
+          <p className="mt-1 text-sm leading-5 text-muted">{description}</p>
+        </div>
+      </div>
+      <div className="shrink-0">{action}</div>
+    </div>
   );
 }
 

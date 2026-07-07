@@ -1672,7 +1672,7 @@ function CommentButton({ count, onClick }: CommentButtonProps) {
   return (
     <motion.button
       type="button"
-      className="inline-flex min-h-8 items-center gap-1.5 rounded-full px-2.5 text-sm leading-none transition duration-fluid ease-fluid hover:bg-surface-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      className="inline-flex min-h-8 items-center gap-1.5 rounded-control px-2.5 text-sm leading-none transition duration-fluid ease-fluid hover:bg-surface-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       aria-label={`Open replies. ${count} ${count === 1 ? "reply" : "replies"}.`}
       title="Replies"
       onClick={onClick}
@@ -2814,7 +2814,7 @@ function LikeButton({
     <motion.button
       type="button"
       className={cn(
-        "inline-flex min-h-8 items-center gap-1.5 rounded-full px-2.5 text-sm leading-none transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-wait",
+        "inline-flex min-h-8 items-center gap-1.5 rounded-control px-2.5 text-sm leading-none transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-wait",
         liked
           ? "bg-rose/20 text-rose-ink shadow-inner-soft"
           : "hover:bg-surface-strong hover:text-text",
@@ -2864,7 +2864,7 @@ function ReblogButton({
     <motion.button
       type="button"
       className={cn(
-        "inline-flex min-h-8 items-center gap-1.5 rounded-full px-2.5 text-sm leading-none transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55",
+        "inline-flex min-h-8 items-center gap-1.5 rounded-control px-2.5 text-sm leading-none transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55",
         reblogged
           ? "bg-leaf/20 text-leaf-ink shadow-inner-soft"
           : "hover:bg-surface-strong hover:text-text",

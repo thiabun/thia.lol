@@ -141,7 +141,7 @@ export function ThemeAppearanceControl({
             </div>
             <button
               type="button"
-              className="grid size-8 shrink-0 place-items-center rounded-control border border-line bg-canvas/55 text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
+              className="grid size-8 shrink-0 place-items-center rounded-full border border-line bg-canvas/55 text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
               aria-label={`Close ${label.toLowerCase()} settings`}
               onClick={() => setOpen(false)}
               {...controlAttrs}

@@ -3,7 +3,7 @@ import { motion, type HTMLMotionProps } from "motion/react";
 import { cn } from "../../lib/classNames";
 import { buttonTap } from "../../lib/motionPresets";
 
-type IconButtonVariant = "surface" | "ghost" | "accent";
+type IconButtonVariant = "surface" | "ghost" | "accent" | "danger";
 type IconButtonSize = "sm" | "md";
 
 const variants: Record<IconButtonVariant, string> = {
@@ -12,6 +12,8 @@ const variants: Record<IconButtonVariant, string> = {
   ghost: "text-muted hover:bg-surface-strong/70 hover:text-text",
   accent:
     "border border-accent/35 bg-accent text-accent-contrast shadow-soft hover:bg-accent-strong",
+  danger:
+    "border border-rose/35 bg-rose/15 text-rose-ink shadow-inner-soft hover:border-rose/55 hover:bg-rose/20",
 };
 
 const sizes: Record<IconButtonSize, string> = {
@@ -48,7 +50,7 @@ export function IconButton({
     <motion.button
       aria-label={label}
       className={cn(
-        "inline-grid shrink-0 place-items-center rounded-control transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:pointer-events-none disabled:opacity-50",
+        "inline-grid shrink-0 place-items-center rounded-full transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:pointer-events-none disabled:opacity-50",
         variants[variant],
         sizes[size],
         className,

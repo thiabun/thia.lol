@@ -125,7 +125,7 @@ export const MarkdownEditor = forwardRef<HTMLTextAreaElement, MarkdownEditorProp
             <button
               key={action.id}
               type="button"
-              className="grid size-8 place-items-center rounded-control text-muted transition duration-fluid ease-fluid hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
+              className="grid size-8 place-items-center rounded-full text-muted transition duration-fluid ease-fluid hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
               title={action.label}
               aria-label={action.label}
               disabled={disabled}
