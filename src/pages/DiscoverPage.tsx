@@ -12,6 +12,7 @@ import { Badge } from "../components/ui/Badge";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
+import { RouteHeader } from "../components/ui/RouteState";
 import { deletePost, getDiscoverFeed, updatePost } from "../lib/api";
 import { cn } from "../lib/classNames";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
@@ -95,39 +96,31 @@ export function DiscoverPage() {
       />
       <section>
         <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
-          <Panel className="p-3 sm:p-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div className="max-w-2xl">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <h1 className="text-2xl font-semibold tracking-normal text-text">
-                    Discover
-                  </h1>
-                  <span className="rounded-control border border-line bg-canvas/65 px-2.5 py-1 text-xs font-medium text-muted">
-                    For everyone
-                  </span>
-                </div>
-                <p className="mt-1 text-sm leading-6 text-muted">
-                  Public posts, active rooms, and members.
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <ButtonLink
-                    to="/search"
-                    variant="secondary"
-                    size="sm"
-                    icon={<Search aria-hidden="true" size={15} />}
-                  >
-                    Search
-                  </ButtonLink>
-                  <ButtonLink
-                    to="/rooms"
-                    variant="secondary"
-                    size="sm"
-                    icon={<Radio aria-hidden="true" size={15} />}
-                  >
-                    Browse rooms
-                  </ButtonLink>
-                </div>
+          <RouteHeader
+            surface="bare"
+            title="Discover"
+            description="Public posts, active rooms, and members."
+            meta={
+              <div className="flex flex-wrap gap-2">
+                <ButtonLink
+                  to="/search"
+                  variant="secondary"
+                  size="sm"
+                  icon={<Search aria-hidden="true" size={15} />}
+                >
+                  Search
+                </ButtonLink>
+                <ButtonLink
+                  to="/rooms"
+                  variant="secondary"
+                  size="sm"
+                  icon={<Radio aria-hidden="true" size={15} />}
+                >
+                  Browse rooms
+                </ButtonLink>
               </div>
+            }
+            actions={
               <FeedRefreshControls
                 className="md:self-end"
                 lastLoadedAt={discoverState.lastLoadedAt}
@@ -136,8 +129,8 @@ export function DiscoverPage() {
                 disabled={discoverState.loading}
                 onRefresh={discoverState.reload}
               />
-            </div>
-          </Panel>
+            }
+          />
         </motion.div>
       </section>
 

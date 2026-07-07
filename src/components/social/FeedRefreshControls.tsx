@@ -1,5 +1,7 @@
-import { AlertCircle, CheckCircle2, RefreshCw } from "lucide-react";
+import { AlertCircle, RefreshCw } from "lucide-react";
 import { Button } from "../ui/Button";
+import { IconButton } from "../ui/IconButton";
+import { StatusChip } from "../ui/StatusChip";
 import { cn } from "../../lib/classNames";
 
 type FeedRefreshControlsProps = {
@@ -24,32 +26,28 @@ export function FeedRefreshControls({
   return (
     <div className={cn("space-y-2", className)} data-testid={testId}>
       <div className="flex flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
+        <IconButton
+          label={refreshing ? "Refreshing" : "Refresh"}
+          size="md"
           disabled={disabled || refreshing}
           icon={
             <RefreshCw
               aria-hidden="true"
-              size={15}
+              size={16}
               className={refreshing ? "animate-spin motion-reduce:animate-none" : undefined}
             />
           }
           onClick={() => void onRefresh()}
-        >
-          {refreshing ? "Refreshing" : "Refresh"}
-        </Button>
+        />
 
         {lastLoadedAt ? (
-          <span
-            className="inline-flex min-h-9 items-center gap-1.5 rounded-control border border-leaf/25 bg-leaf/10 px-3 text-xs font-medium text-leaf-ink"
+          <StatusChip
+            tone={refreshing ? "loading" : "success"}
             data-testid={`${testId}-updated`}
             aria-live="polite"
           >
-            <CheckCircle2 aria-hidden="true" size={14} />
-            {formatLoadedAt(lastLoadedAt)}
-          </span>
+            {refreshing ? "Refreshing..." : formatLoadedAt(lastLoadedAt)}
+          </StatusChip>
         ) : null}
       </div>
 

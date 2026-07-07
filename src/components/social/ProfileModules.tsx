@@ -35,6 +35,7 @@ import {
   profileGridModuleSizeSpan,
   renderableProfileModules,
   type ProfileGridModuleSize,
+  type ProfileModuleFreshness,
   type ProfileModuleSpanRole,
 } from "../../lib/profileModuleRegistry";
 import {
@@ -68,6 +69,7 @@ import type {
   UserBadge,
 } from "../../lib/types";
 import { ApiStateNotice } from "../ui/ApiStateNotice";
+import { MediaPlayer, type MediaPlayerLayout } from "../ui/MediaPlayer";
 import { CompactStateNotice } from "../ui/RouteState";
 import { ProfileGrid, ProfileGridModule } from "./ProfileGrid";
 import { ProfileConnectionIcon } from "./ProfileConnectionIcon";
@@ -498,6 +500,10 @@ export function ProfileModuleGrid({
       {renderableModules.map((module, index) => {
         const span = profileModuleGridSpan(module, layoutPreset, index);
         const definition = getProfileModuleDefinition(module.type);
+        const freshness = profileModulePresentationFreshness(
+          module,
+          definition.freshness,
+        );
         const spanRole = profileModuleSpanRole(span.size);
         const selected = editing?.selectedModuleId === module.id;
         const selectedControls = selected
@@ -537,7 +543,7 @@ export function ProfileModuleGrid({
               compact: profileModuleSizeIsCompact(span.size),
               density: definition.density,
               emptyPolicy: definition.emptyPolicy,
-              freshness: definition.freshness,
+              freshness,
               primaryAction: definition.primaryAction,
               purpose: definition.purpose,
               spanRole,
@@ -728,6 +734,13 @@ function profileCanvasLayoutFromPoint(
     colSpan,
     rowSpan,
   };
+}
+
+function profileModulePresentationFreshness(
+  module: ProfileModule,
+  fallback: ProfileModuleFreshness,
+): ProfileModuleFreshness {
+  return module.config.integration ? "cached" : fallback;
 }
 
 type ProfileModuleContentRenderer = (
@@ -1645,6 +1658,12 @@ function UploadedAudioPlayer({
   const subtitle = module.config.description ?? "Uploaded MP3";
   const progressPercent =
     duration > 0 ? Math.min(100, Math.max(0, (position / duration) * 100)) : 0;
+  const layout: MediaPlayerLayout = compactPlayer ? "compact" : richPlayer ? "rich" : "row";
+  const progressLabel = duration > 0
+    ? `${formatMediaTime(position)} / ${formatMediaTime(duration)}`
+    : playing
+      ? "Playing"
+      : "Ready";
 
   useEffect(() => {
     const element = audioRef.current;
@@ -1726,115 +1745,31 @@ function UploadedAudioPlayer({
   }
 
   return (
-    <div
-      className="flex h-full min-h-0 overflow-hidden rounded-card border border-line bg-canvas/55 shadow-inner-soft"
-      data-profile-uploaded-audio-layout={
-        compactPlayer ? "compact" : richPlayer ? "rich" : "row"
-      }
-      data-testid="profile-uploaded-audio-player"
+    <MediaPlayer
+      className="h-full"
+      layout={layout}
+      onPlayToggle={handlePlaybackToggle}
+      pauseLabel="Pause uploaded music"
+      playLabel="Play uploaded music"
+      playing={playing}
+      progressAriaLabel="Uploaded music playback progress"
+      progressLabel={progressLabel}
+      progressPercent={progressPercent}
+      rootProps={{
+        "data-profile-uploaded-audio-layout": layout,
+      }}
+      statusLabel={playing ? "Playing" : "Ready"}
+      subtitle={subtitle}
+      testIdPrefix="profile-uploaded-audio"
+      title={title}
     >
-      <audio ref={audioRef} preload="metadata" src={audio.url} />
-      <div
-        className={cn(
-          "relative isolate flex h-full min-h-0 w-full overflow-hidden",
-          compactPlayer
-            ? "flex-col justify-end p-2"
-            : richPlayer
-              ? "flex-col gap-3 p-3 sm:p-4"
-              : "items-center gap-3 p-3",
-        )}
-      >
-        <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_24%_18%,color-mix(in_oklab,var(--app-accent)_24%,transparent),transparent_34%),linear-gradient(135deg,color-mix(in_oklab,var(--surface)_92%,transparent),color-mix(in_oklab,var(--canvas)_82%,transparent))]" />
-        <div
-          className={cn(
-            "min-w-0",
-            compactPlayer
-              ? "contents"
-              : richPlayer
-                ? "flex min-h-0 flex-1 items-center gap-4"
-                : "flex min-w-0 flex-1 items-center gap-3",
-          )}
-        >
-          <span
-            className={cn(
-              "grid shrink-0 place-items-center rounded-card border border-line/80 bg-surface/70 text-text shadow-soft",
-              compactPlayer
-                ? "size-11"
-                : richPlayer
-                  ? "size-20 sm:size-24 lg:size-28"
-                  : "size-14",
-            )}
-          >
-            <Music2 aria-hidden="true" size={compactPlayer ? 20 : 28} />
-          </span>
-          <span className={cn("min-w-0", compactPlayer ? "mt-2" : "flex-1")}>
-            <span
-              className={cn(
-                "block truncate font-semibold text-text",
-                compactPlayer ? "text-xs" : "text-sm",
-              )}
-            >
-              {title}
-            </span>
-            {!compactPlayer ? (
-              <span className="mt-0.5 block truncate text-xs text-muted">
-                {subtitle}
-              </span>
-            ) : null}
-          </span>
-        </div>
-        <div
-          className={cn(
-            "relative z-10 flex min-w-0 items-center gap-3",
-            compactPlayer
-              ? "mt-2"
-              : richPlayer
-                ? "mt-auto"
-                : "w-[42%] min-w-36 max-w-72",
-          )}
-        >
-          <button
-            type="button"
-            className={cn(
-              "grid shrink-0 place-items-center rounded-full border border-accent/35 bg-accent/90 text-accent-contrast shadow-soft transition duration-fluid ease-fluid hover:-translate-y-0.5 hover:bg-accent hover:shadow-lift focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-              compactPlayer ? "size-8" : "size-10",
-            )}
-            onClick={handlePlaybackToggle}
-            aria-label={playing ? "Pause uploaded music" : "Play uploaded music"}
-            data-testid="profile-uploaded-audio-play-button"
-          >
-            {playing ? (
-              <Pause aria-hidden="true" size={compactPlayer ? 15 : 18} />
-            ) : (
-              <Play aria-hidden="true" size={compactPlayer ? 15 : 18} />
-            )}
-          </button>
-          <div className="min-w-0 flex-1">
-            <div className="h-1 overflow-hidden rounded-full bg-line">
-              <div
-                className="h-full rounded-full bg-accent transition-[width] duration-fluid ease-fluid"
-                role="progressbar"
-                aria-label="Uploaded music playback progress"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(progressPercent)}
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
-            <div className="mt-1 flex items-center justify-between gap-3 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted">
-              {!compactPlayer ? <span className="truncate">MP3</span> : null}
-              <span data-testid="profile-uploaded-audio-progress-time">
-                {duration > 0
-                  ? `${formatMediaTime(position)} / ${formatMediaTime(duration)}`
-                  : playing
-                    ? "Playing"
-                    : "Ready"}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+      <audio
+        ref={audioRef}
+        className="sr-only"
+        preload="metadata"
+        src={audio.url}
+      />
+    </MediaPlayer>
   );
 }
 

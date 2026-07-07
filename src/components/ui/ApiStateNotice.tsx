@@ -1,7 +1,6 @@
 import { LoaderCircle, WifiOff } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "../../lib/classNames";
-import { Badge } from "./Badge";
 import { Panel } from "./Panel";
 
 type ApiStateNoticeProps = {
@@ -34,10 +33,7 @@ export function ApiStateNotice({
           />
         </div>
         <div className="min-w-0">
-          <Badge tone={kind === "loading" ? "cool" : "rose"}>
-            {kind === "loading" ? "loading" : "notice"}
-          </Badge>
-          <h2 className="mt-1.5 text-sm font-semibold text-text">{title}</h2>
+          <h2 className="text-sm font-semibold text-text">{title}</h2>
           <p className="mt-1 text-sm leading-6 text-muted">{text}</p>
           {actions ? (
             <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">

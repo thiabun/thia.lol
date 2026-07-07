@@ -15,10 +15,10 @@ export function Panel({
   return (
     <div
       className={cn(
-        "rounded-panel border border-line bg-surface/78",
+        "rounded-panel border border-line bg-surface/70",
         elevated && "shadow-soft backdrop-blur-veil",
         interactive &&
-          "transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface/90",
+          "transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface/84",
         className,
       )}
       {...props}

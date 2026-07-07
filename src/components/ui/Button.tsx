@@ -17,11 +17,11 @@ const displayClassPattern =
 
 const variants: Record<ButtonVariant, string> = {
   primary:
-    "bg-accent text-accent-ink hover:bg-accent-strong",
+    "bg-accent text-accent-contrast shadow-soft hover:bg-accent-strong",
   secondary:
-    "border border-line bg-surface text-text hover:border-line-strong hover:bg-surface-strong",
+    "border border-line bg-surface/78 text-text shadow-inner-soft hover:border-line-strong hover:bg-surface",
   ghost:
-    "text-muted hover:bg-surface-strong hover:text-text",
+    "text-muted hover:bg-surface-strong/72 hover:text-text",
   quiet: "text-text underline-offset-4 hover:text-accent-strong hover:underline",
 };
 

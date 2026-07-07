@@ -659,7 +659,7 @@ function MobileDock({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={snappySpring}
-      className="sticky bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-30 mx-auto mb-[calc(0.5rem+env(safe-area-inset-bottom))] grid w-full max-w-sm grid-cols-5 items-center gap-0.5 rounded-panel border border-line/80 bg-surface/88 px-1.5 py-1 shadow-soft backdrop-blur-veil lg:hidden"
+      className="sticky bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-30 mx-auto mb-[calc(1rem+env(safe-area-inset-bottom))] grid w-full max-w-sm grid-cols-5 items-center gap-0.5 rounded-panel border border-line/80 bg-surface/88 px-1.5 py-1 shadow-soft backdrop-blur-veil lg:hidden"
       aria-label="Primary"
       data-app-mobile-nav="true"
       data-testid="mobile-nav"
@@ -675,7 +675,7 @@ function MobileDock({
             end={to === "/"}
             className={({ isActive }) =>
               cn(
-                "grid min-h-10 w-full max-w-[4.25rem] place-items-center rounded-control px-1 py-1 text-[0.66rem] font-medium leading-none transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+                "grid min-h-11 w-full max-w-[4.25rem] place-items-center rounded-control px-1 py-1 text-[0.66rem] font-medium leading-none transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
                 isActive
                   ? "bg-accent/16 text-text ring-1 ring-accent/20"
                   : "text-muted hover:bg-surface-strong/70 hover:text-text",
@@ -690,7 +690,7 @@ function MobileDock({
       <div className="relative col-start-3 row-start-1 mx-auto flex h-12 items-center justify-center">
         <Button
           type="button"
-          className="size-10 rounded-full border border-white/45 p-0 shadow-soft ring-1 ring-accent/20"
+          className="size-11 rounded-full border border-white/45 p-0 shadow-soft ring-1 ring-accent/20"
           disabled={postDisabled}
           aria-label="Post"
           data-testid="mobile-post-action"

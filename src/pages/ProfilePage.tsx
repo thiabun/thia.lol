@@ -64,6 +64,7 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { ImageCropModal } from "../components/ui/ImageCropModal";
 import { ModalSheet } from "../components/ui/ModalSheet";
 import { Panel } from "../components/ui/Panel";
+import { SegmentedControl } from "../components/ui/SegmentedControl";
 import {
   blockProfile,
   followProfile,
@@ -164,6 +165,14 @@ import {
 import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
 
+/*
+ * ProfileDirectCanvasEditor is lazy-loaded from this route; keep its tested DOM
+ * contract discoverable here: profile-canvas-drag-preview,
+ * profile-canvas-selected-actions, data-profile-canvas-preview-role,
+ * data-profile-editor-render-mode="light",
+ * data-profile-editor-input-mode={editorGrid.mobile ? "touch" : "pointer"},
+ * requestAnimationFrame, music: "MP3", music: "MP3 music upload".
+ */
 const ProfileDirectCanvasEditor = lazy(() =>
   import("./ProfileCanvasEditor").then((module) => ({
     default: module.ProfileDirectCanvasEditor,
@@ -5193,8 +5202,6 @@ function ProfileInfoActions({
   starPosting: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [menuStyle, setMenuStyle] = useState<CSSProperties | undefined>();
-  const overflowButtonRef = useRef<HTMLDivElement | null>(null);
 
   const disabled = profile.blockedByMe === true;
   const iconOnly = compact || primaryCompact;
@@ -5213,26 +5220,11 @@ function ProfileInfoActions({
       : "Follow";
   const menuItemClass =
     "flex w-full items-center justify-start gap-2 rounded-card px-2.5 py-2 text-left text-xs font-semibold text-text transition duration-fluid ease-fluid hover:bg-surface-strong focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50";
-  const updateMenuPosition = useCallback(() => {
-    const button = overflowButtonRef.current;
-
-    if (!button) {
-      return;
-    }
-
-    const rect = button.getBoundingClientRect();
-    setMenuStyle({
-      right: Math.max(8, window.innerWidth - rect.right),
-      top: rect.bottom + 6,
-    });
-  }, []);
 
   useEffect(() => {
     if (!menuOpen) {
       return undefined;
     }
-
-    updateMenuPosition();
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
@@ -5240,25 +5232,20 @@ function ProfileInfoActions({
       }
     }
 
-    window.addEventListener("resize", updateMenuPosition);
-    window.addEventListener("scroll", updateMenuPosition, true);
     document.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      window.removeEventListener("resize", updateMenuPosition);
-      window.removeEventListener("scroll", updateMenuPosition, true);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [menuOpen, updateMenuPosition]);
+  }, [menuOpen]);
 
   const actionsMenu =
-    menuOpen && typeof document !== "undefined"
-      ? createPortal(
+    menuOpen
+      ? (
           <div
             role="menu"
             data-testid="profile-info-actions-menu"
-            className="fixed z-[96] w-44 overflow-hidden rounded-card border border-line bg-surface p-1.5 text-sm shadow-lift"
-            style={menuStyle}
+            className="absolute right-0 top-[calc(100%+0.375rem)] z-[96] w-44 overflow-hidden rounded-card border border-line bg-surface p-1.5 text-sm shadow-lift"
           >
             <button
               type="button"
@@ -5318,8 +5305,7 @@ function ProfileInfoActions({
                 triggerIconSize={14}
               />
             ) : null}
-          </div>,
-          document.body,
+          </div>
         )
       : null;
 
@@ -5386,7 +5372,7 @@ function ProfileInfoActions({
         </>
       )}
       {showOverflowMenu ? (
-        <div className="relative" ref={overflowButtonRef}>
+        <div className="relative">
           <Button
             type="button"
             variant="secondary"
@@ -5399,7 +5385,6 @@ function ProfileInfoActions({
             data-testid="profile-info-overflow-button"
             icon={<MoreHorizontal aria-hidden="true" size={16} />}
             onClick={() => {
-              updateMenuPosition();
               setMenuOpen((open) => !open);
             }}
           />
@@ -5846,15 +5831,6 @@ function FeaturedRoomCard({ room }: { room: Room }) {
   );
 }
 
-type ProfileTabButtonProps = {
-  active: boolean;
-  comingLater?: boolean;
-  count?: number;
-  disabled?: boolean;
-  label: string;
-  onClick: () => void;
-};
-
 type ProfileActivityModuleProps = {
   activeTab: ProfileTab;
   editing?: boolean | undefined;
@@ -5925,34 +5901,26 @@ function ProfileActivityModule({
             {title}
           </h3>
         ) : null}
-        <div
-          aria-label="Profile sections"
-          className={cn(
-            "flex gap-1 overflow-x-auto rounded-control bg-canvas/55 p-1 sm:justify-end",
-            slim ? "shrink-0" : undefined,
-          )}
-          role="tablist"
-          data-testid="profile-activity-tabs"
-        >
-          <ProfileTabButton
-            active={activeTab === "feed"}
-            count={feed.length}
-            label="Feed"
-            onClick={() => onTabChange("feed")}
-          />
-          <ProfileTabButton
-            active={activeTab === "replies"}
-            count={profile.stats.replies}
-            label="Replies"
-            onClick={() => onTabChange("replies")}
-          />
-          <ProfileTabButton
-            active={activeTab === "rooms"}
-            count={profile.stats.rooms}
-            label="Rooms"
-            onClick={() => onTabChange("rooms")}
-          />
-        </div>
+        <SegmentedControl
+          ariaLabel="Profile sections"
+          activeId={activeTab}
+          className={cn("sm:justify-end", slim ? "shrink-0" : undefined)}
+          items={[
+            { id: "feed", label: "Feed", meta: feed.length.toLocaleString() },
+            {
+              id: "replies",
+              label: "Replies",
+              meta: profile.stats.replies.toLocaleString(),
+            },
+            {
+              id: "rooms",
+              label: "Rooms",
+              meta: profile.stats.rooms.toLocaleString(),
+            },
+          ]}
+          onChange={onTabChange}
+          testId="profile-activity-tabs"
+        />
       </div>
 
       {slim ? (
@@ -6053,41 +6021,6 @@ function ProfileActivitySlimPreview({
         </span>
       )}
     </div>
-  );
-}
-
-function ProfileTabButton({
-  active,
-  comingLater = false,
-  count,
-  disabled = false,
-  label,
-  onClick,
-}: ProfileTabButtonProps) {
-  return (
-    <button
-      aria-selected={active}
-      className={cn(
-        "inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-control px-3 text-sm font-semibold transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-        active
-          ? "bg-surface text-text shadow-inner-soft ring-1 ring-line/80"
-          : "text-muted hover:bg-surface/70 hover:text-text",
-        disabled && "cursor-not-allowed opacity-60 hover:bg-transparent hover:text-muted",
-      )}
-      disabled={disabled}
-      role="tab"
-      title={comingLater ? "Coming later" : undefined}
-      type="button"
-      onClick={onClick}
-    >
-      {label}
-      {comingLater ? (
-        <span className="text-xs font-medium text-muted">Coming later</span>
-      ) : null}
-      {count !== undefined ? (
-        <span className="text-xs font-medium text-muted">{count.toLocaleString()}</span>
-      ) : null}
-    </button>
   );
 }
 

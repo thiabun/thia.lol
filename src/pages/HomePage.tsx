@@ -20,6 +20,7 @@ import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Avatar } from "../components/ui/Avatar";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
+import { RouteHeader } from "../components/ui/RouteState";
 import { PostCard } from "../components/social/PostCard";
 import { RoomCard } from "../components/social/RoomCard";
 import { deletePost, getDiscoverFeed, getHomeFeed, getRooms, getStats, updatePost } from "../lib/api";
@@ -156,32 +157,20 @@ function AuthenticatedHomePage() {
           initial="hidden"
           animate="show"
         >
-          <Panel className="p-3 sm:p-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div className="max-w-2xl">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <h1 className="text-2xl font-semibold tracking-normal text-text">
-                    Home
-                  </h1>
-                  <span className="rounded-control border border-line bg-canvas/65 px-2.5 py-1 text-xs font-medium text-muted">
-                    For you
-                  </span>
-                </div>
-                <p className="mt-1 text-sm leading-6 text-muted">
-                  Posts from follows, moots, rooms, and recent conversations.
-                </p>
-              </div>
-              <div className="flex flex-col gap-3 md:items-end">
-                <FeedRefreshControls
-                  lastLoadedAt={feedState.lastLoadedAt}
-                  refreshError={feedState.refreshError}
-                  refreshing={feedState.refreshing}
-                  disabled={feedState.loading}
-                  onRefresh={feedState.reload}
-                />
-              </div>
-            </div>
-          </Panel>
+          <RouteHeader
+            surface="bare"
+            title="Home"
+            description="Posts from follows, moots, rooms, and recent conversations."
+            actions={
+              <FeedRefreshControls
+                lastLoadedAt={feedState.lastLoadedAt}
+                refreshError={feedState.refreshError}
+                refreshing={feedState.refreshing}
+                disabled={feedState.loading}
+                onRefresh={feedState.reload}
+              />
+            }
+          />
         </motion.div>
 
         {feedState.loading ? (
@@ -275,8 +264,11 @@ function AuthenticatedHomePage() {
 
 function AnonymousHomePage() {
   const discoverState = useAsyncData(getDiscoverFeed);
+  const publicHomeState = useAsyncData(getHomeFeed);
   const statsState = useAsyncData(getStats);
-  const posts = discoverState.data?.posts.slice(0, 4) ?? [];
+  const discoverPosts = discoverState.data?.posts ?? [];
+  const publicHomePosts = publicHomeState.data?.posts ?? [];
+  const posts = (discoverPosts.length > 0 ? discoverPosts : publicHomePosts).slice(0, 4);
   const rooms = discoverState.data?.activeRooms.slice(0, 3) ?? [];
   const people = (discoverState.data?.peopleToWatch ?? [])
     .filter((person) => !/^smoketest[0-9]+$/i.test(person.handle))
@@ -363,10 +355,10 @@ function AnonymousHomePage() {
               Discover
             </ButtonLink>
           </div>
-          {discoverState.loading ? (
+          {discoverState.loading || (discoverPosts.length === 0 && publicHomeState.loading) ? (
             <ApiStateNotice kind="loading" title="Loading public posts" text="Loading public posts." />
           ) : null}
-          {!discoverState.loading && !discoverState.error && posts.length === 0 ? (
+          {!discoverState.loading && !publicHomeState.loading && !discoverState.error && posts.length === 0 ? (
             <EmptyState icon={MessageCircle} title="No posts yet" text="No public posts." />
           ) : null}
           {posts.map((post, index) => (

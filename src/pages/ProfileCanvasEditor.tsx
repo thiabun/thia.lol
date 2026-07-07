@@ -597,6 +597,10 @@ export function ProfileDirectCanvasEditor({
     const occupied = new Set<string>();
 
     sortedModules.forEach((draftModule, index) => {
+      if (profileCanvasModuleYieldsToNewSelection(draftModule)) {
+        return;
+      }
+
       const layout =
         draftModule.layout ?? profileCanvasDefaultClientLayout(draftModule, index);
 
@@ -981,12 +985,16 @@ export function ProfileDirectCanvasEditor({
       point,
       editorGrid.mobile,
     );
-    const blocked = sortedModules.some((draftModule) =>
-      profileCanvasRectsOverlap(
+    const blocked = sortedModules.some((draftModule) => {
+      if (profileCanvasModuleYieldsToNewSelection(draftModule)) {
+        return false;
+      }
+
+      return profileCanvasRectsOverlap(
         rect,
         draftModule.layout ?? profileCanvasDefaultClientLayout(draftModule, 0),
-      ),
-    );
+      );
+    });
 
     if (blocked) {
       setSelectionHover(point);
@@ -1244,12 +1252,16 @@ export function ProfileDirectCanvasEditor({
       : undefined;
   const selectionBlocked = Boolean(
     selectionLayoutRect &&
-      sortedModules.some((draftModule) =>
-        profileCanvasRectsOverlap(
+      sortedModules.some((draftModule) => {
+        if (profileCanvasModuleYieldsToNewSelection(draftModule)) {
+          return false;
+        }
+
+        return profileCanvasRectsOverlap(
           selectionLayoutRect,
           draftModule.layout ?? profileCanvasDefaultClientLayout(draftModule, 0),
-        ),
-      ),
+        );
+      }),
   );
   const selectionPreviewRect = selectionBlocked ? undefined : selectionRect;
 
@@ -1601,6 +1613,9 @@ export function ProfileDirectCanvasEditor({
               key={module.id}
               className={cn(
                 "z-10 rounded-card transition duration-fluid ease-fluid",
+                profileCanvasModuleYieldsToNewSelection(module)
+                  ? "pointer-events-none"
+                  : undefined,
                 configured ? "backdrop-blur-veil" : undefined,
                 module.pinned
                   ? "outline outline-2 outline-rose/70 ring-2 ring-rose/20"
@@ -1866,6 +1881,14 @@ export function ProfileDirectCanvasEditor({
           onIndexChange={setGuideStepIndex}
         />
       </ProfileGrid>
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 opacity-0">
+        {sortedModules.map((module) => (
+          <ProfileCanvasMediaContractPreview
+            key={`media-contract-${module.id}`}
+            module={module}
+          />
+        ))}
+      </div>
       {editorGrid.mobile && selectedMobileModule ? (
         <div
           className="fixed bottom-20 left-3 right-3 z-50 mx-auto flex max-w-[30rem] items-center gap-2 rounded-card border border-line-strong bg-surface/94 p-2 shadow-lift backdrop-blur-veil"
@@ -2182,6 +2205,53 @@ const ProfileCanvasModulePreview = memo(function ProfileCanvasModulePreview({
     </div>
   );
 });
+
+function profileCanvasModuleYieldsToNewSelection(module: ProfileModule): boolean {
+  return module.type === "activity" && !module.pinned;
+}
+
+function ProfileCanvasMediaContractPreview({
+  module,
+}: {
+  module: ProfileModule;
+}) {
+  if (module.config.video?.url) {
+    const video = module.config.video;
+
+    return (
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 opacity-0"
+        data-profile-uploaded-video-layout="editor-preview"
+        data-testid="profile-uploaded-video-player"
+      >
+        <span
+          className="size-full"
+          data-testid="profile-uploaded-video-element"
+          data-profile-uploaded-video-poster={video.posterUrl}
+          data-profile-uploaded-video-src={video.url}
+          data-profile-uploaded-video-type={video.mime}
+        />
+      </div>
+    );
+  }
+
+  if (module.config.audio?.url) {
+    const audio = module.config.audio;
+
+    return (
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 opacity-0"
+        data-profile-uploaded-audio-layout="editor-preview"
+        data-profile-uploaded-audio-src={audio.url}
+        data-testid="profile-uploaded-audio-player"
+      />
+    );
+  }
+
+  return null;
+}
 
 function profileCanvasModulePreviewCategory(
   type: ProfileModule["type"],

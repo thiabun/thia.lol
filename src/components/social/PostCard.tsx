@@ -13,14 +13,11 @@ import {
   ArrowDown,
   ArrowUp,
   EyeOff,
-  ExternalLink,
   Heart,
   ImagePlus,
   LoaderCircle,
   MessageCircle,
   Music2,
-  Pause,
-  Play,
   Repeat2,
   Send,
   Share2,
@@ -32,6 +29,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Avatar } from "../ui/Avatar";
 import { Button, ButtonLink } from "../ui/Button";
 import { ImageCropModal } from "../ui/ImageCropModal";
+import { MediaPlayer, type MediaPlayerLayout } from "../ui/MediaPlayer";
 import { ModalSheet } from "../ui/ModalSheet";
 import { Panel } from "../ui/Panel";
 import { CompactStateNotice } from "../ui/RouteState";
@@ -974,185 +972,31 @@ function PostMusicPlayerShell({
   statusLabel,
   testId,
 }: PostMusicPlayerShellProps) {
-  const compact = layout === "compact";
-  const artworkCard = !compact && Boolean(details.imageUrl);
-  const titleClass = artworkCard ? "text-white" : "text-text";
-  const mutedClass = artworkCard ? "text-white/78" : "text-muted";
-  const controlSurfaceClass = artworkCard
-    ? "border-white/20 bg-black/42 text-white hover:border-white/35 hover:bg-black/55"
-    : "border-line bg-canvas/65 text-muted hover:border-line-strong hover:bg-surface hover:text-text";
-  const progressTrackClass = artworkCard ? "bg-white/30" : "bg-line";
+  const playerLayout: MediaPlayerLayout = layout === "compact" ? "compact" : "row";
 
   return (
-    <div
-      className="relative isolate min-w-0 overflow-hidden rounded-card border border-line bg-canvas/70 text-left shadow-inner-soft"
-      data-post-music-layout={layout}
-      data-post-music-provider={details.provider}
-      data-testid={`${testId}-music-player`}
+    <MediaPlayer
+      artworkUrl={details.imageUrl}
+      disabled={disabled}
+      href={details.href}
+      ignoreThreadOpen
+      layout={playerLayout}
+      onPlayToggle={onPlayToggle}
+      playing={playing}
+      progressAriaLabel={`${details.providerLabel} playback progress`}
+      progressLabel={progressLabel}
+      progressPercent={progressPercent}
+      rootProps={{
+        "data-post-music-layout": layout,
+        "data-post-music-provider": details.provider,
+      }}
+      statusLabel={statusLabel}
+      subtitle={details.subtitle ?? details.providerLabel}
+      testIdPrefix={`${testId}-music`}
+      title={details.title}
     >
-      <div
-        className={cn(
-          "relative isolate flex min-h-0 w-full overflow-hidden",
-          compact
-            ? "items-center gap-3 p-3"
-            : "min-h-52 flex-col justify-end p-3 sm:min-h-60 sm:p-4",
-        )}
-      >
-        {details.imageUrl ? (
-          <img
-            alt=""
-            aria-hidden="true"
-            className={cn(
-              "absolute inset-0 -z-20 size-full object-cover",
-              artworkCard ? "opacity-90" : "opacity-20 blur-2xl",
-            )}
-            decoding="async"
-            loading="lazy"
-            src={details.imageUrl}
-            data-testid={artworkCard ? `${testId}-music-artwork` : undefined}
-          />
-        ) : null}
-        <span
-          className={cn(
-            "absolute inset-0 -z-10",
-            artworkCard
-              ? "bg-gradient-to-t from-black/80 via-black/42 to-black/12"
-              : "bg-canvas/78",
-          )}
-          aria-hidden="true"
-        />
-        <div
-          className={cn(
-            "min-w-0",
-            compact ? "flex min-w-0 flex-1 items-center gap-3" : "grid gap-3",
-          )}
-        >
-          <span
-            className={cn(
-              "grid shrink-0 place-items-center overflow-hidden rounded-card border shadow-soft",
-              compact
-                ? "size-16 border-line/80 bg-surface/80 text-text"
-                : details.imageUrl
-                  ? "hidden"
-                  : "size-16 border-line/80 bg-surface/80 text-text",
-            )}
-            data-testid={`${testId}-music-artwork-frame`}
-          >
-            {details.imageUrl ? (
-              <img
-                alt=""
-                className="size-full object-cover"
-                decoding="async"
-                loading="lazy"
-                src={details.imageUrl}
-                data-testid={!artworkCard ? `${testId}-music-artwork` : undefined}
-              />
-            ) : (
-              <Music2 aria-hidden="true" size={23} />
-            )}
-          </span>
-          <span className="min-w-0 flex-1">
-            <span
-              className={cn(
-                "block text-[0.68rem] font-semibold uppercase tracking-[0.08em]",
-                mutedClass,
-              )}
-            >
-              {details.providerLabel}
-            </span>
-            <span
-              className={cn(
-                "mt-0.5 block font-semibold",
-                compact ? "truncate text-sm" : "line-clamp-2 text-xl leading-tight sm:text-2xl",
-                titleClass,
-              )}
-            >
-              {details.title}
-            </span>
-            {details.subtitle ? (
-              <span
-                className={cn(
-                  "mt-0.5 block truncate text-xs",
-                  mutedClass,
-                )}
-              >
-                {details.subtitle}
-              </span>
-            ) : null}
-          </span>
-        </div>
-        <div
-          className={cn(
-            "relative z-10 flex min-w-0 items-center gap-3",
-            compact ? "w-[42%] min-w-32 max-w-64" : "mt-4 w-full max-w-2xl",
-          )}
-        >
-          <button
-            type="button"
-            className={cn(
-              "grid shrink-0 place-items-center rounded-full border border-accent/35 bg-accent/90 text-accent-contrast shadow-soft transition duration-fluid ease-fluid hover:-translate-y-0.5 hover:bg-accent hover:shadow-lift focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0",
-              compact ? "size-10" : "size-12",
-            )}
-            onClick={onPlayToggle}
-            disabled={disabled}
-            aria-label={playing ? `Pause ${details.title}` : `Play ${details.title}`}
-            data-thread-open-ignore
-            data-testid={`${testId}-music-play-button`}
-          >
-            {playing ? (
-              <Pause aria-hidden="true" size={compact ? 17 : 21} />
-            ) : (
-              <Play aria-hidden="true" size={compact ? 17 : 21} />
-            )}
-          </button>
-          <div className="min-w-0 flex-1">
-            <div className={cn("h-1.5 overflow-hidden rounded-full", progressTrackClass)}>
-              <div
-                className="h-full rounded-full bg-accent transition-[width] duration-fluid ease-fluid"
-                role="progressbar"
-                aria-label={`${details.providerLabel} playback progress`}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(progressPercent)}
-                style={{ width: `${progressPercent}%` }}
-                data-testid={`${testId}-music-progress-bar`}
-              />
-            </div>
-            <div
-              className={cn(
-                "mt-1 flex items-center justify-between gap-3 text-[0.68rem] font-semibold uppercase tracking-[0.08em]",
-                mutedClass,
-              )}
-            >
-              {!compact ? <span className="truncate">{details.providerLabel}</span> : null}
-              <span data-testid={`${testId}-music-progress-time`}>
-                {progressLabel}
-              </span>
-            </div>
-          </div>
-          {details.href ? (
-            <a
-              aria-label={`Open ${details.title}`}
-              className={cn(
-                "grid size-9 shrink-0 place-items-center rounded-card transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-                compact ? controlSurfaceClass : cn(controlSurfaceClass, "absolute right-3 top-3 sm:right-4 sm:top-4"),
-              )}
-              data-thread-open-ignore
-              href={details.href}
-              rel="noopener noreferrer"
-              target={details.href.startsWith("/") ? undefined : "_blank"}
-              data-testid={`${testId}-music-open-link`}
-            >
-              <ExternalLink aria-hidden="true" size={16} />
-            </a>
-          ) : null}
-        </div>
-      </div>
-      <span className="sr-only" data-testid={`${testId}-music-status`}>
-        {statusLabel}
-      </span>
       {children}
-    </div>
+    </MediaPlayer>
   );
 }
 
@@ -1286,7 +1130,11 @@ function postMusicAttachmentDetails(
       : "spotify";
   const providerLabel = postIntegrationProviderLabel(provider);
   const title = stringValue(metadata?.title) ?? stringValue(card?.title) ?? providerLabel;
-  const subtitle = stringValue(metadata?.subtitle) ?? providerLabel;
+  const rawSubtitle = stringValue(metadata?.subtitle);
+  const subtitle =
+    provider === "youtube" && rawSubtitle === "YouTube"
+      ? providerLabel
+      : rawSubtitle ?? providerLabel;
   const sourceUrl = attachment.sourceUrl ?? stringValue(card?.sourceUrl);
   const resourceType = stringValue(attachment.resourceType) ?? stringValue(card?.resourceType);
   const resourceId = stringValue(attachment.resourceId) ?? stringValue(card?.resourceId);

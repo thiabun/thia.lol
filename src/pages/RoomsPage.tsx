@@ -7,7 +7,7 @@ import { ApiStateNotice } from "../components/ui/ApiStateNotice";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { SearchField } from "../components/ui/Field";
-import { Panel } from "../components/ui/Panel";
+import { RouteHeader } from "../components/ui/RouteState";
 import { RoomCard } from "../components/social/RoomCard";
 import { createRoom, getRooms, previewImageUpload, uploadImage } from "../lib/api";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
@@ -94,17 +94,12 @@ export function RoomsPage() {
       />
 
       <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
-        <Panel className="p-3 sm:p-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="max-w-2xl">
-              <h1 className="text-2xl font-semibold tracking-normal text-text">
-                Rooms
-              </h1>
-              <p className="mt-1 text-sm leading-6 text-muted">
-                Public rooms for shared posts.
-              </p>
-            </div>
-            <div className="flex w-full flex-col gap-2 sm:flex-row lg:max-w-xl">
+        <RouteHeader
+          surface="bare"
+          title="Rooms"
+          description="Public rooms for shared posts."
+          actions={
+            <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto lg:min-w-[28rem]">
               <SearchField
                 id="room-search"
                 label="Search rooms"
@@ -126,8 +121,8 @@ export function RoomsPage() {
                 </Button>
               ) : null}
             </div>
-          </div>
-        </Panel>
+          }
+        />
       </motion.div>
 
       {roomsState.loading ? (

@@ -8,11 +8,13 @@ type BadgeTone = "default" | "warm" | "cool" | "leaf" | "rose";
 
 type RouteHeaderProps = {
   actions?: ReactNode;
-  badge: string;
+  badge?: string;
   badgeTone?: BadgeTone;
   className?: string;
   description: string;
+  inlineStatus?: ReactNode;
   meta?: ReactNode;
+  surface?: "panel" | "bare";
   title: string;
 };
 
@@ -22,28 +24,44 @@ export function RouteHeader({
   badgeTone = "default",
   className,
   description,
+  inlineStatus,
   meta,
+  surface = "panel",
   title,
 }: RouteHeaderProps) {
-  return (
-    <Panel className={cn("p-3 sm:p-4", className)}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="max-w-2xl">
-          <Badge tone={badgeTone}>{badge}</Badge>
-          <h1 className="mt-2 text-2xl font-semibold tracking-normal text-text">
+  const content = (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="max-w-2xl">
+        {badge ? <Badge tone={badgeTone}>{badge}</Badge> : null}
+        <div
+          className={cn(
+            "flex flex-wrap items-center gap-x-3 gap-y-1",
+            badge ? "mt-2" : undefined,
+          )}
+        >
+          <h1 className="text-2xl font-semibold tracking-normal text-text sm:text-3xl">
             {title}
           </h1>
-          <p className="mt-1 text-sm leading-6 text-muted">{description}</p>
-          {meta ? <div className="mt-2">{meta}</div> : null}
+          {inlineStatus}
         </div>
-        {actions ? (
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            {actions}
-          </div>
-        ) : null}
+        <p className="mt-1 text-sm leading-6 text-muted sm:text-base">
+          {description}
+        </p>
+        {meta ? <div className="mt-2">{meta}</div> : null}
       </div>
-    </Panel>
+      {actions ? (
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+          {actions}
+        </div>
+      ) : null}
+    </div>
   );
+
+  if (surface === "bare") {
+    return <div className={cn("py-2", className)}>{content}</div>;
+  }
+
+  return <Panel className={cn("p-3 sm:p-4", className)}>{content}</Panel>;
 }
 
 type RouteStateNoticeKind = "neutral" | "loading" | "error";

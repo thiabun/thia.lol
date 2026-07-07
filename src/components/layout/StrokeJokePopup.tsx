@@ -7,6 +7,7 @@ const strokeJokeCooldownStorageKey = "thia.strokeJoke.cooldownUntil:v1";
 const strokeJokeSessionRollStorageKey = "thia.strokeJoke.roll:v1";
 const strokeJokeCooldownMs = 14 * 24 * 60 * 60 * 1000;
 const strokeJokeRollChance = 0.02;
+const strokeJokeRollDelayMs = 2200;
 const confettiDurationMs = 3200;
 
 const legalAndSystemPaths = new Set([
@@ -92,7 +93,7 @@ export function StrokeJokePopup({
       if (Math.random() < strokeJokeRollChance) {
         setOpen(true);
       }
-    }, 0);
+    }, strokeJokeRollDelayMs);
 
     return () => {
       window.clearTimeout(rollTimer);
@@ -225,28 +226,7 @@ function strokeJokePathIsEligible(pathname: string): boolean {
     return true;
   }
 
-  if (normalizedPathname.startsWith("/rooms/")) {
-    return normalizedPathname.split("/").length === 3;
-  }
-
-  if (normalizedPathname.startsWith("/@/")) {
-    const segments = normalizedPathname.split("/").filter(Boolean);
-
-    return segments.length === 2;
-  }
-
-  const segments = normalizedPathname.split("/").filter(Boolean);
-
-  if (segments.length === 1) {
-    return segments[0]?.startsWith("@") ?? false;
-  }
-
-  return (
-    segments.length === 3 &&
-    Boolean(segments[0]?.startsWith("@")) &&
-    segments[1] === "posts" &&
-    Boolean(segments[2])
-  );
+  return false;
 }
 
 function normalizePathname(pathname: string): string {

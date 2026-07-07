@@ -824,6 +824,17 @@ export function profileModuleGridSize(
     return layoutSize;
   }
 
+  if (layoutSize && module.type === "activity") {
+    const repairedActivitySize = nearestActivityGridSize(
+      layoutSize,
+      definition.allowedSizes,
+    );
+
+    if (repairedActivitySize) {
+      return repairedActivitySize;
+    }
+  }
+
   const requestedSize = normalizeProfileGridModuleSize(module.config.canvasSize);
 
   if (requestedSize && definition.allowedSizes.includes(requestedSize)) {
@@ -831,6 +842,21 @@ export function profileModuleGridSize(
   }
 
   return definition.defaultSize;
+}
+
+function nearestActivityGridSize(
+  requestedSize: ProfileGridModuleSize,
+  allowedSizes: readonly ProfileGridModuleSize[],
+): ProfileGridModuleSize | undefined {
+  const requested = profileGridModuleSizeSpan(requestedSize);
+
+  return allowedSizes
+    .map(profileGridModuleSizeSpan)
+    .filter(
+      (span) =>
+        span.columns === requested.columns && span.rows >= requested.rows,
+    )
+    .sort((a, b) => a.rows - b.rows)[0]?.size;
 }
 
 export function profileModuleGridSpan(
