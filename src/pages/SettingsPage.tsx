@@ -9,15 +9,13 @@ import {
   KeyRound,
   Lock,
   Mail,
+  Pencil,
   Save,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   Trash2,
-  UserCheck,
-  UserPlus,
   UserRound,
-  X,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
@@ -35,14 +33,11 @@ import {
   TextField,
 } from "../components/ui/Field";
 import {
-  approveFollowRequest,
   cancelAccountDeletion,
   deleteMyPosts,
-  denyFollowRequest,
   disableTwoFactor,
   enableTwoFactor,
   getAccountSettings,
-  getFollowRequests,
   getMyPosts,
   regenerateTwoFactorRecoveryCodes,
   requestAccountDataExport,
@@ -56,7 +51,6 @@ import {
   type AccountPostSummary,
   type AccountPreferences,
   type AccountSettings,
-  type FollowRequest,
   type TwoFactorSetupResult,
 } from "../lib/api";
 import { cn } from "../lib/classNames";
@@ -73,24 +67,14 @@ const notificationKeys = [
   ["badges", "Badges"],
 ] as const;
 
-const settingsNavItems = [
-  { id: "account", label: "Account", icon: UserRound },
-  { id: "security", label: "Security", icon: ShieldCheck },
-  { id: "privacy", label: "Privacy", icon: Lock },
-  { id: "data-rights", label: "Data rights", icon: Download },
-  { id: "consent", label: "Consent", icon: SlidersHorizontal },
-  { id: "content", label: "Content", icon: FileText },
-  { id: "danger", label: "Danger", icon: Trash2 },
-] as const;
-
 export function SettingsPage() {
   const { clearSession, refreshSession, runWithAuth, status, user } = useAuth();
   const [settings, setSettings] = useState<AccountSettings>();
-  const [followRequests, setFollowRequests] = useState<FollowRequest[]>([]);
   const [posts, setPosts] = useState<AccountPostSummary[]>([]);
   const [postKind, setPostKind] = useState<"posts" | "replies" | "all">("all");
   const [twoFactorSetup, setTwoFactorSetup] = useState<TwoFactorSetupResult>();
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [identityEditor, setIdentityEditor] = useState<"email" | "handle" | undefined>();
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
@@ -102,14 +86,13 @@ export function SettingsPage() {
 
     let active = true;
 
-    Promise.all([getAccountSettings(), getFollowRequests(), getMyPosts(postKind)])
-      .then(([nextSettings, nextRequests, nextPosts]) => {
+    Promise.all([getAccountSettings(), getMyPosts(postKind)])
+      .then(([nextSettings, nextPosts]) => {
         if (!active) {
           return;
         }
 
         setSettings(nextSettings);
-        setFollowRequests(nextRequests);
         setPosts(nextPosts);
       })
       .catch((caught: unknown) => {
@@ -172,6 +155,7 @@ export function SettingsPage() {
       );
       setSettings(next);
       await refreshSession();
+      setIdentityEditor(undefined);
       setMessage("Email updated.");
     });
   }
@@ -194,6 +178,7 @@ export function SettingsPage() {
       );
       setSettings(next);
       await refreshSession();
+      setIdentityEditor(undefined);
       setMessage("Handle updated.");
     });
   }
@@ -234,18 +219,33 @@ export function SettingsPage() {
     });
   }
 
-  async function handlePreferencesSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleConsentSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const nextPreferences = preferencesFromForm(form, preferences);
+    const nextPreferences = preferencesFromForm(form, preferences, "consent");
 
-    await runAction("preferences", async () => {
+    await runAction("consent", async () => {
       const next = await runWithAuth(
         (token) => updateAccountPreferences(nextPreferences, token),
         { retryOnCsrf: true },
       );
       setSettings(next);
-      setMessage("Consent and notification settings saved.");
+      setMessage("Consent saved.");
+    });
+  }
+
+  async function handleNotificationsSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const nextPreferences = preferencesFromForm(form, preferences, "notifications");
+
+    await runAction("notifications", async () => {
+      const next = await runWithAuth(
+        (token) => updateAccountPreferences(nextPreferences, token),
+        { retryOnCsrf: true },
+      );
+      setSettings(next);
+      setMessage("Notification settings saved.");
     });
   }
 
@@ -322,24 +322,6 @@ export function SettingsPage() {
     });
   }
 
-  async function handleFollowRequest(id: number, action: "approve" | "deny") {
-    await runAction(`follow-${id}`, async () => {
-      await runWithAuth(
-        async (token) => {
-          if (action === "approve") {
-            await approveFollowRequest(id, token);
-            return;
-          }
-
-          await denyFollowRequest(id, token);
-        },
-        { retryOnCsrf: true },
-      );
-      setFollowRequests((current) => current.filter((request) => request.id !== id));
-      setMessage(action === "approve" ? "Follow request approved." : "Request denied.");
-    });
-  }
-
   async function handleDeleteAllPosts() {
     await runAction("posts-delete", async () => {
       const result = await runWithAuth(
@@ -400,160 +382,49 @@ export function SettingsPage() {
     });
   }
 
-  const enabledNotificationCount = notificationKeys.filter(
-    ([key]) => preferences?.notifications[key] ?? true,
-  ).length;
-  const enabledPushNotificationCount = notificationKeys.filter(
-    ([key]) => preferences?.pushNotifications[key] ?? true,
-  ).length;
-  const consentEnabledCount = [
-    preferences?.analyticsConsent,
-    preferences?.personalizationConsent,
-    preferences?.richEmbedsConsent,
-    preferences?.autoplayMediaConsent,
-    preferences?.sensitiveContentVisible,
-  ].filter(Boolean).length;
   const deletionActive = Boolean(
     settings.deletion?.requestedAt &&
       !settings.deletion.canceledAt &&
       !settings.deletion.completedAt,
   );
   const deletionScheduledFor = settings.deletion?.scheduledFor ?? "the scheduled date";
-  const visibilityLabel =
-    settings.privacy.profileVisibility === "private" ? "Private" : "Public";
-  const twoFactorLabel = settings.twoFactor.enabled ? "2FA on" : "2FA off";
-
   return (
-    <main className="mx-auto w-full max-w-7xl px-3 py-5 sm:px-4 lg:px-6">
+    <main className="mx-auto w-full max-w-5xl px-3 py-5 sm:px-4 lg:px-6">
       <PageMeta title="Settings" description="Manage your thia.lol account." path="/settings" />
-      <section className="relative mb-4 overflow-hidden rounded-panel border border-line bg-surface/82 p-4 shadow-soft backdrop-blur-veil sm:p-5">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/70 to-transparent" />
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0">
-            <Badge tone="cool" className="min-h-6 px-2.5 text-[0.68rem] uppercase tracking-[0.12em]">
-              control room
-            </Badge>
-            <h1 className="mt-3 text-3xl font-semibold tracking-normal text-text sm:text-4xl">
-              Settings
-            </h1>
-            <p className="mt-1 text-sm text-muted">
-              {settings.account.displayName} · @{user?.handle ?? settings.account.handle}
-            </p>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[26rem]">
-            <InlineStatus
-              icon={Lock}
-              label={visibilityLabel}
-              tone={settings.privacy.profileVisibility === "private" ? "warm" : "cool"}
-            />
-            <InlineStatus
-              icon={Fingerprint}
-              label={twoFactorLabel}
-              tone={settings.twoFactor.enabled ? "cool" : "default"}
-            />
-            <InlineStatus
-              icon={BellRing}
-              label={`${enabledNotificationCount}/${notificationKeys.length} alerts`}
-              tone="default"
-            />
-          </div>
-        </div>
-      </section>
+      <header className="mb-5">
+        <h1 className="text-3xl font-semibold tracking-normal text-text sm:text-4xl">
+          Settings
+        </h1>
+        <p className="mt-1 text-sm text-muted">
+          {settings.account.displayName} · @{settings.account.handle}
+        </p>
+      </header>
 
       {error ? <Notice tone="error">{error}</Notice> : null}
       {message ? <Notice tone="success">{message}</Notice> : null}
 
-      <div className="grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)]">
-        <SettingsRail />
-
-        <div className="space-y-4">
+      <div className="space-y-1">
           <SettingsSection
             id="account"
             title="Account"
             kicker="Identity"
             icon={UserRound}
-            badge={settings.account.status}
           >
-            <div className="grid gap-2 sm:grid-cols-2">
-              <StatusTile icon={Mail} label="Email" value={settings.account.email} />
-              <StatusTile icon={AtSign} label="Handle" value={`@${settings.account.handle}`} />
-            </div>
-
-            <div className="mt-3 grid gap-2 xl:grid-cols-2">
-              <ActionDetails icon={Mail} title="Change email" meta={settings.account.email}>
-              <form className="space-y-3" onSubmit={handleEmailSubmit}>
-                <TextField
-                  id="settings-email"
-                  name="email"
-                  label="Email"
-                  type="email"
-                  defaultValue={settings?.account.email ?? ""}
-                  icon={Mail}
-                  density="compact"
-                  required
-                />
-                <TextField
-                  id="settings-email-password"
-                  name="currentPassword"
-                  label="Current password"
-                  type="password"
-                  autoComplete="current-password"
-                  density="compact"
-                  required
-                />
-                <Button type="submit" size="sm" icon={<Save size={15} />} disabled={busy === "email"}>
-                  Save email
-                </Button>
-              </form>
-              </ActionDetails>
-
-              <ActionDetails
+            <div className="grid gap-2 md:grid-cols-2">
+              <AccountFactRow
+                icon={Mail}
+                label="Email"
+                value={settings.account.email}
+                actionLabel="Change email"
+                onEdit={() => setIdentityEditor("email")}
+              />
+              <AccountFactRow
                 icon={AtSign}
-                title="Change handle"
-                meta={
-                  settings?.account.handleChange.canChange === false
-                    ? "Cooldown active"
-                    : `@${settings.account.handle}`
-                }
-              >
-              <form className="space-y-3" onSubmit={handleHandleSubmit}>
-                <HandleField
-                  id="settings-handle"
-                  name="handle"
-                  label="Handle"
-                  defaultValue={settings?.account.handle ?? ""}
-                  disabled={settings?.account.handleChange.canChange === false}
-                  density="compact"
-                  required
-                  maxLength={41}
-                />
-                <TextField
-                  id="settings-handle-password"
-                  name="currentPassword"
-                  label="Current password"
-                  type="password"
-                  autoComplete="current-password"
-                  density="compact"
-                  required
-                />
-                {settings?.account.handleChange.canChange === false ? (
-                  <p className="text-xs text-muted">
-                    Next change allowed {settings.account.handleChange.nextAllowedAt}.
-                  </p>
-                ) : null}
-                <Button
-                  type="submit"
-                  disabled={
-                    busy === "handle" ||
-                    settings?.account.handleChange.canChange === false
-                  }
-                  icon={<Save size={15} />}
-                  size="sm"
-                >
-                  Save handle
-                </Button>
-              </form>
-              </ActionDetails>
+                label="Handle"
+                value={`@${settings.account.handle}`}
+                actionLabel="Change handle"
+                onEdit={() => setIdentityEditor("handle")}
+              />
             </div>
           </SettingsSection>
 
@@ -562,7 +433,6 @@ export function SettingsPage() {
             title="Security"
             kicker="Access"
             icon={ShieldCheck}
-            badge={twoFactorLabel}
           >
             <ActionDetails icon={KeyRound} title="Password" meta="Update credentials">
             <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]" onSubmit={handlePasswordSubmit}>
@@ -710,9 +580,11 @@ export function SettingsPage() {
             title="Privacy"
             kicker="Visibility"
             icon={Lock}
-            badge={visibilityLabel}
           >
-            <form className="grid gap-3 sm:grid-cols-[1fr_auto]" onSubmit={handlePrivacySubmit}>
+            <form
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 sm:gap-3"
+              onSubmit={handlePrivacySubmit}
+            >
               <SelectField
                 id="settings-profile-visibility"
                 name="profileVisibility"
@@ -728,52 +600,65 @@ export function SettingsPage() {
                 Save privacy
               </Button>
             </form>
+          </SettingsSection>
 
-            <div className="mt-3">
+          <SettingsSection
+            id="notifications"
+            title="Notifications"
+            kicker="Updates"
+            icon={BellRing}
+          >
             <ActionDetails
-              icon={UserPlus}
-              title="Follow requests"
-              meta={`${followRequests.length} pending`}
-              defaultOpen={followRequests.length > 0}
+              icon={BellRing}
+              title="Notification preferences"
+              meta="Alerts and desktop"
             >
-              {followRequests.length === 0 ? (
-                <p className="rounded-card border border-line bg-canvas/35 p-3 text-sm text-muted">
-                  No pending requests.
-                </p>
-              ) : (
-                followRequests.map((request) => (
-                  <div
-                    key={request.id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-line bg-canvas/35 p-3"
-                  >
-                    <div>
-                      <p className="font-semibold text-text">{request.user.displayName}</p>
-                      <p className="text-sm text-muted">@{request.user.handle}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        icon={<UserCheck size={14} />}
-                        onClick={() => void handleFollowRequest(request.id, "approve")}
-                      >
-                        Approve
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        icon={<X size={14} />}
-                        onClick={() => void handleFollowRequest(request.id, "deny")}
-                      >
-                        Deny
-                      </Button>
-                    </div>
+              <form className="space-y-4" onSubmit={handleNotificationsSubmit}>
+                <div>
+                  <p className="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted">
+                    Alerts
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                    {notificationKeys.map(([key, label]) => (
+                      <PreferenceToggle
+                        key={key}
+                        name={`notification:${key}`}
+                        label={label}
+                        defaultChecked={preferences?.notifications[key] ?? true}
+                        compact
+                      />
+                    ))}
                   </div>
-                ))
-              )}
+                </div>
+
+                <div className="grid gap-3">
+                  <DesktopNotificationsCard compact />
+                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted">
+                    Desktop categories
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                    {notificationKeys.map(([key, label]) => (
+                      <PreferenceToggle
+                        key={key}
+                        name={`pushNotification:${key}`}
+                        label={label}
+                        defaultChecked={preferences?.pushNotifications[key] ?? true}
+                        compact
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <Button
+                  type="submit"
+                  size="sm"
+                  icon={<Save size={15} />}
+                  disabled={busy === "notifications"}
+                >
+                  Save notifications
+                </Button>
+              </form>
             </ActionDetails>
-            </div>
           </SettingsSection>
 
           <SettingsSection
@@ -781,13 +666,11 @@ export function SettingsPage() {
             title="Data rights"
             kicker="Export"
             icon={Download}
-            badge="download"
           >
             <ActionDetails
               icon={Download}
               title="Download account data"
               meta="JSON export"
-              defaultOpen
             >
               <form className="space-y-3" onSubmit={handleDataExportSubmit}>
                 <p className="text-sm leading-6 text-muted">
@@ -835,9 +718,8 @@ export function SettingsPage() {
             title="Consent"
             kicker="Preferences"
             icon={SlidersHorizontal}
-            badge={`${consentEnabledCount}/5 enabled`}
           >
-            <form className="space-y-3" onSubmit={handlePreferencesSubmit}>
+            <form className="space-y-3" onSubmit={handleConsentSubmit}>
               <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                 <PreferenceToggle
                   name="analyticsConsent"
@@ -866,47 +748,8 @@ export function SettingsPage() {
                 />
               </div>
 
-              <ActionDetails
-                icon={BellRing}
-                title="Notification categories"
-                meta={`${enabledNotificationCount} enabled`}
-              >
-                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                {notificationKeys.map(([key, label]) => (
-                  <PreferenceToggle
-                    key={key}
-                    name={`notification:${key}`}
-                    label={label}
-                    defaultChecked={preferences?.notifications[key] ?? true}
-                    compact
-                  />
-                ))}
-                </div>
-              </ActionDetails>
-
-              <ActionDetails
-                icon={BellRing}
-                title="Desktop notifications"
-                meta={`${enabledPushNotificationCount} push categories enabled`}
-              >
-                <div className="grid gap-3">
-                  <DesktopNotificationsCard compact />
-                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                    {notificationKeys.map(([key, label]) => (
-                      <PreferenceToggle
-                        key={key}
-                        name={`pushNotification:${key}`}
-                        label={label}
-                        defaultChecked={preferences?.pushNotifications[key] ?? true}
-                        compact
-                      />
-                    ))}
-                  </div>
-                </div>
-              </ActionDetails>
-
-              <Button type="submit" size="sm" icon={<Save size={15} />} disabled={busy === "preferences"}>
-                Save preferences
+              <Button type="submit" size="sm" icon={<Save size={15} />} disabled={busy === "consent"}>
+                Save consent
               </Button>
             </form>
           </SettingsSection>
@@ -916,7 +759,6 @@ export function SettingsPage() {
             title="Content"
             kicker="Posts"
             icon={FileText}
-            badge={`${posts.length} shown`}
           >
             <div className="flex flex-wrap items-end gap-3">
               <SelectField
@@ -957,7 +799,6 @@ export function SettingsPage() {
             title="Danger"
             kicker="Account"
             icon={Trash2}
-            badge={deletionActive ? "pending" : "available"}
             danger
           >
             <DangerAction
@@ -1030,7 +871,111 @@ export function SettingsPage() {
             </div>
           </SettingsSection>
         </div>
-      </div>
+
+      <ModalSheet
+        open={identityEditor === "email"}
+        onClose={() => setIdentityEditor(undefined)}
+        title="Change email"
+        description={settings.account.email}
+        closeLabel="Close email editor"
+        size="sm"
+        mobile="dialog"
+        busy={busy === "email"}
+      >
+        <form className="space-y-3" onSubmit={handleEmailSubmit}>
+          <TextField
+            id="settings-email"
+            name="email"
+            label="Email"
+            type="email"
+            defaultValue={settings.account.email}
+            icon={Mail}
+            density="compact"
+            required
+          />
+          <TextField
+            id="settings-email-password"
+            name="currentPassword"
+            label="Current password"
+            type="password"
+            autoComplete="current-password"
+            density="compact"
+            required
+          />
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={busy === "email"}
+              onClick={() => setIdentityEditor(undefined)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" icon={<Save size={15} />} disabled={busy === "email"}>
+              Save email
+            </Button>
+          </div>
+        </form>
+      </ModalSheet>
+
+      <ModalSheet
+        open={identityEditor === "handle"}
+        onClose={() => setIdentityEditor(undefined)}
+        title="Change handle"
+        description={`@${settings.account.handle}`}
+        closeLabel="Close handle editor"
+        size="sm"
+        mobile="dialog"
+        busy={busy === "handle"}
+      >
+        <form className="space-y-3" onSubmit={handleHandleSubmit}>
+          <HandleField
+            id="settings-handle"
+            name="handle"
+            label="Handle"
+            defaultValue={settings.account.handle}
+            disabled={settings.account.handleChange.canChange === false}
+            density="compact"
+            required
+            maxLength={41}
+          />
+          <TextField
+            id="settings-handle-password"
+            name="currentPassword"
+            label="Current password"
+            type="password"
+            autoComplete="current-password"
+            density="compact"
+            required
+          />
+          {settings.account.handleChange.canChange === false ? (
+            <p className="text-xs text-muted">
+              Next change allowed {settings.account.handleChange.nextAllowedAt}.
+            </p>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={busy === "handle"}
+              onClick={() => setIdentityEditor(undefined)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={
+                busy === "handle" ||
+                settings.account.handleChange.canChange === false
+              }
+              icon={<Save size={15} />}
+              size="sm"
+            >
+              Save handle
+            </Button>
+          </div>
+        </form>
+      </ModalSheet>
 
       <ModalSheet
         open={bulkDeleteConfirmOpen}
@@ -1077,7 +1022,6 @@ function SettingsSection({
   icon,
   id,
   kicker,
-  badge,
   danger,
   title,
 }: {
@@ -1085,119 +1029,77 @@ function SettingsSection({
   icon: LucideIcon;
   id: string;
   kicker: string;
-  badge?: ReactNode;
   danger?: boolean;
   title: string;
 }) {
   const Icon = icon;
 
   return (
-    <Panel
+    <section
       id={id}
       className={cn(
-        "scroll-mt-24 overflow-hidden p-0",
-        danger && "border-rose/25 bg-rose/5",
+        "scroll-mt-24 border-t border-line/65 py-5 first:border-t-0",
+        danger && "mt-5 rounded-panel border border-rose/25 bg-rose/5 px-3 sm:px-4",
       )}
     >
-      <div className="flex items-center justify-between gap-3 border-b border-line/70 px-4 py-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <span
-            className={cn(
-              "grid size-9 shrink-0 place-items-center rounded-control border bg-canvas/60",
-              danger ? "border-rose/25 text-rose-ink" : "border-line text-accent-strong",
-            )}
-          >
-            <Icon aria-hidden="true" size={17} />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted">
-              {kicker}
-            </p>
-            <h2 className="truncate text-base font-semibold text-text">{title}</h2>
-          </div>
+      <div className="flex min-w-0 items-center gap-3">
+        <span
+          className={cn(
+            "grid size-8 shrink-0 place-items-center rounded-full bg-surface/65",
+            danger ? "text-rose-ink" : "text-accent-strong",
+          )}
+        >
+          <Icon aria-hidden="true" size={16} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted">
+            {kicker}
+          </p>
+          <h2 className="truncate text-base font-semibold text-text">{title}</h2>
         </div>
-        {badge ? (
-          <Badge
-            tone={danger ? "rose" : "default"}
-            className="min-h-6 shrink-0 px-2 text-[0.68rem]"
-          >
-            {badge}
-          </Badge>
-        ) : null}
       </div>
-      <div className="p-3 sm:p-4">{children}</div>
-    </Panel>
+      <div className="mt-3">{children}</div>
+    </section>
   );
 }
 
-function SettingsRail() {
-  return (
-    <nav className="hidden lg:block" aria-label="Settings sections">
-      <Panel className="sticky top-24 p-2">
-        <div className="grid gap-1">
-          {settingsNavItems.map(({ id, label, icon: Icon }) => (
-            <a
-              key={id}
-              href={`#${id}`}
-              className="flex min-h-10 items-center gap-2 rounded-control px-3 text-sm font-medium text-muted transition duration-fluid hover:bg-surface-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
-            >
-              <Icon aria-hidden="true" size={16} />
-              {label}
-            </a>
-          ))}
-        </div>
-      </Panel>
-    </nav>
-  );
-}
-
-function InlineStatus({
+function AccountFactRow({
+  actionLabel,
   icon: Icon,
   label,
-  tone = "default",
-}: {
-  icon: LucideIcon;
-  label: string;
-  tone?: "default" | "cool" | "warm";
-}) {
-  return (
-    <div
-      className={cn(
-        "flex min-h-9 items-center gap-2 rounded-card border px-2.5 text-sm font-semibold",
-        tone === "cool" && "border-cool/30 bg-cool/12 text-cool-ink",
-        tone === "warm" && "border-warm/35 bg-warm/12 text-warm-ink",
-        tone === "default" && "border-line bg-canvas/45 text-text",
-      )}
-    >
-      <Icon aria-hidden="true" size={16} />
-      <span className="truncate">{label}</span>
-    </div>
-  );
-}
-
-function StatusTile({
-  icon: Icon,
-  label,
+  onEdit,
   value,
 }: {
+  actionLabel: string;
   icon: LucideIcon;
   label: string;
+  onEdit: () => void;
   value: string;
 }) {
   return (
     <div
-      className="flex min-w-0 items-center gap-3 rounded-control bg-canvas/26 px-2.5 py-2"
+      className="flex min-w-0 items-center gap-3 rounded-control border border-line bg-surface/60 px-3 py-2.5"
       data-testid={`settings-readout-${label.toLowerCase()}`}
     >
-      <span className="grid size-8 shrink-0 place-items-center rounded-full bg-surface/58 text-muted">
+      <span className="grid size-8 shrink-0 place-items-center rounded-full bg-canvas/58 text-muted">
         <Icon aria-hidden="true" size={15} />
       </span>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-muted/90">
           {label}
         </p>
         <p className="truncate text-sm font-semibold text-text">{value}</p>
       </div>
+      <Button
+        type="button"
+        size="icon"
+        variant="secondary"
+        className="size-9 shrink-0"
+        aria-label={actionLabel}
+        title={actionLabel}
+        icon={<Pencil aria-hidden="true" size={15} />}
+        onClick={onEdit}
+      />
     </div>
   );
 }
@@ -1351,21 +1253,43 @@ function PreferenceToggle({
 function preferencesFromForm(
   form: FormData,
   fallback: AccountPreferences | undefined,
+  scope: "consent" | "notifications",
 ): AccountPreferences {
   const notifications: Record<string, boolean> = {};
   const pushNotifications: Record<string, boolean> = {};
 
   for (const [key] of notificationKeys) {
-    notifications[key] = form.get(`notification:${key}`) === "on";
-    pushNotifications[key] = form.get(`pushNotification:${key}`) === "on";
+    notifications[key] =
+      scope === "notifications"
+        ? form.get(`notification:${key}`) === "on"
+        : fallback?.notifications[key] ?? true;
+    pushNotifications[key] =
+      scope === "notifications"
+        ? form.get(`pushNotification:${key}`) === "on"
+        : fallback?.pushNotifications[key] ?? true;
   }
 
   return {
-    analyticsConsent: form.get("analyticsConsent") === "on",
-    personalizationConsent: form.get("personalizationConsent") === "on",
-    richEmbedsConsent: form.get("richEmbedsConsent") === "on",
-    autoplayMediaConsent: form.get("autoplayMediaConsent") === "on",
-    sensitiveContentVisible: form.get("sensitiveContentVisible") === "on",
+    analyticsConsent:
+      scope === "consent"
+        ? form.get("analyticsConsent") === "on"
+        : fallback?.analyticsConsent ?? false,
+    personalizationConsent:
+      scope === "consent"
+        ? form.get("personalizationConsent") === "on"
+        : fallback?.personalizationConsent ?? true,
+    richEmbedsConsent:
+      scope === "consent"
+        ? form.get("richEmbedsConsent") === "on"
+        : fallback?.richEmbedsConsent ?? true,
+    autoplayMediaConsent:
+      scope === "consent"
+        ? form.get("autoplayMediaConsent") === "on"
+        : fallback?.autoplayMediaConsent ?? false,
+    sensitiveContentVisible:
+      scope === "consent"
+        ? form.get("sensitiveContentVisible") === "on"
+        : fallback?.sensitiveContentVisible ?? false,
     notifications,
     emailNotifications: fallback?.emailNotifications ?? {},
     pushNotifications,

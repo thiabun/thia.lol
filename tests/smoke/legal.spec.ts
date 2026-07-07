@@ -278,6 +278,7 @@ test("settings can download a mocked account data export", async ({ page }) => {
     page.getByRole("heading", { name: "Data rights" }),
   ).toBeVisible();
   const dataRights = page.locator("#data-rights");
+  await dataRights.locator("summary", { hasText: "Download account data" }).click();
   await dataRights.getByLabel("Current password").fill("correct-password");
 
   const downloadPromise = page.waitForEvent("download");

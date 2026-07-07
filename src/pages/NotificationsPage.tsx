@@ -9,9 +9,11 @@ import {
   MessageCircle,
   RefreshCw,
   Repeat2,
+  UserCheck,
   UserPlus,
   UsersRound,
   WifiOff,
+  X,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
@@ -23,9 +25,13 @@ import { Panel } from "../components/ui/Panel";
 import { RouteHeader, RouteStateNotice } from "../components/ui/RouteState";
 import { InlineUserProfileLink } from "../components/social/UserProfileLink";
 import {
+  approveFollowRequest,
+  denyFollowRequest,
+  getFollowRequests,
   getNotifications,
   markAllNotificationsRead,
   markNotificationRead,
+  type FollowRequest,
 } from "../lib/api";
 import { cn } from "../lib/classNames";
 import { formatRelativeTime } from "../lib/dates";
@@ -40,24 +46,40 @@ type NotificationState = {
   error: Error | undefined;
 };
 
+type FollowRequestState = {
+  requests: FollowRequest[];
+  loading: boolean;
+  error: string | undefined;
+};
+
 export function NotificationsPage() {
-  const { csrfToken, status } = useAuth();
+  const { csrfToken, runWithAuth, status } = useAuth();
   const [state, setState] = useState<NotificationState>({
     data: undefined,
     loading: status === "authenticated",
     error: undefined,
   });
+  const [requestState, setRequestState] = useState<FollowRequestState>({
+    requests: [],
+    loading: status === "authenticated",
+    error: undefined,
+  });
   const [pendingId, setPendingId] = useState<number | "all" | undefined>();
+  const [requestPendingId, setRequestPendingId] = useState<number | undefined>();
   const [actionError, setActionError] = useState<string | undefined>();
+  const [requestActionError, setRequestActionError] = useState<string | undefined>();
   const notifications = state.data?.notifications ?? [];
   const unreadCount = state.data?.unreadCount ?? 0;
+  const followRequests = requestState.requests;
   const loadNotifications = useCallback(() => {
     if (status !== "authenticated") {
       setState({ data: undefined, loading: false, error: undefined });
+      setRequestState({ requests: [], loading: false, error: undefined });
       return;
     }
 
     setState((current) => ({ ...current, loading: true, error: undefined }));
+    setRequestState((current) => ({ ...current, loading: true, error: undefined }));
 
     getNotifications()
       .then((data) => {
@@ -69,6 +91,18 @@ export function NotificationsPage() {
           data: undefined,
           loading: false,
           error: error instanceof Error ? error : new Error("Unknown error"),
+        });
+      });
+
+    getFollowRequests()
+      .then((requests) => {
+        setRequestState({ requests, loading: false, error: undefined });
+      })
+      .catch((caught: unknown) => {
+        setRequestState({
+          requests: [],
+          loading: false,
+          error: caught instanceof Error ? caught.message : "Follow requests could not load.",
         });
       });
   }, [status]);
@@ -133,6 +167,39 @@ export function NotificationsPage() {
       );
     } finally {
       setPendingId(undefined);
+    }
+  }
+
+  async function handleFollowRequest(request: FollowRequest, action: "approve" | "deny") {
+    if (!csrfToken) {
+      return;
+    }
+
+    setRequestPendingId(request.id);
+    setRequestActionError(undefined);
+
+    try {
+      await runWithAuth(
+        async (token) => {
+          if (action === "approve") {
+            await approveFollowRequest(request.id, token);
+            return;
+          }
+
+          await denyFollowRequest(request.id, token);
+        },
+        { retryOnCsrf: true },
+      );
+      setRequestState((current) => ({
+        ...current,
+        requests: current.requests.filter((nextRequest) => nextRequest.id !== request.id),
+      }));
+    } catch (caught) {
+      setRequestActionError(
+        caught instanceof Error ? caught.message : "Follow request could not be updated.",
+      );
+    } finally {
+      setRequestPendingId(undefined);
     }
   }
 
@@ -279,9 +346,39 @@ export function NotificationsPage() {
         />
       ) : null}
 
+      {requestState.error ? (
+        <RouteStateNotice
+          kind="error"
+          icon={WifiOff}
+          title="Could not load follow requests"
+          text={requestState.error}
+        />
+      ) : null}
+
+      {requestActionError ? (
+        <RouteStateNotice
+          kind="error"
+          icon={WifiOff}
+          title="Could not update follow request"
+          text={requestActionError}
+        />
+      ) : null}
+
+      {!requestState.loading && followRequests.length > 0 ? (
+        <FollowRequestsPanel
+          pendingId={requestPendingId}
+          requests={followRequests}
+          onResolve={handleFollowRequest}
+        />
+      ) : null}
+
       {!state.loading && !state.error ? <DesktopNotificationsCard compact /> : null}
 
-      {!state.loading && !state.error && notifications.length === 0 ? (
+      {!state.loading &&
+      !state.error &&
+      !requestState.loading &&
+      followRequests.length === 0 &&
+      notifications.length === 0 ? (
         <RouteStateNotice
           icon={Bell}
           title="No notifications yet"
@@ -301,6 +398,82 @@ export function NotificationsPage() {
         ))}
       </div>
     </motion.div>
+  );
+}
+
+function FollowRequestsPanel({
+  onResolve,
+  pendingId,
+  requests,
+}: {
+  onResolve: (request: FollowRequest, action: "approve" | "deny") => void;
+  pendingId: number | undefined;
+  requests: FollowRequest[];
+}) {
+  return (
+    <Panel className="overflow-hidden bg-surface/76" data-testid="follow-requests-panel">
+      <div className="flex items-center justify-between gap-3 border-b border-line/70 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-accent/12 text-accent-strong">
+            <UserPlus aria-hidden="true" size={17} />
+          </span>
+          <div className="min-w-0">
+            <h2 className="truncate text-base font-semibold text-text">Follow requests</h2>
+            <p className="text-sm text-muted">
+              {requests.length} pending
+            </p>
+          </div>
+        </div>
+      </div>
+      <div className="divide-y divide-line/60">
+        {requests.map((request) => {
+          const busy = pendingId === request.id;
+          const handle = `@${request.user.handle}`;
+
+          return (
+            <div
+              key={request.id}
+              className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-text">
+                  {request.user.displayName}
+                </p>
+                <p className="text-sm text-muted">{handle}</p>
+                {request.bioSnippet ? (
+                  <p className="mt-1 line-clamp-2 text-sm leading-5 text-muted">
+                    {request.bioSnippet}
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  aria-label={`Approve follow request from ${handle}`}
+                  icon={<UserCheck size={14} />}
+                  disabled={busy}
+                  onClick={() => void onResolve(request, "approve")}
+                >
+                  Approve
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  aria-label={`Deny follow request from ${handle}`}
+                  icon={<X size={14} />}
+                  disabled={busy}
+                  onClick={() => void onResolve(request, "deny")}
+                >
+                  Deny
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Panel>
   );
 }
 

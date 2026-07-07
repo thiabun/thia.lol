@@ -101,6 +101,42 @@ test("notification actor identity links to the actor profile", async ({ page }) 
   ).toBeVisible();
 });
 
+test("follow requests live on notifications page and can be approved", async ({
+  page,
+}) => {
+  const state = await mockAuthenticatedNotifications(page, [], [
+    {
+      id: 77,
+      createdAt: "2026-06-10 10:00:00",
+      bioSnippet: "Mostly here for tiny rooms and calmer feeds.",
+      user: {
+        id: 77,
+        handle: "mira",
+        displayName: "Mira",
+        initials: "M",
+        aura: "frost",
+        avatarUrl: null,
+      },
+    },
+  ]);
+
+  await page.goto("/notifications");
+
+  const requests = page.getByTestId("follow-requests-panel");
+  await expect(requests).toBeVisible();
+  await expect(requests).toContainText("Follow requests");
+  await expect(requests).toContainText("1 pending");
+  await expect(requests).toContainText("@mira");
+  await expect(page.getByText("No notifications yet")).toHaveCount(0);
+
+  await requests
+    .getByRole("button", { name: "Approve follow request from @mira" })
+    .click();
+
+  await expect.poll(() => state.approvedId).toBe(77);
+  await expect(requests).toHaveCount(0);
+});
+
 test("mark all notifications as read works against the API", async ({ page }) => {
   skipWithoutCredentials();
 
@@ -190,7 +226,21 @@ async function mockAnonymousNotifications(page: Page) {
   });
 }
 
-async function mockAuthenticatedNotifications(page: Page, notifications: unknown[]) {
+async function mockAuthenticatedNotifications(
+  page: Page,
+  notifications: unknown[],
+  followRequests: unknown[] = [],
+) {
+  const state: {
+    approvedId: number | undefined;
+    deniedId: number | undefined;
+    requests: unknown[];
+  } = {
+    approvedId: undefined,
+    deniedId: undefined,
+    requests: [...followRequests],
+  };
+
   await page.route("**/api/auth/me", async (route) => {
     await route.fulfill({
       status: 200,
@@ -247,6 +297,58 @@ async function mockAuthenticatedNotifications(page: Page, notifications: unknown
           unreadCount: notifications.length,
         },
       }),
+    });
+  });
+
+  await page.route("**/api/me/follow-requests**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const match = url.pathname.match(/\/api\/me\/follow-requests\/(\d+)/u);
+    const id = match ? Number(match[1]) : undefined;
+
+    if (request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: state.requests }),
+      });
+      return;
+    }
+
+    expect(request.headers()["x-csrf-token"]).toBe("test-csrf");
+
+    if (request.method() === "POST" && id !== undefined) {
+      state.approvedId = id;
+      state.requests = state.requests.filter((requestItem) => {
+        const maybeRequest = requestItem as { id?: unknown };
+        return maybeRequest.id !== id;
+      });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: { approved: true } }),
+      });
+      return;
+    }
+
+    if (request.method() === "DELETE" && id !== undefined) {
+      state.deniedId = id;
+      state.requests = state.requests.filter((requestItem) => {
+        const maybeRequest = requestItem as { id?: unknown };
+        return maybeRequest.id !== id;
+      });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: { denied: true } }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 405,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "Unsupported method." }),
     });
   });
 
@@ -323,4 +425,6 @@ async function mockAuthenticatedNotifications(page: Page, notifications: unknown
       }),
     });
   });
+
+  return state;
 }

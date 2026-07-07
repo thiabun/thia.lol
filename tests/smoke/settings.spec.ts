@@ -21,8 +21,16 @@ test("settings separates readouts and confirms bulk content deletion", async ({
   );
   await expectStaticReadout(account.getByTestId("settings-readout-email"));
   await expectStaticReadout(account.getByTestId("settings-readout-handle"));
-  await expect(account.getByText("Change email")).toBeVisible();
-  await expect(account.getByText("Change handle")).toBeVisible();
+  await expect(account.getByText("Change email")).toHaveCount(0);
+  await expect(account.getByText("Change handle")).toHaveCount(0);
+  const emailEdit = account.getByRole("button", { name: "Change email" });
+  const handleEdit = account.getByRole("button", { name: "Change handle" });
+  await expect(emailEdit).toBeVisible();
+  await expect(handleEdit).toBeVisible();
+  await expectCircularIconButton(emailEdit);
+  await expectCircularIconButton(handleEdit);
+  await expect(page.getByText("Follow requests")).toHaveCount(0);
+  await expect(page.getByText("5/5 enabled")).toHaveCount(0);
 
   const content = page.locator("#content");
   await expect(content).toContainText("Posts and replies");
@@ -67,6 +75,22 @@ async function expectNoHorizontalOverflow(page: Page) {
   );
 
   expect(hasHorizontalOverflow).toBe(false);
+}
+
+async function expectCircularIconButton(locator: Locator) {
+  const metrics = await locator.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = window.getComputedStyle(element);
+
+    return {
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      radius: Number.parseFloat(style.borderTopLeftRadius),
+    };
+  });
+
+  expect(Math.abs(metrics.width - metrics.height)).toBeLessThanOrEqual(2);
+  expect(metrics.radius).toBeGreaterThanOrEqual(metrics.height / 2 - 1);
 }
 
 async function mockAuthenticatedSettingsShell(page: Page) {
