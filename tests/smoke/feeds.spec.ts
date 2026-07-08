@@ -1310,6 +1310,54 @@ test("post body opens thread while controls keep their own behavior", async ({
   expect(reblogCalled).toBe(true);
 });
 
+test("uploaded post video controls do not open the thread", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockAuthenticatedApi(page);
+  let repliesRequested = false;
+
+  await page.route("**/api/feed/home", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          posts: [
+            makePost({
+              body: "A video upload.",
+              mediaUrl: "/uploads/media/2026/06/video-upload.mp4",
+              mediaType: "video",
+              mediaMime: "video/mp4",
+              mediaPosterUrl: portraitMediaFixture,
+            }),
+          ],
+          personalized: true,
+        },
+      }),
+    }),
+  );
+  await page.route("**/api/posts/42/replies", async (route) => {
+    repliesRequested = true;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+
+  await page.goto("/");
+
+  const post = page.getByTestId("post-card-open-thread").first();
+  await expect(post).toBeVisible();
+  const video = post.getByTestId("post-attachments-0-video");
+  await expect(video).toBeVisible();
+
+  await video.click({ position: { x: 24, y: 24 } });
+  await expect(page.getByTestId("thread-modal")).toHaveCount(0);
+  expect(repliesRequested).toBe(false);
+
+  await post.getByTestId("post-body-open-thread").click({ position: { x: 24, y: 24 } });
+  await expect(page.getByTestId("thread-modal")).toBeVisible();
+});
+
 test("post body and media hover stay visually flat in Light and Dark", async ({
   page,
 }) => {

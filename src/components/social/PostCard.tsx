@@ -345,6 +345,8 @@ function isThreadOpenIgnoredTarget(target: EventTarget | null) {
         "button",
         "input",
         "iframe",
+        "video",
+        "audio",
         "textarea",
         "select",
         "option",
