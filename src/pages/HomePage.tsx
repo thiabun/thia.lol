@@ -287,11 +287,14 @@ function AnonymousHomePage() {
         path="/"
       />
 
-      <Panel className="p-4 sm:p-5">
+      <section className="py-3 sm:py-4" aria-labelledby="home-intro-title">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
           <div className="min-w-0">
             <BrandLogoMain size="md" data-testid="home-brand-logo-main" />
-            <h1 className="mt-4 max-w-3xl text-2xl font-semibold tracking-normal text-text sm:text-3xl">
+            <h1
+              id="home-intro-title"
+              className="mt-4 max-w-3xl text-2xl font-semibold tracking-normal text-text sm:text-3xl"
+            >
               A small social place for profiles, rooms, and public posts.
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
@@ -321,7 +324,7 @@ function AnonymousHomePage() {
             </ButtonLink>
           </div>
         </div>
-      </Panel>
+      </section>
 
       {discoverState.error && !discoverState.data ? (
         <ApiStateNotice
