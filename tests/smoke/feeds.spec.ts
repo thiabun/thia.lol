@@ -106,7 +106,7 @@ test("Home refresh keeps the current feed visible until new posts arrive", async
     timeout: 5000,
   });
   await expectCircularControl(page.getByRole("button", { name: "Refresh" }));
-  await expectSquircleControl(
+  await expectPillControl(
     page.getByRole("button", { name: /Open replies/ }).first(),
   );
   refreshRequested = true;
@@ -2643,11 +2643,11 @@ async function expectCircularControl(locator: Locator) {
   expect(shape.radius).toBeGreaterThanOrEqual(shape.height / 2 - 1);
 }
 
-async function expectSquircleControl(locator: Locator) {
+async function expectPillControl(locator: Locator) {
   const shape = await readControlShape(locator);
 
-  expect(shape.radius).toBeGreaterThanOrEqual(6);
-  expect(shape.radius).toBeLessThan(shape.height / 2 - 2);
+  expect(shape.radius).toBeGreaterThanOrEqual(shape.height / 2 - 1);
+  expect(shape.width).toBeGreaterThan(shape.height);
 }
 
 async function expectVisuallyClipped(locator: Locator) {

@@ -1672,14 +1672,14 @@ function CommentButton({ count, onClick }: CommentButtonProps) {
   return (
     <motion.button
       type="button"
-      className="inline-flex min-h-8 items-center gap-1.5 rounded-control px-2.5 text-sm leading-none transition duration-fluid ease-fluid hover:bg-surface-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      className="inline-flex min-h-10 items-center gap-2 rounded-full border border-line bg-surface/80 px-4 text-base leading-none text-muted shadow-soft transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       aria-label={`Open replies. ${count} ${count === 1 ? "reply" : "replies"}.`}
       title="Replies"
       onClick={onClick}
       whileHover={buttonHover}
       whileTap={buttonTap}
     >
-      <MessageCircle aria-hidden="true" size={15} />
+      <MessageCircle aria-hidden="true" size={17} />
       <span className="tabular-nums">{count}</span>
     </motion.button>
   );
@@ -2814,10 +2814,10 @@ function LikeButton({
     <motion.button
       type="button"
       className={cn(
-        "inline-flex min-h-8 items-center gap-1.5 rounded-control px-2.5 text-sm leading-none transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-wait",
+        "inline-flex min-h-10 items-center gap-2 rounded-full border px-4 text-base leading-none shadow-soft transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-wait",
         liked
-          ? "bg-rose/20 text-rose-ink shadow-inner-soft"
-          : "hover:bg-surface-strong hover:text-text",
+          ? "border-rose/25 bg-rose/24 text-rose-ink shadow-inner-soft"
+          : "border-line bg-surface/80 text-muted hover:border-line-strong hover:bg-surface-strong hover:text-text",
         pending && "opacity-70",
       )}
       aria-label={`${liked ? "Unlike" : "Like"} this post. ${count} ${count === 1 ? "like" : "likes"}.`}
@@ -2834,7 +2834,7 @@ function LikeButton({
         animate={liked ? pulsePop : { scale: 1, transition: softSpring }}
         className="grid place-items-center"
       >
-        <Heart size={15} fill={liked ? "currentColor" : "none"} />
+        <Heart size={17} fill={liked ? "currentColor" : "none"} />
       </motion.span>
       <span className="tabular-nums">{count}</span>
     </motion.button>
@@ -2864,10 +2864,10 @@ function ReblogButton({
     <motion.button
       type="button"
       className={cn(
-        "inline-flex min-h-8 items-center gap-1.5 rounded-control px-2.5 text-sm leading-none transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55",
+        "inline-flex min-h-10 items-center gap-2 rounded-full border px-4 text-base leading-none shadow-soft transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55",
         reblogged
-          ? "bg-leaf/20 text-leaf-ink shadow-inner-soft"
-          : "hover:bg-surface-strong hover:text-text",
+          ? "border-leaf/25 bg-leaf/24 text-leaf-ink shadow-inner-soft"
+          : "border-line bg-surface/80 text-muted hover:border-line-strong hover:bg-surface-strong hover:text-text",
         pending && "cursor-wait opacity-70",
       )}
       aria-label={`${reblogged ? "Undo reblog" : "Reblog"} this post. ${count} ${count === 1 ? "reblog" : "reblogs"}.`}
@@ -2888,7 +2888,7 @@ function ReblogButton({
         }
         className="grid place-items-center"
       >
-        <Repeat2 size={15} />
+        <Repeat2 size={17} />
       </motion.span>
       <span className="tabular-nums">{count}</span>
     </motion.button>

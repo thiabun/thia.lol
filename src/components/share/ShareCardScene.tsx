@@ -70,7 +70,7 @@ const fallbackPalette: SharePalette = {
   accent: "#55d989",
 };
 
-const SHARE_CARD_RENDER_VERSION = "screenshot-v4";
+const SHARE_CARD_RENDER_VERSION = "screenshot-v5";
 
 export function ShareCardScene(props: ShareCardSceneProps) {
   const palette =
@@ -1165,13 +1165,14 @@ function Metric({
 }) {
   return (
     <span
-      className="inline-flex items-center gap-2 rounded-[14px] border px-5 py-3"
+      className="inline-flex min-h-[62px] items-center gap-3 rounded-full border px-7 py-3"
+      data-share-card-post-metric={label}
       style={{
-        backgroundColor: active ? hexToRgba(accent, 0.22) : "rgba(0,0,0,0.18)",
-        borderColor: active ? hexToRgba(accent, 0.2) : "transparent",
+        backgroundColor: active ? hexToRgba(accent, 0.24) : "rgba(0,0,0,0.2)",
+        borderColor: active ? hexToRgba(accent, 0.28) : "rgba(255,255,255,0.08)",
       }}
     >
-      <Icon size={19} />
+      <Icon size={24} />
       <span>{value}</span>
       <span className="sr-only">{label}</span>
     </span>

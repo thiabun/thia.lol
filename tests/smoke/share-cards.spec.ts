@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { Buffer } from "node:buffer";
 import sharp from "sharp";
 
@@ -82,6 +82,9 @@ test("post share render uses the post author avatar and post media", async ({ pa
   await expect(page.locator("[data-share-card-canvas][data-share-card-ready='true']")).toBeVisible();
   await expect(page.locator("[data-share-card-brand]")).toHaveCSS("height", "52px");
   await expect(page.locator("[data-share-card-post-screenshot]")).toBeVisible();
+  await expectShareMetricPill(page.locator("[data-share-card-post-metric='Replies']"));
+  await expectShareMetricPill(page.locator("[data-share-card-post-metric='Likes']"));
+  await expectShareMetricPill(page.locator("[data-share-card-post-metric='Reposts']"));
 
   const avatarSrc = await page.locator("[data-share-card-post-author-avatar]").getAttribute("src");
   const mediaSrc = await page.locator("[data-share-card-post-media]").getAttribute("src");
@@ -275,6 +278,24 @@ function spotifyTrackCard() {
     stale: false,
     lastError: null,
   };
+}
+
+async function expectShareMetricPill(locator: Locator) {
+  await expect(locator).toBeVisible();
+
+  const shape = await locator.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const styles = window.getComputedStyle(element);
+
+    return {
+      height: rect.height,
+      radius: Number.parseFloat(styles.borderTopLeftRadius),
+      width: rect.width,
+    };
+  });
+
+  expect(shape.radius).toBeGreaterThanOrEqual(shape.height / 2 - 1);
+  expect(shape.width).toBeGreaterThan(shape.height);
 }
 
 function postFixture() {
