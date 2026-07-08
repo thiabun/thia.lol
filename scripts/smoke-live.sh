@@ -98,7 +98,6 @@ const encodedNormalizedHandle = encodeURIComponent(normalizedHandle);
 const image = metaContent("og:image");
 const validGeneratedImagePaths = [
   `/api/profiles/${encodeURIComponent(handle)}/share-card.png`,
-  `/uploads/share-cards/profiles/${encodeURIComponent(`${normalizedHandle}-mosaic-v6.jpg`)}`,
 ];
 const cachedScreenshotPattern = new RegExp(
   `/uploads/share-cards/profiles/${encodedNormalizedHandle}-screenshot-v[0-9]+\\.jpg(?:[?#]|$)`,
@@ -118,7 +117,7 @@ if (image.includes("/brand/thia-og")) {
 }
 
 if (!validGeneratedImagePaths.some((path) => image.includes(path)) && !cachedScreenshotPattern.test(image)) {
-  failures.push(`expected og:image to reference a generated profile share card, got ${image || "missing"}`);
+  failures.push(`expected og:image to reference a frontend-rendered profile share card, got ${image || "missing"}`);
 }
 
 if (metaContent("og:image:width") !== "2400" || metaContent("og:image:height") !== "1260") {

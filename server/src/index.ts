@@ -100,6 +100,7 @@ const shareCardService = createShareCardService({
   roomsRepository,
   uploadRoot: config.THIA_UPLOAD_ROOT,
   publicBaseUrl: config.THIA_PUBLIC_BASE_URL,
+  browserExecutablePath: config.THIA_SHARE_CARD_BROWSER_PATH,
 });
 const shareShellService = createShareShellService({
   postsRepository,

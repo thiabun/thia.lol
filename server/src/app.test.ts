@@ -1017,6 +1017,16 @@ function shareCardServiceMock(overrides: Partial<ShareCardService> = {}): ShareC
       contentType: "image/png",
       cacheControl: "public, max-age=1800",
     }),
+    refreshPostCard: vi.fn().mockResolvedValue({
+      url: "/uploads/share-cards/posts/card.jpg",
+      width: 2400,
+      height: 1260,
+    }),
+    refreshProfileCard: vi.fn().mockResolvedValue({
+      url: "/uploads/share-cards/profiles/card.jpg",
+      width: 2400,
+      height: 1260,
+    }),
     cachePostCard: vi.fn().mockResolvedValue({
       url: "/uploads/share-cards/posts/card.png",
       width: 2400,
@@ -1908,6 +1918,76 @@ describe("Node API profile/account editor preview routes", () => {
     expect(repository.deleteMyPosts).toHaveBeenCalledWith(42, "posts");
   });
 
+  it("refreshes profile share cards after saved profile edits", async () => {
+    const repository = editorRepositoryMock();
+    const service = shareCardServiceMock();
+    const thiaSession = { ...session, handle: "thia" };
+    const app = buildApp({
+      editorRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock({
+        currentSession: vi.fn().mockResolvedValue(thiaSession),
+      }),
+      shareCardService: service,
+    });
+
+    for (const [method, path, payload, expectedStatus] of [
+      ["PATCH", "/me/profile", { displayName: "Thia" }, 200],
+      ["POST", "/me/profile", { bio: "Updated bio." }, 200],
+      ["PATCH", "/me/profile/featured", { featuredPostId: null, featuredRoomId: null }, 200],
+      ["POST", "/me/profile/modules", { type: "custom_text", title: "Note", config: { body: "Hello" } }, 201],
+      ["PATCH", "/me/profile/modules/11", { title: "Note" }, 200],
+      ["DELETE", "/me/profile/modules/11", {}, 200],
+      ["POST", "/me/profile/modules/11/restore", {}, 200],
+      ["PATCH", "/me/profile/module-order", { moduleIds: [11] }, 200],
+      ["PATCH", "/me/profile/canvas", { backgroundBlur: "medium" }, 200],
+      ["POST", "/me/profile/canvas-draft/commit", {}, 200],
+      ["PATCH", "/me/badges/featured", { featuredBadgeIds: [1] }, 200],
+    ] as const) {
+      const response = await app.inject({
+        method,
+        url: path,
+        headers: {
+          "x-csrf-token": "csrf-token",
+        },
+        payload,
+      });
+
+      expect(response.statusCode).toBe(expectedStatus);
+    }
+
+    expect(service.refreshProfileCard).toHaveBeenCalledTimes(11);
+    expect(service.refreshProfileCard).toHaveBeenCalledWith("thia");
+  });
+
+  it("does not refresh profile share cards for uncommitted canvas draft saves", async () => {
+    const service = shareCardServiceMock();
+    const app = buildApp({
+      editorRepository: editorRepositoryMock(),
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+      shareCardService: service,
+    });
+
+    for (const [method, path, payload] of [
+      ["PATCH", "/me/profile/canvas-draft", { backgroundBlur: "soft" }],
+      ["DELETE", "/me/profile/canvas-draft", {}],
+    ] as const) {
+      const response = await app.inject({
+        method,
+        url: path,
+        headers: {
+          "x-csrf-token": "csrf-token",
+        },
+        payload,
+      });
+
+      expect(response.statusCode).toBe(200);
+    }
+
+    expect(service.refreshProfileCard).not.toHaveBeenCalled();
+  });
+
   it("serves profile editor reads through PHP-style wrappers", async () => {
     const repository = editorRepositoryMock();
     const app = buildApp({
@@ -2722,6 +2802,50 @@ describe("Node API social and content mutation preview routes", () => {
     expect(repository.reactToPost).toHaveBeenCalledWith(99, 42, expect.any(Object));
     expect(repository.deletePostReaction).toHaveBeenCalledWith(99, 42, "echo");
     expect(repository.sharePostToMessages).toHaveBeenCalledWith("pc359fe2da759", 42, expect.any(Object));
+  });
+
+  it("refreshes frontend share cards after post creation and edits", async () => {
+    const repository = contentMutationsRepositoryMock();
+    const service = shareCardServiceMock();
+    const app = buildApp({
+      contentMutationsRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+      shareCardService: service,
+    });
+
+    const create = await app.inject({
+      method: "POST",
+      url: "/posts",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: { body: "Hello Node." },
+    });
+    const reply = await app.inject({
+      method: "POST",
+      url: "/posts/99/replies",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: { body: "Reply." },
+    });
+    const update = await app.inject({
+      method: "PATCH",
+      url: "/posts/99",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: { body: "Edited." },
+    });
+
+    expect(create.statusCode).toBe(201);
+    expect(reply.statusCode).toBe(201);
+    expect(update.statusCode).toBe(200);
+    expect(service.refreshPostCard).toHaveBeenCalledTimes(3);
+    expect(service.refreshPostCard).toHaveBeenCalledWith("pc359fe2da759", 42);
+    expect(service.refreshProfileCard).toHaveBeenCalledTimes(2);
+    expect(service.refreshProfileCard).toHaveBeenCalledWith("thia");
   });
 
   it("passes post media metadata through create, reply, and update mutations", async () => {

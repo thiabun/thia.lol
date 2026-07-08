@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 import type { MultipartFile } from "@fastify/multipart";
+import type { Browser } from "playwright-core";
 import sharp from "sharp";
 
 import type { PostsRepository } from "./posts.js";
@@ -41,9 +42,15 @@ export interface ShareCardService {
   postCard(identifier: string, viewerUserId: number | null): Promise<ShareCardImage>;
   profileCard(handle: string): Promise<ShareCardImage>;
   roomCard(slug: string): Promise<ShareCardImage>;
+  refreshPostCard(identifier: string, viewerUserId: number | null): Promise<ShareCardCachePayload | null>;
+  refreshProfileCard(handle: string): Promise<ShareCardCachePayload | null>;
   cachePostCard(identifier: string, session: RequestSession, file: MultipartFile | undefined): Promise<ShareCardCachePayload>;
   cacheProfileCard(handle: string, session: RequestSession, file: MultipartFile | undefined): Promise<ShareCardCachePayload>;
   proxyImage(rawUrl: string): Promise<ShareCardImage | null>;
+}
+
+export interface ShareCardRenderer {
+  render(url: string): Promise<Buffer>;
 }
 
 export interface ShareCardServiceOptions {
@@ -52,6 +59,8 @@ export interface ShareCardServiceOptions {
   roomsRepository: RoomsRepository;
   uploadRoot: string;
   publicBaseUrl: string;
+  browserExecutablePath?: string | null;
+  renderer?: ShareCardRenderer;
 }
 
 export function createShareCardService(options: ShareCardServiceOptions): ShareCardService {
@@ -59,7 +68,15 @@ export function createShareCardService(options: ShareCardServiceOptions): ShareC
 }
 
 class NodeShareCardService implements ShareCardService {
-  constructor(private readonly options: ShareCardServiceOptions) {}
+  private readonly pendingRenders = new Map<string, Promise<ShareCardImage>>();
+  private readonly renderer: ShareCardRenderer;
+
+  constructor(private readonly options: ShareCardServiceOptions) {
+    this.renderer = options.renderer ?? new PlaywrightShareCardRenderer({
+      ...(options.browserExecutablePath !== undefined ? { browserExecutablePath: options.browserExecutablePath } : {}),
+      publicBaseUrl: options.publicBaseUrl,
+    });
+  }
 
   async postCard(identifier: string, viewerUserId: number | null): Promise<ShareCardImage> {
     const post = await this.options.postsRepository.getPublicPost(identifier, viewerUserId, this.options.publicBaseUrl);
@@ -75,24 +92,11 @@ class NodeShareCardService implements ShareCardService {
       return cached;
     }
 
-    const authorName = String(post.author?.displayName ?? post.author?.handle ?? "thia.lol");
-    const authorHandle = String(post.author?.handle ?? "profile");
-    const body = String(post.body ?? "");
-    const svg = shareCardSvg({
-      eyebrow: "thia.lol post",
-      title: authorName,
-      subtitle: `@${authorHandle}`,
-      body: bodySnippet(body, 220),
-      metrics: [
-        { icon: "reply", label: "replies", value: Number(post.commentCount ?? 0), active: false },
-        { icon: "heart", label: "likes", value: Number(post.likeCount ?? 0), active: Number(post.likeCount ?? 0) > 0 },
-        { icon: "repost", label: "reblogs", value: Number(post.reblogCount ?? 0), active: Number(post.reblogCount ?? 0) > 0 },
-      ],
-      canonical: post.canonicalPath,
-      accent: "#f48cad",
-    });
-
-    return pngImage(await sharp(Buffer.from(svg)).png().toBuffer());
+    return this.renderAndStoreCard(
+      "post",
+      publicId,
+      `/share-render/post/${encodeURIComponent(publicId)}`,
+    );
   }
 
   async profileCard(handle: string): Promise<ShareCardImage> {
@@ -109,20 +113,55 @@ class NodeShareCardService implements ShareCardService {
       return cached;
     }
 
-    const displayName = String(profile.user?.displayName ?? profileHandle);
-    const bio = String(profile.bio ?? "");
-    const stats = profile.stats ?? {};
-    const svg = shareCardSvg({
-      eyebrow: "thia.lol profile",
-      title: displayName,
-      subtitle: `@${profileHandle}`,
-      body: bodySnippet(bio === "" ? "A thia.lol profile." : bio, 220),
-      statLine: `${Number(stats.posts ?? 0)} posts  ·  ${Number(stats.followers ?? 0)} followers  ·  ${Number(stats.stars ?? 0)} stars`,
-      canonical: `/@${encodeURIComponent(profileHandle)}`,
-      accent: "#58e2e0",
-    });
+    return this.renderAndStoreCard(
+      "profile",
+      profileHandle,
+      `/share-render/profile/${encodeURIComponent(profileHandle)}`,
+    );
+  }
 
-    return pngImage(await sharp(Buffer.from(svg)).png().toBuffer());
+  async refreshPostCard(identifier: string, viewerUserId: number | null): Promise<ShareCardCachePayload | null> {
+    const post = await this.options.postsRepository.getPublicPost(identifier, viewerUserId, this.options.publicBaseUrl);
+
+    if (post === null) {
+      return null;
+    }
+
+    const publicId = String(post.publicId ?? post.id);
+    await this.renderAndStoreCard(
+      "post",
+      publicId,
+      `/share-render/post/${encodeURIComponent(publicId)}`,
+      true,
+    );
+
+    return {
+      url: this.cacheUrl("post", publicId, "jpg"),
+      width: shareCardWidth,
+      height: shareCardHeight,
+    };
+  }
+
+  async refreshProfileCard(handle: string): Promise<ShareCardCachePayload | null> {
+    const profile = await this.options.profilesRepository.getPublicProfile(handle);
+
+    if (profile === null || profile.viewerCanView === false) {
+      return null;
+    }
+
+    const profileHandle = String(profile.user?.handle ?? handle);
+    await this.renderAndStoreCard(
+      "profile",
+      profileHandle,
+      `/share-render/profile/${encodeURIComponent(profileHandle)}`,
+      true,
+    );
+
+    return {
+      url: this.cacheUrl("profile", profileHandle, "jpg"),
+      width: shareCardWidth,
+      height: shareCardHeight,
+    };
   }
 
   async roomCard(slug: string): Promise<ShareCardImage> {
@@ -257,6 +296,60 @@ class NodeShareCardService implements ShareCardService {
     };
   }
 
+  private async renderAndStoreCard(
+    kind: "post" | "profile",
+    key: string,
+    renderPath: string,
+    force = false,
+  ): Promise<ShareCardImage> {
+    const pendingKey = `${kind}:${key.toLowerCase()}`;
+
+    if (!force) {
+      const cached = await this.cachedImage(kind, key);
+
+      if (cached !== null) {
+        return cached;
+      }
+    }
+
+    const pending = this.pendingRenders.get(pendingKey);
+
+    if (pending !== undefined) {
+      return pending;
+    }
+
+    const render = this.renderAndWriteCard(kind, key, renderPath)
+      .finally(() => {
+        this.pendingRenders.delete(pendingKey);
+      });
+
+    this.pendingRenders.set(pendingKey, render);
+
+    return render;
+  }
+
+  private async renderAndWriteCard(
+    kind: "post" | "profile",
+    key: string,
+    renderPath: string,
+  ): Promise<ShareCardImage> {
+    const url = new URL(renderPath, this.options.publicBaseUrl).toString();
+    const rendered = await this.renderer.render(url);
+    const buffer = await normalizedJpegShareCard(rendered);
+    const cachePath = this.cachePath(kind, key, "jpg");
+    const temporaryPath = `${cachePath}.${Date.now()}.tmp`;
+
+    await mkdir(path.dirname(cachePath), { recursive: true, mode: 0o755 });
+    await writeFile(temporaryPath, buffer, { mode: 0o644 });
+    await rename(temporaryPath, cachePath);
+
+    return {
+      body: buffer,
+      contentType: "image/jpeg",
+      cacheControl: "public, max-age=604800, stale-while-revalidate=86400",
+    };
+  }
+
   private async cachedImage(kind: "post" | "profile", key: string): Promise<ShareCardImage | null> {
     for (const extension of ["jpg", "png"] as const) {
       const cachePath = this.cachePath(kind, key, extension);
@@ -316,6 +409,190 @@ class NodeShareCardService implements ShareCardService {
     return existsSync(filePath) ? filePath : null;
   }
 }
+
+class PlaywrightShareCardRenderer implements ShareCardRenderer {
+  private browserPromise: Promise<Browser> | null = null;
+
+  constructor(
+    private readonly options: {
+      browserExecutablePath?: string | null;
+      publicBaseUrl: string;
+    },
+  ) {}
+
+  async render(url: string): Promise<Buffer> {
+    const browser = await this.browser();
+    const page = await browser.newPage({
+      colorScheme: "dark",
+      deviceScaleFactor: 2,
+      javaScriptEnabled: true,
+      viewport: {
+        width: 1200,
+        height: 630,
+      },
+    });
+
+    try {
+      page.setDefaultTimeout(20_000);
+      await page.goto(url, {
+        timeout: 20_000,
+        waitUntil: "domcontentloaded",
+      });
+
+      const canvas = page.locator("[data-share-card-canvas][data-share-card-ready='true']");
+      await canvas.waitFor({ state: "visible", timeout: 15_000 });
+      await page.evaluate(waitForShareCardAssetsScript);
+      await page.waitForTimeout(150);
+
+      return Buffer.from(await canvas.screenshot({
+        animations: "disabled",
+        caret: "hide",
+        quality: 90,
+        scale: "device",
+        type: "jpeg",
+      }));
+    } finally {
+      await page.close().catch(() => undefined);
+    }
+  }
+
+  private async browser(): Promise<Browser> {
+    if (this.browserPromise !== null) {
+      return this.browserPromise;
+    }
+
+    const executablePath = shareCardBrowserExecutablePath(this.options.browserExecutablePath);
+
+    if (executablePath === null) {
+      throw new ShareCardRouteError("Share card browser is not configured.", 503);
+    }
+
+    this.browserPromise = import("playwright-core")
+      .then(({ chromium }) => chromium.launch({
+        args: [
+          "--disable-crash-reporter",
+          "--disable-crashpad",
+          "--disable-dev-shm-usage",
+          "--disable-gpu",
+          "--no-sandbox",
+        ],
+        env: shareCardBrowserEnvironment(),
+        executablePath,
+        headless: true,
+      }))
+      .catch((error: unknown) => {
+        this.browserPromise = null;
+        throw error;
+      });
+
+    return this.browserPromise;
+  }
+}
+
+async function normalizedJpegShareCard(buffer: Buffer): Promise<Buffer> {
+  const metadata = await sharp(buffer).metadata();
+
+  if (metadata.width === shareCardWidth && metadata.height === shareCardHeight && metadata.format === "jpeg") {
+    return buffer;
+  }
+
+  return sharp(buffer)
+    .resize(shareCardWidth, shareCardHeight, {
+      fit: "cover",
+      position: "center",
+    })
+    .jpeg({
+      mozjpeg: true,
+      quality: 90,
+    })
+    .toBuffer();
+}
+
+function shareCardBrowserExecutablePath(configuredPath: string | null | undefined): string | null {
+  const configured = configuredPath?.trim();
+
+  if (configured) {
+    return configured;
+  }
+
+  const envPath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?.trim();
+
+  if (envPath) {
+    return envPath;
+  }
+
+  for (const candidate of [
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+  ]) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function shareCardBrowserEnvironment(): Record<string, string> {
+  const env: Record<string, string> = {};
+
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) {
+      env[key] = value;
+    }
+  }
+
+  env.HOME = process.env.THIA_SHARE_CARD_BROWSER_HOME?.trim() || "/tmp";
+
+  return env;
+}
+
+const waitForShareCardAssetsScript = String.raw`
+(async () => {
+  const imagePromises = Array.from(document.images).map((image) => {
+    if (image.complete && image.naturalWidth > 0) {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+      const timeout = window.setTimeout(resolve, 2500);
+      const done = () => {
+        window.clearTimeout(timeout);
+        resolve();
+      };
+
+      image.addEventListener("load", done, { once: true });
+      image.addEventListener("error", done, { once: true });
+    });
+  });
+
+  const videoPromises = Array.from(document.querySelectorAll("video")).map((video) => {
+    if (video.readyState >= 2) {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+      const timeout = window.setTimeout(resolve, 2500);
+      const done = () => {
+        window.clearTimeout(timeout);
+        resolve();
+      };
+
+      video.addEventListener("loadeddata", done, { once: true });
+      video.addEventListener("error", done, { once: true });
+    });
+  });
+
+  await Promise.all([
+    document.fonts?.ready.catch(() => undefined) ?? Promise.resolve(),
+    ...imagePromises,
+    ...videoPromises,
+  ]);
+})()
+`;
 
 async function imageFromFile(filePath: string): Promise<ShareCardImage | null> {
   try {

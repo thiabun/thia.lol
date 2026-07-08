@@ -130,7 +130,8 @@ class NodeShareShellService implements ShareShellService {
     const title = `${authorName} on thia.lol`;
     const description = bodySnippet(post.body ?? "", 220);
     const canonicalUrl = httpsUrl(`${this.publicBaseUrl()}${postCanonicalPath(post)}`);
-    const imageUrl = httpsUrl(`${this.publicBaseUrl()}${postShareCardPath(post)}?v=${postCardVersion(post)}`);
+    const imagePath = this.postCardImagePath(post);
+    const imageUrl = httpsUrl(`${this.publicBaseUrl()}${imagePath}?v=${this.postCardVersion(post)}`);
     const imageAlt = `Post by @${authorHandle} on thia.lol.`;
     const meta = [
       metaName("description", description),
@@ -142,7 +143,7 @@ class NodeShareShellService implements ShareShellService {
       metaProperty("og:url", canonicalUrl),
       metaProperty("og:image", imageUrl),
       metaProperty("og:image:secure_url", imageUrl),
-      metaProperty("og:image:type", "image/png"),
+      metaProperty("og:image:type", cardImageType(imagePath, "post")),
       metaProperty("og:image:width", "2400"),
       metaProperty("og:image:height", "1260"),
       metaProperty("og:image:alt", imageAlt),
@@ -216,7 +217,7 @@ class NodeShareShellService implements ShareShellService {
       metaProperty("og:url", canonicalUrl),
       metaProperty("og:image", imageUrl),
       metaProperty("og:image:secure_url", imageUrl),
-      metaProperty("og:image:type", cardImageType(imagePath)),
+      metaProperty("og:image:type", cardImageType(imagePath, "profile")),
       metaProperty("og:image:width", "2400"),
       metaProperty("og:image:height", "1260"),
       metaProperty("og:image:alt", imageAlt),
@@ -380,6 +381,38 @@ class NodeShareShellService implements ShareShellService {
     return `/api/profiles/${encodeURIComponent(handle)}/share-card.png`;
   }
 
+  private postCardImagePath(post: PostPayload): string {
+    const identifier = postIdentifier(post);
+    const cached = cachedPostCardPath(this.options.uploadRoot, identifier);
+
+    if (cached !== null && existsSync(cached)) {
+      const cachedUrl = cachedPostCardUrlPath(identifier);
+
+      if (cachedUrl !== null) {
+        return cachedUrl;
+      }
+    }
+
+    return postShareCardPath(post);
+  }
+
+  private postCardVersion(post: PostPayload): string {
+    const cached = cachedPostCardPath(this.options.uploadRoot, postIdentifier(post));
+    const cachedMtime = cached !== null && existsSync(cached)
+      ? String(Math.trunc(statSync(cached).mtimeMs / 1000))
+      : "uncached";
+    const basis = [
+      shareCardCacheVersion,
+      cachedMtime,
+      postIdentifier(post),
+      post.updatedAt ?? "",
+      post.mediaUrl ?? "",
+      post.mediaPosterUrl ?? "",
+    ].join("|");
+
+    return sha256(basis).slice(0, 16);
+  }
+
   private profileCardVersion(profile: ProfilePayload): string {
     const cached = cachedProfileCardPath(this.options.uploadRoot, profile.user.handle ?? "");
     const cachedMtime = cached !== null && existsSync(cached)
@@ -541,18 +574,6 @@ function isoDate(value: string): string {
   return Number.isFinite(time) ? new Date(time).toISOString() : value;
 }
 
-function postCardVersion(post: PostPayload): string {
-  const basis = [
-    shareCardCacheVersion,
-    postIdentifier(post),
-    post.updatedAt ?? "",
-    post.mediaUrl ?? "",
-    post.mediaPosterUrl ?? "",
-  ].join("|");
-
-  return sha256(basis).slice(0, 16);
-}
-
 function roomCardVersion(room: RoomPayload): string {
   const basis = [
     shareCardCacheVersion,
@@ -598,6 +619,26 @@ function scriptSafeJson(value: unknown): string {
     .replaceAll("&", "\\u0026");
 }
 
+function cachedPostCardPath(uploadRoot: string, identifier: string): string | null {
+  const normalized = identifier.trim().toLowerCase();
+
+  if (!/^[a-z0-9_-]{1,80}$/u.test(normalized)) {
+    return null;
+  }
+
+  return path.join(uploadRoot, "share-cards", "posts", `${normalized}-${shareCardCacheVersion}.jpg`);
+}
+
+function cachedPostCardUrlPath(identifier: string): string | null {
+  const normalized = identifier.trim().toLowerCase();
+
+  if (!/^[a-z0-9_-]{1,80}$/u.test(normalized)) {
+    return null;
+  }
+
+  return `/uploads/share-cards/posts/${encodeURIComponent(`${normalized}-${shareCardCacheVersion}.jpg`)}`;
+}
+
 function cachedProfileCardPath(uploadRoot: string, handle: string): string | null {
   const normalized = handle.trim().toLowerCase();
 
@@ -618,8 +659,13 @@ function cachedProfileCardUrlPath(handle: string): string | null {
   return `/uploads/share-cards/profiles/${encodeURIComponent(`${normalized}-${shareCardCacheVersion}.jpg`)}`;
 }
 
-function cardImageType(imagePath: string): string {
-  const extension = path.extname(new URL(imagePath, "https://thia.lol").pathname).toLowerCase();
+function cardImageType(imagePath: string, kind?: "post" | "profile" | "room"): string {
+  const pathname = new URL(imagePath, "https://thia.lol").pathname;
+  const extension = path.extname(pathname).toLowerCase();
+
+  if ((kind === "post" || kind === "profile") && pathname.startsWith("/api/")) {
+    return "image/jpeg";
+  }
 
   return extension === ".jpg" || extension === ".jpeg" ? "image/jpeg" : "image/png";
 }

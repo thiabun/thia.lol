@@ -84,6 +84,7 @@ jobs:
             test ! -e /srv/thia.lol/www/config/config.php
             command -v ffmpeg >/dev/null
             command -v ffprobe >/dev/null
+            command -v google-chrome-stable >/dev/null
             test -r /etc/systemd/system/thia-node-api.service
             sudo -n /bin/systemctl cat thia-node-api.service | grep -F /srv/thia.lol/www/uploads >/dev/null
           '

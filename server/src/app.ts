@@ -1551,6 +1551,41 @@ async function sendShareCardImage(
   }
 }
 
+async function refreshPostShareCardAfterMutation(
+  request: FastifyRequest,
+  dependencies: AppDependencies,
+  routeName: string,
+  identifier: string,
+  viewerUserId: number | null,
+): Promise<void> {
+  if (dependencies.shareCardService === undefined) {
+    return;
+  }
+
+  try {
+    await dependencies.shareCardService.refreshPostCard(identifier, viewerUserId);
+  } catch (error) {
+    request.log.warn({ error, identifier, routeName }, "failed to refresh post share card");
+  }
+}
+
+async function refreshProfileShareCardAfterMutation(
+  request: FastifyRequest,
+  dependencies: AppDependencies,
+  routeName: string,
+  handle: string,
+): Promise<void> {
+  if (dependencies.shareCardService === undefined) {
+    return;
+  }
+
+  try {
+    await dependencies.shareCardService.refreshProfileCard(handle);
+  } catch (error) {
+    request.log.warn({ error, handle, routeName }, "failed to refresh profile share card");
+  }
+}
+
 function authRequestContext(request: FastifyRequest, dependencies: AppDependencies): AuthRequestContext {
   const forwardedFor = request.headers["x-forwarded-for"];
   const forwardedProto = request.headers["x-forwarded-proto"];
@@ -2281,7 +2316,12 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "me.profile.update",
-      (repository, session, body) => repository.updateProfile(session, jsonBodyRequiredObject(body, request.body)),
+      async (repository, session, body) => {
+        const profile = await repository.updateProfile(session, jsonBodyRequiredObject(body, request.body));
+        await refreshProfileShareCardAfterMutation(request, dependencies, "me.profile.update.share-card", profile.user.handle ?? session.handle);
+
+        return profile;
+      },
     ),
   );
 
@@ -2291,7 +2331,12 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "me.profile.update",
-      (repository, session, body) => repository.updateProfile(session, jsonBodyRequiredObject(body, request.body)),
+      async (repository, session, body) => {
+        const profile = await repository.updateProfile(session, jsonBodyRequiredObject(body, request.body));
+        await refreshProfileShareCardAfterMutation(request, dependencies, "me.profile.update.share-card", profile.user.handle ?? session.handle);
+
+        return profile;
+      },
     ),
   );
 
@@ -2301,7 +2346,12 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "me.profile.featured.update",
-      (repository, session, body) => repository.updateFeaturedProfile(session, jsonBodyRequiredObject(body, request.body)),
+      async (repository, session, body) => {
+        const profile = await repository.updateFeaturedProfile(session, jsonBodyRequiredObject(body, request.body));
+        await refreshProfileShareCardAfterMutation(request, dependencies, "me.profile.featured.update.share-card", profile.user.handle ?? session.handle);
+
+        return profile;
+      },
     ),
   );
 
@@ -2324,7 +2374,12 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "me.profile.modules.create",
-      (repository, session, body) => repository.createModule(session, jsonBodyRequiredObject(body, request.body)),
+      async (repository, session, body) => {
+        const modules = await repository.createModule(session, jsonBodyRequiredObject(body, request.body));
+        await refreshProfileShareCardAfterMutation(request, dependencies, "me.profile.modules.create.share-card", session.handle);
+
+        return modules;
+      },
       201,
     ),
   );
@@ -2342,7 +2397,12 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "me.profile.modules.update",
-      (repository, session, body) => repository.updateModule(session, moduleId, jsonBodyRequiredObject(body, request.body)),
+      async (repository, session, body) => {
+        const modules = await repository.updateModule(session, moduleId, jsonBodyRequiredObject(body, request.body));
+        await refreshProfileShareCardAfterMutation(request, dependencies, "me.profile.modules.update.share-card", session.handle);
+
+        return modules;
+      },
     );
   });
 
@@ -2359,7 +2419,12 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "me.profile.modules.delete",
-      (repository, session) => repository.deleteModule(session, moduleId),
+      async (repository, session) => {
+        const modules = await repository.deleteModule(session, moduleId);
+        await refreshProfileShareCardAfterMutation(request, dependencies, "me.profile.modules.delete.share-card", session.handle);
+
+        return modules;
+      },
     );
   });
 
@@ -2376,7 +2441,12 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "me.profile.modules.restore",
-      (repository, session) => repository.restoreModule(session, moduleId),
+      async (repository, session) => {
+        const modules = await repository.restoreModule(session, moduleId);
+        await refreshProfileShareCardAfterMutation(request, dependencies, "me.profile.modules.restore.share-card", session.handle);
+
+        return modules;
+      },
     );
   });
 
@@ -2386,7 +2456,12 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "me.profile.module-order.update",
-      (repository, session, body) => repository.updateModuleOrder(session, jsonBodyRequiredObject(body, request.body)),
+      async (repository, session, body) => {
+        const modules = await repository.updateModuleOrder(session, jsonBodyRequiredObject(body, request.body));
+        await refreshProfileShareCardAfterMutation(request, dependencies, "me.profile.module-order.update.share-card", session.handle);
+
+        return modules;
+      },
     ),
   );
 
@@ -2396,7 +2471,12 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "me.profile.canvas.update",
-      (repository, session, body) => repository.updateCanvas(session, jsonBodyRequiredObject(body, request.body)),
+      async (repository, session, body) => {
+        const canvas = await repository.updateCanvas(session, jsonBodyRequiredObject(body, request.body));
+        await refreshProfileShareCardAfterMutation(request, dependencies, "me.profile.canvas.update.share-card", session.handle);
+
+        return canvas;
+      },
     ),
   );
 
@@ -2436,7 +2516,12 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "me.profile.canvas-draft.commit",
-      (repository, session) => repository.commitCanvasDraft(session),
+      async (repository, session) => {
+        const canvas = await repository.commitCanvasDraft(session);
+        await refreshProfileShareCardAfterMutation(request, dependencies, "me.profile.canvas-draft.commit.share-card", session.handle);
+
+        return canvas;
+      },
     ),
   );
 
@@ -2446,7 +2531,12 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "me.badges.featured.update",
-      (repository, session, body) => repository.updateFeaturedBadges(session, jsonBodyRequiredObject(body, request.body)),
+      async (repository, session, body) => {
+        const badges = await repository.updateFeaturedBadges(session, jsonBodyRequiredObject(body, request.body));
+        await refreshProfileShareCardAfterMutation(request, dependencies, "me.badges.featured.update.share-card", session.handle);
+
+        return badges;
+      },
     ),
   );
 
@@ -3202,7 +3292,16 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "posts.create",
-      (repository, session, body) => repository.createPost(session, body),
+      async (repository, session, body) => {
+        const post = await repository.createPost(session, body);
+        const identifier = post.publicId !== "" ? post.publicId : String(post.id);
+        await Promise.all([
+          refreshPostShareCardAfterMutation(request, dependencies, "posts.create.share-card", identifier, session.userId),
+          refreshProfileShareCardAfterMutation(request, dependencies, "posts.create.profile-share-card", post.author.handle ?? session.handle),
+        ]);
+
+        return post;
+      },
       201,
     ),
   );
@@ -3235,7 +3334,16 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "posts.replies.create",
-      (repository, session, body) => repository.createReply(session, postId, body),
+      async (repository, session, body) => {
+        const post = await repository.createReply(session, postId, body);
+        const identifier = post.publicId !== "" ? post.publicId : String(post.id);
+        await Promise.all([
+          refreshPostShareCardAfterMutation(request, dependencies, "posts.replies.create.share-card", identifier, session.userId),
+          refreshProfileShareCardAfterMutation(request, dependencies, "posts.replies.create.profile-share-card", post.author.handle ?? session.handle),
+        ]);
+
+        return post;
+      },
       201,
     );
   });
@@ -3279,7 +3387,13 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "posts.update",
-      (repository, session, body) => repository.updatePost(session, postId, body),
+      async (repository, session, body) => {
+        const post = await repository.updatePost(session, postId, body);
+        const identifier = post.publicId !== "" ? post.publicId : String(post.id);
+        await refreshPostShareCardAfterMutation(request, dependencies, "posts.update.share-card", identifier, session.userId);
+
+        return post;
+      },
     );
   });
 
