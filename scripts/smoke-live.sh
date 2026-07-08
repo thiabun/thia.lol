@@ -94,11 +94,15 @@ function metaContent(key) {
 }
 
 const normalizedHandle = handle.trim().toLowerCase();
+const encodedNormalizedHandle = encodeURIComponent(normalizedHandle);
 const image = metaContent("og:image");
 const validGeneratedImagePaths = [
   `/api/profiles/${encodeURIComponent(handle)}/share-card.png`,
   `/uploads/share-cards/profiles/${encodeURIComponent(`${normalizedHandle}-mosaic-v6.jpg`)}`,
 ];
+const cachedScreenshotPattern = new RegExp(
+  `/uploads/share-cards/profiles/${encodedNormalizedHandle}-screenshot-v[0-9]+\\.jpg(?:[?#]|$)`,
+);
 const failures = [];
 
 if (metaContent("og:type") !== "profile") {
@@ -113,7 +117,7 @@ if (image.includes("/brand/thia-og")) {
   failures.push(`expected generated profile share-card image, got fallback ${image}`);
 }
 
-if (!validGeneratedImagePaths.some((path) => image.includes(path))) {
+if (!validGeneratedImagePaths.some((path) => image.includes(path)) && !cachedScreenshotPattern.test(image)) {
   failures.push(`expected og:image to reference a generated profile share card, got ${image || "missing"}`);
 }
 
