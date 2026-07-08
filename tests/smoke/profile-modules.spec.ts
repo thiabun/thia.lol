@@ -4603,10 +4603,11 @@ test("image module settings crop and replace a single photo", async ({ page }) =
   );
   await settings
     .getByTestId("profile-module-settings-image-input")
-    .setInputFiles(samplePngFile("module-photo-one.png"));
+    .setInputFiles(samplePortraitPngFile("module-photo-one.png"));
 
   await expect(page.getByTestId("image-crop-modal")).toBeVisible();
   await expect(page.getByTestId("image-crop-aspect-original")).toBeVisible();
+  await expectCropFrameClearOfControls(page);
   await page.getByRole("button", { name: "Apply crop" }).click();
   await expect(page.getByTestId("image-crop-modal")).toHaveCount(0);
   await expect.poll(() => uploadPurposes).toEqual(["post_media"]);
@@ -8214,12 +8215,38 @@ function moduleConfigFromDraft(
     : undefined;
 }
 
+async function expectCropFrameClearOfControls(page: Page) {
+  await expect
+    .poll(async () => {
+      const frameBox = await page.getByTestId("image-crop-frame").boundingBox();
+      const controlsBox = await page.getByTestId("image-crop-controls").boundingBox();
+
+      if (!frameBox || !controlsBox) {
+        return -1000;
+      }
+
+      return Math.round(controlsBox.y - (frameBox.y + frameBox.height));
+    })
+    .toBeGreaterThanOrEqual(-1);
+}
+
 function samplePngFile(name: string) {
   return {
     name,
     mimeType: "image/png",
     buffer: Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+      "base64",
+    ),
+  };
+}
+
+function samplePortraitPngFile(name: string) {
+  return {
+    name,
+    mimeType: "image/png",
+    buffer: Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAECAYAAABP2FU6AAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEElEQVQImWP4z8DwnwGVAABPxAf5nMZ0UAAAAABJRU5ErkJggg==",
       "base64",
     ),
   };

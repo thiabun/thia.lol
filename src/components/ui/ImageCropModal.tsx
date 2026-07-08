@@ -53,6 +53,11 @@ type FrameMetrics = {
   frameWidth: number;
 };
 
+type CropFrameBounds = {
+  maxHeight: number;
+  width: number;
+};
+
 const fixedCropAspects: Partial<Record<ImageUploadPurpose, CropAspectOption>> = {
   avatar: { aspect: 1, id: "square", label: "Square" },
   banner: { aspect: 8 / 3, id: "wide", label: "Wide" },
@@ -78,12 +83,14 @@ export function ImageCropModal({
   open,
   purpose,
 }: ImageCropModalProps) {
+  const frameShellRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | undefined>(undefined);
   const [loadedImage, setLoadedImage] = useState<LoadedImage | undefined>();
   const [frameSize, setFrameSize] = useState<
     { height: number; width: number } | undefined
   >();
+  const [frameBounds, setFrameBounds] = useState<CropFrameBounds | undefined>();
   const [aspectId, setAspectId] = useState("original");
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -103,6 +110,13 @@ export function ImageCropModal({
     fixedAspect?.aspect ??
     aspectOptions.find((option) => option.id === aspectId)?.aspect ??
     1;
+  const frameLayout = useMemo(
+    () =>
+      frameBounds
+        ? cropFrameLayoutFromBounds(frameBounds, purpose, selectedAspect)
+        : undefined,
+    [frameBounds, purpose, selectedAspect],
+  );
   const disabled = busy || processing;
   const previewMetrics =
     activeImage && frameSize
@@ -175,6 +189,39 @@ export function ImageCropModal({
       window.removeEventListener("resize", updateFrameSize);
     };
   }, [open, selectedAspect]);
+
+  useEffect(() => {
+    if (!open || !frameShellRef.current) {
+      return undefined;
+    }
+
+    const shell = frameShellRef.current;
+    const updateFrameBounds = () => {
+      const rect = shell.getBoundingClientRect();
+      const nextBounds = {
+        maxHeight: cropFrameMaxHeight(window.innerHeight),
+        width: Math.max(1, Math.round(rect.width)),
+      };
+
+      setFrameBounds((current) =>
+        current?.maxHeight === nextBounds.maxHeight &&
+        current.width === nextBounds.width
+          ? current
+          : nextBounds,
+      );
+    };
+
+    updateFrameBounds();
+
+    const observer = new ResizeObserver(updateFrameBounds);
+    observer.observe(shell);
+    window.addEventListener("resize", updateFrameBounds);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateFrameBounds);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!activeImage || !frameRef.current) {
@@ -315,40 +362,51 @@ export function ImageCropModal({
       )}
 
       <div
-        ref={frameRef}
-        className={cn(
-          "relative mx-auto w-full touch-none overflow-hidden rounded-panel border border-line bg-canvas/70 shadow-inner-soft",
-          disabled ? "cursor-wait" : "cursor-grab active:cursor-grabbing",
-        )}
-        style={{
-          aspectRatio: selectedAspect,
-          maxWidth: cropFrameMaxWidth(purpose, selectedAspect),
-        }}
-        data-testid="image-crop-frame"
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerEnd}
-        onPointerCancel={handlePointerEnd}
+        ref={frameShellRef}
+        className="flex min-h-0 w-full justify-center"
+        style={{ height: frameLayout ? `${frameLayout.height}px` : undefined }}
       >
-        {activeImage ? (
-          <img
-            alt=""
-            aria-hidden="true"
-            className="absolute max-w-none select-none"
-            draggable={false}
-            src={activeImage.url}
-            style={previewImageStyle}
-            data-testid="image-crop-preview"
-          />
-        ) : (
-          <div className="grid size-full min-h-64 place-items-center text-sm text-muted">
-            Loading image
-          </div>
-        )}
-        <div className="pointer-events-none absolute inset-0 border border-white/55 shadow-[inset_0_0_0_9999px_rgb(0_0_0/0.08)]" />
+        <div
+          ref={frameRef}
+          className={cn(
+            "relative touch-none overflow-hidden rounded-panel border border-line bg-canvas/70 shadow-inner-soft",
+            disabled ? "cursor-wait" : "cursor-grab active:cursor-grabbing",
+          )}
+          style={{
+            aspectRatio: selectedAspect,
+            height: frameLayout ? `${frameLayout.height}px` : undefined,
+            maxWidth: `${cropFrameMaxWidth(purpose, selectedAspect)}px`,
+            width: frameLayout ? `${frameLayout.width}px` : "100%",
+          }}
+          data-testid="image-crop-frame"
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerEnd}
+          onPointerCancel={handlePointerEnd}
+        >
+          {activeImage ? (
+            <img
+              alt=""
+              aria-hidden="true"
+              className="absolute max-w-none select-none"
+              draggable={false}
+              src={activeImage.url}
+              style={previewImageStyle}
+              data-testid="image-crop-preview"
+            />
+          ) : (
+            <div className="grid size-full min-h-64 place-items-center text-sm text-muted">
+              Loading image
+            </div>
+          )}
+          <div className="pointer-events-none absolute inset-0 border border-white/55 shadow-[inset_0_0_0_9999px_rgb(0_0_0/0.08)]" />
+        </div>
       </div>
 
-      <div className="grid gap-3 rounded-card border border-line bg-canvas/45 p-3">
+      <div
+        className="relative z-10 grid gap-3 rounded-card border border-line bg-canvas/45 p-3"
+        data-testid="image-crop-controls"
+      >
         <label className="grid gap-2 text-sm font-semibold text-text">
           <span className="inline-flex items-center gap-2">
             <ZoomIn aria-hidden="true" size={16} />
@@ -445,19 +503,35 @@ function frameMetricsFromDimensions(
   return { baseScale, frameHeight, frameWidth };
 }
 
+function cropFrameLayoutFromBounds(
+  bounds: CropFrameBounds,
+  purpose: ImageUploadPurpose,
+  aspect: number,
+): { height: number; width: number } {
+  return containAspectWithin(
+    aspect,
+    Math.min(bounds.width, cropFrameMaxWidth(purpose, aspect)),
+    bounds.maxHeight,
+  );
+}
+
+function cropFrameMaxHeight(viewportHeight: number): number {
+  return Math.round(Math.max(180, Math.min(520, viewportHeight * 0.5)));
+}
+
 function cropFrameMaxWidth(
   purpose: ImageUploadPurpose,
   aspect: number,
-): string {
+): number {
   if (purpose === "avatar" || purpose === "room_icon") {
-    return "280px";
+    return 280;
   }
 
   if (purpose === "banner" || purpose === "room_banner" || purpose === "profile_background") {
-    return "560px";
+    return 560;
   }
 
-  return aspect < 1 ? "360px" : "480px";
+  return aspect < 1 ? 360 : 480;
 }
 
 function clampOffset(
