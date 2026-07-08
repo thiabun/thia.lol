@@ -2692,6 +2692,14 @@ test("owner edits background clarity in the direct canvas draft", async ({
 
   await page.getByTestId("profile-edit-button").click();
   await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
+  const toolbarBox = await page
+    .getByTestId("profile-canvas-editor-toolbar")
+    .boundingBox();
+  const gridBox = await page.getByTestId("profile-canvas-direct-grid").boundingBox();
+  expect(toolbarBox).not.toBeNull();
+  expect(gridBox).not.toBeNull();
+  expect(toolbarBox!.x).toBeLessThan(gridBox!.x);
+  expect(toolbarBox!.x + toolbarBox!.width).toBeLessThanOrEqual(gridBox!.x - 8);
   await expect(page.getByTestId("profile-canvas-background-controls")).toBeVisible();
   await expect(page.getByTestId("profile-canvas-background-trigger")).toBeVisible();
   await expect(page.getByText("Background clarity")).toHaveCount(0);
@@ -2728,7 +2736,7 @@ test("owner edits background clarity in the direct canvas draft", async ({
     "data-profile-background-blur",
     "heavy",
   );
-  await expect(page.getByText("Move me.")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-module-1")).toBeVisible();
 });
 
 test("direct canvas point selection creates a draft module through picker and settings", async ({
