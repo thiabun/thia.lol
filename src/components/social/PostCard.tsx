@@ -168,7 +168,7 @@ export function PostCard({
   }
 
   function handleCardClick(event: ReactMouseEvent<HTMLElement>) {
-    if (isThreadOpenIgnoredTarget(event.target)) {
+    if (isThreadOpenIgnoredTarget(event.target) || isThreadOpenIgnoredEvent(event.nativeEvent)) {
       return;
     }
 
@@ -333,33 +333,42 @@ export function PostCard({
   );
 }
 
+const threadOpenIgnoreSelector = [
+  "a",
+  "button",
+  "input",
+  "iframe",
+  "video",
+  "audio",
+  "textarea",
+  "select",
+  "option",
+  "label",
+  "summary",
+  "form",
+  "[contenteditable='true']",
+  "[role='button']",
+  "[role='link']",
+  "[data-thread-open-ignore]",
+].join(",");
+
+function isThreadOpenIgnoredEvent(event: Event) {
+  return event.composedPath().some(
+    (node) =>
+      node instanceof Element && Boolean(node.closest(threadOpenIgnoreSelector)),
+  );
+}
+
 function isThreadOpenIgnoredTarget(target: EventTarget | null) {
   if (!(target instanceof Element)) {
     return true;
   }
 
-  return Boolean(
-    target.closest(
-      [
-        "a",
-        "button",
-        "input",
-        "iframe",
-        "video",
-        "audio",
-        "textarea",
-        "select",
-        "option",
-        "label",
-        "summary",
-        "form",
-        "[contenteditable='true']",
-        "[role='button']",
-        "[role='link']",
-        "[data-thread-open-ignore]",
-      ].join(","),
-    ),
-  );
+  return Boolean(target.closest(threadOpenIgnoreSelector));
+}
+
+function stopThreadOpenPropagation(event: ReactMouseEvent<HTMLElement>) {
+  event.stopPropagation();
 }
 
 type PostMediaProps = {
@@ -385,10 +394,16 @@ function PostMedia({
     return null;
   }
 
+  const isVideo = mediaType === "video" || /\.(?:mp4|webm)$/iu.test(mediaUrl);
+
   return (
     <span className={cn("block max-w-full", className)} data-testid={testId}>
-      <span className="inline-flex w-fit max-w-full overflow-hidden rounded-card border border-line bg-canvas/70 align-top">
-        {mediaType === "video" || /\.(?:mp4|webm)$/iu.test(mediaUrl) ? (
+      <span
+        className="inline-flex w-fit max-w-full overflow-hidden rounded-card border border-line bg-canvas/70 align-top"
+        data-thread-open-ignore={isVideo ? true : undefined}
+        onClick={isVideo ? stopThreadOpenPropagation : undefined}
+      >
+        {isVideo ? (
           <video
             className={cn("block h-auto max-w-full bg-black object-contain", maxHeightClass)}
             controls
@@ -507,9 +522,16 @@ function PostAttachmentItem({
     );
   }
 
+  const isVideo = attachment.kind === "video";
+
   return (
-    <span className="inline-flex w-fit max-w-full overflow-hidden rounded-card border border-line bg-canvas/70 align-top" data-testid={testId}>
-      {attachment.kind === "video" ? (
+    <span
+      className="inline-flex w-fit max-w-full overflow-hidden rounded-card border border-line bg-canvas/70 align-top"
+      data-thread-open-ignore={isVideo ? true : undefined}
+      data-testid={testId}
+      onClick={isVideo ? stopThreadOpenPropagation : undefined}
+    >
+      {isVideo ? (
         <video
           className={cn("block h-auto max-w-full bg-black object-contain", maxHeightClass)}
           controls

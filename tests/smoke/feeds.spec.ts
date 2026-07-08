@@ -1347,10 +1347,25 @@ test("uploaded post video controls do not open the thread", async ({ page }) => 
 
   const post = page.getByTestId("post-card-open-thread").first();
   await expect(post).toBeVisible();
+  const videoFrame = post.getByTestId("post-attachments-0");
+  await expect(videoFrame).toHaveAttribute("data-thread-open-ignore", "true");
   const video = post.getByTestId("post-attachments-0-video");
   await expect(video).toBeVisible();
 
-  await video.click({ position: { x: 24, y: 24 } });
+  const videoBox = await video.boundingBox();
+  expect(videoBox).not.toBeNull();
+  await video.click({
+    position: {
+      x: 24,
+      y: Math.max(24, videoBox!.height - 24),
+    },
+  });
+  await expect(page.getByTestId("thread-modal")).toHaveCount(0);
+  expect(repliesRequested).toBe(false);
+
+  await videoFrame.evaluate((element) => {
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  });
   await expect(page.getByTestId("thread-modal")).toHaveCount(0);
   expect(repliesRequested).toBe(false);
 
