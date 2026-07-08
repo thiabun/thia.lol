@@ -2698,8 +2698,11 @@ test("owner edits background clarity in the direct canvas draft", async ({
   const gridBox = await page.getByTestId("profile-canvas-direct-grid").boundingBox();
   expect(toolbarBox).not.toBeNull();
   expect(gridBox).not.toBeNull();
-  expect(toolbarBox!.x).toBeLessThan(gridBox!.x);
-  expect(toolbarBox!.x + toolbarBox!.width).toBeLessThanOrEqual(gridBox!.x - 8);
+  expect(toolbarBox!.y + toolbarBox!.height).toBeLessThanOrEqual(gridBox!.y - 8);
+  expect(toolbarBox!.x).toBeGreaterThan(gridBox!.x);
+  expect(
+    Math.abs(toolbarBox!.x + toolbarBox!.width - (gridBox!.x + gridBox!.width)),
+  ).toBeLessThanOrEqual(2);
   await expect(page.getByTestId("profile-canvas-background-controls")).toBeVisible();
   await expect(page.getByTestId("profile-canvas-background-trigger")).toBeVisible();
   await expect(page.getByText("Background clarity")).toHaveCount(0);

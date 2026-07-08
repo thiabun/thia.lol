@@ -1274,14 +1274,13 @@ export function ProfileDirectCanvasEditor({
       data-profile-editor-render-mode="light"
       aria-label="Profile canvas editor"
     >
-      <div className="grid gap-3 lg:grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)] lg:items-start">
       <div
-        className="space-y-2 lg:sticky lg:top-4"
+        className="ml-auto w-full space-y-2 lg:max-w-xl"
         data-testid="profile-canvas-editor-toolbar"
       >
         <div
           className={cn(
-            "grid gap-2 rounded-card sm:grid-cols-2 lg:grid-cols-1",
+            "grid grid-cols-2 gap-2 rounded-card",
             guideTarget === "Background"
               ? "outline outline-2 outline-focus/70 ring-4 ring-focus/15"
               : undefined,
@@ -1378,7 +1377,6 @@ export function ProfileDirectCanvasEditor({
           </Button>
         </div>
       </div>
-      <div className="min-w-0 space-y-3">
       {error ? (
         <p
           className="rounded-card border border-rose/30 bg-rose/12 p-3 text-sm font-medium text-rose-ink"
@@ -1884,8 +1882,6 @@ export function ProfileDirectCanvasEditor({
           onIndexChange={setGuideStepIndex}
         />
       </ProfileGrid>
-      </div>
-      </div>
       <div aria-hidden="true" className="pointer-events-none fixed inset-0 opacity-0">
         {sortedModules.map((module) => (
           <ProfileCanvasMediaContractPreview
