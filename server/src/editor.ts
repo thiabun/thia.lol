@@ -733,13 +733,20 @@ class MysqlEditorRepository implements EditorRepository {
     }
 
     for (const module of newDraftModules) {
-      if (
-        singletonModuleTypes.has(module.type) &&
-        (await this.singletonModuleExists(session.userId, module.type))
-      ) {
+      if (!singletonModuleTypes.has(module.type)) {
+        continue;
+      }
+
+      const replacesDeletedSingleton = deletedPersistedModules.some(
+        (deletedModule) => deletedModule.type === module.type,
+      );
+
+      if (!replacesDeletedSingleton && (await this.singletonModuleExists(session.userId, module.type))) {
         throw new EditorRouteError(`${moduleTypeLabel(module.type)} module already exists.`, 422);
       }
     }
+
+    assertNoDuplicateSingletonModules(modulesForCommit);
 
     const textEntityUpdates: Array<{
       moduleId: number;
@@ -1319,7 +1326,7 @@ class MysqlEditorRepository implements EditorRepository {
     const decoded = jsonObject(row.draft_json);
     const defaults = await this.defaultCanvasDraftState(userId, false);
     const modules = Array.isArray(decoded.modules)
-      ? validateDraftModules(decoded.modules)
+      ? validateDraftModules(decoded.modules, { repairInvalidConfig: true })
       : defaults.modules;
     const capabilities = enrichIntegrations ? await this.schemaCapabilities() : null;
 
@@ -2543,6 +2550,22 @@ function validateModuleConfig(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function validateDraftModuleConfig(
+  value: unknown,
+  options: { repairInvalidConfig?: boolean },
+): Record<string, unknown> {
+  if (
+    options.repairInvalidConfig === true &&
+    value !== null &&
+    value !== undefined &&
+    (typeof value !== "object" || Array.isArray(value))
+  ) {
+    return {};
+  }
+
+  return validateModuleConfig(value);
+}
+
 function moduleTypeLabel(type: string): string {
   return type
     .split("_")
@@ -2595,7 +2618,10 @@ function validateCanvasPlacements(value: unknown): CanvasPlacement[] {
   });
 }
 
-function validateDraftModules(value: unknown): ProfileModulePayload[] {
+function validateDraftModules(
+  value: unknown,
+  options: { repairInvalidConfig?: boolean } = {},
+): ProfileModulePayload[] {
   if (!Array.isArray(value)) {
     throw new EditorRouteError("Draft modules must be an array.", 422);
   }
@@ -2614,7 +2640,7 @@ function validateDraftModules(value: unknown): ProfileModulePayload[] {
       id: typeof record.id === "number" && Number.isInteger(record.id) ? record.id : -1 - index,
       type: validateDraftModuleType(record.type),
       title: validateModuleTitle(record.title),
-      config: validateModuleConfig(record.config),
+      config: validateDraftModuleConfig(record.config, options),
       visibility: validateModuleVisibility(record.visibility ?? "public"),
       position: draftModulePosition(record.position, index + 1),
       pinned: booleanValue(record.pinned),
@@ -2632,6 +2658,22 @@ function validateDraftModules(value: unknown): ProfileModulePayload[] {
       updatedAt: stringOrNull(record.updatedAt),
     };
   });
+}
+
+function assertNoDuplicateSingletonModules(modules: ProfileModulePayload[]): void {
+  const seenModuleTypes = new Set<string>();
+
+  for (const module of modules) {
+    if (!singletonModuleTypes.has(module.type)) {
+      continue;
+    }
+
+    if (seenModuleTypes.has(module.type)) {
+      throw new EditorRouteError(`${moduleTypeLabel(module.type)} module already exists.`, 422);
+    }
+
+    seenModuleTypes.add(module.type);
+  }
 }
 
 function canvasDraftModulesForCommit(

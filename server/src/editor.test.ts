@@ -460,6 +460,32 @@ function draftPlaceholderPayload() {
   };
 }
 
+function draftActivityPayload(id: number, position: number) {
+  return {
+    id,
+    type: "activity",
+    title: "Activity",
+    config: {
+      canvasSize: "4x6",
+      configured: true,
+      variant: "feed",
+    },
+    visibility: "public",
+    position,
+    pinned: false,
+    layout: {
+      column: 1,
+      row: position,
+      colSpan: 4,
+      rowSpan: 6,
+    },
+    status: "active",
+    schemaVersion: 1,
+    createdAt: null,
+    updatedAt: null,
+  };
+}
+
 function persistedMusicPayload(
   overrides: {
     config?: Record<string, unknown>;
@@ -586,6 +612,31 @@ function featuredModuleRow(type: "featured_post" | "featured_room", id: number) 
   };
 }
 
+function activityRow() {
+  return {
+    id: 40,
+    user_id: 1,
+    type: "activity",
+    title: "Activity",
+    config_json: JSON.stringify({
+      canvasSize: "4x6",
+      configured: true,
+      variant: "feed",
+    }),
+    visibility: "public",
+    position: 2,
+    grid_column: 1,
+    grid_row: 2,
+    grid_col_span: 4,
+    grid_row_span: 6,
+    grid_pinned: 0,
+    status: "active",
+    schema_version: 1,
+    created_at: "2026-06-24 11:00:00",
+    updated_at: "2026-06-24 12:00:00",
+  };
+}
+
 const session: RequestSession = {
   sessionId: 1,
   userId: 1,
@@ -640,6 +691,24 @@ describe("editor profile module payloads", () => {
     expect(draft.modules[0]?.position).toBe(1);
   });
 
+  it("repairs non-object module configs when reading stored canvas drafts", async () => {
+    const { pool } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [{ ...profileInfoPayload(1), config: [] }],
+        selectedModuleId: null,
+      }),
+    });
+    const repository = createEditorRepository(pool as never);
+
+    const draft = await repository.getCanvasDraft(1);
+
+    expect(draft.modules).toHaveLength(1);
+    expect(draft.modules[0]?.config).toEqual({});
+  });
+
   it("stores repaired positions for background-only canvas draft updates", async () => {
     const { draftJson, pool } = fakePool({
       moduleRows: [profileInfoRow(0)],
@@ -692,6 +761,76 @@ describe("editor profile module payloads", () => {
       visibility: "public",
       status: "active",
     });
+  });
+
+  it("commits repaired non-object module configs from stored canvas drafts", async () => {
+    const { moduleUpdates, pool } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [{ ...profileInfoPayload(1), config: [] }],
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(1)],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await repository.commitCanvasDraft(session);
+
+    expect(JSON.parse(String(moduleUpdates[0]?.configJson))).toEqual({});
+  });
+
+  it("rejects duplicate singleton modules in stored canvas drafts", async () => {
+    const { pool } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [
+          profileInfoPayload(1),
+          draftActivityPayload(-1002, 2),
+          draftActivityPayload(-1003, 3),
+        ],
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(1)],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await expect(repository.commitCanvasDraft(session)).rejects.toMatchObject({
+      message: "Activity module already exists.",
+      statusCode: 422,
+    });
+  });
+
+  it("allows a stored canvas draft to replace a deleted singleton module", async () => {
+    const { deletedModuleUpdates, insertedModules, pool } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [
+          profileInfoPayload(1),
+          { ...draftActivityPayload(40, 2), status: "deleted", visibility: "hidden" },
+          draftActivityPayload(-1002, 2),
+        ],
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(1), activityRow()],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await repository.commitCanvasDraft(session);
+
+    expect(deletedModuleUpdates).toContainEqual({ id: 40, userId: 1 });
+    expect(insertedModules).toContainEqual(
+      expect.objectContaining({
+        type: "activity",
+        visibility: "public",
+        status: "active",
+      }),
+    );
   });
 
   it("drops unpicked placeholder draft modules during commit", async () => {

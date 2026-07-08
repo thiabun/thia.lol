@@ -184,6 +184,13 @@ type ProfileCanvasResizeDirection =
   | "south-west"
   | "north-west";
 
+const canvasSingletonModuleTypes = new Set<ProfileModule["type"]>([
+  "profile_info",
+  "featured_post",
+  "featured_room",
+  "activity",
+]);
+
 type ProfileCanvasResizeState = {
   direction: ProfileCanvasResizeDirection;
   moduleId: number;
@@ -1995,6 +2002,7 @@ export function ProfileDirectCanvasEditor({
       ) : null}
       <ModulePickerModal
         module={pickerModule}
+        modules={modules}
         onChoose={handleChooseModule}
         onClose={() => setPickerModuleId(undefined)}
       />
@@ -2453,10 +2461,12 @@ function profileCanvasResizeHandleClass(
 
 function ModulePickerModal({
   module,
+  modules,
   onChoose,
   onClose,
 }: {
   module: ProfileModule | undefined;
+  modules: ProfileModule[];
   onChoose: (type: ProfileModule["type"]) => Promise<void> | void;
   onClose: () => void;
 }) {
@@ -2473,6 +2483,19 @@ function ModulePickerModal({
     },
     [onChoose],
   );
+  const unavailableSingletonTypes = useMemo(
+    () =>
+      new Set(
+        modules
+          .filter(
+            (item) =>
+              item.status !== "deleted" &&
+              canvasSingletonModuleTypes.has(item.type),
+          )
+          .map((item) => item.type),
+      ),
+    [modules],
+  );
 
   const pickerItems = useMemo(() => {
     if (!module?.layout) {
@@ -2484,14 +2507,15 @@ function ModulePickerModal({
       .map((item) => {
         const fit = profileCanvasFitForSelection(item.type, module.layout!);
         const sortSpan = profileGridModuleSizeSpan(fit.sortSize);
+        const singletonUnavailable = unavailableSingletonTypes.has(item.type);
 
         return {
           ...item,
-          enabled: fit.enabled,
+          enabled: fit.enabled && !singletonUnavailable,
           fittingSize: fit.exactSize,
           noteSize: fit.noteSize,
           sortArea: sortSpan.columns * sortSpan.rows,
-          warning: fit.warning,
+          warning: singletonUnavailable ? "already-present" : fit.warning,
         };
       })
       .sort(
@@ -2500,7 +2524,7 @@ function ModulePickerModal({
           first.sortArea - second.sortArea ||
           first.label.localeCompare(second.label),
       );
-  }, [activeCategory, module]);
+  }, [activeCategory, module, unavailableSingletonTypes]);
 
   return (
     <ModalSheet
@@ -2586,7 +2610,9 @@ function ModulePickerModal({
                       ) : (
                         <>
                           <span className="block">
-                            {item.warning === "too-large"
+                            {item.warning === "already-present"
+                              ? "Already on your profile."
+                              : item.warning === "too-large"
                               ? "Selection too large."
                               : "Selection too small."}
                           </span>
