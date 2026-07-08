@@ -70,7 +70,7 @@ const fallbackPalette: SharePalette = {
   accent: "#55d989",
 };
 
-const SHARE_CARD_RENDER_VERSION = "screenshot-v5";
+const SHARE_CARD_RENDER_VERSION = "screenshot-v6";
 
 export function ShareCardScene(props: ShareCardSceneProps) {
   const palette =

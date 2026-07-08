@@ -12,7 +12,7 @@ import type { RequestSession } from "./sessions.js";
 
 export const shareCardWidth = 2400;
 export const shareCardHeight = 1260;
-const shareCardCacheVersion = "screenshot-v5";
+const shareCardCacheVersion = "screenshot-v6";
 const shareCardMaxUploadBytes = 32 * 1024 * 1024;
 
 export class ShareCardRouteError extends Error {
@@ -83,7 +83,11 @@ class NodeShareCardService implements ShareCardService {
       title: authorName,
       subtitle: `@${authorHandle}`,
       body: bodySnippet(body, 220),
-      statLine: `${Number(post.commentCount ?? 0)} replies  ·  ${Number(post.likeCount ?? 0)} likes  ·  ${Number(post.reblogCount ?? 0)} reblogs`,
+      metrics: [
+        { icon: "reply", label: "replies", value: Number(post.commentCount ?? 0), active: false },
+        { icon: "heart", label: "likes", value: Number(post.likeCount ?? 0), active: Number(post.likeCount ?? 0) > 0 },
+        { icon: "repost", label: "reblogs", value: Number(post.reblogCount ?? 0), active: Number(post.reblogCount ?? 0) > 0 },
+      ],
       canonical: post.canonicalPath,
       accent: "#f48cad",
     });
@@ -353,7 +357,8 @@ function shareCardSvg(input: {
   title: string;
   subtitle: string;
   body: string;
-  statLine: string;
+  statLine?: string;
+  metrics?: ShareCardSvgMetric[];
   canonical: string;
   accent: string;
 }): string {
@@ -366,10 +371,60 @@ function shareCardSvg(input: {
   <text x="184" y="420" fill="#e8f7f8" font-family="Noto Sans, Arial, sans-serif" font-size="86" font-weight="800">${escapeXml(trimForSvg(input.title, 34))}</text>
   <text x="184" y="500" fill="#9ec0ca" font-family="Noto Sans, Arial, sans-serif" font-size="44">${escapeXml(trimForSvg(input.subtitle, 52))}</text>
   ${wrappedSvgText(input.body, 184, 645, 54, 62, 5, "#e8f7f8")}
-  <text x="184" y="940" fill="#9ec0ca" font-family="Noto Sans, Arial, sans-serif" font-size="38">${escapeXml(trimForSvg(input.statLine, 82))}</text>
+  ${input.metrics ? metricPillSvg(input.metrics, 184, 895, input.accent) : `<text x="184" y="940" fill="#9ec0ca" font-family="Noto Sans, Arial, sans-serif" font-size="38">${escapeXml(trimForSvg(input.statLine ?? "", 82))}</text>`}
   <text x="184" y="1016" fill="#9ec0ca" font-family="Noto Sans, Arial, sans-serif" font-size="32">${escapeXml(trimForSvg(input.canonical, 96))}</text>
   <text x="1840" y="1016" text-anchor="end" fill="#e8f7f8" font-family="Noto Sans, Arial, sans-serif" font-size="50" font-weight="800">thia.lol</text>
 </svg>`;
+}
+
+type ShareCardSvgMetric = {
+  active: boolean;
+  icon: "heart" | "reply" | "repost";
+  label: string;
+  value: number;
+};
+
+function metricPillSvg(metrics: ShareCardSvgMetric[], x: number, y: number, accent: string): string {
+  let cursor = x;
+
+  return metrics
+    .map((metric) => {
+      const text = `${metric.value} ${metric.label}`;
+      const width = Math.max(214, Math.min(350, 132 + text.length * 20));
+      const fill = metric.active ? accent : "#0f2a34";
+      const fillOpacity = metric.active ? "0.24" : "0.86";
+      const stroke = metric.active ? accent : "#417e92";
+      const iconColor = metric.active ? accent : "#9ec0ca";
+      const textColor = metric.active ? "#e8f7f8" : "#9ec0ca";
+      const icon = metricIconSvg(metric.icon, cursor + 38, y + 23, iconColor);
+      const output = `<g>
+  <rect x="${cursor}" y="${y}" width="${width}" height="70" rx="35" fill="${fill}" fill-opacity="${fillOpacity}" stroke="${stroke}" stroke-opacity="0.42" stroke-width="2"/>
+  ${icon}
+  <text x="${cursor + 84}" y="${y + 45}" fill="${textColor}" font-family="Noto Sans, Arial, sans-serif" font-size="38">${escapeXml(text)}</text>
+</g>`;
+
+      cursor += width + 24;
+
+      return output;
+    })
+    .join("\n");
+}
+
+function metricIconSvg(icon: ShareCardSvgMetric["icon"], x: number, y: number, color: string): string {
+  if (icon === "heart") {
+    return `<path d="M16 30C12 26.7 5 22 5 14.5C5 10 8.2 7 12.3 7C14.5 7 16 8.1 17.2 9.8C18.4 8.1 19.9 7 22.1 7C26.2 7 29.4 10 29.4 14.5C29.4 22 22.4 26.7 18.4 30L17.2 31L16 30Z" fill="${color}" transform="translate(${x} ${y}) scale(1.08)"/>`;
+  }
+
+  if (icon === "repost") {
+    return `<g transform="translate(${x} ${y}) scale(1.1)" fill="none" stroke="${color}" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.8">
+  <path d="M9 9h13l-4-4"/>
+  <path d="M22 9l-4 4"/>
+  <path d="M25 23H12l4 4"/>
+  <path d="M12 23l4-4"/>
+</g>`;
+  }
+
+  return `<path d="M17 6C10.4 6 5 10.4 5 16C5 20.1 7.8 23.6 11.8 25.2L10.7 30L17.1 26C23.7 26 29 21.6 29 16C29 10.4 23.6 6 17 6Z" fill="none" stroke="${color}" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.8" transform="translate(${x} ${y})"/>`;
 }
 
 function wrappedSvgText(text: string, x: number, y: number, fontSize: number, lineHeight: number, maxLines: number, fill: string): string {

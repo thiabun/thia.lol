@@ -7,7 +7,7 @@ import { normalizePostIdentifier, postCanonicalPath, type PostsRepository } from
 import { normalizeProfileHandle, type ProfilePayload, type ProfilesRepository, type PostPayload } from "./profiles.js";
 import { normalizeRoomSlug, type RoomPayload, type RoomsRepository } from "./rooms.js";
 
-const shareCardCacheVersion = "screenshot-v5";
+const shareCardCacheVersion = "screenshot-v6";
 
 export interface ShareShellService {
   postShare(query: Record<string, unknown>): Promise<ShareShellResponse>;
