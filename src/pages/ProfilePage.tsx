@@ -80,6 +80,7 @@ import {
   getProfileRooms,
   getProfileCanvasDraft,
   muteProfile,
+  postCanonicalPath,
   previewImageUpload,
   removeProfileFollower,
   resolveProfileIntegrationMetadata,
@@ -6032,35 +6033,175 @@ function ProfileActivitySlimPreview({
   replies: Post[];
   rooms: Room[];
 }) {
-  const items =
-    activeTab === "feed"
-      ? feed.map((post) => post.body || "Post").slice(0, 3)
-      : activeTab === "replies"
-        ? replies.map((post) => post.body || "Reply").slice(0, 3)
-        : rooms.map((room) => room.name || `/${room.slug}`).slice(0, 3);
+  const posts = activeTab === "feed" ? feed.slice(0, 3) : replies.slice(0, 3);
+  const visibleRooms = rooms.slice(0, 3);
 
   return (
     <div
-      className="flex min-h-0 flex-1 items-center gap-2 overflow-hidden"
+      className="flex min-h-0 flex-1 items-stretch gap-2 overflow-hidden"
       data-profile-activity-scroll="slim"
       data-testid="profile-activity"
     >
-      {items.length > 0 ? (
-        items.map((item, index) => (
-          <span
-            key={`${activeTab}:${index}:${item}`}
-            className="inline-flex h-9 min-w-0 max-w-[13rem] shrink-0 items-center rounded-full border border-line bg-canvas/45 px-3 text-xs font-semibold text-muted"
-          >
-            <span className="truncate">{item}</span>
-          </span>
+      {activeTab === "rooms" ? (
+        visibleRooms.length > 0 ? (
+          visibleRooms.map((room) => (
+            <ProfileActivitySlimRoomCard key={room.slug} room={room} />
+          ))
+        ) : (
+          <ProfileActivitySlimEmpty
+            icon={Radio}
+            text={`@${profile.user.handle} has no rooms yet`}
+          />
+        )
+      ) : posts.length > 0 ? (
+        posts.map((post) => (
+          <ProfileActivitySlimPostCard
+            key={post.id}
+            label={activeTab === "feed" ? "Post" : "Reply"}
+            post={post}
+          />
         ))
       ) : (
-        <span className="inline-flex h-9 min-w-0 items-center rounded-full border border-dashed border-line bg-canvas/32 px-3 text-xs font-semibold text-muted">
-          @{profile.user.handle} has no {activeTab === "rooms" ? "rooms" : activeTab} yet
-        </span>
+        <ProfileActivitySlimEmpty
+          icon={activeTab === "feed" ? MessageCircle : Reply}
+          text={`@${profile.user.handle} has no ${activeTab} yet`}
+        />
       )}
     </div>
   );
+}
+
+function ProfileActivitySlimPostCard({
+  label,
+  post,
+}: {
+  label: "Post" | "Reply";
+  post: Post;
+}) {
+  const mediaUrl =
+    post.mediaUrl && post.mediaUrl !== "/ambient-veil.webp" ? post.mediaUrl : null;
+  const mediaIsVideo = mediaUrl ? postMediaType(post) === "video" : false;
+
+  return (
+    <Link
+      className="group flex h-full min-w-[13.5rem] flex-1 items-stretch overflow-hidden rounded-card border border-line bg-canvas/46 text-left shadow-inner-soft transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface/64 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      data-profile-activity-slim-card="post"
+      to={postCanonicalPath(post)}
+      title={profileActivityPreviewText(post.body, label)}
+    >
+      <span className="flex min-w-0 flex-1 flex-col justify-center p-2">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-full border border-line bg-surface/70 text-xs font-semibold text-muted">
+            {post.author.avatarUrl ? (
+              <img alt="" className="size-full object-cover" src={post.author.avatarUrl} />
+            ) : (
+              post.author.initials
+            )}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate text-xs font-semibold text-text">
+                {post.author.displayName}
+              </span>
+              <span className="shrink-0 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted/70">
+                {label}
+              </span>
+            </span>
+            <span className="block truncate text-[0.68rem] leading-tight text-muted">
+              @{post.author.handle} · {formatShortDate(post.createdAt)}
+            </span>
+          </span>
+        </span>
+        <span className="mt-1.5 line-clamp-2 break-words text-xs font-semibold leading-snug text-muted">
+          {profileActivityPreviewText(post.body, label)}
+        </span>
+      </span>
+      {mediaUrl ? (
+        <span className="relative hidden w-16 shrink-0 overflow-hidden border-l border-line bg-canvas/70 sm:block">
+          {mediaIsVideo ? (
+            <>
+              <video
+                className="size-full object-cover"
+                muted
+                playsInline
+                poster={post.mediaPosterUrl ?? undefined}
+                preload="metadata"
+              >
+                <source src={mediaUrl} type={post.mediaMime ?? "video/mp4"} />
+              </video>
+              <span className="absolute inset-0 grid place-items-center bg-black/18 text-white">
+                <Video aria-hidden="true" size={16} />
+              </span>
+            </>
+          ) : (
+            <img alt="" className="size-full object-cover" src={mediaUrl} />
+          )}
+        </span>
+      ) : null}
+    </Link>
+  );
+}
+
+function ProfileActivitySlimRoomCard({ room }: { room: Room }) {
+  return (
+    <Link
+      className="group flex h-full min-w-[12.5rem] flex-1 items-center gap-2 overflow-hidden rounded-card border border-line bg-canvas/46 px-2.5 py-2 text-left shadow-inner-soft transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface/64 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      data-profile-activity-slim-card="room"
+      style={roomThemeSwatchCssProperties(room)}
+      title={`Open ${room.name}`}
+      to={`/rooms/${room.slug}`}
+    >
+      <span
+        className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-card border border-line bg-canvas/58 text-text"
+        style={{
+          background:
+            "linear-gradient(135deg, color-mix(in oklab, var(--room-accent) 34%, transparent), var(--room-surface))",
+        }}
+      >
+        {room.iconUrl ? (
+          <img alt="" className="size-full object-cover" src={room.iconUrl} />
+        ) : (
+          <Radio aria-hidden="true" size={16} />
+        )}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold leading-tight text-text">
+          {room.name}
+        </span>
+        <span className="block truncate text-xs leading-tight text-muted">
+          /{room.slug} · {formatCountWithUnit(room.postCount, "post")}
+        </span>
+      </span>
+      <ArrowRight
+        aria-hidden="true"
+        className="shrink-0 text-muted transition duration-fluid ease-fluid group-hover:translate-x-0.5 group-hover:text-text"
+        size={15}
+      />
+    </Link>
+  );
+}
+
+function ProfileActivitySlimEmpty({
+  icon: Icon,
+  text,
+}: {
+  icon: typeof MessageCircle;
+  text: string;
+}) {
+  return (
+    <span className="flex h-full min-w-[13rem] flex-1 items-center gap-2 rounded-card border border-dashed border-line bg-canvas/32 px-3 text-xs font-semibold text-muted">
+      <span className="grid size-8 shrink-0 place-items-center rounded-full bg-surface/70 text-accent-strong">
+        <Icon aria-hidden="true" size={15} />
+      </span>
+      <span className="min-w-0 truncate">{text}</span>
+    </span>
+  );
+}
+
+function profileActivityPreviewText(value: string, fallback: string) {
+  const normalized = value.replace(/\s+/gu, " ").trim();
+
+  return normalized === "" ? fallback : normalized;
 }
 
 type ProfilePostListProps = {

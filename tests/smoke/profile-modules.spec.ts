@@ -641,6 +641,64 @@ test("activity renders through the module grid without a duplicate fixed section
   ).toHaveCount(0);
 });
 
+test("wide short activity modules render compact feed cards instead of text chips", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [withAuditLayout(activityModule({ id: 9 }), "8x2", 1)],
+    profileOverrides: {
+      stats: {
+        posts: 0,
+        replies: 2,
+        rooms: 0,
+        echoes: 0,
+        followers: 0,
+        following: 0,
+        moots: 0,
+        stars: 0,
+      },
+    },
+    profilePosts: [],
+    profileReplies: [
+      postFixture({
+        id: 901,
+        body: "Crazy? I know someone who can make this module smarter.",
+        canonicalPath: "/@thia/posts/reply-901",
+      }),
+      postFixture({
+        id: 902,
+        body: "u need to add the ability to do compact feed previews.",
+        canonicalPath: "/@thia/posts/reply-902",
+      }),
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const module = page.getByTestId("profile-module-activity");
+  const activity = module.getByTestId("profile-activity");
+  const tabs = module.getByTestId("profile-activity-tabs");
+
+  await expect(module).toHaveAttribute("data-profile-activity-max-rows", "2");
+  await tabs.getByRole("tab", { name: /Replies/ }).click();
+  await expect(activity).toHaveAttribute("data-profile-activity-scroll", "slim");
+
+  const cards = activity.locator('[data-profile-activity-slim-card="post"]');
+  await expect(cards).toHaveCount(2);
+  await expect(cards.first()).toHaveAttribute("href", "/@thia/posts/reply-901");
+  await expect(cards.first()).toContainText("Thia");
+  await expect(cards.first()).toContainText("@thia");
+  await expect(cards.first()).toContainText("Reply");
+  await expect(cards.first()).toContainText("Crazy? I know someone");
+  await expect(
+    activity.locator(":scope > span").filter({
+      hasText: "Crazy? I know someone who",
+    }),
+  ).toHaveCount(0);
+});
+
 test("activity keeps long feeds inside an internal scroll area", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await mockProfileModules(page, {
