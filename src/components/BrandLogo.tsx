@@ -22,11 +22,6 @@ const squircleMarkSources: Record<ThemeName, string> = {
   light: "/brand/thia-mark-light-squircle-96.png",
 };
 
-const lockupSources: Record<ThemeName, string> = {
-  dark: "/brand/thia-lockup-dark.png",
-  light: "/brand/thia-lockup-light.png",
-};
-
 const tMarkSources: Record<ThemeName, string> = {
   dark: "/brand/thia-t-dark-96.png",
   light: "/brand/thia-t-light-96.png",
@@ -62,7 +57,7 @@ export function BrandLogo() {
       className="inline-flex min-w-0 items-center gap-2"
       data-testid="brand-logo"
     >
-      <BrandMark className="rounded-full" />
+      <BrandMark className="rounded-full" shape="plain" variant="bunny" />
       <span className="min-w-0 truncate text-base font-semibold leading-none tracking-normal text-text">
         <span>thia</span>
         <span className="text-rose">.lol</span>
@@ -74,9 +69,9 @@ export function BrandLogo() {
 export function BrandMark({
   alt = "",
   className,
-  shape = "plain",
+  shape = "squircle",
   size = "md",
-  variant = "bunny",
+  variant = "pink",
   "data-testid": testId,
 }: {
   alt?: string;
@@ -118,7 +113,7 @@ export function BrandLogoMain({
 
   return (
     <img
-      src="/brand/thia-logo-main-256.png"
+      src="/brand/thia-mark-pink-squircle-96.png"
       alt={alt}
       width={pixels}
       height={pixels}
@@ -141,15 +136,13 @@ export function BrandLockup({
   className?: string;
   "data-testid"?: string;
 }) {
-  const theme = useBrandTheme();
-
   return (
     <img
-      src={lockupSources[theme]}
+      src="/brand/thia-mark-pink-squircle-96.png"
       alt={alt}
-      width={theme === "light" ? 560 : 720}
-      height={theme === "light" ? 160 : 320}
-      className={cn("block shrink-0 object-contain", className)}
+      width={96}
+      height={96}
+      className={cn("block shrink-0 rounded-[1.35rem] object-cover", className)}
       data-testid={testId}
     />
   );

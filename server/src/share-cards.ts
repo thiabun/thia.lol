@@ -12,7 +12,7 @@ import type { RequestSession } from "./sessions.js";
 
 export const shareCardWidth = 2400;
 export const shareCardHeight = 1260;
-const shareCardCacheVersion = "mosaic-v6";
+const shareCardCacheVersion = "screenshot-v4";
 const shareCardMaxUploadBytes = 32 * 1024 * 1024;
 
 export class ShareCardRouteError extends Error {

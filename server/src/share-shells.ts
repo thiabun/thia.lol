@@ -7,7 +7,7 @@ import { normalizePostIdentifier, postCanonicalPath, type PostsRepository } from
 import { normalizeProfileHandle, type ProfilePayload, type ProfilesRepository, type PostPayload } from "./profiles.js";
 import { normalizeRoomSlug, type RoomPayload, type RoomsRepository } from "./rooms.js";
 
-const shareCardCacheVersion = "mosaic-v6";
+const shareCardCacheVersion = "screenshot-v4";
 
 export interface ShareShellService {
   postShare(query: Record<string, unknown>): Promise<ShareShellResponse>;
@@ -186,7 +186,7 @@ class NodeShareShellService implements ShareShellService {
     const description = "This post is not available on thia.lol.";
     const canonicalUrl = httpsUrl(`${this.publicBaseUrl()}/discover`);
     const imageUrl = httpsUrl(`${this.publicBaseUrl()}/brand/thia-og.png`);
-    const imageAlt = "thia.lol bunny mark and wordmark.";
+    const imageAlt = "thia.lol pink bunny mark.";
     const meta = notFoundMeta(title, description, canonicalUrl, imageUrl, imageAlt);
 
     return {
@@ -255,7 +255,7 @@ class NodeShareShellService implements ShareShellService {
     const description = "This profile is not available on thia.lol.";
     const canonicalUrl = httpsUrl(`${this.publicBaseUrl()}/discover`);
     const imageUrl = httpsUrl(`${this.publicBaseUrl()}/brand/thia-og.png`);
-    const imageAlt = "thia.lol bunny mark and wordmark.";
+    const imageAlt = "thia.lol pink bunny mark.";
 
     return {
       kind: "html",
@@ -330,7 +330,7 @@ class NodeShareShellService implements ShareShellService {
     const description = "This room is not available on thia.lol.";
     const canonicalUrl = httpsUrl(`${this.publicBaseUrl()}/rooms`);
     const imageUrl = httpsUrl(`${this.publicBaseUrl()}/brand/thia-og.png`);
-    const imageAlt = "thia.lol bunny mark and wordmark.";
+    const imageAlt = "thia.lol pink bunny mark.";
 
     return {
       kind: "html",

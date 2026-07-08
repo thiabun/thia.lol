@@ -11,13 +11,18 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
-test("profile share render uses module mosaic previews and skips Feed", async ({ page }) => {
+test("profile share render uses a profile screenshot crop with canvas modules", async ({ page }) => {
   await mockProfileShareRender(page);
 
   await page.goto("/share-render/profile/thia");
   await expect(page.locator("[data-share-card-canvas][data-share-card-ready='true']")).toBeVisible();
-  await expect(page.locator("[data-share-card-brand]")).toHaveCSS("height", "96px");
-  await expect(page.locator('[data-share-card-module-type="activity"]')).toHaveCount(0);
+  await expect(page.locator("[data-share-card-brand]")).toHaveCSS("height", "52px");
+  await expect(page.locator("[data-share-card-profile-background-source='video']")).toBeVisible();
+  await expect(page.locator("[data-share-card-profile-background-video]")).toHaveCount(1);
+  await expect(page.locator("[data-share-card-profile-screenshot]")).toBeVisible();
+  await expect(page.locator("[data-share-card-profile-canvas]")).toBeVisible();
+  await expect(page.locator('[data-share-card-module-type="profile_info"]')).toContainText("Thia");
+  await expect(page.locator('[data-share-card-module-type="activity"]')).toContainText("Feed");
 
   const imageModule = page.locator('[data-share-card-module-type="uploaded_image"]');
   await expect(imageModule.locator("img")).toHaveCount(1);
@@ -25,6 +30,7 @@ test("profile share render uses module mosaic previews and skips Feed", async ({
 
   await expect(page.locator('[data-share-card-module-type="links"]')).toContainText("Portfolio");
   await expect(page.locator('[data-share-card-module-type="links"]')).toContainText("example.com");
+  await expect(page.locator("[data-share-card-connection-link]")).toHaveCount(2);
   await expect(page.locator('[data-share-card-module-type="spotify_song"]')).toContainText("Crystal Song");
   await expect(page.locator('[data-share-card-module-type="spotify_song"]')).toContainText("Spotify");
 });
@@ -74,7 +80,8 @@ test("post share render uses the post author avatar and post media", async ({ pa
 
   await page.goto("/share-render/post/pcard123");
   await expect(page.locator("[data-share-card-canvas][data-share-card-ready='true']")).toBeVisible();
-  await expect(page.locator("[data-share-card-brand]")).toHaveCSS("height", "96px");
+  await expect(page.locator("[data-share-card-brand]")).toHaveCSS("height", "52px");
+  await expect(page.locator("[data-share-card-post-screenshot]")).toBeVisible();
 
   const avatarSrc = await page.locator("[data-share-card-post-author-avatar]").getAttribute("src");
   const mediaSrc = await page.locator("[data-share-card-post-media]").getAttribute("src");
@@ -110,33 +117,46 @@ async function mockProfileShareRender(page: Page) {
       body: JSON.stringify({
         ok: true,
         data: [
-          moduleFixture("activity", { id: 1, title: "Feed" }),
-          moduleFixture("uploaded_image", {
+          moduleFixture("profile_info", {
+            id: 1,
+            title: "Profile info",
+            layout: { column: 1, row: 1, colSpan: 5, rowSpan: 3 },
+          }),
+          moduleFixture("activity", {
             id: 2,
+            title: "Feed",
+            layout: { column: 1, row: 4, colSpan: 4, rowSpan: 5 },
+          }),
+          moduleFixture("uploaded_image", {
+            id: 3,
             config: {
               mediaItems: [{ url: "/uploads/media/2026/06/shareimage.jpg" }],
             },
+            layout: { column: 6, row: 1, colSpan: 4, rowSpan: 4 },
           }),
           moduleFixture("links", {
-            id: 3,
+            id: 4,
             config: {
               links: [
                 { label: "Portfolio", url: "https://example.com/work" },
                 { label: "Music", url: "https://open.spotify.com/user/thia" },
               ],
             },
+            layout: { column: 10, row: 1, colSpan: 3, rowSpan: 2 },
           }),
           moduleFixture("spotify_song", {
-            id: 4,
+            id: 5,
             config: {
               integration: spotifyTrackCard(),
             },
+            layout: { column: 10, row: 3, colSpan: 3, rowSpan: 2 },
           }),
           moduleFixture("custom_text", {
-            id: 5,
+            id: 6,
             config: {
               body: "**Pinned note** with a favorite lyric.",
             },
+            layout: { column: 5, row: 5, colSpan: 4, rowSpan: 4 },
           }),
         ],
       }),
@@ -145,7 +165,7 @@ async function mockProfileShareRender(page: Page) {
   await page.route("**/api/profiles/thia/posts", (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: [] }),
+      body: JSON.stringify({ ok: true, data: [postFixture()] }),
     }),
   );
 }
@@ -165,8 +185,8 @@ function profileFixture() {
     location: "",
     bannerUrl: "/uploads/media/2026/06/profile-banner.jpg",
     profileBackground: "/uploads/media/2026/06/profile-background.jpg",
-    profileBackgroundVideo: null,
-    profileBackgroundVideoPoster: null,
+    profileBackgroundVideo: "/uploads/media/2026/06/profile_background-video.webm",
+    profileBackgroundVideoPoster: "/uploads/media/2026/06/profile_background-poster.jpg",
     profileBackgroundBlur: "soft",
     profileAccent: null,
     profileTheme: null,

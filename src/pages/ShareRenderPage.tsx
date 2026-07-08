@@ -98,7 +98,7 @@ function ShareRenderFallback({ failed }: { failed: boolean }) {
       data-share-card-ready={failed ? "true" : "false"}
     >
       <div className="rounded-[32px] border border-white/20 bg-white/8 px-10 py-8 text-center">
-        <img alt="thia.lol" className="mx-auto h-10 w-auto" src="/brand/thia-lockup-dark.png" />
+        <img alt="thia.lol" className="mx-auto h-12 w-12 rounded-[14px]" src="/brand/thia-mark-pink-squircle-96.png" />
         <p className="mt-8 text-3xl font-semibold">
           {failed ? "This share card is unavailable." : "Rendering share card..."}
         </p>
