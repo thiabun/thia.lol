@@ -948,7 +948,7 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
             "relative z-10 rounded-[1.125rem] px-3 py-2 text-sm leading-5 transition duration-fluid ease-fluid",
             mine
               ? "bg-accent text-accent-ink shadow-soft"
-              : "border border-line/84 bg-surface/76 text-text hover:border-line-strong hover:bg-surface/90",
+              : "bg-surface-strong/72 text-text hover:bg-surface-strong/84",
           )}
         >
           <RichText
@@ -1068,8 +1068,6 @@ function ChatPostAttachment({
 }
 
 function MessageBubbleTail({ mine }: { mine: boolean }) {
-  const outlinePath =
-    "M25.3 1.2C18.2 3.1 12.6 10.9 1.5 15.1C11 15.2 19.4 10.5 25.3 4.1";
   const path =
     "M25.5 0.8H12.8C12.4 6.3 8.5 11.9 1.4 15.2C10.8 15.5 19.2 10.8 25.5 4.2Z";
 
@@ -1083,16 +1081,10 @@ function MessageBubbleTail({ mine }: { mine: boolean }) {
       focusable="false"
       viewBox="0 0 26 16"
     >
-      <path className={mine ? "fill-accent" : "fill-surface"} d={path} />
-      {mine ? null : (
-        <path
-          className="fill-none stroke-line transition duration-fluid ease-fluid group-hover/message:stroke-line-strong motion-reduce:transition-none"
-          d={outlinePath}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="1.15"
-        />
-      )}
+      <path
+        className={mine ? "fill-accent" : "fill-surface-strong/72"}
+        d={path}
+      />
     </svg>
   );
 }
