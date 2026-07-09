@@ -154,6 +154,14 @@ export interface IntegrationMetadataPayload {
   stats: Record<string, unknown>;
 }
 
+interface IntegrationPlaylistTrackPayload {
+  artist?: string;
+  duration?: number;
+  id?: string;
+  sourceUrl?: string;
+  title: string;
+}
+
 export interface IntegrationSuggestionsPayload {
   provider: IntegrationProvider;
   status: IntegrationProviderStatusPayload;
@@ -868,6 +876,11 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
       stats.genres = genres.slice(0, 2).join(", ") || null;
     }
 
+    if (resourceType === "playlist") {
+      stats.items = nestedValue(response, ["tracks", "total"]) ?? null;
+      stats.tracks = spotifyPlaylistTracks(response);
+    }
+
     return {
       title: stringRecordValue(response, "name") ?? `Spotify ${resourceType}`,
       subtitle: subtitle.trim() === "" ? "Spotify" : subtitle,
@@ -932,17 +945,64 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
       return {};
     }
 
+    const stats: Record<string, unknown> = {
+      views: nestedValue(item, ["statistics", "viewCount"]) ?? null,
+      subscribers: nestedValue(item, ["statistics", "subscriberCount"]) ?? null,
+      items: nestedValue(item, ["contentDetails", "itemCount"]) ?? null,
+    };
+
+    if (normalized.resourceType === "playlist") {
+      stats.tracks = await this.fetchYoutubePlaylistTracks(normalized.resourceId, apiKey);
+    }
+
     return {
       title: nestedString(item, ["snippet", "title"]) ?? "YouTube",
       subtitle: "YouTube",
       description: nestedString(item, ["snippet", "description"]),
       imageUrl: nestedString(item, ["snippet", "thumbnails", "medium", "url"]) ?? nestedString(item, ["snippet", "thumbnails", "default", "url"]),
-      stats: {
-        views: nestedValue(item, ["statistics", "viewCount"]) ?? null,
-        subscribers: nestedValue(item, ["statistics", "subscriberCount"]) ?? null,
-        items: nestedValue(item, ["contentDetails", "itemCount"]) ?? null,
-      },
+      stats,
     };
+  }
+
+  private async fetchYoutubePlaylistTracks(
+    playlistId: string,
+    apiKey: string,
+  ): Promise<IntegrationPlaylistTrackPayload[]> {
+    const params = new URLSearchParams({
+      part: "snippet,contentDetails",
+      playlistId,
+      maxResults: "12",
+      key: apiKey,
+    });
+    const response = await this.httpJson(
+      "GET",
+      `https://www.googleapis.com/youtube/v3/playlistItems?${params.toString()}`,
+    );
+    const rows = Array.isArray(nestedValue(response, ["items"]))
+      ? nestedValue(response, ["items"]) as unknown[]
+      : [];
+
+    const tracks: IntegrationPlaylistTrackPayload[] = [];
+
+    for (const row of rows) {
+      const title = nestedString(row, ["snippet", "title"]);
+      const videoId =
+        nestedString(row, ["contentDetails", "videoId"]) ??
+        nestedString(row, ["snippet", "resourceId", "videoId"]);
+
+      if (title === null || title === "" || videoId === null || videoId === "") {
+        continue;
+      }
+
+      tracks.push({
+        id: videoId,
+        title,
+        artist: nestedString(row, ["snippet", "videoOwnerChannelTitle"]) ?? "YouTube",
+        sourceUrl: `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`,
+      });
+    }
+
+    return tracks;
   }
 
   private async fetchTwitchResource(normalized: NormalizedIntegrationUrl): Promise<Partial<IntegrationMetadataPayload>> {
@@ -1024,9 +1084,12 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
     }
 
     const resourceType = normalized.resourceType === "song" ? "songs" : `${normalized.resourceType}s`;
+    const params = normalized.resourceType === "playlist"
+      ? "?include=tracks"
+      : "";
     const response = await this.httpJson(
       "GET",
-      `https://api.music.apple.com/v1/catalog/${storefront}/${resourceType}/${encodeURIComponent(normalized.resourceId)}`,
+      `https://api.music.apple.com/v1/catalog/${storefront}/${resourceType}/${encodeURIComponent(normalized.resourceId)}${params}`,
       [`Authorization: Bearer ${developerToken}`],
     );
     const item = nestedValue(response, ["data", 0, "attributes"]);
@@ -1042,6 +1105,11 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
       subtitle: stringRecordValue(item, "artistName") ?? "Apple Music",
       description: isRecord(description) ? stringRecordValue(description, "standard") : typeof description === "string" ? description : null,
       imageUrl: stringRecordValue(item.artwork, "url")?.replaceAll("{w}", "300").replaceAll("{h}", "300") ?? null,
+      stats: normalized.resourceType === "playlist"
+        ? {
+            tracks: appleMusicPlaylistTracks(response),
+          }
+        : {},
     };
   }
 
@@ -2101,6 +2169,80 @@ function numericValue(value: unknown): number | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function spotifyPlaylistTracks(response: Record<string, unknown>): IntegrationPlaylistTrackPayload[] {
+  const rows = Array.isArray(nestedValue(response, ["tracks", "items"]))
+    ? nestedValue(response, ["tracks", "items"]) as unknown[]
+    : [];
+
+  const tracks: IntegrationPlaylistTrackPayload[] = [];
+
+  for (const item of rows.slice(0, 12)) {
+    const track = nestedValue(item, ["track"]);
+    const title = nestedString(track, ["name"]);
+    const sourceUrl = nestedString(track, ["external_urls", "spotify"]);
+
+    if (title === null || title === "") {
+      continue;
+    }
+
+    const id = nestedString(track, ["id"]);
+    const durationMs = numericValue(nestedValue(track, ["duration_ms"]));
+
+    tracks.push({
+      title,
+      artist: spotifyArtistsLabel(nestedValue(track, ["artists"])) ?? "Spotify",
+      ...(id ? { id } : {}),
+      ...(sourceUrl ? { sourceUrl } : {}),
+      ...(durationMs !== null && durationMs > 0 ? { duration: Math.round(durationMs / 1000) } : {}),
+    });
+  }
+
+  return tracks;
+}
+
+function appleMusicPlaylistTracks(response: unknown): IntegrationPlaylistTrackPayload[] {
+  const rows = Array.isArray(nestedValue(response, ["data", 0, "relationships", "tracks", "data"]))
+    ? nestedValue(response, ["data", 0, "relationships", "tracks", "data"]) as unknown[]
+    : [];
+
+  const tracks: IntegrationPlaylistTrackPayload[] = [];
+
+  for (const item of rows.slice(0, 12)) {
+    const attributes = nestedValue(item, ["attributes"]);
+    const title = stringRecordValue(attributes, "name");
+
+    if (title === null || title === "") {
+      continue;
+    }
+
+    const durationMs = numericValue(nestedValue(attributes, ["durationInMillis"]));
+    const id = stringRecordValue(item, "id");
+    const sourceUrl = stringRecordValue(attributes, "url");
+
+    tracks.push({
+      title,
+      artist: stringRecordValue(attributes, "artistName") ?? "Apple Music",
+      ...(id ? { id } : {}),
+      ...(sourceUrl ? { sourceUrl } : {}),
+      ...(durationMs !== null && durationMs > 0 ? { duration: Math.round(durationMs / 1000) } : {}),
+    });
+  }
+
+  return tracks;
+}
+
+function spotifyArtistsLabel(value: unknown): string | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const artists = value
+    .map((artist) => (isRecord(artist) && typeof artist.name === "string" ? artist.name.trim() : ""))
+    .filter((artist) => artist !== "");
+
+  return artists.length > 0 ? artists.join(", ") : null;
 }
 
 function base64Url(bytes: Buffer): string {

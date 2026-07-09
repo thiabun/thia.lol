@@ -9,6 +9,7 @@ import {
 } from "./auth.js";
 import {
   buildProfileByHandleQuery,
+  canonicalProfileModuleType,
   profileBadgesPayloadFromRows,
   profileIntegrationCachePayload,
   profileIntegrationGeneratedCardPayload,
@@ -47,6 +48,7 @@ const profileModuleTypes = new Set([
   "gallery_media",
   "creator_live",
   "music",
+  "music_playlist",
   "featured_post",
   "featured_room",
   "activity",
@@ -80,6 +82,7 @@ const moduleStatuses = new Set(["active", "hidden", "deleted"]);
 const integrationModuleTypes = new Set([
   "creator_live",
   "music",
+  "music_playlist",
   "github_repo",
   "twitch_channel",
   "youtube_video",
@@ -1489,6 +1492,7 @@ class MysqlEditorRepository implements EditorRepository {
     await connection.execute<ResultSetHeader>(
       `UPDATE profile_modules
        SET title = ?,
+           type = ?,
            config_json = ?,
            visibility = ?,
            position = ?,
@@ -1504,6 +1508,7 @@ class MysqlEditorRepository implements EditorRepository {
          AND user_id = ?`,
       [
         module.title,
+        canonicalProfileModuleType(module.type),
         JSON.stringify(module.config),
         module.visibility,
         module.position,
@@ -2295,7 +2300,7 @@ function addUpdate(
 function modulePayload(row: ProfileModuleRow): ProfileModulePayload {
   return {
     id: numberValue(row.id),
-    type: row.type,
+    type: canonicalProfileModuleType(row.type),
     title: nullableString(row.title),
     config: jsonObject(row.config_json),
     visibility: row.visibility,
@@ -2507,7 +2512,7 @@ function validateModuleType(value: unknown): string {
     throw new EditorRouteError("Profile module type is invalid.", 422);
   }
 
-  return value;
+  return canonicalProfileModuleType(value);
 }
 
 function validateDraftModuleType(value: unknown): string {
@@ -2515,7 +2520,7 @@ function validateDraftModuleType(value: unknown): string {
     throw new EditorRouteError("Profile module type is invalid.", 422);
   }
 
-  return value;
+  return value === "placeholder" ? value : canonicalProfileModuleType(value);
 }
 
 function validateModuleTitle(value: unknown): string | null {

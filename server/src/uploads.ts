@@ -15,6 +15,7 @@ export const multipartUploadMaxBytes = videoUploadMaxBytes;
 
 const imageOutputMime = "image/webp";
 const videoOutputMime = "video/mp4";
+const audioOutputMime = "audio/mpeg";
 
 const imageMimes = new Set([
   "image/jpeg",
@@ -56,6 +57,25 @@ const videoExtensionMimes = new Map([
   ["mpg", "video/mpeg"],
   ["ogv", "video/ogg"],
   ["ogg", "video/ogg"],
+]);
+
+const audioMimes = new Set([
+  "audio/aac",
+  "audio/flac",
+  "audio/mp4",
+  "audio/mpeg",
+  "audio/ogg",
+  "audio/wav",
+]);
+
+const audioExtensionMimes = new Map([
+  ["aac", "audio/aac"],
+  ["flac", "audio/flac"],
+  ["m4a", "audio/mp4"],
+  ["mp3", "audio/mpeg"],
+  ["oga", "audio/ogg"],
+  ["ogg", "audio/ogg"],
+  ["wav", "audio/wav"],
 ]);
 
 const imagePurposes = new Set(["avatar", "banner", "profile_background", "post_media", "room_icon", "room_banner"]);
@@ -209,20 +229,58 @@ class NodeUploadService implements UploadService {
     const purpose = uploadPurpose(file, new Set(["profile_music", "post_media"]), "audio");
     const mime = await detectedMime(buffer, "audio", file?.filename);
 
-    if (mime !== "audio/mpeg") {
-      throw new UploadRouteError("Unsupported audio type. Use MP3.", 415);
+    if (!audioMimes.has(mime)) {
+      throw new UploadRouteError(unsupportedAudioMessage(), 415);
     }
 
-    const storage = await this.writeUpload(buffer, purpose, "mp3");
+    const converted = mime === audioOutputMime
+      ? { body: buffer, duration: undefined }
+      : await this.transcodeAudio(buffer, audioExtension(mime, file?.filename));
+    const storage = await this.writeUpload(converted.body, purpose, "mp3");
 
     return {
       url: storage.url,
-      mime,
-      type: mime,
-      size: buffer.byteLength,
+      ...(converted.duration ? { duration: converted.duration } : {}),
+      mime: audioOutputMime,
+      type: audioOutputMime,
+      size: converted.body.byteLength,
       purpose,
       mediaType: "audio",
     };
+  }
+
+  private async transcodeAudio(
+    buffer: Buffer,
+    inputExtension: string,
+  ): Promise<{ body: Buffer; duration: number | undefined }> {
+    const directory = await mkdtemp(path.join(tmpdir(), "thia-audio-"));
+    const inputPath = path.join(directory, `input.${safeExtension(inputExtension)}`);
+    const outputPath = path.join(directory, "output.mp3");
+
+    try {
+      await writeFile(inputPath, buffer, { mode: 0o600 });
+      const inputMetadata = await this.ffprobe(inputPath, "Audio");
+
+      if (!inputMetadata.audio) {
+        throw new UploadRouteError("Audio could not be decoded.", 415);
+      }
+
+      await this.ffmpeg(transcodeAudioArgs(inputPath, outputPath));
+
+      const outputMetadata = await this.ffprobe(outputPath, "Audio");
+      const outputStat = await stat(outputPath);
+
+      if (!outputMetadata.audio || outputStat.size <= 0) {
+        throw new UploadRouteError("Audio could not be converted.", 415);
+      }
+
+      return {
+        body: await readFile(outputPath),
+        duration: outputMetadata.duration > 0 ? outputMetadata.duration : undefined,
+      };
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   }
 
   private async transcodeVideo(
@@ -271,7 +329,7 @@ class NodeUploadService implements UploadService {
     }
   }
 
-  private async ffprobe(filePath: string): Promise<VideoMetadata> {
+  private async ffprobe(filePath: string, mediaLabel = "Video"): Promise<VideoMetadata> {
     const output = await runProcess(
       this.ffprobePath,
       [
@@ -289,7 +347,7 @@ class NodeUploadService implements UploadService {
     try {
       return videoMetadataFromFfprobe(JSON.parse(output) as FfprobeOutput);
     } catch {
-      throw new UploadRouteError("Video could not be inspected.", 415);
+      throw new UploadRouteError(`${mediaLabel} could not be inspected.`, 415);
     }
   }
 
@@ -423,8 +481,32 @@ function normalizeMime(mime: string, kind: "image" | "video" | "audio", filename
     return videoMimeFromFilename(filename);
   }
 
-  if (normalized === "audio/mp3" || normalized === "audio/mpeg") {
-    return "audio/mpeg";
+  if (kind === "audio") {
+    if (normalized === "audio/mp3" || normalized === "audio/mpeg") {
+      return "audio/mpeg";
+    }
+
+    if (normalized === "audio/x-m4a") {
+      return "audio/mp4";
+    }
+
+    if (normalized === "audio/x-wav" || normalized === "audio/wave") {
+      return "audio/wav";
+    }
+
+    if (normalized === "audio/x-flac") {
+      return "audio/flac";
+    }
+
+    if (normalized === "application/ogg") {
+      return "audio/ogg";
+    }
+
+    if (audioMimes.has(normalized)) {
+      return normalized;
+    }
+
+    return audioMimeFromFilename(filename);
   }
 
   return null;
@@ -434,6 +516,12 @@ function videoMimeFromFilename(filename: string): string | null {
   const extension = path.extname(filename).replace(/^\./u, "").toLowerCase();
 
   return videoExtensionMimes.get(extension) ?? null;
+}
+
+function audioMimeFromFilename(filename: string): string | null {
+  const extension = path.extname(filename).replace(/^\./u, "").toLowerCase();
+
+  return audioExtensionMimes.get(extension) ?? null;
 }
 
 async function convertImage(
@@ -586,6 +674,31 @@ function transcodeArgs(inputPath: string, outputPath: string, purpose: string): 
   ];
 }
 
+function transcodeAudioArgs(inputPath: string, outputPath: string): string[] {
+  return [
+    "-y",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-i",
+    inputPath,
+    "-vn",
+    "-map",
+    "0:a:0",
+    "-c:a",
+    "libmp3lame",
+    "-b:a",
+    "160k",
+    "-ac",
+    "2",
+    "-ar",
+    "44100",
+    "-f",
+    "mp3",
+    outputPath,
+  ];
+}
+
 function posterArgs(inputPath: string, outputPath: string): string[] {
   return [
     "-y",
@@ -644,6 +757,36 @@ function videoExtension(mime: string, filename = ""): string {
   return mime === "video/webm" ? "webm" : "mp4";
 }
 
+function audioExtension(mime: string, filename = ""): string {
+  const fromName = path.extname(filename).replace(/^\./u, "").toLowerCase();
+
+  if (fromName !== "" && audioExtensionMimes.has(fromName)) {
+    return fromName;
+  }
+
+  if (mime === "audio/aac") {
+    return "aac";
+  }
+
+  if (mime === "audio/flac") {
+    return "flac";
+  }
+
+  if (mime === "audio/mp4") {
+    return "m4a";
+  }
+
+  if (mime === "audio/ogg") {
+    return "ogg";
+  }
+
+  if (mime === "audio/wav") {
+    return "wav";
+  }
+
+  return "mp3";
+}
+
 type FfprobeOutput = {
   format?: {
     duration?: string | undefined;
@@ -657,13 +800,18 @@ type FfprobeOutput = {
 };
 
 type VideoMetadata = {
+  audio: boolean;
   duration: number;
   video: { width: number; height: number } | null;
 };
 
 function videoMetadataFromFfprobe(output: FfprobeOutput): VideoMetadata {
   const videoStream = output.streams?.find((stream) => stream.codec_type === "video");
-  const duration = numericDuration(output.format?.duration) ?? numericDuration(videoStream?.duration) ?? 0;
+  const audioStream = output.streams?.find((stream) => stream.codec_type === "audio");
+  const duration = numericDuration(output.format?.duration) ??
+    numericDuration(videoStream?.duration) ??
+    numericDuration(audioStream?.duration) ??
+    0;
 
   if (
     videoStream === undefined ||
@@ -673,12 +821,14 @@ function videoMetadataFromFfprobe(output: FfprobeOutput): VideoMetadata {
     (videoStream.height ?? 0) <= 0
   ) {
     return {
+      audio: audioStream !== undefined,
       duration,
       video: null,
     };
   }
 
   return {
+    audio: audioStream !== undefined,
     duration,
     video: {
       width: videoStream.width ?? 0,
@@ -781,4 +931,8 @@ function unsupportedImageMessage(): string {
 
 function unsupportedVideoMessage(): string {
   return "Unsupported video type. Use MP4, WebM, MOV, M4V, 3GP, MKV, AVI, MPEG, or OGG.";
+}
+
+function unsupportedAudioMessage(): string {
+  return "Unsupported audio type. Use MP3, M4A, AAC, WAV, FLAC, or OGG.";
 }

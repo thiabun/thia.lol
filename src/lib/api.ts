@@ -25,6 +25,7 @@ import type {
   ProfileModuleConfig,
   ProfileModuleLayout,
   ProfileModuleMediaItem,
+  ProfileModulePlaylistTrack,
   ProfileModuleStatus,
   ProfileModuleType,
   ProfileModuleUploadedAudio,
@@ -272,6 +273,7 @@ export type UploadedAudio = {
   type: "audio/mpeg";
   size: number;
   purpose: AudioUploadPurpose;
+  duration?: number;
 };
 
 export type UpdateProfileInput = {
@@ -2530,6 +2532,7 @@ function profileModuleConfigForWrite(
     keys.add("sourceMode");
   } else if (
     type === "music" ||
+    type === "music_playlist" ||
     type === "spotify_song" ||
     type === "apple_music_song" ||
     type === "youtube_music_song" ||
@@ -2548,6 +2551,7 @@ function profileModuleConfigForWrite(
     keys.add("sourceMode");
     keys.add("audio");
     keys.add("autoplay");
+    keys.add("tracks");
   }
 
   return pickProfileModuleConfig(config, keys);
@@ -2647,6 +2651,7 @@ function normalizeProfileModuleConfig(config: ProfileModuleConfig): ProfileModul
   const integration = normalizeProfileIntegrationCard(config.integration);
   const audio = normalizeProfileModuleUploadedAudio(config.audio);
   const video = normalizeProfileModuleUploadedVideo(config.video);
+  const tracks = normalizeProfileModulePlaylistTracks(config.tracks);
 
   if (audio) {
     normalized.audio = audio;
@@ -2654,6 +2659,10 @@ function normalizeProfileModuleConfig(config: ProfileModuleConfig): ProfileModul
 
   if (video) {
     normalized.video = video;
+  }
+
+  if (tracks.length > 0) {
+    normalized.tracks = tracks;
   }
 
   if (typeof config.autoplay === "boolean") {
@@ -2831,6 +2840,73 @@ function normalizeProfileModuleUploadedAudio(
       : {}),
     ...(typeof audio.uploadedAt === "string" ? { uploadedAt: audio.uploadedAt } : {}),
   };
+}
+
+function normalizeProfileModulePlaylistTracks(
+  tracks: ProfileModuleConfig["tracks"],
+): ProfileModulePlaylistTrack[] {
+  if (!Array.isArray(tracks)) {
+    return [];
+  }
+
+  return tracks
+    .slice(0, 50)
+    .map(normalizeProfileModulePlaylistTrack)
+    .filter(
+      (track): track is ProfileModulePlaylistTrack => track !== undefined,
+    );
+}
+
+function normalizeProfileModulePlaylistTrack(
+  track: ProfileModulePlaylistTrack | undefined,
+): ProfileModulePlaylistTrack | undefined {
+  if (!track || typeof track !== "object") {
+    return undefined;
+  }
+
+  const title = normalizeProfileModuleTrackText(track.title, 90);
+
+  if (!title) {
+    return undefined;
+  }
+
+  const artist = normalizeProfileModuleTrackText(track.artist, 90);
+  const sourceUrl =
+    typeof track.sourceUrl === "string"
+      ? normalizeProfileModuleExternalUrl(track.sourceUrl)
+      : undefined;
+  const audio = normalizeProfileModuleUploadedAudio(track.audio);
+  const duration =
+    typeof track.duration === "number" &&
+    Number.isFinite(track.duration) &&
+    track.duration > 0
+      ? Math.min(60 * 60 * 4, track.duration)
+      : audio?.duration;
+  const id = normalizeProfileModuleTrackText(track.id, 80);
+
+  return {
+    title,
+    ...(artist ? { artist } : {}),
+    ...(audio ? { audio } : {}),
+    ...(duration ? { duration } : {}),
+    ...(id ? { id } : {}),
+    ...(sourceUrl ? { sourceUrl } : {}),
+  };
+}
+
+function normalizeProfileModuleTrackText(
+  value: unknown,
+  maxLength: number,
+): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.replace(/\s+/g, " ").trim();
+
+  return trimmed !== "" && Array.from(trimmed).length <= maxLength
+    ? trimmed
+    : undefined;
 }
 
 function normalizeProfileModuleUploadedVideo(

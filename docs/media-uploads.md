@@ -5,7 +5,7 @@
 > preservation requirements. Future upload work should be tracked in GitHub
 > Issues.
 
-`thia.lol` supports authenticated image, video, and MP3 uploads for profile
+`thia.lol` supports authenticated image, video, and audio uploads for profile
 customization, posts, replies, rooms, and profile media modules. Uploads are
 processed by the Node API on the VPS; the app should not rely on browser MIME
 claims or store arbitrary original files.
@@ -102,13 +102,15 @@ Rules:
 
 - Maximum upload size: 20 MB.
 - Purpose must be `profile_music` or `post_media`.
-- Accepted input after server sniffing: MP3 only.
-- Stored output is the original MP3 bytes with `audio/mpeg`.
-- WAV, M4A, FLAC, OGG, browser-only MIME claims, and unknown binaries are
-  rejected.
+- Accepted input after server sniffing and extension fallback: MP3, M4A, AAC,
+  WAV, FLAC, and OGG.
+- Stored output is MP3 with `audio/mpeg`. MP3 uploads are stored directly;
+  other accepted formats are converted through FFmpeg before storage.
+- Browser-only MIME claims and unknown binaries are rejected.
 
-Audio upload responses include `url`, `mime`, `size`, `purpose`, and
-`mediaType: "audio"`. Post and reply composers attach MP3s through the same
+Audio upload responses include `url`, `mime`, `size`, `purpose`, and optional
+`duration` when conversion can inspect it, plus
+`mediaType: "audio"`. Post and reply composers attach audio through the same
 ordered attachment tray as images and videos.
 
 ## Post and Reply Attachments
@@ -122,7 +124,7 @@ kinds are:
 
 - `image`: uploaded post media WebP/JPEG/PNG/GIF.
 - `video`: uploaded post media MP4/WebM with a WebP poster.
-- `audio`: uploaded post media MP3.
+- `audio`: uploaded post media audio stored as MP3.
 - `integration`: allowlisted music cards for Spotify, YouTube, and Apple Music
   URLs/catalog-backed cards.
 

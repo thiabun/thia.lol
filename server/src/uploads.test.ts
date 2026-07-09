@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -179,6 +179,44 @@ describe("upload service", () => {
     }
   });
 
+  it("converts accepted profile audio formats to MP3", async () => {
+    const uploadRoot = await mkdtemp(path.join(tmpdir(), "thia-uploads-"));
+    const toolRoot = await mkdtemp(path.join(tmpdir(), "thia-upload-tools-"));
+
+    try {
+      const { ffmpegPath, ffprobePath, outputBytes } = await fakeAudioConversionTools(toolRoot);
+      const service = createUploadService({
+        uploadRoot,
+        publicPrefix: "/uploads",
+        ffmpegPath,
+        ffprobePath,
+      });
+      const wavHeader = Buffer.from("RIFF$\x00\x00\x00WAVEfmt ", "binary");
+
+      const result = await service.store("audio", multipartFile(wavHeader, "profile_music", "fixture.wav"));
+      const match = /^\/uploads\/media\/([0-9]{4})\/([0-9]{2})\/profile_music-[a-f0-9]{32}\.mp3$/u.exec(
+        result.url,
+      );
+
+      expect(match).not.toBeNull();
+      expect(result).toMatchObject({
+        duration: 12.5,
+        mime: "audio/mpeg",
+        type: "audio/mpeg",
+        size: outputBytes.length,
+        purpose: "profile_music",
+        mediaType: "audio",
+      });
+
+      const filePath = path.join(uploadRoot, result.url.replace(/^\/uploads\//u, ""));
+
+      await expect(readFile(filePath)).resolves.toEqual(outputBytes);
+    } finally {
+      await rm(uploadRoot, { recursive: true, force: true });
+      await rm(toolRoot, { recursive: true, force: true });
+    }
+  });
+
   it("preserves multipart limit errors for route-level 413 handling", async () => {
     const service = createUploadService({
       uploadRoot: "/tmp/thia-unused-uploads",
@@ -260,4 +298,36 @@ function multipartFileError(error: Error, purpose: string): MultipartFile {
       throw error;
     },
   } as unknown as MultipartFile;
+}
+
+async function fakeAudioConversionTools(
+  directory: string,
+): Promise<{ ffmpegPath: string; ffprobePath: string; outputBytes: Buffer }> {
+  const outputBytes = Buffer.from([0xff, 0xfb, 0x90, 0x64, 0x00, 0x0f, 0xf0, 0x00]);
+  const ffmpegPath = path.join(directory, "ffmpeg");
+  const ffprobePath = path.join(directory, "ffprobe");
+
+  await writeFile(
+    ffmpegPath,
+    `#!/usr/bin/env node
+const { writeFileSync } = require("node:fs");
+const output = process.argv[process.argv.length - 1];
+writeFileSync(output, Buffer.from(${JSON.stringify(Array.from(outputBytes))}));
+`,
+    { mode: 0o755 },
+  );
+  await writeFile(
+    ffprobePath,
+    `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({
+  format: { duration: "12.5" },
+  streams: [{ codec_type: "audio", duration: "12.5" }]
+}));
+`,
+    { mode: 0o755 },
+  );
+  await chmod(ffmpegPath, 0o755);
+  await chmod(ffprobePath, 0o755);
+
+  return { ffmpegPath, ffprobePath, outputBytes };
 }

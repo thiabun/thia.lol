@@ -114,7 +114,9 @@ import { cn } from "../lib/classNames";
 import { formatShortDate } from "../lib/dates";
 import { prepareImageFileForCrop, validateImageCropFile } from "../lib/imageCrop";
 import {
+  audioUploadFormatHelp,
   imageUploadAccept,
+  isAcceptedAudioUploadFile,
   isAcceptedVideoUploadFile,
   videoUploadAccept,
   videoUploadFormatHelp,
@@ -2265,6 +2267,13 @@ function firstProfileMusicAutoplayModule(
     return firstMusicModule;
   }
 
+  if (
+    firstMusicModule.type === "music_playlist" &&
+    firstMusicModule.config.tracks?.some((track) => track.audio)
+  ) {
+    return firstMusicModule;
+  }
+
   if (!integration?.embed) {
     return undefined;
   }
@@ -2276,7 +2285,8 @@ function firstProfileMusicAutoplayModule(
     return firstMusicModule;
   }
 
-  return integration.provider === "youtube" && firstMusicModule.type.startsWith("youtube_music")
+  return integration.provider === "youtube" &&
+    getProfileModuleDefinition(firstMusicModule.type).category === "music"
     ? firstMusicModule
     : undefined;
 }
@@ -2288,6 +2298,10 @@ function profileMusicAutoplayProvider(
     return "upload";
   }
 
+  if (module?.config.tracks?.some((track) => track.audio)) {
+    return "upload";
+  }
+
   if (module?.config.integration?.provider === "youtube") {
     return "youtube";
   }
@@ -2296,8 +2310,6 @@ function profileMusicAutoplayProvider(
 }
 
 export function validateProfileModuleAudioFile(file: File): string | undefined {
-  const name = file.name.toLowerCase();
-
   if (file.size <= 0) {
     return "Audio cannot be empty.";
   }
@@ -2306,8 +2318,8 @@ export function validateProfileModuleAudioFile(file: File): string | undefined {
     return "Audio must be 20 MB or smaller.";
   }
 
-  if (file.type !== "audio/mpeg" && !name.endsWith(".mp3")) {
-    return "Use an MP3 file.";
+  if (!isAcceptedAudioUploadFile(file)) {
+    return audioUploadFormatHelp;
   }
 
   return undefined;
@@ -2387,6 +2399,9 @@ export function formatUploadSize(size: number): string {
   return `${Math.ceil(size / 1024)} KB`;
 }
 
+const profileMusicAutoplayConsentCookieName = "thia_profile_music_autoplay";
+const profileMusicAutoplayConsentMaxAgeSeconds = 60 * 60 * 24 * 365;
+
 function profileMusicAutoplayConsentKey(profileId: number): string {
   return `thia.profile.musicAutoplayConsent.v1:${profileId}`;
 }
@@ -2420,6 +2435,10 @@ function readProfileMusicAutoplayConsent(
     return false;
   }
 
+  if (readProfileMusicAutoplayConsentCookie()) {
+    return true;
+  }
+
   try {
     const value = window.localStorage.getItem(key);
 
@@ -2432,7 +2451,9 @@ function readProfileMusicAutoplayConsent(
     return (
       parsed.profileId === profileId &&
       parsed.handle === handle &&
-      parsed.provider === "spotify" &&
+      (parsed.provider === "spotify" ||
+        parsed.provider === "youtube" ||
+        parsed.provider === "upload") &&
       typeof parsed.grantedAt === "string" &&
       parsed.grantedAt.length > 0
     );
@@ -2493,11 +2514,41 @@ function writeProfileMusicAutoplayConsent(
     return;
   }
 
+  writeProfileMusicAutoplayConsentCookie();
+
   try {
     window.localStorage.setItem(key, JSON.stringify(consent));
   } catch {
     // If localStorage is unavailable, the current click still counts for this view.
   }
+}
+
+function readProfileMusicAutoplayConsentCookie(): boolean {
+  if (typeof document === "undefined") {
+    return false;
+  }
+
+  return document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .some(
+      (part) =>
+        part === `${profileMusicAutoplayConsentCookieName}=1` ||
+        part.startsWith(`${profileMusicAutoplayConsentCookieName}=1&`),
+    );
+}
+
+function writeProfileMusicAutoplayConsentCookie() {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  const secure =
+    typeof window !== "undefined" && window.location.protocol === "https:"
+      ? "; Secure"
+      : "";
+
+  document.cookie = `${profileMusicAutoplayConsentCookieName}=1; Max-Age=${profileMusicAutoplayConsentMaxAgeSeconds}; Path=/; SameSite=Lax${secure}`;
 }
 
 function resolveProfileCanvasModules(
@@ -3899,6 +3950,10 @@ export function profileCanvasDefaultConfigForModule(
   }
 
   if (definition.category === "music") {
+    if (type === "music_playlist") {
+      return { ...base, platform: "custom", sourceMode: "upload", tracks: [] };
+    }
+
     if (type === "music") {
       return { ...base, platform: "custom", sourceMode: "upload" };
     }

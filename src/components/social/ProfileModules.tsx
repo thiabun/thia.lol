@@ -10,6 +10,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -63,6 +64,7 @@ import type {
   ProfileModuleLayout,
   ProfileModuleLink,
   ProfileModuleMediaItem,
+  ProfileModulePlaylistTrack,
   ProfileModuleUploadedAudio,
   ProfileModuleUploadedVideo,
   ProfileConnectionPlatform,
@@ -77,6 +79,7 @@ import { RichText } from "./RichText";
 
 const PROFILE_CANVAS_COLUMNS = PROFILE_CANVAS_DESKTOP_COLUMNS;
 const PROFILE_CANVAS_ROWS = PROFILE_CANVAS_DESKTOP_ROWS;
+const PROFILE_MUSIC_AUTOPLAY_VOLUME = 0.42;
 
 type AlbumArtworkTextTone = "black" | "white";
 
@@ -1135,6 +1138,17 @@ function ProfileModuleContent({
   }
 
   if (module.type === "music" || moduleCategory === "music") {
+    if (module.type === "music_playlist") {
+      return (
+        <MusicPlaylistPlayer
+          fallbackLabel="Playlist"
+          module={module}
+          autoplayRequestId={musicAutoplayRequestId}
+          size={size}
+        />
+      );
+    }
+
     if (module.config.audio) {
       return (
         <UploadedAudioPlayer
@@ -1742,6 +1756,7 @@ function UploadedAudioPlayer({
     }
 
     lastAutoplayRequestRef.current = autoplayRequestId;
+    element.volume = PROFILE_MUSIC_AUTOPLAY_VOLUME;
     void element.play().catch(() => {
       setPlaying(false);
     });
@@ -1796,6 +1811,467 @@ function UploadedAudioPlayer({
         src={audio.url}
       />
     </MediaPlayer>
+  );
+}
+
+function MusicPlaylistPlayer({
+  autoplayRequestId = 0,
+  fallbackLabel,
+  integration,
+  module,
+  size,
+}: {
+  autoplayRequestId?: number | undefined;
+  fallbackLabel: string;
+  integration?: ProfileIntegrationCard | undefined;
+  module: ProfileModule;
+  size?: ProfileGridModuleSize | undefined;
+}) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const spotifyContainerRef = useRef<HTMLDivElement | null>(null);
+  const spotifyControllerRef = useRef<SpotifyEmbedController | undefined>(undefined);
+  const removeSpotifyListenersRef = useRef<(() => void) | undefined>(undefined);
+  const lastAutoplayRequestRef = useRef(0);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [position, setPosition] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [playerVersion, setPlayerVersion] = useState(0);
+  const [spotifyReadyVersion, setSpotifyReadyVersion] = useState(0);
+  const [spotifyProgress, setSpotifyProgress] = useState<SpotifyPlaybackProgress>(
+    emptySpotifyPlaybackProgress,
+  );
+  const presentation = profileModulePresentation(size);
+  const compactPlayer = profilePresentationIsCompact(presentation.tier);
+  const richPlayer = presentation.preferLargeMedia;
+  const tracks = profilePlaylistTracks(module, integration, fallbackLabel);
+  const activeTrack = tracks[Math.min(activeIndex, Math.max(0, tracks.length - 1))];
+  const metadata = integration?.metadata;
+  const title = metadata?.title ?? module.config.label ?? fallbackLabel;
+  const subtitle =
+    metadata?.subtitle ??
+    (module.config.sourceMode === "upload" ? "Uploaded playlist" : "Playlist");
+  const artworkUrl = metadata?.imageUrl ?? null;
+  const spotifyUri =
+    integration?.provider === "spotify" && integration.resourceType === "playlist"
+      ? spotifyResourceUri(integration)
+      : undefined;
+  const youtubePlayable =
+    integration?.provider === "youtube" &&
+    integration.embed &&
+    integration.resourceType === "playlist";
+  const localAudio = activeTrack?.audio;
+  const hasLocalAudio = Boolean(localAudio);
+  const providerPlayable = Boolean(spotifyUri || youtubePlayable);
+  const canPlay = Boolean(hasLocalAudio || providerPlayable);
+  const progress =
+    localAudio && duration > 0
+      ? Math.min(100, Math.max(0, (position / duration) * 100))
+      : spotifyUri
+        ? spotifyPlaybackProgressPercent(spotifyProgress)
+        : playing
+          ? 100
+          : 0;
+  const progressLabel = profilePlaylistProgressLabel({
+    activeTrack,
+    duration,
+    playing,
+    position,
+    spotifyProgress,
+    tier: presentation.tier,
+  });
+  const youtubeEmbedSrc = integration && youtubePlayable
+    ? youtubeMusicEmbedSrc(integration, playing, playerVersion)
+    : undefined;
+
+  const playPlaylist = useCallback(async () => {
+    const element = audioRef.current;
+
+    if (hasLocalAudio && element) {
+      element.volume = PROFILE_MUSIC_AUTOPLAY_VOLUME;
+
+      try {
+        await element.play();
+      } catch {
+        setPlaying(false);
+      }
+
+      return;
+    }
+
+    const spotifyController = spotifyControllerRef.current;
+
+    if (spotifyController) {
+      const played = await playSpotifyEmbed(spotifyController);
+
+      if (played) {
+        setPlaying(true);
+      }
+
+      return;
+    }
+
+    if (youtubePlayable) {
+      setPlaying(true);
+      setPlayerVersion((version) => version + 1);
+    }
+  }, [hasLocalAudio, youtubePlayable]);
+
+  useEffect(() => {
+    const element = audioRef.current;
+
+    if (!element || !localAudio) {
+      setDuration(activeTrack?.duration ?? 0);
+      setPosition(0);
+      return undefined;
+    }
+
+    const mediaElement = element;
+
+    function syncMetadata() {
+      if (Number.isFinite(mediaElement.duration) && mediaElement.duration > 0) {
+        setDuration(mediaElement.duration);
+      } else {
+        setDuration(activeTrack?.duration ?? 0);
+      }
+    }
+
+    function syncTime() {
+      setPosition(
+        Number.isFinite(mediaElement.currentTime) ? mediaElement.currentTime : 0,
+      );
+    }
+
+    function syncPlaying() {
+      setPlaying(!mediaElement.paused && !mediaElement.ended);
+    }
+
+    mediaElement.addEventListener("loadedmetadata", syncMetadata);
+    mediaElement.addEventListener("timeupdate", syncTime);
+    mediaElement.addEventListener("play", syncPlaying);
+    mediaElement.addEventListener("pause", syncPlaying);
+    mediaElement.addEventListener("ended", syncPlaying);
+    syncMetadata();
+    syncTime();
+    syncPlaying();
+
+    return () => {
+      mediaElement.removeEventListener("loadedmetadata", syncMetadata);
+      mediaElement.removeEventListener("timeupdate", syncTime);
+      mediaElement.removeEventListener("play", syncPlaying);
+      mediaElement.removeEventListener("pause", syncPlaying);
+      mediaElement.removeEventListener("ended", syncPlaying);
+    };
+  }, [activeTrack?.duration, localAudio]);
+
+  useEffect(() => {
+    const container = spotifyContainerRef.current;
+
+    if (!container || !spotifyUri) {
+      return undefined;
+    }
+
+    let canceled = false;
+    spotifyControllerRef.current = undefined;
+    removeSpotifyListenersRef.current?.();
+    removeSpotifyListenersRef.current = undefined;
+    container.replaceChildren();
+
+    loadSpotifyIframeApi()
+      .then((api) => {
+        if (canceled) {
+          return;
+        }
+
+        api.createController(
+          container,
+          {
+            height: "152",
+            theme: "0",
+            uri: spotifyUri,
+            width: "100%",
+          },
+          (controller) => {
+            if (canceled) {
+              controller.destroy?.();
+              return;
+            }
+
+            spotifyControllerRef.current = controller;
+            removeSpotifyListenersRef.current = attachSpotifyPlaybackListeners(
+              controller,
+              (nextProgress) => {
+                if (canceled) {
+                  return;
+                }
+
+                setSpotifyProgress(nextProgress);
+                setPlaying(!nextProgress.isPaused && !nextProgress.isBuffering);
+              },
+            );
+            setSpotifyReadyVersion((version) => version + 1);
+          },
+        );
+      })
+      .catch(() => undefined);
+
+    return () => {
+      canceled = true;
+      removeSpotifyListenersRef.current?.();
+      removeSpotifyListenersRef.current = undefined;
+      spotifyControllerRef.current?.destroy?.();
+      spotifyControllerRef.current = undefined;
+      container.replaceChildren();
+    };
+  }, [spotifyUri]);
+
+  useEffect(() => {
+    if (!playing || !spotifyProgress.known || spotifyProgress.duration <= 0) {
+      return undefined;
+    }
+
+    const interval = window.setInterval(() => {
+      setSpotifyProgress((progressState) => {
+        if (
+          progressState.isPaused ||
+          progressState.isBuffering ||
+          !progressState.known ||
+          progressState.duration <= 0 ||
+          progressState.position >= progressState.duration
+        ) {
+          return progressState;
+        }
+
+        return {
+          ...progressState,
+          position: Math.min(progressState.duration, progressState.position + 1000),
+        };
+      });
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [playing, spotifyProgress.duration, spotifyProgress.known]);
+
+  useEffect(() => {
+    if (
+      autoplayRequestId <= 0 ||
+      lastAutoplayRequestRef.current === autoplayRequestId
+    ) {
+      return;
+    }
+
+    lastAutoplayRequestRef.current = autoplayRequestId;
+    void playPlaylist();
+  }, [autoplayRequestId, playPlaylist, spotifyReadyVersion]);
+
+  async function handlePlaybackToggle() {
+    const element = audioRef.current;
+
+    if (localAudio && element) {
+      if (playing) {
+        element.pause();
+        return;
+      }
+
+      await playPlaylist();
+      return;
+    }
+
+    const spotifyController = spotifyControllerRef.current;
+
+    if (spotifyController) {
+      const nextPlaying = await toggleSpotifyPlayback(spotifyController, playing);
+
+      if (nextPlaying !== undefined) {
+        setPlaying(nextPlaying);
+      }
+
+      return;
+    }
+
+    if (youtubePlayable) {
+      setPlaying((current) => !current);
+      setPlayerVersion((version) => version + 1);
+    }
+  }
+
+  return (
+    <div
+      className="flex h-full min-h-0 overflow-hidden rounded-card border border-line bg-surface/74 shadow-inner-soft"
+      data-profile-music-playlist-tier={presentation.tier}
+      data-testid="profile-music-playlist-player"
+    >
+      <div
+        className={cn(
+          "flex min-h-0 w-full min-w-0",
+          compactPlayer ? "flex-col gap-2 p-2" : "flex-col gap-3 p-3",
+          richPlayer ? "sm:p-4" : undefined,
+        )}
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            className={cn(
+              "grid shrink-0 place-items-center overflow-hidden rounded-card border border-line bg-canvas/68 text-muted shadow-inner-soft",
+              compactPlayer ? "size-12" : "size-16",
+            )}
+            data-testid="profile-music-playlist-artwork-frame"
+          >
+            {artworkUrl ? (
+              <img
+                alt=""
+                className="size-full object-cover"
+                decoding="async"
+                loading="lazy"
+                src={artworkUrl}
+              />
+            ) : (
+              <Music2 aria-hidden="true" size={compactPlayer ? 19 : 22} />
+            )}
+          </span>
+          <div className="grid min-w-0 flex-1 gap-2">
+            <div className="min-w-0">
+              <span
+                className={cn(
+                  "block truncate font-semibold text-text",
+                  compactPlayer ? "text-sm" : "text-base",
+                )}
+              >
+                {title}
+              </span>
+              {presentation.showSecondaryText ? (
+                <span className="mt-0.5 block truncate text-xs leading-5 text-muted">
+                  {subtitle}
+                  {tracks.length > 0 ? ` · ${tracks.length} songs` : ""}
+                </span>
+              ) : null}
+            </div>
+            <div className="flex min-w-0 items-center gap-2.5">
+              <button
+                type="button"
+                className="grid size-9 shrink-0 place-items-center rounded-full border border-accent/28 bg-accent text-accent-contrast shadow-soft transition duration-fluid ease-fluid hover:-translate-y-0.5 hover:bg-accent-strong hover:shadow-lift focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0"
+                aria-label={playing ? "Pause playlist" : "Play playlist"}
+                data-testid="profile-music-playlist-play-button"
+                disabled={!canPlay}
+                onClick={handlePlaybackToggle}
+              >
+                {playing ? (
+                  <Pause aria-hidden="true" size={17} />
+                ) : (
+                  <Play aria-hidden="true" size={17} />
+                )}
+              </button>
+              <div className="grid min-w-0 flex-1 gap-1">
+                <div className="h-1.5 overflow-hidden rounded-full bg-line/72">
+                  <div
+                    className="h-full rounded-full bg-accent transition-[width] duration-fluid ease-fluid"
+                    role="progressbar"
+                    aria-label="Playlist playback progress"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(progress)}
+                    style={{ width: `${progress}%` }}
+                    data-testid="profile-music-playlist-progress-bar"
+                  />
+                </div>
+                <span
+                  className="truncate text-xs font-medium tabular-nums leading-none text-muted"
+                  data-testid="profile-music-playlist-progress-time"
+                >
+                  {progressLabel}
+                </span>
+              </div>
+              {integration?.sourceUrl ? (
+                <a
+                  aria-label={`Open ${title}`}
+                  className="grid size-8 shrink-0 place-items-center rounded-control border border-line bg-surface/72 text-muted shadow-inner-soft transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                  data-testid="profile-music-playlist-open-link"
+                  href={integration.sourceUrl}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  <ExternalLink aria-hidden="true" size={15} />
+                </a>
+              ) : null}
+            </div>
+          </div>
+        </div>
+        <div
+          className={cn(
+            "min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-card border border-line bg-canvas/48",
+            compactPlayer ? "max-h-28" : undefined,
+          )}
+          data-testid="profile-music-playlist-track-list"
+        >
+          {tracks.map((track, index) => {
+            const selected = index === activeIndex;
+
+            return (
+              <button
+                type="button"
+                className={cn(
+                  "flex min-h-10 w-full min-w-0 items-center gap-2 border-b border-line/70 px-2.5 py-2 text-left last:border-b-0 transition duration-fluid ease-fluid hover:bg-surface/70 focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-focus",
+                  selected ? "bg-surface/82" : undefined,
+                )}
+                data-profile-music-playlist-track-selected={selected ? "true" : undefined}
+                data-testid="profile-music-playlist-track"
+                key={track.id ?? track.audio?.url ?? track.sourceUrl ?? `${track.title}-${index}`}
+                onClick={() => setActiveIndex(index)}
+              >
+                <span className="w-5 shrink-0 text-center text-[0.68rem] font-semibold tabular-nums text-muted">
+                  {index + 1}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-text">
+                    {track.title}
+                  </span>
+                  {presentation.showSecondaryText ? (
+                    <span className="block truncate text-xs text-muted">
+                      {track.artist ?? profilePlaylistProviderLabel(integration)}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="shrink-0 text-xs tabular-nums text-muted">
+                  {profilePlaylistTrackDurationLabel(track)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      {localAudio ? (
+        <audio
+          ref={audioRef}
+          className="sr-only"
+          preload="metadata"
+          src={localAudio.url}
+          data-testid="profile-music-playlist-audio"
+        />
+      ) : null}
+      {spotifyUri ? (
+        <div
+          className="pointer-events-none absolute size-px overflow-hidden opacity-0"
+          aria-hidden="true"
+          data-testid="profile-music-playlist-provider-frame"
+        >
+          <div ref={spotifyContainerRef} />
+        </div>
+      ) : null}
+      {youtubeEmbedSrc ? (
+        <iframe
+          key={youtubeEmbedSrc}
+          className="pointer-events-none absolute size-px opacity-0"
+          title={integration?.embed?.title ?? `${title} on YouTube Music`}
+          src={youtubeEmbedSrc}
+          loading="lazy"
+          referrerPolicy="strict-origin-when-cross-origin"
+          allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+          sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+          allowFullScreen
+          data-profile-embed-provider="youtube"
+          data-testid="profile-music-playlist-youtube-embed"
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -1871,6 +2347,18 @@ function ProfileIntegrationRichCard({
     );
   }
 
+  if (isPlaylistModuleIntegration(module, integration)) {
+    return (
+      <MusicPlaylistPlayer
+        autoplayRequestId={autoplayRequestId}
+        fallbackLabel={fallbackLabel}
+        integration={integration}
+        module={module}
+        size={size}
+      />
+    );
+  }
+
   if (showPrimaryEmbed && primaryEmbed && integration.provider === "spotify") {
     return (
       <SpotifyMusicPlayer
@@ -1889,7 +2377,8 @@ function ProfileIntegrationRichCard({
     primaryEmbed &&
     primaryEmbedSrc &&
     integration.provider === "youtube" &&
-    module.type.startsWith("youtube_music")
+    getProfileModuleDefinition(module.type).category === "music" &&
+    integration.resourceType === "video"
   ) {
     return (
       <YouTubeMusicPlayer
@@ -2997,6 +3486,160 @@ function profileUploadedAudioProgressLabel(
   return playing ? "Playing" : "Ready";
 }
 
+function profilePlaylistTracks(
+  module: ProfileModule,
+  integration: ProfileIntegrationCard | undefined,
+  fallbackLabel: string,
+): ProfileModulePlaylistTrack[] {
+  if ((module.config.tracks ?? []).length > 0) {
+    return module.config.tracks ?? [];
+  }
+
+  const statTracks = profilePlaylistTracksFromStats(integration?.metadata.stats);
+
+  if (statTracks.length > 0) {
+    return statTracks;
+  }
+
+  if (integration) {
+    return [
+      {
+        id: integration.resourceKey,
+        title: integration.metadata.title ?? module.config.label ?? fallbackLabel,
+        artist: integration.metadata.subtitle ?? profilePlaylistProviderLabel(integration),
+        sourceUrl: integration.sourceUrl,
+      },
+    ];
+  }
+
+  return [
+    {
+      title: module.config.label ?? fallbackLabel,
+    },
+  ];
+}
+
+function profilePlaylistTracksFromStats(
+  stats: ProfileIntegrationCard["metadata"]["stats"] | undefined,
+): ProfileModulePlaylistTrack[] {
+  if (!stats || typeof stats !== "object" || !Array.isArray(stats.tracks)) {
+    return [];
+  }
+
+  return stats.tracks
+    .slice(0, 50)
+    .map((track) => {
+      if (!track || typeof track !== "object" || Array.isArray(track)) {
+        return undefined;
+      }
+
+      const record = track as Record<string, unknown>;
+      const title = profilePlaylistTrackText(record.title, 90);
+
+      if (!title) {
+        return undefined;
+      }
+
+      const artist = profilePlaylistTrackText(record.artist, 90);
+      const id = profilePlaylistTrackText(record.id, 80);
+      const sourceUrl = profilePlaylistTrackUrl(record.sourceUrl);
+      const duration =
+        typeof record.duration === "number" &&
+        Number.isFinite(record.duration) &&
+        record.duration > 0
+          ? Math.min(60 * 60 * 4, record.duration)
+          : undefined;
+
+      return {
+        title,
+        ...(artist ? { artist } : {}),
+        ...(duration ? { duration } : {}),
+        ...(id ? { id } : {}),
+        ...(sourceUrl ? { sourceUrl } : {}),
+      };
+    })
+    .filter(
+      (track): track is ProfileModulePlaylistTrack => track !== undefined,
+    );
+}
+
+function profilePlaylistTrackText(
+  value: unknown,
+  maxLength: number,
+): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.replace(/\s+/g, " ").trim();
+
+  return trimmed !== "" && Array.from(trimmed).length <= maxLength
+    ? trimmed
+    : undefined;
+}
+
+function profilePlaylistTrackUrl(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(value);
+
+    return url.protocol === "https:" ? url.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function profilePlaylistProviderLabel(
+  integration: ProfileIntegrationCard | undefined,
+): string {
+  if (!integration) {
+    return "Playlist";
+  }
+
+  return platformDisplayName(integration.provider);
+}
+
+function profilePlaylistTrackDurationLabel(
+  track: ProfileModulePlaylistTrack,
+): string {
+  const duration = track.duration ?? track.audio?.duration ?? 0;
+
+  return duration > 0 ? formatMediaTime(duration) : "";
+}
+
+function profilePlaylistProgressLabel({
+  activeTrack,
+  duration,
+  playing,
+  position,
+  spotifyProgress,
+  tier,
+}: {
+  activeTrack: ProfileModulePlaylistTrack | undefined;
+  duration: number;
+  playing: boolean;
+  position: number;
+  spotifyProgress: SpotifyPlaybackProgress;
+  tier: ProfileModulePresentationTier;
+}): string {
+  if (spotifyProgress.known) {
+    return profileSpotifyProgressLabel(spotifyProgress, playing ? "Playing" : "Ready", tier);
+  }
+
+  const trackDuration = duration || activeTrack?.duration || activeTrack?.audio?.duration || 0;
+
+  if (trackDuration > 0) {
+    return tier === "compact" || tier === "micro"
+      ? formatMediaTime(position)
+      : `${formatMediaTime(position)} / ${formatMediaTime(trackDuration)}`;
+  }
+
+  return playing ? "Playing" : "Ready";
+}
+
 function profileSpotifyProgressLabel(
   progress: SpotifyPlaybackProgress,
   statusText: string,
@@ -3116,6 +3759,18 @@ function isArtistModuleIntegration(
   integration: ProfileIntegrationCard,
 ): boolean {
   return module.type.endsWith("_artist") || integration.resourceType === "artist";
+}
+
+function isPlaylistModuleIntegration(
+  module: ProfileModule,
+  integration: ProfileIntegrationCard,
+): boolean {
+  return (
+    getProfileModuleDefinition(module.type).category === "music" &&
+    (module.type === "music_playlist" ||
+      module.type.endsWith("_playlist") ||
+      integration.resourceType === "playlist")
+  );
 }
 
 function profileIntegrationArtistStats(

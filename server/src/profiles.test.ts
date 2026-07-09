@@ -6,6 +6,7 @@ import {
   buildProfileFollowListQuery,
   buildPublicProfileModulesQuery,
   buildPublicProfileRoomsQuery,
+  canonicalProfileModuleType,
   followUserCardPayloadFromRow,
   normalizeProfileHandle,
   profileBadgesPayloadFromRows,
@@ -117,6 +118,15 @@ describe("profile preview handle normalization", () => {
     expect(normalizeProfileHandle("")).toBeNull();
     expect(normalizeProfileHandle("bad!")).toBeNull();
     expect(normalizeProfileHandle("a".repeat(41))).toBeNull();
+  });
+});
+
+describe("profile module type canonicalization", () => {
+  it("maps old provider-specific music modules to unified types", () => {
+    expect(canonicalProfileModuleType("spotify_song")).toBe("music");
+    expect(canonicalProfileModuleType("youtube_music_playlist")).toBe("music_playlist");
+    expect(canonicalProfileModuleType("apple_music_artist")).toBe("music");
+    expect(canonicalProfileModuleType("youtube_playlist")).toBe("youtube_playlist");
   });
 });
 

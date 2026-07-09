@@ -247,38 +247,40 @@ function fakePool(options: FakePoolOptions = {}) {
     }
 
     if (query.includes("UPDATE profile_modules") && query.includes("config_json")) {
-      const moduleId = Number(params?.[11]);
+      const moduleId = Number(params?.[12]);
       const row = moduleRows.find((item) => Number(item.id) === moduleId);
       const update = {
         title: params?.[0],
-        configJson: params?.[1],
-        visibility: params?.[2],
-        position: params?.[3],
-        gridColumn: params?.[4],
-        gridRow: params?.[5],
-        gridColSpan: params?.[6],
-        gridRowSpan: params?.[7],
-        gridPinned: params?.[8],
-        status: params?.[9],
-        schemaVersion: params?.[10],
-        id: params?.[11],
-        userId: params?.[12],
+        type: params?.[1],
+        configJson: params?.[2],
+        visibility: params?.[3],
+        position: params?.[4],
+        gridColumn: params?.[5],
+        gridRow: params?.[6],
+        gridColSpan: params?.[7],
+        gridRowSpan: params?.[8],
+        gridPinned: params?.[9],
+        status: params?.[10],
+        schemaVersion: params?.[11],
+        id: params?.[12],
+        userId: params?.[13],
       };
 
       moduleUpdates.push(update);
 
       if (row !== undefined) {
         row.title = params?.[0];
-        row.config_json = params?.[1];
-        row.visibility = params?.[2];
-        row.position = params?.[3];
-        row.grid_column = params?.[4];
-        row.grid_row = params?.[5];
-        row.grid_col_span = params?.[6];
-        row.grid_row_span = params?.[7];
-        row.grid_pinned = params?.[8];
-        row.status = params?.[9];
-        row.schema_version = params?.[10];
+        row.type = params?.[1];
+        row.config_json = params?.[2];
+        row.visibility = params?.[3];
+        row.position = params?.[4];
+        row.grid_column = params?.[5];
+        row.grid_row = params?.[6];
+        row.grid_col_span = params?.[7];
+        row.grid_row_span = params?.[8];
+        row.grid_pinned = params?.[9];
+        row.status = params?.[10];
+        row.schema_version = params?.[11];
       }
 
       return [{ affectedRows: row === undefined ? 0 : 1 }, undefined];
@@ -490,12 +492,13 @@ function persistedMusicPayload(
   overrides: {
     config?: Record<string, unknown>;
     status?: string;
+    type?: string;
     visibility?: string;
   } = {},
 ) {
   return {
     id: 20,
-    type: "music",
+    type: overrides.type ?? "music",
     title: "Focus",
     config: overrides.config ?? {
       label: "Focus track",
@@ -564,11 +567,11 @@ function profileInfoRow(position: number) {
   };
 }
 
-function musicRow() {
+function musicRow(overrides: { type?: string } = {}) {
   return {
     id: 20,
     user_id: 1,
-    type: "music",
+    type: overrides.type ?? "music",
     title: "Focus",
     config_json: JSON.stringify({
       label: "Focus track",
@@ -763,6 +766,53 @@ describe("editor profile module payloads", () => {
     });
   });
 
+  it("canonicalizes new legacy music playlist draft modules during commit", async () => {
+    const { insertedModules, pool } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [
+          profileInfoPayload(1),
+          {
+            id: -1004,
+            type: "youtube_music_playlist",
+            title: "Set list",
+            config: {
+              label: "Set list",
+              platform: "youtube",
+              url: "https://www.youtube.com/playlist?list=PL123",
+            },
+            visibility: "public",
+            position: 2,
+            pinned: false,
+            layout: {
+              column: 3,
+              row: 4,
+              colSpan: 4,
+              rowSpan: 3,
+            },
+            status: "active",
+            schemaVersion: 1,
+            createdAt: null,
+            updatedAt: null,
+          },
+        ],
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(0)],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await repository.commitCanvasDraft(session);
+
+    expect(insertedModules).toContainEqual(
+      expect.objectContaining({
+        type: "music_playlist",
+      }),
+    );
+  });
+
   it("commits repaired non-object module configs from stored canvas drafts", async () => {
     const { moduleUpdates, pool } = fakePool({
       draftJson: JSON.stringify({
@@ -902,6 +952,28 @@ describe("editor profile module payloads", () => {
 
     expect(JSON.parse(String(musicUpdate?.configJson))).toMatchObject(nextConfig);
     expect(musicModule?.config).toMatchObject(nextConfig);
+  });
+
+  it("canonicalizes existing legacy music modules during canvas commit", async () => {
+    const { moduleRows, moduleUpdates, pool } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [profileInfoPayload(1), persistedMusicPayload({ type: "spotify_song" })],
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(1), musicRow({ type: "spotify_song" })],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    const result = await repository.commitCanvasDraft(session);
+    const musicUpdate = moduleUpdates.find((update) => update.id === 20);
+    const musicModule = result.modules.find((module) => module.id === 20);
+
+    expect(musicUpdate?.type).toBe("music");
+    expect(moduleRows.find((row) => row.id === 20)?.type).toBe("music");
+    expect(musicModule?.type).toBe("music");
   });
 
   it("clears featured profile references when featured modules are deleted in canvas drafts", async () => {

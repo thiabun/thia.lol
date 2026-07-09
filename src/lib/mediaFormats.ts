@@ -76,12 +76,26 @@ export const visualMediaUploadAccept = [
 ].join(",");
 
 export const acceptedAudioUploadTypes = [
+  "audio/aac",
+  "audio/flac",
+  "audio/mp4",
   "audio/mpeg",
   "audio/mp3",
+  "audio/ogg",
+  "audio/wav",
+  "audio/x-flac",
+  "audio/x-m4a",
+  "audio/x-wav",
 ] as const;
 
 export const acceptedAudioUploadExtensions = [
+  ".aac",
+  ".flac",
+  ".m4a",
   ".mp3",
+  ".oga",
+  ".ogg",
+  ".wav",
 ] as const;
 
 export const audioUploadAccept = [
@@ -89,7 +103,7 @@ export const audioUploadAccept = [
   ...acceptedAudioUploadExtensions,
 ].join(",");
 
-export const audioUploadFormatHelp = "Use MP3.";
+export const audioUploadFormatHelp = "Use MP3, M4A, AAC, WAV, FLAC, or OGG.";
 
 export const mediaUploadAccept = [
   ...acceptedImageUploadTypes,

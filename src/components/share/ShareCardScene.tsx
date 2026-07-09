@@ -1563,6 +1563,7 @@ function modulePreviewKind(module: ProfileModule): ModulePreviewKind {
   if (
     [
       "music",
+      "music_playlist",
       "spotify_song",
       "apple_music_song",
       "youtube_music_song",

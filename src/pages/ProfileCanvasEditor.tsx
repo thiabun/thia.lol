@@ -47,6 +47,8 @@ import { ImageCropModal } from "../components/ui/ImageCropModal";
 import { ModalSheet } from "../components/ui/ModalSheet";
 import { cn } from "../lib/classNames";
 import {
+  audioUploadAccept,
+  audioUploadFormatHelp,
   imageUploadAccept,
   videoUploadAccept,
   videoUploadFormatHelp,
@@ -81,6 +83,7 @@ import type {
   ProfileModule,
   ProfileModuleLayout,
   ProfileModuleLink,
+  ProfileModulePlaylistTrack,
 } from "../lib/types";
 import type {
   ProfileCanvasDraftState,
@@ -2654,7 +2657,8 @@ const profileModulePickerDisplayLabels: Partial<
   apple_music_playlist: "Playlist",
   apple_music_song: "Music",
   github_repo: "Repository",
-  music: "MP3",
+  music: "Music",
+  music_playlist: "Playlist",
   spotify_artist: "Artist",
   spotify_playlist: "Playlist",
   spotify_song: "Music",
@@ -2674,7 +2678,8 @@ const profileModulePickerAccessibleLabels: Partial<
   apple_music_playlist: "Apple Music playlist",
   apple_music_song: "Apple Music song",
   github_repo: "GitHub repository",
-  music: "MP3 music upload",
+  music: "Music module",
+  music_playlist: "Playlist module",
   spotify_artist: "Spotify artist",
   spotify_playlist: "Spotify playlist",
   spotify_song: "Spotify song",
@@ -2882,7 +2887,9 @@ function ModuleSettingsModal({
   const showMusicUrlField = Boolean(
     module &&
       definition?.category === "music" &&
-      (module.type !== "music" || module.config.url?.trim()),
+      (module.type === "music" ||
+        module.type === "music_playlist" ||
+        module.config.url?.trim()),
   );
 
   function updateModuleConfig(nextConfig: ProfileModule["config"]) {
@@ -2936,6 +2943,11 @@ function ModuleSettingsModal({
       return;
     }
 
+    const musicRemoveKeys: (keyof ProfileModule["config"])[] =
+      definition.category === "music"
+        ? ["audio", "integration", "tracks"]
+        : ["video", "integration"];
+
     updateModuleConfig(
       configWithContent(
         {
@@ -2943,7 +2955,7 @@ function ModuleSettingsModal({
           url: trimmed,
         },
         configured,
-        definition.category === "music" ? ["audio", "integration"] : ["video", "integration"],
+        musicRemoveKeys,
       ),
     );
   }
@@ -3127,6 +3139,7 @@ function ModuleSettingsModal({
         readMediaFileDuration(file),
       ]);
       const title = sanitizeUploadedMediaTitle(file.name, "Uploaded track");
+      const resolvedDuration = upload.duration ?? duration;
       const audio = {
         mime: upload.mime,
         size: upload.size,
@@ -3134,8 +3147,35 @@ function ModuleSettingsModal({
         type: upload.type,
         uploadedAt: new Date().toISOString(),
         url: upload.url,
-        ...(duration ? { duration } : {}),
+        ...(resolvedDuration ? { duration: resolvedDuration } : {}),
       };
+
+      if (module.type === "music_playlist") {
+        const tracks: ProfileModulePlaylistTrack[] = [
+          ...(module.config.tracks ?? []),
+          {
+            audio,
+            id: `upload:${audio.url}`,
+            title,
+            ...(audio.duration ? { duration: audio.duration } : {}),
+          },
+        ].slice(0, 50);
+
+        updateModuleConfig(
+          configWithContent(
+            {
+              displayMode: "playlist",
+              label: module.config.label ?? "Playlist",
+              platform: "custom",
+              sourceMode: "upload",
+              tracks,
+            },
+            tracks.length > 0,
+            ["audio", "url", "integration"],
+          ),
+        );
+        return;
+      }
 
       updateModuleConfig(
         configWithContent(
@@ -3152,7 +3192,7 @@ function ModuleSettingsModal({
       );
     } catch (error) {
       setModuleAudioError(
-        error instanceof Error ? error.message : "Could not upload this MP3.",
+        error instanceof Error ? error.message : "Could not upload this audio.",
       );
     } finally {
       setModuleAudioUploading(false);
@@ -3183,6 +3223,26 @@ function ModuleSettingsModal({
         {},
         false,
         ["audio", "integration"],
+      ),
+    );
+  }
+
+  function handleRemovePlaylistTrack(index: number) {
+    if (!module) {
+      return;
+    }
+
+    const tracks = (module.config.tracks ?? []).filter(
+      (_, itemIndex) => itemIndex !== index,
+    );
+
+    updateModuleConfig(
+      configWithContent(
+        {
+          tracks,
+        },
+        tracks.length > 0,
+        tracks.length > 0 ? [] : ["tracks", "url", "integration"],
       ),
     );
   }
@@ -3736,27 +3796,41 @@ function ModuleSettingsModal({
             </div>
           ) : definition.category === "music" ? (
             <div className="space-y-3">
-              {module.type === "music" ? (
+              {module.type === "music" || module.type === "music_playlist" ? (
                 <div
                   className="space-y-3 rounded-card border border-line bg-canvas/35 p-3"
                   data-testid="profile-audio-module-settings"
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs font-semibold uppercase text-muted">MP3 upload</p>
+                    <p className="text-xs font-semibold uppercase text-muted">
+                      {module.type === "music_playlist" ? "Uploaded songs" : "Audio upload"}
+                    </p>
                     <label
                       className={cn(
                         "inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-control border border-line bg-surface/62 px-3 text-sm font-semibold text-text transition hover:border-line-strong focus-within:outline-2 focus-within:outline-focus",
                         moduleAudioUploading ? "pointer-events-none opacity-50" : undefined,
                       )}
                       data-profile-edit-control="true"
-                      title={module.config.audio ? "Replace MP3" : "Upload MP3"}
+                      title={
+                        module.type === "music_playlist"
+                          ? "Add song"
+                          : module.config.audio
+                            ? "Replace audio"
+                            : "Upload audio"
+                      }
                     >
                       <Upload aria-hidden="true" size={16} />
-                      {moduleAudioUploading ? "Uploading" : module.config.audio ? "Replace" : "Upload"}
+                      {moduleAudioUploading
+                        ? "Uploading"
+                        : module.type === "music_playlist"
+                          ? "Add"
+                          : module.config.audio
+                            ? "Replace"
+                            : "Upload"}
                       <input
                         className="sr-only"
                         type="file"
-                        accept="audio/mpeg,.mp3"
+                        accept={audioUploadAccept}
                         data-testid="profile-module-settings-audio-input"
                         disabled={moduleAudioUploading}
                         onChange={(event) => {
@@ -3766,7 +3840,50 @@ function ModuleSettingsModal({
                       />
                     </label>
                   </div>
-                  {module.config.audio ? (
+                  {module.type === "music_playlist" ? (
+                    (module.config.tracks ?? []).length > 0 ? (
+                      <div
+                        className="max-h-48 space-y-2 overflow-y-auto overscroll-contain pr-1"
+                        data-testid="profile-module-playlist-track-list"
+                      >
+                        {(module.config.tracks ?? []).map((track, index) => (
+                          <div
+                            className="flex min-w-0 items-center gap-3 rounded-card border border-line bg-surface/62 p-2.5"
+                            data-testid="profile-module-playlist-track"
+                            key={track.id ?? track.audio?.url ?? `${track.title}-${index}`}
+                          >
+                            <span className="grid size-9 shrink-0 place-items-center rounded-card border border-line bg-canvas/70 text-text">
+                              <Music2 aria-hidden="true" size={16} />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-semibold text-text">
+                                {track.title}
+                              </p>
+                              <p className="truncate text-xs font-medium text-muted">
+                                {track.artist ??
+                                  (track.audio
+                                    ? `${formatUploadSize(track.audio.size)} · Uploaded`
+                                    : "Playlist song")}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              className="grid size-8 shrink-0 place-items-center rounded-full border border-rose/35 bg-rose/12 text-rose-ink transition hover:border-rose/60 focus-visible:outline-2 focus-visible:outline-focus"
+                              aria-label={`Remove ${track.title}`}
+                              data-testid="profile-module-playlist-track-remove"
+                              onClick={() => handleRemovePlaylistTrack(index)}
+                            >
+                              <Trash2 aria-hidden="true" size={15} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="rounded-card border border-dashed border-line bg-canvas/38 px-3 py-2 text-sm font-medium text-muted">
+                        Add songs or paste a playlist link.
+                      </p>
+                    )
+                  ) : module.config.audio ? (
                     <div
                       className="flex min-w-0 items-center gap-3 rounded-card border border-line bg-surface/62 p-3"
                       data-testid="profile-module-audio-preview"
@@ -3779,7 +3896,7 @@ function ModuleSettingsModal({
                           {module.config.audio.title ?? module.config.label ?? "Uploaded track"}
                         </p>
                         <p className="truncate text-xs font-medium text-muted">
-                          MP3 · {formatUploadSize(module.config.audio.size)}
+                          Audio · {formatUploadSize(module.config.audio.size)}
                         </p>
                       </div>
                       <button
@@ -3794,7 +3911,7 @@ function ModuleSettingsModal({
                     </div>
                   ) : (
                     <p className="rounded-card border border-dashed border-line bg-canvas/38 px-3 py-2 text-sm font-medium text-muted">
-                      Upload a custom MP3.
+                      {audioUploadFormatHelp}
                     </p>
                   )}
                   {moduleAudioError ? (

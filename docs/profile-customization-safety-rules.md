@@ -112,8 +112,9 @@ Current backend behavior:
   single transaction.
 - Supported module types include legacy compatibility rows plus the v2 specific
   catalog: `twitch_channel`, `youtube_video`, `youtube_stream`,
-  `youtube_playlist`, `uploaded_video`, provider-specific music song/playlist/
-  artist modules, `uploaded_image`, `gallery_slideshow`, `gallery_feed`,
+  `youtube_playlist`, `uploaded_video`, unified music and playlist modules,
+  legacy provider-specific music song/playlist/artist modules, `uploaded_image`,
+  `gallery_slideshow`, `gallery_feed`,
   `profile_info`, `text`, `badge_display`, `connections`, `activity`,
   `featured_post`, `featured_room`, and `github_repo`.
 - Module config validation rejects unknown keys, unsafe text, unsafe URLs, arbitrary embeds, and arbitrary HTML/CSS/JS.
@@ -192,9 +193,9 @@ The following are not allowed:
 - Custom JavaScript.
 - Script embeds.
 - User-supplied iframe HTML, arbitrary embed code, or arbitrary embed URLs.
-- Autoplay audio or audible/interactive autoplay video. Muted decorative
-  profile background video is allowed only through the restricted background
-  video pipeline.
+- Unprompted autoplay audio or audible/interactive autoplay video. Muted
+  decorative profile background video is allowed only through the restricted
+  background video pipeline.
 - Unreadable color combinations.
 - Flashing, strobing, or rapidly pulsing visuals.
 - Deceptive UI that imitates system dialogs, site navigation, login forms, warnings, or moderation notices.
@@ -273,11 +274,13 @@ The following are not allowed:
 - No flashing or strobing.
 - Avoid infinite decorative loops in profile customization.
 - Respect `prefers-reduced-motion`.
-- Autoplay audio is not allowed.
+- Audible profile music autoplay is allowed only after the visitor explicitly
+  accepts the profile music warning; that consent is stored as a first-party
+  cookie and applies across profiles.
 - Muted profile background video may autoplay only as decorative background
   media and must respect reduced motion through a poster/static fallback.
 - Embeds must be generated from provider allowlists, lazy-loaded, and should not
-  be forced to autoplay.
+  be forced to autoplay before consent.
 
 ### Mobile Rules
 

@@ -190,6 +190,7 @@ export type ProfileModuleType =
   | "gallery_media"
   | "creator_live"
   | "music"
+  | "music_playlist"
   | "custom_text"
   | "activity"
   | "twitch_channel"
@@ -239,6 +240,15 @@ export type ProfileModuleUploadedAudio = {
   url: string;
 };
 
+export type ProfileModulePlaylistTrack = {
+  artist?: string;
+  audio?: ProfileModuleUploadedAudio;
+  duration?: number;
+  id?: string;
+  sourceUrl?: string;
+  title: string;
+};
+
 export type ProfileModuleUploadedVideo = {
   duration?: number;
   mime: "video/mp4" | "video/webm";
@@ -271,7 +281,7 @@ export type ProfileIntegrationCard = {
     liveFetchedAt?: string | null;
     recentFetchedAt?: string | null;
     recentLabel?: string | null;
-    stats?: Record<string, string | number | null>;
+    stats?: Record<string, unknown>;
     subtitle?: string | null;
     title?: string | null;
   };
@@ -304,6 +314,7 @@ export type ProfileModuleConfig = {
   restoreFeaturedRoomId?: number;
   sourceMode?: string;
   statusText?: string;
+  tracks?: ProfileModulePlaylistTrack[];
   userBadgeIds?: number[];
   url?: string;
   video?: ProfileModuleUploadedVideo;

@@ -508,6 +508,7 @@ const profileModuleTypes = new Set([
   "gallery_media",
   "creator_live",
   "music",
+  "music_playlist",
   "featured_post",
   "featured_room",
   "activity",
@@ -551,6 +552,19 @@ const profileModuleMusicSpecificTypes = new Set([
   "apple_music_artist",
   "youtube_music_artist",
 ]);
+const profileModuleLegacyPlaylistTypes = new Set([
+  "spotify_playlist",
+  "apple_music_playlist",
+  "youtube_music_playlist",
+]);
+const profileModuleLegacyMusicTypes = new Set([
+  "spotify_song",
+  "apple_music_song",
+  "youtube_music_song",
+  "spotify_artist",
+  "apple_music_artist",
+  "youtube_music_artist",
+]);
 const maxFeaturedBadges = 4;
 
 export function normalizeProfileHandle(handle: string): string | null {
@@ -562,6 +576,18 @@ export function normalizeProfileHandle(handle: string): string | null {
   } catch {
     return null;
   }
+}
+
+export function canonicalProfileModuleType(type: string): string {
+  if (profileModuleLegacyPlaylistTypes.has(type)) {
+    return "music_playlist";
+  }
+
+  if (profileModuleLegacyMusicTypes.has(type)) {
+    return "music";
+  }
+
+  return type;
 }
 
 export function profilePayloadFromRow(
@@ -987,10 +1013,11 @@ class MysqlProfilesRepository implements ProfilesRepository {
       return null;
     }
 
-    const config = await this.profileModuleOutputConfig(type, profileModuleJson(row.config_json), userId, capabilities);
+    const canonicalType = canonicalProfileModuleType(type);
+    const config = await this.profileModuleOutputConfig(canonicalType, profileModuleJson(row.config_json), userId, capabilities);
     const payload: ProfileModulePayload = {
       id: numberValue(row.id),
-      type,
+      type: canonicalType,
       title: nullableStringValue(row.title),
       config,
       visibility: stringValue(row.visibility),
@@ -1027,6 +1054,7 @@ class MysqlProfilesRepository implements ProfilesRepository {
     if (
       type === "creator_live" ||
       type === "music" ||
+      type === "music_playlist" ||
       type === "github_repo" ||
       profileModuleVideoTypes.has(type) ||
       profileModuleMusicSpecificTypes.has(type)
@@ -2881,7 +2909,7 @@ function profileCanvasAllowedSizes(type: string): string[] {
   const playlistSizes = profileCanvasUniqueSizes(["3x2", "4x3", "3x6", "4x6"], wideSlimTwoRowSizes);
   const activitySizes = profileCanvasUniqueSizes(["3x4", "4x6", "6x10"], ["5x2", "6x2", "8x2", "8x3"]);
 
-  switch (type) {
+  switch (canonicalProfileModuleType(type)) {
     case "profile_info":
       return ["3x2", "3x3", "4x3", "6x3", "8x3", "8x4"];
     case "about":
@@ -2922,6 +2950,7 @@ function profileCanvasAllowedSizes(type: string): string[] {
     case "apple_music_song":
     case "youtube_music_song":
       return musicSongSizes;
+    case "music_playlist":
     case "spotify_playlist":
     case "apple_music_playlist":
     case "youtube_music_playlist":

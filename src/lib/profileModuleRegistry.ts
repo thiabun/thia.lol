@@ -459,12 +459,25 @@ export const profileModuleRegistry = {
     allowedSizes: musicSongSizes,
     category: "music",
     defaultSize: "3x2",
-    description: "Upload and play a custom MP3 track.",
+    description: "A single song from Spotify, YouTube, Apple Music, or upload.",
     density: "summary",
     emptyPolicy: "hide-public",
     fallbackTitle: "Music",
     freshness: "static",
-    label: "MP3 upload",
+    label: "Music",
+    primaryAction: "inspect",
+    purpose: "media",
+  },
+  music_playlist: {
+    allowedSizes: playlistSizes,
+    category: "music",
+    defaultSize: "4x3",
+    description: "A playlist from Spotify, YouTube, Apple Music, or uploads.",
+    density: "rich",
+    emptyPolicy: "hide-public",
+    fallbackTitle: "Playlist",
+    freshness: "static",
+    label: "Playlist",
     primaryAction: "inspect",
     purpose: "media",
   },
@@ -615,15 +628,7 @@ export const profileModuleCatalog: ProfileModuleCatalogItem[] = (
     "youtube_playlist",
     "uploaded_video",
     "music",
-    "spotify_song",
-    "apple_music_song",
-    "youtube_music_song",
-    "spotify_playlist",
-    "apple_music_playlist",
-    "youtube_music_playlist",
-    "spotify_artist",
-    "apple_music_artist",
-    "youtube_music_artist",
+    "music_playlist",
     "uploaded_image",
     "gallery_slideshow",
     "gallery_feed",
@@ -705,6 +710,15 @@ const profileModuleSizeLabels: Partial<
     "8x2": "Full player",
     "4x3": "Player",
     "4x4": "Large player",
+  },
+  music_playlist: {
+    "3x2": "Compact playlist",
+    "4x3": "Player",
+    "5x2": "Slim list",
+    "6x2": "Wide list",
+    "8x2": "Full strip",
+    "3x6": "Tall playlist",
+    "4x6": "Roomy playlist",
   },
   spotify_song: {
     "2x1": "Mini",
@@ -1149,7 +1163,12 @@ export function profileModuleHasContent(
   }
 
   if (module.type === "music" || getProfileModuleDefinition(module.type).category === "music") {
-    return Boolean(module.config.audio || module.config.url?.trim() || module.config.integration);
+    return Boolean(
+      module.config.audio ||
+        module.config.url?.trim() ||
+        module.config.integration ||
+        (module.config.tracks ?? []).length > 0,
+    );
   }
 
   if (module.type === "featured_post" || module.type === "featured_room") {
@@ -1182,6 +1201,12 @@ export function renderableProfileModules(
 }
 
 export function profileModuleSummary(module: ProfileModule): string {
+  if (module.type === "music_playlist") {
+    const count = module.config.tracks?.length ?? 0;
+
+    return count === 1 ? "1 song" : `${count} songs`;
+  }
+
   if (module.type === "links" || module.type === "connections") {
     const count = module.config.links?.length ?? 0;
     return count === 1 ? "1 link" : `${count} links`;

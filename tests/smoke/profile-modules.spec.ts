@@ -1487,11 +1487,18 @@ test("anonymous visitor can skip Spotify connect before profile music starts", a
   const stored = await page.evaluate(() =>
     window.localStorage.getItem("thia.profile.musicAutoplayConsent.v1:1"),
   );
+  const cookies = await page.context().cookies();
   const spotifySkip = await page.evaluate(() =>
     window.localStorage.getItem("thia.profile.spotifyConnectPromptSkip.v1:1"),
   );
 
   expect(stored).not.toBeNull();
+  expect(cookies).toContainEqual(
+    expect.objectContaining({
+      name: "thia_profile_music_autoplay",
+      value: "1",
+    }),
+  );
   expect(JSON.parse(stored ?? "{}")).toMatchObject({
     handle: "thia",
     profileId: 1,
@@ -1788,8 +1795,15 @@ test("uploaded MP3 music modules use the continue overlay", async ({ page }) => 
   const stored = await page.evaluate(() =>
     window.localStorage.getItem("thia.profile.musicAutoplayConsent.v1:1"),
   );
+  const cookies = await page.context().cookies();
 
   expect(stored).not.toBeNull();
+  expect(cookies).toContainEqual(
+    expect.objectContaining({
+      name: "thia_profile_music_autoplay",
+      value: "1",
+    }),
+  );
   expect(JSON.parse(stored ?? "{}")).toMatchObject({
     handle: "thia",
     profileId: 1,
@@ -1930,7 +1944,7 @@ test("integration modules do not fake live or recent labels without API backing"
     "data-profile-module-freshness",
     "cached",
   );
-  await expect(page.getByText("Spotify link")).toBeVisible();
+  await expect(page.getByText("Static playlist").first()).toBeVisible();
   await expect(page.getByText("Recently updated · Spotify")).toHaveCount(0);
   await expect(page.getByText("Live now on Twitch")).toBeVisible();
 });
@@ -3463,30 +3477,22 @@ test("module picker blocks selections larger than designed module sizes", async 
   await expect(githubRepo).toContainText("(6x4)");
 
   await page.getByRole("tab", { name: "Music" }).click();
-  const mp3Upload = page.getByTestId("profile-module-picker-music");
-  await expect(mp3Upload).toHaveAttribute("aria-label", "MP3 music upload");
-  await expect(mp3Upload.getByTestId("profile-module-picker-icon-music")).toBeVisible();
-  await expect(mp3Upload).toContainText("MP3");
+  const music = page.getByTestId("profile-module-picker-music");
+  await expect(music).toHaveAttribute("aria-label", "Music module");
+  await expect(music.getByTestId("profile-module-picker-icon-music")).toBeVisible();
+  await expect(music).toContainText("Music");
 
-  const spotifySong = page.getByTestId("profile-module-picker-spotify_song");
-  await expect(spotifySong.getByTestId("connection-icon-spotify")).toBeVisible();
-  await expect(spotifySong).toContainText("Music");
-  await expect(spotifySong).not.toContainText("Spotify song");
+  const playlist = page.getByTestId("profile-module-picker-music_playlist");
+  await expect(playlist).toHaveAttribute("aria-label", "Playlist module");
+  await expect(playlist.getByTestId("profile-module-picker-icon-music_playlist")).toBeVisible();
+  await expect(playlist).toContainText("Playlist");
 
-  const appleMusicSong = page.getByTestId("profile-module-picker-apple_music_song");
-  await expect(appleMusicSong.getByTestId("connection-icon-apple_music")).toBeVisible();
-  await expect(appleMusicSong).toContainText("Music");
-  await expect(appleMusicSong).not.toContainText("Apple Music song");
-
-  const youtubeMusicPlaylist = page.getByTestId(
-    "profile-module-picker-youtube_music_playlist",
-  );
-  await expect(youtubeMusicPlaylist.getByTestId("connection-icon-youtube")).toBeVisible();
-  await expect(youtubeMusicPlaylist).toContainText("Playlist");
-  await expect(youtubeMusicPlaylist).not.toContainText("YouTube Music playlist");
+  await expect(page.getByTestId("profile-module-picker-spotify_song")).toHaveCount(0);
+  await expect(page.getByTestId("profile-module-picker-apple_music_song")).toHaveCount(0);
+  await expect(page.getByTestId("profile-module-picker-youtube_music_playlist")).toHaveCount(0);
 });
 
-test("module picker creates MP3 upload music modules", async ({ page }) => {
+test("module picker creates uploaded audio music modules", async ({ page }) => {
   let draftPayload: Record<string, unknown> | undefined;
   const uploadPurposes: string[] = [];
 
@@ -3509,14 +3515,14 @@ test("module picker creates MP3 upload music modules", async ({ page }) => {
   await page.getByTestId("profile-canvas-cell-7-5").click();
   await page.getByRole("tab", { name: "Music" }).click();
 
-  const mp3Upload = page.getByTestId("profile-module-picker-music");
-  await expect(mp3Upload).toBeEnabled();
-  await expect(mp3Upload).toContainText("MP3");
-  await mp3Upload.click();
+  const music = page.getByTestId("profile-module-picker-music");
+  await expect(music).toBeEnabled();
+  await expect(music).toContainText("Music");
+  await music.click();
 
   const settings = page.getByTestId("profile-module-settings");
   await expect(settings.getByTestId("profile-audio-module-settings")).toBeVisible();
-  await expect(settings.getByTestId("profile-module-settings-url")).toHaveCount(0);
+  await expect(settings.getByTestId("profile-module-settings-url")).toBeVisible();
   await expect
     .poll(() => {
       const modules = Array.isArray(draftPayload?.modules)
@@ -3567,6 +3573,83 @@ test("module picker creates MP3 upload music modules", async ({ page }) => {
       mime: "audio/mpeg",
       title: "custom track",
       url: "/uploads/media/2026/06/profile_music-track.mp3",
+    });
+});
+
+test("module picker creates uploaded audio playlist modules", async ({ page }) => {
+  let draftPayload: Record<string, unknown> | undefined;
+  const uploadPurposes: string[] = [];
+
+  await mockMediaMetadata(page);
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+    onCanvasDraftSave: (payload) => {
+      draftPayload = payload;
+    },
+    onAudioUpload: (purpose) => {
+      uploadPurposes.push(purpose);
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-canvas-cell-5-4").click();
+  await page.getByTestId("profile-canvas-cell-8-6").click();
+  await page.getByRole("tab", { name: "Music" }).click();
+
+  const playlist = page.getByTestId("profile-module-picker-music_playlist");
+  await expect(playlist).toBeEnabled();
+  await playlist.click();
+
+  const settings = page.getByTestId("profile-module-settings");
+  await expect(settings.getByTestId("profile-audio-module-settings")).toBeVisible();
+  await expect(settings.getByTestId("profile-module-settings-url")).toBeVisible();
+  await settings
+    .getByTestId("profile-module-settings-audio-input")
+    .setInputFiles(sampleMp3File("playlist-track.mp3"));
+
+  await expect.poll(() => uploadPurposes.includes("profile_music")).toBe(true);
+  await expect(settings.getByTestId("profile-module-playlist-track-list")).toBeVisible();
+  await settings.getByRole("button", { name: "Done" }).click();
+  await expect(
+    page
+      .locator('[data-testid^="profile-canvas-module-content-"][data-profile-canvas-module-configured="true"]')
+      .filter({ hasText: "Playlist" }),
+  ).toBeVisible();
+  await page.getByTestId("profile-canvas-save-button").click();
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
+  await expect(page.getByTestId("profile-music-playlist-player")).toBeVisible();
+  await expect(page.getByTestId("profile-music-playlist-track")).toContainText("playlist track");
+
+  await expect
+    .poll(() => {
+      const modules = Array.isArray(draftPayload?.modules)
+        ? (draftPayload.modules as Array<Record<string, unknown>>)
+        : [];
+      const playlistModule = modules.find((module) => module.type === "music_playlist");
+      const config =
+        playlistModule?.config && typeof playlistModule.config === "object"
+          ? (playlistModule.config as Record<string, unknown>)
+          : undefined;
+
+      return {
+        sourceMode: config?.sourceMode,
+        tracks: config?.tracks,
+      };
+    })
+    .toMatchObject({
+      sourceMode: "upload",
+      tracks: [
+        expect.objectContaining({
+          title: "playlist track",
+          audio: expect.objectContaining({
+            mime: "audio/mpeg",
+            url: "/uploads/media/2026/06/profile_music-track.mp3",
+          }),
+        }),
+      ],
     });
 });
 
@@ -4706,7 +4789,7 @@ test("image module settings crop and replace a single photo", async ({ page }) =
     );
 });
 
-test("uploaded video and custom MP3 module settings use file uploads", async ({
+test("uploaded video and custom audio module settings use file uploads", async ({
   page,
 }) => {
   const uploadPurposes: string[] = [];
@@ -4790,7 +4873,15 @@ test("uploaded video and custom MP3 module settings use file uploads", async ({
 
   const musicSettings = page.getByTestId("profile-module-settings");
   await expect(musicSettings.getByTestId("profile-audio-module-settings")).toBeVisible();
-  await expect(musicSettings.getByTestId("profile-module-settings-url")).toHaveCount(0);
+  await expect(musicSettings.getByTestId("profile-module-settings-url")).toBeVisible();
+  const audioAccept = await musicSettings
+    .getByTestId("profile-module-settings-audio-input")
+    .getAttribute("accept");
+  expect(audioAccept).toContain("audio/mpeg");
+  expect(audioAccept).toContain("audio/mp4");
+  expect(audioAccept).toContain("audio/flac");
+  expect(audioAccept).toContain(".m4a");
+  expect(audioAccept).toContain(".ogg");
   await musicSettings
     .getByTestId("profile-module-settings-audio-input")
     .setInputFiles(sampleMp3File("custom-track.mp3"));
@@ -6377,6 +6468,7 @@ test("profile module registry and Node storage guardrails are present by inspect
   const serverEnv = readFileSync("server/env.example", "utf8");
   const moduleRegistry = readFileSync("src/lib/profileModuleRegistry.ts", "utf8");
   const profilePage = readFileSync("src/pages/ProfilePage.tsx", "utf8");
+  const profileCanvasEditor = readFileSync("src/pages/ProfileCanvasEditor.tsx", "utf8");
   const profileGrid = readFileSync("src/components/social/ProfileGrid.tsx", "utf8");
   const safetyRules = readFileSync("docs/profile-customization-safety-rules.md", "utf8");
   const productGuidelines = readFileSync("docs/product-ui-ux-guidelines.md", "utf8");
@@ -6428,13 +6520,15 @@ test("profile module registry and Node storage guardrails are present by inspect
   expect(moduleRegistry).toContain("label: \"Feed\"");
   expect(moduleRegistry).toContain("fallbackTitle: \"Feed\"");
   expect(moduleRegistry).toContain("defaultSize: \"4x6\"");
-  expect(moduleRegistry).toContain('"music",\n    "spotify_song"');
-  expect(moduleRegistry).toContain('description: "Upload and play a custom MP3 track."');
-  expect(profilePage).toContain('music: "MP3"');
-  expect(profilePage).toContain('music: "MP3 music upload"');
+  expect(moduleRegistry).toContain('"music",\n    "music_playlist"');
+  expect(moduleRegistry).toContain('description: "A single song from Spotify, YouTube, Apple Music, or upload."');
+  expect(moduleRegistry).toContain('description: "A playlist from Spotify, YouTube, Apple Music, or uploads."');
+  expect(profileCanvasEditor).toContain('music: "Music module"');
+  expect(profileCanvasEditor).toContain('music_playlist: "Playlist module"');
   expect(profilePage).toContain('platform: "custom", sourceMode: "upload"');
   expect(uploads).toContain('"profile_module_video"');
   expect(uploads).toContain('"profile_music"');
+  expect(uploads).toContain("Unsupported audio type. Use MP3, M4A, AAC, WAV, FLAC, or OGG.");
   expect(integrations).toContain('integrationProviders = ["spotify", "apple_music", "youtube", "twitch", "github"]');
   expect(integrations).toContain("nacl.secretbox");
   expect(integrations).toContain("https://www.youtube-nocookie.com/embed/");
@@ -6459,9 +6553,9 @@ test("profile module registry and Node storage guardrails are present by inspect
   );
   expect(safetyRules).toContain("Module presentation metadata");
   expect(safetyRules).toContain("API-backed and timestamped");
-  expect(productGuidelines).toContain("Profile Modules As Glanceable Surfaces");
-  expect(productGuidelines).toContain("`1x1` and `2x1` modules carry one idea");
-  expect(productGuidelines).toContain("Live/recent labels require API-backed timestamps");
+  expect(productGuidelines).toContain("Profile modules are glanceable surfaces");
+  expect(productGuidelines).toContain("larger spans must add real media, activity, metadata, or controls");
+  expect(safetyRules).toContain("Do not show live/offline status unless API-backed and timestamped");
   expect(schema).toContain("CREATE TABLE IF NOT EXISTS profile_modules");
   expect(schema).toContain("CREATE TABLE IF NOT EXISTS profile_integration_accounts");
   expect(schema).toContain("CREATE TABLE IF NOT EXISTS profile_integration_oauth_states");
