@@ -25,7 +25,6 @@ import { RichText } from "../components/social/RichText";
 import { Avatar } from "../components/ui/Avatar";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { ModalSheet } from "../components/ui/ModalSheet";
-import { Panel } from "../components/ui/Panel";
 import {
   CompactStateNotice,
   RouteHeader,
@@ -75,6 +74,7 @@ export function ChatPage() {
   const [mootQuery, setMootQuery] = useState("");
   const [startingMootHandle, setStartingMootHandle] = useState<string | undefined>();
   const startedHandleRef = useRef<string | undefined>(undefined);
+  const messageListRef = useRef<HTMLDivElement>(null);
 
   const requestedConversationId = useMemo(() => {
     const value = searchParams.get("conversation");
@@ -254,6 +254,21 @@ export function ChatPage() {
     };
   }, [runWithAuth, selectedConversationId, status]);
 
+  useEffect(() => {
+    if (
+      status !== "authenticated" ||
+      !selectedConversationId ||
+      messages.length === 0
+    ) {
+      return;
+    }
+
+    const messageList = messageListRef.current;
+    if (messageList) {
+      messageList.scrollTop = messageList.scrollHeight;
+    }
+  }, [messages.length, selectedConversationId, status]);
+
   async function handleSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -346,7 +361,7 @@ export function ChatPage() {
   if (status === "anonymous") {
     return (
       <motion.div
-        className="mx-auto max-w-4xl space-y-5"
+        className="mx-auto max-w-4xl space-y-4"
         variants={pageEntrance}
         initial="hidden"
         animate="show"
@@ -355,7 +370,7 @@ export function ChatPage() {
         <RouteHeader
           badge="private"
           badgeTone="cool"
-          className="p-4 sm:p-5"
+          surface="bare"
           title="Chat"
           description="Private messages with moots."
         />
@@ -372,7 +387,7 @@ export function ChatPage() {
   if (status === "loading") {
     return (
       <motion.div
-        className="mx-auto max-w-5xl space-y-5"
+        className="mx-auto max-w-5xl space-y-4"
         variants={pageEntrance}
         initial="hidden"
         animate="show"
@@ -381,7 +396,7 @@ export function ChatPage() {
         <RouteHeader
           badge="private"
           badgeTone="cool"
-          className="p-4 sm:p-5"
+          surface="bare"
           title="Chat"
           description="Private messages with moots."
         />
@@ -397,7 +412,7 @@ export function ChatPage() {
 
   return (
     <motion.div
-      className="mx-auto max-w-6xl space-y-4"
+      className="mx-auto max-w-7xl space-y-4 pb-20 lg:pb-0"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
@@ -407,9 +422,9 @@ export function ChatPage() {
         <RouteHeader
           badge="private"
           badgeTone="cool"
-          className="p-4 sm:p-5"
+          surface="bare"
           title="Chat"
-          description="Messages."
+          description="Private messages with moots."
           actions={
             <>
               <Button
@@ -491,15 +506,30 @@ export function ChatPage() {
       ) : null}
 
       {showConversationLayout ? (
-        <div className="grid gap-3 lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)]">
-          <Panel className="max-h-[16rem] overflow-hidden lg:max-h-none">
-            <div className="flex items-center justify-between gap-3 border-b border-line px-3 py-2.5">
-              <h2 className="text-sm font-semibold text-text">Conversations</h2>
+        <section
+          className="grid overflow-hidden rounded-panel border border-line/82 bg-surface/58 shadow-inner-soft lg:h-[calc(100svh-12rem)] lg:min-h-[32rem] lg:max-h-[44rem] lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)]"
+          data-testid="chat-workspace"
+        >
+          <aside className="min-w-0 border-b border-line bg-canvas/18 lg:border-b-0 lg:border-r">
+            <div className="flex min-h-12 items-center justify-between gap-3 border-b border-line px-3 py-2.5">
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-text">Conversations</h2>
+                <p className="mt-0.5 text-xs text-muted">
+                  {conversations.length === 1
+                    ? "1 chat"
+                    : `${conversations.length} chats`}
+                </p>
+              </div>
               {conversationsLoading ? (
-                <span className="text-xs font-medium text-muted">Refreshing</span>
+                <span className="shrink-0 text-xs font-medium text-muted">
+                  Refreshing
+                </span>
               ) : null}
             </div>
-            <div className="max-h-[calc(16rem-2.75rem)] divide-y divide-line overflow-y-auto lg:max-h-none" data-testid="chat-conversation-list">
+            <div
+              className="flex gap-2 overflow-x-auto p-2 lg:block lg:max-h-[calc(100%-3rem)] lg:divide-y lg:divide-line lg:overflow-y-auto lg:p-0"
+              data-testid="chat-conversation-list"
+            >
               {conversationsError ? (
                 <CompactStateNotice
                   className="m-3"
@@ -524,12 +554,12 @@ export function ChatPage() {
                 />
               ))}
             </div>
-          </Panel>
+          </aside>
 
-          <Panel className="flex min-h-[22rem] flex-col overflow-hidden sm:min-h-[26rem] lg:min-h-[30rem]">
+          <section className="min-w-0">
             {selectedConversation ? (
-              <>
-                <div className="flex items-center gap-3 border-b border-line px-3 py-2.5 sm:px-4">
+              <div className="flex min-h-[32rem] flex-col lg:h-full lg:min-h-0">
+                <div className="flex min-h-16 items-center gap-3 border-b border-line bg-surface/34 px-3 py-2.5 sm:px-4">
                   <UserIdentityLink
                     user={selectedConversation.otherParticipant}
                     avatarSize="sm"
@@ -538,7 +568,8 @@ export function ChatPage() {
                 </div>
 
                 <div
-                  className="flex-1 space-y-3 overflow-y-auto px-3 py-3 sm:px-4"
+                  ref={messageListRef}
+                  className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4 sm:px-4"
                   data-testid="chat-message-list"
                 >
                   {messagesLoading ? (
@@ -576,17 +607,17 @@ export function ChatPage() {
                 </div>
 
                 <form
-                  className="border-t border-line p-3"
+                  className="border-t border-line bg-surface/42 p-2.5 sm:p-3"
                   data-testid="chat-message-composer"
                   onSubmit={(event) => void handleSend(event)}
                 >
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                  <div className="flex items-end gap-2">
                     <label className="sr-only" htmlFor="chat-message-body">
                       Write a message
                     </label>
                     <MentionTextarea
                       id="chat-message-body"
-                      className="min-h-10 flex-1 resize-none rounded-control border border-line bg-canvas/60 px-3 py-2 text-sm leading-6 text-text outline-none transition duration-fluid ease-fluid placeholder:text-muted focus:border-line-strong focus:ring-2 focus:ring-focus/30"
+                      className="min-h-11 min-w-0 flex-1 resize-none rounded-control border border-line bg-canvas/70 px-3 py-2 text-sm leading-6 text-text outline-none transition duration-fluid ease-fluid placeholder:text-muted focus:border-line-strong focus:bg-canvas focus:ring-2 focus:ring-focus/30"
                       maxLength={maxMessageLength}
                       placeholder="Write a message"
                       rows={1}
@@ -596,7 +627,7 @@ export function ChatPage() {
                     <Button
                       type="submit"
                       size="sm"
-                      className="min-h-10 w-full sm:w-auto"
+                      className="min-h-11 shrink-0 px-3"
                       disabled={body.trim() === "" || sending}
                       icon={<Send aria-hidden="true" size={16} />}
                     >
@@ -604,17 +635,18 @@ export function ChatPage() {
                     </Button>
                   </div>
                 </form>
-              </>
+              </div>
             ) : (
               <CompactStateNotice
                 centered
+                className="min-h-[24rem]"
                 icon={MessageCircle}
                 title="Choose a conversation"
                 text="Select a chat to read or reply."
               />
             )}
-          </Panel>
-        </div>
+          </section>
+        </section>
       ) : null}
 
       {pickerOpen ? (
@@ -800,7 +832,7 @@ function ConversationButton({
 
   return (
     <div
-      className="group relative isolate flex min-h-[4.25rem] w-full flex-col items-stretch gap-1.5 px-3 py-2.5 text-left transition duration-fluid ease-fluid sm:flex-row sm:items-center sm:gap-2.5"
+      className="group relative isolate flex min-h-[4.25rem] w-44 shrink-0 flex-col items-stretch gap-1.5 overflow-hidden rounded-control border border-line/72 bg-surface/34 px-2 py-2 text-left transition duration-fluid ease-fluid lg:w-full lg:shrink lg:rounded-none lg:border-0 lg:bg-transparent lg:px-3 lg:py-2.5 lg:flex-row lg:items-center lg:gap-2.5"
       data-testid={`chat-conversation-row-${conversation.id}`}
     >
       <motion.button
@@ -808,8 +840,8 @@ function ConversationButton({
         className={cn(
           "absolute inset-0 z-0 bg-transparent text-left transition duration-fluid ease-fluid focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus/45",
           selected
-            ? "bg-surface-strong/86"
-            : "group-hover:bg-surface-strong/58 group-focus-within:bg-surface-strong/48",
+            ? "bg-surface-strong/76"
+            : "group-hover:bg-surface-strong/46 group-focus-within:bg-surface-strong/42",
         )}
         aria-label={`Open chat with ${participant.displayName}`}
         aria-pressed={selected}
@@ -832,7 +864,7 @@ function ConversationButton({
         aria-hidden="true"
       />
 
-      <div className="pointer-events-none relative z-10 flex min-w-0 shrink-0 items-center gap-2.5 sm:w-40">
+      <div className="pointer-events-none relative z-10 flex min-w-0 shrink-0 items-center gap-2.5 lg:w-40">
         <Link
           to={profilePath}
           aria-label={`${participant.displayName}'s profile`}
@@ -859,10 +891,15 @@ function ConversationButton({
         </span>
       </div>
 
-      <div className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center justify-between gap-3 pl-[3.125rem] text-muted transition duration-fluid ease-fluid group-hover:text-text sm:pl-0">
+      <div className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center justify-between gap-3 pl-[3.125rem] text-muted transition duration-fluid ease-fluid group-hover:text-text lg:pl-0">
         <span className="min-w-0">
           <span
-            className="block truncate text-sm font-medium"
+            className={cn(
+              "block truncate text-sm",
+              conversation.unreadCount > 0
+                ? "font-semibold text-text"
+                : "font-medium",
+            )}
             data-testid={`chat-conversation-preview-${conversation.id}`}
           >
             {lastMessage}
@@ -876,7 +913,7 @@ function ConversationButton({
         </span>
         {conversation.unreadCount > 0 ? (
           <span
-            className="shrink-0 rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-accent-ink shadow-soft"
+            className="grid min-w-5 shrink-0 place-items-center rounded-full bg-accent px-1.5 py-0.5 text-xs font-semibold leading-none text-accent-ink shadow-soft"
             data-testid={`chat-conversation-unread-${conversation.id}`}
           >
             {conversation.unreadCount}
@@ -895,15 +932,23 @@ type MessageBubbleProps = {
 
 function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
   return (
-    <div className={cn("group/message flex", mine ? "justify-end" : "justify-start")}>
-      <div className="relative mb-1 max-w-[min(28rem,86%)] sm:max-w-[min(28rem,78%)]">
+    <div
+      className={cn(
+        "group/message flex items-end gap-2",
+        mine ? "justify-end" : "justify-start",
+      )}
+    >
+      {mine ? null : (
+        <Avatar user={message.sender} size="sm" className="mb-1 hidden sm:block" />
+      )}
+      <div className="relative mb-1 max-w-[min(30rem,88%)] sm:max-w-[min(34rem,78%)]">
         <MessageBubbleTail mine={mine} />
         <div
           className={cn(
-            "relative z-10 rounded-[1rem] px-3 py-1.5 text-sm leading-5 shadow-soft transition duration-fluid ease-fluid",
+            "relative z-10 rounded-[1.125rem] px-3 py-2 text-sm leading-5 transition duration-fluid ease-fluid",
             mine
-              ? "bg-accent text-accent-ink"
-              : "border border-line bg-surface text-text hover:border-line-strong",
+              ? "bg-accent text-accent-ink shadow-soft"
+              : "border border-line/84 bg-surface/76 text-text hover:border-line-strong hover:bg-surface/90",
           )}
         >
           <RichText
@@ -927,7 +972,7 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
           ) : null}
           <div
             className={cn(
-              "mt-0.5 flex flex-wrap items-center gap-1.5 text-[0.68rem] leading-none",
+              "mt-1.5 flex flex-wrap items-center gap-1.5 text-[0.68rem] leading-none",
               mine ? "text-accent-ink/70" : "text-muted",
             )}
           >

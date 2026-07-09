@@ -48,6 +48,67 @@ test("authenticated chat renders conversations and message composer", async ({
   await expect(page.getByTestId("chat-message-composer")).toBeVisible();
   await expect(page.getByPlaceholder("Write a message")).toBeVisible();
   await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
+  await expect(page.getByTestId("chat-workspace")).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      ),
+    )
+    .toBe(false);
+});
+
+test("mobile chat keeps the composer clear of the dock", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockAuthenticatedChat(page);
+  await page.goto("/chat");
+
+  const composer = page.getByTestId("chat-message-composer");
+  const mobileNav = page.getByTestId("mobile-nav");
+  const chatDockItem = mobileNav.getByRole("link", { name: "Chat" });
+  const postAction = page.getByTestId("mobile-post-action");
+
+  await composer.scrollIntoViewIfNeeded();
+  await expect(composer).toBeVisible();
+  await expect(chatDockItem).toBeVisible();
+  await expect(postAction).toBeVisible();
+
+  const layout = await page.evaluate(() => {
+    const composerBox = document
+      .querySelector('[data-testid="chat-message-composer"]')
+      ?.getBoundingClientRect();
+    const navBox = document
+      .querySelector('[data-testid="mobile-nav"]')
+      ?.getBoundingClientRect();
+    const chatBox = Array.from(
+      document.querySelectorAll('[data-testid="mobile-nav"] a'),
+    )
+      .find((element) => element.textContent?.trim() === "Chat")
+      ?.getBoundingClientRect();
+    const postBox = document
+      .querySelector('[data-testid="mobile-post-action"]')
+      ?.getBoundingClientRect();
+
+    return {
+      horizontalOverflow:
+        document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      composerBottom: composerBox?.bottom ?? 0,
+      navTop: navBox?.top ?? window.innerHeight,
+      dockHitboxesOverlap:
+        chatBox && postBox
+          ? !(
+              postBox.right <= chatBox.left ||
+              postBox.left >= chatBox.right ||
+              postBox.bottom <= chatBox.top ||
+              postBox.top >= chatBox.bottom
+            )
+          : true,
+    };
+  });
+
+  expect(layout.horizontalOverflow).toBe(false);
+  expect(layout.composerBottom).toBeLessThanOrEqual(layout.navTop - 8);
+  expect(layout.dockHitboxesOverlap).toBe(false);
 });
 
 test("authenticated chat renders rich message entities", async ({ page }) => {
