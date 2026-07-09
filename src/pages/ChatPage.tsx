@@ -948,7 +948,7 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
             "relative z-10 rounded-[1.125rem] px-3 py-2 text-sm leading-5 transition duration-fluid ease-fluid",
             mine
               ? "bg-accent text-accent-ink shadow-soft"
-              : "bg-surface-strong/72 text-text hover:bg-surface-strong/84",
+              : "bg-surface-strong text-text",
           )}
         >
           <RichText
@@ -1082,7 +1082,7 @@ function MessageBubbleTail({ mine }: { mine: boolean }) {
       viewBox="0 0 26 16"
     >
       <path
-        className={mine ? "fill-accent" : "fill-surface-strong/72"}
+        className={mine ? "fill-accent" : "fill-surface-strong"}
         d={path}
       />
     </svg>
