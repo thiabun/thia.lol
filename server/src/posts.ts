@@ -254,14 +254,18 @@ class MysqlPostsRepository implements PostsRepository {
     const capabilities = await this.schemaCapabilities();
 
     return {
-      posts: await this.postsFromQuery(buildHomeFeedQuery(capabilities, viewerUserId), []),
+      posts: shuffleFeedPostsByFreshness(
+        await this.postsFromQuery(buildHomeFeedQuery(capabilities, viewerUserId), []),
+      ),
       personalized: viewerUserId !== null,
     };
   }
 
   async listDiscoverPosts(viewerUserId: number | null): Promise<PostPayload[]> {
     return diversifyDiscoverPosts(
-      await this.postsFromQuery(buildDiscoverFeedQuery(await this.schemaCapabilities(), viewerUserId), []),
+      shuffleFeedPostsByFreshness(
+        await this.postsFromQuery(buildDiscoverFeedQuery(await this.schemaCapabilities(), viewerUserId), []),
+      ),
     );
   }
 
@@ -269,7 +273,7 @@ class MysqlPostsRepository implements PostsRepository {
     const capabilities = await this.schemaCapabilities();
     const [rows] = await this.pool.execute<PeopleToWatchRow[]>(buildPeopleToWatchQuery(capabilities, viewerUserId));
 
-    return rows.map((row) => discoverPersonPayloadFromRow(row));
+    return shuffleAdjacentChunks(rows).map((row) => discoverPersonPayloadFromRow(row));
   }
 
   private async listProfilePostKind(
@@ -801,6 +805,99 @@ export function diversifyDiscoverPosts(posts: PostPayload[], windowSize = 12): P
   return [...selected, ...deferred];
 }
 
+export function shuffleFeedPostsByFreshness(
+  posts: PostPayload[],
+  nowMs = Date.now(),
+  random: () => number = Math.random,
+): PostPayload[] {
+  const bands: PostPayload[][] = [[], [], [], []];
+
+  for (const post of posts) {
+    bands[postFreshnessBand(post.createdAt, nowMs)]!.push(post);
+  }
+
+  return bands.flatMap((band) => shuffleAdjacentChunks(band, 4, random));
+}
+
+export function shuffleAdjacentChunks<T>(
+  items: T[],
+  chunkSize = 4,
+  random: () => number = Math.random,
+): T[] {
+  if (chunkSize <= 1 || items.length <= 1) {
+    return [...items];
+  }
+
+  const shuffled: T[] = [];
+
+  for (let index = 0; index < items.length; index += chunkSize) {
+    shuffled.push(...shuffleChunk(items.slice(index, index + chunkSize), random));
+  }
+
+  return shuffled;
+}
+
+function shuffleChunk<T>(items: T[], random: () => number): T[] {
+  for (let index = items.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(normalizedRandom(random) * (index + 1));
+    const current = items[index];
+    items[index] = items[swapIndex]!;
+    items[swapIndex] = current!;
+  }
+
+  return items;
+}
+
+function normalizedRandom(random: () => number): number {
+  const value = random();
+
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(0.999999999, value));
+}
+
+function postFreshnessBand(createdAt: string | null | undefined, nowMs: number): 0 | 1 | 2 | 3 {
+  const createdMs = postCreatedAtMs(createdAt);
+
+  if (createdMs === null) {
+    return 3;
+  }
+
+  const ageHours = Math.max(0, (nowMs - createdMs) / (60 * 60 * 1000));
+
+  if (ageHours <= 24) {
+    return 0;
+  }
+
+  if (ageHours <= 72) {
+    return 1;
+  }
+
+  if (ageHours <= 168) {
+    return 2;
+  }
+
+  return 3;
+}
+
+function postCreatedAtMs(createdAt: string | null | undefined): number | null {
+  if (typeof createdAt !== "string" || createdAt.trim() === "") {
+    return null;
+  }
+
+  const trimmed = createdAt.trim();
+  const sqlTimestampMatch = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.\d+)?$/u.exec(trimmed);
+  const parsed = Date.parse(
+    sqlTimestampMatch === null
+      ? trimmed
+      : `${sqlTimestampMatch[1]}T${sqlTimestampMatch[2]}Z`,
+  );
+
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function buildPeopleToWatchQuery(
   capabilities: ProfileSchemaCapabilities,
   viewerUserId: number | null,
@@ -1006,7 +1103,7 @@ function homeRankScoreSql(capabilities: ProfileSchemaCapabilities, viewerUserId:
         ${relationshipScore}
         + ${followedReblogScore}
         + ${roomMembershipScore}
-        + CASE WHEN u.id = ${viewerUserId} THEN -45 ELSE 0 END
+        + CASE WHEN u.id = ${viewerUserId} THEN 125 ELSE 0 END
         + ${followedLikesScore}
         + COALESCE(reactions.glow_count, 0) * 2
         + COALESCE(replies.reply_count, 0) * 5

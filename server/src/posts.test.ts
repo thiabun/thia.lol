@@ -9,6 +9,8 @@ import {
   diversifyDiscoverPosts,
   normalizePostIdentifier,
   postCanonicalPath,
+  shuffleAdjacentChunks,
+  shuffleFeedPostsByFreshness,
   type PostDetailPayload,
 } from "./posts.js";
 import type { PostPayload, ProfileSchemaCapabilities } from "./profiles.js";
@@ -122,7 +124,8 @@ describe("post preview SQL", () => {
 
     expect(sql).toContain("feed_rank_score DESC, p.created_at DESC, p.id DESC");
     expect(sql).toContain("home_reblog_follows.follower_id = 42");
-    expect(sql).toContain("CASE WHEN u.id = 42 THEN -45 ELSE 0 END");
+    expect(sql).toContain("CASE WHEN u.id = 42 THEN 125 ELSE 0 END");
+    expect(sql).not.toContain("CASE WHEN u.id = 42 THEN -45 ELSE 0 END");
     expect(sql).toContain("feed_viewer_room_membership.user_id = 42");
     expect(sql).toContain("CASE WHEN feed_viewer_room_membership.id IS NULL THEN 0 ELSE 55 END");
     expect(sql).toContain("COALESCE(followed_likes.followed_like_count, 0) * 8");
@@ -196,6 +199,40 @@ describe("post preview SQL", () => {
     expect(diversified.slice(0, 5).filter((post) => post.room?.id === 10)).toHaveLength(4);
   });
 
+  it("keeps fresher feed bands ahead of older posts while shuffling", () => {
+    const nowMs = Date.parse("2026-07-09T12:00:00Z");
+    const posts = [
+      discoverPost(1, 1, null, "2026-06-30T12:00:00Z"),
+      discoverPost(2, 2, null, "2026-07-05T12:00:00Z"),
+      discoverPost(3, 3, null, "2026-07-08T00:00:00Z"),
+      discoverPost(4, 4, null, "2026-07-09T08:00:00Z"),
+      discoverPost(5, 5, null, null),
+    ];
+
+    const shuffled = shuffleFeedPostsByFreshness(posts, nowMs, () => 0.99);
+
+    expect(shuffled.map((post) => post.id)).toEqual([4, 3, 2, 1, 5]);
+  });
+
+  it("shuffles same-band feed posts only inside adjacent chunks", () => {
+    const nowMs = Date.parse("2026-07-09T12:00:00Z");
+    const posts = Array.from({ length: 6 }, (_, index) =>
+      discoverPost(index + 1, index + 1, null, "2026-07-09T11:00:00Z"),
+    );
+
+    const shuffled = shuffleFeedPostsByFreshness(posts, nowMs, () => 0);
+
+    expect(shuffled.map((post) => post.id)).toEqual([2, 3, 4, 1, 6, 5]);
+    expect(shuffled.slice(0, 4).map((post) => post.id).sort()).toEqual([1, 2, 3, 4]);
+    expect(shuffled.slice(4).map((post) => post.id).sort()).toEqual([5, 6]);
+  });
+
+  it("lightly shuffles adjacent people candidates without crossing chunks", () => {
+    const shuffled = shuffleAdjacentChunks(["a", "b", "c", "d", "e"], 4, () => 0);
+
+    expect(shuffled).toEqual(["b", "c", "d", "a", "e"]);
+  });
+
   it("does not emit malformed viewer-aware SQL joins", () => {
     const queries = [
       buildPublicPostsQuery(capabilities, 42),
@@ -212,9 +249,15 @@ describe("post preview SQL", () => {
   });
 });
 
-function discoverPost(id: number, authorId: number, roomId: number | null): PostPayload {
+function discoverPost(
+  id: number,
+  authorId: number,
+  roomId: number | null,
+  createdAt: string | null = "2026-07-09T12:00:00Z",
+): PostPayload {
   return {
     id,
+    createdAt,
     author: {
       id: authorId,
       handle: `author-${authorId}`,

@@ -45,8 +45,9 @@ test("Anonymous home renders conversion actions and public discovery", async ({
     "href",
     "/search",
   );
-  await expect(page.getByText("Public posts", { exact: true })).toBeVisible();
-  await expect(page.getByText("Public rooms", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { exact: true, name: "Public posts" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Rising now" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Rooms to explore" })).toBeVisible();
   await expect(page.getByText("Public launch note.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Garden" })).toBeVisible();
   await expect(
@@ -1582,7 +1583,7 @@ test("post permalink shows a trash delete action for the author", async ({
   await mockAuthenticatedApi(page);
   let deleted = false;
 
-  await page.route("**/api/posts/42", async (route) => {
+  await page.route(/\/api\/posts\/[^/]+(?:\?.*)?$/u, async (route) => {
     if (route.request().method() === "DELETE") {
       deleted = true;
       await route.fulfill({
