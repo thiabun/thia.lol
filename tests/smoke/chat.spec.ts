@@ -46,8 +46,36 @@ test("authenticated chat renders conversations and message composer", async ({
   await expect(page).toHaveURL(/\/chat\?conversation=10$/);
   await expect(page.getByTestId("chat-message-list")).toContainText("hello from a moot");
   await expect(page.getByTestId("chat-message-composer")).toBeVisible();
-  await expect(page.getByPlaceholder("Write a message")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
+  const messageInput = page.getByPlaceholder("Write a message");
+  const sendButton = page.getByRole("button", { name: "Send" });
+  await expect(messageInput).toBeVisible();
+  await expect(sendButton).toBeDisabled();
+  const composerMetrics = await page.evaluate(() => {
+    const inputBox = document
+      .querySelector("#chat-message-body")
+      ?.getBoundingClientRect();
+    const buttonBox = document
+      .querySelector('[data-testid="chat-message-composer"] button[type="submit"]')
+      ?.getBoundingClientRect();
+
+    return {
+      heightDelta:
+        inputBox && buttonBox ? Math.abs(inputBox.height - buttonBox.height) : 999,
+      topDelta: inputBox && buttonBox ? Math.abs(inputBox.top - buttonBox.top) : 999,
+    };
+  });
+  expect(composerMetrics.topDelta).toBeLessThanOrEqual(1);
+  expect(composerMetrics.heightDelta).toBeLessThanOrEqual(2);
+  await messageInput.fill("line one");
+  await messageInput.press("Control+Enter");
+  await expect(messageInput).toHaveValue("line one\n");
+  await messageInput.fill("line two");
+  await messageInput.press("Meta+Enter");
+  await expect(messageInput).toHaveValue("line two\n");
+  await messageInput.fill("keyboard send");
+  await messageInput.press("Enter");
+  await expect(page.getByTestId("chat-message-list")).toContainText("keyboard send");
+  await expect(messageInput).toHaveValue("");
   await expect(page.getByTestId("chat-workspace")).toBeVisible();
   await expect
     .poll(() =>
@@ -632,6 +660,46 @@ async function mockAuthenticatedChat(
 ) {
   let conversations = options.conversations ?? [mockConversation];
   const moots = options.moots ?? [mockMoot];
+  const currentUser = {
+    id: 1,
+    handle: "member",
+    email: "member@example.test",
+    role: "member",
+    status: "active",
+    displayName: "Member",
+    initials: "M",
+    aura: "glow",
+    avatarUrl: null,
+  };
+  const messageStore = new Map<number, Array<Record<string, unknown>>>();
+
+  function messagesForConversation(conversation: typeof mockConversation) {
+    const existing = messageStore.get(conversation.id);
+
+    if (existing) {
+      return existing;
+    }
+
+    const initialMessages = [
+      {
+        id: conversation.lastMessage?.id ?? 100 + conversation.id,
+        conversationId: conversation.id,
+        body: conversation.lastMessage?.body ?? "hello from a moot",
+        bodyEntities:
+          (conversation.lastMessage as { bodyEntities?: unknown } | null)
+            ?.bodyEntities ?? [],
+        attachments:
+          (conversation.lastMessage as { attachments?: unknown } | null)
+            ?.attachments ?? [],
+        deletedAt: null,
+        createdAt: "2026-06-10 10:00:00",
+        sender: conversation.otherParticipant,
+      },
+    ];
+
+    messageStore.set(conversation.id, initialMessages);
+    return initialMessages;
+  }
 
   await page.route("**/api/auth/me", async (route) => {
     await route.fulfill({
@@ -641,13 +709,7 @@ async function mockAuthenticatedChat(
         ok: true,
         data: {
           user: {
-            id: 1,
-            handle: "member",
-            email: "member@example.test",
-            role: "member",
-            status: "active",
-            displayName: "Member",
-            avatarUrl: null,
+            ...currentUser,
           },
           profile: {
             displayName: "Member",
@@ -736,6 +798,52 @@ async function mockAuthenticatedChat(
     const conversationId = chatConversationIdFromUrl(route.request().url());
     const conversation =
       conversations.find((item) => item.id === conversationId) ?? mockConversation;
+    const messages = messagesForConversation(conversation);
+
+    if (route.request().method() === "POST") {
+      const requestBody = route.request().postDataJSON() as { body?: unknown };
+      const message = {
+        id: 900 + messages.length,
+        conversationId: conversation.id,
+        body: typeof requestBody.body === "string" ? requestBody.body : "",
+        bodyEntities: [],
+        attachments: [],
+        deletedAt: null,
+        createdAt: "2026-06-10 10:05:00",
+        sender: currentUser,
+      };
+
+      messages.push(message);
+      conversations = conversations.map((item) =>
+        item.id === conversation.id
+          ? {
+              ...item,
+              lastMessage: {
+                id: message.id,
+                body: message.body,
+                createdAt: message.createdAt,
+                sender: message.sender,
+              },
+              lastMessageAt: message.createdAt,
+            }
+          : item,
+      );
+
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: message,
+        }),
+      });
+      return;
+    }
+
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
 
     await route.fulfill({
       status: 200,
@@ -744,22 +852,7 @@ async function mockAuthenticatedChat(
         ok: true,
         data: {
           conversation,
-          messages: [
-            {
-              id: conversation.lastMessage?.id ?? 100 + conversation.id,
-              conversationId: conversation.id,
-              body: conversation.lastMessage?.body ?? "hello from a moot",
-              bodyEntities:
-                (conversation.lastMessage as { bodyEntities?: unknown } | null)
-                  ?.bodyEntities ?? [],
-              attachments:
-                (conversation.lastMessage as { attachments?: unknown } | null)
-                  ?.attachments ?? [],
-              deletedAt: null,
-              createdAt: "2026-06-10 10:00:00",
-              sender: conversation.otherParticipant,
-            },
-          ],
+          messages,
         },
       }),
     });

@@ -16,6 +16,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type KeyboardEvent,
 } from "react";
 import { Link, useSearchParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
@@ -316,6 +317,46 @@ export function ChatPage() {
     }
   }
 
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (
+      event.key !== "Enter" ||
+      event.defaultPrevented ||
+      event.nativeEvent.isComposing
+    ) {
+      return;
+    }
+
+    if (event.ctrlKey || event.metaKey) {
+      const textarea = event.currentTarget;
+      const value = textarea.value;
+      const selectionStart = textarea.selectionStart;
+      const selectionEnd = textarea.selectionEnd;
+      const nextValue = `${value.slice(0, selectionStart)}\n${value.slice(
+        selectionEnd,
+      )}`;
+
+      if (nextValue.length > maxMessageLength) {
+        return;
+      }
+
+      event.preventDefault();
+      setBody(nextValue);
+
+      window.requestAnimationFrame(() => {
+        const cursor = selectionStart + 1;
+        textarea.setSelectionRange(cursor, cursor);
+      });
+      return;
+    }
+
+    if (event.altKey || event.shiftKey) {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.form?.requestSubmit();
+  }
+
   function handleOpenPicker() {
     setPickerOpen(true);
     setMootQuery("");
@@ -611,23 +652,25 @@ export function ChatPage() {
                   data-testid="chat-message-composer"
                   onSubmit={(event) => void handleSend(event)}
                 >
-                  <div className="flex items-end gap-2">
+                  <div className="flex items-start gap-2">
                     <label className="sr-only" htmlFor="chat-message-body">
                       Write a message
                     </label>
                     <MentionTextarea
                       id="chat-message-body"
-                      className="min-h-11 min-w-0 flex-1 resize-none rounded-control border border-line bg-canvas/70 px-3 py-2 text-sm leading-6 text-text outline-none transition duration-fluid ease-fluid placeholder:text-muted focus:border-line-strong focus:bg-canvas focus:ring-2 focus:ring-focus/30"
+                      className="min-h-12 w-full resize-none rounded-control border border-line bg-canvas/70 px-3 py-2.5 text-sm leading-6 text-text outline-none transition duration-fluid ease-fluid placeholder:text-muted focus:border-line-strong focus:bg-canvas focus:ring-2 focus:ring-focus/30"
                       maxLength={maxMessageLength}
                       placeholder="Write a message"
                       rows={1}
                       value={body}
+                      wrapperClassName="min-w-0 flex-1"
+                      onKeyDown={handleComposerKeyDown}
                       onValueChange={setBody}
                     />
                     <Button
                       type="submit"
                       size="sm"
-                      className="min-h-11 shrink-0 px-3"
+                      className="min-h-12 shrink-0 px-3"
                       disabled={body.trim() === "" || sending}
                       icon={<Send aria-hidden="true" size={16} />}
                     >
