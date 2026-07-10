@@ -5348,6 +5348,43 @@ test.describe("mobile profile companion experience", () => {
       .toBe(true);
   });
 
+  test("Twitch Stream and Chat keep a tall stable mobile workspace", async ({ page }) => {
+    await mockProfileModules(page, {
+      authenticated: false,
+      modules: [twitchStreamChatModule()],
+    });
+    await acknowledgeCookieNotice(page);
+    await page.goto("/@thia");
+
+    const creator = page.getByTestId("profile-grid-module-creator_live");
+    await expect(creator).toBeVisible();
+    const streamHeight = await creator.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    );
+    expect(streamHeight).toBeGreaterThanOrEqual(540);
+    await expect(
+      creator.getByTestId("profile-integration-embed-twitch"),
+    ).toBeVisible();
+    await expect(
+      creator.getByTestId("profile-integration-embed-twitch-chat"),
+    ).toHaveCount(0);
+
+    await creator.getByRole("tab", { name: "Chat" }).tap();
+    await expect(
+      creator.getByTestId("profile-integration-embed-twitch"),
+    ).toHaveCount(0);
+    await expect(
+      creator.getByTestId("profile-integration-embed-twitch-chat"),
+    ).toBeVisible();
+    const chatHeight = await creator.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    );
+    expect(chatHeight).toBe(streamHeight);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      390,
+    );
+  });
+
   test("touch editor reorders modules without changing desktop layouts", async ({ page }) => {
     let draftPayload: Record<string, unknown> | undefined;
     const firstLayout = { column: 1, row: 4, colSpan: 3, rowSpan: 2 };

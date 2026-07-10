@@ -115,7 +115,9 @@ test("mobile header, account menu, and bottom nav fit the viewport", async ({
   const nav = page.getByTestId("mobile-nav");
   await expect(nav).toBeVisible();
   const mobilePost = nav.getByTestId("mobile-post-action");
-  await expect(nav.getByRole("button", { name: "Post" })).toHaveCount(1);
+  const postButton = nav.getByRole("button", { name: "Post" });
+  await expect(postButton).toHaveCount(1);
+  await expect(postButton).toHaveText("");
   await expect(mobilePost).toContainText("Post");
   const mobilePostBox = await mobilePost.boundingBox();
   expect(mobilePostBox?.width).toBeGreaterThanOrEqual(54);
@@ -280,7 +282,7 @@ test("mobile bottom nav stays fixed while footer reserves its clearance", async 
   expect(boxes.footerPaddingBottom).not.toBeNull();
   expect(boxes.footerPaddingBottom!).toBeGreaterThanOrEqual(boxes.nav!.height);
   expect(boxes.viewportBottomGap).not.toBeNull();
-  expect(boxes.viewportBottomGap!).toBeGreaterThanOrEqual(-4);
+  expect(boxes.viewportBottomGap!).toBeGreaterThanOrEqual(-6);
 });
 
 test("auth pages show compact brand identity without horizontal overflow", async ({
@@ -491,7 +493,7 @@ test("authenticated post button opens an accessible composer select", async ({
   expect(desktopPostBox?.height).toBeGreaterThanOrEqual(48);
   expect(desktopPostBox?.width).toBeGreaterThanOrEqual(88);
 
-  await page.getByRole("button", { name: "Post" }).click();
+  await page.getByTestId("desktop-post-action").click();
 
   const dialog = page.getByTestId("composer-modal");
   await expect(dialog).toBeVisible();

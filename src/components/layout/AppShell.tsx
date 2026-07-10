@@ -769,16 +769,14 @@ function MobileDock({
       <div className="relative col-start-3 row-start-1 mx-auto flex h-14 items-center justify-center">
         <Button
           type="button"
-          className="size-14 flex-col gap-0 rounded-full border-2 border-white/50 p-0 text-[0.62rem] font-semibold leading-none shadow-lift ring-2 ring-accent/30"
+          className="size-14 rounded-full border-2 border-white/50 p-0 shadow-lift ring-2 ring-accent/30"
           disabled={postDisabled}
           aria-label="Post"
           data-testid="mobile-post-action"
           title="Post"
           icon={<PenLine aria-hidden="true" size={20} />}
           onClick={onPostClick}
-        >
-          <span className="whitespace-nowrap">Post</span>
-        </Button>
+        />
       </div>
     </motion.nav>
   );

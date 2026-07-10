@@ -440,6 +440,13 @@ function profileModuleMobileStackHeightClass(module: ProfileModule): string {
   }
 
   if (
+    module.type === "creator_live" &&
+    module.config.displayMode === "stream_chat"
+  ) {
+    return "h-[clamp(34rem,78dvh,46rem)]";
+  }
+
+  if (
     module.type === "creator_live" ||
     module.type === "uploaded_video"
   ) {
