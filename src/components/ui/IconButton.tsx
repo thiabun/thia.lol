@@ -50,7 +50,7 @@ export function IconButton({
     <motion.button
       aria-label={label}
       className={cn(
-        "inline-grid shrink-0 place-items-center rounded-full transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:pointer-events-none disabled:opacity-50",
+        "app-control inline-grid shrink-0 touch-manipulation place-items-center rounded-full transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:pointer-events-none disabled:opacity-50",
         variants[variant],
         sizes[size],
         className,

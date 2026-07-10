@@ -141,6 +141,7 @@ function profileThemeControlsShouldDisable(pathname: string): boolean {
 
 export type AppShellOutletContext = {
   openPostComposer: (roomSlug?: string) => void;
+  setMobileDockHidden: (hidden: boolean) => void;
   setTopBarAction: (action: ReactNode | undefined) => void;
 };
 
@@ -157,6 +158,7 @@ export function AppShell() {
   const [cookieNoticeVisible, setCookieNoticeVisible] = useState(
     cookieNoticeShouldShow,
   );
+  const [mobileDockHidden, setMobileDockHidden] = useState(false);
   const [topBarAction, setTopBarAction] = useState<ReactNode | undefined>();
   const [notificationUnreadCount, setNotificationUnreadCount] = useState<
     number | undefined
@@ -184,6 +186,35 @@ export function AppShell() {
   useEffect(() => {
     return applyProfileThemeToRoot(signedInProfileThemeConfig);
   }, [signedInProfileThemeConfig]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const viewport = window.visualViewport;
+
+    const syncVisualViewport = () => {
+      root.style.setProperty(
+        "--app-visual-viewport-height",
+        `${viewport?.height ?? window.innerHeight}px`,
+      );
+      root.style.setProperty(
+        "--app-visual-viewport-top",
+        `${viewport?.offsetTop ?? 0}px`,
+      );
+    };
+
+    syncVisualViewport();
+    window.addEventListener("resize", syncVisualViewport, { passive: true });
+    viewport?.addEventListener("resize", syncVisualViewport, { passive: true });
+    viewport?.addEventListener("scroll", syncVisualViewport, { passive: true });
+
+    return () => {
+      window.removeEventListener("resize", syncVisualViewport);
+      viewport?.removeEventListener("resize", syncVisualViewport);
+      viewport?.removeEventListener("scroll", syncVisualViewport);
+      root.style.removeProperty("--app-visual-viewport-height");
+      root.style.removeProperty("--app-visual-viewport-top");
+    };
+  }, []);
 
   useEffect(() => {
     if (status !== "authenticated" || !user) {
@@ -327,7 +358,7 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col overflow-x-clip bg-canvas text-text">
+    <div className="flex min-h-dvh min-w-0 max-w-full flex-col bg-canvas text-text">
       <div className="fixed inset-0 -z-10 bg-page-wash" />
       <SiteHeader
         navItems={publicNavItems}
@@ -341,17 +372,27 @@ export function AppShell() {
         onDismiss={() => setCookieNoticeVisible(false)}
         visible={cookieNoticeVisible}
       />
-      <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-3 sm:px-5 lg:px-7">
-        <main className="flex-1 pb-4 pt-3 lg:pb-10 lg:pt-4">
-          <div className="min-h-full">
+      <div className="mx-auto flex min-w-0 w-full max-w-7xl flex-1 flex-col px-3 sm:px-5 lg:px-7">
+        <main
+          className={cn(
+            "min-w-0 flex-1 pt-3 lg:pb-10 lg:pt-4",
+            mobileDockHidden ? "pb-0" : "pb-[var(--app-mobile-content-bottom)]",
+          )}
+        >
+          <div className="min-h-full min-w-0">
             <Outlet
               context={
-                { openPostComposer, setTopBarAction } satisfies AppShellOutletContext
+                {
+                  openPostComposer,
+                  setMobileDockHidden,
+                  setTopBarAction,
+                } satisfies AppShellOutletContext
               }
             />
           </div>
         </main>
         <MobileDock
+          hidden={mobileDockHidden}
           navItems={publicNavItems}
           onPostClick={handlePostClick}
           postDisabled={postingDisabled}
@@ -675,10 +716,12 @@ function DesktopNavItem({ to, label, icon: Icon }: NavItemProps) {
 }
 
 function MobileDock({
+  hidden,
   navItems,
   onPostClick,
   postDisabled,
 }: {
+  hidden: boolean;
   navItems: NavItemProps[];
   onPostClick: () => void;
   postDisabled: boolean;
@@ -686,12 +729,16 @@ function MobileDock({
   const mobileNavItems = navItems.filter((item) => item.to !== "/search");
   const mobilePositions = ["col-start-1", "col-start-2", "col-start-4", "col-start-5"];
 
+  if (hidden) {
+    return null;
+  }
+
   return (
     <motion.nav
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={snappySpring}
-      className="sticky bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-30 mx-auto mb-[calc(1rem+env(safe-area-inset-bottom))] grid w-full max-w-sm grid-cols-5 items-center gap-0.5 rounded-panel border border-line/80 bg-surface/88 px-1.5 py-1 shadow-soft backdrop-blur-veil lg:hidden"
+      className="fixed inset-x-3 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-30 mx-auto grid w-auto max-w-sm grid-cols-5 items-center gap-0.5 rounded-panel border border-line/80 bg-surface/92 px-1.5 py-1 shadow-soft backdrop-blur-veil lg:hidden"
       aria-label="Primary"
       data-app-mobile-nav="true"
       data-testid="mobile-nav"
@@ -730,7 +777,7 @@ function MobileDock({
           icon={<PenLine aria-hidden="true" size={20} />}
           onClick={onPostClick}
         >
-          <span>Post</span>
+          <span className="whitespace-nowrap">Post</span>
         </Button>
       </div>
     </motion.nav>
@@ -740,7 +787,7 @@ function MobileDock({
 function SiteFooter() {
   return (
     <footer
-      className="mx-auto w-full max-w-7xl px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-1 sm:px-6 lg:px-8 lg:pb-8"
+      className="mx-auto w-full max-w-7xl px-4 pb-[var(--app-mobile-content-bottom)] pt-1 sm:px-6 lg:px-8 lg:pb-8"
       data-testid="site-footer"
     >
       <div className="flex flex-col gap-4 border-t border-line py-4 text-xs text-muted sm:flex-row sm:items-start sm:justify-between">
@@ -817,7 +864,7 @@ function CookieNotice({
 
   return (
     <div
-      className="relative z-20 mx-3 mt-3 max-w-2xl rounded-panel border border-line bg-surface/96 p-4 text-sm text-muted shadow-lift backdrop-blur-veil lg:fixed lg:inset-x-3 lg:bottom-5 lg:z-50 lg:mx-auto lg:mt-0"
+      className="fixed inset-x-3 top-[4.25rem] z-50 mx-auto max-w-2xl rounded-panel border border-line bg-surface/96 p-4 text-sm text-muted shadow-lift backdrop-blur-veil lg:bottom-5 lg:top-auto"
       data-testid="cookie-notice"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start">

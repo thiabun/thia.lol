@@ -140,7 +140,7 @@ function AuthenticatedHomePage() {
 
   return (
     <motion.div
-      className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]"
+      className="grid min-w-0 max-w-full gap-4 lg:grid-cols-[minmax(0,1fr)_300px]"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
@@ -150,7 +150,7 @@ function AuthenticatedHomePage() {
         description="A small social place for posts, rooms, and profiles."
         path="/"
       />
-      <section className="space-y-3" aria-label="Home feed">
+      <section className="min-w-0 max-w-full space-y-3" aria-label="Home feed">
         <motion.div
           variants={cardEntrance}
           custom={0}
@@ -288,7 +288,7 @@ function AnonymousHomePage() {
       />
 
       <section className="py-3 sm:py-4" aria-labelledby="home-intro-title">
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+        <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
           <div className="min-w-0">
             <BrandLogoMain size="md" data-testid="home-brand-logo-main" />
             <h1
@@ -334,7 +334,7 @@ function AnonymousHomePage() {
         />
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <section className="space-y-3" aria-label="Public posts">
           <div className="flex items-center justify-between gap-3">
             <div>

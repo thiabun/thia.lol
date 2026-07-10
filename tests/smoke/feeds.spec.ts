@@ -70,6 +70,113 @@ test("Authenticated home loads the feed empty state", async ({ page }) => {
   await expect(page.getByText("No posts yet").first()).toBeVisible();
 });
 
+test.describe("mobile Home media containment", () => {
+  test.use({ hasTouch: true, isMobile: true });
+
+  test("landscape and portrait videos stay inside every supported phone viewport", async ({
+    page,
+  }) => {
+    await mockAuthenticatedApi(page);
+    await page.route("**/mobile-layout-*.mp4", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      await route.fulfill({ status: 204, body: "" });
+    });
+    await page.route("**/api/feed/home", (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            personalized: false,
+            posts: [
+              makePost({
+                id: 201,
+                body: "Wide landscape clip",
+                attachments: [
+                  {
+                    id: 1,
+                    position: 1,
+                    kind: "video",
+                    url: "/mobile-layout-wide.mp4",
+                    mime: "video/mp4",
+                    width: 960,
+                    height: 720,
+                    posterUrl: portraitMediaFixture,
+                  },
+                ],
+              }),
+              makePost({
+                id: 202,
+                body: `Long content ${"unbroken".repeat(90)}`,
+                attachments: [
+                  {
+                    id: 2,
+                    position: 1,
+                    kind: "video",
+                    url: "/mobile-layout-tall.mp4",
+                    mime: "video/mp4",
+                    width: 556,
+                    height: 720,
+                    posterUrl: portraitMediaFixture,
+                  },
+                ],
+              }),
+              makePost({
+                id: 203,
+                body: "Legacy landscape clip without dimensions",
+                attachments: [
+                  {
+                    id: 3,
+                    position: 1,
+                    kind: "video",
+                    url: "/mobile-layout-legacy.mp4",
+                    mime: "video/mp4",
+                    width: null,
+                    height: null,
+                    posterUrl: portraitMediaFixture,
+                  },
+                ],
+              }),
+            ],
+          },
+        }),
+      }),
+    );
+
+    await page.goto("/");
+    await expect(page.getByText("Wide landscape clip")).toBeVisible();
+
+    for (const viewport of [
+      { width: 320, height: 568 },
+      { width: 360, height: 780 },
+      { width: 390, height: 844 },
+      { width: 430, height: 932 },
+      { width: 844, height: 390 },
+    ]) {
+      await page.setViewportSize(viewport);
+      const videos = page.locator('[data-testid^="post-attachments-"][data-testid$="-video"]');
+
+      await expect(videos).toHaveCount(3);
+      for (let index = 0; index < 3; index += 1) {
+        const video = videos.nth(index);
+        await video.scrollIntoViewIfNeeded();
+        const before = await video.boundingBox();
+        await page.waitForTimeout(150);
+        const after = await video.boundingBox();
+
+        expect(before).not.toBeNull();
+        expect(after).not.toBeNull();
+        expect(Math.abs((after?.width ?? 0) - (before?.width ?? 0))).toBeLessThanOrEqual(1);
+      }
+
+      await expectViewportContained(page, [
+        '[data-testid="post-card-open-thread"]',
+        '[data-testid^="post-attachments-"][data-testid$="-video"]',
+      ]);
+    }
+  });
+});
+
 test("Home refresh keeps the current feed visible until new posts arrive", async ({
   page,
 }) => {
@@ -1284,7 +1391,10 @@ test("post body opens thread while controls keep their own behavior", async ({
   const bodyOpenTarget = post.getByTestId("post-body-open-thread");
   await expect(bodyOpenTarget).toBeVisible();
   await expect(bodyOpenTarget).toHaveJSProperty("tagName", "DIV");
-  await expect(bodyOpenTarget).toHaveAttribute("class", "mt-3 block w-full text-left");
+  await expect(bodyOpenTarget).toHaveAttribute(
+    "class",
+    "mt-3 block min-w-0 w-full max-w-full text-left",
+  );
   await expect(bodyOpenTarget).not.toHaveAttribute(
     "class",
     /hover:|focus-visible:|rounded|ring|shadow|border|bg-/,
@@ -2759,6 +2869,40 @@ function makePost(overrides: Record<string, unknown> = {}) {
     },
     ...overrides,
   };
+}
+
+async function expectViewportContained(page: Page, selectors: string[]) {
+  const result = await page.evaluate((targetSelectors) => {
+    const viewportWidth = document.documentElement.clientWidth;
+    const escaped = targetSelectors.flatMap((selector) =>
+      Array.from(document.querySelectorAll<HTMLElement>(selector))
+        .filter((element) => {
+          const styles = window.getComputedStyle(element);
+          return styles.display !== "none" && styles.visibility !== "hidden";
+        })
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            selector,
+            left: rect.left,
+            right: rect.right,
+            width: rect.width,
+          };
+        })
+        .filter((rect) => rect.left < -1 || rect.right > viewportWidth + 1),
+    );
+
+    return {
+      documentWidth: document.documentElement.scrollWidth,
+      escaped,
+      scrollX: window.scrollX,
+      viewportWidth,
+    };
+  }, selectors);
+
+  expect(result.documentWidth).toBeLessThanOrEqual(result.viewportWidth + 1);
+  expect(result.scrollX).toBe(0);
+  expect(result.escaped).toEqual([]);
 }
 
 async function expectCircularControl(locator: Locator) {

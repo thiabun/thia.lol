@@ -9,7 +9,7 @@ type ButtonVariant = "primary" | "secondary" | "ghost" | "quiet" | "danger";
 type ButtonSize = "sm" | "md" | "icon";
 
 const base =
-  "items-center justify-center gap-2 font-medium transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:pointer-events-none disabled:opacity-50";
+  "app-control touch-manipulation items-center justify-center gap-2 font-medium transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:pointer-events-none disabled:opacity-50";
 
 const defaultDisplay = "inline-flex";
 const displayClassPattern =

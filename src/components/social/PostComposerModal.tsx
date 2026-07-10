@@ -325,7 +325,7 @@ export function PostComposerModal({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
             <label
-              className="group relative inline-flex min-h-9 max-w-[13rem] cursor-pointer items-center gap-2 overflow-hidden rounded-full border border-line bg-canvas/70 px-3 pr-8 text-sm font-medium text-text shadow-inner-soft transition duration-fluid hover:border-line-strong hover:bg-surface focus-within:border-line-strong"
+              className="app-control group relative inline-flex min-h-9 max-w-[13rem] cursor-pointer touch-manipulation items-center gap-2 overflow-hidden rounded-full border border-line bg-canvas/70 px-3 pr-8 text-sm font-medium text-text shadow-inner-soft transition duration-fluid hover:border-line-strong hover:bg-surface focus-within:border-line-strong"
               data-testid="composer-destination-control"
               title="Post destination"
             >
@@ -366,7 +366,7 @@ export function PostComposerModal({
             </label>
 
             <label
-              className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-full text-muted transition duration-fluid hover:bg-surface-strong hover:text-text focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus has-[:disabled]:pointer-events-none has-[:disabled]:opacity-50"
+              className="app-control grid size-9 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-full text-muted transition duration-fluid hover:bg-surface-strong hover:text-text focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus has-[:disabled]:pointer-events-none has-[:disabled]:opacity-50"
               title={media.length > 0 ? "Add image or video" : "Upload image or video"}
             >
               <ImagePlus aria-hidden="true" size={18} />
@@ -629,7 +629,7 @@ function PostComposerIntegrationPreview({
   const imageUrl = attachment.card.metadata.imageUrl;
 
   return (
-    <div className="grid min-h-28 grid-cols-[4rem_1fr] gap-3 p-3 pr-28">
+    <div className="grid min-h-28 min-w-0 grid-cols-[4rem_minmax(0,1fr)] gap-3 p-3 pb-16 sm:pb-3 sm:pr-28">
       <span className="grid size-16 overflow-hidden rounded-card border border-line bg-surface">
         {imageUrl ? (
           <img src={imageUrl} alt="" className="h-full w-full object-cover" />

@@ -32,7 +32,7 @@ export function SegmentedControl<T extends string>({
     <div
       aria-label={ariaLabel}
       className={cn(
-        "inline-flex max-w-full overflow-x-auto rounded-control border border-line bg-surface/58 p-0.5 shadow-inner-soft",
+        "inline-flex max-w-full flex-wrap rounded-control border border-line bg-surface/58 p-0.5 shadow-inner-soft",
         className,
       )}
       role="tablist"
@@ -46,7 +46,7 @@ export function SegmentedControl<T extends string>({
             key={item.id}
             aria-selected={active}
             className={cn(
-              "inline-flex shrink-0 items-center gap-1.5 rounded-[calc(var(--radius-control)-0.125rem)] font-medium transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+              "app-control inline-flex shrink-0 touch-manipulation items-center gap-1.5 rounded-[calc(var(--radius-control)-0.125rem)] font-medium transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
               size === "xs" ? "min-h-7 px-2 text-xs" : "min-h-8 px-3 text-sm",
               active
                 ? "bg-accent/16 text-text ring-1 ring-accent/24"

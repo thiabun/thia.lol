@@ -139,7 +139,18 @@ export function PostCard({
   const [localDeletePending, setLocalDeletePending] = useState(false);
   const [localDeleteError, setLocalDeleteError] = useState<string>();
   const [locallyDeleted, setLocallyDeleted] = useState(false);
+  const [finePointerHover, setFinePointerHover] = useState(false);
   const canReplyToPost = roomAllowsPosting(post.room);
+
+  useEffect(() => {
+    const query = window.matchMedia("(hover: hover) and (pointer: fine)");
+    const sync = () => setFinePointerHover(query.matches);
+
+    sync();
+    query.addEventListener("change", sync);
+
+    return () => query.removeEventListener("change", sync);
+  }, []);
 
   async function handleDeletePost(): Promise<boolean> {
     if (!effectiveCanDelete || actionPending || localDeletePending) {
@@ -214,7 +225,10 @@ export function PostCard({
 
   const cardMotionProps = threadOpen || disableThreadModal
     ? {}
-    : { whileHover: cardHover, whileTap: cardTap };
+    : {
+        ...(finePointerHover ? { whileHover: cardHover } : {}),
+        whileTap: cardTap,
+      };
 
   if (locallyDeleted) {
     return null;
@@ -230,7 +244,7 @@ export function PostCard({
             : `Open thread by ${post.author.displayName}`
         }
         className={cn(
-          "group mx-auto w-full max-w-[38rem] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus",
+          "group mx-auto min-w-0 w-full max-w-[38rem] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus",
           disableThreadModal ? "cursor-default" : "cursor-pointer",
         )}
         data-render-deferred="post"
@@ -244,7 +258,7 @@ export function PostCard({
         onKeyDown={handleCardKeyDown}
         {...cardMotionProps}
       >
-        <Panel className="overflow-hidden p-3 transition duration-fluid ease-fluid group-hover:border-line-strong group-hover:bg-surface/90 sm:p-4">
+        <Panel className="min-w-0 max-w-full overflow-hidden p-3 transition duration-fluid ease-fluid group-hover:border-line-strong group-hover:bg-surface/90 sm:p-4">
           {post.rebloggedBy ? (
             <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-muted">
               <Repeat2 aria-hidden="true" size={14} />
@@ -287,7 +301,7 @@ export function PostCard({
 
           <div
             data-testid="post-body-open-thread"
-            className="mt-3 block w-full text-left"
+            className="mt-3 block min-w-0 w-full max-w-full text-left"
           >
             <RichText
               text={post.body}
@@ -487,7 +501,7 @@ function PostAttachments({
   return (
     <div
       className={cn(
-        "grid max-w-full gap-2",
+        "grid min-w-0 w-full max-w-full gap-2",
         attachments.length > 1 && !hasPlayerAttachment ? "sm:grid-cols-2" : null,
         className,
       )}
@@ -540,19 +554,31 @@ function PostAttachmentItem({
 
     return (
       <span
-        className="inline-flex w-fit max-w-full overflow-hidden rounded-card border border-line bg-canvas/70 align-top"
+        className="block min-w-0 w-full max-w-full [contain:inline-size]"
         data-testid={testId}
       >
-        {attachment.url ? (
-          <img
-            src={attachment.url}
-            alt={title}
-            className={cn("block h-auto max-w-full object-contain", maxHeightClass)}
-            loading="lazy"
-            decoding="async"
-            data-testid={`${testId}-gif`}
-          />
-        ) : null}
+        <span
+          className={cn(
+            "flex w-fit max-w-full overflow-hidden rounded-card border border-line bg-canvas/70",
+            maxHeightClass,
+          )}
+          style={postAttachmentAspectRatio(attachment)}
+        >
+          {attachment.url ? (
+            <img
+              src={attachment.url}
+              alt={title}
+              className={cn(
+                "block min-w-0 max-w-full object-contain",
+                postAttachmentAspectRatio(attachment) ? "size-full" : "h-auto w-auto",
+                maxHeightClass,
+              )}
+              loading="lazy"
+              decoding="async"
+              data-testid={`${testId}-gif`}
+            />
+          ) : null}
+        </span>
       </span>
     );
   }
@@ -576,31 +602,67 @@ function PostAttachmentItem({
 
   return (
     <span
-      className="inline-flex w-fit max-w-full overflow-hidden rounded-card border border-line bg-canvas/70 align-top"
+      className="block min-w-0 w-full max-w-full [contain:inline-size]"
       data-thread-open-ignore={isVideo ? true : undefined}
       data-testid={testId}
       onClick={isVideo ? stopThreadOpenPropagation : undefined}
     >
-      {isVideo ? (
-        <FocusAutoplayVideo
-          className={cn("block h-auto max-w-full bg-black object-contain", maxHeightClass)}
-          poster={attachment.posterUrl ?? undefined}
-          data-testid={`${testId}-video`}
-        >
-          <source src={attachment.url} type={attachment.mime ?? (attachment.url.endsWith(".webm") ? "video/webm" : "video/mp4")} />
-        </FocusAutoplayVideo>
-      ) : (
-        <img
-          src={attachment.url}
-          alt=""
-          className={cn("block h-auto max-w-full object-contain", maxHeightClass)}
-          loading="lazy"
-          decoding="async"
-          data-testid={`${testId}-image`}
-        />
-      )}
+      <span
+        className={cn(
+          "flex w-fit max-w-full overflow-hidden rounded-card border border-line bg-canvas/70",
+          maxHeightClass,
+        )}
+        style={postAttachmentAspectRatio(attachment, isVideo)}
+      >
+        {isVideo ? (
+          <FocusAutoplayVideo
+            className="block size-full min-w-0 max-w-full bg-black object-contain"
+            poster={attachment.posterUrl ?? undefined}
+            data-testid={`${testId}-video`}
+          >
+            <source src={attachment.url} type={attachment.mime ?? (attachment.url.endsWith(".webm") ? "video/webm" : "video/mp4")} />
+          </FocusAutoplayVideo>
+        ) : (
+          <img
+            src={attachment.url}
+            alt=""
+            className={cn(
+              "block min-w-0 max-w-full object-contain",
+              postAttachmentAspectRatio(attachment) ? "size-full" : "h-auto w-auto",
+              maxHeightClass,
+            )}
+            loading="lazy"
+            decoding="async"
+            data-testid={`${testId}-image`}
+          />
+        )}
+      </span>
     </span>
   );
+}
+
+function postAttachmentAspectRatio(
+  attachment: PostAttachment,
+  videoFallback = false,
+): { aspectRatio: string; width: string } | undefined {
+  const width = attachment.width ?? 0;
+  const height = attachment.height ?? 0;
+
+  if (width > 0 && height > 0) {
+    const ratio = width / height;
+
+    return {
+      aspectRatio: `${width} / ${height}`,
+      width:
+        ratio >= 1
+          ? "100%"
+          : `min(100%, calc(min(70vh, 34rem) * ${ratio}))`,
+    };
+  }
+
+  return videoFallback
+    ? { aspectRatio: "16 / 9", width: "100%" }
+    : undefined;
 }
 
 function gifAttachmentTitle(attachment: PostAttachment): string {
@@ -1101,7 +1163,7 @@ function PostIntegrationAttachment({
 
   return (
     <a
-      className="grid min-h-24 min-w-0 grid-cols-[4rem_1fr] gap-3 rounded-card border border-line bg-canvas/70 p-3 text-left shadow-inner-soft transition duration-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      className="grid min-h-24 min-w-0 grid-cols-[4rem_minmax(0,1fr)] gap-3 rounded-card border border-line bg-canvas/70 p-3 text-left shadow-inner-soft transition duration-fluid hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       href={href}
       rel="noreferrer"
       target="_blank"

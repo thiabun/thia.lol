@@ -49,18 +49,18 @@ const overlayMobileClasses: Record<ModalSheetMobile, string> = {
 };
 
 const panelMobileClasses: Record<ModalSheetMobile, string> = {
-  dialog: "max-h-[calc(100dvh-1.5rem)] rounded-panel",
-  full: "h-dvh max-h-dvh rounded-none",
+  dialog: "max-h-[calc(var(--app-visual-viewport-height,100dvh)-1.5rem)] rounded-panel",
+  full: "h-[var(--app-visual-viewport-height,100dvh)] max-h-[var(--app-visual-viewport-height,100dvh)] rounded-none",
   sheet:
-    "h-[calc(100dvh-0.75rem)] max-h-[40rem] rounded-t-panel border-b-0",
+    "h-[calc(var(--app-visual-viewport-height,100dvh)-0.75rem)] max-h-[40rem] rounded-t-panel border-b-0",
 };
 
 const panelSizeClasses: Record<ModalSheetSize, string> = {
-  sm: "sm:max-w-md",
-  md: "sm:max-w-xl",
-  lg: "sm:max-w-2xl",
-  xl: "sm:max-w-5xl",
-  wide: "sm:max-w-7xl",
+  sm: "lg:max-w-md",
+  md: "lg:max-w-xl",
+  lg: "lg:max-w-2xl",
+  xl: "lg:max-w-5xl",
+  wide: "lg:max-w-7xl",
 };
 
 export function ModalSheet({
@@ -169,7 +169,7 @@ export function ModalSheet({
       {open ? (
         <motion.div
           className={cn(
-            "fixed inset-0 z-50 bg-text/28 backdrop-blur-veil sm:place-items-center sm:px-4 sm:py-6",
+            "fixed inset-x-0 top-[var(--app-visual-viewport-top,0px)] z-50 h-[var(--app-visual-viewport-height,100dvh)] bg-text/28 backdrop-blur-veil lg:inset-0 lg:h-auto lg:place-items-center lg:px-4 lg:py-6",
             overlayMobileClasses[mobile],
           )}
           variants={modalOverlay}
@@ -193,7 +193,7 @@ export function ModalSheet({
             aria-labelledby={titleId}
             aria-describedby={descriptionId}
             className={cn(
-              "flex w-full flex-col overflow-hidden border border-line bg-surface shadow-lift outline-none sm:h-auto sm:max-h-[calc(100dvh-3rem)] sm:rounded-panel",
+              "flex w-full flex-col overflow-hidden border border-line bg-surface shadow-lift outline-none lg:h-auto lg:max-h-[calc(100dvh-3rem)] lg:rounded-panel",
               panelMobileClasses[mobile],
               panelSizeClasses[size],
               panelClassName,
@@ -216,7 +216,7 @@ export function ModalSheet({
 
             <div
               className={cn(
-                "min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5",
+                "min-h-0 flex-1 overflow-y-auto px-4 py-4 lg:px-5",
                 bodyClassName,
               )}
             >
@@ -226,7 +226,7 @@ export function ModalSheet({
             {footer ? (
               <div
                 className={cn(
-                  "shrink-0 border-t border-line bg-surface px-4 py-3 sm:px-5",
+                  "shrink-0 border-t border-line bg-surface px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 lg:px-5 lg:pb-3",
                   footerClassName,
                 )}
               >
@@ -300,7 +300,7 @@ function ModalSheetHeader({
   ) : null;
 
   return (
-    <div className="shrink-0 border-b border-line bg-surface px-4 py-3 sm:px-5">
+    <div className="shrink-0 border-b border-line bg-surface px-4 py-3 lg:px-5">
       {align === "center" ? (
         <div className="grid grid-cols-[2.5rem_1fr_2.5rem] items-center gap-3">
           <span aria-hidden="true" />

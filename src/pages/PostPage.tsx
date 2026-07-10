@@ -218,7 +218,7 @@ export function PostPage() {
         <Badge tone="cool">{formatCountWithUnit(post.commentCount, "reply")}</Badge>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,42rem)_minmax(16rem,1fr)] lg:items-start">
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,42rem)_minmax(16rem,1fr)] lg:items-start">
         <main className="min-w-0 space-y-4">
           <section data-testid="post-focus-area">
             <PostCard

@@ -219,7 +219,7 @@ test("authenticated account menu uses one row pattern", async ({ page }) => {
   await expect(menu).toBeHidden();
 });
 
-test("mobile bottom nav releases before the footer", async ({ page }) => {
+test("mobile bottom nav stays fixed while footer reserves its clearance", async ({ page }) => {
   await mockPublicShell(page);
   await acknowledgeCookieNotice(page);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -252,8 +252,21 @@ test("mobile bottom nav releases before the footer", async ({ page }) => {
       nav: navRect
         ? {
             bottom: navRect.bottom,
+            height: navRect.height,
             top: navRect.top,
           }
+        : null,
+      footerPaddingBottom: footerRect
+        ? Number.parseFloat(
+            window.getComputedStyle(
+              document.querySelector('[data-testid="site-footer"]')!,
+            ).paddingBottom,
+          )
+        : null,
+      navPosition: navRect
+        ? window.getComputedStyle(
+            document.querySelector('[data-testid="mobile-nav"]')!,
+          ).position
         : null,
       scrollY: window.scrollY,
       viewportBottomGap: navRect ? window.innerHeight - navRect.bottom : null,
@@ -262,8 +275,10 @@ test("mobile bottom nav releases before the footer", async ({ page }) => {
 
   expect(boxes.nav).not.toBeNull();
   expect(boxes.footer).not.toBeNull();
-  expect(boxes.nav!.bottom).toBeLessThanOrEqual(boxes.footer!.top + 1);
   expect(boxes.footer!.bottom + boxes.scrollY).toBeCloseTo(boxes.documentHeight, 0);
+  expect(boxes.navPosition).toBe("fixed");
+  expect(boxes.footerPaddingBottom).not.toBeNull();
+  expect(boxes.footerPaddingBottom!).toBeGreaterThanOrEqual(boxes.nav!.height);
   expect(boxes.viewportBottomGap).not.toBeNull();
   expect(boxes.viewportBottomGap!).toBeGreaterThanOrEqual(-4);
 });
@@ -355,7 +370,9 @@ test("mobile primary nav shows one Post affordance and no Admin", async ({ page 
 
   await expect(nav.getByRole("button", { name: "Post" })).toHaveCount(1);
   await expect(nav.getByRole("link", { name: "Search" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Search" })).toBeVisible();
+  await expect(
+    page.locator("header").getByRole("link", { name: "Search" }),
+  ).toBeVisible();
   await expect(nav.getByRole("link", { name: "Admin" })).toHaveCount(0);
 });
 
