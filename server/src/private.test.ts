@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   authSessionPayload,
   csrfTokenForSession,
+  notificationConversationId,
   notificationIdsFromPayload,
   notificationPayloadFromRow,
+  notificationTargetUrl,
   onboardingStepListForStoredJson,
   PrivateRouteError,
   settingsPostKind,
@@ -93,6 +95,37 @@ describe("private preview auth helpers", () => {
 });
 
 describe("private preview notification mapping", () => {
+  it("routes direct and room message notifications to their owning surfaces", () => {
+    expect(notificationTargetUrl("message", null, null, null, { conversationId: 17 })).toBe(
+      "/chat?conversation=17",
+    );
+    expect(
+      notificationTargetUrl(
+        "message",
+        null,
+        null,
+        { slug: "general" } as Parameters<typeof notificationTargetUrl>[3],
+        { conversationId: 18, channelSlug: "announcements", messageContext: "room" },
+      ),
+    ).toBe("/rooms/general?tab=chat&channel=announcements");
+    expect(
+      notificationTargetUrl("message", null, null, null, {
+        conversationId: 18,
+        messageContext: "room",
+        roomSlug: "general",
+        channelSlug: "announcements",
+      }),
+    ).toBe("/rooms/general?tab=chat&channel=announcements");
+  });
+
+  it("accepts only bounded positive conversation ids from notification metadata", () => {
+    expect(notificationConversationId({ conversationId: 17 })).toBe(17);
+    expect(notificationConversationId({ conversationId: "18" })).toBe(18);
+    expect(notificationConversationId({ conversationId: 0 })).toBeNull();
+    expect(notificationConversationId({ conversationId: "not-a-number" })).toBeNull();
+    expect(notificationConversationId([])).toBeNull();
+  });
+
   it("maps notification payloads and target URLs like PHP", () => {
     expect(
       notificationPayloadFromRow({

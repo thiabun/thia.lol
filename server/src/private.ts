@@ -273,7 +273,7 @@ interface NotificationRow extends RowDataPacket {
   type: string;
   post_id: number | string | null;
   room_id: number | string | null;
-  data: string | null;
+  data: string | Record<string, unknown> | unknown[] | null;
   read_at: string | null;
   created_at: string | null;
   actor_handle: string | null;
@@ -303,6 +303,12 @@ interface NotificationRow extends RowDataPacket {
   owner_avatar_url: string | null;
   room_created_at: string | null;
   room_updated_at: string | null;
+}
+
+interface NotificationMessageContextRow extends RowDataPacket {
+  conversation_id: number | string;
+  room_slug: string;
+  channel_slug: string;
 }
 
 interface UnreadCountRow extends RowDataPacket {
@@ -480,6 +486,23 @@ export function notificationPayloadFromRow(row: NotificationRow): NotificationPa
   };
 }
 
+export function notificationConversationId(
+  data: Record<string, unknown> | unknown[] | null,
+): number | null {
+  if (data === null || Array.isArray(data)) {
+    return null;
+  }
+
+  const value = data.conversationId;
+  const id = typeof value === "number"
+    ? value
+    : typeof value === "string" && /^[0-9]+$/u.test(value)
+      ? Number(value)
+      : Number.NaN;
+
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
 class MysqlPrivateReadsRepository implements PrivateReadsRepository {
   private tableCache = new Map<string, Promise<boolean>>();
 
@@ -626,10 +649,81 @@ class MysqlPrivateReadsRepository implements PrivateReadsRepository {
       ),
     ]);
 
+    const hydratedNotificationRows = await this.hydrateLegacyRoomMessageNotifications(notificationRows[0], userId);
+
     return {
-      notifications: notificationRows[0].map((row) => notificationPayloadFromRow(row)),
+      notifications: hydratedNotificationRows.map((row) => notificationPayloadFromRow(row)),
       unreadCount: numberValue(countRows[0][0]?.unread_count),
     };
+  }
+
+  private async hydrateLegacyRoomMessageNotifications(
+    rows: NotificationRow[],
+    userId: number,
+  ): Promise<NotificationRow[]> {
+    const conversationIds = [...new Set(rows.flatMap((row) => {
+      if (row.type !== "message" || row.joined_room_id !== null) {
+        return [];
+      }
+
+      const conversationId = notificationConversationId(jsonObjectOrArrayValue(row.data));
+
+      return conversationId === null ? [] : [conversationId];
+    }))];
+
+    if (conversationIds.length === 0) {
+      return rows;
+    }
+
+    const [hasConversations, hasConversationMembers, hasRoomChannels] = await Promise.all([
+      this.tableExists("conversations"),
+      this.tableExists("conversation_members"),
+      this.tableExists("room_channels"),
+    ]);
+
+    if (!hasConversations || !hasConversationMembers || !hasRoomChannels) {
+      return rows;
+    }
+
+    const placeholders = conversationIds.map(() => "?").join(", ");
+    const [contextRows] = await this.pool.execute<NotificationMessageContextRow[]>(
+      `SELECT conversations.id AS conversation_id,
+              rooms.slug AS room_slug,
+              channels.slug AS channel_slug
+       FROM conversations
+       INNER JOIN conversation_members viewer_member
+         ON viewer_member.conversation_id = conversations.id
+        AND viewer_member.user_id = ?
+       INNER JOIN room_channels channels
+         ON channels.id = conversations.room_channel_id
+       INNER JOIN rooms
+         ON rooms.id = conversations.room_id
+        AND rooms.id = channels.room_id
+       WHERE conversations.type = 'room_channel'
+         AND conversations.id IN (${placeholders})`,
+      [userId, ...conversationIds],
+    );
+    const contexts = new Map(contextRows.map((row) => [numberValue(row.conversation_id), row]));
+
+    return rows.map((row) => {
+      const data = jsonObjectOrArrayValue(row.data);
+      const conversationId = notificationConversationId(data);
+      const context = conversationId === null ? undefined : contexts.get(conversationId);
+
+      if (context === undefined || data === null || Array.isArray(data)) {
+        return row;
+      }
+
+      return {
+        ...row,
+        data: JSON.stringify({
+          ...data,
+          messageContext: "room",
+          roomSlug: context.room_slug,
+          channelSlug: context.channel_slug,
+        }),
+      };
+    });
   }
 
   async getFollowRequests(userId: number): Promise<FollowRequestPayload[]> {
@@ -1595,10 +1689,15 @@ function notificationRoomPayload(row: NotificationRow): RoomPayload | null {
     room_icon_url: null,
     room_banner_url: null,
     room_rules: null,
+    room_rules_version: 1,
     room_visibility: row.room_visibility,
     room_created_by: row.room_created_by,
     current_room_role: null,
     current_room_joined: 0,
+    current_viewer_signed_in: 0,
+    current_viewer_is_admin: 0,
+    current_room_access_request_status: null,
+    current_room_invitation_status: null,
     owner_user_id: row.owner_user_id,
     owner_handle: row.owner_handle,
     owner_display_name: row.owner_display_name,
@@ -1610,7 +1709,7 @@ function notificationRoomPayload(row: NotificationRow): RoomPayload | null {
   } as RoomRow);
 }
 
-function notificationTargetUrl(
+export function notificationTargetUrl(
   type: string,
   actor: UserPayload | null,
   post: NotificationPayload["post"],
@@ -1618,6 +1717,26 @@ function notificationTargetUrl(
   data: Record<string, unknown> | unknown[] | null,
 ): string {
   if (type === "message") {
+    if (data !== null && !Array.isArray(data) && typeof data.channelSlug === "string") {
+      const roomSlug = room?.slug ?? (
+        data.messageContext === "room" && typeof data.roomSlug === "string"
+          ? data.roomSlug
+          : null
+      );
+
+      if (roomSlug !== null && roomSlug !== "") {
+        return `/rooms/${encodeURIComponent(roomSlug)}?tab=chat&channel=${encodeURIComponent(data.channelSlug)}`;
+      }
+    }
+
+    if (data !== null && !Array.isArray(data)) {
+      const conversationId = notificationConversationId(data);
+
+      if (conversationId !== null) {
+        return `/chat?conversation=${conversationId}`;
+      }
+    }
+
     return "/chat";
   }
 
@@ -2051,8 +2170,16 @@ function jsonSettingsObjectValue(value: string | null | undefined): Record<strin
   return [];
 }
 
-function jsonObjectOrArrayValue(value: string | null | undefined): Record<string, unknown> | unknown[] | null {
-  if (value === null || value === undefined || value.trim() === "") {
+function jsonObjectOrArrayValue(value: unknown): Record<string, unknown> | unknown[] | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === "object") {
+    return value as Record<string, unknown> | unknown[];
+  }
+
+  if (typeof value !== "string" || value.trim() === "") {
     return null;
   }
 

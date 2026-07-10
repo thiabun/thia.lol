@@ -22,6 +22,8 @@ const fullCapabilities: RoomSchemaCapabilities = {
   hasLegacyRoomAccentColumn: false,
   hasRoomSoftDeleteColumn: true,
   hasRoomAccessRequests: true,
+  hasRoomRulesVersionColumn: true,
+  hasRoomInvitations: true,
 };
 
 function roomRow(overrides: Partial<RoomRow> = {}): RoomRow {
@@ -39,10 +41,15 @@ function roomRow(overrides: Partial<RoomRow> = {}): RoomRow {
     room_icon_url: "/uploads/rooms/general.png",
     room_banner_url: null,
     room_rules: null,
+    room_rules_version: 1,
     room_visibility: "public",
     room_created_by: "42",
     current_room_role: null,
     current_room_joined: 0,
+    current_viewer_signed_in: 0,
+    current_viewer_is_admin: 0,
+    current_room_access_request_status: null,
+    current_room_invitation_status: null,
     owner_user_id: "42",
     owner_handle: "thia",
     owner_display_name: "Thia Bun",
@@ -85,6 +92,7 @@ describe("room preview payload mapping", () => {
       iconUrl: "/uploads/rooms/general.png",
       bannerUrl: null,
       rules: "",
+      rulesVersion: 1,
       visibility: "public",
       createdBy: 42,
       owner: {
@@ -100,6 +108,7 @@ describe("room preview payload mapping", () => {
       viewerCanViewPosts: true,
       viewerCanPost: false,
       viewerCanReact: false,
+      viewerCanJoin: false,
       viewerCanRequestAccess: false,
       accessRequestStatus: null,
       postCount: 5,
@@ -133,6 +142,56 @@ describe("room preview payload mapping", () => {
     expect(payload.joinedByMe).toBe(false);
     expect(payload.myRoomRole).toBeNull();
     expect(payload.postCount).toBe(0);
+  });
+
+  it("requires an active membership before public room posting", () => {
+    expect(
+      roomPayloadFromRow(
+        roomRow({
+          current_viewer_signed_in: 1,
+          current_room_joined: 0,
+          current_room_role: null,
+        }),
+      ).viewerCanPost,
+    ).toBe(false);
+    expect(
+      roomPayloadFromRow(
+        roomRow({
+          current_viewer_signed_in: 1,
+          current_room_joined: 1,
+          current_room_role: "member",
+        }),
+      ).viewerCanPost,
+    ).toBe(true);
+  });
+
+  it("lets a pending invitee review and join a private room without exposing its posts", () => {
+    expect(
+      roomPayloadFromRow(
+        roomRow({
+          room_visibility: "private",
+          current_viewer_signed_in: 1,
+          current_room_invitation_status: "pending",
+        }),
+      ),
+    ).toMatchObject({
+      viewerCanJoin: true,
+      viewerCanViewPosts: false,
+      viewerCanPost: false,
+      viewerCanRequestAccess: false,
+    });
+  });
+
+  it("lets former invite-room members reopen an approved access request", () => {
+    expect(
+      roomPayloadFromRow(
+        roomRow({
+          room_visibility: "invite",
+          current_viewer_signed_in: 1,
+          current_room_access_request_status: "approved",
+        }),
+      ).viewerCanRequestAccess,
+    ).toBe(true);
   });
 
   it("derives a preset theme from legacy room accents before migration", () => {
@@ -199,6 +258,8 @@ describe("room preview SQL", () => {
       hasLegacyRoomAccentColumn: true,
       hasRoomSoftDeleteColumn: false,
       hasRoomAccessRequests: false,
+      hasRoomRulesVersionColumn: false,
+      hasRoomInvitations: false,
     });
 
     expect(query).toContain("rooms.member_count AS room_member_count");
@@ -209,20 +270,23 @@ describe("room preview SQL", () => {
   });
 
   it("builds a parameterized room detail query", () => {
-    const query = buildPublicRoomBySlugQuery(fullCapabilities);
+    const query = buildPublicRoomBySlugQuery(fullCapabilities, { userId: 17, role: "member" });
 
     expect(query).toContain("WHERE rooms.slug = ?");
     expect(query).toContain("AND (rooms.visibility <> 'private'");
+    expect(query).toContain("LEFT JOIN room_invitations viewer_room_invitation");
+    expect(query).toContain("viewer_room_invitation.status = 'pending'");
     expect(query).toContain("AND rooms.deleted_at IS NULL");
     expect(query).toContain("LIMIT 1");
   });
 
   it("builds room member queries with PHP visibility and ordering constraints", () => {
-    const roomQuery = buildPublicRoomMemberRoomQuery();
+    const roomQuery = buildPublicRoomMemberRoomQuery(fullCapabilities, { userId: 17, role: "member" });
     const membersQuery = buildPublicRoomMembersQuery();
 
     expect(roomQuery).toContain("WHERE rooms.slug = ?");
     expect(roomQuery).toContain("rooms.visibility IN ('public', 'view_only')");
+    expect(roomQuery).not.toContain("room_invitations");
     expect(roomQuery).toContain("deleted_at IS NULL");
     expect(membersQuery).toContain("FROM room_memberships memberships");
     expect(membersQuery).toContain("memberships.banned_at IS NULL");
@@ -241,6 +305,8 @@ describe("room preview SQL", () => {
         hasLegacyRoomAccentColumn: false,
         hasRoomSoftDeleteColumn: false,
         hasRoomAccessRequests: true,
+        hasRoomRulesVersionColumn: true,
+        hasRoomInvitations: true,
       }),
     ).toBe(false);
   });

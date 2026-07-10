@@ -139,6 +139,92 @@ test("mobile chat keeps the composer clear of the dock", async ({ page }) => {
   expect(layout.dockHitboxesOverlap).toBe(false);
 });
 
+test("switching conversations does not show stale messages under the next participant", async ({
+  page,
+}) => {
+  let conversationListRequests = 0;
+  let releaseUnreadMessages: (() => void) | undefined;
+  const unreadMessagesDelay = new Promise<void>((resolve) => {
+    releaseUnreadMessages = resolve;
+  });
+  page.on("request", (request) => {
+    if (
+      request.method() === "GET" &&
+      new URL(request.url()).pathname === "/api/chat/conversations"
+    ) {
+      conversationListRequests += 1;
+    }
+  });
+
+  await mockAuthenticatedChat(page, {
+    conversations: [mockConversation, mockUnreadConversation],
+    messageResponseDelays: { 11: unreadMessagesDelay },
+  });
+  await page.goto("/chat?conversation=10");
+
+  const messageList = page.getByTestId("chat-message-list");
+  await expect(messageList).toContainText("hello from a moot");
+  const requestsBeforeNavigation = conversationListRequests;
+
+  await page.evaluate(() => {
+    window.history.pushState(null, "", "/chat?conversation=11");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect(page).toHaveURL(/\/chat\?conversation=11$/);
+  await expect(page.getByText("Unread Moot", { exact: true }).last()).toBeVisible();
+  await expect(messageList).not.toContainText("hello from a moot");
+  await expect(messageList).toContainText("Loading messages");
+  expect(conversationListRequests).toBe(requestsBeforeNavigation);
+
+  releaseUnreadMessages?.();
+  await expect(messageList).toContainText("new unread note");
+
+  const requestsBeforeMissingConversation = conversationListRequests;
+  await page.evaluate(() => {
+    window.history.pushState(null, "", "/chat?conversation=999");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect(messageList).toHaveCount(0);
+  await expect(page.getByText("Conversation not available", { exact: true })).toBeVisible();
+  await expect.poll(() => conversationListRequests).toBe(
+    requestsBeforeMissingConversation + 1,
+  );
+});
+
+test("a delayed send cannot overwrite the next conversation or its draft", async ({ page }) => {
+  let sendStarted = false;
+  let releaseSend: (() => void) | undefined;
+  const sendDelay = new Promise<void>((resolve) => {
+    releaseSend = resolve;
+  });
+
+  await mockAuthenticatedChat(page, {
+    conversations: [mockConversation, mockUnreadConversation],
+    onSendMessage: async () => {
+      sendStarted = true;
+      await sendDelay;
+    },
+  });
+  await page.goto("/chat?conversation=10");
+
+  const composer = page.getByLabel("Write a message");
+  await composer.fill("Message for the first conversation");
+  await page.getByTestId("chat-message-composer").getByRole("button", { name: "Send" }).click();
+  await expect.poll(() => sendStarted).toBe(true);
+
+  await page.getByTestId("chat-conversation-open-11").click();
+  await expect(page).toHaveURL(/\/chat\?conversation=11$/);
+  await composer.fill("Draft for the second conversation");
+
+  releaseSend?.();
+  await expect(page.getByText("Unread Moot", { exact: true }).last()).toBeVisible();
+  await expect(page.getByTestId("chat-message-list")).toContainText("new unread note");
+  await expect(page.getByTestId("chat-message-list")).not.toContainText(
+    "Message for the first conversation",
+  );
+  await expect(composer).toHaveValue("Draft for the second conversation");
+});
+
 test("authenticated chat renders rich message entities", async ({ page }) => {
   await page.route(/^https:\/\/www\.youtube-nocookie\.com\/embed\//, async (route) => {
     await route.fulfill({
@@ -400,6 +486,46 @@ test("chat conversation row separates profile links from open targets", async ({
 });
 
 test("authenticated chat empty state stays route-level", async ({ page }) => {
+  let roomRequestCount = 0;
+
+  await page.route(/\/api\/rooms(?:[/?]|$)/u, async (route) => {
+    roomRequestCount += 1;
+    const pathname = new URL(route.request().url()).pathname;
+    const data = pathname.endsWith("/channels")
+      ? [
+          {
+            id: 901,
+            roomId: 90,
+            slug: "general",
+            name: "general",
+            description: "Room chat",
+            position: 0,
+            kind: "chat",
+            readOnly: false,
+            archivedAt: null,
+            conversationId: 9901,
+            unreadCount: 2,
+            lastMessageAt: "2026-06-10 10:00:00",
+            viewerCanPost: true,
+            createdAt: "2026-06-10 09:00:00",
+            updatedAt: "2026-06-10 10:00:00",
+          },
+        ]
+      : [
+          {
+            id: 90,
+            slug: "joined-room",
+            name: "Joined Room",
+            joinedByMe: true,
+          },
+        ];
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data }),
+    });
+  });
   await mockAuthenticatedChat(page, { conversations: [] });
   await page.goto("/chat");
 
@@ -407,6 +533,9 @@ test("authenticated chat empty state stays route-level", async ({ page }) => {
   await expect(page.getByText("No chats yet")).toBeVisible();
   await expect(page.getByTestId("chat-conversation-list")).toHaveCount(0);
   await expect(page.getByTestId("chat-message-composer")).toHaveCount(0);
+  await expect(page.getByTestId("chat-room-summary")).toHaveCount(0);
+  await page.waitForLoadState("networkidle");
+  expect(roomRequestCount).toBe(0);
 });
 
 test("chat moot picker shows empty state when the user has no moots", async ({
@@ -689,18 +818,11 @@ async function mockAnonymousShell(page: Page) {
       body: JSON.stringify({ ok: false, error: "Unauthenticated." }),
     });
   });
-
-  await page.route("**/api/rooms", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: [] }),
-    });
-  });
 }
 
 type MockAuthenticatedChatOptions = {
   conversations?: typeof mockConversation[];
+  messageResponseDelays?: Record<number, Promise<void>>;
   moots?: typeof mockMoot[];
   onCreateConversation?: (body: unknown) => Promise<typeof mockConversation>;
   onSendMessage?: (body: unknown) => Promise<void>;
@@ -774,14 +896,6 @@ async function mockAuthenticatedChat(
           csrfToken: "test-csrf",
         },
       }),
-    });
-  });
-
-  await page.route("**/api/rooms", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: [] }),
     });
   });
 
@@ -901,6 +1015,8 @@ async function mockAuthenticatedChat(
       await route.fallback();
       return;
     }
+
+    await options.messageResponseDelays?.[conversationId];
 
     await route.fulfill({
       status: 200,

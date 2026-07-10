@@ -104,6 +104,7 @@ const room: RoomPayload = {
   iconUrl: null,
   bannerUrl: null,
   rules: "",
+  rulesVersion: 1,
   visibility: "public",
   createdBy: 1,
   owner: {
@@ -116,6 +117,12 @@ const room: RoomPayload = {
   },
   joinedByMe: false,
   myRoomRole: null,
+  viewerCanViewPosts: true,
+  viewerCanPost: false,
+  viewerCanReact: false,
+  viewerCanJoin: false,
+  viewerCanRequestAccess: false,
+  accessRequestStatus: null,
   postCount: 4,
   latestActivityAt: "2026-06-23 10:00:00",
   createdAt: "2026-06-20 10:00:00",
@@ -554,6 +561,13 @@ function contentMutationsRepositoryMock(overrides: Partial<ContentMutationsRepos
     }),
     joinRoom: vi.fn().mockResolvedValue(room),
     leaveRoom: vi.fn().mockResolvedValue(room),
+    requestRoomAccess: vi.fn().mockResolvedValue(room),
+    cancelRoomAccessRequest: vi.fn().mockResolvedValue(room),
+    listRoomAccessRequests: vi.fn().mockResolvedValue([]),
+    approveRoomAccessRequest: vi.fn().mockResolvedValue([]),
+    denyRoomAccessRequest: vi.fn().mockResolvedValue([]),
+    addRoomMember: vi.fn().mockResolvedValue([roomMember]),
+    removeRoomMember: vi.fn().mockResolvedValue([roomMember]),
     addRoomModerator: vi.fn().mockResolvedValue([roomMember]),
     removeRoomModerator: vi.fn().mockResolvedValue([roomMember]),
     ...overrides,
@@ -3082,6 +3096,7 @@ describe("Node API social and content mutation preview routes", () => {
       ["DELETE", "/rooms/general", 200],
       ["POST", "/rooms/general/join", 200],
       ["DELETE", "/rooms/general/join", 200],
+      ["POST", "/rooms/general/access-requests", 201],
       ["POST", "/rooms/general/moderators", 200],
       ["DELETE", "/rooms/general/moderators", 200],
     ] as const) {
@@ -3095,6 +3110,8 @@ describe("Node API social and content mutation preview routes", () => {
           name: "General",
           summary: "General public discussion.",
           handle: "friend",
+          acceptedRules: true,
+          acceptedRulesVersion: 1,
         },
       });
 
@@ -3105,8 +3122,17 @@ describe("Node API social and content mutation preview routes", () => {
     expect(repository.createRoom).toHaveBeenCalled();
     expect(repository.updateRoom).toHaveBeenCalledWith(session, "general", expect.any(Object));
     expect(repository.deleteRoom).toHaveBeenCalledWith(session, "general");
-    expect(repository.joinRoom).toHaveBeenCalledWith(session, "general");
+    expect(repository.joinRoom).toHaveBeenCalledWith(
+      session,
+      "general",
+      expect.objectContaining({ acceptedRules: true, acceptedRulesVersion: 1 }),
+    );
     expect(repository.leaveRoom).toHaveBeenCalledWith(session, "general");
+    expect(repository.requestRoomAccess).toHaveBeenCalledWith(
+      session,
+      "general",
+      expect.objectContaining({ acceptedRules: true, acceptedRulesVersion: 1 }),
+    );
     expect(repository.addRoomModerator).toHaveBeenCalledWith(session, "general", expect.any(Object));
     expect(repository.removeRoomModerator).toHaveBeenCalledWith(session, "general", expect.any(Object));
   });

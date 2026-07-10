@@ -365,6 +365,7 @@ export type Room = {
   iconUrl?: string | null;
   bannerUrl?: string | null;
   rules?: string;
+  rulesVersion: number;
   visibility: RoomVisibility;
   createdBy?: number | null;
   owner?: User | null;
@@ -373,6 +374,7 @@ export type Room = {
   viewerCanViewPosts: boolean;
   viewerCanPost: boolean;
   viewerCanReact: boolean;
+  viewerCanJoin: boolean;
   viewerCanRequestAccess: boolean;
   accessRequestStatus?: RoomAccessRequestStatus | null;
   pendingAccessRequestCount?: number | undefined;
@@ -626,7 +628,7 @@ export type ChatLastMessage = Pick<ChatMessage, "id" | "body" | "createdAt" | "s
 
 export type ChatConversation = {
   id: number;
-  type: "direct" | "room_channel";
+  type: "direct";
   createdAt: string;
   updatedAt: string | null;
   lastMessageAt: string | null;

@@ -60,7 +60,7 @@ import {
   profileModuleAllowedSizes,
 } from "./profileModuleRegistry";
 
-type ApiRoom = Omit<Room, "theme" | "themeConfig"> & {
+type ApiRoom = Omit<Room, "theme" | "themeConfig" | "rulesVersion" | "viewerCanJoin"> & {
   description?: string;
   visibility?: string;
   memberCount?: number;
@@ -68,6 +68,7 @@ type ApiRoom = Omit<Room, "theme" | "themeConfig"> & {
   iconUrl?: string | null;
   bannerUrl?: string | null;
   rules?: string;
+  rulesVersion?: number;
   theme?: string | null;
   themeConfig?: unknown;
   joinedByMe?: boolean;
@@ -75,6 +76,7 @@ type ApiRoom = Omit<Room, "theme" | "themeConfig"> & {
   viewerCanViewPosts?: boolean;
   viewerCanPost?: boolean;
   viewerCanReact?: boolean;
+  viewerCanJoin?: boolean;
   viewerCanRequestAccess?: boolean;
   accessRequestStatus?: Room["accessRequestStatus"];
   pendingAccessRequestCount?: number | undefined;
@@ -944,10 +946,10 @@ export function updateRoom(
   ).then(normalizeRoom);
 }
 
-export function joinRoom(slug: string, csrfToken: string): Promise<Room> {
+export function joinRoom(slug: string, csrfToken: string, acceptedRulesVersion: number): Promise<Room> {
   return apiPost<ApiRoom>(
     `/rooms/${encodeURIComponent(slug)}/join`,
-    {},
+    { acceptedRules: true, acceptedRulesVersion },
     csrfToken,
   ).then(normalizeRoom);
 }
@@ -959,10 +961,10 @@ export function leaveRoom(slug: string, csrfToken: string): Promise<Room> {
   ).then(normalizeRoom);
 }
 
-export function requestRoomAccess(slug: string, csrfToken: string): Promise<Room> {
+export function requestRoomAccess(slug: string, csrfToken: string, acceptedRulesVersion: number): Promise<Room> {
   return apiPost<ApiRoom>(
     `/rooms/${encodeURIComponent(slug)}/access-requests`,
-    {},
+    { acceptedRules: true, acceptedRulesVersion },
     csrfToken,
   ).then(normalizeRoom);
 }
@@ -2282,10 +2284,9 @@ function normalizeRoom(room: ApiRoom): Room {
       joinedByMe);
   const viewerCanPost =
     room.viewerCanPost ??
-    (visibility === "public" ||
-      myRoomRole === "owner" ||
+    (myRoomRole === "owner" ||
       myRoomRole === "moderator" ||
-      ((visibility === "private" || visibility === "invite") && joinedByMe));
+      (visibility !== "view_only" && joinedByMe));
   const viewerCanReact = room.viewerCanReact ?? viewerCanViewPosts;
 
   return {
@@ -2303,6 +2304,7 @@ function normalizeRoom(room: ApiRoom): Room {
     iconUrl: room.iconUrl ?? null,
     bannerUrl: room.bannerUrl ?? null,
     rules: room.rules ?? "",
+    rulesVersion: Math.max(1, Number(room.rulesVersion) || 1),
     visibility,
     createdBy: room.createdBy ?? null,
     owner: room.owner ?? null,
@@ -2311,6 +2313,7 @@ function normalizeRoom(room: ApiRoom): Room {
     viewerCanViewPosts,
     viewerCanPost,
     viewerCanReact,
+    viewerCanJoin: room.viewerCanJoin ?? (visibility === "public" && !joinedByMe),
     viewerCanRequestAccess: room.viewerCanRequestAccess ?? false,
     accessRequestStatus: room.accessRequestStatus ?? null,
     pendingAccessRequestCount: room.pendingAccessRequestCount,

@@ -192,3 +192,25 @@ ON DUPLICATE KEY UPDATE
   visibility = VALUES(visibility),
   created_by = VALUES(created_by),
   updated_at = CURRENT_TIMESTAMP;
+
+INSERT INTO room_memberships (room_id, user_id, role)
+SELECT rooms.id, @thia_user_id, 'owner'
+FROM rooms
+WHERE rooms.created_by = @thia_user_id
+ON DUPLICATE KEY UPDATE
+  role = 'owner',
+  banned_at = NULL;
+
+INSERT IGNORE INTO room_rule_acceptances (room_id, user_id, rules_version, accepted_at)
+SELECT rooms.id, @thia_user_id, rooms.rules_version, UTC_TIMESTAMP()
+FROM rooms
+WHERE rooms.created_by = @thia_user_id;
+
+UPDATE rooms
+SET member_count = (
+  SELECT COUNT(*)
+  FROM room_memberships
+  WHERE room_memberships.room_id = rooms.id
+    AND room_memberships.banned_at IS NULL
+)
+WHERE rooms.created_by = @thia_user_id;

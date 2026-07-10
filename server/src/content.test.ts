@@ -1,6 +1,60 @@
 import { describe, expect, it } from "vitest";
 
-import { validatePostAttachments, validatePostMedia } from "./content.js";
+import {
+  assertCurrentRoomRulesVersion,
+  ContentRouteError,
+  roomFeedViewerCanPost,
+  roomInvitationAllowsJoin,
+  roomRulesAcceptanceVersion,
+  validatePostAttachments,
+  validatePostMedia,
+} from "./content.js";
+
+describe("room rules acceptance", () => {
+  it("requires explicit acceptance and a positive rules version", () => {
+    expect(() => roomRulesAcceptanceVersion({ acceptedRulesVersion: 2 })).toThrow(
+      new ContentRouteError("Review and accept the room rules before continuing.", 422),
+    );
+    expect(() => roomRulesAcceptanceVersion({ acceptedRules: true })).toThrow(
+      new ContentRouteError("Review and accept the current room rules before continuing.", 422),
+    );
+    expect(() => roomRulesAcceptanceVersion({ acceptedRules: true, acceptedRulesVersion: 0 })).toThrow(
+      new ContentRouteError("Accepted room rules version is invalid.", 422),
+    );
+    expect(roomRulesAcceptanceVersion({ acceptedRules: true, acceptedRulesVersion: 3 })).toBe(3);
+  });
+
+  it("rejects stale rules acceptance versions", () => {
+    expect(() => assertCurrentRoomRulesVersion({ rules_version: 4 }, 3)).toThrow(
+      new ContentRouteError("Room rules changed. Review the current rules before continuing.", 409),
+    );
+    expect(() => assertCurrentRoomRulesVersion({ rules_version: 4 }, 4)).not.toThrow();
+  });
+
+  it("allows public joins and active invitations without opening private rooms generally", () => {
+    expect(roomInvitationAllowsJoin("public", null)).toBe(true);
+    expect(roomInvitationAllowsJoin("private", "pending")).toBe(true);
+    expect(roomInvitationAllowsJoin("invite", "pending")).toBe(true);
+    expect(roomInvitationAllowsJoin("view_only", "pending")).toBe(true);
+    expect(roomInvitationAllowsJoin("private", "accepted")).toBe(false);
+    expect(roomInvitationAllowsJoin("private", "revoked")).toBe(false);
+    expect(roomInvitationAllowsJoin("private", null)).toBe(false);
+  });
+
+  it("requires accepted membership before room feed writes", () => {
+    expect(roomFeedViewerCanPost("public", "member", null)).toBe(false);
+    expect(
+      roomFeedViewerCanPost("public", "member", { role: "member", bannedAt: null }),
+    ).toBe(true);
+    expect(
+      roomFeedViewerCanPost("view_only", "member", { role: "member", bannedAt: null }),
+    ).toBe(false);
+    expect(
+      roomFeedViewerCanPost("view_only", "member", { role: "moderator", bannedAt: null }),
+    ).toBe(true);
+    expect(roomFeedViewerCanPost("private", "admin", null)).toBe(true);
+  });
+});
 
 describe("post media validation", () => {
   it("accepts image upload metadata for posts and replies", () => {

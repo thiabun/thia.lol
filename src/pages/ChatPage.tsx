@@ -1,10 +1,8 @@
 import {
-  Hash,
   ImagePlay,
   Inbox,
   LoaderCircle,
   MessageCircle,
-  Radio,
   RefreshCw,
   Search,
   Send,
@@ -42,8 +40,6 @@ import {
   getChatConversations,
   getChatMessages,
   getChatMoots,
-  getRoomChannels,
-  getRooms,
   markChatConversationRead,
   sendChatMessage,
 } from "../lib/api";
@@ -58,8 +54,6 @@ import type {
   GifAttachment,
   GifSearchResult,
   PostShareSummary,
-  Room,
-  RoomChannel,
 } from "../lib/types";
 import { useAuth } from "../lib/useAuth";
 
@@ -69,12 +63,15 @@ export function ChatPage() {
   const { runWithAuth, status, user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
-  const [conversationsLoading, setConversationsLoading] = useState(false);
+  const [conversationsLoading, setConversationsLoading] = useState(true);
   const [conversationsError, setConversationsError] = useState<string | undefined>();
   const [selectedConversationId, setSelectedConversationId] = useState<
     number | undefined
   >();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messagesConversationId, setMessagesConversationId] = useState<
+    number | undefined
+  >();
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState<string | undefined>();
   const [body, setBody] = useState("");
@@ -87,11 +84,11 @@ export function ChatPage() {
   const [mootsLoading, setMootsLoading] = useState(false);
   const [mootsError, setMootsError] = useState<string | undefined>();
   const [mootQuery, setMootQuery] = useState("");
-  const [roomSummaries, setRoomSummaries] = useState<ChatRoomSummary[]>([]);
-  const [roomSummariesLoading, setRoomSummariesLoading] = useState(false);
-  const [roomSummariesError, setRoomSummariesError] = useState<string | undefined>();
   const [startingMootHandle, setStartingMootHandle] = useState<string | undefined>();
   const startedHandleRef = useRef<string | undefined>(undefined);
+  const conversationListRequestRef = useRef(0);
+  const lastMissingConversationRequestRef = useRef<number | undefined>(undefined);
+  const selectedConversationIdRef = useRef<number | undefined>(undefined);
   const messageListRef = useRef<HTMLDivElement>(null);
 
   const requestedConversationId = useMemo(() => {
@@ -100,8 +97,17 @@ export function ChatPage() {
     return value && /^\d+$/.test(value) ? Number(value) : undefined;
   }, [searchParams]);
   const requestedHandle = searchParams.get("with")?.replace(/^@/, "").toLowerCase();
+  const requestedConversation = requestedConversationId
+    ? conversations.find((conversation) => conversation.id === requestedConversationId)
+    : undefined;
+  const requestedConversationMissing = Boolean(
+    requestedConversationId && !requestedConversation,
+  );
+  const activeConversationId = requestedConversationId
+    ? requestedConversation?.id
+    : selectedConversationId;
   const selectedConversation = conversations.find(
-    (conversation) => conversation.id === selectedConversationId,
+    (conversation) => conversation.id === activeConversationId,
   );
   const filteredMoots = useMemo(() => {
     const query = mootQuery.trim().toLowerCase();
@@ -119,6 +125,9 @@ export function ChatPage() {
   }, [mootQuery, moots]);
 
   const loadConversations = useCallback(async () => {
+    const requestId = conversationListRequestRef.current + 1;
+    conversationListRequestRef.current = requestId;
+
     if (status !== "authenticated") {
       return;
     }
@@ -128,15 +137,13 @@ export function ChatPage() {
 
     try {
       const nextConversations = await getChatConversations();
+
+      if (conversationListRequestRef.current !== requestId) {
+        return;
+      }
+
       setConversations(nextConversations);
       setSelectedConversationId((current) => {
-        if (
-          requestedConversationId &&
-          nextConversations.some((item) => item.id === requestedConversationId)
-        ) {
-          return requestedConversationId;
-        }
-
         if (current && nextConversations.some((item) => item.id === current)) {
           return current;
         }
@@ -144,13 +151,17 @@ export function ChatPage() {
         return nextConversations[0]?.id;
       });
     } catch (error) {
-      setConversationsError(
-        error instanceof Error ? error.message : "Messages could not load.",
-      );
+      if (conversationListRequestRef.current === requestId) {
+        setConversationsError(
+          error instanceof Error ? error.message : "Messages could not load.",
+        );
+      }
     } finally {
-      setConversationsLoading(false);
+      if (conversationListRequestRef.current === requestId) {
+        setConversationsLoading(false);
+      }
     }
-  }, [requestedConversationId, status]);
+  }, [status]);
 
   const loadMoots = useCallback(async () => {
     if (status !== "authenticated") {
@@ -171,34 +182,6 @@ export function ChatPage() {
     }
   }, [status]);
 
-  const loadRoomSummaries = useCallback(async () => {
-    if (status !== "authenticated") {
-      setRoomSummaries([]);
-      return;
-    }
-
-    setRoomSummariesLoading(true);
-    setRoomSummariesError(undefined);
-
-    try {
-      const rooms = (await getRooms()).filter((room) => room.joinedByMe);
-      const summaries = await Promise.all(
-        rooms.slice(0, 6).map(async (room) => ({
-          room,
-          channels: await getRoomChannels(room.slug).catch(() => []),
-        })),
-      );
-
-      setRoomSummaries(summaries);
-    } catch (error) {
-      setRoomSummariesError(
-        error instanceof Error ? error.message : "Room channels could not load.",
-      );
-    } finally {
-      setRoomSummariesLoading(false);
-    }
-  }, [status]);
-
   useEffect(() => {
     queueMicrotask(() => {
       void loadConversations();
@@ -206,10 +189,42 @@ export function ChatPage() {
   }, [loadConversations]);
 
   useEffect(() => {
+    if (!requestedConversationId || requestedConversation) {
+      lastMissingConversationRequestRef.current = undefined;
+      return undefined;
+    }
+
+    if (
+      status !== "authenticated" ||
+      conversationsLoading ||
+      lastMissingConversationRequestRef.current === requestedConversationId
+    ) {
+      return undefined;
+    }
+
+    lastMissingConversationRequestRef.current = requestedConversationId;
+    let active = true;
+
     queueMicrotask(() => {
-      void loadRoomSummaries();
+      if (active) {
+        void loadConversations();
+      }
     });
-  }, [loadRoomSummaries]);
+
+    return () => {
+      active = false;
+    };
+  }, [
+    conversationsLoading,
+    loadConversations,
+    requestedConversation,
+    requestedConversationId,
+    status,
+  ]);
+
+  useEffect(() => {
+    selectedConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
 
   useEffect(() => {
     if (
@@ -244,13 +259,15 @@ export function ChatPage() {
   }, [requestedHandle, runWithAuth, setSearchParams, status]);
 
   useEffect(() => {
-    if (status !== "authenticated" || !selectedConversationId) {
+    if (status !== "authenticated" || !activeConversationId) {
       queueMicrotask(() => {
         setMessages([]);
+        setMessagesConversationId(undefined);
       });
       return;
     }
 
+    const conversationId = activeConversationId;
     let active = true;
 
     queueMicrotask(() => {
@@ -258,34 +275,40 @@ export function ChatPage() {
         return;
       }
 
+      setBody("");
+      setSelectedGifs([]);
+      setGifPickerOpen(false);
       setMessagesLoading(true);
       setMessagesError(undefined);
 
-      getChatMessages(selectedConversationId)
+      getChatMessages(conversationId)
         .then((result) => {
           if (!active) {
             return;
           }
 
           setMessages(result.messages);
+          setMessagesConversationId(conversationId);
           setConversations((current) => upsertConversation(current, result.conversation));
 
           void runWithAuth(
-            (csrfToken) => markChatConversationRead(selectedConversationId, csrfToken),
+            (csrfToken) => markChatConversationRead(conversationId, csrfToken),
             { retryOnCsrf: true },
-          ).then((readResult) => {
-            setConversations((current) =>
-              current.map((conversation) =>
-                conversation.id === selectedConversationId
-                  ? {
-                      ...conversation,
-                      lastReadAt: readResult.readAt,
-                      unreadCount: 0,
-                    }
-                  : conversation,
-              ),
-            );
-          });
+          )
+            .then((readResult) => {
+              setConversations((current) =>
+                current.map((conversation) =>
+                  conversation.id === conversationId
+                    ? {
+                        ...conversation,
+                        lastReadAt: readResult.readAt,
+                        unreadCount: 0,
+                      }
+                    : conversation,
+                ),
+              );
+            })
+            .catch(() => undefined);
         })
         .catch((error: unknown) => {
           if (active) {
@@ -304,12 +327,13 @@ export function ChatPage() {
     return () => {
       active = false;
     };
-  }, [runWithAuth, selectedConversationId, status]);
+  }, [activeConversationId, runWithAuth, status]);
 
   useEffect(() => {
     if (
       status !== "authenticated" ||
-      !selectedConversationId ||
+      !activeConversationId ||
+      messagesConversationId !== activeConversationId ||
       messages.length === 0
     ) {
       return;
@@ -319,7 +343,7 @@ export function ChatPage() {
     if (messageList) {
       messageList.scrollTop = messageList.scrollHeight;
     }
-  }, [messages.length, selectedConversationId, status]);
+  }, [activeConversationId, messages.length, messagesConversationId, status]);
 
   async function handleSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -327,12 +351,16 @@ export function ChatPage() {
     const trimmed = body.trim();
 
     if (
-      !selectedConversationId ||
+      !activeConversationId ||
+      messagesConversationId !== activeConversationId ||
       (trimmed === "" && selectedGifs.length === 0) ||
       sending
     ) {
       return;
     }
+
+    const targetConversationId = activeConversationId;
+    const draftGifs = selectedGifs;
 
     setSending(true);
     setMessagesError(undefined);
@@ -341,21 +369,24 @@ export function ChatPage() {
       const message = await runWithAuth(
         (csrfToken) =>
           sendChatMessage(
-            selectedConversationId,
+            targetConversationId,
             trimmed,
             csrfToken,
-            selectedGifs.map(gifToChatAttachmentInput),
+            draftGifs.map(gifToChatAttachmentInput),
           ),
         { retryOnCsrf: true },
       );
-      setBody("");
-      setSelectedGifs([]);
-      setGifPickerOpen(false);
-      setMessages((current) => [...current, message]);
+      if (selectedConversationIdRef.current === targetConversationId) {
+        setBody("");
+        setSelectedGifs([]);
+        setGifPickerOpen(false);
+        setMessagesConversationId(targetConversationId);
+        setMessages((current) => [...current, message]);
+      }
       setConversations((current) =>
         current
           .map((conversation) =>
-            conversation.id === selectedConversationId
+            conversation.id === targetConversationId
               ? {
                   ...conversation,
                   lastMessage: {
@@ -372,9 +403,11 @@ export function ChatPage() {
           .sort(sortConversations),
       );
     } catch (error) {
-      setMessagesError(
-        error instanceof Error ? error.message : "Message could not send.",
-      );
+      if (selectedConversationIdRef.current === targetConversationId) {
+        setMessagesError(
+          error instanceof Error ? error.message : "Message could not send.",
+        );
+      }
     } finally {
       setSending(false);
     }
@@ -484,10 +517,15 @@ export function ChatPage() {
   const conversationsEmpty =
     !conversationsLoading &&
     !conversationsError &&
-    conversations.length === 0 &&
-    roomSummaries.length === 0;
-  const showConversationLayout =
-    conversations.length > 0 || roomSummaries.length > 0;
+    conversations.length === 0;
+  const showConversationLayout = conversations.length > 0;
+  const visibleMessages =
+    messagesConversationId === activeConversationId ? messages : [];
+  const showMessagesLoading =
+    messagesLoading ||
+    (Boolean(activeConversationId) &&
+      messagesConversationId !== activeConversationId &&
+      !messagesError);
   if (status === "anonymous") {
     return (
       <motion.div
@@ -673,8 +711,13 @@ export function ChatPage() {
                 <ConversationButton
                   key={conversation.id}
                   conversation={conversation}
-                  selected={conversation.id === selectedConversationId}
+                  selected={conversation.id === activeConversationId}
                   onClick={() => {
+                    selectedConversationIdRef.current = conversation.id;
+                    setMessagesError(undefined);
+                    setBody("");
+                    setSelectedGifs([]);
+                    setGifPickerOpen(false);
                     setSelectedConversationId(conversation.id);
                     setSearchParams(
                       { conversation: String(conversation.id) },
@@ -684,12 +727,6 @@ export function ChatPage() {
                 />
               ))}
             </div>
-            <ChatRoomSummaryList
-              error={roomSummariesError}
-              loading={roomSummariesLoading}
-              summaries={roomSummaries}
-              onRefresh={() => void loadRoomSummaries()}
-            />
           </aside>
 
           <section className="min-w-0">
@@ -708,7 +745,7 @@ export function ChatPage() {
                   className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4 sm:px-4"
                   data-testid="chat-message-list"
                 >
-                  {messagesLoading ? (
+                  {showMessagesLoading ? (
                     <CompactStateNotice
                       icon={LoaderCircle}
                       kind="loading"
@@ -724,7 +761,7 @@ export function ChatPage() {
                       text={messagesError}
                     />
                   ) : null}
-                  {!messagesLoading && !messagesError && messages.length === 0 ? (
+                  {!showMessagesLoading && !messagesError && visibleMessages.length === 0 ? (
                     <CompactStateNotice
                       centered
                       icon={Inbox}
@@ -732,7 +769,7 @@ export function ChatPage() {
                       text="Send the first message."
                     />
                   ) : null}
-                  {messages.map((message) => (
+                  {visibleMessages.map((message) => (
                     <MessageBubble
                       key={message.id}
                       message={message}
@@ -815,7 +852,9 @@ export function ChatPage() {
                       size="sm"
                       className="min-h-12 shrink-0 px-3"
                       disabled={
-                        (body.trim() === "" && selectedGifs.length === 0) || sending
+                        showMessagesLoading ||
+                        (body.trim() === "" && selectedGifs.length === 0) ||
+                        sending
                       }
                       icon={<Send aria-hidden="true" size={16} />}
                     >
@@ -828,9 +867,28 @@ export function ChatPage() {
               <CompactStateNotice
                 centered
                 className="min-h-[24rem]"
-                icon={MessageCircle}
-                title="Choose a conversation"
-                text="Select a chat to read or reply."
+                icon={
+                  requestedConversationMissing && conversationsLoading
+                    ? LoaderCircle
+                    : requestedConversationMissing
+                      ? WifiOff
+                      : MessageCircle
+                }
+                {...(requestedConversationMissing && conversationsLoading
+                  ? { kind: "loading" as const }
+                  : {})}
+                title={
+                  requestedConversationMissing
+                    ? conversationsLoading
+                      ? "Opening conversation"
+                      : "Conversation not available"
+                    : "Choose a conversation"
+                }
+                text={
+                  requestedConversationMissing
+                    ? "This direct-message conversation could not be found."
+                    : "Select a chat to read or reply."
+                }
               />
             )}
           </section>
@@ -869,97 +927,6 @@ type ChatMootPickerProps = {
   onRefresh: () => void;
   onSelect: (moot: ChatMoot) => void;
 };
-
-type ChatRoomSummary = {
-  channels: RoomChannel[];
-  room: Room;
-};
-
-function ChatRoomSummaryList({
-  error,
-  loading,
-  onRefresh,
-  summaries,
-}: {
-  error: string | undefined;
-  loading: boolean;
-  onRefresh: () => void;
-  summaries: ChatRoomSummary[];
-}) {
-  if (!loading && !error && summaries.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="border-t border-line p-3" data-testid="chat-room-summary">
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-text">Rooms</h2>
-          <p className="mt-0.5 text-xs text-muted">Joined channels</p>
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-8 shrink-0"
-          aria-label="Refresh room channels"
-          title="Refresh room channels"
-          disabled={loading}
-          icon={<RefreshCw aria-hidden="true" size={14} />}
-          onClick={onRefresh}
-        />
-      </div>
-
-      {loading ? (
-        <p className="mt-3 text-xs text-muted">Loading room channels.</p>
-      ) : null}
-      {error ? (
-        <p className="mt-3 rounded-card border border-rose/30 bg-rose/15 p-2 text-xs text-rose-ink">
-          {error}
-        </p>
-      ) : null}
-      {summaries.length > 0 ? (
-        <div className="mt-3 space-y-2">
-          {summaries.map((summary) => {
-            const channel = summary.channels[0];
-            const unreadCount = summary.channels.reduce(
-              (total, item) => total + item.unreadCount,
-              0,
-            );
-            const to = channel
-              ? `/rooms/${summary.room.slug}?channel=${channel.slug}`
-              : `/rooms/${summary.room.slug}`;
-
-            return (
-              <ButtonLink
-                key={summary.room.id}
-                to={to}
-                variant="ghost"
-                className="flex min-h-11 w-full justify-start rounded-control px-2 text-left"
-              >
-                <Radio aria-hidden="true" size={15} className="shrink-0" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-text">
-                    {summary.room.name}
-                  </span>
-                  <span className="flex min-w-0 items-center gap-1 text-xs text-muted">
-                    <Hash aria-hidden="true" size={12} className="shrink-0" />
-                    <span className="truncate">{channel?.name ?? "general"}</span>
-                  </span>
-                </span>
-                {unreadCount > 0 ? (
-                  <span className="grid min-w-5 shrink-0 place-items-center rounded-full bg-accent px-1.5 py-0.5 text-xs font-semibold leading-none text-accent-ink shadow-soft">
-                    {unreadCount}
-                  </span>
-                ) : null}
-              </ButtonLink>
-            );
-          })}
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 function ChatMootPicker({
   conversations,

@@ -220,6 +220,7 @@ interface MootStateRow extends RowDataPacket {
 }
 
 interface TextEntityRow extends RowDataPacket {
+  message_id: number | string;
   entity_type: string | null;
   entity_start: number | string | null;
   entity_length: number | string | null;
@@ -233,6 +234,7 @@ interface TextEntityRow extends RowDataPacket {
 }
 
 interface AttachmentRow extends RowDataPacket {
+  message_id: number | string;
   type: string | null;
   post_id: number | string | null;
   url: string | null;
@@ -297,6 +299,15 @@ interface PostSummaryRow extends RowDataPacket {
 interface NotificationPreferenceRow extends RowDataPacket {
   notification_preferences_json: string | null;
 }
+
+type ConversationNotificationContext =
+  | { kind: "direct" }
+  | {
+      kind: "room";
+      roomId: number;
+      roomSlug: string;
+      channelSlug: string;
+    };
 
 export function createChatRepository(pool: Pool, publicBaseUrl = "https://thia.lol"): ChatRepository {
   return new MariaDbChatRepository(pool, publicBaseUrl);
@@ -387,14 +398,13 @@ class MariaDbChatRepository implements ChatRepository {
        INNER JOIN users sender ON sender.id = m.sender_id
        INNER JOIN profiles sender_profile ON sender_profile.user_id = sender.id
        WHERE m.conversation_id = ?
-       ORDER BY m.created_at ASC, m.id ASC
-       LIMIT 100`,
+       ${latestMessageWindowSql(100)}`,
       [conversationId],
     );
 
     return {
       conversation,
-      messages: await Promise.all(rows.map((row) => this.messagePayloadFromRow(row))),
+      messages: await this.messagePayloadsFromRows(chronologicalMessageRows(rows)),
     };
   }
 
@@ -407,7 +417,7 @@ class MariaDbChatRepository implements ChatRepository {
     const draft = chatMessageDraft(body);
     const messageId = await this.insertMessage(conversationId, session.userId, draft.body, draft.attachments);
 
-    await this.notifyConversationRecipients(conversationId, session.userId, messageId);
+    await this.notifyConversationRecipientsBestEffort(conversationId, session.userId, messageId, { kind: "direct" });
 
     return this.messageById(messageId);
   }
@@ -593,14 +603,13 @@ class MariaDbChatRepository implements ChatRepository {
        INNER JOIN users sender ON sender.id = m.sender_id
        INNER JOIN profiles sender_profile ON sender_profile.user_id = sender.id
        WHERE m.conversation_id = ?
-       ORDER BY m.created_at ASC, m.id ASC
-       LIMIT 150`,
+       ${latestMessageWindowSql(150)}`,
       [conversationId],
     );
 
     return {
       channel: await this.roomChannelByIdForSession(session, room, numberValue(channel.id)),
-      messages: await Promise.all(rows.map((row) => this.messagePayloadFromRow(row))),
+      messages: await this.messagePayloadsFromRows(chronologicalMessageRows(rows)),
     };
   }
 
@@ -622,7 +631,12 @@ class MariaDbChatRepository implements ChatRepository {
     const draft = chatMessageDraft(body);
     const messageId = await this.insertMessage(conversationId, session.userId, draft.body, draft.attachments);
 
-    await this.notifyConversationRecipients(conversationId, session.userId, messageId);
+    await this.notifyConversationRecipientsBestEffort(conversationId, session.userId, messageId, {
+      kind: "room",
+      roomId: numberValue(room.id),
+      roomSlug: room.slug,
+      channelSlug: channel.slug,
+    });
 
     return this.messageById(messageId);
   }
@@ -775,21 +789,15 @@ class MariaDbChatRepository implements ChatRepository {
   }
 
   private async roomCanPost(room: RoomRecordRow, session: RequestSession): Promise<boolean> {
-    if (session.role === "admin") {
-      return true;
-    }
-
     const membership = await this.roomMembership(numberValue(room.id), session.userId);
 
-    if (room.visibility === "view_only") {
-      return roomMembershipIsStaff(membership);
-    }
-
-    if (room.visibility === "public") {
-      return membership === null || membership.banned_at === null;
-    }
-
-    return membership !== null && membership.banned_at === null;
+    return roomChatViewerCanPost(
+      room.visibility,
+      session.role,
+      membership === null
+        ? null
+        : { role: membership.role, bannedAt: membership.banned_at },
+    );
   }
 
   private async roomViewerIsStaff(room: RoomRecordRow, session: RequestSession): Promise<boolean> {
@@ -992,10 +1000,39 @@ class MariaDbChatRepository implements ChatRepository {
       throw new ChatRouteError("Message not found.", 404);
     }
 
-    return this.messagePayloadFromRow(row);
+    const messages = await this.messagePayloadsFromRows([row]);
+    const message = messages[0];
+
+    if (message === undefined) {
+      throw new ChatRouteError("Message not found.", 404);
+    }
+
+    return message;
   }
 
-  private async messagePayloadFromRow(row: MessageRow): Promise<ChatMessagePayload> {
+  private async messagePayloadsFromRows(rows: readonly MessageRow[]): Promise<ChatMessagePayload[]> {
+    const visibleMessageIds = [...new Set(
+      rows
+        .filter((row) => row.deleted_at === null)
+        .map((row) => numberValue(row.id)),
+    )];
+    const [entitiesByMessageId, attachmentsByMessageId] = await Promise.all([
+      this.textEntitiesForMessages(visibleMessageIds),
+      this.messageAttachmentsForMessages(visibleMessageIds),
+    ]);
+
+    return rows.map((row) => this.messagePayloadFromRow(
+      row,
+      entitiesByMessageId.get(numberValue(row.id)) ?? [],
+      attachmentsByMessageId.get(numberValue(row.id)) ?? [],
+    ));
+  }
+
+  private messagePayloadFromRow(
+    row: MessageRow,
+    bodyEntities: TextEntityPayload[],
+    attachments: ChatMessageAttachmentPayload[],
+  ): ChatMessagePayload {
     const deleted = row.deleted_at !== null;
     const messageId = numberValue(row.id);
 
@@ -1003,8 +1040,8 @@ class MariaDbChatRepository implements ChatRepository {
       id: messageId,
       conversationId: numberValue(row.conversation_id),
       body: deleted ? "" : stringValue(row.body),
-      bodyEntities: deleted ? [] : await this.textEntitiesForMessage(messageId),
-      attachments: deleted ? [] : await this.messageAttachments(messageId),
+      bodyEntities: deleted ? [] : bodyEntities,
+      attachments: deleted ? [] : attachments,
       deletedAt: nullableStringValue(row.deleted_at),
       createdAt: nullableStringValue(row.created_at),
       sender: userPayloadFromParts(row.sender_user_id, row.sender_handle, row.sender_display_name, row.sender_avatar_url),
@@ -1130,18 +1167,49 @@ class MariaDbChatRepository implements ChatRepository {
     });
   }
 
-  private async notifyConversationRecipients(conversationId: number, senderUserId: number, messageId: number): Promise<void> {
+  private async notifyConversationRecipients(
+    conversationId: number,
+    senderUserId: number,
+    messageId: number,
+    context: ConversationNotificationContext,
+  ): Promise<void> {
     if (!(await this.hasTable("notifications"))) {
       return;
     }
 
-    const [rows] = await this.pool.execute<CountRow[]>(
-      `SELECT user_id AS value
-       FROM conversation_members
-       WHERE conversation_id = ?
-         AND user_id <> ?`,
-      [conversationId, senderUserId],
-    );
+    const [rows] = context.kind === "room"
+      ? await this.pool.execute<CountRow[]>(
+          `SELECT members.user_id AS value
+           FROM conversation_members members
+           INNER JOIN room_memberships room_members
+             ON room_members.user_id = members.user_id
+            AND room_members.room_id = ?
+            AND room_members.banned_at IS NULL
+           WHERE members.conversation_id = ?
+             AND members.user_id <> ?`,
+          [context.roomId, conversationId, senderUserId],
+        )
+      : await this.pool.execute<CountRow[]>(
+          `SELECT user_id AS value
+           FROM conversation_members
+           WHERE conversation_id = ?
+             AND user_id <> ?`,
+          [conversationId, senderUserId],
+        );
+    const notificationData = context.kind === "room"
+      ? {
+          conversationId,
+          messageId,
+          messageContext: "room",
+          roomSlug: context.roomSlug,
+          channelSlug: context.channelSlug,
+        }
+      : {
+          conversationId,
+          messageId,
+          messageContext: "direct",
+        };
+    const roomId = context.kind === "room" ? context.roomId : null;
 
     for (const row of rows) {
       const recipientId = numberValue(row.value);
@@ -1149,10 +1217,24 @@ class MariaDbChatRepository implements ChatRepository {
       if (await this.notificationUserAllowsType(recipientId, "message")) {
         await this.pool.execute<ResultSetHeader>(
           `INSERT INTO notifications (user_id, actor_id, type, post_id, room_id, data)
-           VALUES (?, ?, 'message', NULL, NULL, ?)`,
-          [recipientId, senderUserId, JSON.stringify({ conversationId, messageId })],
+           VALUES (?, ?, 'message', NULL, ?, ?)`,
+          [recipientId, senderUserId, roomId, JSON.stringify(notificationData)],
         );
       }
+    }
+  }
+
+  private async notifyConversationRecipientsBestEffort(
+    conversationId: number,
+    senderUserId: number,
+    messageId: number,
+    context: ConversationNotificationContext,
+  ): Promise<void> {
+    try {
+      await this.notifyConversationRecipients(conversationId, senderUserId, messageId, context);
+    } catch {
+      // The message is already committed. Notification delivery must never make
+      // the send look failed and invite a duplicate retry from the client.
     }
   }
 
@@ -1180,15 +1262,25 @@ class MariaDbChatRepository implements ChatRepository {
     return value === undefined || Boolean(value);
   }
 
-  private async messageAttachments(messageId: number): Promise<ChatMessageAttachmentPayload[]> {
+  private async messageAttachmentsForMessages(
+    messageIds: readonly number[],
+  ): Promise<Map<number, ChatMessageAttachmentPayload[]>> {
+    const attachmentsByMessageId = new Map<number, ChatMessageAttachmentPayload[]>();
+
+    if (messageIds.length === 0) {
+      return attachmentsByMessageId;
+    }
+
     if (!(await this.hasTable("message_attachments"))) {
-      return [];
+      return attachmentsByMessageId;
     }
 
     const hasGifColumns = await this.hasColumn("message_attachments", "url");
+    const placeholders = messageIds.map(() => "?").join(", ");
     const [rows] = hasGifColumns
       ? await this.pool.execute<AttachmentRow[]>(
           `SELECT
+              message_id,
               type,
               post_id,
               url,
@@ -1202,13 +1294,13 @@ class MariaDbChatRepository implements ChatRepository {
               source_url,
               card_json
            FROM message_attachments
-           WHERE message_id = ?
-           ORDER BY id ASC
-           LIMIT 10`,
-          [messageId],
+           WHERE message_id IN (${placeholders})
+           ORDER BY message_id ASC, id ASC`,
+          [...messageIds],
         )
       : await this.pool.execute<AttachmentRow[]>(
           `SELECT
+              message_id,
               type,
               post_id,
               NULL AS url,
@@ -1222,38 +1314,49 @@ class MariaDbChatRepository implements ChatRepository {
               NULL AS source_url,
               NULL AS card_json
            FROM message_attachments
-           WHERE message_id = ?
-           ORDER BY id ASC
-           LIMIT 10`,
-          [messageId],
+           WHERE message_id IN (${placeholders})
+           ORDER BY message_id ASC, id ASC`,
+          [...messageIds],
         );
-    const attachments: ChatMessageAttachmentPayload[] = [];
+    const rowsByMessageId = new Map<number, AttachmentRow[]>();
 
     for (const row of rows) {
-      if (row.type === "post") {
-        const postId = nullableNumberValue(row.post_id);
+      const messageId = numberValue(row.message_id);
+      const messageRows = rowsByMessageId.get(messageId) ?? [];
 
-        if (postId !== null) {
-          attachments.push({
-            type: "post",
-            post: await this.publicPostSummary(postId),
-          });
-        }
-
-        continue;
-      }
-
-      const gif = row.type === "gif" ? gifAttachmentPayloadFromRow(row) : null;
-
-      if (gif !== null) {
-        attachments.push({
-          type: "gif",
-          gif,
-        });
+      if (messageRows.length < 10) {
+        messageRows.push(row);
+        rowsByMessageId.set(messageId, messageRows);
       }
     }
 
-    return attachments;
+    await Promise.all([...rowsByMessageId.entries()].map(async ([messageId, messageRows]) => {
+      const attachments = await Promise.all(messageRows.map((row) => this.messageAttachmentPayloadFromRow(row)));
+
+      attachmentsByMessageId.set(
+        messageId,
+        attachments.filter((attachment): attachment is ChatMessageAttachmentPayload => attachment !== null),
+      );
+    }));
+
+    return attachmentsByMessageId;
+  }
+
+  private async messageAttachmentPayloadFromRow(row: AttachmentRow): Promise<ChatMessageAttachmentPayload | null> {
+    if (row.type === "post") {
+      const postId = nullableNumberValue(row.post_id);
+
+      return postId === null
+        ? null
+        : {
+            type: "post",
+            post: await this.publicPostSummary(postId),
+          };
+    }
+
+    const gif = row.type === "gif" ? gifAttachmentPayloadFromRow(row) : null;
+
+    return gif === null ? null : { type: "gif", gif };
   }
 
   private async publicPostSummary(postId: number): Promise<PostShareSummaryPayload | null> {
@@ -1315,13 +1418,21 @@ class MariaDbChatRepository implements ChatRepository {
     };
   }
 
-  private async textEntitiesForMessage(messageId: number): Promise<TextEntityPayload[]> {
-    if (!(await this.hasTable("text_entities"))) {
-      return [];
+  private async textEntitiesForMessages(messageIds: readonly number[]): Promise<Map<number, TextEntityPayload[]>> {
+    const entitiesByMessageId = new Map<number, TextEntityPayload[]>();
+
+    if (messageIds.length === 0) {
+      return entitiesByMessageId;
     }
 
+    if (!(await this.hasTable("text_entities"))) {
+      return entitiesByMessageId;
+    }
+
+    const placeholders = messageIds.map(() => "?").join(", ");
     const [rows] = await this.pool.execute<TextEntityRow[]>(
       `SELECT
+          e.content_id AS message_id,
           e.entity_type,
           e.entity_start,
           e.entity_length,
@@ -1336,13 +1447,24 @@ class MariaDbChatRepository implements ChatRepository {
        LEFT JOIN users target_user ON target_user.id = e.target_user_id
        LEFT JOIN profiles target_profile ON target_profile.user_id = target_user.id
        WHERE e.content_type = 'message'
-         AND e.content_id = ?
+         AND e.content_id IN (${placeholders})
          AND e.field_name = 'body'
-       ORDER BY e.entity_start ASC, e.id ASC`,
-      [messageId],
+       ORDER BY e.content_id ASC, e.entity_start ASC, e.id ASC`,
+      [...messageIds],
     );
 
-    return rows.map(textEntityPayloadFromRow).filter((entity): entity is TextEntityPayload => entity !== null);
+    for (const row of rows) {
+      const entity = textEntityPayloadFromRow(row);
+
+      if (entity !== null) {
+        const messageId = numberValue(row.message_id);
+        const entities = entitiesByMessageId.get(messageId) ?? [];
+        entities.push(entity);
+        entitiesByMessageId.set(messageId, entities);
+      }
+    }
+
+    return entitiesByMessageId;
   }
 
   private async rejectBlockedChat(viewerUserId: number, targetUserId: number): Promise<void> {
@@ -1497,7 +1619,20 @@ class MariaDbChatRepository implements ChatRepository {
   }
 }
 
-function conversationSelectSql(): string {
+export function latestMessageWindowSql(limit: number): string {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500) {
+    throw new Error("Message window limit is invalid.");
+  }
+
+  return `ORDER BY m.created_at DESC, m.id DESC
+       LIMIT ${limit}`;
+}
+
+export function chronologicalMessageRows<T>(rows: readonly T[]): T[] {
+  return [...rows].reverse();
+}
+
+export function conversationSelectSql(): string {
   return `SELECT
       c.id,
       c.type,
@@ -1869,6 +2004,26 @@ function optionalRoomChannelPosition(value: unknown): number {
 
 function roomMembershipIsStaff(membership: RoomMembershipRow | null): boolean {
   return membership !== null && membership.banned_at === null && (membership.role === "owner" || membership.role === "moderator");
+}
+
+export function roomChatViewerCanPost(
+  visibility: string | null,
+  sessionRole: string | null,
+  membership: { role: string | null; bannedAt: string | null } | null,
+): boolean {
+  if (sessionRole === "admin") {
+    return true;
+  }
+
+  if (membership === null || membership.bannedAt !== null) {
+    return false;
+  }
+
+  if (visibility === "view_only") {
+    return membership.role === "owner" || membership.role === "moderator";
+  }
+
+  return true;
 }
 
 function gifAttachmentPayloadFromRow(row: AttachmentRow): GifAttachmentPayload | null {

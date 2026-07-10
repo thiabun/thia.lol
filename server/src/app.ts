@@ -3156,7 +3156,7 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "rooms.join",
-      (repository, session) => repository.joinRoom(session, normalizedSlug),
+      (repository, session, body) => repository.joinRoom(session, normalizedSlug, body),
     );
   });
 
@@ -3190,7 +3190,7 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "rooms.access-requests.create",
-      (repository, session) => repository.requestRoomAccess(session, normalizedSlug),
+      (repository, session, body) => repository.requestRoomAccess(session, normalizedSlug, body),
       201,
     );
   });

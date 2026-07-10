@@ -631,6 +631,10 @@ function NotificationCopy({
   }
 
   if (notification.type === "message") {
+    if (notification.room) {
+      return <>{actor} sent a message in {notification.room.name}</>;
+    }
+
     return <>{actor} sent you a message</>;
   }
 
@@ -652,7 +656,7 @@ function NotificationCopy({
 
 function notificationTargetLabel(notification: NotificationItem): string {
   if (notification.type === "message") {
-    return "Open chat";
+    return notification.room ? "Open room chat" : "Open chat";
   }
 
   if (notification.type === "follow" || notification.type === "moot") {

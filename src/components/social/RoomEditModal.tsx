@@ -15,6 +15,7 @@ import { HandleField, TextareaField, TextField } from "../ui/Field";
 import { ImageCropModal } from "../ui/ImageCropModal";
 import { ModalSheet, ModalSheetStatus } from "../ui/ModalSheet";
 import { MarkdownEditor } from "./MarkdownEditor";
+import { RoomChannelSettings } from "./RoomChannelSettings";
 import { ThemeAppearanceControl } from "./ThemeAppearanceControl";
 import { UserIdentityLink } from "./UserProfileLink";
 import { prepareImageFileForCrop } from "../../lib/imageCrop";
@@ -45,6 +46,7 @@ type RoomEditModalProps = {
   onAddModerator?: (handle: string) => Promise<void>;
   onRemoveModerator?: (handle: string) => Promise<void>;
   onDeleteRoom?: () => Promise<void>;
+  onChannelsChanged?: () => void;
 };
 
 type UploadSlot = "room_icon" | "room_banner";
@@ -95,6 +97,7 @@ export function RoomEditModal({
   members = [],
   onAddModerator,
   onClose,
+  onChannelsChanged,
   onDeleteRoom,
   onRemoveModerator,
   onSave,
@@ -417,6 +420,14 @@ export function RoomEditModal({
             textareaTestId="room-rules"
             onValueChange={(value) => updateForm("rules", value)}
           />
+
+          {mode === "edit" && room ? (
+            <RoomChannelSettings
+              disabled={busy}
+              roomSlug={room.slug}
+              {...(onChannelsChanged ? { onChannelsChanged } : {})}
+            />
+          ) : null}
 
           {mode === "edit" ? (
             <section className="space-y-3 rounded-card border border-line bg-canvas/45 p-4">

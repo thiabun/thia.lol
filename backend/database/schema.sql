@@ -431,7 +431,8 @@ CREATE TABLE IF NOT EXISTS rooms (
   icon_url VARCHAR(500) NULL,
   banner_url VARCHAR(500) NULL,
   rules TEXT NULL,
-  visibility ENUM('public', 'members', 'private') NOT NULL DEFAULT 'public',
+  rules_version INT UNSIGNED NOT NULL DEFAULT 1,
+  visibility ENUM('public', 'private', 'invite', 'view_only') NOT NULL DEFAULT 'public',
   created_by BIGINT UNSIGNED NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -464,6 +465,70 @@ CREATE TABLE IF NOT EXISTS room_memberships (
   CONSTRAINT room_memberships_user_id_fk
     FOREIGN KEY (user_id) REFERENCES users(id)
     ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS room_rule_acceptances (
+  room_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  rules_version INT UNSIGNED NOT NULL,
+  accepted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (room_id, user_id, rules_version),
+  KEY room_rule_acceptances_user_idx (user_id, accepted_at),
+  CONSTRAINT room_rule_acceptances_room_fk
+    FOREIGN KEY (room_id) REFERENCES rooms(id)
+    ON DELETE CASCADE,
+  CONSTRAINT room_rule_acceptances_user_fk
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS room_invitations (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  room_id BIGINT UNSIGNED NOT NULL,
+  invitee_id BIGINT UNSIGNED NOT NULL,
+  invited_by BIGINT UNSIGNED NULL,
+  status ENUM('pending', 'accepted', 'revoked') NOT NULL DEFAULT 'pending',
+  accepted_at DATETIME NULL,
+  revoked_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY room_invitations_room_invitee_unique (room_id, invitee_id),
+  KEY room_invitations_invitee_status_idx (invitee_id, status, updated_at),
+  KEY room_invitations_room_status_idx (room_id, status, updated_at),
+  KEY room_invitations_invited_by_idx (invited_by),
+  CONSTRAINT room_invitations_room_fk
+    FOREIGN KEY (room_id) REFERENCES rooms(id)
+    ON DELETE CASCADE,
+  CONSTRAINT room_invitations_invitee_fk
+    FOREIGN KEY (invitee_id) REFERENCES users(id)
+    ON DELETE CASCADE,
+  CONSTRAINT room_invitations_invited_by_fk
+    FOREIGN KEY (invited_by) REFERENCES users(id)
+    ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS room_access_requests (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  room_id BIGINT UNSIGNED NOT NULL,
+  requester_id BIGINT UNSIGNED NOT NULL,
+  status ENUM('pending', 'approved', 'denied', 'canceled') NOT NULL DEFAULT 'pending',
+  reviewed_by BIGINT UNSIGNED NULL,
+  reviewed_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY room_access_requests_room_requester_unique (room_id, requester_id),
+  KEY room_access_requests_room_status_idx (room_id, status, created_at),
+  KEY room_access_requests_requester_status_idx (requester_id, status),
+  KEY room_access_requests_reviewed_by_idx (reviewed_by),
+  CONSTRAINT room_access_requests_room_fk
+    FOREIGN KEY (room_id) REFERENCES rooms(id)
+    ON DELETE CASCADE,
+  CONSTRAINT room_access_requests_requester_fk
+    FOREIGN KEY (requester_id) REFERENCES users(id)
+    ON DELETE CASCADE,
+  CONSTRAINT room_access_requests_reviewer_fk
+    FOREIGN KEY (reviewed_by) REFERENCES users(id)
+    ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS room_channels (

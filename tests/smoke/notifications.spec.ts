@@ -101,6 +101,65 @@ test("notification actor identity links to the actor profile", async ({ page }) 
   ).toBeVisible();
 });
 
+test("message notifications distinguish direct and Room destinations", async ({ page }) => {
+  const actor = {
+    id: 2,
+    handle: "alex",
+    displayName: "Alex",
+    initials: "A",
+    aura: "frost",
+    avatarUrl: null,
+  };
+
+  await mockAuthenticatedNotifications(page, [
+    {
+      id: 10,
+      type: "message",
+      createdAt: "2026-07-10 10:00:00",
+      readAt: null,
+      actor,
+      post: null,
+      room: null,
+      targetUrl: "/chat?conversation=44",
+      data: { conversationId: 44, messageContext: "direct" },
+    },
+    {
+      id: 11,
+      type: "message",
+      createdAt: "2026-07-10 10:01:00",
+      readAt: null,
+      actor,
+      post: null,
+      room: {
+        id: 7,
+        slug: "deep-paths",
+        name: "Deep Paths",
+        summary: "A thoughtful room.",
+        memberCount: 4,
+        postCount: 2,
+        rules: "Be kind.",
+        rulesVersion: 1,
+        visibility: "public",
+      },
+      targetUrl: "/rooms/deep-paths?tab=chat&channel=general",
+      data: { channelSlug: "general", messageContext: "room" },
+    },
+  ]);
+
+  await page.goto("/notifications");
+
+  await expect(page.getByText(/sent you a message/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open chat" })).toHaveAttribute(
+    "href",
+    "/chat?conversation=44",
+  );
+  await expect(page.getByText(/sent a message in Deep Paths/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open room chat" })).toHaveAttribute(
+    "href",
+    "/rooms/deep-paths?tab=chat&channel=general",
+  );
+});
+
 test("follow requests live on notifications page and can be approved", async ({
   page,
 }) => {

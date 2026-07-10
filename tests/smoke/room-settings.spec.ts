@@ -43,9 +43,11 @@ test("room edit save uses the API and updates the header", async ({ page }) => {
     visibility: "public",
   });
   await expect(page.getByText("Updated room summary for public testing.")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Be kind" })).toBeVisible();
-  await expect(page.getByRole("listitem").filter({ hasText: "No spam" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "the guide" })).toHaveAttribute(
+  await page.getByTestId("room-rules-button").click();
+  const rulesModal = page.getByTestId("room-rules-modal");
+  await expect(rulesModal.getByRole("heading", { name: "Be kind" })).toBeVisible();
+  await expect(rulesModal.getByRole("listitem").filter({ hasText: "No spam" })).toBeVisible();
+  await expect(rulesModal.getByRole("link", { name: "the guide" })).toHaveAttribute(
     "href",
     "https://example.com/rules",
   );
@@ -112,6 +114,106 @@ test("room edit saves room themes and applies them to the room page", async ({ p
     });
 });
 
+test("room chat channels are managed inside Edit room", async ({ page }) => {
+  await mockOwnedRoom(page, () => "Original room summary.");
+  await acknowledgeCookieNotice(page);
+  await page.goto("/rooms/sun-room");
+
+  await expect(page.getByTestId("room-channel-settings")).toHaveCount(0);
+  const channelApi = await mockRoomChannelManagement(page);
+  await page.getByTestId("room-chat-tab").click();
+  const roomChatDraft = page.getByLabel("Write a message");
+  await expect(page.getByText("No messages yet", { exact: true })).toBeVisible();
+  await roomChatDraft.fill("Keep this draft while channel settings refresh");
+
+  await page.getByRole("button", { name: "Edit room" }).click();
+
+  const modal = page.getByTestId("room-edit-modal");
+  const settings = modal.getByTestId("room-channel-settings");
+  await expect(settings).toBeVisible();
+  await expect(
+    settings.getByRole("heading", { name: "Chat channels" }),
+  ).toBeVisible();
+  await expect(
+    settings.getByTestId("room-channel-settings-channel-general"),
+  ).toBeVisible();
+
+  await settings.getByLabel("Channel name").fill("Welcome");
+  await settings.getByLabel("Channel description").fill("Start here.");
+  await settings.getByLabel("Channel kind").selectOption("announcement");
+  await settings.getByLabel("Staff-only posting").check();
+  await settings.getByRole("button", { name: "Save channel" }).click();
+
+  await expect.poll(() => channelApi.patches().length).toBe(1);
+  expect(channelApi.patches()[0]).toMatchObject({
+    slug: "general",
+    payload: {
+      name: "Welcome",
+      description: "Start here.",
+      kind: "announcement",
+      readOnly: true,
+    },
+  });
+  await expect(settings.getByTestId("room-channel-settings-status")).toHaveText(
+    "Channel updated",
+  );
+
+  await settings.getByTestId("room-channel-settings-add").click();
+  await settings.getByLabel("New channel name").fill("Updates");
+  await settings.getByLabel("Channel description").fill("Room news.");
+  await settings.getByRole("button", { name: "Create channel" }).click();
+
+  await expect.poll(() => channelApi.created()).toMatchObject({
+    name: "Updates",
+    description: "Room news.",
+    kind: "chat",
+    readOnly: false,
+  });
+  await expect(
+    settings.getByTestId("room-channel-settings-channel-updates"),
+  ).toBeVisible();
+
+  await settings.getByRole("button", { name: "Move #updates up" }).click();
+  await expect.poll(() => channelApi.patches().length).toBe(3);
+  expect(channelApi.patches().slice(1)).toEqual(
+    expect.arrayContaining([
+      { slug: "updates", payload: { position: 0 } },
+      { slug: "general", payload: { position: 1 } },
+    ]),
+  );
+  await expect(settings.getByTestId("room-channel-settings-status")).toHaveText(
+    "Channel order updated",
+  );
+
+  channelApi.failNextPatch("general");
+  await settings.getByRole("button", { name: "Move #updates down" }).click();
+  await expect(settings.getByTestId("room-channel-settings-status")).toContainText(
+    "current channel order was reloaded",
+  );
+  await expect.poll(() => channelApi.positions()).toEqual({
+    general: 1,
+    updates: 0,
+  });
+
+  await settings.getByTestId("room-channel-settings-channel-updates").click();
+  await expect(
+    settings.getByRole("heading", { name: "Edit #updates" }),
+  ).toBeVisible();
+
+  await settings.getByRole("button", { name: "Archive channel" }).click();
+  await expect.poll(() => channelApi.archived()).toContain("updates");
+  await expect(
+    settings.getByTestId("room-channel-settings-channel-updates"),
+  ).toHaveCount(0);
+  await expect(settings.getByTestId("room-channel-settings-status")).toHaveText(
+    "Channel archived",
+  );
+  await modal.getByRole("button", { name: "Cancel" }).click();
+  await expect(roomChatDraft).toHaveValue(
+    "Keep this draft while channel settings refresh",
+  );
+});
+
 test("room moderator controls are gated to owners and admins", async ({ page }) => {
   let addedHandle: string | undefined;
   let removedHandle: string | undefined;
@@ -156,7 +258,7 @@ test("room moderator controls are gated to owners and admins", async ({ page }) 
   await expect(modal.getByTestId("room-moderator-handle-prefix")).toBeVisible();
   await modal.getByLabel("Add moderator by handle").fill("@alex");
   await expect(modal.getByTestId("room-moderator-handle-prefix")).toHaveCount(0);
-  await modal.getByRole("button", { name: "Add" }).click();
+  await modal.getByRole("button", { name: "Add", exact: true }).click();
 
   await expect.poll(() => addedHandle).toBe("alex");
   await expect(modal.getByText("Moderator added")).toBeVisible();
@@ -366,6 +468,14 @@ async function mockOwnedRoom(
     });
   });
 
+  await page.route("**/api/rooms/sun-room/channels", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+
   await page.route("**/api/rooms/sun-room/moderators", async (route) => {
     const payload = readJsonBody(route.request());
 
@@ -381,6 +491,156 @@ async function mockOwnedRoom(
       body: JSON.stringify({ ok: true, data: roomMembers(payload.handle) }),
     });
   });
+}
+
+async function mockRoomChannelManagement(page: Page) {
+  let channels = [mockRoomChannel()];
+  let createdPayload: Record<string, unknown> | undefined;
+  const patchPayloads: Array<{
+    payload: Record<string, unknown>;
+    slug: string;
+  }> = [];
+  const archivedSlugs: string[] = [];
+  let nextChannelId = 702;
+  let updateSequence = 0;
+  let failingPatchSlug: string | undefined;
+
+  await page.route("**/api/rooms/sun-room/channels", async (route) => {
+    if (route.request().method() === "POST") {
+      createdPayload = route.request().postDataJSON() as Record<string, unknown>;
+      const name = String(createdPayload.name ?? "channel");
+      const created = mockRoomChannel({
+        id: nextChannelId,
+        slug: slugFromName(name),
+        name,
+        description:
+          typeof createdPayload.description === "string"
+            ? createdPayload.description
+            : null,
+        position: channels.length,
+        kind: createdPayload.kind === "announcement" ? "announcement" : "chat",
+        readOnly: createdPayload.readOnly === true,
+      });
+      nextChannelId += 1;
+      channels = [...channels, created];
+
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: created }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: channels }),
+    });
+  });
+
+  await page.route("**/api/rooms/sun-room/channels/*", async (route) => {
+    const slug = decodeURIComponent(new URL(route.request().url()).pathname.split("/").pop() ?? "");
+    const payload = route.request().postDataJSON() as Record<string, unknown>;
+    patchPayloads.push({ slug, payload });
+    const current = channels.find((channel) => channel.slug === slug);
+
+    if (!current) {
+      await route.fulfill({
+        status: 404,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: false, error: "Channel not found." }),
+      });
+      return;
+    }
+
+    if (failingPatchSlug === slug) {
+      failingPatchSlug = undefined;
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: false, error: "Channel update interrupted." }),
+      });
+      return;
+    }
+
+    updateSequence += 1;
+    const updated = {
+      ...current,
+      ...(typeof payload.name === "string" ? { name: payload.name } : {}),
+      ...(payload.description === null || typeof payload.description === "string"
+        ? { description: payload.description }
+        : {}),
+      ...(payload.kind === "chat" || payload.kind === "announcement"
+        ? { kind: payload.kind }
+        : {}),
+      ...(typeof payload.readOnly === "boolean"
+        ? { readOnly: payload.readOnly }
+        : {}),
+      ...(typeof payload.position === "number"
+        ? { position: payload.position }
+        : {}),
+      ...(payload.archived === true
+        ? { archivedAt: "2026-07-10 12:00:00" }
+        : {}),
+      updatedAt: `2026-07-10 12:00:${String(updateSequence).padStart(2, "0")}`,
+    };
+
+    channels = channels.map((channel) =>
+      channel.id === updated.id ? updated : channel,
+    );
+    if (payload.archived === true) {
+      archivedSlugs.push(slug);
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: updated }),
+    });
+  });
+
+  await page.route("**/api/rooms/sun-room/channels/*/messages", async (route) => {
+    const slug = decodeURIComponent(
+      new URL(route.request().url()).pathname.split("/").at(-2) ?? "general",
+    );
+    const channel = channels.find((item) => item.slug === slug) ?? channels[0];
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          channel,
+          messages: [],
+        },
+      }),
+    });
+  });
+
+  await page.route("**/api/rooms/sun-room/channels/*/read", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { conversationId: 9701, readAt: "2026-07-10 12:00:00" },
+      }),
+    });
+  });
+
+  return {
+    archived: () => archivedSlugs,
+    created: () => createdPayload,
+    failNextPatch: (slug: string) => {
+      failingPatchSlug = slug;
+    },
+    patches: () => patchPayloads,
+    positions: () => Object.fromEntries(
+      channels.map((channel) => [channel.slug, channel.position]),
+    ),
+  };
 }
 
 async function acknowledgeCookieNotice(page: Page) {
@@ -418,6 +678,55 @@ function completedOnboardingState() {
     createdAt: "2026-06-19 12:00:00",
     updatedAt: "2026-06-19 12:00:00",
   };
+}
+
+type MockRoomChannel = {
+  archivedAt: string | null;
+  conversationId: number;
+  createdAt: string;
+  description: string | null;
+  id: number;
+  kind: "announcement" | "chat";
+  lastMessageAt: string | null;
+  name: string;
+  position: number;
+  readOnly: boolean;
+  roomId: number;
+  slug: string;
+  unreadCount: number;
+  updatedAt: string;
+  viewerCanPost: boolean;
+};
+
+function mockRoomChannel(
+  overrides: Partial<MockRoomChannel> = {},
+): MockRoomChannel {
+  return {
+    id: 701,
+    roomId: 1,
+    slug: "general",
+    name: "general",
+    description: "Room chat",
+    position: 0,
+    kind: "chat",
+    readOnly: false,
+    archivedAt: null,
+    conversationId: 9701,
+    unreadCount: 0,
+    lastMessageAt: null,
+    viewerCanPost: true,
+    createdAt: "2026-07-10 00:00:00",
+    updatedAt: "2026-07-10 00:00:00",
+    ...overrides,
+  };
+}
+
+function slugFromName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .slice(0, 48);
 }
 
 function roomBody(
