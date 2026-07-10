@@ -61,6 +61,10 @@ import { Avatar } from "../components/ui/Avatar";
 import { Badge } from "../components/ui/Badge";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
+import {
+  FocusAutoplayVideo,
+  VideoAutoplayPriorityProvider,
+} from "../components/ui/FocusAutoplayVideo";
 import { ImageCropModal } from "../components/ui/ImageCropModal";
 import { ModalSheet } from "../components/ui/ModalSheet";
 import { Panel } from "../components/ui/Panel";
@@ -1899,13 +1903,17 @@ export function ProfilePage() {
     return undefined;
   }
   return (
-    <motion.div
-      className="profile-canvas-viewport-shell relative"
-      variants={pageEntrance}
-      initial="hidden"
-      animate="show"
-    >
-      <ProfilePersonalBackdrop profile={backgroundPreviewProfile} paused={canvasEditing} />
+    <VideoAutoplayPriorityProvider blocked={Boolean(musicAutoplayRequest)}>
+      <motion.div
+        className="profile-canvas-viewport-shell relative"
+        variants={pageEntrance}
+        initial="hidden"
+        animate="show"
+      >
+      <ProfilePersonalBackdrop
+        profile={backgroundPreviewProfile}
+        paused={canvasEditing || Boolean(musicAutoplayRequest)}
+      />
       <div className="profile-canvas-page-shell relative z-10 mx-auto space-y-4 sm:space-y-5">
         <PageMeta
           title={`${renderedProfile.user.displayName} (@${renderedProfile.user.handle})`}
@@ -2077,7 +2085,8 @@ export function ProfilePage() {
         profile={renderedProfile}
         onClose={() => setProfileShareOpen(false)}
       />
-    </motion.div>
+      </motion.div>
+    </VideoAutoplayPriorityProvider>
   );
 }
 
@@ -5791,16 +5800,13 @@ function FeaturedPostCard({ post }: { post: Post }) {
           data-testid="profile-featured-post-media"
         >
           {postMediaType(post) === "video" ? (
-            <video
+            <FocusAutoplayVideo
               className="block max-h-44 w-full bg-black object-contain"
-              controls
-              playsInline
               poster={post.mediaPosterUrl ?? undefined}
-              preload="metadata"
               data-testid="profile-featured-post-media-video"
             >
               <source src={post.mediaUrl} type={post.mediaMime ?? "video/mp4"} />
-            </video>
+            </FocusAutoplayVideo>
           ) : (
             <img
               alt=""
@@ -6177,15 +6183,14 @@ function ProfileActivitySlimPostCard({
         <span className="relative hidden w-16 shrink-0 overflow-hidden border-l border-line bg-canvas/70 sm:block">
           {mediaIsVideo ? (
             <>
-              <video
+              <FocusAutoplayVideo
                 className="size-full object-cover"
-                muted
-                playsInline
+                controls={false}
+                focusThreshold={0.75}
                 poster={post.mediaPosterUrl ?? undefined}
-                preload="metadata"
               >
                 <source src={mediaUrl} type={post.mediaMime ?? "video/mp4"} />
-              </video>
+              </FocusAutoplayVideo>
               <span className="absolute inset-0 grid place-items-center bg-black/18 text-white">
                 <Video aria-hidden="true" size={16} />
               </span>

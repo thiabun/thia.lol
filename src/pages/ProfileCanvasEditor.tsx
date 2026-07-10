@@ -506,6 +506,18 @@ function profileCanvasCommitPendingDragPreview(
   };
 }
 
+function profileCanvasLayoutsEqual(
+  first: ProfileModuleLayout,
+  second: ProfileModuleLayout,
+): boolean {
+  return (
+    first.column === second.column &&
+    first.row === second.row &&
+    first.colSpan === second.colSpan &&
+    first.rowSpan === second.rowSpan
+  );
+}
+
 function profileCanvasCommitPendingResizePreview(
   grid: HTMLDivElement | null,
   state: ProfileCanvasResizeState | undefined,
@@ -563,6 +575,7 @@ export function ProfileDirectCanvasEditor({
   onModuleVideoUpload,
   onNewDraftModuleId,
   onProfileDraftChange,
+  onRenderModuleContent,
   onResolveIntegrationMetadata,
   onSave,
   onVideoUpload,
@@ -609,10 +622,6 @@ export function ProfileDirectCanvasEditor({
     const occupied = new Set<string>();
 
     sortedModules.forEach((draftModule, index) => {
-      if (profileCanvasModuleYieldsToNewSelection(draftModule)) {
-        return;
-      }
-
       const layout =
         draftModule.layout ?? profileCanvasDefaultClientLayout(draftModule, index);
 
@@ -730,6 +739,10 @@ export function ProfileDirectCanvasEditor({
           currentState.pointerOffsetY,
           editorGrid.mobile,
         );
+
+        if (profileCanvasLayoutsEqual(currentState.previewLayout, nextLayout)) {
+          return;
+        }
 
         updateDragState({
           ...currentState,
@@ -851,6 +864,17 @@ export function ProfileDirectCanvasEditor({
           currentResizeState.moduleId,
           next.layout,
         );
+
+        if (
+          profileCanvasLayoutsEqual(
+            currentResizeState.previewLayout,
+            next.layout,
+          ) &&
+          currentResizeState.size === next.size &&
+          currentResizeState.valid === valid
+        ) {
+          return;
+        }
 
         updateResizeState({
           ...currentResizeState,
@@ -997,16 +1021,12 @@ export function ProfileDirectCanvasEditor({
       point,
       editorGrid.mobile,
     );
-    const blocked = sortedModules.some((draftModule) => {
-      if (profileCanvasModuleYieldsToNewSelection(draftModule)) {
-        return false;
-      }
-
-      return profileCanvasRectsOverlap(
+    const blocked = sortedModules.some((draftModule) =>
+      profileCanvasRectsOverlap(
         rect,
         draftModule.layout ?? profileCanvasDefaultClientLayout(draftModule, 0),
-      );
-    });
+      ),
+    );
 
     if (blocked) {
       setSelectionHover(point);
@@ -1219,6 +1239,36 @@ export function ProfileDirectCanvasEditor({
     });
   }
 
+  function handleModuleDragPointerStart(
+    event: ReactPointerEvent<HTMLDivElement | HTMLButtonElement>,
+    module: ProfileModule,
+    layout: ProfileModuleLayout,
+  ) {
+    if (editorGrid.mobile || module.pinned || event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    updateResizeState(undefined);
+    const rect = event.currentTarget
+      .closest<HTMLElement>('[data-profile-grid-module="true"]')
+      ?.getBoundingClientRect();
+    const dragSize =
+      profileGridModuleSpanSize(layout.colSpan, layout.rowSpan) ??
+      getProfileModuleDefinition(module.type).defaultSize;
+
+    updateDragState({
+      moduleId: module.id,
+      pointerOffsetX: rect ? event.clientX - rect.left : 0,
+      pointerOffsetY: rect ? event.clientY - rect.top : 0,
+      previewLayout: layout,
+      size: dragSize,
+      startLayout: layout,
+      valid: true,
+    });
+  }
+
   const selectedMobilePlaceholder = selectedMobileModule?.type === "placeholder";
   const selectedMobileTitle = selectedMobileModule
     ? selectedMobilePlaceholder
@@ -1264,16 +1314,12 @@ export function ProfileDirectCanvasEditor({
       : undefined;
   const selectionBlocked = Boolean(
     selectionLayoutRect &&
-      sortedModules.some((draftModule) => {
-        if (profileCanvasModuleYieldsToNewSelection(draftModule)) {
-          return false;
-        }
-
-        return profileCanvasRectsOverlap(
+      sortedModules.some((draftModule) =>
+        profileCanvasRectsOverlap(
           selectionLayoutRect,
           draftModule.layout ?? profileCanvasDefaultClientLayout(draftModule, 0),
-        );
-      }),
+        ),
+      ),
   );
   const selectionPreviewRect = selectionBlocked ? undefined : selectionRect;
 
@@ -1625,9 +1671,6 @@ export function ProfileDirectCanvasEditor({
               key={module.id}
               className={cn(
                 "z-10 rounded-card transition duration-fluid ease-fluid",
-                profileCanvasModuleYieldsToNewSelection(module)
-                  ? "pointer-events-none"
-                  : undefined,
                 configured ? "backdrop-blur-veil" : undefined,
                 module.pinned
                   ? "outline outline-2 outline-rose/70 ring-2 ring-rose/20"
@@ -1650,7 +1693,10 @@ export function ProfileDirectCanvasEditor({
             >
               <div
                 className={cn(
-                  "relative h-full min-h-0 cursor-grab rounded-card active:cursor-grabbing",
+                  "relative h-full min-h-0 rounded-card",
+                  placeholder
+                    ? "touch-none cursor-grab active:cursor-grabbing"
+                    : "cursor-default",
                   configured
                     ? "overflow-hidden border border-line-strong bg-surface/90 p-2 shadow-inner-soft"
                     : undefined,
@@ -1664,7 +1710,10 @@ export function ProfileDirectCanvasEditor({
 
                   if (
                     target instanceof HTMLElement &&
-                    target.closest('[data-profile-edit-control="true"]')
+                    (target.closest('[data-profile-edit-control="true"]') ||
+                      target.closest(
+                        '[data-profile-module-content-interactive="true"] button, [data-profile-module-content-interactive="true"] a, [data-profile-module-content-interactive="true"] input, [data-profile-module-content-interactive="true"] select, [data-profile-module-content-interactive="true"] textarea',
+                      ))
                   ) {
                     return;
                   }
@@ -1681,26 +1730,14 @@ export function ProfileDirectCanvasEditor({
                     editorGrid.mobile ||
                     module.pinned ||
                     event.button !== 0 ||
+                    !placeholder ||
                     (target instanceof HTMLElement &&
                       target.closest('[data-profile-edit-control="true"]'))
                   ) {
                     return;
                   }
 
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  const dragSize =
-                    profileGridModuleSpanSize(layout.colSpan, layout.rowSpan) ??
-                    getProfileModuleDefinition(module.type).defaultSize;
-
-                  updateDragState({
-                    moduleId: module.id,
-                    pointerOffsetX: event.clientX - rect.left,
-                    pointerOffsetY: event.clientY - rect.top,
-                    previewLayout: layout,
-                    size: dragSize,
-                    startLayout: layout,
-                    valid: true,
-                  });
+                  handleModuleDragPointerStart(event, module, layout);
                 }}
               >
                 {placeholder ? (
@@ -1784,20 +1821,27 @@ export function ProfileDirectCanvasEditor({
                   <div
                     className={cn(
                       "h-full min-h-0 min-w-0 overflow-hidden rounded-card",
-                      "pointer-events-none select-none",
+                      module.type === "activity"
+                        ? "pointer-events-auto"
+                        : "pointer-events-none select-none",
                     )}
                     data-profile-canvas-module-configured={
                       configured ? "true" : "false"
                     }
-                    data-profile-module-content-interactive="false"
+                    data-profile-module-content-interactive={
+                      module.type === "activity" ? "true" : "false"
+                    }
                     data-profile-canvas-module-frame="light"
-                    data-profile-editor-render-mode="light"
+                    data-profile-editor-render-mode={
+                      module.type === "activity" ? "live" : "light"
+                    }
                     data-testid={`profile-canvas-module-content-${module.id}`}
-                    inert
+                    inert={module.type === "activity" ? undefined : true}
                   >
-                    <ProfileCanvasModulePreview
+                    <ProfileCanvasEditorModuleContent
                       module={module}
                       mobile={editorGrid.mobile}
+                      renderModuleContent={onRenderModuleContent}
                       size={size}
                     />
                   </div>
@@ -1820,6 +1864,34 @@ export function ProfileDirectCanvasEditor({
                   )}
                   data-profile-edit-control="true"
                 >
+                  {!placeholder ? (
+                    <button
+                      type="button"
+                      className={cn(
+                        "grid touch-none place-items-center rounded-full border border-line bg-surface/92 text-text shadow-soft backdrop-blur-veil transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55",
+                        module.pinned ? "cursor-not-allowed" : "cursor-grab active:cursor-grabbing",
+                        editControlSize,
+                      )}
+                      aria-label={
+                        module.pinned
+                          ? `${moduleTitle} is pinned`
+                          : `Move ${moduleTitle}`
+                      }
+                      title={
+                        module.pinned
+                          ? `${moduleTitle} is pinned`
+                          : `Move ${moduleTitle}`
+                      }
+                      disabled={module.pinned}
+                      data-profile-edit-control="true"
+                      data-testid={`profile-canvas-drag-handle-${module.id}`}
+                      onPointerDown={(event) =>
+                        handleModuleDragPointerStart(event, module, layout)
+                      }
+                    >
+                      <Move aria-hidden="true" size={editControlIconSize} />
+                    </button>
+                  ) : null}
                   {removable ? (
                     <button
                       type="button"
@@ -1871,6 +1943,9 @@ export function ProfileDirectCanvasEditor({
                   className={cn(
                     "absolute left-1/2 top-1/2 z-30 size-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-line bg-surface/92 text-text shadow-lift backdrop-blur-veil transition duration-fluid ease-fluid hover:scale-105 hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus",
                     editorGrid.mobile ? "hidden" : "grid",
+                    module.type === "activity"
+                      ? "bottom-2 right-2 left-auto top-auto size-9 translate-x-0 translate-y-0"
+                      : undefined,
                   )}
                   aria-label={`Edit ${moduleTitle}`}
                   title={`Edit ${moduleTitle}`}
@@ -2031,6 +2106,31 @@ export function ProfileDirectCanvasEditor({
     </section>
   );
 }
+
+const ProfileCanvasEditorModuleContent = memo(
+  function ProfileCanvasEditorModuleContent({
+    mobile,
+    module,
+    renderModuleContent,
+    size,
+  }: {
+    mobile: boolean;
+    module: ProfileModule;
+    renderModuleContent: (
+      module: ProfileModule,
+      size: ProfileGridModuleSize,
+    ) => ReactNode | undefined;
+    size: ProfileGridModuleSize;
+  }) {
+    if (module.type === "activity") {
+      return renderModuleContent(module, size) ?? null;
+    }
+
+    return (
+      <ProfileCanvasModulePreview mobile={mobile} module={module} size={size} />
+    );
+  },
+);
 
 const ProfileCanvasModulePreview = memo(function ProfileCanvasModulePreview({
   mobile,
@@ -2224,10 +2324,6 @@ const ProfileCanvasModulePreview = memo(function ProfileCanvasModulePreview({
   );
 });
 
-function profileCanvasModuleYieldsToNewSelection(module: ProfileModule): boolean {
-  return module.type === "activity" && !module.pinned;
-}
-
 function ProfileCanvasMediaContractPreview({
   module,
 }: {
@@ -2402,7 +2498,7 @@ function ProfileCanvasResizeHandles({
             key={direction}
             type="button"
             className={cn(
-              "pointer-events-auto absolute grid place-items-center rounded-full border border-line bg-surface/95 text-text shadow-soft backdrop-blur-veil transition duration-fluid ease-fluid hover:scale-110 hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100",
+              "pointer-events-auto absolute grid touch-none place-items-center rounded-full border border-line bg-surface/95 text-text shadow-soft backdrop-blur-veil transition duration-fluid ease-fluid hover:scale-110 hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100",
               profileCanvasResizeHandleClass(direction, compact),
             )}
             aria-label={title}

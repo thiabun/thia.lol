@@ -156,6 +156,20 @@ describe("integration OAuth music flows", () => {
 
     const redirect = await repository.oauthCallback("spotify", { state, code: "spotify-code" });
 
+    const spotifyTokenRequest = httpJson.mock.calls.find(
+      ([method, url]) =>
+        method === "POST" && url === "https://accounts.spotify.com/api/token",
+    );
+
+    expect(spotifyTokenRequest?.[2]).toContain(
+      `Authorization: Basic ${Buffer.from("spotify-client:spotify-secret").toString("base64")}`,
+    );
+    expect(spotifyTokenRequest?.[3]).toEqual({
+      grant_type: "authorization_code",
+      code: "spotify-code",
+      redirect_uri: "https://thia.lol/api/integrations/spotify/callback",
+    });
+
     expect(redirect.location).toBe(
       "https://thia.lol/@thia?integrationProvider=spotify&integrationStatus=connected",
     );
@@ -200,6 +214,91 @@ describe("integration OAuth music flows", () => {
         moduleType: "music",
         moduleTitle: "Music",
       }),
+    ]);
+  });
+
+  it("saves a Spotify connection when profile enrichment is unavailable", async () => {
+    const pool = new FakeIntegrationPool();
+    const callbackErrors: Array<{ provider: string; stage: string }> = [];
+    const httpJson = vi.fn<IntegrationHttpJson>(async (method, url) => {
+      if (method === "POST" && url === "https://accounts.spotify.com/api/token") {
+        return {
+          access_token: "spotify-user-token",
+          refresh_token: "spotify-refresh-token",
+          expires_in: 3600,
+          scope: "user-read-private",
+        };
+      }
+
+      if (method === "GET" && url === "https://api.spotify.com/v1/me") {
+        throw new Error("Provider request failed with HTTP 403.");
+      }
+
+      throw new Error(`Unexpected integration request: ${method} ${url}`);
+    });
+    const repository = createIntegrationsRepository(pool as unknown as Pool, {
+      publicBaseUrl: "https://thia.lol",
+      encryptionKey: "12345678901234567890123456789012",
+      providers,
+      httpJson,
+      now: () => new Date("2026-06-25T12:00:00.000Z"),
+      onOAuthCallbackError: ({ provider, stage }) => {
+        callbackErrors.push({ provider, stage });
+      },
+    });
+    const start = await repository.startOAuth(session, "spotify", {});
+    const state = new URL(start.authorizationUrl).searchParams.get("state") ?? "";
+
+    const redirect = await repository.oauthCallback("spotify", {
+      state,
+      code: "spotify-code",
+    });
+
+    expect(redirect.location).toBe(
+      "https://thia.lol/settings?integrationProvider=spotify&integrationStatus=connected",
+    );
+    expect(pool.accounts.get("42:spotify")).toMatchObject({
+      provider: "spotify",
+      provider_account_id: "spotify:42",
+      access_token_cipher: expect.stringMatching(/^openssl:/u),
+      refresh_token_cipher: expect.stringMatching(/^openssl:/u),
+    });
+    expect(pool.oauthStates[0]?.consumed_at).not.toBeNull();
+    expect(callbackErrors).toEqual([
+      { provider: "spotify", stage: "identity_fetch" },
+    ]);
+  });
+
+  it("consumes Spotify OAuth state and reports token exchange failures", async () => {
+    const pool = new FakeIntegrationPool();
+    const callbackErrors: Array<{ provider: string; stage: string }> = [];
+    const repository = createIntegrationsRepository(pool as unknown as Pool, {
+      publicBaseUrl: "https://thia.lol",
+      encryptionKey: "12345678901234567890123456789012",
+      providers,
+      httpJson: async () => {
+        throw new Error("Provider request failed with HTTP 400.");
+      },
+      now: () => new Date("2026-06-25T12:00:00.000Z"),
+      onOAuthCallbackError: ({ provider, stage }) => {
+        callbackErrors.push({ provider, stage });
+      },
+    });
+    const start = await repository.startOAuth(session, "spotify", {});
+    const state = new URL(start.authorizationUrl).searchParams.get("state") ?? "";
+
+    const redirect = await repository.oauthCallback("spotify", {
+      state,
+      code: "spotify-code",
+    });
+
+    expect(redirect.location).toBe(
+      "https://thia.lol/settings?integrationProvider=spotify&integrationStatus=error&integrationError=oauth_callback_failed",
+    );
+    expect(pool.oauthStates[0]?.consumed_at).not.toBeNull();
+    expect(pool.accounts.size).toBe(0);
+    expect(callbackErrors).toEqual([
+      { provider: "spotify", stage: "token_exchange" },
     ]);
   });
 

@@ -90,9 +90,11 @@ Rules:
 - Existing old WebM URLs should stay renderable, but new uploads should be MP4.
 
 Video upload responses include `url`, `posterUrl`, `mime`, `width`, `height`,
-and `duration` when FFprobe can provide them. Post/reply/featured-post media
-renders as `<video controls playsInline poster=...>` when `mediaType` is
-`video`.
+and `duration` when FFprobe can provide them. Post/reply/featured-post and
+uploaded profile-module video renders with controls, inline playback, a poster,
+and muted focus-based autoplay. Only the most focused registered video plays;
+offscreen video pauses, and consented profile music blocks profile video
+autoplay while it has priority.
 
 ## Audio
 

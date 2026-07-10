@@ -367,6 +367,10 @@ Navigation should feel lightweight and calm.
 Feeds should feel readable and conversational. Repeated post cards need clear
 identity, body, media, and one action row. Keep metadata compact.
 
+Native video should autoplay muted only while focused in the viewport, pause
+when focus moves away, retain visible controls, and never outrank consented
+profile music on profile pages.
+
 Avoid:
 
 - duplicated reply/report/delete controls

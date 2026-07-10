@@ -467,9 +467,8 @@ function HomeExploreRail({ onPostClick }: { onPostClick: () => void }) {
         </ButtonLink>
         <Button
           type="button"
-          variant="secondary"
           size="sm"
-          className="justify-start"
+          className="min-h-10 justify-start font-semibold shadow-soft"
           icon={<PenLine aria-hidden="true" size={16} />}
           onClick={onPostClick}
         >

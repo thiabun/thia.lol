@@ -360,10 +360,11 @@ export function AppShell() {
       <SiteFooter />
       <Button
         type="button"
-        className="fixed bottom-5 right-5 z-40 hidden rounded-full px-4 shadow-soft lg:inline-flex"
+        className="fixed bottom-6 right-6 z-40 hidden min-h-12 rounded-full px-5 text-base font-semibold shadow-lift ring-2 ring-accent/25 lg:inline-flex"
         disabled={postingDisabled}
-        icon={<PenLine aria-hidden="true" size={18} />}
+        icon={<PenLine aria-hidden="true" size={20} />}
         onClick={handlePostClick}
+        data-testid="desktop-post-action"
       >
         Post
       </Button>
@@ -718,17 +719,19 @@ function MobileDock({
           </NavLink>
         </motion.div>
       ))}
-      <div className="relative col-start-3 row-start-1 mx-auto flex h-12 items-center justify-center">
+      <div className="relative col-start-3 row-start-1 mx-auto flex h-14 items-center justify-center">
         <Button
           type="button"
-          className="size-11 rounded-full border border-white/45 p-0 shadow-soft ring-1 ring-accent/20"
+          className="size-14 flex-col gap-0 rounded-full border-2 border-white/50 p-0 text-[0.62rem] font-semibold leading-none shadow-lift ring-2 ring-accent/30"
           disabled={postDisabled}
           aria-label="Post"
           data-testid="mobile-post-action"
           title="Post"
-          icon={<PenLine aria-hidden="true" size={18} />}
+          icon={<PenLine aria-hidden="true" size={20} />}
           onClick={onPostClick}
-        />
+        >
+          <span>Post</span>
+        </Button>
       </div>
     </motion.nav>
   );

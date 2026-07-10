@@ -2117,10 +2117,9 @@ function RoomHeader({
               {room.viewerCanPost ? (
                 <Button
                   type="button"
-                  size="sm"
-                  className="hidden w-full sm:inline-flex sm:w-auto"
+                  className="hidden min-h-10 w-full px-4 font-semibold shadow-soft ring-1 ring-accent/20 sm:inline-flex sm:w-auto"
                   data-testid="room-post-button"
-                  icon={<PenLine aria-hidden="true" size={17} />}
+                  icon={<PenLine aria-hidden="true" size={18} />}
                   onClick={onPost}
                 >
                   Post

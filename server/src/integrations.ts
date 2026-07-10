@@ -51,6 +51,18 @@ export interface IntegrationsRepositoryOptions {
   providers: Record<IntegrationProvider, IntegrationProviderConfig>;
   httpJson?: IntegrationHttpJson;
   now?: () => Date;
+  onOAuthCallbackError?: (event: IntegrationOAuthCallbackErrorEvent) => void;
+}
+
+export interface IntegrationOAuthCallbackErrorEvent {
+  error: Error;
+  provider: IntegrationProvider;
+  stage:
+    | "state_decryption"
+    | "token_exchange"
+    | "identity_fetch"
+    | "account_persistence"
+    | "state_consumption";
 }
 
 export type IntegrationHttpJson = (
@@ -240,6 +252,13 @@ interface OAuthTokenResponse {
   scope?: string | string[];
 }
 
+interface IntegrationIdentity {
+  id?: string | null;
+  handle?: string | null;
+  displayName?: string | null;
+  avatarUrl?: string | null;
+}
+
 export function createIntegrationsRepository(
   pool: Pool,
   options: IntegrationsRepositoryOptions,
@@ -361,13 +380,55 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
       });
     }
 
+    let codeVerifier: string;
+
     try {
-      const codeVerifier = this.decryptOrThrow(stateRow.code_verifier_cipher ?? "");
+      codeVerifier = this.decryptOrThrow(stateRow.code_verifier_cipher ?? "");
+    } catch (error) {
+      this.reportOAuthCallbackError(provider, "state_decryption", error);
+      return this.redirectToApp(redirectPath, {
+        integrationProvider: provider,
+        integrationStatus: "error",
+        integrationError: "oauth_callback_failed",
+      });
+    }
+
+    try {
       await this.consumeOAuthState(stateRow);
-      const token = await this.exchangeCode(provider, code, codeVerifier);
-      const identity = await this.fetchIdentity(provider, token);
+    } catch (error) {
+      this.reportOAuthCallbackError(provider, "state_consumption", error);
+      return this.redirectToApp(redirectPath, {
+        integrationProvider: provider,
+        integrationStatus: "error",
+        integrationError: "oauth_callback_failed",
+      });
+    }
+
+    let token: OAuthTokenResponse;
+
+    try {
+      token = await this.exchangeCode(provider, code, codeVerifier);
+    } catch (error) {
+      this.reportOAuthCallbackError(provider, "token_exchange", error);
+      return this.redirectToApp(redirectPath, {
+        integrationProvider: provider,
+        integrationStatus: "error",
+        integrationError: "oauth_callback_failed",
+      });
+    }
+
+    let identity: IntegrationIdentity = {};
+
+    try {
+      identity = await this.fetchIdentity(provider, token);
+    } catch (error) {
+      this.reportOAuthCallbackError(provider, "identity_fetch", error);
+    }
+
+    try {
       await this.upsertAccount(Number(stateRow.user_id), provider, token, identity);
-    } catch {
+    } catch (error) {
+      this.reportOAuthCallbackError(provider, "account_persistence", error);
       return this.redirectToApp(redirectPath, {
         integrationProvider: provider,
         integrationStatus: "error",
@@ -528,12 +589,7 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
     userId: number,
     provider: IntegrationProvider,
     token: OAuthTokenResponse,
-    identity: {
-      id?: string | null;
-      handle?: string | null;
-      displayName?: string | null;
-      avatarUrl?: string | null;
-    },
+    identity: IntegrationIdentity,
   ): Promise<void> {
     const accessToken = typeof token.access_token === "string" ? token.access_token : "";
     const refreshToken = typeof token.refresh_token === "string" ? token.refresh_token : "";
@@ -635,6 +691,7 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
 
     if (provider === "spotify") {
       headers.push(`Authorization: Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`);
+      delete body.client_id;
       delete body.client_secret;
     }
 
@@ -650,7 +707,7 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
   private async fetchIdentity(
     provider: IntegrationProvider,
     token: OAuthTokenResponse,
-  ): Promise<{ id?: string | null; handle?: string | null; displayName?: string | null; avatarUrl?: string | null }> {
+  ): Promise<IntegrationIdentity> {
     const accessToken = typeof token.access_token === "string" ? token.access_token : "";
 
     if (accessToken === "") {
@@ -1483,6 +1540,18 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
 
   private httpJson(method: "GET" | "POST", url: string, headers: string[] = [], body?: Record<string, string>): Promise<unknown> {
     return (this.options.httpJson ?? defaultHttpJson)(method, url, headers, body);
+  }
+
+  private reportOAuthCallbackError(
+    provider: IntegrationProvider,
+    stage: IntegrationOAuthCallbackErrorEvent["stage"],
+    error: unknown,
+  ): void {
+    this.options.onOAuthCallbackError?.({
+      error: error instanceof Error ? error : new Error("Unknown OAuth callback error."),
+      provider,
+      stage,
+    });
   }
 
   private now(): Date {

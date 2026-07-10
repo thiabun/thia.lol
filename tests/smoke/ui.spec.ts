@@ -114,7 +114,12 @@ test("mobile header, account menu, and bottom nav fit the viewport", async ({
 
   const nav = page.getByTestId("mobile-nav");
   await expect(nav).toBeVisible();
+  const mobilePost = nav.getByTestId("mobile-post-action");
   await expect(nav.getByRole("button", { name: "Post" })).toHaveCount(1);
+  await expect(mobilePost).toContainText("Post");
+  const mobilePostBox = await mobilePost.boundingBox();
+  expect(mobilePostBox?.width).toBeGreaterThanOrEqual(54);
+  expect(mobilePostBox?.height).toBeGreaterThanOrEqual(54);
   await expectRefinedMobileDock(page);
   await expectChatHitTargetClear(page);
 });
@@ -463,11 +468,20 @@ test("authenticated post button opens an accessible composer select", async ({
   await page.goto("/");
   await expect(page.getByRole("button", { name: "Account menu for @viewer" })).toBeVisible();
 
+  const desktopPost = page.getByTestId("desktop-post-action");
+  await expect(desktopPost).toBeVisible();
+  const desktopPostBox = await desktopPost.boundingBox();
+  expect(desktopPostBox?.height).toBeGreaterThanOrEqual(48);
+  expect(desktopPostBox?.width).toBeGreaterThanOrEqual(88);
+
   await page.getByRole("button", { name: "Post" }).click();
 
   const dialog = page.getByTestId("composer-modal");
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Post", exact: true })).toBeVisible();
+  const composerPost = dialog.getByRole("button", { name: "Post", exact: true });
+  await expect(composerPost).toBeVisible();
+  const composerPostBox = await composerPost.boundingBox();
+  expect(composerPostBox?.height).toBeGreaterThanOrEqual(44);
   await expect(dialog.getByRole("textbox", { name: "Post" })).toBeVisible();
   await expect(dialog.getByTestId("post-composer-markdown-toolbar")).toBeVisible();
   await expect(dialog.getByTitle("Upload image or video")).toBeVisible();
@@ -481,6 +495,7 @@ test("authenticated post button opens an accessible composer select", async ({
   await expect(destinationControl).toBeVisible();
   await expect(selector).toBeVisible();
   await expect(selector).toHaveCSS("appearance", "none");
+  await expect(selector.locator('option[value="sun-room"]')).toHaveCount(1);
 
   const destinationControlBox = await destinationControl.boundingBox();
   const selectorBox = await selector.boundingBox();
@@ -1246,6 +1261,8 @@ function makeRoom() {
     },
     joinedByMe: false,
     myRoomRole: null,
+    viewerCanPost: true,
+    viewerCanViewPosts: true,
     postCount: 0,
     latestActivityAt: null,
     createdAt: "2026-06-10 00:00:00",

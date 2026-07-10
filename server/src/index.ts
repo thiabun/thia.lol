@@ -50,6 +50,13 @@ const moderationRepository = createModerationRepository(database.pool);
 const integrationsRepository = createIntegrationsRepository(database.pool, {
   publicBaseUrl: config.THIA_PUBLIC_BASE_URL,
   encryptionKey: config.THIA_SECURITY_INTEGRATION_ENCRYPTION_KEY,
+  onOAuthCallbackError: ({ error, provider, stage }) => {
+    console.error("integration OAuth callback failed", {
+      error: error.message.replace(/[\r\n]+/gu, " ").slice(0, 160),
+      provider,
+      stage,
+    });
+  },
   providers: {
     spotify: {
       clientId: config.THIA_INTEGRATION_SPOTIFY_CLIENT_ID,

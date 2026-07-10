@@ -71,6 +71,7 @@ import type {
   UserBadge,
 } from "../../lib/types";
 import { ApiStateNotice } from "../ui/ApiStateNotice";
+import { FocusAutoplayVideo } from "../ui/FocusAutoplayVideo";
 import { MediaPlayer, type MediaPlayerLayout } from "../ui/MediaPlayer";
 import { CompactStateNotice } from "../ui/RouteState";
 import { ProfileGrid, ProfileGridModule } from "./ProfileGrid";
@@ -1650,19 +1651,15 @@ function UploadedVideoPlayer({
       data-profile-uploaded-video-layout={compact ? "compact" : "player"}
       data-profile-uploaded-video-tier={presentation.tier}
     >
-      <video
+      <FocusAutoplayVideo
         className="size-full min-h-0 bg-black object-contain"
-        controls
         loop={module.config.autoplay === true}
-        muted={module.config.autoplay === true}
-        playsInline
         poster={video.posterUrl}
-        preload="metadata"
         title={title}
         data-testid="profile-uploaded-video-element"
       >
         <source src={video.url} type={video.mime} />
-      </video>
+      </FocusAutoplayVideo>
     </div>
   );
 }

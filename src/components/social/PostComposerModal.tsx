@@ -435,9 +435,9 @@ export function PostComposerModal({
             <Button
               type="submit"
               form={formId}
-              size="sm"
+              className="min-h-12 px-5 text-base font-semibold shadow-soft ring-1 ring-accent/20"
               disabled={!canSubmit}
-              icon={<Send aria-hidden="true" size={16} />}
+              icon={<Send aria-hidden="true" size={18} />}
             >
               {submitting ? "Posting..." : "Post"}
             </Button>

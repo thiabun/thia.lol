@@ -15,9 +15,9 @@ Profiles are moving toward curated personal spaces: identity pages, social profi
 This document defines the safety framework for profile customization and profile
 modules. The module foundation includes persisted modules, a richer module
 catalog, allowlisted provider card infrastructure, generated embeds, and
-restricted profile background video. The experimental module/canvas editor is
-retired from the active product surface; owners currently get a compact
-identity/media editor while modules render read-only. Arbitrary themes, privacy
+restricted profile background video. Owners use a constrained direct canvas
+editor with real API persistence, responsive grid projection, and lightweight
+previews for expensive embeds. Arbitrary themes, privacy
 controls, analytics, ads, blog posts, custom CSS/HTML/JavaScript, and
 user-supplied iframe HTML remain out of scope.
 
@@ -61,10 +61,14 @@ Current frontend behavior:
 - Identity and media edits autosave through existing profile APIs with explicit
   saving, saved, and error feedback. Owners should not need a separate layout
   save after changing avatar, banner, bio, location, or background media.
-- The experimental module/canvas editor is retired from the active product
-  surface. Owners should not see module drag handles, placement controls, size
-  controls, pin controls, module add/remove/restore controls, or integration
-  setup panels during this transition.
+- The direct module/canvas editor is active. It supports constrained placement,
+  resizing, pinning, add/remove, integration setup, autosaved drafts, and an
+  explicit commit through the Node API.
+- Interactive editor content must capture its own clicks, taps, scrolling, and
+  controls without selecting or moving the grid underneath it. Movement uses a
+  dedicated drag handle so content interaction and dragging do not compete.
+- Expensive third-party embeds stay lightweight in the editor. Activity renders
+  live because its tabs and internal scrolling are part of the editing contract.
 - Public profiles continue to render persisted identity, media, modules,
   featured content, badges, and links through constrained public components.
 
@@ -193,9 +197,11 @@ The following are not allowed:
 - Custom JavaScript.
 - Script embeds.
 - User-supplied iframe HTML, arbitrary embed code, or arbitrary embed URLs.
-- Unprompted autoplay audio or audible/interactive autoplay video. Muted
-  decorative profile background video is allowed only through the restricted
-  background video pipeline.
+- Unprompted autoplay audio or audible autoplay video. Muted focus-based video
+  autoplay is allowed for feed, post, and approved profile media when offscreen
+  video pauses and higher-priority profile media such as consented music wins.
+  Muted decorative profile background video remains restricted to the profile
+  background pipeline.
 - Unreadable color combinations.
 - Flashing, strobing, or rapidly pulsing visuals.
 - Deceptive UI that imitates system dialogs, site navigation, login forms, warnings, or moderation notices.
@@ -280,7 +286,9 @@ The following are not allowed:
 - Muted profile background video may autoplay only as decorative background
   media and must respect reduced motion through a poster/static fallback.
 - Embeds must be generated from provider allowlists, lazy-loaded, and should not
-  be forced to autoplay before consent.
+  be forced to autoplay before consent. Native uploaded videos may use muted
+  focus autoplay, but must pause when out of focus or when profile music owns
+  autoplay priority.
 
 ### Mobile Rules
 
@@ -672,7 +680,8 @@ Each integration issue should include:
 
 ## Non-Goals For The Next Slice
 
-- No profile module editor until module storage and validation exist.
+- No unconstrained or frontend-only profile module editor outside the existing
+  validated storage and canvas-draft transaction.
 - No embeds until link-first cards and privacy/performance decisions are approved.
 - No arbitrary profile themes.
 - No profile privacy controls until behavior is implemented and testable.

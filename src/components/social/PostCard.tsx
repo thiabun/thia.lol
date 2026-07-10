@@ -29,6 +29,7 @@ import { Link } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { Avatar } from "../ui/Avatar";
 import { Button, ButtonLink } from "../ui/Button";
+import { FocusAutoplayVideo } from "../ui/FocusAutoplayVideo";
 import { ImageCropModal } from "../ui/ImageCropModal";
 import { MediaPlayer, type MediaPlayerLayout } from "../ui/MediaPlayer";
 import { ModalSheet } from "../ui/ModalSheet";
@@ -434,16 +435,13 @@ function PostMedia({
         onClick={isVideo ? stopThreadOpenPropagation : undefined}
       >
         {isVideo ? (
-          <video
+          <FocusAutoplayVideo
             className={cn("block h-auto max-w-full bg-black object-contain", maxHeightClass)}
-            controls
-            playsInline
             poster={mediaPosterUrl ?? undefined}
-            preload="metadata"
             data-testid={`${testId}-video`}
           >
             <source src={mediaUrl} type={mediaMime ?? (mediaUrl.endsWith(".webm") ? "video/webm" : "video/mp4")} />
-          </video>
+          </FocusAutoplayVideo>
         ) : (
           <img
             src={mediaUrl}
@@ -584,16 +582,13 @@ function PostAttachmentItem({
       onClick={isVideo ? stopThreadOpenPropagation : undefined}
     >
       {isVideo ? (
-        <video
+        <FocusAutoplayVideo
           className={cn("block h-auto max-w-full bg-black object-contain", maxHeightClass)}
-          controls
-          playsInline
           poster={attachment.posterUrl ?? undefined}
-          preload="metadata"
           data-testid={`${testId}-video`}
         >
           <source src={attachment.url} type={attachment.mime ?? (attachment.url.endsWith(".webm") ? "video/webm" : "video/mp4")} />
-        </video>
+        </FocusAutoplayVideo>
       ) : (
         <img
           src={attachment.url}

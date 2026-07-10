@@ -1778,19 +1778,51 @@ test("Spotify playback failure still opens the profile", async ({ page }) => {
   await expectSpotifyProgress(page, 0, "Ready");
 });
 
-test("uploaded MP3 music modules use the continue overlay", async ({ page }) => {
+test("uploaded MP3 autoplay takes priority over focused profile video", async ({ page }) => {
   await mockProfileModules(page, {
     authenticated: false,
-    modules: [uploadedMp3MusicModule()],
+    modules: [
+      withAuditLayout(uploadedMp3MusicModule({ id: 31, position: 1 }), "4x2", 1, 1),
+      uploadedVideoModule({ id: 32, position: 2 }),
+    ],
+    profileOverrides: {
+      profileBackgroundVideo:
+        "/uploads/media/2026/06/profile_background-loop.mp4",
+      profileBackgroundVideoPoster:
+        "/uploads/media/2026/06/profile-video-poster.webp",
+    },
   });
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
   await expect(page.getByTestId("profile-music-continue-overlay")).toBeVisible();
   await expect(page.getByTestId("profile-uploaded-audio-player")).toBeVisible();
+  const profileVideo = page.getByTestId("profile-uploaded-video-element");
+  await expect(profileVideo).toBeVisible();
+  await expect(profileVideo).toHaveAttribute(
+    "data-focus-autoplay-blocked",
+    "false",
+  );
+  await expect(page.getByTestId("profile-personal-backdrop")).toHaveAttribute(
+    "data-profile-background-playback",
+    "playing",
+  );
 
   await page.getByTestId("profile-music-continue-button").click();
   await expect(page.getByTestId("profile-music-continue-overlay")).toHaveCount(0);
+  await expect(profileVideo).toHaveAttribute(
+    "data-focus-autoplay-blocked",
+    "true",
+  );
+  await expect(page.getByTestId("profile-personal-backdrop")).toHaveAttribute(
+    "data-profile-background-playback",
+    "paused",
+  );
+  await expect
+    .poll(() =>
+      profileVideo.evaluate((video) => (video as HTMLVideoElement).paused),
+    )
+    .toBe(true);
 
   const stored = await page.evaluate(() =>
     window.localStorage.getItem("thia.profile.musicAutoplayConsent.v1:1"),
@@ -2801,7 +2833,7 @@ test("owner edits background clarity in the direct canvas draft", async ({
     .evaluate((image) => window.getComputedStyle(image).filter);
   expect(previewFilter).toContain("blur(42px)");
   await expect(page.getByTestId("profile-selected-module-popover")).toHaveCount(0);
-  await expect(page.getByTestId("profile-canvas-drag-handle-1")).toHaveCount(0);
+  await expect(page.getByTestId("profile-canvas-drag-handle-1")).toBeVisible();
   await expect(page.getByTestId("profile-canvas-position-grid")).toHaveCount(0);
   await expect
     .poll(() => savedPayload?.backgroundBlur)
@@ -3058,7 +3090,11 @@ test("direct canvas point selection creates a draft module through picker and se
       .getByRole("button", { name: "Unpin this module before resizing" })
       .first(),
   ).toBeDisabled();
-  await expect(configuredModuleShell.locator('[data-testid^="profile-canvas-drag-handle-"]')).toHaveCount(0);
+  const configuredDragHandle = configuredModuleShell.locator(
+    '[data-testid^="profile-canvas-drag-handle-"]',
+  );
+  await expect(configuredDragHandle).toHaveCount(1);
+  await expect(configuredDragHandle).toBeDisabled();
   await expect
     .poll(() =>
       pinnedShell.evaluate((element) => window.getComputedStyle(element).outlineWidth),
@@ -3088,7 +3124,7 @@ test("direct canvas point selection creates a draft module through picker and se
   });
 });
 
-test("direct canvas renders configured modules as light previews", async ({ page }) => {
+test("direct canvas keeps embeds light while Activity remains live", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await mockProfileModules(page, {
     authenticated: true,
@@ -3115,11 +3151,70 @@ test("direct canvas renders configured modules as light previews", async ({ page
   await expect(grid.getByTestId("profile-canvas-light-preview-22")).toBeVisible();
   await expect(grid.getByTestId("profile-canvas-light-preview-23")).toBeVisible();
   await expect(grid.getByTestId("profile-canvas-light-preview-24")).toBeVisible();
-  await expect(grid.getByTestId("profile-canvas-light-preview-25")).toBeVisible();
+  await expect(grid.getByTestId("profile-canvas-light-preview-25")).toHaveCount(0);
   await expect(grid.getByTestId("profile-spotify-custom-player")).toHaveCount(0);
   await expect(grid.getByTestId("profile-uploaded-audio-player")).toHaveCount(0);
   await expect(grid.getByTestId("profile-uploaded-video-player")).toHaveCount(0);
-  await expect(grid.getByTestId("post-card")).toHaveCount(0);
+  const activityContent = page.getByTestId("profile-canvas-module-content-25");
+  await expect(activityContent).toHaveAttribute(
+    "data-profile-module-content-interactive",
+    "true",
+  );
+  await expect(activityContent).not.toHaveAttribute("inert", "");
+  await expect(activityContent.getByTestId("profile-activity-tabs")).toBeVisible();
+  await expect(activityContent.getByTestId("profile-activity")).toBeVisible();
+  await expect(activityContent.getByText("This should not render as a live post card.")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-drag-handle-25")).toBeVisible();
+  const activityShell = page.getByTestId("profile-canvas-module-25");
+  await expect(page.getByTestId("profile-canvas-cell-1-8")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      activityShell.evaluate((element) => window.getComputedStyle(element).pointerEvents),
+    )
+    .toBe("auto");
+  const placementBeforeTabClick = await activityShell.evaluate((element) => ({
+    column: window.getComputedStyle(element).gridColumnStart,
+    row: window.getComputedStyle(element).gridRowStart,
+  }));
+
+  const repliesTab = activityContent.getByRole("tab", { name: /Replies/ });
+  await repliesTab.click();
+  await expect(repliesTab).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("profile-module-settings")).toHaveCount(0);
+  await expect(page.getByTestId("profile-canvas-selection-preview")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      activityShell.evaluate((element) => ({
+        column: window.getComputedStyle(element).gridColumnStart,
+        row: window.getComputedStyle(element).gridRowStart,
+      })),
+    )
+    .toEqual(placementBeforeTabClick);
+
+  const activityDragHandle = page.getByTestId("profile-canvas-drag-handle-25");
+  const dragHandleBox = await activityDragHandle.boundingBox();
+  expect(dragHandleBox).not.toBeNull();
+  const dragStart = {
+    button: 0,
+    buttons: 1,
+    clientX: dragHandleBox!.x + dragHandleBox!.width / 2,
+    clientY: dragHandleBox!.y + dragHandleBox!.height / 2,
+    pointerId: 25,
+    pointerType: "mouse",
+  };
+  const dragTarget = {
+    ...dragStart,
+    clientX: dragStart.clientX + 80,
+  };
+
+  await activityDragHandle.dispatchEvent("pointerdown", dragStart);
+  await page.dispatchEvent("body", "pointermove", dragTarget);
+  await expect(page.getByTestId("profile-canvas-drag-preview")).toBeVisible();
+  await page.dispatchEvent("body", "pointerup", {
+    ...dragTarget,
+    buttons: 0,
+  });
+  await expect(page.getByTestId("profile-canvas-drag-preview")).toHaveCount(0);
 });
 
 test("profile editor guide launches from onboarding tour query and can replay", async ({
@@ -3346,7 +3441,7 @@ test("direct canvas supports a 6x10 activity selection envelope", async ({
   await expect(activity).toContainText("Full");
 });
 
-test("direct canvas keeps 4x6 activity light in editor and public after save", async ({
+test("direct canvas keeps 4x6 activity interactive in editor and public after save", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
@@ -3379,7 +3474,7 @@ test("direct canvas keeps 4x6 activity light in editor and public after save", a
   );
   await expect(activityContent).toHaveAttribute(
     "data-profile-editor-render-mode",
-    "light",
+    "live",
   );
   await expect(activityContent).toHaveAttribute(
     "data-profile-canvas-module-frame",
@@ -3387,14 +3482,21 @@ test("direct canvas keeps 4x6 activity light in editor and public after save", a
   );
   await expect(activityContent).toHaveAttribute(
     "data-profile-module-content-interactive",
-    "false",
+    "true",
   );
-  await expect(activityContent).toHaveAttribute("inert", "");
-  await expect(activityContent.getByTestId("profile-activity")).toHaveCount(0);
-  await expect(activityContent.getByTestId("post-body-open-thread")).toHaveCount(0);
+  await expect(activityContent).not.toHaveAttribute("inert", "");
+  await expect(activityContent.getByTestId("profile-activity")).toBeVisible();
+  await expect(activityContent.getByText("Fresh 4x6 activity item.")).toBeVisible();
+  await expect(activityContent.getByTestId("post-body-open-thread")).toBeVisible();
   await expect(page.getByTestId("thread-modal")).toHaveCount(0);
   await page.getByTestId("profile-module-settings-done").click();
   await expect(page.getByTestId("profile-module-settings")).toHaveCount(0);
+
+  const activityRepliesTab = activityContent.getByRole("tab", { name: /Replies/ });
+  await activityRepliesTab.click();
+  await expect(activityRepliesTab).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("profile-module-settings")).toHaveCount(0);
+  await activityContent.getByRole("tab", { name: /Feed/ }).click();
 
   await page.getByTestId("profile-canvas-save-button").click();
   await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
@@ -3692,8 +3794,8 @@ test("authenticated integrations hide the connect prompt in module settings", as
   await page.goto("/@thia");
 
   await page.getByTestId("profile-edit-button").click();
-  await page.getByTestId("profile-canvas-cell-1-4").click();
-  await page.getByTestId("profile-canvas-cell-3-5").click();
+  await page.getByTestId("profile-canvas-cell-5-4").click();
+  await page.getByTestId("profile-canvas-cell-7-5").click();
   await page.getByRole("tab", { name: "Projects" }).click();
   await page.getByTestId("profile-module-picker-github_repo").click();
 
@@ -3744,8 +3846,8 @@ test("YouTube module settings prompt for provider connection", async ({ page }) 
   await page.goto("/@thia");
 
   await page.getByTestId("profile-edit-button").click();
-  await page.getByTestId("profile-canvas-cell-1-4").click();
-  await page.getByTestId("profile-canvas-cell-4-6").click();
+  await page.getByTestId("profile-canvas-cell-5-4").click();
+  await page.getByTestId("profile-canvas-cell-8-6").click();
   await page.getByTestId("profile-module-picker-youtube_video").click();
 
   const settings = page.getByTestId("profile-module-settings");
@@ -4515,8 +4617,8 @@ test("one-cell blank module keeps its add affordance inside the module", async (
   await page.goto("/@thia");
 
   await page.getByTestId("profile-edit-button").click();
-  await page.getByTestId("profile-canvas-cell-2-5").click();
-  await page.getByTestId("profile-canvas-cell-2-5").click();
+  await page.getByTestId("profile-canvas-cell-5-4").click();
+  await page.getByTestId("profile-canvas-cell-5-4").click();
 
   const blankModule = page.locator('[data-testid^="profile-canvas-add-module-"]');
   await expect(blankModule).toBeVisible();
@@ -4941,7 +5043,7 @@ test("image crop modal is wired to current image upload surfaces", () => {
   expect(postCard).toContain("PostMusicAttachmentPicker");
   expect(postComposer).toContain("uploadVideo(file, \"post_media\"");
   expect(postCard).toContain("uploadVideo(file, \"post_media\"");
-  expect(postCard).toContain("<video");
+  expect(postCard).toContain("<FocusAutoplayVideo");
   expect(postCard).toContain("poster={mediaPosterUrl ?? undefined}");
   expect(profilePage).toContain("profileBackgroundVideoPoster: upload.posterUrl ?? null");
   expect(profilePage).toContain("postMediaType(post) === \"video\"");
@@ -8769,6 +8871,36 @@ function uploadedMp3MusicModule(
       platform: "custom",
       sourceMode: "upload",
     },
+  };
+}
+
+function uploadedVideoModule(
+  overrides: { id?: number; position?: number } = {},
+) {
+  return {
+    id: overrides.id ?? 24,
+    type: "uploaded_video",
+    title: "Uploaded video",
+    config: {
+      configured: true,
+      sourceMode: "upload",
+      video: {
+        duration: 12,
+        mime: "video/mp4",
+        size: 4096,
+        title: "Module clip",
+        type: "video/mp4",
+        uploadedAt: "2026-06-16T10:00:00Z",
+        url: "/uploads/media/2026/06/profile_module_video-clip.mp4",
+      },
+    },
+    layout: { column: 1, row: 4, colSpan: 4, rowSpan: 3 },
+    visibility: "public",
+    position: overrides.position ?? 1,
+    status: "active",
+    schemaVersion: 1,
+    createdAt: "2026-06-12 00:00:00",
+    updatedAt: "2026-06-12 00:00:00",
   };
 }
 

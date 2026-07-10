@@ -832,7 +832,7 @@ test("post permalink route loads canonical post and replies", async ({ page }) =
   await page.goto(`/@stale/posts/${publicId}`);
 
   await expect(page).toHaveURL(new RegExp(`/@alex/posts/${publicId}$`));
-  await expect(page.getByRole("heading", { name: "Post", exact: true })).toBeVisible();
+  await expect(page.getByTestId("post-page")).toBeVisible();
   await expect(page.getByText("A public post.")).toBeVisible();
   await expect(page.getByText("A permalink reply.")).toBeVisible();
 });
@@ -849,7 +849,7 @@ test("post permalink route shows unavailable state", async ({ page }) => {
 
   await page.goto("/@alex/posts/pnotfound1234");
 
-  await expect(page.getByRole("heading", { name: "Post not found" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Post not available" })).toBeVisible();
   await expect(page.getByText("Post not found.")).toBeVisible();
 });
 
@@ -1211,6 +1211,8 @@ test("post body opens thread while controls keep their own behavior", async ({
                 name: "General",
                 theme: "elphaba",
                 themeConfig: { mode: "preset", preset: "elphaba" },
+                viewerCanPost: true,
+                viewerCanViewPosts: true,
               },
             }),
           ],
@@ -1311,8 +1313,23 @@ test("post body opens thread while controls keep their own behavior", async ({
   expect(reblogCalled).toBe(true);
 });
 
-test("uploaded post video controls do not open the thread", async ({ page }) => {
+test("focused post video autoplays muted, pauses offscreen, and keeps controls isolated", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
+  await page.addInitScript(() => {
+    const playbackCalls = { pause: 0, play: 0 };
+
+    Object.defineProperty(window, "__thiaVideoPlaybackCalls", {
+      configurable: true,
+      value: playbackCalls,
+    });
+    HTMLMediaElement.prototype.play = function play() {
+      playbackCalls.play += 1;
+      return Promise.resolve();
+    };
+    HTMLMediaElement.prototype.pause = function pause() {
+      playbackCalls.pause += 1;
+    };
+  });
   await mockAuthenticatedApi(page);
   let repliesRequested = false;
 
@@ -1352,6 +1369,16 @@ test("uploaded post video controls do not open the thread", async ({ page }) => 
   await expect(videoFrame).toHaveAttribute("data-thread-open-ignore", "true");
   const video = post.getByTestId("post-attachments-0-video");
   await expect(video).toBeVisible();
+  await expect(video).toHaveAttribute("data-focus-autoplay", "true");
+  await expect(video).toHaveJSProperty("muted", true);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as unknown as { __thiaVideoPlaybackCalls: { play: number } })
+          .__thiaVideoPlaybackCalls.play,
+      ),
+    )
+    .toBeGreaterThan(0);
 
   const videoBox = await video.boundingBox();
   expect(videoBox).not.toBeNull();
@@ -1372,6 +1399,17 @@ test("uploaded post video controls do not open the thread", async ({ page }) => 
 
   await post.getByTestId("post-body-open-thread").click({ position: { x: 24, y: 24 } });
   await expect(page.getByTestId("thread-modal")).toBeVisible();
+
+  await page.getByRole("button", { name: "Close thread" }).click();
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as unknown as { __thiaVideoPlaybackCalls: { pause: number } })
+          .__thiaVideoPlaybackCalls.pause,
+      ),
+    )
+    .toBeGreaterThan(0);
 });
 
 test("post body and media hover stay visually flat in Light and Dark", async ({
