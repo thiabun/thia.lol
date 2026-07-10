@@ -110,6 +110,7 @@ const RoomEditModal = lazy(() =>
 );
 
 const maxRoomChatMessageLength = 2000;
+const roomChatRefreshIntervalMs = 8000;
 
 type RoomTab = "feed" | "chat";
 type RoomRulesAction = "join" | "request" | "view";
@@ -865,9 +866,13 @@ function RoomChannelWorkspace({
   const channelsLoadingRef = useRef(false);
   const latestChannelRequestRef = useRef(0);
   const latestMessageRequestRef = useRef(0);
+  const lastRefreshAtRef = useRef(0);
   const messageMutationVersionRef = useRef(0);
+  const messageLoadingChannelSlugRef = useRef<string | undefined>(undefined);
   const messagesLoadingRef = useRef(false);
+  const readAcknowledgementsInFlightRef = useRef(new Set<string>());
   const requestedChannelSlugRef = useRef<string | undefined>(undefined);
+  const runWithAuthRef = useRef(runWithAuth);
   const selectedChannelSlugRef = useRef<string | undefined>(undefined);
   const requestedChannelSlug = sanitizeChannelSlug(searchParams.get("channel"));
   const [channels, setChannels] = useState<RoomChannel[]>([]);
@@ -906,9 +911,13 @@ function RoomChannelWorkspace({
     selectedChannelSlugRef.current = activeChannelSlug;
   }, [activeChannelSlug]);
 
+  useEffect(() => {
+    runWithAuthRef.current = runWithAuth;
+  }, [runWithAuth]);
+
   const loadChannels = useCallback(
-    async (showLoading = true) => {
-      if (!showLoading && channelsLoadingRef.current) {
+    async (showLoading = true, force = false) => {
+      if (channelsLoadingRef.current && !force) {
         return;
       }
 
@@ -916,12 +925,13 @@ function RoomChannelWorkspace({
       latestChannelRequestRef.current = requestId;
 
       if (status !== "authenticated") {
+        channelsLoadingRef.current = false;
         setChannels([]);
         return;
       }
 
+      channelsLoadingRef.current = true;
       if (showLoading) {
-        channelsLoadingRef.current = true;
         setChannelsLoading(true);
       }
       setChannelsError(undefined);
@@ -954,9 +964,12 @@ function RoomChannelWorkspace({
           );
         }
       } finally {
-        if (showLoading && latestChannelRequestRef.current === requestId) {
+        if (latestChannelRequestRef.current === requestId) {
           channelsLoadingRef.current = false;
-          setChannelsLoading(false);
+
+          if (showLoading) {
+            setChannelsLoading(false);
+          }
         }
       }
     },
@@ -968,21 +981,27 @@ function RoomChannelWorkspace({
       const channelSlug = selectedChannelSlugRef.current;
 
       if (status !== "authenticated" || !channelSlug) {
+        messagesLoadingRef.current = false;
+        messageLoadingChannelSlugRef.current = undefined;
         setMessages([]);
         setLoadedMessageChannelSlug(undefined);
         return;
       }
 
-      if (!showLoading && messagesLoadingRef.current) {
+      if (
+        messagesLoadingRef.current &&
+        messageLoadingChannelSlugRef.current === channelSlug
+      ) {
         return;
       }
 
       const requestId = latestMessageRequestRef.current + 1;
       const mutationVersionAtStart = messageMutationVersionRef.current;
       latestMessageRequestRef.current = requestId;
+      messagesLoadingRef.current = true;
+      messageLoadingChannelSlugRef.current = channelSlug;
 
       if (showLoading) {
-        messagesLoadingRef.current = true;
         setMessagesLoading(true);
       }
       setMessagesError(undefined);
@@ -1049,18 +1068,32 @@ function RoomChannelWorkspace({
         setLoadedMessageChannelSlug(channelSlug);
         setChannels((current) => reconcileRoomChannel(current, result.channel));
 
-        void runWithAuth(
-          (csrfToken) => markRoomChannelRead(room.slug, channelSlug, csrfToken),
-          { retryOnCsrf: true },
-        ).then(() => {
-          setChannels((current) =>
-            current.map((channel) =>
-              channel.slug === channelSlug && channel.unreadCount !== 0
-                ? { ...channel, unreadCount: 0 }
-                : channel,
-            ),
-          );
-        }).catch(() => undefined);
+        const readAcknowledgementKey = `${room.slug}:${channelSlug}`;
+
+        if (
+          result.channel.unreadCount > 0 &&
+          !readAcknowledgementsInFlightRef.current.has(readAcknowledgementKey)
+        ) {
+          readAcknowledgementsInFlightRef.current.add(readAcknowledgementKey);
+
+          void runWithAuthRef.current(
+            (csrfToken) => markRoomChannelRead(room.slug, channelSlug, csrfToken),
+            { retryOnCsrf: true },
+          )
+            .then(() => {
+              setChannels((current) =>
+                current.map((channel) =>
+                  channel.slug === channelSlug && channel.unreadCount !== 0
+                    ? { ...channel, unreadCount: 0 }
+                    : channel,
+                ),
+              );
+            })
+            .catch(() => undefined)
+            .finally(() => {
+              readAcknowledgementsInFlightRef.current.delete(readAcknowledgementKey);
+            });
+        }
       } catch (caught) {
         if (
           latestMessageRequestRef.current === requestId &&
@@ -1072,16 +1105,19 @@ function RoomChannelWorkspace({
         }
       } finally {
         if (
-          showLoading &&
           latestMessageRequestRef.current === requestId &&
           selectedChannelSlugRef.current === channelSlug
         ) {
           messagesLoadingRef.current = false;
-          setMessagesLoading(false);
+          messageLoadingChannelSlugRef.current = undefined;
+
+          if (showLoading) {
+            setMessagesLoading(false);
+          }
         }
       }
     },
-    [room.slug, runWithAuth, status],
+    [room.slug, status],
   );
 
   useEffect(() => {
@@ -1093,6 +1129,10 @@ function RoomChannelWorkspace({
       }
 
       latestMessageRequestRef.current += 1;
+      channelsLoadingRef.current = false;
+      messagesLoadingRef.current = false;
+      messageLoadingChannelSlugRef.current = undefined;
+      lastRefreshAtRef.current = 0;
       setChannels([]);
       setMessages([]);
       setLoadedMessageChannelSlug(undefined);
@@ -1120,7 +1160,7 @@ function RoomChannelWorkspace({
 
     queueMicrotask(() => {
       if (active) {
-        void loadChannels(false);
+        void loadChannels(false, true);
       }
     });
 
@@ -1165,6 +1205,7 @@ function RoomChannelWorkspace({
 
   useEffect(() => {
     let active = true;
+    lastRefreshAtRef.current = Date.now();
 
     queueMicrotask(() => {
       if (!active) {
@@ -1172,6 +1213,8 @@ function RoomChannelWorkspace({
       }
 
       latestMessageRequestRef.current += 1;
+      messagesLoadingRef.current = false;
+      messageLoadingChannelSlugRef.current = undefined;
       setMessages([]);
       setLoadedMessageChannelSlug(undefined);
       setMessagesError(undefined);
@@ -1189,19 +1232,67 @@ function RoomChannelWorkspace({
       return undefined;
     }
 
-    const refresh = () => {
-      if (document.visibilityState === "visible") {
-        void loadChannels(false);
-        void loadMessages(false);
-      }
-    };
-    const interval = window.setInterval(refresh, 8000);
+    let timeout: number | undefined;
 
-    window.addEventListener("focus", refresh);
+    const refreshIfStale = () => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+
+      const now = Date.now();
+
+      if (
+        lastRefreshAtRef.current !== 0 &&
+        now - lastRefreshAtRef.current < roomChatRefreshIntervalMs
+      ) {
+        return;
+      }
+
+      lastRefreshAtRef.current = now;
+      void loadChannels(false);
+      void loadMessages(false);
+    };
+
+    const scheduleNextRefresh = () => {
+      if (timeout !== undefined) {
+        window.clearTimeout(timeout);
+      }
+
+      const elapsed = lastRefreshAtRef.current === 0
+        ? 0
+        : Math.max(0, Date.now() - lastRefreshAtRef.current);
+      const delay = document.visibilityState === "visible"
+        ? Math.max(
+            250,
+            roomChatRefreshIntervalMs - Math.min(elapsed, roomChatRefreshIntervalMs),
+          )
+        : roomChatRefreshIntervalMs;
+
+      timeout = window.setTimeout(() => {
+        refreshIfStale();
+        scheduleNextRefresh();
+      }, delay);
+    };
+
+    const handleForeground = () => {
+      refreshIfStale();
+      scheduleNextRefresh();
+    };
+
+    if (lastRefreshAtRef.current !== 0) {
+      refreshIfStale();
+    }
+    scheduleNextRefresh();
+
+    window.addEventListener("focus", handleForeground);
+    document.addEventListener("visibilitychange", handleForeground);
 
     return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", refresh);
+      if (timeout !== undefined) {
+        window.clearTimeout(timeout);
+      }
+      window.removeEventListener("focus", handleForeground);
+      document.removeEventListener("visibilitychange", handleForeground);
     };
   }, [active, activeChannelSlug, loadChannels, loadMessages, status]);
 
@@ -1218,6 +1309,10 @@ function RoomChannelWorkspace({
   }, [messages.length, activeChannelSlug]);
 
   function selectChannel(channel: RoomChannel) {
+    if (selectedChannelSlugRef.current === channel.slug) {
+      return;
+    }
+
     latestMessageRequestRef.current += 1;
     selectedChannelSlugRef.current = channel.slug;
     setActiveChannelSlug(channel.slug);

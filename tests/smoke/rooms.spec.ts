@@ -254,6 +254,7 @@ test("room staff can approve and deny invite access requests", async ({ page }) 
 test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({ page }) => {
   let channelRequests = 0;
   let messageRequests = 0;
+  let readRequests = 0;
   let introductionRequests = 0;
   let releaseInitialChannels: (() => void) | undefined;
   let releaseInitialMessages: (() => void) | undefined;
@@ -267,7 +268,11 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
   let staleRefreshStarted = false;
   let delaySendResponse = false;
   let delayedSendStarted = false;
+  let delaySuccessfulRead = false;
+  let failNextReadForCsrf = false;
   let includeSentMessagesInReads = false;
+  let messageResponseUnreadCount = 0;
+  let successfulReadStarted = false;
   let releaseSendResponse: (() => void) | undefined;
   const sendResponseDelay = new Promise<void>((resolve) => {
     releaseSendResponse = resolve;
@@ -276,6 +281,10 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
   let releaseStaleRefresh: (() => void) | undefined;
   const staleRefreshDelay = new Promise<void>((resolve) => {
     releaseStaleRefresh = resolve;
+  });
+  let releaseSuccessfulRead: (() => void) | undefined;
+  const successfulReadDelay = new Promise<void>((resolve) => {
+    releaseSuccessfulRead = resolve;
   });
   const room = mockRoom({
     slug: "stable-room",
@@ -405,7 +414,7 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
       body: JSON.stringify({
         ok: true,
         data: {
-          channel: { ...channels[0], unreadCount: 0 },
+          channel: { ...channels[0], unreadCount: messageResponseUnreadCount },
           messages: [
             {
               id: 8101,
@@ -460,6 +469,23 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
     });
   });
   await page.route(/\/api\/rooms\/stable-room\/channels\/(general|introductions)\/read$/, async (route) => {
+    readRequests += 1;
+
+    if (failNextReadForCsrf) {
+      failNextReadForCsrf = false;
+      await route.fulfill({
+        status: 403,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: false, error: "CSRF token is invalid." }),
+      });
+      return;
+    }
+
+    if (delaySuccessfulRead) {
+      successfulReadStarted = true;
+      await successfulReadDelay;
+    }
+
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -468,6 +494,19 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
         data: { conversationId: 9701, readAt: "2026-07-10 09:15:01" },
       }),
     });
+  });
+
+  await page.addInitScript(() => {
+    const actualNow = Date.now.bind(Date);
+    let offset = 0;
+    const testWindow = window as Window & {
+      __advanceRoomChatClock?: (milliseconds: number) => void;
+    };
+
+    testWindow.__advanceRoomChatClock = (milliseconds: number) => {
+      offset += milliseconds;
+    };
+    Date.now = () => actualNow() + offset;
   });
 
   await page.goto("/rooms/stable-room");
@@ -497,17 +536,35 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
   await expect.poll(() => messageRequests).toBe(1);
   await page.waitForTimeout(400);
   expect(messageRequests).toBe(1);
+  expect(readRequests).toBe(0);
 
   delayNextGeneralRefresh = true;
-  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await page.evaluate(() => {
+    const testWindow = window as Window & {
+      __advanceRoomChatClock?: (milliseconds: number) => void;
+    };
+
+    for (let index = 0; index < 20; index += 1) {
+      testWindow.__advanceRoomChatClock?.(8001);
+      window.dispatchEvent(new Event("focus"));
+    }
+  });
   await expect.poll(() => staleRefreshStarted).toBe(true);
+  expect(channelRequests).toBe(2);
+  await page.getByLabel("Write a message").fill("Keep the selected-channel draft");
+  await page.getByTestId("room-channel-general").click();
+  expect(messageRequests).toBe(2);
+  await expect(page.getByText("The room chat is stable.")).toBeVisible();
+  await expect(page.getByLabel("Write a message")).toHaveValue("Keep the selected-channel draft");
   await page.getByLabel("Write a message").fill("A polled message must render once");
   await page.getByTestId("room-channel-message-composer").getByRole("button", { name: "Send" }).click();
   await expect(page.getByText("A polled message must render once")).toBeVisible();
   releaseStaleRefresh?.();
   await page.waitForTimeout(150);
+  await expect(page.getByText("The room chat is stable.")).toBeVisible();
   await expect(page.getByText("A polled message must render once")).toBeVisible();
   expect(messageRequests).toBe(2);
+  expect(readRequests).toBe(0);
   includeSentMessagesInReads = true;
 
   await page.getByTestId("room-channel-introductions").click();
@@ -519,11 +576,40 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
   expect(messageRequests).toBe(3);
 
   delaySendResponse = true;
+  delaySuccessfulRead = true;
+  failNextReadForCsrf = true;
+  messageResponseUnreadCount = 1;
   await page.getByLabel("Write a message").fill("A polled message must render once");
   await page.getByTestId("room-channel-message-composer").getByRole("button", { name: "Send" }).click();
   await expect.poll(() => delayedSendStarted).toBe(true);
-  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await page.evaluate(() => {
+    const testWindow = window as Window & {
+      __advanceRoomChatClock?: (milliseconds: number) => void;
+    };
+
+    for (let index = 0; index < 20; index += 1) {
+      testWindow.__advanceRoomChatClock?.(8001);
+      window.dispatchEvent(new Event("focus"));
+    }
+  });
   await expect.poll(() => messageRequests).toBe(4);
+  await expect.poll(() => readRequests).toBe(2);
+  await expect.poll(() => successfulReadStarted).toBe(true);
+  await page.waitForTimeout(300);
+  expect(messageRequests).toBe(4);
+  await page.evaluate(() => {
+    const testWindow = window as Window & {
+      __advanceRoomChatClock?: (milliseconds: number) => void;
+    };
+
+    testWindow.__advanceRoomChatClock?.(8001);
+    window.dispatchEvent(new Event("focus"));
+  });
+  await expect.poll(() => messageRequests).toBe(5);
+  await page.waitForTimeout(300);
+  expect(readRequests).toBe(2);
+  releaseSuccessfulRead?.();
+  messageResponseUnreadCount = 0;
   await expect(page.getByText("A polled message must render once", { exact: true })).toHaveCount(2);
   releaseSendResponse?.();
   await expect(
@@ -535,10 +621,34 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
   await page.getByTestId("room-feed-tab").click();
   await expect(page).toHaveURL(/\/rooms\/stable-room$/);
   await page.waitForTimeout(250);
-  expect(messageRequests).toBe(4);
+  expect(messageRequests).toBe(5);
   await page.getByTestId("room-chat-tab").click();
   await expect(page.getByLabel("Write a message")).toHaveValue("Keep this room draft");
-  expect(messageRequests).toBe(4);
+  expect(messageRequests).toBe(5);
+
+  await page.evaluate(() => {
+    const testWindow = window as Window & {
+      __advanceRoomChatClock?: (milliseconds: number) => void;
+    };
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    });
+    testWindow.__advanceRoomChatClock?.(8001);
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new Event("focus"));
+  });
+  await page.waitForTimeout(150);
+  expect(messageRequests).toBe(5);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect.poll(() => messageRequests).toBe(6);
 
   await page.goto("/rooms/stable-room?channel=general");
   await expect(page.getByTestId("room-chat-tab")).toHaveAttribute("aria-selected", "true");
