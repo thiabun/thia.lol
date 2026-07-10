@@ -889,10 +889,16 @@ test("PostCard author avatar, name, and handle navigate to profile", async ({
   await expect(page.getByRole("heading", { name: "Alex" })).toBeVisible();
 });
 
-test("feed, thread, and profile surfaces render rich text entities without automatic previews", async ({
+test("feed and thread keep provider embeds while generic links stay inline", async ({
   page,
 }) => {
   await mockAuthenticatedApi(page);
+  await page.route(/^https:\/\/www\.youtube-nocookie\.com\/embed\//, (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><html><body>YouTube embed stub</body></html>",
+    }),
+  );
 
   const thia = {
     id: 3,
@@ -970,8 +976,9 @@ test("feed, thread, and profile surfaces render rich text entities without autom
     "href",
     "https://www.youtube.com/watch?v=abc123",
   );
-  await expect(postCard.getByTestId("rich-link-preview")).toHaveCount(0);
-  await expect(page.locator('[data-testid^="rich-link-embed-"]')).toHaveCount(0);
+  await expect(postCard.getByTestId("rich-link-preview")).toHaveCount(1);
+  await expect(postCard.getByTestId("rich-link-embed-youtube")).toBeVisible();
+  await expect(postCard.getByText("Example notes")).toHaveCount(0);
 
   await postCard.getByTestId("rich-mention-link").click();
   await expect(page).toHaveURL(/\/@thia$/);
@@ -997,16 +1004,33 @@ test("feed, thread, and profile surfaces render rich text entities without autom
   await expect(
     dialog.getByTestId("thread-reply-item").getByTestId("rich-inline-link"),
   ).toHaveAttribute("href", "https://example.com/reply");
-  await expect(dialog.getByTestId("rich-link-preview")).toHaveCount(0);
+  await expect(
+    dialog.getByTestId("thread-root-post").getByTestId("rich-link-embed-youtube"),
+  ).toBeVisible();
+  await expect(
+    dialog.getByTestId("thread-reply-item").getByTestId("rich-link-preview"),
+  ).toHaveCount(0);
 });
 
-test("post links without stored cards remain inline without automatic previews", async ({
+test("fallback embeds persist for YouTube, Spotify, Apple Music, and Twitch", async ({
   page,
 }) => {
   await mockAuthenticatedApi(page);
+  await page.route(
+    /^https:\/\/(?:www\.youtube-nocookie\.com|open\.spotify\.com|embed\.music\.apple\.com|player\.twitch\.tv)\//,
+    (route) => route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><html><body>Provider embed stub</body></html>",
+    }),
+  );
 
-  const body = "Watch https://youtu.be/abc123 and read https://example.com/story";
-  const replyBody = "Reply with https://www.youtube.com/shorts/short456";
+  const body = [
+    "Watch https://youtu.be/abc123",
+    "listen https://open.spotify.com/track/spotify123",
+    "play https://music.apple.com/us/album/example/123456789?i=987654321",
+    "and read https://example.com/story",
+  ].join(" ");
+  const replyBody = "Live at https://www.twitch.tv/thiabun";
 
   await page.route("**/api/feed/home", (route) =>
     route.fulfill({
@@ -1033,7 +1057,7 @@ test("post links without stored cards remain inline without automatic previews",
             bodyEntities: [
               richLinkEntityWithoutCard(
                 replyBody,
-                "https://www.youtube.com/shorts/short456",
+                "https://www.twitch.tv/thiabun",
               ),
             ],
           }),
@@ -1049,13 +1073,25 @@ test("post links without stored cards remain inline without automatic previews",
     "href",
     "https://youtu.be/abc123",
   );
-  await expect(postCard.getByTestId("rich-inline-link")).toHaveCount(2);
-  await expect(postCard.getByTestId("rich-inline-link").nth(1)).toHaveAttribute(
+  await expect(postCard.getByTestId("rich-inline-link")).toHaveCount(4);
+  await expect(postCard.getByTestId("rich-inline-link").nth(3)).toHaveAttribute(
     "href",
     "https://example.com/story",
   );
-  await expect(postCard.getByTestId("rich-link-preview")).toHaveCount(0);
-  await expect(page.locator('[data-testid^="rich-link-embed-"]')).toHaveCount(0);
+  await expect(postCard.getByTestId("rich-link-preview")).toHaveCount(3);
+  await expect(postCard.locator('a[data-testid="rich-link-preview"]')).toHaveCount(0);
+  await expect(postCard.getByTestId("rich-link-embed-youtube")).toHaveAttribute(
+    "src",
+    "https://www.youtube-nocookie.com/embed/abc123",
+  );
+  await expect(postCard.getByTestId("rich-link-embed-spotify")).toHaveAttribute(
+    "src",
+    "https://open.spotify.com/embed/track/spotify123?theme=0",
+  );
+  await expect(postCard.getByTestId("rich-link-embed-apple_music")).toHaveAttribute(
+    "src",
+    "https://embed.music.apple.com/us/album/example/123456789?i=987654321",
+  );
 
   await postCard.focus();
   await page.keyboard.press("Enter");
@@ -1063,12 +1099,14 @@ test("post links without stored cards remain inline without automatic previews",
   await expect(dialog).toBeVisible();
   await expect(
     dialog.getByTestId("thread-root-post").getByTestId("rich-inline-link"),
-  ).toHaveCount(2);
+  ).toHaveCount(4);
   await expect(
     dialog.getByTestId("thread-reply-item").getByTestId("rich-inline-link"),
-  ).toHaveAttribute("href", "https://www.youtube.com/shorts/short456");
-  await expect(dialog.getByTestId("rich-link-preview")).toHaveCount(0);
-  await expect(dialog.locator('[data-testid^="rich-link-embed-"]')).toHaveCount(0);
+  ).toHaveAttribute("href", "https://www.twitch.tv/thiabun");
+  await expect(
+    dialog.getByTestId("thread-reply-item").getByTestId("rich-link-embed-twitch"),
+  ).toHaveAttribute("src", /https:\/\/player\.twitch\.tv\/.*channel=thiabun.*parent=/);
+  await expect(dialog.getByTestId("rich-link-preview")).toHaveCount(4);
 });
 
 test("Profile Feed renders API-backed reblogs", async ({ page }) => {

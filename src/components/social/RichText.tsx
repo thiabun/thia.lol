@@ -1,35 +1,55 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { cn } from "../../lib/classNames";
-import type { RichTextEntity } from "../../lib/types";
+import type { RichLinkCard, RichTextEntity } from "../../lib/types";
 
 type RichTextProps = {
   className?: string;
+  embedClassName?: string;
   entities?: RichTextEntity[] | undefined;
   markdown?: boolean;
+  showEmbeds?: boolean;
   text: string;
 };
 
 export function RichText({
   className,
+  embedClassName,
   entities,
   markdown = false,
+  showEmbeds = true,
   text,
 }: RichTextProps) {
   const resolvedEntities =
     entities && entities.length > 0 ? entities : fallbackEntities(text);
   const inlineEntities = normalizedInlineEntities(text, resolvedEntities);
+  const embeds = showEmbeds ? richEmbedItems(inlineEntities).slice(0, 3) : [];
 
-  return markdown ? (
-    <div className={className} data-testid="profile-markdown-rendered">
-      {renderMarkdownRichText(text, inlineEntities)}
-    </div>
-  ) : (
-    <span className={className}>
-      {inlineEntities.length === 0
-        ? text
-        : renderInlineRichText(text, inlineEntities)}
-    </span>
+  return (
+    <>
+      {markdown ? (
+        <div className={className} data-testid="profile-markdown-rendered">
+          {renderMarkdownRichText(text, inlineEntities)}
+        </div>
+      ) : (
+        <span className={className}>
+          {inlineEntities.length === 0
+            ? text
+            : renderInlineRichText(text, inlineEntities)}
+        </span>
+      )}
+      {embeds.length > 0 ? (
+        <div className={cn("grid gap-2", embedClassName ?? "mt-3")}>
+          {embeds.map((embed) => (
+            <RichProviderEmbed
+              key={`${embed.start}:${embed.url}`}
+              card={embed.card}
+              src={embed.src}
+            />
+          ))}
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -676,4 +696,354 @@ function safeHttpsUrl(value: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+type RichEmbedProvider = Extract<
+  RichLinkCard["provider"],
+  "apple_music" | "spotify" | "twitch" | "youtube"
+>;
+
+type RichEmbedItem = {
+  card: RichLinkCard;
+  src: string;
+  start: number;
+  url: string;
+};
+
+function richEmbedItems(entities: RichTextEntity[]): RichEmbedItem[] {
+  const seen = new Set<string>();
+  const items: RichEmbedItem[] = [];
+
+  for (const entity of entities) {
+    if (entity.type !== "link" || seen.has(entity.link.url)) {
+      continue;
+    }
+
+    seen.add(entity.link.url);
+
+    const storedCard = entity.link.card ?? undefined;
+    const storedSrc = storedCard ? safeEmbedSrc(storedCard) : undefined;
+    const fallbackCard = storedSrc
+      ? undefined
+      : fallbackEmbedCardForUrl(entity.link.url);
+    const card = storedSrc ? storedCard : fallbackCard;
+    const src = storedSrc ?? (fallbackCard ? safeEmbedSrc(fallbackCard) : undefined);
+
+    if (!card || !src) {
+      continue;
+    }
+
+    items.push({
+      card,
+      src,
+      start: entity.start,
+      url: entity.link.url,
+    });
+  }
+
+  return items;
+}
+
+function fallbackEmbedCardForUrl(value: string): RichLinkCard | undefined {
+  const safeUrl = safeHttpsUrl(value);
+
+  if (!safeUrl) {
+    return undefined;
+  }
+
+  const url = new URL(safeUrl);
+
+  return (
+    fallbackYouTubeEmbed(url) ??
+    fallbackSpotifyEmbed(url) ??
+    fallbackAppleMusicEmbed(url) ??
+    fallbackTwitchEmbed(url)
+  );
+}
+
+function fallbackYouTubeEmbed(url: URL): RichLinkCard | undefined {
+  const host = normalizedHost(url);
+  const segments = pathSegments(url);
+
+  if (!["youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"].includes(host)) {
+    return undefined;
+  }
+
+  const playlistId = cleanProviderId(url.searchParams.get("list") ?? "");
+  let resourceType = "video";
+  let resourceId = "";
+
+  if (host === "youtu.be") {
+    resourceId = cleanProviderId(segments[0] ?? "");
+  } else if ((segments[0] ?? "") === "watch") {
+    resourceId = cleanProviderId(url.searchParams.get("v") ?? "");
+  } else if (["shorts", "live", "embed"].includes(segments[0] ?? "")) {
+    resourceId = cleanProviderId(segments[1] ?? "");
+  }
+
+  if (!resourceId && playlistId) {
+    resourceType = "playlist";
+    resourceId = playlistId;
+  }
+
+  if (!resourceId) {
+    return undefined;
+  }
+
+  const sourceUrl = resourceType === "playlist"
+    ? `https://www.youtube.com/playlist?list=${encodeURIComponent(resourceId)}`
+    : `https://www.youtube.com/watch?v=${encodeURIComponent(resourceId)}`;
+  const embedSrc = resourceType === "playlist"
+    ? `https://www.youtube-nocookie.com/embed/videoseries?list=${encodeURIComponent(resourceId)}`
+    : `https://www.youtube-nocookie.com/embed/${encodeURIComponent(resourceId)}`;
+
+  return fallbackEmbedCard({
+    embed: {
+      type: "iframe",
+      src: embedSrc,
+      title: resourceType === "playlist" ? "YouTube playlist" : "YouTube video",
+      height: 220,
+      allow: "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share",
+    },
+    provider: "youtube",
+    resourceId,
+    resourceType,
+    sourceUrl,
+    title: resourceType === "playlist" ? "YouTube playlist" : "YouTube video",
+  });
+}
+
+function fallbackSpotifyEmbed(url: URL): RichLinkCard | undefined {
+  if (normalizedHost(url) !== "open.spotify.com") {
+    return undefined;
+  }
+
+  const [resourceType, rawResourceId] = pathSegments(url);
+  const resourceId = cleanProviderId(rawResourceId ?? "");
+  const supportedTypes = new Set(["album", "artist", "episode", "playlist", "show", "track"]);
+
+  if (!resourceType || !supportedTypes.has(resourceType) || !resourceId) {
+    return undefined;
+  }
+
+  return fallbackEmbedCard({
+    embed: {
+      type: "iframe",
+      src: `https://open.spotify.com/embed/${resourceType}/${resourceId}?theme=0`,
+      title: `Spotify ${resourceType}`,
+      height: resourceType === "track" ? 80 : 152,
+      allow: "autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture",
+    },
+    provider: "spotify",
+    resourceId,
+    resourceType,
+    sourceUrl: `https://open.spotify.com/${resourceType}/${resourceId}`,
+    title: `Spotify ${resourceType}`,
+  });
+}
+
+function fallbackAppleMusicEmbed(url: URL): RichLinkCard | undefined {
+  if (!["music.apple.com", "itunes.apple.com"].includes(normalizedHost(url)) || url.pathname === "/") {
+    return undefined;
+  }
+
+  const segments = pathSegments(url);
+  const resourceType = segments.includes("playlist")
+    ? "playlist"
+    : segments.includes("album")
+      ? "album"
+      : "song";
+  const resourceId = cleanProviderId(segments.at(-1) ?? url.searchParams.get("i") ?? "");
+
+  if (!resourceId) {
+    return undefined;
+  }
+
+  return fallbackEmbedCard({
+    embed: {
+      type: "iframe",
+      src: `https://embed.music.apple.com${url.pathname}${url.search}`,
+      title: `Apple Music ${resourceType}`,
+      height: 152,
+      allow: "autoplay; encrypted-media",
+    },
+    provider: "apple_music",
+    resourceId,
+    resourceType,
+    sourceUrl: url.toString(),
+    title: `Apple Music ${resourceType}`,
+  });
+}
+
+function fallbackTwitchEmbed(url: URL): RichLinkCard | undefined {
+  if (normalizedHost(url) !== "twitch.tv") {
+    return undefined;
+  }
+
+  const segments = pathSegments(url);
+  const isVideo = segments[0] === "videos" && Boolean(segments[1]);
+  const resourceType = isVideo ? "video" : "channel";
+  const resourceId = cleanProviderId(isVideo ? segments[1] ?? "" : segments[0] ?? "");
+
+  if (!resourceId) {
+    return undefined;
+  }
+
+  const embedQuery = isVideo ? `video=${resourceId}` : `channel=${resourceId}`;
+
+  return fallbackEmbedCard({
+    embed: {
+      type: "iframe",
+      src: `https://player.twitch.tv/?${embedQuery}&muted=true&autoplay=false`,
+      title: isVideo ? "Twitch video" : "Twitch stream",
+      height: 220,
+      allow: "autoplay; fullscreen; picture-in-picture",
+    },
+    provider: "twitch",
+    resourceId,
+    resourceType,
+    sourceUrl: url.toString(),
+    title: isVideo ? "Twitch video" : "Twitch stream",
+  });
+}
+
+function fallbackEmbedCard({
+  embed,
+  provider,
+  resourceId,
+  resourceType,
+  sourceUrl,
+  title,
+}: {
+  embed: NonNullable<RichLinkCard["embed"]>;
+  provider: RichEmbedProvider;
+  resourceId: string;
+  resourceType: string;
+  sourceUrl: string;
+  title: string;
+}): RichLinkCard {
+  return {
+    provider,
+    resourceType,
+    resourceId,
+    resourceKey: `${provider}:${resourceType}:${resourceId}`,
+    sourceUrl,
+    metadata: {
+      title,
+      subtitle: richEmbedProviderLabel(provider),
+      description: null,
+      imageUrl: null,
+      live: false,
+      stats: {},
+    },
+    embed,
+    apiBacked: false,
+    fetchedAt: null,
+    expiresAt: null,
+    staleAt: null,
+    stale: false,
+    lastError: null,
+  };
+}
+
+function RichProviderEmbed({
+  card,
+  src,
+}: {
+  card: RichLinkCard;
+  src: string;
+}) {
+  return (
+    <span
+      className="block overflow-hidden rounded-card border border-line bg-canvas/60"
+      data-rich-embed-provider={card.provider}
+      data-thread-open-ignore
+      data-testid="rich-link-preview"
+    >
+      <iframe
+        className={cn(
+          "block w-full border-0 bg-black",
+          card.provider === "spotify" || card.provider === "apple_music"
+            ? "bg-transparent"
+            : "aspect-video h-auto",
+        )}
+        title={card.embed?.title ?? `${richEmbedProviderLabel(card.provider as RichEmbedProvider)} embed`}
+        src={src}
+        height={embedHeight(card)}
+        loading="lazy"
+        referrerPolicy="strict-origin-when-cross-origin"
+        sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+        allow={card.embed?.allow}
+        allowFullScreen
+        data-testid={`rich-link-embed-${card.provider}`}
+      />
+    </span>
+  );
+}
+
+function safeEmbedSrc(card: RichLinkCard): string | undefined {
+  const allowedHost = {
+    apple_music: "embed.music.apple.com",
+    spotify: "open.spotify.com",
+    twitch: "player.twitch.tv",
+    youtube: "www.youtube-nocookie.com",
+  }[card.provider as RichEmbedProvider];
+
+  if (!card.embed?.src || !allowedHost) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(card.embed.src);
+
+    if (url.protocol !== "https:" || url.hostname !== allowedHost) {
+      return undefined;
+    }
+
+    if (card.provider === "twitch") {
+      url.searchParams.set(
+        "parent",
+        typeof window === "undefined" ? "thia.lol" : window.location.hostname || "thia.lol",
+      );
+      url.searchParams.set("muted", "true");
+      url.searchParams.set("autoplay", "false");
+    }
+
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function embedHeight(card: RichLinkCard): number {
+  if (card.provider === "spotify") {
+    return card.resourceType === "track" ? 80 : 152;
+  }
+
+  if (card.provider === "apple_music") {
+    return 152;
+  }
+
+  return card.embed?.height ?? 220;
+}
+
+function normalizedHost(url: URL): string {
+  return url.hostname.toLowerCase().replace(/^www\./, "");
+}
+
+function pathSegments(url: URL): string[] {
+  return url.pathname.split("/").filter(Boolean);
+}
+
+function cleanProviderId(value: string): string {
+  return value.replace(/[^A-Za-z0-9_-]/g, "");
+}
+
+function richEmbedProviderLabel(provider: RichEmbedProvider): string {
+  return {
+    apple_music: "Apple Music",
+    spotify: "Spotify",
+    twitch: "Twitch",
+    youtube: "YouTube",
+  }[provider];
 }

@@ -1787,6 +1787,7 @@ function RoomChatMessageBubble({
               text={message.body}
               entities={message.bodyEntities}
               className="block whitespace-pre-wrap break-words"
+              embedClassName="mt-2"
             />
           ) : null}
           {message.attachments?.length ? (

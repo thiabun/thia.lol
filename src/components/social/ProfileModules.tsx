@@ -1193,6 +1193,7 @@ function ProfileModuleContent({
           markdown={markdownTextModule}
           text={module.config.body}
           entities={module.textEntities?.body}
+          showEmbeds={!compact && !slim}
           className={cn(
             "block break-words text-sm leading-6 text-muted",
             slim

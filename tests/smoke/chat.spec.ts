@@ -226,6 +226,13 @@ test("a delayed send cannot overwrite the next conversation or its draft", async
 });
 
 test("authenticated chat renders rich message entities", async ({ page }) => {
+  await page.route(/^https:\/\/www\.youtube-nocookie\.com\/embed\//, async (route) => {
+    await route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><html><body>YouTube embed stub</body></html>",
+    });
+  });
+
   const body =
     "hello @mootfriend with https://example.com/chat and https://www.youtube.com/watch?v=abc123";
   const richConversation = {
@@ -270,8 +277,8 @@ test("authenticated chat renders rich message entities", async ({ page }) => {
     "https://www.youtube.com/watch?v=abc123",
   );
   await expect(messages.getByText("Chat card")).toHaveCount(0);
-  await expect(messages.getByTestId("rich-link-preview")).toHaveCount(0);
-  await expect(messages.locator('[data-testid^="rich-link-embed-"]')).toHaveCount(0);
+  await expect(messages.getByTestId("rich-link-preview")).toHaveCount(1);
+  await expect(messages.getByTestId("rich-link-embed-youtube")).toBeVisible();
 });
 
 test("authenticated chat renders post attachments", async ({ page }) => {
