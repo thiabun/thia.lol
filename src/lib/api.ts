@@ -1258,7 +1258,7 @@ export function getProfileIntegrationDiagnostics(): Promise<ProfileIntegrationDi
 export function startProfileIntegration(
   provider: ProfileIntegrationProvider,
   csrfToken: string,
-  redirectPath = "/settings",
+  redirectPath = "/settings/connections",
 ): Promise<StartProfileIntegrationResult> {
   return apiPost<StartProfileIntegrationResult>(
     `/me/integrations/${provider}/start`,

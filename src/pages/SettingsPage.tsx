@@ -7,6 +7,7 @@ import {
   FileText,
   Fingerprint,
   KeyRound,
+  Link2,
   Lock,
   Mail,
   Pencil,
@@ -22,7 +23,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate } from "react-router";
 import { PageMeta } from "../components/PageMeta";
 import { DesktopNotificationsCard } from "../components/notifications/DesktopNotificationsCard";
-import { Button } from "../components/ui/Button";
+import { Button, ButtonLink } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { ModalSheet } from "../components/ui/ModalSheet";
 import { Panel } from "../components/ui/Panel";
@@ -425,6 +426,32 @@ export function SettingsPage() {
                 actionLabel="Change handle"
                 onEdit={() => setIdentityEditor("handle")}
               />
+            </div>
+          </SettingsSection>
+
+          <SettingsSection
+            id="connections"
+            title="Connections"
+            kicker="Linked accounts"
+            icon={Link2}
+          >
+            <div className="flex flex-col gap-3 rounded-control border border-line bg-surface/60 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-text">Provider accounts</h3>
+                <p className="mt-1 text-sm leading-5 text-muted">
+                  Manage Spotify, YouTube, Twitch, and GitHub in one place.
+                </p>
+              </div>
+              <ButtonLink
+                className="shrink-0 self-start sm:self-auto"
+                to="/settings/connections"
+                size="sm"
+                variant="secondary"
+                icon={<Link2 aria-hidden="true" size={15} />}
+                data-testid="settings-manage-connections"
+              >
+                Manage Connections
+              </ButtonLink>
             </div>
           </SettingsSection>
 

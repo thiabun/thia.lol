@@ -255,7 +255,7 @@ describe("integration OAuth music flows", () => {
     });
 
     expect(redirect.location).toBe(
-      "https://thia.lol/settings?integrationProvider=spotify&integrationStatus=connected",
+      "https://thia.lol/settings/connections?integrationProvider=spotify&integrationStatus=connected",
     );
     expect(pool.accounts.get("42:spotify")).toMatchObject({
       provider: "spotify",
@@ -293,13 +293,26 @@ describe("integration OAuth music flows", () => {
     });
 
     expect(redirect.location).toBe(
-      "https://thia.lol/settings?integrationProvider=spotify&integrationStatus=error&integrationError=oauth_callback_failed",
+      "https://thia.lol/settings/connections?integrationProvider=spotify&integrationStatus=error&integrationError=oauth_callback_failed",
     );
     expect(pool.oauthStates[0]?.consumed_at).not.toBeNull();
     expect(pool.accounts.size).toBe(0);
     expect(callbackErrors).toEqual([
       { provider: "spotify", stage: "token_exchange" },
     ]);
+  });
+
+  it("returns invalid OAuth states to the canonical Connections page", async () => {
+    const repository = createTestRepository(new FakeIntegrationPool());
+
+    const redirect = await repository.oauthCallback("github", {
+      state: "expired-state",
+      code: "github-code",
+    });
+
+    expect(redirect.location).toBe(
+      "https://thia.lol/settings/connections?integrationProvider=github&integrationStatus=error&integrationError=invalid_or_expired_state",
+    );
   });
 
   it("returns YouTube playlist music suggestions from a connected account", async () => {

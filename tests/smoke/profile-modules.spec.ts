@@ -2151,6 +2151,7 @@ test("public logged-out users do not see profile edit controls", async ({ page }
   await page.goto("/@thia");
 
   await expect(page.getByTestId("profile-edit-button")).toHaveCount(0);
+  await expect(page.getByTestId("profile-manage-connections-button")).toHaveCount(0);
   await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
 });
 

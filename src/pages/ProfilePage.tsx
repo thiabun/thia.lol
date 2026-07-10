@@ -5,6 +5,7 @@ import {
   CalendarDays,
   Heart,
   ImagePlus,
+  Link2,
   MessageCircle,
   MoreHorizontal,
   Music2,
@@ -2816,7 +2817,7 @@ function ProfileTransitionEditor({
 }: ProfileTransitionEditorProps) {
   if (!editing) {
     return (
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         {error ? (
           <p className="text-sm font-medium text-rose-ink" role="alert">
             {error}
@@ -2833,6 +2834,15 @@ function ProfileTransitionEditor({
         >
           {busy ? "Opening" : "Edit profile"}
         </Button>
+        <ButtonLink
+          to="/settings/connections"
+          size="sm"
+          variant="secondary"
+          data-testid="profile-manage-connections-button"
+          icon={<Link2 aria-hidden="true" size={16} />}
+        >
+          Manage Connections
+        </ButtonLink>
       </div>
     );
   }

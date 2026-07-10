@@ -32,6 +32,14 @@ test("settings separates readouts and confirms bulk content deletion", async ({
   await expect(page.getByText("Follow requests")).toHaveCount(0);
   await expect(page.getByText("5/5 enabled")).toHaveCount(0);
 
+  const connections = page.locator("#connections");
+  await expect(connections.getByRole("heading", { name: "Connections" })).toBeVisible();
+  await expect(connections).toContainText("Spotify, YouTube, Twitch, and GitHub");
+  await expect(connections.getByTestId("settings-manage-connections")).toHaveAttribute(
+    "href",
+    "/settings/connections",
+  );
+
   const content = page.locator("#content");
   await expect(content).toContainText("Posts and replies");
   await expect(content).toContainText("First post to delete.");

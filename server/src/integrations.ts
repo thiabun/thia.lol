@@ -373,7 +373,7 @@ class MysqlIntegrationsRepository implements IntegrationsRepository {
     }
 
     if (stateRow === null) {
-      return this.redirectToApp("/settings", {
+      return this.redirectToApp("/settings/connections", {
         integrationProvider: provider,
         integrationStatus: "error",
         integrationError: "invalid_or_expired_state",
@@ -2150,12 +2150,14 @@ function rejectUnknownKeys(body: Record<string, unknown>, allowed: string[]): vo
 
 function redirectPathFromValue(value: unknown): string {
   if (typeof value !== "string" || value === "") {
-    return "/settings";
+    return "/settings/connections";
   }
 
   const trimmed = value.trim();
 
-  return /^\/[a-zA-Z0-9/_@?.=&%-]{0,240}$/u.test(trimmed) ? trimmed : "/settings";
+  return /^\/[a-zA-Z0-9/_@?.=&%-]{0,240}$/u.test(trimmed)
+    ? trimmed
+    : "/settings/connections";
 }
 
 function oauthErrorCode(value: unknown, fallback: string): string {

@@ -28,6 +28,9 @@ test("profile canvas editor replaces the retired customization modal", async ({ 
   await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Edit personal space" })).toHaveCount(0);
   await expect(page.getByTestId("profile-edit-button")).toBeVisible();
+  const manageConnections = page.getByTestId("profile-manage-connections-button");
+  await expect(manageConnections).toBeVisible();
+  await expect(manageConnections).toHaveAttribute("href", "/settings/connections");
   await page.getByTestId("profile-edit-button").click();
   await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
   await expect(page.getByTestId("profile-editor")).toHaveCount(0);
@@ -203,6 +206,7 @@ test("mobile profile stays stable with compact profile editor", async ({ page })
 
   await expect(page.getByRole("button", { name: "Customize profile" })).toHaveCount(0);
   await expect(page.getByTestId("profile-edit-button")).toBeVisible();
+  await expect(page.getByTestId("profile-manage-connections-button")).toBeVisible();
   await page.getByTestId("profile-edit-button").click();
   await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
   await expect(page.getByTestId("profile-editor")).toHaveCount(0);

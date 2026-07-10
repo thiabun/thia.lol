@@ -13,6 +13,11 @@ const AuthPage = lazy(() =>
 const ChatPage = lazy(() =>
   import("./pages/ChatPage").then((module) => ({ default: module.ChatPage })),
 );
+const ConnectionsPage = lazy(() =>
+  import("./pages/ConnectionsPage").then((module) => ({
+    default: module.ConnectionsPage,
+  })),
+);
 const DiscoverPage = lazy(() =>
   import("./pages/DiscoverPage").then((module) => ({
     default: module.DiscoverPage,
@@ -92,6 +97,7 @@ export default function App() {
           <Route path="chat" element={<RouteSuspense><ChatPage /></RouteSuspense>} />
           <Route path="notifications" element={<RouteSuspense><NotificationsPage /></RouteSuspense>} />
           <Route path="settings" element={<RouteSuspense><SettingsPage /></RouteSuspense>} />
+          <Route path="settings/connections" element={<RouteSuspense><ConnectionsPage /></RouteSuspense>} />
           <Route path="onboarding" element={<RouteSuspense><OnboardingPage /></RouteSuspense>} />
           <Route path=":profileHandle/posts/:postId" element={<RouteSuspense><PostPage /></RouteSuspense>} />
           <Route path="@/:handle" element={<RouteSuspense><ProfilePage /></RouteSuspense>} />
