@@ -248,6 +248,7 @@ test("profile renders public modules safely", async ({ page }) => {
   await expect(
     section.getByTestId("profile-grid-module-about").getByTestId("rich-inline-link"),
   ).toHaveAttribute("href", "https://example.com/notes");
+  await expect(section.getByTestId("rich-link-preview")).toHaveCount(0);
   await expect(section.getByRole("link", { name: "Personal site" })).toHaveAttribute(
     "href",
     "https://example.com/",
@@ -6327,8 +6328,11 @@ test("profile text modules use the Markdown editor and preview", async ({ page }
   ).toBeVisible();
   await expect(editor.getByTestId("profile-markdown-preview").getByText("Listen")).toBeVisible();
   await expect(
+    editor.getByTestId("profile-markdown-preview").getByRole("link", { name: "Listen" }),
+  ).toHaveAttribute("href", "https://example.com/music");
+  await expect(
     editor.getByTestId("profile-markdown-preview").getByTestId("rich-link-preview"),
-  ).toBeVisible();
+  ).toHaveCount(0);
 });
 
 test("public profile text modules render safe Markdown", async ({ page }) => {

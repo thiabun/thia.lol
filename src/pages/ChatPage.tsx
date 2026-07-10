@@ -1201,7 +1201,6 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
             text={message.body}
             entities={message.bodyEntities}
             className="block whitespace-pre-wrap break-words"
-            previewClassName="mt-2"
           />
           {message.attachments?.length ? (
             <div className="mt-2 space-y-2" data-testid="chat-message-attachments">

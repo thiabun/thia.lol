@@ -431,6 +431,29 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
                 avatarUrl: null,
               },
             },
+            {
+              id: 8102,
+              conversationId: 9701,
+              body: "Room link https://example.com/room",
+              bodyEntities: [
+                {
+                  type: "link",
+                  start: 10,
+                  length: 24,
+                  text: "https://example.com/room",
+                  link: { url: "https://example.com/room" },
+                },
+              ],
+              attachments: [],
+              deletedAt: null,
+              createdAt: "2026-07-10 09:15:30",
+              sender: {
+                id: 10,
+                handle: "mira",
+                displayName: "Mira",
+                avatarUrl: null,
+              },
+            },
             ...(includeSentMessagesInReads ? sentMessages : []),
           ],
         },
@@ -532,6 +555,12 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
   await expect(page.getByTestId("room-channel-settings")).toHaveCount(0);
   await expect(page.locator("#room-feed-panel")).toBeHidden();
   await expect(page.getByText("The room chat is stable.")).toBeVisible();
+  const roomMessageList = page.getByTestId("room-channel-message-list");
+  await expect(roomMessageList.getByTestId("rich-inline-link")).toHaveAttribute(
+    "href",
+    "https://example.com/room",
+  );
+  await expect(roomMessageList.getByTestId("rich-link-preview")).toHaveCount(0);
   expect(channelRequests).toBe(1);
   await expect.poll(() => messageRequests).toBe(1);
   await page.waitForTimeout(400);
@@ -670,7 +699,7 @@ test("joining waits for explicit rules agreement and rules remain available", as
     mockRoom({
       slug: "rules-room",
       name: "Rules Room",
-      rules: "1. Be kind.\n2. Stay on topic.",
+      rules: "1. Be kind.\n2. Stay on topic.\n\n[Read the guide](https://example.com/rules)",
       rulesVersion: 4,
       joinedByMe: joined,
       myRoomRole: joined ? "member" : null,
@@ -718,6 +747,11 @@ test("joining waits for explicit rules agreement and rules remain available", as
   const modal = page.getByTestId("room-rules-modal");
   await expect(modal).toBeVisible();
   await expect(modal.getByText("Be kind.")).toBeVisible();
+  await expect(modal.getByRole("link", { name: "Read the guide" })).toHaveAttribute(
+    "href",
+    "https://example.com/rules",
+  );
+  await expect(modal.getByTestId("rich-link-preview")).toHaveCount(0);
   await expect(modal.getByRole("button", { name: "Agree & join" })).toBeDisabled();
   expect(joinPayloads).toHaveLength(0);
 

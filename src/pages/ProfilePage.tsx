@@ -5643,7 +5643,7 @@ function ProfileInfoBio({
       data-testid="profile-bio"
       title={bio}
     >
-      <RichText text={bio} entities={entities} showPreviews={false} />
+      <RichText text={bio} entities={entities} />
     </p>
   );
 }
@@ -5801,7 +5801,6 @@ function FeaturedPostCard({ post }: { post: Post }) {
           text={post.body}
           entities={post.bodyEntities}
           markdown={post.bodyFormat === "markdown"}
-          showPreviews={false}
         />
       </div>
       {post.mediaUrl && post.mediaUrl !== "/ambient-veil.webp" ? (
