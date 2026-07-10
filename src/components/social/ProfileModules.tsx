@@ -406,6 +406,8 @@ function profileModuleMobileStackSize(
 
   if (
     module.type === "creator_live" ||
+    (module.type === "twitch_channel" &&
+      module.config.displayMode === "stream_chat") ||
     module.type === "uploaded_video"
   ) {
     return "6x5";
@@ -440,7 +442,7 @@ function profileModuleMobileStackHeightClass(module: ProfileModule): string {
   }
 
   if (
-    module.type === "creator_live" &&
+    (module.type === "creator_live" || module.type === "twitch_channel") &&
     module.config.displayMode === "stream_chat"
   ) {
     return "h-[clamp(34rem,78dvh,46rem)]";

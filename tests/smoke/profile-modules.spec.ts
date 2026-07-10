@@ -5351,12 +5351,17 @@ test.describe("mobile profile companion experience", () => {
   test("Twitch Stream and Chat keep a tall stable mobile workspace", async ({ page }) => {
     await mockProfileModules(page, {
       authenticated: false,
-      modules: [twitchStreamChatModule()],
+      modules: [
+        {
+          ...twitchStreamChatModule(),
+          type: "twitch_channel",
+        },
+      ],
     });
     await acknowledgeCookieNotice(page);
     await page.goto("/@thia");
 
-    const creator = page.getByTestId("profile-grid-module-creator_live");
+    const creator = page.getByTestId("profile-grid-module-twitch_channel");
     await expect(creator).toBeVisible();
     const streamHeight = await creator.evaluate(
       (element) => element.getBoundingClientRect().height,
