@@ -767,7 +767,13 @@ function providerImageUrlAllowed(value: string): boolean {
     "yt3.ggpht.com",
   ]);
 
-  return exactHosts.has(host) || host === "mzstatic.com" || host.endsWith(".mzstatic.com");
+  return (
+    exactHosts.has(host) ||
+    host === "mzstatic.com" ||
+    host.endsWith(".mzstatic.com") ||
+    host === "klipy.com" ||
+    host.endsWith(".klipy.com")
+  );
 }
 
 function allowedImageContentType(contentType: string): boolean {

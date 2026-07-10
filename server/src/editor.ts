@@ -1,4 +1,5 @@
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
+import { displayNameMaxLength } from "./display-names.js";
 
 import {
   hashPhpPassword,
@@ -284,7 +285,7 @@ class MysqlEditorRepository implements EditorRepository {
     let bioForTextEntities: string | null | undefined;
 
     addUpdate(updates, params, "display_name", bodyValue(body, "displayName", "display_name"), (value) =>
-      validateVisibleText(value, 1, 120, "Display name"),
+      validateVisibleText(value, 1, displayNameMaxLength, "Display name"),
     );
     if ("bio" in body) {
       const bio = validateNullableText(body.bio, 1000, "Bio");

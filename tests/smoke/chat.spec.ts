@@ -245,6 +245,57 @@ test("authenticated chat renders post attachments", async ({ page }) => {
   );
 });
 
+test("chat GIF picker shows an unavailable KLIPY state", async ({ page }) => {
+  await mockAuthenticatedChat(page);
+  await mockGifSearch(page, { available: false, items: [] });
+  await page.goto("/chat?conversation=10");
+
+  await page.getByRole("button", { name: "Add GIF" }).click();
+
+  await expect(page.getByText("KLIPY unavailable")).toBeVisible();
+  await expect(page.getByText("GIF search is unavailable.")).toBeVisible();
+});
+
+test("chat GIF picker selects and sends provider-backed GIF attachments", async ({
+  page,
+}) => {
+  let sendBody: Record<string, unknown> | undefined;
+  await mockAuthenticatedChat(page, {
+    onSendMessage: async (body) => {
+      sendBody = body as Record<string, unknown>;
+    },
+  });
+  await mockGifSearch(page, {
+    available: true,
+    items: [mockGifResult],
+  });
+  await page.goto("/chat?conversation=10");
+
+  await page.getByRole("button", { name: "Add GIF" }).click();
+  await expect(page.getByTestId("gif-picker-results")).toBeVisible();
+  await page.getByRole("button", { name: "Select GIF Wave" }).click();
+
+  await expect(page.getByTestId("chat-selected-gifs")).toContainText("KLIPY");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  expect(sendBody).toMatchObject({
+    attachments: [
+      {
+        type: "gif",
+        provider: "klipy",
+        resourceType: "gif",
+        resourceId: "gif-1",
+        resourceKey: "klipy:gif-1",
+        url: "https://media.klipy.example/gif-1.gif",
+      },
+    ],
+  });
+  await expect(page.getByTestId("chat-gif-attachment")).toHaveAttribute(
+    "href",
+    "https://klipy.example/gif-1",
+  );
+});
+
 test("chat composer inserts mention suggestions", async ({ page }) => {
   await mockAuthenticatedChat(page);
   await page.route("**/api/search?**", async (route) => {
@@ -652,6 +703,7 @@ type MockAuthenticatedChatOptions = {
   conversations?: typeof mockConversation[];
   moots?: typeof mockMoot[];
   onCreateConversation?: (body: unknown) => Promise<typeof mockConversation>;
+  onSendMessage?: (body: unknown) => Promise<void>;
 };
 
 async function mockAuthenticatedChat(
@@ -801,13 +853,18 @@ async function mockAuthenticatedChat(
     const messages = messagesForConversation(conversation);
 
     if (route.request().method() === "POST") {
-      const requestBody = route.request().postDataJSON() as { body?: unknown };
+      const requestBody = route.request().postDataJSON() as {
+        attachments?: unknown;
+        body?: unknown;
+      };
+      await options.onSendMessage?.(requestBody);
+      const attachments = chatAttachmentsFromRequest(requestBody.attachments);
       const message = {
         id: 900 + messages.length,
         conversationId: conversation.id,
         body: typeof requestBody.body === "string" ? requestBody.body : "",
         bodyEntities: [],
-        attachments: [],
+        attachments,
         deletedAt: null,
         createdAt: "2026-06-10 10:05:00",
         sender: currentUser,
@@ -879,6 +936,100 @@ function chatConversationIdFromUrl(url: string): number {
   const match = new URL(url).pathname.match(/\/chat\/conversations\/(\d+)\//);
 
   return match ? Number(match[1]) : 10;
+}
+
+async function mockGifSearch(
+  page: Page,
+  result: { available: boolean; items: unknown[] },
+) {
+  await page.route("https://media.klipy.example/**", async (route) => {
+    await route.fulfill({
+      contentType: "image/gif",
+      body: Buffer.from(transparentGifBase64, "base64"),
+    });
+  });
+
+  await page.route("**/api/gifs/trending**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          available: result.available,
+          provider: "klipy",
+          query: null,
+          next: null,
+          items: result.items,
+        },
+      }),
+    });
+  });
+
+  await page.route("**/api/gifs/search**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          available: result.available,
+          provider: "klipy",
+          query: "wave",
+          next: null,
+          items: result.items,
+        },
+      }),
+    });
+  });
+}
+
+function chatAttachmentsFromRequest(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((attachment) => {
+    if (!plainRecord(attachment) || attachment.type !== "gif") {
+      return [];
+    }
+
+    const card = plainRecord(attachment.card) ? attachment.card : null;
+
+    return [
+      {
+        type: "gif",
+        gif: {
+          provider: "klipy",
+          resourceType: "gif",
+          resourceId: stringValue(attachment.resourceId),
+          resourceKey: stringValue(attachment.resourceKey),
+          url: stringValue(attachment.url),
+          previewUrl: stringValue(card?.previewUrl) || stringValue(attachment.url),
+          mime: "image/gif",
+          width: numberOrNull(attachment.width),
+          height: numberOrNull(attachment.height),
+          sourceUrl: stringValue(attachment.sourceUrl) || null,
+          title: stringValue(card?.title) || "KLIPY GIF",
+          card,
+        },
+      },
+    ];
+  });
+}
+
+function plainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function numberOrNull(value: unknown): number | null {
+  const number = Number(value);
+
+  return Number.isFinite(number) ? number : null;
 }
 
 async function mockProfileRoutes(
@@ -1103,6 +1254,32 @@ const mockUnreadConversation = {
     },
   },
 };
+
+const mockGifResult = {
+  id: "gif-1",
+  title: "Wave",
+  provider: "klipy",
+  resourceType: "gif",
+  resourceId: "gif-1",
+  resourceKey: "klipy:gif-1",
+  url: "https://media.klipy.example/gif-1.gif",
+  previewUrl: "https://media.klipy.example/gif-1-small.gif",
+  mime: "image/gif",
+  width: 320,
+  height: 180,
+  sourceUrl: "https://klipy.example/gif-1",
+  card: {
+    provider: "klipy",
+    title: "Wave",
+    previewUrl: "https://media.klipy.example/gif-1-small.gif",
+    url: "https://media.klipy.example/gif-1.gif",
+    sourceUrl: "https://klipy.example/gif-1",
+    width: 320,
+    height: 180,
+  },
+};
+
+const transparentGifBase64 = "R0lGODlhAQABAAAAACwAAAAAAQABAAA=";
 
 const mockMoot = {
   id: 2,

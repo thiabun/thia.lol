@@ -6,6 +6,7 @@ import type {
   ChatMessage,
   ChatMessagesResult,
   ChatMoot,
+  GifSearchResponse,
   HomeFeed,
   NotificationItem,
   NotificationsResult,
@@ -37,6 +38,8 @@ import type {
   RichTextEntity,
   Room,
   RoomAccessRequest,
+  RoomChannel,
+  RoomChannelMessagesResult,
   RoomMember,
   RoomVisibility,
   SearchResults,
@@ -206,6 +209,20 @@ export type PostAttachmentInput = Pick<
 export type SharePostToMessagesInput = {
   recipientUserIds: number[];
   note?: string;
+};
+
+export type ChatMessageAttachmentInput = {
+  type: "gif";
+  provider: "klipy";
+  resourceType: "gif";
+  resourceId: string;
+  resourceKey: string;
+  url: string;
+  mime: "image/gif";
+  width?: number | null;
+  height?: number | null;
+  sourceUrl?: string | null;
+  card?: Record<string, unknown> | unknown[] | null;
 };
 
 export type SharePostToMessagesResult = {
@@ -989,6 +1006,44 @@ export function getRoomMembers(slug: string): Promise<RoomMember[]> {
   return apiGet<RoomMember[]>(`/rooms/${encodeURIComponent(slug)}/members`);
 }
 
+export function getRoomChannels(slug: string): Promise<RoomChannel[]> {
+  return apiGet<RoomChannel[]>(`/rooms/${encodeURIComponent(slug)}/channels`);
+}
+
+export function createRoomChannel(
+  slug: string,
+  input: {
+    name: string;
+    slug?: string;
+    description?: string | null;
+    kind?: "chat" | "announcement";
+    readOnly?: boolean;
+  },
+  csrfToken: string,
+): Promise<RoomChannel> {
+  return apiPost<RoomChannel>(
+    `/rooms/${encodeURIComponent(slug)}/channels`,
+    input,
+    csrfToken,
+  );
+}
+
+export function updateRoomChannel(
+  roomSlug: string,
+  channelSlug: string,
+  input: Partial<Pick<RoomChannel, "name" | "description" | "position" | "kind" | "readOnly">> & {
+    slug?: string;
+    archived?: boolean;
+  },
+  csrfToken: string,
+): Promise<RoomChannel> {
+  return apiPatch<RoomChannel>(
+    `/rooms/${encodeURIComponent(roomSlug)}/channels/${encodeURIComponent(channelSlug)}`,
+    input,
+    csrfToken,
+  );
+}
+
 export function addRoomMember(
   slug: string,
   handle: string,
@@ -1508,6 +1563,50 @@ export function uploadAudio(
   return apiUpload<UploadedAudio>("/uploads/audio", formData, csrfToken);
 }
 
+export function getTrendingGifs(options: { cursor?: string | null; limit?: number } = {}): Promise<GifSearchResponse> {
+  const params = new URLSearchParams();
+
+  if (options.cursor) {
+    params.set("pos", options.cursor);
+  }
+
+  if (options.limit) {
+    params.set("limit", String(options.limit));
+  }
+
+  const query = params.toString();
+
+  return apiGet<GifSearchResponse>(`/gifs/trending${query ? `?${query}` : ""}`);
+}
+
+export function searchGifs(
+  query: string,
+  options: { cursor?: string | null; limit?: number } = {},
+): Promise<GifSearchResponse> {
+  const params = new URLSearchParams({ q: query });
+
+  if (options.cursor) {
+    params.set("pos", options.cursor);
+  }
+
+  if (options.limit) {
+    params.set("limit", String(options.limit));
+  }
+
+  return apiGet<GifSearchResponse>(`/gifs/search?${params.toString()}`);
+}
+
+export function getGif(id: string): Promise<GifSearchResponse["items"][number]> {
+  return apiGet<GifSearchResponse["items"][number]>(`/gifs/${encodeURIComponent(id)}`);
+}
+
+export function registerGifShare(id: string, query?: string): Promise<{ registered: boolean }> {
+  return apiPost<{ registered: boolean }>(
+    `/gifs/${encodeURIComponent(id)}/share`,
+    query ? { q: query } : {},
+  );
+}
+
 export function updateMyProfile(
   input: UpdateProfileInput,
   csrfToken: string,
@@ -1984,10 +2083,11 @@ export function sendChatMessage(
   conversationId: number,
   body: string,
   csrfToken: string,
+  attachments: ChatMessageAttachmentInput[] = [],
 ): Promise<ChatMessage> {
   return apiPost<ChatMessage>(
     `/chat/conversations/${conversationId}/messages`,
-    { body },
+    { body, attachments },
     csrfToken,
   ).then(normalizeChatMessage);
 }
@@ -1998,6 +2098,44 @@ export function markChatConversationRead(
 ): Promise<ChatReadResult> {
   return apiPost<ChatReadResult>(
     `/chat/conversations/${conversationId}/read`,
+    {},
+    csrfToken,
+  );
+}
+
+export function getRoomChannelMessages(
+  roomSlug: string,
+  channelSlug: string,
+): Promise<RoomChannelMessagesResult> {
+  return apiGet<RoomChannelMessagesResult>(
+    `/rooms/${encodeURIComponent(roomSlug)}/channels/${encodeURIComponent(channelSlug)}/messages`,
+  ).then((result) => ({
+    ...result,
+    messages: result.messages.map(normalizeChatMessage),
+  }));
+}
+
+export function sendRoomChannelMessage(
+  roomSlug: string,
+  channelSlug: string,
+  body: string,
+  csrfToken: string,
+  attachments: ChatMessageAttachmentInput[] = [],
+): Promise<ChatMessage> {
+  return apiPost<ChatMessage>(
+    `/rooms/${encodeURIComponent(roomSlug)}/channels/${encodeURIComponent(channelSlug)}/messages`,
+    { body, attachments },
+    csrfToken,
+  ).then(normalizeChatMessage);
+}
+
+export function markRoomChannelRead(
+  roomSlug: string,
+  channelSlug: string,
+  csrfToken: string,
+): Promise<ChatReadResult> {
+  return apiPost<ChatReadResult>(
+    `/rooms/${encodeURIComponent(roomSlug)}/channels/${encodeURIComponent(channelSlug)}/read`,
     {},
     csrfToken,
   );
@@ -3619,6 +3757,10 @@ function normalizePost(post: ApiPost): Post {
     },
   };
 
+  if (post.profile) {
+    normalized.profile = normalizeProfile(post.profile);
+  }
+
   if (post.publicId) {
     normalized.publicId = post.publicId;
   }
@@ -3661,7 +3803,7 @@ function normalizePostAttachment(value: unknown, fallbackPosition: number): Post
   const attachment = value as Record<string, unknown>;
   const kind = attachment.kind;
 
-  if (kind !== "image" && kind !== "video" && kind !== "audio" && kind !== "integration") {
+  if (kind !== "image" && kind !== "video" && kind !== "audio" && kind !== "integration" && kind !== "gif") {
     return undefined;
   }
 

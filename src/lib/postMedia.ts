@@ -6,6 +6,7 @@ import type {
   UploadedVideo,
 } from "./api";
 import type { Post, ProfileIntegrationCard } from "./types";
+import type { GifSearchResult } from "./types";
 
 export type PostUploadedMediaDraft = {
   mime: string;
@@ -29,6 +30,17 @@ export type PostMediaDraft =
       resourceType: string;
       sourceUrl: string;
       type: "integration";
+    }
+  | {
+      card: Record<string, unknown> | unknown[] | null;
+      height?: number | null;
+      provider: "klipy";
+      resourceId: string;
+      resourceKey: string;
+      sourceUrl?: string | null;
+      type: "gif";
+      url: string;
+      width?: number | null;
     };
 
 export function postMediaDraftFromImage(upload: UploadedImage): PostMediaDraft {
@@ -75,6 +87,20 @@ export function postMediaDraftFromIntegration(card: ProfileIntegrationCard): Pos
   };
 }
 
+export function postMediaDraftFromGif(gif: GifSearchResult): PostMediaDraft {
+  return {
+    card: gif.card ?? null,
+    height: gif.height ?? null,
+    provider: "klipy",
+    resourceId: gif.resourceId,
+    resourceKey: gif.resourceKey,
+    sourceUrl: gif.sourceUrl ?? null,
+    type: "gif",
+    url: gif.url,
+    width: gif.width ?? null,
+  };
+}
+
 export function postMediaInputFromDraft(
   media: PostMediaDraft | PostMediaDraft[] | undefined,
 ): Pick<CreatePostInput, "attachments" | "mediaUrl" | "mediaType" | "mediaMime" | "mediaPosterUrl"> {
@@ -94,6 +120,22 @@ export function postMediaInputFromDraft(
         resourceId: attachment.resourceId,
         resourceKey: attachment.resourceKey,
         sourceUrl: attachment.sourceUrl,
+        card: attachment.card,
+      };
+    }
+
+    if (attachment.type === "gif") {
+      return {
+        kind: "gif",
+        url: attachment.url,
+        mime: "image/gif",
+        width: attachment.width ?? null,
+        height: attachment.height ?? null,
+        provider: attachment.provider,
+        resourceType: "gif",
+        resourceId: attachment.resourceId,
+        resourceKey: attachment.resourceKey,
+        sourceUrl: attachment.sourceUrl ?? null,
         card: attachment.card,
       };
     }

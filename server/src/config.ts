@@ -69,6 +69,10 @@ const envSchema = z.object({
   THIA_INTEGRATION_GITHUB_REDIRECT_URI: z.string().default(""),
   THIA_INTEGRATION_APPLE_MUSIC_DEVELOPER_TOKEN: z.string().default(""),
   THIA_INTEGRATION_APPLE_MUSIC_STOREFRONT: z.string().default("us"),
+  THIA_KLIPY_API_KEY: z.string().default(""),
+  THIA_KLIPY_API_BASE_URL: z.string().url().default("https://api.klipy.com/v2"),
+  THIA_KLIPY_COUNTRY: z.string().min(1).default("US"),
+  THIA_KLIPY_LOCALE: z.string().min(1).default("en_US"),
 });
 
 export type ServerConfig = z.infer<typeof envSchema>;

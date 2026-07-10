@@ -1,4 +1,4 @@
-import type { GrowthAttribution } from "./types";
+import type { GrowthAttribution, ProfileThemeConfig } from "./types";
 
 export type AuthUser = {
   id: number;
@@ -19,6 +19,7 @@ export type AuthProfile = {
   profileAccent?: string | null;
   profileBackground?: string | null;
   profileTheme?: string | null;
+  profileThemeConfig?: ProfileThemeConfig | null;
   links: string[];
   traits: string[];
 };

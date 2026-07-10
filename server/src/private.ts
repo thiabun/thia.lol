@@ -43,6 +43,8 @@ export interface AuthSessionPayload {
     bio: string;
     location: string;
     avatarUrl: string | null;
+    profileTheme: string | null;
+    profileThemeConfig: Record<string, unknown> | unknown[] | null;
     links: unknown[];
     traits: unknown[];
   };
@@ -411,6 +413,8 @@ export function authSessionPayload(session: RequestSession, csrfSecret: string):
       bio: stringValue(session.bio),
       location: stringValue(session.location),
       avatarUrl: nullableStringValue(session.avatarUrl),
+      profileTheme: nullableStringValue(session.profileTheme),
+      profileThemeConfig: jsonObjectOrArrayValue(session.profileThemeConfig),
       links: jsonArrayValue(session.links),
       traits: jsonArrayValue(session.traits),
     },

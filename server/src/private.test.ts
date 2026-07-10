@@ -48,6 +48,8 @@ describe("private preview auth helpers", () => {
         bio: "Hello",
         location: "Oslo",
         avatarUrl: "/uploads/avatar.png",
+        profileTheme: null,
+        profileThemeConfig: null,
         links: [
           {
             label: "site",

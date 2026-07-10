@@ -1,6 +1,6 @@
 import type { ChangeEvent, FormEvent } from "react";
 import { useCallback, useId, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronDown, ImagePlus, Music2, Radio, Send, Trash2, WifiOff } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ImagePlay, ImagePlus, Music2, Radio, Send, Trash2, WifiOff } from "lucide-react";
 import { Button } from "../ui/Button";
 import { ImageCropModal } from "../ui/ImageCropModal";
 import { ModalSheet, ModalSheetStatus } from "../ui/ModalSheet";
@@ -29,6 +29,7 @@ import {
 } from "../../lib/mediaFormats";
 import {
   postMediaDraftFromAudio,
+  postMediaDraftFromGif,
   postMediaDraftFromImage,
   postMediaDraftFromIntegration,
   postMediaDraftFromVideo,
@@ -36,6 +37,8 @@ import {
   type PostMediaDraft,
 } from "../../lib/postMedia";
 import type { Post, Room } from "../../lib/types";
+import type { GifSearchResult } from "../../lib/types";
+import { GifPicker } from "./GifPicker";
 import type { PostMusicAttachmentProvider } from "./PostMusicAttachmentPicker";
 import { PostMusicAttachmentPicker } from "./PostMusicAttachmentPicker";
 
@@ -61,6 +64,7 @@ export function PostComposerModal({
   const [body, setBody] = useState("");
   const [roomSlug, setRoomSlug] = useState(initialRoomSlug ?? "");
   const [media, setMedia] = useState<PostMediaDraft[]>([]);
+  const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [musicPickerOpen, setMusicPickerOpen] = useState(false);
   const [pendingImageCrop, setPendingImageCrop] = useState<File | undefined>();
   const [uploadingMedia, setUploadingMedia] = useState(false);
@@ -87,6 +91,7 @@ export function PostComposerModal({
     setBody("");
     setRoomSlug("");
     setMedia([]);
+    setGifPickerOpen(false);
     setMusicPickerOpen(false);
     setPendingImageCrop(undefined);
     setUploadingMedia(false);
@@ -292,6 +297,16 @@ export function PostComposerModal({
     setMusicPickerOpen(false);
   }
 
+  function handleGifAttachmentAdd(gif: GifSearchResult) {
+    if (!canAddMedia) {
+      setMessage(`Posts can include up to ${maxPostComposerAttachments} attachments.`);
+      return;
+    }
+
+    setMedia((current) => [...current, postMediaDraftFromGif(gif)]);
+    setGifPickerOpen(false);
+  }
+
   return (
     <>
       <ModalSheet
@@ -384,6 +399,19 @@ export function PostComposerModal({
               <Music2 aria-hidden="true" size={18} />
             </Button>
 
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-9 rounded-full"
+              disabled={submitting || uploadingMedia || !canAddMedia}
+              aria-label="Add GIF"
+              title="Add GIF"
+              onClick={() => setGifPickerOpen((current) => !current)}
+            >
+              <ImagePlay aria-hidden="true" size={18} />
+            </Button>
+
             {media.length > 0 ? (
               <Button
                 type="button"
@@ -447,6 +475,13 @@ export function PostComposerModal({
           open={musicPickerOpen}
         />
 
+        {gifPickerOpen ? (
+          <GifPicker
+            className="mx-auto max-w-xl"
+            onSelect={handleGifAttachmentAdd}
+          />
+        ) : null}
+
         {media.length > 0 ? (
           <div className="grid gap-2 sm:grid-cols-2" data-testid="composer-attachments">
             {media.map((item, index) => (
@@ -507,6 +542,17 @@ function PostComposerAttachmentPreview({
     <div className="relative overflow-hidden rounded-card border border-line bg-canvas/55" data-testid="composer-attachment">
       {attachment.type === "integration" ? (
         <PostComposerIntegrationPreview attachment={attachment} />
+      ) : attachment.type === "gif" ? (
+        <div className="grid gap-2 p-2">
+          <img
+            alt=""
+            className="mx-auto max-h-64 max-w-full rounded-card object-contain"
+            src={attachment.url}
+          />
+          <p className="truncate px-1 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+            KLIPY GIF
+          </p>
+        </div>
       ) : attachment.type === "video" ? (
         <video
           className="mx-auto max-h-64 max-w-full bg-black object-contain"
@@ -623,7 +669,7 @@ function movePostMediaDraft(
 }
 
 function postMediaDraftKey(attachment: PostMediaDraft): string {
-  return attachment.type === "integration"
+  return attachment.type === "integration" || attachment.type === "gif"
     ? attachment.resourceKey
     : attachment.url;
 }

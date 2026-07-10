@@ -41,7 +41,7 @@ describe("auth validation", () => {
     expect(() => validateAuthHandle("no")).toThrow(
       new AuthRouteError("Handle must be 3-40 characters using letters, numbers, dashes, or underscores.", 422),
     );
-    expect(() => validateAuthDisplayName("")).toThrow(new AuthRouteError("Display name must be 1-120 visible characters.", 422));
+    expect(() => validateAuthDisplayName("")).toThrow(new AuthRouteError("Display name must be 1-50 visible characters.", 422));
     expect(() => validateAuthPassword("short")).toThrow(new AuthRouteError("Password must be between 10 and 255 characters.", 422));
   });
 });

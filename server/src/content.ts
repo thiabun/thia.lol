@@ -3647,6 +3647,10 @@ function validatePostAttachment(value: unknown, position: number): ValidatedPost
     return validatePostIntegrationAttachment(attachment, position);
   }
 
+  if (kind === "gif") {
+    return validatePostGifAttachment(attachment, position);
+  }
+
   const url = validatePostAttachmentUploadUrl(attachment.url, kind);
   const mime = validatePostAttachmentMime(attachment.mime ?? attachment.type, kind, url);
   const posterUrl = validatePostAttachmentPosterUrl(attachment.posterUrl ?? attachment.poster_url, kind);
@@ -3670,6 +3674,42 @@ function validatePostAttachment(value: unknown, position: number): ValidatedPost
     resourceKey: null,
     sourceUrl: null,
     cardJson: null,
+  };
+}
+
+function validatePostGifAttachment(
+  attachment: Record<string, unknown>,
+  position: number,
+): ValidatedPostAttachment {
+  const resourceId = validateOptionalToken(attachment.resourceId ?? attachment.resource_id, "GIF id", 191);
+  const resourceKey = validateOptionalToken(attachment.resourceKey ?? attachment.resource_key, "GIF key", 255) ?? (resourceId ? `klipy:${resourceId}` : null);
+  const sourceUrl = validateOptionalGifSourceUrl(attachment.sourceUrl ?? attachment.source_url);
+  const cardJson = validateAttachmentCardJson(attachment.card ?? attachment.gif);
+
+  if (attachment.provider !== "klipy") {
+    throw new ContentRouteError("Post GIF provider is invalid.", 422);
+  }
+
+  if (resourceId === null) {
+    throw new ContentRouteError("Post GIF id is required.", 422);
+  }
+
+  return {
+    position,
+    kind: "gif",
+    url: validatePostGifUrl(attachment.url),
+    mime: "image/gif",
+    sizeBytes: null,
+    width: validateOptionalPositiveInteger(attachment.width, "GIF width"),
+    height: validateOptionalPositiveInteger(attachment.height, "GIF height"),
+    durationSeconds: null,
+    posterUrl: null,
+    provider: "klipy",
+    resourceType: "gif",
+    resourceId,
+    resourceKey,
+    sourceUrl,
+    cardJson,
   };
 }
 
@@ -3728,7 +3768,7 @@ function legacyPostMediaFromAttachments(attachments: ValidatedPostAttachment[]):
 }
 
 function validatePostAttachmentKind(value: unknown, url: unknown): PostAttachmentKind {
-  if (value === "image" || value === "video" || value === "audio" || value === "integration") {
+  if (value === "image" || value === "video" || value === "audio" || value === "integration" || value === "gif") {
     return value;
   }
 
@@ -3751,7 +3791,7 @@ function validatePostAttachmentKind(value: unknown, url: unknown): PostAttachmen
   return "image";
 }
 
-function validatePostAttachmentUploadUrl(value: unknown, kind: Exclude<PostAttachmentKind, "integration">): string {
+function validatePostAttachmentUploadUrl(value: unknown, kind: Exclude<PostAttachmentKind, "integration" | "gif">): string {
   if (typeof value !== "string") {
     throw new ContentRouteError("Post attachment URL is invalid.", 422);
   }
@@ -3780,9 +3820,33 @@ function validatePostAttachmentUploadUrl(value: unknown, kind: Exclude<PostAttac
   return trimmed;
 }
 
+function validatePostGifUrl(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new ContentRouteError("Post GIF URL is invalid.", 422);
+  }
+
+  const trimmed = value.trim();
+
+  if (trimmed.length > 500) {
+    throw new ContentRouteError("Post GIF URL is too long.", 422);
+  }
+
+  try {
+    const url = new URL(trimmed);
+
+    if (url.protocol === "https:" && url.username === "" && url.password === "") {
+      return url.toString();
+    }
+  } catch {
+    // Fall through to a user-facing route error.
+  }
+
+  throw new ContentRouteError("Choose a KLIPY GIF.", 422);
+}
+
 function validatePostAttachmentMime(
   value: unknown,
-  kind: Exclude<PostAttachmentKind, "integration">,
+  kind: Exclude<PostAttachmentKind, "integration" | "gif">,
   url: string,
 ): string {
   if (typeof value === "string" && value.trim() !== "") {
@@ -3828,7 +3892,7 @@ function imageMimeFromUrl(url: string): string {
 
 function validatePostAttachmentPosterUrl(
   value: unknown,
-  kind: Exclude<PostAttachmentKind, "integration">,
+  kind: Exclude<PostAttachmentKind, "integration" | "gif">,
 ): string | null {
   if (kind !== "video") {
     if (value !== undefined && value !== null && value !== "") {
@@ -3885,6 +3949,34 @@ function validateIntegrationSourceUrl(value: unknown): string {
   }
 
   throw new ContentRouteError("Choose a supported music integration URL.", 422);
+}
+
+function validateOptionalGifSourceUrl(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    throw new ContentRouteError("Post GIF source URL is invalid.", 422);
+  }
+
+  const trimmed = value.trim();
+
+  if (trimmed.length > 500) {
+    throw new ContentRouteError("Post GIF source URL is too long.", 422);
+  }
+
+  try {
+    const url = new URL(trimmed);
+
+    if (url.protocol === "https:" && url.username === "" && url.password === "") {
+      return url.toString();
+    }
+  } catch {
+    // Fall through to a user-facing route error.
+  }
+
+  throw new ContentRouteError("Post GIF source URL is invalid.", 422);
 }
 
 function validateOptionalToken(value: unknown, label: string, maxLength: number): string | null {

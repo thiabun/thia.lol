@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS profiles (
   user_id BIGINT UNSIGNED PRIMARY KEY,
-  display_name VARCHAR(120) NOT NULL,
+  display_name VARCHAR(50) NOT NULL,
   bio TEXT NULL,
   location VARCHAR(120) NULL,
   avatar_url VARCHAR(255) NULL,
@@ -466,6 +466,30 @@ CREATE TABLE IF NOT EXISTS room_memberships (
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS room_channels (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  room_id BIGINT UNSIGNED NOT NULL,
+  slug VARCHAR(48) NOT NULL,
+  name VARCHAR(80) NOT NULL,
+  description VARCHAR(240) NULL,
+  position INT UNSIGNED NOT NULL DEFAULT 0,
+  kind VARCHAR(30) NOT NULL DEFAULT 'chat',
+  read_only TINYINT(1) NOT NULL DEFAULT 0,
+  archived_at DATETIME NULL,
+  created_by BIGINT UNSIGNED NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY room_channels_room_slug_unique (room_id, slug),
+  KEY room_channels_room_position_idx (room_id, archived_at, position, id),
+  KEY room_channels_created_by_idx (created_by),
+  CONSTRAINT room_channels_room_fk
+    FOREIGN KEY (room_id) REFERENCES rooms(id)
+    ON DELETE CASCADE,
+  CONSTRAINT room_channels_created_by_fk
+    FOREIGN KEY (created_by) REFERENCES users(id)
+    ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS posts (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   public_id VARCHAR(16) NOT NULL,
@@ -506,7 +530,7 @@ CREATE TABLE IF NOT EXISTS post_attachments (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   post_id BIGINT UNSIGNED NOT NULL,
   position TINYINT UNSIGNED NOT NULL,
-  kind ENUM('image', 'video', 'audio', 'integration') NOT NULL,
+  kind ENUM('image', 'video', 'audio', 'integration', 'gif') NOT NULL,
   url VARCHAR(500) NULL,
   mime VARCHAR(80) NULL,
   size_bytes BIGINT UNSIGNED NULL,
@@ -617,18 +641,28 @@ CREATE TABLE IF NOT EXISTS conversations (
   type VARCHAR(30) NOT NULL DEFAULT 'direct',
   direct_user_one_id BIGINT UNSIGNED NULL,
   direct_user_two_id BIGINT UNSIGNED NULL,
+  room_id BIGINT UNSIGNED NULL,
+  room_channel_id BIGINT UNSIGNED NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NULL DEFAULT NULL,
   last_message_at TIMESTAMP NULL DEFAULT NULL,
   UNIQUE KEY conversations_direct_unique (type, direct_user_one_id, direct_user_two_id),
+  UNIQUE KEY conversations_room_channel_unique (type, room_channel_id),
   KEY conversations_last_message_idx (last_message_at),
   KEY conversations_direct_user_one_idx (direct_user_one_id),
   KEY conversations_direct_user_two_idx (direct_user_two_id),
+  KEY conversations_room_idx (room_id, type, last_message_at),
   CONSTRAINT conversations_direct_user_one_fk
     FOREIGN KEY (direct_user_one_id) REFERENCES users(id)
     ON DELETE CASCADE,
   CONSTRAINT conversations_direct_user_two_fk
     FOREIGN KEY (direct_user_two_id) REFERENCES users(id)
+    ON DELETE CASCADE,
+  CONSTRAINT conversations_room_fk
+    FOREIGN KEY (room_id) REFERENCES rooms(id)
+    ON DELETE CASCADE,
+  CONSTRAINT conversations_room_channel_fk
+    FOREIGN KEY (room_channel_id) REFERENCES room_channels(id)
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -667,6 +701,34 @@ CREATE TABLE IF NOT EXISTS messages (
   CONSTRAINT messages_sender_fk
     FOREIGN KEY (sender_id) REFERENCES users(id)
     ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS message_attachments (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  message_id BIGINT UNSIGNED NOT NULL,
+  type VARCHAR(30) NOT NULL,
+  post_id BIGINT UNSIGNED NULL,
+  url VARCHAR(500) NULL,
+  mime VARCHAR(80) NULL,
+  width INT UNSIGNED NULL,
+  height INT UNSIGNED NULL,
+  provider VARCHAR(40) NULL,
+  resource_type VARCHAR(40) NULL,
+  resource_id VARCHAR(191) NULL,
+  resource_key VARCHAR(255) NULL,
+  source_url VARCHAR(500) NULL,
+  card_json JSON NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY message_attachments_unique (message_id, type, post_id),
+  KEY message_attachments_message_idx (message_id),
+  KEY message_attachments_post_idx (post_id),
+  KEY message_attachments_provider_resource_idx (provider, resource_key),
+  CONSTRAINT message_attachments_message_fk
+    FOREIGN KEY (message_id) REFERENCES messages(id)
+    ON DELETE CASCADE,
+  CONSTRAINT message_attachments_post_fk
+    FOREIGN KEY (post_id) REFERENCES posts(id)
+    ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS sessions (

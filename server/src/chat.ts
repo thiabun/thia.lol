@@ -47,6 +47,24 @@ export interface ChatConversationPayload {
   } | null;
 }
 
+export interface RoomChannelPayload {
+  id: number;
+  roomId: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  position: number;
+  kind: "chat" | "announcement";
+  readOnly: boolean;
+  archivedAt: string | null;
+  conversationId: number;
+  unreadCount: number;
+  lastMessageAt: string | null;
+  viewerCanPost: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
 export interface ChatMessagePayload {
   id: number;
   conversationId: number;
@@ -63,14 +81,35 @@ export interface ChatMessagesPayload {
   messages: ChatMessagePayload[];
 }
 
+export interface RoomChannelMessagesPayload {
+  channel: RoomChannelPayload;
+  messages: ChatMessagePayload[];
+}
+
 export interface ChatReadPayload {
   conversationId: number;
   readAt: string;
 }
 
-export interface ChatMessageAttachmentPayload {
+export type ChatMessageAttachmentPayload = {
   type: "post";
   post: PostShareSummaryPayload | null;
+} | {
+  type: "gif";
+  gif: GifAttachmentPayload;
+};
+
+export interface GifAttachmentPayload {
+  provider: "klipy";
+  resourceType: "gif";
+  resourceId: string;
+  resourceKey: string;
+  url: string;
+  mime: "image/gif";
+  width: number | null;
+  height: number | null;
+  sourceUrl: string | null;
+  card: unknown | null;
 }
 
 interface PostShareSummaryPayload {
@@ -111,6 +150,12 @@ export interface ChatRepository {
   listMessages(userId: number, conversationId: number): Promise<ChatMessagesPayload>;
   createMessage(session: RequestSession, conversationId: number, body: Record<string, unknown>): Promise<ChatMessagePayload>;
   markConversationRead(userId: number, conversationId: number): Promise<ChatReadPayload>;
+  listRoomChannels(session: RequestSession, slug: string): Promise<RoomChannelPayload[]>;
+  createRoomChannel(session: RequestSession, slug: string, body: Record<string, unknown>): Promise<RoomChannelPayload>;
+  updateRoomChannel(session: RequestSession, slug: string, channelSlug: string, body: Record<string, unknown>): Promise<RoomChannelPayload>;
+  listRoomChannelMessages(session: RequestSession, slug: string, channelSlug: string): Promise<RoomChannelMessagesPayload>;
+  createRoomChannelMessage(session: RequestSession, slug: string, channelSlug: string, body: Record<string, unknown>): Promise<ChatMessagePayload>;
+  markRoomChannelRead(session: RequestSession, slug: string, channelSlug: string): Promise<ChatReadPayload>;
 }
 
 interface ConversationRow extends RowDataPacket {
@@ -190,6 +235,48 @@ interface TextEntityRow extends RowDataPacket {
 interface AttachmentRow extends RowDataPacket {
   type: string | null;
   post_id: number | string | null;
+  url: string | null;
+  mime: string | null;
+  width: number | string | null;
+  height: number | string | null;
+  provider: string | null;
+  resource_type: string | null;
+  resource_id: string | null;
+  resource_key: string | null;
+  source_url: string | null;
+  card_json: string | null;
+}
+
+interface RoomRecordRow extends RowDataPacket {
+  id: number | string;
+  slug: string;
+  name: string;
+  visibility: string | null;
+  created_by: number | string | null;
+}
+
+interface RoomMembershipRow extends RowDataPacket {
+  id: number | string;
+  role: string | null;
+  banned_at: string | null;
+}
+
+interface RoomChannelRow extends RowDataPacket {
+  id: number | string;
+  room_id: number | string;
+  slug: string;
+  name: string;
+  description: string | null;
+  position: number | string;
+  kind: string | null;
+  read_only: number | string | boolean | null;
+  archived_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  conversation_id: number | string | null;
+  last_message_at: string | null;
+  last_read_at: string | null;
+  unread_count: number | string | null;
 }
 
 interface PostSummaryRow extends RowDataPacket {
@@ -317,8 +404,8 @@ class MariaDbChatRepository implements ChatRepository {
 
     await this.rejectBlockedChat(session.userId, conversation.otherParticipant.id);
 
-    const messageBody = chatMessageBody(body);
-    const messageId = await this.insertMessage(conversationId, session.userId, messageBody);
+    const draft = chatMessageDraft(body);
+    const messageId = await this.insertMessage(conversationId, session.userId, draft.body, draft.attachments);
 
     await this.notifyConversationRecipients(conversationId, session.userId, messageId);
 
@@ -336,6 +423,224 @@ class MariaDbChatRepository implements ChatRepository {
        WHERE conversation_id = ?
          AND user_id = ?`,
       [readAt, conversationId, userId],
+    );
+
+    return {
+      conversationId,
+      readAt,
+    };
+  }
+
+  async listRoomChannels(session: RequestSession, slug: string): Promise<RoomChannelPayload[]> {
+    await this.requireRoomChannelTables();
+    const room = await this.requireRoomForViewing(session, slug);
+
+    await this.ensureDefaultRoomChannel(room);
+
+    const [rows] = await this.pool.execute<RoomChannelRow[]>(
+      `${roomChannelSelectSql()}
+       WHERE rc.room_id = ?
+         AND rc.archived_at IS NULL
+       ORDER BY rc.position ASC, rc.id ASC`,
+      [session.userId, session.userId, numberValue(room.id)],
+    );
+
+    return Promise.all(rows.map((row) => this.roomChannelPayloadFromRow(row, session, room)));
+  }
+
+  async createRoomChannel(session: RequestSession, slug: string, body: Record<string, unknown>): Promise<RoomChannelPayload> {
+    await this.requireRoomChannelTables();
+    const room = await this.requireRoomForManaging(session, slug);
+    const name = roomChannelName(body.name);
+    const channelSlug = roomChannelSlug(body.slug ?? name);
+    const description = optionalRoomChannelDescription(body.description);
+    const kind = roomChannelKind(body.kind);
+    const readOnly = roomChannelReadOnly(body.readOnly ?? body.read_only, kind);
+    const position = await this.nextRoomChannelPosition(numberValue(room.id));
+
+    const channelId = await this.withTransaction(async (connection) => {
+      const [result] = await connection.execute<ResultSetHeader>(
+        `INSERT INTO room_channels (room_id, slug, name, description, position, kind, read_only, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [numberValue(room.id), channelSlug, name, description, position, kind, readOnly ? 1 : 0, session.userId],
+      );
+      const id = result.insertId;
+
+      await connection.execute<ResultSetHeader>(
+        `INSERT IGNORE INTO conversations (type, room_id, room_channel_id)
+         VALUES ('room_channel', ?, ?)`,
+        [numberValue(room.id), id],
+      );
+
+      return id;
+    }).catch((error: unknown) => {
+      if (isDuplicateError(error)) {
+        throw new ChatRouteError("A channel with that slug already exists.", 409);
+      }
+
+      throw error;
+    });
+
+    return this.roomChannelByIdForSession(session, room, channelId);
+  }
+
+  async updateRoomChannel(
+    session: RequestSession,
+    slug: string,
+    channelSlug: string,
+    body: Record<string, unknown>,
+  ): Promise<RoomChannelPayload> {
+    await this.requireRoomChannelTables();
+    const room = await this.requireRoomForManaging(session, slug);
+    const channel = await this.requireRoomChannel(room, channelSlug, { includeArchived: true });
+    const updates: string[] = [];
+    const params: Array<string | number | null> = [];
+
+    if ("name" in body) {
+      updates.push("name = ?");
+      params.push(roomChannelName(body.name));
+    }
+
+    if ("slug" in body) {
+      updates.push("slug = ?");
+      params.push(roomChannelSlug(body.slug));
+    }
+
+    if ("description" in body) {
+      updates.push("description = ?");
+      params.push(optionalRoomChannelDescription(body.description));
+    }
+
+    if ("position" in body) {
+      updates.push("position = ?");
+      params.push(optionalRoomChannelPosition(body.position));
+    }
+
+    if ("kind" in body) {
+      updates.push("kind = ?");
+      params.push(roomChannelKind(body.kind));
+    }
+
+    if ("readOnly" in body || "read_only" in body) {
+      updates.push("read_only = ?");
+      params.push(roomChannelReadOnly(body.readOnly ?? body.read_only, null) ? 1 : 0);
+    }
+
+    if ("archived" in body || "archivedAt" in body || "archived_at" in body) {
+      const archived = Boolean(body.archived ?? body.archivedAt ?? body.archived_at);
+
+      if (archived) {
+        const [activeRows] = await this.pool.execute<CountRow[]>(
+          `SELECT COUNT(*) AS value
+           FROM room_channels
+           WHERE room_id = ?
+             AND archived_at IS NULL
+             AND id <> ?`,
+          [numberValue(room.id), numberValue(channel.id)],
+        );
+
+        if (numberValue(activeRows[0]?.value ?? 0) === 0) {
+          throw new ChatRouteError("A room must keep at least one active channel.", 422);
+        }
+      }
+
+      updates.push(`archived_at = ${archived ? "UTC_TIMESTAMP()" : "NULL"}`);
+    }
+
+    if (updates.length === 0) {
+      throw new ChatRouteError("No supported channel updates were provided.", 422);
+    }
+
+    params.push(numberValue(channel.id));
+
+    await this.pool.execute<ResultSetHeader>(
+      `UPDATE room_channels
+       SET ${updates.join(", ")},
+           updated_at = UTC_TIMESTAMP()
+       WHERE id = ?`,
+      params,
+    ).catch((error: unknown) => {
+      if (isDuplicateError(error)) {
+        throw new ChatRouteError("A channel with that slug already exists.", 409);
+      }
+
+      throw error;
+    });
+
+    return this.roomChannelByIdForSession(session, room, numberValue(channel.id), true);
+  }
+
+  async listRoomChannelMessages(session: RequestSession, slug: string, channelSlug: string): Promise<RoomChannelMessagesPayload> {
+    await this.requireRoomChannelTables();
+    const room = await this.requireRoomForViewing(session, slug);
+    const channel = await this.requireRoomChannel(room, channelSlug);
+    const conversationId = await this.ensureRoomChannelConversation(room, channel);
+
+    await this.ensureConversationMember(conversationId, session.userId);
+
+    const [rows] = await this.pool.execute<MessageRow[]>(
+      `SELECT
+          m.id,
+          m.conversation_id,
+          m.sender_id AS sender_user_id,
+          m.body,
+          m.deleted_at,
+          m.created_at,
+          sender.handle AS sender_handle,
+          sender_profile.display_name AS sender_display_name,
+          sender_profile.avatar_url AS sender_avatar_url
+       FROM messages m
+       INNER JOIN users sender ON sender.id = m.sender_id
+       INNER JOIN profiles sender_profile ON sender_profile.user_id = sender.id
+       WHERE m.conversation_id = ?
+       ORDER BY m.created_at ASC, m.id ASC
+       LIMIT 150`,
+      [conversationId],
+    );
+
+    return {
+      channel: await this.roomChannelByIdForSession(session, room, numberValue(channel.id)),
+      messages: await Promise.all(rows.map((row) => this.messagePayloadFromRow(row))),
+    };
+  }
+
+  async createRoomChannelMessage(
+    session: RequestSession,
+    slug: string,
+    channelSlug: string,
+    body: Record<string, unknown>,
+  ): Promise<ChatMessagePayload> {
+    await this.requireRoomChannelTables();
+    const room = await this.requireRoomForPosting(session, slug);
+    const channel = await this.requireRoomChannel(room, channelSlug);
+
+    if (booleanValue(channel.read_only) && !(await this.roomViewerIsStaff(room, session))) {
+      throw new ChatRouteError("Only room staff can post in this channel.", 403);
+    }
+
+    const conversationId = await this.ensureRoomChannelConversation(room, channel);
+    const draft = chatMessageDraft(body);
+    const messageId = await this.insertMessage(conversationId, session.userId, draft.body, draft.attachments);
+
+    await this.notifyConversationRecipients(conversationId, session.userId, messageId);
+
+    return this.messageById(messageId);
+  }
+
+  async markRoomChannelRead(session: RequestSession, slug: string, channelSlug: string): Promise<ChatReadPayload> {
+    await this.requireRoomChannelTables();
+    const room = await this.requireRoomForViewing(session, slug);
+    const channel = await this.requireRoomChannel(room, channelSlug);
+    const conversationId = await this.ensureRoomChannelConversation(room, channel);
+    const readAt = await this.currentDatabaseTimestamp();
+
+    await this.ensureConversationMember(conversationId, session.userId);
+    await this.pool.execute<ResultSetHeader>(
+      `UPDATE conversation_members
+       SET last_read_at = ?
+       WHERE conversation_id = ?
+         AND user_id = ?`,
+      [readAt, conversationId, session.userId],
     );
 
     return {
@@ -387,6 +692,264 @@ class MariaDbChatRepository implements ChatRepository {
     }
 
     return { id: numberValue(row.user_id) };
+  }
+
+  private async requireRoomForViewing(session: RequestSession, slug: string): Promise<RoomRecordRow> {
+    const room = await this.roomBySlug(slug);
+
+    if (room === null || !(await this.roomCanView(room, session))) {
+      throw new ChatRouteError("Room not found.", 404);
+    }
+
+    return room;
+  }
+
+  private async requireRoomForPosting(session: RequestSession, slug: string): Promise<RoomRecordRow> {
+    const room = await this.roomBySlug(slug);
+
+    if (room === null) {
+      throw new ChatRouteError("Room not found.", 404);
+    }
+
+    if (!(await this.roomCanPost(room, session))) {
+      throw new ChatRouteError("You cannot post in this room.", 403);
+    }
+
+    return room;
+  }
+
+  private async requireRoomForManaging(session: RequestSession, slug: string): Promise<RoomRecordRow> {
+    const room = await this.roomBySlug(slug);
+
+    if (room === null) {
+      throw new ChatRouteError("Room not found.", 404);
+    }
+
+    if (!(await this.roomViewerIsStaff(room, session))) {
+      throw new ChatRouteError("Only room staff can manage channels.", 403);
+    }
+
+    return room;
+  }
+
+  private async roomBySlug(slug: string): Promise<RoomRecordRow | null> {
+    const normalized = normalizeRoomSlug(slug);
+
+    if (normalized === null) {
+      return null;
+    }
+
+    const [rows] = await this.pool.execute<RoomRecordRow[]>(
+      `SELECT id, slug, name, visibility, created_by
+       FROM rooms
+       WHERE slug = ?
+         AND deleted_at IS NULL
+       LIMIT 1`,
+      [normalized],
+    );
+
+    return rows[0] ?? null;
+  }
+
+  private async roomMembership(roomId: number, userId: number): Promise<RoomMembershipRow | null> {
+    const [rows] = await this.pool.execute<RoomMembershipRow[]>(
+      `SELECT id, role, banned_at
+       FROM room_memberships
+       WHERE room_id = ?
+         AND user_id = ?
+       LIMIT 1`,
+      [roomId, userId],
+    );
+
+    return rows[0] ?? null;
+  }
+
+  private async roomCanView(room: RoomRecordRow, session: RequestSession): Promise<boolean> {
+    if (session.role === "admin" || room.visibility === "public" || room.visibility === "view_only") {
+      return true;
+    }
+
+    const membership = await this.roomMembership(numberValue(room.id), session.userId);
+
+    return membership !== null && membership.banned_at === null;
+  }
+
+  private async roomCanPost(room: RoomRecordRow, session: RequestSession): Promise<boolean> {
+    if (session.role === "admin") {
+      return true;
+    }
+
+    const membership = await this.roomMembership(numberValue(room.id), session.userId);
+
+    if (room.visibility === "view_only") {
+      return roomMembershipIsStaff(membership);
+    }
+
+    if (room.visibility === "public") {
+      return membership === null || membership.banned_at === null;
+    }
+
+    return membership !== null && membership.banned_at === null;
+  }
+
+  private async roomViewerIsStaff(room: RoomRecordRow, session: RequestSession): Promise<boolean> {
+    if (session.role === "admin" || nullableNumberValue(room.created_by) === session.userId) {
+      return true;
+    }
+
+    return roomMembershipIsStaff(await this.roomMembership(numberValue(room.id), session.userId));
+  }
+
+  private async ensureDefaultRoomChannel(room: RoomRecordRow): Promise<void> {
+    await this.pool.execute<ResultSetHeader>(
+      `INSERT IGNORE INTO room_channels (room_id, slug, name, description, position, kind, read_only, created_by)
+       VALUES (?, 'general', 'general', 'Room chat', 0, 'chat', 0, ?)`,
+      [numberValue(room.id), nullableNumberValue(room.created_by)],
+    );
+    const channel = await this.requireRoomChannel(room, "general");
+
+    await this.ensureRoomChannelConversation(room, channel);
+  }
+
+  private async nextRoomChannelPosition(roomId: number): Promise<number> {
+    const [rows] = await this.pool.execute<Array<RowDataPacket & { value: number | string | null }>>(
+      `SELECT COALESCE(MAX(position), -1) + 1 AS value
+       FROM room_channels
+       WHERE room_id = ?`,
+      [roomId],
+    );
+
+    return numberValue(rows[0]?.value ?? 0);
+  }
+
+  private async requireRoomChannel(
+    room: RoomRecordRow,
+    slug: string,
+    options: { includeArchived?: boolean } = {},
+  ): Promise<RoomChannelRow> {
+    const normalized = roomChannelSlug(slug);
+    const [rows] = await this.pool.execute<RoomChannelRow[]>(
+      `SELECT
+          rc.id,
+          rc.room_id,
+          rc.slug,
+          rc.name,
+          rc.description,
+          rc.position,
+          rc.kind,
+          rc.read_only,
+          rc.archived_at,
+          rc.created_at,
+          rc.updated_at,
+          c.id AS conversation_id,
+          c.last_message_at,
+          NULL AS last_read_at,
+          0 AS unread_count
+       FROM room_channels rc
+       LEFT JOIN conversations c
+         ON c.room_channel_id = rc.id
+        AND c.type = 'room_channel'
+       WHERE rc.room_id = ?
+         AND rc.slug = ?
+         ${options.includeArchived ? "" : "AND rc.archived_at IS NULL"}
+       LIMIT 1`,
+      [numberValue(room.id), normalized],
+    );
+    const row = rows[0];
+
+    if (row === undefined) {
+      throw new ChatRouteError("Channel not found.", 404);
+    }
+
+    return row;
+  }
+
+  private async ensureRoomChannelConversation(room: RoomRecordRow, channel: RoomChannelRow): Promise<number> {
+    const existing = nullableNumberValue(channel.conversation_id);
+
+    if (existing !== null) {
+      return existing;
+    }
+
+    return this.withTransaction(async (connection) => {
+      await connection.execute<ResultSetHeader>(
+        `INSERT IGNORE INTO conversations (type, room_id, room_channel_id)
+         VALUES ('room_channel', ?, ?)`,
+        [numberValue(room.id), numberValue(channel.id)],
+      );
+      const [rows] = await connection.execute<IdRow[]>(
+        `SELECT id
+         FROM conversations
+         WHERE type = 'room_channel'
+           AND room_channel_id = ?
+         LIMIT 1`,
+        [numberValue(channel.id)],
+      );
+      const row = rows[0];
+
+      if (row === undefined) {
+        throw new ChatStorageNotReadyError();
+      }
+
+      return numberValue(row.id);
+    });
+  }
+
+  private async ensureConversationMember(conversationId: number, userId: number): Promise<void> {
+    await this.pool.execute<ResultSetHeader>(
+      `INSERT IGNORE INTO conversation_members (conversation_id, user_id)
+       VALUES (?, ?)`,
+      [conversationId, userId],
+    );
+  }
+
+  private async roomChannelByIdForSession(
+    session: RequestSession,
+    room: RoomRecordRow,
+    channelId: number,
+    includeArchived = false,
+  ): Promise<RoomChannelPayload> {
+    const [rows] = await this.pool.execute<RoomChannelRow[]>(
+      `${roomChannelSelectSql()}
+       WHERE rc.id = ?
+         ${includeArchived ? "" : "AND rc.archived_at IS NULL"}
+       LIMIT 1`,
+      [session.userId, session.userId, channelId],
+    );
+    const row = rows[0];
+
+    if (row === undefined) {
+      throw new ChatRouteError("Channel not found.", 404);
+    }
+
+    return this.roomChannelPayloadFromRow(row, session, room);
+  }
+
+  private async roomChannelPayloadFromRow(
+    row: RoomChannelRow,
+    session: RequestSession,
+    room: RoomRecordRow,
+  ): Promise<RoomChannelPayload> {
+    const conversationId = await this.ensureRoomChannelConversation(room, row);
+    const readOnly = booleanValue(row.read_only);
+
+    return {
+      id: numberValue(row.id),
+      roomId: numberValue(row.room_id),
+      slug: stringValue(row.slug),
+      name: stringValue(row.name),
+      description: nullableStringValue(row.description),
+      position: numberValue(row.position),
+      kind: row.kind === "announcement" ? "announcement" : "chat",
+      readOnly,
+      archivedAt: nullableStringValue(row.archived_at),
+      conversationId,
+      unreadCount: numberValue(row.unread_count ?? 0),
+      lastMessageAt: nullableStringValue(row.last_message_at),
+      viewerCanPost: (await this.roomCanPost(room, session)) && (!readOnly || (await this.roomViewerIsStaff(room, session))),
+      createdAt: nullableStringValue(row.created_at),
+      updatedAt: nullableStringValue(row.updated_at),
+    };
   }
 
   private async conversationForUser(conversationId: number, viewerUserId: number): Promise<ChatConversationPayload> {
@@ -448,7 +1011,12 @@ class MariaDbChatRepository implements ChatRepository {
     };
   }
 
-  private async insertMessage(conversationId: number, senderUserId: number, body: string): Promise<number> {
+  private async insertMessage(
+    conversationId: number,
+    senderUserId: number,
+    body: string,
+    attachments: ValidatedMessageAttachment[] = [],
+  ): Promise<number> {
     return this.withTransaction(async (connection) => {
       const [messageResult] = await connection.execute<ResultSetHeader>(
         `INSERT INTO messages (conversation_id, sender_id, body)
@@ -456,6 +1024,8 @@ class MariaDbChatRepository implements ChatRepository {
         [conversationId, senderUserId, body],
       );
       const messageId = messageResult.insertId;
+
+      await this.insertMessageAttachments(connection, messageId, attachments);
 
       await connection.execute<ResultSetHeader>(
         `UPDATE conversations
@@ -474,6 +1044,53 @@ class MariaDbChatRepository implements ChatRepository {
 
       return messageId;
     });
+  }
+
+  private async insertMessageAttachments(
+    connection: PoolConnection,
+    messageId: number,
+    attachments: ValidatedMessageAttachment[],
+  ): Promise<void> {
+    if (attachments.length === 0) {
+      return;
+    }
+
+    await this.requireMessageAttachmentColumns();
+
+    for (const attachment of attachments) {
+      if (attachment.type === "gif") {
+        await connection.execute<ResultSetHeader>(
+          `INSERT INTO message_attachments (
+              message_id,
+              type,
+              url,
+              mime,
+              width,
+              height,
+              provider,
+              resource_type,
+              resource_id,
+              resource_key,
+              source_url,
+              card_json
+           )
+           VALUES (?, 'gif', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            messageId,
+            attachment.url,
+            attachment.mime,
+            attachment.width,
+            attachment.height,
+            attachment.provider,
+            attachment.resourceType,
+            attachment.resourceId,
+            attachment.resourceKey,
+            attachment.sourceUrl,
+            attachment.cardJson,
+          ],
+        );
+      }
+    }
   }
 
   private async findOrCreateDirectConversation(viewerUserId: number, targetUserId: number): Promise<number> {
@@ -568,31 +1185,72 @@ class MariaDbChatRepository implements ChatRepository {
       return [];
     }
 
-    const [rows] = await this.pool.execute<AttachmentRow[]>(
-      `SELECT type, post_id
-       FROM message_attachments
-       WHERE message_id = ?
-       ORDER BY id ASC
-       LIMIT 10`,
-      [messageId],
-    );
+    const hasGifColumns = await this.hasColumn("message_attachments", "url");
+    const [rows] = hasGifColumns
+      ? await this.pool.execute<AttachmentRow[]>(
+          `SELECT
+              type,
+              post_id,
+              url,
+              mime,
+              width,
+              height,
+              provider,
+              resource_type,
+              resource_id,
+              resource_key,
+              source_url,
+              card_json
+           FROM message_attachments
+           WHERE message_id = ?
+           ORDER BY id ASC
+           LIMIT 10`,
+          [messageId],
+        )
+      : await this.pool.execute<AttachmentRow[]>(
+          `SELECT
+              type,
+              post_id,
+              NULL AS url,
+              NULL AS mime,
+              NULL AS width,
+              NULL AS height,
+              NULL AS provider,
+              NULL AS resource_type,
+              NULL AS resource_id,
+              NULL AS resource_key,
+              NULL AS source_url,
+              NULL AS card_json
+           FROM message_attachments
+           WHERE message_id = ?
+           ORDER BY id ASC
+           LIMIT 10`,
+          [messageId],
+        );
     const attachments: ChatMessageAttachmentPayload[] = [];
 
     for (const row of rows) {
-      if (row.type !== "post") {
+      if (row.type === "post") {
+        const postId = nullableNumberValue(row.post_id);
+
+        if (postId !== null) {
+          attachments.push({
+            type: "post",
+            post: await this.publicPostSummary(postId),
+          });
+        }
+
         continue;
       }
 
-      const postId = nullableNumberValue(row.post_id);
+      const gif = row.type === "gif" ? gifAttachmentPayloadFromRow(row) : null;
 
-      if (postId === null) {
-        continue;
+      if (gif !== null) {
+        attachments.push({
+          type: "gif",
+          gif,
+        });
       }
-
-      attachments.push({
-        type: "post",
-        post: await this.publicPostSummary(postId),
-      });
     }
 
     return attachments;
@@ -759,6 +1417,20 @@ class MariaDbChatRepository implements ChatRepository {
     }
   }
 
+  private async requireRoomChannelTables(): Promise<void> {
+    await this.requireChatTables();
+
+    if (!(await this.hasTable("room_channels")) || !(await this.hasTable("room_memberships"))) {
+      throw new ChatStorageNotReadyError("Room channel storage is not ready. Run pending migrations.");
+    }
+  }
+
+  private async requireMessageAttachmentColumns(): Promise<void> {
+    if (!(await this.hasTable("message_attachments")) || !(await this.hasColumn("message_attachments", "url"))) {
+      throw new ChatStorageNotReadyError("Message attachment storage is not ready. Run pending migrations.");
+    }
+  }
+
   private async requireFollowsTable(): Promise<void> {
     if (!(await this.hasTable("user_follows"))) {
       throw new ChatStorageNotReadyError("Follow storage is not ready. Run pending migrations.");
@@ -880,6 +1552,42 @@ function conversationSelectSql(): string {
       AND other_user.status = 'active'`;
 }
 
+function roomChannelSelectSql(): string {
+  return `SELECT
+      rc.id,
+      rc.room_id,
+      rc.slug,
+      rc.name,
+      rc.description,
+      rc.position,
+      rc.kind,
+      rc.read_only,
+      rc.archived_at,
+      rc.created_at,
+      rc.updated_at,
+      c.id AS conversation_id,
+      c.last_message_at,
+      viewer_member.last_read_at,
+      (
+        SELECT COUNT(*)
+        FROM messages unread_messages
+        WHERE unread_messages.conversation_id = c.id
+          AND unread_messages.sender_id <> ?
+          AND unread_messages.deleted_at IS NULL
+          AND (
+            viewer_member.last_read_at IS NULL
+            OR unread_messages.created_at > viewer_member.last_read_at
+          )
+      ) AS unread_count
+    FROM room_channels rc
+    LEFT JOIN conversations c
+      ON c.room_channel_id = rc.id
+     AND c.type = 'room_channel'
+    LEFT JOIN conversation_members viewer_member
+      ON viewer_member.conversation_id = c.id
+     AND viewer_member.user_id = ?`;
+}
+
 function conversationPayloadFromRow(row: ConversationRow): ChatConversationPayload {
   const lastMessage = row.last_message_id === null
     ? null
@@ -973,22 +1681,87 @@ function textEntityPayloadFromRow(row: TextEntityRow): TextEntityPayload | null 
   return payload;
 }
 
-function chatMessageBody(body: Record<string, unknown>): string {
-  if (typeof body.body !== "string") {
+type ValidatedMessageAttachment = {
+  type: "gif";
+  provider: "klipy";
+  resourceType: "gif";
+  resourceId: string;
+  resourceKey: string;
+  url: string;
+  mime: "image/gif";
+  width: number | null;
+  height: number | null;
+  sourceUrl: string | null;
+  cardJson: string | null;
+};
+
+function chatMessageDraft(body: Record<string, unknown>): { body: string; attachments: ValidatedMessageAttachment[] } {
+  const messageBody = typeof body.body === "string" ? body.body.trim() : "";
+  const attachments = validateMessageAttachments(body.attachments);
+
+  if (messageBody === "" && attachments.length === 0) {
     throw new ChatRouteError("Message body is required.", 422);
   }
 
-  const value = body.body.trim();
-
-  if (value === "") {
-    throw new ChatRouteError("Message body is required.", 422);
-  }
-
-  if (value.length > 2000) {
+  if (messageBody.length > 2000) {
     throw new ChatRouteError("Message body must be 2000 characters or fewer.", 422);
   }
 
-  return value;
+  return {
+    body: messageBody,
+    attachments,
+  };
+}
+
+function validateMessageAttachments(value: unknown): ValidatedMessageAttachment[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    throw new ChatRouteError("Message attachments must be a list.", 422);
+  }
+
+  if (value.length > 4) {
+    throw new ChatRouteError("Messages can include up to 4 attachments.", 422);
+  }
+
+  return value.map(validateMessageAttachment);
+}
+
+function validateMessageAttachment(value: unknown): ValidatedMessageAttachment {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new ChatRouteError("Message attachment is invalid.", 422);
+  }
+
+  const attachment = value as Record<string, unknown>;
+  const type = attachment.type ?? attachment.kind;
+
+  if (type !== "gif") {
+    throw new ChatRouteError("Message attachment type is invalid.", 422);
+  }
+
+  if (attachment.provider !== "klipy") {
+    throw new ChatRouteError("Message GIF provider is invalid.", 422);
+  }
+
+  const resourceId = requiredToken(attachment.resourceId ?? attachment.resource_id, "GIF id", 191);
+
+  return {
+    type: "gif",
+    provider: "klipy",
+    resourceType: "gif",
+    resourceId,
+    resourceKey: optionalToken(attachment.resourceKey ?? attachment.resource_key, "GIF key", 255) ?? `klipy:${resourceId}`,
+    url: requiredHttpsUrl(attachment.url, "GIF URL", 500),
+    mime: "image/gif",
+    width: optionalPositiveInteger(attachment.width, "GIF width"),
+    height: optionalPositiveInteger(attachment.height, "GIF height"),
+    sourceUrl: optionalHttpsUrl(attachment.sourceUrl ?? attachment.source_url, "GIF source URL", 500),
+    cardJson: attachment.card === undefined && attachment.gif === undefined
+      ? null
+      : attachmentJson(attachment.card ?? attachment.gif, "Message GIF card"),
+  };
 }
 
 function positiveInteger(value: unknown, label: string): number {
@@ -1007,6 +1780,212 @@ function positiveInteger(value: unknown, label: string): number {
 
 function normalizeHandle(value: string): string {
   return value.trim().replace(/^@/u, "").toLowerCase();
+}
+
+function normalizeRoomSlug(value: string): string | null {
+  try {
+    const decoded = decodeURIComponent(value);
+    const normalized = decoded.toLowerCase();
+
+    return /^[a-z0-9-]{1,80}$/u.test(normalized) ? normalized : null;
+  } catch {
+    return null;
+  }
+}
+
+function roomChannelName(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new ChatRouteError("Channel name is required.", 422);
+  }
+
+  const trimmed = value.trim().replace(/\s+/gu, " ");
+
+  if (trimmed.length < 1 || trimmed.length > 80) {
+    throw new ChatRouteError("Channel name must be 1-80 characters.", 422);
+  }
+
+  return trimmed;
+}
+
+function roomChannelSlug(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new ChatRouteError("Channel slug is required.", 422);
+  }
+
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/^#/u, "")
+    .replace(/[^a-z0-9-]+/gu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .replace(/-{2,}/gu, "-");
+
+  if (!/^[a-z0-9-]{1,48}$/u.test(normalized)) {
+    throw new ChatRouteError("Channel slug must use letters, numbers, and dashes.", 422);
+  }
+
+  return normalized;
+}
+
+function optionalRoomChannelDescription(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    throw new ChatRouteError("Channel description is invalid.", 422);
+  }
+
+  const trimmed = value.trim();
+
+  if (trimmed.length > 240) {
+    throw new ChatRouteError("Channel description must be 240 characters or fewer.", 422);
+  }
+
+  return trimmed === "" ? null : trimmed;
+}
+
+function roomChannelKind(value: unknown): "chat" | "announcement" {
+  return value === "announcement" ? "announcement" : "chat";
+}
+
+function roomChannelReadOnly(value: unknown, kind: "chat" | "announcement" | null): boolean {
+  if (value === undefined || value === null || value === "") {
+    return kind === "announcement";
+  }
+
+  return value === true || value === "1" || value === "true" || value === 1;
+}
+
+function optionalRoomChannelPosition(value: unknown): number {
+  const number = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+
+  if (!Number.isInteger(number) || number < 0 || number > 10000) {
+    throw new ChatRouteError("Channel position is invalid.", 422);
+  }
+
+  return number;
+}
+
+function roomMembershipIsStaff(membership: RoomMembershipRow | null): boolean {
+  return membership !== null && membership.banned_at === null && (membership.role === "owner" || membership.role === "moderator");
+}
+
+function gifAttachmentPayloadFromRow(row: AttachmentRow): GifAttachmentPayload | null {
+  if (row.provider !== "klipy" || row.resource_id === null || row.url === null) {
+    return null;
+  }
+
+  return {
+    provider: "klipy",
+    resourceType: "gif",
+    resourceId: stringValue(row.resource_id),
+    resourceKey: stringValue(row.resource_key, `klipy:${row.resource_id}`),
+    url: stringValue(row.url),
+    mime: "image/gif",
+    width: nullableNumberValue(row.width),
+    height: nullableNumberValue(row.height),
+    sourceUrl: nullableStringValue(row.source_url),
+    card: jsonObjectOrArray(row.card_json),
+  };
+}
+
+function requiredToken(value: unknown, label: string, maxLength: number): string {
+  const token = optionalToken(value, label, maxLength);
+
+  if (token === null) {
+    throw new ChatRouteError(`${label} is required.`, 422);
+  }
+
+  return token;
+}
+
+function optionalToken(value: unknown, label: string, maxLength: number): string | null {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    throw new ChatRouteError(`${label} is invalid.`, 422);
+  }
+
+  const trimmed = value.trim();
+
+  if (trimmed === "") {
+    return null;
+  }
+
+  if (trimmed.length > maxLength || !/^[A-Za-z0-9:_./-]+$/u.test(trimmed)) {
+    throw new ChatRouteError(`${label} is invalid.`, 422);
+  }
+
+  return trimmed;
+}
+
+function requiredHttpsUrl(value: unknown, label: string, maxLength: number): string {
+  const url = optionalHttpsUrl(value, label, maxLength);
+
+  if (url === null) {
+    throw new ChatRouteError(`${label} is required.`, 422);
+  }
+
+  return url;
+}
+
+function optionalHttpsUrl(value: unknown, label: string, maxLength: number): string | null {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    throw new ChatRouteError(`${label} is invalid.`, 422);
+  }
+
+  const trimmed = value.trim();
+
+  if (trimmed.length > maxLength) {
+    throw new ChatRouteError(`${label} is too long.`, 422);
+  }
+
+  try {
+    const url = new URL(trimmed);
+
+    if (url.protocol === "https:" && url.username === "" && url.password === "") {
+      return url.toString();
+    }
+  } catch {
+    // Fall through to the route error below.
+  }
+
+  throw new ChatRouteError(`${label} is invalid.`, 422);
+}
+
+function optionalPositiveInteger(value: unknown, label: string): number | null {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const number = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+
+  if (!Number.isInteger(number) || number <= 0) {
+    throw new ChatRouteError(`${label} is invalid.`, 422);
+  }
+
+  return number;
+}
+
+function attachmentJson(value: unknown, label: string): string {
+  if (value === null || typeof value !== "object") {
+    throw new ChatRouteError(`${label} is invalid.`, 422);
+  }
+
+  const json = JSON.stringify(value);
+
+  if (json.length > 16000) {
+    throw new ChatRouteError(`${label} is too large.`, 422);
+  }
+
+  return json;
 }
 
 function blockedPairFilterSql(targetUserSql: string): string {
@@ -1044,6 +2023,18 @@ function nullableNumberValue(value: string | number | null | undefined): number 
   const number = Number(value);
 
   return Number.isFinite(number) ? number : null;
+}
+
+function booleanValue(value: boolean | number | string | null | undefined): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (value === null || value === undefined || value === "") {
+    return false;
+  }
+
+  return Number(value) !== 0;
 }
 
 function initialsFromName(name: string): string {
@@ -1089,4 +2080,14 @@ function jsonObjectOrArray(value: string | null): unknown | null {
   } catch {
     return null;
   }
+}
+
+function isDuplicateError(error: unknown): boolean {
+  if (error === null || typeof error !== "object") {
+    return false;
+  }
+
+  const record = error as Record<string, unknown>;
+
+  return record.code === "ER_DUP_ENTRY" || record.errno === 1062;
 }

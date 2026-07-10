@@ -15,6 +15,7 @@ import {
   clearGrowthAttribution,
   currentGrowthAttribution,
 } from "../lib/growthAttribution";
+import { displayNameMaxLength } from "../lib/displayNames";
 import { useAuth } from "../lib/useAuth";
 
 type AuthPageProps = {
@@ -229,7 +230,7 @@ export function AuthPage({ mode }: AuthPageProps) {
                     icon={UserRound}
                     required
                     minLength={1}
-                    maxLength={120}
+                    maxLength={displayNameMaxLength}
                   />
                   <HandleField
                     id="handle"

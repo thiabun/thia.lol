@@ -408,6 +408,7 @@ class NodeShareShellService implements ShareShellService {
       post.updatedAt ?? "",
       post.mediaUrl ?? "",
       post.mediaPosterUrl ?? "",
+      JSON.stringify(post.profile?.profileThemeConfig ?? null),
     ].join("|");
 
     return sha256(basis).slice(0, 16);
@@ -426,6 +427,7 @@ class NodeShareShellService implements ShareShellService {
       profile.profileBackground ?? "",
       profile.bannerUrl ?? "",
       profile.user.avatarUrl ?? "",
+      JSON.stringify(profile.profileThemeConfig ?? null),
     ].join("|");
 
     return sha256(basis).slice(0, 16);

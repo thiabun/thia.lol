@@ -8,6 +8,7 @@ import { normalizeSignupAttribution, type GrowthAttributionPayload } from "./gro
 import { hashPhpPassword, verifyPhpPassword } from "./passwords.js";
 import { authSessionPayload, csrfTokenForSession, type AuthSessionPayload } from "./private.js";
 import { hashSessionToken, type RequestSession } from "./sessions.js";
+import { displayNameLengthLabel, displayNameMaxLength } from "./display-names.js";
 
 const genericLoginError = "Invalid email or password.";
 const twoFactorIssuer = "thia.lol";
@@ -115,6 +116,8 @@ interface SessionRow extends RowDataPacket {
   bio: string | null;
   location: string | null;
   avatar_url: string | null;
+  profile_theme: string | null;
+  profile_theme_config_json: string | null;
   links: string | null;
   traits: string | null;
 }
@@ -212,8 +215,8 @@ export function validateAuthDisplayName(value: unknown): string {
   const displayName = value.trim();
   const displayNameLength = Array.from(displayName).length;
 
-  if (displayNameLength < 1 || displayNameLength > 120 || containsControlCharacter(displayName)) {
-    throw new AuthRouteError("Display name must be 1-120 visible characters.", 422);
+  if (displayNameLength < 1 || displayNameLength > displayNameMaxLength || containsControlCharacter(displayName)) {
+    throw new AuthRouteError(`Display name must be ${displayNameLengthLabel()} visible characters.`, 422);
   }
 
   return displayName;
@@ -610,6 +613,8 @@ class MysqlAuthRepository implements AuthRepository {
             p.bio,
             p.location,
             p.avatar_url,
+            p.profile_theme,
+            p.profile_theme_config_json,
             p.links,
             p.traits
          FROM sessions s
@@ -639,6 +644,8 @@ class MysqlAuthRepository implements AuthRepository {
       bio: row.bio,
       location: row.location,
       avatarUrl: row.avatar_url,
+      profileTheme: row.profile_theme,
+      profileThemeConfig: row.profile_theme_config_json,
       links: row.links,
       traits: row.traits,
     };

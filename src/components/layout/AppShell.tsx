@@ -33,6 +33,7 @@ import {
 } from "../../lib/motionPresets";
 import { emitPostCreated } from "../../lib/postEvents";
 import { notificationsUpdatedEventName } from "../../lib/notificationEvents";
+import { applyProfileThemeToRoot } from "../../lib/profileThemes";
 import { useAuth } from "../../lib/useAuth";
 import type { Room } from "../../lib/types";
 
@@ -119,11 +120,23 @@ function profileThemeControlsShouldDisable(pathname: string): boolean {
     return true;
   }
 
+  const postPermalink = matchPath(
+    { path: "/:profileHandle/posts/:postId", end: true },
+    pathname,
+  );
+
+  if (postPermalink?.params.profileHandle?.startsWith("@")) {
+    return true;
+  }
+
   if (matchPath({ path: "/rooms/:slug", end: true }, pathname)) {
     return true;
   }
 
-  return Boolean(matchPath({ path: "/@/:handle", end: true }, pathname));
+  return Boolean(
+    matchPath({ path: "/@/:handle", end: true }, pathname) ||
+      matchPath({ path: "/@/:handle/posts/:postId", end: true }, pathname),
+  );
 }
 
 export type AppShellOutletContext = {
@@ -132,7 +145,7 @@ export type AppShellOutletContext = {
 };
 
 export function AppShell() {
-  const { csrfToken, status, user } = useAuth();
+  const { csrfToken, profile, status, user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [composerOpen, setComposerOpen] = useState(false);
@@ -153,9 +166,24 @@ export function AppShell() {
     { path: "/rooms/:slug", end: true },
     location.pathname,
   )?.params.slug;
-  const themeControlsDisabled = profileThemeControlsShouldDisable(
+  const authorThemeControlsDisabled = profileThemeControlsShouldDisable(
     location.pathname,
   );
+  const profileThemeOverridesSiteMode =
+    status === "authenticated" && Boolean(profile?.profileThemeConfig);
+  const themeControlsDisabled =
+    authorThemeControlsDisabled || profileThemeOverridesSiteMode;
+  const themeControlsDisabledReason = authorThemeControlsDisabled
+    ? "Profile theme controls this page"
+    : "Your profile theme controls the app";
+  const signedInProfileThemeConfig =
+    profileThemeOverridesSiteMode && !authorThemeControlsDisabled
+      ? profile?.profileThemeConfig ?? null
+      : null;
+
+  useEffect(() => {
+    return applyProfileThemeToRoot(signedInProfileThemeConfig);
+  }, [signedInProfileThemeConfig]);
 
   useEffect(() => {
     if (status !== "authenticated" || !user) {
@@ -306,6 +334,7 @@ export function AppShell() {
         notificationUnreadCount={notificationUnreadCount}
         showNotifications={status === "authenticated"}
         themeControlsDisabled={themeControlsDisabled}
+        themeControlsDisabledReason={themeControlsDisabledReason}
         topBarAction={topBarAction}
       />
       <CookieNotice
@@ -375,12 +404,14 @@ function SiteHeader({
   notificationUnreadCount,
   showNotifications,
   themeControlsDisabled,
+  themeControlsDisabledReason,
   topBarAction,
 }: {
   navItems: NavItemProps[];
   notificationUnreadCount: number | undefined;
   showNotifications: boolean;
   themeControlsDisabled: boolean;
+  themeControlsDisabledReason: string;
   topBarAction?: ReactNode | undefined;
 }) {
   return (
@@ -421,7 +452,7 @@ function SiteHeader({
           <ThemeToggle
             compact
             disabled={themeControlsDisabled}
-            disabledReason="Profile theme controls this page"
+            disabledReason={themeControlsDisabledReason}
           />
           <AccountMenu />
         </div>

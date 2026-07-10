@@ -395,6 +395,24 @@ export type RoomMember = {
   user: User;
 };
 
+export type RoomChannel = {
+  id: number;
+  roomId: number;
+  slug: string;
+  name: string;
+  description?: string | null;
+  position: number;
+  kind: "chat" | "announcement";
+  readOnly: boolean;
+  archivedAt?: string | null;
+  conversationId: number;
+  unreadCount: number;
+  lastMessageAt?: string | null;
+  viewerCanPost: boolean;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
 export type RoomAccessRequest = {
   id: number;
   status: RoomAccessRequestStatus;
@@ -455,6 +473,7 @@ export type Post = {
   id: number;
   publicId?: string;
   author: User;
+  profile?: Profile;
   room: Pick<Room, "slug" | "name" | "theme" | "themeConfig">;
   body: string;
   bodyFormat?: "plain" | "markdown";
@@ -489,7 +508,7 @@ export type Post = {
 export type PostAttachment = {
   id?: number;
   position: number;
-  kind: "image" | "video" | "audio" | "integration";
+  kind: "image" | "video" | "audio" | "integration" | "gif";
   url?: string | null;
   mime?: string | null;
   sizeBytes?: number | null;
@@ -505,6 +524,34 @@ export type PostAttachment = {
   card?: ProfileIntegrationCard | RichLinkCard | Record<string, unknown> | unknown[] | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+};
+
+export type GifAttachment = {
+  provider: "klipy";
+  resourceType: "gif";
+  resourceId: string;
+  resourceKey: string;
+  url: string;
+  previewUrl?: string;
+  mime: "image/gif";
+  width?: number | null;
+  height?: number | null;
+  sourceUrl?: string | null;
+  title?: string;
+  card?: Record<string, unknown> | unknown[] | null;
+};
+
+export type GifSearchResult = GifAttachment & {
+  id: string;
+  title: string;
+};
+
+export type GifSearchResponse = {
+  available: boolean;
+  provider: "klipy";
+  query: string | null;
+  next: string | null;
+  items: GifSearchResult[];
 };
 
 export type PostShareSummary = {
@@ -527,6 +574,10 @@ export type ChatMessageAttachment =
   | {
       type: "post";
       post: PostShareSummary | null;
+    }
+  | {
+      type: "gif";
+      gif: GifAttachment;
     };
 
 export type DiscoverPerson = ProfileConnection & {
@@ -575,7 +626,7 @@ export type ChatLastMessage = Pick<ChatMessage, "id" | "body" | "createdAt" | "s
 
 export type ChatConversation = {
   id: number;
-  type: "direct";
+  type: "direct" | "room_channel";
   createdAt: string;
   updatedAt: string | null;
   lastMessageAt: string | null;
@@ -591,6 +642,11 @@ export type ChatMoot = User;
 
 export type ChatMessagesResult = {
   conversation: ChatConversation;
+  messages: ChatMessage[];
+};
+
+export type RoomChannelMessagesResult = {
+  channel: RoomChannel;
   messages: ChatMessage[];
 };
 

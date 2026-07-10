@@ -46,6 +46,7 @@ import { Button } from "../components/ui/Button";
 import { ImageCropModal } from "../components/ui/ImageCropModal";
 import { ModalSheet } from "../components/ui/ModalSheet";
 import { cn } from "../lib/classNames";
+import { displayNameMaxLength } from "../lib/displayNames";
 import {
   audioUploadAccept,
   audioUploadFormatHelp,
@@ -3509,6 +3510,7 @@ function ModuleSettingsModal({
                 </span>
                 <input
                   className="mt-1 min-h-11 w-full rounded-control border border-line bg-canvas/45 px-3 text-sm font-semibold text-text outline-none transition focus:border-line-strong focus:outline-2 focus:outline-focus"
+                  maxLength={displayNameMaxLength}
                   value={profile.user.displayName}
                   data-testid="profile-info-modal-display-name"
                   onChange={(event) => {

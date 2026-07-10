@@ -14,6 +14,7 @@ import {
   ArrowUp,
   EyeOff,
   Heart,
+  ImagePlay,
   ImagePlus,
   LoaderCircle,
   MessageCircle,
@@ -34,6 +35,7 @@ import { ModalSheet } from "../ui/ModalSheet";
 import { Panel } from "../ui/Panel";
 import { CompactStateNotice } from "../ui/RouteState";
 import { InlineUserProfileLink } from "./UserProfileLink";
+import { GifPicker } from "./GifPicker";
 import { MarkdownEditor } from "./MarkdownEditor";
 import { PostShareModal } from "./PostShareModal";
 import { ReportForm } from "./ReportForm";
@@ -68,6 +70,7 @@ import {
 } from "../../lib/mediaFormats";
 import {
   postMediaDraftFromAudio,
+  postMediaDraftFromGif,
   postMediaDraftFromImage,
   postMediaDraftFromIntegration,
   postMediaDraftFromVideo,
@@ -75,6 +78,7 @@ import {
   type PostMediaDraft,
   type PostVisualMediaDraft,
 } from "../../lib/postMedia";
+import { roomAllowsPosting } from "../../lib/postRules";
 import {
   attachSpotifyPlaybackListeners,
   emptySpotifyPlaybackProgress,
@@ -96,7 +100,7 @@ import {
   softSpring,
 } from "../../lib/motionPresets";
 import type { AuthStatus } from "../../lib/authTypes";
-import type { Post, PostAttachment } from "../../lib/types";
+import type { GifSearchResult, Post, PostAttachment } from "../../lib/types";
 import { useAuth } from "../../lib/useAuth";
 import { canDeletePost } from "../../lib/postPermissions";
 import type { PostMusicAttachmentProvider } from "./PostMusicAttachmentPicker";
@@ -108,8 +112,10 @@ type PostCardProps = {
   canDelete?: boolean;
   canHide?: boolean;
   actionPending?: boolean;
+  disableThreadModal?: boolean;
   onDelete?: (post: Post) => void;
   onHide?: (post: Post) => void;
+  onReplyAction?: () => void;
 };
 
 export function PostCard({
@@ -118,8 +124,10 @@ export function PostCard({
   canDelete = false,
   canHide = false,
   actionPending = false,
+  disableThreadModal = false,
   onDelete,
   onHide,
+  onReplyAction,
 }: PostCardProps) {
   const { csrfToken, runWithAuth, status, user } = useAuth();
   const effectiveCanDelete = canDelete || canDeletePost(user, post);
@@ -163,11 +171,22 @@ export function PostCard({
   }
 
   function openThread(options?: { compose?: boolean }) {
+    if (disableThreadModal) {
+      if (options?.compose) {
+        onReplyAction?.();
+      }
+      return;
+    }
+
     setThreadComposerOpen(Boolean(options?.compose && canReplyToPost));
     setThreadOpen(true);
   }
 
   function handleCardClick(event: ReactMouseEvent<HTMLElement>) {
+    if (disableThreadModal) {
+      return;
+    }
+
     if (isThreadOpenIgnoredTarget(event.target) || isThreadOpenIgnoredEvent(event.nativeEvent)) {
       return;
     }
@@ -176,6 +195,10 @@ export function PostCard({
   }
 
   function handleCardKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (disableThreadModal) {
+      return;
+    }
+
     if (event.key !== "Enter" && event.key !== " ") {
       return;
     }
@@ -188,7 +211,7 @@ export function PostCard({
     openThread();
   }
 
-  const cardMotionProps = threadOpen
+  const cardMotionProps = threadOpen || disableThreadModal
     ? {}
     : { whileHover: cardHover, whileTap: cardTap };
 
@@ -200,11 +223,18 @@ export function PostCard({
     <>
       <motion.article
         id={`post-${post.id}`}
-        aria-label={`Open thread by ${post.author.displayName}`}
-        className="group mx-auto w-full max-w-[38rem] cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus"
+        aria-label={
+          disableThreadModal
+            ? `Post by ${post.author.displayName}`
+            : `Open thread by ${post.author.displayName}`
+        }
+        className={cn(
+          "group mx-auto w-full max-w-[38rem] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus",
+          disableThreadModal ? "cursor-default" : "cursor-pointer",
+        )}
         data-render-deferred="post"
         data-testid="post-card-open-thread"
-        tabIndex={0}
+        tabIndex={disableThreadModal ? undefined : 0}
         variants={cardEntrance}
         custom={index}
         initial="hidden"
@@ -507,6 +537,28 @@ function PostAttachmentItem({
     return <PostIntegrationAttachment attachment={attachment} testId={testId} />;
   }
 
+  if (attachment.kind === "gif") {
+    const title = gifAttachmentTitle(attachment);
+
+    return (
+      <span
+        className="inline-flex w-fit max-w-full overflow-hidden rounded-card border border-line bg-canvas/70 align-top"
+        data-testid={testId}
+      >
+        {attachment.url ? (
+          <img
+            src={attachment.url}
+            alt={title}
+            className={cn("block h-auto max-w-full object-contain", maxHeightClass)}
+            loading="lazy"
+            decoding="async"
+            data-testid={`${testId}-gif`}
+          />
+        ) : null}
+      </span>
+    );
+  }
+
   if (!attachment.url || attachment.url === "/ambient-veil.webp") {
     return null;
   }
@@ -554,6 +606,20 @@ function PostAttachmentItem({
       )}
     </span>
   );
+}
+
+function gifAttachmentTitle(attachment: PostAttachment): string {
+  const card = attachment.card;
+
+  if (card && typeof card === "object" && !Array.isArray(card)) {
+    const title = (card as Record<string, unknown>).title;
+
+    if (typeof title === "string" && title.trim() !== "") {
+      return title.trim();
+    }
+  }
+
+  return "KLIPY GIF";
 }
 
 type PostMusicAttachmentDetails = {
@@ -1709,7 +1775,7 @@ function CommentButton({ count, onClick }: CommentButtonProps) {
   );
 }
 
-type ReplyComposerProps = {
+export type ReplyComposerProps = {
   parentPostId: number;
   csrfToken: string | undefined;
   runWithAuth: <T>(
@@ -1722,7 +1788,7 @@ type ReplyComposerProps = {
   onCreated: (reply: Post) => void;
 };
 
-function ReplyComposer({
+export function ReplyComposer({
   parentPostId,
   csrfToken,
   runWithAuth,
@@ -1734,6 +1800,7 @@ function ReplyComposer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [body, setBody] = useState("");
   const [media, setMedia] = useState<PostMediaDraft[]>([]);
+  const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [musicPickerOpen, setMusicPickerOpen] = useState(false);
   const [pendingImageCrop, setPendingImageCrop] = useState<File | undefined>();
   const [uploadingMedia, setUploadingMedia] = useState(false);
@@ -1788,6 +1855,7 @@ function ReplyComposer({
 
       setBody("");
       setMedia([]);
+      setGifPickerOpen(false);
       setMusicPickerOpen(false);
       setPendingImageCrop(undefined);
       onCreated(reply);
@@ -1973,6 +2041,17 @@ function ReplyComposer({
     setMusicPickerOpen(false);
   }
 
+  function handleGifAttachmentAdd(gif: GifSearchResult) {
+    if (!canAddMedia) {
+      setMessage(`Replies can include up to ${maxPostComposerAttachments} attachments.`);
+      return;
+    }
+
+    appendMedia(postMediaDraftFromGif(gif));
+    setMessage("GIF attached.");
+    setGifPickerOpen(false);
+  }
+
   function moveMediaAttachment(index: number, offset: -1 | 1) {
     setMedia((current) => movePostMediaDraft(current, index, index + offset));
   }
@@ -2017,6 +2096,10 @@ function ReplyComposer({
         open={musicPickerOpen}
       />
 
+      {gifPickerOpen ? (
+        <GifPicker className="mt-3" onSelect={handleGifAttachmentAdd} />
+      ) : null}
+
       <PostMedia
         className="mt-3"
         maxHeightClass="max-h-56"
@@ -2039,7 +2122,8 @@ function ReplyComposer({
         <p
           className={cn(
             "mt-3 rounded-card border p-3 text-sm",
-            message === "Media attached."
+            message === "Media attached." ||
+            message === "GIF attached."
               ? "border-leaf/30 bg-leaf/15 text-leaf-ink"
               : "border-rose/30 bg-rose/15 text-rose-ink",
           )}
@@ -2080,6 +2164,16 @@ function ReplyComposer({
               onChange={(event) => void handleMediaChange(event)}
             />
           </label>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={submitting || uploadingMedia || !canAddMedia || !csrfToken}
+            icon={<ImagePlay aria-hidden="true" size={15} />}
+            onClick={() => setGifPickerOpen((current) => !current)}
+          >
+            GIF
+          </Button>
           <Button
             type="button"
             variant="secondary"
@@ -2151,6 +2245,8 @@ function PostAttachmentDraftList({
                 ? "MP3"
                 : attachment.type === "integration"
                   ? providerLabel(attachment.provider)
+                  : attachment.type === "gif"
+                    ? "KLIPY GIF"
                   : attachment.type}
             </p>
             {attachment.type === "audio" ? (
@@ -2161,6 +2257,8 @@ function PostAttachmentDraftList({
               <p className="truncate text-sm text-text">
                 {attachment.card.metadata.title ?? providerLabel(attachment.provider)}
               </p>
+            ) : attachment.type === "gif" ? (
+              <p className="truncate text-sm text-text">GIF attachment</p>
             ) : (
               <p className="truncate text-sm text-text">Attachment {index + 1}</p>
             )}
@@ -2235,7 +2333,7 @@ function isVisualPostMediaDraft(
 }
 
 function postMediaDraftKey(attachment: PostMediaDraft): string {
-  return attachment.type === "integration"
+  return attachment.type === "integration" || attachment.type === "gif"
     ? attachment.resourceKey
     : attachment.url;
 }
@@ -2954,14 +3052,6 @@ function PostActionIconButton({
       {icon}
     </motion.button>
   );
-}
-
-function roomAllowsPosting(room: Post["room"] | null | undefined): boolean {
-  if (room === null || room === undefined || !("viewerCanPost" in room)) {
-    return true;
-  }
-
-  return room.viewerCanPost === true;
 }
 
 function validatePostVideoFile(file: File): string | undefined {

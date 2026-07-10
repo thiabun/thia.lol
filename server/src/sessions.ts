@@ -14,6 +14,8 @@ export interface RequestSession {
   bio?: string | null;
   location?: string | null;
   avatarUrl?: string | null;
+  profileTheme?: string | null;
+  profileThemeConfig?: string | null;
   links?: string | null;
   traits?: string | null;
 }
@@ -34,6 +36,8 @@ interface SessionRow extends RowDataPacket {
   bio: string | null;
   location: string | null;
   avatar_url: string | null;
+  profile_theme: string | null;
+  profile_theme_config_json: string | null;
   links: string | null;
   traits: string | null;
 }
@@ -119,6 +123,8 @@ class MysqlSessionsRepository implements SessionsRepository {
             p.bio,
             p.location,
             p.avatar_url,
+            p.profile_theme,
+            p.profile_theme_config_json,
             p.links,
             p.traits
          FROM sessions s
@@ -148,6 +154,8 @@ class MysqlSessionsRepository implements SessionsRepository {
       bio: row.bio,
       location: row.location,
       avatarUrl: row.avatar_url,
+      profileTheme: row.profile_theme,
+      profileThemeConfig: row.profile_theme_config_json,
       links: row.links,
       traits: row.traits,
     };

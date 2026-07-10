@@ -259,7 +259,7 @@ test("view-only rooms hide posting but keep reaction affordances", async ({ page
   await expect(page.getByTestId("reply-composer")).toHaveCount(0);
 });
 
-test("room themes recolor active post reactions against the saved site theme", async ({
+test("room themes recolor active post reactions against the active room theme", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -289,16 +289,16 @@ test("room themes recolor active post reactions against the saved site theme", a
       })),
     )
     .toEqual({
-      leafInk: "#A56B18",
-      roseInk: "#A56B18",
+      leafInk: "#C82F68",
+      roseInk: "#C82F68",
     });
   await expect(page.getByRole("button", { name: /Unlike this post/i })).toHaveCSS(
     "color",
-    "rgb(165, 107, 24)",
+    "rgb(200, 47, 104)",
   );
   await expect(page.getByRole("button", { name: /Undo reblog/i })).toHaveCSS(
     "color",
-    "rgb(165, 107, 24)",
+    "rgb(200, 47, 104)",
   );
 });
 
@@ -629,6 +629,7 @@ async function mockStaffInviteRoom(page: Page) {
       body: JSON.stringify({ ok: true, data: [] }),
     });
   });
+  await mockRoomChannelRoutes(page, "invite-room", room());
   await page.route(/\/api\/rooms\/invite-room\/access-requests(?:\/(\d+)\/(approve|deny))?$/, async (route) => {
     const match = route.request().url().match(/\/access-requests(?:\/(\d+)\/(approve|deny))?$/);
     const requestId = match?.[1] ? Number(match[1]) : undefined;
@@ -709,6 +710,7 @@ async function mockViewOnlyRoom(
       body: JSON.stringify({ ok: true, data: [] }),
     });
   });
+  await mockRoomChannelRoutes(page, "read-room", room);
   await page.route("**/api/posts/501/replies", async (route) => {
     await route.fulfill({
       status: 200,
@@ -785,6 +787,58 @@ async function mockStats(page: Page) {
 async function acknowledgeCookieNotice(page: Page) {
   await page.addInitScript(() => {
     window.localStorage.setItem("thia_cookie_notice_ack", "1");
+  });
+}
+
+async function mockRoomChannelRoutes(
+  page: Page,
+  slug: string,
+  room: Record<string, unknown>,
+) {
+  const channel = {
+    id: 701,
+    roomId: room.id ?? 1,
+    slug: "general",
+    name: "general",
+    description: "Room chat",
+    position: 0,
+    kind: "chat",
+    readOnly: false,
+    archivedAt: null,
+    conversationId: 9701,
+    unreadCount: 0,
+    lastMessageAt: null,
+    viewerCanPost: Boolean(room.viewerCanPost),
+    createdAt: "2026-07-10 00:00:00",
+    updatedAt: "2026-07-10 00:00:00",
+  };
+
+  await page.route(`**/api/rooms/${slug}/channels`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [channel] }),
+    });
+  });
+  await page.route(`**/api/rooms/${slug}/channels/general/messages`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: { channel, messages: [] } }),
+    });
+  });
+  await page.route(`**/api/rooms/${slug}/channels/general/read`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          conversationId: channel.conversationId,
+          readAt: "2026-07-10 00:00:00",
+        },
+      }),
+    });
   });
 }
 

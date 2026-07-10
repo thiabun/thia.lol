@@ -7,6 +7,7 @@ import { createContentMutationsRepository } from "./content.js";
 import { createDatabaseClient } from "./db.js";
 import { createEditorRepository } from "./editor.js";
 import { createGrowthRepository } from "./growth.js";
+import { createGifRepository } from "./gifs.js";
 import { createIntegrationsRepository } from "./integrations.js";
 import { createModerationRepository } from "./moderation.js";
 import { createOpsService } from "./ops.js";
@@ -39,6 +40,12 @@ const contentMutationsRepository = createContentMutationsRepository(database.poo
 });
 const editorRepository = createEditorRepository(database.pool);
 const growthRepository = createGrowthRepository(database.pool);
+const gifsRepository = createGifRepository({
+  apiKey: config.THIA_KLIPY_API_KEY,
+  baseUrl: config.THIA_KLIPY_API_BASE_URL,
+  country: config.THIA_KLIPY_COUNTRY,
+  locale: config.THIA_KLIPY_LOCALE,
+});
 const moderationRepository = createModerationRepository(database.pool);
 const integrationsRepository = createIntegrationsRepository(database.pool, {
   publicBaseUrl: config.THIA_PUBLIC_BASE_URL,
@@ -126,6 +133,7 @@ const app = buildApp({
   contentMutationsRepository,
   editorRepository,
   growthRepository,
+  gifsRepository,
   integrationsRepository,
   moderationRepository,
   opsService,

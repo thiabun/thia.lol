@@ -1,12 +1,16 @@
 import {
+  Hash,
+  ImagePlay,
   Inbox,
   LoaderCircle,
   MessageCircle,
+  Radio,
   RefreshCw,
   Search,
   Send,
   WifiOff,
   UserPlus,
+  X,
 } from "lucide-react";
 import { motion } from "motion/react";
 import {
@@ -20,6 +24,7 @@ import {
 } from "react";
 import { Link, useSearchParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
+import { GifPicker } from "../components/social/GifPicker";
 import { MentionTextarea } from "../components/social/MentionTextarea";
 import { ReportForm } from "../components/social/ReportForm";
 import { RichText } from "../components/social/RichText";
@@ -37,17 +42,24 @@ import {
   getChatConversations,
   getChatMessages,
   getChatMoots,
+  getRoomChannels,
+  getRooms,
   markChatConversationRead,
   sendChatMessage,
 } from "../lib/api";
 import { cn } from "../lib/classNames";
 import { parseApiTimestamp } from "../lib/dates";
+import { gifAttachmentTitle, gifToChatAttachmentInput } from "../lib/gifs";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
 import type {
   ChatConversation,
   ChatMessage,
   ChatMoot,
+  GifAttachment,
+  GifSearchResult,
   PostShareSummary,
+  Room,
+  RoomChannel,
 } from "../lib/types";
 import { useAuth } from "../lib/useAuth";
 
@@ -66,6 +78,8 @@ export function ChatPage() {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState<string | undefined>();
   const [body, setBody] = useState("");
+  const [selectedGifs, setSelectedGifs] = useState<GifSearchResult[]>([]);
+  const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [startError, setStartError] = useState<string | undefined>();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -73,6 +87,9 @@ export function ChatPage() {
   const [mootsLoading, setMootsLoading] = useState(false);
   const [mootsError, setMootsError] = useState<string | undefined>();
   const [mootQuery, setMootQuery] = useState("");
+  const [roomSummaries, setRoomSummaries] = useState<ChatRoomSummary[]>([]);
+  const [roomSummariesLoading, setRoomSummariesLoading] = useState(false);
+  const [roomSummariesError, setRoomSummariesError] = useState<string | undefined>();
   const [startingMootHandle, setStartingMootHandle] = useState<string | undefined>();
   const startedHandleRef = useRef<string | undefined>(undefined);
   const messageListRef = useRef<HTMLDivElement>(null);
@@ -154,11 +171,45 @@ export function ChatPage() {
     }
   }, [status]);
 
+  const loadRoomSummaries = useCallback(async () => {
+    if (status !== "authenticated") {
+      setRoomSummaries([]);
+      return;
+    }
+
+    setRoomSummariesLoading(true);
+    setRoomSummariesError(undefined);
+
+    try {
+      const rooms = (await getRooms()).filter((room) => room.joinedByMe);
+      const summaries = await Promise.all(
+        rooms.slice(0, 6).map(async (room) => ({
+          room,
+          channels: await getRoomChannels(room.slug).catch(() => []),
+        })),
+      );
+
+      setRoomSummaries(summaries);
+    } catch (error) {
+      setRoomSummariesError(
+        error instanceof Error ? error.message : "Room channels could not load.",
+      );
+    } finally {
+      setRoomSummariesLoading(false);
+    }
+  }, [status]);
+
   useEffect(() => {
     queueMicrotask(() => {
       void loadConversations();
     });
   }, [loadConversations]);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      void loadRoomSummaries();
+    });
+  }, [loadRoomSummaries]);
 
   useEffect(() => {
     if (
@@ -275,7 +326,11 @@ export function ChatPage() {
 
     const trimmed = body.trim();
 
-    if (!selectedConversationId || trimmed === "" || sending) {
+    if (
+      !selectedConversationId ||
+      (trimmed === "" && selectedGifs.length === 0) ||
+      sending
+    ) {
       return;
     }
 
@@ -284,10 +339,18 @@ export function ChatPage() {
 
     try {
       const message = await runWithAuth(
-        (csrfToken) => sendChatMessage(selectedConversationId, trimmed, csrfToken),
+        (csrfToken) =>
+          sendChatMessage(
+            selectedConversationId,
+            trimmed,
+            csrfToken,
+            selectedGifs.map(gifToChatAttachmentInput),
+          ),
         { retryOnCsrf: true },
       );
       setBody("");
+      setSelectedGifs([]);
+      setGifPickerOpen(false);
       setMessages((current) => [...current, message]);
       setConversations((current) =>
         current
@@ -315,6 +378,28 @@ export function ChatPage() {
     } finally {
       setSending(false);
     }
+  }
+
+  function handleGifSelect(gif: GifSearchResult) {
+    setSelectedGifs((current) => {
+      if (current.some((item) => item.resourceKey === gif.resourceKey)) {
+        return current;
+      }
+
+      if (current.length >= 4) {
+        setMessagesError("Messages can include up to 4 GIFs.");
+        return current;
+      }
+
+      setMessagesError(undefined);
+      return [...current, gif];
+    });
+  }
+
+  function handleGifRemove(resourceKey: string) {
+    setSelectedGifs((current) =>
+      current.filter((gif) => gif.resourceKey !== resourceKey),
+    );
   }
 
   function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -397,8 +482,12 @@ export function ChatPage() {
   const showInitialConversationError =
     Boolean(conversationsError) && conversations.length === 0;
   const conversationsEmpty =
-    !conversationsLoading && !conversationsError && conversations.length === 0;
-  const showConversationLayout = conversations.length > 0;
+    !conversationsLoading &&
+    !conversationsError &&
+    conversations.length === 0 &&
+    roomSummaries.length === 0;
+  const showConversationLayout =
+    conversations.length > 0 || roomSummaries.length > 0;
   if (status === "anonymous") {
     return (
       <motion.div
@@ -595,6 +684,12 @@ export function ChatPage() {
                 />
               ))}
             </div>
+            <ChatRoomSummaryList
+              error={roomSummariesError}
+              loading={roomSummariesLoading}
+              summaries={roomSummaries}
+              onRefresh={() => void loadRoomSummaries()}
+            />
           </aside>
 
           <section className="min-w-0">
@@ -652,7 +747,55 @@ export function ChatPage() {
                   data-testid="chat-message-composer"
                   onSubmit={(event) => void handleSend(event)}
                 >
+                  {selectedGifs.length > 0 ? (
+                    <div
+                      className="mb-2 flex gap-2 overflow-x-auto pb-1"
+                      data-testid="chat-selected-gifs"
+                    >
+                      {selectedGifs.map((gif) => (
+                        <div
+                          key={gif.resourceKey}
+                          className="relative h-24 w-32 shrink-0 overflow-hidden rounded-card border border-line bg-canvas shadow-inner-soft"
+                        >
+                          <img
+                            alt={gifAttachmentTitle(gif)}
+                            src={gif.previewUrl ?? gif.url}
+                            className="size-full object-cover"
+                          />
+                          <span className="absolute bottom-1 left-1 rounded-full bg-black/75 px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-white">
+                            KLIPY
+                          </span>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="absolute right-1 top-1 size-7 bg-black/70 text-white hover:bg-black/85 hover:text-white"
+                            aria-label={`Remove ${gifAttachmentTitle(gif)}`}
+                            title={`Remove ${gifAttachmentTitle(gif)}`}
+                            icon={<X aria-hidden="true" size={14} />}
+                            onClick={() => handleGifRemove(gif.resourceKey)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {gifPickerOpen ? (
+                    <GifPicker
+                      className="mb-2"
+                      onSelect={handleGifSelect}
+                    />
+                  ) : null}
                   <div className="flex items-start gap-2">
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant={gifPickerOpen ? "secondary" : "ghost"}
+                      className="mt-1 shrink-0"
+                      aria-label={gifPickerOpen ? "Close GIF picker" : "Add GIF"}
+                      title={gifPickerOpen ? "Close GIF picker" : "Add GIF"}
+                      icon={<ImagePlay aria-hidden="true" size={16} />}
+                      onClick={() => setGifPickerOpen((open) => !open)}
+                    />
                     <label className="sr-only" htmlFor="chat-message-body">
                       Write a message
                     </label>
@@ -671,7 +814,9 @@ export function ChatPage() {
                       type="submit"
                       size="sm"
                       className="min-h-12 shrink-0 px-3"
-                      disabled={body.trim() === "" || sending}
+                      disabled={
+                        (body.trim() === "" && selectedGifs.length === 0) || sending
+                      }
                       icon={<Send aria-hidden="true" size={16} />}
                     >
                       {sending ? "Sending" : "Send"}
@@ -724,6 +869,97 @@ type ChatMootPickerProps = {
   onRefresh: () => void;
   onSelect: (moot: ChatMoot) => void;
 };
+
+type ChatRoomSummary = {
+  channels: RoomChannel[];
+  room: Room;
+};
+
+function ChatRoomSummaryList({
+  error,
+  loading,
+  onRefresh,
+  summaries,
+}: {
+  error: string | undefined;
+  loading: boolean;
+  onRefresh: () => void;
+  summaries: ChatRoomSummary[];
+}) {
+  if (!loading && !error && summaries.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="border-t border-line p-3" data-testid="chat-room-summary">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-text">Rooms</h2>
+          <p className="mt-0.5 text-xs text-muted">Joined channels</p>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-8 shrink-0"
+          aria-label="Refresh room channels"
+          title="Refresh room channels"
+          disabled={loading}
+          icon={<RefreshCw aria-hidden="true" size={14} />}
+          onClick={onRefresh}
+        />
+      </div>
+
+      {loading ? (
+        <p className="mt-3 text-xs text-muted">Loading room channels.</p>
+      ) : null}
+      {error ? (
+        <p className="mt-3 rounded-card border border-rose/30 bg-rose/15 p-2 text-xs text-rose-ink">
+          {error}
+        </p>
+      ) : null}
+      {summaries.length > 0 ? (
+        <div className="mt-3 space-y-2">
+          {summaries.map((summary) => {
+            const channel = summary.channels[0];
+            const unreadCount = summary.channels.reduce(
+              (total, item) => total + item.unreadCount,
+              0,
+            );
+            const to = channel
+              ? `/rooms/${summary.room.slug}?channel=${channel.slug}`
+              : `/rooms/${summary.room.slug}`;
+
+            return (
+              <ButtonLink
+                key={summary.room.id}
+                to={to}
+                variant="ghost"
+                className="flex min-h-11 w-full justify-start rounded-control px-2 text-left"
+              >
+                <Radio aria-hidden="true" size={15} className="shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-text">
+                    {summary.room.name}
+                  </span>
+                  <span className="flex min-w-0 items-center gap-1 text-xs text-muted">
+                    <Hash aria-hidden="true" size={12} className="shrink-0" />
+                    <span className="truncate">{channel?.name ?? "general"}</span>
+                  </span>
+                </span>
+                {unreadCount > 0 ? (
+                  <span className="grid min-w-5 shrink-0 place-items-center rounded-full bg-accent px-1.5 py-0.5 text-xs font-semibold leading-none text-accent-ink shadow-soft">
+                    {unreadCount}
+                  </span>
+                ) : null}
+              </ButtonLink>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function ChatMootPicker({
   conversations,
@@ -1009,7 +1245,13 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
                     mine={mine}
                     post={attachment.post}
                   />
-                ) : null,
+                ) : (
+                  <ChatGifAttachment
+                    key={`${message.id}-gif-${attachment.gif.resourceKey}-${index}`}
+                    gif={attachment.gif}
+                    mine={mine}
+                  />
+                ),
               )}
             </div>
           ) : null}
@@ -1050,6 +1292,45 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+function ChatGifAttachment({
+  gif,
+  mine,
+}: {
+  gif: GifAttachment;
+  mine: boolean;
+}) {
+  return (
+    <a
+      href={gif.sourceUrl ?? gif.url}
+      target="_blank"
+      rel="noreferrer"
+      className={cn(
+        "block overflow-hidden rounded-card border shadow-inner-soft transition duration-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+        mine
+          ? "border-accent-ink/20 bg-accent-ink/10 hover:bg-accent-ink/15"
+          : "border-line bg-canvas/70 hover:border-line-strong hover:bg-surface",
+      )}
+      data-testid="chat-gif-attachment"
+    >
+      <img
+        alt={gifAttachmentTitle(gif)}
+        src={gif.url}
+        className="max-h-72 w-full min-w-48 object-cover"
+        loading="lazy"
+      />
+      <span
+        className={cn(
+          "flex items-center justify-between gap-2 px-2.5 py-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.08em]",
+          mine ? "text-accent-ink/72" : "text-muted",
+        )}
+      >
+        <span className="truncate">{gifAttachmentTitle(gif)}</span>
+        <span className="shrink-0">KLIPY</span>
+      </span>
+    </a>
   );
 }
 

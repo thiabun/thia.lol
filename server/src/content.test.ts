@@ -146,6 +146,65 @@ describe("post attachment validation", () => {
     ).toThrow("Posts can include up to 8 attachments.");
   });
 
+  it("accepts provider-backed KLIPY GIF attachments", () => {
+    expect(
+      validatePostAttachments({
+        attachments: [
+          {
+            kind: "gif",
+            provider: "klipy",
+            resourceId: "gif-1",
+            resourceKey: "klipy:gif-1",
+            url: "https://media.klipy.com/gif-1.gif",
+            width: 320,
+            height: 180,
+            sourceUrl: "https://klipy.com/gif/gif-1",
+            card: {
+              title: "Wave",
+              provider: "klipy",
+            },
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        position: 1,
+        kind: "gif",
+        url: "https://media.klipy.com/gif-1.gif",
+        mime: "image/gif",
+        sizeBytes: null,
+        width: 320,
+        height: 180,
+        durationSeconds: null,
+        posterUrl: null,
+        provider: "klipy",
+        resourceType: "gif",
+        resourceId: "gif-1",
+        resourceKey: "klipy:gif-1",
+        sourceUrl: "https://klipy.com/gif/gif-1",
+        cardJson: JSON.stringify({
+          title: "Wave",
+          provider: "klipy",
+        }),
+      },
+    ]);
+  });
+
+  it("rejects GIF attachments from unknown providers", () => {
+    expect(() =>
+      validatePostAttachments({
+        attachments: [
+          {
+            kind: "gif",
+            provider: "giphy",
+            resourceId: "gif-1",
+            url: "https://media.example.test/gif-1.gif",
+          },
+        ],
+      }),
+    ).toThrow("Post GIF provider is invalid.");
+  });
+
   it("keeps legacy single media input compatible", () => {
     expect(
       validatePostAttachments({

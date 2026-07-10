@@ -1,15 +1,27 @@
 import {
+  Archive,
+  ChevronDown,
+  ChevronUp,
   Clock3,
+  Hash,
+  ImagePlay,
+  Inbox,
+  LoaderCircle,
+  Megaphone,
   MessageCircle,
   PenLine,
+  Plus,
   Radio,
   ScrollText,
   Settings,
   Share2,
   Shield,
   Sparkles,
+  Send,
   UserRound,
   UsersRound,
+  WifiOff,
+  X,
 } from "lucide-react";
 import { motion } from "motion/react";
 import {
@@ -18,11 +30,16 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
+  type FormEvent,
+  type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { useNavigate, useOutletContext, useParams } from "react-router";
+import { useNavigate, useOutletContext, useParams, useSearchParams } from "react-router";
 import { PageMeta } from "../components/PageMeta";
+import { GifPicker } from "../components/social/GifPicker";
+import { MentionTextarea } from "../components/social/MentionTextarea";
 import { PostCard } from "../components/social/PostCard";
 import { ReportForm } from "../components/social/ReportForm";
 import { RoomShareModal } from "../components/social/RoomShareModal";
@@ -32,11 +49,14 @@ import {
   UserIdentityLink,
 } from "../components/social/UserProfileLink";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
+import { Avatar } from "../components/ui/Avatar";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
+import { CompactStateNotice } from "../components/ui/RouteState";
 import {
+  createRoomChannel,
   deletePost,
   deleteRoom,
   approveRoomAccessRequest,
@@ -44,29 +64,47 @@ import {
   denyRoomAccessRequest,
   getRoomAccessRequests,
   getRoom,
+  getRoomChannels,
+  getRoomChannelMessages,
   getRoomMembers,
   getRoomPosts,
   joinRoom,
   leaveRoom,
+  markRoomChannelRead,
   addRoomModerator,
   requestRoomAccess,
   removeRoomModerator,
+  sendRoomChannelMessage,
   updatePost,
   updateRoom,
+  updateRoomChannel,
   previewImageUpload,
   uploadImage,
 } from "../lib/api";
 import { ApiClientError } from "../lib/apiClient";
+import { cn } from "../lib/classNames";
 import { postCreatedEventName } from "../lib/postEvents";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
 import { formatRelativeTime } from "../lib/dates";
+import { gifAttachmentTitle, gifToChatAttachmentInput } from "../lib/gifs";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
 import { formatCountWithUnit } from "../lib/pluralize";
 import { applyProfileThemeToRoot } from "../lib/profileThemes";
 import { roomThemeConfig, roomThemeSwatchCssProperties } from "../lib/roomThemes";
 import type { AppShellOutletContext } from "../components/layout/AppShell";
 import type { ImageUploadPurpose, RoomInput } from "../lib/api";
-import type { Post, Room, RoomAccessRequest, RoomMember, RoomVisibility } from "../lib/types";
+import type {
+  ChatMessage,
+  GifAttachment,
+  GifSearchResult,
+  Post,
+  Room,
+  RoomAccessRequest,
+  RoomChannel,
+  RoomMember,
+  RoomVisibility,
+  User,
+} from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
 
@@ -75,6 +113,8 @@ const RoomEditModal = lazy(() =>
     default: module.RoomEditModal,
   })),
 );
+
+const maxRoomChatMessageLength = 2000;
 
 export function RoomPage() {
   const { csrfToken, user } = useAuth();
@@ -484,6 +524,14 @@ export function RoomPage() {
         </p>
       ) : null}
 
+      {room && !postsAccessGated ? (
+        <RoomChannelWorkspace
+          canManage={canEditRoom}
+          members={members}
+          room={room}
+        />
+      ) : null}
+
       {room ? (
         <RoomAbout
           room={room}
@@ -574,6 +622,1132 @@ function RoomEditorLoadingNotice() {
     >
       Opening room editor.
     </div>
+  );
+}
+
+function RoomChannelWorkspace({
+  canManage,
+  members,
+  room,
+}: {
+  canManage: boolean;
+  members: RoomMember[];
+  room: Room;
+}) {
+  const { runWithAuth, status, user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const messageListRef = useRef<HTMLDivElement>(null);
+  const latestMessageRequestRef = useRef<string | undefined>(undefined);
+  const requestedChannelSlug = sanitizeChannelSlug(searchParams.get("channel"));
+  const [channels, setChannels] = useState<RoomChannel[]>([]);
+  const [channelsLoading, setChannelsLoading] = useState(false);
+  const [channelsError, setChannelsError] = useState<string | undefined>();
+  const [activeChannelSlug, setActiveChannelSlug] = useState<string | undefined>();
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [messagesError, setMessagesError] = useState<string | undefined>();
+  const [body, setBody] = useState("");
+  const [selectedGifs, setSelectedGifs] = useState<GifSearchResult[]>([]);
+  const [gifPickerOpen, setGifPickerOpen] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [newChannelOpen, setNewChannelOpen] = useState(false);
+  const [newChannelName, setNewChannelName] = useState("");
+  const [newChannelDescription, setNewChannelDescription] = useState("");
+  const [newChannelKind, setNewChannelKind] = useState<RoomChannel["kind"]>("chat");
+  const [newChannelReadOnly, setNewChannelReadOnly] = useState(false);
+  const [creatingChannel, setCreatingChannel] = useState(false);
+  const [channelDraft, setChannelDraft] = useState({
+    name: "",
+    description: "",
+    kind: "chat" as RoomChannel["kind"],
+    readOnly: false,
+  });
+  const [channelSaving, setChannelSaving] = useState(false);
+  const [channelActionError, setChannelActionError] = useState<string | undefined>();
+  const orderedChannels = useMemo(
+    () => [...channels].sort(sortRoomChannels),
+    [channels],
+  );
+  const activeChannel = useMemo(
+    () =>
+      orderedChannels.find((channel) => channel.slug === activeChannelSlug) ??
+      orderedChannels[0],
+    [activeChannelSlug, orderedChannels],
+  );
+  const activeChannelKey = activeChannel
+    ? `${room.slug}:${activeChannel.slug}`
+    : undefined;
+  const canPostInActiveChannel = Boolean(activeChannel?.viewerCanPost);
+
+  const loadChannels = useCallback(
+    async (showLoading = true) => {
+      if (status !== "authenticated") {
+        setChannels([]);
+        return;
+      }
+
+      if (showLoading) {
+        setChannelsLoading(true);
+      }
+      setChannelsError(undefined);
+
+      try {
+        setChannels(await getRoomChannels(room.slug));
+      } catch (caught) {
+        setChannelsError(
+          caught instanceof Error ? caught.message : "Channels could not load.",
+        );
+      } finally {
+        if (showLoading) {
+          setChannelsLoading(false);
+        }
+      }
+    },
+    [room.slug, status],
+  );
+
+  const loadMessages = useCallback(
+    async (showLoading = true) => {
+      if (status !== "authenticated" || !activeChannel) {
+        setMessages([]);
+        return;
+      }
+
+      const requestKey = `${room.slug}:${activeChannel.slug}`;
+      latestMessageRequestRef.current = requestKey;
+
+      if (showLoading) {
+        setMessagesLoading(true);
+      }
+      setMessagesError(undefined);
+
+      try {
+        const result = await getRoomChannelMessages(room.slug, activeChannel.slug);
+
+        if (latestMessageRequestRef.current !== requestKey) {
+          return;
+        }
+
+        setMessages(result.messages);
+        setChannels((current) => upsertRoomChannel(current, result.channel));
+
+        void runWithAuth(
+          (csrfToken) => markRoomChannelRead(room.slug, activeChannel.slug, csrfToken),
+          { retryOnCsrf: true },
+        ).then(() => {
+          setChannels((current) =>
+            current.map((channel) =>
+              channel.slug === activeChannel.slug
+                ? { ...channel, unreadCount: 0 }
+                : channel,
+            ),
+          );
+        });
+      } catch (caught) {
+        if (latestMessageRequestRef.current === requestKey) {
+          setMessagesError(
+            caught instanceof Error ? caught.message : "Messages could not load.",
+          );
+        }
+      } finally {
+        if (showLoading && latestMessageRequestRef.current === requestKey) {
+          setMessagesLoading(false);
+        }
+      }
+    },
+    [activeChannel, room.slug, runWithAuth, status],
+  );
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      setChannels([]);
+      setMessages([]);
+      setActiveChannelSlug(undefined);
+      setBody("");
+      setSelectedGifs([]);
+      setGifPickerOpen(false);
+      void loadChannels();
+    });
+  }, [loadChannels, room.slug]);
+
+  useEffect(() => {
+    if (orderedChannels.length === 0) {
+      return;
+    }
+
+    const requested = requestedChannelSlug
+      ? orderedChannels.find((channel) => channel.slug === requestedChannelSlug)
+      : undefined;
+    const nextSlug = requested?.slug ?? activeChannel?.slug ?? orderedChannels[0]?.slug;
+
+    if (nextSlug && nextSlug !== activeChannelSlug) {
+      queueMicrotask(() => {
+        setActiveChannelSlug(nextSlug);
+      });
+    }
+  }, [activeChannel?.slug, activeChannelSlug, orderedChannels, requestedChannelSlug]);
+
+  useEffect(() => {
+    if (!activeChannel) {
+      return;
+    }
+
+    queueMicrotask(() => {
+      setChannelDraft({
+        name: activeChannel.name,
+        description: activeChannel.description ?? "",
+        kind: activeChannel.kind,
+        readOnly: activeChannel.readOnly,
+      });
+    });
+  }, [activeChannel]);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      void loadMessages();
+    });
+  }, [loadMessages, activeChannelKey]);
+
+  useEffect(() => {
+    if (!activeChannel || status !== "authenticated") {
+      return undefined;
+    }
+
+    const refresh = () => {
+      if (document.visibilityState === "visible") {
+        void loadChannels(false);
+        void loadMessages(false);
+      }
+    };
+    const interval = window.setInterval(refresh, 8000);
+
+    window.addEventListener("focus", refresh);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [activeChannel, loadChannels, loadMessages, status]);
+
+  useEffect(() => {
+    if (messages.length === 0) {
+      return;
+    }
+
+    const messageList = messageListRef.current;
+
+    if (messageList) {
+      messageList.scrollTop = messageList.scrollHeight;
+    }
+  }, [messages.length, activeChannelSlug]);
+
+  function selectChannel(channel: RoomChannel) {
+    setActiveChannelSlug(channel.slug);
+    setMessagesError(undefined);
+    setSelectedGifs([]);
+    setGifPickerOpen(false);
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("channel", channel.slug);
+    setSearchParams(nextParams, { replace: false });
+  }
+
+  async function handleCreateChannel(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const name = newChannelName.trim();
+
+    if (name === "" || creatingChannel) {
+      return;
+    }
+
+    setCreatingChannel(true);
+    setChannelActionError(undefined);
+
+    try {
+      const created = await runWithAuth(
+        (csrfToken) =>
+          createRoomChannel(
+            room.slug,
+            {
+              name,
+              description: newChannelDescription.trim() || null,
+              kind: newChannelKind,
+              readOnly: newChannelReadOnly,
+            },
+            csrfToken,
+          ),
+        { retryOnCsrf: true },
+      );
+
+      setChannels((current) => upsertRoomChannel(current, created));
+      setNewChannelName("");
+      setNewChannelDescription("");
+      setNewChannelKind("chat");
+      setNewChannelReadOnly(false);
+      setNewChannelOpen(false);
+      selectChannel(created);
+    } catch (caught) {
+      setChannelActionError(
+        caught instanceof Error ? caught.message : "Channel could not be created.",
+      );
+    } finally {
+      setCreatingChannel(false);
+    }
+  }
+
+  async function handleSaveChannel() {
+    if (!activeChannel || channelSaving) {
+      return;
+    }
+
+    setChannelSaving(true);
+    setChannelActionError(undefined);
+
+    try {
+      const updated = await runWithAuth(
+        (csrfToken) =>
+          updateRoomChannel(
+            room.slug,
+            activeChannel.slug,
+            {
+              name: channelDraft.name,
+              description: channelDraft.description.trim() || null,
+              kind: channelDraft.kind,
+              readOnly: channelDraft.readOnly,
+            },
+            csrfToken,
+          ),
+        { retryOnCsrf: true },
+      );
+
+      setChannels((current) => upsertRoomChannel(current, updated));
+      setActiveChannelSlug(updated.slug);
+    } catch (caught) {
+      setChannelActionError(
+        caught instanceof Error ? caught.message : "Channel could not be saved.",
+      );
+    } finally {
+      setChannelSaving(false);
+    }
+  }
+
+  async function handleMoveChannel(direction: -1 | 1) {
+    if (!activeChannel || channelSaving) {
+      return;
+    }
+
+    const index = orderedChannels.findIndex(
+      (channel) => channel.slug === activeChannel.slug,
+    );
+    const neighbor = orderedChannels[index + direction];
+
+    if (!neighbor) {
+      return;
+    }
+
+    setChannelSaving(true);
+    setChannelActionError(undefined);
+
+    try {
+      const [updatedActive, updatedNeighbor] = await runWithAuth(
+        async (csrfToken) =>
+          Promise.all([
+            updateRoomChannel(
+              room.slug,
+              activeChannel.slug,
+              { position: neighbor.position },
+              csrfToken,
+            ),
+            updateRoomChannel(
+              room.slug,
+              neighbor.slug,
+              { position: activeChannel.position },
+              csrfToken,
+            ),
+          ]),
+        { retryOnCsrf: true },
+      );
+
+      setChannels((current) =>
+        upsertRoomChannel(upsertRoomChannel(current, updatedActive), updatedNeighbor),
+      );
+    } catch (caught) {
+      setChannelActionError(
+        caught instanceof Error ? caught.message : "Channel order could not be saved.",
+      );
+    } finally {
+      setChannelSaving(false);
+    }
+  }
+
+  async function handleArchiveChannel() {
+    if (!activeChannel || orderedChannels.length <= 1 || channelSaving) {
+      return;
+    }
+
+    setChannelSaving(true);
+    setChannelActionError(undefined);
+
+    try {
+      await runWithAuth(
+        (csrfToken) =>
+          updateRoomChannel(
+            room.slug,
+            activeChannel.slug,
+            { archived: true },
+            csrfToken,
+          ),
+        { retryOnCsrf: true },
+      );
+
+      const remaining = orderedChannels.filter(
+        (channel) => channel.slug !== activeChannel.slug,
+      );
+
+      setChannels(remaining);
+      if (remaining[0]) {
+        selectChannel(remaining[0]);
+      }
+    } catch (caught) {
+      setChannelActionError(
+        caught instanceof Error ? caught.message : "Channel could not be archived.",
+      );
+    } finally {
+      setChannelSaving(false);
+    }
+  }
+
+  async function handleSend(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const trimmed = body.trim();
+
+    if (
+      !activeChannel ||
+      !user ||
+      sending ||
+      (trimmed === "" && selectedGifs.length === 0)
+    ) {
+      return;
+    }
+
+    const draftGifs = selectedGifs;
+    const optimisticId = -Date.now();
+    const optimisticMessage: ChatMessage = {
+      id: optimisticId,
+      conversationId: activeChannel.conversationId,
+      body: trimmed,
+      bodyEntities: [],
+      attachments: draftGifs.map((gif) => ({ type: "gif", gif })),
+      deletedAt: null,
+      createdAt: new Date().toISOString(),
+      sender: userToChatUser(user),
+    };
+
+    setSending(true);
+    setMessagesError(undefined);
+    setBody("");
+    setSelectedGifs([]);
+    setGifPickerOpen(false);
+    setMessages((current) => [...current, optimisticMessage]);
+
+    try {
+      const message = await runWithAuth(
+        (csrfToken) =>
+          sendRoomChannelMessage(
+            room.slug,
+            activeChannel.slug,
+            trimmed,
+            csrfToken,
+            draftGifs.map(gifToChatAttachmentInput),
+          ),
+        { retryOnCsrf: true },
+      );
+
+      setMessages((current) =>
+        current.map((item) => (item.id === optimisticId ? message : item)),
+      );
+      setChannels((current) =>
+        upsertRoomChannel(current, {
+          ...activeChannel,
+          lastMessageAt: message.createdAt,
+          unreadCount: 0,
+        }),
+      );
+    } catch (caught) {
+      setMessages((current) => current.filter((item) => item.id !== optimisticId));
+      setBody(trimmed);
+      setSelectedGifs(draftGifs);
+      setMessagesError(
+        caught instanceof Error ? caught.message : "Message could not send.",
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (
+      event.key !== "Enter" ||
+      event.defaultPrevented ||
+      event.nativeEvent.isComposing
+    ) {
+      return;
+    }
+
+    if (event.ctrlKey || event.metaKey) {
+      const textarea = event.currentTarget;
+      const value = textarea.value;
+      const selectionStart = textarea.selectionStart;
+      const selectionEnd = textarea.selectionEnd;
+      const nextValue = `${value.slice(0, selectionStart)}\n${value.slice(selectionEnd)}`;
+
+      if (nextValue.length > maxRoomChatMessageLength) {
+        return;
+      }
+
+      event.preventDefault();
+      setBody(nextValue);
+
+      window.requestAnimationFrame(() => {
+        const cursor = selectionStart + 1;
+        textarea.setSelectionRange(cursor, cursor);
+      });
+      return;
+    }
+
+    if (event.altKey || event.shiftKey) {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.form?.requestSubmit();
+  }
+
+  function handleGifSelect(gif: GifSearchResult) {
+    setSelectedGifs((current) => {
+      if (current.some((item) => item.resourceKey === gif.resourceKey)) {
+        return current;
+      }
+
+      if (current.length >= 4) {
+        setMessagesError("Messages can include up to 4 GIFs.");
+        return current;
+      }
+
+      setMessagesError(undefined);
+      return [...current, gif];
+    });
+  }
+
+  if (status !== "authenticated") {
+    return (
+      <Panel className="p-4" data-testid="room-channel-workspace">
+        <CompactStateNotice
+          centered
+          icon={MessageCircle}
+          title="Room chat"
+          text="Sign in to read and post room channels."
+        />
+      </Panel>
+    );
+  }
+
+  const activeIndex = activeChannel
+    ? orderedChannels.findIndex((channel) => channel.slug === activeChannel.slug)
+    : -1;
+
+  return (
+    <Panel
+      className="overflow-hidden"
+      data-testid="room-channel-workspace"
+      style={roomThemeSwatchCssProperties(room)}
+    >
+      <div className="grid min-h-[34rem] lg:grid-cols-[minmax(15rem,18rem)_minmax(0,1fr)_minmax(15rem,18rem)]">
+        <aside className="border-b border-line bg-canvas/22 lg:border-b-0 lg:border-r">
+          <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-3">
+            <div className="min-w-0">
+              <h2 className="truncate text-sm font-semibold text-text">Channels</h2>
+              <p className="text-xs text-muted">{formatCountWithUnit(orderedChannels.length, "channel")}</p>
+            </div>
+            {canManage ? (
+              <Button
+                type="button"
+                size="icon"
+                variant={newChannelOpen ? "secondary" : "ghost"}
+                className="size-8 shrink-0"
+                aria-label={newChannelOpen ? "Close new channel form" : "Create channel"}
+                title={newChannelOpen ? "Close new channel form" : "Create channel"}
+                icon={<Plus aria-hidden="true" size={15} />}
+                onClick={() => setNewChannelOpen((open) => !open)}
+              />
+            ) : null}
+          </div>
+
+          {newChannelOpen ? (
+            <form
+              className="space-y-2 border-b border-line bg-surface/38 p-3"
+              onSubmit={(event) => void handleCreateChannel(event)}
+            >
+              <label className="block text-xs font-semibold text-muted" htmlFor="new-channel-name">
+                Name
+              </label>
+              <input
+                id="new-channel-name"
+                className="min-h-9 w-full rounded-control border border-line bg-canvas/72 px-3 text-sm text-text outline-none focus:border-line-strong focus:ring-2 focus:ring-focus/30"
+                maxLength={80}
+                value={newChannelName}
+                onChange={(event) => setNewChannelName(event.currentTarget.value)}
+              />
+              <label className="block text-xs font-semibold text-muted" htmlFor="new-channel-description">
+                Description
+              </label>
+              <input
+                id="new-channel-description"
+                className="min-h-9 w-full rounded-control border border-line bg-canvas/72 px-3 text-sm text-text outline-none focus:border-line-strong focus:ring-2 focus:ring-focus/30"
+                maxLength={240}
+                value={newChannelDescription}
+                onChange={(event) => setNewChannelDescription(event.currentTarget.value)}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block text-xs font-semibold text-muted" htmlFor="new-channel-kind">
+                  Kind
+                  <select
+                    id="new-channel-kind"
+                    className="mt-1 min-h-9 w-full rounded-control border border-line bg-canvas/72 px-2 text-sm text-text outline-none focus:border-line-strong focus:ring-2 focus:ring-focus/30"
+                    value={newChannelKind}
+                    onChange={(event) =>
+                      setNewChannelKind(event.currentTarget.value === "announcement" ? "announcement" : "chat")
+                    }
+                  >
+                    <option value="chat">Chat</option>
+                    <option value="announcement">Announcement</option>
+                  </select>
+                </label>
+                <label className="flex items-end gap-2 rounded-control border border-line bg-canvas/45 px-2 py-2 text-xs font-semibold text-muted">
+                  <input
+                    type="checkbox"
+                    checked={newChannelReadOnly}
+                    onChange={(event) => setNewChannelReadOnly(event.currentTarget.checked)}
+                  />
+                  Staff posts
+                </label>
+              </div>
+              <Button
+                type="submit"
+                size="sm"
+                className="w-full"
+                disabled={newChannelName.trim() === "" || creatingChannel}
+                icon={<Plus aria-hidden="true" size={15} />}
+              >
+                {creatingChannel ? "Creating" : "Create"}
+              </Button>
+            </form>
+          ) : null}
+
+          <div className="flex gap-2 overflow-x-auto p-2 lg:block lg:space-y-1 lg:overflow-visible">
+            {channelsLoading ? (
+              <CompactStateNotice
+                icon={LoaderCircle}
+                kind="loading"
+                title="Loading channels"
+                text="Loading channels."
+              />
+            ) : null}
+            {channelsError ? (
+              <CompactStateNotice
+                icon={WifiOff}
+                kind="error"
+                title="Could not load channels"
+                text={channelsError}
+              />
+            ) : null}
+            {!channelsLoading && !channelsError && orderedChannels.length === 0 ? (
+              <CompactStateNotice
+                icon={Inbox}
+                title="No channels"
+                text="No room channels."
+              />
+            ) : null}
+            {orderedChannels.map((channel) => (
+              <RoomChannelButton
+                key={channel.id}
+                channel={channel}
+                selected={channel.slug === activeChannel?.slug}
+                onSelect={() => selectChannel(channel)}
+              />
+            ))}
+          </div>
+        </aside>
+
+        <section className="flex min-h-[34rem] min-w-0 flex-col">
+          <div className="flex min-h-16 items-center justify-between gap-3 border-b border-line bg-surface/34 px-3 py-2.5 sm:px-4">
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-2">
+                {activeChannel?.kind === "announcement" ? (
+                  <Megaphone aria-hidden="true" size={17} className="shrink-0 text-muted" />
+                ) : (
+                  <Hash aria-hidden="true" size={17} className="shrink-0 text-muted" />
+                )}
+                <h2 className="truncate text-sm font-semibold text-text">
+                  {activeChannel?.name ?? "Room chat"}
+                </h2>
+              </div>
+              {activeChannel?.description ? (
+                <p className="mt-0.5 line-clamp-1 text-xs text-muted">
+                  {activeChannel.description}
+                </p>
+              ) : null}
+            </div>
+            {activeChannel?.readOnly ? (
+              <Badge className="shrink-0" tone="warm">Staff posting</Badge>
+            ) : null}
+          </div>
+
+          <div
+            ref={messageListRef}
+            className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4 sm:px-4"
+            data-testid="room-channel-message-list"
+          >
+            {messagesLoading ? (
+              <CompactStateNotice
+                icon={LoaderCircle}
+                kind="loading"
+                title="Loading messages"
+                text="Loading messages."
+              />
+            ) : null}
+            {messagesError ? (
+              <CompactStateNotice
+                icon={WifiOff}
+                kind="error"
+                title="Could not load messages"
+                text={messagesError}
+              />
+            ) : null}
+            {!messagesLoading && !messagesError && messages.length === 0 ? (
+              <CompactStateNotice
+                centered
+                icon={MessageCircle}
+                title="No messages yet"
+                text={activeChannel?.readOnly ? "No announcements yet." : "Send the first message."}
+              />
+            ) : null}
+            {messages.map((message) => (
+              <RoomChatMessageBubble
+                key={message.id}
+                canReport={message.sender.id !== user?.id}
+                message={message}
+                mine={message.sender.id === user?.id}
+              />
+            ))}
+          </div>
+
+          <form
+            className="border-t border-line bg-surface/42 p-2.5 sm:p-3"
+            data-testid="room-channel-message-composer"
+            onSubmit={(event) => void handleSend(event)}
+          >
+            {selectedGifs.length > 0 ? (
+              <div className="mb-2 flex gap-2 overflow-x-auto pb-1" data-testid="room-selected-gifs">
+                {selectedGifs.map((gif) => (
+                  <div
+                    key={gif.resourceKey}
+                    className="relative h-24 w-32 shrink-0 overflow-hidden rounded-card border border-line bg-canvas shadow-inner-soft"
+                  >
+                    <img
+                      alt={gifAttachmentTitle(gif)}
+                      src={gif.previewUrl ?? gif.url}
+                      className="size-full object-cover"
+                    />
+                    <span className="absolute bottom-1 left-1 rounded-full bg-black/75 px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-white">
+                      KLIPY
+                    </span>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="absolute right-1 top-1 size-7 bg-black/70 text-white hover:bg-black/85 hover:text-white"
+                      aria-label={`Remove ${gifAttachmentTitle(gif)}`}
+                      title={`Remove ${gifAttachmentTitle(gif)}`}
+                      icon={<X aria-hidden="true" size={14} />}
+                      onClick={() =>
+                        setSelectedGifs((current) =>
+                          current.filter((item) => item.resourceKey !== gif.resourceKey),
+                        )
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {gifPickerOpen ? (
+              <GifPicker className="mb-2" onSelect={handleGifSelect} />
+            ) : null}
+            <div className="flex items-start gap-2">
+              <Button
+                type="button"
+                size="icon"
+                variant={gifPickerOpen ? "secondary" : "ghost"}
+                className="mt-1 shrink-0"
+                aria-label={gifPickerOpen ? "Close GIF picker" : "Add GIF"}
+                title={gifPickerOpen ? "Close GIF picker" : "Add GIF"}
+                disabled={!canPostInActiveChannel}
+                icon={<ImagePlay aria-hidden="true" size={16} />}
+                onClick={() => setGifPickerOpen((open) => !open)}
+              />
+              <label className="sr-only" htmlFor="room-channel-message-body">
+                Write a message
+              </label>
+              <MentionTextarea
+                id="room-channel-message-body"
+                className="min-h-12 w-full resize-none rounded-control border border-line bg-canvas/70 px-3 py-2.5 text-sm leading-6 text-text outline-none transition duration-fluid ease-fluid placeholder:text-muted focus:border-line-strong focus:bg-canvas focus:ring-2 focus:ring-focus/30 disabled:opacity-70"
+                disabled={!canPostInActiveChannel}
+                maxLength={maxRoomChatMessageLength}
+                placeholder={
+                  canPostInActiveChannel
+                    ? "Write a message"
+                    : activeChannel?.readOnly
+                      ? "Only room staff can post here"
+                      : "You cannot post in this channel"
+                }
+                rows={1}
+                value={body}
+                wrapperClassName="min-w-0 flex-1"
+                onKeyDown={handleComposerKeyDown}
+                onValueChange={setBody}
+              />
+              <Button
+                type="submit"
+                size="sm"
+                className="min-h-12 shrink-0 px-3"
+                disabled={
+                  !canPostInActiveChannel ||
+                  (body.trim() === "" && selectedGifs.length === 0) ||
+                  sending
+                }
+                icon={<Send aria-hidden="true" size={16} />}
+              >
+                {sending ? "Sending" : "Send"}
+              </Button>
+            </div>
+          </form>
+        </section>
+
+        <aside className="border-t border-line bg-canvas/18 p-3 lg:border-l lg:border-t-0">
+          <div className="space-y-3">
+            <div>
+              <h2 className="text-sm font-semibold text-text">Room context</h2>
+              <p className="mt-1 text-xs leading-5 text-muted">
+                {formatCountWithUnit(room.memberCount, "member")}
+                {members.length > 0 ? `, ${formatCountWithUnit(members.length, "visible member")}` : ""}
+              </p>
+            </div>
+
+            {members.length > 0 ? (
+              <div className="space-y-1.5">
+                {members.slice(0, 5).map((member) => (
+                  <UserIdentityLink
+                    key={member.id}
+                    user={member.user}
+                    avatarSize="sm"
+                    className="rounded-control px-1 py-1"
+                  />
+                ))}
+              </div>
+            ) : null}
+
+            {channelActionError ? (
+              <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
+                {channelActionError}
+              </p>
+            ) : null}
+
+            {canManage && activeChannel ? (
+              <div className="space-y-2 border-t border-line pt-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-text">Channel</h3>
+                  <div className="flex gap-1">
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="size-8"
+                      aria-label="Move channel up"
+                      title="Move channel up"
+                      disabled={channelSaving || activeIndex <= 0}
+                      icon={<ChevronUp aria-hidden="true" size={15} />}
+                      onClick={() => void handleMoveChannel(-1)}
+                    />
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="size-8"
+                      aria-label="Move channel down"
+                      title="Move channel down"
+                      disabled={channelSaving || activeIndex < 0 || activeIndex >= orderedChannels.length - 1}
+                      icon={<ChevronDown aria-hidden="true" size={15} />}
+                      onClick={() => void handleMoveChannel(1)}
+                    />
+                  </div>
+                </div>
+                <label className="block text-xs font-semibold text-muted" htmlFor="channel-name">
+                  Name
+                </label>
+                <input
+                  id="channel-name"
+                  className="min-h-9 w-full rounded-control border border-line bg-canvas/72 px-3 text-sm text-text outline-none focus:border-line-strong focus:ring-2 focus:ring-focus/30"
+                  maxLength={80}
+                  value={channelDraft.name}
+                  onChange={(event) =>
+                    setChannelDraft((draft) => ({
+                      ...draft,
+                      name: event.currentTarget.value,
+                    }))
+                  }
+                />
+                <label className="block text-xs font-semibold text-muted" htmlFor="channel-description">
+                  Description
+                </label>
+                <textarea
+                  id="channel-description"
+                  className="min-h-20 w-full resize-none rounded-control border border-line bg-canvas/72 px-3 py-2 text-sm text-text outline-none focus:border-line-strong focus:ring-2 focus:ring-focus/30"
+                  maxLength={240}
+                  value={channelDraft.description}
+                  onChange={(event) =>
+                    setChannelDraft((draft) => ({
+                      ...draft,
+                      description: event.currentTarget.value,
+                    }))
+                  }
+                />
+                <label className="block text-xs font-semibold text-muted" htmlFor="channel-kind">
+                  Kind
+                </label>
+                <select
+                  id="channel-kind"
+                  className="min-h-9 w-full rounded-control border border-line bg-canvas/72 px-2 text-sm text-text outline-none focus:border-line-strong focus:ring-2 focus:ring-focus/30"
+                  value={channelDraft.kind}
+                  onChange={(event) =>
+                    setChannelDraft((draft) => ({
+                      ...draft,
+                      kind: event.currentTarget.value === "announcement" ? "announcement" : "chat",
+                    }))
+                  }
+                >
+                  <option value="chat">Chat</option>
+                  <option value="announcement">Announcement</option>
+                </select>
+                <label className="flex items-center gap-2 rounded-control border border-line bg-canvas/45 px-2 py-2 text-xs font-semibold text-muted">
+                  <input
+                    type="checkbox"
+                    checked={channelDraft.readOnly}
+                    onChange={(event) =>
+                      setChannelDraft((draft) => ({
+                        ...draft,
+                        readOnly: event.currentTarget.checked,
+                      }))
+                    }
+                  />
+                  Staff-only posting
+                </label>
+                <div className="flex flex-col gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="w-full"
+                    disabled={channelSaving || channelDraft.name.trim() === ""}
+                    onClick={() => void handleSaveChannel()}
+                  >
+                    {channelSaving ? "Saving" : "Save channel"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="danger"
+                    className="w-full"
+                    disabled={channelSaving || orderedChannels.length <= 1}
+                    icon={<Archive aria-hidden="true" size={15} />}
+                    onClick={() => void handleArchiveChannel()}
+                  >
+                    Archive
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </aside>
+      </div>
+    </Panel>
+  );
+}
+
+function RoomChannelButton({
+  channel,
+  onSelect,
+  selected,
+}: {
+  channel: RoomChannel;
+  onSelect: () => void;
+  selected: boolean;
+}) {
+  const Icon = channel.kind === "announcement" ? Megaphone : Hash;
+
+  return (
+    <button
+      type="button"
+      className={cn(
+        "group relative flex min-h-11 w-44 shrink-0 items-center gap-2 rounded-control px-2.5 py-2 text-left transition duration-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus lg:w-full",
+        selected
+          ? "bg-surface-strong text-text shadow-inner-soft"
+          : "text-muted hover:bg-surface/70 hover:text-text",
+      )}
+      data-testid={`room-channel-${channel.slug}`}
+      onClick={onSelect}
+    >
+      <Icon aria-hidden="true" size={15} className="shrink-0" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold">{channel.name}</span>
+        <span className="block truncate text-[0.68rem]">
+          {channel.readOnly ? "Staff posts" : "Open chat"}
+        </span>
+      </span>
+      {channel.unreadCount > 0 ? (
+        <span className="grid min-w-5 shrink-0 place-items-center rounded-full bg-accent px-1.5 py-0.5 text-xs font-semibold leading-none text-accent-ink shadow-soft">
+          {channel.unreadCount}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function RoomChatMessageBubble({
+  canReport,
+  message,
+  mine,
+}: {
+  canReport: boolean;
+  message: ChatMessage;
+  mine: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "group/message flex items-end gap-2",
+        mine ? "justify-end" : "justify-start",
+      )}
+    >
+      {mine ? null : (
+        <Avatar user={message.sender} size="sm" className="mb-1 hidden sm:block" />
+      )}
+      <div className="relative mb-1 max-w-[min(31rem,88%)] sm:max-w-[min(36rem,78%)]">
+        <div
+          className={cn(
+            "rounded-[1.125rem] px-3 py-2 text-sm leading-5 transition duration-fluid ease-fluid",
+            mine
+              ? "bg-accent text-accent-ink shadow-soft"
+              : "bg-surface-strong text-text",
+          )}
+        >
+          {!mine ? (
+            <span className="mb-1 block truncate text-[0.7rem] font-semibold text-muted">
+              {message.sender.displayName}
+            </span>
+          ) : null}
+          {message.body ? (
+            <RichText
+              text={message.body}
+              entities={message.bodyEntities}
+              className="block whitespace-pre-wrap break-words"
+              previewClassName="mt-2"
+            />
+          ) : null}
+          {message.attachments?.length ? (
+            <div className="mt-2 space-y-2" data-testid="room-message-attachments">
+              {message.attachments.map((attachment, index) =>
+                attachment.type === "gif" ? (
+                  <RoomChatGifAttachment
+                    key={`${message.id}-gif-${attachment.gif.resourceKey}-${index}`}
+                    gif={attachment.gif}
+                    mine={mine}
+                  />
+                ) : null,
+              )}
+            </div>
+          ) : null}
+          <div
+            className={cn(
+              "mt-1.5 flex flex-wrap items-center gap-1.5 text-[0.68rem] leading-none",
+              mine ? "text-accent-ink/70" : "text-muted",
+            )}
+          >
+            <span>{formatActivityTime(message.createdAt)}</span>
+            {canReport && message.deletedAt === null ? (
+              <>
+                <span className="text-current/45" aria-hidden="true">
+                  •
+                </span>
+                <ReportForm
+                  className="contents"
+                  targetType="message"
+                  targetId={message.id}
+                  reportedUserId={message.sender.id}
+                  title="Report message"
+                  explainer="This reports this room message to moderators."
+                  triggerMode="icon"
+                  triggerLabel="Report message"
+                  triggerSize="compact"
+                  triggerIconSize={12}
+                  triggerClassName="!bg-transparent !text-current hover:!bg-transparent focus-visible:!bg-transparent"
+                  feedbackClassName="basis-full"
+                />
+              </>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RoomChatGifAttachment({
+  gif,
+  mine,
+}: {
+  gif: GifAttachment;
+  mine: boolean;
+}) {
+  return (
+    <a
+      href={gif.sourceUrl ?? gif.url}
+      target="_blank"
+      rel="noreferrer"
+      className={cn(
+        "block overflow-hidden rounded-card border shadow-inner-soft transition duration-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+        mine
+          ? "border-accent-ink/20 bg-accent-ink/10 hover:bg-accent-ink/15"
+          : "border-line bg-canvas/70 hover:border-line-strong hover:bg-surface",
+      )}
+      data-testid="room-chat-gif-attachment"
+    >
+      <img
+        alt={gifAttachmentTitle(gif)}
+        src={gif.url}
+        className="max-h-72 w-full min-w-48 object-cover"
+        loading="lazy"
+      />
+      <span
+        className={cn(
+          "flex items-center justify-between gap-2 px-2.5 py-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.08em]",
+          mine ? "text-accent-ink/72" : "text-muted",
+        )}
+      >
+        <span className="truncate">{gifAttachmentTitle(gif)}</span>
+        <span className="shrink-0">KLIPY</span>
+      </span>
+    </a>
   );
 }
 
@@ -949,6 +2123,65 @@ function RoomMetaItem({
       <span className="min-w-0">{children}</span>
     </span>
   );
+}
+
+function sortRoomChannels(first: RoomChannel, second: RoomChannel): number {
+  if (first.position !== second.position) {
+    return first.position - second.position;
+  }
+
+  return first.id - second.id;
+}
+
+function upsertRoomChannel(
+  channels: RoomChannel[],
+  channel: RoomChannel,
+): RoomChannel[] {
+  const exists = channels.some((item) => item.id === channel.id);
+  const next = exists
+    ? channels.map((item) => (item.id === channel.id ? channel : item))
+    : [...channels, channel];
+
+  return next
+    .filter((item) => item.archivedAt === null || item.archivedAt === undefined)
+    .sort(sortRoomChannels);
+}
+
+function sanitizeChannelSlug(value: string | null): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase().replace(/^#/u, "");
+
+  return /^[a-z0-9-]{1,48}$/u.test(normalized) ? normalized : undefined;
+}
+
+function userToChatUser(user: {
+  avatarUrl?: string | null;
+  displayName: string;
+  handle: string;
+  id: number;
+}): User {
+  return {
+    id: user.id,
+    handle: user.handle,
+    displayName: user.displayName,
+    initials: initialsFromDisplayName(user.displayName),
+    aura: "tide",
+    avatarUrl: user.avatarUrl ?? null,
+  };
+}
+
+function initialsFromDisplayName(displayName: string): string {
+  const letters = displayName
+    .trim()
+    .split(/\s+/u)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+
+  return letters || "T";
 }
 
 function formatActivityTime(value: string): string {

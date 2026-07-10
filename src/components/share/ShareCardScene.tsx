@@ -22,12 +22,12 @@ import {
   shareCardImageProxyUrl,
 } from "../../lib/api";
 import { postMediaType } from "../../lib/postMedia";
+import { profileThemeConfigColors, profileThemePresetById } from "../../lib/profileThemes";
 import type {
   Post,
   Profile,
   ProfileModule,
   ProfileModuleLink,
-  ProfileThemeColors,
   ProfileThemeConfig,
   RichLinkCard,
 } from "../../lib/types";
@@ -58,16 +58,6 @@ type ShareBackgroundMedia = {
   imageUrl?: string | null | undefined;
   posterUrl?: string | null | undefined;
   videoUrl?: string | null | undefined;
-};
-
-const fallbackPalette: SharePalette = {
-  canvas: "#092119",
-  surface: "rgba(19, 55, 42, 0.78)",
-  surfaceStrong: "rgba(9, 33, 25, 0.82)",
-  text: "#eafbf1",
-  muted: "#a3ceb6",
-  line: "rgba(73, 147, 110, 0.42)",
-  accent: "#55d989",
 };
 
 const SHARE_CARD_RENDER_VERSION = "screenshot-v6";
@@ -1378,11 +1368,13 @@ function safeShareVideoUrl(value: string | null | undefined) {
 }
 
 function postShareMediaImage(post: Post): string | null {
-  if (!post.mediaUrl) {
-    return null;
+  if (post.mediaUrl) {
+    return postMediaType(post) === "video" ? post.mediaPosterUrl ?? null : post.mediaUrl;
   }
 
-  return postMediaType(post) === "video" ? post.mediaPosterUrl ?? null : post.mediaUrl;
+  const gif = post.attachments?.find((attachment) => attachment.kind === "gif" && attachment.url);
+
+  return gif?.url ?? null;
 }
 
 type ShareCanvasLayout = {
@@ -1617,47 +1609,19 @@ function formatDuration(seconds: number) {
 }
 
 function paletteFromTheme(config?: ProfileThemeConfig | null): SharePalette {
-  if (config?.mode === "custom") {
-    const colors = config.colors as ProfileThemeColors;
-    return {
-      canvas: colors.canvas,
-      surface: hexToRgba(colors.surface, 0.78),
-      surfaceStrong: hexToRgba(colors.surfaceStrong, 0.82),
-      text: colors.text,
-      muted: colors.muted,
-      line: hexToRgba(colors.lineStrong, 0.42),
-      accent: colors.accent,
-    };
-  }
+  const colors =
+    profileThemeConfigColors(config ?? { mode: "preset", preset: "elphaba" }) ??
+    profileThemePresetById("elphaba").colors;
 
-  if (
-    config?.mode === "preset" &&
-    (config.preset === "glinda" || config.preset === "sunveil")
-  ) {
-    return {
-      canvas: "#fff7fb",
-      surface: "rgba(255,253,254,0.82)",
-      surfaceStrong: "rgba(248,230,239,0.86)",
-      text: "#39242f",
-      muted: "#785667",
-      line: "rgba(216,170,189,0.58)",
-      accent: "#e94b82",
-    };
-  }
-
-  if (config?.mode === "preset" && config.preset === "leafveil") {
-    return {
-      canvas: "#10231d",
-      surface: "rgba(24,54,43,0.82)",
-      surfaceStrong: "rgba(8,32,25,0.84)",
-      text: "#e4fff2",
-      muted: "#9bcdb7",
-      line: "rgba(75,150,121,0.58)",
-      accent: "#63d99c",
-    };
-  }
-
-  return fallbackPalette;
+  return {
+    canvas: colors.canvas,
+    surface: hexToRgba(colors.surface, 0.78),
+    surfaceStrong: hexToRgba(colors.surfaceStrong, 0.82),
+    text: colors.text,
+    muted: colors.muted,
+    line: hexToRgba(colors.lineStrong, 0.42),
+    accent: colors.accent,
+  };
 }
 
 function hexToRgba(color: string, alpha: number) {

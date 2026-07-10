@@ -50,6 +50,8 @@ import {
   type ChatReadPayload,
   type ChatRepository,
   type ChatUserPayload,
+  type RoomChannelMessagesPayload,
+  type RoomChannelPayload,
 } from "./chat.js";
 import {
   EditorRouteError,
@@ -82,6 +84,13 @@ import {
   type AdminGrowthMetricsPayload,
   type GrowthRepository,
 } from "./growth.js";
+import {
+  GifRouteError,
+  type GifPayload,
+  type GifRepository,
+  type GifSearchPayload,
+  type GifSharePayload,
+} from "./gifs.js";
 import {
   OpsRouteError,
   type AuthDiagnosticsPayload,
@@ -170,6 +179,11 @@ const roomParamsSchema = z.object({
   slug: z.string(),
 });
 
+const roomChannelParamsSchema = z.object({
+  slug: z.string(),
+  channelSlug: z.string(),
+});
+
 const roomAccessRequestParamsSchema = z.object({
   slug: z.string(),
   id: z.string(),
@@ -212,6 +226,10 @@ const chatConversationParamsSchema = z.object({
   id: z.string(),
 });
 
+const gifParamsSchema = z.object({
+  id: z.string(),
+});
+
 const adminEntityParamsSchema = z.object({
   id: z.string(),
 });
@@ -249,6 +267,7 @@ export interface AppDependencies {
   moderationRepository?: ModerationRepository;
   integrationsRepository?: IntegrationsRepository;
   growthRepository?: GrowthRepository;
+  gifsRepository?: GifRepository;
   opsService?: OpsService;
   profilesRepository?: ProfilesRepository;
   postsRepository?: PostsRepository;
@@ -998,6 +1017,12 @@ function jsonBodyRequiredObject(body: Record<string, unknown>, originalBody: unk
   }
 
   return body;
+}
+
+function queryRecord(query: unknown): Record<string, unknown> {
+  return query !== null && typeof query === "object" && !Array.isArray(query)
+    ? query as Record<string, unknown>
+    : {};
 }
 
 function authJsonBodyRecord(body: unknown): Record<string, unknown> {
@@ -2599,6 +2624,92 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
     return withAuthenticatedUploadRoute(request, reply, dependencies, `uploads.${kind}.create`, kind);
   });
 
+  app.get("/gifs/trending", async (request, reply) => {
+    if (dependencies.gifsRepository === undefined) {
+      return internalError(request, reply, "gifs.trending", new Error("Missing GIF repository dependency."));
+    }
+
+    try {
+      const data = await dependencies.gifsRepository.trending(queryRecord(request.query));
+
+      return reply.send(successPayload<GifSearchPayload>(data));
+    } catch (error) {
+      if (error instanceof GifRouteError) {
+        return sendRouteError(request, reply, "gifs.trending", error.statusCode, errorPayload(error.message), error);
+      }
+
+      return internalError(request, reply, "gifs.trending", error);
+    }
+  });
+
+  app.get("/gifs/search", async (request, reply) => {
+    if (dependencies.gifsRepository === undefined) {
+      return internalError(request, reply, "gifs.search", new Error("Missing GIF repository dependency."));
+    }
+
+    try {
+      const data = await dependencies.gifsRepository.search(queryRecord(request.query));
+
+      return reply.send(successPayload<GifSearchPayload>(data));
+    } catch (error) {
+      if (error instanceof GifRouteError) {
+        return sendRouteError(request, reply, "gifs.search", error.statusCode, errorPayload(error.message), error);
+      }
+
+      return internalError(request, reply, "gifs.search", error);
+    }
+  });
+
+  app.get("/gifs/:id", async (request, reply) => {
+    if (dependencies.gifsRepository === undefined) {
+      return internalError(request, reply, "gifs.show", new Error("Missing GIF repository dependency."));
+    }
+
+    const parsedParams = gifParamsSchema.safeParse(request.params);
+    const gifId = parsedParams.success ? parsedParams.data.id : "";
+
+    try {
+      const data = await dependencies.gifsRepository.lookup(gifId);
+
+      if (data === null) {
+        return reply.status(404).send(errorPayload("GIF not found."));
+      }
+
+      return reply.send(successPayload<GifPayload>(data));
+    } catch (error) {
+      if (error instanceof GifRouteError) {
+        return sendRouteError(request, reply, "gifs.show", error.statusCode, errorPayload(error.message), error);
+      }
+
+      return internalError(request, reply, "gifs.show", error);
+    }
+  });
+
+  app.post("/gifs/:id/share", async (request, reply) => {
+    if (dependencies.gifsRepository === undefined) {
+      return internalError(request, reply, "gifs.share", new Error("Missing GIF repository dependency."));
+    }
+
+    const parsedParams = gifParamsSchema.safeParse(request.params);
+    const gifId = parsedParams.success ? parsedParams.data.id : "";
+    const body = {
+      ...jsonBodyRecord(request.body),
+      id: gifId,
+    };
+
+    try {
+      const data = await dependencies.gifsRepository.registerShare(body);
+
+      return reply.send(successPayload<GifSharePayload>(data));
+    } catch (error) {
+      if (error instanceof GifRouteError) {
+        return sendRouteError(request, reply, "gifs.share", error.statusCode, errorPayload(error.message), error);
+      }
+
+      return internalError(request, reply, "gifs.share", error);
+    }
+  });
+
   app.get("/chat/conversations", async (request, reply) =>
     withAuthenticatedChatRoute<ChatConversationPayload[]>(
       request,
@@ -2679,6 +2790,90 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       dependencies,
       "chat.conversations.read",
       (repository, session) => repository.markConversationRead(session.userId, conversationId),
+    );
+  });
+
+  app.get("/rooms/:slug/channels", async (request, reply) => {
+    const parsedParams = roomParamsSchema.safeParse(request.params);
+    const slug = parsedParams.success ? parsedParams.data.slug : "";
+
+    return withAuthenticatedChatRoute<RoomChannelPayload[]>(
+      request,
+      reply,
+      dependencies,
+      "rooms.channels",
+      (repository, session) => repository.listRoomChannels(session, slug),
+    );
+  });
+
+  app.post("/rooms/:slug/channels", async (request, reply) => {
+    const parsedParams = roomParamsSchema.safeParse(request.params);
+    const slug = parsedParams.success ? parsedParams.data.slug : "";
+
+    return withAuthenticatedChatMutationRoute<RoomChannelPayload>(
+      request,
+      reply,
+      dependencies,
+      "rooms.channels.create",
+      (repository, session, body) => repository.createRoomChannel(session, slug, jsonBodyRequiredObject(body, request.body)),
+      201,
+    );
+  });
+
+  app.patch("/rooms/:slug/channels/:channelSlug", async (request, reply) => {
+    const parsedParams = roomChannelParamsSchema.safeParse(request.params);
+    const slug = parsedParams.success ? parsedParams.data.slug : "";
+    const channelSlug = parsedParams.success ? parsedParams.data.channelSlug : "";
+
+    return withAuthenticatedChatMutationRoute<RoomChannelPayload>(
+      request,
+      reply,
+      dependencies,
+      "rooms.channels.update",
+      (repository, session, body) => repository.updateRoomChannel(session, slug, channelSlug, jsonBodyRequiredObject(body, request.body)),
+    );
+  });
+
+  app.get("/rooms/:slug/channels/:channelSlug/messages", async (request, reply) => {
+    const parsedParams = roomChannelParamsSchema.safeParse(request.params);
+    const slug = parsedParams.success ? parsedParams.data.slug : "";
+    const channelSlug = parsedParams.success ? parsedParams.data.channelSlug : "";
+
+    return withAuthenticatedChatRoute<RoomChannelMessagesPayload>(
+      request,
+      reply,
+      dependencies,
+      "rooms.channels.messages",
+      (repository, session) => repository.listRoomChannelMessages(session, slug, channelSlug),
+    );
+  });
+
+  app.post("/rooms/:slug/channels/:channelSlug/messages", async (request, reply) => {
+    const parsedParams = roomChannelParamsSchema.safeParse(request.params);
+    const slug = parsedParams.success ? parsedParams.data.slug : "";
+    const channelSlug = parsedParams.success ? parsedParams.data.channelSlug : "";
+
+    return withAuthenticatedChatMutationRoute<ChatMessagePayload>(
+      request,
+      reply,
+      dependencies,
+      "rooms.channels.messages.create",
+      (repository, session, body) => repository.createRoomChannelMessage(session, slug, channelSlug, jsonBodyRequiredObject(body, request.body)),
+      201,
+    );
+  });
+
+  app.post("/rooms/:slug/channels/:channelSlug/read", async (request, reply) => {
+    const parsedParams = roomChannelParamsSchema.safeParse(request.params);
+    const slug = parsedParams.success ? parsedParams.data.slug : "";
+    const channelSlug = parsedParams.success ? parsedParams.data.channelSlug : "";
+
+    return withAuthenticatedChatMutationRoute<ChatReadPayload>(
+      request,
+      reply,
+      dependencies,
+      "rooms.channels.read",
+      (repository, session) => repository.markRoomChannelRead(session, slug, channelSlug),
     );
   });
 

@@ -111,6 +111,7 @@ import {
 } from "../lib/api";
 import { ApiClientError } from "../lib/apiClient";
 import { cn } from "../lib/classNames";
+import { displayNameMaxLength } from "../lib/displayNames";
 import { formatShortDate } from "../lib/dates";
 import { prepareImageFileForCrop, validateImageCropFile } from "../lib/imageCrop";
 import {
@@ -2918,6 +2919,7 @@ function ProfileIdentityEditorFields({
           Name
           <input
             className="mt-1 h-10 w-full rounded-control border border-line bg-canvas/55 px-3 text-sm font-semibold normal-case text-text focus-visible:outline-2 focus-visible:outline-focus"
+            maxLength={displayNameMaxLength}
             value={profile.user.displayName}
             data-testid="profile-info-display-name-input"
             onChange={(event) =>

@@ -143,7 +143,7 @@ export interface TextEntityPayload {
   };
 }
 
-export type PostAttachmentKind = "image" | "video" | "audio" | "integration";
+export type PostAttachmentKind = "image" | "video" | "audio" | "integration" | "gif";
 
 export interface PostAttachmentPayload {
   id: number;
@@ -2478,7 +2478,7 @@ function postAttachmentPayloadFromRow(row: PostAttachmentRow): PostAttachmentPay
 }
 
 function postAttachmentKind(value: string): PostAttachmentKind {
-  if (value === "video" || value === "audio" || value === "integration") {
+  if (value === "video" || value === "audio" || value === "integration" || value === "gif") {
     return value;
   }
 
