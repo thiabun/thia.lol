@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   Clock3,
   Hash,
   ImagePlay,
@@ -860,6 +861,7 @@ function RoomChannelWorkspace({
   room: Room;
 }) {
   const { runWithAuth, status, user } = useAuth();
+  const { setMobileDockHidden } = useOutletContext<AppShellOutletContext>();
   const [searchParams, setSearchParams] = useSearchParams();
   const messageListRef = useRef<HTMLDivElement>(null);
   const appliedRefreshTokenRef = useRef(refreshToken);
@@ -875,6 +877,9 @@ function RoomChannelWorkspace({
   const runWithAuthRef = useRef(runWithAuth);
   const selectedChannelSlugRef = useRef<string | undefined>(undefined);
   const requestedChannelSlug = sanitizeChannelSlug(searchParams.get("channel"));
+  const [mobileChannelPaneOpen, setMobileChannelPaneOpen] = useState(
+    Boolean(requestedChannelSlug),
+  );
   const [channels, setChannels] = useState<RoomChannel[]>([]);
   const [channelsLoading, setChannelsLoading] = useState(true);
   const [channelsError, setChannelsError] = useState<string | undefined>();
@@ -906,6 +911,21 @@ function RoomChannelWorkspace({
   useEffect(() => {
     requestedChannelSlugRef.current = requestedChannelSlug;
   }, [requestedChannelSlug]);
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 1023px)");
+    const syncMobileDock = () => {
+      setMobileDockHidden(query.matches && active && mobileChannelPaneOpen);
+    };
+
+    syncMobileDock();
+    query.addEventListener("change", syncMobileDock);
+
+    return () => {
+      query.removeEventListener("change", syncMobileDock);
+      setMobileDockHidden(false);
+    };
+  }, [active, mobileChannelPaneOpen, setMobileDockHidden]);
 
   useEffect(() => {
     selectedChannelSlugRef.current = activeChannelSlug;
@@ -1309,6 +1329,8 @@ function RoomChannelWorkspace({
   }, [messages.length, activeChannelSlug]);
 
   function selectChannel(channel: RoomChannel) {
+    setMobileChannelPaneOpen(true);
+
     if (selectedChannelSlugRef.current === channel.slug) {
       return;
     }
@@ -1327,6 +1349,14 @@ function RoomChannelWorkspace({
     nextParams.set("tab", "chat");
     nextParams.set("channel", channel.slug);
     setSearchParams(nextParams, { replace: false });
+  }
+
+  function handleMobileChannelBack() {
+    setMobileChannelPaneOpen(false);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("channel");
+    nextParams.set("tab", "chat");
+    setSearchParams(nextParams, { replace: true });
   }
 
   async function handleSend(event: FormEvent<HTMLFormElement>) {
@@ -1493,9 +1523,19 @@ function RoomChannelWorkspace({
       style={roomThemeSwatchCssProperties(room)}
     >
       <div
-        className="grid min-h-[32rem] lg:h-[calc(100svh-15rem)] lg:min-h-[34rem] lg:max-h-[46rem] lg:grid-cols-[minmax(14rem,17rem)_minmax(0,1fr)]"
+        className={cn(
+          "grid min-w-0 lg:h-[calc(100svh-15rem)] lg:min-h-[34rem] lg:max-h-[46rem] lg:grid-cols-[minmax(14rem,17rem)_minmax(0,1fr)]",
+          mobileChannelPaneOpen
+            ? "h-[calc(var(--app-visual-viewport-height,100dvh)-4.25rem)] min-h-0"
+            : "min-h-[32rem]",
+        )}
       >
-        <aside className="border-b border-line bg-canvas/22 lg:border-b-0 lg:border-r">
+        <aside
+          className={cn(
+            "min-w-0 border-b border-line bg-canvas/22 lg:block lg:border-b-0 lg:border-r",
+            mobileChannelPaneOpen ? "hidden" : "block",
+          )}
+        >
           <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-3">
             <div className="min-w-0">
               <h2 className="truncate text-sm font-semibold text-text">Channels</h2>
@@ -1503,7 +1543,7 @@ function RoomChannelWorkspace({
             </div>
           </div>
 
-          <div className="flex gap-2 overflow-x-auto p-2 lg:block lg:space-y-1 lg:overflow-visible">
+          <div className="grid min-w-0 gap-1 p-2 lg:block lg:space-y-1">
             {channelsLoading ? (
               <CompactStateNotice
                 icon={LoaderCircle}
@@ -1538,9 +1578,23 @@ function RoomChannelWorkspace({
           </div>
         </aside>
 
-        <section className="flex min-h-[34rem] min-w-0 flex-col">
+        <section
+          className={cn(
+            "min-h-0 min-w-0 flex-col lg:flex",
+            mobileChannelPaneOpen ? "flex" : "hidden",
+          )}
+        >
           <div className="flex min-h-16 items-center justify-between gap-3 border-b border-line bg-surface/34 px-3 py-2.5 sm:px-4">
-            <div className="min-w-0">
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="shrink-0 lg:hidden"
+              aria-label="Back to channels"
+              icon={<ArrowLeft aria-hidden="true" size={19} />}
+              onClick={handleMobileChannelBack}
+            />
+            <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-2">
                 {activeChannel?.kind === "announcement" ? (
                   <Megaphone aria-hidden="true" size={17} className="shrink-0 text-muted" />
@@ -1724,7 +1778,7 @@ function RoomChannelButton({
     <button
       type="button"
       className={cn(
-        "group relative flex min-h-11 w-44 shrink-0 items-center gap-2 rounded-control px-2.5 py-2 text-left transition duration-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus lg:w-full",
+        "app-control group relative flex min-h-11 min-w-0 w-full touch-manipulation items-center gap-2 rounded-control px-2.5 py-2 text-left transition duration-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
         selected
           ? "bg-surface-strong text-text shadow-inner-soft"
           : "text-muted hover:bg-surface/70 hover:text-text",

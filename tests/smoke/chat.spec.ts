@@ -86,57 +86,47 @@ test("authenticated chat renders conversations and message composer", async ({
     .toBe(false);
 });
 
-test("mobile chat keeps the composer clear of the dock", async ({ page }) => {
+test("mobile chat uses a vertical list and focused conversation pane", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockAuthenticatedChat(page);
   await page.goto("/chat");
+  await page.getByTestId("cookie-notice").getByRole("button", { name: "Continue" }).click();
+
+  const mobileNav = page.getByTestId("mobile-nav");
+  const conversationList = page.getByTestId("chat-conversation-list");
+  await expect(conversationList).toBeVisible();
+  await expect(mobileNav).toBeVisible();
+  await expect(page.getByTestId("chat-message-composer")).toHaveCount(0);
+
+  const row = page.getByTestId("chat-conversation-row-10");
+  const rowBox = await row.boundingBox();
+  expect(rowBox?.width ?? 0).toBeGreaterThan(350);
+  await row.getByTestId("chat-conversation-open-10").click();
 
   const composer = page.getByTestId("chat-message-composer");
-  const mobileNav = page.getByTestId("mobile-nav");
-  const chatDockItem = mobileNav.getByRole("link", { name: "Chat" });
-  const postAction = page.getByTestId("mobile-post-action");
-
-  await composer.scrollIntoViewIfNeeded();
   await expect(composer).toBeVisible();
-  await expect(chatDockItem).toBeVisible();
-  await expect(postAction).toBeVisible();
+  await expect(page.getByRole("button", { name: "Back to conversations" })).toBeVisible();
+  await expect(mobileNav).toHaveCount(0);
 
   const layout = await page.evaluate(() => {
     const composerBox = document
       .querySelector('[data-testid="chat-message-composer"]')
-      ?.getBoundingClientRect();
-    const navBox = document
-      .querySelector('[data-testid="mobile-nav"]')
-      ?.getBoundingClientRect();
-    const chatBox = Array.from(
-      document.querySelectorAll('[data-testid="mobile-nav"] a'),
-    )
-      .find((element) => element.textContent?.trim() === "Chat")
-      ?.getBoundingClientRect();
-    const postBox = document
-      .querySelector('[data-testid="mobile-post-action"]')
       ?.getBoundingClientRect();
 
     return {
       horizontalOverflow:
         document.documentElement.scrollWidth > document.documentElement.clientWidth,
       composerBottom: composerBox?.bottom ?? 0,
-      navTop: navBox?.top ?? window.innerHeight,
-      dockHitboxesOverlap:
-        chatBox && postBox
-          ? !(
-              postBox.right <= chatBox.left ||
-              postBox.left >= chatBox.right ||
-              postBox.bottom <= chatBox.top ||
-              postBox.top >= chatBox.bottom
-            )
-          : true,
+      viewportBottom: window.innerHeight,
     };
   });
 
   expect(layout.horizontalOverflow).toBe(false);
-  expect(layout.composerBottom).toBeLessThanOrEqual(layout.navTop - 8);
-  expect(layout.dockHitboxesOverlap).toBe(false);
+  expect(layout.composerBottom).toBeLessThanOrEqual(layout.viewportBottom + 1);
+
+  await page.getByRole("button", { name: "Back to conversations" }).click();
+  await expect(conversationList).toBeVisible();
+  await expect(mobileNav).toBeVisible();
 });
 
 test("switching conversations does not show stale messages under the next participant", async ({

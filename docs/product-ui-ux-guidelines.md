@@ -3,7 +3,7 @@
 > **Status: Active canonical reference.** Future product, frontend, and Codex
 > implementation work should use this document as required context.
 
-Date: 2026-07-08
+Date: 2026-07-10
 
 Related context:
 
@@ -353,12 +353,26 @@ Navigation should feel lightweight and calm.
 
 ### Mobile
 
-- The dock should leave content primary.
+- Mobile is a primary product layout, not a compressed desktop canvas.
+- Routes use one clear vertical reading and interaction flow at 320-430 CSS
+  pixels. Columns stack, action clusters wrap, and focused workspaces become a
+  list-to-detail flow.
+- The fixed dock should leave content primary. Every route reserves the dock's
+  full height plus the safe-area inset; focused chat, room, and editing panes
+  may hide it when they provide an explicit Back action.
 - The center Post action may be emphasized, but should not become a floating
   hero control.
 - Search can remain in the mobile header.
 - Dock, footer, cookie notice, and modals must not fight for the same bottom
   space.
+- Primary controls and icon actions use at least a 44 x 44 CSS pixel effective
+  touch target on coarse pointers. Hover must never be the only way to discover
+  or operate an action.
+- Full-height sheets and focused composers follow the visual viewport so the
+  mobile keyboard cannot cover their footer or primary action.
+- Page-level horizontal scrolling is never an accepted responsive technique.
+  Flex/grid tracks use zero minimums and media, embeds, long text, and loading
+  transitions stay inside their owning surface.
 
 ## Social Surfaces
 
@@ -370,6 +384,11 @@ identity, body, media, and one action row. Keep metadata compact.
 Native video should autoplay muted only while focused in the viewport, pause
 when focus moves away, retain visible controls, and never outrank consented
 profile music on profile pages.
+
+Feed media must reserve its aspect from stored dimensions where available,
+remain `object-fit: contain`, and keep the same viewport-bounded width before,
+during, and after loading or autoplay. Root overflow clipping does not count as
+fixing an oversized post or attachment.
 
 Avoid:
 

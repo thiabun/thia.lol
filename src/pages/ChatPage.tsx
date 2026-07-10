@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   ImagePlay,
   Inbox,
   LoaderCircle,
@@ -20,7 +21,8 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
-import { Link, useSearchParams } from "react-router";
+import { Link, useOutletContext, useSearchParams } from "react-router";
+import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
 import { GifPicker } from "../components/social/GifPicker";
 import { MentionTextarea } from "../components/social/MentionTextarea";
@@ -61,6 +63,7 @@ const maxMessageLength = 2000;
 
 export function ChatPage() {
   const { runWithAuth, status, user } = useAuth();
+  const { setMobileDockHidden } = useOutletContext<AppShellOutletContext>();
   const [searchParams, setSearchParams] = useSearchParams();
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [conversationsLoading, setConversationsLoading] = useState(true);
@@ -109,6 +112,7 @@ export function ChatPage() {
   const selectedConversation = conversations.find(
     (conversation) => conversation.id === activeConversationId,
   );
+  const mobileConversationOpen = Boolean(activeConversationId);
   const filteredMoots = useMemo(() => {
     const query = mootQuery.trim().toLowerCase();
 
@@ -123,6 +127,31 @@ export function ChatPage() {
       );
     });
   }, [mootQuery, moots]);
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 1023px)");
+    const syncMobileDock = () => {
+      setMobileDockHidden(query.matches && mobileConversationOpen);
+    };
+
+    syncMobileDock();
+    query.addEventListener("change", syncMobileDock);
+
+    return () => {
+      query.removeEventListener("change", syncMobileDock);
+      setMobileDockHidden(false);
+    };
+  }, [mobileConversationOpen, setMobileDockHidden]);
+
+  function handleMobileConversationBack() {
+    selectedConversationIdRef.current = undefined;
+    setSelectedConversationId(undefined);
+    setMessagesError(undefined);
+    setBody("");
+    setSelectedGifs([]);
+    setGifPickerOpen(false);
+    setSearchParams({}, { replace: true });
+  }
 
   const loadConversations = useCallback(async () => {
     const requestId = conversationListRequestRef.current + 1;
@@ -148,7 +177,9 @@ export function ChatPage() {
           return current;
         }
 
-        return nextConversations[0]?.id;
+        return window.matchMedia("(min-width: 1024px)").matches
+          ? nextConversations[0]?.id
+          : undefined;
       });
     } catch (error) {
       if (conversationListRequestRef.current === requestId) {
@@ -580,13 +611,22 @@ export function ChatPage() {
 
   return (
     <motion.div
-      className="mx-auto max-w-7xl space-y-4 pb-20 lg:pb-0"
+      className={cn(
+        "mx-auto min-w-0 max-w-7xl space-y-4 lg:pb-0",
+        mobileConversationOpen ? "pb-0" : "pb-20",
+      )}
       variants={pageEntrance}
       initial="hidden"
       animate="show"
     >
       <PageMeta title="Chat" description="Messages on thia.lol." path="/chat" />
-      <motion.div variants={cardEntrance} custom={0} initial="hidden" animate="show">
+      <motion.div
+        className={mobileConversationOpen ? "hidden lg:block" : undefined}
+        variants={cardEntrance}
+        custom={0}
+        initial="hidden"
+        animate="show"
+      >
         <RouteHeader
           badge="private"
           badgeTone="cool"
@@ -675,10 +715,20 @@ export function ChatPage() {
 
       {showConversationLayout ? (
         <section
-          className="grid overflow-hidden rounded-panel border border-line/82 bg-surface/58 shadow-inner-soft lg:h-[calc(100svh-12rem)] lg:min-h-[32rem] lg:max-h-[44rem] lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)]"
+          className={cn(
+            "grid min-w-0 overflow-hidden rounded-panel border border-line/82 bg-surface/58 shadow-inner-soft lg:h-[calc(100svh-12rem)] lg:min-h-[32rem] lg:max-h-[44rem] lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)]",
+            mobileConversationOpen
+              ? "h-[calc(var(--app-visual-viewport-height,100dvh)-4.25rem)] min-h-0"
+              : undefined,
+          )}
           data-testid="chat-workspace"
         >
-          <aside className="min-w-0 border-b border-line bg-canvas/18 lg:border-b-0 lg:border-r">
+          <aside
+            className={cn(
+              "min-w-0 border-b border-line bg-canvas/18 lg:block lg:border-b-0 lg:border-r",
+              mobileConversationOpen ? "hidden" : "block",
+            )}
+          >
             <div className="flex min-h-12 items-center justify-between gap-3 border-b border-line px-3 py-2.5">
               <div className="min-w-0">
                 <h2 className="text-sm font-semibold text-text">Conversations</h2>
@@ -695,7 +745,7 @@ export function ChatPage() {
               ) : null}
             </div>
             <div
-              className="flex gap-2 overflow-x-auto p-2 lg:block lg:max-h-[calc(100%-3rem)] lg:divide-y lg:divide-line lg:overflow-y-auto lg:p-0"
+              className="grid min-w-0 divide-y divide-line overflow-visible p-0 lg:block lg:max-h-[calc(100%-3rem)] lg:overflow-y-auto"
               data-testid="chat-conversation-list"
             >
               {conversationsError ? (
@@ -729,10 +779,24 @@ export function ChatPage() {
             </div>
           </aside>
 
-          <section className="min-w-0">
+          <section
+            className={cn(
+              "min-w-0 lg:block",
+              mobileConversationOpen ? "block" : "hidden",
+            )}
+          >
             {selectedConversation ? (
-              <div className="flex min-h-[32rem] flex-col lg:h-full lg:min-h-0">
+              <div className="flex h-full min-h-0 flex-col lg:h-full lg:min-h-0">
                 <div className="flex min-h-16 items-center gap-3 border-b border-line bg-surface/34 px-3 py-2.5 sm:px-4">
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="shrink-0 lg:hidden"
+                    aria-label="Back to conversations"
+                    icon={<ArrowLeft aria-hidden="true" size={19} />}
+                    onClick={handleMobileConversationBack}
+                  />
                   <UserIdentityLink
                     user={selectedConversation.otherParticipant}
                     avatarSize="sm"
@@ -864,32 +928,48 @@ export function ChatPage() {
                 </form>
               </div>
             ) : (
-              <CompactStateNotice
-                centered
-                className="min-h-[24rem]"
-                icon={
-                  requestedConversationMissing && conversationsLoading
-                    ? LoaderCircle
-                    : requestedConversationMissing
-                      ? WifiOff
-                      : MessageCircle
-                }
-                {...(requestedConversationMissing && conversationsLoading
-                  ? { kind: "loading" as const }
-                  : {})}
-                title={
-                  requestedConversationMissing
-                    ? conversationsLoading
-                      ? "Opening conversation"
-                      : "Conversation not available"
-                    : "Choose a conversation"
-                }
-                text={
-                  requestedConversationMissing
-                    ? "This direct-message conversation could not be found."
-                    : "Select a chat to read or reply."
-                }
-              />
+              <div className="flex h-full min-h-0 flex-col">
+                {mobileConversationOpen ? (
+                  <div className="flex min-h-14 items-center border-b border-line px-3 lg:hidden">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      aria-label="Back to conversations"
+                      icon={<ArrowLeft aria-hidden="true" size={18} />}
+                      onClick={handleMobileConversationBack}
+                    >
+                      Back
+                    </Button>
+                  </div>
+                ) : null}
+                <CompactStateNotice
+                  centered
+                  className="min-h-[24rem] flex-1"
+                  icon={
+                    requestedConversationMissing && conversationsLoading
+                      ? LoaderCircle
+                      : requestedConversationMissing
+                        ? WifiOff
+                        : MessageCircle
+                  }
+                  {...(requestedConversationMissing && conversationsLoading
+                    ? { kind: "loading" as const }
+                    : {})}
+                  title={
+                    requestedConversationMissing
+                      ? conversationsLoading
+                        ? "Opening conversation"
+                        : "Conversation not available"
+                      : "Choose a conversation"
+                  }
+                  text={
+                    requestedConversationMissing
+                      ? "This direct-message conversation could not be found."
+                      : "Select a chat to read or reply."
+                  }
+                />
+              </div>
             )}
           </section>
         </section>
@@ -1078,7 +1158,7 @@ function ConversationButton({
 
   return (
     <div
-      className="group relative isolate flex min-h-[4.25rem] w-44 shrink-0 flex-col items-stretch gap-1.5 overflow-hidden rounded-control border border-line/72 bg-surface/34 px-2 py-2 text-left transition duration-fluid ease-fluid lg:w-full lg:shrink lg:rounded-none lg:border-0 lg:bg-transparent lg:px-3 lg:py-2.5 lg:flex-row lg:items-center lg:gap-2.5"
+      className="group relative isolate flex min-h-[4.75rem] min-w-0 w-full items-center gap-2.5 overflow-hidden bg-transparent px-3 py-2.5 text-left transition duration-fluid ease-fluid"
       data-testid={`chat-conversation-row-${conversation.id}`}
     >
       <motion.button
@@ -1137,7 +1217,7 @@ function ConversationButton({
         </span>
       </div>
 
-      <div className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center justify-between gap-3 pl-[3.125rem] text-muted transition duration-fluid ease-fluid group-hover:text-text lg:pl-0">
+      <div className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center justify-between gap-3 text-muted transition duration-fluid ease-fluid group-hover:text-text">
         <span className="min-w-0">
           <span
             className={cn(
