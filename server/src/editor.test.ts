@@ -102,7 +102,8 @@ function fakePool(options: FakePoolOptions = {}) {
       const row = moduleRows.find(
         (item) =>
           Number(item.user_id) === Number(params?.[0]) &&
-          String(item.type) === String(params?.[1]),
+          String(item.type) === String(params?.[1]) &&
+          (!query.includes("AND status <> 'deleted'") || item.status !== "deleted"),
       );
 
       if (row !== undefined) {
@@ -874,6 +875,35 @@ describe("editor profile module payloads", () => {
     await repository.commitCanvasDraft(session);
 
     expect(deletedModuleUpdates).toContainEqual({ id: 40, userId: 1 });
+    expect(insertedModules).toContainEqual(
+      expect.objectContaining({
+        type: "activity",
+        visibility: "public",
+        status: "active",
+      }),
+    );
+  });
+
+  it("allows a new Activity draft when the only persisted Activity row is already deleted", async () => {
+    const deletedActivity = {
+      ...activityRow(),
+      status: "deleted",
+      visibility: "hidden",
+    };
+    const { insertedModules, pool } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [profileInfoPayload(1), draftActivityPayload(-1002, 2)],
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(1), deletedActivity],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await repository.commitCanvasDraft(session);
+
     expect(insertedModules).toContainEqual(
       expect.objectContaining({
         type: "activity",

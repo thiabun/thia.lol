@@ -1245,6 +1245,7 @@ class MysqlEditorRepository implements EditorRepository {
        FROM profile_modules
        WHERE user_id = ?
          AND type = ?
+         AND status <> 'deleted'
        LIMIT 1`,
       [userId, type],
     );
