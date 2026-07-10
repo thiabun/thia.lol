@@ -93,6 +93,69 @@ describe("KLIPY GIF repository", () => {
     });
   });
 
+  it("normalizes the current nested KLIPY response shape", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            result: true,
+            data: {
+              data: [
+                {
+                  id: 42,
+                  slug: "hello-wave",
+                  title: "Hello wave",
+                  file: {
+                    hd: {
+                      gif: {
+                        url: "https://media.klipy.com/hello-wave-hd.gif",
+                        width: 640,
+                        height: 360,
+                      },
+                    },
+                    xs: {
+                      gif: {
+                        url: "https://media.klipy.com/hello-wave-xs.gif",
+                        width: 160,
+                        height: 90,
+                      },
+                    },
+                  },
+                },
+              ],
+              current_page: 1,
+              has_next: false,
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    const repository = createGifRepository({
+      apiKey: "secret",
+      baseUrl: "https://api.example.test/api/v1",
+    });
+
+    await expect(repository.search({ q: "hello" })).resolves.toMatchObject({
+      available: true,
+      provider: "klipy",
+      query: "hello",
+      items: [
+        {
+          id: "42",
+          title: "Hello wave",
+          resourceId: "42",
+          url: "https://media.klipy.com/hello-wave-hd.gif",
+          previewUrl: "https://media.klipy.com/hello-wave-xs.gif",
+          width: 640,
+          height: 360,
+        },
+      ],
+    });
+  });
+
   it("looks up GIFs by id and best-effort registers shares", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));

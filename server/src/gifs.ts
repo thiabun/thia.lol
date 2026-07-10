@@ -211,7 +211,10 @@ class KlipyGifRepository implements GifRepository {
   }
 
   private normalizedItems(response: Record<string, unknown>): GifPayload[] {
-    const rawItems = Array.isArray(response.results)
+    const responseData = plainObject(response.data) ? response.data : null;
+    const rawItems = Array.isArray(responseData?.data)
+      ? responseData.data
+      : Array.isArray(response.results)
       ? response.results
       : Array.isArray(response.data)
         ? response.data
@@ -258,8 +261,13 @@ function normalizeGifRecord(value: unknown): GifPayload | null {
   }
 
   const mediaFormats = mediaFormatsRecord(record.media_formats ?? record.mediaFormats);
-  const full = firstMediaFormat(mediaFormats, ["gif", "mediumgif", "tinygif"]);
-  const preview = firstMediaFormat(mediaFormats, ["tinygif", "nanogif", "gif"]);
+  const files = plainObject(record.file) ? record.file : {};
+  const full =
+    firstNestedMediaFormat(files, ["hd", "md", "sm", "xs"], "gif") ??
+    firstMediaFormat(mediaFormats, ["gif", "mediumgif", "tinygif"]);
+  const preview =
+    firstNestedMediaFormat(files, ["xs", "sm", "md", "hd"], "gif") ??
+    firstMediaFormat(mediaFormats, ["tinygif", "nanogif", "gif"]);
 
   if (full === null || preview === null) {
     return null;
@@ -325,6 +333,23 @@ function firstMediaFormat(
 
     if (format && isHttpsUrl(scalarString(format.url).trim())) {
       return format;
+    }
+  }
+
+  return null;
+}
+
+function firstNestedMediaFormat(
+  files: Record<string, unknown>,
+  sizes: string[],
+  format: string,
+): KlipyMediaFormat | null {
+  for (const size of sizes) {
+    const formats = mediaFormatsRecord(files[size]);
+    const candidate = formats[format];
+
+    if (candidate && isHttpsUrl(scalarString(candidate.url).trim())) {
+      return candidate;
     }
   }
 
