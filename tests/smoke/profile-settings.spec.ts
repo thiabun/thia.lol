@@ -316,15 +316,11 @@ test("profile layout renders identity, essential social stats, activity module, 
   );
   await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
     "data-profile-grid-size",
-    "8x3",
+    "6x4",
   );
-  await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
-    "data-profile-grid-column-span",
-    "8",
-  );
-  await expect(page.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
-    "data-profile-grid-row-span",
-    "3",
+  await expect(page.getByTestId("profile-module-grid")).toHaveAttribute(
+    "data-profile-mobile-stack",
+    "true",
   );
   await expect(page.getByTestId("profile-header")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Thia" })).toBeVisible();

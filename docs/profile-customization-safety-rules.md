@@ -6,7 +6,7 @@
 > [#25](https://github.com/thiabun/thia.lol/issues/25); future work should be
 > tracked in GitHub Issues.
 
-Date: 2026-06-18
+Date: 2026-07-10
 
 ## Purpose
 
@@ -15,9 +15,9 @@ Profiles are moving toward curated personal spaces: identity pages, social profi
 This document defines the safety framework for profile customization and profile
 modules. The module foundation includes persisted modules, a richer module
 catalog, allowlisted provider card infrastructure, generated embeds, and
-restricted profile background video. Owners use a constrained direct canvas
-editor with real API persistence, responsive grid projection, and lightweight
-previews for expensive embeds. Arbitrary themes, privacy
+restricted profile background video. Owners use a constrained desktop canvas
+editor and a touch-first mobile companion editor with the same real API
+persistence and lightweight previews for expensive embeds. Arbitrary themes, privacy
 controls, analytics, ads, blog posts, custom CSS/HTML/JavaScript, and
 user-supplied iframe HTML remain out of scope.
 
@@ -61,9 +61,13 @@ Current frontend behavior:
 - Identity and media edits autosave through existing profile APIs with explicit
   saving, saved, and error feedback. Owners should not need a separate layout
   save after changing avatar, banner, bio, location, or background media.
-- The direct module/canvas editor is active. It supports constrained placement,
-  resizing, pinning, add/remove, integration setup, autosaved drafts, and an
-  explicit commit through the Node API.
+- The direct module/canvas editor is active on desktop. It supports constrained
+  placement, resizing, pinning, add/remove, integration setup, autosaved drafts,
+  and an explicit commit through the Node API.
+- Mobile editing uses a full-width module list rather than a projected point
+  grid. Explicit Up/Down controls update module `position` while preserving all
+  saved desktop `layout` coordinates. Profile info remains first, activity
+  remains last, and pinned modules must be unpinned before reorder.
 - Interactive editor content must capture its own clicks, taps, scrolling, and
   controls without selecting or moving the grid underneath it. Movement uses a
   dedicated drag handle so content interaction and dragging do not compete.
@@ -122,11 +126,12 @@ Current backend behavior:
   `profile_info`, `text`, `badge_display`, `connections`, `activity`,
   `featured_post`, `featured_room`, and `github_repo`.
 - Module config validation rejects unknown keys, unsafe text, unsafe URLs, arbitrary embeds, and arbitrary HTML/CSS/JS.
-- Canvas layout data uses a constrained 12 x 16 desktop grid with a 6 x 32
-  mobile projection. Server validation clamps bounds, validates exact
-  module-specific spans, ignores hidden/deleted modules for occupancy, keeps
-  pinned modules fixed, and uses constrained collision solving instead of
-  freeform pixel positioning.
+- Canvas layout data uses a constrained 12 x 16 desktop grid. Server validation
+  clamps bounds, validates exact module-specific spans, ignores hidden/deleted
+  modules for occupancy, keeps pinned modules fixed, and uses constrained
+  collision solving instead of freeform pixel positioning. Public mobile
+  profiles do not project those coordinates: they render a companion stack
+  ordered by persisted `position`, so desktop placement survives mobile edits.
 - `profile_info` is the only protected module. Featured post, featured room,
   and activity modules can be deleted like normal modules; deleting featured
   post/room modules also clears the selected featured profile references.
@@ -159,8 +164,8 @@ Allowed now or likely allowed later, subject to validation:
 - Profile accent or preset from a known allowlist.
 - Profile theme treatment from a known allowlist.
 - Structured Connections using supported platforms and safe URLs.
-- Module ordering for known module types through future accessible editor
-  controls.
+- Module ordering for known module types through accessible mobile Up/Down
+  controls and constrained desktop placement.
 - Module visibility using known states such as public, hidden, and owner-preview
   draft if later implemented.
 - Featured modules, with a small count limit.
@@ -293,12 +298,21 @@ The following are not allowed:
 ### Mobile Rules
 
 - Mobile profile layout must be a single readable stack.
+- Profile info is first, active regular modules follow persisted `position`, and
+  activity is last. Saved desktop canvas coordinates do not control mobile
+  reading order.
 - No horizontal page scroll.
 - Action clusters must wrap without pushing controls off-screen.
 - Tabs must remain reachable and readable.
 - Module media must scale to the viewport.
 - Fixed-position or sticky module UI must not collide with the mobile bottom nav.
 - Profile backgrounds must not create giant vertical dead space.
+- The mobile editor must not expose the desktop point grid, precision dragging,
+  or miniature module previews as its primary interaction. It uses full-width
+  rows, explicit reorder buttons, one action menu per module, and full-height
+  settings sheets.
+- Twitch stream/chat modules mount one selected mobile panel at a time. Activity
+  keeps its title and tabs outside its bounded internal scroll area.
 
 ## Content Safety Rules
 

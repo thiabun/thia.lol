@@ -14,6 +14,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type MouseEvent,
   type PointerEvent,
@@ -74,6 +75,7 @@ import { ApiStateNotice } from "../ui/ApiStateNotice";
 import { FocusAutoplayVideo } from "../ui/FocusAutoplayVideo";
 import { MediaPlayer, type MediaPlayerLayout } from "../ui/MediaPlayer";
 import { CompactStateNotice } from "../ui/RouteState";
+import { SegmentedControl } from "../ui/SegmentedControl";
 import { ProfileGrid, ProfileGridModule } from "./ProfileGrid";
 import { ProfileConnectionIcon } from "./ProfileConnectionIcon";
 import { RichText } from "./RichText";
@@ -96,6 +98,35 @@ type ProfileModulesSectionProps = {
   editing?: ProfileModuleGridEditing | undefined;
   renderModuleContent?: ProfileModuleContentRenderer | undefined;
 };
+
+export type ProfileModuleRenderMode = "canvas" | "mobile-stack";
+
+const mobileProfileMediaQuery = "(max-width: 1023px)";
+
+function subscribeToMobileProfile(
+  onStoreChange: () => void,
+): () => void {
+  const query = window.matchMedia(mobileProfileMediaQuery);
+  query.addEventListener("change", onStoreChange);
+
+  return () => query.removeEventListener("change", onStoreChange);
+}
+
+function mobileProfileSnapshot(): boolean {
+  return window.matchMedia(mobileProfileMediaQuery).matches;
+}
+
+function serverMobileProfileSnapshot(): boolean {
+  return false;
+}
+
+function useMobileProfilePresentation(): boolean {
+  return useSyncExternalStore(
+    subscribeToMobileProfile,
+    mobileProfileSnapshot,
+    serverMobileProfileSnapshot,
+  );
+}
 
 function useAlbumArtworkTextTone(
   imageUrl: string | undefined,
@@ -216,11 +247,13 @@ export function ProfileModulesSection({
   editing,
   renderModuleContent,
 }: ProfileModulesSectionProps) {
-  const renderableModules = sortProfileModulesForCanvas(
-    editing
-      ? modules.filter((module) => isProfileModuleType(module.type))
-      : renderableProfileModules(modules, badges),
-  );
+  const mobilePresentation = useMobileProfilePresentation();
+  const availableModules = editing
+    ? modules.filter((module) => isProfileModuleType(module.type))
+    : renderableProfileModules(modules, badges);
+  const renderableModules = mobilePresentation
+    ? sortProfileModulesForMobileStack(availableModules)
+    : sortProfileModulesForCanvas(availableModules);
 
   if (loading && !isOwnProfile) {
     return null;
@@ -238,18 +271,35 @@ export function ProfileModulesSection({
     <section
       aria-label="Profile canvas"
       className="min-w-0"
+      data-profile-presentation={mobilePresentation ? "mobile-stack" : "canvas"}
       data-testid="profile-modules"
     >
       {renderableModules.length > 0 ? (
-        <ProfileModuleGrid
-          modules={renderableModules}
-          badges={badges}
-          canvasGlass={canvasGlass}
-          editing={editing}
-          layoutPreset={layoutPreset}
-          musicAutoplay={musicAutoplay}
-          renderModuleContent={renderModuleContent}
-        />
+        mobilePresentation ? (
+          <div
+            className="min-w-0 w-full"
+            data-profile-mobile-stack="true"
+            data-testid="profile-module-grid"
+          >
+            <ProfileModuleMobileStack
+              badges={badges}
+              canvasGlass={canvasGlass}
+              modules={renderableModules}
+              musicAutoplay={musicAutoplay}
+              renderModuleContent={renderModuleContent}
+            />
+          </div>
+        ) : (
+          <ProfileModuleGrid
+            modules={renderableModules}
+            badges={badges}
+            canvasGlass={canvasGlass}
+            editing={editing}
+            layoutPreset={layoutPreset}
+            musicAutoplay={musicAutoplay}
+            renderModuleContent={renderModuleContent}
+          />
+        )
       ) : (
         <>
           {loading ? (
@@ -280,6 +330,139 @@ export function ProfileModulesSection({
       )}
     </section>
   );
+}
+
+type ProfileModuleMobileStackProps = {
+  badges: UserBadge[];
+  canvasGlass?: number | undefined;
+  modules: ProfileModule[];
+  musicAutoplay?: ProfileMusicAutoplayRequest | undefined;
+  renderModuleContent?: ProfileModuleContentRenderer | undefined;
+};
+
+function ProfileModuleMobileStack({
+  badges,
+  canvasGlass = 58,
+  modules,
+  musicAutoplay,
+  renderModuleContent,
+}: ProfileModuleMobileStackProps) {
+  return (
+    <div
+      className="grid min-w-0 w-full grid-cols-[minmax(0,1fr)] gap-3"
+      data-testid="profile-module-stack"
+      style={
+        {
+          "--profile-module-glass-alpha": `${Math.max(0, Math.min(100, canvasGlass))}%`,
+        } as CSSProperties
+      }
+    >
+      {modules.map((module) => {
+        const size = profileModuleMobileStackSize(module);
+        const musicAutoplayRequestId =
+          musicAutoplay?.targetModuleId === module.id
+            ? musicAutoplay.requestId
+            : undefined;
+
+        return (
+          <div
+            className={cn(
+              "min-w-0 w-full overflow-hidden rounded-card",
+              profileModuleMobileStackHeightClass(module),
+            )}
+            data-profile-mobile-module={module.type}
+            data-profile-grid-module="true"
+            data-profile-grid-size={size}
+            data-render-deferred="profile-module"
+            data-testid={`profile-grid-module-${module.type}`}
+            key={module.id}
+          >
+            {renderModuleContent?.(module, size, "mobile-stack") ?? (
+              <ProfileModuleCard
+                badges={badges}
+                module={module}
+                musicAutoplayRequestId={musicAutoplayRequestId}
+                presentationMode="mobile-stack"
+                size={size}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function profileModuleMobileStackSize(
+  module: ProfileModule,
+): ProfileGridModuleSize {
+  if (module.type === "activity") {
+    return "6x10";
+  }
+
+  if (module.type === "profile_info") {
+    return "6x4";
+  }
+
+  if (
+    module.type === "creator_live" ||
+    module.type === "uploaded_video"
+  ) {
+    return "6x5";
+  }
+
+  if (
+    module.type === "gallery_media" ||
+    module.type === "gallery_slideshow" ||
+    module.type === "gallery_feed" ||
+    module.type === "uploaded_image"
+  ) {
+    return "6x4";
+  }
+
+  if (
+    module.type === "music" ||
+    module.type === "music_playlist"
+  ) {
+    return "6x3";
+  }
+
+  return "6x2";
+}
+
+function profileModuleMobileStackHeightClass(module: ProfileModule): string {
+  if (module.type === "profile_info") {
+    return "min-h-[17rem]";
+  }
+
+  if (module.type === "activity") {
+    return "h-[min(38rem,70dvh)] min-h-[28rem]";
+  }
+
+  if (
+    module.type === "creator_live" ||
+    module.type === "uploaded_video"
+  ) {
+    return "h-[22rem]";
+  }
+
+  if (
+    module.type === "gallery_media" ||
+    module.type === "gallery_slideshow" ||
+    module.type === "gallery_feed" ||
+    module.type === "uploaded_image"
+  ) {
+    return "min-h-[18rem]";
+  }
+
+  if (
+    module.type === "music" ||
+    module.type === "music_playlist"
+  ) {
+    return "min-h-[10rem]";
+  }
+
+  return "min-h-24";
 }
 
 type ProfileModuleGridProps = {
@@ -613,7 +796,7 @@ export function ProfileModuleGrid({
               data-testid={`profile-grid-module-content-${module.id}`}
               inert={editing ? true : undefined}
             >
-              {renderModuleContent?.(module, span.size) ?? (
+              {renderModuleContent?.(module, span.size, "canvas") ?? (
                 <ProfileModuleCard
                   module={module}
                   badges={badges}
@@ -680,6 +863,21 @@ function sortProfileModulesForCanvas(modules: ProfileModule[]): ProfileModule[] 
       first.position - second.position ||
       first.id - second.id
     );
+  });
+}
+
+function sortProfileModulesForMobileStack(
+  modules: ProfileModule[],
+): ProfileModule[] {
+  return [...modules].sort((first, second) => {
+    const priority =
+      profileModuleCanvasPriority(first) - profileModuleCanvasPriority(second);
+
+    if (priority !== 0) {
+      return priority;
+    }
+
+    return first.position - second.position || first.id - second.id;
   });
 }
 
@@ -754,6 +952,7 @@ function profileModulePresentationFreshness(
 type ProfileModuleContentRenderer = (
   module: ProfileModule,
   size: ProfileGridModuleSize,
+  mode: ProfileModuleRenderMode,
 ) => ReactNode | undefined;
 
 type ProfileModuleCardProps = {
@@ -761,6 +960,7 @@ type ProfileModuleCardProps = {
   editing?: boolean | undefined;
   musicAutoplayRequestId?: number | undefined;
   module: ProfileModule;
+  presentationMode?: ProfileModuleRenderMode | undefined;
   size?: ProfileGridModuleSize | undefined;
 };
 
@@ -769,6 +969,7 @@ export function ProfileModuleCard({
   editing = false,
   musicAutoplayRequestId = 0,
   module,
+  presentationMode = "canvas",
   size = "1x1",
 }: ProfileModuleCardProps) {
   const title = module.title ?? profileModuleFallbackTitle(module.type);
@@ -789,7 +990,8 @@ export function ProfileModuleCard({
   return (
     <article
       className={cn(
-        "profile-grid-scaled-content grid h-full min-h-0 min-w-0 overflow-hidden rounded-card focus-within:border-line-strong",
+        "grid h-full min-h-0 min-w-0 overflow-hidden rounded-card focus-within:border-line-strong",
+        presentationMode === "canvas" ? "profile-grid-scaled-content" : "w-full",
         editing
           ? transparentCollectionSurface
             ? "grid-rows-[1fr] border border-transparent bg-transparent p-0 shadow-none"
@@ -809,6 +1011,7 @@ export function ProfileModuleCard({
       data-profile-module-freshness={definition.freshness}
       data-profile-module-fit-tier={presentation.tier}
       data-profile-module-purpose={definition.purpose}
+      data-profile-module-render-mode={presentationMode}
       data-profile-module-shell="true"
       data-profile-module-span-role={spanRole}
       data-profile-module-tier={presentation.tier}
@@ -829,6 +1032,7 @@ export function ProfileModuleCard({
           musicAutoplayRequestId={musicAutoplayRequestId}
           badges={badges}
           presentation={presentation}
+          presentationMode={presentationMode}
           size={size}
         />
       </div>
@@ -842,10 +1046,12 @@ function ProfileModuleContent({
   musicAutoplayRequestId = 0,
   module,
   presentation,
+  presentationMode,
   size,
 }: Omit<ProfileModuleCardProps, "editing"> & {
   editing: boolean;
   presentation: ProfileModulePresentation;
+  presentationMode: ProfileModuleRenderMode;
 }) {
   const moduleCategory = getProfileModuleDefinition(module.type).category;
   const { span, spanRole } = presentation;
@@ -890,6 +1096,23 @@ function ProfileModuleContent({
         ? links.slice(0, narrowConnectionLimit)
         : links;
     const hiddenCount = Math.max(0, links.length - visibleLinks.length);
+
+    if (presentationMode === "mobile-stack") {
+      return (
+        <div
+          className="grid min-w-0 gap-2 overflow-visible"
+          data-profile-module-visible-links={links.length}
+          data-profile-connections-compact="mobile-rows"
+        >
+          {links.map((link) => (
+            <ProfileModuleLinkCompactRow
+              key={`${link.label}-${link.url}`}
+              link={link}
+            />
+          ))}
+        </div>
+      );
+    }
 
     if (slim) {
       return (
@@ -1073,6 +1296,35 @@ function ProfileModuleContent({
 
     const visibleMediaItems = compact ? mediaItems.slice(0, 1) : mediaItems;
 
+    if (presentationMode === "mobile-stack") {
+      return (
+        <div
+          className="grid min-w-0 grid-cols-2 gap-2 overflow-visible"
+          data-profile-module-visible-media={mediaItems.length}
+        >
+          {mediaItems.map((item, index) => (
+            <figure
+              className="aspect-square min-w-0 overflow-hidden rounded-card border border-line bg-canvas/55"
+              key={`${item.url}:${index}`}
+            >
+              <img
+                alt=""
+                className="size-full object-cover"
+                decoding="async"
+                loading="lazy"
+                src={item.url}
+              />
+              {item.caption ? (
+                <figcaption className="truncate px-2 py-1.5 text-xs text-muted">
+                  {item.caption}
+                </figcaption>
+              ) : null}
+            </figure>
+          ))}
+        </div>
+      );
+    }
+
     return (
       <div
         className={cn(
@@ -1132,6 +1384,7 @@ function ProfileModuleContent({
         icon={<Radio aria-hidden="true" size={17} />}
         editing={editing}
         module={module}
+        presentationMode={presentationMode}
         size={size}
         fallbackLabel="Creator channel"
       />
@@ -1168,6 +1421,7 @@ function ProfileModuleContent({
         editing={editing}
         musicAutoplayRequestId={musicAutoplayRequestId}
         module={module}
+        presentationMode={presentationMode}
         size={size}
         fallbackLabel="Music link"
       />
@@ -1521,6 +1775,7 @@ function ProfileModuleStaticCard({
   icon,
   musicAutoplayRequestId = 0,
   module,
+  presentationMode = "canvas",
   size,
 }: {
   editing?: boolean | undefined;
@@ -1528,6 +1783,7 @@ function ProfileModuleStaticCard({
   icon: ReactNode;
   musicAutoplayRequestId?: number | undefined;
   module: ProfileModule;
+  presentationMode?: ProfileModuleRenderMode | undefined;
   size?: ProfileGridModuleSize | undefined;
 }) {
   const url = module.config.url;
@@ -1550,6 +1806,7 @@ function ProfileModuleStaticCard({
         editing={editing}
         autoplayRequestId={musicAutoplayRequestId}
         module={module}
+        presentationMode={presentationMode}
         size={size}
       />
     );
@@ -2278,6 +2535,7 @@ function ProfileIntegrationRichCard({
   icon,
   integration,
   module,
+  presentationMode = "canvas",
   size,
 }: {
   autoplayRequestId?: number | undefined;
@@ -2286,6 +2544,7 @@ function ProfileIntegrationRichCard({
   icon: ReactNode;
   integration: ProfileIntegrationCard;
   module: ProfileModule;
+  presentationMode?: ProfileModuleRenderMode | undefined;
   size?: ProfileGridModuleSize | undefined;
 }) {
   const metadata = integration.metadata;
@@ -2331,6 +2590,9 @@ function ProfileIntegrationRichCard({
   const compactMutedTextClass = albumArtworkMutedTextClass(compactTextTone);
   const twitchEmbedSandbox =
     "allow-storage-access-by-user-activation allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-modals allow-forms";
+  const [mobileTwitchPanel, setMobileTwitchPanel] = useState<"stream" | "chat">(
+    "stream",
+  );
 
   if (isArtistModuleIntegration(module, integration)) {
     return (
@@ -2447,6 +2709,50 @@ function ProfileIntegrationRichCard({
   }
 
   if (showTwitchStreamChat && primaryEmbed && primaryEmbedSrc && twitchChatSrc) {
+    if (presentationMode === "mobile-stack") {
+      const showChat = mobileTwitchPanel === "chat";
+
+      return (
+        <div
+          className="flex h-full min-h-0 flex-col gap-2 overflow-hidden rounded-card bg-transparent"
+          data-profile-twitch-chat-columns="mobile-switch"
+          data-profile-twitch-embed-surface="true"
+        >
+          <SegmentedControl
+            activeId={mobileTwitchPanel}
+            ariaLabel="Twitch view"
+            className="w-full shrink-0 [&>button]:flex-1"
+            items={[
+              { id: "stream", label: "Stream" },
+              { id: "chat", label: "Chat" },
+            ]}
+            onChange={setMobileTwitchPanel}
+            testId="profile-twitch-mobile-tabs"
+          />
+          <iframe
+            className={cn(
+              "block min-h-0 min-w-0 flex-1 w-full rounded-card border-0",
+              showChat ? "bg-surface" : "bg-black",
+            )}
+            title={showChat ? "Twitch chat" : primaryEmbed.title}
+            src={showChat ? twitchChatSrc : primaryEmbedSrc}
+            height={360}
+            loading="lazy"
+            referrerPolicy="strict-origin-when-cross-origin"
+            allow={showChat ? undefined : primaryEmbed.allow}
+            sandbox={twitchEmbedSandbox}
+            allowFullScreen={!showChat}
+            data-profile-embed-provider="twitch"
+            data-testid={
+              showChat
+                ? "profile-integration-embed-twitch-chat"
+                : "profile-integration-embed-twitch"
+            }
+          />
+        </div>
+      );
+    }
+
     return (
       <div
         className="h-full min-h-0 overflow-hidden rounded-card bg-transparent"

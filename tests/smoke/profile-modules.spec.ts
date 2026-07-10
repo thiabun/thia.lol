@@ -177,32 +177,23 @@ test("profile renders public modules safely", async ({ page }) => {
   await expect(section.getByTestId("profile-module-grid")).toBeVisible();
   await expect(section.getByTestId("profile-grid-module-profile_info")).toHaveAttribute(
     "data-profile-grid-size",
-    "8x3",
+    "6x4",
   );
   await expect(section.getByTestId("profile-module-grid")).toHaveAttribute(
-    "data-profile-canvas-fit-rows",
-    "content",
+    "data-profile-mobile-stack",
+    "true",
   );
-  await expect
-    .poll(async () =>
-      Number(
-        await section
-          .getByTestId("profile-module-grid")
-          .getAttribute("data-profile-canvas-rows"),
-      ),
-    )
-    .toBeLessThan(PROFILE_CANVAS_MOBILE_ROWS);
   await expect(section.getByTestId("profile-grid-module-about")).toHaveAttribute(
     "data-profile-grid-size",
-    "3x2",
+    "6x2",
   );
-  await expect(section.getByTestId("profile-grid-module-about")).toHaveAttribute(
+  await expect(section.getByTestId("profile-module-about")).toHaveAttribute(
     "data-profile-module-purpose",
     "status",
   );
-  await expect(section.getByTestId("profile-grid-module-about")).toHaveAttribute(
+  await expect(section.getByTestId("profile-module-about")).toHaveAttribute(
     "data-profile-module-span-role",
-    "rich",
+    "summary",
   );
   await expect(section.getByTestId("profile-module-about")).toHaveAttribute(
     "data-profile-module-shell",
@@ -210,9 +201,9 @@ test("profile renders public modules safely", async ({ page }) => {
   );
   await expect(section.getByTestId("profile-grid-module-links")).toHaveAttribute(
     "data-profile-grid-size",
-    "3x2",
+    "6x2",
   );
-  await expect(section.getByTestId("profile-grid-module-links")).toHaveAttribute(
+  await expect(section.getByTestId("profile-module-links")).toHaveAttribute(
     "data-profile-module-action",
     "open",
   );
@@ -226,7 +217,7 @@ test("profile renders public modules safely", async ({ page }) => {
   );
   await expect(section.getByTestId("profile-grid-module-featured_badges")).toHaveAttribute(
     "data-profile-grid-size",
-    "2x2",
+    "6x2",
   );
   await expect(section.getByTestId("profile-module-featured_badges")).toHaveAttribute(
     "data-profile-module-transparent-surface",
@@ -523,10 +514,11 @@ test("module shells keep compact content glanceable without public overflow", as
   await page.goto("/@thia");
 
   const about = page.getByTestId("profile-grid-module-about");
-  await expect(about).toHaveAttribute("data-profile-grid-size", "3x2");
-  await expect(about).toHaveAttribute("data-profile-module-compact", "false");
-  await expect(about).toHaveAttribute("data-profile-module-density", "summary");
-  await expect(page.getByTestId("profile-module-about")).toHaveAttribute(
+  await expect(about).toHaveAttribute("data-profile-grid-size", "6x2");
+  const aboutSurface = page.getByTestId("profile-module-about");
+  await expect(aboutSurface).toHaveAttribute("data-profile-module-compact", "false");
+  await expect(aboutSurface).toHaveAttribute("data-profile-module-density", "summary");
+  await expect(aboutSurface).toHaveAttribute(
     "data-profile-module-empty-policy",
     "hide-public",
   );
@@ -534,11 +526,11 @@ test("module shells keep compact content glanceable without public overflow", as
   const links = page.getByTestId("profile-module-links");
   await expect(links.locator("[data-profile-module-visible-links]")).toHaveAttribute(
     "data-profile-module-visible-links",
-    "4",
+    "5",
   );
-  await expect(links.locator('[data-profile-connections-compact="icons"]')).toBeVisible();
+  await expect(links.locator('[data-profile-connections-compact="mobile-rows"]')).toBeVisible();
   await expect(links.getByText("+1 more")).toHaveCount(0);
-  await expect(links.getByText("+1")).toBeVisible();
+  await expect(links.getByText("+1")).toHaveCount(0);
 
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -838,15 +830,19 @@ test("profile module grid keeps responsive columns bounded", async ({ page }) =>
 
   const grid = page.getByTestId("profile-module-grid");
   await expect(grid).toHaveAttribute(
+    "data-profile-mobile-stack",
+    "true",
+  );
+  await expectGridColumnCount(grid, 1);
+
+  await page.setViewportSize({ width: 900, height: 900 });
+  await expectGridColumnCount(grid, 1);
+
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await expect(grid).toHaveAttribute(
     "data-profile-canvas-columns",
     String(PROFILE_CANVAS_COLUMNS),
   );
-  await expectGridColumnCount(grid, PROFILE_CANVAS_MOBILE_COLUMNS);
-
-  await page.setViewportSize({ width: 900, height: 900 });
-  await expectGridColumnCount(grid, PROFILE_CANVAS_MOBILE_COLUMNS);
-
-  await page.setViewportSize({ width: 1366, height: 900 });
   await expectGridColumnCount(grid, PROFILE_CANVAS_COLUMNS);
 });
 
@@ -4335,6 +4331,7 @@ test("background popover stays within narrow viewport", async ({ page }) => {
   await page.goto("/@thia");
 
   await page.getByTestId("profile-edit-button").click();
+  await page.getByTestId("profile-mobile-background-settings").click();
   await page.getByTestId("profile-canvas-background-trigger").click();
 
   const box = await page.getByTestId("profile-canvas-background-popover").boundingBox();
@@ -5107,7 +5104,7 @@ test("low-resolution desktop uses compact direct canvas chrome", async ({ page }
   expect(metrics.hasHorizontalOverflow).toBe(false);
 });
 
-test.describe("mobile touch direct canvas", () => {
+test.describe.skip("legacy mobile touch direct canvas", () => {
   test.use({
     hasTouch: true,
     isMobile: true,
@@ -5300,7 +5297,114 @@ test.describe("mobile touch direct canvas", () => {
   });
 });
 
-test("mobile canvas packs profile info first and activity last", async ({ page }) => {
+test.describe("mobile profile companion experience", () => {
+  test.use({
+    hasTouch: true,
+    isMobile: true,
+    viewport: { width: 390, height: 844 },
+  });
+
+  test("public modules render as a readable position-ordered stack", async ({ page }) => {
+    await mockProfileModules(page, {
+      authenticated: false,
+      modules: [
+        withAuditLayout(activityModule({ id: 9, position: 1 }), "3x4", 1),
+        withAuditLayout(
+          textModule({ id: 22, body: "Second mobile module", position: 3 }),
+          "3x2",
+          8,
+        ),
+        withAuditLayout(
+          aboutModule({ id: 21, body: "First mobile module", position: 2 }),
+          "3x2",
+          5,
+        ),
+        withAuditLayout({ ...profileInfoModule(), position: 4 }, "8x3", 10),
+      ],
+      profilePosts: [postFixture({ id: 77, body: "A compact activity item." })],
+    });
+    await acknowledgeCookieNotice(page);
+    await page.goto("/@thia");
+
+    const compatibilitySurface = page.getByTestId("profile-module-grid");
+    const stack = page.getByTestId("profile-module-stack");
+    await expect(compatibilitySurface).toHaveAttribute("data-profile-mobile-stack", "true");
+    await expect(stack).toBeVisible();
+    const order = await stack.locator('[data-profile-mobile-module]').evaluateAll((items) =>
+      items.map((item) => item.getAttribute("data-profile-mobile-module")),
+    );
+
+    expect(order[0]).toBe("profile_info");
+    expect(order.slice(1, 3)).toEqual(["about", "custom_text"]);
+    expect(order.at(-1)).toBe("activity");
+    await expect(page.getByText("First mobile module")).toBeVisible();
+    await expect(page.getByText("Second mobile module")).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
+        ),
+      )
+      .toBe(true);
+  });
+
+  test("touch editor reorders modules without changing desktop layouts", async ({ page }) => {
+    let draftPayload: Record<string, unknown> | undefined;
+    const firstLayout = { column: 1, row: 4, colSpan: 3, rowSpan: 2 };
+    const secondLayout = { column: 4, row: 4, colSpan: 3, rowSpan: 2 };
+
+    await mockProfileModules(page, {
+      authenticated: true,
+      modules: [
+        { ...aboutModule({ id: 21, body: "First mobile module", position: 1 }), layout: firstLayout },
+        { ...textModule({ id: 22, body: "Second mobile module", position: 2 }), layout: secondLayout },
+      ],
+      onCanvasDraftSave: (payload) => {
+        draftPayload = payload;
+      },
+    });
+    await acknowledgeCookieNotice(page);
+    await page.goto("/@thia");
+    await page.getByTestId("profile-edit-button").tap();
+
+    const editor = page.getByTestId("profile-canvas-editor");
+    await expect(editor).toHaveAttribute("data-profile-editor-render-mode", "mobile-list");
+    await expect(page.getByTestId("profile-canvas-direct-grid")).toHaveCount(0);
+    await expect(page.getByTestId("profile-mobile-module-list")).toBeVisible();
+    await expect(page.getByTestId("mobile-nav")).toBeHidden();
+
+    await page.getByRole("button", { name: "Move" }).tap();
+    await page
+      .getByTestId("profile-mobile-editor-module-21")
+      .getByRole("button", { name: /Move About down/i })
+      .tap();
+
+    await expect
+      .poll(() => {
+        const modules = (draftPayload?.modules ?? []) as Array<Record<string, unknown>>;
+        return modules.map((module) => module.id).join(",");
+      })
+      .toContain("22,21");
+
+    const savedModules = (draftPayload?.modules ?? []) as Array<Record<string, unknown>>;
+    expect(savedModules.find((module) => module.id === 21)?.layout).toEqual(firstLayout);
+    expect(savedModules.find((module) => module.id === 22)?.layout).toEqual(secondLayout);
+    await page.getByRole("button", { name: "Done" }).tap();
+    await page.getByTestId("profile-mobile-add-module").tap();
+    await expect(page.getByTestId("profile-module-picker")).toBeVisible();
+
+    const primaryControls = editor.locator("button:visible");
+    const undersizedControls = await primaryControls.evaluateAll((controls) =>
+      controls
+        .map((control) => control.getBoundingClientRect())
+        .filter((rect) => rect.width > 0 && rect.height > 0 && (rect.width < 44 || rect.height < 44))
+        .map((rect) => ({ width: rect.width, height: rect.height })),
+    );
+    expect(undersizedControls).toEqual([]);
+  });
+});
+
+test("mobile stack packs profile info first and activity last", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockProfileModules(page, {
     authenticated: false,
@@ -5326,12 +5430,14 @@ test("mobile canvas packs profile info first and activity last", async ({ page }
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  const grid = page.getByTestId("profile-module-grid");
-  await expectGridColumnCount(grid, PROFILE_CANVAS_MOBILE_COLUMNS);
-  await expect(grid).toHaveAttribute("data-profile-canvas-fit-rows", "content");
-  const order = await grid.evaluate((element) =>
+  const stack = page.getByTestId("profile-module-stack");
+  await expect(page.getByTestId("profile-module-grid")).toHaveAttribute(
+    "data-profile-mobile-stack",
+    "true",
+  );
+  const order = await stack.evaluate((element) =>
     Array.from(
-      element.querySelectorAll<HTMLElement>('[data-profile-grid-module="true"]'),
+      element.querySelectorAll<HTMLElement>('[data-profile-mobile-module]'),
     ).map((module) => module.getAttribute("data-testid")),
   );
 
@@ -5366,11 +5472,14 @@ test("mobile profile info projection keeps content close to the banner", async (
 
   const module = page.getByTestId("profile-grid-module-profile_info");
   const info = module.getByTestId("profile-module-profile-info");
-  await expect(module).toHaveAttribute("data-profile-grid-size", "8x3");
+  await expect(page.getByTestId("profile-module-grid")).toHaveAttribute(
+    "data-profile-mobile-stack",
+    "true",
+  );
+  await expect(module).toHaveAttribute("data-profile-grid-size", "6x4");
   await expect(info).toHaveAttribute("data-profile-info-mobile-projection", "true");
   await expect(info).toHaveAttribute("data-profile-info-columns", "6");
   await expect(info).toHaveAttribute("data-profile-info-rows", "4");
-  await expectGridRowBudget(page.getByTestId("profile-module-grid"), 4);
   await expect(module.getByTestId("profile-header")).toHaveAttribute(
     "data-profile-info-mobile-projection",
     "true",
@@ -6148,7 +6257,7 @@ test("mobile stack ignores saved desktop placement", async ({ page }) => {
   await page.goto("/@thia");
 
   const grid = page.getByTestId("profile-module-grid");
-  await expectGridColumnCount(grid, PROFILE_CANVAS_MOBILE_COLUMNS);
+  await expect(grid).toHaveAttribute("data-profile-mobile-stack", "true");
   await expect(page.getByText("Still stacks.")).toBeVisible();
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -6456,7 +6565,8 @@ test("layout presets affect the public module grid without breaking mobile", asy
   await expectGridColumnCount(grid, PROFILE_CANVAS_COLUMNS);
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await expectGridColumnCount(grid, PROFILE_CANVAS_MOBILE_COLUMNS);
+  await expect(grid).toHaveAttribute("data-profile-mobile-stack", "true");
+  await expectGridColumnCount(grid, 1);
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );

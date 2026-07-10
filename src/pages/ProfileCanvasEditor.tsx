@@ -195,6 +195,34 @@ const canvasSingletonModuleTypes = new Set<ProfileModule["type"]>([
   "activity",
 ]);
 
+function profileCanvasMobileModulePriority(module: ProfileModule): number {
+  if (module.type === "profile_info") {
+    return 0;
+  }
+
+  if (module.type === "activity") {
+    return 2;
+  }
+
+  return 1;
+}
+
+function profileCanvasSortMobileDraftModules(
+  modules: ProfileModule[],
+): ProfileModule[] {
+  return [...modules].sort((first, second) => {
+    const priority =
+      profileCanvasMobileModulePriority(first) -
+      profileCanvasMobileModulePriority(second);
+
+    if (priority !== 0) {
+      return priority;
+    }
+
+    return first.position - second.position || first.id - second.id;
+  });
+}
+
 type ProfileCanvasResizeState = {
   direction: ProfileCanvasResizeDirection;
   moduleId: number;
@@ -592,6 +620,12 @@ export function ProfileDirectCanvasEditor({
     number | undefined
   >();
   const [mobileMoveModuleId, setMobileMoveModuleId] = useState<number | undefined>();
+  const [mobileReorderMode, setMobileReorderMode] = useState(false);
+  const [mobileActionModuleId, setMobileActionModuleId] = useState<
+    number | undefined
+  >();
+  const [mobileBackgroundOpen, setMobileBackgroundOpen] = useState(false);
+  const [mobileAppearanceOpen, setMobileAppearanceOpen] = useState(false);
   const [guideStepIndex, setGuideStepIndex] = useState(0);
   const [dragState, setDragState] = useState<ProfileCanvasDragState | undefined>();
   const [resizeState, setResizeState] = useState<
@@ -610,6 +644,13 @@ export function ProfileDirectCanvasEditor({
   const sortedModules = useMemo(
     () =>
       profileCanvasSortDraftModules(
+        modules.filter((module) => module.status !== "deleted"),
+      ),
+    [modules],
+  );
+  const mobileSortedModules = useMemo(
+    () =>
+      profileCanvasSortMobileDraftModules(
         modules.filter((module) => module.status !== "deleted"),
       ),
     [modules],
@@ -1178,6 +1219,100 @@ export function ProfileDirectCanvasEditor({
     );
   }
 
+  function handleMobileAddModule() {
+    const id = onNewDraftModuleId();
+    const blankModule: ProfileModule = {
+      id,
+      type: "placeholder",
+      title: null,
+      config: { canvasSize: "3x2", configured: false, placeholder: true },
+      visibility: "draft",
+      position: mobileSortedModules.length + 1,
+      pinned: false,
+      layout: null,
+      status: "active",
+      schemaVersion: 1,
+      createdAt: null,
+      updatedAt: null,
+    };
+    const layout = profileCanvasDefaultClientLayout(
+      blankModule,
+      mobileSortedModules.length,
+    );
+    const placedModule = { ...blankModule, layout };
+
+    updateDraftModules((currentModules) =>
+      profileCanvasResolveDraftCollisions(
+        [...currentModules, placedModule],
+        id,
+      ),
+    );
+    setSelectedMobileModuleId(id);
+    setSettingsModuleId(undefined);
+    setPickerModuleId(id);
+  }
+
+  function handleMobileReorder(
+    module: ProfileModule,
+    direction: -1 | 1,
+  ) {
+    if (
+      module.pinned ||
+      module.type === "profile_info" ||
+      module.type === "activity"
+    ) {
+      return;
+    }
+
+    const currentIndex = mobileSortedModules.findIndex(
+      (item) => item.id === module.id,
+    );
+    const targetIndex = currentIndex + direction;
+    const target = mobileSortedModules[targetIndex];
+
+    if (
+      currentIndex < 0 ||
+      !target ||
+      target.pinned ||
+      target.type === "profile_info" ||
+      target.type === "activity"
+    ) {
+      return;
+    }
+
+    updateDraftModules((currentModules) => {
+      const activeModules = profileCanvasSortMobileDraftModules(
+        currentModules.filter((item) => item.status !== "deleted"),
+      );
+      const activeIndex = activeModules.findIndex(
+        (item) => item.id === module.id,
+      );
+      const nextIndex = activeIndex + direction;
+
+      if (activeIndex < 0 || !activeModules[nextIndex]) {
+        return currentModules;
+      }
+
+      const nextModules = [...activeModules];
+      const [moving] = nextModules.splice(activeIndex, 1);
+
+      if (!moving) {
+        return currentModules;
+      }
+
+      nextModules.splice(nextIndex, 0, moving);
+      const positioned = nextModules.map((item, index) => ({
+        ...item,
+        position: index + 1,
+      }));
+      const deletedModules = currentModules.filter(
+        (item) => item.status === "deleted",
+      );
+
+      return [...positioned, ...deletedModules];
+    });
+  }
+
   function handleResizeModule(
     module: ProfileModule,
     size: ProfileGridModuleSize,
@@ -1322,6 +1457,350 @@ export function ProfileDirectCanvasEditor({
       ),
   );
   const selectionPreviewRect = selectionBlocked ? undefined : selectionRect;
+  const mobileActionModule = mobileSortedModules.find(
+    (module) => module.id === mobileActionModuleId,
+  );
+
+  if (editorGrid.mobile) {
+    return (
+      <section
+        className="min-w-0 space-y-3"
+        data-testid="profile-canvas-editor"
+        data-profile-editor-input-mode="touch"
+        data-profile-editor-render-mode="mobile-list"
+        aria-label="Profile editor"
+      >
+        <header className="sticky top-14 z-30 -mx-2 border-y border-line bg-canvas/94 px-2 py-2 shadow-soft backdrop-blur-veil">
+          <div className="flex min-h-11 items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={busy}
+              icon={<X aria-hidden="true" size={16} />}
+              onClick={onCancel}
+            >
+              Cancel
+            </Button>
+            <div className="min-w-0 flex-1 text-center">
+              <h2 className="truncate text-sm font-semibold text-text">
+                Edit profile
+              </h2>
+              <p
+                className={cn(
+                  "truncate text-xs font-medium",
+                  autosaveState === "error" ? "text-rose-ink" : "text-muted",
+                )}
+                role={autosaveState === "error" ? "alert" : "status"}
+              >
+                {autosaveMessage}
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              disabled={busy}
+              icon={<Save aria-hidden="true" size={16} />}
+              data-testid="profile-canvas-save-button"
+              onClick={onSave}
+            >
+              Save
+            </Button>
+          </div>
+        </header>
+
+        {error ? (
+          <p
+            className="rounded-card border border-rose/30 bg-rose/12 p-3 text-sm font-medium text-rose-ink"
+            role="alert"
+          >
+            {error}
+          </p>
+        ) : null}
+
+        <div className="grid min-w-0 gap-2" aria-label="Profile appearance settings">
+          <button
+            type="button"
+            className="app-control flex min-h-11 w-full touch-manipulation items-center gap-3 rounded-control border border-line bg-surface/72 px-3 py-2.5 text-left shadow-inner-soft"
+            data-testid="profile-mobile-background-settings"
+            onClick={() => setMobileBackgroundOpen(true)}
+          >
+            <ImagePlus aria-hidden="true" size={18} className="shrink-0 text-muted" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-text">Background</span>
+              <span className="block truncate text-xs text-muted">
+                {profile.profileBackgroundVideo
+                  ? "Video"
+                  : profile.profileBackground
+                    ? "Image"
+                    : "None"}
+                {` · ${draft.backgroundBlur}`}
+              </span>
+            </span>
+            <ArrowRight aria-hidden="true" size={17} className="shrink-0 text-muted" />
+          </button>
+          <button
+            type="button"
+            className="app-control flex min-h-11 w-full touch-manipulation items-center gap-3 rounded-control border border-line bg-surface/72 px-3 py-2.5 text-left shadow-inner-soft"
+            data-testid="profile-mobile-appearance-settings"
+            onClick={() => setMobileAppearanceOpen(true)}
+          >
+            <Sparkles aria-hidden="true" size={18} className="shrink-0 text-muted" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-text">Appearance</span>
+              <span className="block truncate text-xs text-muted">
+                {profile.profileThemeConfig ? "Custom" : "Site theme"}
+              </span>
+            </span>
+            <ArrowRight aria-hidden="true" size={17} className="shrink-0 text-muted" />
+          </button>
+          <label className="flex min-h-11 items-center gap-3 rounded-control border border-line bg-surface/72 px-3 py-2.5 shadow-inner-soft">
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-text">Glass</span>
+              <span className="block text-xs text-muted">{draft.canvasGlass}%</span>
+            </span>
+            <input
+              className="min-w-32 flex-1 accent-[var(--app-accent)]"
+              type="range"
+              min={0}
+              max={92}
+              value={draft.canvasGlass}
+              data-testid="profile-canvas-glass-slider"
+              onChange={(event) =>
+                onCanvasGlassChange(Number(event.currentTarget.value))
+              }
+            />
+          </label>
+        </div>
+
+        <div className="flex min-h-11 items-center justify-between gap-3 pt-1">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-text">Modules</h3>
+            <p className="text-xs text-muted">One readable section at a time.</p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant={mobileReorderMode ? "secondary" : "ghost"}
+            icon={<Move aria-hidden="true" size={16} />}
+            aria-pressed={mobileReorderMode}
+            onClick={() => setMobileReorderMode((current) => !current)}
+          >
+            {mobileReorderMode ? "Done" : "Move"}
+          </Button>
+        </div>
+
+        <div className="grid min-w-0 gap-2" data-testid="profile-mobile-module-list">
+          {mobileSortedModules.map((module, index) => {
+            const definition = getProfileModuleDefinition(module.type);
+            const previous = mobileSortedModules[index - 1];
+            const next = mobileSortedModules[index + 1];
+            const protectedModule =
+              module.type === "profile_info" || module.type === "activity";
+            const canMoveUp =
+              !protectedModule &&
+              !module.pinned &&
+              previous !== undefined &&
+              !previous.pinned &&
+              previous.type !== "profile_info";
+            const canMoveDown =
+              !protectedModule &&
+              !module.pinned &&
+              next !== undefined &&
+              !next.pinned &&
+              next.type !== "activity";
+
+            return (
+              <article
+                className="grid min-h-16 min-w-0 grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-2 rounded-card border border-line bg-surface/72 px-2.5 py-2 shadow-inner-soft"
+                data-profile-mobile-editor-module={module.type}
+                data-testid={`profile-mobile-editor-module-${module.id}`}
+                key={module.id}
+              >
+                <span className="w-5 text-center text-xs font-semibold tabular-nums text-muted">
+                  {index + 1}
+                </span>
+                <span className="grid size-10 shrink-0 place-items-center rounded-card border border-line bg-canvas/60 text-text">
+                  <ProfileModulePickerIcon
+                    category={definition.category}
+                    disabled={false}
+                    type={module.type}
+                  />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-text">
+                    {module.title ?? profileModuleFallbackTitle(module.type)}
+                  </span>
+                  <span className="mt-0.5 flex min-w-0 flex-wrap gap-x-2 gap-y-0.5 text-xs text-muted">
+                    <span>{module.visibility === "public" ? "Visible" : "Hidden"}</span>
+                    {module.pinned ? <span>Pinned</span> : null}
+                    {protectedModule ? <span>Fixed order</span> : null}
+                  </span>
+                </span>
+                {mobileReorderMode ? (
+                  <span className="flex shrink-0 gap-1">
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      aria-label={`Move ${profileModuleFallbackTitle(module.type)} up`}
+                      disabled={!canMoveUp}
+                      icon={<ArrowUp aria-hidden="true" size={17} />}
+                      onClick={() => handleMobileReorder(module, -1)}
+                    />
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      aria-label={`Move ${profileModuleFallbackTitle(module.type)} down`}
+                      disabled={!canMoveDown}
+                      icon={<ArrowDown aria-hidden="true" size={17} />}
+                      onClick={() => handleMobileReorder(module, 1)}
+                    />
+                  </span>
+                ) : (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    aria-label={`Open ${profileModuleFallbackTitle(module.type)} actions`}
+                    icon={<MoreHorizontal aria-hidden="true" size={18} />}
+                    onClick={() => setMobileActionModuleId(module.id)}
+                  />
+                )}
+              </article>
+            );
+          })}
+        </div>
+
+        <Button
+          type="button"
+          className="w-full"
+          variant="secondary"
+          icon={<Plus aria-hidden="true" size={17} />}
+          data-testid="profile-mobile-add-module"
+          onClick={handleMobileAddModule}
+        >
+          Add module
+        </Button>
+
+        <ModalSheet
+          open={mobileBackgroundOpen}
+          onClose={() => setMobileBackgroundOpen(false)}
+          title="Background"
+          mobile="full"
+        >
+          <ProfileCanvasBackgroundControls
+            backgroundBlur={draft.backgroundBlur}
+            profile={profile}
+            uploading={uploading}
+            onBackgroundBlurChange={onBackgroundBlurChange}
+            onClear={onClearBackground}
+            onImageUpload={(file) => onImageUpload(file, "profile_background")}
+            onVideoUpload={onVideoUpload}
+          />
+        </ModalSheet>
+        <ModalSheet
+          open={mobileAppearanceOpen}
+          onClose={() => setMobileAppearanceOpen(false)}
+          title="Appearance"
+          mobile="full"
+        >
+          <ProfileAppearanceControls
+            profile={profile}
+            onProfileDraftChange={onProfileDraftChange}
+          />
+        </ModalSheet>
+        <ModalSheet
+          open={Boolean(mobileActionModule)}
+          onClose={() => setMobileActionModuleId(undefined)}
+          title={
+            mobileActionModule
+              ? mobileActionModule.title ??
+                profileModuleFallbackTitle(mobileActionModule.type)
+              : "Module"
+          }
+          testId="profile-mobile-module-actions"
+        >
+          {mobileActionModule ? (
+            <div className="grid gap-2">
+              <Button
+                type="button"
+                className="w-full justify-start"
+                variant="secondary"
+                icon={<Pencil aria-hidden="true" size={17} />}
+                onClick={() => {
+                  setMobileActionModuleId(undefined);
+                  if (mobileActionModule.type === "placeholder") {
+                    setPickerModuleId(mobileActionModule.id);
+                  } else {
+                    setSettingsModuleId(mobileActionModule.id);
+                  }
+                }}
+              >
+                {mobileActionModule.type === "placeholder" ? "Choose module" : "Edit module"}
+              </Button>
+              {mobileActionModule.type !== "profile_info" ? (
+                <Button
+                  type="button"
+                  className="w-full justify-start"
+                  variant="secondary"
+                  icon={
+                    mobileActionModule.pinned ? (
+                      <PinOff aria-hidden="true" size={17} />
+                    ) : (
+                      <Pin aria-hidden="true" size={17} />
+                    )
+                  }
+                  onClick={() => handleTogglePin(mobileActionModule)}
+                >
+                  {mobileActionModule.pinned ? "Unpin module" : "Pin module"}
+                </Button>
+              ) : null}
+              {mobileActionModule.type !== "profile_info" ? (
+                <Button
+                  type="button"
+                  className="w-full justify-start"
+                  variant="danger"
+                  icon={<Trash2 aria-hidden="true" size={17} />}
+                  onClick={() => {
+                    handleRemoveModule(mobileActionModule);
+                    setMobileActionModuleId(undefined);
+                  }}
+                >
+                  Remove module
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </ModalSheet>
+        <ModulePickerModal
+          module={pickerModule}
+          modules={modules}
+          onChoose={handleChooseModule}
+          onClose={() => setPickerModuleId(undefined)}
+        />
+        <ModuleSettingsModal
+          integrationAccounts={integrationAccounts}
+          integrationProviders={integrationProviders}
+          module={settingsModule}
+          profile={profile}
+          uploading={uploading}
+          onClose={() => setSettingsModuleId(undefined)}
+          onRemove={handleRemoveModule}
+          onResize={handleResizeModule}
+          onConnectProvider={onConnectProvider}
+          onModuleAudioUpload={onModuleAudioUpload}
+          onModuleImagePrepare={onModuleImagePrepare}
+          onModuleImageUpload={onModuleImageUpload}
+          onModuleVideoUpload={onModuleVideoUpload}
+          onProfileImageUpload={onImageUpload}
+          onProfileDraftChange={onProfileDraftChange}
+          onUpdateConfig={handleModuleConfig}
+        />
+      </section>
+    );
+  }
 
   return (
     <section
@@ -2632,6 +3111,7 @@ function ModulePickerModal({
       onClose={handleClose}
       title="Add module"
       description="Pick a tool for this space."
+      mobile="full"
       size="md"
       testId="profile-module-picker"
     >
@@ -3410,6 +3890,7 @@ function ModuleSettingsModal({
       onClose={handleClose}
       title={module ? profileModuleFallbackTitle(module.type) : "Module settings"}
       description={definition?.description}
+      mobile="full"
       size="md"
       testId="profile-module-settings"
       footer={

@@ -49,6 +49,7 @@ import { MentionTextarea } from "../components/social/MentionTextarea";
 import { PostCard } from "../components/social/PostCard";
 import {
   ProfileModulesSection,
+  type ProfileModuleRenderMode,
   type ProfileMusicAutoplayRequest,
 } from "../components/social/ProfileModules";
 import { ProfileShareModal } from "../components/social/ProfileShareModal";
@@ -1818,6 +1819,7 @@ export function ProfilePage() {
     module: ProfileModule,
     size: ProfileGridModuleSize,
     editing: boolean,
+    presentationMode: ProfileModuleRenderMode,
   ) {
     if (module.type === "profile_info") {
       return (
@@ -1833,6 +1835,7 @@ export function ProfilePage() {
           onShareProfile={() => setProfileShareOpen(true)}
           profile={renderedProfile}
           profileControlBusy={profileControlBusy}
+          presentationMode={presentationMode}
           size={size}
           showChatHint={
             status === "authenticated" &&
@@ -2001,7 +2004,7 @@ export function ProfilePage() {
                 onNewDraftModuleId={() => nextDraftModuleIdRef.current--}
                 onProfileDraftChange={handleDraftProfileChange}
                 onRenderModuleContent={(module, size) =>
-                  renderProfileModuleContent(module, size, true)
+                  renderProfileModuleContent(module, size, true, "canvas")
                 }
                 onResolveIntegrationMetadata={(input) =>
                   runWithAuth(
@@ -2023,8 +2026,13 @@ export function ProfilePage() {
               loading={modulesState.loading}
               musicAutoplay={musicAutoplayRequest}
               modules={profileCanvasModules}
-              renderModuleContent={(module, size) =>
-                renderProfileModuleContent(module, size, false)
+              renderModuleContent={(module, size, presentationMode) =>
+                renderProfileModuleContent(
+                  module,
+                  size,
+                  false,
+                  presentationMode,
+                )
               }
             />
           )}
@@ -4741,6 +4749,7 @@ type ProfileInfoModuleProps = {
   onStarToggle: () => void;
   profile: Profile;
   profileControlBusy?: "block" | "mute" | undefined;
+  presentationMode?: ProfileModuleRenderMode | undefined;
   showChatHint: boolean;
   size: ProfileGridModuleSize;
   starPosting: boolean;
@@ -4763,15 +4772,21 @@ function ProfileInfoModule({
   onStarToggle,
   profile,
   profileControlBusy,
+  presentationMode = "canvas",
   showChatHint,
   size,
   starPosting,
   status,
 }: ProfileInfoModuleProps) {
   const span = profileGridModuleSizeSpan(size);
-  const mobileProjection = useProfileMobileCanvasProjection();
+  const canvasMobileProjection = useProfileMobileCanvasProjection();
+  const mobileProjection =
+    presentationMode === "mobile-stack" || canvasMobileProjection;
   const renderedSpan = mobileProjection ? profileInfoMobileProjectedSpan(span) : span;
-  const mobileProjected = renderedSpan.columns !== span.columns || renderedSpan.rows !== span.rows;
+  const mobileProjected =
+    presentationMode === "mobile-stack" ||
+    renderedSpan.columns !== span.columns ||
+    renderedSpan.rows !== span.rows;
   const showBlankEditPrompt =
     editing && isOwnProfile && profileInfoNeedsEditPrompt(profile);
 
@@ -5903,7 +5918,9 @@ function FeaturedRoomCard({
               <Star aria-hidden="true" size={14} className="text-accent-strong" />
               <h3 className="text-xs font-semibold uppercase text-muted">Featured room</h3>
             </div>
-          ) : null}
+          ) : (
+            <h3 className="sr-only">Featured room</h3>
+          )}
           <span
             className={cn(
               "block truncate font-semibold text-text",
