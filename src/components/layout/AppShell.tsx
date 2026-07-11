@@ -410,7 +410,7 @@ export function AppShell() {
       >
         Post
       </Button>
-      <CoffeeSupport />
+      <CoffeeSupport mobileHidden={mobileDockHidden} />
       {composerActivated ? (
         <Suspense fallback={composerOpen ? <ComposerLoadingNotice /> : null}>
           <PostComposerModal

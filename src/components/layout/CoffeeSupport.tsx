@@ -7,7 +7,7 @@ import { modalOverlay, modalPanel } from "../../lib/motionPresets";
 const kofiEmbedUrl =
   "https://ko-fi.com/thiabun/?hidefeed=true&widget=true&embed=true&preview=true";
 
-export function CoffeeSupport() {
+export function CoffeeSupport({ mobileHidden }: { mobileHidden: boolean }) {
   const [open, setOpen] = useState(false);
   const reducedMotion = useReducedMotion();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -18,10 +18,10 @@ export function CoffeeSupport() {
       : {
           animate: { rotate: [0, -3, 3, -2, 2, 0], y: [0, -1, 0] },
           transition: {
-            duration: 3.8,
+            duration: 1.4,
             ease: "easeInOut" as const,
             repeat: Number.POSITIVE_INFINITY,
-            repeatDelay: 1.2,
+            repeatDelay: 5.6,
           },
         };
   const interactionMotion = reducedMotion
@@ -67,11 +67,13 @@ export function CoffeeSupport() {
 
   return (
     <>
-      <div className="fixed bottom-[calc(var(--app-mobile-content-bottom)+0.75rem)] left-1/2 z-30 -translate-x-1/2 lg:bottom-6 lg:left-6 lg:z-40 lg:translate-x-0">
+      <div
+        className={`fixed bottom-[calc(var(--app-mobile-content-bottom)+0.5rem)] left-1/2 z-30 -translate-x-1/2 lg:bottom-6 lg:left-6 lg:z-40 lg:block lg:translate-x-0 ${mobileHidden ? "hidden" : "block"}`}
+      >
         <motion.div {...idleMotion}>
           <motion.button
             type="button"
-            className="app-control grid size-13 touch-manipulation place-items-center rounded-full border border-line/86 bg-surface/92 text-text shadow-lift ring-2 ring-accent/22 backdrop-blur-veil transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface hover:text-accent-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            className="app-control grid size-11 touch-manipulation place-items-center rounded-full border border-line/75 bg-surface/82 text-muted opacity-80 shadow-soft ring-1 ring-accent/16 backdrop-blur-veil transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface hover:text-accent-strong hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus lg:size-13 lg:bg-surface/92 lg:text-text lg:opacity-100 lg:shadow-lift lg:ring-2 lg:ring-accent/22"
             aria-label="Support thia.lol on Ko-fi"
             aria-haspopup="dialog"
             aria-expanded={open}
@@ -80,7 +82,7 @@ export function CoffeeSupport() {
             onClick={() => setOpen(true)}
             {...interactionMotion}
           >
-            <Coffee aria-hidden="true" size={24} strokeWidth={2.15} />
+            <Coffee aria-hidden="true" size={22} strokeWidth={2.1} />
           </motion.button>
         </motion.div>
       </div>
