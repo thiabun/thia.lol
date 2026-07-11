@@ -22,6 +22,7 @@ import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from "reac
 import { BrandLogo, BrandMark } from "../BrandLogo";
 import { ThemeToggle } from "../ThemeToggle";
 import { Button, ButtonLink } from "../ui/Button";
+import { CoffeeSupport } from "./CoffeeSupport";
 import { StrokeJokePopup } from "./StrokeJokePopup";
 import { getNotifications, getOnboardingState, getRooms } from "../../lib/api";
 import { cn } from "../../lib/classNames";
@@ -409,6 +410,7 @@ export function AppShell() {
       >
         Post
       </Button>
+      <CoffeeSupport />
       {composerActivated ? (
         <Suspense fallback={composerOpen ? <ComposerLoadingNotice /> : null}>
           <PostComposerModal

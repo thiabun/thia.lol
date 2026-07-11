@@ -126,6 +126,107 @@ test("mobile header, account menu, and bottom nav fit the viewport", async ({
   await expectChatHitTargetClear(page);
 });
 
+test("coffee support opens a closable Ko-fi panel on desktop", async ({ page }) => {
+  await mockPublicShell(page);
+  await acknowledgeCookieNotice(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+
+  const coffeeButton = page.getByTestId("coffee-support-button");
+  const postButton = page.getByTestId("desktop-post-action");
+  await expect(coffeeButton).toBeVisible();
+  await expect(coffeeButton).toHaveAttribute("aria-expanded", "false");
+
+  const floatingControls = await Promise.all([
+    coffeeButton.boundingBox(),
+    postButton.boundingBox(),
+  ]);
+  expect(floatingControls[0]).not.toBeNull();
+  expect(floatingControls[1]).not.toBeNull();
+  expect(floatingControls[0]!.x + floatingControls[0]!.width).toBeLessThan(
+    floatingControls[1]!.x,
+  );
+
+  await coffeeButton.click();
+
+  const panel = page.getByTestId("kofi-support-panel");
+  const iframe = panel.locator("#kofiframe");
+  await expect(panel).toBeVisible();
+  await expect(panel).toHaveAttribute("aria-label", "Ko-fi support");
+  await expect(panel.locator("header")).toHaveCount(0);
+  await expect(iframe).toHaveAttribute(
+    "src",
+    "https://ko-fi.com/thiabun/?hidefeed=true&widget=true&embed=true&preview=true",
+  );
+  await expect(iframe).toHaveAttribute("height", "712");
+  await expect(iframe).toHaveAttribute("title", "thiabun");
+
+  await panel.getByRole("button", { name: "Close Ko-fi support panel" }).click();
+  await expect(panel).toBeHidden();
+  await expect(coffeeButton).toBeFocused();
+});
+
+test("coffee support clears the mobile dock and keeps the Ko-fi panel scrollable", async ({
+  page,
+}) => {
+  await mockPublicShell(page);
+  await acknowledgeCookieNotice(page);
+  await page.setViewportSize({ width: 390, height: 667 });
+  await page.goto("/");
+
+  const coffeeButton = page.getByTestId("coffee-support-button");
+  const mobileDock = page.getByTestId("mobile-nav");
+  const positions = await Promise.all([
+    coffeeButton.boundingBox(),
+    mobileDock.boundingBox(),
+  ]);
+
+  expect(positions[0]).not.toBeNull();
+  expect(positions[1]).not.toBeNull();
+  expect(positions[0]!.width).toBeGreaterThanOrEqual(44);
+  expect(positions[0]!.height).toBeGreaterThanOrEqual(44);
+  expect(positions[0]!.y + positions[0]!.height).toBeLessThanOrEqual(
+    positions[1]!.y,
+  );
+  await expectNoHorizontalOverflow(page);
+
+  await coffeeButton.click();
+
+  const panel = page.getByTestId("kofi-support-panel");
+  const iframe = panel.locator("#kofiframe");
+  await expect(panel).toBeVisible();
+  await expect(iframe).toBeVisible();
+  await expect
+    .poll(async () => {
+      const box = await panel.boundingBox();
+
+      return box ? box.y + box.height : Number.POSITIVE_INFINITY;
+    })
+    .toBeLessThanOrEqual(667);
+
+  const panelState = await panel.evaluate((element) => {
+    const body = element.querySelector("#kofiframe")?.parentElement;
+    const panelRect = element.getBoundingClientRect();
+
+    return {
+      bodyScrollable: body ? body.scrollHeight > body.clientHeight : false,
+      bottom: panelRect.bottom,
+      left: panelRect.left,
+      right: panelRect.right,
+      top: panelRect.top,
+    };
+  });
+
+  expect(panelState.left).toBeGreaterThanOrEqual(0);
+  expect(panelState.right).toBeLessThanOrEqual(390);
+  expect(panelState.top).toBeGreaterThanOrEqual(0);
+  expect(panelState.bottom).toBeLessThanOrEqual(667);
+  expect(panelState.bodyScrollable).toBe(true);
+
+  await page.keyboard.press("Escape");
+  await expect(panel).toBeHidden();
+});
+
 test("stroke joke popup celebrates with confetti", async ({ page }) => {
   await mockPublicShell(page);
   await forceStrokeJokeRoll(page);
