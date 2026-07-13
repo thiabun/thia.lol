@@ -5,6 +5,7 @@ import {
   Home,
   LogIn,
   LogOut,
+  Menu,
   MessageCircle,
   PenLine,
   Radio,
@@ -165,6 +166,7 @@ export function AppShell() {
     number | undefined
   >();
   const postingDisabled = status === "loading";
+  const anonymousHome = status === "anonymous" && location.pathname === "/";
   const currentRoomSlug = matchPath(
     { path: "/rooms/:slug", end: true },
     location.pathname,
@@ -362,6 +364,7 @@ export function AppShell() {
     <div className="flex min-h-dvh min-w-0 max-w-full flex-col bg-canvas text-text">
       <div className="fixed inset-0 -z-10 bg-page-wash" />
       <SiteHeader
+        anonymousHome={anonymousHome}
         navItems={publicNavItems}
         notificationUnreadCount={notificationUnreadCount}
         showNotifications={status === "authenticated"}
@@ -377,7 +380,9 @@ export function AppShell() {
         <main
           className={cn(
             "min-w-0 flex-1 pt-3 lg:pb-10 lg:pt-4",
-            mobileDockHidden ? "pb-0" : "pb-[var(--app-mobile-content-bottom)]",
+            mobileDockHidden || anonymousHome
+              ? "pb-0"
+              : "pb-[var(--app-mobile-content-bottom)]",
           )}
         >
           <div className="min-h-full min-w-0">
@@ -392,25 +397,29 @@ export function AppShell() {
             />
           </div>
         </main>
-        <MobileDock
-          hidden={mobileDockHidden}
-          navItems={publicNavItems}
-          onPostClick={handlePostClick}
-          postDisabled={postingDisabled}
-        />
+        {anonymousHome ? null : (
+          <MobileDock
+            hidden={mobileDockHidden}
+            navItems={publicNavItems}
+            onPostClick={handlePostClick}
+            postDisabled={postingDisabled}
+          />
+        )}
       </div>
       <SiteFooter />
-      <Button
-        type="button"
-        className="fixed bottom-6 right-6 z-40 hidden min-h-12 rounded-full px-5 text-base font-semibold shadow-lift ring-2 ring-accent/25 lg:inline-flex"
-        disabled={postingDisabled}
-        icon={<PenLine aria-hidden="true" size={20} />}
-        onClick={handlePostClick}
-        data-testid="desktop-post-action"
-      >
-        Post
-      </Button>
-      <CoffeeSupport mobileHidden={mobileDockHidden} />
+      {anonymousHome ? null : (
+        <Button
+          type="button"
+          className="fixed bottom-6 right-6 z-40 hidden min-h-12 rounded-full px-5 text-base font-semibold shadow-lift ring-2 ring-accent/25 lg:inline-flex"
+          disabled={postingDisabled}
+          icon={<PenLine aria-hidden="true" size={20} />}
+          onClick={handlePostClick}
+          data-testid="desktop-post-action"
+        >
+          Post
+        </Button>
+      )}
+      {anonymousHome ? null : <CoffeeSupport mobileHidden={mobileDockHidden} />}
       {composerActivated ? (
         <Suspense fallback={composerOpen ? <ComposerLoadingNotice /> : null}>
           <PostComposerModal
@@ -444,6 +453,7 @@ function ComposerLoadingNotice() {
 }
 
 function SiteHeader({
+  anonymousHome,
   navItems,
   notificationUnreadCount,
   showNotifications,
@@ -451,6 +461,7 @@ function SiteHeader({
   themeControlsDisabledReason,
   topBarAction,
 }: {
+  anonymousHome: boolean;
   navItems: NavItemProps[];
   notificationUnreadCount: number | undefined;
   showNotifications: boolean;
@@ -458,6 +469,15 @@ function SiteHeader({
   themeControlsDisabledReason: string;
   topBarAction?: ReactNode | undefined;
 }) {
+  if (anonymousHome) {
+    return (
+      <AnonymousHomeHeader
+        themeControlsDisabled={themeControlsDisabled}
+        themeControlsDisabledReason={themeControlsDisabledReason}
+      />
+    );
+  }
+
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-canvas/86 backdrop-blur-veil">
       <div className="mx-auto flex min-h-14 w-full max-w-7xl items-center gap-2 px-3 sm:px-5 lg:px-7">
@@ -499,6 +519,138 @@ function SiteHeader({
             disabledReason={themeControlsDisabledReason}
           />
           <AccountMenu />
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function AnonymousHomeHeader({
+  themeControlsDisabled,
+  themeControlsDisabledReason,
+}: {
+  themeControlsDisabled: boolean;
+  themeControlsDisabledReason: string;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) {
+      return undefined;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [menuOpen]);
+
+  return (
+    <header
+      className="sticky top-0 z-40 border-b border-line bg-canvas/86 backdrop-blur-veil"
+      data-testid="anonymous-home-header"
+    >
+      <div className="mx-auto flex min-h-14 w-full max-w-7xl items-center gap-2 px-3 sm:px-5 lg:px-7">
+        <NavLink
+          to="/"
+          className="flex min-w-0 shrink-0 items-center rounded-md px-1 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          aria-label="thia.lol home"
+        >
+          <BrandLogo />
+        </NavLink>
+
+        <nav
+          className="ml-auto hidden items-center gap-1 lg:flex"
+          aria-label="Primary"
+          data-testid="desktop-nav"
+        >
+          <ButtonLink to="/discover" variant="ghost" size="sm">
+            Discover
+          </ButtonLink>
+          <ButtonLink to="/rooms" variant="ghost" size="sm">
+            Rooms
+          </ButtonLink>
+          <ButtonLink to="/login" variant="ghost" size="sm">
+            Sign in
+          </ButtonLink>
+          <ButtonLink to="/register" size="sm">
+            Create account
+          </ButtonLink>
+        </nav>
+
+        <div className="hidden lg:block">
+          <ThemeToggle
+            compact
+            disabled={themeControlsDisabled}
+            disabledReason={themeControlsDisabledReason}
+          />
+        </div>
+
+        <div className="ml-auto flex min-w-0 items-center gap-1.5 lg:hidden">
+          <ButtonLink
+            to="/register"
+            size="sm"
+            className="min-h-11 shrink-0 px-2 text-xs sm:px-2.5 sm:text-sm"
+          >
+            Create account
+          </ButtonLink>
+          <div ref={menuRef} className="relative shrink-0">
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              aria-label="Open navigation menu"
+              aria-controls="anonymous-home-menu"
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
+              className="size-11"
+              icon={<Menu aria-hidden="true" size={19} />}
+              onClick={() => setMenuOpen((current) => !current)}
+            />
+            <AnimatePresence>
+              {menuOpen ? (
+                <motion.div
+                  id="anonymous-home-menu"
+                  variants={popoverPanel}
+                  initial="hidden"
+                  animate="show"
+                  exit="exit"
+                  className="absolute right-0 z-50 mt-2 w-44 origin-top-right rounded-panel border border-line bg-surface/96 p-1 shadow-lift backdrop-blur-veil"
+                  role="menu"
+                  data-testid="anonymous-home-menu"
+                >
+                  <AccountMenuItem to="/discover" onSelect={() => setMenuOpen(false)}>
+                    <Compass aria-hidden="true" size={16} />
+                    Discover
+                  </AccountMenuItem>
+                  <AccountMenuItem to="/rooms" onSelect={() => setMenuOpen(false)}>
+                    <Radio aria-hidden="true" size={16} />
+                    Rooms
+                  </AccountMenuItem>
+                  <AccountMenuItem to="/login" onSelect={() => setMenuOpen(false)}>
+                    <LogIn aria-hidden="true" size={16} />
+                    Sign in
+                  </AccountMenuItem>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
     </header>

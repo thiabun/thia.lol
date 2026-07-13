@@ -156,13 +156,13 @@ test("navigation exposes Search without overcrowding the mobile dock", async ({
   await mockShellRequests(page);
 
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
+  await page.goto("/discover");
   await expect(
     page.getByTestId("desktop-nav").getByRole("link", { name: "Search" }),
   ).toHaveAttribute("href", "/search");
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
+  await page.goto("/discover");
 
   const mobileNav = page.getByTestId("mobile-nav");
   await expect(mobileNav).toBeVisible();

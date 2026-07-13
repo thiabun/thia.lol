@@ -5,17 +5,64 @@ const portraitMediaFixture = `data:image/svg+xml,${encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920"><rect width="1080" height="1920" fill="#f6e8b8"/><circle cx="540" cy="500" r="320" fill="#8fb7b1"/><rect x="360" y="980" width="360" height="640" rx="120" fill="#42526b"/></svg>',
 )}`;
 
-test("Anonymous home renders conversion actions and public discovery", async ({
+test("Anonymous home explains the product and renders real starter communities", async ({
   page,
 }) => {
   await mockCommonApi(page);
+  await page.route("**/api/rooms", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: [
+          makeDiscoverRoom({
+            id: 3,
+            name: "Cozy Games",
+            slug: "cozy-games",
+            summary: "Minecraft builds, clips, and odd discoveries.",
+            memberCount: 8,
+            postCount: 5,
+          }),
+          makeDiscoverRoom({
+            id: 9,
+            name: "Garden",
+            slug: "garden",
+            summary: "An active public fallback room.",
+            memberCount: 5,
+          }),
+          makeDiscoverRoom({
+            id: 1,
+            name: "Start Here",
+            slug: "start-here",
+            summary: "New around here? Say hello and meet people.",
+            memberCount: 12,
+            postCount: 3,
+          }),
+          makeDiscoverRoom({
+            id: 2,
+            name: "Show Your Work",
+            slug: "show-your-work",
+            summary: "Art, edits, music, writing, code, and unfinished things.",
+            memberCount: 7,
+            postCount: 4,
+          }),
+        ],
+      }),
+    }),
+  );
   await page.route("**/api/feed/discover", (route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         ok: true,
         data: {
-          posts: [makePost({ body: "Public launch note." })],
+          posts: [
+            makePost({ id: 41, body: "First public note." }),
+            makePost({ id: 42, body: "Second public note." }),
+            makePost({ id: 43, body: "Third public note." }),
+            makePost({ id: 44, body: "Fourth public note." }),
+            makePost({ id: 45, body: "Fifth public note." }),
+          ],
           activeRooms: [makeDiscoverRoom({ name: "Garden", slug: "garden" })],
           peopleToWatch: [
             makeDiscoverPerson({ handle: "alex", displayName: "Alex" }),
@@ -27,31 +74,250 @@ test("Anonymous home renders conversion actions and public discovery", async ({
 
   await page.goto("/");
 
-  await expect(page.getByTestId("anonymous-home")).toBeVisible();
+  const anonymousHome = page.getByTestId("anonymous-home");
+  await expect(anonymousHome).toBeVisible();
   await expect(
     page.getByRole("heading", {
-      name: "A small social place for profiles, rooms, and public posts.",
+      name: "A calmer social home for creative people and small internet circles.",
     }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Create account" })).toHaveAttribute(
-    "href",
-    "/register",
-  );
-  await expect(page.getByRole("link", { name: "Discover" }).first()).toHaveAttribute(
+  await expect(
+    page.getByText(
+      "Make a profile that feels like you, gather in rooms, and post what you\u2019re making, playing, or thinking about\u2014without ads, engagement traps, or AI sludge.",
+    ),
+  ).toBeVisible();
+  await expect(
+    anonymousHome.getByRole("link", { name: "Explore rooms" }).first(),
+  ).toHaveAttribute("href", "/rooms");
+  await expect(
+    anonymousHome.getByRole("link", { name: "Create your profile" }).first(),
+  ).toHaveAttribute("href", "/register");
+  const header = page.getByRole("banner");
+  await expect(header.getByRole("link", { name: "Discover" })).toHaveAttribute(
     "href",
     "/discover",
   );
-  await expect(page.getByRole("link", { name: "Search" }).first()).toHaveAttribute(
+  await expect(header.getByRole("link", { name: "Rooms" })).toHaveAttribute(
+    "href",
+    "/rooms",
+  );
+  await expect(
+    header.getByRole("link", { name: "Sign in" }),
+  ).toHaveAttribute("href", "/login");
+  await expect(
+    header.getByRole("link", { name: "Create account" }),
+  ).toHaveAttribute("href", "/register");
+
+  for (const section of ["Profiles", "Rooms", "Posts"]) {
+    await expect(anonymousHome.getByText(section, { exact: true })).toBeVisible();
+  }
+
+  await expect(anonymousHome.getByRole("heading", { name: "Start somewhere" })).toBeVisible();
+  const starterCommunities = anonymousHome.getByRole("region", {
+    name: "Starter communities",
+  });
+  await expect(starterCommunities).toBeVisible();
+  const roomCards = starterCommunities.getByTestId("room-card");
+  await expect(roomCards).toHaveCount(3);
+  await expect(roomCards.nth(0).getByRole("heading", { name: "Start Here" })).toBeVisible();
+  await expect(roomCards.nth(1).getByRole("heading", { name: "Show Your Work" })).toBeVisible();
+  await expect(roomCards.nth(2).getByRole("heading", { name: "Cozy Games" })).toBeVisible();
+  await expect(roomCards.nth(0).getByText("12 members")).toBeVisible();
+  await expect(roomCards.getByRole("heading", { name: "Garden" })).toHaveCount(0);
+
+  await expect(
+    anonymousHome.getByRole("heading", { name: "Fresh from the community" }),
+  ).toBeVisible();
+  await expect(
+    anonymousHome.getByRole("region", { name: "Fresh from the community" }),
+  ).toBeVisible();
+  await expect(anonymousHome.getByText("First public note.")).toBeVisible();
+  await expect(anonymousHome.getByText("Fourth public note.")).toBeVisible();
+  await expect(anonymousHome.getByText("Fifth public note.")).toBeVisible();
+  await expect(
+    anonymousHome
+      .getByRole("region", { name: "Fresh from the community" })
+      .getByTestId("post-card-open-thread"),
+  ).toHaveCount(4);
+  await expect(anonymousHome.getByRole("link", { name: "Open Discover" })).toHaveAttribute(
+    "href",
+    "/discover",
+  );
+
+  await expect(
+    anonymousHome.getByRole("heading", { name: "Bring your corner of the internet." }),
+  ).toBeVisible();
+  await expect(
+    anonymousHome.getByText(
+      "Make a profile, join a room, or invite a few people you already like.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Search" })).toHaveCount(0);
+  await expect(
+    anonymousHome.getByRole("heading", { exact: true, name: "People" }),
+  ).toHaveCount(0);
+  await expect(anonymousHome.getByRole("region", { name: "People to find" })).toHaveCount(0);
+
+  await page.goto("/discover");
+  await expect(page.getByTestId("anonymous-home-header")).toHaveCount(0);
+  await expect(page.getByRole("banner").getByRole("link", { name: "Search" })).toHaveAttribute(
     "href",
     "/search",
   );
-  await expect(page.getByRole("region", { exact: true, name: "Public posts" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Rising now" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Rooms to explore" })).toBeVisible();
-  await expect(page.getByText("Public launch note.")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Garden" })).toBeVisible();
+});
+
+test("Anonymous home replaces unavailable starter rooms with active public rooms", async ({
+  page,
+}) => {
+  await mockCommonApi(page);
+  await page.route("**/api/rooms", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: [
+          makeDiscoverRoom({
+            id: 1,
+            name: "Start Here",
+            slug: "start-here",
+            memberCount: 1,
+            postCount: 3,
+          }),
+          makeDiscoverRoom({
+            id: 2,
+            name: "Show Your Work",
+            slug: "show-your-work",
+            visibility: "private",
+          }),
+          makeDiscoverRoom({
+            id: 8,
+            name: "Active Artists",
+            slug: "active-artists",
+            latestActivityAt: "2026-07-13 11:00:00",
+          }),
+          makeDiscoverRoom({
+            id: 9,
+            name: "Tiny Web",
+            slug: "tiny-web",
+            latestActivityAt: "2026-07-13 10:00:00",
+          }),
+          makeDiscoverRoom({
+            id: 10,
+            name: "Garden",
+            slug: "garden",
+            latestActivityAt: "2026-07-13 09:00:00",
+          }),
+        ],
+      }),
+    }),
+  );
+  await page.route("**/api/feed/discover", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { posts: [], activeRooms: [], peopleToWatch: [] },
+      }),
+    }),
+  );
+
+  await page.goto("/");
+
+  const roomCards = page.getByTestId("anonymous-home").getByTestId("room-card");
+  await expect(roomCards).toHaveCount(3);
+  await expect(roomCards.nth(0).getByRole("heading", { name: "Active Artists" })).toBeVisible();
+  await expect(roomCards.nth(1).getByRole("heading", { name: "Tiny Web" })).toBeVisible();
+  await expect(roomCards.nth(2).getByRole("heading", { name: "Garden" })).toBeVisible();
+  await expect(roomCards.getByRole("heading", { name: "Start Here" })).toHaveCount(0);
+  await expect(roomCards.getByRole("heading", { name: "Show Your Work" })).toHaveCount(0);
+  await expect(roomCards.getByRole("heading", { name: "Cozy Games" })).toHaveCount(0);
+});
+
+test("Anonymous home renders honest empty states for rooms and public posts", async ({
+  page,
+}) => {
+  await mockCommonApi(page);
+  await page.route("**/api/feed/discover", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { posts: [], activeRooms: [], peopleToWatch: [] },
+      }),
+    }),
+  );
+  await page.route("**/api/feed/home", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: { posts: [], personalized: false } }),
+    }),
+  );
+
+  await page.goto("/");
+
+  await expect(page.getByRole("heading", { name: "No starter rooms yet" })).toBeVisible();
   await expect(
-    page.locator('aside[aria-label="Public discovery"]').getByText("@alex"),
+    page.getByText("Explore all rooms while new communities get ready."),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No posts yet" })).toBeVisible();
+  await expect(page.getByText("No public posts.")).toBeVisible();
+});
+
+test("Anonymous home keeps rooms and activity failures separate", async ({ page }) => {
+  await mockCommonApi(page);
+  for (const path of ["rooms", "feed/discover", "feed/home"]) {
+    await page.route(`**/api/${path}`, (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: false, error: "Temporary failure." }),
+      }),
+    );
+  }
+
+  await page.goto("/");
+
+  await expect(
+    page.getByRole("heading", { name: "Starter rooms are not available" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Explore all rooms or try again in a moment."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Public activity is not available" }),
+  ).toBeVisible();
+  await expect(page.getByText("Try refreshing in a moment.")).toBeVisible();
+});
+
+test("Home waits for authentication before choosing an anonymous or signed-in branch", async ({
+  page,
+}) => {
+  await mockCommonApi(page);
+  let releaseAuth: (() => void) | undefined;
+  await page.route("**/api/auth/me", async (route) => {
+    await new Promise<void>((resolve) => {
+      releaseAuth = resolve;
+    });
+    await route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "Not authenticated." }),
+    });
+  });
+
+  await page.goto("/");
+
+  await expect.poll(() => Boolean(releaseAuth)).toBe(true);
+  await expect(page.getByTestId("anonymous-home")).toHaveCount(0);
+  await expect(page.getByRole("heading", { exact: true, name: "Home" })).toHaveCount(0);
+
+  releaseAuth?.();
+
+  await expect(page.getByTestId("anonymous-home")).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "A calmer social home for creative people and small internet circles.",
+    }),
   ).toBeVisible();
 });
 
@@ -68,6 +334,85 @@ test("Authenticated home loads the feed empty state", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
   await expect(page.getByText("No posts yet").first()).toBeVisible();
+  await expect(page.getByTestId("anonymous-home")).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", {
+      name: "A calmer social home for creative people and small internet circles.",
+    }),
+  ).toHaveCount(0);
+});
+
+test("Anonymous home stays contained across supported phone widths", async ({ page }) => {
+  await mockCommonApi(page);
+  await page.route("**/api/rooms", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: [
+          makeDiscoverRoom({ id: 1, name: "Start Here", slug: "start-here" }),
+          makeDiscoverRoom({ id: 2, name: "Show Your Work", slug: "show-your-work" }),
+          makeDiscoverRoom({ id: 3, name: "Cozy Games", slug: "cozy-games" }),
+        ],
+      }),
+    }),
+  );
+  await page.route("**/api/feed/discover", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          posts: [makePost({ body: `Long public note ${"unbroken".repeat(45)}` })],
+          activeRooms: [],
+          peopleToWatch: [],
+        },
+      }),
+    }),
+  );
+
+  await page.goto("/");
+  await expect(page.getByTestId("anonymous-home")).toBeVisible();
+
+  for (const width of [320, 360, 390, 430]) {
+    await page.setViewportSize({ width, height: 844 });
+
+    if (width === 320) {
+      await page.getByRole("button", { name: "Open navigation menu" }).click();
+      const menu = page.getByTestId("anonymous-home-menu");
+      await expect(menu.getByRole("menuitem", { name: "Discover" })).toHaveAttribute(
+        "href",
+        "/discover",
+      );
+      await expect(menu.getByRole("menuitem", { name: "Rooms" })).toHaveAttribute(
+        "href",
+        "/rooms",
+      );
+      await expect(menu.getByRole("menuitem", { name: "Sign in" })).toHaveAttribute(
+        "href",
+        "/login",
+      );
+      await page.keyboard.press("Escape");
+      await expect(menu).toHaveCount(0);
+    }
+
+    await expectViewportContained(page, [
+      '[data-testid="anonymous-home"]',
+      '[data-testid="anonymous-home"] h1',
+      '[data-testid="anonymous-home"] a',
+      "header a",
+    ]);
+
+    for (const linkName of ["Explore rooms", "Create your profile"]) {
+      const box = await page
+        .getByTestId("anonymous-home")
+        .getByRole("link", { name: linkName })
+        .first()
+        .boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.height).toBeGreaterThanOrEqual(40);
+    }
+  }
 });
 
 test.describe("mobile Home media containment", () => {
@@ -2459,6 +2804,26 @@ async function mockCommonApi(page: Page) {
       status: 401,
       contentType: "application/json",
       body: JSON.stringify({ ok: false, error: "Not authenticated." }),
+    }),
+  );
+
+  await page.route("**/api/feed/home", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { posts: [], personalized: false },
+      }),
+    }),
+  );
+
+  await page.route("**/api/feed/discover", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: { posts: [], activeRooms: [], peopleToWatch: [] },
+      }),
     }),
   );
 

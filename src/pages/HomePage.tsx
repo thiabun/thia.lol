@@ -1,23 +1,21 @@
 import {
   ArrowRight,
   Compass,
+  Gamepad2,
   MessageCircle,
   PenLine,
   Radio,
   Search,
-  Sparkles,
-  UserPlus,
+  UserRound,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useOutletContext } from "react-router";
+import { useOutletContext } from "react-router";
 import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
-import { BrandLogoMain } from "../components/BrandLogo";
 import { FeedRefreshControls } from "../components/social/FeedRefreshControls";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { ApiStateNotice } from "../components/ui/ApiStateNotice";
-import { Avatar } from "../components/ui/Avatar";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Panel } from "../components/ui/Panel";
 import { RouteHeader } from "../components/ui/RouteState";
@@ -27,12 +25,24 @@ import { deletePost, getDiscoverFeed, getHomeFeed, getRooms, updatePost } from "
 import { postCreatedEventName } from "../lib/postEvents";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
-import type { DiscoverPerson, Post, Room } from "../lib/types";
+import type { Post, Room } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
 
 export function HomePage() {
   const { status } = useAuth();
+
+  if (status === "loading") {
+    return (
+      <div className="mx-auto w-full max-w-3xl py-6" data-testid="home-auth-loading">
+        <ApiStateNotice
+          kind="loading"
+          title="Loading thia.lol"
+          text="Finding your place."
+        />
+      </div>
+    );
+  }
 
   if (status === "anonymous") {
     return <AnonymousHomePage />;
@@ -265,17 +275,31 @@ function AuthenticatedHomePage() {
 function AnonymousHomePage() {
   const discoverState = useAsyncData(getDiscoverFeed);
   const publicHomeState = useAsyncData(getHomeFeed);
+  const roomsState = useAsyncData(getRooms);
   const discoverPosts = discoverState.data?.posts ?? [];
   const publicHomePosts = publicHomeState.data?.posts ?? [];
-  const posts = (discoverPosts.length > 0 ? discoverPosts : publicHomePosts).slice(0, 4);
-  const rooms = discoverState.data?.activeRooms.slice(0, 3) ?? [];
-  const people = (discoverState.data?.peopleToWatch ?? [])
-    .filter((person) => !/^smoketest[0-9]+$/i.test(person.handle))
+  const posts = discoverPosts.length > 0 ? discoverPosts : publicHomePosts;
+  const activeRooms = useMemo(
+    () => discoverState.data?.activeRooms ?? [],
+    [discoverState.data?.activeRooms],
+  );
+  const starterRooms = useMemo(
+    () => selectStarterRooms(roomsState.data ?? [], activeRooms),
+    [activeRooms, roomsState.data],
+  );
+  const heroPost =
+    posts.find((post) => post.room && starterRoomSlugSet.has(post.room.slug)) ??
+    posts[0];
+  const freshPosts = posts
+    .filter((post) => post.id !== heroPost?.id)
     .slice(0, 4);
+  const publicActivityUnavailable = Boolean(
+    discoverState.error && publicHomeState.error && posts.length === 0,
+  );
 
   return (
     <motion.div
-      className="mx-auto max-w-6xl space-y-5"
+      className="mx-auto max-w-6xl space-y-10 pb-6 sm:space-y-14"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
@@ -283,50 +307,69 @@ function AnonymousHomePage() {
     >
       <PageMeta
         title="thia.lol"
-        description="A living social place for public profiles, rooms, posts, and shared presence."
+        description="A calmer social home for creative people and small internet circles."
         path="/"
       />
 
-      <section className="py-3 sm:py-4" aria-labelledby="home-intro-title">
-        <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+      <section className="py-4 sm:py-8" aria-labelledby="home-intro-title">
+        <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(20rem,0.95fr)] lg:items-center">
           <div className="min-w-0">
-            <BrandLogoMain size="md" data-testid="home-brand-logo-main" />
             <h1
               id="home-intro-title"
-              className="mt-4 max-w-3xl text-2xl font-semibold tracking-normal text-text sm:text-3xl"
+              className="max-w-3xl text-balance text-4xl font-semibold leading-[1.04] tracking-[-0.035em] text-text sm:text-5xl lg:text-6xl"
             >
-              A small social place for profiles, rooms, and public posts.
+              A calmer social home for creative people and small internet circles.
             </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-              Find people, follow conversations, and make a public profile that feels like a place.
+            <p className="mt-5 max-w-2xl text-pretty text-base leading-7 text-muted sm:text-lg sm:leading-8">
+              Make a profile that feels like you, gather in rooms, and post what
+              you’re making, playing, or thinking about—without ads, engagement
+              traps, or AI sludge.
             </p>
+            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+              <ButtonLink
+                to="/rooms"
+                className="min-h-12 justify-between px-5 text-base sm:min-w-48"
+              >
+                <span>Explore rooms</span>
+                <ArrowRight aria-hidden="true" size={18} />
+              </ButtonLink>
+              <ButtonLink
+                to="/register"
+                variant="secondary"
+                className="min-h-12 px-5 text-base sm:min-w-48"
+                icon={<UserRound aria-hidden="true" size={18} />}
+              >
+                Create your profile
+              </ButtonLink>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2 lg:justify-end">
-            <ButtonLink
-              to="/register"
-              icon={<UserPlus aria-hidden="true" size={16} />}
+
+          {heroPost ? (
+            <div
+              className="min-w-0 rounded-panel border border-line/75 bg-surface/58 p-2 shadow-soft sm:p-3"
+              data-testid="anonymous-product-preview"
             >
-              Create account
-            </ButtonLink>
-            <ButtonLink
-              to="/discover"
-              variant="secondary"
-              icon={<Compass aria-hidden="true" size={16} />}
-            >
-              Discover
-            </ButtonLink>
-            <ButtonLink
-              to="/search"
-              variant="secondary"
-              icon={<Search aria-hidden="true" size={16} />}
-            >
-              Search
-            </ButtonLink>
-          </div>
+              <PostCard post={heroPost} index={0} />
+            </div>
+          ) : (
+            <Panel className="grid min-h-64 place-items-center p-6 text-center">
+              <div>
+                <Radio aria-hidden="true" className="mx-auto text-accent" size={28} />
+                <p className="mt-3 text-base font-semibold text-text">
+                  A place that starts with people.
+                </p>
+                <p className="mt-1 text-sm leading-6 text-muted">
+                  Public posts will appear here as the community wakes up.
+                </p>
+              </div>
+            </Panel>
+          )}
         </div>
+
+        <HowItWorks />
       </section>
 
-      {discoverState.error && !discoverState.data ? (
+      {publicActivityUnavailable ? (
         <ApiStateNotice
           kind="error"
           title="Public activity is not available"
@@ -334,100 +377,227 @@ function AnonymousHomePage() {
         />
       ) : null}
 
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <section className="space-y-3" aria-label="Public posts">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-text">Rising now</h2>
-            </div>
+      <StarterCommunities
+        rooms={starterRooms}
+        loading={roomsState.loading && starterRooms.length === 0}
+        error={Boolean(roomsState.error && starterRooms.length === 0)}
+      />
+
+      <section className="space-y-4" aria-label="Fresh from the community">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-semibold tracking-tight text-text sm:text-3xl">
+              Fresh from the community
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-muted sm:text-base">
+              Art, game worlds, works in progress, and small thoughts from around thia.lol.
+            </p>
+          </div>
+          <ButtonLink
+            to="/discover"
+            variant="quiet"
+            size="sm"
+            icon={<ArrowRight aria-hidden="true" size={15} />}
+          >
+            Open Discover
+          </ButtonLink>
+        </div>
+
+        {discoverState.loading || (discoverPosts.length === 0 && publicHomeState.loading) ? (
+          <ApiStateNotice
+            kind="loading"
+            title="Loading public posts"
+            text="Loading public posts."
+          />
+        ) : null}
+
+        {!discoverState.loading &&
+        !publicHomeState.loading &&
+        !publicActivityUnavailable &&
+        freshPosts.length === 0 ? (
+          <EmptyState icon={MessageCircle} title="No posts yet" text="No public posts." />
+        ) : null}
+
+        {freshPosts.length > 0 ? (
+          <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+            {freshPosts.map((post, index) => (
+              <PostCard key={post.id} post={post} index={index} />
+            ))}
+          </div>
+        ) : null}
+      </section>
+
+      <Panel className="p-5 sm:p-7">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-2xl font-semibold tracking-tight text-text sm:text-3xl">
+              Bring your corner of the internet.
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted sm:text-base">
+              Make a profile, join a room, or invite a few people you already like.
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row">
             <ButtonLink
-              to="/discover"
-              variant="quiet"
-              size="sm"
-              icon={<ArrowRight aria-hidden="true" size={15} />}
+              to="/register"
+              className="min-h-11 px-5"
             >
-              Discover
+              <span>Create your profile</span>
+              <ArrowRight aria-hidden="true" size={17} />
+            </ButtonLink>
+            <ButtonLink
+              to="/rooms"
+              variant="secondary"
+              className="min-h-11 px-5"
+            >
+              <span>Explore rooms</span>
+              <ArrowRight aria-hidden="true" size={17} />
             </ButtonLink>
           </div>
-          {discoverState.loading || (discoverPosts.length === 0 && publicHomeState.loading) ? (
-            <ApiStateNotice kind="loading" title="Loading public posts" text="Loading public posts." />
-          ) : null}
-          {!discoverState.loading && !publicHomeState.loading && !discoverState.error && posts.length === 0 ? (
-            <EmptyState icon={MessageCircle} title="No posts yet" text="No public posts." />
-          ) : null}
-          {posts.map((post, index) => (
-            <PostCard key={post.id} post={post} index={index} />
-          ))}
-        </section>
-
-        <aside className="space-y-4" aria-label="Public discovery" data-render-deferred="side-rail">
-          <AnonymousRooms rooms={rooms} loading={discoverState.loading} />
-          <AnonymousPeople people={people} loading={discoverState.loading} />
-        </aside>
-      </div>
+        </div>
+      </Panel>
     </motion.div>
   );
 }
 
-function AnonymousRooms({
+const starterRoomSlugs = ["start-here", "show-your-work", "cozy-games"] as const;
+const starterRoomSlugSet = new Set<string>(starterRoomSlugs);
+
+function selectStarterRooms(rooms: Room[], activeRooms: Room[]): Room[] {
+  const publicRooms = rooms.filter((room) => room.visibility === "public");
+  const publicActiveRooms = activeRooms.filter((room) => room.visibility === "public");
+  const roomBySlug = new Map(
+    publicRooms
+      .filter(roomMeetsStarterCommunityBaseline)
+      .map((room) => [room.slug, room]),
+  );
+  const selected = starterRoomSlugs.flatMap((slug) => {
+    const room = roomBySlug.get(slug);
+    return room ? [room] : [];
+  });
+  const selectedSlugs = new Set(selected.map((room) => room.slug));
+
+  for (const room of [...publicActiveRooms, ...publicRooms]) {
+    if (selected.length >= 3) {
+      break;
+    }
+
+    if (!starterRoomSlugSet.has(room.slug) && !selectedSlugs.has(room.slug)) {
+      selected.push(room);
+      selectedSlugs.add(room.slug);
+    }
+  }
+
+  return selected.slice(0, 3);
+}
+
+function roomMeetsStarterCommunityBaseline(room: Room): boolean {
+  // Reply quality remains a human launch check because room summaries do not expose reply counts.
+  return room.memberCount >= 3 && room.postCount >= 3;
+}
+
+function HowItWorks() {
+  const items = [
+    {
+      title: "Profiles",
+      text: "Your little corner of the internet.",
+      icon: UserRound,
+    },
+    {
+      title: "Rooms",
+      text: "Shared spaces for an interest or group.",
+      icon: Radio,
+    },
+    {
+      title: "Posts",
+      text: "Share on your profile or into a room.",
+      icon: PenLine,
+    },
+  ];
+
+  return (
+    <div className="mt-10 grid divide-y divide-line/75 border-y border-line/75 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+      {items.map((item) => {
+        const Icon = item.icon;
+
+        return (
+          <div key={item.title} className="flex items-center gap-4 px-2 py-5 sm:px-4">
+            <span className="grid size-12 shrink-0 place-items-center rounded-card border border-line bg-accent/10 text-text">
+              <Icon aria-hidden="true" size={21} />
+            </span>
+            <span>
+              <h2 className="text-base font-semibold text-text">{item.title}</h2>
+              <span className="mt-0.5 block text-sm leading-5 text-muted">{item.text}</span>
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function StarterCommunities({
+  error,
   loading,
   rooms,
 }: {
+  error: boolean;
   loading: boolean;
   rooms: Room[];
 }) {
   return (
-    <section className="space-y-3" aria-label="Rooms to explore">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-text">Rooms</h2>
-        <ButtonLink to="/rooms" variant="quiet" size="sm">
-          Browse
+    <section className="space-y-4" aria-label="Starter communities">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-semibold tracking-tight text-text sm:text-3xl">
+            Start somewhere
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-muted sm:text-base">
+            Three rooms with a reason to walk in.
+          </p>
+        </div>
+        <ButtonLink
+          to="/rooms"
+          variant="quiet"
+          size="sm"
+          icon={<ArrowRight aria-hidden="true" size={15} />}
+        >
+          Browse all rooms
         </ButtonLink>
       </div>
-      <div className="space-y-2">
-        {rooms.map((room, index) => (
-          <RoomCard key={room.id} room={room} index={index} />
-        ))}
-      </div>
-      {!loading && rooms.length === 0 ? (
-        <EmptyState icon={Radio} title="No rooms yet" text="No public rooms." />
-      ) : null}
-    </section>
-  );
-}
 
-function AnonymousPeople({
-  loading,
-  people,
-}: {
-  loading: boolean;
-  people: DiscoverPerson[];
-}) {
-  return (
-    <section className="space-y-3" aria-label="People to find">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-text">People</h2>
-        <ButtonLink to="/search" variant="quiet" size="sm">
-          Search
-        </ButtonLink>
+      {loading ? (
+        <ApiStateNotice
+          kind="loading"
+          title="Loading starter rooms"
+          text="Loading starter rooms."
+        />
+      ) : null}
+
+      {error ? (
+        <ApiStateNotice
+          kind="error"
+          title="Starter rooms are not available"
+          text="Explore all rooms or try again in a moment."
+        />
+      ) : null}
+
+      <div className="space-y-2">
+        {rooms.length > 0 ? (
+          <div className="grid auto-rows-fr gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {rooms.map((room, index) => (
+              <RoomCard key={room.id} room={room} index={index} />
+            ))}
+          </div>
+        ) : null}
       </div>
-      <div className="grid gap-2">
-        {people.map((person) => (
-          <Link
-            key={person.handle}
-            to={`/@${person.handle}`}
-            className="flex items-center gap-3 rounded-card border border-line bg-surface/70 p-3 shadow-soft transition duration-fluid hover:border-line-strong"
-          >
-            <Avatar user={{ ...person, aura: "frost" }} size="sm" />
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold text-text">{person.displayName}</span>
-              <span className="block truncate text-xs text-muted">@{person.handle}</span>
-            </span>
-          </Link>
-        ))}
-      </div>
-      {!loading && people.length === 0 ? (
-        <EmptyState icon={Sparkles} title="No people yet" text="No public profiles." />
+
+      {!loading && !error && rooms.length === 0 ? (
+        <EmptyState
+          icon={Gamepad2}
+          title="No starter rooms yet"
+          text="Explore all rooms while new communities get ready."
+        />
       ) : null}
     </section>
   );

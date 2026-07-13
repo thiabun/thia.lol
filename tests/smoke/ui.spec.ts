@@ -37,7 +37,7 @@ const retiredMockCopy = [
   "demo",
 ];
 
-test("desktop primary nav shows platform sections without Admin", async ({ page }) => {
+test("anonymous desktop home header focuses on discovery and joining", async ({ page }) => {
   await mockPublicShell(page);
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
@@ -49,16 +49,21 @@ test("desktop primary nav shows platform sections without Admin", async ({ page 
   const nav = page.getByTestId("desktop-nav");
   await expect(nav).toBeVisible();
 
-  for (const label of ["Home", "Discover", "Search", "Rooms", "Chat"]) {
+  for (const label of ["Discover", "Rooms", "Sign in", "Create account"]) {
     await expect(nav.getByRole("link", { name: label })).toBeVisible();
   }
 
+  for (const label of ["Home", "Search", "Chat"]) {
+    await expect(nav.getByRole("link", { name: label })).toHaveCount(0);
+  }
+
   await expect(nav.getByRole("link", { name: "Admin" })).toHaveCount(0);
+  await expect(page.getByTestId("desktop-post-action")).toHaveCount(0);
 });
 
 test("reply button opens an unclipped thread modal", async ({ page }) => {
   await mockPublicShell(page, {
-    homePosts: [makePost({ commentCount: 1 })],
+    discoverPosts: [makePost({ commentCount: 1 })],
   });
   await page.route("**/api/posts/42/replies", (route) =>
     route.fulfill({
@@ -96,41 +101,48 @@ test("reply button opens an unclipped thread modal", async ({ page }) => {
   await expect(dialog).toBeHidden();
 });
 
-test("mobile header, account menu, and bottom nav fit the viewport", async ({
+test("anonymous mobile home header keeps conversion links accessible without a dock", async ({
   page,
 }) => {
   await mockPublicShell(page);
   await acknowledgeCookieNotice(page);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
+  for (const width of [320, 390, 430]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/");
 
-  await expect(page.getByLabel("thia.lol home")).toBeVisible();
-  await expect(page.getByTestId("brand-logo")).toBeVisible();
-  await expect(page.getByText("social app")).toHaveCount(0);
-  await expectNoHorizontalOverflow(page);
+    await expect(page.getByLabel("thia.lol home")).toBeVisible();
+    await expect(page.getByTestId("brand-logo")).toBeVisible();
+    await expect(page.getByText("social app")).toHaveCount(0);
+    await expectNoHorizontalOverflow(page);
 
-  await page.getByRole("button", { name: /account menu/i }).click();
-  await expect(page.getByTestId("account-menu")).toBeVisible();
+    const header = page.getByTestId("anonymous-home-header");
+    const createAccount = header.getByRole("link", { name: "Create account" });
+    const menuButton = header.getByRole("button", { name: "Open navigation menu" });
+    await expect(createAccount).toBeVisible();
 
-  const nav = page.getByTestId("mobile-nav");
-  await expect(nav).toBeVisible();
-  const mobilePost = nav.getByTestId("mobile-post-action");
-  const postButton = nav.getByRole("button", { name: "Post" });
-  await expect(postButton).toHaveCount(1);
-  await expect(postButton).toHaveText("");
-  await expect(mobilePost).toContainText("Post");
-  const mobilePostBox = await mobilePost.boundingBox();
-  expect(mobilePostBox?.width).toBeGreaterThanOrEqual(54);
-  expect(mobilePostBox?.height).toBeGreaterThanOrEqual(54);
-  await expectRefinedMobileDock(page);
-  await expectChatHitTargetClear(page);
+    for (const control of [createAccount, menuButton]) {
+      const box = await control.boundingBox();
+      expect(box?.height).toBeGreaterThanOrEqual(44);
+    }
+
+    await menuButton.click();
+
+    const menu = page.getByTestId("anonymous-home-menu");
+    for (const label of ["Discover", "Rooms", "Sign in"]) {
+      await expect(menu.getByRole("menuitem", { name: label })).toBeVisible();
+    }
+
+    await expect(page.getByTestId("mobile-nav")).toHaveCount(0);
+    await expect(page.getByTestId("mobile-post-action")).toHaveCount(0);
+    await expect(page.getByTestId("desktop-post-action")).toHaveCount(0);
+  }
 });
 
 test("coffee support opens a closable Ko-fi panel on desktop", async ({ page }) => {
   await mockPublicShell(page);
   await acknowledgeCookieNotice(page);
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
+  await page.goto("/discover");
 
   const coffeeButton = page.getByTestId("coffee-support-button");
   const postButton = page.getByTestId("desktop-post-action");
@@ -172,7 +184,7 @@ test("coffee support clears the mobile dock and keeps the Ko-fi panel scrollable
   await mockPublicShell(page);
   await acknowledgeCookieNotice(page);
   await page.setViewportSize({ width: 390, height: 667 });
-  await page.goto("/");
+  await page.goto("/discover");
 
   const coffeeButton = page.getByTestId("coffee-support-button");
   const mobileDock = page.getByTestId("mobile-nav");
@@ -462,7 +474,7 @@ test("mobile primary nav shows one Post affordance and no Admin", async ({ page 
   await mockPublicShell(page);
   await acknowledgeCookieNotice(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
+  await page.goto("/discover");
 
   const nav = page.getByTestId("mobile-nav");
   await expect(nav).toBeVisible();
@@ -484,7 +496,7 @@ test("mobile primary nav remains usable on main routes", async ({ page }) => {
   await acknowledgeCookieNotice(page);
   await page.setViewportSize({ width: 390, height: 844 });
 
-  for (const path of ["/", "/discover", "/search", "/rooms", "/chat", "/@thia"]) {
+  for (const path of ["/discover", "/search", "/rooms", "/chat", "/@thia"]) {
     await page.goto(path);
 
     const nav = page.getByTestId("mobile-nav");
@@ -505,13 +517,12 @@ test("route changes keep the mobile bottom nav clickable", async ({ page }) => {
   await mockPublicShell(page);
   await acknowledgeCookieNotice(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
+  await page.goto("/discover");
 
   for (const item of [
-    { label: "Discover", pattern: /\/discover$/ },
     { label: "Rooms", pattern: /\/rooms$/ },
     { label: "Chat", pattern: /\/chat$/ },
-    { label: "Home", pattern: /\/$/ },
+    { label: "Discover", pattern: /\/discover$/ },
   ]) {
     const nav = page.getByTestId("mobile-nav");
     await expect(nav).toBeVisible();
