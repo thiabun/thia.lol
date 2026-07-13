@@ -891,7 +891,8 @@ test("view-only rooms hide posting but keep reaction affordances", async ({ page
   await expect(page.getByRole("button", { name: /Like this post/i })).toBeVisible();
 
   await page.getByRole("button", { name: /Open replies/i }).click();
-  await expect(page.getByTestId("thread-conversation")).toBeVisible();
+  await expect(page).toHaveURL(/\/@author\/posts\/pcviewonly501$/);
+  await expect(page.getByTestId("thread-view")).toBeVisible();
   await expect(page.getByTestId("reply-composer")).toHaveCount(0);
 });
 
@@ -1328,6 +1329,7 @@ async function mockViewOnlyRoom(
     accessRequestStatus: null,
     ...options.room,
   });
+  const post = mockPost(room, options.post);
 
   await mockAuthenticatedShell(page);
   await page.route("**/api/rooms/read-room", async (route) => {
@@ -1341,7 +1343,7 @@ async function mockViewOnlyRoom(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: [mockPost(room, options.post)] }),
+      body: JSON.stringify({ ok: true, data: [post] }),
     });
   });
   await page.route("**/api/rooms/read-room/members", async (route) => {
@@ -1352,6 +1354,13 @@ async function mockViewOnlyRoom(
     });
   });
   await mockRoomChannelRoutes(page, "read-room", room);
+  await page.route("**/api/posts/pcviewonly501", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: post }),
+    });
+  });
   await page.route("**/api/posts/501/replies", async (route) => {
     await route.fulfill({
       status: 200,

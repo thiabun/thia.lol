@@ -1,6 +1,8 @@
 import {
   Bold,
+  ChevronDown,
   Code2,
+  Eye,
   Heading2,
   Italic,
   Link as LinkIcon,
@@ -11,14 +13,19 @@ import {
 } from "lucide-react";
 import {
   forwardRef,
+  useId,
   useMemo,
   useRef,
+  useState,
   type ForwardedRef,
 } from "react";
 import { cn } from "../../lib/classNames";
 import type { RichTextEntity } from "../../lib/types";
+import { Button } from "../ui/Button";
 import { MentionTextarea } from "./MentionTextarea";
 import { RichText } from "./RichText";
+
+type DisclosureMode = "always" | "collapsible" | "hidden";
 
 type MarkdownEditorProps = {
   className?: string;
@@ -29,10 +36,13 @@ type MarkdownEditorProps = {
   minHeightClassName?: string;
   onValueChange: (value: string) => void;
   placeholder?: string;
+  previewMode?: DisclosureMode;
   previewClassName?: string;
   renderedClassName?: string;
+  showHeader?: boolean;
   testIdPrefix?: string;
   textareaTestId?: string;
+  toolbarMode?: DisclosureMode;
   value: string;
 };
 
@@ -61,14 +71,29 @@ export const MarkdownEditor = forwardRef<HTMLTextAreaElement, MarkdownEditorProp
     minHeightClassName = "min-h-44",
     onValueChange,
     placeholder = "Write with Markdown, @mentions, and HTTPS links.",
+    previewMode = "always",
     previewClassName,
     renderedClassName,
+    showHeader = true,
     testIdPrefix = "profile-markdown",
     textareaTestId,
+    toolbarMode = "always",
     value,
   }: MarkdownEditorProps, forwardedRef) {
+  const editorId = useId();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [toolbarOpen, setToolbarOpen] = useState(false);
   const remaining = maxLength - value.length;
+  const hasPreview = Boolean(value.trim());
+  const previewExpanded =
+    previewMode === "always" ||
+    (previewMode === "collapsible" && previewOpen && hasPreview);
+  const toolbarExpanded =
+    toolbarMode === "always" ||
+    (toolbarMode === "collapsible" && toolbarOpen);
+  const previewId = `${editorId}-preview`;
+  const toolbarId = `${editorId}-toolbar`;
   const effectiveTextareaTestId = textareaTestId ?? `${testIdPrefix}-body`;
   const countText = useMemo(
     () => `${value.length}/${maxLength}`,
@@ -103,40 +128,88 @@ export const MarkdownEditor = forwardRef<HTMLTextAreaElement, MarkdownEditorProp
       className={cn("space-y-2", className)}
       data-testid={`${testIdPrefix}-editor`}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-xs font-semibold uppercase text-muted">{label}</span>
-        <span
-          className={cn(
-            "text-xs font-semibold",
-            remaining < 0 ? "text-rose-ink" : "text-muted",
-          )}
-        >
-          {countText}
-        </span>
-      </div>
-      <div
-        className="flex flex-wrap gap-1 rounded-card border border-line bg-canvas/38 p-1"
-        data-testid={`${testIdPrefix}-toolbar`}
-      >
-        {markdownActions.map((action) => {
-          const Icon = action.icon;
-
-          return (
-            <button
-              key={action.id}
+      {showHeader ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs font-semibold uppercase text-muted">{label}</span>
+          <span
+            className={cn(
+              "text-xs font-semibold",
+              remaining < 0 ? "text-rose-ink" : "text-muted",
+            )}
+          >
+            {countText}
+          </span>
+        </div>
+      ) : null}
+      {toolbarMode === "collapsible" || previewMode === "collapsible" ? (
+        <div className="flex flex-wrap items-center gap-1">
+          {toolbarMode === "collapsible" ? (
+            <Button
               type="button"
-              className="grid size-8 place-items-center rounded-full text-muted transition duration-fluid ease-fluid hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
-              title={action.label}
-              aria-label={action.label}
+              variant="ghost"
+              size="sm"
+              className="min-h-11 text-muted sm:min-h-8"
+              aria-controls={toolbarId}
+              aria-expanded={toolbarExpanded}
               disabled={disabled}
-              data-testid={`${testIdPrefix}-button-${action.id}`}
-              onClick={() => applyAction(action.id)}
+              data-testid={`${testIdPrefix}-toolbar-toggle`}
+              onClick={() => setToolbarOpen((isOpen) => !isOpen)}
             >
-              <Icon aria-hidden="true" size={15} />
-            </button>
-          );
-        })}
-      </div>
+              Format
+              <ChevronDown
+                aria-hidden="true"
+                className={cn(
+                  "transition-transform duration-fluid ease-fluid",
+                  toolbarExpanded && "rotate-180",
+                )}
+                size={14}
+              />
+            </Button>
+          ) : null}
+          {previewMode === "collapsible" ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="min-h-11 text-muted sm:min-h-8"
+              aria-controls={previewId}
+              aria-expanded={previewExpanded}
+              disabled={disabled || !hasPreview}
+              icon={<Eye aria-hidden="true" size={14} />}
+              data-testid={`${testIdPrefix}-preview-toggle`}
+              onClick={() => setPreviewOpen((isOpen) => !isOpen)}
+            >
+              Preview
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {toolbarExpanded ? (
+        <div
+          id={toolbarId}
+          className="flex flex-wrap gap-1 rounded-card border border-line bg-canvas/38 p-1"
+          data-testid={`${testIdPrefix}-toolbar`}
+        >
+          {markdownActions.map((action) => {
+            const Icon = action.icon;
+
+            return (
+              <button
+                key={action.id}
+                type="button"
+                className="grid size-11 place-items-center rounded-full text-muted transition duration-fluid ease-fluid hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus sm:size-8"
+                title={action.label}
+                aria-label={action.label}
+                disabled={disabled}
+                data-testid={`${testIdPrefix}-button-${action.id}`}
+                onClick={() => applyAction(action.id)}
+              >
+                <Icon aria-hidden="true" size={15} />
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
       <div
         className="overflow-hidden rounded-control border border-line bg-canvas/45 transition focus-within:border-line-strong focus-within:outline-2 focus-within:outline-focus"
         data-testid={`${testIdPrefix}-surface`}
@@ -156,8 +229,9 @@ export const MarkdownEditor = forwardRef<HTMLTextAreaElement, MarkdownEditorProp
           data-testid={effectiveTextareaTestId}
           onValueChange={onValueChange}
         />
-        {value.trim() ? (
+        {previewExpanded && hasPreview ? (
           <div
+            id={previewId}
             className={cn(
               "border-t border-line/70 bg-surface/42 px-3 py-2",
               previewClassName,

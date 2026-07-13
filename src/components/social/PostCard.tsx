@@ -1,85 +1,38 @@
 import {
-  useCallback,
   useEffect,
   useRef,
   useState,
-  type ChangeEvent,
-  type FormEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import {
-  ArrowDown,
-  ArrowUp,
   EyeOff,
   Heart,
-  ImagePlay,
-  ImagePlus,
-  LoaderCircle,
   MessageCircle,
-  Music2,
   Repeat2,
-  Send,
   Share2,
   Trash2,
   WifiOff,
 } from "lucide-react";
-import { Link } from "react-router";
-import { AnimatePresence, motion } from "motion/react";
+import { Link, useNavigate } from "react-router";
+import { motion } from "motion/react";
 import { Avatar } from "../ui/Avatar";
-import { Button, ButtonLink } from "../ui/Button";
 import { FocusAutoplayVideo } from "../ui/FocusAutoplayVideo";
-import { ImageCropModal } from "../ui/ImageCropModal";
 import { MediaPlayer, type MediaPlayerLayout } from "../ui/MediaPlayer";
-import { ModalSheet } from "../ui/ModalSheet";
 import { Panel } from "../ui/Panel";
-import { CompactStateNotice } from "../ui/RouteState";
 import { InlineUserProfileLink } from "./UserProfileLink";
-import { GifPicker } from "./GifPicker";
-import { MarkdownEditor } from "./MarkdownEditor";
 import { PostShareModal } from "./PostShareModal";
 import { ReportForm } from "./ReportForm";
 import { RichText } from "./RichText";
 import {
   deletePost,
-  createPostReply,
-  getProfileIntegrationSuggestions,
-  getPostReplies,
   likePost,
+  postCanonicalPath,
   reblogPost,
-  previewImageUpload,
-  resolveProfileIntegrationMetadata,
-  startProfileIntegration,
   unreblogPost,
   unlikePost,
-  uploadAudio,
-  uploadImage,
-  uploadVideo,
 } from "../../lib/api";
 import { cn } from "../../lib/classNames";
-import { prepareImageFileForCrop } from "../../lib/imageCrop";
-import {
-  audioUploadFormatHelp,
-  imageUploadFormatHelp,
-  isAcceptedImageUploadFile,
-  isAcceptedAudioUploadFile,
-  isAcceptedVideoUploadFile,
-  isLikelyVideoUploadFile,
-  visualMediaUploadAccept,
-  videoUploadFormatHelp,
-} from "../../lib/mediaFormats";
-import {
-  postMediaDraftFromAudio,
-  postMediaDraftFromGif,
-  postMediaDraftFromImage,
-  postMediaDraftFromIntegration,
-  postMediaDraftFromVideo,
-  postMediaInputFromDraft,
-  type PostMediaDraft,
-  type PostVisualMediaDraft,
-} from "../../lib/postMedia";
-import { roomAllowsPosting } from "../../lib/postRules";
 import {
   attachSpotifyPlaybackListeners,
   emptySpotifyPlaybackProgress,
@@ -100,21 +53,23 @@ import {
   pulsePop,
   softSpring,
 } from "../../lib/motionPresets";
-import type { AuthStatus } from "../../lib/authTypes";
-import type { GifSearchResult, Post, PostAttachment } from "../../lib/types";
+import type { Post, PostAttachment } from "../../lib/types";
 import { useAuth } from "../../lib/useAuth";
 import { canDeletePost } from "../../lib/postPermissions";
-import type { PostMusicAttachmentProvider } from "./PostMusicAttachmentPicker";
-import { PostMusicAttachmentPicker } from "./PostMusicAttachmentPicker";
 
-type PostCardProps = {
+export type PostCardVariant = "feed" | "focus" | "reply";
+
+export type PostCardProps = {
   post: Post;
   index?: number;
+  variant?: PostCardVariant;
+  depth?: number;
+  highlighted?: boolean;
   canDelete?: boolean;
   canHide?: boolean;
   actionPending?: boolean;
-  disableThreadModal?: boolean;
   onDelete?: (post: Post) => void;
+  onDeleted?: ((post: Post) => void) | undefined;
   onHide?: (post: Post) => void;
   onReplyAction?: () => void;
 };
@@ -122,25 +77,27 @@ type PostCardProps = {
 export function PostCard({
   post,
   index = 0,
+  variant = "feed",
+  depth = 0,
+  highlighted = false,
   canDelete = false,
   canHide = false,
   actionPending = false,
-  disableThreadModal = false,
   onDelete,
+  onDeleted,
   onHide,
   onReplyAction,
 }: PostCardProps) {
-  const { csrfToken, runWithAuth, status, user } = useAuth();
+  const navigate = useNavigate();
+  const { runWithAuth, user } = useAuth();
   const effectiveCanDelete = canDelete || canDeletePost(user, post);
   const showActions = effectiveCanDelete || canHide;
-  const [commentCount, setCommentCount] = useState(post.commentCount);
-  const [threadOpen, setThreadOpen] = useState(false);
-  const [threadComposerOpen, setThreadComposerOpen] = useState(false);
   const [localDeletePending, setLocalDeletePending] = useState(false);
   const [localDeleteError, setLocalDeleteError] = useState<string>();
   const [locallyDeleted, setLocallyDeleted] = useState(false);
   const [finePointerHover, setFinePointerHover] = useState(false);
-  const canReplyToPost = roomAllowsPosting(post.room);
+  const isNavigableFeed = variant === "feed";
+  const canonicalPath = postCanonicalPath(post);
 
   useEffect(() => {
     const query = window.matchMedia("(hover: hover) and (pointer: fine)");
@@ -171,6 +128,7 @@ export function PostCard({
         { retryOnCsrf: true },
       );
       setLocallyDeleted(true);
+      onDeleted?.(post);
       return true;
     } catch (error) {
       setLocalDeleteError(
@@ -182,48 +140,30 @@ export function PostCard({
     }
   }
 
-  function openThread(options?: { compose?: boolean }) {
-    if (disableThreadModal) {
-      if (options?.compose) {
-        onReplyAction?.();
-      }
+  function openCanonicalPost(options?: { compose?: boolean }) {
+    if (options?.compose && onReplyAction) {
+      onReplyAction();
       return;
     }
 
-    setThreadComposerOpen(Boolean(options?.compose && canReplyToPost));
-    setThreadOpen(true);
+    navigate(canonicalPath, {
+      state: options?.compose ? { openComposer: true } : undefined,
+    });
   }
 
   function handleCardClick(event: ReactMouseEvent<HTMLElement>) {
-    if (disableThreadModal) {
+    if (
+      !isNavigableFeed ||
+      isCardNavigationIgnoredTarget(event.target) ||
+      isCardNavigationIgnoredEvent(event.nativeEvent)
+    ) {
       return;
     }
 
-    if (isThreadOpenIgnoredTarget(event.target) || isThreadOpenIgnoredEvent(event.nativeEvent)) {
-      return;
-    }
-
-    openThread();
+    openCanonicalPost();
   }
 
-  function handleCardKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
-    if (disableThreadModal) {
-      return;
-    }
-
-    if (event.key !== "Enter" && event.key !== " ") {
-      return;
-    }
-
-    if (isThreadOpenIgnoredTarget(event.target)) {
-      return;
-    }
-
-    event.preventDefault();
-    openThread();
-  }
-
-  const cardMotionProps = threadOpen || disableThreadModal
+  const cardMotionProps = !isNavigableFeed
     ? {}
     : {
         ...(finePointerHover ? { whileHover: cardHover } : {}),
@@ -234,151 +174,187 @@ export function PostCard({
     return null;
   }
 
-  return (
+  const content = (
     <>
-      <motion.article
-        id={`post-${post.id}`}
-        aria-label={
-          disableThreadModal
-            ? `Post by ${post.author.displayName}`
-            : `Open thread by ${post.author.displayName}`
-        }
-        className={cn(
-          "group mx-auto min-w-0 w-full max-w-[38rem] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus",
-          disableThreadModal ? "cursor-default" : "cursor-pointer",
-        )}
-        data-render-deferred="post"
-        data-testid="post-card-open-thread"
-        tabIndex={disableThreadModal ? undefined : 0}
-        variants={cardEntrance}
-        custom={index}
-        initial="hidden"
-        animate="show"
-        onClick={handleCardClick}
-        onKeyDown={handleCardKeyDown}
-        {...cardMotionProps}
-      >
-        <Panel className="min-w-0 max-w-full overflow-hidden p-3 transition duration-fluid ease-fluid group-hover:border-line-strong group-hover:bg-surface/90 sm:p-4">
-          {post.rebloggedBy ? (
-            <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-muted">
-              <Repeat2 aria-hidden="true" size={14} />
-              <span>
-                <InlineUserProfileLink user={post.rebloggedBy}>
-                  @{post.rebloggedBy.handle}
-                </InlineUserProfileLink>{" "}
-                reblogged
-              </span>
-            </div>
-          ) : null}
-          <div className="flex items-start gap-3">
+      {post.rebloggedBy ? (
+        <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-muted">
+          <Repeat2 aria-hidden="true" size={14} />
+          <span>
+            <InlineUserProfileLink user={post.rebloggedBy}>
+              @{post.rebloggedBy.handle}
+            </InlineUserProfileLink>{" "}
+            reblogged
+          </span>
+        </div>
+      ) : null}
+
+      <div className="flex min-w-0 items-start gap-3">
+        <Link
+          to={`/@${post.author.handle}`}
+          aria-label={`${post.author.displayName}'s profile`}
+          className={cn(
+            "shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+            variant === "reply" && "origin-top-left scale-[0.92]",
+          )}
+        >
+          <Avatar user={post.author} />
+        </Link>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <Link
               to={`/@${post.author.handle}`}
-              aria-label={`${post.author.displayName}'s profile`}
-              className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              className="min-w-0 truncate text-sm font-semibold text-text underline-offset-4 hover:text-accent-strong hover:underline"
             >
-              <Avatar user={post.author} />
+              {post.author.displayName}
             </Link>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <Link
-                  to={`/@${post.author.handle}`}
-                  className="text-sm font-semibold text-text underline-offset-4 hover:text-accent-strong hover:underline"
-                >
-                  {post.author.displayName}
-                </Link>
-                <Link
-                  to={`/@${post.author.handle}`}
-                  className="text-sm text-muted underline-offset-4 hover:text-accent-strong hover:underline"
-                >
-                  @{post.author.handle}
-                </Link>
-                <span className="text-muted/50">·</span>
-                <span className="text-sm text-muted">{post.createdAt}</span>
-                <PostMetaChips post={post} />
-              </div>
-            </div>
+            <Link
+              to={`/@${post.author.handle}`}
+              className="truncate text-sm text-muted underline-offset-4 hover:text-accent-strong hover:underline"
+            >
+              @{post.author.handle}
+            </Link>
+            <span aria-hidden="true" className="text-muted/45">·</span>
+            <Link
+              to={canonicalPath}
+              className="text-xs text-muted underline-offset-4 hover:text-accent-strong hover:underline"
+              aria-label={`Open post from ${post.createdAt}`}
+            >
+              {post.createdAt}
+            </Link>
           </div>
+          <PostDestinationLine post={post} />
+        </div>
+      </div>
 
-          <div
-            data-testid="post-body-open-thread"
-            className="mt-3 block min-w-0 w-full max-w-full text-left"
-          >
-            <RichText
-              text={post.body}
-              entities={post.bodyEntities}
-              markdown={post.bodyFormat === "markdown"}
-              className="block whitespace-pre-wrap break-words text-pretty text-[0.95rem] leading-6 text-text"
-            />
-
-            <PostAttachments post={post} />
-          </div>
-
-          <ReactionControls
-            key={`${post.id}:${post.likeCount}:${post.likedByCurrentUser}:${post.reblogCount}:${post.rebloggedByMe}:${post.rebloggedByCurrentUser}:${post.commentCount}`}
-            post={post}
-            commentCount={commentCount}
-            initialLikeCount={post.likeCount}
-            initiallyLiked={post.likedByCurrentUser}
-            onOpenThread={() => openThread({ compose: true })}
-            actions={
-              showActions ? (
-                <>
-                  {canHide ? (
-                    <PostActionIconButton
-                      label="Hide post"
-                      disabled={actionPending}
-                      variant="ghost"
-                      icon={<EyeOff aria-hidden="true" size={15} />}
-                      onClick={() => onHide?.(post)}
-                    />
-                  ) : null}
-                  {effectiveCanDelete ? (
-                    <PostActionIconButton
-                      label="Delete post"
-                      disabled={actionPending || localDeletePending}
-                      variant="ghost"
-                      icon={<Trash2 aria-hidden="true" size={15} />}
-                      onClick={() => void handleDeletePost()}
-                    />
-                  ) : null}
-                </>
-              ) : null
-            }
-          />
-          {localDeleteError ? (
-            <p className="mt-3 rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
-              {localDeleteError}
-            </p>
-          ) : null}
-        </Panel>
-      </motion.article>
-      {threadOpen ? (
-        <ThreadModal
-          open={threadOpen}
-          post={{ ...post, commentCount }}
-          authStatus={status}
-          csrfToken={csrfToken}
-          initialComposerOpen={threadComposerOpen}
-          runWithAuth={runWithAuth}
-          canDeleteRoot={effectiveCanDelete}
-          actionPending={actionPending || localDeletePending}
-          onClose={() => setThreadOpen(false)}
-          onRootDelete={async () => {
-            const deleted = await handleDeletePost();
-
-            if (deleted) {
-              setThreadOpen(false);
-            }
-          }}
-          onReplyCreated={() => setCommentCount((current) => current + 1)}
-          onReplyDeleted={() => setCommentCount((current) => Math.max(0, current - 1))}
+      <div
+        data-testid="post-body-open-thread"
+        className={cn(
+          "block min-w-0 w-full max-w-full text-left",
+          variant === "reply" ? "mt-2 pl-[3.25rem]" : "mt-3",
+        )}
+      >
+        <RichText
+          text={post.body}
+          entities={post.bodyEntities}
+          markdown={post.bodyFormat === "markdown"}
+          className={cn(
+            "block whitespace-pre-wrap break-words text-pretty text-text",
+            variant === "focus"
+              ? "text-base leading-7 sm:text-[1.0625rem] sm:leading-8"
+              : "text-[0.95rem] leading-6",
+          )}
         />
+        <PostAttachments
+          className="mt-3"
+          maxHeightClass={
+            variant === "focus"
+              ? "max-h-[min(76vh,40rem)]"
+              : "max-h-[min(70vh,34rem)]"
+          }
+          musicLayout={variant === "reply" ? "compact" : "responsive"}
+          post={post}
+        />
+      </div>
+
+      <div className={variant === "reply" ? "pl-[3.25rem]" : undefined}>
+        <ReactionControls
+          key={`${post.id}:${post.likeCount}:${post.likedByCurrentUser}:${post.reblogCount}:${post.rebloggedByMe}:${post.rebloggedByCurrentUser}`}
+          post={post}
+          commentCount={post.commentCount}
+          initialLikeCount={post.likeCount}
+          initiallyLiked={post.likedByCurrentUser}
+          onReply={() => openCanonicalPost({ compose: true })}
+          actions={
+            showActions ? (
+              <>
+                {canHide ? (
+                  <PostActionIconButton
+                    label="Hide post"
+                    disabled={actionPending}
+                    icon={<EyeOff aria-hidden="true" size={15} />}
+                    onClick={() => onHide?.(post)}
+                  />
+                ) : null}
+                {effectiveCanDelete ? (
+                  <PostActionIconButton
+                    label={variant === "reply" ? "Delete reply" : "Delete post"}
+                    disabled={actionPending || localDeletePending}
+                    variant="danger"
+                    icon={<Trash2 aria-hidden="true" size={15} />}
+                    onClick={() => void handleDeletePost()}
+                  />
+                ) : null}
+              </>
+            ) : null
+          }
+        />
+      </div>
+
+      {localDeleteError ? (
+        <p
+          className={cn(
+            "mt-3 rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink",
+            variant === "reply" && "ml-[3.25rem]",
+          )}
+        >
+          {localDeleteError}
+        </p>
       ) : null}
     </>
   );
+
+  return (
+    <motion.article
+      id={`post-${post.id}`}
+      aria-label={
+        `Post by ${post.author.displayName}`
+      }
+      className={cn(
+        "group relative mx-auto min-w-0 w-full",
+        variant === "focus" ? "max-w-[44rem]" : "max-w-[38rem]",
+        isNavigableFeed && "cursor-pointer",
+        variant === "reply" && "py-3 pr-1",
+        highlighted &&
+          "rounded-panel ring-2 ring-accent/35 ring-offset-2 ring-offset-canvas",
+      )}
+      data-depth={depth}
+      data-render-deferred={variant === "reply" ? "post-reply" : "post"}
+      data-testid="post-card-open-thread"
+      data-variant={variant}
+      variants={cardEntrance}
+      custom={index}
+      initial="hidden"
+      animate="show"
+      onClick={handleCardClick}
+      {...cardMotionProps}
+    >
+      {isNavigableFeed ? (
+        <Link
+          to={canonicalPath}
+          className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-30 focus:rounded-control focus:bg-surface focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-text focus:shadow-soft focus:outline-2 focus:outline-offset-2 focus:outline-focus"
+        >
+          Open thread by {post.author.displayName}
+        </Link>
+      ) : null}
+      {variant === "reply" ? (
+        content
+      ) : (
+        <Panel
+          elevated={variant === "focus"}
+          interactive={isNavigableFeed}
+          className={cn(
+            "min-w-0 max-w-full overflow-hidden p-3 sm:p-4",
+            variant === "focus" && "p-4 sm:p-5",
+          )}
+        >
+          {content}
+        </Panel>
+      )}
+    </motion.article>
+  );
 }
 
-const threadOpenIgnoreSelector = [
+const cardNavigationIgnoreSelector = [
   "a",
   "button",
   "input",
@@ -397,84 +373,27 @@ const threadOpenIgnoreSelector = [
   "[data-thread-open-ignore]",
 ].join(",");
 
-function isThreadOpenIgnoredEvent(event: Event) {
+function isCardNavigationIgnoredEvent(event: Event) {
   return event.composedPath().some(
     (node) =>
-      node instanceof Element && Boolean(node.closest(threadOpenIgnoreSelector)),
+      node instanceof Element && Boolean(node.closest(cardNavigationIgnoreSelector)),
   );
 }
 
-function isThreadOpenIgnoredTarget(target: EventTarget | null) {
+function isCardNavigationIgnoredTarget(target: EventTarget | null) {
   if (!(target instanceof Element)) {
     return true;
   }
 
-  return Boolean(target.closest(threadOpenIgnoreSelector));
+  return Boolean(target.closest(cardNavigationIgnoreSelector));
 }
 
-function stopThreadOpenPropagation(event: ReactMouseEvent<HTMLElement>) {
+function stopCardNavigationPropagation(event: ReactMouseEvent<HTMLElement>) {
   event.stopPropagation();
 }
 
-type PostMediaProps = {
-  className?: string;
-  maxHeightClass?: string;
-  mediaMime?: string | null | undefined;
-  mediaPosterUrl?: string | null | undefined;
-  mediaType?: "image" | "video" | null | undefined;
-  mediaUrl: string | null | undefined;
-  testId?: string;
-};
 
-function PostMedia({
-  className = "mt-4",
-  maxHeightClass = "max-h-[min(70vh,34rem)]",
-  mediaMime,
-  mediaPosterUrl,
-  mediaType,
-  mediaUrl,
-  testId = "post-media",
-}: PostMediaProps) {
-  if (!mediaUrl || mediaUrl === "/ambient-veil.webp") {
-    return null;
-  }
-
-  const isVideo = mediaType === "video" || /\.(?:mp4|webm)$/iu.test(mediaUrl);
-
-  return (
-    <span className={cn("block max-w-full", className)} data-testid={testId}>
-      <span
-        className="inline-flex w-fit max-w-full overflow-hidden rounded-card border border-line bg-canvas/70 align-top"
-        data-thread-open-ignore={isVideo ? true : undefined}
-        onClick={isVideo ? stopThreadOpenPropagation : undefined}
-      >
-        {isVideo ? (
-          <FocusAutoplayVideo
-            className={cn("block h-auto max-w-full bg-black object-contain", maxHeightClass)}
-            poster={mediaPosterUrl ?? undefined}
-            data-testid={`${testId}-video`}
-          >
-            <source src={mediaUrl} type={mediaMime ?? (mediaUrl.endsWith(".webm") ? "video/webm" : "video/mp4")} />
-          </FocusAutoplayVideo>
-        ) : (
-          <img
-            src={mediaUrl}
-            alt=""
-            className={cn(
-              "block h-auto max-w-full object-contain",
-              maxHeightClass,
-            )}
-            loading="lazy"
-            decoding="async"
-            data-testid={`${testId}-image`}
-          />
-        )}
-      </span>
-    </span>
-  );
-}
-
-type PostAttachmentsProps = {
+export type PostAttachmentsProps = {
   className?: string;
   maxHeightClass?: string;
   musicLayout?: PostMusicLayout;
@@ -484,7 +403,7 @@ type PostAttachmentsProps = {
 
 type PostMusicLayout = "compact" | "responsive";
 
-function PostAttachments({
+export function PostAttachments({
   className = "mt-4",
   maxHeightClass = "max-h-[min(70vh,34rem)]",
   musicLayout = "responsive",
@@ -605,7 +524,7 @@ function PostAttachmentItem({
       className="block min-w-0 w-full max-w-full [contain:inline-size]"
       data-thread-open-ignore={isVideo ? true : undefined}
       data-testid={testId}
-      onClick={isVideo ? stopThreadOpenPropagation : undefined}
+      onClick={isVideo ? stopCardNavigationPropagation : undefined}
     >
       <span
         className={cn(
@@ -1502,120 +1421,32 @@ function attachmentFileLabel(value: string | null | undefined): string | null {
     return filename;
   }
 }
+function PostDestinationLine({ post }: { post: Post }) {
+  if (post.room) {
+    return (
+      <p className="mt-0.5 truncate text-xs text-muted">
+        in{" "}
+        <Link
+          to={`/rooms/${post.room.slug}`}
+          className="font-medium text-muted underline-offset-4 hover:text-accent-strong hover:underline"
+        >
+          {post.room.name}
+        </Link>
+      </p>
+    );
+  }
 
-/*
- * The older implementation rendered ThreadModal inside the animated article.
- * Because React events bubble through portals, modal hover could still toggle
- * card hover motion. Keep the portal mounted as a sibling of the card.
- */
-function ThreadAvatarRail({
-  user,
-  href,
-  ariaLabel,
-  hasBranch = false,
-  branchClassName,
-}: {
-  user: Post["author"];
-  href: string;
-  ariaLabel: string;
-  hasBranch?: boolean;
-  branchClassName?: string;
-}) {
   return (
-    <div
-      className="relative flex min-h-12 justify-center"
-      data-testid="thread-avatar-rail"
-    >
-      {hasBranch ? (
-        <span
-          className={cn(
-            "pointer-events-none absolute left-1/2 top-6 h-px -translate-x-full bg-line/55",
-            branchClassName ?? "w-5",
-          )}
-          aria-hidden="true"
-          data-testid="thread-rail-branch"
-        />
-      ) : null}
+    <p className="mt-0.5 truncate text-xs text-muted">
+      in{" "}
       <Link
-        to={href}
-        aria-label={ariaLabel}
-        className="relative z-10 grid size-12 shrink-0 place-items-center rounded-full bg-canvas ring-4 ring-canvas focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-        data-testid="thread-avatar-bubble"
+        to={`/@${post.author.handle}`}
+        className="font-medium text-muted underline-offset-4 hover:text-accent-strong hover:underline"
       >
-        <Avatar user={user} />
+        Profile feed
       </Link>
-    </div>
+    </p>
   );
-}
-
-const threadRailLineClass =
-  "pointer-events-none absolute z-0 w-px -translate-x-1/2 bg-line/55";
-
-const metaChipClass =
-  "inline-flex min-h-5 items-center rounded-full border px-1.5 text-[0.68rem] font-medium leading-none";
-const roomMetaChipClass = "border-warm/25 bg-warm/10 text-warm-ink";
-const coolMetaChipClass = "border-cool/25 bg-cool/10 text-cool-ink";
-const leafMetaChipClass = "border-leaf/25 bg-leaf/10 text-leaf-ink";
-const roseMetaChipClass = "border-rose/25 bg-rose/10 text-rose-ink";
-
-function PostMetaChips({ post }: { post: Post }) {
-  const chips = postContextChips(post);
-
-  if (!post.room && chips.length === 0) {
-    return null;
-  }
-
-  return (
-    <span className="contents">
-      {chips.map((chip) => (
-        <span key={chip.label} className="contents">
-          <span className="text-muted/50">·</span>
-          <span className={cn(metaChipClass, chip.className)}>{chip.label}</span>
-        </span>
-      ))}
-      {post.room ? (
-        <span className="contents">
-          <span className="text-muted/50">·</span>
-          <Link
-            to={`/rooms/${post.room.slug}`}
-            title={`Posted in ${post.room.name}`}
-            className={cn(
-              metaChipClass,
-              roomMetaChipClass,
-              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-            )}
-          >
-            {post.room.name}
-          </Link>
-        </span>
-      ) : null}
-    </span>
-  );
-}
-
-function postContextChips(post: Post) {
-  const chips: Array<{ className: string; label: string }> = [];
-  const relationship = post.socialContext?.authorRelationship;
-
-  if (relationship === "moot") {
-    chips.push({ className: leafMetaChipClass, label: "Moot" });
-  } else if (relationship === "following") {
-    chips.push({ className: coolMetaChipClass, label: "Following" });
-  }
-
-  if ((post.socialContext?.likedByFollowedCount ?? 0) > 0) {
-    chips.push({ className: coolMetaChipClass, label: "Liked by follows" });
-  }
-
-  if (isRecentPostLabel(post.createdAt)) {
-    chips.push({ className: roseMetaChipClass, label: "Recent" });
-  }
-
-  return chips;
-}
-
-function isRecentPostLabel(createdAt: string) {
-  return createdAt === "now" || /(?:minute|minutes) ago/u.test(createdAt);
 }
 
 type ReactionControlsProps = {
@@ -1624,8 +1455,7 @@ type ReactionControlsProps = {
   initialLikeCount: number;
   initiallyLiked: boolean;
   actions: ReactNode;
-  onOpenThread: () => void;
-  compact?: boolean;
+  onReply: () => void;
 };
 
 function ReactionControls({
@@ -1634,8 +1464,7 @@ function ReactionControls({
   initialLikeCount,
   initiallyLiked,
   actions,
-  onOpenThread,
-  compact = false,
+  onReply,
 }: ReactionControlsProps) {
   const { csrfToken, runWithAuth, status, user } = useAuth();
   const [likeCount, setLikeCount] = useState(initialLikeCount);
@@ -1736,14 +1565,12 @@ function ReactionControls({
   return (
     <>
       <div
-        className={cn(
-          "mt-4 flex flex-wrap items-center gap-2 text-sm text-muted",
-          compact ? "mt-3 gap-x-2 gap-y-1" : null,
-        )}
+        className="mt-3 flex min-h-10 items-center gap-0.5 border-t border-line/55 pt-2 text-sm text-muted"
+        data-testid="post-action-row"
       >
         <CommentButton
           count={commentCount}
-          onClick={onOpenThread}
+          onClick={onReply}
         />
         <LikeButton
           count={likeCount}
@@ -1765,17 +1592,11 @@ function ReactionControls({
         />
         <PostActionIconButton
           label="Share post"
-          variant="ghost"
           icon={<Share2 aria-hidden="true" size={15} />}
           onClick={() => setShareOpen(true)}
         />
         {canReport || actions ? (
-          <span
-            className={cn(
-              "inline-flex items-center gap-2",
-              compact ? "w-full justify-end sm:ml-auto sm:w-auto" : "ml-auto",
-            )}
-          >
+          <span className="ml-auto inline-flex items-center gap-0.5 border-l border-line/55 pl-1">
             {canReport ? (
               <ReportForm
                 targetType="post"
@@ -1786,7 +1607,7 @@ function ReactionControls({
                 explainer="This reports the post to moderators."
                 triggerMode="icon"
                 triggerLabel="Report post"
-                triggerSize="compact"
+                triggerClassName="size-11 rounded-control sm:size-9"
               />
             ) : null}
             {actions}
@@ -1819,1160 +1640,19 @@ function CommentButton({ count, onClick }: CommentButtonProps) {
   return (
     <motion.button
       type="button"
-      className="inline-flex min-h-10 items-center gap-2 rounded-full border border-line bg-surface/80 px-4 text-base leading-none text-muted shadow-soft transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface-strong hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-      aria-label={`Open replies. ${count} ${count === 1 ? "reply" : "replies"}.`}
-      title="Replies"
+      className="app-control inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-control px-2 text-sm leading-none text-muted transition duration-fluid ease-fluid hover:bg-surface-strong/70 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus sm:min-h-9 sm:min-w-0"
+      aria-label={`Open replies and reply. ${count} ${count === 1 ? "reply" : "replies"}.`}
+      title="Reply"
       onClick={onClick}
       whileHover={buttonHover}
       whileTap={buttonTap}
     >
-      <MessageCircle aria-hidden="true" size={17} />
-      <span className="tabular-nums">{count}</span>
+      <MessageCircle aria-hidden="true" size={16} />
+      <span className="min-w-3 tabular-nums">{count}</span>
     </motion.button>
   );
 }
 
-export type ReplyComposerProps = {
-  parentPostId: number;
-  csrfToken: string | undefined;
-  runWithAuth: <T>(
-    task: (csrfToken: string) => Promise<T>,
-    options?: { retryOnCsrf?: boolean },
-  ) => Promise<T>;
-  autoFocus?: boolean;
-  className?: string;
-  onCancel: () => void;
-  onCreated: (reply: Post) => void;
-};
-
-export function ReplyComposer({
-  parentPostId,
-  csrfToken,
-  runWithAuth,
-  autoFocus = false,
-  className,
-  onCancel,
-  onCreated,
-}: ReplyComposerProps) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [body, setBody] = useState("");
-  const [media, setMedia] = useState<PostMediaDraft[]>([]);
-  const [gifPickerOpen, setGifPickerOpen] = useState(false);
-  const [musicPickerOpen, setMusicPickerOpen] = useState(false);
-  const [pendingImageCrop, setPendingImageCrop] = useState<File | undefined>();
-  const [uploadingMedia, setUploadingMedia] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState<string | undefined>();
-  const trimmedBody = body.trim();
-  const canSubmit =
-    Boolean(csrfToken) &&
-    trimmedBody.length > 0 &&
-    trimmedBody.length <= 2000 &&
-    !submitting &&
-    !uploadingMedia;
-  const canAddMedia = media.length < maxPostComposerAttachments;
-
-  useEffect(() => {
-    if (autoFocus) {
-      window.setTimeout(() => textareaRef.current?.focus(), 60);
-    }
-  }, [autoFocus]);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (!csrfToken) {
-      setMessage("Log in to reply.");
-      return;
-    }
-
-    if (trimmedBody.length === 0) {
-      setMessage("Reply cannot be empty.");
-      return;
-    }
-
-    if (trimmedBody.length > 2000) {
-      setMessage("Reply must be 2000 characters or fewer.");
-      return;
-    }
-
-    setSubmitting(true);
-    setMessage(undefined);
-
-    try {
-      const reply = await runWithAuth(
-        (freshCsrfToken) =>
-          createPostReply(
-            parentPostId,
-            { body: trimmedBody, ...postMediaInputFromDraft(media) },
-            freshCsrfToken,
-          ),
-        { retryOnCsrf: true },
-      );
-
-      setBody("");
-      setMedia([]);
-      setGifPickerOpen(false);
-      setMusicPickerOpen(false);
-      setPendingImageCrop(undefined);
-      onCreated(reply);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Reply could not be posted.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleMediaChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.currentTarget.files?.[0];
-    event.currentTarget.value = "";
-
-    if (!file) {
-      return;
-    }
-
-    if (!csrfToken) {
-      setMessage("Log in to upload media.");
-      return;
-    }
-
-    if (!canAddMedia) {
-      setMessage(`Replies can include up to ${maxPostComposerAttachments} attachments.`);
-      return;
-    }
-
-    if (isLikelyVideoUploadFile(file)) {
-      await uploadVideoMedia(file);
-      return;
-    }
-
-    if (!isAcceptedImageUploadFile(file)) {
-      setMessage(`${imageUploadFormatHelp} ${videoUploadFormatHelp}`);
-      return;
-    }
-
-    setUploadingMedia(true);
-    setMessage(undefined);
-
-    try {
-      const prepared = await runWithAuth(
-        (freshCsrfToken) =>
-          prepareImageFileForCrop(file, "post_media", (sourceFile, purpose) =>
-            previewImageUpload(sourceFile, purpose, freshCsrfToken),
-          ),
-        { retryOnCsrf: true },
-      );
-      setPendingImageCrop(prepared);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Image could not be prepared.");
-    } finally {
-      setUploadingMedia(false);
-    }
-  }
-
-  async function uploadVideoMedia(file: File) {
-    const validationError = validatePostVideoFile(file);
-
-    if (validationError) {
-      setMessage(validationError);
-      return;
-    }
-
-    setUploadingMedia(true);
-    setMessage(undefined);
-
-    try {
-      const uploaded = await runWithAuth(
-        (freshCsrfToken) => uploadVideo(file, "post_media", freshCsrfToken),
-        { retryOnCsrf: true },
-      );
-      appendMedia(postMediaDraftFromVideo(uploaded));
-      setPendingImageCrop(undefined);
-      setMessage("Media attached.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Video could not be uploaded.");
-    } finally {
-      setUploadingMedia(false);
-    }
-  }
-
-  async function createAudioAttachmentDraft(file: File): Promise<PostMediaDraft> {
-    const validationError = validatePostAudioFile(file);
-
-    if (validationError) {
-      setMessage(validationError);
-      throw new Error(validationError);
-    }
-
-    setUploadingMedia(true);
-    setMessage(undefined);
-
-    try {
-      const uploaded = await runWithAuth(
-        (freshCsrfToken) => uploadAudio(file, "post_media", freshCsrfToken),
-        { retryOnCsrf: true },
-      );
-      setPendingImageCrop(undefined);
-      return postMediaDraftFromAudio(uploaded);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Audio could not be uploaded.");
-      throw error;
-    } finally {
-      setUploadingMedia(false);
-    }
-  }
-
-  const resolveMusicAttachmentDraft = useCallback(
-    async (input: {
-      provider?: PostMusicAttachmentProvider;
-      url: string;
-    }): Promise<PostMediaDraft> => {
-      const card = await runWithAuth(
-        (freshCsrfToken) => resolveProfileIntegrationMetadata(input, freshCsrfToken),
-        { retryOnCsrf: true },
-      );
-
-      return postMediaDraftFromIntegration(card);
-    },
-    [runWithAuth],
-  );
-
-  const connectMusicProvider = useCallback(
-    async (provider: PostMusicAttachmentProvider) => {
-      const redirectPath = `${window.location.pathname}${window.location.search}`;
-      const result = await runWithAuth(
-        (freshCsrfToken) =>
-          startProfileIntegration(provider, freshCsrfToken, redirectPath),
-        { retryOnCsrf: true },
-      );
-
-      if (result.authorizationUrl) {
-        window.location.assign(result.authorizationUrl);
-      }
-    },
-    [runWithAuth],
-  );
-
-  const loadMusicSuggestions = useCallback(
-    (provider: PostMusicAttachmentProvider) =>
-      getProfileIntegrationSuggestions(provider),
-    [],
-  );
-
-  async function uploadCroppedImage(file: File) {
-    if (!csrfToken) {
-      setMessage("Log in to upload media.");
-      throw new Error("Log in to upload media.");
-    }
-
-    setUploadingMedia(true);
-    setMessage(undefined);
-
-    try {
-      const uploaded = await runWithAuth(
-        (freshCsrfToken) => uploadImage(file, "post_media", freshCsrfToken),
-        { retryOnCsrf: true },
-      );
-      appendMedia(postMediaDraftFromImage(uploaded));
-      setPendingImageCrop(undefined);
-      setMessage("Media attached.");
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Image could not be uploaded.";
-      setMessage(message);
-      throw error;
-    } finally {
-      setUploadingMedia(false);
-    }
-  }
-
-  function appendMedia(draft: PostMediaDraft) {
-    setMedia((current) =>
-      current.length >= maxPostComposerAttachments ? current : [...current, draft],
-    );
-  }
-
-  function handleMusicAttachmentAdd(draft: PostMediaDraft) {
-    appendMedia(draft);
-    setMessage("Music attached.");
-    setMusicPickerOpen(false);
-  }
-
-  function handleGifAttachmentAdd(gif: GifSearchResult) {
-    if (!canAddMedia) {
-      setMessage(`Replies can include up to ${maxPostComposerAttachments} attachments.`);
-      return;
-    }
-
-    appendMedia(postMediaDraftFromGif(gif));
-    setMessage("GIF attached.");
-    setGifPickerOpen(false);
-  }
-
-  function moveMediaAttachment(index: number, offset: -1 | 1) {
-    setMedia((current) => movePostMediaDraft(current, index, index + offset));
-  }
-
-  const firstVisualMedia = media.find(isVisualPostMediaDraft);
-
-  return (
-    <>
-      <form
-        className={cn(
-          "rounded-card border border-line bg-canvas/45 p-3 shadow-inner-soft",
-          className,
-        )}
-        data-testid="reply-composer"
-        onSubmit={(event) => void handleSubmit(event)}
-      >
-      <MarkdownEditor
-        ref={textareaRef}
-        label="Reply"
-        maxLength={2000}
-        minHeightClassName="min-h-28"
-        placeholder="Write with Markdown, @mentions, and HTTPS links."
-        renderedClassName="text-sm leading-6"
-        testIdPrefix="reply-composer-markdown"
-        textareaTestId={`reply-composer-${parentPostId}`}
-        value={body}
-        disabled={submitting}
-        onValueChange={setBody}
-      />
-
-      <PostMusicAttachmentPicker
-        attachmentCount={media.length}
-        disabled={submitting || uploadingMedia || !csrfToken}
-        limitMessage={`Replies can include up to ${maxPostComposerAttachments} attachments.`}
-        loadSuggestions={loadMusicSuggestions}
-        maxAttachments={maxPostComposerAttachments}
-        onAddAttachment={handleMusicAttachmentAdd}
-        onClose={() => setMusicPickerOpen(false)}
-        onConnectProvider={connectMusicProvider}
-        onResolveMusicUrl={resolveMusicAttachmentDraft}
-        onUploadAudio={createAudioAttachmentDraft}
-        open={musicPickerOpen}
-      />
-
-      {gifPickerOpen ? (
-        <GifPicker className="mt-3" onSelect={handleGifAttachmentAdd} />
-      ) : null}
-
-      <PostMedia
-        className="mt-3"
-        maxHeightClass="max-h-56"
-        mediaMime={firstVisualMedia?.mime}
-        mediaPosterUrl={firstVisualMedia?.posterUrl}
-        mediaType={firstVisualMedia?.type ?? null}
-        mediaUrl={firstVisualMedia?.url}
-        testId="reply-composer-media"
-      />
-      {media.length > 1 || (media[0] && !isVisualPostMediaDraft(media[0])) ? (
-        <PostAttachmentDraftList
-          attachments={media}
-          disabled={submitting || uploadingMedia}
-          onMove={(index, offset) => moveMediaAttachment(index, offset)}
-          onRemove={(index) => setMedia((current) => current.filter((_, itemIndex) => itemIndex !== index))}
-        />
-      ) : null}
-
-      {message ? (
-        <p
-          className={cn(
-            "mt-3 rounded-card border p-3 text-sm",
-            message === "Media attached." ||
-            message === "GIF attached."
-              ? "border-leaf/30 bg-leaf/15 text-leaf-ink"
-              : "border-rose/30 bg-rose/15 text-rose-ink",
-          )}
-        >
-          {message}
-        </p>
-      ) : null}
-
-      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <span className="text-xs text-muted" aria-live="polite">
-          {body.length}/2000
-        </span>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {media.length > 0 ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={submitting || uploadingMedia}
-              icon={<Trash2 aria-hidden="true" size={15} />}
-              onClick={() => setMedia([])}
-            >
-              Remove all
-            </Button>
-          ) : null}
-          <label className="inline-flex min-h-9 cursor-pointer items-center justify-center gap-2 rounded-control border border-line bg-surface px-3 text-sm font-medium text-text shadow-soft transition duration-fluid hover:border-line-strong focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus">
-            <ImagePlus aria-hidden="true" size={15} />
-            {uploadingMedia
-              ? "Uploading"
-              : media.length > 0
-                ? "Add media"
-                : "Upload media"}
-            <input
-              className="sr-only"
-              type="file"
-              accept={visualMediaUploadAccept}
-              disabled={submitting || uploadingMedia || !canAddMedia}
-              onChange={(event) => void handleMediaChange(event)}
-            />
-          </label>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            disabled={submitting || uploadingMedia || !canAddMedia || !csrfToken}
-            icon={<ImagePlay aria-hidden="true" size={15} />}
-            onClick={() => setGifPickerOpen((current) => !current)}
-          >
-            GIF
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            disabled={submitting || uploadingMedia || !canAddMedia || !csrfToken}
-            icon={<Music2 aria-hidden="true" size={15} />}
-            onClick={() => setMusicPickerOpen((current) => !current)}
-          >
-            Music
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            disabled={submitting}
-            onClick={onCancel}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            size="sm"
-            disabled={!canSubmit}
-            icon={<Send aria-hidden="true" size={15} />}
-          >
-            {submitting ? "Sending..." : "Send"}
-          </Button>
-        </div>
-      </div>
-      </form>
-      <ImageCropModal
-        open={Boolean(pendingImageCrop)}
-        file={pendingImageCrop}
-        purpose="post_media"
-        busy={uploadingMedia}
-        onClose={() => setPendingImageCrop(undefined)}
-        onApply={uploadCroppedImage}
-      />
-    </>
-  );
-}
-
-const maxPostComposerAttachments = 8;
-
-type PostAttachmentDraftListProps = {
-  attachments: PostMediaDraft[];
-  disabled: boolean;
-  onMove: (index: number, offset: -1 | 1) => void;
-  onRemove: (index: number) => void;
-};
-
-function PostAttachmentDraftList({
-  attachments,
-  disabled,
-  onMove,
-  onRemove,
-}: PostAttachmentDraftListProps) {
-  return (
-    <div className="mt-3 grid gap-2" data-testid="reply-composer-attachments">
-      {attachments.map((attachment, index) => (
-        <div
-          key={`${postMediaDraftKey(attachment)}-${index}`}
-          className="flex min-w-0 items-center gap-3 rounded-card border border-line bg-canvas/45 p-2"
-          data-testid="reply-composer-attachment"
-        >
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-semibold uppercase tracking-[0.08em] text-muted">
-              {attachment.type === "audio"
-                ? "MP3"
-                : attachment.type === "integration"
-                  ? providerLabel(attachment.provider)
-                  : attachment.type === "gif"
-                    ? "KLIPY GIF"
-                  : attachment.type}
-            </p>
-            {attachment.type === "audio" ? (
-              <audio className="mt-1 w-full" controls preload="metadata">
-                <source src={attachment.url} type={attachment.mime} />
-              </audio>
-            ) : attachment.type === "integration" ? (
-              <p className="truncate text-sm text-text">
-                {attachment.card.metadata.title ?? providerLabel(attachment.provider)}
-              </p>
-            ) : attachment.type === "gif" ? (
-              <p className="truncate text-sm text-text">GIF attachment</p>
-            ) : (
-              <p className="truncate text-sm text-text">Attachment {index + 1}</p>
-            )}
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-8 rounded-full"
-            disabled={disabled || index === 0}
-            aria-label={`Move attachment ${index + 1} earlier`}
-            title="Move earlier"
-            onClick={() => onMove(index, -1)}
-          >
-            <ArrowUp aria-hidden="true" size={14} />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-8 rounded-full"
-            disabled={disabled || index === attachments.length - 1}
-            aria-label={`Move attachment ${index + 1} later`}
-            title="Move later"
-            onClick={() => onMove(index, 1)}
-          >
-            <ArrowDown aria-hidden="true" size={14} />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-8 rounded-full"
-            disabled={disabled}
-            aria-label={`Remove attachment ${index + 1}`}
-            title="Remove attachment"
-            onClick={() => onRemove(index)}
-          >
-            <Trash2 aria-hidden="true" size={14} />
-          </Button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function movePostMediaDraft(
-  attachments: PostMediaDraft[],
-  fromIndex: number,
-  toIndex: number,
-): PostMediaDraft[] {
-  if (toIndex < 0 || toIndex >= attachments.length || fromIndex === toIndex) {
-    return attachments;
-  }
-
-  const next = [...attachments];
-  const [item] = next.splice(fromIndex, 1);
-
-  if (item === undefined) {
-    return attachments;
-  }
-
-  next.splice(toIndex, 0, item);
-
-  return next;
-}
-
-function isVisualPostMediaDraft(
-  attachment: PostMediaDraft,
-): attachment is PostVisualMediaDraft {
-  return attachment.type === "image" || attachment.type === "video";
-}
-
-function postMediaDraftKey(attachment: PostMediaDraft): string {
-  return attachment.type === "integration" || attachment.type === "gif"
-    ? attachment.resourceKey
-    : attachment.url;
-}
-
-function providerLabel(provider: "spotify" | "youtube"): string {
-  return provider === "spotify" ? "Spotify" : "YouTube";
-}
-
-type ThreadModalProps = {
-  open: boolean;
-  post: Post;
-  authStatus: AuthStatus;
-  csrfToken: string | undefined;
-  initialComposerOpen: boolean;
-  runWithAuth: <T>(
-    task: (csrfToken: string) => Promise<T>,
-    options?: { retryOnCsrf?: boolean },
-  ) => Promise<T>;
-  canDeleteRoot: boolean;
-  actionPending: boolean;
-  onClose: () => void;
-  onRootDelete: () => void | Promise<void>;
-  onReplyCreated: (post: Post) => void;
-  onReplyDeleted: (post: Post) => void;
-};
-
-function ThreadModal({
-  open,
-  post,
-  authStatus,
-  csrfToken,
-  initialComposerOpen,
-  runWithAuth,
-  canDeleteRoot,
-  actionPending,
-  onClose,
-  onRootDelete,
-  onReplyCreated,
-  onReplyDeleted,
-}: ThreadModalProps) {
-  const canReplyToThread = roomAllowsPosting(post.room);
-  const [replies, setReplies] = useState<Post[]>([]);
-  const [composerOpen, setComposerOpen] = useState(initialComposerOpen && canReplyToThread);
-  const [modalCommentCount, setModalCommentCount] = useState(post.commentCount);
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string>();
-  const isCheckingAuth = authStatus === "loading";
-  const isAuthenticated = authStatus === "authenticated" && Boolean(csrfToken);
-  const replyCountLabel = `${modalCommentCount} ${
-    modalCommentCount === 1 ? "reply" : "replies"
-  }`;
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    let active = true;
-
-    queueMicrotask(() => {
-      if (!active) {
-        return;
-      }
-
-      setLoading(true);
-      setLoadError(undefined);
-
-      getPostReplies(post.id)
-        .then((items) => {
-          if (active) {
-            setReplies(items);
-          }
-        })
-        .catch(() => {
-          if (active) {
-            setReplies([]);
-            setLoadError("Replies could not load right now.");
-          }
-        })
-        .finally(() => {
-          if (active) {
-            setLoading(false);
-          }
-        });
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [open, post.id]);
-
-  function handleReplyCreated(reply: Post) {
-    setReplies((current) => [...current, reply]);
-    setModalCommentCount((current) => current + 1);
-    setComposerOpen(false);
-    onReplyCreated(reply);
-  }
-
-  function handleReplyDeleted(reply: Post) {
-    setReplies((current) => current.filter((item) => item.id !== reply.id));
-    setModalCommentCount((current) => Math.max(0, current - 1));
-    onReplyDeleted(reply);
-  }
-
-  return (
-    <ModalSheet
-      open={open}
-      onClose={onClose}
-      title="Thread"
-      description={`@${post.author.handle} · ${replyCountLabel}`}
-      closeLabel="Close thread"
-      testId="thread-modal"
-      size="xl"
-      mobile="full"
-      headerAlign="center"
-      panelClassName="sm:max-h-[min(820px,calc(100dvh-3rem))]"
-      bodyClassName="px-3 py-4 sm:px-5 lg:px-7 lg:py-6"
-    >
-              <div
-                className="mx-auto max-w-3xl overflow-hidden rounded-panel border border-line bg-canvas/24 shadow-inner-soft"
-                data-testid="thread-conversation"
-              >
-                <ParentPostPreview
-                  post={post}
-                  hasReplyConnector={loading || replies.length > 0}
-                  actionRow={
-                    <ReactionControls
-                      post={post}
-                      commentCount={modalCommentCount}
-                      initialLikeCount={post.likeCount}
-                      initiallyLiked={post.likedByCurrentUser}
-                      onOpenThread={() => {
-                        if (canReplyToThread) {
-                          setComposerOpen(true);
-                        }
-                      }}
-                      compact
-                      actions={
-                        canDeleteRoot ? (
-                          <PostActionIconButton
-                            label="Delete post"
-                            disabled={actionPending}
-                            variant="ghost"
-                            icon={<Trash2 aria-hidden="true" size={15} />}
-                            onClick={onRootDelete}
-                          />
-                        ) : null
-                      }
-                    />
-                  }
-                />
-
-                {isAuthenticated && composerOpen && canReplyToThread ? (
-                  <div className="border-b border-line/70 px-4 py-3 sm:px-5">
-                    <ReplyComposer
-                      autoFocus
-                      parentPostId={post.id}
-                      csrfToken={csrfToken}
-                      runWithAuth={runWithAuth}
-                      onCancel={() => setComposerOpen(false)}
-                      onCreated={handleReplyCreated}
-                    />
-                  </div>
-                ) : canReplyToThread && isCheckingAuth ? (
-                  <div className="border-b border-line/70 px-4 py-3 sm:px-5">
-                    <ThreadStateNotice
-                      kind="loading"
-                      title="Checking session"
-                      text="Confirming you can reply."
-                    />
-                  </div>
-                ) : canReplyToThread && !isAuthenticated ? (
-                  <div className="flex flex-col gap-3 border-b border-line/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-                    <p className="text-sm text-muted">Log in to reply.</p>
-                    <ButtonLink to="/login" size="sm" onClick={onClose}>
-                      Log in
-                    </ButtonLink>
-                  </div>
-                ) : null}
-
-                <div className="px-4 sm:px-5">
-                  {loading ? (
-                    <ThreadStateNotice
-                      kind="loading"
-                      title="Loading replies"
-                      text="Fetching this thread."
-                    />
-                  ) : null}
-                  {loadError ? (
-                    <ThreadStateNotice
-                      kind="error"
-                      title="Replies are not available"
-                      text={loadError}
-                    />
-                  ) : null}
-                  {!loading && !loadError && replies.length === 0 ? (
-                    <ThreadStateNotice
-                      title="No replies yet"
-                      text="Start the conversation with a reply."
-                    />
-                  ) : null}
-                  <div data-testid="thread-replies">
-                    <AnimatePresence initial={false}>
-                      {replies.map((reply, replyIndex) => (
-                        <ReplyPreview
-                          key={reply.id}
-                          reply={reply}
-                          index={replyIndex}
-                          siblingCount={replies.length}
-                          onDeleted={handleReplyDeleted}
-                        />
-                      ))}
-                    </AnimatePresence>
-                  </div>
-                </div>
-              </div>
-    </ModalSheet>
-  );
-}
-
-function ParentPostPreview({
-  post,
-  hasReplyConnector,
-  actionRow,
-}: {
-  post: Post;
-  hasReplyConnector: boolean;
-  actionRow: ReactNode;
-}) {
-  return (
-    <article
-      className="relative border-b border-line/70 bg-surface/36 px-4 pb-3 pt-5 sm:px-5 sm:pt-6"
-      data-testid="thread-root-post"
-    >
-      {hasReplyConnector ? (
-        <span
-          className={cn(
-            threadRailLineClass,
-            "bottom-0 left-[2.375rem] top-11 sm:left-11 sm:top-12",
-          )}
-          aria-hidden="true"
-          data-testid="thread-rail-line-after"
-        />
-      ) : null}
-      <div className="grid grid-cols-[2.75rem_1fr] gap-3 sm:grid-cols-[3rem_1fr]">
-        <ThreadAvatarRail
-          user={post.author}
-          href={`/@${post.author.handle}`}
-          ariaLabel={`${post.author.displayName}'s profile`}
-        />
-        <div className="min-w-0 pb-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <Link
-              to={`/@${post.author.handle}`}
-              className="text-sm font-semibold text-text underline-offset-4 hover:text-accent-strong hover:underline"
-            >
-              {post.author.displayName}
-            </Link>
-            <Link
-              to={`/@${post.author.handle}`}
-              className="text-sm text-muted underline-offset-4 hover:text-accent-strong hover:underline"
-            >
-              @{post.author.handle}
-            </Link>
-            <span className="text-muted/50">·</span>
-            <span className="text-sm text-muted">{post.createdAt}</span>
-            <PostMetaChips post={post} />
-          </div>
-          <RichText
-            text={post.body}
-            entities={post.bodyEntities}
-            markdown={post.bodyFormat === "markdown"}
-            className="mt-3 block whitespace-pre-wrap break-words text-pretty text-base leading-7 text-text sm:text-[1.0625rem] sm:leading-8"
-          />
-          <PostAttachments className="mt-3" post={post} />
-          <div data-testid="thread-root-actions">{actionRow}</div>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function ThreadStateNotice({
-  kind = "neutral",
-  text,
-  title,
-}: {
-  kind?: "neutral" | "loading" | "error";
-  text: string;
-  title: string;
-}) {
-  const Icon =
-    kind === "loading" ? LoaderCircle : kind === "error" ? WifiOff : MessageCircle;
-
-  return (
-    <CompactStateNotice
-      centered
-      className="my-3 rounded-card bg-surface/50"
-      testId="thread-state"
-      icon={Icon}
-      kind={kind}
-      title={title}
-      text={text}
-    />
-  );
-}
-
-type ReplyPreviewProps = {
-  reply: Post;
-  depth?: number;
-  index: number;
-  siblingCount: number;
-  onDeleted: (reply: Post) => void;
-};
-
-function ReplyPreview({
-  reply,
-  depth = 0,
-  index,
-  siblingCount,
-  onDeleted,
-}: ReplyPreviewProps) {
-  const { csrfToken, runWithAuth, status, user } = useAuth();
-  const [composerOpen, setComposerOpen] = useState(false);
-  const [childrenOpen, setChildrenOpen] = useState(false);
-  const [childReplies, setChildReplies] = useState<Post[]>([]);
-  const [childrenLoading, setChildrenLoading] = useState(false);
-  const [childrenError, setChildrenError] = useState<string>();
-  const [deletePending, setDeletePending] = useState(false);
-  const [deleteError, setDeleteError] = useState<string>();
-  const [localCommentCount, setLocalCommentCount] = useState(reply.commentCount);
-  const isAuthenticated = status === "authenticated" && Boolean(csrfToken);
-  const allowDelete = canDeletePost(user, reply);
-  const canReplyToReply = roomAllowsPosting(reply.room);
-  const canNest = depth < 3;
-  const hasNextVisibleSibling = index < siblingCount - 1;
-  const hasVisibleNestedReplies = childrenOpen && childReplies.length > 0;
-  const hasSameDepthLineBefore = depth === 0 || index > 0;
-  const hasLineAfter = hasNextVisibleSibling || hasVisibleNestedReplies;
-
-  async function loadChildren() {
-    if (childrenLoading || childReplies.length > 0) {
-      setChildrenOpen((open) => !open);
-      return;
-    }
-
-    setChildrenOpen(true);
-    setChildrenLoading(true);
-    setChildrenError(undefined);
-
-    try {
-      setChildReplies(await getPostReplies(reply.id));
-    } catch {
-      setChildrenError("Replies could not load right now.");
-    } finally {
-      setChildrenLoading(false);
-    }
-  }
-
-  async function handleDeleteReply() {
-    if (!allowDelete || deletePending) {
-      return;
-    }
-
-    setDeletePending(true);
-    setDeleteError(undefined);
-
-    try {
-      await runWithAuth(
-        (freshCsrfToken) => deletePost(reply.id, freshCsrfToken),
-        { retryOnCsrf: true },
-      );
-      onDeleted(reply);
-    } catch (error) {
-      setDeleteError(error instanceof Error ? error.message : "Reply could not be deleted.");
-    } finally {
-      setDeletePending(false);
-    }
-  }
-
-  function handleNestedReplyCreated(child: Post) {
-    setChildReplies((current) => [...current, child]);
-    setChildrenOpen(true);
-    setComposerOpen(false);
-    setLocalCommentCount((current) => current + 1);
-  }
-
-  function handleNestedReplyDeleted(child: Post) {
-    setChildReplies((current) => current.filter((item) => item.id !== child.id));
-    setLocalCommentCount((current) => Math.max(0, current - 1));
-  }
-
-  return (
-    <motion.article
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
-      transition={{ type: "spring", stiffness: 260, damping: 26 }}
-      className={cn(
-        "relative py-2.5 first:pt-3 last:pb-3 sm:py-3",
-        depth > 0 && nestedReplyOffsetClass(depth),
-      )}
-      data-render-deferred="post-reply"
-      data-testid="thread-reply-item"
-    >
-      {hasSameDepthLineBefore ? (
-        <span
-          className={cn(
-            threadRailLineClass,
-            "left-[1.375rem] top-0 h-9 sm:left-6",
-          )}
-          aria-hidden="true"
-          data-testid="thread-rail-line-before"
-        />
-      ) : null}
-      {hasLineAfter ? (
-        <span
-          className={cn(
-            threadRailLineClass,
-            "bottom-0 left-[1.375rem] top-9 sm:left-6",
-          )}
-          aria-hidden="true"
-          data-testid="thread-rail-line-after"
-        />
-      ) : null}
-      <div className="grid grid-cols-[2.75rem_1fr] gap-3 sm:grid-cols-[3rem_1fr]">
-        <ThreadAvatarRail
-          user={reply.author}
-          href={`/@${reply.author.handle}`}
-          ariaLabel={`${reply.author.displayName}'s profile`}
-          hasBranch={depth > 0}
-          branchClassName={threadBranchClass(depth)}
-        />
-        <div
-          className="min-w-0 py-1"
-          data-testid="thread-reply-content"
-        >
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <Link
-              to={`/@${reply.author.handle}`}
-              className="text-sm font-semibold text-text underline-offset-4 hover:text-accent-strong hover:underline"
-            >
-              {reply.author.displayName}
-            </Link>
-            <Link
-              to={`/@${reply.author.handle}`}
-              className="text-sm text-muted underline-offset-4 hover:text-accent-strong hover:underline"
-            >
-              @{reply.author.handle}
-            </Link>
-            <span className="text-muted/50">·</span>
-            <span className="text-sm text-muted">{reply.createdAt}</span>
-          </div>
-          <RichText
-            text={reply.body}
-            entities={reply.bodyEntities}
-            markdown={reply.bodyFormat === "markdown"}
-            className="mt-2 block whitespace-pre-wrap break-words text-pretty text-sm leading-6 text-text"
-          />
-          <PostAttachments className="mt-3" musicLayout="compact" post={reply} />
-
-          <div data-testid="thread-reply-actions">
-            <ReactionControls
-              post={reply}
-              commentCount={localCommentCount}
-              initialLikeCount={reply.likeCount}
-              initiallyLiked={reply.likedByCurrentUser}
-              onOpenThread={() => {
-                if (canReplyToReply) {
-                  setComposerOpen(true);
-                }
-              }}
-              compact
-              actions={
-                allowDelete ? (
-                  <PostActionIconButton
-                    label="Delete reply"
-                    disabled={deletePending}
-                    variant="ghost"
-                    icon={<Trash2 aria-hidden="true" size={15} />}
-                    onClick={() => void handleDeleteReply()}
-                  />
-                ) : null
-              }
-            />
-          </div>
-
-          {deleteError ? (
-            <p className="mt-2 text-xs font-medium text-rose-ink">
-              {deleteError}
-            </p>
-          ) : null}
-
-          {canNest && (localCommentCount > 0 || childReplies.length > 0) ? (
-            <div className="mt-2" data-testid="thread-nested-toggle">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => void loadChildren()}
-              >
-                {childrenOpen ? "Hide replies" : `Show ${localCommentCount} ${localCommentCount === 1 ? "reply" : "replies"}`}
-              </Button>
-            </div>
-          ) : null}
-
-          {childrenError ? (
-            <CompactStateNotice
-              className="mt-2"
-              icon={WifiOff}
-              kind="error"
-              title="Nested replies are not available"
-              text={childrenError}
-            />
-          ) : null}
-          {childrenLoading ? (
-            <CompactStateNotice
-              className="mt-2"
-              icon={LoaderCircle}
-              kind="loading"
-              title="Loading nested replies"
-              text="Fetching the next replies."
-            />
-          ) : null}
-        </div>
-      </div>
-
-      {isAuthenticated && composerOpen && canReplyToReply ? (
-        <div className="mt-2 grid grid-cols-[2.75rem_1fr] gap-3 sm:grid-cols-[3rem_1fr]">
-          <span aria-hidden="true" />
-          <ReplyComposer
-            autoFocus
-            parentPostId={reply.id}
-            csrfToken={csrfToken}
-            runWithAuth={runWithAuth}
-            onCancel={() => setComposerOpen(false)}
-            onCreated={handleNestedReplyCreated}
-          />
-        </div>
-      ) : null}
-
-      {childrenOpen && childReplies.length > 0 ? (
-        <div data-testid="thread-nested-replies">
-          {childReplies.map((child, childIndex) => (
-            <ReplyPreview
-              key={child.id}
-              reply={child}
-              depth={depth + 1}
-              index={childIndex}
-              siblingCount={childReplies.length}
-              onDeleted={handleNestedReplyDeleted}
-            />
-          ))}
-        </div>
-      ) : null}
-    </motion.article>
-  );
-}
-
-function nestedReplyOffsetClass(depth: number) {
-  if (depth === 1) {
-    return "ml-4 sm:ml-8";
-  }
-
-  if (depth === 2) {
-    return "ml-6 sm:ml-12";
-  }
-
-  return "ml-8 sm:ml-14";
-}
-
-function threadBranchClass(depth: number) {
-  if (depth === 1) {
-    return "w-4 sm:w-8";
-  }
-
-  if (depth === 2) {
-    return "w-6 sm:w-12";
-  }
-
-  return "w-8 sm:w-14";
-}
 
 type LikeButtonProps = {
   count: number;
@@ -2993,10 +1673,10 @@ function LikeButton({
     <motion.button
       type="button"
       className={cn(
-        "inline-flex min-h-10 items-center gap-2 rounded-full border px-4 text-base leading-none shadow-soft transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-wait",
+        "app-control inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-control px-2 text-sm leading-none transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-wait sm:min-h-9 sm:min-w-0",
         liked
-          ? "border-rose/25 bg-rose/24 text-rose-ink shadow-inner-soft"
-          : "border-line bg-surface/80 text-muted hover:border-line-strong hover:bg-surface-strong hover:text-text",
+          ? "bg-rose/15 text-rose-ink"
+          : "text-muted hover:bg-surface-strong/70 hover:text-text",
         pending && "opacity-70",
       )}
       aria-label={`${liked ? "Unlike" : "Like"} this post. ${count} ${count === 1 ? "like" : "likes"}.`}
@@ -3013,9 +1693,9 @@ function LikeButton({
         animate={liked ? pulsePop : { scale: 1, transition: softSpring }}
         className="grid place-items-center"
       >
-        <Heart size={17} fill={liked ? "currentColor" : "none"} />
+        <Heart size={16} fill={liked ? "currentColor" : "none"} />
       </motion.span>
-      <span className="tabular-nums">{count}</span>
+      <span className="min-w-3 tabular-nums">{count}</span>
     </motion.button>
   );
 }
@@ -3043,10 +1723,10 @@ function ReblogButton({
     <motion.button
       type="button"
       className={cn(
-        "inline-flex min-h-10 items-center gap-2 rounded-full border px-4 text-base leading-none shadow-soft transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55",
+        "app-control inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-control px-2 text-sm leading-none transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55 sm:min-h-9 sm:min-w-0",
         reblogged
-          ? "border-leaf/25 bg-leaf/24 text-leaf-ink shadow-inner-soft"
-          : "border-line bg-surface/80 text-muted hover:border-line-strong hover:bg-surface-strong hover:text-text",
+          ? "bg-leaf/15 text-leaf-ink"
+          : "text-muted hover:bg-surface-strong/70 hover:text-text",
         pending && "cursor-wait opacity-70",
       )}
       aria-label={`${reblogged ? "Undo reblog" : "Reblog"} this post. ${count} ${count === 1 ? "reblog" : "reblogs"}.`}
@@ -3067,9 +1747,9 @@ function ReblogButton({
         }
         className="grid place-items-center"
       >
-        <Repeat2 size={17} />
+        <Repeat2 size={16} />
       </motion.span>
-      <span className="tabular-nums">{count}</span>
+      <span className="min-w-3 tabular-nums">{count}</span>
     </motion.button>
   );
 }
@@ -3095,7 +1775,7 @@ function PostActionIconButton({
     <motion.button
       type="button"
       className={cn(
-        "inline-flex size-8 items-center justify-center rounded-full transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-wait disabled:opacity-55",
+        "app-control inline-flex size-11 items-center justify-center rounded-control transition duration-fluid ease-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-wait disabled:opacity-55 sm:size-9",
         variant === "danger"
           ? "text-rose-ink hover:bg-rose/15"
           : "text-muted hover:bg-surface-strong hover:text-text",
@@ -3109,36 +1789,4 @@ function PostActionIconButton({
       {icon}
     </motion.button>
   );
-}
-
-function validatePostVideoFile(file: File): string | undefined {
-  if (file.size <= 0) {
-    return "Video cannot be empty.";
-  }
-
-  if (file.size > 100 * 1024 * 1024) {
-    return "Video must be 100 MB or smaller.";
-  }
-
-  if (!isAcceptedVideoUploadFile(file)) {
-    return videoUploadFormatHelp;
-  }
-
-  return undefined;
-}
-
-function validatePostAudioFile(file: File): string | undefined {
-  if (file.size <= 0) {
-    return "Audio cannot be empty.";
-  }
-
-  if (file.size > 20 * 1024 * 1024) {
-    return "Audio must be 20 MB or smaller.";
-  }
-
-  if (!isAcceptedAudioUploadFile(file)) {
-    return audioUploadFormatHelp;
-  }
-
-  return undefined;
 }

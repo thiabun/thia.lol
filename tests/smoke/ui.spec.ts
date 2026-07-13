@@ -61,44 +61,41 @@ test("anonymous desktop home header focuses on discovery and joining", async ({ 
   await expect(page.getByTestId("desktop-post-action")).toHaveCount(0);
 });
 
-test("reply button opens an unclipped thread modal", async ({ page }) => {
+test("reply button opens the canonical continuous thread", async ({ page }) => {
   await mockPublicShell(page, {
     discoverPosts: [makePost({ commentCount: 1 })],
   });
+  await page.route("**/api/posts/42", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: makePost({ commentCount: 1 }) }),
+    }),
+  );
   await page.route("**/api/posts/42/replies", (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: [] }),
+      body: JSON.stringify({
+        ok: true,
+        data: [
+          makePost({
+            id: 73,
+            parentId: 42,
+            body: "A continuous thread reply.",
+          }),
+        ],
+      }),
     }),
   );
 
   await page.goto("/");
   await page.getByRole("button", { name: /open replies/i }).first().click();
 
-  const dialog = page.getByTestId("thread-modal");
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Close thread" })).toBeVisible();
-
-  const portalStatus = await page.evaluate(() => {
-    const dialogElement = document.querySelector('[role="dialog"][aria-modal="true"]');
-
-    return dialogElement?.parentElement?.parentElement === document.body;
-  });
-
-  expect(portalStatus).toBe(true);
-
-  const box = await dialog.boundingBox();
-  const viewport = page.viewportSize();
-
-  expect(box).not.toBeNull();
-  expect(viewport).not.toBeNull();
-  expect(box!.x).toBeGreaterThanOrEqual(0);
-  expect(box!.y).toBeGreaterThanOrEqual(0);
-  expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width);
-  expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height);
-
-  await dialog.getByRole("button", { name: "Close thread" }).click();
-  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/@alex\/posts\/42$/);
+  const thread = page.getByTestId("thread-view");
+  await expect(thread).toBeVisible();
+  await expect(thread.getByText("A public post.")).toBeVisible();
+  await expect(thread.getByText("A continuous thread reply.")).toBeVisible();
+  await expect(page.getByTestId("thread-modal")).toHaveCount(0);
 });
 
 test("anonymous mobile home header keeps conversion links accessible without a dock", async ({
@@ -592,7 +589,7 @@ test("public profile route renders the default Feed for a blank profile", async 
   await expect(page.getByText("No posts yet")).toBeVisible();
 });
 
-test("authenticated post button opens an accessible composer select", async ({
+test("authenticated post button opens the shared progressive composer", async ({
   page,
 }) => {
   await mockAuthenticatedShell(page, { rooms: [makeRoom()] });
@@ -611,15 +608,20 @@ test("authenticated post button opens an accessible composer select", async ({
   await expect(dialog).toBeVisible();
   const composerPost = dialog.getByRole("button", { name: "Post", exact: true });
   await expect(composerPost).toBeVisible();
-  const composerPostBox = await composerPost.boundingBox();
-  expect(composerPostBox?.height).toBeGreaterThanOrEqual(44);
+  await expect(composerPost).toHaveCSS("min-height", "44px");
+  await expect(dialog.getByTestId("unified-composer")).toBeVisible();
   await expect(dialog.getByRole("textbox", { name: "Post" })).toBeVisible();
+  await expect(dialog.getByTestId("post-composer-markdown-toolbar")).toHaveCount(0);
+  await expect(dialog.getByTestId("post-composer-markdown-preview")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Format" }).click();
   await expect(dialog.getByTestId("post-composer-markdown-toolbar")).toBeVisible();
   await expect(dialog.getByTitle("Upload image or video")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Add GIF" })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Add music" })).toBeVisible();
   await expect(dialog.getByText("Post to a profile or room.")).toHaveCount(0);
   await expect(dialog.getByText("Post to your profile.")).toHaveCount(0);
   await expect(dialog.getByText("Images are converted to WebP")).toHaveCount(0);
+  await expect(dialog.getByText(/anyone.*reply/i)).toHaveCount(0);
 
   const destinationControl = dialog.getByTestId("composer-destination-control");
   const selector = dialog.getByRole("combobox", { name: "Post to" });
@@ -745,8 +747,10 @@ test("post composer submits Markdown and Spotify/YouTube music attachments", asy
     const textarea = element as HTMLTextAreaElement;
     textarea.setSelectionRange(0, "Favorite".length);
   });
+  await dialog.getByRole("button", { name: "Format" }).click();
   await dialog.getByTestId("post-composer-markdown-button-bold").click();
   await expect(body).toHaveValue("**Favorite** track");
+  await dialog.getByRole("button", { name: "Preview" }).click();
   await expect(dialog.getByTestId("post-composer-markdown-preview")).not.toHaveCSS(
     "position",
     "absolute",

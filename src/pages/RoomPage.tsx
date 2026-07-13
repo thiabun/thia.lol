@@ -181,7 +181,7 @@ export function RoomPage() {
       const roomPosts = postsState.data ?? [];
 
       return [
-        ...createdPosts.filter((post) => post.room.slug === normalizedSlug),
+        ...createdPosts.filter((post) => post.room?.slug === normalizedSlug),
         ...roomPosts,
       ].filter((post, index, allPosts) => {
         if (removedPostIds.has(post.id)) {
@@ -225,7 +225,7 @@ export function RoomPage() {
 
   const handlePostCreated = useCallback(
     (post: Post) => {
-      if (post.room.slug !== normalizedSlug) {
+      if (post.room?.slug !== normalizedSlug) {
         return;
       }
 

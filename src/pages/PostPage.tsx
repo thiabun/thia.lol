@@ -1,59 +1,59 @@
-import {
-  ArrowLeft,
-  LoaderCircle,
-  MessageCircle,
-  Radio,
-  UserRound,
-  WifiOff,
-} from "lucide-react";
+import { ArrowLeft, LoaderCircle, MessageCircle, WifiOff } from "lucide-react";
 import { motion } from "motion/react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useOutletContext,
+  useParams,
+} from "react-router";
+import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
-import {
-  PostCard,
-  ReplyComposer,
-} from "../components/social/PostCard";
-import { Avatar } from "../components/ui/Avatar";
-import { Badge } from "../components/ui/Badge";
+import { ThreadView } from "../components/social/ThreadView";
 import { Button, ButtonLink } from "../components/ui/Button";
-import { Panel } from "../components/ui/Panel";
-import { CompactStateNotice, RouteStateNotice } from "../components/ui/RouteState";
-import {
-  getPost,
-  getPostReplies,
-  postCanonicalPath,
-  roomCanonicalPath,
-} from "../lib/api";
-import { formatCountWithUnit } from "../lib/pluralize";
-import { applyProfileThemeToRoot } from "../lib/profileThemes";
-import { roomAllowsPosting } from "../lib/postRules";
-import type { Post } from "../lib/types";
-import { useAuth } from "../lib/useAuth";
+import { RouteStateNotice } from "../components/ui/RouteState";
+import { getPost, postCanonicalPath } from "../lib/api";
 import { pageEntrance } from "../lib/motionPresets";
+import { applyProfileThemeToRoot } from "../lib/profileThemes";
+import type { Post } from "../lib/types";
 
 export function PostPage() {
-  const { csrfToken, runWithAuth, status } = useAuth();
-  const { handle: routeHandle = "", profileHandle = "", postId = "" } = useParams();
+  const { setMobileDockHidden } =
+    useOutletContext<AppShellOutletContext>();
+  const { handle: routeHandle = "", profileHandle = "", postId = "" } =
+    useParams();
   const handle = (profileHandle || routeHandle).replace(/^@/, "");
+  const location = useLocation();
   const navigate = useNavigate();
-  const replyComposerRef = useRef<HTMLDivElement>(null);
   const postIdentifier = useMemo(
-    () => (/^(?:[0-9]+|[a-z][a-z0-9_-]{7,31})$/i.test(postId) ? postId : undefined),
+    () =>
+      /^(?:[0-9]+|[a-z][a-z0-9_-]{7,31})$/i.test(postId)
+        ? postId
+        : undefined,
     [postId],
   );
-  const [post, setPost] = useState<Post | undefined>();
-  const [replies, setReplies] = useState<Post[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [requestedPost, setRequestedPost] = useState<Post>();
+  const [ancestorPath, setAncestorPath] = useState<Post[]>([]);
+  const [loadedIdentifier, setLoadedIdentifier] = useState<string>();
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
-  const [repliesLoading, setRepliesLoading] = useState(false);
-  const [repliesError, setRepliesError] = useState<string>();
-  const [replyComposerOpen, setReplyComposerOpen] = useState(true);
-  const canReply = roomAllowsPosting(post?.room);
+  const routeIsLoaded = loadedIdentifier === postIdentifier;
+  const rootPost = routeIsLoaded
+    ? ancestorPath[0] ?? requestedPost
+    : undefined;
 
   useEffect(() => {
-    return applyProfileThemeToRoot(post?.profile?.profileThemeConfig);
-  }, [post?.profile?.profileThemeConfig]);
+    setMobileDockHidden(true);
+
+    return () => setMobileDockHidden(false);
+  }, [setMobileDockHidden]);
+
+  useEffect(() => {
+    return applyProfileThemeToRoot(
+      routeIsLoaded ? requestedPost?.profile?.profileThemeConfig : undefined,
+    );
+  }, [requestedPost?.profile?.profileThemeConfig, routeIsLoaded]);
 
   useEffect(() => {
     if (!postIdentifier) {
@@ -69,34 +69,45 @@ export function PostPage() {
 
       setLoading(true);
       setError(undefined);
-      setPost(undefined);
-      setReplies([]);
-      setReplyComposerOpen(true);
+      setLoadedIdentifier(undefined);
+      setRequestedPost(undefined);
+      setAncestorPath([]);
 
-      getPost(postIdentifier)
-        .then((nextPost) => {
+      void (async () => {
+        try {
+          const nextPost = await getPost(postIdentifier);
+          const nextPath = await loadAncestorPath(nextPost);
+
           if (!active) {
             return;
           }
 
-          setPost(nextPost);
+          setRequestedPost(nextPost);
+          setAncestorPath(nextPath);
 
-          if (handle.toLowerCase() !== nextPost.author.handle.toLowerCase()) {
-            navigate(postCanonicalPath(nextPost), { replace: true });
+          const canonicalPath = postCanonicalPath(nextPost);
+
+          if (
+            handle.toLowerCase() !== nextPost.author.handle.toLowerCase() ||
+            window.location.pathname !== canonicalPath
+          ) {
+            navigate(canonicalPath, { replace: true });
           }
-        })
-        .catch((loadError) => {
+        } catch (loadError) {
           if (active) {
             setError(
-              loadError instanceof Error ? loadError.message : "Post could not load.",
+              loadError instanceof Error
+                ? loadError.message
+                : "Post could not load.",
             );
           }
-        })
-        .finally(() => {
+        } finally {
           if (active) {
+            setLoadedIdentifier(postIdentifier);
             setLoading(false);
           }
-        });
+        }
+      })();
     });
 
     return () => {
@@ -105,267 +116,152 @@ export function PostPage() {
   }, [handle, navigate, postIdentifier]);
 
   useEffect(() => {
-    if (!post) {
+    if (!requestedPost || ancestorPath.length < 2) {
       return;
     }
 
-    let active = true;
-
-    queueMicrotask(() => {
-      if (!active) {
-        return;
-      }
-
-      setRepliesLoading(true);
-      setRepliesError(undefined);
-
-      getPostReplies(post.id)
-        .then((items) => {
-          if (active) {
-            setReplies(items);
-          }
-        })
-        .catch((loadError) => {
-          if (active) {
-            setRepliesError(
-              loadError instanceof Error ? loadError.message : "Replies could not load.",
-            );
-          }
-        })
-        .finally(() => {
-          if (active) {
-            setRepliesLoading(false);
-          }
-        });
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [post]);
-
-  function focusReplyComposer() {
-    setReplyComposerOpen(true);
-    window.requestAnimationFrame(() => {
-      replyComposerRef.current?.scrollIntoView({
-        behavior: "smooth",
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(`post-${requestedPost.id}`)?.scrollIntoView({
+        behavior: "auto",
         block: "center",
       });
     });
-  }
 
-  function handleReplyCreated(reply: Post) {
-    setReplies((current) => [...current, reply]);
-    setPost((current) =>
-      current ? { ...current, commentCount: current.commentCount + 1 } : current,
-    );
-  }
+    return () => window.cancelAnimationFrame(frame);
+  }, [ancestorPath.length, requestedPost]);
 
   if (!postIdentifier) {
     return <PostUnavailableNotice handle={handle} text="Post not found." />;
   }
 
-  if (loading) {
+  if (loading || !routeIsLoaded) {
     return (
       <motion.div
-        className="mx-auto flex w-full max-w-5xl flex-col gap-4"
+        className="mx-auto flex w-full max-w-[46rem] flex-col gap-4"
         variants={pageEntrance}
         initial="hidden"
         animate="show"
       >
         <PageMeta
-          title="Post"
-          description="Loading a post on thia.lol."
+          title="Thread"
+          description="Loading a conversation on thia.lol."
           path={`/@${handle}/posts/${postIdentifier}`}
         />
         <RouteStateNotice
           icon={LoaderCircle}
           kind="loading"
-          title="Loading post"
-          text="Fetching this thread."
+          title="Opening thread"
+          text="Finding the conversation around this post."
         />
       </motion.div>
     );
   }
 
-  if (error || !post) {
-    return <PostUnavailableNotice handle={handle} text={error ?? "Post not found."} />;
+  if (error || !requestedPost || !rootPost) {
+    return (
+      <PostUnavailableNotice
+        handle={handle}
+        text={error ?? "Post not found."}
+      />
+    );
   }
 
   return (
     <motion.div
-      className="mx-auto w-full max-w-6xl space-y-4"
+      className="mx-auto w-full max-w-[46rem] space-y-3 pb-6"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
       data-testid="post-page"
     >
       <PageMeta
-        title={`${post.author.displayName} on thia.lol`}
-        description={post.body}
-        path={postCanonicalPath(post)}
+        title={`${requestedPost.author.displayName} on thia.lol`}
+        description={requestedPost.body}
+        path={postCanonicalPath(requestedPost)}
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <ButtonLink
-          to={`/@${post.author.handle}`}
+      <header className="sticky top-0 z-20 -mx-2 flex min-h-14 items-center gap-3 border-b border-line/75 bg-canvas/88 px-2 py-2 backdrop-blur-veil sm:static sm:mx-0 sm:rounded-card sm:border sm:bg-surface/58 sm:px-3">
+        <Button
+          type="button"
           variant="ghost"
-          size="sm"
-          icon={<ArrowLeft aria-hidden="true" size={16} />}
-        >
-          @{post.author.handle}
-        </ButtonLink>
-        <Badge tone="cool">{formatCountWithUnit(post.commentCount, "reply")}</Badge>
-      </div>
-
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,42rem)_minmax(16rem,1fr)] lg:items-start">
-        <main className="min-w-0 space-y-4">
-          <section data-testid="post-focus-area">
-            <PostCard
-              post={post}
-              disableThreadModal
-              onReplyAction={focusReplyComposer}
-            />
-          </section>
-
-          {canReply ? (
-            <section ref={replyComposerRef} aria-label="Reply composer">
-              {status === "authenticated" && replyComposerOpen ? (
-                <ReplyComposer
-                  autoFocus
-                  csrfToken={csrfToken}
-                  parentPostId={post.id}
-                  runWithAuth={runWithAuth}
-                  onCancel={() => setReplyComposerOpen(false)}
-                  onCreated={handleReplyCreated}
-                />
-              ) : status === "authenticated" ? (
-                <Panel className="flex items-center justify-between gap-3 p-3">
-                  <p className="text-sm text-muted">Reply composer is closed.</p>
-                  <Button
-                    type="button"
-                    size="sm"
-                    icon={<MessageCircle aria-hidden="true" size={15} />}
-                    onClick={() => setReplyComposerOpen(true)}
-                  >
-                    Reply
-                  </Button>
-                </Panel>
-              ) : (
-                <Panel className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm text-muted">Log in to reply.</p>
-                  <ButtonLink to="/login" size="sm" variant="secondary">
-                    Log in
-                  </ButtonLink>
-                </Panel>
-              )}
-            </section>
-          ) : null}
-
-          <section className="space-y-3" aria-label="Replies">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-base font-semibold text-text">Replies</h2>
-              <span className="text-sm text-muted">{replies.length}</span>
-            </div>
-            {repliesLoading ? (
-              <CompactStateNotice
-                icon={LoaderCircle}
-                kind="loading"
-                title="Loading replies"
-                text="Fetching replies."
-              />
-            ) : null}
-            {repliesError ? (
-              <CompactStateNotice
-                icon={WifiOff}
-                kind="error"
-                title="Replies unavailable"
-                text={repliesError}
-              />
-            ) : null}
-            {!repliesLoading && !repliesError && replies.length === 0 ? (
-              <CompactStateNotice
-                centered
-                icon={MessageCircle}
-                title="No replies yet"
-                text="No replies yet."
-              />
-            ) : null}
-            {replies.map((reply, index) => (
-              <PostCard
-                key={reply.id}
-                post={reply}
-                index={index}
-                disableThreadModal
-              />
-            ))}
-          </section>
-        </main>
-
-        <aside className="space-y-3 lg:sticky lg:top-20" aria-label="Post context">
-          <Panel className="p-4">
-            <div className="flex items-center gap-3">
-              <Avatar user={post.author} />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-text">
-                  {post.author.displayName}
-                </p>
-                <Link
-                  to={`/@${post.author.handle}`}
-                  className="text-sm text-muted underline-offset-4 hover:text-accent-strong hover:underline"
-                >
-                  @{post.author.handle}
-                </Link>
-              </div>
-            </div>
-            {post.profile?.bio ? (
-              <p className="mt-3 line-clamp-4 text-sm leading-6 text-muted">
-                {post.profile.bio}
-              </p>
-            ) : null}
-            <ButtonLink
-              to={`/@${post.author.handle}`}
-              variant="secondary"
-              size="sm"
-              className="mt-3 w-full"
-              icon={<UserRound aria-hidden="true" size={15} />}
+          size="icon"
+          className="size-11 sm:size-9"
+          aria-label="Back"
+          title="Back"
+          icon={<ArrowLeft aria-hidden="true" size={18} />}
+          onClick={() => {
+            if (location.key !== "default") {
+              navigate(-1);
+            } else {
+              navigate(`/@${rootPost.author.handle}`);
+            }
+          }}
+        />
+        <div className="min-w-0 flex-1">
+          <h1 className="text-base font-semibold text-text">Thread</h1>
+          <p className="truncate text-xs text-muted">
+            Started by{" "}
+            <Link
+              to={`/@${rootPost.author.handle}`}
+              className="font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline"
             >
-              Profile
-            </ButtonLink>
-          </Panel>
+              @{rootPost.author.handle}
+            </Link>
+          </p>
+        </div>
+        <span className="inline-flex min-h-8 items-center gap-1.5 rounded-full bg-surface-strong/55 px-2.5 text-xs font-medium text-muted">
+          <MessageCircle aria-hidden="true" size={14} />
+          {replyCountLabel(rootPost.commentCount)}
+        </span>
+      </header>
 
-          {post.room ? (
-            <Panel className="p-4">
-              <div className="flex items-center gap-2">
-                <Radio aria-hidden="true" size={16} className="text-muted" />
-                <h2 className="min-w-0 truncate text-sm font-semibold text-text">
-                  {post.room.name}
-                </h2>
-              </div>
-              <p className="mt-1 text-sm text-muted">/{post.room.slug}</p>
-              <ButtonLink
-                to={roomCanonicalPath(post.room)}
-                variant="secondary"
-                size="sm"
-                className="mt-3 w-full"
-              >
-                Room
-              </ButtonLink>
-            </Panel>
-          ) : null}
-
-          <Panel className="p-4">
-            <h2 className="text-sm font-semibold text-text">Thread</h2>
-            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-              <ThreadMetric label="Replies" value={post.commentCount} />
-              <ThreadMetric label="Glows" value={post.likeCount} />
-              <ThreadMetric label="Echoes" value={post.reblogCount ?? 0} />
-            </div>
-          </Panel>
-        </aside>
-      </div>
+      <ThreadView
+        ancestorPath={ancestorPath}
+        composePostId={
+          (location.state as { openComposer?: boolean } | null)?.openComposer
+            ? requestedPost.id
+            : undefined
+        }
+        focusPostId={requestedPost.id}
+        onRootDeleted={() =>
+          navigate(`/@${rootPost.author.handle}`, { replace: true })
+        }
+        onRootPostChange={(nextRoot) => {
+          setAncestorPath((current) =>
+            current.map((item, index) => (index === 0 ? nextRoot : item)),
+          );
+          setRequestedPost((current) =>
+            current?.id === nextRoot.id ? nextRoot : current,
+          );
+        }}
+        rootPost={rootPost}
+      />
     </motion.div>
   );
+}
+
+async function loadAncestorPath(post: Post) {
+  const path = [post];
+  const seen = new Set([post.id]);
+  let current = post;
+
+  while (current.parentId && path.length < 32) {
+    if (seen.has(current.parentId)) {
+      break;
+    }
+
+    try {
+      const parent = await getPost(String(current.parentId));
+      seen.add(parent.id);
+      path.unshift(parent);
+      current = parent;
+    } catch {
+      // A deleted or private ancestor must not hide the post that is available.
+      break;
+    }
+  }
+
+  return path;
 }
 
 function PostUnavailableNotice({
@@ -377,7 +273,7 @@ function PostUnavailableNotice({
 }) {
   return (
     <motion.div
-      className="mx-auto flex w-full max-w-4xl flex-col gap-6"
+      className="mx-auto flex w-full max-w-[46rem] flex-col gap-6"
       variants={pageEntrance}
       initial="hidden"
       animate="show"
@@ -402,13 +298,6 @@ function PostUnavailableNotice({
   );
 }
 
-function ThreadMetric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-card border border-line bg-canvas/45 p-2">
-      <p className="text-base font-semibold text-text">{value}</p>
-      <p className="mt-0.5 text-[0.68rem] font-medium uppercase tracking-[0.08em] text-muted">
-        {label}
-      </p>
-    </div>
-  );
+function replyCountLabel(count: number) {
+  return count === 1 ? "1 reply" : `${count} replies`;
 }

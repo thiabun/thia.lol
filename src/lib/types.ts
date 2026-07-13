@@ -476,7 +476,7 @@ export type Post = {
   publicId?: string;
   author: User;
   profile?: Profile;
-  room: Pick<Room, "slug" | "name" | "theme" | "themeConfig">;
+  room: Pick<Room, "slug" | "name" | "theme" | "themeConfig"> | null;
   body: string;
   bodyFormat?: "plain" | "markdown";
   contentVersion?: number;

@@ -5859,13 +5859,15 @@ function FeaturedPostCard({ post }: { post: Post }) {
             {formatCountWithUnit(post.reblogCount, "reblog")}
           </span>
         ) : null}
-        <Link
-          className="inline-flex min-w-0 items-center gap-1.5 rounded-control font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-          to={`/rooms/${post.room.slug}`}
-        >
-          <Radio aria-hidden="true" size={13} />
-          <span className="truncate">{post.room.name}</span>
-        </Link>
+        {post.room ? (
+          <Link
+            className="inline-flex min-w-0 items-center gap-1.5 rounded-control font-medium text-text underline-offset-4 hover:text-accent-strong hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            to={`/rooms/${post.room.slug}`}
+          >
+            <Radio aria-hidden="true" size={13} />
+            <span className="truncate">{post.room.name}</span>
+          </Link>
+        ) : null}
       </div>
     </article>
   );

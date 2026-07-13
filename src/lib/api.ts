@@ -3734,7 +3734,7 @@ function normalizePost(post: ApiPost): Post {
   const normalized: Post = {
     id: post.id,
     author: post.author,
-    room: post.room ? normalizeRoom(post.room) : makeFallbackRoom(),
+    room: post.room ? normalizeRoom(post.room) : null,
     body: post.body,
     bodyFormat: post.bodyFormat === "markdown" ? "markdown" : "plain",
     contentVersion: typeof post.contentVersion === "number" && Number.isFinite(post.contentVersion)
@@ -3939,15 +3939,6 @@ function normalizePushSubscriptionSummary(
     disabledAt: typeof value.disabledAt === "string" ? value.disabledAt : null,
     createdAt: typeof value.createdAt === "string" ? value.createdAt : null,
     updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : null,
-  };
-}
-
-function makeFallbackRoom(): Pick<Room, "slug" | "name" | "theme" | "themeConfig"> {
-  return {
-    slug: "profile",
-    name: "Profile feed",
-    theme: null,
-    themeConfig: null,
   };
 }
 

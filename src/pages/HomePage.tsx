@@ -346,7 +346,7 @@ function AnonymousHomePage() {
 
           {heroPost ? (
             <div
-              className="min-w-0 rounded-panel border border-line/75 bg-surface/58 p-2 shadow-soft sm:p-3"
+              className="min-w-0"
               data-testid="anonymous-product-preview"
             >
               <PostCard post={heroPost} index={0} />
