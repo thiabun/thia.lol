@@ -1611,6 +1611,45 @@ async function refreshProfileShareCardAfterMutation(
   }
 }
 
+async function refreshProfileShareCardsAfterMutation(
+  request: FastifyRequest,
+  dependencies: AppDependencies,
+  routeName: string,
+  handles: Array<string | null | undefined>,
+): Promise<void> {
+  const uniqueHandles = [
+    ...new Set(handles.map((handle) => handle?.trim()).filter((handle): handle is string => Boolean(handle))),
+  ];
+
+  await Promise.all(
+    uniqueHandles.map((handle) => refreshProfileShareCardAfterMutation(request, dependencies, routeName, handle)),
+  );
+}
+
+async function publicPostAuthorHandleForShareCardRefresh(
+  request: FastifyRequest,
+  dependencies: AppDependencies,
+  routeName: string,
+  postId: number,
+): Promise<string | null> {
+  if (dependencies.postsRepository === undefined) {
+    return null;
+  }
+
+  try {
+    const post = await dependencies.postsRepository.getPublicPost(
+      String(postId),
+      null,
+      dependencies.publicBaseUrl ?? "https://thia.lol",
+    );
+
+    return post?.author.handle ?? null;
+  } catch (error) {
+    request.log.warn({ error, postId, routeName }, "failed to resolve post author for profile share card refresh");
+    return null;
+  }
+}
+
 function authRequestContext(request: FastifyRequest, dependencies: AppDependencies): AuthRequestContext {
   const forwardedFor = request.headers["x-forwarded-for"];
   const forwardedProto = request.headers["x-forwarded-proto"];
@@ -2581,7 +2620,17 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "me.account.handle.update",
-      (repository, session, body) => repository.updateAccountHandle(session, jsonBodyRequiredObject(body, request.body)),
+      async (repository, session, body) => {
+        const settings = await repository.updateAccountHandle(session, jsonBodyRequiredObject(body, request.body));
+        await refreshProfileShareCardsAfterMutation(
+          request,
+          dependencies,
+          "me.account.handle.update.share-card",
+          [session.handle, settings.account.handle],
+        );
+
+        return settings;
+      },
     ),
   );
 
@@ -3585,7 +3634,15 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       async (repository, session, body) => {
         const post = await repository.updatePost(session, postId, body);
         const identifier = post.publicId !== "" ? post.publicId : String(post.id);
-        await refreshPostShareCardAfterMutation(request, dependencies, "posts.update.share-card", identifier, session.userId);
+        await Promise.all([
+          refreshPostShareCardAfterMutation(request, dependencies, "posts.update.share-card", identifier, session.userId),
+          refreshProfileShareCardAfterMutation(
+            request,
+            dependencies,
+            "posts.update.profile-share-card",
+            post.author.handle ?? session.handle,
+          ),
+        ]);
 
         return post;
       },
@@ -3605,7 +3662,26 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "posts.delete",
-      (repository, session) => repository.deletePost(session, postId),
+      async (repository, session) => {
+        const authorHandle = await publicPostAuthorHandleForShareCardRefresh(
+          request,
+          dependencies,
+          "posts.delete.profile-share-card.author",
+          postId,
+        );
+        const result = await repository.deletePost(session, postId);
+
+        if (authorHandle !== null) {
+          await refreshProfileShareCardAfterMutation(
+            request,
+            dependencies,
+            "posts.delete.profile-share-card",
+            authorHandle,
+          );
+        }
+
+        return result;
+      },
     );
   });
 
@@ -3656,7 +3732,25 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "posts.reblog.create",
-      (repository, session) => repository.reblogPost(postId, session),
+      async (repository, session) => {
+        const [result, authorHandle] = await Promise.all([
+          repository.reblogPost(postId, session),
+          publicPostAuthorHandleForShareCardRefresh(
+            request,
+            dependencies,
+            "posts.reblog.create.profile-share-card.author",
+            postId,
+          ),
+        ]);
+        await refreshProfileShareCardsAfterMutation(
+          request,
+          dependencies,
+          "posts.reblog.create.profile-share-card",
+          [session.handle, authorHandle],
+        );
+
+        return result;
+      },
     );
   });
 
@@ -3673,7 +3767,25 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "posts.reblog.delete",
-      (repository, session) => repository.unreblogPost(postId, session),
+      async (repository, session) => {
+        const [result, authorHandle] = await Promise.all([
+          repository.unreblogPost(postId, session),
+          publicPostAuthorHandleForShareCardRefresh(
+            request,
+            dependencies,
+            "posts.reblog.delete.profile-share-card.author",
+            postId,
+          ),
+        ]);
+        await refreshProfileShareCardsAfterMutation(
+          request,
+          dependencies,
+          "posts.reblog.delete.profile-share-card",
+          [session.handle, authorHandle],
+        );
+
+        return result;
+      },
     );
   });
 
@@ -4070,23 +4182,6 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       dependencies,
       "profiles.share-card",
       (service) => service.profileCard(normalizedHandle),
-    );
-  });
-
-  app.post("/profiles/:handle/share-card-cache", async (request, reply) => {
-    const parsedParams = profileParamsSchema.safeParse(request.params);
-    const normalizedHandle = parsedParams.success ? normalizeProfileHandle(parsedParams.data.handle) : null;
-
-    if (normalizedHandle === null) {
-      return reply.status(404).send(errorPayload("Profile not found."));
-    }
-
-    return withShareCardCacheRoute(
-      request,
-      reply,
-      dependencies,
-      "profiles.share-card-cache",
-      async (service, session) => service.cacheProfileCard(normalizedHandle, session, await request.file()),
     );
   });
 

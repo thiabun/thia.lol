@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
@@ -9,11 +9,11 @@ import sharp from "sharp";
 import type { PostsRepository } from "./posts.js";
 import type { ProfilesRepository } from "./profiles.js";
 import type { RoomsRepository } from "./rooms.js";
+import { shareCardCacheVersion } from "./share-card-version.js";
 import type { RequestSession } from "./sessions.js";
 
 export const shareCardWidth = 2400;
 export const shareCardHeight = 1260;
-const shareCardCacheVersion = "screenshot-v6";
 const shareCardMaxUploadBytes = 32 * 1024 * 1024;
 
 export class ShareCardRouteError extends Error {
@@ -45,12 +45,15 @@ export interface ShareCardService {
   refreshPostCard(identifier: string, viewerUserId: number | null): Promise<ShareCardCachePayload | null>;
   refreshProfileCard(handle: string): Promise<ShareCardCachePayload | null>;
   cachePostCard(identifier: string, session: RequestSession, file: MultipartFile | undefined): Promise<ShareCardCachePayload>;
-  cacheProfileCard(handle: string, session: RequestSession, file: MultipartFile | undefined): Promise<ShareCardCachePayload>;
   proxyImage(rawUrl: string): Promise<ShareCardImage | null>;
 }
 
 export interface ShareCardRenderer {
   render(url: string): Promise<Buffer>;
+}
+
+export function shareCardReadySelector(): string {
+  return `[data-share-card-canvas][data-share-card-ready='true'][data-share-card-render-version='${shareCardCacheVersion}']`;
 }
 
 export interface ShareCardServiceOptions {
@@ -63,12 +66,19 @@ export interface ShareCardServiceOptions {
   renderer?: ShareCardRenderer;
 }
 
+interface PendingRenderState {
+  completedGeneration: number;
+  promise?: Promise<ShareCardImage>;
+  requestedGeneration: number;
+  settled: boolean;
+}
+
 export function createShareCardService(options: ShareCardServiceOptions): ShareCardService {
   return new NodeShareCardService(options);
 }
 
 class NodeShareCardService implements ShareCardService {
-  private readonly pendingRenders = new Map<string, Promise<ShareCardImage>>();
+  private readonly pendingRenders = new Map<string, PendingRenderState>();
   private readonly renderer: ShareCardRenderer;
 
   constructor(private readonly options: ShareCardServiceOptions) {
@@ -124,6 +134,7 @@ class NodeShareCardService implements ShareCardService {
     const post = await this.options.postsRepository.getPublicPost(identifier, viewerUserId, this.options.publicBaseUrl);
 
     if (post === null) {
+      await this.purgeCachedCard("post", identifier);
       return null;
     }
 
@@ -144,12 +155,13 @@ class NodeShareCardService implements ShareCardService {
 
   async refreshProfileCard(handle: string): Promise<ShareCardCachePayload | null> {
     const profile = await this.options.profilesRepository.getPublicProfile(handle);
+    const profileHandle = String(profile?.user?.handle ?? handle);
 
     if (profile === null || profile.viewerCanView === false) {
+      await this.purgeCachedCard("profile", profileHandle);
       return null;
     }
 
-    const profileHandle = String(profile.user?.handle ?? handle);
     await this.renderAndStoreCard(
       "profile",
       profileHandle,
@@ -196,20 +208,6 @@ class NodeShareCardService implements ShareCardService {
     }
 
     return this.storeUploadedCard("post", String(post.publicId ?? post.id), file);
-  }
-
-  async cacheProfileCard(handle: string, session: RequestSession, file: MultipartFile | undefined): Promise<ShareCardCachePayload> {
-    const profile = await this.options.profilesRepository.getPublicProfile(handle);
-
-    if (profile === null || profile.viewerCanView === false) {
-      throw new ShareCardRouteError("Profile not found.", 404);
-    }
-
-    if (Number(profile.user?.id ?? 0) !== session.userId) {
-      throw new ShareCardRouteError("Only the profile owner can publish this share card preview.", 403);
-    }
-
-    return this.storeUploadedCard("profile", String(profile.user?.handle ?? handle), file);
   }
 
   async proxyImage(rawUrl: string): Promise<ShareCardImage | null> {
@@ -314,18 +312,67 @@ class NodeShareCardService implements ShareCardService {
 
     const pending = this.pendingRenders.get(pendingKey);
 
-    if (pending !== undefined) {
-      return pending;
+    if (pending !== undefined && !pending.settled && pending.promise !== undefined) {
+      if (force) {
+        pending.requestedGeneration += 1;
+      }
+
+      return pending.promise;
     }
 
-    const render = this.renderAndWriteCard(kind, key, renderPath)
+    const state: PendingRenderState = {
+      completedGeneration: 0,
+      requestedGeneration: 1,
+      settled: false,
+    };
+    const render = this.renderQueuedCards(kind, key, renderPath, state)
       .finally(() => {
-        this.pendingRenders.delete(pendingKey);
+        if (this.pendingRenders.get(pendingKey) === state) {
+          this.pendingRenders.delete(pendingKey);
+        }
       });
 
-    this.pendingRenders.set(pendingKey, render);
+    state.promise = render;
+    this.pendingRenders.set(pendingKey, state);
 
     return render;
+  }
+
+  private async renderQueuedCards(
+    kind: "post" | "profile",
+    key: string,
+    renderPath: string,
+    state: PendingRenderState,
+  ): Promise<ShareCardImage> {
+    let image: ShareCardImage | undefined;
+    let lastError: unknown;
+
+    try {
+      while (state.completedGeneration < state.requestedGeneration) {
+        const generation = state.requestedGeneration;
+
+        try {
+          image = await this.renderAndWriteCard(kind, key, renderPath);
+          lastError = undefined;
+        } catch (error) {
+          lastError = error;
+        }
+
+        state.completedGeneration = generation;
+      }
+
+      if (lastError !== undefined) {
+        throw lastError;
+      }
+
+      if (image === undefined) {
+        throw new Error("Share card render completed without an image.");
+      }
+
+      return image;
+    } finally {
+      state.settled = true;
+    }
   }
 
   private async renderAndWriteCard(
@@ -336,6 +383,11 @@ class NodeShareCardService implements ShareCardService {
     const url = new URL(renderPath, this.options.publicBaseUrl).toString();
     const rendered = await this.renderer.render(url);
     const buffer = await normalizedJpegShareCard(rendered);
+
+    if (!(await this.cardIsStillPublic(kind, key))) {
+      throw new ShareCardRouteError(`${kind === "profile" ? "Profile" : "Post"} not found.`, 404);
+    }
+
     const cachePath = this.cachePath(kind, key, "jpg");
     const temporaryPath = `${cachePath}.${Date.now()}.tmp`;
 
@@ -360,6 +412,58 @@ class NodeShareCardService implements ShareCardService {
     }
 
     return null;
+  }
+
+  private async cardIsStillPublic(kind: "post" | "profile", key: string): Promise<boolean> {
+    if (kind === "profile") {
+      const profile = await this.options.profilesRepository.getPublicProfile(key);
+
+      return profile !== null && profile.viewerCanView !== false;
+    }
+
+    return (await this.options.postsRepository.getPublicPost(key, null, this.options.publicBaseUrl)) !== null;
+  }
+
+  private async purgeCachedCard(kind: "post" | "profile", key: string): Promise<void> {
+    const normalizedKey = normalizedShareCardTarget(key);
+
+    if (normalizedKey === null) {
+      return;
+    }
+
+    const pending = this.pendingRenders.get(`${kind}:${normalizedKey}`);
+
+    if (pending?.promise !== undefined && !pending.settled) {
+      try {
+        await pending.promise;
+      } catch {
+        // A privacy or deletion refresh must still remove artifacts from a failed render.
+      }
+    }
+
+    const directory = path.join(
+      this.options.uploadRoot,
+      "share-cards",
+      kind === "profile" ? "profiles" : "posts",
+    );
+    let filenames: string[];
+
+    try {
+      filenames = await readdir(directory);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return;
+      }
+
+      throw error;
+    }
+
+    const filenamePattern = new RegExp(`^${normalizedKey}-screenshot-v\\d+\\.(?:jpg|png)$`, "u");
+    await Promise.all(
+      filenames
+        .filter((filename) => filenamePattern.test(filename))
+        .map((filename) => rm(path.join(directory, filename), { force: true })),
+    );
   }
 
   private cachePath(kind: "post" | "profile", key: string, extension: "jpg" | "png"): string {
@@ -439,7 +543,7 @@ class PlaywrightShareCardRenderer implements ShareCardRenderer {
         waitUntil: "domcontentloaded",
       });
 
-      const canvas = page.locator("[data-share-card-canvas][data-share-card-ready='true']");
+      const canvas = page.locator(shareCardReadySelector());
       await canvas.waitFor({ state: "visible", timeout: 15_000 });
       await page.evaluate(waitForShareCardAssetsScript);
       await page.waitForTimeout(150);
@@ -801,9 +905,15 @@ function imageContentTypeFromFormat(format: string | undefined): ShareCardImage[
 }
 
 function shareCardCacheKey(value: string): string | null {
+  const normalized = normalizedShareCardTarget(value);
+
+  return normalized === null ? null : `${normalized}-${shareCardCacheVersion}`;
+}
+
+function normalizedShareCardTarget(value: string): string | null {
   const normalized = value.trim().toLowerCase();
 
-  return /^[a-z0-9_-]{1,80}$/u.test(normalized) ? `${normalized}-${shareCardCacheVersion}` : null;
+  return /^[a-z0-9_-]{1,80}$/u.test(normalized) ? normalized : null;
 }
 
 function bodySnippet(value: string, maxLength: number): string {

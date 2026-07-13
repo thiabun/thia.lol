@@ -1046,11 +1046,6 @@ function shareCardServiceMock(overrides: Partial<ShareCardService> = {}): ShareC
       width: 2400,
       height: 1260,
     }),
-    cacheProfileCard: vi.fn().mockResolvedValue({
-      url: "/uploads/share-cards/profiles/card.png",
-      width: 2400,
-      height: 1260,
-    }),
     proxyImage: vi.fn().mockResolvedValue(null),
     ...overrides,
   };
@@ -2002,6 +1997,43 @@ describe("Node API profile/account editor preview routes", () => {
     expect(service.refreshProfileCard).not.toHaveBeenCalled();
   });
 
+  it("purges the old profile card and renders the new handle after a handle change", async () => {
+    const service = shareCardServiceMock();
+    const repository = editorRepositoryMock({
+      updateAccountHandle: vi.fn().mockResolvedValue({
+        ...settingsPayload,
+        account: {
+          ...settingsPayload.account,
+          handle: "new-handle",
+        },
+      }),
+    });
+    const app = buildApp({
+      editorRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock({
+        currentSession: vi.fn().mockResolvedValue({ ...session, handle: "old-handle" }),
+      }),
+      shareCardService: service,
+    });
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/me/account/handle",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: {
+        currentPassword: "correct-password",
+        handle: "new-handle",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(service.refreshProfileCard).toHaveBeenNthCalledWith(1, "old-handle");
+    expect(service.refreshProfileCard).toHaveBeenNthCalledWith(2, "new-handle");
+  });
+
   it("serves profile editor reads through PHP-style wrappers", async () => {
     const repository = editorRepositoryMock();
     const app = buildApp({
@@ -2858,8 +2890,122 @@ describe("Node API social and content mutation preview routes", () => {
     expect(update.statusCode).toBe(200);
     expect(service.refreshPostCard).toHaveBeenCalledTimes(3);
     expect(service.refreshPostCard).toHaveBeenCalledWith("pc359fe2da759", 42);
-    expect(service.refreshProfileCard).toHaveBeenCalledTimes(2);
+    expect(service.refreshProfileCard).toHaveBeenCalledTimes(3);
     expect(service.refreshProfileCard).toHaveBeenCalledWith("thia");
+  });
+
+  it("refreshes the public post author's profile card after a moderator deletes their post", async () => {
+    const service = shareCardServiceMock();
+    const publicPosts = postsRepositoryMock();
+    const moderatorSession = { ...session, handle: "moderator", role: "admin" };
+    const app = buildApp({
+      contentMutationsRepository: contentMutationsRepositoryMock(),
+      postsRepository: publicPosts,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock({
+        currentSession: vi.fn().mockResolvedValue(moderatorSession),
+      }),
+      shareCardService: service,
+    });
+
+    const response = await app.inject({
+      method: "DELETE",
+      url: "/posts/99",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(publicPosts.getPublicPost).toHaveBeenCalledWith("99", null, "https://thia.lol");
+    expect(service.refreshProfileCard).toHaveBeenCalledTimes(1);
+    expect(service.refreshProfileCard).toHaveBeenCalledWith("thia");
+    expect(service.refreshProfileCard).not.toHaveBeenCalledWith("moderator");
+  });
+
+  it("does not refresh a profile card when a deleted post was not publicly visible", async () => {
+    const service = shareCardServiceMock();
+    const publicPosts = postsRepositoryMock({
+      getPublicPost: vi.fn().mockResolvedValue(null),
+    });
+    const app = buildApp({
+      contentMutationsRepository: contentMutationsRepositoryMock(),
+      postsRepository: publicPosts,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+      shareCardService: service,
+    });
+
+    const response = await app.inject({
+      method: "DELETE",
+      url: "/posts/99",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(service.refreshProfileCard).not.toHaveBeenCalled();
+  });
+
+  it("refreshes both the reblogger and public post author profile cards after reblog changes", async () => {
+    const service = shareCardServiceMock();
+    const publicPosts = postsRepositoryMock();
+    const app = buildApp({
+      contentMutationsRepository: contentMutationsRepositoryMock(),
+      postsRepository: publicPosts,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+      shareCardService: service,
+    });
+
+    for (const method of ["POST", "DELETE"] as const) {
+      const response = await app.inject({
+        method,
+        url: "/posts/99/reblog",
+        headers: {
+          "x-csrf-token": "csrf-token",
+        },
+        payload: {},
+      });
+
+      expect(response.statusCode).toBe(200);
+    }
+
+    expect(publicPosts.getPublicPost).toHaveBeenCalledTimes(2);
+    expect(service.refreshProfileCard).toHaveBeenCalledTimes(4);
+    expect(service.refreshProfileCard).toHaveBeenNthCalledWith(1, "viewer");
+    expect(service.refreshProfileCard).toHaveBeenNthCalledWith(2, "thia");
+    expect(service.refreshProfileCard).toHaveBeenNthCalledWith(3, "viewer");
+    expect(service.refreshProfileCard).toHaveBeenNthCalledWith(4, "thia");
+  });
+
+  it("keeps reblog mutations successful when profile share-card refreshes fail", async () => {
+    const service = shareCardServiceMock({
+      refreshProfileCard: vi.fn().mockRejectedValue(new Error("renderer unavailable")),
+    });
+    const app = buildApp({
+      contentMutationsRepository: contentMutationsRepositoryMock(),
+      postsRepository: postsRepositoryMock(),
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+      shareCardService: service,
+      logger: false,
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/posts/99/reblog",
+      headers: {
+        "x-csrf-token": "csrf-token",
+      },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(service.refreshProfileCard).toHaveBeenCalledTimes(2);
   });
 
   it("passes post media metadata through create, reply, and update mutations", async () => {
@@ -3569,6 +3715,50 @@ describe("Node API stats preview route", () => {
 });
 
 describe("Node API profile preview route", () => {
+  it("rejects obsolete profile card uploads while preserving post card uploads", async () => {
+    const cachePostCard = vi.fn<ShareCardService["cachePostCard"]>(async (_identifier, _session, file) => {
+      await file?.toBuffer();
+      return {
+        url: "/uploads/share-cards/posts/card.png",
+        width: 2400,
+        height: 1260,
+      };
+    });
+    const service = shareCardServiceMock({ cachePostCard });
+    const app = buildApp({
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+      shareCardService: service,
+    });
+    const multipart = multipartPayload({}, {
+      filename: "card.jpg",
+      contentType: "image/jpeg",
+      body: Buffer.from("JPEG"),
+    });
+    const profileUpload = await app.inject({
+      method: "POST",
+      url: "/profiles/thia/share-card-cache",
+      headers: {
+        "content-type": multipart.contentType,
+        "x-csrf-token": "csrf-token",
+      },
+      payload: multipart.body,
+    });
+    const postUpload = await app.inject({
+      method: "POST",
+      url: "/posts/pc359fe2da759/share-card-cache",
+      headers: {
+        "content-type": multipart.contentType,
+        "x-csrf-token": "csrf-token",
+      },
+      payload: multipart.body,
+    });
+
+    expect(profileUpload.statusCode).toBe(404);
+    expect(postUpload.statusCode).toBe(201);
+    expect(cachePostCard).toHaveBeenCalledWith("pc359fe2da759", session, expect.any(Object));
+  });
+
   it("returns a public profile in the PHP success wrapper", async () => {
     const repository = profilesRepositoryMock();
     const app = buildApp({

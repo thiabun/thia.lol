@@ -23,6 +23,7 @@ import {
 } from "../../lib/profileModuleRegistry";
 import type { ProfileLayoutPreset, ProfileModuleLayout } from "../../lib/types";
 import { cardEntrance, softSpring } from "../../lib/motionPresets";
+import { profileCanvasGlassTreatment } from "../../lib/profileVisualTreatments";
 
 type ProfileGridProps = {
   canvasGlass?: number | undefined;
@@ -129,16 +130,11 @@ export function ProfileGrid({
     };
   }, [fitRowsToContent, layoutPreset, maxColumns, maxRows]);
 
-  const normalizedCanvasGlass = Math.min(
-    92,
-    Math.max(0, Math.round(canvasGlass)),
-  );
-  const canvasSurfacePercent = Math.round(
-    94 - (normalizedCanvasGlass / 92) * 82,
-  );
-  const moduleSurfacePercent = Math.round(
-    78 - (normalizedCanvasGlass / 92) * 42,
-  );
+  const {
+    canvasSurfacePercent,
+    moduleSurfacePercent,
+    normalizedGlass: normalizedCanvasGlass,
+  } = profileCanvasGlassTreatment(canvasGlass);
   const rawContentScale = measuredCellSize === undefined ? 1 : measuredCellSize / 86;
   const contentScale = Math.min(contentScaleMax, rawContentScale);
   const contentScaleInverse = 1 / contentScale;

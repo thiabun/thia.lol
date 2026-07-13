@@ -44,6 +44,7 @@ import {
   defaultProfileLayoutPreset,
   profileLayoutMaxColumns,
 } from "../../lib/profileLayoutPresets";
+import { profileCanvasGlassTreatment } from "../../lib/profileVisualTreatments";
 import {
   attachSpotifyPlaybackListeners,
   emptySpotifyPlaybackProgress,
@@ -83,6 +84,14 @@ import { RichText } from "./RichText";
 const PROFILE_CANVAS_COLUMNS = PROFILE_CANVAS_DESKTOP_COLUMNS;
 const PROFILE_CANVAS_ROWS = PROFILE_CANVAS_DESKTOP_ROWS;
 const PROFILE_MUSIC_AUTOPLAY_VOLUME = 0.42;
+
+function isProfileShareCaptureMode(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    (window.location.pathname === "/share-render" ||
+      window.location.pathname.startsWith("/share-render/"))
+  );
+}
 
 type AlbumArtworkTextTone = "black" | "white";
 
@@ -347,13 +356,18 @@ function ProfileModuleMobileStack({
   musicAutoplay,
   renderModuleContent,
 }: ProfileModuleMobileStackProps) {
+  const captureMode = isProfileShareCaptureMode();
+  const { moduleSurfacePercent, normalizedGlass } =
+    profileCanvasGlassTreatment(canvasGlass);
+
   return (
     <div
       className="grid min-w-0 w-full grid-cols-[minmax(0,1fr)] gap-3"
+      data-profile-canvas-glass={normalizedGlass}
       data-testid="profile-module-stack"
       style={
         {
-          "--profile-module-glass-alpha": `${Math.max(0, Math.min(100, canvasGlass))}%`,
+          "--profile-module-glass-alpha": `${moduleSurfacePercent}%`,
         } as CSSProperties
       }
     >
@@ -373,7 +387,7 @@ function ProfileModuleMobileStack({
             data-profile-mobile-module={module.type}
             data-profile-grid-module="true"
             data-profile-grid-size={size}
-            data-render-deferred="profile-module"
+            data-render-deferred={captureMode ? undefined : "profile-module"}
             data-testid={`profile-grid-module-${module.type}`}
             key={module.id}
           >
@@ -510,6 +524,7 @@ export function ProfileModuleGrid({
   modules,
   renderModuleContent,
 }: ProfileModuleGridProps) {
+  const captureMode = isProfileShareCaptureMode();
   const renderableModules = sortProfileModulesForCanvas(
     editing
       ? modules.filter((module) => isProfileModuleType(module.type))
@@ -606,7 +621,7 @@ export function ProfileModuleGrid({
         maxColumns={resolvedMaxColumns}
         testId="profile-module-grid"
       >
-        <ProfileGridModule size="wide">
+        <ProfileGridModule deferRender={!captureMode} size="wide">
           <div className="rounded-card border border-dashed border-line bg-canvas/45 p-4 text-sm text-muted">
             No module content to preview.
           </div>
@@ -734,6 +749,7 @@ export function ProfileModuleGrid({
                 : undefined,
             )}
             layout={safeLayout}
+            deferRender={!captureMode}
             dragging={editing && dragState?.moduleId === module.id}
             pinned={module.pinned}
             presentation={{
@@ -2090,6 +2106,7 @@ function MusicPlaylistPlayer({
   module: ProfileModule;
   size?: ProfileGridModuleSize | undefined;
 }) {
+  const captureMode = isProfileShareCaptureMode();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const spotifyContainerRef = useRef<HTMLDivElement | null>(null);
   const spotifyControllerRef = useRef<SpotifyEmbedController | undefined>(undefined);
@@ -2228,6 +2245,10 @@ function MusicPlaylistPlayer({
   }, [activeTrack?.duration, localAudio]);
 
   useEffect(() => {
+    if (captureMode) {
+      return undefined;
+    }
+
     const container = spotifyContainerRef.current;
 
     if (!container || !spotifyUri) {
@@ -2286,7 +2307,7 @@ function MusicPlaylistPlayer({
       spotifyControllerRef.current = undefined;
       container.replaceChildren();
     };
-  }, [spotifyUri]);
+  }, [captureMode, spotifyUri]);
 
   useEffect(() => {
     if (!playing || !spotifyProgress.known || spotifyProgress.duration <= 0) {
@@ -2361,6 +2382,13 @@ function MusicPlaylistPlayer({
   return (
     <div
       className="flex h-full min-h-0 overflow-hidden rounded-card border border-line bg-surface/74 shadow-inner-soft"
+      data-profile-capture-embed-fallback={
+        captureMode && integration?.provider === "spotify"
+          ? "spotify"
+          : captureMode && integration?.provider === "youtube"
+            ? "youtube"
+            : undefined
+      }
       data-profile-music-playlist-tier={presentation.tier}
       data-testid="profile-music-playlist-player"
     >
@@ -2510,7 +2538,7 @@ function MusicPlaylistPlayer({
           data-testid="profile-music-playlist-audio"
         />
       ) : null}
-      {spotifyUri ? (
+      {spotifyUri && !captureMode ? (
         <div
           className="pointer-events-none absolute size-px overflow-hidden opacity-0"
           aria-hidden="true"
@@ -2519,7 +2547,7 @@ function MusicPlaylistPlayer({
           <div ref={spotifyContainerRef} />
         </div>
       ) : null}
-      {youtubeEmbedSrc ? (
+      {youtubeEmbedSrc && !captureMode ? (
         <iframe
           key={youtubeEmbedSrc}
           className="pointer-events-none absolute size-px opacity-0"
@@ -2556,6 +2584,7 @@ function ProfileIntegrationRichCard({
   presentationMode?: ProfileModuleRenderMode | undefined;
   size?: ProfileGridModuleSize | undefined;
 }) {
+  const captureMode = isProfileShareCaptureMode();
   const metadata = integration.metadata;
   const title = metadata.title ?? module.config.label ?? fallbackLabel;
   const subtitle = integrationLabel(integration);
@@ -2738,26 +2767,36 @@ function ProfileIntegrationRichCard({
             onChange={setMobileTwitchPanel}
             testId="profile-twitch-mobile-tabs"
           />
-          <iframe
-            className={cn(
-              "block min-h-0 min-w-0 flex-1 w-full rounded-card border-0",
-              showChat ? "bg-surface" : "bg-black",
-            )}
-            title={showChat ? "Twitch chat" : primaryEmbed.title}
-            src={showChat ? twitchChatSrc : primaryEmbedSrc}
-            height={360}
-            loading="lazy"
-            referrerPolicy="strict-origin-when-cross-origin"
-            allow={showChat ? undefined : primaryEmbed.allow}
-            sandbox={twitchEmbedSandbox}
-            allowFullScreen={!showChat}
-            data-profile-embed-provider="twitch"
-            data-testid={
-              showChat
-                ? "profile-integration-embed-twitch-chat"
-                : "profile-integration-embed-twitch"
-            }
-          />
+          {captureMode ? (
+            <ProfileEmbedCaptureSurface
+              className="block min-h-0 min-w-0 flex-1 w-full rounded-card"
+              imageUrl={showChat ? undefined : metadata.imageUrl}
+              kind={showChat ? "chat" : "video"}
+              label={showChat ? "Twitch chat" : title}
+              provider="twitch"
+            />
+          ) : (
+            <iframe
+              className={cn(
+                "block min-h-0 min-w-0 flex-1 w-full rounded-card border-0",
+                showChat ? "bg-surface" : "bg-black",
+              )}
+              title={showChat ? "Twitch chat" : primaryEmbed.title}
+              src={showChat ? twitchChatSrc : primaryEmbedSrc}
+              height={360}
+              loading="lazy"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allow={showChat ? undefined : primaryEmbed.allow}
+              sandbox={twitchEmbedSandbox}
+              allowFullScreen={!showChat}
+              data-profile-embed-provider="twitch"
+              data-testid={
+                showChat
+                  ? "profile-integration-embed-twitch-chat"
+                  : "profile-integration-embed-twitch"
+              }
+            />
+          )}
         </div>
       );
     }
@@ -2774,29 +2813,48 @@ function ProfileIntegrationRichCard({
           className="profile-twitch-embed-grid grid h-full min-h-0 gap-2"
           style={twitchStreamChatColumnStyle}
         >
-          <iframe
-            className="profile-twitch-embed-frame block h-full min-h-0 min-w-0 w-full rounded-card border-0 bg-black"
-            title={primaryEmbed.title}
-            src={primaryEmbedSrc}
-            height={360}
-            loading="lazy"
-            referrerPolicy="strict-origin-when-cross-origin"
-            allow={primaryEmbed.allow}
-            sandbox={twitchEmbedSandbox}
-            allowFullScreen
-            data-profile-embed-provider={integration.provider}
-            data-testid={`profile-integration-embed-${integration.provider}`}
-          />
-          <iframe
-            className="profile-twitch-embed-frame block h-full min-h-0 min-w-0 w-full rounded-card border-0 bg-surface"
-            title="Twitch chat"
-            src={twitchChatSrc}
-            height={360}
-            loading="lazy"
-            referrerPolicy="strict-origin-when-cross-origin"
-            sandbox={twitchEmbedSandbox}
-            data-testid="profile-integration-embed-twitch-chat"
-          />
+          {captureMode ? (
+            <ProfileEmbedCaptureSurface
+              className="profile-twitch-embed-frame block h-full min-h-0 min-w-0 w-full rounded-card"
+              imageUrl={metadata.imageUrl}
+              kind="video"
+              label={title}
+              provider="twitch"
+            />
+          ) : (
+            <iframe
+              className="profile-twitch-embed-frame block h-full min-h-0 min-w-0 w-full rounded-card border-0 bg-black"
+              title={primaryEmbed.title}
+              src={primaryEmbedSrc}
+              height={360}
+              loading="lazy"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allow={primaryEmbed.allow}
+              sandbox={twitchEmbedSandbox}
+              allowFullScreen
+              data-profile-embed-provider={integration.provider}
+              data-testid={`profile-integration-embed-${integration.provider}`}
+            />
+          )}
+          {captureMode ? (
+            <ProfileEmbedCaptureSurface
+              className="profile-twitch-embed-frame block h-full min-h-0 min-w-0 w-full rounded-card"
+              kind="chat"
+              label="Twitch chat"
+              provider="twitch"
+            />
+          ) : (
+            <iframe
+              className="profile-twitch-embed-frame block h-full min-h-0 min-w-0 w-full rounded-card border-0 bg-surface"
+              title="Twitch chat"
+              src={twitchChatSrc}
+              height={360}
+              loading="lazy"
+              referrerPolicy="strict-origin-when-cross-origin"
+              sandbox={twitchEmbedSandbox}
+              data-testid="profile-integration-embed-twitch-chat"
+            />
+          )}
         </div>
       </div>
     );
@@ -2810,24 +2868,34 @@ function ProfileIntegrationRichCard({
   ) {
     return (
       <div className="profile-media-embed-surface h-full min-h-0 overflow-hidden rounded-card bg-black">
-        <iframe
-          className="profile-media-embed-frame block h-full min-h-0 w-full rounded-card border-0 bg-black"
-          title={primaryEmbed.title}
-          src={primaryEmbedSrc}
-          height={primaryEmbedHeight}
-          loading="lazy"
-          referrerPolicy="strict-origin-when-cross-origin"
-          allow={primaryEmbed.allow}
-          sandbox={
-            integration.provider === "twitch"
-              ? twitchEmbedSandbox
-              : "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
-          }
-          allowFullScreen
-          data-profile-embed-provider={integration.provider}
-          data-profile-media-only-embed="true"
-          data-testid={`profile-integration-embed-${integration.provider}`}
-        />
+        {captureMode ? (
+          <ProfileEmbedCaptureSurface
+            className="profile-media-embed-frame block h-full min-h-0 w-full rounded-card"
+            imageUrl={metadata.imageUrl}
+            kind="video"
+            label={title}
+            provider={integration.provider}
+          />
+        ) : (
+          <iframe
+            className="profile-media-embed-frame block h-full min-h-0 w-full rounded-card border-0 bg-black"
+            title={primaryEmbed.title}
+            src={primaryEmbedSrc}
+            height={primaryEmbedHeight}
+            loading="lazy"
+            referrerPolicy="strict-origin-when-cross-origin"
+            allow={primaryEmbed.allow}
+            sandbox={
+              integration.provider === "twitch"
+                ? twitchEmbedSandbox
+                : "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+            }
+            allowFullScreen
+            data-profile-embed-provider={integration.provider}
+            data-profile-media-only-embed="true"
+            data-testid={`profile-integration-embed-${integration.provider}`}
+          />
+        )}
       </div>
     );
   }
@@ -2878,27 +2946,159 @@ function ProfileIntegrationRichCard({
         <ExternalLink aria-hidden="true" size={15} className="shrink-0 text-muted" />
       </a>
       {showPrimaryEmbed && primaryEmbed ? (
-        <iframe
-          className={cn(
-            "block w-full border-t border-line bg-transparent",
-            twitchChatSrc ? "min-h-0 flex-1" : undefined,
-          )}
-          title={primaryEmbed.title}
-          src={primaryEmbedSrc}
-          height={twitchChatSrc ? 260 : primaryEmbedHeight}
-          loading={integration.provider === "twitch" ? "eager" : "lazy"}
-          referrerPolicy="strict-origin-when-cross-origin"
-          allow={primaryEmbed.allow}
-          sandbox={
-            integration.provider === "twitch"
-              ? twitchEmbedSandbox
-              : "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
-          }
-          allowFullScreen
-          data-profile-embed-provider={integration.provider}
-          data-testid={`profile-integration-embed-${integration.provider}`}
+        captureMode ? (
+          <ProfileGenericEmbedCaptureSurface
+            height={twitchChatSrc ? 260 : primaryEmbedHeight}
+            imageUrl={metadata.imageUrl}
+            label={title}
+            provider={integration.provider}
+          />
+        ) : (
+          <iframe
+            className={cn(
+              "block w-full border-t border-line bg-transparent",
+              twitchChatSrc ? "min-h-0 flex-1" : undefined,
+            )}
+            title={primaryEmbed.title}
+            src={primaryEmbedSrc}
+            height={twitchChatSrc ? 260 : primaryEmbedHeight}
+            loading={integration.provider === "twitch" ? "eager" : "lazy"}
+            referrerPolicy="strict-origin-when-cross-origin"
+            allow={primaryEmbed.allow}
+            sandbox={
+              integration.provider === "twitch"
+                ? twitchEmbedSandbox
+                : "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms"
+            }
+            allowFullScreen
+            data-profile-embed-provider={integration.provider}
+            data-testid={`profile-integration-embed-${integration.provider}`}
+          />
+        )
+      ) : null}
+    </div>
+  );
+}
+
+function ProfileGenericEmbedCaptureSurface({
+  height,
+  imageUrl,
+  label,
+  provider,
+}: {
+  height: number;
+  imageUrl?: string | null | undefined;
+  label: string;
+  provider: ProfileIntegrationCard["provider"];
+}) {
+  return (
+    <div
+      aria-label={`${label} static preview`}
+      className="relative flex w-full items-center gap-3 overflow-hidden border-t border-line bg-canvas/58 p-3 text-text"
+      data-profile-capture-embed-fallback={provider}
+      data-profile-embed-provider={provider}
+      role="img"
+      style={{ height }}
+    >
+      {imageUrl ? (
+        <img
+          alt=""
+          aria-hidden="true"
+          className="aspect-square h-full max-h-[112px] shrink-0 rounded-card object-cover shadow-soft"
+          decoding="async"
+          loading="eager"
+          src={imageUrl}
+        />
+      ) : (
+        <span className="grid size-14 shrink-0 place-items-center rounded-card border border-line bg-surface/72 text-accent-strong shadow-soft">
+          <Music2 aria-hidden="true" size={24} />
+        </span>
+      )}
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-semibold">{label}</span>
+        <span className="mt-1 block text-xs font-medium text-muted">
+          {platformDisplayName(provider)}
+        </span>
+      </span>
+    </div>
+  );
+}
+
+function ProfileEmbedCaptureSurface({
+  className,
+  imageUrl,
+  kind,
+  label,
+  provider,
+}: {
+  className?: string | undefined;
+  imageUrl?: string | null | undefined;
+  kind: "chat" | "video";
+  label: string;
+  provider: "twitch" | "youtube";
+}) {
+  const providerLabel = provider === "youtube" ? "YouTube" : "Twitch";
+
+  return (
+    <div
+      aria-label={`${label} static preview`}
+      className={cn(
+        "relative isolate overflow-hidden border-0",
+        kind === "chat" ? "bg-surface text-text" : "bg-black text-white",
+        className,
+      )}
+      data-profile-capture-embed-fallback={kind}
+      data-profile-embed-provider={provider}
+      role="img"
+    >
+      {kind === "video" && imageUrl ? (
+        <img
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 -z-20 size-full object-cover opacity-72"
+          decoding="async"
+          loading="eager"
+          src={imageUrl}
         />
       ) : null}
+      {kind === "video" ? (
+        <div className="absolute inset-0 -z-10 bg-gradient-to-b from-black/18 via-black/28 to-black/68" />
+      ) : (
+        <>
+          <div className="absolute inset-0 -z-20 bg-surface" />
+          <div className="absolute inset-x-0 top-0 -z-10 h-10 border-b border-line bg-surface-strong/76" />
+        </>
+      )}
+      <div
+        className={cn(
+          "flex size-full min-h-0 min-w-0 items-center justify-center p-3",
+          kind === "video" ? "flex-col gap-2" : "gap-2",
+        )}
+      >
+        <span
+          className={cn(
+            "grid shrink-0 place-items-center rounded-full border shadow-soft",
+            kind === "video"
+              ? "size-10 border-white/25 bg-black/38 text-white backdrop-blur"
+              : "size-8 border-line bg-canvas/72 text-muted",
+          )}
+        >
+          {kind === "video" ? (
+            <Play aria-hidden="true" className="translate-x-px" size={18} />
+          ) : (
+            <Radio aria-hidden="true" size={15} />
+          )}
+        </span>
+        <span
+          className={cn(
+            "min-w-0 max-w-full truncate font-semibold",
+            kind === "video" ? "text-sm text-white" : "text-xs text-muted",
+          )}
+        >
+          {kind === "video" ? label : providerLabel}
+          {kind === "chat" ? " chat" : ""}
+        </span>
+      </div>
     </div>
   );
 }
@@ -3069,6 +3269,7 @@ function YouTubeMusicPlayer({
   module: ProfileModule;
   size?: ProfileGridModuleSize | undefined;
 }) {
+  const captureMode = isProfileShareCaptureMode();
   const lastAutoplayRequestRef = useRef(0);
   const [playing, setPlaying] = useState(false);
   const [playerVersion, setPlayerVersion] = useState(0);
@@ -3110,6 +3311,7 @@ function YouTubeMusicPlayer({
   return (
     <div
       className="flex h-full min-h-0 overflow-hidden rounded-card border border-line bg-canvas/55 shadow-inner-soft"
+      data-profile-capture-embed-fallback={captureMode ? "youtube" : undefined}
       data-profile-youtube-music-layout={playerLayout}
       data-profile-youtube-music-tier={presentation.tier}
       data-profile-youtube-music-text-tone={compactPlayer ? compactTextTone : undefined}
@@ -3220,7 +3422,17 @@ function YouTubeMusicPlayer({
             </a>
           ) : null}
         </div>
-        {richPlayer ? (
+        {captureMode ? (
+          richPlayer ? (
+            <ProfileEmbedCaptureSurface
+              className="min-h-0 w-full flex-1 rounded-card"
+              imageUrl={metadata.imageUrl}
+              kind="video"
+              label={title}
+              provider="youtube"
+            />
+          ) : null
+        ) : richPlayer ? (
           <iframe
             key={embedSrc}
             className="min-h-0 w-full flex-1 rounded-card border-0 bg-black"
@@ -3325,6 +3537,7 @@ function SpotifyMusicPlayer({
   module: ProfileModule;
   size?: ProfileGridModuleSize | undefined;
 }) {
+  const captureMode = isProfileShareCaptureMode();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<SpotifyEmbedController | undefined>(undefined);
   const lastAutoplayRequestRef = useRef(0);
@@ -3360,6 +3573,10 @@ function SpotifyMusicPlayer({
   const uri = spotifyResourceUri(integration);
 
   useEffect(() => {
+    if (captureMode) {
+      return undefined;
+    }
+
     const container = containerRef.current;
 
     if (!container || !uri) {
@@ -3430,7 +3647,7 @@ function SpotifyMusicPlayer({
       setControllerReady(false);
       container.replaceChildren();
     };
-  }, [integration, playerHeight, playerTitle, uri]);
+  }, [captureMode, integration, playerHeight, playerTitle, uri]);
 
   useEffect(() => {
     if (!playing || !playbackProgress.known || playbackProgress.duration <= 0) {
@@ -3509,6 +3726,7 @@ function SpotifyMusicPlayer({
   return (
     <div
       className="flex h-full min-h-0 overflow-hidden rounded-card border border-line bg-canvas/55 shadow-inner-soft"
+      data-profile-capture-embed-fallback={captureMode ? "spotify" : undefined}
       data-profile-spotify-layout={playerLayout}
       data-profile-spotify-tier={presentation.tier}
       data-profile-spotify-text-tone={compactPlayer ? compactTextTone : undefined}
@@ -3634,11 +3852,14 @@ function SpotifyMusicPlayer({
             className={cn(
               "grid shrink-0 place-items-center rounded-full border border-accent/35 bg-accent/90 text-accent-contrast shadow-soft transition duration-fluid ease-fluid hover:-translate-y-0.5 hover:bg-accent hover:shadow-lift focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0",
               compactPlayer ? "size-8" : "size-10",
+              captureMode ? "pointer-events-none" : undefined,
             )}
-            onClick={handlePlaybackToggle}
-            disabled={fallback || !controllerReady}
+            onClick={captureMode ? undefined : handlePlaybackToggle}
+            disabled={!captureMode && (fallback || !controllerReady)}
+            aria-disabled={captureMode ? true : undefined}
             aria-label={playing ? "Pause Spotify music" : "Play Spotify music"}
             data-testid="profile-spotify-play-button"
+            tabIndex={captureMode ? -1 : undefined}
           >
             {playing ? (
               <Pause aria-hidden="true" size={compactPlayer ? 15 : 18} />
@@ -3681,13 +3902,15 @@ function SpotifyMusicPlayer({
             </div>
           </div>
         </div>
-        <div
-          className="pointer-events-none absolute size-px overflow-hidden opacity-0"
-          aria-hidden="true"
-          data-testid="profile-spotify-provider-frame"
-        >
-          <div ref={containerRef} />
-        </div>
+        {!captureMode ? (
+          <div
+            className="pointer-events-none absolute size-px overflow-hidden opacity-0"
+            aria-hidden="true"
+            data-testid="profile-spotify-provider-frame"
+          >
+            <div ref={containerRef} />
+          </div>
+        ) : null}
       </div>
     </div>
   );

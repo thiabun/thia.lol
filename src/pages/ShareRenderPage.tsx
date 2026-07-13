@@ -4,10 +4,17 @@ import { ShareCardScene } from "../components/share/ShareCardScene";
 import {
   getPost,
   getProfile,
+  getProfileBadges,
   getProfileModules,
   getProfilePosts,
+  getProfileReblogs,
 } from "../lib/api";
-import type { Post, Profile, ProfileModule } from "../lib/types";
+import type {
+  Post,
+  Profile,
+  ProfileBadgesResult,
+  ProfileModule,
+} from "../lib/types";
 
 export function ShareRenderPostPage() {
   const { postId = "" } = useParams();
@@ -46,6 +53,11 @@ export function ShareRenderProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [modules, setModules] = useState<ProfileModule[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [reblogs, setReblogs] = useState<Post[]>([]);
+  const [badges, setBadges] = useState<ProfileBadgesResult>({
+    badges: [],
+    featuredBadges: [],
+  });
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -53,17 +65,32 @@ export function ShareRenderProfilePage() {
 
     Promise.all([
       getProfile(handle),
-      getProfileModules(handle).catch(() => []),
-      getProfilePosts(handle).catch(() => []),
+      getProfileModules(handle),
+      getProfilePosts(handle),
+      getProfileReblogs(handle),
+      getProfileBadges(handle),
     ])
-      .then(([profileResult, moduleResults, postResults]) => {
+      .then(([
+        profileResult,
+        moduleResults,
+        postResults,
+        reblogResults,
+        badgeResults,
+      ]) => {
         if (!active) {
+          return;
+        }
+
+        if (!profileResult.viewerCanView) {
+          setFailed(true);
           return;
         }
 
         setProfile(profileResult);
         setModules(moduleResults);
         setPosts(postResults);
+        setReblogs(reblogResults);
+        setBadges(badgeResults);
       })
       .catch(() => {
         if (active) {
@@ -79,10 +106,13 @@ export function ShareRenderProfilePage() {
   if (profile) {
     return (
       <ShareCardScene
+        badges={badges.badges}
+        featuredBadges={badges.featuredBadges}
         kind="profile"
         modules={modules}
         posts={posts}
         profile={profile}
+        reblogs={reblogs}
       />
     );
   }
@@ -95,7 +125,7 @@ function ShareRenderFallback({ failed }: { failed: boolean }) {
     <main
       className="grid h-[630px] w-[1200px] place-items-center bg-[#071820] text-[#ecfbfb]"
       data-share-card-canvas="true"
-      data-share-card-ready={failed ? "true" : "false"}
+      data-share-card-ready="false"
     >
       <div className="rounded-[32px] border border-white/20 bg-white/8 px-10 py-8 text-center">
         <img alt="thia.lol" className="mx-auto h-12 w-12 rounded-[14px]" src="/brand/thia-mark-pink-squircle-96.png" />

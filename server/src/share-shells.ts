@@ -6,8 +6,7 @@ import path from "node:path";
 import { normalizePostIdentifier, postCanonicalPath, type PostsRepository } from "./posts.js";
 import { normalizeProfileHandle, type ProfilePayload, type ProfilesRepository, type PostPayload } from "./profiles.js";
 import { normalizeRoomSlug, type RoomPayload, type RoomsRepository } from "./rooms.js";
-
-const shareCardCacheVersion = "screenshot-v6";
+import { shareCardCacheVersion } from "./share-card-version.js";
 
 export interface ShareShellService {
   postShare(query: Record<string, unknown>): Promise<ShareShellResponse>;
@@ -399,7 +398,7 @@ class NodeShareShellService implements ShareShellService {
   private postCardVersion(post: PostPayload): string {
     const cached = cachedPostCardPath(this.options.uploadRoot, postIdentifier(post));
     const cachedMtime = cached !== null && existsSync(cached)
-      ? String(Math.trunc(statSync(cached).mtimeMs / 1000))
+      ? String(statSync(cached).mtimeMs)
       : "uncached";
     const basis = [
       shareCardCacheVersion,
@@ -417,7 +416,7 @@ class NodeShareShellService implements ShareShellService {
   private profileCardVersion(profile: ProfilePayload): string {
     const cached = cachedProfileCardPath(this.options.uploadRoot, profile.user.handle ?? "");
     const cachedMtime = cached !== null && existsSync(cached)
-      ? String(Math.trunc(statSync(cached).mtimeMs / 1000))
+      ? String(statSync(cached).mtimeMs)
       : "uncached";
     const basis = [
       shareCardCacheVersion,

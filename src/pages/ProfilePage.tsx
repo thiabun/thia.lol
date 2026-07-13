@@ -47,6 +47,7 @@ import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
 import { MentionTextarea } from "../components/social/MentionTextarea";
 import { PostCard } from "../components/social/PostCard";
+import { ProfilePersonalBackdrop } from "../components/social/ProfilePersonalBackdrop";
 import {
   ProfileModulesSection,
   type ProfileModuleRenderMode,
@@ -206,6 +207,15 @@ export type ProfileCanvasDraftAutosaveState =
   | "saved"
   | "error";
 type CanvasPoint = { column: number; row: number };
+
+export type ProfilePublicCanvasSnapshotProps = {
+  badges: UserBadge[];
+  featuredBadges: UserBadge[];
+  modules: ProfileModule[];
+  posts: Post[];
+  profile: Profile;
+  reblogs: Post[];
+};
 type ProfileCanvasResizeDirection =
   | "north"
   | "east"
@@ -2096,6 +2106,136 @@ export function ProfilePage() {
       />
       </motion.div>
     </VideoAutoplayPriorityProvider>
+  );
+}
+
+const inertProfileSnapshotAction = () => undefined;
+
+export function ProfilePublicCanvasSnapshot({
+  badges,
+  featuredBadges,
+  modules,
+  posts,
+  profile,
+  reblogs,
+}: ProfilePublicCanvasSnapshotProps) {
+  const snapshotProfile: Profile = {
+    ...profile,
+    blockedByMe: false,
+    isFollowedBy: false,
+    isFollowing: false,
+    isFollowRequestPending: false,
+    isMoot: false,
+    isStarred: false,
+    mutedByMe: false,
+  };
+  const publicModules = modules.filter(
+    (module) =>
+      module.status === "active" &&
+      (module.visibility === "public" || module.type === "activity"),
+  );
+  const profileSpaceModules = publicModules.filter((module) => {
+    if (module.type === "featured_post") {
+      return Boolean(snapshotProfile.featuredPost);
+    }
+
+    if (module.type === "featured_room") {
+      return Boolean(snapshotProfile.featuredRoom);
+    }
+
+    return true;
+  });
+  const profileCanvasModules = resolveProfileCanvasModules(
+    snapshotProfile,
+    mergeProfileLinksIntoConnectionModules(snapshotProfile, profileSpaceModules),
+  );
+  const profileFeed = mergeProfileFeed(posts, reblogs);
+  const layoutPreset =
+    snapshotProfile.profileLayoutPreset ?? defaultProfileLayoutPreset;
+
+  function renderProfileSnapshotModuleContent(
+    module: ProfileModule,
+    size: ProfileGridModuleSize,
+    presentationMode: ProfileModuleRenderMode,
+  ) {
+    if (module.type === "profile_info") {
+      return (
+        <ProfileInfoModule
+          editing={false}
+          featuredBadges={featuredBadges}
+          followPosting={false}
+          isOwnProfile={false}
+          onFollowToggle={inertProfileSnapshotAction}
+          onOpenPanel={inertProfileSnapshotAction}
+          onShareProfile={inertProfileSnapshotAction}
+          onStarToggle={inertProfileSnapshotAction}
+          profile={snapshotProfile}
+          presentationMode={presentationMode}
+          showChatHint={false}
+          size={size}
+          starPosting={false}
+          status="anonymous"
+        />
+      );
+    }
+
+    if (module.type === "featured_post" && snapshotProfile.featuredPost) {
+      return (
+        <FeaturedPostModuleCard
+          editing={false}
+          profile={snapshotProfile}
+          title={module.title ?? "Featured post"}
+        />
+      );
+    }
+
+    if (module.type === "featured_room" && snapshotProfile.featuredRoom) {
+      return (
+        <FeaturedRoomModuleCard
+          editing={false}
+          profile={snapshotProfile}
+          size={size}
+          title={module.title ?? "Featured room"}
+        />
+      );
+    }
+
+    if (module.type === "activity") {
+      return (
+        <ProfileActivityModule
+          activeTab="feed"
+          editing={false}
+          feed={profileFeed}
+          feedError={undefined}
+          feedLoading={false}
+          onTabChange={inertProfileSnapshotAction}
+          profile={snapshotProfile}
+          replies={[]}
+          repliesError={undefined}
+          repliesLoading={false}
+          rooms={[]}
+          roomsError={undefined}
+          roomsLoading={false}
+          size={size}
+          title={module.title ?? "Feed"}
+        />
+      );
+    }
+
+    return undefined;
+  }
+
+  return (
+    <ProfileModulesSection
+      badges={badges}
+      canvasGlass={snapshotProfile.profileCanvasGlass}
+      error={undefined}
+      isOwnProfile={false}
+      layoutPreset={layoutPreset}
+      loading={false}
+      modules={profileCanvasModules}
+      renderModuleContent={renderProfileSnapshotModuleContent}
+    />
   );
 }
 
@@ -4573,163 +4713,6 @@ function mergeFollowState(
       moots: mootCount,
       stars: followState.starCount,
     },
-  };
-}
-
-function ProfilePersonalBackdrop({
-  paused = false,
-  profile,
-}: {
-  paused?: boolean;
-  profile: Profile;
-}) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const videoUrl = safeProfileVideoUrl(profile.profileBackgroundVideo);
-  const imageUrl = safeProfileImageUrl(
-    profile.profileBackgroundVideoPoster ?? profile.profileBackground,
-  );
-  const blurTreatment = profile.profileBackgroundBlur;
-  const visibility = profileBackgroundVisibility(blurTreatment);
-  const playbackState = videoUrl ? (paused ? "paused" : "playing") : "static";
-
-  useEffect(() => {
-    const video = videoRef.current;
-
-    if (!video || !videoUrl) {
-      return;
-    }
-
-    if (paused) {
-      video.pause();
-      return;
-    }
-
-    void video.play().catch(() => undefined);
-  }, [paused, videoUrl]);
-
-  return (
-    <div
-      aria-hidden="true"
-      className="profile-personal-backdrop pointer-events-none z-0 min-h-full overflow-hidden"
-      data-profile-background-blur={blurTreatment}
-      data-profile-background-playback={playbackState}
-      data-profile-background-source={videoUrl ? "video" : imageUrl ? "image" : "fallback"}
-      data-profile-background-visibility={visibility.name}
-      data-testid="profile-personal-backdrop"
-    >
-      {videoUrl ? (
-        <video
-          ref={videoRef}
-          aria-hidden="true"
-          className={cn(
-            "absolute inset-0 size-full object-cover object-center saturate-[1.04] motion-reduce:hidden",
-            visibility.mediaOpacity,
-            profileBackgroundBlurClass(blurTreatment),
-          )}
-          autoPlay={!paused}
-          loop
-          muted
-          playsInline
-          poster={imageUrl}
-          preload="metadata"
-        >
-          <source src={videoUrl} type={videoUrl.endsWith(".webm") ? "video/webm" : "video/mp4"} />
-        </video>
-      ) : null}
-      {imageUrl ? (
-        <img
-          alt=""
-          className={cn(
-            "absolute inset-0 size-full object-cover object-center saturate-[1.04]",
-            visibility.mediaOpacity,
-            videoUrl && !paused ? "motion-safe:hidden" : undefined,
-            profileBackgroundBlurClass(blurTreatment),
-          )}
-          decoding="async"
-          src={imageUrl}
-        />
-      ) : (
-        <div className="absolute inset-0 bg-page-wash" />
-      )}
-      <div className={cn("absolute inset-0", visibility.baseOverlay)} />
-      <div className={cn("absolute inset-0 bg-gradient-to-b", visibility.verticalOverlay)} />
-      <div className={cn("absolute inset-0 bg-gradient-to-r via-transparent", visibility.sideVignette)} />
-    </div>
-  );
-}
-
-function safeProfileVideoUrl(value: string | null | undefined): string | undefined {
-  return typeof value === "string" &&
-    /^\/uploads\/media\/[0-9]{4}\/[0-9]{2}\/profile_background-[a-z0-9_-]+\.(?:mp4|webm)$/.test(
-      value,
-    )
-    ? value
-    : undefined;
-}
-
-function profileBackgroundBlurClass(
-  treatment: ProfileBackgroundBlur,
-): string {
-  if (treatment === "soft") {
-    return "blur-[3px]";
-  }
-
-  if (treatment === "heavy") {
-    return "blur-[42px]";
-  }
-
-  if (treatment === "none") {
-    return "";
-  }
-
-  return "blur-[18px]";
-}
-
-function profileBackgroundVisibility(
-  treatment: ProfileBackgroundBlur,
-): {
-  baseOverlay: string;
-  mediaOpacity: string;
-  name: "clear" | "soft" | "muted" | "veiled";
-  sideVignette: string;
-  verticalOverlay: string;
-} {
-  if (treatment === "none") {
-    return {
-      baseOverlay: "bg-canvas/10",
-      mediaOpacity: "opacity-[0.84]",
-      name: "clear",
-      sideVignette: "from-surface/18 to-surface/18",
-      verticalOverlay: "from-canvas/28 via-canvas/5 to-canvas/42",
-    };
-  }
-
-  if (treatment === "soft") {
-    return {
-      baseOverlay: "bg-canvas/18",
-      mediaOpacity: "opacity-[0.72]",
-      name: "soft",
-      sideVignette: "from-surface/28 to-surface/28",
-      verticalOverlay: "from-canvas/40 via-canvas/12 to-canvas/54",
-    };
-  }
-
-  if (treatment === "heavy") {
-    return {
-      baseOverlay: "bg-canvas/42",
-      mediaOpacity: "opacity-[0.46]",
-      name: "veiled",
-      sideVignette: "from-surface/54 to-surface/54",
-      verticalOverlay: "from-canvas/68 via-canvas/40 to-canvas/80",
-    };
-  }
-
-  return {
-    baseOverlay: "bg-canvas/28",
-    mediaOpacity: "opacity-[0.6]",
-    name: "muted",
-    sideVignette: "from-surface/40 to-surface/40",
-    verticalOverlay: "from-canvas/52 via-canvas/22 to-canvas/66",
   };
 }
 

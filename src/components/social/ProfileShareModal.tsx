@@ -4,13 +4,10 @@ import { Link } from "react-router";
 import {
   profileCanonicalPath,
   profileCanonicalUrl,
-  profileShareCardCacheUpload,
   profileShareCardUrl,
 } from "../../lib/api";
 import { shareUrlWithAttribution } from "../../lib/growthAttribution";
-import { captureShareCard, downloadBlob } from "../../lib/shareCardCapture";
 import type { Profile } from "../../lib/types";
-import { useAuth } from "../../lib/useAuth";
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
 import { ModalSheet } from "../ui/ModalSheet";
@@ -22,9 +19,8 @@ type ProfileShareModalProps = {
 };
 
 export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalProps) {
-  const { runWithAuth, status, user } = useAuth();
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
-  const [cardState, setCardState] = useState<"idle" | "generating" | "error">("idle");
+  const [cardState, setCardState] = useState<"idle" | "downloading" | "error">("idle");
   const [nativeShareAvailable] = useState(
     () => typeof navigator !== "undefined" && "share" in navigator,
   );
@@ -34,7 +30,6 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
     kind: "profile",
     ref: profile.user.handle,
   });
-  const canPublishCard = status === "authenticated" && user?.id === profile.user.id;
 
   useEffect(() => {
     if (!open) {
@@ -56,10 +51,6 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
 
   async function handleCopy() {
     try {
-      if (canPublishCard) {
-        await generateProfileCard({ publish: true, silent: true }).catch(() => undefined);
-      }
-
       await copyText(shareUrl);
       setCopyState("copied");
     } catch {
@@ -73,9 +64,6 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
     }
 
     try {
-      void generateProfileCard({ publish: canPublishCard, silent: true }).catch(
-        () => undefined,
-      );
       await navigator.share({
         title: `${profile.user.displayName} (@${profile.user.handle}) on thia.lol`,
         text: profile.bio || `@${profile.user.handle} on thia.lol`,
@@ -87,52 +75,33 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
   }
 
   async function handleSaveImage() {
+    setCardState("downloading");
+
     try {
-      const blob = await generateProfileCard({ publish: canPublishCard });
-      downloadBlob(blob, `thia-profile-${profile.user.handle}.png`);
+      const response = await fetch(profileShareCardUrl(profile), {
+        cache: "no-store",
+        headers: {
+          accept: "image/jpeg",
+        },
+      });
+
+      if (!response.ok || !response.headers.get("content-type")?.toLowerCase().startsWith("image/jpeg")) {
+        throw new Error("Profile share card is not available as JPEG.");
+      }
+
+      const bytes = await response.arrayBuffer();
+
+      if (bytes.byteLength === 0) {
+        throw new Error("Profile share card is empty.");
+      }
+
+      downloadBlob(
+        new Blob([bytes], { type: "image/jpeg" }),
+        `thia-profile-${profile.user.handle}.jpg`,
+      );
+      setCardState("idle");
     } catch {
       setCardState("error");
-    }
-  }
-
-  async function generateProfileCard({
-    publish,
-    silent = false,
-  }: {
-    publish: boolean;
-    silent?: boolean;
-  }) {
-    if (!silent) {
-      setCardState("generating");
-    }
-
-    try {
-      const blob = await captureShareCard(
-        `/share-render/profile/${encodeURIComponent(profile.user.handle)}`,
-      );
-
-      if (publish) {
-        const socialCardBlob = await captureShareCard(
-          `/share-render/profile/${encodeURIComponent(profile.user.handle)}`,
-          { quality: 0.9, type: "image/jpeg" },
-        );
-        await runWithAuth(
-          (csrfToken) => profileShareCardCacheUpload(profile, socialCardBlob, csrfToken),
-          { retryOnCsrf: true },
-        ).catch(() => undefined);
-      }
-
-      if (!silent) {
-        setCardState("idle");
-      }
-
-      return blob;
-    } catch (error) {
-      if (!silent) {
-        setCardState("error");
-      }
-
-      throw error;
     }
   }
 
@@ -199,9 +168,9 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
           variant="secondary"
           size="sm"
           data-testid="profile-share-save-image"
-          disabled={cardState === "generating"}
+          disabled={cardState === "downloading"}
           icon={
-            cardState === "generating" ? (
+            cardState === "downloading" ? (
               <LoaderCircle aria-hidden="true" className="animate-spin" size={15} />
             ) : (
               <Download aria-hidden="true" size={15} />
@@ -209,7 +178,7 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
           }
           onClick={() => void handleSaveImage()}
         >
-          {cardState === "generating" ? "Generating" : "Save image"}
+          {cardState === "downloading" ? "Downloading" : "Save image"}
         </Button>
       </div>
 
@@ -220,7 +189,7 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
       ) : null}
       {cardState === "error" ? (
         <p className="rounded-card border border-rose/30 bg-rose/15 p-3 text-sm text-rose-ink">
-          Image generation failed. You can still open the current cached card at{" "}
+          Image download failed. You can still open the current card at{" "}
           <a className="underline" href={profileShareCardUrl(profile)} rel="noreferrer" target="_blank">
             this link
           </a>
@@ -229,6 +198,17 @@ export function ProfileShareModal({ onClose, open, profile }: ProfileShareModalP
       ) : null}
     </ModalSheet>
   );
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function copyText(text: string) {

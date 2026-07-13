@@ -1899,25 +1899,6 @@ export function roomShareCardUrl(room: Pick<Room, "slug">) {
   return `/api/rooms/${encodeURIComponent(room.slug)}/share-card.png`;
 }
 
-export function profileShareCardCacheUpload(
-  profile: Pick<Profile, "user">,
-  card: Blob,
-  csrfToken: string,
-): Promise<{ url: string; width: number; height: number }> {
-  const body = new FormData();
-  body.set(
-    "card",
-    card,
-    `thia-profile-${profile.user.handle}.${shareCardBlobExtension(card)}`,
-  );
-
-  return apiUpload<{ url: string; width: number; height: number }>(
-    `/profiles/${encodeURIComponent(profile.user.handle)}/share-card-cache`,
-    body,
-    csrfToken,
-  );
-}
-
 function shareCardBlobExtension(card: Blob): "jpg" | "png" {
   return card.type === "image/jpeg" ? "jpg" : "png";
 }

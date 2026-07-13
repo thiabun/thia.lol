@@ -107,7 +107,7 @@ const jsonRoutes = [
   ["POST", "/api/uploads/video", privateMutationStatus],
   ["POST", "/api/uploads/audio", privateMutationStatus],
   ["POST", "/api/posts/pc359fe2da759/share-card-cache", privateMutationStatus],
-  ["POST", "/api/profiles/thia/share-card-cache", privateMutationStatus],
+  ["POST", "/api/profiles/thia/share-card-cache", 404],
   ["POST", "/api/chat/conversations", privateMutationStatus],
   ["POST", "/api/chat/conversations/1/messages", privateMutationStatus],
   ["POST", "/api/chat/conversations/1/read", privateMutationStatus],
