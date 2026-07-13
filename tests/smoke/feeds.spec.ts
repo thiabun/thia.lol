@@ -83,7 +83,7 @@ test("Anonymous home explains the product and renders real starter communities",
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Make a profile that feels like you, gather in rooms, and post what you\u2019re making, playing, or thinking about\u2014without ads, engagement traps, or AI sludge.",
+      "Make a profile that feels like you, gather in rooms, and post what you\u2019re making, playing, or thinking about. No ads, no engagement traps, and no AI sludge.",
     ),
   ).toBeVisible();
   await expect(

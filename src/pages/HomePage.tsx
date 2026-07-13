@@ -322,8 +322,8 @@ function AnonymousHomePage() {
             </h1>
             <p className="mt-5 max-w-2xl text-pretty text-base leading-7 text-muted sm:text-lg sm:leading-8">
               Make a profile that feels like you, gather in rooms, and post what
-              you’re making, playing, or thinking about—without ads, engagement
-              traps, or AI sludge.
+              you’re making, playing, or thinking about. No ads, no engagement
+              traps, and no AI sludge.
             </p>
             <div className="mt-7 flex flex-col gap-3 sm:flex-row">
               <ButtonLink
