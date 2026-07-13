@@ -24,7 +24,7 @@ test("profile share render uses the real profile canvas treatments and modules",
   await expect(shareCanvas).toBeVisible();
   await expect(shareCanvas).toHaveAttribute(
     "data-share-card-render-version",
-    "screenshot-v7",
+    "screenshot-v8",
   );
   await expect(page.locator("[data-share-card-brand]")).toHaveCSS(
     "height",
@@ -82,6 +82,12 @@ test("profile share render uses the real profile canvas treatments and modules",
       .getByTestId("profile-activity-tabs")
       .getByRole("tab", { name: /Feed/ }),
   ).toContainText("2");
+  await expect(
+    activity.locator("[data-rich-embed-static='true']"),
+  ).toHaveCount(1);
+  await expect(
+    activity.locator("[data-post-capture-music-fallback='spotify']"),
+  ).toHaveCount(1);
   expect(
     await computedColorAlpha(
       profileInfo.locator("[data-profile-info-card='true']"),
@@ -420,7 +426,7 @@ async function mockProfileShareRender(
   await page.route("**/api/profiles/thia/posts", (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ ok: true, data: [postFixture()] }),
+      body: JSON.stringify({ ok: true, data: [profileActivityPostFixture()] }),
     }),
   );
   await page.route("**/api/profiles/thia/reblogs", (route) =>
@@ -744,5 +750,37 @@ function postFixture() {
     },
     canonicalPath: "/@poster/posts/pcard123",
     canonicalUrl: "https://thia.lol/@poster/posts/pcard123",
+  };
+}
+
+function profileActivityPostFixture() {
+  const youtubeUrl = "https://www.youtube.com/watch?v=sharecard123";
+  const body = `A profile activity post with ${youtubeUrl}`;
+  const linkStart = body.indexOf(youtubeUrl);
+
+  return {
+    ...postFixture(),
+    body,
+    bodyEntities: [
+      {
+        type: "link",
+        start: linkStart,
+        length: youtubeUrl.length,
+        text: youtubeUrl,
+        link: { url: youtubeUrl },
+      },
+    ],
+    mediaUrl: null,
+    attachments: [
+      {
+        kind: "integration",
+        position: 1,
+        provider: "spotify",
+        resourceId: "track-1",
+        resourceType: "track",
+        sourceUrl: "https://open.spotify.com/track/track-1",
+        card: spotifyTrackCard(),
+      },
+    ],
   };
 }

@@ -2217,6 +2217,7 @@ export function ProfilePublicCanvasSnapshot({
           roomsError={undefined}
           roomsLoading={false}
           size={size}
+          staticCapture
           title={module.title ?? "Feed"}
         />
       );
@@ -5961,6 +5962,7 @@ type ProfileActivityModuleProps = {
   roomsError: unknown;
   roomsLoading: boolean;
   size: ProfileGridModuleSize;
+  staticCapture?: boolean;
   title: string;
 };
 
@@ -5979,6 +5981,7 @@ function ProfileActivityModule({
   roomsError,
   roomsLoading,
   size,
+  staticCapture = false,
   title,
 }: ProfileActivityModuleProps) {
   const activitySpan = profileGridModuleSizeSpan(size);
@@ -6064,6 +6067,7 @@ function ProfileActivityModule({
               loading={feedLoading}
               loadingText="Loading posts."
               loadingTitle="Loading profile feed"
+              staticCapture={staticCapture}
             />
           ) : null}
           {activeTab === "replies" ? (
@@ -6078,6 +6082,7 @@ function ProfileActivityModule({
               loading={repliesLoading}
               loadingText="Loading replies."
               loadingTitle="Loading replies"
+              staticCapture={staticCapture}
             />
           ) : null}
           {activeTab === "rooms" ? (
@@ -6289,6 +6294,7 @@ type ProfilePostListProps = {
   loading: boolean;
   loadingText: string;
   loadingTitle: string;
+  staticCapture?: boolean;
 };
 
 function ProfilePostList({
@@ -6302,6 +6308,7 @@ function ProfilePostList({
   loading,
   loadingText,
   loadingTitle,
+  staticCapture = false,
 }: ProfilePostListProps) {
   const posts = items ?? [];
 
@@ -6342,7 +6349,12 @@ function ProfilePostList({
   return (
     <div className="space-y-4">
       {posts.map((post, index) => (
-        <PostCard key={post.id} post={post} index={index} />
+        <PostCard
+          key={post.id}
+          post={post}
+          index={index}
+          staticCapture={staticCapture}
+        />
       ))}
     </div>
   );

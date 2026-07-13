@@ -53,7 +53,7 @@ describe("share shell service", () => {
     const { service, uploadRoot } = await shareShellFixture();
     const cacheDirectory = path.join(uploadRoot, "share-cards", "posts");
     await mkdir(cacheDirectory, { recursive: true });
-    await writeFile(path.join(cacheDirectory, "pc359fe2da759-screenshot-v7.jpg"), "jpeg");
+    await writeFile(path.join(cacheDirectory, "pc359fe2da759-screenshot-v8.jpg"), "jpeg");
 
     const response = await service.postShare({
       handle: "thia",
@@ -66,7 +66,7 @@ describe("share shell service", () => {
       return;
     }
 
-    expect(metaContent(response.html, "og:image")).toContain("/uploads/share-cards/posts/pc359fe2da759-screenshot-v7.jpg");
+    expect(metaContent(response.html, "og:image")).toContain("/uploads/share-cards/posts/pc359fe2da759-screenshot-v8.jpg");
     expect(metaContent(response.html, "og:image:type")).toBe("image/jpeg");
     expect(metaContent(response.html, "og:image")).not.toContain("/api/posts/pc359fe2da759/share-card.png");
   });
@@ -113,7 +113,7 @@ describe("share shell service", () => {
     const cacheDirectory = path.join(uploadRoot, "share-cards", "profiles");
     await mkdir(cacheDirectory, { recursive: true });
     await writeFile(path.join(cacheDirectory, "thia-screenshot-v6.jpg"), "legacy jpeg");
-    await writeFile(path.join(cacheDirectory, "thia-screenshot-v7.jpg"), "current jpeg");
+    await writeFile(path.join(cacheDirectory, "thia-screenshot-v8.jpg"), "current jpeg");
 
     const response = await service.profileShare({ handle: "thia" });
 
@@ -123,14 +123,14 @@ describe("share shell service", () => {
       return;
     }
 
-    expect(metaContent(response.html, "og:image")).toContain("/uploads/share-cards/profiles/thia-screenshot-v7.jpg");
+    expect(metaContent(response.html, "og:image")).toContain("/uploads/share-cards/profiles/thia-screenshot-v8.jpg");
     expect(metaContent(response.html, "og:image")).not.toContain("screenshot-v6");
   });
 
   it("changes the profile card cache buster for writes within the same second", async () => {
     const { service, uploadRoot } = await shareShellFixture();
     const cacheDirectory = path.join(uploadRoot, "share-cards", "profiles");
-    const cachePath = path.join(cacheDirectory, "thia-screenshot-v7.jpg");
+    const cachePath = path.join(cacheDirectory, "thia-screenshot-v8.jpg");
     await mkdir(cacheDirectory, { recursive: true });
     await writeFile(cachePath, "current jpeg");
     await utimes(cachePath, new Date("2026-07-13T12:00:00.100Z"), new Date("2026-07-13T12:00:00.100Z"));

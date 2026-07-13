@@ -9,6 +9,7 @@ type RichTextProps = {
   entities?: RichTextEntity[] | undefined;
   markdown?: boolean;
   showEmbeds?: boolean;
+  staticEmbeds?: boolean;
   text: string;
 };
 
@@ -18,6 +19,7 @@ export function RichText({
   entities,
   markdown = false,
   showEmbeds = true,
+  staticEmbeds = false,
   text,
 }: RichTextProps) {
   const resolvedEntities =
@@ -41,11 +43,18 @@ export function RichText({
       {embeds.length > 0 ? (
         <div className={cn("grid gap-2", embedClassName ?? "mt-3")}>
           {embeds.map((embed) => (
-            <RichProviderEmbed
-              key={`${embed.start}:${embed.url}`}
-              card={embed.card}
-              src={embed.src}
-            />
+            staticEmbeds ? (
+              <RichProviderStaticPreview
+                key={`${embed.start}:${embed.url}`}
+                card={embed.card}
+              />
+            ) : (
+              <RichProviderEmbed
+                key={`${embed.start}:${embed.url}`}
+                card={embed.card}
+                src={embed.src}
+              />
+            )
           ))}
         </div>
       ) : null}
@@ -979,6 +988,92 @@ function RichProviderEmbed({
       />
     </span>
   );
+}
+
+function RichProviderStaticPreview({ card }: { card: RichLinkCard }) {
+  const provider = card.provider as RichEmbedProvider;
+  const providerLabel = richEmbedProviderLabel(provider);
+  const title = card.metadata.title?.trim() || card.embed?.title || providerLabel;
+  const subtitle = card.metadata.subtitle?.trim() || providerLabel;
+  const imageUrl = richProviderStaticImage(card);
+  const videoLike = provider === "youtube" || provider === "twitch";
+
+  return (
+    <a
+      className={cn(
+        "relative overflow-hidden rounded-card border border-line bg-canvas/70 text-left shadow-inner-soft",
+        videoLike
+          ? "block aspect-video"
+          : "grid min-h-20 grid-cols-[5rem_minmax(0,1fr)]",
+      )}
+      data-rich-embed-provider={card.provider}
+      data-rich-embed-static="true"
+      data-thread-open-ignore
+      data-testid="rich-link-preview"
+      href={card.sourceUrl}
+      rel="noopener noreferrer"
+      target="_blank"
+    >
+      {videoLike ? (
+        <>
+          {imageUrl ? (
+            <img
+              alt=""
+              className="absolute inset-0 size-full object-cover"
+              decoding="async"
+              loading="lazy"
+              src={imageUrl}
+            />
+          ) : null}
+          <span className="absolute inset-0 bg-gradient-to-t from-black/88 via-black/24 to-black/18" />
+          <span className="absolute inset-x-0 bottom-0 z-10 block p-3 text-white">
+            <span className="block truncate text-sm font-semibold">{title}</span>
+            <span className="mt-0.5 block truncate text-xs text-white/72">{subtitle}</span>
+          </span>
+        </>
+      ) : (
+        <>
+          <span className="grid min-h-20 place-items-center overflow-hidden border-r border-line bg-surface/70">
+            {imageUrl ? (
+              <img
+                alt=""
+                className="size-full object-cover"
+                decoding="async"
+                loading="lazy"
+                src={imageUrl}
+              />
+            ) : (
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                {providerLabel.slice(0, 2)}
+              </span>
+            )}
+          </span>
+          <span className="min-w-0 self-center p-3">
+            <span className="block truncate text-sm font-semibold text-text">{title}</span>
+            <span className="mt-1 block truncate text-xs text-muted">{subtitle}</span>
+          </span>
+        </>
+      )}
+    </a>
+  );
+}
+
+function richProviderStaticImage(card: RichLinkCard): string | undefined {
+  const imageUrl = card.metadata.imageUrl?.trim();
+
+  if (imageUrl) {
+    return imageUrl;
+  }
+
+  if (
+    card.provider === "youtube" &&
+    ["live", "short", "shorts", "video"].includes(card.resourceType) &&
+    /^[A-Za-z0-9_-]{1,80}$/u.test(card.resourceId)
+  ) {
+    return `https://i.ytimg.com/vi/${encodeURIComponent(card.resourceId)}/hqdefault.jpg`;
+  }
+
+  return undefined;
 }
 
 function safeEmbedSrc(card: RichLinkCard): string | undefined {

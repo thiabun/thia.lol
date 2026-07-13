@@ -72,6 +72,7 @@ export type PostCardProps = {
   onDeleted?: ((post: Post) => void) | undefined;
   onHide?: (post: Post) => void;
   onReplyAction?: () => void;
+  staticCapture?: boolean;
 };
 
 export function PostCard({
@@ -87,6 +88,7 @@ export function PostCard({
   onDeleted,
   onHide,
   onReplyAction,
+  staticCapture = false,
 }: PostCardProps) {
   const navigate = useNavigate();
   const { runWithAuth, user } = useAuth();
@@ -237,6 +239,7 @@ export function PostCard({
           text={post.body}
           entities={post.bodyEntities}
           markdown={post.bodyFormat === "markdown"}
+          staticEmbeds={staticCapture}
           className={cn(
             "block whitespace-pre-wrap break-words text-pretty text-text",
             variant === "focus"
@@ -253,6 +256,7 @@ export function PostCard({
           }
           musicLayout={variant === "reply" ? "compact" : "responsive"}
           post={post}
+          staticCapture={staticCapture}
         />
       </div>
 
@@ -398,6 +402,7 @@ export type PostAttachmentsProps = {
   maxHeightClass?: string;
   musicLayout?: PostMusicLayout;
   post: Post;
+  staticCapture?: boolean;
   testId?: string;
 };
 
@@ -408,6 +413,7 @@ export function PostAttachments({
   maxHeightClass = "max-h-[min(70vh,34rem)]",
   musicLayout = "responsive",
   post,
+  staticCapture = false,
   testId = "post-attachments",
 }: PostAttachmentsProps) {
   const attachments = postAttachmentsForDisplay(post);
@@ -433,6 +439,7 @@ export function PostAttachments({
           index={index}
           maxHeightClass={maxHeightClass}
           musicLayout={musicLayout}
+          staticCapture={staticCapture}
           testId={`${testId}-${index}`}
         />
       ))}
@@ -445,16 +452,29 @@ function PostAttachmentItem({
   index,
   maxHeightClass,
   musicLayout,
+  staticCapture,
   testId,
 }: {
   attachment: PostAttachment;
   index: number;
   maxHeightClass: string;
   musicLayout: PostMusicLayout;
+  staticCapture: boolean;
   testId: string;
 }) {
   if (attachment.kind === "integration") {
     if (isPostMusicAttachment(attachment)) {
+      if (staticCapture) {
+        return (
+          <PostStaticMusicAttachment
+            attachment={attachment}
+            index={index}
+            layout={musicLayout}
+            testId={testId}
+          />
+        );
+      }
+
       return (
         <PostMusicPlayerAttachment
           attachment={attachment}
@@ -507,6 +527,17 @@ function PostAttachmentItem({
   }
 
   if (attachment.kind === "audio") {
+    if (staticCapture) {
+      return (
+        <PostStaticMusicAttachment
+          attachment={attachment}
+          index={index}
+          layout={musicLayout}
+          testId={testId}
+        />
+      );
+    }
+
     return (
       <PostMusicPlayerAttachment
         attachment={attachment}
@@ -533,7 +564,26 @@ function PostAttachmentItem({
         )}
         style={postAttachmentAspectRatio(attachment, isVideo)}
       >
-        {isVideo ? (
+        {isVideo && staticCapture ? (
+          attachment.posterUrl ? (
+            <img
+              alt=""
+              className="block size-full min-w-0 max-w-full bg-black object-contain"
+              data-post-capture-video-poster="true"
+              data-testid={`${testId}-video-poster`}
+              decoding="async"
+              loading="lazy"
+              src={attachment.posterUrl}
+            />
+          ) : (
+            <span
+              className="grid size-full min-h-28 place-items-center bg-black text-xs font-semibold uppercase tracking-[0.14em] text-white/70"
+              data-post-capture-video-fallback="true"
+            >
+              Video
+            </span>
+          )
+        ) : isVideo ? (
           <FocusAutoplayVideo
             className="block size-full min-w-0 max-w-full bg-black object-contain"
             poster={attachment.posterUrl ?? undefined}
@@ -677,6 +727,40 @@ function PostMusicPlayerAttachment({
     />
   );
 }
+
+function PostStaticMusicAttachment({
+  attachment,
+  index,
+  layout,
+  testId,
+}: {
+  attachment: PostAttachment;
+  index: number;
+  layout: PostMusicLayout;
+  testId: string;
+}) {
+  const details = postMusicAttachmentDetails(attachment, index);
+
+  return (
+    <div
+      className="pointer-events-none"
+      data-post-capture-music-fallback={details.provider}
+    >
+      <PostMusicPlayerShell
+        details={details}
+        layout={layout}
+        onPlayToggle={inertPostCaptureAction}
+        playing={false}
+        progressLabel="Ready"
+        progressPercent={0}
+        statusLabel="Ready"
+        testId={testId}
+      />
+    </div>
+  );
+}
+
+function inertPostCaptureAction() {}
 
 function PostAudioMusicAttachment({
   attachment,
