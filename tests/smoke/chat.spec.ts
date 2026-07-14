@@ -929,6 +929,26 @@ async function mockAuthenticatedChat(
     });
   });
 
+  await page.route("**/api/me/onboarding", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          steps: [],
+          completedSteps: [],
+          skippedSteps: [],
+          providerLinks: {},
+          finishedAt: "2026-06-10 10:00:00",
+          dismissedAt: null,
+          createdAt: "2026-06-10 09:00:00",
+          updatedAt: "2026-06-10 10:00:00",
+        },
+      }),
+    });
+  });
+
   await mockProfileRoutes(page, mockConversation.otherParticipant);
 
   await page.route("**/api/chat/conversations", async (route) => {
