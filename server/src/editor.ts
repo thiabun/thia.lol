@@ -1,3 +1,5 @@
+import { createHash, randomUUID } from "node:crypto";
+
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { displayNameMaxLength } from "./display-names.js";
 
@@ -37,6 +39,8 @@ const profileModuleSchemaVersion = 1;
 const profileCanvasVersion = 2;
 const profileModuleMaxPerProfile = 24;
 const maxFeaturedBadges = 4;
+const canvasDraftRevisionPattern = /^draft:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+const legacyCanvasDraftRevisionPattern = /^legacy:[A-Za-z0-9_-]{43}$/u;
 
 const profileLayoutPresets = new Set(["balanced", "compact", "showcase"]);
 const profileBackgroundBlurs = new Set(["none", "soft", "medium", "heavy"]);
@@ -130,8 +134,9 @@ export interface EditorRepository {
   updateCanvas(session: RequestSession, body: Record<string, unknown>): Promise<ProfileCanvasUpdatePayload>;
   getCanvasDraft(userId: number): Promise<ProfileCanvasDraftState>;
   updateCanvasDraft(session: RequestSession, body: Record<string, unknown>): Promise<ProfileCanvasDraftState>;
-  deleteCanvasDraft(session: RequestSession): Promise<ProfileCanvasDraftState>;
-  commitCanvasDraft(session: RequestSession): Promise<ProfileCanvasUpdatePayload>;
+  deleteCanvasDraft(session: RequestSession, expectedRevision?: unknown): Promise<ProfileCanvasDraftState>;
+  rebaseCanvasDraft(session: RequestSession, expectedRevision?: unknown): Promise<ProfileCanvasDraftState>;
+  commitCanvasDraft(session: RequestSession, expectedRevision?: unknown): Promise<ProfileCanvasUpdatePayload>;
   updateFeaturedBadges(session: RequestSession, body: Record<string, unknown>): Promise<ProfileBadgesPayload>;
   deleteMyPosts(userId: number, kind: string): Promise<MyPostsDeletePayload>;
   updateAccountEmail(session: RequestSession, body: Record<string, unknown>): Promise<SettingsPayload>;
@@ -153,6 +158,7 @@ export interface ProfileCanvasDraftState {
   canvasGlass: number;
   canvasVersion: number;
   modules: ProfileModulePayload[];
+  revision?: string | null;
   selectedModuleId: number | string | null;
   updatedAt: string | null;
 }
@@ -238,6 +244,26 @@ interface CanvasDraftRow extends RowDataPacket {
   draft_json: string | null;
   selected_module_id: string | null;
   updated_at: string | null;
+}
+
+interface CanvasDraftPersistedModuleRow extends RowDataPacket {
+  id: number | string;
+  type: string;
+  status: string | null;
+}
+
+interface TextEntityWriteOptions {
+  executor?: Pool | PoolConnection | undefined;
+  hasTextEntities?: boolean | undefined;
+}
+
+interface CanvasDraftReadOptions {
+  executor?: Pool | PoolConnection | undefined;
+  forUpdate?: boolean | undefined;
+}
+
+interface ProfileEditorLockRow extends RowDataPacket {
+  user_id: number | string;
 }
 
 interface PostVisibilityRow extends RowDataPacket {
@@ -409,20 +435,10 @@ class MysqlEditorRepository implements EditorRepository {
     const capabilities = await this.schemaCapabilities();
     this.requireProfileModules(capabilities);
     rejectUnknownKeys(body, ["type", "title", "config", "visibility", "status"]);
-    await this.ensureBuiltinModules(session.userId);
-
-    if ((await this.activeModuleCount(session.userId)) >= profileModuleMaxPerProfile) {
-      throw new EditorRouteError("Profiles can have up to 8 modules.", 422);
-    }
-
     const type = validateModuleType(body.type);
     const title = validateModuleTitle(body.title);
     const visibility = validateModuleVisibility(body.visibility ?? "public");
     const status = validateModuleStatus(body.status ?? "active");
-
-    if (singletonModuleTypes.has(type) && (await this.singletonModuleExists(session.userId, type))) {
-      throw new EditorRouteError(`${moduleTypeLabel(type)} module already exists.`, 422);
-    }
 
     if (status === "deleted") {
       throw new EditorRouteError("New modules cannot be created as deleted.", 422);
@@ -433,24 +449,49 @@ class MysqlEditorRepository implements EditorRepository {
     }
 
     const config = validateModuleConfig(body.config);
-    const position = await this.nextModulePosition(session.userId);
-    const [insert] = await this.pool.execute<ResultSetHeader>(
-      `INSERT INTO profile_modules
-          (user_id, type, title, config_json, visibility, position, status, schema_version)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
+    await this.withTransaction(async (connection) => {
+      await this.lockProfileEditorUser(connection, session.userId);
+      const hadOpenDraft = await this.lockOpenCanvasDraft(
+        connection,
         session.userId,
-        type,
-        title,
-        JSON.stringify(config),
-        visibility,
-        position,
-        status,
-        profileModuleSchemaVersion,
-      ],
-    );
+        capabilities.hasProfileCanvasDrafts,
+      );
+      await this.ensureBuiltinModules(session.userId, connection);
 
-    await this.storeModuleTextEntities(insert.insertId, config, visibility, status);
+      if ((await this.activeModuleCount(session.userId, connection)) >= profileModuleMaxPerProfile) {
+        throw new EditorRouteError("Profiles can have up to 8 modules.", 422);
+      }
+
+      if (singletonModuleTypes.has(type) && (await this.singletonModuleExists(session.userId, type, connection))) {
+        throw new EditorRouteError(`${moduleTypeLabel(type)} module already exists.`, 422);
+      }
+
+      const position = await this.nextModulePosition(session.userId, connection);
+      const [insert] = await connection.execute<ResultSetHeader>(
+        `INSERT INTO profile_modules
+            (user_id, type, title, config_json, visibility, position, status, schema_version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          session.userId,
+          type,
+          title,
+          JSON.stringify(config),
+          visibility,
+          position,
+          status,
+          profileModuleSchemaVersion,
+        ],
+      );
+
+      await this.storeModuleTextEntities(insert.insertId, config, visibility, status, {
+        executor: connection,
+        hasTextEntities: capabilities.hasTextEntities,
+      });
+
+      if (hadOpenDraft) {
+        await this.replaceCanvasDraftWithLiveState(connection, session.userId);
+      }
+    });
 
     return this.modulesForOwner(session.userId, false);
   }
@@ -464,67 +505,87 @@ class MysqlEditorRepository implements EditorRepository {
       throw new EditorRouteError("Module type cannot be changed.", 422);
     }
 
-    const module = await this.moduleRecord(moduleId);
-
-    if (module === null || numberValue(module.user_id) !== session.userId || module.status === "deleted") {
-      throw new EditorRouteError("Profile module not found.", 404);
-    }
-
-    const updates: string[] = [];
-    const params: Array<string | number | null> = [];
-    let nextConfig: Record<string, unknown> | null = null;
-    let nextVisibility = module.visibility;
-    let nextStatus = module.status;
-
-    if ("title" in body) {
-      updates.push("title = ?");
-      params.push(validateModuleTitle(body.title));
-    }
-
-    if ("config" in body) {
-      nextConfig = validateModuleConfig(body.config);
-      updates.push("config_json = ?");
-      params.push(JSON.stringify(nextConfig));
-    }
-
-    if ("visibility" in body) {
-      nextVisibility = validateModuleVisibility(body.visibility);
-      if (module.type === "profile_info" && nextVisibility !== "public") {
-        throw new EditorRouteError("Profile info cannot be hidden.", 422);
-      }
-      updates.push("visibility = ?");
-      params.push(nextVisibility);
-    }
-
-    if ("status" in body) {
-      nextStatus = validateModuleStatus(body.status);
-      if (module.type === "profile_info" && nextStatus !== "active") {
-        throw new EditorRouteError("Profile info cannot be hidden.", 422);
-      }
-      updates.push("status = ?");
-      params.push(nextStatus);
-    }
-
-    if (updates.length === 0) {
-      throw new EditorRouteError("No supported module updates were provided.", 422);
-    }
-
-    await this.pool.execute<ResultSetHeader>(
-      `UPDATE profile_modules
-       SET ${updates.join(", ")},
-           updated_at = CURRENT_TIMESTAMP()
-       WHERE id = ?`,
-      [...params, moduleId],
-    );
-
-    if (nextConfig !== null || "visibility" in body || "status" in body) {
-      await this.storeModuleTextEntities(
-        moduleId,
-        nextConfig ?? jsonObject(module.config_json),
-        nextVisibility,
-        nextStatus,
+    await this.withTransaction(async (connection) => {
+      await this.lockProfileEditorUser(connection, session.userId);
+      const hadOpenDraft = await this.lockOpenCanvasDraft(
+        connection,
+        session.userId,
+        capabilities.hasProfileCanvasDrafts,
       );
-    }
+      const module = await this.moduleRecord(moduleId, connection);
+
+      if (module === null || numberValue(module.user_id) !== session.userId || module.status === "deleted") {
+        throw new EditorRouteError("Profile module not found.", 404);
+      }
+
+      const updates: string[] = [];
+      const params: Array<string | number | null> = [];
+      let nextConfig: Record<string, unknown> | null = null;
+      let nextVisibility = module.visibility;
+      let nextStatus = module.status;
+
+      if ("title" in body) {
+        updates.push("title = ?");
+        params.push(validateModuleTitle(body.title));
+      }
+
+      if ("config" in body) {
+        nextConfig = validateModuleConfig(body.config);
+        updates.push("config_json = ?");
+        params.push(JSON.stringify(nextConfig));
+      }
+
+      if ("visibility" in body) {
+        nextVisibility = validateModuleVisibility(body.visibility);
+        if (module.type === "profile_info" && nextVisibility !== "public") {
+          throw new EditorRouteError("Profile info cannot be hidden.", 422);
+        }
+        updates.push("visibility = ?");
+        params.push(nextVisibility);
+      }
+
+      if ("status" in body) {
+        nextStatus = validateModuleStatus(body.status);
+        if (module.type === "profile_info" && nextStatus !== "active") {
+          throw new EditorRouteError("Profile info cannot be hidden.", 422);
+        }
+        updates.push("status = ?");
+        params.push(nextStatus);
+      }
+
+      if (updates.length === 0) {
+        throw new EditorRouteError("No supported module updates were provided.", 422);
+      }
+
+      await connection.execute<ResultSetHeader>(
+        `UPDATE profile_modules
+         SET ${updates.join(", ")},
+             updated_at = CURRENT_TIMESTAMP()
+         WHERE id = ?
+           AND user_id = ?
+           AND status <> 'deleted'`,
+        [...params, moduleId, session.userId],
+      );
+
+      if (nextConfig !== null || "visibility" in body || "status" in body) {
+        await this.storeModuleTextEntities(
+          moduleId,
+          nextConfig ?? jsonObject(module.config_json),
+          nextVisibility,
+          nextStatus,
+          {
+            executor: connection,
+            hasTextEntities: capabilities.hasTextEntities,
+          },
+        );
+      }
+
+      await this.ensureBuiltinModules(session.userId, connection);
+
+      if (hadOpenDraft) {
+        await this.replaceCanvasDraftWithLiveState(connection, session.userId);
+      }
+    });
 
     return this.modulesForOwner(session.userId, false);
   }
@@ -532,42 +593,60 @@ class MysqlEditorRepository implements EditorRepository {
   async deleteModule(session: RequestSession, moduleId: number): Promise<ProfileModulePayload[]> {
     const capabilities = await this.schemaCapabilities();
     this.requireProfileModules(capabilities);
-    const module = await this.moduleRecord(moduleId);
-
-    if (module === null || numberValue(module.user_id) !== session.userId) {
-      throw new EditorRouteError("Profile module not found.", 404);
-    }
-
-    if (protectedModuleTypes.has(module.type)) {
-      throw new EditorRouteError("Profile info cannot be deleted.", 422);
-    }
-
-    await this.pool.execute<ResultSetHeader>(
-      `UPDATE profile_modules
-       SET status = 'deleted',
-           visibility = 'hidden',
-           updated_at = CURRENT_TIMESTAMP()
-       WHERE id = ?`,
-      [moduleId],
-    );
-    if (module.type === "featured_post") {
-      await this.pool.execute<ResultSetHeader>(
-        `UPDATE profiles
-         SET featured_post_id = NULL,
-             updated_at = CURRENT_TIMESTAMP()
-         WHERE user_id = ?`,
-        [session.userId],
+    await this.withTransaction(async (connection) => {
+      await this.lockProfileEditorUser(connection, session.userId);
+      const hadOpenDraft = await this.lockOpenCanvasDraft(
+        connection,
+        session.userId,
+        capabilities.hasProfileCanvasDrafts,
       );
-    } else if (module.type === "featured_room") {
-      await this.pool.execute<ResultSetHeader>(
-        `UPDATE profiles
-         SET featured_room_id = NULL,
+      const module = await this.moduleRecord(moduleId, connection);
+
+      if (module === null || numberValue(module.user_id) !== session.userId) {
+        throw new EditorRouteError("Profile module not found.", 404);
+      }
+
+      if (protectedModuleTypes.has(module.type)) {
+        throw new EditorRouteError("Profile info cannot be deleted.", 422);
+      }
+
+      await connection.execute<ResultSetHeader>(
+        `UPDATE profile_modules
+         SET status = 'deleted',
+             visibility = 'hidden',
              updated_at = CURRENT_TIMESTAMP()
-         WHERE user_id = ?`,
-        [session.userId],
+         WHERE id = ?
+           AND user_id = ?`,
+        [moduleId, session.userId],
       );
-    }
-    await this.deleteTextEntities("profile_module", moduleId, "body");
+      if (module.type === "featured_post") {
+        await connection.execute<ResultSetHeader>(
+          `UPDATE profiles
+           SET featured_post_id = NULL,
+               updated_at = CURRENT_TIMESTAMP()
+           WHERE user_id = ?`,
+          [session.userId],
+        );
+      } else if (module.type === "featured_room") {
+        await connection.execute<ResultSetHeader>(
+          `UPDATE profiles
+           SET featured_room_id = NULL,
+               updated_at = CURRENT_TIMESTAMP()
+           WHERE user_id = ?`,
+          [session.userId],
+        );
+      }
+      await this.deleteTextEntities("profile_module", moduleId, "body", {
+        executor: connection,
+        hasTextEntities: capabilities.hasTextEntities,
+      });
+
+      await this.ensureBuiltinModules(session.userId, connection);
+
+      if (hadOpenDraft) {
+        await this.replaceCanvasDraftWithLiveState(connection, session.userId);
+      }
+    });
 
     return this.modulesForOwner(session.userId, false);
   }
@@ -575,37 +654,58 @@ class MysqlEditorRepository implements EditorRepository {
   async restoreModule(session: RequestSession, moduleId: number): Promise<ProfileModulePayload[]> {
     const capabilities = await this.schemaCapabilities();
     this.requireProfileModules(capabilities);
-    const module = await this.moduleRecord(moduleId);
+    await this.withTransaction(async (connection) => {
+      await this.lockProfileEditorUser(connection, session.userId);
+      const hadOpenDraft = await this.lockOpenCanvasDraft(
+        connection,
+        session.userId,
+        capabilities.hasProfileCanvasDrafts,
+      );
+      const module = await this.moduleRecord(moduleId, connection);
 
-    if (module === null || numberValue(module.user_id) !== session.userId) {
-      throw new EditorRouteError("Profile module not found.", 404);
-    }
+      if (module === null || numberValue(module.user_id) !== session.userId) {
+        throw new EditorRouteError("Profile module not found.", 404);
+      }
 
-    if (!profileModuleTypes.has(module.type)) {
-      throw new EditorRouteError("This profile module can no longer be restored.", 422);
-    }
+      if (!profileModuleTypes.has(module.type)) {
+        throw new EditorRouteError("This profile module can no longer be restored.", 422);
+      }
 
-    if (protectedModuleTypes.has(module.type)) {
-      throw new EditorRouteError("Profile info is always active.", 422);
-    }
+      if (protectedModuleTypes.has(module.type)) {
+        throw new EditorRouteError("Profile info is always active.", 422);
+      }
 
-    if (module.status !== "deleted") {
-      return this.modulesForOwner(session.userId, true);
-    }
+      if (module.status !== "deleted") {
+        return;
+      }
 
-    if ((await this.activeModuleCount(session.userId)) >= profileModuleMaxPerProfile) {
-      throw new EditorRouteError("Profiles can have up to 8 modules.", 422);
-    }
+      if ((await this.activeModuleCount(session.userId, connection)) >= profileModuleMaxPerProfile) {
+        throw new EditorRouteError("Profiles can have up to 8 modules.", 422);
+      }
 
-    await this.pool.execute<ResultSetHeader>(
-      `UPDATE profile_modules
-       SET status = 'active',
-           visibility = 'public',
-           updated_at = CURRENT_TIMESTAMP()
-       WHERE id = ?
-         AND user_id = ?`,
-      [moduleId, session.userId],
-    );
+      if (
+        singletonModuleTypes.has(module.type) &&
+        (await this.singletonModuleExists(session.userId, module.type, connection))
+      ) {
+        throw new EditorRouteError(`${moduleTypeLabel(module.type)} module already exists.`, 422);
+      }
+
+      await connection.execute<ResultSetHeader>(
+        `UPDATE profile_modules
+         SET status = 'active',
+             visibility = 'public',
+             updated_at = CURRENT_TIMESTAMP()
+         WHERE id = ?
+           AND user_id = ?`,
+        [moduleId, session.userId],
+      );
+
+      await this.ensureBuiltinModules(session.userId, connection);
+
+      if (hadOpenDraft) {
+        await this.replaceCanvasDraftWithLiveState(connection, session.userId);
+      }
+    });
 
     return this.modulesForOwner(session.userId, true);
   }
@@ -615,17 +715,25 @@ class MysqlEditorRepository implements EditorRepository {
     this.requireProfileModules(capabilities);
     rejectUnknownKeys(body, ["moduleIds"]);
     const moduleIds = validateModuleIds(body.moduleIds);
-    const currentIds = await this.ownerModuleIds(session.userId);
-
-    if (moduleIds.length !== currentIds.length) {
-      throw new EditorRouteError("Module order must include every profile module.", 422);
-    }
-
-    if ([...moduleIds].sort((a, b) => a - b).join(",") !== [...currentIds].sort((a, b) => a - b).join(",")) {
-      throw new EditorRouteError("Module order contains unavailable modules.", 422);
-    }
 
     await this.withTransaction(async (connection) => {
+      await this.lockProfileEditorUser(connection, session.userId);
+      const hadOpenDraft = await this.lockOpenCanvasDraft(
+        connection,
+        session.userId,
+        capabilities.hasProfileCanvasDrafts,
+      );
+      await this.ensureBuiltinModules(session.userId, connection);
+      const currentIds = await this.ownerModuleIds(session.userId, connection);
+
+      if (moduleIds.length !== currentIds.length) {
+        throw new EditorRouteError("Module order must include every profile module.", 422);
+      }
+
+      if ([...moduleIds].sort((a, b) => a - b).join(",") !== [...currentIds].sort((a, b) => a - b).join(",")) {
+        throw new EditorRouteError("Module order contains unavailable modules.", 422);
+      }
+
       for (const [index, moduleId] of moduleIds.entries()) {
         await connection.execute<ResultSetHeader>(
           `UPDATE profile_modules
@@ -637,6 +745,10 @@ class MysqlEditorRepository implements EditorRepository {
           [index + 1, moduleId, session.userId],
         );
       }
+
+      if (hadOpenDraft) {
+        await this.replaceCanvasDraftWithLiveState(connection, session.userId);
+      }
     });
 
     return this.modulesForOwner(session.userId, false);
@@ -647,13 +759,20 @@ class MysqlEditorRepository implements EditorRepository {
     this.requireProfileModules(capabilities);
     this.requireProfileCanvas(capabilities);
     rejectUnknownKeys(body, ["canvasVersion", "backgroundBlur", "modules", "anchorModuleId", "movementContext"]);
-    await this.ensureBuiltinModules(session.userId);
 
     if (!("backgroundBlur" in body) && !("modules" in body)) {
       throw new EditorRouteError("No canvas updates were provided.", 422);
     }
 
     await this.withTransaction(async (connection) => {
+      await this.lockProfileEditorUser(connection, session.userId);
+      const hadOpenDraft = await this.lockOpenCanvasDraft(
+        connection,
+        session.userId,
+        capabilities.hasProfileCanvasDrafts,
+      );
+      await this.ensureBuiltinModules(session.userId, connection);
+
       if ("backgroundBlur" in body) {
         await connection.execute<ResultSetHeader>(
           `UPDATE profiles
@@ -668,6 +787,10 @@ class MysqlEditorRepository implements EditorRepository {
       if ("modules" in body) {
         await this.applyCanvasPlacements(connection, session.userId, validateCanvasPlacements(body.modules));
       }
+
+      if (hadOpenDraft) {
+        await this.replaceCanvasDraftWithLiveState(connection, session.userId);
+      }
     });
 
     return this.canvasUpdatePayload(session.userId);
@@ -678,9 +801,31 @@ class MysqlEditorRepository implements EditorRepository {
     this.requireProfileModules(capabilities);
     this.requireProfileCanvas(capabilities);
     this.requireProfileCanvasDrafts(capabilities);
-    await this.ensureBuiltinModules(userId);
 
-    return this.canvasDraftState(userId);
+    return this.withTransaction(async (connection) => {
+      await this.lockProfileEditorUser(connection, userId);
+      await this.ensureBuiltinModules(userId, connection);
+      const current = await this.rawCanvasDraftState(userId, {
+        executor: connection,
+        forUpdate: true,
+      });
+
+      if (current.revision === null) {
+        await this.saveCanvasDraft(
+          userId,
+          {
+            ...current,
+            revision: newCanvasDraftRevision(),
+          },
+          connection,
+        );
+      }
+
+      return this.canvasDraftStateForOutput(userId, true, {
+        executor: connection,
+        forUpdate: true,
+      });
+    });
   }
 
   async updateCanvasDraft(session: RequestSession, body: Record<string, unknown>): Promise<ProfileCanvasDraftState> {
@@ -688,79 +833,152 @@ class MysqlEditorRepository implements EditorRepository {
     this.requireProfileModules(capabilities);
     this.requireProfileCanvas(capabilities);
     this.requireProfileCanvasDrafts(capabilities);
-    rejectUnknownKeys(body, ["canvasVersion", "backgroundBlur", "canvasGlass", "modules", "selectedModuleId", "updatedAt"]);
-    await this.ensureBuiltinModules(session.userId);
-    const current = await this.rawCanvasDraftState(session.userId);
-    const next: ProfileCanvasDraftState = {
-      ...current,
-      backgroundBlur: "backgroundBlur" in body ? validateBackgroundBlur(body.backgroundBlur) : current.backgroundBlur,
-      canvasGlass: "canvasGlass" in body ? validateCanvasGlass(body.canvasGlass) : current.canvasGlass,
-      modules: "modules" in body ? validateDraftModules(body.modules) : current.modules,
-      selectedModuleId: "selectedModuleId" in body ? validateSelectedModuleId(body.selectedModuleId) : current.selectedModuleId,
-      updatedAt: current.updatedAt,
-    };
+    rejectUnknownKeys(body, [
+      "canvasVersion",
+      "backgroundBlur",
+      "canvasGlass",
+      "modules",
+      "selectedModuleId",
+      "expectedRevision",
+      "updatedAt",
+    ]);
+    const expectedRevision = validateExpectedCanvasDraftRevision(body.expectedRevision);
+    const revisionAware = expectedRevision !== undefined;
 
-    await this.saveCanvasDraft(session.userId, next);
+    return this.withTransaction(async (connection) => {
+      await this.lockProfileEditorUser(connection, session.userId);
+      const current = await this.rawCanvasDraftState(session.userId, {
+        executor: connection,
+        forUpdate: true,
+      });
+      assertExpectedCanvasDraftRevision(current.revision ?? null, expectedRevision);
+      const next: ProfileCanvasDraftState = {
+        ...current,
+        backgroundBlur: "backgroundBlur" in body ? validateBackgroundBlur(body.backgroundBlur) : current.backgroundBlur,
+        canvasGlass: "canvasGlass" in body ? validateCanvasGlass(body.canvasGlass) : current.canvasGlass,
+        modules: "modules" in body ? validateDraftModules(body.modules) : current.modules,
+        revision: revisionAware ? newCanvasDraftRevision() : null,
+        selectedModuleId: "selectedModuleId" in body ? validateSelectedModuleId(body.selectedModuleId) : current.selectedModuleId,
+        updatedAt: current.updatedAt,
+      };
 
-    return this.canvasDraftState(session.userId);
+      await this.saveCanvasDraft(session.userId, next, connection, {
+        embedRevision: revisionAware,
+      });
+
+      return this.canvasDraftStateForOutput(session.userId, true, {
+        executor: connection,
+        forUpdate: true,
+      });
+    });
   }
 
-  async deleteCanvasDraft(session: RequestSession): Promise<ProfileCanvasDraftState> {
+  async deleteCanvasDraft(session: RequestSession, rawExpectedRevision?: unknown): Promise<ProfileCanvasDraftState> {
     const capabilities = await this.schemaCapabilities();
     this.requireProfileCanvasDrafts(capabilities);
-    await this.pool.execute<ResultSetHeader>(`DELETE FROM profile_canvas_drafts WHERE user_id = ?`, [session.userId]);
+    const expectedRevision = validateExpectedCanvasDraftRevision(rawExpectedRevision);
+    return this.withTransaction(async (connection) => {
+      await this.lockProfileEditorUser(connection, session.userId);
+      const current = await this.rawCanvasDraftState(session.userId, {
+        executor: connection,
+        forUpdate: true,
+      });
+      assertExpectedCanvasDraftRevision(current.revision ?? null, expectedRevision);
+      await connection.execute<ResultSetHeader>(`DELETE FROM profile_canvas_drafts WHERE user_id = ?`, [session.userId]);
 
-    return this.defaultCanvasDraftState(session.userId);
+      return this.defaultCanvasDraftState(session.userId, true, connection);
+    });
   }
 
-  async commitCanvasDraft(session: RequestSession): Promise<ProfileCanvasUpdatePayload> {
+  async rebaseCanvasDraft(session: RequestSession, rawExpectedRevision?: unknown): Promise<ProfileCanvasDraftState> {
     const capabilities = await this.schemaCapabilities();
     this.requireProfileModules(capabilities);
     this.requireProfileCanvas(capabilities);
     this.requireProfileCanvasDrafts(capabilities);
-    const state = await this.rawCanvasDraftState(session.userId);
-    const deletedPersistedModules = canvasDraftPersistedModulesForDelete(state.modules);
-    const modulesForCommit = normalizeDraftModulePositions(canvasDraftModulesForCommit(state.modules));
-    const newDraftModules = modulesForCommit.filter(
-      (module) => !isPersistedModuleId(module.id),
-    );
-    const activeCountAfterDeletes = Math.max(
-      0,
-      (await this.activeModuleCount(session.userId)) - deletedPersistedModules.length,
-    );
+    const expectedRevision = validateExpectedCanvasDraftRevision(rawExpectedRevision);
 
-    if (
-      newDraftModules.length > 0 &&
-      activeCountAfterDeletes + newDraftModules.length > profileModuleMaxPerProfile
-    ) {
-      throw new EditorRouteError("Profiles can have up to 8 modules.", 422);
+    if (expectedRevision === undefined) {
+      throw new EditorRouteError("Canvas draft revision is required.", 422);
     }
 
-    for (const module of newDraftModules) {
-      if (!singletonModuleTypes.has(module.type)) {
-        continue;
-      }
+    return this.withTransaction(async (connection) => {
+      await this.lockProfileEditorUser(connection, session.userId);
+      const current = await this.rawCanvasDraftState(session.userId, {
+        executor: connection,
+        forUpdate: true,
+      });
+      assertExpectedCanvasDraftRevision(current.revision ?? null, expectedRevision);
 
-      const replacesDeletedSingleton = deletedPersistedModules.some(
-        (deletedModule) => deletedModule.type === module.type,
+      return this.replaceCanvasDraftWithLiveState(
+        connection,
+        session.userId,
+        true,
+      );
+    });
+  }
+
+  async commitCanvasDraft(session: RequestSession, rawExpectedRevision?: unknown): Promise<ProfileCanvasUpdatePayload> {
+    const capabilities = await this.schemaCapabilities();
+    this.requireProfileModules(capabilities);
+    this.requireProfileCanvas(capabilities);
+    this.requireProfileCanvasDrafts(capabilities);
+    const expectedRevision = validateExpectedCanvasDraftRevision(rawExpectedRevision);
+    await this.withTransaction(async (connection) => {
+      await this.lockProfileEditorUser(connection, session.userId);
+      const state = await this.rawCanvasDraftState(session.userId, {
+        executor: connection,
+        forUpdate: true,
+      });
+      assertExpectedCanvasDraftRevision(state.revision ?? null, expectedRevision);
+      const persistedRows = await this.lockCanvasDraftPersistedModules(
+        connection,
+        session.userId,
+      );
+      const validatedModules = canvasDraftModulesWithPersistedTypes(
+        state.modules,
+        persistedRows,
+      );
+      const deletedPersistedModules =
+        canvasDraftPersistedModulesForDelete(validatedModules);
+      const modulesForCommit = normalizeDraftModulePositions(
+        canvasDraftModulesForCommit(validatedModules),
+      );
+      const newDraftModules = modulesForCommit.filter(
+      (module) => !isPersistedModuleId(module.id),
+      );
+      const deletedPersistedIds = new Set(
+        deletedPersistedModules.map((module) => module.id),
+      );
+      const activePersistedRows = persistedRows.filter(
+        (row) =>
+          row.status !== "deleted" &&
+          !deletedPersistedIds.has(numberValue(row.id)),
       );
 
-      if (!replacesDeletedSingleton && (await this.singletonModuleExists(session.userId, module.type))) {
-        throw new EditorRouteError(`${moduleTypeLabel(module.type)} module already exists.`, 422);
+      if (
+        newDraftModules.length > 0 &&
+        activePersistedRows.length + newDraftModules.length > profileModuleMaxPerProfile
+    ) {
+      throw new EditorRouteError("Profiles can have up to 8 modules.", 422);
       }
-    }
 
-    assertNoDuplicateSingletonModules(modulesForCommit);
+      assertNoDuplicateSingletonModules(modulesForCommit);
+      const activePersistedSingletonTypes = new Set(
+        activePersistedRows
+          .map((row) => canonicalProfileModuleType(row.type))
+          .filter((type) => singletonModuleTypes.has(type)),
+      );
 
-    const textEntityUpdates: Array<{
-      moduleId: number;
-      config: Record<string, unknown>;
-      visibility: string;
-      status: string;
-    }> = [];
-    const deletedTextEntityModuleIds: number[] = [];
+      for (const module of newDraftModules) {
+        if (
+          singletonModuleTypes.has(module.type) &&
+          activePersistedSingletonTypes.has(module.type)
+        ) {
+          throw new EditorRouteError(`${moduleTypeLabel(module.type)} module already exists.`, 422,
+          );
+        }
+      }
 
-    await this.withTransaction(async (connection) => {
       await connection.execute<ResultSetHeader>(
         `UPDATE profiles
          SET profile_background_blur = ?,
@@ -774,8 +992,13 @@ class MysqlEditorRepository implements EditorRepository {
       const committedModules = [...modulesForCommit];
 
       for (const module of deletedPersistedModules) {
-        await this.softDeleteCanvasDraftModule(connection, session.userId, module);
-        deletedTextEntityModuleIds.push(module.id);
+        await this.softDeleteCanvasDraftModule(connection, session.userId,
+          module,
+        );
+        await this.deleteTextEntities("profile_module", module.id, "body", {
+          executor: connection,
+          hasTextEntities: capabilities.hasTextEntities,
+        });
       }
 
       for (const [index, module] of committedModules.entries()) {
@@ -790,13 +1013,19 @@ class MysqlEditorRepository implements EditorRepository {
 
         if (isPersistedModuleId(module.id)) {
           committedModules[index] = committedModule;
-          await this.updateCanvasDraftModule(connection, session.userId, committedModule);
-          textEntityUpdates.push({
-            moduleId: module.id,
-            config: module.config,
+          await this.updateCanvasDraftModule(connection, session.userId,
+            committedModule,
+          );
+          await this.storeModuleTextEntities(
+            module.id,
+            module.config,
             visibility,
             status,
-          });
+            {
+              executor: connection,
+              hasTextEntities: capabilities.hasTextEntities,
+            },
+          );
           continue;
         }
 
@@ -827,29 +1056,21 @@ class MysqlEditorRepository implements EditorRepository {
           ...committedModule,
           id: insert.insertId,
         };
-        textEntityUpdates.push({
-          moduleId: insert.insertId,
-          config: module.config,
+        await this.storeModuleTextEntities(
+          insert.insertId,
+          module.config,
           visibility,
           status,
-        });
+          {
+            executor: connection,
+            hasTextEntities: capabilities.hasTextEntities,
+          },
+        );
       }
 
-      await connection.execute<ResultSetHeader>(`DELETE FROM profile_canvas_drafts WHERE user_id = ?`, [session.userId]);
-    });
-
-    for (const moduleId of deletedTextEntityModuleIds) {
-      await this.deleteTextEntities("profile_module", moduleId, "body");
-    }
-
-    for (const update of textEntityUpdates) {
-      await this.storeModuleTextEntities(
-        update.moduleId,
-        update.config,
-        update.visibility,
-        update.status,
+      await connection.execute<ResultSetHeader>(`DELETE FROM profile_canvas_drafts WHERE user_id = ?`, [session.userId],
       );
-    }
+    });
 
     return this.canvasUpdatePayload(session.userId);
   }
@@ -1120,14 +1341,15 @@ class MysqlEditorRepository implements EditorRepository {
   private async modulesForOwner(
     userId: number,
     includeDeleted: boolean,
-    options: { enrichIntegrations?: boolean } = {},
+    options: { enrichIntegrations?: boolean; executor?: Pool | PoolConnection } = {},
   ): Promise<ProfileModulePayload[]> {
     const enrichIntegrations = options.enrichIntegrations ?? true;
+    const executor = options.executor ?? this.pool;
     const capabilities = await this.schemaCapabilities();
 
-    await this.ensureBuiltinModules(userId);
+    await this.ensureBuiltinModules(userId, executor);
     const deletedWhere = includeDeleted ? "" : "AND status <> 'deleted'";
-    const [rows] = await this.pool.execute<ProfileModuleRow[]>(
+    const [rows] = await executor.execute<ProfileModuleRow[]>(
       `SELECT
           id,
           user_id,
@@ -1155,15 +1377,18 @@ class MysqlEditorRepository implements EditorRepository {
     const modules = rows.map((row) => modulePayload(row));
 
     return enrichIntegrations
-      ? this.enrichOwnerModuleIntegrations(modules, capabilities)
+      ? this.enrichOwnerModuleIntegrations(modules, capabilities, executor)
       : modules;
   }
 
-  private async ensureBuiltinModules(userId: number): Promise<void> {
-    await this.ensureSingletonModule(userId, "profile_info", "Profile info", {}, 0);
+  private async ensureBuiltinModules(
+    userId: number,
+    executor: Pool | PoolConnection = this.pool,
+  ): Promise<void> {
+    await this.ensureSingletonModule(userId, "profile_info", "Profile info", {}, 0, executor);
 
-    if ((await this.nonDefaultActiveModuleCount(userId)) === 0) {
-      await this.ensureSingletonModule(userId, "activity", "Activity", { variant: "feed" }, 2);
+    if ((await this.nonDefaultActiveModuleCount(userId, executor)) === 0) {
+      await this.ensureSingletonModule(userId, "activity", "Activity", { variant: "feed" }, 2, executor);
     }
   }
 
@@ -1173,12 +1398,13 @@ class MysqlEditorRepository implements EditorRepository {
     title: string,
     config: Record<string, unknown>,
     position: number,
+    executor: Pool | PoolConnection = this.pool,
   ): Promise<void> {
-    if (await this.singletonModuleExists(userId, type)) {
+    if (await this.singletonModuleExists(userId, type, executor)) {
       return;
     }
 
-    await this.pool.execute<ResultSetHeader>(
+    await executor.execute<ResultSetHeader>(
       `INSERT INTO profile_modules
           (user_id, type, title, config_json, visibility, position, status, schema_version)
        VALUES (?, ?, ?, ?, 'public', ?, 'active', ?)`,
@@ -1186,8 +1412,11 @@ class MysqlEditorRepository implements EditorRepository {
     );
   }
 
-  private async moduleRecord(moduleId: number): Promise<ProfileModuleRow | null> {
-    const [rows] = await this.pool.execute<ProfileModuleRow[]>(
+  private async moduleRecord(
+    moduleId: number,
+    executor: Pool | PoolConnection = this.pool,
+  ): Promise<ProfileModuleRow | null> {
+    const [rows] = await executor.execute<ProfileModuleRow[]>(
       `SELECT
           id,
           user_id,
@@ -1214,8 +1443,11 @@ class MysqlEditorRepository implements EditorRepository {
     return rows[0] ?? null;
   }
 
-  private async activeModuleCount(userId: number): Promise<number> {
-    const [rows] = await this.pool.execute<ModuleCountRow[]>(
+  private async activeModuleCount(
+    userId: number,
+    executor: Pool | PoolConnection = this.pool,
+  ): Promise<number> {
+    const [rows] = await executor.execute<ModuleCountRow[]>(
       `SELECT COUNT(*) AS module_count
        FROM profile_modules
        WHERE user_id = ?
@@ -1226,8 +1458,11 @@ class MysqlEditorRepository implements EditorRepository {
     return numberValue(rows[0]?.module_count);
   }
 
-  private async nonDefaultActiveModuleCount(userId: number): Promise<number> {
-    const [rows] = await this.pool.execute<ModuleCountRow[]>(
+  private async nonDefaultActiveModuleCount(
+    userId: number,
+    executor: Pool | PoolConnection = this.pool,
+  ): Promise<number> {
+    const [rows] = await executor.execute<ModuleCountRow[]>(
       `SELECT COUNT(*) AS module_count
        FROM profile_modules
        WHERE user_id = ?
@@ -1239,8 +1474,12 @@ class MysqlEditorRepository implements EditorRepository {
     return numberValue(rows[0]?.module_count);
   }
 
-  private async singletonModuleExists(userId: number, type: string): Promise<boolean> {
-    const [rows] = await this.pool.execute<IdRow[]>(
+  private async singletonModuleExists(
+    userId: number,
+    type: string,
+    executor: Pool | PoolConnection = this.pool,
+  ): Promise<boolean> {
+    const [rows] = await executor.execute<IdRow[]>(
       `SELECT id
        FROM profile_modules
        WHERE user_id = ?
@@ -1253,8 +1492,11 @@ class MysqlEditorRepository implements EditorRepository {
     return rows[0] !== undefined;
   }
 
-  private async nextModulePosition(userId: number): Promise<number> {
-    const [rows] = await this.pool.execute<ModuleCountRow[]>(
+  private async nextModulePosition(
+    userId: number,
+    executor: Pool | PoolConnection = this.pool,
+  ): Promise<number> {
+    const [rows] = await executor.execute<ModuleCountRow[]>(
       `SELECT COALESCE(MAX(position), 0) + 1 AS module_count
        FROM profile_modules
        WHERE user_id = ?`,
@@ -1264,8 +1506,11 @@ class MysqlEditorRepository implements EditorRepository {
     return Math.max(1, numberValue(rows[0]?.module_count));
   }
 
-  private async ownerModuleIds(userId: number): Promise<number[]> {
-    const [rows] = await this.pool.execute<IdRow[]>(
+  private async ownerModuleIds(
+    userId: number,
+    executor: Pool | PoolConnection = this.pool,
+  ): Promise<number[]> {
+    const [rows] = await executor.execute<IdRow[]>(
       `SELECT id
        FROM profile_modules
        WHERE user_id = ?
@@ -1286,8 +1531,11 @@ class MysqlEditorRepository implements EditorRepository {
     };
   }
 
-  private async canvasPreferences(userId: number): Promise<Omit<ProfileCanvasUpdatePayload, "modules">> {
-    const [rows] = await this.pool.execute<CanvasPreferencesRow[]>(
+  private async canvasPreferences(
+    userId: number,
+    executor: Pool | PoolConnection = this.pool,
+  ): Promise<Omit<ProfileCanvasUpdatePayload, "modules">> {
+    const [rows] = await executor.execute<CanvasPreferencesRow[]>(
       `SELECT profile_background_blur, profile_canvas_version, profile_canvas_glass_opacity
        FROM profiles
        WHERE user_id = ?
@@ -1303,33 +1551,40 @@ class MysqlEditorRepository implements EditorRepository {
     };
   }
 
-  private async canvasDraftState(userId: number): Promise<ProfileCanvasDraftState> {
-    return this.canvasDraftStateForOutput(userId, true);
-  }
-
-  private async rawCanvasDraftState(userId: number): Promise<ProfileCanvasDraftState> {
-    return this.canvasDraftStateForOutput(userId, false);
+  private async rawCanvasDraftState(
+    userId: number,
+    options: CanvasDraftReadOptions = {},
+  ): Promise<ProfileCanvasDraftState> {
+    return this.canvasDraftStateForOutput(userId, false, options);
   }
 
   private async canvasDraftStateForOutput(
     userId: number,
     enrichIntegrations: boolean,
+    options: CanvasDraftReadOptions = {},
   ): Promise<ProfileCanvasDraftState> {
-    const [rows] = await this.pool.execute<CanvasDraftRow[]>(
+    const [rows] = await (options.executor ?? this.pool).execute<
+      CanvasDraftRow[]
+    >(
       `SELECT draft_json, selected_module_id, updated_at
        FROM profile_canvas_drafts
        WHERE user_id = ?
-       LIMIT 1`,
+       LIMIT 1${options.forUpdate ? "\n       FOR UPDATE" : ""}`,
       [userId],
     );
     const row = rows[0];
 
     if (row === undefined) {
-      return this.defaultCanvasDraftState(userId, enrichIntegrations);
+      return this.defaultCanvasDraftState(
+        userId,
+        enrichIntegrations,
+        options.executor ?? this.pool,
+      );
     }
 
     const decoded = jsonObject(row.draft_json);
-    const defaults = await this.defaultCanvasDraftState(userId, false);
+    const executor = options.executor ?? this.pool;
+    const defaults = await this.defaultCanvasDraftState(userId, false, executor);
     const modules = Array.isArray(decoded.modules)
       ? validateDraftModules(decoded.modules, { repairInvalidConfig: true })
       : defaults.modules;
@@ -1340,8 +1595,9 @@ class MysqlEditorRepository implements EditorRepository {
       canvasGlass: validateCanvasGlass(decoded.canvasGlass ?? defaults.canvasGlass),
       canvasVersion: profileCanvasVersion,
       modules: enrichIntegrations && capabilities !== null
-        ? await this.enrichOwnerModuleIntegrations(modules, capabilities)
+        ? await this.enrichOwnerModuleIntegrations(modules, capabilities, executor)
         : modules,
+      revision: canvasDraftRevision(row, decoded),
       selectedModuleId: validateSelectedModuleId(row.selected_module_id ?? decoded.selectedModuleId ?? null),
       updatedAt: row.updated_at,
     };
@@ -1350,29 +1606,47 @@ class MysqlEditorRepository implements EditorRepository {
   private async defaultCanvasDraftState(
     userId: number,
     enrichIntegrations = true,
+    executor: Pool | PoolConnection = this.pool,
   ): Promise<ProfileCanvasDraftState> {
-    const preferences = await this.canvasPreferences(userId);
+    const preferences = await this.canvasPreferences(userId, executor);
 
     return {
       ...preferences,
       modules: normalizeDraftModulePositions(
-        await this.modulesForOwner(userId, false, { enrichIntegrations }),
+        await this.modulesForOwner(userId, false, { enrichIntegrations, executor }),
       ),
+      revision: null,
       selectedModuleId: null,
       updatedAt: null,
     };
   }
 
-  private async saveCanvasDraft(userId: number, state: ProfileCanvasDraftState): Promise<void> {
+  private async saveCanvasDraft(
+    userId: number,
+    state: ProfileCanvasDraftState,
+    executor: Pool | PoolConnection = this.pool,
+    options: { embedRevision?: boolean } = {},
+  ): Promise<void> {
+    const revision = state.revision;
+    const embedRevision = options.embedRevision ?? true;
+
+    if (
+      embedRevision &&
+      (typeof revision !== "string" || !canvasDraftRevisionPattern.test(revision))
+    ) {
+      throw new Error("Canvas draft revision is missing.");
+    }
+
     const draftJson = JSON.stringify({
       backgroundBlur: state.backgroundBlur,
       canvasGlass: state.canvasGlass,
       canvasVersion: profileCanvasVersion,
       modules: normalizeDraftModulePositions(state.modules),
+      ...(embedRevision ? { revision } : {}),
       selectedModuleId: state.selectedModuleId,
     });
 
-    await this.pool.execute<ResultSetHeader>(
+    await executor.execute<ResultSetHeader>(
       `INSERT INTO profile_canvas_drafts (user_id, draft_json, selected_module_id)
        VALUES (?, ?, ?)
        ON DUPLICATE KEY UPDATE
@@ -1383,9 +1657,31 @@ class MysqlEditorRepository implements EditorRepository {
     );
   }
 
+  private async replaceCanvasDraftWithLiveState(
+    connection: PoolConnection,
+    userId: number,
+    enrichIntegrations = false,
+  ): Promise<ProfileCanvasDraftState> {
+    const live = await this.defaultCanvasDraftState(userId, false, connection);
+    const replacement: ProfileCanvasDraftState = {
+      ...live,
+      revision: newCanvasDraftRevision(),
+      selectedModuleId: null,
+      updatedAt: null,
+    };
+
+    await this.saveCanvasDraft(userId, replacement, connection);
+
+    return this.canvasDraftStateForOutput(userId, enrichIntegrations, {
+      executor: connection,
+      forUpdate: true,
+    });
+  }
+
   private async enrichOwnerModuleIntegrations(
     modules: ProfileModulePayload[],
     capabilities: SchemaCapabilities,
+    executor: Pool | PoolConnection = this.pool,
   ): Promise<ProfileModulePayload[]> {
     const enriched: ProfileModulePayload[] = [];
 
@@ -1394,6 +1690,7 @@ class MysqlEditorRepository implements EditorRepository {
         module.type,
         module.config,
         capabilities,
+        executor,
       );
 
       enriched.push(
@@ -1416,6 +1713,7 @@ class MysqlEditorRepository implements EditorRepository {
     type: string,
     config: Record<string, unknown>,
     capabilities: SchemaCapabilities,
+    executor: Pool | PoolConnection = this.pool,
   ): Promise<Record<string, unknown> | null> {
     if (
       !capabilities.hasProfileIntegrationMetadataCache ||
@@ -1437,7 +1735,7 @@ class MysqlEditorRepository implements EditorRepository {
       return null;
     }
 
-    const [rows] = await this.pool.execute<ProfileIntegrationCacheRow[]>(
+    const [rows] = await executor.execute<ProfileIntegrationCacheRow[]>(
       `SELECT provider, resource_type, resource_id, resource_key, source_url, metadata_json, embed_json,
               api_backed, fetched_at, expires_at, stale_at, error_message
        FROM profile_integration_metadata_cache
@@ -1451,12 +1749,66 @@ class MysqlEditorRepository implements EditorRepository {
     return row === undefined ? profileIntegrationGeneratedCardPayload(normalized) : profileIntegrationCachePayload(row);
   }
 
+  private async lockProfileEditorUser(
+    connection: PoolConnection,
+    userId: number,
+  ): Promise<void> {
+    const [rows] = await connection.execute<ProfileEditorLockRow[]>(
+      `SELECT user_id
+       FROM profiles
+       WHERE user_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [userId],
+    );
+
+    if (rows[0] === undefined) {
+      throw new EditorRouteError("Profile not found.", 404);
+    }
+  }
+
+  private async lockOpenCanvasDraft(
+    connection: PoolConnection,
+    userId: number,
+    storageAvailable: boolean,
+  ): Promise<boolean> {
+    if (!storageAvailable) {
+      return false;
+    }
+
+    const [rows] = await connection.execute<ProfileEditorLockRow[]>(
+      `SELECT user_id
+       FROM profile_canvas_drafts
+       WHERE user_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [userId],
+    );
+
+    return rows[0] !== undefined;
+  }
+
+  private async lockCanvasDraftPersistedModules(
+    connection: PoolConnection,
+    userId: number,
+  ): Promise<CanvasDraftPersistedModuleRow[]> {
+    const [rows] = await connection.execute<CanvasDraftPersistedModuleRow[]>(
+      `SELECT id, type, status
+       FROM profile_modules
+       WHERE user_id = ?
+       FOR UPDATE`,
+      [userId],
+    );
+
+    return rows;
+  }
+
   private async softDeleteCanvasDraftModule(
     connection: PoolConnection,
     userId: number,
     module: ProfileModulePayload,
   ): Promise<void> {
-    await connection.execute<ResultSetHeader>(
+    const [result] = await connection.execute<ResultSetHeader>(
       `UPDATE profile_modules
        SET status = 'deleted',
            visibility = 'hidden',
@@ -1466,6 +1818,10 @@ class MysqlEditorRepository implements EditorRepository {
          AND type <> 'profile_info'`,
       [module.id, userId],
     );
+
+    if (result.affectedRows !== 1) {
+      throw canvasDraftModulesChangedError();
+    }
 
     if (module.type === "featured_post") {
       await connection.execute<ResultSetHeader>(
@@ -1491,7 +1847,7 @@ class MysqlEditorRepository implements EditorRepository {
     userId: number,
     module: ProfileModulePayload,
   ): Promise<void> {
-    await connection.execute<ResultSetHeader>(
+    const [result] = await connection.execute<ResultSetHeader>(
       `UPDATE profile_modules
        SET title = ?,
            type = ?,
@@ -1507,7 +1863,8 @@ class MysqlEditorRepository implements EditorRepository {
            schema_version = ?,
            updated_at = CURRENT_TIMESTAMP()
        WHERE id = ?
-         AND user_id = ?`,
+         AND user_id = ?
+         AND status <> 'deleted'`,
       [
         module.title,
         canonicalProfileModuleType(module.type),
@@ -1525,6 +1882,10 @@ class MysqlEditorRepository implements EditorRepository {
         userId,
       ],
     );
+
+    if (result.affectedRows !== 1) {
+      throw canvasDraftModulesChangedError();
+    }
   }
 
   private async applyCanvasPlacements(
@@ -2005,21 +2366,30 @@ class MysqlEditorRepository implements EditorRepository {
     config: Record<string, unknown>,
     visibility: string,
     status: string,
+    options: TextEntityWriteOptions = {},
   ): Promise<void> {
-    const capabilities = await this.schemaCapabilities();
+    const hasTextEntities =
+      options.hasTextEntities ??
+      (await this.schemaCapabilities()).hasTextEntities;
 
-    if (!capabilities.hasTextEntities) {
+    if (!hasTextEntities) {
       return;
     }
 
     const body = typeof config.body === "string" ? config.body : "";
 
     if (body === "" || visibility !== "public" || status !== "active") {
-      await this.deleteTextEntities("profile_module", moduleId, "body");
+      await this.deleteTextEntities("profile_module", moduleId, "body", {
+        executor: options.executor,
+        hasTextEntities,
+      });
       return;
     }
 
-    await this.storeTextEntities("profile_module", moduleId, "body", body);
+    await this.storeTextEntities("profile_module", moduleId, "body", body, {
+      executor: options.executor,
+      hasTextEntities,
+    });
   }
 
   private async storeTextEntities(
@@ -2027,15 +2397,28 @@ class MysqlEditorRepository implements EditorRepository {
     contentId: number,
     fieldName: string,
     body: string | null,
+    options: TextEntityWriteOptions = {},
   ): Promise<void> {
-    await this.deleteTextEntities(contentType, contentId, fieldName);
+    const hasTextEntities =
+      options.hasTextEntities ??
+      (await this.schemaCapabilities()).hasTextEntities;
+
+    if (!hasTextEntities) {
+      return;
+    }
+
+    const executor = options.executor ?? this.pool;
+    await this.deleteTextEntities(contentType, contentId, fieldName, {
+      executor,
+      hasTextEntities,
+    });
 
     if (body === null || body === "") {
       return;
     }
 
     for (const entity of extractTextEntities(body)) {
-      await this.pool.execute<ResultSetHeader>(
+      await executor.execute<ResultSetHeader>(
         `INSERT INTO text_entities
             (content_type, content_id, field_name, entity_type, entity_start, entity_length, text_value, url, target_user_id)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -2054,14 +2437,19 @@ class MysqlEditorRepository implements EditorRepository {
     }
   }
 
-  private async deleteTextEntities(contentType: string, contentId: number, fieldName: string): Promise<void> {
-    const capabilities = await this.schemaCapabilities();
+  private async deleteTextEntities(contentType: string, contentId: number,
+    fieldName: string,
+    options: TextEntityWriteOptions = {},
+  ): Promise<void> {
+    const hasTextEntities =
+      options.hasTextEntities ??
+      (await this.schemaCapabilities()).hasTextEntities;
 
-    if (!capabilities.hasTextEntities) {
+    if (!hasTextEntities) {
       return;
     }
 
-    await this.pool.execute<ResultSetHeader>(
+    await (options.executor ?? this.pool).execute<ResultSetHeader>(
       `DELETE FROM text_entities
        WHERE content_type = ?
          AND content_id = ?
@@ -2665,6 +3053,113 @@ function validateDraftModules(
       updatedAt: stringOrNull(record.updatedAt),
     };
   });
+}
+
+function canvasDraftModulesWithPersistedTypes(
+  modules: ProfileModulePayload[],
+  persistedRows: CanvasDraftPersistedModuleRow[],
+): ProfileModulePayload[] {
+  const persistedById = new Map(
+    persistedRows.map((row) => [numberValue(row.id), row]),
+  );
+  const seenPersistedIds = new Set<number>();
+
+  return modules.map((module) => {
+    if (!isPersistedModuleId(module.id)) {
+      return module;
+    }
+
+    if (seenPersistedIds.has(module.id)) {
+      throw canvasDraftModulesChangedError();
+    }
+    seenPersistedIds.add(module.id);
+
+    const persisted = persistedById.get(module.id);
+
+    if (persisted === undefined || persisted.status === "deleted") {
+      throw canvasDraftModulesChangedError();
+    }
+
+    const persistedType = canonicalProfileModuleType(persisted.type);
+
+    if (module.type !== persistedType) {
+      throw new EditorRouteError("Module type cannot be changed.", 422);
+    }
+
+    return {
+      ...module,
+      type: persistedType,
+    };
+  });
+}
+
+function newCanvasDraftRevision(): string {
+  return `draft:${randomUUID()}`;
+}
+
+function canvasDraftRevision(
+  row: CanvasDraftRow,
+  decoded: Record<string, unknown>,
+): string {
+  if (
+    typeof decoded.revision === "string" &&
+    canvasDraftRevisionPattern.test(decoded.revision)
+  ) {
+    return decoded.revision;
+  }
+
+  const hash = createHash("sha256")
+    .update(String(row.draft_json ?? ""))
+    .update("\0")
+    .update(String(row.selected_module_id ?? ""))
+    .update("\0")
+    .update(String(row.updated_at ?? ""))
+    .digest("base64url");
+
+  return `legacy:${hash}`;
+}
+
+function validateExpectedCanvasDraftRevision(
+  value: unknown,
+): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  if (
+    typeof value === "string" &&
+    (canvasDraftRevisionPattern.test(value) ||
+      legacyCanvasDraftRevisionPattern.test(value))
+  ) {
+    return value;
+  }
+
+  throw new EditorRouteError("Canvas draft revision is invalid.", 422);
+}
+
+function assertExpectedCanvasDraftRevision(
+  currentRevision: string | null,
+  expectedRevision: string | null | undefined,
+): void {
+  if (expectedRevision === undefined || expectedRevision === currentRevision) {
+    return;
+  }
+
+  throw new EditorRouteError(
+    "This canvas draft changed in another save. Reload the editor and try again.",
+    409,
+  );
+}
+
+function canvasDraftModulesChangedError(): EditorRouteError {
+  return new EditorRouteError(
+    "Profile modules changed while this draft was open. Reload the editor and try again.",
+    409,
+  );
 }
 
 function assertNoDuplicateSingletonModules(modules: ProfileModulePayload[]): void {

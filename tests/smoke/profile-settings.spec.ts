@@ -50,8 +50,13 @@ test("profile appearance editor saves profile-scoped color themes", async ({ pag
   await page.goto("/@thia");
   await page.getByTestId("profile-edit-button").click();
   await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
-  await page.getByTestId("profile-appearance-trigger").click();
+  await page.getByTestId("profile-studio-tool-appearance").click();
   await expect(page.getByTestId("profile-appearance-popover")).toBeVisible();
+  await expect(page.getByTestId("profile-appearance-popover")).toHaveAttribute(
+    "role",
+    "group",
+  );
+  await expect(page.getByTestId("profile-appearance-trigger")).toHaveCount(0);
 
   await page.getByTestId("profile-theme-preset-roseveil").click();
   await expect
@@ -90,7 +95,8 @@ test("profile appearance editor saves profile-scoped color themes", async ({ pag
     )
     .toBe(true);
 
-  await page.getByRole("button", { name: "Close appearance settings" }).click();
+  await page.getByTestId("profile-studio-tool-select").click();
+  await expect(page.getByTestId("profile-appearance-popover")).toHaveCount(0);
   await page.getByRole("link", { name: "Discover", exact: true }).first().click();
   await expect(page.locator('[data-site-profile-theme="true"]')).toHaveCount(2);
   await expect
@@ -257,9 +263,12 @@ test("profile appearance save flushes pending theme edits", async ({ page }) => 
   await page.goto("/@thia");
   await page.getByTestId("profile-edit-button").click();
   await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
-  await page.getByTestId("profile-appearance-trigger").click();
+  await page.getByTestId("profile-studio-tool-appearance").click();
+  await expect(page.getByTestId("profile-appearance-popover")).toHaveAttribute(
+    "role",
+    "group",
+  );
   await page.getByTestId("profile-theme-preset-roseveil").click();
-  await page.getByRole("button", { name: "Close appearance settings" }).click();
   await page.getByTestId("profile-canvas-save-button").click();
 
   await expect

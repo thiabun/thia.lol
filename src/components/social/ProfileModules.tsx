@@ -264,14 +264,6 @@ export function ProfileModulesSection({
     ? sortProfileModulesForMobileStack(availableModules)
     : sortProfileModulesForCanvas(availableModules);
 
-  if (loading && !isOwnProfile) {
-    return null;
-  }
-
-  if (error && !isOwnProfile) {
-    return null;
-  }
-
   if (!loading && !error && renderableModules.length === 0 && !isOwnProfile) {
     return null;
   }
@@ -283,6 +275,24 @@ export function ProfileModulesSection({
       data-profile-presentation={mobilePresentation ? "mobile-stack" : "canvas"}
       data-testid="profile-modules"
     >
+      {loading ? (
+        <ApiStateNotice
+          className="mb-3"
+          kind="loading"
+          title="Loading modules"
+          text="Loading modules."
+        />
+      ) : null}
+
+      {!loading && error ? (
+        <ApiStateNotice
+          className="mb-3"
+          kind="error"
+          title="Profile modules are not available"
+          text="The profile basics are still here. Try refreshing in a moment."
+        />
+      ) : null}
+
       {renderableModules.length > 0 ? (
         mobilePresentation ? (
           <div
@@ -311,22 +321,6 @@ export function ProfileModulesSection({
         )
       ) : (
         <>
-          {loading ? (
-            <ApiStateNotice
-              kind="loading"
-              title="Loading modules"
-              text="Loading modules."
-            />
-          ) : null}
-
-          {!loading && error ? (
-            <ApiStateNotice
-              kind="error"
-              title="Profile modules are not available"
-              text="Try refreshing in a moment."
-            />
-          ) : null}
-
           {!loading && !error ? (
             <CompactStateNotice
               icon={Sparkles}

@@ -1019,6 +1019,26 @@ function jsonBodyRequiredObject(body: Record<string, unknown>, originalBody: unk
   return body;
 }
 
+function canvasDraftExpectedRevisionBody(
+  body: Record<string, unknown>,
+  originalBody: unknown,
+  options: { required?: boolean } = {},
+): unknown {
+  const record = jsonBodyRequiredObject(body, originalBody);
+
+  if (options.required === true && !("expectedRevision" in record)) {
+    throw new PrivateRouteError("Canvas draft revision is required.", 400);
+  }
+
+  for (const key of Object.keys(record)) {
+    if (key !== "expectedRevision") {
+      throw new PrivateRouteError(`Unsupported field: ${key}.`, 400);
+    }
+  }
+
+  return record.expectedRevision;
+}
+
 function queryRecord(query: unknown): Record<string, unknown> {
   return query !== null && typeof query === "object" && !Array.isArray(query)
     ? query as Record<string, unknown>
@@ -2570,7 +2590,27 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "me.profile.canvas-draft.delete",
-      (repository, session) => repository.deleteCanvasDraft(session),
+      (repository, session, body) =>
+        repository.deleteCanvasDraft(
+          session,
+          canvasDraftExpectedRevisionBody(body, request.body),
+        ),
+    ),
+  );
+
+  app.post("/me/profile/canvas-draft/rebase", async (request, reply) =>
+    withAuthenticatedEditorMutationRoute<ProfileCanvasDraftState>(
+      request,
+      reply,
+      dependencies,
+      "me.profile.canvas-draft.rebase",
+      (repository, session, body) =>
+        repository.rebaseCanvasDraft(
+          session,
+          canvasDraftExpectedRevisionBody(body, request.body, {
+            required: true,
+          }),
+        ),
     ),
   );
 
@@ -2580,8 +2620,11 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "me.profile.canvas-draft.commit",
-      async (repository, session) => {
-        const canvas = await repository.commitCanvasDraft(session);
+      async (repository, session, body) => {
+        const canvas = await repository.commitCanvasDraft(
+          session,
+          canvasDraftExpectedRevisionBody(body, request.body),
+        );
         await refreshProfileShareCardAfterMutation(request, dependencies, "me.profile.canvas-draft.commit.share-card", session.handle);
 
         return canvas;

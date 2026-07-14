@@ -89,20 +89,6 @@ jobs:
             sudo -n /bin/systemctl cat thia-node-api.service | grep -F /srv/thia.lol/www/uploads >/dev/null
           '
 
-      - name: Deploy frontend to VPS web root
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-        run: |
-          set -euo pipefail
-          rsync -az --delete \
-            --exclude '/api/' \
-            --exclude '/config/' \
-            --exclude '/uploads/' \
-            --exclude '.DS_Store' \
-            -e 'ssh -o BatchMode=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -i ~/.ssh/thia_lol_deploy' \
-            dist/ "$VPS_USER@$VPS_HOST:/srv/thia.lol/www/"
-
       - name: Deploy database migrations
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
@@ -158,6 +144,20 @@ jobs:
 
             systemctl is-active thia-node-api.service
           '
+
+      - name: Deploy frontend to VPS web root
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -euo pipefail
+          rsync -az --delete \
+            --exclude '/api/' \
+            --exclude '/config/' \
+            --exclude '/uploads/' \
+            --exclude '.DS_Store' \
+            -e 'ssh -o BatchMode=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -i ~/.ssh/thia_lol_deploy' \
+            dist/ "$VPS_USER@$VPS_HOST:/srv/thia.lol/www/"
 
       - name: Smoke-test live site
         run: scripts/smoke-live.sh

@@ -1143,6 +1143,19 @@ test("editor mode pauses the full-page profile video background only", async ({
   await expect(page.getByTestId("profile-uploaded-video-player")).toBeVisible();
   await expect(page.getByTestId("profile-uploaded-video-element")).toBeAttached();
 
+  await page.getByTestId("profile-studio-preview-button").click();
+  await expect(backdrop).toHaveAttribute(
+    "data-profile-background-playback",
+    "playing",
+  );
+  await expect(backdrop.locator("video")).toHaveAttribute("autoplay", "");
+
+  await page.getByTestId("profile-studio-preview-button").click();
+  await expect(backdrop).toHaveAttribute(
+    "data-profile-background-playback",
+    "paused",
+  );
+
   await page
     .getByTestId("profile-canvas-editor")
     .getByRole("button", { name: "Cancel" })
@@ -2766,6 +2779,53 @@ test("profile info variants stay within each supported size", async ({ page }) =
   }
 });
 
+test("public profile keeps its identity canvas visible while modules load", async ({
+  page,
+}) => {
+  const modulesGate = deferredSignal();
+
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [aboutModule({ id: 1, body: "Arrives after the profile." })],
+    profileModulesGate: modulesGate.promise,
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expect(
+    page.getByText("Loading modules.", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("profile-grid-module-profile_info"),
+  ).toBeVisible();
+
+  modulesGate.resolve();
+
+  await expect(page.getByText("Loading modules.", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(page.getByText("Arrives after the profile.")).toBeVisible();
+});
+
+test("public profile preserves identity when module loading fails", async ({
+  page,
+}) => {
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [],
+    profileModulesStatus: 500,
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  await expect(
+    page.getByText("Profile modules are not available"),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("profile-grid-module-profile_info"),
+  ).toBeVisible();
+});
+
 test("owner edits background clarity in the direct canvas draft", async ({
   page,
 }) => {
@@ -2801,16 +2861,19 @@ test("owner edits background clarity in the direct canvas draft", async ({
   expect(toolbarBox).not.toBeNull();
   expect(gridBox).not.toBeNull();
   expect(toolbarBox!.y + toolbarBox!.height).toBeLessThanOrEqual(gridBox!.y - 8);
-  expect(toolbarBox!.x).toBeGreaterThan(gridBox!.x);
-  expect(
-    Math.abs(toolbarBox!.x + toolbarBox!.width - (gridBox!.x + gridBox!.width)),
-  ).toBeLessThanOrEqual(2);
+  expect(toolbarBox!.x).toBeLessThan(gridBox!.x);
+  expect(toolbarBox!.x + toolbarBox!.width).toBeGreaterThan(
+    gridBox!.x + gridBox!.width,
+  );
+  await expect(page.getByTestId("profile-studio-tools")).toBeVisible();
+  await expect(page.getByTestId("profile-studio-inspector")).toBeVisible();
+  await page.getByTestId("profile-studio-tool-background").click();
   await expect(page.getByTestId("profile-canvas-background-controls")).toBeVisible();
-  await expect(page.getByTestId("profile-canvas-background-trigger")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-background-trigger"),
+  ).toHaveCount(0);
   await expect(page.getByText("Background clarity")).toHaveCount(0);
   await expect(page.getByText("6 x 12 canvas")).toHaveCount(0);
   await expect(page.getByText(/is selected\./)).toHaveCount(0);
-  await page.getByTestId("profile-canvas-background-trigger").click();
   await expect(page.getByTestId("profile-canvas-background-popover")).toBeVisible();
   await expect(page.getByText("Clarity")).toBeVisible();
   await expect(page.getByTestId("profile-canvas-add-label-input")).toHaveCount(0);
@@ -2820,7 +2883,8 @@ test("owner edits background clarity in the direct canvas draft", async ({
   );
 
   await page.getByTestId("profile-background-blur-heavy").click();
-  await expect(page.getByTestId("profile-canvas-background-popover")).toHaveCount(0);
+  await expect(page.getByTestId("profile-canvas-background-popover"),
+  ).toBeVisible();
   await expect(page.getByTestId("profile-personal-backdrop")).toHaveAttribute(
     "data-profile-background-blur",
     "heavy",
@@ -2842,6 +2906,625 @@ test("owner edits background clarity in the direct canvas draft", async ({
     "heavy",
   );
   await expect(page.getByTestId("profile-canvas-module-1")).toBeVisible();
+});
+
+test("profile studio preview uses published rendering and hides editor chrome", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      withAuditLayout(
+        aboutModule({ id: 1, body: "Published preview body." }),
+        "3x2",
+        4,
+        1,
+      ),
+      {
+        ...withAuditLayout(
+          textModule({ id: 2, body: "Unpublished draft body." }),
+          "3x2",
+          7,
+          1,
+        ),
+        config: { body: "Unpublished draft body.", configured: false },
+        visibility: "draft",
+      },
+      {
+        ...withAuditLayout(
+          textModule({ id: 3, body: "Unconfigured public body." }),
+          "3x2",
+          10,
+          1,
+        ),
+        config: { body: "Unconfigured public body.", configured: false },
+        visibility: "public",
+      },
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia?editCanvas=1");
+
+  const grid = page.getByTestId("profile-canvas-direct-grid");
+  const moduleContent = page.getByTestId("profile-canvas-module-content-1");
+  const unpublishedModule = page.getByTestId("profile-canvas-module-2");
+  const unconfiguredModule = page.getByTestId("profile-canvas-module-3");
+  const blankModules = page.locator(
+    '[data-testid^="profile-canvas-blank-module-"]',
+  );
+  await expect(grid).toHaveAttribute("data-profile-canvas-fit-rows", "fixed");
+  await expect(moduleContent).toHaveAttribute(
+    "data-profile-editor-render-mode",
+    "light",
+  );
+  await expect(unpublishedModule).toBeVisible();
+  await expect(unconfiguredModule).toBeVisible();
+  await page.getByTestId("profile-studio-tool-add").click();
+  await expect(blankModules).toHaveCount(1);
+
+  await page.getByTestId("profile-studio-preview-button").click();
+
+  await expect(page.getByTestId("profile-studio-tools")).toHaveCount(0);
+  await expect(page.getByTestId("profile-studio-inspector")).toHaveCount(0);
+  await expect(grid).toHaveAttribute("data-profile-canvas-fit-rows", "content");
+  await expect(moduleContent).toHaveAttribute(
+    "data-profile-editor-render-mode",
+    "live",
+  );
+  await expect(unpublishedModule).toHaveCount(0);
+  await expect(unconfiguredModule).toHaveCount(0);
+  await expect(blankModules).toHaveCount(0);
+  await expect(page.getByTestId("desktop-post-action")).toBeHidden();
+  await expect(page.getByTestId("coffee-support-button")).toBeHidden();
+  await expect
+    .poll(() =>
+      page
+        .getByTestId("profile-canvas-cell-1-1")
+        .evaluate((element) => Boolean(element.closest("[inert]"))),
+    )
+    .toBe(true);
+
+  await page.getByTestId("profile-editor-guide-button").click();
+  await expect(page.getByTestId("profile-editor-guide")).toBeVisible();
+  await expect(page.getByTestId("profile-studio-preview-button")).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  await expect(page.getByTestId("profile-studio-tools")).toBeVisible();
+  await expect(page.getByTestId("profile-studio-inspector")).toBeVisible();
+  await expect(unpublishedModule).toBeVisible();
+  await expect(unconfiguredModule).toBeVisible();
+  await expect(blankModules).toHaveCount(1);
+  await page.getByTestId("profile-editor-guide-dismiss").click();
+
+  await page.getByTestId("profile-studio-preview-button").click();
+  await page.setViewportSize({ width: 1023, height: 900 });
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveAttribute(
+    "data-profile-editor-input-mode",
+    "touch",
+  );
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await expect(page.getByTestId("profile-studio-tools")).toBeVisible();
+  await expect(page.getByTestId("profile-studio-preview-button")).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+});
+
+test("profile studio Add reserves one useful footprint before opening the picker", async ({
+  page,
+}) => {
+  const draftPayloads: Array<Record<string, unknown>> = [];
+
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+    onCanvasDraftSave: (payload) => draftPayloads.push(payload),
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia?editCanvas=1");
+
+  await page.getByTestId("profile-studio-tool-add").click();
+  await expect(page.getByTestId("profile-module-picker")).toBeVisible();
+  await expect(
+    page.locator('[data-testid^="profile-canvas-blank-module-"]'),
+  ).toHaveCount(1);
+
+  const blankModule = page.locator(
+    '[data-testid^="profile-canvas-blank-module-"]',
+  );
+  const blankShell = blankModule.locator(
+    'xpath=ancestor::*[@data-profile-grid-module="true"]',
+  );
+  await expect(blankShell).toHaveAttribute(
+    "data-profile-grid-column-span",
+    "3",
+  );
+  await expect(blankShell).toHaveAttribute("data-profile-grid-row-span", "2");
+
+  await page.getByTestId("profile-studio-tool-add").click();
+  await expect(
+    page.locator('[data-testid^="profile-canvas-blank-module-"]'),
+  ).toHaveCount(1);
+  await expect
+    .poll(() =>
+      draftPayloads.some(
+        (payload) =>
+          Array.isArray(payload.modules) &&
+          payload.modules.some(
+            (module) =>
+              typeof module === "object" &&
+              module !== null &&
+              (module as Record<string, unknown>).type === "placeholder",
+          ),
+      ),
+    )
+    .toBe(true);
+});
+
+test("profile studio keeps the canvas readable at compact desktop widths", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1024, height: 800 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [aboutModule({ id: 1, body: "Compact desktop canvas." })],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia?editCanvas=1");
+
+  const grid = page.getByTestId("profile-canvas-direct-grid");
+  const inspector = page.getByTestId("profile-studio-inspector");
+  const gridBox = await grid.boundingBox();
+  const inspectorBox = await inspector.boundingBox();
+
+  expect(gridBox).not.toBeNull();
+  expect(inspectorBox).not.toBeNull();
+  const horizontalOverlap = Math.max(
+    0,
+    Math.min(gridBox!.x + gridBox!.width, inspectorBox!.x + inspectorBox!.width) -
+      Math.max(gridBox!.x, inspectorBox!.x),
+  );
+  const verticalOverlap = Math.max(
+    0,
+    Math.min(gridBox!.y + gridBox!.height, inspectorBox!.y + inspectorBox!.height) -
+      Math.max(gridBox!.y, inspectorBox!.y),
+  );
+
+  expect(horizontalOverlap * verticalOverlap).toBe(0);
+  expect(gridBox!.width).toBeGreaterThan(500);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    ),
+  ).toBe(false);
+  await expect(
+    page.getByTestId("profile-studio-tool-appearance"),
+  ).toContainText("Appearance");
+  await page.getByTestId("profile-studio-tool-appearance").click();
+  await expect(inspector).toBeFocused();
+
+  const module = page.getByTestId("profile-canvas-module-1");
+  await module.hover();
+  const editButton = page.getByTestId("profile-canvas-edit-module-1");
+  await editButton.click();
+  await expect(inspector).toBeFocused();
+  await inspector.getByRole("button", { name: /close about/i }).click();
+  await expect(editButton).toBeFocused();
+});
+
+test("Save waits for an in-flight canvas autosave before publishing", async ({
+  page,
+}) => {
+  const autosaveGate = deferredSignal();
+  const draftPayloads: Array<Record<string, unknown>> = [];
+
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    canvasDraftSaveGates: [autosaveGate.promise],
+    modules: [aboutModule({ id: 1, body: "Serialized draft." })],
+    onCanvasDraftSave: (payload) => draftPayloads.push(payload),
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia?editCanvas=1");
+
+  await page.getByTestId("profile-studio-tool-background").click();
+  await page.getByTestId("profile-background-blur-heavy").click();
+  await expect.poll(() => draftPayloads.length).toBe(1);
+
+  await page.getByTestId("profile-canvas-save-button").click();
+  await page.waitForTimeout(100);
+  expect(draftPayloads).toHaveLength(1);
+  autosaveGate.resolve();
+  await expect.poll(() => draftPayloads.length).toBe(2);
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
+  expect(draftPayloads[1]?.backgroundBlur).toBe("heavy");
+});
+
+test("Save reconciles a profile-content revert after an in-flight autosave", async ({
+  page,
+}) => {
+  const firstProfileSaveGate = deferredSignal();
+  const profilePayloads: Array<Record<string, unknown>> = [];
+  let commitRequests = 0;
+
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+    profileSaveGates: [firstProfileSaveGate.promise],
+    onCanvasCommit: () => {
+      commitRequests += 1;
+    },
+    onProfileSave: (payload) => profilePayloads.push(payload),
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia?editCanvas=1");
+
+  const profileInfo = page.getByTestId("profile-canvas-module-9001");
+  await profileInfo.hover();
+  await page.getByTestId("profile-canvas-edit-module-9001").click();
+  const displayName = page.getByTestId("profile-info-modal-display-name");
+  await displayName.fill("Temporary name");
+  await expect.poll(() => profilePayloads.length).toBe(1);
+
+  await displayName.fill("Thia");
+  await page.getByTestId("profile-canvas-save-button").click();
+  await page.waitForTimeout(100);
+  expect(commitRequests).toBe(0);
+
+  firstProfileSaveGate.resolve();
+
+  await expect.poll(() => profilePayloads.length).toBe(2);
+  expect(profilePayloads[1]?.displayName).toBe("Thia");
+  await expect.poll(() => commitRequests).toBe(1);
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
+  await expect(page.getByText("Thia", { exact: true }).first()).toBeVisible();
+});
+
+test("profile studio reports profile-content autosave failures", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+    profileSaveError: "Profile palette could not save.",
+    profileSaveStatus: 500,
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia?editCanvas=1");
+
+  const profileInfo = page.getByTestId("profile-canvas-module-9001");
+  await profileInfo.hover();
+  await page.getByTestId("profile-canvas-edit-module-9001").click();
+  await page
+    .getByTestId("profile-info-modal-display-name")
+    .fill("Unsaved profile name");
+
+  await expect(
+    page
+      .getByTestId("profile-canvas-editor-toolbar")
+      .getByRole("alert"),
+  ).toContainText("Profile palette could not save.");
+});
+
+test("Save retries a failed profile-content revert before publishing", async ({
+  page,
+}) => {
+  const firstProfileSaveGate = deferredSignal();
+  const profilePayloads: Array<Record<string, unknown>> = [];
+  let commitRequests = 0;
+
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [],
+    profileSaveError: "The reverted profile edit could not save.",
+    profileSaveGates: [firstProfileSaveGate.promise],
+    profileSaveStatuses: [200, 500, 200],
+    onCanvasCommit: () => {
+      commitRequests += 1;
+    },
+    onProfileSave: (payload) => profilePayloads.push(payload),
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia?editCanvas=1");
+
+  const profileInfo = page.getByTestId("profile-canvas-module-9001");
+  await profileInfo.hover();
+  await page.getByTestId("profile-canvas-edit-module-9001").click();
+  const displayName = page.getByTestId("profile-info-modal-display-name");
+  await displayName.fill("Temporary name");
+  await expect.poll(() => profilePayloads.length).toBe(1);
+
+  await displayName.fill("Thia");
+  firstProfileSaveGate.resolve();
+  await expect.poll(() => profilePayloads.length).toBe(2);
+  await expect(
+    page.getByTestId("profile-canvas-editor-toolbar").getByRole("alert"),
+  ).toContainText("The reverted profile edit could not save.");
+
+  await page.getByTestId("profile-canvas-save-button").click();
+  await expect.poll(() => profilePayloads.length).toBe(3);
+  expect(profilePayloads[2]?.displayName).toBe("Thia");
+  await expect.poll(() => commitRequests).toBe(1);
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
+});
+
+test("Cancel drains an in-flight autosave before discarding the draft", async ({
+  page,
+}) => {
+  const autosaveGate = deferredSignal();
+  const draftPayloads: Array<Record<string, unknown>> = [];
+  let discardPayload: Record<string, unknown> | undefined;
+  let discardRequests = 0;
+
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    canvasDraftSaveGates: [autosaveGate.promise],
+    modules: [aboutModule({ id: 1, body: "Discard serialized draft." })],
+    onCanvasDraftDelete: (payload) => {
+      discardPayload = payload;
+      discardRequests += 1;
+    },
+    onCanvasDraftSave: (payload) => draftPayloads.push(payload),
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia?editCanvas=1");
+
+  await page.getByTestId("profile-studio-tool-background").click();
+  await page.getByTestId("profile-background-blur-heavy").click();
+  await expect.poll(() => draftPayloads.length).toBe(1);
+
+  await page
+    .getByRole("button", { name: "Cancel profile editing" })
+    .click();
+  await page.waitForTimeout(100);
+  expect(discardRequests).toBe(0);
+  await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
+
+  autosaveGate.resolve();
+
+  await expect.poll(() => discardRequests).toBe(1);
+  expect(discardPayload).toEqual({ expectedRevision: "mock-revision-1" });
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
+  await page.getByTestId("profile-edit-button").click();
+  await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
+  await expect(page.getByTestId("profile-personal-backdrop")).toHaveAttribute(
+    "data-profile-background-blur",
+    "medium",
+  );
+});
+
+test("Save drains overlapping autosaves before committing the latest draft", async ({
+  page,
+}) => {
+  const firstAutosaveGate = deferredSignal();
+  const secondAutosaveGate = deferredSignal();
+  const draftPayloads: Array<Record<string, unknown>> = [];
+  let commitPayload: Record<string, unknown> | undefined;
+  let commitRequests = 0;
+
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    canvasDraftSaveGates: [
+      firstAutosaveGate.promise,
+      secondAutosaveGate.promise,
+    ],
+    modules: [aboutModule({ id: 1, body: "Reverse completion order." })],
+    onCanvasCommit: (payload) => {
+      commitPayload = payload;
+      commitRequests += 1;
+    },
+    onCanvasDraftSave: (payload) => draftPayloads.push(payload),
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia?editCanvas=1");
+
+  await page.getByTestId("profile-studio-tool-background").click();
+  await page.getByTestId("profile-background-blur-heavy").click();
+  await expect.poll(() => draftPayloads.length).toBe(1);
+  const glassSlider = page.getByTestId("profile-canvas-glass-slider");
+  await glassSlider.focus();
+  await page.keyboard.press("End");
+  await page.waitForTimeout(750);
+  expect(draftPayloads).toHaveLength(1);
+
+  await page.getByTestId("profile-canvas-save-button").click();
+  firstAutosaveGate.resolve();
+
+  await expect.poll(() => draftPayloads.length).toBe(2);
+  expect(commitRequests).toBe(0);
+  await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
+
+  secondAutosaveGate.resolve();
+
+  await expect.poll(() => commitRequests).toBe(1);
+  await expect.poll(() => draftPayloads.length).toBe(3);
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
+  expect(draftPayloads[2]).toMatchObject({
+    backgroundBlur: "heavy",
+    canvasGlass: 92,
+    expectedRevision: "mock-revision-2",
+  });
+  expect(draftPayloads[0]?.expectedRevision).toBeNull();
+  expect(draftPayloads[1]?.expectedRevision).toBe("mock-revision-1");
+  expect(commitPayload).toEqual({ expectedRevision: "mock-revision-3" });
+
+  await page.getByTestId("profile-edit-button").click();
+  await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-direct-grid")).toHaveAttribute(
+    "data-profile-canvas-glass",
+    "92",
+  );
+  await expect(page.getByTestId("profile-personal-backdrop")).toHaveAttribute(
+    "data-profile-background-blur",
+    "heavy",
+  );
+});
+
+test("commit conflict refreshes from published modules before retrying", async ({
+  page,
+}) => {
+  const conflictMessage =
+    "Profile modules changed while this draft was open. Reload the editor and try again.";
+  const rebasePayloads: Array<Record<string, unknown>> = [];
+  let commitRequests = 0;
+
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    canvasDraftCommitError: conflictMessage,
+    canvasDraftCommitConflictModules: [
+      profileInfoModule(),
+      aboutModule({ id: 41, body: "Remote published replacement." }),
+    ],
+    canvasDraftCommitStatuses: [409, 200],
+    modules: [],
+    onCanvasCommit: () => {
+      commitRequests += 1;
+    },
+    onCanvasDraftRebase: (payload) => rebasePayloads.push(payload),
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia?editCanvas=1");
+
+  await page.getByTestId("profile-studio-tool-add").click();
+  const blankModule = page.locator(
+    '[data-testid^="profile-canvas-blank-module-"]',
+  );
+  await expect(blankModule).toHaveCount(1);
+  await page.getByTestId("profile-canvas-save-button").click();
+
+  await expect.poll(() => commitRequests).toBe(1);
+  await expect(page.getByTestId("profile-canvas-draft-conflict")).toContainText(
+    "This draft changed elsewhere.",
+  );
+  await expect(page.getByTestId("profile-canvas-editor")).toBeVisible();
+  await expect(page.getByTestId("profile-canvas-save-button")).toBeDisabled();
+  await expect(blankModule).toHaveCount(1);
+
+  await page.getByTestId("profile-canvas-reload-conflict").click();
+  await expect(page.getByTestId("profile-canvas-draft-conflict")).toHaveCount(0);
+  await expect(page.getByTestId("profile-canvas-save-button")).toBeEnabled();
+  await expect(blankModule).toHaveCount(0);
+  await expect(page.getByText("Remote published replacement.")).toBeVisible();
+  expect(rebasePayloads).toHaveLength(1);
+  expect(rebasePayloads[0]?.expectedRevision).toEqual(expect.any(String));
+
+  await page.getByTestId("profile-canvas-save-button").click();
+  await expect.poll(() => commitRequests).toBe(2);
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
+  await expect(page.getByText("Remote published replacement.")).toBeVisible();
+});
+
+test("autosave conflict preserves and reloads a newer remote draft", async ({
+  page,
+}) => {
+  const draftPayloads: Array<Record<string, unknown>> = [];
+  const rebasePayloads: Array<Record<string, unknown>> = [];
+  const commitPayloads: Array<Record<string, unknown>> = [];
+
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    canvasDraftSaveConflictDraft: {
+      backgroundBlur: "none",
+      canvasGlass: 72,
+      modules: [
+        profileInfoModule(),
+        aboutModule({ id: 42, body: "Newer remote draft." }),
+      ],
+    },
+    canvasDraftSaveStatuses: [409],
+    modules: [aboutModule({ id: 1, body: "Original draft." })],
+    onCanvasCommit: (payload) => commitPayloads.push(payload),
+    onCanvasDraftRebase: (payload) => rebasePayloads.push(payload),
+    onCanvasDraftSave: (payload) => draftPayloads.push(payload),
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia?editCanvas=1");
+
+  await page.getByTestId("profile-studio-tool-background").click();
+  await page.getByTestId("profile-background-blur-heavy").click();
+  await expect(page.getByTestId("profile-canvas-draft-conflict")).toBeVisible();
+  expect(draftPayloads[0]?.expectedRevision).toBeNull();
+
+  await page.getByTestId("profile-canvas-reload-conflict").click();
+  await expect(page.getByTestId("profile-canvas-draft-conflict")).toHaveCount(0);
+  await expect(page.getByText("Newer remote draft.")).toBeVisible();
+  await expect(page.getByTestId("profile-personal-backdrop")).toHaveAttribute(
+    "data-profile-background-blur",
+    "none",
+  );
+  expect(rebasePayloads).toEqual([{ expectedRevision: null }]);
+
+  await page.getByTestId("profile-canvas-save-button").click();
+  await expect.poll(() => draftPayloads.length).toBe(2);
+  expect(draftPayloads[1]?.expectedRevision).toBe("mock-revision-1");
+  await expect.poll(() => commitPayloads.length).toBe(1);
+  expect(commitPayloads[0]?.expectedRevision).toBe("mock-revision-2");
+  await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
+  await expect(page.getByText("Newer remote draft.")).toBeVisible();
+});
+
+test("autosave conflict closes portaled mobile editor surfaces", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    canvasDraftSaveConflictDraft: {
+      modules: [aboutModule({ id: 1, body: "Remote mobile draft." })],
+    },
+    canvasDraftSaveStatuses: [409],
+    modules: [aboutModule({ id: 1, body: "Local mobile draft." })],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia?editCanvas=1");
+
+  await page.getByRole("button", { name: "Open About actions" }).click();
+  await page.getByRole("button", { name: "Edit module" }).click();
+  await expect(page.getByTestId("profile-module-settings")).toBeVisible();
+  await page
+    .getByTestId("profile-module-settings-body")
+    .fill("Local edit that now conflicts.");
+
+  await expect(page.getByTestId("profile-canvas-draft-conflict")).toBeVisible();
+  await expect(page.getByTestId("profile-module-settings")).toHaveCount(0);
+});
+
+test("conflict refresh failure stays visible and can be retried", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    canvasDraftCommitStatus: 409,
+    canvasDraftRebaseError: "Latest canvas draft is temporarily unavailable.",
+    canvasDraftRebaseStatuses: [503, 200],
+    modules: [aboutModule({ id: 1, body: "Retry recovery." })],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia?editCanvas=1");
+
+  await page.getByTestId("profile-canvas-save-button").click();
+  await expect(page.getByTestId("profile-canvas-draft-conflict")).toBeVisible();
+  await page.getByTestId("profile-canvas-reload-conflict").click();
+  await expect(page.getByTestId("profile-canvas-conflict-error")).toContainText(
+    "Latest canvas draft is temporarily unavailable.",
+  );
+  await expect(page.getByTestId("profile-canvas-reload-conflict")).toBeEnabled();
+
+  await page.getByTestId("profile-canvas-reload-conflict").click();
+  await expect(page.getByTestId("profile-canvas-draft-conflict")).toHaveCount(0);
+  await expect(page.getByText("Retry recovery.")).toBeVisible();
 });
 
 test("direct canvas point selection creates a draft module through picker and settings", async ({
@@ -2959,13 +3642,9 @@ test("direct canvas point selection creates a draft module through picker and se
     "3 x 2",
   );
   await sizeStepper.getByTestId("profile-module-size-increase").click();
-  await expect(sizeStepper.getByTestId("profile-module-size-current")).toContainText(
-    "3x3",
-  );
+  await expect(sizeStepper.getByTestId("profile-module-size-current")).toContainText("3 x 3");
   await sizeStepper.getByTestId("profile-module-size-decrease").click();
-  await expect(sizeStepper.getByTestId("profile-module-size-current")).toContainText(
-    "3x2",
-  );
+  await expect(sizeStepper.getByTestId("profile-module-size-current")).toContainText("3 x 2");
   const pickedContent = page.locator(
     '[data-testid^="profile-canvas-module-content-"][data-profile-canvas-module-configured="false"]',
   );
@@ -3024,11 +3703,12 @@ test("direct canvas point selection creates a draft module through picker and se
     "data-profile-grid-layout-animation",
     "false",
   );
-  const configuredPinButton = configuredModuleShell.locator(
-    '[data-testid^="profile-canvas-pin-module-"]',
+  const settingsInspector = page.getByTestId("profile-module-settings");
+  const configuredPinButton = settingsInspector.getByTestId(
+    /profile-canvas-pin-module-/,
   );
-  const configuredRemoveButton = configuredModuleShell.locator(
-    '[data-testid^="profile-canvas-remove-module-"]',
+  const configuredRemoveButton = settingsInspector.getByTestId(
+    /profile-canvas-remove-module-/,
   );
   await expect(configuredPinButton).toBeVisible();
   await expect(configuredPinButton).toHaveAttribute("aria-pressed", "false");
@@ -3040,12 +3720,11 @@ test("direct canvas point selection creates a draft module through picker and se
   ).toHaveCount(0);
   await expect(
     page.getByTestId("profile-module-settings").getByRole("button", { name: /^Pin$/ }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByTestId("profile-module-settings").getByRole("button", { name: /^Unpin$/ }),
-  ).toHaveCount(0);
+  ).toBeVisible();
   await page.getByTestId("profile-module-settings-done").click();
   await expect(page.getByTestId("profile-module-settings")).toHaveCount(0);
+  await configuredModuleShell.click();
+  await expect(page.getByTestId("profile-module-settings")).toBeVisible();
   const eastResizeHandle = configuredModuleShell.getByRole("button", {
     name: "Resize from right edge",
   });
@@ -3241,7 +3920,7 @@ test("profile editor guide launches from onboarding tour query and can replay", 
   await page.getByTestId("profile-editor-guide-next").click();
   await expect(page.getByTestId("profile-editor-guide")).toContainText("Pick a space");
   await expect(page.getByTestId("profile-editor-guide")).toContainText(
-    "Select two cells to choose where your first module lives.",
+    "Use Add to place a new module in the first open space",
   );
   await expect(page.getByTestId("profile-editor-guide")).toContainText("2/5");
   await expect(page.getByTestId("profile-editor-guide")).toHaveAttribute(
@@ -4232,6 +4911,7 @@ test("public and editor canvas shell scales wide and glass slider changes opacit
   const initialBackground = await directGrid.evaluate(
     (element) => window.getComputedStyle(element).backgroundColor,
   );
+  await page.getByTestId("profile-studio-tool-background").click();
   const slider = page.getByTestId("profile-canvas-glass-slider");
   await slider.focus();
   await page.keyboard.press("End");
@@ -4546,13 +5226,20 @@ test("blank draft modules can be pinned moved and deleted in the editor", async 
     .toBeGreaterThan(blankStartColumn);
 
   await page.locator('[data-testid^="profile-canvas-delete-placeholder-"]').click();
+  await expect(
+    page.getByTestId("profile-module-remove-confirmation"),
+  ).toBeVisible();
+  await page
+    .getByTestId("profile-module-remove-confirmation")
+    .getByRole("button", { name: "Remove", exact: true })
+    .click();
   await expect(page.locator('[data-testid^="profile-canvas-blank-module-"]')).toHaveCount(0);
   await expect
     .poll(() => Boolean(placeholderDraftModule(draftPayload)))
     .toBe(false);
 });
 
-test("direct canvas remove control deletes configured modules without opening settings", async ({
+test("direct canvas removal is confirmed from the contextual inspector", async ({
   page,
 }) => {
   let draftPayload: Record<string, unknown> | undefined;
@@ -4582,6 +5269,8 @@ test("direct canvas remove control deletes configured modules without opening se
     "data-profile-grid-layout-animation",
     "false",
   );
+  await page.getByTestId("profile-canvas-edit-module-1").click();
+  await expect(page.getByTestId("profile-module-settings")).toBeVisible();
   await expect(page.getByTestId("profile-canvas-remove-module-1")).toBeVisible();
   await expect(
     page
@@ -4590,6 +5279,37 @@ test("direct canvas remove control deletes configured modules without opening se
   ).toHaveCount(0);
 
   await page.getByTestId("profile-canvas-remove-module-1").click();
+  await expect(
+    page.getByTestId("profile-module-remove-confirmation"),
+  ).toBeVisible();
+  await page
+    .getByTestId("profile-module-remove-confirmation")
+    .getByRole("button", { name: "Keep module", exact: true })
+    .click();
+  await expect(
+    page.getByTestId("profile-module-remove-confirmation"),
+  ).toHaveCount(0);
+  await expect(moduleShell).toBeVisible();
+  await expect(page.getByTestId("profile-module-settings")).toBeVisible();
+  expect(
+    Array.isArray(draftPayload?.modules) &&
+      draftPayload.modules.some(
+        (module) =>
+          typeof module === "object" &&
+          module !== null &&
+          (module as Record<string, unknown>).id === 1 &&
+          (module as Record<string, unknown>).status === "deleted",
+      ),
+  ).toBe(false);
+
+  await page.getByTestId("profile-canvas-remove-module-1").click();
+  await expect(
+    page.getByTestId("profile-module-remove-confirmation"),
+  ).toBeVisible();
+  await page
+    .getByTestId("profile-module-remove-confirmation")
+    .getByRole("button", { name: "Remove", exact: true })
+    .click();
 
   await expect(page.getByTestId("profile-module-settings")).toHaveCount(0);
   await expect(page.getByTestId("profile-canvas-module-1")).toHaveCount(0);
@@ -4663,7 +5383,7 @@ test("owner crops a profile background image before upload", async ({ page }) =>
   await page.goto("/@thia");
 
   await page.getByTestId("profile-edit-button").click();
-  await page.getByTestId("profile-canvas-background-trigger").click();
+  await page.getByTestId("profile-studio-tool-background").click();
   const backgroundImageAccept = await page
     .getByTestId("profile-background-image-input")
     .getAttribute("accept");
@@ -5004,6 +5724,10 @@ test("image crop modal is wired to current image upload surfaces", () => {
     "src/components/social/PostComposerModal.tsx",
     "utf8",
   );
+  const unifiedComposer = readFileSync(
+    "src/components/social/UnifiedComposer.tsx",
+    "utf8",
+  );
   const postCard = readFileSync("src/components/social/PostCard.tsx", "utf8");
   const profileModules = readFileSync(
     "src/components/social/ProfileModules.tsx",
@@ -5029,25 +5753,24 @@ test("image crop modal is wired to current image upload surfaces", () => {
     expect(cropModal).toContain(purpose);
   }
 
-  for (const source of [profilePage, postComposer, postCard, roomEditor]) {
+  for (const source of [profilePage, unifiedComposer, roomEditor]) {
     expect(source).toContain("ImageCropModal");
     expect(source).toContain("prepareImageFileForCrop");
   }
 
   expect(profilePage).toContain("imageUploadAccept");
   expect(roomEditor).toContain("imageUploadAccept");
-  expect(postComposer).toContain("visualMediaUploadAccept");
-  expect(postCard).toContain("visualMediaUploadAccept");
-  expect(postComposer).toContain("PostMusicAttachmentPicker");
-  expect(postCard).toContain("PostMusicAttachmentPicker");
-  expect(postComposer).toContain("uploadVideo(file, \"post_media\"");
-  expect(postCard).toContain("uploadVideo(file, \"post_media\"");
+  expect(postComposer).toContain("UnifiedComposer");
+  expect(unifiedComposer).toContain("visualMediaUploadAccept");
+  expect(unifiedComposer).toContain("PostMusicAttachmentPicker");
+  expect(unifiedComposer).toContain("uploadVideo(file, \"post_media\"");
   expect(postCard).toContain("<FocusAutoplayVideo");
-  expect(postCard).toContain("poster={mediaPosterUrl ?? undefined}");
+  expect(postCard).toContain("poster={attachment.posterUrl ?? undefined}");
   expect(profilePage).toContain("profileBackgroundVideoPoster: upload.posterUrl ?? null");
   expect(profilePage).toContain("postMediaType(post) === \"video\"");
   expect(profileModules).toContain("poster={video.posterUrl}");
-  expect(shareCardScene).toContain("postMediaType(post) === \"video\" ? post.mediaPosterUrl ?? null : post.mediaUrl");
+  expect(shareCardScene).toContain('postMediaType(post) === "video"');
+  expect(shareCardScene).toContain("? post.mediaPosterUrl ?? null");
 
   const mediaFormats = readFileSync("src/lib/mediaFormats.ts", "utf8");
   expect(mediaFormats).toContain("image/gif");
@@ -6760,8 +7483,9 @@ test("profile module registry and Node storage guardrails are present by inspect
   expect(moduleRegistry).toContain(
     'const connectionSizes = uniqueSizes(\n  ["2x2", "2x3", "3x2", "4x2", "3x3", "3x4"],\n  wideSlimSizes',
   );
-  expect(profileGrid).toContain("fitRowsToContent\n      ? new MutationObserver");
-  expect(profileGrid).toContain("mutationObserver?.observe");
+  expect(profileGrid).toContain("if (fitRowsToContent) {");
+  expect(profileGrid).toContain("new MutationObserver((records)");
+  expect(profileGrid).toContain("mutationObserver?.observe(moduleElement");
   expect(profilePage).toContain("requestAnimationFrame");
   expect(profilePage).toContain("profile-canvas-drag-preview");
   expect(profilePage).toContain("profile-canvas-selected-actions");
@@ -6834,12 +7558,28 @@ test("profile module registry and Node storage guardrails are present by inspect
   expect(integrationsMigration).toContain("profile_background_video_url");
 });
 
+function deferredSignal(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((release) => {
+    resolve = release;
+  });
+
+  return { promise, resolve };
+}
+
 async function mockProfileModules(
   page: Page,
   options: {
     authenticated: boolean;
     modules: unknown[];
+    canvasDraftCommitError?: string;
+    canvasDraftCommitConflictModules?: unknown[];
+    canvasDraftCommitStatus?: number;
+    canvasDraftCommitStatuses?: Array<number | undefined>;
     onCreate?: (payload: Record<string, unknown>) => void;
+    onCanvasCommit?: (payload: Record<string, unknown>) => void;
+    onCanvasDraftDelete?: (payload: Record<string, unknown>) => void;
+    onCanvasDraftRebase?: (payload: Record<string, unknown>) => void;
     onOnboardingUpdate?: (payload: Record<string, unknown>) => void;
     onCanvasSave?: (payload: Record<string, unknown>) => void;
     onCanvasDraftSave?: (payload: Record<string, unknown>) => void;
@@ -6855,6 +7595,19 @@ async function mockProfileModules(
       providers?: unknown[];
     };
     invalidCanvasDraftPositions?: boolean;
+    canvasDraftSaveDelayMs?: number;
+    canvasDraftSaveError?: string;
+    canvasDraftSaveConflictDraft?: Record<string, unknown>;
+    canvasDraftSaveGates?: Array<Promise<void> | undefined>;
+    canvasDraftSaveStatuses?: Array<number | undefined>;
+    canvasDraftRebaseError?: string;
+    canvasDraftRebaseStatuses?: Array<number | undefined>;
+    profileModulesGate?: Promise<void>;
+    profileModulesStatus?: number;
+    profileSaveError?: string;
+    profileSaveGates?: Array<Promise<void> | undefined>;
+    profileSaveStatus?: number;
+    profileSaveStatuses?: Array<number | undefined>;
     profilePosts?: unknown[];
     profileOverrides?: Record<string, unknown>;
     profileReblogs?: unknown[];
@@ -6869,6 +7622,11 @@ async function mockProfileModules(
   let profileOverrides = { ...(options.profileOverrides ?? {}) };
   let canvasDraft = profileCanvasDraftState(ownerModules, profileOverrides);
   const viewerHandle = options.viewerHandle ?? "thia";
+  let canvasDraftSaveIndex = 0;
+  let canvasDraftCommitIndex = 0;
+  let canvasDraftRebaseIndex = 0;
+  let canvasDraftRevisionIndex = 0;
+  let profileSaveIndex = 0;
   let nextModuleId = Math.max(
     10,
     ...ownerModules.map((module) =>
@@ -7172,7 +7930,26 @@ async function mockProfileModules(
     }
 
     const payload = (await route.request().postDataJSON()) as Record<string, unknown>;
+    const saveIndex = profileSaveIndex;
+    profileSaveIndex += 1;
     options.onProfileSave?.(payload);
+
+    await options.profileSaveGates?.[saveIndex];
+
+    const profileSaveStatus =
+      options.profileSaveStatuses?.[saveIndex] ?? options.profileSaveStatus;
+
+    if (profileSaveStatus && profileSaveStatus !== 200) {
+      await route.fulfill({
+        status: profileSaveStatus,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: false,
+          error: options.profileSaveError ?? "Profile edits could not save.",
+        }),
+      });
+      return;
+    }
 
     if (payload.profileLayoutPreset !== undefined) {
       profileOverrides = {
@@ -7298,6 +8075,7 @@ async function mockProfileModules(
       };
     });
     ownerModules = sortModulesByLayout(ownerModules);
+    canvasDraft = profileCanvasDraftState(ownerModules, profileOverrides);
 
     await route.fulfill({
       status: 200,
@@ -7321,12 +8099,123 @@ async function mockProfileModules(
     const url = new URL(route.request().url());
     const method = route.request().method();
 
+    if (url.pathname.endsWith("/rebase")) {
+      if (method !== "POST") {
+        await route.fulfill({
+          status: 405,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: false, error: "Method not allowed." }),
+        });
+        return;
+      }
+
+      const payload = (await route.request().postDataJSON()) as Record<
+        string,
+        unknown
+      >;
+      const rebaseIndex = canvasDraftRebaseIndex;
+      canvasDraftRebaseIndex += 1;
+      options.onCanvasDraftRebase?.(payload);
+      const rebaseStatus =
+        options.canvasDraftRebaseStatuses?.[rebaseIndex];
+
+      if (rebaseStatus && rebaseStatus !== 200) {
+        await route.fulfill({
+          status: rebaseStatus,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: false,
+            error:
+              options.canvasDraftRebaseError ??
+              "Latest canvas draft is unavailable.",
+          }),
+        });
+        return;
+      }
+
+      if (payload.expectedRevision !== canvasDraft.revision) {
+        await route.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: false,
+            error: "This canvas draft changed in another save.",
+          }),
+        });
+        return;
+      }
+
+      canvasDraftRevisionIndex += 1;
+      canvasDraft = {
+        ...profileCanvasDraftState(ownerModules, profileOverrides),
+        revision: `mock-revision-${canvasDraftRevisionIndex}`,
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, data: canvasDraft }),
+      });
+      return;
+    }
+
     if (url.pathname.endsWith("/commit")) {
       if (method !== "POST") {
         await route.fulfill({
           status: 405,
           contentType: "application/json",
           body: JSON.stringify({ ok: false, error: "Method not allowed." }),
+        });
+        return;
+      }
+
+      const payload = (await route.request().postDataJSON()) as Record<
+        string,
+        unknown
+      >;
+      const commitIndex = canvasDraftCommitIndex;
+      canvasDraftCommitIndex += 1;
+      options.onCanvasCommit?.(payload);
+
+      if (payload.expectedRevision !== canvasDraft.revision) {
+        await route.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: false,
+            error: "This canvas draft changed in another save.",
+          }),
+        });
+        return;
+      }
+
+      const canvasDraftCommitStatus =
+        options.canvasDraftCommitStatuses?.[commitIndex] ??
+        options.canvasDraftCommitStatus;
+
+      if (
+        canvasDraftCommitStatus &&
+        canvasDraftCommitStatus !== 200
+      ) {
+        if (
+          commitIndex === 0 &&
+          Array.isArray(options.canvasDraftCommitConflictModules)
+        ) {
+          ownerModules = sortModulesByLayout(
+            options.canvasDraftCommitConflictModules as Array<
+              Record<string, unknown>
+            >,
+          );
+        }
+
+        await route.fulfill({
+          status: canvasDraftCommitStatus,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: false,
+            error:
+              options.canvasDraftCommitError ??
+              "Profile modules changed while this draft was open.",
+          }),
         });
         return;
       }
@@ -7380,7 +8269,6 @@ async function mockProfileModules(
     }
 
     if (method === "GET") {
-      canvasDraft = profileCanvasDraftState(ownerModules, profileOverrides, canvasDraft);
       const responseDraft = options.invalidCanvasDraftPositions
         ? {
             ...canvasDraft,
@@ -7400,7 +8288,62 @@ async function mockProfileModules(
 
     if (method === "PATCH") {
       const payload = (await route.request().postDataJSON()) as Record<string, unknown>;
+      const saveIndex = canvasDraftSaveIndex;
+      canvasDraftSaveIndex += 1;
       options.onCanvasDraftSave?.(payload);
+
+      await options.canvasDraftSaveGates?.[saveIndex];
+
+      if (options.canvasDraftSaveDelayMs) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, options.canvasDraftSaveDelayMs),
+        );
+      }
+
+      const canvasDraftSaveStatus =
+        options.canvasDraftSaveStatuses?.[saveIndex];
+
+      if (canvasDraftSaveStatus && canvasDraftSaveStatus !== 200) {
+        if (
+          canvasDraftSaveStatus === 409 &&
+          options.canvasDraftSaveConflictDraft
+        ) {
+          canvasDraftRevisionIndex += 1;
+          canvasDraft = {
+            ...canvasDraft,
+            ...options.canvasDraftSaveConflictDraft,
+            revision: `mock-revision-${canvasDraftRevisionIndex}`,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+
+        await route.fulfill({
+          status: canvasDraftSaveStatus,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: false,
+            error:
+              options.canvasDraftSaveError ??
+              "This canvas draft changed in another save.",
+          }),
+        });
+        return;
+      }
+
+      if (payload.expectedRevision !== canvasDraft.revision) {
+        await route.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: false,
+            error: "This canvas draft changed in another save.",
+          }),
+        });
+        return;
+      }
+
+      canvasDraftRevisionIndex += 1;
+
       canvasDraft = {
         ...canvasDraft,
         backgroundBlur:
@@ -7421,6 +8364,7 @@ async function mockProfileModules(
           payload.selectedModuleId === null
             ? payload.selectedModuleId
             : canvasDraft.selectedModuleId,
+        revision: `mock-revision-${canvasDraftRevisionIndex}`,
         updatedAt: new Date().toISOString(),
       };
 
@@ -7433,14 +8377,29 @@ async function mockProfileModules(
     }
 
     if (method === "DELETE") {
+      const payload = (await route.request().postDataJSON()) as Record<
+        string,
+        unknown
+      >;
+      options.onCanvasDraftDelete?.(payload);
+
+      if (payload.expectedRevision !== canvasDraft.revision) {
+        await route.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: false,
+            error: "This canvas draft changed in another save.",
+          }),
+        });
+        return;
+      }
+
       canvasDraft = profileCanvasDraftState(ownerModules, profileOverrides);
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({
-          ok: true,
-          data: { discarded: true, canvasVersion: PROFILE_CANVAS_VERSION },
-        }),
+        body: JSON.stringify({ ok: true, data: canvasDraft }),
       });
       return;
     }
@@ -7453,6 +8412,20 @@ async function mockProfileModules(
   });
 
   await page.route("**/api/profiles/thia/modules", async (route) => {
+    await options.profileModulesGate;
+
+    if (options.profileModulesStatus && options.profileModulesStatus !== 200) {
+      await route.fulfill({
+        status: options.profileModulesStatus,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: false,
+          error: "Profile modules unavailable.",
+        }),
+      });
+      return;
+    }
+
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -7479,6 +8452,7 @@ async function mockProfileModules(
         return module ? { ...module, position: index + 1 } : undefined;
       })
       .filter((module): module is Record<string, unknown> => module !== undefined);
+    canvasDraft = profileCanvasDraftState(ownerModules, profileOverrides);
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -7499,6 +8473,7 @@ async function mockProfileModules(
           ? { ...module, status: "active", visibility: "public" }
           : module,
       );
+      canvasDraft = profileCanvasDraftState(ownerModules, profileOverrides);
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -7513,6 +8488,7 @@ async function mockProfileModules(
       ownerModules = ownerModules.map((module) =>
         module.id === id ? moduleFromPayload(payload, module) : module,
       );
+      canvasDraft = profileCanvasDraftState(ownerModules, profileOverrides);
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -7539,6 +8515,7 @@ async function mockProfileModules(
       if (moduleToDelete?.type === "featured_room") {
         profileOverrides = { ...profileOverrides, featuredRoomId: null, featuredRoom: null };
       }
+      canvasDraft = profileCanvasDraftState(ownerModules, profileOverrides);
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -7580,6 +8557,7 @@ async function mockProfileModules(
           updatedAt: "2026-06-12 00:00:00",
         }),
       ];
+      canvasDraft = profileCanvasDraftState(ownerModules, profileOverrides);
       await route.fulfill({
         status: 201,
         contentType: "application/json",
@@ -7697,15 +8675,25 @@ function profileCanvasDraftState(
 ) {
   return {
     backgroundBlur:
-      typeof profileOverrides.profileBackgroundBlur === "string"
-        ? profileOverrides.profileBackgroundBlur
-        : typeof previous?.backgroundBlur === "string"
-          ? previous.backgroundBlur
+      typeof previous?.backgroundBlur === "string"
+        ? previous.backgroundBlur
+        : typeof profileOverrides.profileBackgroundBlur === "string"
+          ? profileOverrides.profileBackgroundBlur
           : "medium",
     canvasGlass:
-      typeof previous?.canvasGlass === "number" ? previous.canvasGlass : 58,
+      typeof previous?.canvasGlass === "number"
+        ? previous.canvasGlass
+        : typeof profileOverrides.profileCanvasGlass === "number"
+          ? profileOverrides.profileCanvasGlass
+          : 58,
     canvasVersion: PROFILE_CANVAS_VERSION,
-    modules: sortModulesByLayout(modules).map((module) => ({ ...module })),
+    modules: Array.isArray(previous?.modules)
+      ? (previous.modules as Array<Record<string, unknown>>).map((module) => ({
+          ...module,
+        }))
+      : sortModulesByLayout(modules).map((module) => ({ ...module })),
+    revision:
+      typeof previous?.revision === "string" ? previous.revision : null,
     selectedModuleId: previous?.selectedModuleId ?? null,
     updatedAt: new Date().toISOString(),
   };

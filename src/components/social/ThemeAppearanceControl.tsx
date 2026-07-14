@@ -24,6 +24,7 @@ type ThemeAppearanceControlProps = {
   previewTitle: string;
   previewSubtitle: string;
   previewLinkLabel: string;
+  presentation?: "trigger" | "inline" | undefined;
   testIdKind: "profile" | "room";
   onChange: (config: ProfileThemeConfig | null) => void;
 };
@@ -37,6 +38,7 @@ export function ThemeAppearanceControl({
   previewLinkLabel,
   previewSubtitle,
   previewTitle,
+  presentation = "trigger",
   testIdKind,
   onChange,
 }: ThemeAppearanceControlProps) {
@@ -98,10 +100,14 @@ export function ThemeAppearanceControl({
     });
   }
 
+  const inline = presentation === "inline";
+  const visible = inline || open;
+
   return (
     <div className="relative" data-testid={rootTestId}>
-      <button
-        type="button"
+      {!inline ? (
+        <button
+          type="button"
         className={cn(
           "flex w-full items-center rounded-control border border-line bg-canvas/50 text-left transition duration-fluid ease-fluid hover:border-line-strong hover:bg-canvas/70 focus-visible:outline-2 focus-visible:outline-focus",
           compact ? "min-h-9 gap-2 px-2" : "min-h-11 gap-3 px-3",
@@ -130,11 +136,17 @@ export function ThemeAppearanceControl({
           <span className="block truncate text-xs text-muted">{activeLabel}</span>
         </span>
       </button>
+      ) : null}
 
-      {open ? (
+      {visible ? (
         <div
-          className="absolute left-0 top-full z-20 mt-2 w-[min(30rem,calc(100vw-2rem))] rounded-card border border-line bg-surface/95 p-3 shadow-lift backdrop-blur-veil"
-          role="dialog"
+          className={cn(
+            "bg-surface/95 p-3 backdrop-blur-veil",
+            inline
+              ? "w-full"
+              : "absolute left-0 top-full z-20 mt-2 w-[min(30rem,calc(100vw-2rem))] rounded-card border border-line shadow-lift",
+          )}
+          role={inline ? "group" : "dialog"}
           aria-label={label}
           data-testid={popoverTestId}
         >
@@ -143,8 +155,9 @@ export function ThemeAppearanceControl({
               <p className="text-sm font-semibold text-text">{label}</p>
               <p className="mt-0.5 text-xs text-muted">{description}</p>
             </div>
-            <button
-              type="button"
+            {!inline ? (
+              <button
+                type="button"
               className="grid size-8 shrink-0 place-items-center rounded-full border border-line bg-canvas/55 text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
               aria-label={`Close ${label.toLowerCase()} settings`}
               onClick={() => setOpen(false)}
@@ -152,9 +165,15 @@ export function ThemeAppearanceControl({
             >
               <X aria-hidden="true" size={15} />
             </button>
+            ) : null}
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div
+            className={cn(
+              "mt-3 grid grid-cols-2 gap-2",
+              !inline ? "sm:grid-cols-4" : undefined,
+            )}
+          >
             <button
               type="button"
               className="min-h-20 rounded-card border border-line bg-canvas/55 p-2 text-left transition hover:border-line-strong focus-visible:outline-2 focus-visible:outline-focus aria-pressed:border-accent aria-pressed:bg-accent/12"
@@ -267,7 +286,12 @@ export function ThemeAppearanceControl({
               </div>
             ) : null}
 
-            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <div
+              className={cn(
+                "mt-3 grid gap-2",
+                inline ? "grid-cols-1" : "sm:grid-cols-3",
+              )}
+            >
               {(["canvas", "surface", "text", "accent", "accentInk", "accentStrong"] as const).map(
                 (key) => (
                   <ThemeColorInput
@@ -286,7 +310,12 @@ export function ThemeAppearanceControl({
               <summary className="cursor-pointer text-xs font-semibold text-muted">
                 Advanced colors
               </summary>
-              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              <div
+                className={cn(
+                  "mt-3 grid gap-2",
+                  inline ? "grid-cols-1" : "sm:grid-cols-3",
+                )}
+              >
                 {profileThemeColorKeys
                   .filter(
                     (key) =>

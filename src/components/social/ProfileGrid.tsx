@@ -59,7 +59,9 @@ export function ProfileGrid({
   const [activeRowBudget, setActiveRowBudget] = useState<number>(() =>
     profileGridActiveRowCount(maxRows),
   );
-  const [measuredCellSize, setMeasuredCellSize] = useState<number | undefined>();
+  const [measuredCellSize, setMeasuredCellSize] = useState<
+    number | undefined
+  >();
   const setGridElement = useCallback(
     (element: HTMLDivElement | null) => {
       localGridRef.current = element;
@@ -112,15 +114,38 @@ export function ProfileGrid({
 
     const resizeObserver = new ResizeObserver(updateGridLayout);
     resizeObserver.observe(element);
-    const mutationObserver = fitRowsToContent
-      ? new MutationObserver(updateGridLayout)
-      : undefined;
+    let mutationObserver: MutationObserver | undefined;
 
-    mutationObserver?.observe(element, {
-      attributes: true,
-      childList: true,
-      subtree: true,
-    });
+    if (fitRowsToContent) {
+      const observeGridModules = () => {
+        mutationObserver?.disconnect();
+        mutationObserver?.observe(element, { childList: true });
+
+        element
+          .querySelectorAll<HTMLElement>(
+            ':scope > [data-profile-grid-module="true"]',
+          )
+          .forEach((moduleElement) => {
+            mutationObserver?.observe(moduleElement, {
+              attributes: true,
+              attributeFilter: [
+                "style",
+                "data-profile-grid-column-span",
+                "data-profile-grid-row-span",
+              ],
+            });
+          });
+      };
+
+      mutationObserver = new MutationObserver((records) => {
+        updateGridLayout();
+
+        if (records.some((record) => record.type === "childList")) {
+          observeGridModules();
+        }
+      });
+      observeGridModules();
+    }
     window.addEventListener("resize", updateGridLayout);
 
     return () => {
@@ -135,7 +160,8 @@ export function ProfileGrid({
     moduleSurfacePercent,
     normalizedGlass: normalizedCanvasGlass,
   } = profileCanvasGlassTreatment(canvasGlass);
-  const rawContentScale = measuredCellSize === undefined ? 1 : measuredCellSize / 86;
+  const rawContentScale =
+    measuredCellSize === undefined ? 1 : measuredCellSize / 86;
   const contentScale = Math.min(contentScaleMax, rawContentScale);
   const contentScaleInverse = 1 / contentScale;
   const gridStyle = {

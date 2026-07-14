@@ -300,15 +300,19 @@ async function main() {
         modules: canvasPlacements(ownerModules.data),
       },
     });
-    await api(`${apiPrefix}/me/profile/canvas-draft`, {
+    const initialCanvasDraft = await api(`${apiPrefix}/me/profile/canvas-draft`, {
       session: owner,
     });
-    await api(`${apiPrefix}/me/profile/canvas-draft`, {
+    const savedCanvasDraft = await api(`${apiPrefix}/me/profile/canvas-draft`, {
       method: "PATCH",
       session: owner,
       body: {
         backgroundBlur: "medium",
         canvasGlass: 62,
+        expectedRevision:
+          typeof initialCanvasDraft.data?.revision === "string"
+            ? initialCanvasDraft.data.revision
+            : null,
         modules: draftModules(updatedModules.data),
         selectedModuleId: customModuleId,
       },
@@ -316,12 +320,17 @@ async function main() {
     await api(`${apiPrefix}/me/profile/canvas-draft/commit`, {
       method: "POST",
       session: owner,
-      body: {},
+      body: {
+        expectedRevision:
+          typeof savedCanvasDraft.data?.revision === "string"
+            ? savedCanvasDraft.data.revision
+            : null,
+      },
     });
     await api(`${apiPrefix}/me/profile/canvas-draft`, {
       method: "DELETE",
       session: owner,
-      body: {},
+      body: { expectedRevision: null },
     });
     await api(`${apiPrefix}/me/badges/featured`, {
       method: "PATCH",

@@ -342,6 +342,7 @@ export type ProfileCanvasDraftState = {
   canvasGlass: number;
   canvasVersion: typeof PROFILE_CANVAS_VERSION;
   modules: ProfileCanvasDraftModule[];
+  revision: string | null;
   selectedModuleId?: number | string | null;
   updatedAt?: string | null;
 };
@@ -350,6 +351,7 @@ export type UpdateProfileCanvasDraftInput = Partial<
   Pick<ProfileCanvasDraftState, "backgroundBlur" | "canvasGlass" | "modules" | "selectedModuleId">
 > & {
   canvasVersion: typeof PROFILE_CANVAS_VERSION;
+  expectedRevision: string | null;
 };
 
 export type CreateProfileModuleInput = {
@@ -1217,6 +1219,7 @@ export function updateProfileCanvasDraft(
 }
 
 export function commitProfileCanvasDraft(
+  expectedRevision: string | null,
   csrfToken: string,
 ): Promise<UpdateProfileCanvasResult> {
   return apiPost<{
@@ -1224,7 +1227,7 @@ export function commitProfileCanvasDraft(
     canvasGlass?: number | string | null;
     canvasVersion?: number | string | null;
     modules?: ApiProfileModule[];
-  }>("/me/profile/canvas-draft/commit", {}, csrfToken).then((result) => ({
+  }>("/me/profile/canvas-draft/commit", { expectedRevision }, csrfToken).then((result) => ({
     backgroundBlur: normalizeProfileBackgroundBlur(result.backgroundBlur),
     canvasGlass: normalizeProfileCanvasGlass(result.canvasGlass),
     canvasVersion: PROFILE_CANVAS_VERSION,
@@ -1234,12 +1237,25 @@ export function commitProfileCanvasDraft(
   }));
 }
 
+export function rebaseProfileCanvasDraft(
+  expectedRevision: string | null,
+  csrfToken: string,
+): Promise<ProfileCanvasDraftState> {
+  return apiPost<ProfileCanvasDraftState>(
+    "/me/profile/canvas-draft/rebase",
+    { expectedRevision },
+    csrfToken,
+  ).then(normalizeProfileCanvasDraftState);
+}
+
 export function discardProfileCanvasDraft(
+  expectedRevision: string | null,
   csrfToken: string,
 ): Promise<ProfileCanvasDraftState> {
   return apiDelete<ProfileCanvasDraftState>(
     "/me/profile/canvas-draft",
     csrfToken,
+    { expectedRevision },
   ).then(normalizeProfileCanvasDraftState);
 }
 
@@ -2559,6 +2575,7 @@ function normalizeProfileCanvasDraftState(
     modules: Array.isArray(state.modules)
       ? state.modules.filter(isApiProfileModule).map(normalizeProfileModule)
       : [],
+    revision: typeof state.revision === "string" ? state.revision : null,
     selectedModuleId:
       typeof state.selectedModuleId === "number" ||
       typeof state.selectedModuleId === "string"

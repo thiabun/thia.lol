@@ -51,6 +51,7 @@ import { MentionTextarea } from "../components/social/MentionTextarea";
 import { PostCard } from "../components/social/PostCard";
 import { ProfilePersonalBackdrop } from "../components/social/ProfilePersonalBackdrop";
 import {
+  ProfileModuleCard,
   ProfileModulesSection,
   type ProfileModuleRenderMode,
   type ProfileMusicAutoplayRequest,
@@ -92,6 +93,7 @@ import {
   postCanonicalPath,
   previewImageUpload,
   removeProfileFollower,
+  rebaseProfileCanvasDraft,
   resolveProfileIntegrationMetadata,
   startProfileIntegration,
   starProfile,
@@ -209,6 +211,20 @@ export type ProfileCanvasDraftAutosaveState =
   | "saving"
   | "saved"
   | "error";
+
+function combinedProfileEditorAutosaveState(
+  canvas: ProfileCanvasDraftAutosaveState,
+  content: ProfileContentAutosaveState,
+): ProfileCanvasDraftAutosaveState {
+  for (const state of ["error", "saving", "pending", "saved"] as const) {
+    if (canvas === state || content === state) {
+      return state;
+    }
+  }
+
+  return "idle";
+}
+
 type CanvasPoint = { column: number; row: number };
 
 export type ProfilePublicCanvasSnapshotProps = {
@@ -229,36 +245,28 @@ type ProfileCanvasResizeDirection =
   | "south-west"
   | "north-west";
 
+function profileContentWriteInput(profile: Profile): UpdateProfileInput {
+  return {
+    displayName: profile.user.displayName,
+    bio: profile.bio,
+    location: profile.location,
+    avatarUrl: profile.user.avatarUrl ?? null,
+    bannerUrl: profile.bannerUrl ?? null,
+    profileBackground: profile.profileBackground ?? null,
+    profileBackgroundVideo: profile.profileBackgroundVideo ?? null,
+    profileBackgroundVideoPoster: profile.profileBackgroundVideoPoster ?? null,
+    profileAccent: profile.profileAccent ?? null,
+    profileTheme: profile.profileTheme ?? null,
+    profileThemeConfig: profile.profileThemeConfig ?? null,
+  };
+}
+
 function profileContentAutosaveInput(
   draft: Profile,
   saved: Profile,
 ): UpdateProfileInput | undefined {
-  const next = {
-    displayName: draft.user.displayName,
-    bio: draft.bio,
-    location: draft.location,
-    avatarUrl: draft.user.avatarUrl ?? null,
-    bannerUrl: draft.bannerUrl ?? null,
-    profileBackground: draft.profileBackground ?? null,
-    profileBackgroundVideo: draft.profileBackgroundVideo ?? null,
-    profileBackgroundVideoPoster: draft.profileBackgroundVideoPoster ?? null,
-    profileAccent: draft.profileAccent ?? null,
-    profileTheme: draft.profileTheme ?? null,
-    profileThemeConfig: draft.profileThemeConfig ?? null,
-  };
-  const current = {
-    displayName: saved.user.displayName,
-    bio: saved.bio,
-    location: saved.location,
-    avatarUrl: saved.user.avatarUrl ?? null,
-    bannerUrl: saved.bannerUrl ?? null,
-    profileBackground: saved.profileBackground ?? null,
-    profileBackgroundVideo: saved.profileBackgroundVideo ?? null,
-    profileBackgroundVideoPoster: saved.profileBackgroundVideoPoster ?? null,
-    profileAccent: saved.profileAccent ?? null,
-    profileTheme: saved.profileTheme ?? null,
-    profileThemeConfig: saved.profileThemeConfig ?? null,
-  };
+  const next = profileContentWriteInput(draft);
+  const current = profileContentWriteInput(saved);
 
   const changed = Object.entries(next).some(([key, value]) => {
     if (key === "profileThemeConfig") {
@@ -324,7 +332,17 @@ export function ProfilePage() {
   const profileEditReturnHandledRef = useRef(false);
   const profileEditorTourReturnHandledRef = useRef(false);
   const profileContentAutosaveRequestRef = useRef(0);
+  const profileContentAutosaveQueueRef = useRef<Promise<void>>(
+    Promise.resolve(),
+  );
+  const profileContentAutosaveQueuedRef = useRef(0);
+  const profileContentReconciliationRequiredRef = useRef(false);
   const profileCanvasDraftAutosaveRequestRef = useRef(0);
+  const profileCanvasDraftAutosaveQueueRef = useRef<Promise<void>>(
+    Promise.resolve(),
+  );
+  const profileCanvasDraftRevisionRef = useRef<string | null>(null);
+  const profileCanvasDraftMutationBlockedRef = useRef(false);
   const profileCanvasDraftAutosaveTimerRef = useRef<number | undefined>(undefined);
   const canvasDraftRef = useRef<ProfileCanvasDraftState | undefined>(undefined);
   const nextDraftModuleIdRef = useRef(-1000);
@@ -335,6 +353,8 @@ export function ProfilePage() {
     { handle: string; result: Awaited<ReturnType<typeof getProfileBadges>> } | undefined
   >();
   const [canvasEditing, setCanvasEditing] = useState(false);
+  const [canvasPreviewing, setCanvasPreviewing] = useState(false);
+  const [canvasDraftConflict, setCanvasDraftConflict] = useState(false);
   const [canvasLoading, setCanvasLoading] = useState(false);
   const [canvasSaving, setCanvasSaving] = useState(false);
   const [canvasError, setCanvasError] = useState<string | undefined>();
@@ -887,18 +907,27 @@ export function ProfilePage() {
 
     try {
       const draft = await getProfileCanvasDraft();
+      const resolvedDraft = {
+        ...draft,
+        modules: profileCanvasResolveDraftCollisions(draft.modules),
+      };
 
-      setCurrentCanvasDraft(draft);
-      setDraftBackgroundBlur(draft.backgroundBlur);
+      setCurrentCanvasDraft(resolvedDraft);
+      setDraftBackgroundBlur(resolvedDraft.backgroundBlur);
       setDraftProfile({
         ...profile,
-        profileBackgroundBlur: draft.backgroundBlur,
-        profileCanvasVersion: draft.canvasVersion,
+        profileBackgroundBlur: resolvedDraft.backgroundBlur,
+        profileCanvasVersion: resolvedDraft.canvasVersion,
       });
       setProfileContentAutosaveState("idle");
       setProfileContentAutosaveError(undefined);
+      profileContentReconciliationRequiredRef.current = false;
       setCanvasDraftAutosaveState("idle");
       setCanvasDraftAutosaveError(undefined);
+      profileCanvasDraftRevisionRef.current = resolvedDraft.revision;
+      profileCanvasDraftMutationBlockedRef.current = false;
+      setCanvasDraftConflict(false);
+      setCanvasPreviewing(false);
       setCanvasEditing(true);
     } catch (error) {
       setCanvasError(
@@ -1071,22 +1100,34 @@ export function ProfilePage() {
       return undefined;
     }
 
-    const input = profileContentAutosaveInput(draftProfile, profile);
+    const input =
+      profileContentAutosaveInput(draftProfile, profile) ??
+      (profileContentAutosaveQueuedRef.current > 0 ||
+      profileContentReconciliationRequiredRef.current
+        ? profileContentWriteInput(draftProfile)
+        : undefined);
 
     if (!input) {
       return undefined;
     }
 
+    setProfileContentAutosaveState("pending");
+    setProfileContentAutosaveError(undefined);
     const requestId = profileContentAutosaveRequestRef.current + 1;
     profileContentAutosaveRequestRef.current = requestId;
 
     const timeout = window.setTimeout(() => {
       setProfileContentAutosaveState("saving");
       setProfileContentAutosaveError(undefined);
+      profileContentAutosaveQueuedRef.current += 1;
+      profileContentReconciliationRequiredRef.current = true;
 
-      void runWithAuth((csrfToken) => updateMyProfile(input, csrfToken), {
-        retryOnCsrf: true,
-      })
+      const autosavePromise = profileContentAutosaveQueueRef.current
+        .then(() =>
+          runWithAuth((csrfToken) => updateMyProfile(input, csrfToken), {
+            retryOnCsrf: true,
+          }),
+        )
         .then((savedProfile) => {
           if (profileContentAutosaveRequestRef.current !== requestId) {
             return;
@@ -1097,6 +1138,7 @@ export function ProfilePage() {
           setDraftProfile((current) =>
             current ? mergeAutosavedProfileContent(current, savedProfile) : current,
           );
+          profileContentReconciliationRequiredRef.current = false;
           setProfileContentAutosaveState("saved");
           setProfileContentAutosaveError(undefined);
         })
@@ -1111,7 +1153,15 @@ export function ProfilePage() {
               ? error.message
               : "Profile edits could not save automatically.",
           );
+        })
+        .finally(() => {
+          profileContentAutosaveQueuedRef.current = Math.max(
+            0,
+            profileContentAutosaveQueuedRef.current - 1,
+          );
         });
+
+      profileContentAutosaveQueueRef.current = autosavePromise;
     }, PROFILE_CONTENT_AUTOSAVE_DELAY_MS);
 
     return () => window.clearTimeout(timeout);
@@ -1133,7 +1183,28 @@ export function ProfilePage() {
     };
   }, []);
 
+  function enterCanvasDraftConflict(error: unknown): boolean {
+    if (!(error instanceof ApiClientError) || error.status !== 409) {
+      return false;
+    }
+
+    const message =
+      error.message ||
+      "This canvas draft changed elsewhere. Reload the latest draft to continue.";
+    profileCanvasDraftMutationBlockedRef.current = true;
+    setCanvasDraftConflict(true);
+    setCanvasError(message);
+    setCanvasDraftAutosaveState("error");
+    setCanvasDraftAutosaveError(message);
+    setPendingProfileImageCrop(undefined);
+    return true;
+  }
+
   function queueCanvasDraftAutosave(nextDraft: ProfileCanvasDraftState) {
+    if (profileCanvasDraftMutationBlockedRef.current) {
+      return;
+    }
+
     setCurrentCanvasDraft(nextDraft);
     setDraftBackgroundBlur(nextDraft.backgroundBlur);
     setCanvasDraftAutosaveState("pending");
@@ -1149,21 +1220,27 @@ export function ProfilePage() {
     profileCanvasDraftAutosaveTimerRef.current = window.setTimeout(() => {
       setCanvasDraftAutosaveState("saving");
 
-      void runWithAuth(
-        (csrfToken) =>
-          updateProfileCanvasDraft(
-            {
-              backgroundBlur: nextDraft.backgroundBlur,
-              canvasGlass: nextDraft.canvasGlass,
-              canvasVersion: PROFILE_CANVAS_VERSION,
-              modules: nextDraft.modules,
-              selectedModuleId: nextDraft.selectedModuleId ?? null,
-            },
-            csrfToken,
+      const autosavePromise = profileCanvasDraftAutosaveQueueRef.current
+        .then(() =>
+          runWithAuth(
+            (csrfToken) =>
+              updateProfileCanvasDraft(
+                {
+                  backgroundBlur: nextDraft.backgroundBlur,
+                  canvasGlass: nextDraft.canvasGlass,
+                  canvasVersion: PROFILE_CANVAS_VERSION,
+                  expectedRevision: profileCanvasDraftRevisionRef.current,
+                  modules: nextDraft.modules,
+                  selectedModuleId: nextDraft.selectedModuleId ?? null,
+                },
+                csrfToken,
+              ),
+            { retryOnCsrf: true },
           ),
-        { retryOnCsrf: true },
-      )
+        )
         .then((savedDraft) => {
+          profileCanvasDraftRevisionRef.current = savedDraft.revision;
+
           if (profileCanvasDraftAutosaveRequestRef.current !== requestId) {
             return;
           }
@@ -1174,6 +1251,10 @@ export function ProfilePage() {
           setCanvasDraftAutosaveError(undefined);
         })
         .catch((error) => {
+          if (enterCanvasDraftConflict(error)) {
+            return;
+          }
+
           if (profileCanvasDraftAutosaveRequestRef.current !== requestId) {
             return;
           }
@@ -1185,6 +1266,8 @@ export function ProfilePage() {
               : "Canvas draft could not save automatically.",
           );
         });
+
+      profileCanvasDraftAutosaveQueueRef.current = autosavePromise;
     }, PROFILE_CONTENT_AUTOSAVE_DELAY_MS);
   }
 
@@ -1201,13 +1284,16 @@ export function ProfilePage() {
     setCanvasDraftAutosaveState("saving");
     setCanvasDraftAutosaveError(undefined);
 
-    const savedDraft = await runWithAuth(
+    await profileCanvasDraftAutosaveQueueRef.current;
+
+    const savePromise = runWithAuth(
       (csrfToken) =>
         updateProfileCanvasDraft(
           {
             backgroundBlur: nextDraft.backgroundBlur,
             canvasGlass: nextDraft.canvasGlass,
             canvasVersion: PROFILE_CANVAS_VERSION,
+            expectedRevision: profileCanvasDraftRevisionRef.current,
             modules: nextDraft.modules,
             selectedModuleId: nextDraft.selectedModuleId ?? null,
           },
@@ -1215,6 +1301,12 @@ export function ProfilePage() {
         ),
       { retryOnCsrf: true },
     );
+    profileCanvasDraftAutosaveQueueRef.current = savePromise.then(
+      () => undefined,
+      () => undefined,
+    );
+    const savedDraft = await savePromise;
+    profileCanvasDraftRevisionRef.current = savedDraft.revision;
 
     if (profileCanvasDraftAutosaveRequestRef.current === requestId) {
       setCurrentCanvasDraft(savedDraft);
@@ -1226,21 +1318,28 @@ export function ProfilePage() {
   }
 
   async function handleSaveCanvasEdit() {
-    if (!profile || !canvasDraft || canvasSaving) {
+    if (!profile || !canvasDraft || canvasSaving || profileDraftUploading) {
       return;
     }
 
+    profileCanvasDraftMutationBlockedRef.current = true;
     setCanvasSaving(true);
     setCanvasError(undefined);
+    let canvasMutationStarted = false;
 
     try {
       const latestProfile =
         draftProfile
           ? (await saveProfileContentImmediately(draftProfile)) ?? profile
           : profile;
+      canvasMutationStarted = true;
       await saveCanvasDraftImmediately(canvasDraft);
       const saved = await runWithAuth(
-        (csrfToken) => commitProfileCanvasDraft(csrfToken),
+        (csrfToken) =>
+          commitProfileCanvasDraft(
+            profileCanvasDraftRevisionRef.current,
+            csrfToken,
+          ),
         { retryOnCsrf: true },
       );
 
@@ -1254,51 +1353,164 @@ export function ProfilePage() {
       setProfileOverride(savedProfile);
       updateProfile(authProfilePatch(savedProfile));
       setDraftBackgroundBlur(saved.backgroundBlur);
+      profileCanvasDraftRevisionRef.current = null;
       setCurrentCanvasDraft(undefined);
+      setCanvasDraftConflict(false);
+      setCanvasPreviewing(false);
       setCanvasEditing(false);
       setCanvasDraftAutosaveState("idle");
       setCanvasDraftAutosaveError(undefined);
       void markProfileEditorTourStep("complete_step");
     } catch (error) {
-      setCanvasError(
-        error instanceof Error ? error.message : "Could not save canvas changes.",
-      );
+      profileCanvasDraftMutationBlockedRef.current = false;
+      if (!canvasMutationStarted || !enterCanvasDraftConflict(error)) {
+        setCanvasError(
+          error instanceof Error ? error.message : "Could not save canvas changes.",
+        );
+      }
     } finally {
       setCanvasSaving(false);
     }
   }
 
   async function handleCancelCanvasEdit() {
+    if (canvasSaving || profileDraftUploading) {
+      return;
+    }
+
+    profileCanvasDraftMutationBlockedRef.current = true;
+    setCanvasSaving(true);
+    setCanvasError(undefined);
+    let canvasDiscardStarted = false;
+
     if (profileCanvasDraftAutosaveTimerRef.current !== undefined) {
       window.clearTimeout(profileCanvasDraftAutosaveTimerRef.current);
       profileCanvasDraftAutosaveTimerRef.current = undefined;
     }
 
-    if (canvasDraft) {
-      try {
-        await runWithAuth((csrfToken) => discardProfileCanvasDraft(csrfToken), {
-          retryOnCsrf: true,
-        });
-      } catch (error) {
+    try {
+      const requestId = profileCanvasDraftAutosaveRequestRef.current + 1;
+      profileCanvasDraftAutosaveRequestRef.current = requestId;
+      await Promise.all([
+        profileCanvasDraftAutosaveQueueRef.current,
+        draftProfile
+          ? saveProfileContentImmediately(draftProfile)
+          : profileContentAutosaveQueueRef.current,
+      ]);
+
+      if (canvasDraft) {
+        canvasDiscardStarted = true;
+        await runWithAuth(
+          (csrfToken) =>
+            discardProfileCanvasDraft(
+              profileCanvasDraftRevisionRef.current,
+              csrfToken,
+            ),
+          { retryOnCsrf: true },
+        );
+      }
+
+      profileCanvasDraftRevisionRef.current = null;
+      setCanvasDraftConflict(false);
+      setCanvasPreviewing(false);
+      setCanvasEditing(false);
+      setCurrentCanvasDraft(undefined);
+      setDraftBackgroundBlur(profile?.profileBackgroundBlur ?? "medium");
+      setDraftProfile(undefined);
+      setProfileDraftUploading(undefined);
+      setProfileContentAutosaveState("idle");
+      setProfileContentAutosaveError(undefined);
+      setCanvasDraftAutosaveState("idle");
+      setCanvasDraftAutosaveError(undefined);
+    } catch (error) {
+      profileCanvasDraftMutationBlockedRef.current = false;
+      if (!canvasDiscardStarted || !enterCanvasDraftConflict(error)) {
         setCanvasError(
           error instanceof Error ? error.message : "Could not discard canvas draft.",
         );
       }
+    } finally {
+      setCanvasSaving(false);
+    }
+  }
+
+  async function handleReloadCanvasDraftAfterConflict() {
+    if (!canvasDraftConflict || canvasLoading || canvasSaving) {
+      return;
     }
 
-    setCanvasEditing(false);
+    setCanvasLoading(true);
     setCanvasError(undefined);
-    setCurrentCanvasDraft(undefined);
-    setDraftBackgroundBlur(profile?.profileBackgroundBlur ?? "medium");
-    setDraftProfile(undefined);
-    setProfileDraftUploading(undefined);
-    setProfileContentAutosaveState("idle");
-    setProfileContentAutosaveError(undefined);
-    setCanvasDraftAutosaveState("idle");
-    setCanvasDraftAutosaveError(undefined);
+
+    if (profileCanvasDraftAutosaveTimerRef.current !== undefined) {
+      window.clearTimeout(profileCanvasDraftAutosaveTimerRef.current);
+      profileCanvasDraftAutosaveTimerRef.current = undefined;
+    }
+
+    try {
+      profileCanvasDraftAutosaveRequestRef.current += 1;
+      await profileCanvasDraftAutosaveQueueRef.current;
+      let latestDraft: ProfileCanvasDraftState;
+
+      try {
+        latestDraft = await runWithAuth(
+          (csrfToken) =>
+            rebaseProfileCanvasDraft(
+              profileCanvasDraftRevisionRef.current,
+              csrfToken,
+            ),
+          { retryOnCsrf: true },
+        );
+      } catch (error) {
+        if (!(error instanceof ApiClientError) || error.status !== 409) {
+          throw error;
+        }
+
+        latestDraft = await getProfileCanvasDraft();
+      }
+      const resolvedDraft = {
+        ...latestDraft,
+        modules: profileCanvasResolveDraftCollisions(latestDraft.modules),
+      };
+
+      setCurrentCanvasDraft(resolvedDraft);
+      setDraftBackgroundBlur(resolvedDraft.backgroundBlur);
+      setDraftProfile((current) => {
+        const base = current ?? profile;
+
+        return base
+          ? {
+              ...base,
+              profileBackgroundBlur: resolvedDraft.backgroundBlur,
+              profileCanvasGlass: resolvedDraft.canvasGlass,
+              profileCanvasVersion: resolvedDraft.canvasVersion,
+            }
+          : current;
+      });
+      profileCanvasDraftRevisionRef.current = resolvedDraft.revision;
+      profileCanvasDraftMutationBlockedRef.current = false;
+      setCanvasDraftConflict(false);
+      setCanvasPreviewing(false);
+      setCanvasError(undefined);
+      setCanvasDraftAutosaveState("idle");
+      setCanvasDraftAutosaveError(undefined);
+    } catch (error) {
+      setCanvasError(
+        error instanceof Error
+          ? error.message
+          : "Could not reload the latest canvas draft.",
+      );
+    } finally {
+      setCanvasLoading(false);
+    }
   }
 
   function handleDraftProfileChange(updater: (profile: Profile) => Profile) {
+    if (profileCanvasDraftMutationBlockedRef.current) {
+      return;
+    }
+
+    profileContentAutosaveRequestRef.current += 1;
     setDraftProfile((current) => {
       const base = current ?? profile;
 
@@ -1314,7 +1526,14 @@ export function ProfilePage() {
       return undefined;
     }
 
-    const input = profileContentAutosaveInput(nextProfile, profile);
+    const hadQueuedWrites = profileContentAutosaveQueuedRef.current > 0;
+    const input =
+      profileContentAutosaveInput(nextProfile, profile) ??
+      (hadQueuedWrites || profileContentReconciliationRequiredRef.current
+        ? profileContentWriteInput(nextProfile)
+        : undefined);
+
+    await profileContentAutosaveQueueRef.current;
 
     if (!input) {
       return undefined;
@@ -1324,12 +1543,27 @@ export function ProfilePage() {
     profileContentAutosaveRequestRef.current = requestId;
     setProfileContentAutosaveState("saving");
     setProfileContentAutosaveError(undefined);
+    profileContentAutosaveQueuedRef.current += 1;
+    profileContentReconciliationRequiredRef.current = true;
+
+    const savePromise = runWithAuth(
+      (csrfToken) => updateMyProfile(input, csrfToken),
+      { retryOnCsrf: true },
+    );
+    profileContentAutosaveQueueRef.current = savePromise
+      .then(
+        () => undefined,
+        () => undefined,
+      )
+      .finally(() => {
+        profileContentAutosaveQueuedRef.current = Math.max(
+          0,
+          profileContentAutosaveQueuedRef.current - 1,
+        );
+      });
 
     try {
-      const savedProfile = await runWithAuth(
-        (csrfToken) => updateMyProfile(input, csrfToken),
-        { retryOnCsrf: true },
-      );
+      const savedProfile = await savePromise;
 
       if (profileContentAutosaveRequestRef.current !== requestId) {
         return;
@@ -1340,6 +1574,7 @@ export function ProfilePage() {
       setDraftProfile((current) =>
         current ? mergeAutosavedProfileContent(current, savedProfile) : current,
       );
+      profileContentReconciliationRequiredRef.current = false;
       setProfileContentAutosaveState("saved");
       setProfileContentAutosaveError(undefined);
       return savedProfile;
@@ -1622,7 +1857,15 @@ export function ProfilePage() {
 
     try {
       if (canvasDraft) {
-        await saveCanvasDraftImmediately(canvasDraft);
+        try {
+          await saveCanvasDraftImmediately(canvasDraft);
+        } catch (error) {
+          if (enterCanvasDraftConflict(error)) {
+            return;
+          }
+
+          throw error;
+        }
       }
 
       const result = await runWithAuth(
@@ -1953,7 +2196,9 @@ export function ProfilePage() {
       >
       <ProfilePersonalBackdrop
         profile={backgroundPreviewProfile}
-        paused={canvasEditing || Boolean(musicAutoplayRequest)}
+        paused={
+          (canvasEditing && !canvasPreviewing) || Boolean(musicAutoplayRequest)
+        }
       />
       <div className="profile-canvas-page-shell relative z-10 mx-auto space-y-4 sm:space-y-5">
         <PageMeta
@@ -2009,50 +2254,125 @@ export function ProfilePage() {
         ) : null}
         <div className="min-w-0 space-y-4 sm:space-y-5">
           {canvasEditing && canvasDraft ? (
-            <Suspense fallback={<ProfileCanvasEditorLoadingNotice />}>
-              <ProfileDirectCanvasEditor
-                autosaveError={canvasDraftAutosaveError}
-                autosaveState={canvasDraftAutosaveState}
-                busy={canvasSaving}
-                draft={canvasDraft}
-                error={canvasError}
-                guideOpen={profileEditorTourOpen}
-                integrationAccounts={integrationsState.data?.accounts ?? []}
-                integrationProviders={integrationsState.data?.providers ?? []}
-                modules={canvasDraft.modules}
-                profile={renderedProfile}
-                uploading={profileDraftUploading}
-                onBackgroundBlurChange={handleDraftBackgroundBlurChange}
-                onCancel={() => void handleCancelCanvasEdit()}
-                onCanvasGlassChange={handleDraftCanvasGlassChange}
-                onChange={handleCanvasDraftChange}
-                onClearBackground={() => void handleClearProfileBackgroundDraft()}
-                onConnectProvider={(provider) =>
-                  void handleCanvasProviderConnect(provider)
-                }
-                onGuideComplete={handleProfileEditorTourComplete}
-                onGuideDismiss={handleProfileEditorTourDismiss}
-                onGuideOpen={() => setProfileEditorTourOpen(true)}
-                onModuleAudioUpload={handleModuleAudioUpload}
-                onImageUpload={handleProfileImageDraftSelection}
-                onModuleImagePrepare={handleModuleImagePrepare}
-                onModuleImageUpload={handleModuleImageUpload}
-                onModuleVideoUpload={handleModuleVideoUpload}
-                onNewDraftModuleId={() => nextDraftModuleIdRef.current--}
-                onProfileDraftChange={handleDraftProfileChange}
-                onRenderModuleContent={(module, size) =>
-                  renderProfileModuleContent(module, size, true, "canvas")
-                }
-                onResolveIntegrationMetadata={(input) =>
-                  runWithAuth(
-                    (csrfToken) => resolveProfileIntegrationMetadata(input, csrfToken),
-                    { retryOnCsrf: true },
-                  )
-                }
-                onSave={() => void handleSaveCanvasEdit()}
-                onVideoUpload={(file) => void handleProfileVideoDraftUpload(file)}
-              />
-            </Suspense>
+            <>
+              {canvasDraftConflict ? (
+                <div
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-rose/35 bg-rose/12 p-3 text-sm text-rose-ink"
+                  data-testid="profile-canvas-draft-conflict"
+                  role="alert"
+                >
+                  <div className="min-w-0">
+                    <p className="font-semibold">This draft changed elsewhere.</p>
+                    <p className="mt-0.5 text-xs">
+                      Your local view is frozen so it cannot overwrite newer work.
+                      Refreshing loads the latest safe server state.
+                    </p>
+                    {canvasError ? (
+                      <p
+                        className="mt-1 text-xs font-semibold"
+                        data-testid="profile-canvas-conflict-error"
+                      >
+                        {canvasError}
+                      </p>
+                    ) : null}
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={canvasLoading}
+                    data-testid="profile-canvas-reload-conflict"
+                    onClick={() => void handleReloadCanvasDraftAfterConflict()}
+                  >
+                    {canvasLoading ? "Refreshing..." : "Refresh from server"}
+                  </Button>
+                </div>
+              ) : null}
+              <div
+                inert={canvasDraftConflict || canvasSaving ? true : undefined}
+              >
+                <Suspense fallback={<ProfileCanvasEditorLoadingNotice />}>
+                  <ProfileDirectCanvasEditor
+                    key={
+                      canvasDraftConflict
+                        ? "conflicted"
+                        : canvasSaving
+                          ? "saving"
+                          : "active"
+                    }
+                    autosaveError={
+                      profileContentAutosaveState === "error"
+                        ? profileContentAutosaveError
+                        : canvasDraftAutosaveError
+                    }
+                    autosaveState={combinedProfileEditorAutosaveState(
+                      canvasDraftAutosaveState,
+                      profileContentAutosaveState,
+                    )}
+                    busy={
+                      canvasDraftConflict ||
+                      canvasSaving ||
+                      Boolean(profileDraftUploading)
+                    }
+                    draft={canvasDraft}
+                    error={canvasDraftConflict ? undefined : canvasError}
+                    guideOpen={profileEditorTourOpen}
+                    integrationAccounts={integrationsState.data?.accounts ?? []}
+                    integrationProviders={integrationsState.data?.providers ?? []}
+                    modules={canvasDraft.modules}
+                    profile={renderedProfile}
+                    uploading={profileDraftUploading}
+                    onBackgroundBlurChange={handleDraftBackgroundBlurChange}
+                    onCancel={() => void handleCancelCanvasEdit()}
+                    onCanvasGlassChange={handleDraftCanvasGlassChange}
+                    onChange={handleCanvasDraftChange}
+                    onClearBackground={() =>
+                      void handleClearProfileBackgroundDraft()
+                    }
+                    onConnectProvider={(provider) =>
+                      void handleCanvasProviderConnect(provider)
+                    }
+                    onGuideComplete={handleProfileEditorTourComplete}
+                    onGuideDismiss={handleProfileEditorTourDismiss}
+                    onGuideOpen={() => setProfileEditorTourOpen(true)}
+                    onModuleAudioUpload={handleModuleAudioUpload}
+                    onImageUpload={handleProfileImageDraftSelection}
+                    onModuleImagePrepare={handleModuleImagePrepare}
+                    onModuleImageUpload={handleModuleImageUpload}
+                    onModuleVideoUpload={handleModuleVideoUpload}
+                    onNewDraftModuleId={() => nextDraftModuleIdRef.current--}
+                    onProfileDraftChange={handleDraftProfileChange}
+                    onPreviewChange={setCanvasPreviewing}
+                    onRenderModuleContent={(module, size, editing) =>
+                      renderProfileModuleContent(
+                        module,
+                        size,
+                        editing,
+                        "canvas",
+                      ) ??
+                      (!editing ? (
+                        <ProfileModuleCard
+                          badges={profileBadges}
+                          module={module}
+                          size={size}
+                        />
+                      ) : undefined)
+                    }
+                    onResolveIntegrationMetadata={(input) =>
+                      runWithAuth(
+                        (csrfToken) =>
+                          resolveProfileIntegrationMetadata(input, csrfToken),
+                        { retryOnCsrf: true },
+                      )
+                    }
+                    onSave={() => void handleSaveCanvasEdit()}
+                    onVideoUpload={(file) =>
+                      void handleProfileVideoDraftUpload(file)
+                    }
+                  />
+                </Suspense>
+              </div>
+            </>
           ) : (
             <ProfileModulesSection
               badges={profileBadges}
@@ -3231,6 +3551,7 @@ export function ProfileCanvasBackgroundControls({
   onClear,
   onImageUpload,
   onVideoUpload,
+  presentation = "trigger",
   profile,
   uploading,
 }: {
@@ -3240,10 +3561,13 @@ export function ProfileCanvasBackgroundControls({
   onClear: () => void;
   onImageUpload: (file: File) => void;
   onVideoUpload: (file: File) => void;
+  presentation?: "trigger" | "inline" | undefined;
   profile: Profile;
   uploading?: "backgroundImage" | "backgroundVideo" | "avatar" | "banner" | undefined;
 }) {
   const [open, setOpen] = useState(false);
+  const inline = presentation === "inline";
+  const visible = inline || open;
   const hasBackground = Boolean(profile.profileBackground || profile.profileBackgroundVideo);
   const backgroundState = profile.profileBackgroundVideo
     ? "Video"
@@ -3254,10 +3578,10 @@ export function ProfileCanvasBackgroundControls({
   return (
     <div
       className="relative"
-      data-testid="profile-canvas-background-controls"
-    >
-      <button
-        type="button"
+      data-testid="profile-canvas-background-controls">
+      {!inline ? (
+        <button
+          type="button"
         className={cn(
           "flex w-full items-center rounded-control border border-line bg-canvas/50 text-left transition duration-fluid ease-fluid hover:border-line-strong hover:bg-canvas/70 focus-visible:outline-2 focus-visible:outline-focus",
           compact ? "min-h-9 gap-2 px-2" : "min-h-11 gap-3 px-3",
@@ -3285,11 +3609,17 @@ export function ProfileCanvasBackgroundControls({
           </span>
         </span>
       </button>
+      ) : null}
 
-      {open ? (
+      {visible ? (
         <div
-          className="absolute left-0 top-full z-20 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-card border border-line bg-surface/95 p-3 shadow-lift backdrop-blur-veil"
-          role="dialog"
+          className={cn(
+            "bg-surface/95 p-3 backdrop-blur-veil",
+            inline
+              ? "w-full"
+              : "absolute left-0 top-full z-20 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-card border border-line shadow-lift",
+          )}
+          role={inline ? "group" : "dialog"}
           aria-label="Background settings"
           data-testid="profile-canvas-background-popover"
         >
@@ -3297,8 +3627,9 @@ export function ProfileCanvasBackgroundControls({
             <div className="min-w-0">
               <p className="text-sm font-semibold text-text">Background</p>
             </div>
-            <button
-              type="button"
+            {!inline ? (
+              <button
+                type="button"
               className="grid size-8 shrink-0 place-items-center rounded-full border border-line bg-canvas/55 text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
               aria-label="Close background settings"
               data-profile-edit-control="true"
@@ -3306,6 +3637,7 @@ export function ProfileCanvasBackgroundControls({
             >
               <X aria-hidden="true" size={15} />
             </button>
+            ) : null}
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2">
             <label
@@ -3328,7 +3660,9 @@ export function ProfileCanvasBackgroundControls({
 
                   if (file) {
                     onImageUpload(file);
-                    setOpen(false);
+                    if (!inline) {
+                      setOpen(false);
+                    }
                   }
 
                   event.currentTarget.value = "";
@@ -3355,7 +3689,9 @@ export function ProfileCanvasBackgroundControls({
 
                   if (file) {
                     onVideoUpload(file);
-                    setOpen(false);
+                    if (!inline) {
+                      setOpen(false);
+                    }
                   }
 
                   event.currentTarget.value = "";
@@ -3370,7 +3706,9 @@ export function ProfileCanvasBackgroundControls({
               disabled={!hasBackground || Boolean(uploading)}
               onClick={() => {
                 onClear();
-                setOpen(false);
+                if (!inline) {
+                  setOpen(false);
+                }
               }}
             >
               <Trash2 aria-hidden="true" size={16} />
@@ -3399,7 +3737,9 @@ export function ProfileCanvasBackgroundControls({
                   data-testid={`profile-background-blur-${blur}`}
                   onClick={() => {
                     onBackgroundBlurChange(blur);
-                    setOpen(false);
+                    if (!inline) {
+                      setOpen(false);
+                    }
                   }}
                 >
                   {blurShortLabel(blur)}
@@ -3415,10 +3755,12 @@ export function ProfileCanvasBackgroundControls({
 
 export function ProfileAppearanceControls({
   compact = false,
+  presentation = "trigger",
   profile,
   onProfileDraftChange,
 }: {
   compact?: boolean | undefined;
+  presentation?: "trigger" | "inline" | undefined;
   profile: Profile;
   onProfileDraftChange: (updater: (profile: Profile) => Profile) => void;
 }) {
@@ -3451,6 +3793,7 @@ export function ProfileAppearanceControls({
       previewTitle={profile.user.displayName}
       previewSubtitle={`@${profile.user.handle}`}
       previewLinkLabel="Profile link"
+      presentation={presentation}
       testIdKind="profile"
       onChange={applyThemeConfig}
     />

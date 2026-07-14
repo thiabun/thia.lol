@@ -6,11 +6,14 @@ import type { RequestSession } from "./sessions.js";
 type ExecuteCall = {
   query: string;
   params?: unknown[];
+  source: "connection" | "pool";
 };
 
 type FakePoolOptions = {
   draftJson?: string;
+  moduleDeleteAffectedRows?: number;
   moduleRows?: Array<Record<string, unknown>>;
+  moduleUpdateAffectedRows?: number;
 };
 
 const tableNames = new Set([
@@ -62,6 +65,7 @@ function fakePool(options: FakePoolOptions = {}) {
   const moduleUpdates: Array<Record<string, unknown>> = [];
   const deletedModuleUpdates: Array<Record<string, unknown>> = [];
   const profileFeaturedClears: string[] = [];
+  const transactionEvents: string[] = [];
   const defaultModuleRows = [
     {
       id: 20,
@@ -87,8 +91,10 @@ function fakePool(options: FakePoolOptions = {}) {
     },
   ];
   const moduleRows: Array<Record<string, unknown>> = (options.moduleRows ?? defaultModuleRows).map((row) => ({ ...row }));
-  async function execute(query: string, params?: unknown[]) {
-    calls.push({ query, params });
+  async function execute(query: string, params?: unknown[],
+    source: ExecuteCall["source"] = "pool",
+  ) {
+    calls.push({ query, params, source });
 
     if (query.includes("INFORMATION_SCHEMA.TABLES")) {
       return [[{ table_count: tableNames.has(String(params?.[0])) ? 1 : 0 }], undefined];
@@ -119,6 +125,7 @@ function fakePool(options: FakePoolOptions = {}) {
           {
             module_count: moduleRows.filter(
               (row) =>
+                Number(row.user_id) === Number(params?.[0]) &&
                 row.status !== "deleted" &&
                 row.type !== "profile_info" &&
                 row.type !== "activity",
@@ -133,9 +140,22 @@ function fakePool(options: FakePoolOptions = {}) {
       return [
         [
           {
-            module_count: moduleRows.filter((row) => row.status !== "deleted").length,
+            module_count: moduleRows.filter((row) =>
+                Number(row.user_id) === Number(params?.[0]) &&
+                row.status !== "deleted").length,
           },
         ],
+        undefined,
+      ];
+    }
+
+    if (query.includes("MAX(position)") && query.includes("AS module_count")) {
+      const ownerPositions = moduleRows
+        .filter((row) => Number(row.user_id) === Number(params?.[0]))
+        .map((row) => Number(row.position) || 0);
+
+      return [
+        [{ module_count: Math.max(0, ...ownerPositions) + 1 }],
         undefined,
       ];
     }
@@ -153,7 +173,26 @@ function fakePool(options: FakePoolOptions = {}) {
       ];
     }
 
-    if (query.includes("FROM profile_canvas_drafts")) {
+    if (
+      query.includes("SELECT user_id") &&
+      query.includes("FROM profiles") &&
+      query.includes("FOR UPDATE")
+    ) {
+      return [[{ user_id: params?.[0] }], undefined];
+    }
+
+    if (
+      query.includes("SELECT user_id") &&
+      query.includes("FROM profile_canvas_drafts") &&
+      query.includes("FOR UPDATE")
+    ) {
+      return [draftJson === undefined ? [] : [{ user_id: params?.[0] }], undefined];
+    }
+
+    if (
+      query.includes("SELECT draft_json") &&
+      query.includes("FROM profile_canvas_drafts")
+    ) {
       return [
         draftJson === undefined
           ? []
@@ -182,12 +221,41 @@ function fakePool(options: FakePoolOptions = {}) {
       return [{ affectedRows: 1 }, undefined];
     }
 
+    if (
+      query.includes("SELECT id, type, status") &&
+      query.includes("FOR UPDATE")
+    ) {
+      return [
+        moduleRows
+          .filter((row) => Number(row.user_id) === Number(params?.[0]))
+          .map((row) => ({
+            id: row.id,
+            type: row.type,
+            status: row.status,
+          })),
+        undefined,
+      ];
+    }
+
+    if (
+      query.includes("FROM profile_modules") &&
+      query.includes("WHERE id = ?") &&
+      query.includes("LIMIT 1")
+    ) {
+      const row = moduleRows.find(
+        (item) => Number(item.id) === Number(params?.[0]),
+      );
+
+      return [row === undefined ? [] : [row], undefined];
+    }
+
     if (query.includes("INSERT INTO profile_modules")) {
       if ((params?.length ?? 0) <= 6) {
         return [{ affectedRows: 1, insertId: 1 }, undefined];
       }
 
       const insertId = nextInsertedModuleId++;
+      const directCreate = params?.length === 8;
       const insertedModule = {
         id: insertId,
         userId: params?.[0],
@@ -196,13 +264,13 @@ function fakePool(options: FakePoolOptions = {}) {
         configJson: params?.[3],
         visibility: params?.[4],
         position: params?.[5],
-        gridColumn: params?.[6],
-        gridRow: params?.[7],
-        gridColSpan: params?.[8],
-        gridRowSpan: params?.[9],
-        gridPinned: params?.[10],
-        status: params?.[11],
-        schemaVersion: params?.[12],
+        gridColumn: directCreate ? null : params?.[6],
+        gridRow: directCreate ? null : params?.[7],
+        gridColSpan: directCreate ? null : params?.[8],
+        gridRowSpan: directCreate ? null : params?.[9],
+        gridPinned: directCreate ? 0 : params?.[10],
+        status: directCreate ? params?.[6] : params?.[11],
+        schemaVersion: directCreate ? params?.[7] : params?.[12],
       };
       insertedModules.push(insertedModule);
       moduleRows.push({
@@ -213,13 +281,13 @@ function fakePool(options: FakePoolOptions = {}) {
         config_json: params?.[3],
         visibility: params?.[4],
         position: params?.[5],
-        grid_column: params?.[6] ?? null,
-        grid_row: params?.[7] ?? null,
-        grid_col_span: params?.[8] ?? null,
-        grid_row_span: params?.[9] ?? null,
-        grid_pinned: params?.[10] ?? 0,
-        status: params?.[11],
-        schema_version: params?.[12],
+        grid_column: directCreate ? null : (params?.[6] ?? null),
+        grid_row: directCreate ? null : (params?.[7] ?? null),
+        grid_col_span: directCreate ? null : (params?.[8] ?? null),
+        grid_row_span: directCreate ? null : (params?.[9] ?? null),
+        grid_pinned: directCreate ? 0 : (params?.[10] ?? 0),
+        status: directCreate ? params?.[6] : params?.[11],
+        schema_version: directCreate ? params?.[7] : params?.[12],
         created_at: "2026-06-24 13:00:00",
         updated_at: "2026-06-24 13:00:00",
       });
@@ -237,19 +305,73 @@ function fakePool(options: FakePoolOptions = {}) {
           item.type !== "profile_info",
       );
 
-      if (row !== undefined) {
+      const affectedRows =
+        options.moduleDeleteAffectedRows ?? (row === undefined ? 0 : 1);
+
+      if (row !== undefined && affectedRows === 1) {
         row.status = "deleted";
         row.visibility = "hidden";
       }
 
       deletedModuleUpdates.push({ id: moduleId, userId });
 
+      return [{ affectedRows }, undefined];
+    }
+
+    if (
+      query.includes("UPDATE profile_modules") &&
+      query.includes("config_json") &&
+      !query.includes("type = ?")
+    ) {
+      const moduleId = Number(params?.[(params?.length ?? 2) - 2]);
+      const userId = Number(params?.[(params?.length ?? 1) - 1]);
+      const row = moduleRows.find(
+        (item) =>
+          Number(item.id) === moduleId &&
+          Number(item.user_id) === userId &&
+          item.status !== "deleted",
+      );
+      let parameterIndex = 0;
+
+      if (query.includes("title = ?")) {
+        if (row !== undefined) {
+          row.title = params?.[parameterIndex];
+        }
+        parameterIndex += 1;
+      }
+
+      if (query.includes("config_json = ?")) {
+        if (row !== undefined) {
+          row.config_json = params?.[parameterIndex];
+        }
+        parameterIndex += 1;
+      }
+
+      if (query.includes("visibility = ?")) {
+        if (row !== undefined) {
+          row.visibility = params?.[parameterIndex];
+        }
+        parameterIndex += 1;
+      }
+
+      if (query.includes("status = ?")) {
+        if (row !== undefined) {
+          row.status = params?.[parameterIndex];
+        }
+      }
+
       return [{ affectedRows: row === undefined ? 0 : 1 }, undefined];
     }
 
     if (query.includes("UPDATE profile_modules") && query.includes("config_json")) {
       const moduleId = Number(params?.[12]);
-      const row = moduleRows.find((item) => Number(item.id) === moduleId);
+      const userId = Number(params?.[13]);
+      const row = moduleRows.find((item) => Number(item.id) === moduleId &&
+          Number(item.user_id) === userId &&
+          item.status !== "deleted",
+      );
+      const affectedRows =
+        options.moduleUpdateAffectedRows ?? (row === undefined ? 0 : 1);
       const update = {
         title: params?.[0],
         type: params?.[1],
@@ -269,7 +391,7 @@ function fakePool(options: FakePoolOptions = {}) {
 
       moduleUpdates.push(update);
 
-      if (row !== undefined) {
+      if (row !== undefined && affectedRows === 1) {
         row.title = params?.[0];
         row.type = params?.[1];
         row.config_json = params?.[2];
@@ -282,6 +404,40 @@ function fakePool(options: FakePoolOptions = {}) {
         row.grid_pinned = params?.[9];
         row.status = params?.[10];
         row.schema_version = params?.[11];
+      }
+
+      return [{ affectedRows }, undefined];
+    }
+
+    if (query.includes("UPDATE profile_modules") && query.includes("status = 'active'")) {
+      const row = moduleRows.find(
+        (item) =>
+          Number(item.id) === Number(params?.[0]) &&
+          Number(item.user_id) === Number(params?.[1]),
+      );
+
+      if (row !== undefined) {
+        row.status = "active";
+        row.visibility = "public";
+      }
+
+      return [{ affectedRows: row === undefined ? 0 : 1 }, undefined];
+    }
+
+    if (
+      query.includes("UPDATE profile_modules") &&
+      query.includes("SET position = ?") &&
+      !query.includes("grid_column")
+    ) {
+      const row = moduleRows.find(
+        (item) =>
+          Number(item.id) === Number(params?.[1]) &&
+          Number(item.user_id) === Number(params?.[2]) &&
+          item.status !== "deleted",
+      );
+
+      if (row !== undefined) {
+        row.position = params?.[0];
       }
 
       return [{ affectedRows: row === undefined ? 0 : 1 }, undefined];
@@ -352,11 +508,16 @@ function fakePool(options: FakePoolOptions = {}) {
       ];
     }
 
-    if (query.includes("FROM profile_modules") && query.includes("ORDER BY position ASC, id ASC")) {
+    if (query.includes("FROM profile_modules") && query.includes("ORDER BY position ASC, id ASC")
+    ) {
+      const ownerRows = moduleRows.filter(
+        (row) => Number(row.user_id) === Number(params?.[0]),
+      );
+
       return [
         query.includes("AND status <> 'deleted'")
-          ? moduleRows.filter((row) => row.status !== "deleted")
-          : moduleRows,
+          ? ownerRows.filter((row) => row.status !== "deleted")
+          : ownerRows,
         undefined,
       ];
     }
@@ -365,13 +526,23 @@ function fakePool(options: FakePoolOptions = {}) {
   }
 
   const pool = {
-    execute,
+    execute(query: string, params?: unknown[]) {
+      return execute(query, params, "pool");
+    },
     async getConnection() {
       return {
-        execute,
-        async beginTransaction() {},
-        async commit() {},
-        async rollback() {},
+        execute(query: string, params?: unknown[]) {
+          return execute(query, params, "connection");
+        },
+        async beginTransaction() {
+          transactionEvents.push("begin");
+        },
+        async commit() {
+          transactionEvents.push("commit");
+        },
+        async rollback() {
+          transactionEvents.push("rollback");
+        },
         release() {},
       };
     },
@@ -387,6 +558,7 @@ function fakePool(options: FakePoolOptions = {}) {
     moduleUpdates,
     placementUpdates,
     profileFeaturedClears,
+    transactionEvents,
   };
 }
 
@@ -648,6 +820,8 @@ const session: RequestSession = {
   handle: "thia",
   role: "user",
 };
+const canvasDraftRevisionOne = "draft:00000000-0000-4000-8000-000000000001";
+const canvasDraftRevisionTwo = "draft:00000000-0000-4000-8000-000000000002";
 
 describe("editor profile module payloads", () => {
   it("keeps cached rich integration cards on owner module responses", async () => {
@@ -713,18 +887,622 @@ describe("editor profile module payloads", () => {
     expect(draft.modules[0]?.config).toEqual({});
   });
 
+  it("materializes a revisioned draft on open so a direct module update conflicts with the first save", async () => {
+    const { draftJson, pool, transactionEvents } = fakePool({
+      moduleRows: [profileInfoRow(1), musicRow()],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    const opened = await repository.getCanvasDraft(session.userId);
+
+    expect(opened.revision).toMatch(/^draft:/u);
+    expect(JSON.parse(draftJson() ?? "{}")).toMatchObject({
+      revision: opened.revision,
+    });
+
+    await repository.updateModule(session, 20, {
+      config: {
+        label: "Direct update after open",
+        platform: "spotify",
+        url: "https://open.spotify.com/track/profile-test",
+      },
+    });
+    const replacement = JSON.parse(draftJson() ?? "{}") as {
+      modules?: Array<{ config?: { label?: unknown }; id?: unknown }>;
+      revision?: unknown;
+    };
+
+    expect(replacement.revision).toMatch(/^draft:/u);
+    expect(replacement.revision).not.toBe(opened.revision);
+    expect(
+      replacement.modules?.find((module) => module.id === 20)?.config?.label,
+    ).toBe("Direct update after open");
+    await expect(
+      repository.updateCanvasDraft(session, {
+        backgroundBlur: "soft",
+        expectedRevision: opened.revision,
+      }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(transactionEvents).toEqual([
+      "begin",
+      "commit",
+      "begin",
+      "commit",
+      "begin",
+      "rollback",
+    ]);
+  });
+
+  it("keeps omitted-revision clients in legacy mode after opening a revisioned draft", async () => {
+    const { draftJson, pool, transactionEvents } = fakePool({
+      moduleRows: [profileInfoRow(1)],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    const opened = await repository.getCanvasDraft(session.userId);
+    const saved = await repository.updateCanvasDraft(session, {
+      backgroundBlur: "soft",
+    });
+    const stored = JSON.parse(draftJson() ?? "{}") as {
+      revision?: unknown;
+    };
+
+    expect(opened.revision).toMatch(/^draft:/u);
+    expect(saved.revision).toMatch(/^legacy:/u);
+    expect(stored.revision).toBeUndefined();
+    expect(transactionEvents).toEqual([
+      "begin",
+      "commit",
+      "begin",
+      "commit",
+    ]);
+  });
+
   it("stores repaired positions for background-only canvas draft updates", async () => {
     const { draftJson, pool } = fakePool({
       moduleRows: [profileInfoRow(0)],
     });
     const repository = createEditorRepository(pool as never);
 
-    await repository.updateCanvasDraft(session, { backgroundBlur: "soft" });
+    const saved = await repository.updateCanvasDraft(session, {
+      backgroundBlur: "soft",
+    });
 
     const savedDraft = JSON.parse(draftJson() ?? "{}") as {
       modules?: Array<{ position?: unknown }>;
+      revision?: unknown;
     };
     expect(savedDraft.modules?.[0]?.position).toBe(1);
+    expect(savedDraft.revision).toBeUndefined();
+    expect(saved.revision).toMatch(/^legacy:/u);
+  });
+
+  it("keeps omitted-revision clients in legacy mode across repeated saves and commit", async () => {
+    const { draftJson, pool, transactionEvents } = fakePool({
+      moduleRows: [profileInfoRow(1)],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    const first = await repository.updateCanvasDraft(session, {
+      backgroundBlur: "soft",
+    });
+    const second = await repository.updateCanvasDraft(session, {
+      canvasGlass: 64,
+    });
+    const stored = JSON.parse(draftJson() ?? "{}") as {
+      revision?: unknown;
+    };
+
+    expect(first.revision).toMatch(/^legacy:/u);
+    expect(second.revision).toMatch(/^legacy:/u);
+    expect(second.revision).not.toBe(first.revision);
+    expect(stored.revision).toBeUndefined();
+
+    await expect(repository.commitCanvasDraft(session)).resolves.toMatchObject({
+      canvasVersion: 2,
+    });
+    expect(draftJson()).toBeUndefined();
+    expect(transactionEvents).toEqual([
+      "begin",
+      "commit",
+      "begin",
+      "commit",
+      "begin",
+      "commit",
+    ]);
+  });
+
+  it("creates an opaque revision and keeps all transactional draft reads on one connection", async () => {
+    const { calls, draftJson, pool, transactionEvents } = fakePool({
+      moduleRows: [profileInfoRow(1)],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    const saved = await repository.updateCanvasDraft(session, {
+      backgroundBlur: "soft",
+      expectedRevision: null,
+    });
+    const stored = JSON.parse(draftJson() ?? "{}") as { revision?: unknown };
+    const profileLockIndex = calls.findIndex(
+      (call) =>
+        call.query.includes("FROM profiles") &&
+        call.query.includes("FOR UPDATE"),
+    );
+
+    expect(saved.revision).toMatch(/^draft:/u);
+    expect(stored.revision).toBe(saved.revision);
+    expect(profileLockIndex).toBeGreaterThanOrEqual(0);
+    expect(calls.slice(profileLockIndex).every((call) => call.source === "connection")).toBe(true);
+    expect(transactionEvents).toEqual(["begin", "commit"]);
+  });
+
+  it("rotates a canvas revision only when the expected revision matches", async () => {
+    const { draftJson, pool, transactionEvents } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [profileInfoPayload(1)],
+        revision: canvasDraftRevisionOne,
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(1)],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    const saved = await repository.updateCanvasDraft(session, {
+      canvasGlass: 64,
+      expectedRevision: canvasDraftRevisionOne,
+    });
+    const stored = JSON.parse(draftJson() ?? "{}") as {
+      canvasGlass?: unknown;
+      revision?: unknown;
+    };
+
+    expect(saved.revision).toMatch(/^draft:/u);
+    expect(saved.revision).not.toBe(canvasDraftRevisionOne);
+    expect(stored).toMatchObject({
+      canvasGlass: 64,
+      revision: saved.revision,
+    });
+    expect(transactionEvents).toEqual(["begin", "commit"]);
+  });
+
+  it("rejects stale explicit revisions without overwriting a revisioned draft", async () => {
+    const initialDraft = JSON.stringify({
+      backgroundBlur: "medium",
+      canvasGlass: 58,
+      canvasVersion: 2,
+      modules: [profileInfoPayload(1)],
+      revision: canvasDraftRevisionOne,
+      selectedModuleId: null,
+    });
+    const { draftJson, pool, transactionEvents } = fakePool({
+      draftJson: initialDraft,
+      moduleRows: [profileInfoRow(1)],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await expect(
+      repository.updateCanvasDraft(session, {
+        canvasGlass: 70,
+        expectedRevision: canvasDraftRevisionTwo,
+      }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    expect(draftJson()).toBe(initialDraft);
+    expect(transactionEvents).toEqual(["begin", "rollback"]);
+  });
+
+  it("allows an omitted revision to continue a revisioned draft in legacy mode", async () => {
+    const { draftJson, pool, transactionEvents } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [profileInfoPayload(1)],
+        revision: canvasDraftRevisionOne,
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(1)],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    const saved = await repository.updateCanvasDraft(session, {
+      canvasGlass: 72,
+    });
+    const stored = JSON.parse(draftJson() ?? "{}") as {
+      canvasGlass?: unknown;
+      revision?: unknown;
+    };
+
+    expect(saved.revision).toMatch(/^legacy:/u);
+    expect(stored).toMatchObject({ canvasGlass: 72 });
+    expect(stored.revision).toBeUndefined();
+    expect(transactionEvents).toEqual(["begin", "commit"]);
+  });
+
+  it("rebases a matching uncommittable draft onto current live modules", async () => {
+    const deletedMusicRow = { ...musicRow(), status: "deleted" };
+    const { draftJson, pool, transactionEvents } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [profileInfoPayload(1), persistedMusicPayload()],
+        revision: canvasDraftRevisionOne,
+        selectedModuleId: 20,
+      }),
+      moduleRows: [profileInfoRow(1), deletedMusicRow],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    const rebased = await repository.rebaseCanvasDraft(
+      session,
+      canvasDraftRevisionOne,
+    );
+    const stored = JSON.parse(draftJson() ?? "{}") as {
+      modules?: Array<{ id?: unknown }>;
+      revision?: unknown;
+    };
+
+    expect(rebased.revision).toMatch(/^draft:/u);
+    expect(rebased.revision).not.toBe(canvasDraftRevisionOne);
+    expect(rebased.selectedModuleId).toBeNull();
+    expect(rebased.modules.some((module) => module.id === 20)).toBe(false);
+    expect(stored.revision).toBe(rebased.revision);
+    expect(stored.modules?.some((module) => module.id === 20)).toBe(false);
+
+    await expect(
+      repository.commitCanvasDraft(session, rebased.revision),
+    ).resolves.toMatchObject({ canvasVersion: 2 });
+    expect(transactionEvents).toEqual([
+      "begin",
+      "commit",
+      "begin",
+      "commit",
+    ]);
+  });
+
+  it("rejects a stale rebase without replacing a newer draft", async () => {
+    const initialDraft = JSON.stringify({
+      backgroundBlur: "medium",
+      canvasGlass: 58,
+      canvasVersion: 2,
+      modules: [profileInfoPayload(1)],
+      revision: canvasDraftRevisionOne,
+      selectedModuleId: null,
+    });
+    const { draftJson, pool, transactionEvents } = fakePool({
+      draftJson: initialDraft,
+      moduleRows: [profileInfoRow(1)],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await expect(
+      repository.rebaseCanvasDraft(session, canvasDraftRevisionTwo),
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    expect(draftJson()).toBe(initialDraft);
+    expect(transactionEvents).toEqual(["begin", "rollback"]);
+  });
+
+  it("replaces an open draft after a direct module update and rejects its stale revision", async () => {
+    const { draftJson, pool, transactionEvents } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [profileInfoPayload(1), persistedMusicPayload()],
+        revision: canvasDraftRevisionOne,
+        selectedModuleId: 20,
+      }),
+      moduleRows: [profileInfoRow(1), musicRow()],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await repository.updateModule(session, 20, {
+      config: {
+        label: "New direct edit",
+        platform: "spotify",
+        url: "https://open.spotify.com/track/profile-test",
+      },
+    });
+    const replacement = JSON.parse(draftJson() ?? "{}") as {
+      modules?: Array<{ config?: { label?: unknown }; id?: unknown }>;
+      revision?: unknown;
+    };
+
+    expect(replacement.revision).toMatch(/^draft:/u);
+    expect(replacement.revision).not.toBe(canvasDraftRevisionOne);
+    expect(
+      replacement.modules?.find((module) => module.id === 20)?.config?.label,
+    ).toBe("New direct edit");
+    await expect(
+      repository.updateCanvasDraft(session, {
+        canvasGlass: 72,
+        expectedRevision: canvasDraftRevisionOne,
+      }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(transactionEvents).toEqual([
+      "begin",
+      "commit",
+      "begin",
+      "rollback",
+    ]);
+  });
+
+  it("atomically replaces open drafts after every direct module and canvas mutation", async () => {
+    async function expectReplacement(
+      moduleRows: Array<Record<string, unknown>>,
+      draftModules: Array<Record<string, unknown>>,
+      mutate: (
+        repository: ReturnType<typeof createEditorRepository>,
+      ) => Promise<unknown>,
+    ) {
+      const { calls, draftJson, pool, transactionEvents } = fakePool({
+        draftJson: JSON.stringify({
+          backgroundBlur: "medium",
+          canvasGlass: 58,
+          canvasVersion: 2,
+          modules: draftModules,
+          revision: canvasDraftRevisionOne,
+          selectedModuleId: null,
+        }),
+        moduleRows,
+      });
+      const repository = createEditorRepository(pool as never);
+
+      await mutate(repository);
+
+      const replacement = JSON.parse(draftJson() ?? "{}") as {
+        revision?: unknown;
+      };
+      const profileLockIndex = calls.findIndex(
+        (call) =>
+          call.query.includes("FROM profiles") &&
+          call.query.includes("FOR UPDATE"),
+      );
+      const draftLock = calls.find(
+        (call) =>
+          call.query.includes("FROM profile_canvas_drafts") &&
+          call.query.includes("SELECT user_id") &&
+          call.query.includes("FOR UPDATE"),
+      );
+      const replacementSave = calls
+        .filter((call) => call.query.includes("INSERT INTO profile_canvas_drafts"))
+        .at(-1);
+
+      expect(profileLockIndex).toBeGreaterThanOrEqual(0);
+      expect(draftLock).toMatchObject({ source: "connection" });
+      expect(replacementSave).toMatchObject({ source: "connection" });
+      expect(replacement.revision).toMatch(/^draft:/u);
+      expect(replacement.revision).not.toBe(canvasDraftRevisionOne);
+      expect(transactionEvents).toEqual(["begin", "commit"]);
+    }
+
+    await expectReplacement(
+      [profileInfoRow(1), musicRow()],
+      [profileInfoPayload(1), persistedMusicPayload()],
+      (repository) => repository.deleteModule(session, 20),
+    );
+    await expectReplacement(
+      [
+        profileInfoRow(1),
+        { ...musicRow(), status: "deleted", visibility: "hidden" },
+      ],
+      [profileInfoPayload(1)],
+      (repository) => repository.restoreModule(session, 20),
+    );
+    await expectReplacement(
+      [profileInfoRow(1), musicRow()],
+      [profileInfoPayload(1), persistedMusicPayload()],
+      (repository) =>
+        repository.updateModuleOrder(session, { moduleIds: [20, 10] }),
+    );
+    await expectReplacement(
+      [profileInfoRow(1), musicRow()],
+      [profileInfoPayload(1), persistedMusicPayload()],
+      (repository) =>
+        repository.updateCanvas(session, { backgroundBlur: "soft" }),
+    );
+  });
+
+  it("prevents a stale autosave from recreating a draft after commit", async () => {
+    const { draftJson, pool, transactionEvents } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [profileInfoPayload(1)],
+        revision: canvasDraftRevisionOne,
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(1)],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await repository.commitCanvasDraft(session, canvasDraftRevisionOne);
+    await expect(
+      repository.updateCanvasDraft(session, {
+        backgroundBlur: "heavy",
+        expectedRevision: canvasDraftRevisionOne,
+      }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    expect(draftJson()).toBeUndefined();
+    expect(transactionEvents).toEqual([
+      "begin",
+      "commit",
+      "begin",
+      "rollback",
+    ]);
+  });
+
+  it("rejects a stale commit revision before mutating modules or deleting the draft", async () => {
+    const initialDraft = JSON.stringify({
+      backgroundBlur: "medium",
+      canvasGlass: 58,
+      canvasVersion: 2,
+      modules: [profileInfoPayload(1)],
+      revision: canvasDraftRevisionOne,
+      selectedModuleId: null,
+    });
+    const { draftJson, moduleUpdates, pool, transactionEvents } = fakePool({
+      draftJson: initialDraft,
+      moduleRows: [profileInfoRow(1)],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await expect(
+      repository.commitCanvasDraft(session, canvasDraftRevisionTwo),
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    expect(draftJson()).toBe(initialDraft);
+    expect(moduleUpdates).toHaveLength(0);
+    expect(transactionEvents).toEqual(["begin", "rollback"]);
+  });
+
+  it("rejects a stale explicit revision before deleting a newer draft", async () => {
+    const initialDraft = JSON.stringify({
+      backgroundBlur: "medium",
+      canvasGlass: 58,
+      canvasVersion: 2,
+      modules: [profileInfoPayload(1)],
+      revision: canvasDraftRevisionOne,
+      selectedModuleId: null,
+    });
+    const { draftJson, pool, transactionEvents } = fakePool({
+      draftJson: initialDraft,
+      moduleRows: [profileInfoRow(1)],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await expect(
+      repository.deleteCanvasDraft(session, canvasDraftRevisionTwo),
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    expect(draftJson()).toBe(initialDraft);
+    expect(transactionEvents).toEqual(["begin", "rollback"]);
+  });
+
+  it("allows an omitted revision to commit a revisioned draft for legacy clients", async () => {
+    const { draftJson, pool, transactionEvents } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [profileInfoPayload(1)],
+        revision: canvasDraftRevisionOne,
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(1)],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await expect(repository.commitCanvasDraft(session)).resolves.toMatchObject({
+      canvasVersion: 2,
+    });
+
+    expect(draftJson()).toBeUndefined();
+    expect(transactionEvents).toEqual(["begin", "commit"]);
+  });
+
+  it("deletes a draft only when its expected revision matches", async () => {
+    const { draftJson, pool, transactionEvents } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [profileInfoPayload(1)],
+        revision: canvasDraftRevisionOne,
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(1)],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    const result = await repository.deleteCanvasDraft(
+      session,
+      canvasDraftRevisionOne,
+    );
+
+    expect(draftJson()).toBeUndefined();
+    expect(result.revision).toBeNull();
+    expect(transactionEvents).toEqual(["begin", "commit"]);
+  });
+
+  it("allows an omitted revision to delete a revisioned draft for legacy clients", async () => {
+    const { draftJson, pool, transactionEvents } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [profileInfoPayload(1)],
+        revision: canvasDraftRevisionOne,
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(1)],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await expect(repository.deleteCanvasDraft(session)).resolves.toMatchObject({
+      revision: null,
+    });
+
+    expect(draftJson()).toBeUndefined();
+    expect(transactionEvents).toEqual(["begin", "commit"]);
+  });
+
+  it("serializes direct module creation with canvas commits through the profile lock", async () => {
+    const { calls, draftJson, pool, transactionEvents } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [profileInfoPayload(1), persistedMusicPayload()],
+        revision: canvasDraftRevisionOne,
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(1), musicRow()],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await repository.createModule(session, {
+      config: { body: "A link https://thia.lol" },
+      status: "active",
+      title: "Note",
+      type: "custom_text",
+      visibility: "public",
+    });
+
+    const profileLock = calls.find(
+      (call) =>
+        call.query.includes("FROM profiles") &&
+        call.query.includes("FOR UPDATE"),
+    );
+    const directInsert = calls.find(
+      (call) =>
+        call.query.includes("INSERT INTO profile_modules") &&
+        call.params?.length === 8,
+    );
+    const guardedCount = calls.find(
+      (call) =>
+        call.query.includes("COUNT(*) AS module_count") &&
+        !call.query.includes("type NOT IN"),
+    );
+    const replacement = JSON.parse(draftJson() ?? "{}") as {
+      modules?: Array<{ type?: unknown }>;
+      revision?: unknown;
+    };
+
+    expect(profileLock).toMatchObject({ source: "connection" });
+    expect(directInsert).toMatchObject({ source: "connection" });
+    expect(guardedCount).toMatchObject({ source: "connection" });
+    expect(replacement.revision).toMatch(/^draft:/u);
+    expect(replacement.revision).not.toBe(canvasDraftRevisionOne);
+    expect(replacement.modules?.some((module) => module.type === "custom_text")).toBe(true);
+    expect(transactionEvents).toEqual(["begin", "commit"]);
   });
 
   it("creates chosen canvas draft modules before applying placements", async () => {
@@ -765,6 +1543,210 @@ describe("editor profile module payloads", () => {
       visibility: "public",
       status: "active",
     });
+  });
+
+  it("writes profile module text entities through the canvas commit transaction", async () => {
+    const customText = {
+      ...draftCustomTextPayload(),
+      config: {
+        body: "Draft note https://thia.lol",
+        configured: true,
+      },
+    };
+    const { calls, pool, transactionEvents } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [profileInfoPayload(1), customText],
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(1)],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await repository.commitCanvasDraft(session);
+
+    const draftRead = calls.find(
+      (call) =>
+        call.query.includes("FROM profile_canvas_drafts") &&
+        call.query.includes("SELECT draft_json"),
+    );
+    const profileLock = calls.find(
+      (call) =>
+        call.query.includes("FROM profiles") &&
+        call.query.includes("FOR UPDATE"),
+    );
+    const textEntityWrites = calls.filter(
+      (call) =>
+        call.query.includes("DELETE FROM text_entities") ||
+        call.query.includes("INSERT INTO text_entities"),
+    );
+    expect(draftRead).toMatchObject({ source: "connection" });
+    expect(draftRead?.query).toContain("FOR UPDATE");
+    expect(profileLock).toMatchObject({ source: "connection" });
+    expect(
+      textEntityWrites.some((call) =>
+        call.query.includes("INSERT INTO text_entities"),
+      ),
+    ).toBe(true);
+    expect(textEntityWrites.every((call) => call.source === "connection")).toBe(
+      true,
+    );
+    expect(transactionEvents).toEqual(["begin", "commit"]);
+  });
+
+  it("rejects a persisted canvas module id owned by another user before touching text entities", async () => {
+    const foreignModuleId = 99;
+    const foreignDraftModule = {
+      ...persistedMusicPayload({
+        config: { body: "Another user's text" },
+        status: "deleted",
+        type: "custom_text",
+        visibility: "hidden",
+      }),
+      id: foreignModuleId,
+    };
+    const foreignModuleRow = {
+      ...musicRow({ type: "custom_text" }),
+      id: foreignModuleId,
+      user_id: 2,
+      config_json: JSON.stringify({ body: "Another user's text" }),
+    };
+    const {
+      calls,
+      deletedModuleUpdates,
+      moduleRows,
+      moduleUpdates,
+      pool,
+      transactionEvents,
+    } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [profileInfoPayload(1), foreignDraftModule],
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(1), foreignModuleRow],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await expect(repository.commitCanvasDraft(session)).rejects.toMatchObject({
+      message:
+        "Profile modules changed while this draft was open. Reload the editor and try again.",
+      statusCode: 409,
+    });
+
+    expect(moduleUpdates).toHaveLength(0);
+    expect(deletedModuleUpdates).toHaveLength(0);
+    expect(moduleRows.find((row) => row.id === foreignModuleId)).toMatchObject({
+      status: "active",
+      user_id: 2,
+    });
+    expect(
+      calls.some(
+        (call) =>
+          call.query.includes("text_entities") &&
+          Number(call.params?.[1]) === foreignModuleId,
+      ),
+    ).toBe(false);
+    expect(transactionEvents).toEqual(["begin", "rollback"]);
+  });
+
+  it("rejects a stale persisted canvas module that was already deleted", async () => {
+    const deletedMusicRow = {
+      ...musicRow(),
+      status: "deleted",
+      visibility: "hidden",
+    };
+    const { moduleUpdates, pool, transactionEvents } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [profileInfoPayload(1), persistedMusicPayload()],
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(1), deletedMusicRow],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await expect(repository.commitCanvasDraft(session)).rejects.toMatchObject({
+      statusCode: 409,
+    });
+
+    expect(moduleUpdates).toHaveLength(0);
+    expect(transactionEvents).toEqual(["begin", "rollback"]);
+  });
+
+  it("rejects immutable type changes for persisted canvas modules", async () => {
+    const { moduleRows, moduleUpdates, pool, transactionEvents } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [
+          profileInfoPayload(1),
+          persistedMusicPayload({ type: "custom_text" }),
+        ],
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(1), musicRow()],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await expect(repository.commitCanvasDraft(session)).rejects.toMatchObject({
+      message: "Module type cannot be changed.",
+      statusCode: 422,
+    });
+
+    expect(moduleUpdates).toHaveLength(0);
+    expect(moduleRows.find((row) => row.id === 20)?.type).toBe("music");
+    expect(transactionEvents).toEqual(["begin", "rollback"]);
+  });
+
+  it("rejects canvas commits when an expected module update affects no row", async () => {
+    const { pool, transactionEvents } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [profileInfoPayload(1), persistedMusicPayload()],
+        selectedModuleId: null,
+      }),
+      moduleRows: [profileInfoRow(1), musicRow()],
+      moduleUpdateAffectedRows: 0,
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await expect(repository.commitCanvasDraft(session)).rejects.toMatchObject({
+      statusCode: 409,
+    });
+    expect(transactionEvents).toEqual(["begin", "rollback"]);
+  });
+
+  it("rejects canvas commits when an expected module delete affects no row", async () => {
+    const { pool, transactionEvents } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [
+          profileInfoPayload(1),
+          persistedMusicPayload({ status: "deleted", visibility: "hidden" }),
+        ],
+        selectedModuleId: null,
+      }),
+      moduleDeleteAffectedRows: 0,
+      moduleRows: [profileInfoRow(1), musicRow()],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await expect(repository.commitCanvasDraft(session)).rejects.toMatchObject({
+      statusCode: 409,
+    });
+    expect(transactionEvents).toEqual(["begin", "rollback"]);
   });
 
   it("canonicalizes new legacy music playlist draft modules during commit", async () => {

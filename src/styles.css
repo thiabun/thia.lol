@@ -191,8 +191,18 @@ a[href] {
   color: var(--app-text);
 }
 
-body[data-profile-canvas-editing="true"] [data-app-mobile-nav="true"] {
+body[data-profile-canvas-editing="true"] [data-app-mobile-nav="true"],
+body[data-profile-canvas-editing="true"] [data-testid="desktop-post-action"],
+body[data-profile-canvas-editing="true"] [data-testid="coffee-support-button"] {
   display: none;
+}
+
+body[data-profile-canvas-editing="true"] .profile-canvas-page-shell {
+  width: min(calc(100vw - 1rem), 1800px);
+}
+
+body[data-profile-canvas-editing="true"] .profile-studio-workspace {
+  isolation: isolate;
 }
 
 .profile-canvas-viewport-shell {

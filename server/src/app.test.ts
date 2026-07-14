@@ -1083,12 +1083,14 @@ const canvasUpdatePayload: ProfileCanvasUpdatePayload = {
   canvasVersion: 2,
   modules: [profileModule],
 };
+const canvasDraftRevision = "draft:00000000-0000-4000-8000-000000000001";
 
 const canvasDraftPayload: ProfileCanvasDraftState = {
   backgroundBlur: "medium",
   canvasGlass: 58,
   canvasVersion: 2,
   modules: [profileModule],
+  revision: canvasDraftRevision,
   selectedModuleId: null,
   updatedAt: "2026-06-24 12:00:00",
 };
@@ -1121,6 +1123,7 @@ function editorRepositoryMock(overrides: Partial<EditorRepository> = {}): Editor
     getCanvasDraft: vi.fn().mockResolvedValue(canvasDraftPayload),
     updateCanvasDraft: vi.fn().mockResolvedValue(canvasDraftPayload),
     deleteCanvasDraft: vi.fn().mockResolvedValue(canvasDraftPayload),
+    rebaseCanvasDraft: vi.fn().mockResolvedValue(canvasDraftPayload),
     commitCanvasDraft: vi.fn().mockResolvedValue(canvasUpdatePayload),
     updateFeaturedBadges: vi.fn().mockResolvedValue(profileBadges),
     deleteMyPosts: vi.fn().mockResolvedValue(myPostsDeletePayload),
@@ -1893,9 +1896,10 @@ describe("Node API profile/account editor preview routes", () => {
       ["POST", "/me/profile/modules/11/restore", {}, 200],
       ["PATCH", "/me/profile/module-order", { moduleIds: [11] }, 200],
       ["PATCH", "/me/profile/canvas", { backgroundBlur: "medium" }, 200],
-      ["PATCH", "/me/profile/canvas-draft", { backgroundBlur: "soft" }, 200],
-      ["DELETE", "/me/profile/canvas-draft", {}, 200],
-      ["POST", "/me/profile/canvas-draft/commit", {}, 200],
+      ["PATCH", "/me/profile/canvas-draft", { backgroundBlur: "soft", expectedRevision: canvasDraftRevision }, 200],
+      ["DELETE", "/me/profile/canvas-draft", { expectedRevision: canvasDraftRevision }, 200],
+      ["POST", "/me/profile/canvas-draft/rebase", { expectedRevision: canvasDraftRevision }, 200],
+      ["POST", "/me/profile/canvas-draft/commit", { expectedRevision: canvasDraftRevision }, 200],
       ["PATCH", "/me/badges/featured", { featuredBadgeIds: [1] }, 200],
       ["DELETE", "/me/posts?kind=posts", {}, 200],
     ] as const) {
@@ -1929,11 +1933,63 @@ describe("Node API profile/account editor preview routes", () => {
     expect(repository.restoreModule).toHaveBeenCalledWith(session, 11);
     expect(repository.updateModuleOrder).toHaveBeenCalledWith(session, { moduleIds: [11] });
     expect(repository.updateCanvas).toHaveBeenCalledWith(session, { backgroundBlur: "medium" });
-    expect(repository.updateCanvasDraft).toHaveBeenCalledWith(session, { backgroundBlur: "soft" });
-    expect(repository.deleteCanvasDraft).toHaveBeenCalledWith(session);
-    expect(repository.commitCanvasDraft).toHaveBeenCalledWith(session);
+    expect(repository.updateCanvasDraft).toHaveBeenCalledWith(session, {
+      backgroundBlur: "soft",
+      expectedRevision: canvasDraftRevision,
+    });
+    expect(repository.deleteCanvasDraft).toHaveBeenCalledWith(session, canvasDraftRevision);
+    expect(repository.rebaseCanvasDraft).toHaveBeenCalledWith(session, canvasDraftRevision);
+    expect(repository.commitCanvasDraft).toHaveBeenCalledWith(session, canvasDraftRevision);
     expect(repository.updateFeaturedBadges).toHaveBeenCalledWith(session, { featuredBadgeIds: [1] });
     expect(repository.deleteMyPosts).toHaveBeenCalledWith(42, "posts");
+  });
+
+  it("keeps legacy destructive draft requests compatible and requires exact rebase revisions", async () => {
+    const repository = editorRepositoryMock();
+    const app = buildApp({
+      editorRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+
+    for (const [method, url, payload] of [
+      ["DELETE", "/me/profile/canvas-draft", undefined],
+      ["POST", "/me/profile/canvas-draft/commit", {}],
+    ] as const) {
+      const response = await app.inject({
+        method,
+        url,
+        headers: {
+          "x-csrf-token": "csrf-token",
+        },
+        payload,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toHaveProperty("ok", true);
+    }
+
+    for (const [url, payload] of [
+      ["/me/profile/canvas-draft/rebase", {}],
+      ["/me/profile/canvas-draft/rebase", { expectedRevision: canvasDraftRevision, extra: true }],
+      ["/me/profile/canvas-draft/commit", { expectedRevision: canvasDraftRevision, extra: true }],
+    ] as const) {
+      const response = await app.inject({
+        method: "POST",
+        url,
+        headers: {
+          "x-csrf-token": "csrf-token",
+        },
+        payload,
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toHaveProperty("ok", false);
+    }
+
+    expect(repository.deleteCanvasDraft).toHaveBeenCalledWith(session, undefined);
+    expect(repository.commitCanvasDraft).toHaveBeenCalledWith(session, undefined);
+    expect(repository.rebaseCanvasDraft).not.toHaveBeenCalled();
   });
 
   it("refreshes profile share cards after saved profile edits", async () => {
@@ -1959,7 +2015,7 @@ describe("Node API profile/account editor preview routes", () => {
       ["POST", "/me/profile/modules/11/restore", {}, 200],
       ["PATCH", "/me/profile/module-order", { moduleIds: [11] }, 200],
       ["PATCH", "/me/profile/canvas", { backgroundBlur: "medium" }, 200],
-      ["POST", "/me/profile/canvas-draft/commit", {}, 200],
+      ["POST", "/me/profile/canvas-draft/commit", { expectedRevision: canvasDraftRevision }, 200],
       ["PATCH", "/me/badges/featured", { featuredBadgeIds: [1] }, 200],
     ] as const) {
       const response = await app.inject({
@@ -1988,8 +2044,9 @@ describe("Node API profile/account editor preview routes", () => {
     });
 
     for (const [method, path, payload] of [
-      ["PATCH", "/me/profile/canvas-draft", { backgroundBlur: "soft" }],
-      ["DELETE", "/me/profile/canvas-draft", {}],
+      ["PATCH", "/me/profile/canvas-draft", { backgroundBlur: "soft", expectedRevision: canvasDraftRevision }],
+      ["DELETE", "/me/profile/canvas-draft", { expectedRevision: canvasDraftRevision }],
+      ["POST", "/me/profile/canvas-draft/rebase", { expectedRevision: canvasDraftRevision }],
     ] as const) {
       const response = await app.inject({
         method,
