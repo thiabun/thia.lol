@@ -1,7 +1,6 @@
 import {
   ArrowRight,
   Compass,
-  Gamepad2,
   MessageCircle,
   PenLine,
   Radio,
@@ -594,7 +593,7 @@ function StarterCommunities({
 
       {!loading && !error && rooms.length === 0 ? (
         <EmptyState
-          icon={Gamepad2}
+          icon={Radio}
           title="No starter rooms yet"
           text="Explore all rooms while new communities get ready."
         />

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { ImagePlay, LoaderCircle, Search, WifiOff } from "lucide-react";
+import { LoaderCircle, Search, WifiOff } from "lucide-react";
+import { GifIcon } from "../icons/GifIcon";
 import { Button } from "../ui/Button";
 import { CompactStateNotice } from "../ui/RouteState";
 import { getTrendingGifs, searchGifs } from "../../lib/api";
@@ -104,7 +105,8 @@ export function GifPicker({ className, onSelect }: GifPickerProps) {
 
         {!loading && result?.available && result.items.length === 0 ? (
           <CompactStateNotice
-            icon={ImagePlay}
+            icon={GifIcon}
+            testId="gif-picker-empty"
             text="No GIFs found."
             title="No results"
           />

@@ -2,9 +2,9 @@ import {
   ArrowLeft,
   Clock3,
   Hash,
-  ImagePlay,
   Inbox,
   LoaderCircle,
+  LockKeyhole,
   Megaphone,
   MessageCircle,
   PenLine,
@@ -13,7 +13,6 @@ import {
   Settings,
   Share2,
   Shield,
-  Sparkles,
   Send,
   UserRound,
   UsersRound,
@@ -34,6 +33,7 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate, useOutletContext, useParams, useSearchParams } from "react-router";
+import { GifIcon } from "../components/icons/GifIcon";
 import { PageMeta } from "../components/PageMeta";
 import { GifPicker } from "../components/social/GifPicker";
 import { MentionTextarea } from "../components/social/MentionTextarea";
@@ -671,7 +671,7 @@ export function RoomPage() {
 
       {room && visibleTab === "feed" && postsAccessGated ? (
         <EmptyState
-          icon={Sparkles}
+          icon={LockKeyhole}
           title={room.visibility === "invite" ? "Access required" : "Room is private"}
           text={room.visibility === "invite" ? "Request access to read posts in this room." : "Posts are visible to room members."}
         />
@@ -1713,7 +1713,7 @@ function RoomChannelWorkspace({
                 aria-label={gifPickerOpen ? "Close GIF picker" : "Add GIF"}
                 title={gifPickerOpen ? "Close GIF picker" : "Add GIF"}
                 disabled={!canPostInActiveChannel}
-                icon={<ImagePlay aria-hidden="true" size={16} />}
+                icon={<GifIcon aria-hidden="true" size={16} />}
                 onClick={() => setGifPickerOpen((open) => !open)}
               />
               <label className="sr-only" htmlFor="room-channel-message-body">

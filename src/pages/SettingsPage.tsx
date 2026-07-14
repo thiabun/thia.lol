@@ -14,7 +14,6 @@ import {
   Save,
   ShieldCheck,
   SlidersHorizontal,
-  Sparkles,
   Trash2,
   UserRound,
   type LucideIcon,
@@ -521,7 +520,7 @@ export function SettingsPage() {
                   <Button
                     type="submit"
                     size="sm"
-                    icon={<Sparkles size={15} />}
+                    icon={<ShieldCheck aria-hidden="true" size={15} />}
                     className="self-end"
                     disabled={busy === "2fa-setup"}
                   >

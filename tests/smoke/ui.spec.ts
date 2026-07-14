@@ -616,7 +616,11 @@ test("authenticated post button opens the shared progressive composer", async ({
   await dialog.getByRole("button", { name: "Format" }).click();
   await expect(dialog.getByTestId("post-composer-markdown-toolbar")).toBeVisible();
   await expect(dialog.getByTitle("Upload image or video")).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Add GIF" })).toBeVisible();
+  const gifButton = dialog.getByRole("button", { name: "Add GIF" });
+  await expect(gifButton).toBeVisible();
+  await expect(
+    gifButton.locator('svg[data-icon="gif"][data-icon-source="heroicons"]'),
+  ).toHaveAttribute("stroke-width", "2");
   await expect(dialog.getByRole("button", { name: "Add music" })).toBeVisible();
   await expect(dialog.getByText("Post to a profile or room.")).toHaveCount(0);
   await expect(dialog.getByText("Post to your profile.")).toHaveCount(0);

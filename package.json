@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@fastify/multipart": "^10.0.0",
+    "@heroicons/react": "2.2.0",
     "@tailwindcss/vite": "4.3.0",
     "@vitejs/plugin-react": "6.0.2",
     "bcryptjs": "^3.0.3",

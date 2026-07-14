@@ -9,6 +9,7 @@ import {
   MessageCircle,
   MoreHorizontal,
   Music2,
+  Pencil,
   Radio,
   Repeat2,
   Reply,
@@ -21,6 +22,7 @@ import {
   VolumeX,
   X,
   UserCheck,
+  UserRoundX,
   Users,
   Video,
 } from "lucide-react";
@@ -1687,7 +1689,7 @@ export function ProfilePage() {
           path={`/@${normalizedHandle}`}
         />
         <EmptyState
-          icon={MessageCircle}
+          icon={UserRoundX}
           title="Profile not found"
           text="This profile may have moved or is not public."
         />
@@ -5729,7 +5731,7 @@ function ProfileInfoBlankEditPrompt() {
     >
       <div className="max-w-64">
         <span className="mx-auto grid size-12 place-items-center rounded-card border border-line bg-canvas/70 text-accent-strong">
-          <ImagePlus aria-hidden="true" size={22} />
+          <Pencil aria-hidden="true" size={22} />
         </span>
         <p className="mt-3 text-base font-semibold text-text">Select to edit profile</p>
         <p className="mt-1 text-sm leading-6 text-muted">

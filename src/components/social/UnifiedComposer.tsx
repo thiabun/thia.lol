@@ -11,7 +11,6 @@ import {
   ArrowDown,
   ArrowUp,
   ChevronDown,
-  ImagePlay,
   ImagePlus,
   Music2,
   Radio,
@@ -54,6 +53,7 @@ import {
 } from "../../lib/postMedia";
 import type { GifSearchResult, Post, Room } from "../../lib/types";
 import { useAuth } from "../../lib/useAuth";
+import { GifIcon } from "../icons/GifIcon";
 import { Button } from "../ui/Button";
 import { ImageCropModal } from "../ui/ImageCropModal";
 import { ModalSheetStatus } from "../ui/ModalSheet";
@@ -635,7 +635,7 @@ export function UnifiedComposer({
                   setGifPickerOpen((current) => !current);
                   setMusicPickerOpen(false);
                 }}
-                icon={<ImagePlay aria-hidden="true" size={19} />}
+                icon={<GifIcon aria-hidden="true" size={19} />}
               />
 
               <Button

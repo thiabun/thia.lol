@@ -1,6 +1,5 @@
 import {
   ArrowLeft,
-  ImagePlay,
   Inbox,
   LoaderCircle,
   MessageCircle,
@@ -24,6 +23,7 @@ import {
 import { Link, useOutletContext, useSearchParams } from "react-router";
 import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
+import { GifIcon } from "../components/icons/GifIcon";
 import { GifPicker } from "../components/social/GifPicker";
 import { MentionTextarea } from "../components/social/MentionTextarea";
 import { ReportForm } from "../components/social/ReportForm";
@@ -895,7 +895,7 @@ export function ChatPage() {
                       className="mt-1 shrink-0"
                       aria-label={gifPickerOpen ? "Close GIF picker" : "Add GIF"}
                       title={gifPickerOpen ? "Close GIF picker" : "Add GIF"}
-                      icon={<ImagePlay aria-hidden="true" size={16} />}
+                      icon={<GifIcon aria-hidden="true" size={16} />}
                       onClick={() => setGifPickerOpen((open) => !open)}
                     />
                     <label className="sr-only" htmlFor="chat-message-body">

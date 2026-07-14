@@ -684,7 +684,13 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
   await expect(page.getByTestId("room-channel-workspace")).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByTestId("room-channel-message-composer")).toBeVisible();
+  const roomComposer = page.getByTestId("room-channel-message-composer");
+  await expect(roomComposer).toBeVisible();
+  await expect(
+    roomComposer
+      .getByRole("button", { name: "Add GIF" })
+      .locator('svg[data-icon="gif"][data-icon-source="heroicons"]'),
+  ).toHaveAttribute("stroke-width", "2");
   await expect
     .poll(() =>
       page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),

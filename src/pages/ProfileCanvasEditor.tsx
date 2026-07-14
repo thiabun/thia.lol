@@ -2,6 +2,7 @@ import {
   ArrowDown,
   ArrowRight,
   ArrowUp,
+  BookOpen,
   Check,
   FolderGit2,
   ImagePlus,
@@ -1881,7 +1882,7 @@ export function ProfileDirectCanvasEditor({
             variant="secondary"
             aria-label="Open editor guide"
             title="Guide"
-            icon={<Sparkles aria-hidden="true" size={16} />}
+            icon={<BookOpen aria-hidden="true" size={16} />}
             data-testid="profile-editor-guide-button"
             onClick={handleGuideOpen}
           />

@@ -269,6 +269,19 @@ Use existing shared primitives first:
 When a local variant is needed, keep it small and reuse token values for color,
 radius, border, shadow, spacing, type, and focus behavior.
 
+### Iconography
+
+Use Lucide as the default product icon set. When Lucide does not provide a
+clear, recognizable match, use Heroicons as the primary secondary source.
+Prefer outline Heroicons, import individual icons directly, and adapt their
+size and stroke weight to the surrounding Lucide icons. Keep provider-specific
+brand marks in the existing brand-icon source rather than approximating them
+with product glyphs.
+
+Replace icons selectively: the intended action or state should become clearer
+without changing established control sizing, spacing, alignment, accessible
+labels, or touch targets.
+
 ### Buttons
 
 Buttons should be compact, direct, and stateful:

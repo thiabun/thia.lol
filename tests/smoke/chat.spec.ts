@@ -332,10 +332,30 @@ test("chat GIF picker shows an unavailable KLIPY state", async ({ page }) => {
   await mockGifSearch(page, { available: false, items: [] });
   await page.goto("/chat?conversation=10");
 
-  await page.getByRole("button", { name: "Add GIF" }).click();
+  const gifButton = page.getByRole("button", { name: "Add GIF" });
+  await expect(
+    gifButton.locator('svg[data-icon="gif"][data-icon-source="heroicons"]'),
+  ).toHaveAttribute("stroke-width", "2");
+  await gifButton.click();
 
   await expect(page.getByText("KLIPY unavailable")).toBeVisible();
   await expect(page.getByText("GIF search is unavailable.")).toBeVisible();
+});
+
+test("chat GIF picker uses the literal Heroicons mark for an empty result", async ({
+  page,
+}) => {
+  await mockAuthenticatedChat(page);
+  await mockGifSearch(page, { available: true, items: [] });
+  await page.goto("/chat?conversation=10");
+
+  await page.getByRole("button", { name: "Add GIF" }).click();
+
+  const emptyState = page.getByTestId("gif-picker-empty");
+  await expect(emptyState).toContainText("No GIFs found.");
+  await expect(
+    emptyState.locator('svg[data-icon="gif"][data-icon-source="heroicons"]'),
+  ).toHaveAttribute("stroke-width", "2");
 });
 
 test("chat GIF picker selects and sends provider-backed GIF attachments", async ({
