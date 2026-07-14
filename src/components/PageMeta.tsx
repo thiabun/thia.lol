@@ -29,7 +29,6 @@ export function PageMeta({ title, description, path }: PageMetaProps) {
 
     document.title = fullTitle;
     setMeta("name", "description", description);
-    setMeta("name", "theme-color", themeColors[theme]);
     setMeta("property", "og:site_name", siteName);
     setMeta("property", "og:type", "website");
     setMeta("property", "og:title", fullTitle);
@@ -45,7 +44,27 @@ export function PageMeta({ title, description, path }: PageMetaProps) {
     setMeta("name", "twitter:image", new URL(defaultImagePath, siteOrigin).toString());
     setMeta("name", "twitter:image:alt", defaultImageAlt);
     setCanonical(canonicalUrl);
-  }, [description, location.pathname, path, theme, title]);
+  }, [description, location.pathname, path, title]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const syncThemeColor = () => {
+      const profileCanvas = root.dataset.profileTheme
+        ? root.style.getPropertyValue("--app-canvas").trim()
+        : "";
+
+      setMeta("name", "theme-color", profileCanvas || themeColors[theme]);
+    };
+
+    syncThemeColor();
+    const observer = new MutationObserver(syncThemeColor);
+    observer.observe(root, {
+      attributes: true,
+      attributeFilter: ["data-profile-theme", "style"],
+    });
+
+    return () => observer.disconnect();
+  }, [theme]);
 
   return null;
 }

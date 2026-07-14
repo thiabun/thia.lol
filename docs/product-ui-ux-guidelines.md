@@ -95,8 +95,8 @@ It should not feel:
 
 ## Themes
 
-The selectable site themes are generic Light and Dark modes. Their product mood
-names are:
+The selectable site theme options are Light, Dark, and Profile Theme. Light and
+Dark are the standard modes. Their product mood names are:
 
 - Light: `Glinda`
 - Dark: `Elphaba`
@@ -137,6 +137,29 @@ Green creates identity through action states, focus, selected navigation, and
 status surfaces. It must not become neon sludge. The dark base should stay calm,
 deep, and legible.
 
+### Profile Theme
+
+Profile Theme is available to signed-in members as an explicit opt-in. It
+applies the member's constrained profile appearance across supported site
+surfaces: colors, backgrounds, surface opacity, glass treatment, and other
+validated theme properties. It is not a third fixed brand palette and must not
+unlock arbitrary CSS or user-authored page code.
+
+Selecting Light or Dark must fully remove site-wide profile styling before
+applying the corresponding standard theme. Theme selection must persist across
+navigation, reloads, and future sessions without leaving stale colors,
+backgrounds, or surface treatments behind.
+
+Public profile pages remain themed to the profile owner in all three site
+modes. The viewer's Light, Dark, or Profile Theme preference controls the wider
+site and must not override the identity of the profile being viewed.
+
+The selector must show the exact labels Light, Dark, and Profile Theme as three
+clear choices rather than making people infer the third state from an icon-only
+cycle. It must expose the selected state to assistive technology, support
+keyboard and touch input, use stable touch targets, and fit desktop and mobile
+layouts without horizontal overflow.
+
 ### Theme Migration
 
 Older persisted values may still contain `sunveil` or `frostveil`. Runtime code,
@@ -149,7 +172,7 @@ API validation, and migrations should map old values to the new model:
 
 Old names may appear only in compatibility code, tests that prove migration, or
 historical SQL migrations. Product-facing copy and active design docs should use
-Light, Dark, Glinda, and Elphaba.
+Light, Dark, Profile Theme, Glinda, and Elphaba.
 
 ## Brand Identity
 
@@ -472,7 +495,7 @@ with clear categories and direct policy links.
 
 Accessibility is part of the visual standard:
 
-- readable contrast in both themes
+- readable contrast in Light, Dark, and Profile Theme modes
 - visible focus states
 - keyboard paths for menus, sheets, tabs, forms, and action rows
 - semantic headings
@@ -509,7 +532,7 @@ empty space. Respect reduced-motion settings and prefer shared presets from
 | Real counts from API-backed data. | Fake metrics added for visual balance. |
 | Empty state names the missing content and recovery action. | Generic "Something went wrong" or repeated "No items yet" copy. |
 | Shared `ModalSheet` confirmation. | `window.confirm` or route-local dialog behavior. |
-| Light/Dark UI labels with Glinda/Elphaba documented as mood names. | Sunveil/Frostveil in product-facing copy. |
+| Light/Dark/Profile Theme UI labels with Glinda/Elphaba documented as standard-theme mood names. | Sunveil/Frostveil in product-facing copy. |
 | Settings changes use existing recent design patterns. | Reworking settings only because adjacent surfaces changed. |
 
 ## Surface Inventory

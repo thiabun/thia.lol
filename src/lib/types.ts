@@ -1,5 +1,7 @@
 export type ThemeName = "light" | "dark";
 
+export type ThemePreference = ThemeName | "profile";
+
 export type ProfileLayoutPreset = "balanced" | "compact" | "showcase";
 
 export type ProfileBackgroundBlur = "none" | "soft" | "medium" | "heavy";

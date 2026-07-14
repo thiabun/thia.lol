@@ -350,7 +350,7 @@ const policies = {
       {
         title: "Local preferences",
         items: [
-          "Theme preference may be stored locally so the site can remember Light or Dark mode.",
+          "Theme preference may be stored locally so the site can remember whether you selected Light, Dark, or Profile Theme.",
           "Cookie notice acknowledgement may be stored in your browser so the same notice is not shown every visit.",
           "Profile music autoplay consent may be stored as a first-party preference cookie so accepted autoplay applies across profiles. This preference is not used for advertising.",
         ],

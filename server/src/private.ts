@@ -43,8 +43,15 @@ export interface AuthSessionPayload {
     bio: string;
     location: string;
     avatarUrl: string | null;
+    bannerUrl: string | null;
+    profileAccent: string | null;
+    profileBackground: string | null;
+    profileBackgroundVideo: string | null;
+    profileBackgroundVideoPoster: string | null;
+    profileBackgroundBlur: "none" | "soft" | "medium" | "heavy";
     profileTheme: string | null;
     profileThemeConfig: Record<string, unknown> | unknown[] | null;
+    profileCanvasGlass: number;
     links: unknown[];
     traits: unknown[];
   };
@@ -419,8 +426,15 @@ export function authSessionPayload(session: RequestSession, csrfSecret: string):
       bio: stringValue(session.bio),
       location: stringValue(session.location),
       avatarUrl: nullableStringValue(session.avatarUrl),
-      profileTheme: nullableStringValue(session.profileTheme),
+      bannerUrl: nullableStringValue(session.bannerUrl),
+      profileAccent: nullableStringValue(session.profileAccent),
+      profileBackground: nullableStringValue(session.profileBackground),
+      profileBackgroundVideo: nullableStringValue(session.profileBackgroundVideo),
+      profileBackgroundVideoPoster: nullableStringValue(session.profileBackgroundVideoPoster),
+      profileBackgroundBlur: profileBackgroundBlurValue(session.profileBackgroundBlur),
+      profileTheme: canonicalProfileThemeValue(session.profileTheme),
       profileThemeConfig: jsonObjectOrArrayValue(session.profileThemeConfig),
+      profileCanvasGlass: profileCanvasGlassValue(session.profileCanvasGlass),
       links: jsonArrayValue(session.links),
       traits: jsonArrayValue(session.traits),
     },
@@ -2242,6 +2256,43 @@ function stringValue(value: string | null | undefined, fallback = ""): string {
 
 function nullableStringValue(value: string | null | undefined): string | null {
   return value ?? null;
+}
+
+function profileBackgroundBlurValue(
+  value: string | null | undefined,
+): "none" | "soft" | "medium" | "heavy" {
+  if (typeof value !== "string") {
+    return "medium";
+  }
+
+  const blur = value.trim().toLowerCase();
+
+  return blur === "none" || blur === "soft" || blur === "medium" || blur === "heavy"
+    ? blur
+    : "medium";
+}
+
+function profileCanvasGlassValue(value: number | string | null | undefined): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(0, Math.min(92, Math.trunc(value)));
+  }
+
+  if (typeof value === "string" && /^[0-9]+$/.test(value)) {
+    return Math.max(0, Math.min(92, Number(value)));
+  }
+
+  return 58;
+}
+
+function canonicalProfileThemeValue(value: string | null | undefined): string | null {
+  switch (value) {
+    case "sunveil":
+      return "glinda";
+    case "frostveil":
+      return "elphaba";
+    default:
+      return value ?? null;
+  }
 }
 
 function normalizeExportRow(row: ExportRow, jsonFields: Set<string>): Record<string, unknown> {

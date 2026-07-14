@@ -25,6 +25,15 @@ const session: RequestSession = {
   bio: "Hello",
   location: "Oslo",
   avatarUrl: "/uploads/avatar.png",
+  bannerUrl: "/uploads/banner.png",
+  profileAccent: "rose",
+  profileBackground: "/uploads/background.webp",
+  profileBackgroundVideo: "/uploads/background.mp4",
+  profileBackgroundVideoPoster: "/uploads/background-poster.webp",
+  profileBackgroundBlur: "heavy",
+  profileTheme: "glinda",
+  profileThemeConfig: '{"mode":"preset","preset":"glinda"}',
+  profileCanvasGlass: "80",
   links: '[{"label":"site"}]',
   traits: '["soft"]',
 };
@@ -50,8 +59,18 @@ describe("private preview auth helpers", () => {
         bio: "Hello",
         location: "Oslo",
         avatarUrl: "/uploads/avatar.png",
-        profileTheme: null,
-        profileThemeConfig: null,
+        bannerUrl: "/uploads/banner.png",
+        profileAccent: "rose",
+        profileBackground: "/uploads/background.webp",
+        profileBackgroundVideo: "/uploads/background.mp4",
+        profileBackgroundVideoPoster: "/uploads/background-poster.webp",
+        profileBackgroundBlur: "heavy",
+        profileTheme: "glinda",
+        profileThemeConfig: {
+          mode: "preset",
+          preset: "glinda",
+        },
+        profileCanvasGlass: 80,
         links: [
           {
             label: "site",
@@ -60,6 +79,30 @@ describe("private preview auth helpers", () => {
         traits: ["soft"],
       },
       csrfToken: "x79cYYUq_6HomXDaLpoJ3FnubdzOU2f6k0LaCZVqh38",
+    });
+  });
+
+  it("normalizes profile appearance values for auth/me", () => {
+    expect(authSessionPayload({
+      ...session,
+      profileBackgroundBlur: "mist",
+      profileTheme: "sunveil",
+      profileCanvasGlass: "999",
+    }, "secret").profile).toMatchObject({
+      profileBackgroundBlur: "medium",
+      profileTheme: "glinda",
+      profileCanvasGlass: 92,
+    });
+
+    expect(authSessionPayload({
+      ...session,
+      profileBackgroundBlur: undefined,
+      profileTheme: "frostveil",
+      profileCanvasGlass: -5.7,
+    }, "secret").profile).toMatchObject({
+      profileBackgroundBlur: "medium",
+      profileTheme: "elphaba",
+      profileCanvasGlass: 0,
     });
   });
 

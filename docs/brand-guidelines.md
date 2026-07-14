@@ -59,12 +59,23 @@ explicitly calls for that surface.
 
 ## Theme Usage
 
-Light and Dark are the selectable site themes. Their product mood names are:
+The selectable site theme options are Light, Dark, and Profile Theme. Light and
+Dark are the standard product themes. Their product mood names are:
 
 - Light: `Glinda`, a pink-toned light mode that is soft, bright, clean,
   friendly, refined, elegant, and modern.
 - Dark: `Elphaba`, a green-toned dark mode that is rich, sleek, calm, sharp,
   alive, modern, and refined.
+
+Profile Theme is an explicit signed-in opt-in, not another brand palette. It
+uses the signed-in member's constrained profile appearance across supported
+site surfaces, including its colors, background treatment, surface opacity, and
+glass treatment. Selecting Light or Dark must remove those site-wide profile
+styles and restore the corresponding standard product theme.
+
+Viewed profile pages remain themed to the profile owner regardless of the
+viewer's selected site theme. Profile Theme changes the surrounding signed-in
+site experience; it does not override another member's profile identity.
 
 These are product tone names only. Do not add character art, fandom jokes,
 stage styling, magic props, or theme literalism to the brand system.
@@ -109,8 +120,9 @@ Runtime product assets currently include:
 - `/brand/thia-og.png`
 
 The `sunveil` and `frostveil` asset filenames are still generated as legacy
-compatibility aliases. Product-facing copy should use Light/Dark and
-Glinda/Elphaba, and new code should reference the Light/Dark filenames.
+compatibility aliases. Standard-theme copy should use Light/Dark and
+Glinda/Elphaba, the third option must use the exact label Profile Theme, and new
+code should reference the Light/Dark filenames for standard-theme assets.
 
 Regenerate public assets with:
 
@@ -123,7 +135,7 @@ all have the same favicon, app icon, header mark, and Open Graph image.
 
 ## Do Not
 
-- Do not add a third selectable pink theme without an explicit product decision.
+- Do not turn Profile Theme into a third fixed pink or brand palette.
 - Do not replace app theme tokens with brand image colors.
 - Do not use Glinda/Elphaba as a reason to add character art or theatrical UI.
 - Do not use the bunny mark as a decorative repeated pattern.

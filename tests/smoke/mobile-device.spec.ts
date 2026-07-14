@@ -49,10 +49,64 @@ test("mobile Chrome keeps shell forms contained and touch sized", async ({ page 
     expect(undersized).toEqual([]);
   }
 
-  const themeToggle = page.getByRole("button", { name: /Switch to/ });
-  const initialLabel = await themeToggle.getAttribute("aria-label");
+  await page.setViewportSize({ width: 320, height: 568 });
+  const themeToggle = page.getByTestId("theme-menu-trigger");
+  await expect(themeToggle).toHaveAccessibleName("Choose theme, current Light");
   await themeToggle.tap();
-  await expect(themeToggle).not.toHaveAttribute("aria-label", initialLabel ?? "");
+
+  const themeMenu = page.getByTestId("theme-menu");
+  await expect(themeMenu).toBeVisible();
+  const lightChoice = themeMenu.getByRole("radio", { name: "Light", exact: true });
+  const darkChoice = themeMenu.getByRole("radio", { name: "Dark", exact: true });
+  const profileChoice = themeMenu.getByRole("radio", {
+    name: "Profile Theme",
+    exact: true,
+  });
+  await expect(lightChoice).toBeChecked();
+  await expect(darkChoice).toBeEnabled();
+  await expect(profileChoice).toBeDisabled();
+
+  const menuBox = await themeMenu.boundingBox();
+  expect(menuBox).not.toBeNull();
+  expect(menuBox!.x).toBeGreaterThanOrEqual(0);
+  expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(320);
+
+  const undersizedThemeChoices = await themeMenu
+    .getByRole("radio")
+    .evaluateAll((controls) =>
+      controls
+        .map((control) => {
+          const rect = control.getBoundingClientRect();
+          return { height: rect.height, width: rect.width };
+        })
+        .filter((control) => control.height < 44 || control.width < 44),
+    );
+  expect(undersizedThemeChoices).toEqual([]);
+
+  await darkChoice.tap();
+  await expect(themeMenu).toHaveCount(0);
+  await expect(themeToggle).toHaveAccessibleName("Choose theme, current Dark");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator("html")).toHaveAttribute("data-theme-choice", "dark");
+  await expect
+    .poll(() => page.evaluate(() => window.localStorage.getItem("thia.lol.theme")))
+    .toBe("dark");
+
+  await page.goto("/");
+  await expect(page.getByTestId("anonymous-home-header")).toBeVisible();
+  await page.getByRole("button", { name: "Open navigation menu" }).click();
+  await expect(page.locator('[data-testid="theme-menu-trigger"]:visible')).toHaveAccessibleName(
+    "Choose theme, current Dark",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth + 1,
+      ),
+    )
+    .toBe(true);
 });
 
 async function mockAnonymousApi(page: Page) {

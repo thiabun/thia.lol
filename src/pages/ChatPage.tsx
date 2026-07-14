@@ -721,6 +721,7 @@ export function ChatPage() {
               ? "h-[calc(var(--app-visual-viewport-height,100dvh)-4.25rem)] min-h-0"
               : undefined,
           )}
+          data-app-panel="true"
           data-testid="chat-workspace"
         >
           <aside

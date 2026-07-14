@@ -40,6 +40,10 @@ test("profile canvas editor replaces the retired customization modal", async ({ 
 
 test("profile appearance editor saves profile-scoped color themes", async ({ page }) => {
   const saves: Record<string, unknown>[] = [];
+  await page.addInitScript(() => {
+    window.localStorage.setItem("thia.lol.theme", "profile");
+    window.localStorage.setItem("thia.lol.theme.standard", "light");
+  });
   await mockOwnProfile(page, () => [], (payload) => saves.push(payload));
 
   await acknowledgeCookieNotice(page);
@@ -85,56 +89,131 @@ test("profile appearance editor saves profile-scoped color themes", async ({ pag
       saves.some((payload) => payload.profileTheme === "custom" && payload.profileAccent === "custom"),
     )
     .toBe(true);
+
+  await page.getByRole("button", { name: "Close appearance settings" }).click();
+  await page.getByRole("link", { name: "Discover", exact: true }).first().click();
+  await expect(page.locator('[data-site-profile-theme="true"]')).toHaveCount(2);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        document.documentElement.style.getPropertyValue("--app-accent").trim(),
+      ),
+    )
+    .toBe("#3366FF");
 });
 
 test("profile routes disable site theme controls and use profile contrast for branding", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    window.localStorage.setItem("thia.lol.theme", "light");
+    if (window.localStorage.getItem("thia.lol.theme") === null) {
+      window.localStorage.setItem("thia.lol.theme", "profile");
+    }
+    if (window.localStorage.getItem("thia.lol.theme.standard") === null) {
+      window.localStorage.setItem("thia.lol.theme.standard", "light");
+    }
   });
-  await mockOwnProfile(page, () => [], undefined, {
-    profileTheme: "elphaba",
-    profileThemeConfig: { mode: "preset", preset: "elphaba" },
-  });
+  await mockOwnProfile(
+    page,
+    () => [],
+    undefined,
+    {
+      profileTheme: "elphaba",
+      profileThemeConfig: { mode: "preset", preset: "elphaba" },
+      profileCanvasGlass: 12,
+    },
+    {
+      profileTheme: "glinda",
+      profileThemeConfig: { mode: "preset", preset: "glinda" },
+      profileCanvasGlass: 80,
+    },
+  );
 
   await acknowledgeCookieNotice(page);
-  await page.goto("/@thia");
-
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        document.documentElement.style.getPropertyValue("--app-canvas").trim(),
-      ),
-    )
-    .toBe("#092119");
+  await page.goto("/rooms");
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-site-profile-theme",
+    "true",
+  );
   await expect
     .poll(() =>
       page.evaluate(() => ({
-        accentContrast: document.documentElement.style
-          .getPropertyValue("--app-accent-contrast")
+        canvas: document.documentElement.style
+          .getPropertyValue("--app-canvas")
           .trim(),
-        leafInk: document.documentElement.style
-          .getPropertyValue("--accent-leaf-ink")
-          .trim(),
-        roseInk: document.documentElement.style
-          .getPropertyValue("--accent-rose-ink")
+        moduleAlpha: document.documentElement.style
+          .getPropertyValue("--site-profile-module-alpha")
           .trim(),
       })),
     )
-    .toEqual({
-      accentContrast: "#062116",
-      leafInk: "#8CF0B5",
-      roseInk: "#8CF0B5",
-    });
+    .toEqual({ canvas: "#FFF7FB", moduleAlpha: "41%" });
+
+  await page.getByRole("button", { name: "Account menu for @thia" }).click();
+  await page.getByRole("menuitem", { name: "Profile", exact: true }).click();
+  await expect(page).toHaveURL(/\/@thia$/);
+  await expect(page.locator("html")).not.toHaveAttribute("data-site-profile-theme");
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        canvasAlpha: document.documentElement.style
+          .getPropertyValue("--site-profile-canvas-alpha")
+          .trim(),
+        moduleAlpha: document.documentElement.style
+          .getPropertyValue("--site-profile-module-alpha")
+          .trim(),
+      })),
+    )
+    .toEqual({ canvasAlpha: "", moduleAlpha: "" });
+
+  for (const preference of ["light", "dark", "profile"] as const) {
+    await page.evaluate((nextPreference) => {
+      window.localStorage.setItem("thia.lol.theme", nextPreference);
+      if (nextPreference !== "profile") {
+        window.localStorage.setItem("thia.lol.theme.standard", nextPreference);
+      }
+    }, preference);
+    await page.reload();
+
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-theme-choice",
+      preference,
+    );
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          document.documentElement.style.getPropertyValue("--app-canvas").trim(),
+        ),
+      )
+      .toBe("#092119");
+    await expect
+      .poll(() =>
+        page.evaluate(() => ({
+          accentContrast: document.documentElement.style
+            .getPropertyValue("--app-accent-contrast")
+            .trim(),
+          leafInk: document.documentElement.style
+            .getPropertyValue("--accent-leaf-ink")
+            .trim(),
+          roseInk: document.documentElement.style
+            .getPropertyValue("--accent-rose-ink")
+            .trim(),
+        })),
+      )
+      .toEqual({
+        accentContrast: "#062116",
+        leafInk: "#8CF0B5",
+        roseInk: "#8CF0B5",
+      });
+    await expect(page.getByTestId("theme-menu-trigger")).toBeDisabled();
+    await expect(page.getByTestId("theme-menu-trigger")).toHaveAccessibleName(
+      "Profile theme controls this page",
+    );
+  }
+
   await expect(page.locator("[data-profile-info-badge='founder']").first()).toHaveCSS(
     "color",
     "rgb(140, 240, 181)",
   );
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  await expect(
-    page.getByRole("button", { name: "Profile theme controls this page" }),
-  ).toBeDisabled();
   await expect(page.getByTestId("brand-logo").locator("img")).toHaveAttribute(
     "src",
     /\/brand\/thia-mark-dark-96\.png$/,
@@ -148,6 +227,11 @@ test("profile routes disable site theme controls and use profile contrast for br
     )
     .toBe("#092119");
 
+  await page.evaluate(() => {
+    window.localStorage.setItem("thia.lol.theme", "light");
+    window.localStorage.setItem("thia.lol.theme.standard", "light");
+  });
+  await page.reload();
   await page.getByRole("link", { name: "Discover" }).first().click();
 
   await expect
@@ -366,6 +450,7 @@ async function mockOwnProfile(
   links: () => unknown[],
   onSave?: (payload: Record<string, unknown>) => void,
   profileOverrides: Partial<ReturnType<typeof profileBody>> = {},
+  authProfileOverrides: Partial<ReturnType<typeof profileBody>> = profileOverrides,
 ) {
   await page.route("**/api/**", async (route) => {
     await route.fulfill({
@@ -399,6 +484,18 @@ async function mockOwnProfile(
             bio: "Founder profile for thia.lol.",
             location: "Oslo",
             avatarUrl: null,
+            bannerUrl: authProfileOverrides.bannerUrl ?? null,
+            profileAccent: authProfileOverrides.profileAccent ?? null,
+            profileBackground: authProfileOverrides.profileBackground ?? null,
+            profileBackgroundVideo:
+              authProfileOverrides.profileBackgroundVideo ?? null,
+            profileBackgroundVideoPoster:
+              authProfileOverrides.profileBackgroundVideoPoster ?? null,
+            profileBackgroundBlur:
+              authProfileOverrides.profileBackgroundBlur ?? "medium",
+            profileTheme: authProfileOverrides.profileTheme ?? null,
+            profileThemeConfig: authProfileOverrides.profileThemeConfig ?? null,
+            profileCanvasGlass: authProfileOverrides.profileCanvasGlass ?? 58,
             links: [],
             traits: [],
           },
@@ -578,6 +675,8 @@ function profileBody(links: unknown[], overrides: Partial<ProfileBody> = {}): Pr
     bannerUrl: null,
     profileAccent: null,
     profileBackground: null,
+    profileBackgroundVideo: null,
+    profileBackgroundVideoPoster: null,
     profileBackgroundBlur: "medium",
     profileTheme: null,
     profileThemeConfig: null,
@@ -629,6 +728,8 @@ type ProfileBody = {
   bannerUrl: string | null;
   profileAccent: string | null;
   profileBackground: string | null;
+  profileBackgroundVideo: string | null;
+  profileBackgroundVideoPoster: string | null;
   profileBackgroundBlur: "none" | "soft" | "medium" | "heavy";
   profileTheme: string | null;
   profileThemeConfig: unknown;

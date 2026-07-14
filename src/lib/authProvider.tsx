@@ -35,6 +35,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus("anonymous");
   }, []);
 
+  const updateProfile = useCallback((patch: Partial<AuthSession["profile"]>) => {
+    setSession((current) =>
+      current
+        ? {
+            ...current,
+            profile: {
+              ...current.profile,
+              ...patch,
+            },
+          }
+        : current,
+    );
+  }, []);
+
   const refreshSession = useCallback(async () => {
     try {
       const nextSession = await apiGet<AuthSession>("/auth/me");
@@ -178,6 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       register,
       logout,
       refreshSession,
+      updateProfile,
       clearSession,
       runWithAuth,
     }),
@@ -190,6 +205,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       runWithAuth,
       session,
       status,
+      updateProfile,
     ],
   );
 

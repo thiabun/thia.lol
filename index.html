@@ -3,11 +3,61 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#fff6fb" />
+    <script>
+      (() => {
+        const root = document.documentElement;
+        const preferenceKey = "thia.lol.theme";
+        const standardThemeKey = "thia.lol.theme.standard";
+        const normalizePreference = (value) => {
+          if (value === "light" || value === "sunveil") return "light";
+          if (value === "dark" || value === "frostveil") return "dark";
+          return value === "profile" ? "profile" : null;
+        };
+        const normalizeStandardTheme = (value) => {
+          const normalized = normalizePreference(value);
+          return normalized === "light" || normalized === "dark"
+            ? normalized
+            : null;
+        };
+
+        let storedPreference = null;
+        let storedStandardTheme = null;
+        try {
+          storedPreference = normalizePreference(
+            localStorage.getItem(preferenceKey),
+          );
+          storedStandardTheme = normalizeStandardTheme(
+            localStorage.getItem(standardThemeKey),
+          );
+        } catch {
+          // Continue with the system preference when storage is unavailable.
+        }
+
+        const systemTheme = matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light";
+        const standardTheme =
+          storedPreference === "light" || storedPreference === "dark"
+            ? storedPreference
+            : (storedStandardTheme ?? systemTheme);
+        const preference = storedPreference ?? standardTheme;
+
+        root.dataset.theme = standardTheme;
+        root.dataset.themeChoice = preference;
+        root.style.colorScheme = standardTheme;
+        document
+          .querySelector('meta[name="theme-color"]')
+          ?.setAttribute(
+            "content",
+            standardTheme === "dark" ? "#092119" : "#fff6fb",
+          );
+      })();
+    </script>
     <meta
       name="description"
       content="thia.lol is a calm, fluid social platform for rooms, posts, profiles, and shared presence."
     />
-    <meta name="theme-color" content="#f8e8a9" />
     <meta property="og:site_name" content="thia.lol" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="thia.lol" />

@@ -117,6 +117,7 @@ import {
   type UpdateProfileInput,
 } from "../lib/api";
 import { ApiClientError } from "../lib/apiClient";
+import type { AuthProfile } from "../lib/authTypes";
 import { cn } from "../lib/classNames";
 import { displayNameMaxLength } from "../lib/displayNames";
 import { formatShortDate } from "../lib/dates";
@@ -294,12 +295,30 @@ function mergeAutosavedProfileContent(current: Profile, saved: Profile): Profile
   };
 }
 
+function authProfilePatch(profile: Profile): Partial<AuthProfile> {
+  return {
+    displayName: profile.user.displayName,
+    bio: profile.bio,
+    location: profile.location,
+    avatarUrl: profile.user.avatarUrl ?? null,
+    bannerUrl: profile.bannerUrl ?? null,
+    profileAccent: profile.profileAccent ?? null,
+    profileBackground: profile.profileBackground ?? null,
+    profileBackgroundVideo: profile.profileBackgroundVideo ?? null,
+    profileBackgroundVideoPoster: profile.profileBackgroundVideoPoster ?? null,
+    profileBackgroundBlur: profile.profileBackgroundBlur,
+    profileTheme: profile.profileTheme ?? null,
+    profileThemeConfig: profile.profileThemeConfig ?? null,
+    profileCanvasGlass: profile.profileCanvasGlass,
+  };
+}
+
 export function ProfilePage() {
   const { handle, profileHandle } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const { setTopBarAction } = useOutletContext<AppShellOutletContext>();
-  const { runWithAuth, status, user } = useAuth();
+  const { runWithAuth, status, updateProfile, user } = useAuth();
   const profileEditReturnHandledRef = useRef(false);
   const profileEditorTourReturnHandledRef = useRef(false);
   const profileContentAutosaveRequestRef = useRef(0);
@@ -1072,6 +1091,7 @@ export function ProfilePage() {
           }
 
           setProfileOverride(savedProfile);
+          updateProfile(authProfilePatch(savedProfile));
           setDraftProfile((current) =>
             current ? mergeAutosavedProfileContent(current, savedProfile) : current,
           );
@@ -1100,6 +1120,7 @@ export function ProfilePage() {
     isOwnProfile,
     profile,
     runWithAuth,
+    updateProfile,
   ]);
 
   useEffect(() => {
@@ -1222,12 +1243,14 @@ export function ProfilePage() {
       );
 
       setModulesOverride({ handle: normalizedHandle, modules: saved.modules });
-      setProfileOverride({
+      const savedProfile = {
         ...latestProfile,
         profileBackgroundBlur: saved.backgroundBlur,
         profileCanvasGlass: saved.canvasGlass,
         profileCanvasVersion: saved.canvasVersion,
-      });
+      };
+      setProfileOverride(savedProfile);
+      updateProfile(authProfilePatch(savedProfile));
       setDraftBackgroundBlur(saved.backgroundBlur);
       setCurrentCanvasDraft(undefined);
       setCanvasEditing(false);
@@ -1311,6 +1334,7 @@ export function ProfilePage() {
       }
 
       setProfileOverride(savedProfile);
+      updateProfile(authProfilePatch(savedProfile));
       setDraftProfile((current) =>
         current ? mergeAutosavedProfileContent(current, savedProfile) : current,
       );
@@ -1537,6 +1561,7 @@ export function ProfilePage() {
       };
 
       setProfileOverride(savedProfile);
+      updateProfile(authProfilePatch(savedProfile));
       setDraftProfile((current) =>
         current
           ? {

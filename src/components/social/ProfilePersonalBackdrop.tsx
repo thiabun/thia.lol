@@ -2,23 +2,32 @@ import { useEffect, useRef } from "react";
 import { cn } from "../../lib/classNames";
 import { safeProfileImageUrl } from "../../lib/profileMedia";
 import { profileBackgroundTreatment } from "../../lib/profileVisualTreatments";
-import type { Profile } from "../../lib/types";
+import type { ProfileBackgroundBlur } from "../../lib/types";
+
+type ProfileBackdropAppearance = {
+  profileBackground?: string | null | undefined;
+  profileBackgroundVideo?: string | null | undefined;
+  profileBackgroundVideoPoster?: string | null | undefined;
+  profileBackgroundBlur?: ProfileBackgroundBlur | undefined;
+};
 
 type ProfilePersonalBackdropProps = {
   paused?: boolean | undefined;
-  profile: Profile;
+  profile: ProfileBackdropAppearance;
+  siteWide?: boolean | undefined;
 };
 
 export function ProfilePersonalBackdrop({
   paused = false,
   profile,
+  siteWide = false,
 }: ProfilePersonalBackdropProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const videoUrl = safeProfileVideoUrl(profile.profileBackgroundVideo);
   const imageUrl = safeProfileImageUrl(
     profile.profileBackgroundVideoPoster ?? profile.profileBackground,
   );
-  const blurTreatment = profile.profileBackgroundBlur;
+  const blurTreatment = profile.profileBackgroundBlur ?? "medium";
   const treatment = profileBackgroundTreatment(blurTreatment);
   const playbackState = videoUrl ? (paused ? "paused" : "playing") : "static";
 
@@ -45,7 +54,9 @@ export function ProfilePersonalBackdrop({
       data-profile-background-playback={playbackState}
       data-profile-background-source={videoUrl ? "video" : imageUrl ? "image" : "fallback"}
       data-profile-background-visibility={treatment.name}
+      data-site-profile-backdrop={siteWide ? "true" : undefined}
       data-testid="profile-personal-backdrop"
+      style={siteWide ? { position: "fixed" } : undefined}
     >
       {videoUrl ? (
         <video

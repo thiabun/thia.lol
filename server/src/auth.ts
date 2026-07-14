@@ -116,8 +116,15 @@ interface SessionRow extends RowDataPacket {
   bio: string | null;
   location: string | null;
   avatar_url: string | null;
+  banner_url: string | null;
+  profile_accent: string | null;
+  profile_background: string | null;
+  profile_background_video_url: string | null;
+  profile_background_video_poster_url: string | null;
+  profile_background_blur: string | null;
   profile_theme: string | null;
   profile_theme_config_json: string | null;
+  profile_canvas_glass_opacity: number | string | null;
   links: string | null;
   traits: string | null;
 }
@@ -613,8 +620,15 @@ class MysqlAuthRepository implements AuthRepository {
             p.bio,
             p.location,
             p.avatar_url,
+            p.banner_url,
+            p.profile_accent,
+            p.profile_background,
+            p.profile_background_video_url,
+            p.profile_background_video_poster_url,
+            p.profile_background_blur,
             p.profile_theme,
             p.profile_theme_config_json,
+            p.profile_canvas_glass_opacity,
             p.links,
             p.traits
          FROM sessions s
@@ -644,8 +658,15 @@ class MysqlAuthRepository implements AuthRepository {
       bio: row.bio,
       location: row.location,
       avatarUrl: row.avatar_url,
+      bannerUrl: row.banner_url,
+      profileAccent: row.profile_accent,
+      profileBackground: row.profile_background,
+      profileBackgroundVideo: row.profile_background_video_url,
+      profileBackgroundVideoPoster: row.profile_background_video_poster_url,
+      profileBackgroundBlur: row.profile_background_blur,
       profileTheme: row.profile_theme,
       profileThemeConfig: row.profile_theme_config_json,
+      profileCanvasGlass: row.profile_canvas_glass_opacity,
       links: row.links,
       traits: row.traits,
     };

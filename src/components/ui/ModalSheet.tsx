@@ -193,7 +193,7 @@ export function ModalSheet({
             aria-labelledby={titleId}
             aria-describedby={descriptionId}
             className={cn(
-              "flex w-full flex-col overflow-hidden border border-line bg-surface shadow-lift outline-none lg:h-auto lg:max-h-[calc(100dvh-3rem)] lg:rounded-panel",
+              "site-profile-glass-surface flex w-full flex-col overflow-hidden border border-line bg-surface shadow-lift outline-none lg:h-auto lg:max-h-[calc(100dvh-3rem)] lg:rounded-panel",
               panelMobileClasses[mobile],
               panelSizeClasses[size],
               panelClassName,
@@ -226,7 +226,7 @@ export function ModalSheet({
             {footer ? (
               <div
                 className={cn(
-                  "shrink-0 border-t border-line bg-surface px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 lg:px-5 lg:pb-3",
+                  "site-profile-glass-surface shrink-0 border-t border-line bg-surface px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 lg:px-5 lg:pb-3",
                   footerClassName,
                 )}
               >
@@ -300,7 +300,7 @@ function ModalSheetHeader({
   ) : null;
 
   return (
-    <div className="shrink-0 border-b border-line bg-surface px-4 py-3 lg:px-5">
+    <div className="site-profile-glass-surface shrink-0 border-b border-line bg-surface px-4 py-3 lg:px-5">
       {align === "center" ? (
         <div className="grid grid-cols-[2.5rem_1fr_2.5rem] items-center gap-3">
           <span aria-hidden="true" />

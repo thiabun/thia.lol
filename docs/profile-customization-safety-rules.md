@@ -55,6 +55,11 @@ Current profile customization fields:
 Current frontend behavior:
 
 - Profile accent/theme values may exist in storage for compatibility, but controls are hidden until presets visibly affect public rendering through tested, contrast-safe mappings.
+- Signed-in members may explicitly select `Profile Theme` to apply their own
+  constrained profile appearance across supported site surfaces. `Light` and
+  `Dark` remain standard site themes and must not inherit profile styling.
+- Public profile pages remain themed to the profile owner regardless of the
+  viewer's selected site theme.
 - The previous `Customize profile` modal has been removed. Owner customization
   now uses a compact `Edit profile` surface for display name, bio, location,
   avatar, banner, profile background media, and background clarity.
@@ -151,6 +156,20 @@ Current backend behavior:
 
 Future implementation should keep this baseline and tighten it where needed. In particular, future API work should move profile accent/theme handling from generic token validation to explicit allowlists before those values affect more UI.
 
+### Site-Wide Profile Theme
+
+Site-wide Profile Theme must reuse the same validated profile appearance data
+as the public profile: allowlisted colors, product-controlled backgrounds,
+bounded blur, controlled surface opacity, and bounded glass effects. It must
+not introduce a second unconstrained appearance model or a frontend-only copy
+that can drift from the saved profile.
+
+The mode is an explicit signed-in preference. Switching to Light or Dark must
+remove all site-wide profile appearance properties, while viewing any public
+profile must continue to honor that profile owner's theme. Persistence may
+remember the selected mode, but it must not persist raw CSS or executable
+content supplied by a member.
+
 ## Allowed Customization
 
 Allowed now or likely allowed later, subject to validation:
@@ -230,7 +249,8 @@ The following are not allowed:
 ### Contrast And Readability
 
 - Body text, labels, buttons, tabs, and moderation controls should meet WCAG AA contrast targets where practical: 4.5:1 for normal text and 3:1 for large text or essential UI graphics.
-- Profile presets must be tested in both light and dark app themes.
+- Profile presets must be tested in both standard site themes and when selected
+  as the site-wide Profile Theme.
 - Accent colors may decorate borders, badges, highlights, and buttons, but they must not become the only readability mechanism.
 - Accent/theme profile controls should stay hidden unless a selected preset visibly affects the profile through a documented, tested, contrast-safe mapping.
 - User-selected background media must not sit directly behind text without a product-controlled overlay, blur, opacity, or surface treatment.

@@ -218,6 +218,25 @@ body[data-profile-canvas-editing="true"] [data-app-mobile-nav="true"] {
   min-height: 100dvh;
 }
 
+.site-profile-canvas-wash {
+  background-color: color-mix(
+    in oklab,
+    var(--app-canvas) var(--site-profile-canvas-alpha, 94%),
+    transparent
+  );
+}
+
+[data-site-profile-theme="true"] :is(
+  [data-app-panel="true"],
+  .site-profile-glass-surface
+) {
+  background-color: color-mix(
+    in oklab,
+    var(--app-surface) var(--site-profile-module-alpha, 58%),
+    transparent
+  );
+}
+
 .profile-grid-scaled-content {
   block-size: calc(100% * var(--profile-grid-content-scale-inverse, 1));
   inline-size: calc(100% * var(--profile-grid-content-scale-inverse, 1));

@@ -17,11 +17,20 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from "react-router";
 import { BrandLogo, BrandMark } from "../BrandLogo";
 import { ThemeToggle } from "../ThemeToggle";
+import { ProfilePersonalBackdrop } from "../social/ProfilePersonalBackdrop";
 import { Button, ButtonLink } from "../ui/Button";
 import { CoffeeSupport } from "./CoffeeSupport";
 import { StrokeJokePopup } from "./StrokeJokePopup";
@@ -35,8 +44,14 @@ import {
 } from "../../lib/motionPresets";
 import { emitPostCreated } from "../../lib/postEvents";
 import { notificationsUpdatedEventName } from "../../lib/notificationEvents";
-import { applyProfileThemeToRoot } from "../../lib/profileThemes";
+import {
+  applyProfileThemeToRoot,
+  clearProfileThemeFromRoot,
+  normalizeProfileThemeConfig,
+} from "../../lib/profileThemes";
+import { profileCanvasGlassTreatment } from "../../lib/profileVisualTreatments";
 import { useAuth } from "../../lib/useAuth";
+import { useTheme } from "../../lib/useTheme";
 import type { Room } from "../../lib/types";
 
 const PostComposerModal = lazy(() =>
@@ -149,6 +164,7 @@ export type AppShellOutletContext = {
 
 export function AppShell() {
   const { csrfToken, profile, status, user } = useAuth();
+  const { themePreference } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
   const [composerOpen, setComposerOpen] = useState(false);
@@ -174,21 +190,68 @@ export function AppShell() {
   const authorThemeControlsDisabled = profileThemeControlsShouldDisable(
     location.pathname,
   );
-  const profileThemeOverridesSiteMode =
-    status === "authenticated" && Boolean(profile?.profileThemeConfig);
-  const themeControlsDisabled =
-    authorThemeControlsDisabled || profileThemeOverridesSiteMode;
-  const themeControlsDisabledReason = authorThemeControlsDisabled
-    ? "Profile theme controls this page"
-    : "Your profile theme controls the app";
-  const signedInProfileThemeConfig =
-    profileThemeOverridesSiteMode && !authorThemeControlsDisabled
-      ? profile?.profileThemeConfig ?? null
-      : null;
+  const profileThemeAvailable = status === "authenticated";
+  const siteProfileThemeActive =
+    profileThemeAvailable &&
+    themePreference === "profile" &&
+    !authorThemeControlsDisabled;
+  const signedInProfileThemeConfig = useMemo(
+    () =>
+      siteProfileThemeActive
+        ? normalizeProfileThemeConfig(profile?.profileThemeConfig)
+        : null,
+    [profile?.profileThemeConfig, siteProfileThemeActive],
+  );
+  const profileGlass = profileCanvasGlassTreatment(profile?.profileCanvasGlass);
+  const siteProfileThemeStyle = siteProfileThemeActive
+    ? ({
+        "--site-profile-canvas-alpha": `${profileGlass.canvasSurfacePercent}%`,
+        "--site-profile-module-alpha": `${profileGlass.moduleSurfacePercent}%`,
+      } as CSSProperties)
+    : undefined;
+
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+
+    if (siteProfileThemeActive) {
+      root.dataset.siteProfileTheme = "true";
+      root.style.setProperty(
+        "--site-profile-canvas-alpha",
+        `${profileGlass.canvasSurfacePercent}%`,
+      );
+      root.style.setProperty(
+        "--site-profile-module-alpha",
+        `${profileGlass.moduleSurfacePercent}%`,
+      );
+    } else {
+      delete root.dataset.siteProfileTheme;
+      root.style.removeProperty("--site-profile-canvas-alpha");
+      root.style.removeProperty("--site-profile-module-alpha");
+    }
+
+    return () => {
+      delete root.dataset.siteProfileTheme;
+      root.style.removeProperty("--site-profile-canvas-alpha");
+      root.style.removeProperty("--site-profile-module-alpha");
+    };
+  }, [
+    profileGlass.canvasSurfacePercent,
+    profileGlass.moduleSurfacePercent,
+    siteProfileThemeActive,
+  ]);
 
   useEffect(() => {
-    return applyProfileThemeToRoot(signedInProfileThemeConfig);
-  }, [signedInProfileThemeConfig]);
+    if (authorThemeControlsDisabled) {
+      return undefined;
+    }
+
+    if (signedInProfileThemeConfig) {
+      return applyProfileThemeToRoot(signedInProfileThemeConfig);
+    }
+
+    clearProfileThemeFromRoot();
+    return undefined;
+  }, [authorThemeControlsDisabled, signedInProfileThemeConfig]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -361,82 +424,102 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex min-h-dvh min-w-0 max-w-full flex-col bg-canvas text-text">
-      <div className="fixed inset-0 -z-10 bg-page-wash" />
-      <SiteHeader
-        anonymousHome={anonymousHome}
-        navItems={publicNavItems}
-        notificationUnreadCount={notificationUnreadCount}
-        showNotifications={status === "authenticated"}
-        themeControlsDisabled={themeControlsDisabled}
-        themeControlsDisabledReason={themeControlsDisabledReason}
-        topBarAction={topBarAction}
-      />
-      <CookieNotice
-        onDismiss={() => setCookieNoticeVisible(false)}
-        visible={cookieNoticeVisible}
-      />
-      <div className="mx-auto flex min-w-0 w-full max-w-7xl flex-1 flex-col px-3 sm:px-5 lg:px-7">
-        <main
-          className={cn(
-            "min-w-0 flex-1 pt-3 lg:pb-10 lg:pt-4",
-            mobileDockHidden || anonymousHome
-              ? "pb-0"
-              : "pb-[var(--app-mobile-content-bottom)]",
-          )}
-        >
-          <div className="min-h-full min-w-0">
-            <Outlet
-              context={
-                {
-                  openPostComposer,
-                  setMobileDockHidden,
-                  setTopBarAction,
-                } satisfies AppShellOutletContext
-              }
-            />
-          </div>
-        </main>
-        {anonymousHome ? null : (
-          <MobileDock
-            hidden={mobileDockHidden}
-            navItems={publicNavItems}
-            onPostClick={handlePostClick}
-            postDisabled={postingDisabled}
+    <div
+      className="relative isolate min-h-dvh min-w-0 max-w-full bg-canvas text-text"
+      data-site-profile-canvas-glass={
+        siteProfileThemeActive ? profileGlass.normalizedGlass : undefined
+      }
+      data-site-profile-theme={siteProfileThemeActive ? "true" : undefined}
+      style={siteProfileThemeStyle}
+    >
+      {siteProfileThemeActive && profile ? (
+        <>
+          <ProfilePersonalBackdrop profile={profile} siteWide />
+          <div
+            aria-hidden="true"
+            className="site-profile-canvas-wash pointer-events-none fixed inset-0 z-[1]"
           />
-        )}
-      </div>
-      <SiteFooter />
-      {anonymousHome ? null : (
-        <Button
-          type="button"
-          className="fixed bottom-6 right-6 z-40 hidden min-h-12 rounded-full px-5 text-base font-semibold shadow-lift ring-2 ring-accent/25 lg:inline-flex"
-          disabled={postingDisabled}
-          icon={<PenLine aria-hidden="true" size={20} />}
-          onClick={handlePostClick}
-          data-testid="desktop-post-action"
-        >
-          Post
-        </Button>
+        </>
+      ) : (
+        <div className="fixed inset-0 z-0 bg-page-wash" />
       )}
-      {anonymousHome ? null : <CoffeeSupport mobileHidden={mobileDockHidden} />}
-      {composerActivated ? (
-        <Suspense fallback={composerOpen ? <ComposerLoadingNotice /> : null}>
-          <PostComposerModal
-            key={composerKey}
-            csrfToken={csrfToken}
-            initialRoomSlug={composerRoomSlug}
-            onClose={() => setComposerOpen(false)}
-            onCreated={emitPostCreated}
-            open={composerOpen}
-            rooms={composerRooms}
-          />
-        </Suspense>
-      ) : null}
-      <StrokeJokePopup
-        cookieNoticeVisible={cookieNoticeVisible}
-        pathname={location.pathname}
-      />
+      <div className="relative z-10 flex min-h-dvh min-w-0 max-w-full flex-col">
+        <SiteHeader
+          anonymousHome={anonymousHome}
+          navItems={publicNavItems}
+          notificationUnreadCount={notificationUnreadCount}
+          profileThemeAvailable={profileThemeAvailable}
+          showNotifications={status === "authenticated"}
+          themeControlsDisabled={authorThemeControlsDisabled}
+          themeControlsDisabledReason="Profile theme controls this page"
+          topBarAction={topBarAction}
+        />
+        <CookieNotice
+          onDismiss={() => setCookieNoticeVisible(false)}
+          visible={cookieNoticeVisible}
+        />
+        <div className="mx-auto flex min-w-0 w-full max-w-7xl flex-1 flex-col px-3 sm:px-5 lg:px-7">
+          <main
+            className={cn(
+              "min-w-0 flex-1 pt-3 lg:pb-10 lg:pt-4",
+              mobileDockHidden || anonymousHome
+                ? "pb-0"
+                : "pb-[var(--app-mobile-content-bottom)]",
+            )}
+          >
+            <div className="min-h-full min-w-0">
+              <Outlet
+                context={
+                  {
+                    openPostComposer,
+                    setMobileDockHidden,
+                    setTopBarAction,
+                  } satisfies AppShellOutletContext
+                }
+              />
+            </div>
+          </main>
+          {anonymousHome ? null : (
+            <MobileDock
+              hidden={mobileDockHidden}
+              navItems={publicNavItems}
+              onPostClick={handlePostClick}
+              postDisabled={postingDisabled}
+            />
+          )}
+        </div>
+        <SiteFooter />
+        {anonymousHome ? null : (
+          <Button
+            type="button"
+            className="fixed bottom-6 right-6 z-40 hidden min-h-12 rounded-full px-5 text-base font-semibold shadow-lift ring-2 ring-accent/25 lg:inline-flex"
+            disabled={postingDisabled}
+            icon={<PenLine aria-hidden="true" size={20} />}
+            onClick={handlePostClick}
+            data-testid="desktop-post-action"
+          >
+            Post
+          </Button>
+        )}
+        {anonymousHome ? null : <CoffeeSupport mobileHidden={mobileDockHidden} />}
+        {composerActivated ? (
+          <Suspense fallback={composerOpen ? <ComposerLoadingNotice /> : null}>
+            <PostComposerModal
+              key={composerKey}
+              csrfToken={csrfToken}
+              initialRoomSlug={composerRoomSlug}
+              onClose={() => setComposerOpen(false)}
+              onCreated={emitPostCreated}
+              open={composerOpen}
+              rooms={composerRooms}
+            />
+          </Suspense>
+        ) : null}
+        <StrokeJokePopup
+          cookieNoticeVisible={cookieNoticeVisible}
+          pathname={location.pathname}
+        />
+      </div>
     </div>
   );
 }
@@ -444,7 +527,7 @@ export function AppShell() {
 function ComposerLoadingNotice() {
   return (
     <div
-      className="fixed inset-x-4 bottom-20 z-50 mx-auto max-w-xs rounded-panel border border-line bg-surface/96 px-3 py-2 text-sm text-muted shadow-soft lg:bottom-5 lg:right-5 lg:left-auto"
+      className="site-profile-glass-surface fixed inset-x-4 bottom-20 z-50 mx-auto max-w-xs rounded-panel border border-line bg-surface/96 px-3 py-2 text-sm text-muted shadow-soft lg:bottom-5 lg:right-5 lg:left-auto"
       role="status"
     >
       Opening composer.
@@ -456,6 +539,7 @@ function SiteHeader({
   anonymousHome,
   navItems,
   notificationUnreadCount,
+  profileThemeAvailable,
   showNotifications,
   themeControlsDisabled,
   themeControlsDisabledReason,
@@ -464,6 +548,7 @@ function SiteHeader({
   anonymousHome: boolean;
   navItems: NavItemProps[];
   notificationUnreadCount: number | undefined;
+  profileThemeAvailable: boolean;
   showNotifications: boolean;
   themeControlsDisabled: boolean;
   themeControlsDisabledReason: string;
@@ -479,7 +564,7 @@ function SiteHeader({
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-canvas/86 backdrop-blur-veil">
+    <header className="site-profile-glass-surface sticky top-0 z-40 border-b border-line bg-canvas/86 backdrop-blur-veil">
       <div className="mx-auto flex min-h-14 w-full max-w-7xl items-center gap-2 px-3 sm:px-5 lg:px-7">
         <NavLink
           to="/"
@@ -517,6 +602,7 @@ function SiteHeader({
             compact
             disabled={themeControlsDisabled}
             disabledReason={themeControlsDisabledReason}
+            profileThemeAvailable={profileThemeAvailable}
           />
           <AccountMenu />
         </div>
@@ -563,7 +649,7 @@ function AnonymousHomeHeader({
 
   return (
     <header
-      className="sticky top-0 z-40 border-b border-line bg-canvas/86 backdrop-blur-veil"
+      className="site-profile-glass-surface sticky top-0 z-40 border-b border-line bg-canvas/86 backdrop-blur-veil"
       data-testid="anonymous-home-header"
     >
       <div className="mx-auto flex min-h-14 w-full max-w-7xl items-center gap-2 px-3 sm:px-5 lg:px-7">
@@ -618,7 +704,7 @@ function AnonymousHomeHeader({
               aria-label="Open navigation menu"
               aria-controls="anonymous-home-menu"
               aria-expanded={menuOpen}
-              aria-haspopup="menu"
+              aria-haspopup="dialog"
               className="size-11"
               icon={<Menu aria-hidden="true" size={19} />}
               onClick={() => setMenuOpen((current) => !current)}
@@ -631,22 +717,46 @@ function AnonymousHomeHeader({
                   initial="hidden"
                   animate="show"
                   exit="exit"
-                  className="absolute right-0 z-50 mt-2 w-44 origin-top-right rounded-panel border border-line bg-surface/96 p-1 shadow-lift backdrop-blur-veil"
-                  role="menu"
+                  className="site-profile-glass-surface absolute right-0 z-50 mt-2 w-44 origin-top-right rounded-panel border border-line bg-surface/96 p-1 shadow-lift backdrop-blur-veil"
+                  aria-label="Navigation and theme"
+                  role="dialog"
                   data-testid="anonymous-home-menu"
                 >
-                  <AccountMenuItem to="/discover" onSelect={() => setMenuOpen(false)}>
+                  <AccountMenuItem
+                    to="/discover"
+                    withinMenu={false}
+                    onSelect={() => setMenuOpen(false)}
+                  >
                     <Compass aria-hidden="true" size={16} />
                     Discover
                   </AccountMenuItem>
-                  <AccountMenuItem to="/rooms" onSelect={() => setMenuOpen(false)}>
+                  <AccountMenuItem
+                    to="/rooms"
+                    withinMenu={false}
+                    onSelect={() => setMenuOpen(false)}
+                  >
                     <Radio aria-hidden="true" size={16} />
                     Rooms
                   </AccountMenuItem>
-                  <AccountMenuItem to="/login" onSelect={() => setMenuOpen(false)}>
+                  <AccountMenuItem
+                    to="/login"
+                    withinMenu={false}
+                    onSelect={() => setMenuOpen(false)}
+                  >
                     <LogIn aria-hidden="true" size={16} />
                     Sign in
                   </AccountMenuItem>
+                  <div
+                    className="mt-1 flex items-center justify-between gap-2 border-t border-line px-2 pt-1.5 text-sm font-medium text-muted"
+                    role="none"
+                  >
+                    <span>Theme</span>
+                    <ThemeToggle
+                      compact
+                      disabled={themeControlsDisabled}
+                      disabledReason={themeControlsDisabledReason}
+                    />
+                  </div>
                 </motion.div>
               ) : null}
             </AnimatePresence>
@@ -747,7 +857,7 @@ function AccountMenu() {
             initial="hidden"
             animate="show"
             exit="exit"
-            className="absolute right-0 z-50 mt-2 w-40 origin-top-right rounded-panel border border-line bg-surface/96 p-1 shadow-lift backdrop-blur-veil sm:w-44"
+            className="site-profile-glass-surface absolute right-0 z-50 mt-2 w-40 origin-top-right rounded-panel border border-line bg-surface/96 p-1 shadow-lift backdrop-blur-veil sm:w-44"
             role="menu"
             data-testid="account-menu"
           >
@@ -812,18 +922,20 @@ function AccountMenuItem({
   onClick,
   onSelect,
   to,
+  withinMenu = true,
 }: {
   children: ReactNode;
   onClick?: () => void;
   onSelect?: () => void;
   to?: string;
+  withinMenu?: boolean;
 }) {
   if (to) {
     return (
       <NavLink
         to={to}
         className={accountMenuItemClass}
-        role="menuitem"
+        role={withinMenu ? "menuitem" : undefined}
         onClick={onSelect}
       >
         {children}
@@ -835,7 +947,7 @@ function AccountMenuItem({
     <button
       type="button"
       className={accountMenuItemClass}
-      role="menuitem"
+      role={withinMenu ? "menuitem" : undefined}
       onClick={onClick ?? onSelect}
     >
       {children}
@@ -892,7 +1004,7 @@ function MobileDock({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={snappySpring}
-      className="fixed inset-x-3 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-30 mx-auto grid w-auto max-w-sm grid-cols-5 items-center gap-0.5 rounded-panel border border-line/80 bg-surface/92 px-1.5 py-1 shadow-soft backdrop-blur-veil lg:hidden"
+      className="site-profile-glass-surface fixed inset-x-3 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-30 mx-auto grid w-auto max-w-sm grid-cols-5 items-center gap-0.5 rounded-panel border border-line/80 bg-surface/92 px-1.5 py-1 shadow-soft backdrop-blur-veil lg:hidden"
       aria-label="Primary"
       data-app-mobile-nav="true"
       data-testid="mobile-nav"
@@ -1016,7 +1128,7 @@ function CookieNotice({
 
   return (
     <div
-      className="fixed inset-x-3 top-[4.25rem] z-50 mx-auto max-w-2xl rounded-panel border border-line bg-surface/96 p-4 text-sm text-muted shadow-lift backdrop-blur-veil lg:bottom-5 lg:top-auto"
+      className="site-profile-glass-surface fixed inset-x-3 top-[4.25rem] z-50 mx-auto max-w-2xl rounded-panel border border-line bg-surface/96 p-4 text-sm text-muted shadow-lift backdrop-blur-veil lg:bottom-5 lg:top-auto"
       data-testid="cookie-notice"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start">

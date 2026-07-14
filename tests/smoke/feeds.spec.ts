@@ -863,10 +863,18 @@ test("site theme changes mark the root transition state", async ({ page }) => {
       }),
   );
 
-  await page.getByRole("button", { name: "Switch to Dark mode" }).click();
+  await page.getByTestId("theme-menu-trigger").click();
+  await page
+    .getByTestId("theme-menu")
+    .getByRole("radio", { name: "Dark", exact: true })
+    .click();
 
   expect(await transitionSeen).toBe(true);
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-theme-choice",
+    "dark",
+  );
   await expect
     .poll(() =>
       page.evaluate(

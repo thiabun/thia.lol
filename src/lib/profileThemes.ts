@@ -9,8 +9,6 @@ import { withRootThemeTransition } from "./themeTransitions";
 const rootThemeCleanupDelayMs = 80;
 let rootThemeActiveSignature: string | undefined;
 let rootThemeActiveToken: symbol | undefined;
-let rootThemeRestoreDataset: string | undefined;
-let rootThemeRestoreValues: Map<string, string> | undefined;
 let rootThemeCleanupTimer: number | undefined;
 
 export const profileThemeColorKeys: ProfileThemeColorKey[] = [
@@ -299,6 +297,56 @@ export function profileThemeColorsToCssProperties(
   } as CSSProperties;
 }
 
+export function profileThemeColorScheme(
+  config: ProfileThemeConfig | null | undefined,
+): "light" | "dark" | null {
+  const colors = profileThemeConfigColors(config);
+
+  if (!colors) {
+    return null;
+  }
+
+  return relativeLuminance(colors.canvas) > 0.52 ? "light" : "dark";
+}
+
+function removeProfileThemeRootProperties(root: HTMLElement) {
+  const properties = profileThemeColorsToCssProperties(
+    profileThemePresets[0]!.colors,
+  );
+
+  Object.keys(properties).forEach((property) => {
+    root.style.removeProperty(property);
+  });
+  delete root.dataset.profileTheme;
+  root.style.colorScheme = root.dataset.theme === "dark" ? "dark" : "light";
+}
+
+export function clearProfileThemeFromRoot() {
+  if (typeof document === "undefined" || typeof window === "undefined") {
+    return;
+  }
+
+  const root = document.documentElement;
+  const hadProfileTheme =
+    Boolean(root.dataset.profileTheme || rootThemeActiveSignature) ||
+    Object.keys(
+      profileThemeColorsToCssProperties(profileThemePresets[0]!.colors),
+    ).some((property) => root.style.getPropertyValue(property) !== "");
+
+  if (rootThemeCleanupTimer !== undefined) {
+    window.clearTimeout(rootThemeCleanupTimer);
+    rootThemeCleanupTimer = undefined;
+  }
+
+  rootThemeActiveToken = undefined;
+  rootThemeActiveSignature = undefined;
+  if (hadProfileTheme) {
+    withRootThemeTransition(() => removeProfileThemeRootProperties(root));
+  } else {
+    removeProfileThemeRootProperties(root);
+  }
+}
+
 export function applyProfileThemeToRoot(
   config: ProfileThemeConfig | null | undefined,
 ): () => void {
@@ -316,20 +364,11 @@ export function applyProfileThemeToRoot(
   const properties = profileThemeColorsToCssProperties(colors);
   const signature = JSON.stringify(config ?? null);
   const token = Symbol("profile-theme-root");
+  const colorScheme = profileThemeColorScheme(config);
 
   if (rootThemeCleanupTimer !== undefined) {
     window.clearTimeout(rootThemeCleanupTimer);
     rootThemeCleanupTimer = undefined;
-  }
-
-  if (!rootThemeActiveSignature) {
-    rootThemeRestoreValues = new Map(
-      Object.keys(properties).map((property) => [
-        property,
-        root.style.getPropertyValue(property),
-      ]),
-    );
-    rootThemeRestoreDataset = root.dataset.profileTheme;
   }
 
   function applyProperties() {
@@ -341,6 +380,9 @@ export function applyProfileThemeToRoot(
       root.style.setProperty(property, value);
     });
     root.dataset.profileTheme = config?.mode ?? "custom";
+    if (colorScheme) {
+      root.style.colorScheme = colorScheme;
+    }
   }
 
   if (rootThemeActiveSignature === signature) {
@@ -363,29 +405,12 @@ export function applyProfileThemeToRoot(
         return;
       }
 
-      const restoreValues = rootThemeRestoreValues;
-      const restoreDataset = rootThemeRestoreDataset;
-
       withRootThemeTransition(() => {
-        restoreValues?.forEach((value, property) => {
-          if (value) {
-            root.style.setProperty(property, value);
-          } else {
-            root.style.removeProperty(property);
-          }
-        });
-
-        if (restoreDataset) {
-          root.dataset.profileTheme = restoreDataset;
-        } else {
-          delete root.dataset.profileTheme;
-        }
+        removeProfileThemeRootProperties(root);
       });
 
       rootThemeActiveSignature = undefined;
       rootThemeCleanupTimer = undefined;
-      rootThemeRestoreDataset = undefined;
-      rootThemeRestoreValues = undefined;
     }, rootThemeCleanupDelayMs);
   };
 }

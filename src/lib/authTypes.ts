@@ -1,4 +1,8 @@
-import type { GrowthAttribution, ProfileThemeConfig } from "./types";
+import type {
+  GrowthAttribution,
+  ProfileBackgroundBlur,
+  ProfileThemeConfig,
+} from "./types";
 
 export type AuthUser = {
   id: number;
@@ -18,8 +22,12 @@ export type AuthProfile = {
   bannerUrl?: string | null;
   profileAccent?: string | null;
   profileBackground?: string | null;
+  profileBackgroundVideo?: string | null;
+  profileBackgroundVideoPoster?: string | null;
+  profileBackgroundBlur?: ProfileBackgroundBlur;
   profileTheme?: string | null;
   profileThemeConfig?: ProfileThemeConfig | null;
+  profileCanvasGlass?: number;
   links: string[];
   traits: string[];
 };
@@ -60,6 +68,7 @@ export type AuthContextValue = {
   register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<AuthSession>;
+  updateProfile: (patch: Partial<AuthProfile>) => void;
   clearSession: () => void;
   runWithAuth: <T>(
     task: (csrfToken: string) => Promise<T>,

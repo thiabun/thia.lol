@@ -459,7 +459,7 @@ export function UnifiedComposer({
       <form
         id={formId}
         className={cn(
-          "flex min-h-0 flex-col bg-surface",
+          "site-profile-glass-surface flex min-h-0 flex-col bg-surface",
           isReply && "overflow-hidden rounded-card border border-line shadow-inner-soft",
           className,
         )}
@@ -599,7 +599,7 @@ export function UnifiedComposer({
           ) : null}
         </div>
 
-        <div className="sticky bottom-0 z-10 mt-auto border-t border-line bg-surface/96 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur-panel sm:px-5 sm:pb-3">
+      <div className="site-profile-glass-surface sticky bottom-0 z-10 mt-auto border-t border-line bg-surface/96 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur-panel sm:px-5 sm:pb-3">
           <div className="flex flex-col gap-2 min-[360px]:flex-row min-[360px]:items-center">
             <div className="flex items-center gap-1 sm:gap-1.5">
               <label

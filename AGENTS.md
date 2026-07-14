@@ -194,9 +194,14 @@ Design language:
 
 - Light mode: `Light`, Glinda mood, warm pink, calm, skin-lit, fluid.
 - Dark mode: `Dark`, Elphaba mood, deep green, moonlit, verdant, quiet.
+- Site-wide profile mode: `Profile Theme`, an explicit signed-in opt-in that
+  carries the member's constrained profile colors, surfaces, background, and
+  glass treatment through the rest of the site.
+- Public profile pages remain themed to the profile owner regardless of the
+  viewer's selected site theme.
 - Brand identity: minimal bunny mark plus `thia.lol` wordmark.
-- Pink variant: allowed for brand/social/app-icon assets, not a third selectable
-  theme unless explicitly requested.
+- Pink variant: allowed for brand/social/app-icon assets, not a separate
+  selectable brand theme.
 - Motion should feel springy, liquid, and alive without getting in the way.
 
 Build the platform like a living place, not a stack of disconnected widgets.

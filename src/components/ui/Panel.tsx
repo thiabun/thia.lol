@@ -14,6 +14,7 @@ export function Panel({
 }: PanelProps) {
   return (
     <div
+      data-app-panel="true"
       className={cn(
         "rounded-panel border border-line/82 bg-surface/66",
         elevated && "shadow-soft backdrop-blur-veil",
