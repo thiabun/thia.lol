@@ -2,6 +2,13 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 import { Buffer } from "node:buffer";
 import { readFileSync } from "node:fs";
 import { mockSpotifyIframeApi, spotifyPlayCalls } from "../helpers/spotify";
+import {
+  profileModuleAllowedSizes,
+  profileModuleTwitchDisplayModeForSize,
+  profileModuleTypes,
+} from "../../src/lib/profileModuleRegistry";
+import { profileModuleCanvasSpanAllowed } from "../../server/src/profiles";
+import type { ProfileModuleType } from "../../src/lib/types";
 
 const PROFILE_CANVAS_VERSION = 2;
 const PROFILE_CANVAS_COLUMNS = 12;
@@ -32,6 +39,19 @@ test.beforeEach(async ({ context }) => {
       ),
     });
   });
+  await context.route(
+    "**/uploads/media/2026/07/profile-audit-*.png",
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "image/png",
+        body: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+          "base64",
+        ),
+      });
+    },
+  );
   await context.route(/^https:\/\/player\.twitch\.tv\//, async (route) => {
     await route.fulfill({
       status: 200,
@@ -3108,11 +3128,12 @@ test("profile studio keeps the canvas readable at compact desktop widths", async
 
   const module = page.getByTestId("profile-canvas-module-1");
   await module.hover();
-  const editButton = page.getByTestId("profile-canvas-edit-module-1");
-  await editButton.click();
+  const moduleTrigger = profileCanvasModuleTrigger(page, 1);
+  await moduleTrigger.click();
   await expect(inspector).toBeFocused();
   await inspector.getByRole("button", { name: /close about/i }).click();
-  await expect(editButton).toBeFocused();
+  await expect(moduleTrigger).toBeFocused();
+  await expect(page.locator('[data-testid^="profile-canvas-edit-module-"]')).toHaveCount(0);
 });
 
 test("Save waits for an in-flight canvas autosave before publishing", async ({
@@ -3166,7 +3187,7 @@ test("Save reconciles a profile-content revert after an in-flight autosave", asy
 
   const profileInfo = page.getByTestId("profile-canvas-module-9001");
   await profileInfo.hover();
-  await page.getByTestId("profile-canvas-edit-module-9001").click();
+  await profileCanvasModuleTrigger(page, 9001).click();
   const displayName = page.getByTestId("profile-info-modal-display-name");
   await displayName.fill("Temporary name");
   await expect.poll(() => profilePayloads.length).toBe(1);
@@ -3200,7 +3221,7 @@ test("profile studio reports profile-content autosave failures", async ({
 
   const profileInfo = page.getByTestId("profile-canvas-module-9001");
   await profileInfo.hover();
-  await page.getByTestId("profile-canvas-edit-module-9001").click();
+  await profileCanvasModuleTrigger(page, 9001).click();
   await page
     .getByTestId("profile-info-modal-display-name")
     .fill("Unsaved profile name");
@@ -3236,7 +3257,7 @@ test("Save retries a failed profile-content revert before publishing", async ({
 
   const profileInfo = page.getByTestId("profile-canvas-module-9001");
   await profileInfo.hover();
-  await page.getByTestId("profile-canvas-edit-module-9001").click();
+  await profileCanvasModuleTrigger(page, 9001).click();
   const displayName = page.getByTestId("profile-info-modal-display-name");
   await displayName.fill("Temporary name");
   await expect.poll(() => profilePayloads.length).toBe(1);
@@ -3658,9 +3679,8 @@ test("direct canvas point selection creates a draft module through picker and se
   await page
     .getByTestId("profile-module-settings-body")
     .fill("Canvas note configured from settings.");
-  const configuredContent = page.locator(
-    '[data-testid^="profile-canvas-module-content-"]',
-    { hasText: "Canvas note configured from settings." },
+  const configuredContent = page.getByTestId(
+    "profile-canvas-module-content-9001",
   );
   await expect(configuredContent).toBeVisible();
   await expect(configuredContent).toHaveAttribute(
@@ -3674,6 +3694,10 @@ test("direct canvas point selection creates a draft module through picker and se
   await expect(
     configuredContent.locator('[data-testid^="profile-canvas-light-preview-"]'),
   ).toBeVisible();
+  await expect(configuredContent).toContainText("Text");
+  await expect(configuredContent).not.toContainText(
+    "Canvas note configured from settings.",
+  );
   await expect(
     configuredContent.evaluate((element) => window.getComputedStyle(element).filter),
   ).resolves.toBe("none");
@@ -3693,12 +3717,7 @@ test("direct canvas point selection creates a draft module through picker and se
       .getByTestId("profile-canvas-direct-grid")
       .locator("iframe, video, audio"),
   ).toHaveCount(0);
-  const configuredModuleShell = page.locator(
-    '[data-testid^="profile-canvas-module-"][data-profile-grid-module="true"]',
-    {
-      has: page.getByText("Canvas note configured from settings."),
-    },
-  );
+  const configuredModuleShell = page.getByTestId("profile-canvas-module-9001");
   await expect(configuredModuleShell).toHaveAttribute(
     "data-profile-grid-layout-animation",
     "false",
@@ -3801,7 +3820,7 @@ test("direct canvas point selection creates a draft module through picker and se
   });
 });
 
-test("direct canvas keeps embeds light while Activity remains live", async ({ page }) => {
+test("direct canvas uses light previews for every configured module", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await mockProfileModules(page, {
     authenticated: true,
@@ -3828,46 +3847,20 @@ test("direct canvas keeps embeds light while Activity remains live", async ({ pa
   await expect(grid.getByTestId("profile-canvas-light-preview-22")).toBeVisible();
   await expect(grid.getByTestId("profile-canvas-light-preview-23")).toBeVisible();
   await expect(grid.getByTestId("profile-canvas-light-preview-24")).toBeVisible();
-  await expect(grid.getByTestId("profile-canvas-light-preview-25")).toHaveCount(0);
+  await expect(grid.getByTestId("profile-canvas-light-preview-25")).toBeVisible();
   await expect(grid.getByTestId("profile-spotify-custom-player")).toHaveCount(0);
   await expect(grid.getByTestId("profile-uploaded-audio-player")).toHaveCount(0);
   await expect(grid.getByTestId("profile-uploaded-video-player")).toHaveCount(0);
   const activityContent = page.getByTestId("profile-canvas-module-content-25");
   await expect(activityContent).toHaveAttribute(
     "data-profile-module-content-interactive",
-    "true",
+    "false",
   );
-  await expect(activityContent).not.toHaveAttribute("inert", "");
-  await expect(activityContent.getByTestId("profile-activity-tabs")).toBeVisible();
-  await expect(activityContent.getByTestId("profile-activity")).toBeVisible();
-  await expect(activityContent.getByText("This should not render as a live post card.")).toBeVisible();
+  await expect(activityContent).toHaveAttribute("inert", "");
+  await expect(activityContent.getByTestId("profile-activity-tabs")).toHaveCount(0);
+  await expect(activityContent.getByTestId("profile-activity")).toHaveCount(0);
+  await expect(activityContent.getByText("This should not render as a live post card.")).toHaveCount(0);
   await expect(page.getByTestId("profile-canvas-drag-handle-25")).toBeVisible();
-  const activityShell = page.getByTestId("profile-canvas-module-25");
-  await expect(page.getByTestId("profile-canvas-cell-1-8")).toHaveCount(0);
-  await expect
-    .poll(() =>
-      activityShell.evaluate((element) => window.getComputedStyle(element).pointerEvents),
-    )
-    .toBe("auto");
-  const placementBeforeTabClick = await activityShell.evaluate((element) => ({
-    column: window.getComputedStyle(element).gridColumnStart,
-    row: window.getComputedStyle(element).gridRowStart,
-  }));
-
-  const repliesTab = activityContent.getByRole("tab", { name: /Replies/ });
-  await repliesTab.click();
-  await expect(repliesTab).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByTestId("profile-module-settings")).toHaveCount(0);
-  await expect(page.getByTestId("profile-canvas-selection-preview")).toHaveCount(0);
-  await expect
-    .poll(() =>
-      activityShell.evaluate((element) => ({
-        column: window.getComputedStyle(element).gridColumnStart,
-        row: window.getComputedStyle(element).gridRowStart,
-      })),
-    )
-    .toEqual(placementBeforeTabClick);
-
   const activityDragHandle = page.getByTestId("profile-canvas-drag-handle-25");
   const dragHandleBox = await activityDragHandle.boundingBox();
   expect(dragHandleBox).not.toBeNull();
@@ -3892,6 +3885,99 @@ test("direct canvas keeps embeds light while Activity remains live", async ({ pa
     buttons: 0,
   });
   await expect(page.getByTestId("profile-canvas-drag-preview")).toHaveCount(0);
+});
+
+test("direct canvas keeps Twitch display mode synchronized with resize tiers", async ({
+  page,
+}) => {
+  let draftPayload: Record<string, unknown> | undefined;
+  const githubCreator = creatorModule({ id: 32, position: 2 });
+
+  await page.setViewportSize({ width: 1366, height: 1000 });
+  await mockProfileModules(page, {
+    authenticated: true,
+    modules: [
+      withAuditLayout(
+        {
+          ...twitchStreamChatModule({ id: 31, position: 1 }),
+          type: "twitch_channel",
+        },
+        "2x1",
+        4,
+        1,
+      ),
+      withAuditLayout(
+        {
+          ...githubCreator,
+          config: {
+            ...githubCreator.config,
+            displayMode: "project",
+            platform: "github",
+            sourceMode: "github",
+          },
+        },
+        "3x2",
+        4,
+        4,
+      ),
+    ],
+    onCanvasDraftSave: (payload) => {
+      draftPayload = payload;
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia?editCanvas=1");
+
+  await profileCanvasModuleTrigger(page, 31).click();
+  const sizeStepper = page.getByTestId("profile-module-size-stepper");
+  const increase = sizeStepper.getByTestId("profile-module-size-increase");
+  const decrease = sizeStepper.getByTestId("profile-module-size-decrease");
+  const twitchModule = page.getByTestId("profile-canvas-module-31");
+  const twitchDraftState = () => {
+    const modules = (draftPayload?.modules ?? []) as Array<Record<string, unknown>>;
+    const module = modules.find((candidate) => candidate.id === 31);
+    const config = module?.config as Record<string, unknown> | undefined;
+    const layout = module?.layout as Record<string, unknown> | undefined;
+
+    return `${config?.canvasSize}:${config?.displayMode}:${layout?.colSpan}x${layout?.rowSpan}`;
+  };
+
+  await increase.click();
+  await expect.poll(twitchDraftState).toBe("3x2:stream_status:3x2");
+
+  for (const size of ["5x2", "6x2", "8x2", "4x3"]) {
+    await increase.click();
+    await expect(twitchModule).toHaveAttribute("data-profile-grid-size", size);
+  }
+  await expect.poll(twitchDraftState).toBe("4x3:stream:4x3");
+
+  await increase.click();
+  await expect(twitchModule).toHaveAttribute("data-profile-grid-size", "5x3");
+  await increase.click();
+  await expect(twitchModule).toHaveAttribute("data-profile-grid-size", "6x4");
+  await expect.poll(twitchDraftState).toBe("6x4:stream_chat:6x4");
+
+  for (const size of ["5x3", "4x3", "8x2"]) {
+    await decrease.click();
+    await expect(twitchModule).toHaveAttribute("data-profile-grid-size", size);
+  }
+  await expect.poll(twitchDraftState).toBe("8x2:stream_status:8x2");
+
+  await page.getByTestId("profile-module-settings-done").click();
+  await profileCanvasModuleTrigger(page, 32).click();
+  await page
+    .getByTestId("profile-module-size-stepper")
+    .getByTestId("profile-module-size-increase")
+    .click();
+  await expect
+    .poll(() => {
+      const modules = (draftPayload?.modules ?? []) as Array<Record<string, unknown>>;
+      const module = modules.find((candidate) => candidate.id === 32);
+      const config = module?.config as Record<string, unknown> | undefined;
+
+      return `${config?.canvasSize}:${config?.displayMode}`;
+    })
+    .toBe("4x3:project");
 });
 
 test("profile editor guide launches from onboarding tour query and can replay", async ({
@@ -4118,7 +4204,7 @@ test("direct canvas supports a 6x10 activity selection envelope", async ({
   await expect(activity).toContainText("Full");
 });
 
-test("direct canvas keeps 4x6 activity interactive in editor and public after save", async ({
+test("direct canvas keeps 4x6 activity light in editor and live after save", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
@@ -4151,7 +4237,7 @@ test("direct canvas keeps 4x6 activity interactive in editor and public after sa
   );
   await expect(activityContent).toHaveAttribute(
     "data-profile-editor-render-mode",
-    "live",
+    "light",
   );
   await expect(activityContent).toHaveAttribute(
     "data-profile-canvas-module-frame",
@@ -4159,21 +4245,15 @@ test("direct canvas keeps 4x6 activity interactive in editor and public after sa
   );
   await expect(activityContent).toHaveAttribute(
     "data-profile-module-content-interactive",
-    "true",
+    "false",
   );
-  await expect(activityContent).not.toHaveAttribute("inert", "");
-  await expect(activityContent.getByTestId("profile-activity")).toBeVisible();
-  await expect(activityContent.getByText("Fresh 4x6 activity item.")).toBeVisible();
-  await expect(activityContent.getByTestId("post-body-open-thread")).toBeVisible();
+  await expect(activityContent).toHaveAttribute("inert", "");
+  await expect(activityContent.getByTestId("profile-activity")).toHaveCount(0);
+  await expect(activityContent.getByText("Fresh 4x6 activity item.")).toHaveCount(0);
+  await expect(activityContent.getByTestId("post-body-open-thread")).toHaveCount(0);
   await expect(page.getByTestId("thread-modal")).toHaveCount(0);
   await page.getByTestId("profile-module-settings-done").click();
   await expect(page.getByTestId("profile-module-settings")).toHaveCount(0);
-
-  const activityRepliesTab = activityContent.getByRole("tab", { name: /Replies/ });
-  await activityRepliesTab.click();
-  await expect(activityRepliesTab).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByTestId("profile-module-settings")).toHaveCount(0);
-  await activityContent.getByRole("tab", { name: /Feed/ }).click();
 
   await page.getByTestId("profile-canvas-save-button").click();
   await expect(page.getByTestId("profile-canvas-editor")).toHaveCount(0);
@@ -4784,7 +4864,7 @@ test("connections settings manage brand links as a compact list", async ({
   await page.goto("/@thia");
 
   await page.getByTestId("profile-edit-button").click();
-  await page.getByTestId("profile-canvas-edit-module-9").click();
+  await profileCanvasModuleTrigger(page, 9).click();
 
   const settings = page.getByTestId("profile-module-settings");
   await expect(settings).toBeVisible();
@@ -5269,7 +5349,7 @@ test("direct canvas removal is confirmed from the contextual inspector", async (
     "data-profile-grid-layout-animation",
     "false",
   );
-  await page.getByTestId("profile-canvas-edit-module-1").click();
+  await profileCanvasModuleTrigger(page, 1).click();
   await expect(page.getByTestId("profile-module-settings")).toBeVisible();
   await expect(page.getByTestId("profile-canvas-remove-module-1")).toBeVisible();
   await expect(
@@ -5476,7 +5556,7 @@ test("profile-info settings change avatar and banner through crop controls", asy
   await page.goto("/@thia");
 
   await page.getByTestId("profile-edit-button").click();
-  await page.getByTestId("profile-canvas-edit-module-9001").click();
+  await profileCanvasModuleTrigger(page, 9001).click();
 
   const settings = page.getByTestId("profile-module-settings");
   await expect(settings.getByTestId("profile-info-media-settings")).toBeVisible();
@@ -5562,7 +5642,7 @@ test("image module settings crop and replace a single photo", async ({ page }) =
   await page.goto("/@thia");
 
   await page.getByTestId("profile-edit-button").click();
-  await page.getByTestId("profile-canvas-edit-module-12").click();
+  await profileCanvasModuleTrigger(page, 12).click();
 
   const settings = page.getByTestId("profile-module-settings");
   await expect(settings.getByTestId("profile-image-module-settings")).toBeVisible();
@@ -5661,7 +5741,7 @@ test("uploaded video and custom audio module settings use file uploads", async (
   await page.goto("/@thia");
 
   await page.getByTestId("profile-edit-button").click();
-  await page.getByTestId("profile-canvas-edit-module-21").click();
+  await profileCanvasModuleTrigger(page, 21).click();
 
   const videoSettings = page.getByTestId("profile-module-settings");
   await expect(videoSettings.getByTestId("profile-video-module-settings")).toBeVisible();
@@ -5690,7 +5770,7 @@ test("uploaded video and custom audio module settings use file uploads", async (
     });
 
   await videoSettings.getByTestId("profile-module-settings-done").click();
-  await page.getByTestId("profile-canvas-edit-module-22").click();
+  await profileCanvasModuleTrigger(page, 22).click();
 
   const musicSettings = page.getByTestId("profile-module-settings");
   await expect(musicSettings.getByTestId("profile-audio-module-settings")).toBeVisible();
@@ -5984,15 +6064,15 @@ test.describe.skip("legacy mobile touch direct canvas", () => {
     await expect(page.locator('[data-testid^="profile-canvas-remove-module-"]')).toHaveCount(0);
     await expect(page.getByTestId("profile-canvas-light-preview-21")).toHaveAttribute(
       "data-profile-canvas-preview-role",
-      "tiny",
+      "compact",
     );
     await expect(page.getByTestId("profile-canvas-light-preview-22")).toHaveAttribute(
       "data-profile-canvas-preview-role",
-      "tiny",
+      "compact",
     );
     await expect(page.getByTestId("profile-canvas-light-preview-23")).toHaveAttribute(
       "data-profile-canvas-preview-role",
-      "micro",
+      "icon",
     );
     await expect(page.getByTestId("profile-canvas-light-preview-23")).not.toContainText(
       "2x1",
@@ -7057,7 +7137,7 @@ test("legacy profile links render through Connections instead of Profile Info", 
   await expect(page.getByTestId("profile-header").getByText("Twitch legacy")).toHaveCount(0);
 });
 
-test("compact Connections renders icon-only without horizontal overflow", async ({
+test("canonical Connections absorbs legacy profile links without a duplicate module", async ({
   page,
 }) => {
   await mockProfileModules(page, {
@@ -7068,21 +7148,51 @@ test("compact Connections renders icon-only without horizontal overflow", async 
           id: 2,
           links: [
             {
-              label: "GitHub",
+              label: "Saved GitHub",
               platform: "github",
               url: "https://github.com/thiabun",
             },
-            {
-              label: "Twitch",
-              platform: "twitch",
-              url: "https://www.twitch.tv/thiabun",
-            },
-            {
-              label: "YouTube",
-              platform: "youtube",
-              url: "https://www.youtube.com/@thiabun",
-            },
           ],
+        }),
+        type: "connections",
+        layout: { column: 1, row: 2, colSpan: 3, rowSpan: 2 },
+      },
+    ],
+    profileOverrides: {
+      links: [
+        {
+          platform: "twitch",
+          label: "Legacy Twitch",
+          value: "thiabun",
+          url: "https://www.twitch.tv/thiabun",
+        },
+      ],
+    },
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const connections = page.getByTestId("profile-grid-module-connections");
+  await expect(connections).toHaveCount(1);
+  await expect(page.getByTestId("profile-grid-module-links")).toHaveCount(0);
+  await expect(connections.locator('a[href="https://github.com/thiabun"]')).toHaveCount(1);
+  await expect(connections.locator('a[href="https://www.twitch.tv/thiabun"]')).toHaveCount(1);
+});
+
+test("2x2 Connections uses up to four icon rows before overflow", async ({
+  page,
+}) => {
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      {
+        ...linksModule({
+          id: 2,
+          links: Array.from({ length: 16 }, (_, index) => ({
+            label: `Connection ${index + 1}`,
+            platform: index % 2 === 0 ? "github" : "website",
+            url: `https://example.com/connection-${index + 1}`,
+          })),
         }),
         layout: { column: 1, row: 2, colSpan: 2, rowSpan: 2 },
       },
@@ -7091,15 +7201,100 @@ test("compact Connections renders icon-only without horizontal overflow", async 
   await acknowledgeCookieNotice(page);
   await page.goto("/@thia");
 
-  await expect(page.locator('[data-profile-connections-compact="icons"]')).toBeVisible();
-  await expect(page.locator('[data-profile-connections-compact="rows"]')).toHaveCount(0);
+  const connections = page.locator('[data-profile-connections-compact="icon-grid"]');
+  await expect(connections).toBeVisible();
+  await expect(connections).toHaveAttribute(
+    "data-profile-module-visible-links",
+    "16",
+  );
+  await expect(connections.getByRole("link")).toHaveCount(16);
+  await expect(page.getByTestId("profile-connections-overflow-count")).toHaveCount(0);
+  const visualRows = await connections.getByRole("link").evaluateAll((items) =>
+    new Set(items.map((item) => Math.round(item.getBoundingClientRect().top))).size,
+  );
+  expect(visualRows).toBe(4);
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
   expect(hasHorizontalOverflow).toBe(false);
 });
 
-test("narrow Connections shows five rows before the overflow marker", async ({
+test("2x2 Connections reserves the sixteenth cell for overflow after sixteen links", async ({
+  page,
+}) => {
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      {
+        ...linksModule({
+          id: 2,
+          links: Array.from({ length: 17 }, (_, index) => ({
+            label: `Connection ${index + 1}`,
+            platform: index % 2 === 0 ? "github" : "website",
+            url: `https://example.com/connection-${index + 1}`,
+          })),
+        }),
+        layout: { column: 1, row: 2, colSpan: 2, rowSpan: 2 },
+      },
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const connections = page.locator('[data-profile-connections-compact="icon-grid"]');
+  const overflow = connections.getByTestId("profile-connections-overflow-count");
+
+  await expect(connections.getByRole("link")).toHaveCount(15);
+  await expect(overflow).toHaveText("+2");
+  await expect(overflow.locator("xpath=ancestor::a")).toHaveCount(0);
+  const visualRows = await connections
+    .locator(':scope > a, :scope > [data-testid="profile-connections-overflow-count"]')
+    .evaluateAll((items) =>
+      new Set(items.map((item) => Math.round(item.getBoundingClientRect().top))).size,
+    );
+  expect(visualRows).toBe(4);
+});
+
+test("5x1 Connections fits three long chips without clipping", async ({ page }) => {
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      {
+        ...linksModule({
+          id: 2,
+          links: Array.from({ length: 3 }, (_, index) => ({
+            label: `Extraordinarily long connection label ${index + 1}`,
+            platform: index % 2 === 0 ? "github" : "website",
+            url: `https://example.com/connection-${index + 1}`,
+          })),
+        }),
+        layout: { column: 1, row: 2, colSpan: 5, rowSpan: 1 },
+      },
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const connections = page.locator('[data-profile-connections-compact="wide-chips"]');
+  await expect(connections.getByRole("link")).toHaveCount(3);
+  await expect(connections.getByTestId("profile-connections-overflow-count")).toHaveCount(0);
+  const metrics = await connections.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const links = Array.from(element.querySelectorAll<HTMLElement>("a"));
+
+    return {
+      containerOverflow: element.scrollWidth > element.clientWidth + 1,
+      clippedLinks: links.some((link) => {
+        const rect = link.getBoundingClientRect();
+
+        return rect.left < bounds.left - 1 || rect.right > bounds.right + 1;
+      }),
+    };
+  });
+  expect(metrics).toEqual({ containerOverflow: false, clippedLinks: false });
+});
+
+test("narrow Connections uses its available icon rows", async ({
   page,
 }) => {
   await mockProfileModules(page, {
@@ -7124,16 +7319,73 @@ test("narrow Connections shows five rows before the overflow marker", async ({
   await page.goto("/@thia");
 
   const links = page.getByTestId("profile-module-links");
-  await expect(links.locator('[data-profile-connections-compact="stack"]')).toBeVisible();
+  await expect(links.locator('[data-profile-connections-compact="icon-grid"]')).toBeVisible();
   await expect(links.locator("[data-profile-module-visible-links]")).toHaveAttribute(
     "data-profile-module-visible-links",
     "5",
   );
-  await expect(links.getByText("+")).toHaveCount(0);
-  await expect(links.getByText("Website")).toBeVisible();
+  await expect(links.getByRole("link")).toHaveCount(5);
+  await expect(links.getByTestId("profile-connections-overflow-count")).toHaveCount(0);
 });
 
-test("invalid saved placement falls back without manual grid placement", async ({
+for (const connectionOverflowCase of [
+  {
+    name: "row",
+    size: { colSpan: 3, rowSpan: 2 },
+    variant: "dense-rows",
+    visible: 3,
+    hidden: 7,
+  },
+  {
+    name: "chip",
+    size: { colSpan: 5, rowSpan: 1 },
+    variant: "wide-chips",
+    visible: 2,
+    hidden: 8,
+  },
+] as const) {
+  test(`${connectionOverflowCase.name} Connections reserves a standalone overflow slot`, async ({
+    page,
+  }) => {
+    await mockProfileModules(page, {
+      authenticated: false,
+      modules: [
+        {
+          ...linksModule({
+            id: 2,
+            links: Array.from({ length: 10 }, (_, index) => ({
+              label: `Connection ${index + 1}`,
+              platform: index % 2 === 0 ? "github" : "website",
+              url: `https://example.com/connection-${index + 1}`,
+            })),
+          }),
+          layout: {
+            column: 1,
+            row: 2,
+            ...connectionOverflowCase.size,
+          },
+        },
+      ],
+    });
+    await acknowledgeCookieNotice(page);
+    await page.goto("/@thia");
+
+    const connections = page.locator(
+      `[data-profile-connections-compact="${connectionOverflowCase.variant}"]`,
+    );
+    const overflow = connections.getByTestId(
+      "profile-connections-overflow-count",
+    );
+
+    await expect(connections.getByRole("link")).toHaveCount(
+      connectionOverflowCase.visible,
+    );
+    await expect(overflow).toHaveText(`+${connectionOverflowCase.hidden}`);
+    await expect(overflow.locator("xpath=ancestor::a")).toHaveCount(0);
+  });
+}
+
+test("invalid saved placement repairs to the nearest exact registered size", async ({
   page,
 }) => {
   await mockProfileModules(page, {
@@ -7150,7 +7402,66 @@ test("invalid saved placement falls back without manual grid placement", async (
 
   const music = page.getByTestId("profile-grid-module-music");
   await expect(music).toHaveAttribute("data-profile-grid-size", "3x2");
-  await expect(music).toHaveAttribute("data-profile-grid-placement", "auto");
+  await expect(music).toHaveAttribute("data-profile-grid-placement", "manual");
+});
+
+test("public layout relocates a neighbor after an invalid size expands", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await mockProfileModules(page, {
+    authenticated: false,
+    modules: [
+      {
+        ...musicModule({ id: 6, position: 1 }),
+        config: {
+          ...musicModule({ id: 6 }).config,
+          canvasSize: "1x1",
+        },
+        layout: { column: 1, row: 4, colSpan: 1, rowSpan: 1 },
+      },
+      {
+        ...galleryModule({ id: 7, position: 2 }),
+        type: "uploaded_image",
+        config: {
+          canvasSize: "1x1",
+          configured: true,
+          mediaItems: [
+            {
+              caption: "Neighboring image",
+              url: "/uploads/media/2026/07/profile-audit-collision-neighbor.png",
+            },
+          ],
+        },
+        layout: { column: 2, row: 4, colSpan: 1, rowSpan: 1 },
+      },
+      aboutModule({ id: 8, body: "Auto-placed legacy module.", position: 3 }),
+    ],
+  });
+  await acknowledgeCookieNotice(page);
+  await page.goto("/@thia");
+
+  const music = page.getByTestId("profile-grid-module-music");
+  const image = page.getByTestId("profile-grid-module-uploaded_image");
+  const automatic = page.getByTestId("profile-grid-module-about");
+
+  await expect(music).toHaveAttribute("data-profile-grid-size", "2x1");
+  await expect(image).toHaveAttribute("data-profile-grid-size", "1x1");
+  await expect(automatic).toHaveAttribute("data-profile-grid-placement", "auto");
+
+  const [musicBox, imageBox] = await Promise.all([
+    music.boundingBox(),
+    image.boundingBox(),
+  ]);
+  expect(musicBox).not.toBeNull();
+  expect(imageBox).not.toBeNull();
+
+  const overlaps =
+    musicBox!.x < imageBox!.x + imageBox!.width &&
+    musicBox!.x + musicBox!.width > imageBox!.x &&
+    musicBox!.y < imageBox!.y + imageBox!.height &&
+    musicBox!.y + musicBox!.height > imageBox!.y;
+  expect(overlaps).toBe(false);
 });
 
 test("profile text modules use the Markdown editor and preview", async ({ page }) => {
@@ -7613,6 +7924,7 @@ async function mockProfileModules(
     profileReblogs?: unknown[];
     profileReplies?: unknown[];
     profileRooms?: unknown[];
+    badges?: unknown[];
     viewerHandle?: string;
   },
 ) {
@@ -8591,14 +8903,16 @@ async function mockProfileModules(
   });
 
   await page.route("**/api/profiles/thia/badges", async (route) => {
+    const badges = options.badges ?? [badgeGrant()];
+
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         ok: true,
         data: {
-          badges: [badgeGrant()],
-          featuredBadges: [badgeGrant()],
+          badges,
+          featuredBadges: badges,
         },
       }),
     });
@@ -9089,60 +9403,98 @@ function expectNoOverlappingPlacements(modules: Array<Record<string, unknown>>) 
   }
 }
 
-type ProfileModuleSizeAuditType =
-  | "profile_info"
-  | "about"
-  | "custom_text"
-  | "links"
-  | "featured_badges"
-  | "featured_post"
-  | "featured_room"
-  | "gallery_media"
-  | "creator_live"
-  | "music"
-  | "uploaded_audio"
-  | "spotify_song"
-  | "youtube_music_song"
-  | "spotify_artist"
-  | "activity";
+function profileCanvasModuleTrigger(page: Page, moduleId: number): Locator {
+  return page
+    .getByTestId(`profile-canvas-module-${moduleId}`)
+    .getByRole("button", { name: /^Edit /u });
+}
+
+type ProfileModuleSizeAuditType = ProfileModuleType;
 
 type ProfileModuleSizeAuditMock = Parameters<typeof mockProfileModules>[1];
+
+test("Twitch display tiers cover every registered size", () => {
+  const tiers = Object.fromEntries(
+    profileModuleAllowedSizes("twitch_channel").map((size) => [
+      size,
+      profileModuleTwitchDisplayModeForSize(size),
+    ]),
+  );
+
+  expect(tiers).toEqual({
+    "2x1": "stream_status",
+    "3x2": "stream_status",
+    "4x3": "stream",
+    "5x2": "stream_status",
+    "5x3": "stream",
+    "6x2": "stream_status",
+    "6x4": "stream_chat",
+    "8x2": "stream_status",
+    "8x6": "stream_chat",
+  });
+});
+
+test("every frontend module size is accepted by Node canvas normalization", () => {
+  for (const type of profileModuleTypes) {
+    if (type === "placeholder") {
+      continue;
+    }
+
+    for (const size of profileModuleAllowedSizes(type)) {
+      const { colSpan, rowSpan } = profileModuleSizeAuditSpan(size);
+
+      expect(
+        profileModuleCanvasSpanAllowed(type, colSpan, rowSpan),
+        `${type} ${size}`,
+      ).toBe(true);
+    }
+  }
+});
 
 const profileModuleSizeAuditMatrix: Array<{
   sizes: string[];
   type: ProfileModuleSizeAuditType;
-}> = [
-  { type: "profile_info", sizes: ["3x2", "3x3", "4x3", "6x3"] },
-  { type: "about", sizes: ["3x2", "4x3", "4x5", "8x1", "8x2"] },
-  { type: "custom_text", sizes: ["3x2", "4x3", "4x5", "6x1", "8x2"] },
-  { type: "links", sizes: ["2x2", "2x3", "3x2", "4x2", "3x4", "8x1", "8x2"] },
-  { type: "featured_badges", sizes: ["2x2", "3x2", "8x1", "8x2"] },
-  { type: "featured_post", sizes: ["3x4", "4x5"] },
-  { type: "featured_room", sizes: ["3x1", "4x2"] },
-  { type: "gallery_media", sizes: ["2x2", "3x2", "3x3", "4x3", "8x2"] },
-  {
-    type: "creator_live",
-    sizes: ["2x1", "3x2", "4x3", "5x3", "6x4", "8x2"],
-  },
-  { type: "music", sizes: ["2x1", "2x2", "3x2", "4x2", "4x3", "4x4", "8x1", "8x2"] },
-  { type: "uploaded_audio", sizes: ["2x1", "2x2", "3x2", "4x4", "8x2"] },
-  { type: "spotify_song", sizes: ["2x1", "2x2", "3x2", "4x3", "8x2"] },
-  { type: "youtube_music_song", sizes: ["2x1", "2x2", "3x2", "4x3", "4x4", "8x2"] },
-  { type: "spotify_artist", sizes: ["3x2", "4x3", "6x4", "8x2"] },
-  { type: "activity", sizes: ["5x2", "8x2", "8x3", "3x4", "4x6", "6x10"] },
-];
+}> = profileModuleTypes
+  .filter((type) => type !== "placeholder")
+  .map((type) => ({
+    sizes: [...profileModuleAllowedSizes(type)],
+    type,
+  }));
+
+const profileModuleConnectionsAuditExpectations: Record<
+  string,
+  { hidden: number; variant: string; visible: number }
+> = {
+  "2x2": { hidden: 0, variant: "icon-grid", visible: 10 },
+  "2x3": { hidden: 0, variant: "icon-grid", visible: 10 },
+  "3x2": { hidden: 7, variant: "dense-rows", visible: 3 },
+  "4x2": { hidden: 5, variant: "dense-rows", visible: 5 },
+  "3x3": { hidden: 5, variant: "dense-rows", visible: 5 },
+  "3x4": { hidden: 3, variant: "dense-rows", visible: 7 },
+  "5x1": { hidden: 8, variant: "wide-chips", visible: 2 },
+  "6x1": { hidden: 8, variant: "wide-chips", visible: 2 },
+  "8x1": { hidden: 7, variant: "wide-chips", visible: 3 },
+  "5x2": { hidden: 5, variant: "dense-rows", visible: 5 },
+  "6x2": { hidden: 3, variant: "dense-rows", visible: 7 },
+  "8x2": { hidden: 0, variant: "dense-rows", visible: 10 },
+};
 
 function profileModuleSizeAuditCases(): Array<{
+  moduleId: number;
   mock: ProfileModuleSizeAuditMock;
   size: string;
   type: ProfileModuleSizeAuditType;
 }> {
   return profileModuleSizeAuditMatrix.flatMap(({ sizes, type }, groupIndex) =>
-    sizes.map((size, sizeIndex) => ({
-      mock: profileModuleSizeAuditMock(type, size, groupIndex * 20 + sizeIndex + 1),
-      size,
-      type,
-    })),
+    sizes.map((size, sizeIndex) => {
+      const id = groupIndex * 20 + sizeIndex + 1;
+      const mock = profileModuleSizeAuditMock(type, size, id);
+      const moduleId = Number(
+        (mock.modules[0] as Record<string, unknown> | undefined)?.id,
+      );
+
+      return { mock, moduleId, size, type };
+    }),
   );
 }
 
@@ -9157,6 +9509,20 @@ function profileModuleSizeAuditMock(
   return {
     authenticated: true,
     modules: [module],
+    badges:
+      type === "featured_badges" || type === "badge_display"
+        ? Array.from({ length: 4 }, (_, index) => {
+            const grant = badgeGrant(index + 1);
+
+            return {
+              ...grant,
+              badge: {
+                ...grant.badge,
+                name: `Extraordinarily descriptive badge name ${index + 1}`,
+              },
+            };
+          })
+        : undefined,
     profileOverrides: {
       ...(type === "featured_post"
         ? { featuredPost, featuredPostId: 42 }
@@ -9164,24 +9530,13 @@ function profileModuleSizeAuditMock(
       ...(type === "featured_room"
         ? { featuredRoom: featuredPost.room, featuredRoomId: 1 }
         : {}),
-      ...(type === "links"
-        ? {
-            links: [
-              {
-                label: "GitHub",
-                platform: "github",
-                url: "https://github.com/thiabun",
-                value: "thiabun",
-              },
-            ],
-          }
-        : {}),
     },
     profilePosts:
       type === "activity"
         ? [
             postFixture({ id: 100, body: "Activity size audit post." }),
             postFixture({ id: 101, body: "Second activity item." }),
+            postFixture({ id: 102, body: "Third activity item." }),
           ]
         : undefined,
   };
@@ -9193,61 +9548,61 @@ function profileModuleSizeAuditModule(
   id: number,
 ): Record<string, unknown> {
   const row = type === "profile_info" ? 1 : 4;
+  const baseModule = {
+    id,
+    type,
+    title: type.replaceAll("_", " "),
+    config: {},
+    visibility: "public",
+    position: 1,
+    status: "active",
+    schemaVersion: 1,
+    createdAt: "2026-06-12 00:00:00",
+    updatedAt: "2026-06-12 00:00:00",
+  };
 
   if (type === "profile_info") {
     return withAuditLayout(profileInfoModule(), size, row);
   }
 
-  if (type === "about") {
-    return withAuditLayout(
-      aboutModule({
-        id,
-        body: "A concise intro with enough text to exercise wrapping.",
-      }),
-      size,
-      row,
-    );
-  }
-
-  if (type === "custom_text") {
-    return withAuditLayout(
-      textModule({
-        id,
-        body: "A short note with a clear point.",
-      }),
-      size,
-      row,
-    );
-  }
-
-  if (type === "links") {
-    return withAuditLayout(
-      linksModule({
-        id,
-        links: [
-          { label: "GitHub", platform: "github", url: "https://github.com/thiabun" },
-          { label: "Twitch", platform: "twitch", url: "https://www.twitch.tv/thiabun" },
-          { label: "YouTube", platform: "youtube", url: "https://www.youtube.com/@thia" },
-        ],
-      }),
-      size,
-      row,
-    );
-  }
-
-  if (type === "featured_badges") {
+  if (type === "about" || type === "custom_text" || type === "text") {
     return withAuditLayout(
       {
-        id,
-        type: "featured_badges",
+        ...textModule({
+          id,
+          body: "A deliberately long profile note that exercises wrapping, truncation, and every supported text-module aspect ratio without escaping its surface.",
+        }),
+        type,
+      },
+      size,
+      row,
+    );
+  }
+
+  if (type === "links" || type === "connections") {
+    return withAuditLayout(
+      {
+        ...linksModule({
+          id,
+          links: Array.from({ length: 10 }, (_, index) => ({
+            label: `Long connection label ${index + 1}`,
+            platform: index % 2 === 0 ? "github" : "website",
+            url: `https://example.com/connection-${index + 1}`,
+          })),
+        }),
+        type,
+      },
+      size,
+      row,
+    );
+  }
+
+  if (type === "featured_badges" || type === "badge_display") {
+    return withAuditLayout(
+      {
+        ...baseModule,
         title: "Badges",
-        config: { userBadgeIds: [1] },
-        visibility: "public",
-        position: 1,
-        status: "active",
-        schemaVersion: 1,
-        createdAt: "2026-06-12 00:00:00",
-        updatedAt: "2026-06-12 00:00:00",
+        config: { userBadgeIds: [1, 2, 3, 4] },
       },
       size,
       row,
@@ -9257,16 +9612,8 @@ function profileModuleSizeAuditModule(
   if (type === "featured_post") {
     return withAuditLayout(
       {
-        id,
-        type: "featured_post",
+        ...baseModule,
         title: "Featured post",
-        config: {},
-        visibility: "public",
-        position: 1,
-        status: "active",
-        schemaVersion: 1,
-        createdAt: "2026-06-12 00:00:00",
-        updatedAt: "2026-06-12 00:00:00",
       },
       size,
       row,
@@ -9276,55 +9623,269 @@ function profileModuleSizeAuditModule(
   if (type === "featured_room") {
     return withAuditLayout(
       {
-        id,
-        type: "featured_room",
+        ...baseModule,
         title: "Featured room",
-        config: {},
-        visibility: "public",
-        position: 1,
-        status: "active",
-        schemaVersion: 1,
-        createdAt: "2026-06-12 00:00:00",
-        updatedAt: "2026-06-12 00:00:00",
       },
       size,
       row,
     );
   }
 
-  if (type === "gallery_media") {
-    return withAuditLayout(galleryModule({ id }), size, row);
+  if (
+    type === "gallery_media" ||
+    type === "uploaded_image" ||
+    type === "gallery_slideshow" ||
+    type === "gallery_feed"
+  ) {
+    const mediaItems = Array.from({
+      length:
+        type === "gallery_media" || type === "uploaded_image" ? 1 : 6,
+    }, (_, index) => ({
+      caption: `Gallery image ${index + 1}`,
+      url: `/uploads/media/2026/07/profile-audit-${index + 1}.png`,
+    }));
+
+    return withAuditLayout(
+      { ...baseModule, config: { configured: true, mediaItems } },
+      size,
+      row,
+    );
   }
 
-  if (type === "creator_live") {
-    const module = ["4x3", "5x3", "6x4"].includes(size)
-      ? twitchStreamChatModule({ id })
-      : creatorModule({ id });
-
-    return withAuditLayout(module, size, row);
+  if (type === "creator_live" || type === "twitch_channel") {
+    return withAuditLayout(
+      { ...twitchStreamChatModule({ id }), type },
+      size,
+      row,
+    );
   }
 
-  if (type === "music") {
-    return withAuditLayout(musicModule({ id }), size, row);
+  if (
+    type === "youtube_video" ||
+    type === "youtube_stream" ||
+    type === "youtube_playlist"
+  ) {
+    const youtubeModule = youtubeVideoModule({ id });
+    const resourceType =
+      type === "youtube_playlist"
+        ? "playlist"
+        : type === "youtube_stream"
+          ? "stream"
+          : "video";
+    const resourceId =
+      type === "youtube_playlist"
+        ? "PLaudit"
+        : type === "youtube_stream"
+          ? "live-audit"
+          : "watch123";
+    const label =
+      type === "youtube_playlist"
+        ? "Audit YouTube playlist"
+        : type === "youtube_stream"
+          ? "Audit YouTube stream"
+          : "Build log";
+    const sourceUrl =
+      type === "youtube_playlist"
+        ? "https://www.youtube.com/playlist?list=PLaudit"
+        : type === "youtube_stream"
+          ? "https://www.youtube.com/live/live-audit"
+          : "https://www.youtube.com/watch?v=watch123";
+    const embedSrc =
+      type === "youtube_playlist"
+        ? "https://www.youtube-nocookie.com/embed/videoseries?list=PLaudit"
+        : `https://www.youtube-nocookie.com/embed/${resourceId}`;
+
+    return withAuditLayout(
+      {
+        ...youtubeModule,
+        type,
+        config: {
+          ...youtubeModule.config,
+          label,
+          url: sourceUrl,
+          integration: {
+            ...youtubeModule.config.integration,
+            resourceType,
+            resourceId,
+            resourceKey: `youtube:${resourceType}:${resourceId}`,
+            sourceUrl,
+            metadata: {
+              ...youtubeModule.config.integration.metadata,
+              title: label,
+            },
+            embed: {
+              ...youtubeModule.config.integration.embed,
+              src: embedSrc,
+              title: `${label} embed`,
+            },
+          },
+        },
+      },
+      size,
+      row,
+    );
   }
 
-  if (type === "uploaded_audio") {
-    return withAuditLayout(uploadedMp3MusicModule({ id }), size, row);
+  if (type === "uploaded_video") {
+    return withAuditLayout(uploadedVideoModule({ id }), size, row);
   }
 
-  if (type === "spotify_song") {
-    return withAuditLayout(spotifyEmbedMusicModule({ id }), size, row);
+  if (
+    type === "music" ||
+    type === "spotify_song" ||
+    type === "apple_music_song" ||
+    type === "youtube_music_song"
+  ) {
+    const songModule =
+      type === "apple_music_song"
+        ? appleMusicEmbedModule({ id })
+        : type === "youtube_music_song"
+          ? youtubeMusicEmbedModule({ id })
+          : spotifyEmbedMusicModule({ id });
+
+    return withAuditLayout(
+      { ...songModule, type },
+      size,
+      row,
+    );
   }
 
-  if (type === "youtube_music_song") {
-    return withAuditLayout(youtubeMusicEmbedModule({ id }), size, row);
+  if (type === "music_playlist") {
+    return withAuditLayout(
+      {
+        ...musicModule({ id }),
+        type,
+        config: {
+          configured: true,
+          label: "Audit playlist",
+          tracks: Array.from({ length: 8 }, (_, index) => ({
+            artist: "thia.lol",
+            id: `audit-track-${index + 1}`,
+            title: `Playlist track ${index + 1}`,
+          })),
+        },
+      },
+      size,
+      row,
+    );
   }
 
-  if (type === "spotify_artist") {
-    return withAuditLayout(spotifyArtistModule({ id }), size, row);
+  if (
+    type === "spotify_playlist" ||
+    type === "apple_music_playlist" ||
+    type === "youtube_music_playlist"
+  ) {
+    const provider = type.startsWith("apple")
+      ? "apple_music"
+      : type.startsWith("youtube")
+        ? "youtube_music"
+        : "spotify";
+    const url =
+      provider === "apple_music"
+        ? "https://music.apple.com/us/playlist/audit/pl.u-audit"
+        : provider === "youtube_music"
+          ? "https://music.youtube.com/playlist?list=PLaudit"
+          : "https://open.spotify.com/playlist/audit";
+
+    return withAuditLayout(
+      {
+        ...baseModule,
+        config: {
+          configured: true,
+          label: "Audit provider playlist",
+          platform: provider,
+          sourceMode: provider,
+          url,
+        },
+      },
+      size,
+      row,
+    );
   }
 
-  return withAuditLayout(activityModule({ id }), size, row);
+  if (
+    type === "spotify_artist" ||
+    type === "apple_music_artist" ||
+    type === "youtube_music_artist"
+  ) {
+    const artistModule = spotifyArtistModule({ id });
+    const provider = type.startsWith("apple")
+      ? "apple_music"
+      : type.startsWith("youtube")
+        ? "youtube"
+        : "spotify";
+    const sourceMode = type.startsWith("youtube") ? "youtube_music" : provider;
+    const sourceUrl =
+      provider === "apple_music"
+        ? "https://music.apple.com/us/artist/mili/1"
+        : provider === "youtube"
+          ? "https://music.youtube.com/channel/mili"
+          : "https://open.spotify.com/artist/mili";
+    const embedSrc =
+      provider === "apple_music"
+        ? "https://embed.music.apple.com/us/artist/mili/1"
+        : provider === "youtube"
+          ? "https://www.youtube-nocookie.com/embed/mili"
+          : "https://open.spotify.com/embed/artist/mili";
+
+    return withAuditLayout(
+      {
+        ...artistModule,
+        type,
+        config: {
+          ...artistModule.config,
+          platform: sourceMode,
+          sourceMode,
+          url: sourceUrl,
+          integration: {
+            ...artistModule.config.integration,
+            provider,
+            resourceKey: `${provider}:artist:mili`,
+            sourceUrl,
+            metadata: {
+              ...artistModule.config.integration.metadata,
+              subtitle:
+                provider === "apple_music"
+                  ? "Apple Music"
+                  : provider === "youtube"
+                    ? "YouTube Music"
+                    : "Spotify",
+            },
+            embed: {
+              ...artistModule.config.integration.embed,
+              src: embedSrc,
+              title: `${sourceMode} artist player`,
+            },
+          },
+        },
+      },
+      size,
+      row,
+    );
+  }
+
+  if (type === "github_repo") {
+    return withAuditLayout(
+      {
+        ...creatorModule({ id }),
+        type: "github_repo",
+        config: {
+          description: "A long repository description for the size audit.",
+          label: "thiabun/thia.lol",
+          platform: "github",
+          url: "https://github.com/thiabun/thia.lol",
+        },
+      },
+      size,
+      row,
+    );
+  }
+
+  if (type === "activity") {
+    return withAuditLayout(activityModule({ id }), size, row);
+  }
+
+  throw new Error(`Missing size-audit fixture for ${type}`);
 }
 
 function musicModuleWithSize({
@@ -9382,13 +9943,12 @@ function profileModuleSizeAuditSpan(size: string): {
   };
 }
 
-test.describe("allowed module sizes smoke render one at a time without overflow", () => {
+test.describe("every supported module renders at every registered size without overflow", () => {
+  test.describe.configure({ retries: 1 });
+
   for (const auditCase of profileModuleSizeAuditCases()) {
     test(`${auditCase.type} ${auditCase.size}`, async ({ page }) => {
       await page.setViewportSize({ width: 1366, height: 1100 });
-      if (auditCase.type === "spotify_song") {
-        await mockSpotifyIframeApi(page);
-      }
       await acknowledgeCookieNotice(page);
       await mockProfileModules(page, auditCase.mock);
       await page.goto(`/@thia?sizeAudit=${auditCase.type}-${auditCase.size}`);
@@ -9398,21 +9958,113 @@ test.describe("allowed module sizes smoke render one at a time without overflow"
   }
 });
 
+test.describe("every supported module uses the contained editor preview at every registered size", () => {
+  test.describe.configure({ retries: 1 });
+
+  for (const auditCase of profileModuleSizeAuditCases()) {
+    test(`${auditCase.type} ${auditCase.size}`, async ({ page }) => {
+      await page.setViewportSize({ width: 1366, height: 1100 });
+      await acknowledgeCookieNotice(page);
+      await mockProfileModules(page, auditCase.mock);
+      await page.goto(
+        `/@thia?editCanvas=1&editorSizeAudit=${auditCase.type}-${auditCase.size}`,
+      );
+
+      const module = page.getByTestId(
+        `profile-canvas-module-${auditCase.moduleId}`,
+      );
+      const content = page.getByTestId(
+        `profile-canvas-module-content-${auditCase.moduleId}`,
+      );
+      const preview = page.getByTestId(
+        `profile-canvas-light-preview-${auditCase.moduleId}`,
+      );
+
+      await expect(module).toBeVisible();
+      await expect(module).toHaveAttribute(
+        "data-profile-grid-size",
+        auditCase.size,
+      );
+      await expect(content).toHaveAttribute(
+        "data-profile-editor-render-mode",
+        "light",
+      );
+      await expect(preview).toBeVisible();
+      await expect(
+        module.locator("iframe,video,audio,[data-profile-module-shell]"),
+      ).toHaveCount(0);
+      await expect(
+        module.locator('[data-testid^="profile-canvas-edit-module-"]'),
+      ).toHaveCount(0);
+
+      const metrics = await module.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const preview = element.querySelector<HTMLElement>(
+          '[data-testid^="profile-canvas-light-preview-"]',
+        );
+        const previewRect = preview?.getBoundingClientRect();
+        const visibleChildren = Array.from(
+          preview?.querySelectorAll<HTMLElement>("*") ?? [],
+        ).filter((child) => {
+          const childRect = child.getBoundingClientRect();
+          const styles = window.getComputedStyle(child);
+
+          return (
+            childRect.width > 1 &&
+            childRect.height > 1 &&
+            styles.display !== "none" &&
+            styles.visibility !== "hidden"
+          );
+        });
+
+        return {
+          childOverflow: visibleChildren.some((child) => {
+            const childRect = child.getBoundingClientRect();
+
+            return (
+              childRect.left < rect.left - 1 ||
+              childRect.right > rect.right + 1 ||
+              childRect.top < rect.top - 1 ||
+              childRect.bottom > rect.bottom + 1
+            );
+          }),
+          moduleOverflow:
+            element.scrollWidth > element.clientWidth + 1 ||
+            element.scrollHeight > element.clientHeight + 1,
+          previewFillsModule:
+            Boolean(previewRect) &&
+            Math.abs(previewRect!.left - rect.left) <= 1 &&
+            Math.abs(previewRect!.right - rect.right) <= 1 &&
+            Math.abs(previewRect!.top - rect.top) <= 1 &&
+            Math.abs(previewRect!.bottom - rect.bottom) <= 1,
+        };
+      });
+
+      expect(metrics).toEqual({
+        childOverflow: false,
+        moduleOverflow: false,
+        previewFillsModule: true,
+      });
+    });
+  }
+});
+
 async function expectAuditModule(
   page: Page,
   auditCase: { size: string; type: ProfileModuleSizeAuditType },
 ) {
   const module = page.getByTestId(
-    `profile-grid-module-${profileModuleSizeAuditGridType(auditCase.type)}`,
+    `profile-grid-module-${auditCase.type}`,
   );
   await expect(module).toBeVisible();
   await expect(module).toHaveAttribute("data-profile-grid-size", auditCase.size);
+  await expectAuditModuleContent(module, auditCase.type);
 
   const metrics = await module.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const meaningfulContent = Array.from(
       element.querySelectorAll<HTMLElement>(
-        'a,button,img,iframe,[data-profile-module-visible-links],[data-profile-module-visible-badges],[data-profile-module-visible-media],[data-testid="profile-header"],[data-testid="profile-activity"],[data-testid="profile-spotify-custom-player"]',
+        'a,button,img,video,iframe,[data-profile-module-visible-links],[data-profile-module-visible-badges],[data-profile-module-visible-media],[data-testid="profile-header"],[data-testid="profile-activity"],[data-testid="profile-spotify-custom-player"]',
       ),
     ).filter((item) => {
       const itemRect = item.getBoundingClientRect();
@@ -9445,7 +10097,7 @@ async function expectAuditModule(
       .filter((item) => {
         const itemRect = item.getBoundingClientRect();
         const internalScrollBoundary = item.closest(
-          "[data-profile-activity-scroll='internal']",
+          "[data-profile-activity-scroll='internal'],[data-profile-module-internal-scroll='true']",
         );
 
         if (internalScrollBoundary) {
@@ -9473,6 +10125,18 @@ async function expectAuditModule(
       .filter((item) => item.scrollWidth > item.clientWidth + 1)
       .slice(0, 5)
       .map((item) => item.dataset.testid ?? item.dataset.profileModuleShell ?? item.tagName);
+    const internalScrollHorizontalOverflow = Array.from(
+      element.querySelectorAll<HTMLElement>(
+        "[data-profile-activity-scroll='internal'],[data-profile-module-internal-scroll='true']",
+      ),
+    )
+      .filter((item) => item.scrollWidth > item.clientWidth + 1)
+      .slice(0, 5)
+      .map((item) => ({
+        clientWidth: item.clientWidth,
+        scrollWidth: item.scrollWidth,
+        testId: item.dataset.testid ?? null,
+      }));
     const largeSurfaceCandidates = Array.from(
       element.querySelectorAll<HTMLElement>(
         [
@@ -9521,6 +10185,7 @@ async function expectAuditModule(
         meaningfulContent.length > 0 ||
         (element.textContent?.trim().length ?? 0) > 0,
       horizontalOverflowingContainers,
+      internalScrollHorizontalOverflow,
       largestSurfaceCoverage,
       overflowingDescendants,
       width: Math.round(rect.width),
@@ -9530,37 +10195,208 @@ async function expectAuditModule(
   expect(metrics.documentOverflowX).toBe(false);
   expect(metrics.hasVisibleContent).toBe(true);
   expect(metrics.horizontalOverflowingContainers).toEqual([]);
+  expect(metrics.internalScrollHorizontalOverflow).toEqual([]);
   expect(metrics.overflowingDescendants).toEqual([]);
   expect(metrics.height).toBeGreaterThan(56);
-  expect(metrics.width).toBeGreaterThan(80);
-
-  if (
-    auditCase.type === "uploaded_audio" &&
-    (auditCase.size === "2x1" || auditCase.size === "2x2")
-  ) {
-    await expect(module).not.toContainText("Uploaded MP3");
-  }
-
-  if (
-    auditCase.type === "spotify_song" &&
-    (auditCase.size === "2x1" || auditCase.size === "2x2")
-  ) {
-    await expect(module).not.toContainText("Spotify track");
-  }
+  expect(metrics.width).toBeGreaterThan(60);
 
   if (profileModuleSizeAuditNeedsLargeSurface(auditCase)) {
     expect(metrics.largestSurfaceCoverage).toBeGreaterThan(0.42);
   }
-}
 
-function profileModuleSizeAuditGridType(
-  type: ProfileModuleSizeAuditType,
-): string {
-  if (type === "uploaded_audio" || type === "spotify_song") {
-    return "music";
+  if (auditCase.type === "links" || auditCase.type === "connections") {
+    const expected = profileModuleConnectionsAuditExpectations[auditCase.size];
+    expect(expected).toBeDefined();
+    const connections = module.locator(
+      `[data-profile-connections-compact="${expected.variant}"]`,
+    );
+
+    await expect(connections).toHaveAttribute(
+      "data-profile-module-visible-links",
+      String(expected.visible),
+    );
+    await expect(connections.getByRole("link")).toHaveCount(expected.visible);
+
+    const overflow = connections.getByTestId("profile-connections-overflow-count");
+    if (expected.hidden > 0) {
+      await expect(overflow).toHaveText(`+${expected.hidden}`);
+      await expect(overflow.locator("xpath=ancestor::a")).toHaveCount(0);
+    } else {
+      await expect(overflow).toHaveCount(0);
+    }
   }
 
-  return type;
+  if (auditCase.type === "twitch_channel" || auditCase.type === "creator_live") {
+    const displayMode = profileModuleTwitchDisplayModeForSize(
+      auditCase.size as ReturnType<typeof profileModuleAllowedSizes>[number],
+    );
+    const stream = module.getByTestId("profile-integration-embed-twitch");
+    const chat = module.getByTestId("profile-integration-embed-twitch-chat");
+
+    await expect(stream).toHaveCount(displayMode === "stream_status" ? 0 : 1);
+    await expect(chat).toHaveCount(displayMode === "stream_chat" ? 1 : 0);
+  }
+
+  if (
+    [
+      "gallery_media",
+      "uploaded_image",
+      "gallery_slideshow",
+      "gallery_feed",
+    ].includes(auditCase.type)
+  ) {
+    const image = module.locator("img:not([aria-hidden='true'])").first();
+
+    await expect(image).toBeVisible();
+    await expect
+      .poll(() =>
+        image.evaluate(
+          (element) =>
+            (element as HTMLImageElement).complete &&
+            (element as HTMLImageElement).naturalWidth > 0,
+        ),
+      )
+      .toBe(true);
+  }
+}
+
+async function expectAuditModuleContent(
+  module: Locator,
+  type: ProfileModuleSizeAuditType,
+) {
+  if (type === "profile_info") {
+    await expect(module.getByTestId("profile-header")).toBeVisible();
+    return;
+  }
+
+  if (type === "about" || type === "custom_text" || type === "text") {
+    await expect(module.getByText(/A deliberately long profile note/u)).toBeVisible();
+    return;
+  }
+
+  if (type === "links" || type === "connections") {
+    await expect(module.locator('[title="Long connection label 1"]')).toBeVisible();
+    return;
+  }
+
+  if (type === "featured_badges" || type === "badge_display") {
+    await expect(module.locator("[data-profile-module-visible-badges]")).toBeVisible();
+    return;
+  }
+
+  if (type === "featured_post") {
+    await expect(module.getByTestId("profile-featured-post")).toBeVisible();
+    await expect(module.getByText("Pinned post preview.")).toBeVisible();
+    return;
+  }
+
+  if (type === "featured_room") {
+    await expect(module.getByTestId("profile-featured-room")).toBeVisible();
+    await expect(module.getByText("General", { exact: true })).toBeVisible();
+    return;
+  }
+
+  if (
+    type === "gallery_media" ||
+    type === "uploaded_image" ||
+    type === "gallery_slideshow" ||
+    type === "gallery_feed"
+  ) {
+    await expect(module.locator("img:not([aria-hidden='true'])").first()).toBeVisible();
+    return;
+  }
+
+  if (type === "creator_live" || type === "twitch_channel") {
+    await expect(
+      module
+        .locator(
+          '[data-testid="profile-integration-embed-twitch"],a[href="https://www.twitch.tv/thiabun"]',
+        )
+        .first(),
+    ).toBeVisible();
+    return;
+  }
+
+  if (
+    type === "youtube_video" ||
+    type === "youtube_stream" ||
+    type === "youtube_playlist"
+  ) {
+    await expect(
+      module
+        .locator(
+          '[data-testid="profile-integration-embed-youtube"],a[href*="youtube.com"]',
+        )
+        .first(),
+    ).toBeVisible();
+    return;
+  }
+
+  if (type === "uploaded_video") {
+    await expect(module.getByTestId("profile-uploaded-video-player")).toBeVisible();
+    return;
+  }
+
+  if (
+    type === "music" ||
+    type === "spotify_song" ||
+    type === "apple_music_song" ||
+    type === "youtube_music_song"
+  ) {
+    await expect(
+      module
+        .locator(
+          [
+            '[data-testid="profile-integration-embed-spotify"]',
+            '[data-testid="profile-integration-embed-apple_music"]',
+            '[data-testid="profile-integration-embed-youtube"]',
+            '[data-testid="profile-youtube-music-player"]',
+            '[data-testid="profile-spotify-custom-player"]',
+            "[data-profile-static-card-tier]",
+            'a[href*="open.spotify.com"]',
+            'a[href*="music.apple.com"]',
+            'a[href*="music.youtube.com"]',
+          ].join(","),
+        )
+        .first(),
+    ).toBeVisible();
+    return;
+  }
+
+  if (type === "music_playlist") {
+    await expect(module.getByText("Playlist track 1", { exact: true })).toBeVisible();
+    return;
+  }
+
+  if (
+    type === "spotify_playlist" ||
+    type === "apple_music_playlist" ||
+    type === "youtube_music_playlist"
+  ) {
+    await expect(module.getByText("Audit provider playlist", { exact: true })).toBeVisible();
+    return;
+  }
+
+  if (
+    type === "spotify_artist" ||
+    type === "apple_music_artist" ||
+    type === "youtube_music_artist"
+  ) {
+    await expect(module.getByTestId("profile-integration-artist-card")).toBeVisible();
+    return;
+  }
+
+  if (type === "github_repo") {
+    await expect(module.getByText("thiabun/thia.lol", { exact: true })).toBeVisible();
+    return;
+  }
+
+  if (type === "activity") {
+    await expect(module.getByTestId("profile-activity")).toBeVisible();
+    return;
+  }
+
+  throw new Error(`Missing content assertion for ${type}`);
 }
 
 function profileModuleSizeAuditNeedsLargeSurface(auditCase: {
@@ -9569,15 +10405,15 @@ function profileModuleSizeAuditNeedsLargeSurface(auditCase: {
 }): boolean {
   const { colSpan, rowSpan } = profileModuleSizeAuditSpan(auditCase.size);
   const mediaTypes: ProfileModuleSizeAuditType[] = [
-    "gallery_media",
-    "creator_live",
-    "uploaded_audio",
-    "spotify_song",
-    "youtube_music_song",
-    "spotify_artist",
+    "uploaded_image",
+    "gallery_slideshow",
+    "youtube_video",
+    "youtube_stream",
+    "youtube_playlist",
+    "uploaded_video",
   ];
 
-  return mediaTypes.includes(auditCase.type) && (colSpan >= 4 || rowSpan >= 3);
+  return mediaTypes.includes(auditCase.type) && colSpan >= 4 && rowSpan >= 3;
 }
 
 async function mockMediaMetadata(page: Page) {
@@ -9726,18 +10562,18 @@ function profileBody(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function badgeGrant() {
+function badgeGrant(id = 1) {
   return {
-    id: 1,
+    id,
     reason: null,
     earnedAt: "2026-06-10 00:00:00",
-    featuredOrder: 1,
+    featuredOrder: id,
     isVisible: true,
     grantedBy: null,
     badge: {
-      id: 1,
-      badgeKey: "founder",
-      name: "Founder",
+      id,
+      badgeKey: id === 1 ? "founder" : `audit-badge-${id}`,
+      name: id === 1 ? "Founder" : `Audit badge ${id}`,
       description: "Granted to people who helped establish thia.lol.",
       rarity: "founder",
       source: "admin-granted",

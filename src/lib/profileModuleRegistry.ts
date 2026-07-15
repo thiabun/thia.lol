@@ -391,7 +391,11 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   twitch_channel: {
-    allowedSizes: uniqueSizes(["2x1", "3x2", "4x3", "5x3", "6x4", "8x6"], wideTwoRowSizes),
+    allowedSizes: uniqueSizes(
+      ["2x1", "3x2"],
+      wideTwoRowSizes,
+      ["4x3", "5x3", "6x4", "8x6"],
+    ),
     category: "video",
     defaultSize: "3x2",
     description: "Twitch status, stream, or stream with chat.",
@@ -560,9 +564,9 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   spotify_artist: {
-    allowedSizes: providerCardSizes,
+    allowedSizes: musicSongSizes,
     category: "music",
-    defaultSize: "4x3",
+    defaultSize: "3x2",
     description: "A Spotify artist card.",
     density: "rich",
     emptyPolicy: "hide-public",
@@ -573,9 +577,9 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   apple_music_artist: {
-    allowedSizes: providerCardSizes,
+    allowedSizes: musicSongSizes,
     category: "music",
-    defaultSize: "4x3",
+    defaultSize: "3x2",
     description: "An Apple Music artist card.",
     density: "rich",
     emptyPolicy: "hide-public",
@@ -586,9 +590,9 @@ export const profileModuleRegistry = {
     purpose: "integration",
   },
   youtube_music_artist: {
-    allowedSizes: providerCardSizes,
+    allowedSizes: musicSongSizes,
     category: "music",
-    defaultSize: "4x3",
+    defaultSize: "3x2",
     description: "A YouTube Music artist card.",
     density: "rich",
     emptyPolicy: "hide-public",
@@ -829,6 +833,62 @@ export function profileModuleAllowedSizes(
   return getProfileModuleDefinition(type).allowedSizes;
 }
 
+export function profileModuleNearestAllowedSize(
+  type: ProfileModuleType,
+  requestedSize: ProfileGridModuleSize,
+): ProfileGridModuleSize {
+  const allowedSizes = profileModuleAllowedSizes(type);
+
+  if (type === "creator_live" && requestedSize === "3x5") {
+    return "5x3";
+  }
+
+  if (allowedSizes.includes(requestedSize)) {
+    return requestedSize;
+  }
+
+  const requested = profileGridModuleSizeSpan(requestedSize);
+  const requestedArea = requested.columns * requested.rows;
+
+  return (
+    allowedSizes
+      .map((size, index) => {
+        const span = profileGridModuleSizeSpan(size);
+
+        return {
+          areaDistance: Math.abs(span.columns * span.rows - requestedArea),
+          distance:
+            Math.abs(span.columns - requested.columns) +
+            Math.abs(span.rows - requested.rows),
+          index,
+          size,
+        };
+      })
+      .sort(
+        (first, second) =>
+          first.distance - second.distance ||
+          first.areaDistance - second.areaDistance ||
+          first.index - second.index,
+      )[0]?.size ?? getProfileModuleDefinition(type).defaultSize
+  );
+}
+
+export function profileModuleTwitchDisplayModeForSize(
+  size: ProfileGridModuleSize,
+): "stream_status" | "stream" | "stream_chat" {
+  const span = profileGridModuleSizeSpan(size);
+
+  if (span.columns >= 6 && span.rows >= 4) {
+    return "stream_chat";
+  }
+
+  if (span.columns >= 4 && span.rows >= 3) {
+    return "stream";
+  }
+
+  return "stream_status";
+}
+
 export function profileModuleSizeLabel(
   type: ProfileModuleType,
   size: ProfileGridModuleSize,
@@ -856,15 +916,8 @@ export function profileModuleGridSize(
     return layoutSize;
   }
 
-  if (layoutSize && module.type === "activity") {
-    const repairedActivitySize = nearestActivityGridSize(
-      layoutSize,
-      definition.allowedSizes,
-    );
-
-    if (repairedActivitySize) {
-      return repairedActivitySize;
-    }
+  if (layoutSize) {
+    return profileModuleNearestAllowedSize(module.type, layoutSize);
   }
 
   const requestedSize = normalizeProfileGridModuleSize(module.config.canvasSize);
@@ -874,21 +927,6 @@ export function profileModuleGridSize(
   }
 
   return definition.defaultSize;
-}
-
-function nearestActivityGridSize(
-  requestedSize: ProfileGridModuleSize,
-  allowedSizes: readonly ProfileGridModuleSize[],
-): ProfileGridModuleSize | undefined {
-  const requested = profileGridModuleSizeSpan(requestedSize);
-
-  return allowedSizes
-    .map(profileGridModuleSizeSpan)
-    .filter(
-      (span) =>
-        span.columns === requested.columns && span.rows >= requested.rows,
-    )
-    .sort((a, b) => a.rows - b.rows)[0]?.size;
 }
 
 export function profileModuleGridSpan(

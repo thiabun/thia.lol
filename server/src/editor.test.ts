@@ -127,6 +127,7 @@ function fakePool(options: FakePoolOptions = {}) {
               (row) =>
                 Number(row.user_id) === Number(params?.[0]) &&
                 row.status !== "deleted" &&
+                row.type !== "featured" &&
                 row.type !== "profile_info" &&
                 row.type !== "activity",
             ).length,
@@ -142,7 +143,9 @@ function fakePool(options: FakePoolOptions = {}) {
           {
             module_count: moduleRows.filter((row) =>
                 Number(row.user_id) === Number(params?.[0]) &&
-                row.status !== "deleted").length,
+                row.status !== "deleted" &&
+                (!query.includes("type <> 'featured'") ||
+                  row.type !== "featured")).length,
           },
         ],
         undefined,
@@ -591,6 +594,7 @@ function draftCustomTextPayload() {
     title: null,
     config: {
       body: "Draft note",
+      canvasSize: "3x2",
       configured: true,
     },
     visibility: "public",
@@ -599,7 +603,7 @@ function draftCustomTextPayload() {
     layout: {
       column: 3,
       row: 4,
-      colSpan: 2,
+      colSpan: 3,
       rowSpan: 2,
     },
     status: "active",
@@ -765,6 +769,27 @@ function musicRow(overrides: { type?: string } = {}) {
   };
 }
 
+function legacyFeaturedRow() {
+  return {
+    id: 4,
+    user_id: 1,
+    type: "featured",
+    title: "Featured",
+    config_json: JSON.stringify({}),
+    visibility: "public",
+    position: 2,
+    grid_column: 1,
+    grid_row: 4,
+    grid_col_span: 4,
+    grid_row_span: 4,
+    grid_pinned: 0,
+    status: "active",
+    schema_version: 1,
+    created_at: "2026-06-15 11:00:00",
+    updated_at: "2026-06-15 12:00:00",
+  };
+}
+
 function featuredModuleRow(type: "featured_post" | "featured_room", id: number) {
   return {
     id,
@@ -885,6 +910,544 @@ describe("editor profile module payloads", () => {
 
     expect(draft.modules).toHaveLength(1);
     expect(draft.modules[0]?.config).toEqual({});
+  });
+
+  it("omits retired live modules when materializing a new canvas draft", async () => {
+    const { draftJson, moduleRows, pool } = fakePool({
+      moduleRows: [profileInfoRow(1), legacyFeaturedRow()],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    const draft = await repository.getCanvasDraft(1);
+    const stored = JSON.parse(draftJson() ?? "{}") as {
+      modules?: Array<{ type?: unknown }>;
+    };
+
+    expect(draft.modules.map((module) => module.type)).toEqual(["profile_info"]);
+    expect(stored.modules?.map((module) => module.type)).toEqual([
+      "profile_info",
+    ]);
+    expect(moduleRows.find((row) => row.type === "featured")).toMatchObject({
+      status: "active",
+      visibility: "public",
+    });
+  });
+
+  it("repairs retired modules and their selection in stored canvas drafts", async () => {
+    const { draftJson, pool } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [
+          profileInfoPayload(1),
+          {
+            ...profileInfoPayload(2),
+            id: 4,
+            type: "featured",
+            title: "Featured",
+          },
+        ],
+        revision: canvasDraftRevisionOne,
+        selectedModuleId: 4,
+      }),
+      moduleRows: [profileInfoRow(1), legacyFeaturedRow()],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    const draft = await repository.getCanvasDraft(1);
+    const stored = JSON.parse(draftJson() ?? "{}") as {
+      modules?: Array<{ type?: unknown }>;
+      revision?: unknown;
+      selectedModuleId?: unknown;
+    };
+
+    expect(draft.modules.map((module) => module.type)).toEqual(["profile_info"]);
+    expect(draft.selectedModuleId).toBeNull();
+    expect(draft.revision).toMatch(/^draft:/u);
+    expect(draft.revision).not.toBe(canvasDraftRevisionOne);
+    expect(stored.modules?.map((module) => module.type)).toEqual([
+      "profile_info",
+    ]);
+    expect(stored.selectedModuleId).toBeNull();
+    expect(stored.revision).toBe(draft.revision);
+
+    const reopened = await repository.getCanvasDraft(1);
+
+    expect(reopened.revision).toBe(draft.revision);
+    expect(reopened.modules.map((module) => module.type)).toEqual([
+      "profile_info",
+    ]);
+  });
+
+  it("commits and re-enters safely while a retired live module still exists", async () => {
+    const { draftJson, moduleRows, pool } = fakePool({
+      moduleRows: [profileInfoRow(1), legacyFeaturedRow()],
+    });
+    const repository = createEditorRepository(pool as never);
+    const opened = await repository.getCanvasDraft(1);
+
+    await expect(
+      repository.commitCanvasDraft(session, opened.revision),
+    ).resolves.toMatchObject({ canvasVersion: 2 });
+    expect(draftJson()).toBeUndefined();
+
+    const reopened = await repository.getCanvasDraft(1);
+
+    expect(reopened.modules.map((module) => module.type)).toEqual([
+      "profile_info",
+    ]);
+    expect(moduleRows.find((row) => row.type === "featured")).toMatchObject({
+      status: "active",
+      visibility: "public",
+    });
+  });
+
+  it("ignores retired live modules when validating module order", async () => {
+    const { calls, pool } = fakePool({
+      moduleRows: [profileInfoRow(1), musicRow(), legacyFeaturedRow()],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    const modules = await repository.updateModuleOrder(session, {
+      moduleIds: [20, 10],
+    });
+
+    expect(new Set(modules.map((module) => module.type))).toEqual(
+      new Set(["music", "profile_info"]),
+    );
+    expect(
+      calls.some((call) => /SELECT id, type\s+FROM profile_modules/u.test(call.query)),
+    ).toBe(true);
+  });
+
+  it("canonicalizes legacy module identifiers in stored and incoming drafts", async () => {
+    const { draftJson, pool } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [
+          profileInfoPayload(1),
+          persistedMusicPayload({ type: "apple_music_playlist" }),
+        ],
+        revision: canvasDraftRevisionOne,
+        selectedModuleId: 20,
+      }),
+      moduleRows: [
+        profileInfoRow(1),
+        musicRow({ type: "apple_music_playlist" }),
+      ],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    const opened = await repository.getCanvasDraft(1);
+
+    expect(opened.modules.find((module) => module.id === 20)?.type).toBe(
+      "music_playlist",
+    );
+    expect(
+      (JSON.parse(draftJson() ?? "{}") as {
+        modules?: Array<{ id?: unknown; type?: unknown }>;
+      }).modules?.find((module) => module.id === 20)?.type,
+    ).toBe("music_playlist");
+
+    const updated = await repository.updateCanvasDraft(session, {
+      canvasVersion: 2,
+      expectedRevision: opened.revision,
+      modules: [
+        profileInfoPayload(1),
+        persistedMusicPayload({ type: "spotify_song" }),
+      ],
+      selectedModuleId: 20,
+    });
+
+    expect(updated.modules.find((module) => module.id === 20)?.type).toBe(
+      "music",
+    );
+  });
+
+  it("repairs unsupported exact sizes in stored drafts and persists the repair", async () => {
+    const invalidMusic = {
+      ...persistedMusicPayload({
+        config: {
+          canvasSize: "3x3",
+          label: "Focus track",
+          platform: "spotify",
+          url: "https://open.spotify.com/track/profile-test?si=ignored",
+        },
+      }),
+      layout: {
+        column: 12,
+        row: 32,
+        colSpan: 3,
+        rowSpan: 3,
+      },
+    };
+    const { draftJson, pool } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [profileInfoPayload(1), invalidMusic],
+        revision: canvasDraftRevisionOne,
+        selectedModuleId: 20,
+      }),
+      moduleRows: [profileInfoRow(1), musicRow()],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    const opened = await repository.getCanvasDraft(1);
+    const repaired = opened.modules.find((module) => module.id === 20);
+    const stored = JSON.parse(draftJson() ?? "{}") as {
+      modules?: Array<{
+        config?: { canvasSize?: unknown };
+        id?: unknown;
+        layout?: { colSpan?: unknown; rowSpan?: unknown };
+      }>;
+    };
+    const storedMusic = stored.modules?.find((module) => module.id === 20);
+
+    expect(repaired?.layout).toEqual({
+      column: 10,
+      row: 15,
+      colSpan: 3,
+      rowSpan: 2,
+    });
+    expect(repaired?.config.canvasSize).toBe("3x2");
+    expect(storedMusic?.layout).toEqual({
+      column: 10,
+      row: 15,
+      colSpan: 3,
+      rowSpan: 2,
+    });
+    expect(storedMusic?.config?.canvasSize).toBe("3x2");
+    expect(opened.revision).not.toBe(canvasDraftRevisionOne);
+  });
+
+  it("repairs the legacy layoutless creator size with frontend parity", async () => {
+    const legacyCreator = {
+      ...draftCustomTextPayload(),
+      id: -1002,
+      type: "creator_live",
+      title: "Live channel",
+      config: {
+        canvasSize: "3x5",
+        configured: true,
+        displayMode: "stream",
+        platform: "twitch",
+        sourceMode: "twitch",
+        url: "https://www.twitch.tv/thiabun",
+      },
+      layout: null,
+    };
+    const { draftJson, pool } = fakePool({
+      draftJson: JSON.stringify({
+        backgroundBlur: "medium",
+        canvasGlass: 58,
+        canvasVersion: 2,
+        modules: [profileInfoPayload(1), legacyCreator],
+        revision: canvasDraftRevisionOne,
+        selectedModuleId: -1002,
+      }),
+      moduleRows: [profileInfoRow(1)],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    const opened = await repository.getCanvasDraft(1);
+    const repaired = opened.modules.find((module) => module.id === -1002);
+    const stored = JSON.parse(draftJson() ?? "{}") as {
+      modules?: Array<{
+        config?: { canvasSize?: unknown };
+        id?: unknown;
+        layout?: unknown;
+      }>;
+    };
+    const storedCreator = stored.modules?.find((module) => module.id === -1002);
+
+    expect(repaired).toMatchObject({
+      config: { canvasSize: "5x3" },
+      layout: null,
+    });
+    expect(storedCreator).toMatchObject({
+      config: { canvasSize: "5x3" },
+      layout: null,
+    });
+    expect(opened.revision).not.toBe(canvasDraftRevisionOne);
+  });
+
+  it("rejects unsupported exact sizes from draft writes", async () => {
+    const { pool } = fakePool({ moduleRows: [profileInfoRow(1), musicRow()] });
+    const repository = createEditorRepository(pool as never);
+    const opened = await repository.getCanvasDraft(1);
+
+    await expect(
+      repository.updateCanvasDraft(session, {
+        canvasVersion: 2,
+        expectedRevision: opened.revision,
+        modules: [
+          profileInfoPayload(1),
+          {
+            ...persistedMusicPayload(),
+            config: {
+              ...persistedMusicPayload().config,
+              canvasSize: "3x3",
+            },
+            layout: {
+              column: 5,
+              row: 1,
+              colSpan: 3,
+              rowSpan: 3,
+            },
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      message: "Profile module size is invalid.",
+      statusCode: 422,
+    });
+  });
+
+  it("preserves supported placeholder selection envelopes in draft writes", async () => {
+    const { pool } = fakePool({ moduleRows: [profileInfoRow(1)] });
+    const repository = createEditorRepository(pool as never);
+    const opened = await repository.getCanvasDraft(1);
+    const placeholder = {
+      ...draftPlaceholderPayload(),
+      config: {
+        ...draftPlaceholderPayload().config,
+        canvasSize: "8x10",
+      },
+      layout: {
+        column: 5,
+        row: 7,
+        colSpan: 8,
+        rowSpan: 10,
+      },
+    };
+
+    const updated = await repository.updateCanvasDraft(session, {
+      canvasVersion: 2,
+      expectedRevision: opened.revision,
+      modules: [profileInfoPayload(1), placeholder],
+    });
+
+    expect(updated.modules.find((module) => module.type === "placeholder")).toMatchObject({
+      config: { canvasSize: "8x10" },
+      layout: placeholder.layout,
+    });
+  });
+
+  it("rejects placeholder selection envelopes outside the supported grid", async () => {
+    const { pool } = fakePool({ moduleRows: [profileInfoRow(1)] });
+    const repository = createEditorRepository(pool as never);
+    const opened = await repository.getCanvasDraft(1);
+
+    await expect(
+      repository.updateCanvasDraft(session, {
+        canvasVersion: 2,
+        expectedRevision: opened.revision,
+        modules: [
+          profileInfoPayload(1),
+          {
+            ...draftPlaceholderPayload(),
+            config: {
+              ...draftPlaceholderPayload().config,
+              canvasSize: "9x11",
+            },
+            layout: {
+              column: 1,
+              row: 1,
+              colSpan: 9,
+              rowSpan: 11,
+            },
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      message: "Profile module size is invalid.",
+      statusCode: 422,
+    });
+  });
+
+  it("rejects unsupported layoutless canvas sizes from draft writes", async () => {
+    const { pool } = fakePool({ moduleRows: [profileInfoRow(1), musicRow()] });
+    const repository = createEditorRepository(pool as never);
+    const opened = await repository.getCanvasDraft(1);
+
+    await expect(
+      repository.updateCanvasDraft(session, {
+        canvasVersion: 2,
+        expectedRevision: opened.revision,
+        modules: [
+          profileInfoPayload(1),
+          {
+            ...persistedMusicPayload({
+              config: {
+                canvasSize: "3x3",
+                label: "Focus track",
+                platform: "spotify",
+                url: "https://open.spotify.com/track/profile-test",
+              },
+            }),
+            layout: null,
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      message: "Profile module size is invalid.",
+      statusCode: 422,
+    });
+  });
+
+  it.each(["9x11", "garbage", 42])(
+    "rejects malformed layoutless canvas size %s from draft writes",
+    async (canvasSize) => {
+      const { pool } = fakePool({ moduleRows: [profileInfoRow(1)] });
+      const repository = createEditorRepository(pool as never);
+      const opened = await repository.getCanvasDraft(1);
+
+      await expect(
+        repository.updateCanvasDraft(session, {
+          canvasVersion: 2,
+          expectedRevision: opened.revision,
+          modules: [
+            profileInfoPayload(1),
+            {
+              ...draftCustomTextPayload(),
+              config: {
+                ...draftCustomTextPayload().config,
+                canvasSize,
+              },
+              layout: null,
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({
+        message: "Profile module size is invalid.",
+        statusCode: 422,
+      });
+    },
+  );
+
+  it.each(["9x11", "garbage", 42])(
+    "removes malformed stored layoutless canvas size %s",
+    async (canvasSize) => {
+      const malformedModule = {
+        ...draftCustomTextPayload(),
+        config: {
+          ...draftCustomTextPayload().config,
+          canvasSize,
+        },
+        layout: null,
+      };
+      const { draftJson, pool } = fakePool({
+        draftJson: JSON.stringify({
+          backgroundBlur: "medium",
+          canvasGlass: 58,
+          canvasVersion: 2,
+          modules: [profileInfoPayload(1), malformedModule],
+          revision: canvasDraftRevisionOne,
+          selectedModuleId: malformedModule.id,
+        }),
+        moduleRows: [profileInfoRow(1)],
+      });
+      const repository = createEditorRepository(pool as never);
+
+      const opened = await repository.getCanvasDraft(1);
+      const repaired = opened.modules.find(
+        (module) => module.id === malformedModule.id,
+      );
+      const stored = JSON.parse(draftJson() ?? "{}") as {
+        modules?: Array<{ config?: Record<string, unknown>; id?: unknown }>;
+      };
+      const storedModule = stored.modules?.find(
+        (module) => module.id === malformedModule.id,
+      );
+
+      expect(repaired?.config).not.toHaveProperty("canvasSize");
+      expect(storedModule?.config).not.toHaveProperty("canvasSize");
+      expect(opened.revision).not.toBe(canvasDraftRevisionOne);
+    },
+  );
+
+  it("rejects unsupported exact sizes from legacy canvas placement writes", async () => {
+    const { placementUpdates, pool } = fakePool({
+      moduleRows: [profileInfoRow(1), musicRow()],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await expect(
+      repository.updateCanvas(session, {
+        modules: [
+          {
+            id: 20,
+            column: 1,
+            row: 1,
+            colSpan: 3,
+            rowSpan: 3,
+            pinned: false,
+            visible: true,
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      message: "Profile module size is invalid.",
+      statusCode: 422,
+    });
+    expect(placementUpdates).toEqual([]);
+  });
+
+  it("clamps valid legacy canvas placements before persistence", async () => {
+    const { placementUpdates, pool } = fakePool({
+      moduleRows: [profileInfoRow(1), musicRow()],
+    });
+    const repository = createEditorRepository(pool as never);
+
+    await repository.updateCanvas(session, {
+      modules: [
+        {
+          id: 20,
+          column: 12,
+          row: 32,
+          colSpan: 4,
+          rowSpan: 3,
+          pinned: false,
+          visible: true,
+        },
+      ],
+    });
+
+    expect(placementUpdates).toContainEqual({
+      column: 9,
+      row: 14,
+      colSpan: 4,
+      rowSpan: 3,
+      pinned: 0,
+      visibility: "public",
+      id: 20,
+      userId: 1,
+    });
+  });
+
+  it("rejects unsupported module identifiers from draft writes", async () => {
+    const { pool } = fakePool({ moduleRows: [profileInfoRow(1)] });
+    const repository = createEditorRepository(pool as never);
+    const opened = await repository.getCanvasDraft(1);
+
+    await expect(
+      repository.updateCanvasDraft(session, {
+        canvasVersion: 2,
+        expectedRevision: opened.revision,
+        modules: [
+          profileInfoPayload(1),
+          { ...draftCustomTextPayload(), type: "future_unknown" },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      message: "Profile module type is invalid.",
+      statusCode: 422,
+    });
   });
 
   it("materializes a revisioned draft on open so a direct module update conflicts with the first save", async () => {
@@ -1528,7 +2091,7 @@ describe("editor profile module payloads", () => {
       position: 2,
       gridColumn: 3,
       gridRow: 4,
-      gridColSpan: 2,
+      gridColSpan: 3,
       gridRowSpan: 2,
       gridPinned: 1,
       status: "active",

@@ -13,12 +13,17 @@ import {
 import {
   buildProfileByHandleQuery,
   canonicalProfileModuleType,
+  isRetiredProfileModuleType,
+  profileCanvasClosestAllowedSpan,
+  profileCanvasNormalizeLayout,
   profileBadgesPayloadFromRows,
   profileIntegrationCachePayload,
   profileIntegrationGeneratedCardPayload,
   profileIntegrationNormalizeUrl,
   profileModuleLayoutPayload,
+  profileModuleCanvasSpanAllowed,
   profilePayloadWithFeatured,
+  supportedProfileModuleType,
   type ProfileBadgesPayload,
   type ProfileIntegrationCacheRow,
   type ProfileModulePayload,
@@ -228,6 +233,10 @@ interface BackupCodeCountRow extends RowDataPacket {
 
 interface IdRow extends RowDataPacket {
   id: number | string;
+}
+
+interface ModuleIdTypeRow extends IdRow {
+  type: string;
 }
 
 interface ModuleCountRow extends RowDataPacket {
@@ -667,7 +676,9 @@ class MysqlEditorRepository implements EditorRepository {
         throw new EditorRouteError("Profile module not found.", 404);
       }
 
-      if (!profileModuleTypes.has(module.type)) {
+      const restoredType = supportedProfileModuleType(module.type);
+
+      if (restoredType === null || !profileModuleTypes.has(restoredType)) {
         throw new EditorRouteError("This profile module can no longer be restored.", 422);
       }
 
@@ -952,7 +963,8 @@ class MysqlEditorRepository implements EditorRepository {
       const activePersistedRows = persistedRows.filter(
         (row) =>
           row.status !== "deleted" &&
-          !deletedPersistedIds.has(numberValue(row.id)),
+          !deletedPersistedIds.has(numberValue(row.id)) &&
+          supportedProfileModuleType(row.type) !== null,
       );
 
       if (
@@ -1374,7 +1386,9 @@ class MysqlEditorRepository implements EditorRepository {
       [userId],
     );
 
-    const modules = rows.map((row) => modulePayload(row));
+    const modules = rows
+      .map((row) => modulePayload(row))
+      .filter((module): module is ProfileModulePayload => module !== null);
 
     return enrichIntegrations
       ? this.enrichOwnerModuleIntegrations(modules, capabilities, executor)
@@ -1451,7 +1465,8 @@ class MysqlEditorRepository implements EditorRepository {
       `SELECT COUNT(*) AS module_count
        FROM profile_modules
        WHERE user_id = ?
-         AND status <> 'deleted'`,
+         AND status <> 'deleted'
+         AND type <> 'featured'`,
       [userId],
     );
 
@@ -1467,6 +1482,7 @@ class MysqlEditorRepository implements EditorRepository {
        FROM profile_modules
        WHERE user_id = ?
          AND status <> 'deleted'
+         AND type <> 'featured'
          AND type NOT IN ('profile_info', 'activity')`,
       [userId],
     );
@@ -1479,8 +1495,8 @@ class MysqlEditorRepository implements EditorRepository {
     type: string,
     executor: Pool | PoolConnection = this.pool,
   ): Promise<boolean> {
-    const [rows] = await executor.execute<IdRow[]>(
-      `SELECT id
+    const [rows] = await executor.execute<ModuleIdTypeRow[]>(
+      `SELECT id, type
        FROM profile_modules
        WHERE user_id = ?
          AND type = ?
@@ -1510,8 +1526,8 @@ class MysqlEditorRepository implements EditorRepository {
     userId: number,
     executor: Pool | PoolConnection = this.pool,
   ): Promise<number[]> {
-    const [rows] = await executor.execute<IdRow[]>(
-      `SELECT id
+    const [rows] = await executor.execute<ModuleIdTypeRow[]>(
+      `SELECT id, type
        FROM profile_modules
        WHERE user_id = ?
          AND status <> 'deleted'
@@ -1519,7 +1535,9 @@ class MysqlEditorRepository implements EditorRepository {
       [userId],
     );
 
-    return rows.map((row) => numberValue(row.id));
+    return rows
+      .filter((row) => supportedProfileModuleType(row.type) !== null)
+      .map((row) => numberValue(row.id));
   }
 
   private async canvasUpdatePayload(userId: number): Promise<ProfileCanvasUpdatePayload> {
@@ -1585,10 +1603,44 @@ class MysqlEditorRepository implements EditorRepository {
     const decoded = jsonObject(row.draft_json);
     const executor = options.executor ?? this.pool;
     const defaults = await this.defaultCanvasDraftState(userId, false, executor);
-    const modules = Array.isArray(decoded.modules)
-      ? validateDraftModules(decoded.modules, { repairInvalidConfig: true })
-      : defaults.modules;
+    const storedModules = Array.isArray(decoded.modules)
+      ? normalizeStoredDraftModules(decoded.modules)
+      : { modules: defaults.modules, repaired: false };
+    const modules = storedModules.modules;
     const capabilities = enrichIntegrations ? await this.schemaCapabilities() : null;
+    let revision = canvasDraftRevision(row, decoded);
+    let selectedModuleId = validateSelectedModuleId(
+      row.selected_module_id ?? decoded.selectedModuleId ?? null,
+    );
+
+    const selectionRepaired =
+      selectedModuleId !== null &&
+      !modules.some((module) => String(module.id) === String(selectedModuleId));
+
+    if (selectionRepaired) {
+      selectedModuleId = null;
+    }
+
+    if ((storedModules.repaired || selectionRepaired) && options.forUpdate) {
+      revision = newCanvasDraftRevision();
+      await this.saveCanvasDraft(
+        userId,
+        {
+          backgroundBlur: validateBackgroundBlur(
+            decoded.backgroundBlur ?? defaults.backgroundBlur,
+          ),
+          canvasGlass: validateCanvasGlass(
+            decoded.canvasGlass ?? defaults.canvasGlass,
+          ),
+          canvasVersion: profileCanvasVersion,
+          modules,
+          revision,
+          selectedModuleId,
+          updatedAt: row.updated_at,
+        },
+        executor,
+      );
+    }
 
     return {
       backgroundBlur: validateBackgroundBlur(decoded.backgroundBlur ?? defaults.backgroundBlur),
@@ -1597,8 +1649,8 @@ class MysqlEditorRepository implements EditorRepository {
       modules: enrichIntegrations && capabilities !== null
         ? await this.enrichOwnerModuleIntegrations(modules, capabilities, executor)
         : modules,
-      revision: canvasDraftRevision(row, decoded),
-      selectedModuleId: validateSelectedModuleId(row.selected_module_id ?? decoded.selectedModuleId ?? null),
+      revision,
+      selectedModuleId,
       updatedAt: row.updated_at,
     };
   }
@@ -1893,7 +1945,59 @@ class MysqlEditorRepository implements EditorRepository {
     userId: number,
     placements: CanvasPlacement[],
   ): Promise<void> {
-    for (const placement of placements) {
+    if (placements.length === 0) {
+      return;
+    }
+
+    const moduleIds = [...new Set(placements.map((placement) => placement.id))];
+    const placeholders = moduleIds.map(() => "?").join(", ");
+    const [moduleRows] = await connection.execute<ModuleIdTypeRow[]>(
+      `SELECT id, type
+       FROM profile_modules
+       WHERE user_id = ?
+         AND status <> 'deleted'
+         AND id IN (${placeholders})
+       ORDER BY position ASC, id ASC
+       FOR UPDATE`,
+      [userId, ...moduleIds],
+    );
+    const moduleTypes = new Map(
+      moduleRows.flatMap((row) => {
+        const type = supportedProfileModuleType(row.type);
+
+        return type === null ? [] : [[numberValue(row.id), type] as const];
+      }),
+    );
+    const normalizedPlacements = placements.map((placement) => {
+      const type = moduleTypes.get(placement.id);
+
+      if (type === undefined) {
+        throw new EditorRouteError("Canvas module is unavailable.", 422);
+      }
+
+      if (
+        !profileModuleCanvasSpanAllowed(
+          type,
+          placement.colSpan,
+          placement.rowSpan,
+        )
+      ) {
+        throw new EditorRouteError("Profile module size is invalid.", 422);
+      }
+
+      return {
+        ...placement,
+        ...profileCanvasNormalizeLayout(
+          type,
+          placement.column,
+          placement.row,
+          placement.colSpan,
+          placement.rowSpan,
+        ),
+      };
+    });
+
+    for (const placement of normalizedPlacements) {
       await connection.execute<ResultSetHeader>(
         `UPDATE profile_modules
          SET grid_column = ?,
@@ -2687,10 +2791,16 @@ function addUpdate(
   params.push(validator(rawValue));
 }
 
-function modulePayload(row: ProfileModuleRow): ProfileModulePayload {
+function modulePayload(row: ProfileModuleRow): ProfileModulePayload | null {
+  const type = supportedProfileModuleType(row.type);
+
+  if (type === null) {
+    return null;
+  }
+
   return {
     id: numberValue(row.id),
-    type: canonicalProfileModuleType(row.type),
+    type,
     title: nullableString(row.title),
     config: jsonObject(row.config_json),
     visibility: row.visibility,
@@ -2898,19 +3008,29 @@ function validateStringList(value: unknown, maxItems: number, maxLength: number,
 }
 
 function validateModuleType(value: unknown): string {
-  if (typeof value !== "string" || !profileModuleTypes.has(value)) {
+  const type =
+    typeof value === "string" ? supportedProfileModuleType(value) : null;
+
+  if (type === null || !profileModuleTypes.has(type)) {
     throw new EditorRouteError("Profile module type is invalid.", 422);
   }
 
-  return canonicalProfileModuleType(value);
+  return type;
 }
 
 function validateDraftModuleType(value: unknown): string {
-  if (typeof value !== "string" || !draftProfileModuleTypes.has(value)) {
+  if (value === "placeholder") {
+    return value;
+  }
+
+  const type =
+    typeof value === "string" ? supportedProfileModuleType(value) : null;
+
+  if (type === null || !draftProfileModuleTypes.has(type)) {
     throw new EditorRouteError("Profile module type is invalid.", 422);
   }
 
-  return value === "placeholder" ? value : canonicalProfileModuleType(value);
+  return type;
 }
 
 function validateModuleTitle(value: unknown): string | null {
@@ -2997,6 +3117,7 @@ function validateCanvasPlacements(value: unknown): CanvasPlacement[] {
     }
 
     const record = item as Record<string, unknown>;
+
     const layout = typeof record.layout === "object" && record.layout !== null && !Array.isArray(record.layout)
       ? record.layout as Record<string, unknown>
       : record;
@@ -3015,7 +3136,10 @@ function validateCanvasPlacements(value: unknown): CanvasPlacement[] {
 
 function validateDraftModules(
   value: unknown,
-  options: { repairInvalidConfig?: boolean } = {},
+  options: {
+    repairInvalidConfig?: boolean;
+    repairInvalidLayout?: boolean;
+  } = {},
 ): ProfileModulePayload[] {
   if (!Array.isArray(value)) {
     throw new EditorRouteError("Draft modules must be an array.", 422);
@@ -3027,32 +3151,199 @@ function validateDraftModules(
     }
 
     const record = item as Record<string, unknown>;
+    const type = validateDraftModuleType(record.type);
     const layout = typeof record.layout === "object" && record.layout !== null && !Array.isArray(record.layout)
       ? record.layout as Record<string, unknown>
       : null;
+    let validatedLayout: ProfileModulePayload["layout"] = null;
+    let repairedLayoutSize: string | null = null;
+
+    if (layout !== null) {
+      const column = boundedInteger(layout.column, "Column", 1, 12);
+      const row = boundedInteger(layout.row, "Row", 1, 32);
+      const colSpan = boundedInteger(layout.colSpan, "Column span", 1, 12);
+      const rowSpan = boundedInteger(layout.rowSpan, "Row span", 1, 32);
+
+      if (!profileModuleCanvasSpanAllowed(type, colSpan, rowSpan)) {
+        if (options.repairInvalidLayout !== true) {
+          throw new EditorRouteError("Profile module size is invalid.", 422);
+        }
+
+      }
+
+      validatedLayout = profileCanvasNormalizeLayout(
+        type,
+        column,
+        row,
+        colSpan,
+        rowSpan,
+      );
+
+      if (
+        validatedLayout.colSpan !== colSpan ||
+        validatedLayout.rowSpan !== rowSpan
+      ) {
+        repairedLayoutSize = `${validatedLayout.colSpan}x${validatedLayout.rowSpan}`;
+      }
+    }
+
+    let config = validateDraftModuleConfig(record.config, options);
+    const hadCanvasSize = "canvasSize" in config;
+
+    if (hadCanvasSize) {
+      const configSize =
+        typeof config.canvasSize === "string"
+          ? /^([1-8])x(10|[1-9])$/.exec(config.canvasSize)
+          : null;
+
+      if (configSize === null) {
+        if (options.repairInvalidLayout !== true) {
+          throw new EditorRouteError("Profile module size is invalid.", 422);
+        }
+
+        const repairedConfig = { ...config };
+        delete repairedConfig.canvasSize;
+        config = repairedConfig;
+      } else if (
+        !profileModuleCanvasSpanAllowed(
+          type,
+          Number(configSize[1]),
+          Number(configSize[2]),
+        )
+      ) {
+        if (options.repairInvalidLayout !== true) {
+          throw new EditorRouteError("Profile module size is invalid.", 422);
+        }
+
+        const [columns, rows] = profileCanvasClosestAllowedSpan(
+          type,
+          Number(configSize[1]),
+          Number(configSize[2]),
+        );
+        config = { ...config, canvasSize: `${columns}x${rows}` };
+      }
+    }
+
+    if (validatedLayout !== null) {
+      const layoutSize = `${validatedLayout.colSpan}x${validatedLayout.rowSpan}`;
+
+      if (repairedLayoutSize !== null || hadCanvasSize) {
+        config = { ...config, canvasSize: layoutSize };
+      }
+    }
 
     return {
       id: typeof record.id === "number" && Number.isInteger(record.id) ? record.id : -1 - index,
-      type: validateDraftModuleType(record.type),
+      type,
       title: validateModuleTitle(record.title),
-      config: validateDraftModuleConfig(record.config, options),
+      config,
       visibility: validateModuleVisibility(record.visibility ?? "public"),
       position: draftModulePosition(record.position, index + 1),
       pinned: booleanValue(record.pinned),
-      layout: layout === null
-        ? null
-        : {
-            column: boundedInteger(layout.column, "Column", 1, 12),
-            row: boundedInteger(layout.row, "Row", 1, 32),
-            colSpan: boundedInteger(layout.colSpan, "Column span", 1, 12),
-            rowSpan: boundedInteger(layout.rowSpan, "Row span", 1, 32),
-          },
+      layout: validatedLayout,
       status: validateModuleStatus(record.status ?? "active"),
       schemaVersion: profileModuleSchemaVersion,
       createdAt: stringOrNull(record.createdAt),
       updatedAt: stringOrNull(record.updatedAt),
     };
   });
+}
+
+function normalizeStoredDraftModules(value: unknown[]): {
+  modules: ProfileModulePayload[];
+  repaired: boolean;
+} {
+  let repaired = false;
+  const normalized = value.flatMap((item) => {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      return [item];
+    }
+
+    const record = item as Record<string, unknown>;
+
+    if (
+      record.config !== null &&
+      record.config !== undefined &&
+      (typeof record.config !== "object" || Array.isArray(record.config))
+    ) {
+      repaired = true;
+    }
+
+    if (record.type === "placeholder") {
+      return [item];
+    }
+
+    if (typeof record.type !== "string") {
+      return [item];
+    }
+
+    const type = supportedProfileModuleType(record.type);
+
+    if (type === null && isRetiredProfileModuleType(record.type)) {
+      repaired = true;
+      return [];
+    }
+
+    if (type === null) {
+      return [item];
+    }
+
+    if (type === record.type) {
+      return [item];
+    }
+
+    repaired = true;
+    return [{ ...record, type }];
+  });
+
+  const modules = validateDraftModules(normalized, {
+    repairInvalidConfig: true,
+    repairInvalidLayout: true,
+  });
+  const layoutRepaired = normalized.some((item, index) => {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      return false;
+    }
+
+    const record = item as Record<string, unknown>;
+    const layout =
+      typeof record.layout === "object" &&
+      record.layout !== null &&
+      !Array.isArray(record.layout)
+        ? (record.layout as Record<string, unknown>)
+        : null;
+    const validatedLayout = modules[index]?.layout;
+
+    return Boolean(
+      layout &&
+        validatedLayout &&
+        (Number(layout.column) !== validatedLayout.column ||
+          Number(layout.row) !== validatedLayout.row ||
+          Number(layout.colSpan) !== validatedLayout.colSpan ||
+          Number(layout.rowSpan) !== validatedLayout.rowSpan),
+    );
+  });
+
+  const configSizeRepaired = normalized.some((item, index) => {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      return false;
+    }
+
+    const record = item as Record<string, unknown>;
+    const config =
+      typeof record.config === "object" &&
+      record.config !== null &&
+      !Array.isArray(record.config)
+        ? (record.config as Record<string, unknown>)
+        : null;
+
+    return config?.canvasSize !== modules[index]?.config.canvasSize;
+  });
+
+  return {
+    modules,
+    repaired: repaired || layoutRepaired || configSizeRepaired,
+  };
 }
 
 function canvasDraftModulesWithPersistedTypes(

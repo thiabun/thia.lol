@@ -30,9 +30,11 @@ import {
   profileModulePresentation,
   profileModuleBadges,
   profileModuleFallbackTitle,
+  profileModuleGridSize,
   profileModuleGridSpan,
   profileModuleHasContent,
   profileModuleSpanRole,
+  profileModuleTwitchDisplayModeForSize,
   profileGridModuleSizeSpan,
   renderableProfileModules,
   type ProfileGridModuleSize,
@@ -412,12 +414,17 @@ function profileModuleMobileStackSize(
     return "6x4";
   }
 
-  if (
-    module.type === "creator_live" ||
-    (module.type === "twitch_channel" &&
-      module.config.displayMode === "stream_chat") ||
-    module.type === "uploaded_video"
-  ) {
+  const twitchDisplayMode = profileModuleEffectiveTwitchDisplayMode(module);
+
+  if (twitchDisplayMode === "stream_chat") {
+    return "6x5";
+  }
+
+  if (twitchDisplayMode === "stream") {
+    return "6x4";
+  }
+
+  if (module.type === "creator_live" || module.type === "uploaded_video") {
     return "6x5";
   }
 
@@ -449,17 +456,17 @@ function profileModuleMobileStackHeightClass(module: ProfileModule): string {
     return "h-[min(38rem,70dvh)] min-h-[28rem]";
   }
 
-  if (
-    (module.type === "creator_live" || module.type === "twitch_channel") &&
-    module.config.displayMode === "stream_chat"
-  ) {
+  const twitchDisplayMode = profileModuleEffectiveTwitchDisplayMode(module);
+
+  if (twitchDisplayMode === "stream_chat") {
     return "h-[clamp(34rem,78dvh,46rem)]";
   }
 
-  if (
-    module.type === "creator_live" ||
-    module.type === "uploaded_video"
-  ) {
+  if (twitchDisplayMode === "stream" || module.type === "uploaded_video") {
+    return "h-[22rem]";
+  }
+
+  if (module.type === "creator_live" && !profileModuleUsesTwitchLayout(module)) {
     return "h-[22rem]";
   }
 
@@ -480,6 +487,27 @@ function profileModuleMobileStackHeightClass(module: ProfileModule): string {
   }
 
   return "min-h-24";
+}
+
+function profileModuleUsesTwitchLayout(module: ProfileModule): boolean {
+  return (
+    module.type === "twitch_channel" ||
+    (module.type === "creator_live" &&
+      (module.config.platform === "twitch" ||
+        module.config.sourceMode === "twitch" ||
+        module.config.integration?.provider === "twitch" ||
+        module.config.displayMode === "stream_status" ||
+        module.config.displayMode === "stream" ||
+        module.config.displayMode === "stream_chat"))
+  );
+}
+
+function profileModuleEffectiveTwitchDisplayMode(
+  module: ProfileModule,
+): "stream_status" | "stream" | "stream_chat" | undefined {
+  return profileModuleUsesTwitchLayout(module)
+    ? profileModuleTwitchDisplayModeForSize(profileModuleGridSize(module))
+    : undefined;
 }
 
 type ProfileModuleGridProps = {
@@ -1101,19 +1129,12 @@ function ProfileModuleContent({
 
   if (module.type === "links" || module.type === "connections") {
     const links = module.config.links ?? [];
-    const narrowStack = span.columns <= 2 && span.rows >= 3;
-    const compactConnectionLimit = presentation.tier === "micro" ? 2 : 4;
-    const narrowConnectionLimit =
-      presentation.tier === "spacious" || presentation.tier === "showcase"
-        ? 6
-        : 5;
-    const visibleLinks = compact
-      ? links.slice(0, compactConnectionLimit)
-      : slim
-        ? links.slice(0, singleRow ? 4 : 6)
-      : narrowStack
-        ? links.slice(0, narrowConnectionLimit)
-        : links;
+    const connectionLayout = profileModuleConnectionLayout(span.size);
+    const visibleCapacity =
+      links.length > connectionLayout.capacity
+        ? connectionLayout.capacity - 1
+        : connectionLayout.capacity;
+    const visibleLinks = links.slice(0, visibleCapacity);
     const hiddenCount = Math.max(0, links.length - visibleLinks.length);
 
     if (presentationMode === "mobile-stack") {
@@ -1133,7 +1154,7 @@ function ProfileModuleContent({
       );
     }
 
-    if (slim) {
+    if (connectionLayout.variant === "chips") {
       return (
         <div
           className="flex h-full min-w-0 items-center gap-2 overflow-hidden"
@@ -1147,7 +1168,10 @@ function ProfileModuleContent({
             />
           ))}
           {hiddenCount > 0 ? (
-            <span className="inline-flex h-9 shrink-0 items-center rounded-full border border-dashed border-line bg-canvas/45 px-3 text-xs font-semibold text-muted">
+            <span
+              className="inline-flex h-9 shrink-0 items-center rounded-full border border-dashed border-line bg-canvas/45 px-3 text-xs font-semibold text-muted"
+              data-testid="profile-connections-overflow-count"
+            >
               +{hiddenCount}
             </span>
           ) : null}
@@ -1155,12 +1179,15 @@ function ProfileModuleContent({
       );
     }
 
-    if (compact) {
+    if (connectionLayout.variant === "icons") {
       return (
         <div
-          className="flex max-h-full min-w-0 flex-wrap content-start gap-2 overflow-hidden"
+          className="grid h-full min-h-0 min-w-0 content-start place-items-center gap-1.5 overflow-hidden"
           data-profile-module-visible-links={visibleLinks.length}
-          data-profile-connections-compact="icons"
+          data-profile-connections-compact="icon-grid"
+          style={{
+            gridTemplateColumns: `repeat(${connectionLayout.columns}, minmax(0, 1fr))`,
+          }}
         >
           {visibleLinks.map((link) => (
             <ProfileModuleConnectionIconOnly
@@ -1169,29 +1196,10 @@ function ProfileModuleContent({
             />
           ))}
           {hiddenCount > 0 ? (
-            <span className="grid size-9 shrink-0 place-items-center rounded-full border border-dashed border-line bg-canvas/45 text-xs font-semibold text-muted">
-              +{hiddenCount}
-            </span>
-          ) : null}
-        </div>
-      );
-    }
-
-    if (narrowStack) {
-      return (
-        <div
-          className="grid max-h-full min-w-0 content-start gap-2 overflow-hidden"
-          data-profile-module-visible-links={visibleLinks.length}
-          data-profile-connections-compact="stack"
-        >
-          {visibleLinks.map((link) => (
-            <ProfileModuleLinkCompactRow
-              key={`${link.label}-${link.url}`}
-              link={link}
-            />
-          ))}
-          {hiddenCount > 0 ? (
-            <span className="inline-flex min-h-9 items-center justify-center rounded-card border border-dashed border-line bg-canvas/28 px-2 text-xs font-semibold text-muted">
+            <span
+              className="grid size-9 shrink-0 place-items-center rounded-full border border-dashed border-line bg-canvas/45 text-xs font-semibold text-muted"
+              data-testid="profile-connections-overflow-count"
+            >
               +{hiddenCount}
             </span>
           ) : null}
@@ -1202,21 +1210,31 @@ function ProfileModuleContent({
     return (
       <div
         className={cn(
-          "grid max-h-full min-w-0 gap-2 overflow-y-auto pr-1",
-          spanRole === "rich" || spanRole === "hero" ? "sm:grid-cols-2" : "grid-cols-1",
+          "grid h-full min-h-0 min-w-0 gap-1.5 overflow-hidden",
         )}
         data-profile-module-visible-links={visibleLinks.length}
-        data-profile-connections-compact="rows"
+        data-profile-connections-compact="dense-rows"
+        style={{
+          gridTemplateColumns: `repeat(${connectionLayout.columns}, minmax(0, 1fr))`,
+          gridTemplateRows: `repeat(${Math.max(
+            1,
+            Math.ceil(visibleLinks.length / connectionLayout.columns),
+          )}, minmax(0, 1fr))`,
+        }}
       >
         {visibleLinks.map((link) => (
-          <ProfileModuleLinkCard
+          <ProfileModuleLinkCompactRow
             key={`${link.label}-${link.url}`}
             link={link}
+            dense
           />
         ))}
         {hiddenCount > 0 ? (
-          <span className="inline-flex min-h-10 items-center rounded-card border border-dashed border-line bg-canvas/45 px-3 text-sm font-semibold text-muted">
-            +{hiddenCount} more
+          <span
+            className="flex h-full min-h-0 min-w-0 items-center justify-center rounded-card border border-dashed border-line bg-canvas/45 px-1.5 text-xs font-semibold text-muted"
+            data-testid="profile-connections-overflow-count"
+          >
+            +{hiddenCount}
           </span>
         ) : null}
       </div>
@@ -1232,6 +1250,42 @@ function ProfileModuleContent({
         : selectedBadges;
     const hiddenCount = Math.max(0, selectedBadges.length - visibleBadges.length);
 
+    if (slim && !singleRow) {
+      return (
+        <div
+          className="grid h-full min-h-0 min-w-0 grid-cols-2 gap-1.5 overflow-hidden"
+          data-profile-module-visible-badges={visibleBadges.length}
+          style={{
+            gridTemplateRows: `repeat(${Math.max(
+              1,
+              Math.ceil(visibleBadges.length / 2),
+            )}, minmax(0, 1fr))`,
+          }}
+        >
+          {visibleBadges.map((userBadge, index) => (
+            <span
+              key={userBadge.id}
+              className={cn(
+                "inline-flex h-full min-h-0 min-w-0 items-center gap-1.5 overflow-hidden rounded-control border px-2 text-xs font-semibold",
+                rarityChipClass(userBadge.badge.rarity),
+              )}
+              title={userBadge.badge.description ?? userBadge.badge.name}
+            >
+              <BadgeCheck aria-hidden="true" size={13} className="shrink-0" />
+              <span className="min-w-0 flex-1 truncate">
+                {userBadge.badge.name}
+              </span>
+              {index === visibleBadges.length - 1 && hiddenCount > 0 ? (
+                <span className="shrink-0 rounded-full border border-dashed border-current/40 px-1.5 py-0.5 text-[0.62rem]">
+                  +{hiddenCount}
+                </span>
+              ) : null}
+            </span>
+          ))}
+        </div>
+      );
+    }
+
     if (slim) {
       return (
         <div
@@ -1242,7 +1296,7 @@ function ProfileModuleContent({
             <span
               key={userBadge.id}
               className={cn(
-                "inline-flex h-9 min-w-0 max-w-[10rem] shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold",
+                "inline-flex h-9 min-w-0 flex-1 basis-0 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold",
                 rarityChipClass(userBadge.badge.rarity),
               )}
               title={userBadge.badge.description ?? userBadge.badge.name}
@@ -1323,12 +1377,17 @@ function ProfileModuleContent({
         >
           {mediaItems.map((item, index) => (
             <figure
-              className="aspect-square min-w-0 overflow-hidden rounded-card border border-line bg-canvas/55"
+              className={cn(
+                "aspect-square min-w-0 overflow-hidden rounded-card border border-line bg-canvas/55",
+                item.caption
+                  ? "grid grid-rows-[minmax(0,1fr)_auto]"
+                  : undefined,
+              )}
               key={`${item.url}:${index}`}
             >
               <img
                 alt=""
-                className="size-full object-cover"
+                className="h-full min-h-0 w-full object-cover"
                 decoding="async"
                 loading="lazy"
                 src={item.url}
@@ -1355,6 +1414,7 @@ function ProfileModuleContent({
               : "grid-cols-2",
         )}
         data-profile-module-visible-media={visibleMediaItems.length}
+        data-profile-module-internal-scroll="true"
       >
         {visibleMediaItems.map((item, index) => (
           <figure
@@ -1362,11 +1422,14 @@ function ProfileModuleContent({
             className={cn(
               "min-h-0 min-w-0 overflow-hidden rounded-card border border-line bg-canvas/55",
               spanRole === "hero" && index === 0 ? "col-span-2 row-span-2" : undefined,
+              item.caption && hasDetails
+                ? "grid grid-rows-[minmax(0,1fr)_auto]"
+                : undefined,
             )}
           >
             <img
               alt=""
-              className="size-full object-cover"
+              className="h-full min-h-0 w-full object-cover"
               decoding="async"
               loading="lazy"
               src={item.url}
@@ -1674,58 +1737,72 @@ function profileModuleEmptyPrompt(type: ProfileModule["type"]): string {
   return `Select to edit ${profileModuleFallbackTitle(type).toLowerCase()}`;
 }
 
-function ProfileModuleLinkCard({ link }: { link: ProfileModuleLink }) {
-  const platform = normalizeModuleConnectionPlatform(link.platform);
-  const platformLabel = moduleLinkPlatformLabel(link);
-  const preview = moduleLinkPreview(link.url);
+type ProfileModuleConnectionLayout = {
+  capacity: number;
+  columns: number;
+  variant: "chips" | "icons" | "rows";
+};
 
+const profileModuleConnectionLayouts: Partial<
+  Record<ProfileGridModuleSize, ProfileModuleConnectionLayout>
+> = {
+  "2x2": { capacity: 16, columns: 4, variant: "icons" },
+  "2x3": { capacity: 24, columns: 4, variant: "icons" },
+  "3x2": { capacity: 4, columns: 2, variant: "rows" },
+  "4x2": { capacity: 6, columns: 3, variant: "rows" },
+  "3x3": { capacity: 6, columns: 2, variant: "rows" },
+  "3x4": { capacity: 8, columns: 2, variant: "rows" },
+  "5x1": { capacity: 3, columns: 1, variant: "chips" },
+  "6x1": { capacity: 3, columns: 1, variant: "chips" },
+  "8x1": { capacity: 4, columns: 1, variant: "chips" },
+  "5x2": { capacity: 6, columns: 3, variant: "rows" },
+  "6x2": { capacity: 8, columns: 4, variant: "rows" },
+  "8x2": { capacity: 10, columns: 5, variant: "rows" },
+};
+
+function profileModuleConnectionLayout(
+  size: ProfileGridModuleSize,
+): ProfileModuleConnectionLayout {
   return (
-    <a
-      className="group flex min-w-0 items-center gap-2 rounded-card border border-line bg-canvas/55 p-2 text-sm transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-      href={link.url}
-      rel="noopener noreferrer"
-      target="_blank"
-    >
-      <span className="grid size-8 shrink-0 place-items-center rounded-full border border-line bg-surface/80 text-text">
-        {platform ? (
-          <ProfileConnectionIcon platform={platform} size={15} />
-        ) : (
-          <Globe aria-hidden="true" size={15} />
-        )}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate font-semibold text-text">{link.label}</span>
-        <span className="block truncate text-xs text-muted">
-          {platformLabel}
-          {preview ? ` · ${preview}` : ""}
-        </span>
-      </span>
-      <ExternalLink
-        aria-hidden="true"
-        size={14}
-        className="shrink-0 text-muted transition duration-fluid group-hover:text-text"
-      />
-    </a>
+    profileModuleConnectionLayouts[size] ?? {
+      capacity: 4,
+      columns: 1,
+      variant: "rows",
+    }
   );
 }
 
-function ProfileModuleLinkCompactRow({ link }: { link: ProfileModuleLink }) {
+function ProfileModuleLinkCompactRow({
+  dense = false,
+  link,
+}: {
+  dense?: boolean | undefined;
+  link: ProfileModuleLink;
+}) {
   const platform = normalizeModuleConnectionPlatform(link.platform);
   const label = link.label || moduleLinkPlatformLabel(link);
 
   return (
     <a
-      className="group flex min-h-10 min-w-0 items-center gap-2 rounded-card border border-line bg-canvas/30 px-2 text-sm transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface/64 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      className={cn(
+        "group flex min-w-0 items-center overflow-hidden rounded-card border border-line bg-canvas/30 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface/64 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+        dense ? "h-full min-h-0 gap-1.5 px-1.5 text-xs" : "min-h-10 gap-2 px-2 text-sm",
+      )}
       href={link.url}
       rel="noopener noreferrer"
       target="_blank"
       title={label}
     >
-      <span className="grid size-8 shrink-0 place-items-center rounded-full border border-line bg-surface/62 text-text">
+      <span
+        className={cn(
+          "grid shrink-0 place-items-center rounded-full border border-line bg-surface/62 text-text",
+          dense ? "size-6" : "size-8",
+        )}
+      >
         {platform ? (
-          <ProfileConnectionIcon platform={platform} size={15} />
+          <ProfileConnectionIcon platform={platform} size={dense ? 13 : 15} />
         ) : (
-          <Globe aria-hidden="true" size={15} />
+          <Globe aria-hidden="true" size={dense ? 13 : 15} />
         )}
       </span>
       <span className="min-w-0 flex-1 truncate font-semibold text-text">
@@ -1733,20 +1810,24 @@ function ProfileModuleLinkCompactRow({ link }: { link: ProfileModuleLink }) {
       </span>
       <ExternalLink
         aria-hidden="true"
-        size={14}
+        size={dense ? 12 : 14}
         className="shrink-0 text-muted transition duration-fluid group-hover:text-text"
       />
     </a>
   );
 }
 
-function ProfileModuleLinkWideChip({ link }: { link: ProfileModuleLink }) {
+function ProfileModuleLinkWideChip({
+  link,
+}: {
+  link: ProfileModuleLink;
+}) {
   const platform = normalizeModuleConnectionPlatform(link.platform);
   const label = link.label || moduleLinkPlatformLabel(link);
 
   return (
     <a
-      className="group inline-flex h-9 min-w-0 max-w-[11rem] shrink-0 items-center gap-2 rounded-full border border-line bg-canvas/55 px-2.5 text-sm transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      className="group inline-flex h-9 min-w-0 flex-1 basis-0 items-center gap-2 rounded-full border border-line bg-canvas/55 px-2.5 text-sm transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       href={link.url}
       rel="noopener noreferrer"
       target="_blank"
@@ -1766,7 +1847,11 @@ function ProfileModuleLinkWideChip({ link }: { link: ProfileModuleLink }) {
   );
 }
 
-function ProfileModuleConnectionIconOnly({ link }: { link: ProfileModuleLink }) {
+function ProfileModuleConnectionIconOnly({
+  link,
+}: {
+  link: ProfileModuleLink;
+}) {
   const platform = normalizeModuleConnectionPlatform(link.platform);
   const label = link.label || moduleLinkPlatformLabel(link);
 
@@ -2486,6 +2571,7 @@ function MusicPlaylistPlayer({
             compactPlayer ? "max-h-28" : undefined,
           )}
           data-testid="profile-music-playlist-track-list"
+          data-profile-module-internal-scroll="true"
         >
           {tracks.map((track, index) => {
             const selected = index === activeIndex;
@@ -2586,7 +2672,10 @@ function ProfileIntegrationRichCard({
     integration.apiBacked && (metadata.live || metadata.recentLabel)
       ? metadata.liveFetchedAt ?? metadata.recentFetchedAt
       : undefined;
-  const displayMode = module.config.displayMode;
+  const displayMode =
+    integration.provider === "twitch"
+      ? profileModuleTwitchDisplayModeForSize(profileModuleGridSize(module))
+      : module.config.displayMode;
   const primaryEmbed = integration.embed;
   const showPrimaryEmbed = Boolean(
     primaryEmbed && displayMode !== "stream_status",
@@ -2597,10 +2686,14 @@ function ProfileIntegrationRichCard({
   const primaryEmbedHeight = profileIntegrationEmbedHeight(integration);
   const twitchChatSrc =
     displayMode === "stream_chat" ? twitchChatEmbedSrc(integration) : undefined;
-  const showTwitchStreamChat = Boolean(
-    twitchChatSrc && showPrimaryEmbed && primaryEmbed,
-  );
   const span = profileGridModuleSizeSpan(size);
+  const showTwitchStreamChat = Boolean(
+    twitchChatSrc &&
+      showPrimaryEmbed &&
+      primaryEmbed &&
+      span.columns >= 6 &&
+      span.rows >= 4,
+  );
   const twitchStreamChatGridColumns = span.columns >= 8 ? 8 : 6;
   const twitchStreamChatStreamColumns = span.columns >= 8 ? 6 : 4;
   const twitchStreamChatColumnStyle = {
@@ -2611,9 +2704,7 @@ function ProfileIntegrationRichCard({
   } satisfies CSSProperties;
   const presentation = profileModulePresentation(size);
   const micro = presentation.tier === "micro";
-  const compactTile =
-    micro ||
-    (presentation.span.columns <= 2 && presentation.span.rows <= 2);
+  const compactTile = micro || presentation.span.rows <= 2;
   const compactTextTone = useAlbumArtworkTextTone(
     metadata.imageUrl ?? undefined,
     compactTile,
@@ -3114,18 +3205,65 @@ function ProfileIntegrationArtistCard({
   const presentation = profileModulePresentation(size);
   const compact =
     profilePresentationIsCompact(presentation.tier) ||
-    (presentation.span.columns <= 3 && presentation.span.rows <= 2);
+    presentation.span.rows <= 2;
   const spacious =
     presentation.tier === "showcase" ||
-    presentation.span.columns >= 6 ||
     presentation.span.rows >= 4;
   const title = metadata.title ?? module.config.label ?? fallbackLabel;
   const subtitle = metadata.subtitle ?? platformDisplayName(integration.provider);
   const description = metadata.description ?? module.config.description;
   const stats = profileIntegrationArtistStats(integration);
-  const visibleStats = stats.slice(0, compact ? 2 : spacious ? 4 : 3);
+  const visibleStats = compact ? [] : stats.slice(0, spacious ? 4 : 3);
   const genres = profileIntegrationArtistGenres(integration);
   const visibleGenres = genres.slice(0, spacious ? 4 : 2);
+
+  if (presentation.span.rows === 1) {
+    return (
+      <a
+        className="group relative isolate flex h-full min-h-0 min-w-0 items-center gap-2 overflow-hidden rounded-card border border-line bg-canvas/80 px-2 transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        href={integration.sourceUrl}
+        rel="noopener noreferrer"
+        target="_blank"
+        data-profile-artist-card-layout="compact"
+        data-profile-artist-card-tier={presentation.tier}
+        data-testid="profile-integration-artist-card"
+      >
+        {metadata.imageUrl ? (
+          <img
+            alt=""
+            className="absolute inset-0 -z-30 size-full object-cover transition duration-fluid ease-fluid group-hover:scale-[1.025]"
+            decoding="async"
+            loading="lazy"
+            src={metadata.imageUrl}
+            data-testid="profile-integration-artist-image"
+          />
+        ) : (
+          <span className="absolute inset-0 -z-30 grid place-items-center bg-[radial-gradient(circle_at_30%_25%,color-mix(in_oklab,var(--accent)_24%,transparent),transparent_42%),linear-gradient(135deg,color-mix(in_oklab,var(--canvas)_94%,transparent),color-mix(in_oklab,var(--surface)_78%,transparent))] text-muted">
+            {icon}
+          </span>
+        )}
+        <span className="absolute inset-0 -z-20 bg-[linear-gradient(90deg,rgba(0,0,0,0.82)_0%,rgba(0,0,0,0.48)_72%,rgba(0,0,0,0.3)_100%)]" />
+        <span className="relative z-10 min-w-0 flex-1 text-white drop-shadow-[0_1px_10px_rgba(0,0,0,0.55)]">
+          <span
+            className="block truncate text-sm font-semibold"
+            data-testid="profile-integration-artist-title"
+          >
+            {title}
+          </span>
+          {presentation.span.columns >= 5 ? (
+            <span className="block truncate text-xs font-medium text-white/78">
+              {subtitle}
+            </span>
+          ) : null}
+        </span>
+        <ExternalLink
+          aria-hidden="true"
+          className="relative z-10 shrink-0 text-white"
+          size={16}
+        />
+      </a>
+    );
+  }
 
   return (
     <a
@@ -3924,6 +4062,7 @@ function SpotifyArtwork({
   return (
     <img
       alt=""
+      aria-hidden="true"
       className="size-full object-cover"
       decoding="async"
       loading="lazy"

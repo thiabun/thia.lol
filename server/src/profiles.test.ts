@@ -16,6 +16,7 @@ import {
   profileModuleLayoutPayload,
   profilePayloadFromRow,
   profilePayloadWithFeatured,
+  supportedProfileModuleType,
   type FollowUserRow,
   type ProfileIntegrationCacheRow,
   type ProfileModuleRow,
@@ -127,6 +128,17 @@ describe("profile module type canonicalization", () => {
     expect(canonicalProfileModuleType("youtube_music_playlist")).toBe("music_playlist");
     expect(canonicalProfileModuleType("apple_music_artist")).toBe("music");
     expect(canonicalProfileModuleType("youtube_playlist")).toBe("youtube_playlist");
+  });
+
+  it("accepts canonical and legacy supported types while retiring obsolete modules", () => {
+    expect(supportedProfileModuleType("music")).toBe("music");
+    expect(supportedProfileModuleType("spotify_song")).toBe("music");
+    expect(supportedProfileModuleType("apple_music_playlist")).toBe(
+      "music_playlist",
+    );
+    expect(supportedProfileModuleType("youtube_video")).toBe("youtube_video");
+    expect(supportedProfileModuleType("featured")).toBeNull();
+    expect(supportedProfileModuleType("future_unknown")).toBeNull();
   });
 });
 
@@ -383,7 +395,7 @@ describe("profile extras payload mapping", () => {
     expect(payload.bioSnippet).toMatch(/hello\.\.\.$/);
   });
 
-  it("normalizes supported module layouts and rejects unsupported spans", () => {
+  it("normalizes supported module layouts and repairs unsupported exact spans", () => {
     expect(
       profileModuleLayoutPayload({
         id: "1",
@@ -429,7 +441,38 @@ describe("profile extras payload mapping", () => {
         created_at: null,
         updated_at: null,
       } as ProfileModuleRow),
-    ).toBeNull();
+    ).toEqual({
+      column: 1,
+      row: 1,
+      colSpan: 4,
+      rowSpan: 2,
+    });
+
+    expect(
+      profileModuleLayoutPayload({
+        id: "1",
+        user_id: "1",
+        type: "connections",
+        title: null,
+        config_json: "{}",
+        visibility: "public",
+        position: "1",
+        grid_column: "12",
+        grid_row: "32",
+        grid_col_span: "1",
+        grid_row_span: "10",
+        grid_pinned: "0",
+        status: "active",
+        schema_version: "1",
+        created_at: null,
+        updated_at: null,
+      } as ProfileModuleRow),
+    ).toEqual({
+      column: 10,
+      row: 13,
+      colSpan: 3,
+      rowSpan: 4,
+    });
   });
 });
 

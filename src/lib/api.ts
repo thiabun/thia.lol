@@ -57,7 +57,8 @@ import {
   PROFILE_CANVAS_VERSION,
   isProfileModuleType,
   profileGridModuleSizeSpan,
-  profileModuleAllowedSizes,
+  profileGridModuleSpanSize,
+  profileModuleNearestAllowedSize,
 } from "./profileModuleRegistry";
 
 type ApiRoom = Omit<Room, "theme" | "themeConfig" | "rulesVersion" | "viewerCanJoin"> & {
@@ -2734,31 +2735,28 @@ function normalizeProfileModuleLayout(
     return null;
   }
 
-  const maxSpan = profileModuleMaxAllowedSpan(type);
+  const requestedSize = profileGridModuleSpanSize(colSpan, rowSpan);
+
+  if (!requestedSize) {
+    return null;
+  }
+
+  const repairedSize = profileGridModuleSizeSpan(
+    profileModuleNearestAllowedSize(type, requestedSize),
+  );
 
   return {
-    column: Math.min(PROFILE_CANVAS_DESKTOP_COLUMNS, Math.max(1, column)),
-    row: Math.min(PROFILE_CANVAS_DESKTOP_ROWS, Math.max(1, row)),
-    colSpan: Math.min(maxSpan.columns, Math.max(1, colSpan)),
-    rowSpan: Math.min(maxSpan.rows, Math.max(1, rowSpan)),
+    column: Math.min(
+      PROFILE_CANVAS_DESKTOP_COLUMNS - repairedSize.columns + 1,
+      Math.max(1, column),
+    ),
+    row: Math.min(
+      PROFILE_CANVAS_DESKTOP_ROWS - repairedSize.rows + 1,
+      Math.max(1, row),
+    ),
+    colSpan: repairedSize.columns,
+    rowSpan: repairedSize.rows,
   };
-}
-
-function profileModuleMaxAllowedSpan(type: ProfileModule["type"]): {
-  columns: number;
-  rows: number;
-} {
-  return profileModuleAllowedSizes(type).reduce(
-    (max, size) => {
-      const span = profileGridModuleSizeSpan(size);
-
-      return {
-        columns: Math.max(max.columns, span.columns),
-        rows: Math.max(max.rows, span.rows),
-      };
-    },
-    { columns: 1, rows: 1 },
-  );
 }
 
 function normalizeCanvasInteger(value: unknown): number | undefined {

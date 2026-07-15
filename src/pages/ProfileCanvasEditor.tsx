@@ -76,8 +76,8 @@ import {
   profileModuleAllowedSizes,
   profileModuleCatalog,
   profileModuleFallbackTitle,
-  profileModulePresentation,
   profileModuleSizeLabel,
+  profileModuleTwitchDisplayModeForSize,
   type ProfileGridModuleSize,
   type ProfileModuleCategory,
 } from "../lib/profileModuleRegistry";
@@ -1038,10 +1038,10 @@ export function ProfileDirectCanvasEditor({
 
               return {
                 ...item,
-                config: {
-                  ...item.config,
-                  canvasSize: finalState.size,
-                },
+                config: profileCanvasConfigForResizedModule(
+                  item,
+                  finalState.size,
+                ),
                 layout: finalState.previewLayout,
               };
             }),
@@ -1500,10 +1500,7 @@ export function ProfileDirectCanvasEditor({
 
           return {
             ...item,
-            config: {
-              ...item.config,
-              canvasSize: size,
-            },
+            config: profileCanvasConfigForResizedModule(item, size),
             layout: {
               ...layout,
               colSpan: span.columns,
@@ -2374,9 +2371,11 @@ export function ProfileDirectCanvasEditor({
                       "relative h-full min-h-0 rounded-card",
                       placeholder
                         ? "touch-none cursor-grab active:cursor-grabbing"
-                        : "cursor-default",
+                        : studioPreviewing
+                          ? "cursor-default"
+                          : "cursor-pointer",
                       configured && !studioPreviewing
-                        ? "overflow-hidden border border-line-strong bg-surface/90 p-2 shadow-inner-soft"
+                        ? "overflow-hidden bg-surface/78 shadow-inner-soft"
                         : undefined,
                     )}
                     onClick={(event) => {
@@ -2514,7 +2513,7 @@ export function ProfileDirectCanvasEditor({
                       <div
                         className={cn(
                           "h-full min-h-0 min-w-0 overflow-hidden rounded-card",
-                          studioPreviewing || module.type === "activity"
+                          studioPreviewing
                             ? "pointer-events-auto"
                             : "pointer-events-none select-none",
                         )}
@@ -2522,22 +2521,15 @@ export function ProfileDirectCanvasEditor({
                           configured ? "true" : "false"
                         }
                         data-profile-module-content-interactive={
-                          studioPreviewing || module.type === "activity"
-                            ? "true"
-                            : "false"
+                          studioPreviewing ? "true" : "false"
                         }
                         data-profile-canvas-module-frame="light"
                         data-profile-editor-render-mode={
-                          studioPreviewing ||
-                          profileCanvasEditorUsesLiveRenderer(module.type)
-                            ? "live"
-                            : "light"
+                          studioPreviewing ? "live" : "light"
                         }
                         data-testid={`profile-canvas-module-content-${module.id}`}
                         inert={
-                          studioPreviewing || module.type === "activity"
-                            ? undefined
-                            : true
+                          studioPreviewing ? undefined : true
                         }
                       >
                         <ProfileCanvasEditorModuleContent
@@ -2549,6 +2541,14 @@ export function ProfileDirectCanvasEditor({
                         />
                       </div>
                     )}
+                    {!placeholder && !studioPreviewing ? (
+                      <button
+                        type="button"
+                        className="absolute inset-0 z-10 rounded-card focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-focus"
+                        aria-label={`Edit ${moduleTitle}`}
+                        aria-pressed={selectedDesktop}
+                      />
+                    ) : null}
                   </div>
                   {selectedDesktop && !studioPreviewing ? (
                     <ProfileCanvasResizeHandles
@@ -2594,58 +2594,36 @@ export function ProfileDirectCanvasEditor({
                     </div>
                   ) : null}
                   {!placeholder && !studioPreviewing ? (
-                    <>
-                      <button
-                        type="button"
-                        className={cn(
-                          "absolute left-1/2 top-1 z-50 grid h-6 min-w-10 -translate-x-1/2 touch-none place-items-center rounded-full border border-line bg-surface/94 px-2 text-muted shadow-soft backdrop-blur-veil transition duration-fluid ease-fluid hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55",
-                          module.pinned
-                            ? "cursor-not-allowed"
-                            : "cursor-grab active:cursor-grabbing",
-                          selectedDesktop
-                            ? "opacity-100"
-                            : "opacity-0 group-hover/profile-editor-module:opacity-100 group-focus-within/profile-editor-module:opacity-100",
-                        )}
-                        aria-label={
-                          module.pinned
-                            ? `${moduleTitle} is pinned`
-                            : `Move ${moduleTitle}`
-                        }
-                        title={
-                          module.pinned
-                            ? `${moduleTitle} is pinned`
-                            : `Move ${moduleTitle}`
-                        }
-                        disabled={module.pinned}
-                        data-profile-edit-control="true"
-                        data-testid={`profile-canvas-drag-handle-${module.id}`}
-                        onPointerDown={(event) =>
-                          handleModuleDragPointerStart(event, module, layout)
-                        }
-                      >
-                        <Move aria-hidden="true" size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        className={cn(
-                          "absolute bottom-1.5 right-1.5 z-50 grid size-7 place-items-center rounded-full border border-line bg-surface/94 text-muted shadow-soft backdrop-blur-veil transition duration-fluid ease-fluid hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus",
-                          selectedDesktop
-                            ? "opacity-100"
-                            : "opacity-0 group-hover/profile-editor-module:opacity-100 group-focus-within/profile-editor-module:opacity-100",
-                        )}
-                        aria-label={`Edit ${moduleTitle}`}
-                        title={`Edit ${moduleTitle}`}
-                        data-profile-edit-control="true"
-                        data-testid={`profile-canvas-edit-module-${module.id}`}
-                        onClick={() => {
-                          setPickerModuleId(undefined);
-                          setSettingsModuleId(module.id);
-                          setStudioTool("select");
-                        }}
-                      >
-                        <MoreHorizontal aria-hidden="true" size={15} />
-                      </button>
-                    </>
+                    <button
+                      type="button"
+                      className={cn(
+                        "absolute left-1/2 top-1 z-50 grid h-6 min-w-10 -translate-x-1/2 touch-none place-items-center rounded-full border border-line bg-surface/94 px-2 text-muted shadow-soft backdrop-blur-veil transition duration-fluid ease-fluid hover:border-line-strong hover:text-text focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55",
+                        module.pinned
+                          ? "cursor-not-allowed"
+                          : "cursor-grab active:cursor-grabbing",
+                        selectedDesktop
+                          ? "opacity-100"
+                          : "opacity-0 group-hover/profile-editor-module:opacity-100 group-focus-within/profile-editor-module:opacity-100",
+                      )}
+                      aria-label={
+                        module.pinned
+                          ? `${moduleTitle} is pinned`
+                          : `Move ${moduleTitle}`
+                      }
+                      title={
+                        module.pinned
+                          ? `${moduleTitle} is pinned`
+                          : `Move ${moduleTitle}`
+                      }
+                      disabled={module.pinned}
+                      data-profile-edit-control="true"
+                      data-testid={`profile-canvas-drag-handle-${module.id}`}
+                      onPointerDown={(event) =>
+                        handleModuleDragPointerStart(event, module, layout)
+                      }
+                    >
+                      <Move aria-hidden="true" size={14} />
+                    </button>
                   ) : null}
                 </ProfileGridModule>
               );
@@ -2698,7 +2676,7 @@ const ProfileCanvasEditorModuleContent = memo(
     ) => ReactNode | undefined;
     size: ProfileGridModuleSize;
   }) {
-    if (previewing || profileCanvasEditorUsesLiveRenderer(module.type)) {
+    if (previewing) {
       const rendered = renderModuleContent(module, size, !previewing);
 
       if (rendered !== undefined) {
@@ -2715,23 +2693,9 @@ const ProfileCanvasEditorModuleContent = memo(
     previous.module === next.module &&
     previous.previewing === next.previewing &&
     previous.size === next.size &&
-    (!(
-      previous.previewing ||
-      profileCanvasEditorUsesLiveRenderer(previous.module.type)
-    ) ||
+    (!previous.previewing ||
       previous.renderModuleContent === next.renderModuleContent),
 );
-
-function profileCanvasEditorUsesLiveRenderer(
-  type: ProfileModule["type"],
-): boolean {
-  return (
-    type === "profile_info" ||
-    type === "featured_post" ||
-    type === "featured_room" ||
-    type === "activity"
-  );
-}
 
 const ProfileCanvasModulePreview = memo(function ProfileCanvasModulePreview({
   mobile,
@@ -2744,111 +2708,28 @@ const ProfileCanvasModulePreview = memo(function ProfileCanvasModulePreview({
 }) {
   const category = profileCanvasModulePreviewCategory(module.type);
   const title = profileCanvasModulePreviewTitle(module);
-  const presentation = profileModulePresentation(size);
-  const subtitle = profileCanvasModulePreviewSubtitle(
-    module,
-    size,
-    presentation.showSecondaryText,
-  );
   const imageUrl = profileCanvasModulePreviewImage(module);
   const span = profileGridModuleSizeSpan(size);
-  const micro = mobile && (span.columns <= 1 || span.rows <= 1);
-  const tiny =
-    mobile && !micro && span.columns <= 2 && span.rows <= 2;
-  const compact =
-    mobile &&
-    !micro &&
-    !tiny &&
-    (span.columns <= 3 || span.rows <= 2);
-  const slim = !mobile && (span.rows <= 1 || (span.columns >= 5 && span.rows <= 2));
-  const previewRole = micro
-    ? "micro"
-    : tiny
-      ? "tiny"
-      : compact
-        ? "compact"
-        : slim
-          ? "slim"
-          : "full";
+  const iconOnly = span.columns <= 1 || (span.rows <= 1 && span.columns <= 2);
+  const compact = !iconOnly && (span.columns <= 2 || span.rows <= 2);
+  const horizontal = compact && span.columns > span.rows;
+  const previewRole = iconOnly ? "icon" : compact ? "compact" : "standard";
   const configured = profileCanvasModuleIsConfiguredForEditor(module);
-  const showImageBackground = Boolean(imageUrl && !slim && !micro && !tiny);
-  const showImageTile = Boolean(imageUrl && (slim || compact));
-  const showIcon = !imageUrl || showImageBackground || !micro;
-  const showTitle = !micro;
-  const showSubtitle = Boolean(subtitle) && (!mobile || (!tiny && !compact));
-  const showSize = !mobile;
-
-  if (micro || tiny || compact) {
-    return (
-      <div
-        className={cn(
-          "relative h-full min-h-0 w-full overflow-hidden rounded-card border border-line bg-canvas/60 text-text shadow-inner-soft",
-          micro
-            ? "grid place-items-center p-1"
-            : tiny
-              ? "grid place-items-center p-1.5 text-center"
-              : "flex items-center gap-1.5 p-1.5",
-        )}
-        data-profile-canvas-preview-role={previewRole}
-        data-profile-editor-render-mode="light"
-        data-profile-editor-preview-mobile="true"
-        data-testid={`profile-canvas-light-preview-${module.id}`}
-      >
-        {imageUrl && micro ? (
-          <img
-            alt=""
-            className="pointer-events-none absolute inset-0 size-full select-none object-cover opacity-75"
-            loading="lazy"
-            src={imageUrl}
-          />
-        ) : null}
-        {showImageTile ? (
-          <img
-            alt=""
-            className="pointer-events-none size-8 shrink-0 select-none rounded-[0.6rem] border border-line object-cover"
-            loading="lazy"
-            src={imageUrl}
-          />
-        ) : null}
-        {showIcon ? (
-          <span
-            className={cn(
-              "relative z-10 grid shrink-0 place-items-center rounded-[0.6rem] border border-line bg-surface/78 text-text shadow-soft",
-              micro ? "size-8" : tiny ? "size-9" : "size-8",
-              imageUrl && micro ? "bg-canvas/80 backdrop-blur-veil" : undefined,
-            )}
-          >
-            <ProfileModulePickerIcon
-              category={category}
-              disabled={false}
-              type={module.type}
-            />
-          </span>
-        ) : null}
-        {showTitle ? (
-          <span
-            className={cn(
-              "relative z-10 min-w-0 font-semibold text-text",
-              tiny
-                ? "mt-1 block max-w-full truncate text-[0.68rem] leading-3"
-                : "block flex-1 truncate text-[0.72rem] leading-4",
-            )}
-            data-testid={`profile-canvas-preview-title-${module.id}`}
-          >
-            {title}
-          </span>
-        ) : null}
-      </div>
-    );
-  }
 
   return (
     <div
       className={cn(
-        "relative h-full min-h-0 w-full overflow-hidden rounded-card border border-line bg-canvas/60 text-text shadow-inner-soft",
-        slim ? "flex items-center gap-2 p-2" : "p-3",
+        "relative isolate flex h-full min-h-0 min-w-0 w-full overflow-hidden rounded-card border border-line bg-canvas/60 text-text shadow-inner-soft",
+        iconOnly
+          ? "items-center justify-center p-1"
+          : horizontal
+            ? "items-center gap-2 p-2"
+            : compact
+              ? "items-end p-2"
+              : "items-end p-3",
       )}
       data-profile-canvas-preview-role={previewRole}
+      data-profile-canvas-preview-configured={configured ? "true" : "false"}
       data-profile-editor-render-mode="light"
       data-profile-editor-preview-mobile={mobile ? "true" : undefined}
       data-testid={`profile-canvas-light-preview-${module.id}`}
@@ -2856,29 +2737,19 @@ const ProfileCanvasModulePreview = memo(function ProfileCanvasModulePreview({
       {imageUrl ? (
         <img
           alt=""
-          className={cn(
-            "pointer-events-none select-none rounded-card object-cover",
-            slim
-              ? "size-12 shrink-0 border border-line"
-              : "absolute inset-0 size-full opacity-45",
-          )}
+          className="pointer-events-none absolute inset-0 size-full select-none object-cover"
           loading="lazy"
           src={imageUrl}
         />
       ) : null}
-      {showImageBackground ? (
-        <div className="absolute inset-0 bg-gradient-to-br from-canvas/92 via-canvas/70 to-canvas/38" />
+      {imageUrl && !iconOnly ? (
+        <span className="pointer-events-none absolute inset-0 bg-gradient-to-t from-canvas/92 via-canvas/18 to-transparent" />
       ) : null}
-      <div
-        className={cn(
-          "relative z-10 min-w-0",
-          slim ? "flex flex-1 items-center gap-2" : "flex h-full flex-col",
-        )}
-      >
+      {!imageUrl ? (
         <span
           className={cn(
-            "grid shrink-0 place-items-center rounded-card border border-line bg-surface/78 text-text shadow-soft",
-            slim ? "size-9" : "size-10",
+            "relative z-10 grid shrink-0 place-items-center rounded-card border border-line bg-surface/78 text-text shadow-soft",
+            iconOnly ? "size-[min(2.25rem,72%)]" : compact ? "size-9" : "size-10",
           )}
         >
           <ProfileModulePickerIcon
@@ -2887,40 +2758,22 @@ const ProfileCanvasModulePreview = memo(function ProfileCanvasModulePreview({
             type={module.type}
           />
         </span>
-        <span className={cn("min-w-0", slim ? "flex-1" : "mt-3")}>
-          <span
-            className={cn(
-              "block truncate font-semibold text-text",
-              slim ? "text-xs" : "text-sm",
-            )}
-          >
-            {title}
-          </span>
-          {showSubtitle ? (
-            <span
-              className={cn(
-                "block truncate font-medium text-muted",
-                slim ? "text-[0.68rem]" : "mt-1 text-xs",
-              )}
-            >
-              {subtitle}
-            </span>
-          ) : null}
-        </span>
-        {showSize ? (
-          <span
-            className={cn(
-              "shrink-0 rounded-full border px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.08em]",
-              configured
-                ? "border-line bg-surface/70 text-muted"
-                : "border-focus/40 bg-focus/15 text-text",
-              slim ? "ml-auto" : "mt-auto self-start",
-            )}
-          >
-            {size}
-          </span>
-        ) : null}
-      </div>
+      ) : null}
+      <span
+        className={cn(
+          "relative z-10 min-w-0 truncate font-semibold text-text",
+          iconOnly
+            ? "sr-only"
+            : horizontal
+              ? "flex-1 text-xs"
+              : compact
+                ? "max-w-full rounded-full bg-canvas/76 px-2 py-1 text-[0.68rem] leading-3 backdrop-blur-veil"
+                : "max-w-full rounded-full bg-canvas/76 px-2.5 py-1 text-xs backdrop-blur-veil",
+        )}
+        data-testid={`profile-canvas-preview-title-${module.id}`}
+      >
+        {title}
+      </span>
     </div>
   );
 });
@@ -2971,7 +2824,40 @@ function ProfileCanvasMediaContractPreview({
 function profileCanvasModulePreviewCategory(
   type: ProfileModule["type"],
 ): ProfileModuleCategory {
-  return profileModuleCatalog.find((item) => item.type === type)?.category ?? "info";
+  return getProfileModuleDefinition(type).category;
+}
+
+function profileCanvasConfigForResizedModule(
+  module: ProfileModule,
+  size: ProfileGridModuleSize,
+): ProfileModule["config"] {
+  const config = {
+    ...module.config,
+    canvasSize: size,
+  };
+
+  if (
+    module.type === "twitch_channel" ||
+    (module.type === "creator_live" && profileCanvasModuleUsesTwitchLayout(module))
+  ) {
+    return {
+      ...config,
+      displayMode: profileModuleTwitchDisplayModeForSize(size),
+    };
+  }
+
+  return config;
+}
+
+function profileCanvasModuleUsesTwitchLayout(module: ProfileModule): boolean {
+  return (
+    module.config.platform === "twitch" ||
+    module.config.sourceMode === "twitch" ||
+    module.config.integration?.provider === "twitch" ||
+    module.config.displayMode === "stream_status" ||
+    module.config.displayMode === "stream" ||
+    module.config.displayMode === "stream_chat"
+  );
 }
 
 function profileCanvasModulePreviewTitle(module: ProfileModule): string {
@@ -2983,53 +2869,6 @@ function profileCanvasModulePreviewTitle(module: ProfileModule): string {
     module.config.video?.title?.trim();
 
   return title || profileModulePickerLabel(module.type);
-}
-
-function profileCanvasModulePreviewSubtitle(
-  module: ProfileModule,
-  size: ProfileGridModuleSize,
-  showSecondaryText = true,
-): string {
-  if (!profileCanvasModuleIsConfiguredForEditor(module)) {
-    return `Draft ${profileModuleSizeLabel(module.type, size)}`;
-  }
-
-  if (module.config.body?.trim()) {
-    return profileCanvasPlainTextSnippet(module.config.body, 72);
-  }
-
-  if (!showSecondaryText) {
-    return "";
-  }
-
-  if (module.config.integration) {
-    const provider = profileCanvasProviderLabel(module.config.integration.provider);
-    const subtitle = module.config.integration.metadata.subtitle?.trim();
-
-    return subtitle ? `${provider} · ${subtitle}` : provider;
-  }
-
-  if (module.config.audio) {
-    return module.config.description?.trim() || "";
-  }
-
-  if (module.config.video) {
-    return "Uploaded video";
-  }
-
-  if (module.config.mediaItems?.length) {
-    const count = module.config.mediaItems.length;
-
-    return count === 1 ? "1 photo" : `${count} photos`;
-  }
-
-  if (module.config.links?.length) {
-    const count = module.config.links.length;
-
-    return count === 1 ? "1 link" : `${count} links`;
-  }
-
-  return profileModuleSizeLabel(module.type, size);
 }
 
 function profileCanvasModulePreviewImage(
@@ -3049,21 +2888,6 @@ function profileCanvasModulePreviewImage(
   }
 
   return undefined;
-}
-
-function profileCanvasPlainTextSnippet(value: string, maxLength: number): string {
-  const stripped = value
-    .replace(/```[\s\S]*?```/g, " code ")
-    .replace(/\[([^\]]+)\]\(https?:\/\/[^)]+\)/g, "$1")
-    .replace(/[*_`>#-]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (stripped.length <= maxLength) {
-    return stripped;
-  }
-
-  return `${stripped.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
 }
 
 function ProfileCanvasResizeHandles({

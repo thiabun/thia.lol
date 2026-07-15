@@ -155,6 +155,7 @@ import {
   profileModuleAllowedSizes,
   profileModuleCatalog,
   profileModulePresentation,
+  profileModuleTwitchDisplayModeForSize,
   profileGridModuleSizeSpan,
   profileGridModuleSpanSize,
   type ProfileModuleCategory,
@@ -3070,14 +3071,24 @@ function resolveProfileCanvasModules(
         : module,
     );
 
-  if (normalizedModules.some((module) => module.type === "profile_info")) {
-    return normalizedModules.sort(profileCanvasModuleSort);
-  }
+  const modulesWithProfileInfo = normalizedModules.some(
+    (module) => module.type === "profile_info",
+  )
+    ? normalizedModules
+    : [createSyntheticProfileInfoModule(profile), ...normalizedModules];
+  const resolvedLayouts = new Map(
+    profileCanvasResolveDraftCollisions(
+      modulesWithProfileInfo.filter(
+        (module) => module.layout !== null && module.layout !== undefined,
+      ),
+      undefined,
+      true,
+    ).map((module) => [module.id, module]),
+  );
 
-  return [
-    createSyntheticProfileInfoModule(profile),
-    ...normalizedModules.sort(profileCanvasModuleSort),
-  ];
+  return modulesWithProfileInfo
+    .map((module) => resolvedLayouts.get(module.id) ?? module)
+    .sort(profileCanvasModuleSort);
 }
 
 const syntheticConnectionsModuleId = -2;
@@ -3108,7 +3119,7 @@ function upsertProfileModuleLinks(
 
   let hasConnectionsModule = false;
   const mergedModules = modules.map((module) => {
-    if (module.type !== "links") {
+    if (module.type !== "links" && module.type !== "connections") {
       return module;
     }
 
@@ -4482,11 +4493,18 @@ export function profileCanvasDefaultConfigForModule(
       return { ...base, sourceMode: "upload" };
     }
 
-    return {
+    const config = {
       ...base,
       platform: type.startsWith("youtube") ? "youtube" : "twitch",
       sourceMode: type.startsWith("youtube") ? "youtube" : "twitch",
     };
+
+    return type === "twitch_channel"
+      ? {
+          ...config,
+          displayMode: profileModuleTwitchDisplayModeForSize(size),
+        }
+      : config;
   }
 
   if (definition.category === "music") {
@@ -4615,17 +4633,7 @@ export function profileCanvasConfigWithIntegrationCard(
 export function profileCanvasTwitchDisplayModeForSize(
   size: ProfileGridModuleSize,
 ): "stream_status" | "stream" | "stream_chat" {
-  const span = profileGridModuleSizeSpan(size);
-
-  if (span.columns >= 6 && span.rows >= 4) {
-    return "stream_chat";
-  }
-
-  if (span.columns >= 4 && span.rows >= 3) {
-    return "stream";
-  }
-
-  return "stream_status";
+  return profileModuleTwitchDisplayModeForSize(size);
 }
 
 function profileCanvasConnectedIntegrationAccount(
@@ -4851,6 +4859,7 @@ export function profileCanvasProviderForModule(
 export function profileCanvasResolveDraftCollisions(
   modules: ProfileModule[],
   anchorModuleId?: number,
+  fallbackToAuto = false,
 ): ProfileModule[] {
   const occupied = new Set<string>();
   const result = new Map<number, ProfileModule>();
@@ -4893,11 +4902,14 @@ export function profileCanvasResolveDraftCollisions(
       module.layout ?? profileCanvasDefaultClientLayout(module, index),
       module.type,
     );
-    const layout = profileCanvasLayoutFits(requested, occupied)
+    const availableLayout = profileCanvasLayoutFits(requested, occupied)
       ? requested
-      : profileCanvasNextAvailableLayout(requested, occupied) ?? requested;
+      : profileCanvasNextAvailableLayout(requested, occupied);
+    const layout = availableLayout ?? (fallbackToAuto ? null : requested);
 
-    profileCanvasOccupyLayout(layout, occupied);
+    if (layout) {
+      profileCanvasOccupyLayout(layout, occupied);
+    }
     result.set(module.id, { ...module, layout });
   });
 
@@ -6414,6 +6426,7 @@ function ProfileActivityModule({
       {slim ? (
         <ProfileActivitySlimPreview
           activeTab={activeTab}
+          capacity={activitySpan.columns >= 8 ? 3 : 2}
           feed={feed}
           profile={profile}
           replies={replies}
@@ -6472,19 +6485,24 @@ function ProfileActivityModule({
 
 function ProfileActivitySlimPreview({
   activeTab,
+  capacity,
   feed,
   profile,
   replies,
   rooms,
 }: {
   activeTab: ProfileTab;
+  capacity: 2 | 3;
   feed: Post[];
   profile: Profile;
   replies: Post[];
   rooms: Room[];
 }) {
-  const posts = activeTab === "feed" ? feed.slice(0, 3) : replies.slice(0, 3);
-  const visibleRooms = rooms.slice(0, 3);
+  const posts =
+    activeTab === "feed"
+      ? feed.slice(0, capacity)
+      : replies.slice(0, capacity);
+  const visibleRooms = rooms.slice(0, capacity);
 
   return (
     <div
@@ -6534,7 +6552,7 @@ function ProfileActivitySlimPostCard({
 
   return (
     <Link
-      className="group flex h-full min-w-[13.5rem] flex-1 items-stretch overflow-hidden rounded-card border border-line bg-canvas/46 text-left shadow-inner-soft transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface/64 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      className="group flex h-full min-w-0 flex-1 basis-0 items-stretch overflow-hidden rounded-card border border-line bg-canvas/46 text-left shadow-inner-soft transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface/64 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       data-profile-activity-slim-card="post"
       to={postCanonicalPath(post)}
       title={profileActivityPreviewText(post.body, label)}
@@ -6594,7 +6612,7 @@ function ProfileActivitySlimPostCard({
 function ProfileActivitySlimRoomCard({ room }: { room: Room }) {
   return (
     <Link
-      className="group flex h-full min-w-[12.5rem] flex-1 items-center gap-2 overflow-hidden rounded-card border border-line bg-canvas/46 px-2.5 py-2 text-left shadow-inner-soft transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface/64 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      className="group flex h-full min-w-0 flex-1 basis-0 items-center gap-2 overflow-hidden rounded-card border border-line bg-canvas/46 px-2.5 py-2 text-left shadow-inner-soft transition duration-fluid ease-fluid hover:border-line-strong hover:bg-surface/64 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       data-profile-activity-slim-card="room"
       style={roomThemeSwatchCssProperties(room)}
       title={`Open ${room.name}`}
@@ -6638,7 +6656,7 @@ function ProfileActivitySlimEmpty({
   text: string;
 }) {
   return (
-    <span className="flex h-full min-w-[13rem] flex-1 items-center gap-2 rounded-card border border-dashed border-line bg-canvas/32 px-3 text-xs font-semibold text-muted">
+    <span className="flex h-full min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-card border border-dashed border-line bg-canvas/32 px-3 text-xs font-semibold text-muted">
       <span className="grid size-8 shrink-0 place-items-center rounded-full bg-surface/70 text-accent-strong">
         <Icon aria-hidden="true" size={15} />
       </span>

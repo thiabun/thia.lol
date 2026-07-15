@@ -565,6 +565,7 @@ const profileModuleLegacyMusicTypes = new Set([
   "apple_music_artist",
   "youtube_music_artist",
 ]);
+const retiredProfileModuleTypes = new Set(["featured"]);
 const maxFeaturedBadges = 4;
 
 export function normalizeProfileHandle(handle: string): string | null {
@@ -588,6 +589,16 @@ export function canonicalProfileModuleType(type: string): string {
   }
 
   return type;
+}
+
+export function supportedProfileModuleType(type: string): string | null {
+  const canonicalType = canonicalProfileModuleType(type);
+
+  return profileModuleTypes.has(canonicalType) ? canonicalType : null;
+}
+
+export function isRetiredProfileModuleType(type: string): boolean {
+  return retiredProfileModuleTypes.has(type);
 }
 
 export function profilePayloadFromRow(
@@ -1007,17 +1018,16 @@ class MysqlProfilesRepository implements ProfilesRepository {
     userId: number,
     capabilities: ProfileSchemaCapabilities,
   ): Promise<ProfileModulePayload | null> {
-    const type = stringValue(row.type);
+    const type = supportedProfileModuleType(stringValue(row.type));
 
-    if (!profileModuleTypes.has(type)) {
+    if (type === null) {
       return null;
     }
 
-    const canonicalType = canonicalProfileModuleType(type);
-    const config = await this.profileModuleOutputConfig(canonicalType, profileModuleJson(row.config_json), userId, capabilities);
+    const config = await this.profileModuleOutputConfig(type, profileModuleJson(row.config_json), userId, capabilities);
     const payload: ProfileModulePayload = {
       id: numberValue(row.id),
-      type: canonicalType,
+      type,
       title: nullableStringValue(row.title),
       config,
       visibility: stringValue(row.visibility),
@@ -1684,30 +1694,22 @@ export function followUserCardPayloadFromRow(row: FollowUserRow): FollowUserCard
 
 export function profileModuleLayoutPayload(row: ProfileModuleRow): ProfileModuleLayoutPayload | null {
   const type = stringValue(row.type);
-  let column = profileModuleSavedGridValue(row.grid_column);
-  let rowNumber = profileModuleSavedGridValue(row.grid_row);
-  let colSpan = profileModuleSavedGridValue(row.grid_col_span);
-  let rowSpan = profileModuleSavedGridValue(row.grid_row_span);
+  const column = profileModuleSavedGridValue(row.grid_column);
+  const rowNumber = profileModuleSavedGridValue(row.grid_row);
+  const colSpan = profileModuleSavedGridValue(row.grid_col_span);
+  const rowSpan = profileModuleSavedGridValue(row.grid_row_span);
 
   if (column === null || rowNumber === null || colSpan === null || rowSpan === null) {
     return null;
   }
 
-  [colSpan, rowSpan] = profileCanvasNormalizeSpan(type, colSpan, rowSpan);
-
-  if (!profileCanvasSpanAllowed(type, colSpan, rowSpan)) {
-    return null;
-  }
-
-  column = Math.max(1, Math.min(12 - colSpan + 1, column));
-  rowNumber = Math.max(1, Math.min(16 - rowSpan + 1, rowNumber));
-
-  return {
+  return profileCanvasNormalizeLayout(
+    type,
     column,
-    row: rowNumber,
+    rowNumber,
     colSpan,
     rowSpan,
-  };
+  );
 }
 
 function profileModulesPayloadContainsType(modules: ProfileModulePayload[], type: string): boolean {
@@ -2863,35 +2865,80 @@ function profileModuleSavedGridValue(value: boolean | number | string | null | u
   return null;
 }
 
-function profileCanvasNormalizeSpan(type: string, colSpan: number, rowSpan: number): [number, number] {
-  if (type === "creator_live" && colSpan === 3 && rowSpan === 5) {
-    return [5, 3];
+export function profileCanvasNormalizeLayout(
+  type: string,
+  column: number,
+  row: number,
+  colSpan: number,
+  rowSpan: number,
+): ProfileModuleLayoutPayload {
+  if (!profileCanvasSpanAllowed(type, colSpan, rowSpan)) {
+    [colSpan, rowSpan] = profileCanvasClosestAllowedSpan(
+      type,
+      colSpan,
+      rowSpan,
+    );
   }
 
-  return [
-    Math.max(1, Math.min(profileCanvasMaxAllowedSizeAxis(type, 0, 6), colSpan)),
-    Math.max(1, Math.min(profileCanvasMaxAllowedSizeAxis(type, 1, 6), rowSpan)),
-  ];
+  return {
+    column: Math.max(1, Math.min(12 - colSpan + 1, column)),
+    row: Math.max(1, Math.min(16 - rowSpan + 1, row)),
+    colSpan,
+    rowSpan,
+  };
 }
 
 function profileCanvasSpanAllowed(type: string, colSpan: number, rowSpan: number): boolean {
   return profileCanvasAllowedSizes(type).includes(`${colSpan}x${rowSpan}`);
 }
 
-function profileCanvasMaxAllowedSizeAxis(type: string, axis: 0 | 1, fallback: number): number {
-  let max = fallback;
+export function profileModuleCanvasSpanAllowed(
+  type: string,
+  colSpan: number,
+  rowSpan: number,
+): boolean {
+  return profileCanvasSpanAllowed(type, colSpan, rowSpan);
+}
 
-  for (const size of profileCanvasAllowedSizes(type)) {
-    const match = /^([1-8])x(10|[1-9])$/.exec(size);
-
-    if (match === null) {
-      continue;
-    }
-
-    max = Math.max(max, Number(match[axis + 1]));
+export function profileCanvasClosestAllowedSpan(
+  type: string,
+  colSpan: number,
+  rowSpan: number,
+): [number, number] {
+  if (canonicalProfileModuleType(type) === "creator_live" && colSpan === 3 && rowSpan === 5) {
+    return [5, 3];
   }
 
-  return axis === 0 ? Math.min(8, max) : Math.min(10, max);
+  const requestedArea = colSpan * rowSpan;
+  const candidates = profileCanvasAllowedSizes(type)
+    .map((size, index) => {
+      const match = /^([1-8])x(10|[1-9])$/.exec(size);
+
+      if (match === null) {
+        return null;
+      }
+
+      const columns = Number(match[1]);
+      const rows = Number(match[2]);
+
+      return {
+        areaDistance: Math.abs(columns * rows - requestedArea),
+        columns,
+        distance: Math.abs(columns - colSpan) + Math.abs(rows - rowSpan),
+        index,
+        rows,
+      };
+    })
+    .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null)
+    .sort(
+      (first, second) =>
+        first.distance - second.distance ||
+        first.areaDistance - second.areaDistance ||
+        first.index - second.index,
+    );
+  const closest = candidates[0];
+
+  return closest ? [closest.columns, closest.rows] : [1, 1];
 }
 
 function profileCanvasAllowedSizes(type: string): string[] {
@@ -2910,6 +2957,8 @@ function profileCanvasAllowedSizes(type: string): string[] {
   const activitySizes = profileCanvasUniqueSizes(["3x4", "4x6", "6x10"], ["5x2", "6x2", "8x2", "8x3"]);
 
   switch (canonicalProfileModuleType(type)) {
+    case "placeholder":
+      return profileCanvasSizeRange(1, 8, 1, 10);
     case "profile_info":
       return ["3x2", "3x3", "4x3", "6x3", "8x3", "8x4"];
     case "about":
@@ -2936,7 +2985,11 @@ function profileCanvasAllowedSizes(type: string): string[] {
     case "creator_live":
       return profileCanvasUniqueSizes(["2x1", "3x2", "4x3", "5x3", "6x4"], wideSlimTwoRowSizes);
     case "twitch_channel":
-      return profileCanvasUniqueSizes(["2x1", "3x2", "4x3", "5x3", "6x4", "8x6"], wideSlimTwoRowSizes);
+      return profileCanvasUniqueSizes(
+        ["2x1", "3x2"],
+        wideSlimTwoRowSizes,
+        ["4x3", "5x3", "6x4", "8x6"],
+      );
     case "youtube_video":
       return profileCanvasUniqueSizes(["3x4"], videoCardSizes);
     case "youtube_stream":
