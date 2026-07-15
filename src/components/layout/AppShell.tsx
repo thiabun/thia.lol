@@ -12,6 +12,7 @@ import {
   Search,
   Settings,
   Shield,
+  Sparkles,
   UserRound,
   UserPlus,
 } from "lucide-react";
@@ -20,6 +21,7 @@ import { AnimatePresence, motion } from "motion/react";
 import {
   lazy,
   Suspense,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -34,6 +36,7 @@ import { ProfilePersonalBackdrop } from "../social/ProfilePersonalBackdrop";
 import { Button, ButtonLink } from "../ui/Button";
 import { CoffeeSupport } from "./CoffeeSupport";
 import { StrokeJokePopup } from "./StrokeJokePopup";
+import { WhatsNewModal } from "./WhatsNewModal";
 import { getNotifications, getOnboardingState, getRooms } from "../../lib/api";
 import { cn } from "../../lib/classNames";
 import { desktopNotificationSupport, ensureNotificationServiceWorkerRegistration } from "../../lib/desktopNotifications";
@@ -53,6 +56,10 @@ import { profileCanvasGlassTreatment } from "../../lib/profileVisualTreatments";
 import { useAuth } from "../../lib/useAuth";
 import { useTheme } from "../../lib/useTheme";
 import type { Room } from "../../lib/types";
+import {
+  hasSeenCurrentWhatsNewRelease,
+  markCurrentWhatsNewReleaseSeen,
+} from "../../lib/whatsNew";
 
 const PostComposerModal = lazy(() =>
   import("../social/PostComposerModal").then((module) => ({
@@ -80,6 +87,11 @@ const bugReportUrl =
 const supportUrl = "https://ko-fi.com/thiabun";
 
 const cookieNoticeStorageKey = "thia_cookie_notice_ack";
+const whatsNewAutoOpenDelayMs = 600;
+const whatsNewAutoOpenPaths = new Set(["/", "/discover", "/rooms", "/search"]);
+type ShellOverlay = "coffee" | "composer" | "stroke-joke" | "whats-new" | null;
+type OpenWhatsNew = (returnFocusTo?: HTMLElement | null) => void;
+type WhatsNewAudienceId = number | "anonymous";
 type OnboardingGateState = Awaited<ReturnType<typeof getOnboardingState>>;
 
 function cookieNoticeShouldShow(): boolean {
@@ -167,7 +179,8 @@ export function AppShell() {
   const { themePreference } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
-  const [composerOpen, setComposerOpen] = useState(false);
+  const [activeShellOverlay, setActiveShellOverlay] =
+    useState<ShellOverlay>(null);
   const [composerActivated, setComposerActivated] = useState(false);
   const [composerRoomSlug, setComposerRoomSlug] = useState<string | undefined>();
   const [composerRooms, setComposerRooms] = useState<Room[]>([]);
@@ -176,11 +189,28 @@ export function AppShell() {
   const [cookieNoticeVisible, setCookieNoticeVisible] = useState(
     cookieNoticeShouldShow,
   );
+  const [whatsNewPromptedAudienceIds, setWhatsNewPromptedAudienceIds] =
+    useState<ReadonlySet<WhatsNewAudienceId>>(() => new Set());
+  const [whatsNewDismissedAudienceIds, setWhatsNewDismissedAudienceIds] =
+    useState<ReadonlySet<WhatsNewAudienceId>>(() => new Set());
+  const [whatsNewShownThisSession, setWhatsNewShownThisSession] =
+    useState(false);
+  const [onboardingGateCheckedUserIds, setOnboardingGateCheckedUserIds] =
+    useState<ReadonlySet<number>>(() => new Set());
+  const whatsNewReturnFocusRef = useRef<HTMLElement | null>(null);
   const [mobileDockHidden, setMobileDockHidden] = useState(false);
   const [topBarAction, setTopBarAction] = useState<ReactNode | undefined>();
   const [notificationUnreadCount, setNotificationUnreadCount] = useState<
     number | undefined
   >();
+  const composerOpen = activeShellOverlay === "composer";
+  const coffeeSupportOpen = activeShellOverlay === "coffee";
+  const whatsNewOpen = activeShellOverlay === "whats-new";
+  const whatsNewAudienceId: WhatsNewAudienceId = user?.id ?? "anonymous";
+  const whatsNewPrompted = whatsNewPromptedAudienceIds.has(whatsNewAudienceId);
+  const whatsNewSeen =
+    whatsNewDismissedAudienceIds.has(whatsNewAudienceId) ||
+    hasSeenCurrentWhatsNewRelease(user?.id);
   const postingDisabled = status === "loading";
   const anonymousHome = status === "anonymous" && location.pathname === "/";
   const currentRoomSlug = matchPath(
@@ -209,6 +239,108 @@ export function AppShell() {
         "--site-profile-module-alpha": `${profileGlass.moduleSurfacePercent}%`,
       } as CSSProperties)
     : undefined;
+
+  const openWhatsNew = useCallback(
+    (returnFocusTo: HTMLElement | null = null) => {
+      whatsNewReturnFocusRef.current = returnFocusTo;
+      setWhatsNewPromptedAudienceIds((current) => {
+        const next = new Set(current);
+        next.add(whatsNewAudienceId);
+        return next;
+      });
+      setWhatsNewShownThisSession(true);
+      setActiveShellOverlay("whats-new");
+    },
+    [whatsNewAudienceId],
+  );
+
+  const closeWhatsNew = useCallback(() => {
+    markCurrentWhatsNewReleaseSeen(user?.id);
+    setWhatsNewDismissedAudienceIds((current) => {
+      const next = new Set(current);
+      next.add(whatsNewAudienceId);
+      return next;
+    });
+    setActiveShellOverlay((current) =>
+      current === "whats-new" ? null : current,
+    );
+  }, [user?.id, whatsNewAudienceId]);
+
+  const handleCoffeeSupportOpenChange = useCallback((open: boolean) => {
+    setActiveShellOverlay((current) => {
+      if (open) {
+        return current === null || current === "coffee" ? "coffee" : current;
+      }
+
+      return current === "coffee" ? null : current;
+    });
+  }, []);
+
+  const handleStrokeJokeOpenChange = useCallback((open: boolean) => {
+    setActiveShellOverlay((current) => {
+      if (open) {
+        return current === null || current === "stroke-joke"
+          ? "stroke-joke"
+          : current;
+      }
+
+      return current === "stroke-joke" ? null : current;
+    });
+  }, []);
+
+  const closeComposer = useCallback(() => {
+    setActiveShellOverlay((current) =>
+      current === "composer" ? null : current,
+    );
+  }, []);
+
+  useEffect(() => {
+    const normalizedPathname =
+      location.pathname === "/"
+        ? "/"
+        : location.pathname.replace(/\/+$/, "").toLowerCase();
+
+    if (
+      status !== "authenticated" ||
+      !user ||
+      !onboardingGateCheckedUserIds.has(user.id) ||
+      whatsNewSeen ||
+      whatsNewPrompted ||
+      cookieNoticeVisible ||
+      activeShellOverlay !== null ||
+      !whatsNewAutoOpenPaths.has(normalizedPathname)
+    ) {
+      return;
+    }
+
+    let timer: number | undefined;
+    const openWhenPageIsClear = () => {
+      if (document.querySelector("[role='dialog'][aria-modal='true']")) {
+        timer = window.setTimeout(openWhenPageIsClear, 250);
+        return;
+      }
+
+      openWhatsNew();
+    };
+
+    timer = window.setTimeout(openWhenPageIsClear, whatsNewAutoOpenDelayMs);
+
+    return () => {
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+      }
+    };
+  }, [
+    activeShellOverlay,
+    cookieNoticeVisible,
+    location.pathname,
+    onboardingGateCheckedUserIds,
+    openWhatsNew,
+    status,
+    user,
+    whatsNewPrompted,
+    whatsNewSeen,
+  ]);
 
   useLayoutEffect(() => {
     const root = document.documentElement;
@@ -287,6 +419,10 @@ export function AppShell() {
       return undefined;
     }
 
+    if (onboardingGateCheckedUserIds.has(user.id)) {
+      return undefined;
+    }
+
     if (profileOnboardingGateShouldSkip(location.pathname, location.search, user.handle)) {
       return undefined;
     }
@@ -295,20 +431,50 @@ export function AppShell() {
 
     getOnboardingState()
       .then((state) => {
-        if (!active || !profileOnboardingStateNeedsVisit(state)) {
+        if (!active) {
           return;
         }
 
-        navigate("/onboarding", { replace: true });
+        if (profileOnboardingStateNeedsVisit(state)) {
+          setWhatsNewPromptedAudienceIds((current) => {
+            const next = new Set(current);
+            next.delete(user.id);
+            return next;
+          });
+          setActiveShellOverlay((current) =>
+            current === "whats-new" ? null : current,
+          );
+          navigate("/onboarding", { replace: true });
+          return;
+        }
+
+        setOnboardingGateCheckedUserIds((current) => {
+          const next = new Set(current);
+          next.add(user.id);
+          return next;
+        });
       })
       .catch(() => {
-        // Onboarding should not block the app if the deployment is between code and migration.
+        if (active) {
+          setOnboardingGateCheckedUserIds((current) => {
+            const next = new Set(current);
+            next.add(user.id);
+            return next;
+          });
+        }
       });
 
     return () => {
       active = false;
     };
-  }, [location.pathname, location.search, navigate, status, user]);
+  }, [
+    location.pathname,
+    location.search,
+    navigate,
+    onboardingGateCheckedUserIds,
+    status,
+    user,
+  ]);
 
   useEffect(() => {
     if (
@@ -412,7 +578,7 @@ export function AppShell() {
       setComposerRoomSlug(roomSlug);
       setComposerKey((current) => current + 1);
       setComposerActivated(true);
-      setComposerOpen(true);
+      setActiveShellOverlay("composer");
       return;
     }
 
@@ -448,6 +614,7 @@ export function AppShell() {
           anonymousHome={anonymousHome}
           navItems={publicNavItems}
           notificationUnreadCount={notificationUnreadCount}
+          onWhatsNewOpen={openWhatsNew}
           profileThemeAvailable={profileThemeAvailable}
           showNotifications={status === "authenticated"}
           themeControlsDisabled={authorThemeControlsDisabled}
@@ -488,7 +655,7 @@ export function AppShell() {
             />
           )}
         </div>
-        <SiteFooter />
+        <SiteFooter onWhatsNewOpen={openWhatsNew} />
         {anonymousHome ? null : (
           <Button
             type="button"
@@ -501,22 +668,39 @@ export function AppShell() {
             Post
           </Button>
         )}
-        {anonymousHome ? null : <CoffeeSupport mobileHidden={mobileDockHidden} />}
+        {anonymousHome ? null : (
+          <CoffeeSupport
+            mobileHidden={mobileDockHidden}
+            onOpenChange={handleCoffeeSupportOpenChange}
+            open={coffeeSupportOpen}
+          />
+        )}
         {composerActivated ? (
           <Suspense fallback={composerOpen ? <ComposerLoadingNotice /> : null}>
             <PostComposerModal
               key={composerKey}
               csrfToken={csrfToken}
               initialRoomSlug={composerRoomSlug}
-              onClose={() => setComposerOpen(false)}
+              onClose={closeComposer}
               onCreated={emitPostCreated}
               open={composerOpen}
               rooms={composerRooms}
             />
           </Suspense>
         ) : null}
+        <WhatsNewModal
+          onClose={closeWhatsNew}
+          open={whatsNewOpen}
+          returnFocusRef={whatsNewReturnFocusRef}
+        />
         <StrokeJokePopup
-          cookieNoticeVisible={cookieNoticeVisible}
+          blocked={
+            cookieNoticeVisible ||
+            whatsNewShownThisSession ||
+            (activeShellOverlay !== null && activeShellOverlay !== "stroke-joke")
+          }
+          onOpenChange={handleStrokeJokeOpenChange}
+          open={activeShellOverlay === "stroke-joke"}
           pathname={location.pathname}
         />
       </div>
@@ -539,6 +723,7 @@ function SiteHeader({
   anonymousHome,
   navItems,
   notificationUnreadCount,
+  onWhatsNewOpen,
   profileThemeAvailable,
   showNotifications,
   themeControlsDisabled,
@@ -548,6 +733,7 @@ function SiteHeader({
   anonymousHome: boolean;
   navItems: NavItemProps[];
   notificationUnreadCount: number | undefined;
+  onWhatsNewOpen: OpenWhatsNew;
   profileThemeAvailable: boolean;
   showNotifications: boolean;
   themeControlsDisabled: boolean;
@@ -557,6 +743,7 @@ function SiteHeader({
   if (anonymousHome) {
     return (
       <AnonymousHomeHeader
+        onWhatsNewOpen={onWhatsNewOpen}
         themeControlsDisabled={themeControlsDisabled}
         themeControlsDisabledReason={themeControlsDisabledReason}
       />
@@ -604,7 +791,7 @@ function SiteHeader({
             disabledReason={themeControlsDisabledReason}
             profileThemeAvailable={profileThemeAvailable}
           />
-          <AccountMenu />
+          <AccountMenu onWhatsNewOpen={onWhatsNewOpen} />
         </div>
       </div>
     </header>
@@ -612,9 +799,11 @@ function SiteHeader({
 }
 
 function AnonymousHomeHeader({
+  onWhatsNewOpen,
   themeControlsDisabled,
   themeControlsDisabledReason,
 }: {
+  onWhatsNewOpen: OpenWhatsNew;
   themeControlsDisabled: boolean;
   themeControlsDisabledReason: string;
 }) {
@@ -701,6 +890,7 @@ function AnonymousHomeHeader({
               type="button"
               variant="secondary"
               size="icon"
+              data-anonymous-home-menu-trigger="true"
               aria-label="Open navigation menu"
               aria-controls="anonymous-home-menu"
               aria-expanded={menuOpen}
@@ -745,6 +935,21 @@ function AnonymousHomeHeader({
                   >
                     <LogIn aria-hidden="true" size={16} />
                     Sign in
+                  </AccountMenuItem>
+                  <AccountMenuItem
+                    withinMenu={false}
+                    onClick={() => {
+                      const returnTarget =
+                        menuRef.current?.querySelector<HTMLElement>(
+                          "[data-anonymous-home-menu-trigger='true']",
+                        ) ?? null;
+
+                      setMenuOpen(false);
+                      onWhatsNewOpen(returnTarget);
+                    }}
+                  >
+                    <Sparkles aria-hidden="true" size={16} />
+                    What’s new
                   </AccountMenuItem>
                   <div
                     className="mt-1 flex items-center justify-between gap-2 border-t border-line px-2 pt-1.5 text-sm font-medium text-muted"
@@ -792,7 +997,7 @@ function NotificationBell({ unreadCount }: { unreadCount: number | undefined }) 
   );
 }
 
-function AccountMenu() {
+function AccountMenu({ onWhatsNewOpen }: { onWhatsNewOpen: OpenWhatsNew }) {
   const { logout, status, user } = useAuth();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -835,6 +1040,7 @@ function AccountMenu() {
         type="button"
         variant="secondary"
         size="icon"
+        data-account-menu-trigger="true"
         aria-label={label}
         aria-expanded={open}
         aria-haspopup="menu"
@@ -871,6 +1077,20 @@ function AccountMenu() {
                   <Settings aria-hidden="true" size={16} />
                   Settings
                 </AccountMenuItem>
+                <AccountMenuItem
+                  onClick={() => {
+                    const returnTarget =
+                      menuRef.current?.querySelector<HTMLElement>(
+                        "[data-account-menu-trigger='true']",
+                      ) ?? null;
+
+                    setOpen(false);
+                    onWhatsNewOpen(returnTarget);
+                  }}
+                >
+                  <Sparkles aria-hidden="true" size={16} />
+                  What’s new
+                </AccountMenuItem>
                 <AccountMenuItem to="/legal" onSelect={() => setOpen(false)}>
                   <FileText aria-hidden="true" size={16} />
                   Legal
@@ -900,6 +1120,20 @@ function AccountMenu() {
                 <AccountMenuItem to="/register" onSelect={() => setOpen(false)}>
                   <UserPlus aria-hidden="true" size={16} />
                   Create account
+                </AccountMenuItem>
+                <AccountMenuItem
+                  onClick={() => {
+                    const returnTarget =
+                      menuRef.current?.querySelector<HTMLElement>(
+                        "[data-account-menu-trigger='true']",
+                      ) ?? null;
+
+                    setOpen(false);
+                    onWhatsNewOpen(returnTarget);
+                  }}
+                >
+                  <Sparkles aria-hidden="true" size={16} />
+                  What’s new
                 </AccountMenuItem>
                 <AccountMenuItem to="/legal" onSelect={() => setOpen(false)}>
                   <FileText aria-hidden="true" size={16} />
@@ -1048,7 +1282,7 @@ function MobileDock({
   );
 }
 
-function SiteFooter() {
+function SiteFooter({ onWhatsNewOpen }: { onWhatsNewOpen: OpenWhatsNew }) {
   return (
     <footer
       className="mx-auto w-full max-w-7xl px-4 pb-[var(--app-mobile-content-bottom)] pt-1 sm:px-6 lg:px-8 lg:pb-8"
@@ -1082,6 +1316,13 @@ function SiteFooter() {
                 {link.label}
               </Link>
             ))}
+            <button
+              type="button"
+              className="font-medium underline-offset-4 transition duration-fluid hover:text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              onClick={(event) => onWhatsNewOpen(event.currentTarget)}
+            >
+              What’s new
+            </button>
             <a
               href={supportUrl}
               target="_blank"

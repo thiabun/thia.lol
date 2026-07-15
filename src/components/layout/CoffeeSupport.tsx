@@ -1,14 +1,21 @@
 import { Coffee, X } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { modalOverlay, modalPanel } from "../../lib/motionPresets";
 
 const kofiEmbedUrl =
   "https://ko-fi.com/thiabun/?hidefeed=true&widget=true&embed=true&preview=true";
 
-export function CoffeeSupport({ mobileHidden }: { mobileHidden: boolean }) {
-  const [open, setOpen] = useState(false);
+export function CoffeeSupport({
+  mobileHidden,
+  onOpenChange,
+  open,
+}: {
+  mobileHidden: boolean;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+}) {
   const reducedMotion = useReducedMotion();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -47,7 +54,7 @@ export function CoffeeSupport({ mobileHidden }: { mobileHidden: boolean }) {
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        setOpen(false);
+        onOpenChange(false);
       }
     }
 
@@ -63,7 +70,7 @@ export function CoffeeSupport({ mobileHidden }: { mobileHidden: boolean }) {
         restoreTarget.focus();
       }
     };
-  }, [open]);
+  }, [onOpenChange, open]);
 
   return (
     <>
@@ -79,7 +86,7 @@ export function CoffeeSupport({ mobileHidden }: { mobileHidden: boolean }) {
             aria-expanded={open}
             data-testid="coffee-support-button"
             title="Support thia.lol"
-            onClick={() => setOpen(true)}
+            onClick={() => onOpenChange(true)}
             {...interactionMotion}
           >
             <Coffee aria-hidden="true" size={22} strokeWidth={2.1} />
@@ -100,7 +107,7 @@ export function CoffeeSupport({ mobileHidden }: { mobileHidden: boolean }) {
                   exit="exit"
                   onMouseDown={(event) => {
                     if (event.target === event.currentTarget) {
-                      setOpen(false);
+                      onOpenChange(false);
                     }
                   }}
                 >
@@ -119,7 +126,7 @@ export function CoffeeSupport({ mobileHidden }: { mobileHidden: boolean }) {
                         className="app-control grid size-11 touch-manipulation place-items-center rounded-full border border-line bg-surface/92 text-text shadow-soft backdrop-blur-veil transition duration-fluid ease-fluid hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                         aria-label="Close Ko-fi support panel"
                         title="Close"
-                        onClick={() => setOpen(false)}
+                        onClick={() => onOpenChange(false)}
                         {...(reducedMotion ? {} : { whileTap: { scale: 0.94 } })}
                       >
                         <X aria-hidden="true" size={19} />

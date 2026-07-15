@@ -65,20 +65,23 @@ const confettiPieces = Array.from({ length: 44 }, (_, index) => ({
 }));
 
 type StrokeJokePopupProps = {
-  cookieNoticeVisible: boolean;
+  blocked: boolean;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
   pathname: string;
 };
 
 export function StrokeJokePopup({
-  cookieNoticeVisible,
+  blocked,
+  onOpenChange,
+  open,
   pathname,
 }: StrokeJokePopupProps) {
-  const [open, setOpen] = useState(false);
   const [confettiBurst, setConfettiBurst] = useState(0);
 
   useEffect(() => {
     if (
-      cookieNoticeVisible ||
+      blocked ||
       open ||
       !strokeJokePathIsEligible(pathname) ||
       strokeJokeCooldownIsActive() ||
@@ -91,14 +94,14 @@ export function StrokeJokePopup({
       markStrokeJokeSessionRoll();
 
       if (Math.random() < strokeJokeRollChance) {
-        setOpen(true);
+        onOpenChange(true);
       }
     }, strokeJokeRollDelayMs);
 
     return () => {
       window.clearTimeout(rollTimer);
     };
-  }, [cookieNoticeVisible, open, pathname]);
+  }, [blocked, onOpenChange, open, pathname]);
 
   useEffect(() => {
     if (confettiBurst === 0) {
@@ -116,7 +119,7 @@ export function StrokeJokePopup({
 
   function handleCelebrate() {
     writeStrokeJokeCooldown();
-    setOpen(false);
+    onOpenChange(false);
     setConfettiBurst((current) => current + 1);
   }
 

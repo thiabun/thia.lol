@@ -1,7 +1,12 @@
 import { expect, type Page, test } from "@playwright/test";
 import { mockSpotifyIframeApi, spotifyPlayCalls } from "../helpers/spotify";
+import {
+  CURRENT_WHATS_NEW_RELEASE,
+  whatsNewStorageKey,
+} from "../../src/lib/whatsNew";
 
 const strokeJokeCooldownStorageKey = "thia.strokeJoke.cooldownUntil:v1";
+const whatsNewViewerStorageKey = whatsNewStorageKey(1);
 
 const retiredMockCopy = [
   "Mira Vale",
@@ -126,8 +131,9 @@ test("anonymous mobile home header keeps conversion links accessible without a d
 
     const menu = page.getByTestId("anonymous-home-menu");
     for (const label of ["Discover", "Rooms", "Sign in"]) {
-      await expect(menu.getByRole("menuitem", { name: label })).toBeVisible();
+      await expect(menu.getByRole("link", { name: label })).toBeVisible();
     }
+    await expect(menu.getByRole("button", { name: "What’s new" })).toBeVisible();
 
     await expect(page.getByTestId("mobile-nav")).toHaveCount(0);
     await expect(page.getByTestId("mobile-post-action")).toHaveCount(0);
@@ -329,6 +335,270 @@ test("authenticated account menu uses one row pattern", async ({ page }) => {
 
   await page.keyboard.press("Escape");
   await expect(menu).toBeHidden();
+});
+
+test("authenticated members see each What’s New release once", async ({ page }) => {
+  await mockAuthenticatedShell(page);
+  await page.addInitScript(
+    ({ initializationKey, storageKey }) => {
+      if (window.sessionStorage.getItem(initializationKey)) {
+        return;
+      }
+
+      window.sessionStorage.setItem(initializationKey, "1");
+      window.localStorage.setItem("thia_cookie_notice_ack", "1");
+      window.localStorage.removeItem(storageKey);
+    },
+    {
+      initializationKey: "thia.test.whatsNewUnseen",
+      storageKey: whatsNewViewerStorageKey,
+    },
+  );
+  await page.goto("/discover");
+
+  const releaseUrl = page.url();
+  const modal = page.getByTestId("whats-new-modal");
+  await expect(modal).toBeVisible();
+  await expect(modal.getByRole("heading", { name: CURRENT_WHATS_NEW_RELEASE.title })).toBeVisible();
+  await expect(modal).toContainText(CURRENT_WHATS_NEW_RELEASE.sinceLabel);
+  await expect(page.getByTestId("whats-new-group-new")).toBeVisible();
+  await expect(page.getByTestId("whats-new-group-improved")).toBeVisible();
+  await expect(page.getByTestId("whats-new-group-fixed")).toBeVisible();
+  expect(page.url()).toBe(releaseUrl);
+
+  await page.getByTestId("whats-new-got-it").click();
+  await expect(modal).toBeHidden();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (storageKey) => window.localStorage.getItem(storageKey),
+        whatsNewViewerStorageKey,
+      ),
+    )
+    .toBe(CURRENT_WHATS_NEW_RELEASE.id);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (storageKey) => window.localStorage.getItem(storageKey),
+        whatsNewStorageKey(2),
+      ),
+    )
+    .toBeNull();
+
+  await page.reload();
+  await expect(page.getByLabel("thia.lol home")).toBeVisible();
+  await page.waitForTimeout(750);
+  await expect(modal).toHaveCount(0);
+});
+
+test("What’s New waits for cookie consent", async ({ page }) => {
+  await mockAuthenticatedShell(page);
+  await page.addInitScript((storageKey) => {
+    window.localStorage.removeItem("thia_cookie_notice_ack");
+    window.localStorage.removeItem(storageKey);
+  }, whatsNewViewerStorageKey);
+  await page.goto("/discover");
+
+  const modal = page.getByTestId("whats-new-modal");
+  const cookieNotice = page.getByTestId("cookie-notice");
+  await expect(cookieNotice).toBeVisible();
+  await page.waitForTimeout(750);
+  await expect(modal).toHaveCount(0);
+
+  await cookieNotice.getByRole("button", { name: "Continue" }).click();
+  await expect(modal).toBeVisible();
+});
+
+test("What’s New waits for onboarding resolution", async ({ page }) => {
+  await mockAuthenticatedShell(page);
+  let releaseOnboarding: (() => void) | undefined;
+  const onboardingReady = new Promise<void>((resolve) => {
+    releaseOnboarding = resolve;
+  });
+  await page.route("**/api/me/onboarding", async (route) => {
+    await onboardingReady;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          steps: [],
+          completedSteps: [],
+          skippedSteps: [],
+          providerLinks: {},
+          finishedAt: "2026-06-10 10:00:00",
+          dismissedAt: null,
+          createdAt: "2026-06-10 09:00:00",
+          updatedAt: "2026-06-10 10:00:00",
+        },
+      }),
+    });
+  });
+  await page.addInitScript((storageKey) => {
+    window.localStorage.setItem("thia_cookie_notice_ack", "1");
+    window.localStorage.removeItem(storageKey);
+  }, whatsNewViewerStorageKey);
+  await page.goto("/discover");
+
+  const modal = page.getByTestId("whats-new-modal");
+  await page.waitForTimeout(750);
+  await expect(modal).toHaveCount(0);
+
+  releaseOnboarding?.();
+  await expect(modal).toBeVisible();
+});
+
+test("What’s New yields to unfinished onboarding", async ({ page }) => {
+  await mockAuthenticatedShell(page);
+  await page.route("**/api/me/onboarding", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          steps: ["profile_basics"],
+          completedSteps: [],
+          skippedSteps: [],
+          providerLinks: {},
+          finishedAt: null,
+          dismissedAt: null,
+          createdAt: "2026-06-10 09:00:00",
+          updatedAt: "2026-06-10 09:00:00",
+        },
+      }),
+    }),
+  );
+  await page.addInitScript((storageKey) => {
+    window.localStorage.setItem("thia_cookie_notice_ack", "1");
+    window.localStorage.removeItem(storageKey);
+  }, whatsNewViewerStorageKey);
+  await page.goto("/discover");
+
+  await expect(page).toHaveURL(/\/onboarding$/);
+  await page.waitForTimeout(750);
+  await expect(page.getByTestId("whats-new-modal")).toHaveCount(0);
+});
+
+test("What’s New waits for a page-owned dialog to close", async ({ page }) => {
+  await mockAuthenticatedShell(page);
+  await page.addInitScript((storageKey) => {
+    window.localStorage.setItem("thia_cookie_notice_ack", "1");
+    window.localStorage.removeItem(storageKey);
+  }, whatsNewViewerStorageKey);
+  await page.goto("/rooms");
+
+  await page.getByTestId("create-room-button").dispatchEvent("click");
+  const roomModal = page.getByTestId("room-edit-modal");
+  const whatsNewModal = page.getByTestId("whats-new-modal");
+  await expect(roomModal).toBeVisible();
+  await page.waitForTimeout(750);
+  await expect(whatsNewModal).toHaveCount(0);
+
+  await roomModal.getByRole("button", { name: "Cancel" }).click();
+  await expect(whatsNewModal).toBeVisible();
+});
+
+test("What’s New waits until another shell overlay closes", async ({ page }) => {
+  await mockAuthenticatedShell(page);
+  await page.addInitScript((storageKey) => {
+    window.localStorage.setItem("thia_cookie_notice_ack", "1");
+    window.localStorage.removeItem(storageKey);
+  }, whatsNewViewerStorageKey);
+  await page.goto("/discover");
+
+  const modal = page.getByTestId("whats-new-modal");
+  const coffeeButton = page.getByTestId("coffee-support-button");
+  await expect(coffeeButton).toBeVisible();
+  await coffeeButton.dispatchEvent("click");
+  await expect(page.getByTestId("kofi-support-panel")).toBeVisible();
+  await page.waitForTimeout(750);
+  await expect(modal).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Close Ko-fi support panel" }).click();
+  await expect(modal).toBeVisible();
+});
+
+test("What’s New reopens without navigation and restores account-menu focus", async ({ page }) => {
+  await mockAuthenticatedShell(page);
+  await acknowledgeCookieNotice(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/discover");
+
+  const accountTrigger = page.getByRole("button", {
+    name: "Account menu for @viewer",
+  });
+  const currentUrl = page.url();
+  await accountTrigger.click();
+  await page.getByTestId("account-menu").getByRole("menuitem", { name: "What’s new" }).click();
+
+  const modal = page.getByTestId("whats-new-modal");
+  const closeButton = modal.getByRole("button", { name: "Close what’s new" });
+  const gotItButton = page.getByTestId("whats-new-got-it");
+  await expect(modal).toBeVisible();
+  expect(page.url()).toBe(currentUrl);
+
+  await page.keyboard.press("Shift+Tab");
+  await expect(gotItButton).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(closeButton).toBeFocused();
+  await page.keyboard.press("Escape");
+
+  await expect(modal).toBeHidden();
+  await expect(accountTrigger).toBeFocused();
+  expect(page.url()).toBe(currentUrl);
+});
+
+test("What’s New stays contained and scrollable on a small mobile viewport", async ({ page }) => {
+  await mockAuthenticatedShell(page);
+  await page.addInitScript((storageKey) => {
+    window.localStorage.setItem("thia_cookie_notice_ack", "1");
+    window.localStorage.removeItem(storageKey);
+  }, whatsNewViewerStorageKey);
+  await page.setViewportSize({ width: 390, height: 667 });
+  await page.goto("/discover");
+
+  const modal = page.getByTestId("whats-new-modal");
+  const content = page.getByTestId("whats-new-content");
+  const gotItButton = page.getByTestId("whats-new-got-it");
+  const closeButton = modal.getByRole("button", { name: "Close what’s new" });
+  await expect(modal).toBeVisible();
+  await expect(gotItButton).toBeInViewport();
+  await page.waitForTimeout(500);
+
+  for (const control of [closeButton, gotItButton]) {
+    const box = await control.boundingBox();
+
+    expect(box?.width).toBeGreaterThanOrEqual(44);
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+  }
+
+  const layout = await content.evaluate((element) => {
+    const panel = element.closest<HTMLElement>("[role='dialog']");
+    const scroller = element.parentElement;
+    const panelRect = panel?.getBoundingClientRect();
+
+    return {
+      bodyScrollable: scroller
+        ? scroller.scrollHeight > scroller.clientHeight
+        : false,
+      bottom: panelRect?.bottom ?? Number.POSITIVE_INFINITY,
+      left: panelRect?.left ?? Number.NEGATIVE_INFINITY,
+      right: panelRect?.right ?? Number.POSITIVE_INFINITY,
+      top: panelRect?.top ?? Number.NEGATIVE_INFINITY,
+    };
+  });
+
+  expect(layout.left).toBeGreaterThanOrEqual(0);
+  expect(layout.right).toBeLessThanOrEqual(390);
+  expect(layout.top).toBeGreaterThanOrEqual(0);
+  expect(layout.bottom).toBeLessThanOrEqual(667);
+  expect(layout.bodyScrollable).toBe(true);
+  await expectNoHorizontalOverflow(page);
+
+  const finalItem = modal.getByText("Activity shares render consistently");
+  await finalItem.scrollIntoViewIfNeeded();
+  await expect(finalItem).toBeInViewport();
+  await expect(gotItButton).toBeInViewport();
 });
 
 test("mobile bottom nav stays fixed while footer reserves its clearance", async ({ page }) => {
@@ -1433,7 +1703,7 @@ function profileInfoModule() {
 
 function defaultFeedModule() {
   return {
-    id: 0,
+    id: 1,
     type: "activity",
     title: "Feed",
     config: {},

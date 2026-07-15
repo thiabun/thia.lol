@@ -1,9 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
 import { applySmokeTestConfigToEnv } from "./tests/test-config";
+import {
+  CURRENT_WHATS_NEW_RELEASE,
+  whatsNewStorageKey,
+} from "./src/lib/whatsNew";
 
 applySmokeTestConfigToEnv();
 
 const baseURL = process.env.THIA_BASE_URL ?? "http://localhost:5173";
+const baseOrigin = new URL(baseURL).origin;
 const shouldStartWebServer =
   process.env.PLAYWRIGHT_NO_WEBSERVER !== "1" &&
   process.env.THIA_BASE_URL === undefined;
@@ -17,6 +22,20 @@ export default defineConfig({
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
     baseURL,
+    storageState: {
+      cookies: [],
+      origins: [
+        {
+          origin: baseOrigin,
+          localStorage: [
+            {
+              name: whatsNewStorageKey(1),
+              value: CURRENT_WHATS_NEW_RELEASE.id,
+            },
+          ],
+        },
+      ],
+    },
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",

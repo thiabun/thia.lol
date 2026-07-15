@@ -34,13 +34,31 @@ type ModalSheetProps = {
   onClose: () => void;
   open: boolean;
   panelClassName?: string;
+  returnFocusRef?: RefObject<HTMLElement | null>;
   showCloseButton?: boolean;
   size?: ModalSheetSize;
   testId?: string;
   title: string;
+  titleClassName?: string;
 };
 
 const modalStack: string[] = [];
+const focusableElementSelector = [
+  "a[href]",
+  "area[href]",
+  "audio[controls]",
+  "button",
+  "embed",
+  "iframe",
+  "input:not([type='hidden'])",
+  "object",
+  "select",
+  "summary",
+  "textarea",
+  "video[controls]",
+  "[contenteditable]:not([contenteditable='false'])",
+  "[tabindex]",
+].join(",");
 
 const overlayMobileClasses: Record<ModalSheetMobile, string> = {
   dialog: "grid place-items-center p-3",
@@ -79,15 +97,18 @@ export function ModalSheet({
   onClose,
   open,
   panelClassName,
+  returnFocusRef,
   showCloseButton = true,
   size = "md",
   testId,
   title,
+  titleClassName,
 }: ModalSheetProps) {
   const generatedTitleId = useId();
   const generatedDescriptionId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const busyRef = useRef(busy);
+  const latestReturnFocusRef = useRef(returnFocusRef);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const stackIdRef = useRef(generatedTitleId);
   const titleId = `${generatedTitleId}-title`;
@@ -97,6 +118,10 @@ export function ModalSheet({
   useEffect(() => {
     busyRef.current = busy;
   }, [busy]);
+
+  useEffect(() => {
+    latestReturnFocusRef.current = returnFocusRef;
+  }, [returnFocusRef]);
 
   useEffect(() => {
     if (!open) {
@@ -133,7 +158,8 @@ export function ModalSheet({
       window.cancelAnimationFrame(focusFrame);
       document.body.style.overflow = previousOverflow;
 
-      const restoreTarget = restoreFocusRef.current;
+      const restoreTarget =
+        latestReturnFocusRef.current?.current ?? restoreFocusRef.current;
       if (restoreTarget && document.contains(restoreTarget)) {
         restoreTarget.focus();
       }
@@ -141,15 +167,67 @@ export function ModalSheet({
   }, [initialFocusRef, open]);
 
   useEffect(() => {
-    if (!open || !closeOnEscape) {
+    if (!open) {
       return;
     }
 
     function handleKeyDown(event: KeyboardEvent) {
       const isTopmost = modalStack[modalStack.length - 1] === stackIdRef.current;
 
-      if (event.key === "Escape" && isTopmost && !busyRef.current) {
+      if (!isTopmost) {
+        return;
+      }
+
+      if (
+        event.key === "Escape" &&
+        closeOnEscape &&
+        !busyRef.current
+      ) {
         onClose();
+        return;
+      }
+
+      if (event.key !== "Tab" || event.defaultPrevented) {
+        return;
+      }
+
+      const dialog = dialogRef.current;
+      if (!dialog) {
+        return;
+      }
+
+      const focusableElements = getFocusableElements(dialog);
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const firstFocusable = focusableElements[0];
+      const lastFocusable = focusableElements[focusableElements.length - 1];
+      const activeElement = document.activeElement;
+      const focusIsOutsideDialog =
+        !(activeElement instanceof Node) || !dialog.contains(activeElement);
+
+      if (
+        event.shiftKey &&
+        (activeElement === firstFocusable ||
+          activeElement === dialog ||
+          focusIsOutsideDialog)
+      ) {
+        event.preventDefault();
+        lastFocusable?.focus();
+        return;
+      }
+
+      if (
+        !event.shiftKey &&
+        (activeElement === lastFocusable ||
+          activeElement === dialog ||
+          focusIsOutsideDialog)
+      ) {
+        event.preventDefault();
+        firstFocusable?.focus();
       }
     }
 
@@ -211,6 +289,7 @@ export function ModalSheet({
               onClose={onClose}
               showCloseButton={showCloseButton}
               title={title}
+              titleClassName={titleClassName}
               titleId={titleId}
             />
 
@@ -241,6 +320,28 @@ export function ModalSheet({
   );
 }
 
+function getFocusableElements(container: HTMLElement): HTMLElement[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(focusableElementSelector),
+  ).filter((element) => {
+    if (
+      element.tabIndex < 0 ||
+      element.matches(":disabled") ||
+      element.closest("[inert], [aria-hidden='true']")
+    ) {
+      return false;
+    }
+
+    const style = window.getComputedStyle(element);
+
+    return (
+      style.display !== "none" &&
+      style.visibility !== "hidden" &&
+      element.getClientRects().length > 0
+    );
+  });
+}
+
 function ModalSheetHeader({
   align,
   busy,
@@ -250,6 +351,7 @@ function ModalSheetHeader({
   onClose,
   showCloseButton,
   title,
+  titleClassName,
   titleId,
 }: {
   align: ModalSheetHeaderAlign;
@@ -260,6 +362,7 @@ function ModalSheetHeader({
   onClose: () => void;
   showCloseButton: boolean;
   title: string;
+  titleClassName: string | undefined;
   titleId: string;
 }) {
   const copy = (
@@ -267,7 +370,8 @@ function ModalSheetHeader({
       <h2
         id={titleId}
         className={cn(
-          "text-lg font-semibold text-text",
+          "font-semibold text-text",
+          titleClassName ?? "text-lg",
           align === "center" && "truncate text-base",
         )}
       >
@@ -293,6 +397,7 @@ function ModalSheetHeader({
       size="icon"
       aria-label={closeLabel}
       title="Close"
+      className="size-11 shrink-0"
       icon={<X aria-hidden="true" size={18} />}
       disabled={busy}
       onClick={onClose}

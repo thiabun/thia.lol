@@ -1,5 +1,9 @@
 import { expect, type Page, test } from "@playwright/test";
 import { getTestCredentialsFromConfig } from "../test-config";
+import {
+  CURRENT_WHATS_NEW_RELEASE,
+  whatsNewStorageKey,
+} from "../../src/lib/whatsNew";
 
 export type AuthMeResponse = {
   ok: boolean;
@@ -79,7 +83,21 @@ export async function loginWithEnv(page: Page): Promise<AuthMeResponse> {
   const authMe = await fetchAuthMe(page);
   expect(authMe.data?.user?.email).toBe(email);
 
-  return authMe;
+  const userId = authMe.data?.user?.id;
+  if (userId !== undefined) {
+    await page.evaluate(
+      ({ releaseId, storageKey }) => {
+        window.localStorage.setItem(storageKey, releaseId);
+      },
+      {
+        releaseId: CURRENT_WHATS_NEW_RELEASE.id,
+        storageKey: whatsNewStorageKey(userId),
+      },
+    );
+    await page.reload();
+  }
+
+  return fetchAuthMe(page);
 }
 
 function currentWorkerAccountIndex() {

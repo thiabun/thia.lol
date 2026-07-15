@@ -146,18 +146,6 @@ VALUES
     @thia_user_id
   ),
   (
-    'updates',
-    'Updates',
-    'News and changes from thia.lol.',
-    'updates',
-    0,
-    1,
-    'elphaba',
-    JSON_OBJECT('mode', 'preset', 'preset', 'elphaba'),
-    'public',
-    @thia_user_id
-  ),
-  (
     'questions',
     'Questions',
     'Ask questions and help other members.',
