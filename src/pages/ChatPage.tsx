@@ -759,7 +759,7 @@ export function ChatPage() {
 
           <section
             className={cn(
-              "min-w-0 lg:block",
+              "min-h-0 min-w-0 overflow-hidden lg:block",
               mobileConversationOpen ? "block" : "hidden",
             )}
           >

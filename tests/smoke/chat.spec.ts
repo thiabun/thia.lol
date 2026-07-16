@@ -420,6 +420,147 @@ test("authenticated chat renders native Post and Room cards with graceful fallba
   );
 });
 
+test("desktop chat keeps the composer visible while a tall native Post scrolls internally", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.route(/^https:\/\/www\.youtube-nocookie\.com\/embed\//, async (route) => {
+    await route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><html><body>YouTube music embed stub</body></html>",
+    });
+  });
+
+  const tallPost = {
+    ...mockNativePostAttachment(),
+    body: Array.from(
+      { length: 14 },
+      (_, index) => `Tall native Post line ${index + 1}`,
+    ).join("\n"),
+  };
+  const conversation = {
+    ...mockConversation,
+    lastMessage: {
+      ...mockConversation.lastMessage,
+      body: `Shared Post\n${tallPost.canonicalUrl}`,
+      bodyEntities: [],
+      attachments: [{ type: "post", post: tallPost }],
+    },
+  } as unknown as typeof mockConversation;
+
+  await mockAuthenticatedChat(page, { conversations: [conversation] });
+  await page.goto("/chat?conversation=10");
+
+  const workspace = page.getByTestId("chat-workspace");
+  const messageList = page.getByTestId("chat-message-list");
+  const composer = page.getByTestId("chat-message-composer");
+  const actionRow = messageList
+    .getByTestId("message-post-attachment")
+    .getByTestId("post-action-row");
+
+  await expect(workspace).toBeVisible();
+  await expect(composer).toBeInViewport();
+  await expect
+    .poll(() =>
+      messageList.evaluate(
+        (element) => element.scrollHeight > element.clientHeight + 100,
+      ),
+    )
+    .toBe(true);
+
+  const initialLayout = await messageList.evaluate((element) => {
+    const workspaceElement = document.querySelector<HTMLElement>(
+      '[data-testid="chat-workspace"]',
+    );
+    const composerElement = document.querySelector<HTMLElement>(
+      '[data-testid="chat-message-composer"]',
+    );
+    const paneElement = composerElement?.parentElement;
+
+    if (!workspaceElement || !composerElement || !paneElement) {
+      throw new Error("Chat layout elements were not rendered.");
+    }
+
+    const listRect = element.getBoundingClientRect();
+    const composerRect = composerElement.getBoundingClientRect();
+    const paneRect = paneElement.getBoundingClientRect();
+    const workspaceRect = workspaceElement.getBoundingClientRect();
+
+    return {
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+      overflowY: getComputedStyle(element).overflowY,
+      listBottom: listRect.bottom,
+      composerTop: composerRect.top,
+      composerBottom: composerRect.bottom,
+      paneBottom: paneRect.bottom,
+      workspaceBottom: workspaceRect.bottom,
+      pageScrollY: window.scrollY,
+    };
+  });
+
+  expect(initialLayout.overflowY).toBe("auto");
+  expect(initialLayout.scrollHeight).toBeGreaterThan(initialLayout.clientHeight + 100);
+  expect(initialLayout.listBottom).toBeLessThanOrEqual(initialLayout.composerTop + 1);
+  expect(initialLayout.composerBottom).toBeLessThanOrEqual(
+    initialLayout.workspaceBottom + 1,
+  );
+  expect(initialLayout.paneBottom).toBeLessThanOrEqual(
+    initialLayout.workspaceBottom + 1,
+  );
+
+  await messageList.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect
+    .poll(() =>
+      messageList.evaluate(
+        (element) =>
+          Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop),
+      ),
+    )
+    .toBeLessThanOrEqual(2);
+
+  const scrolledLayout = await messageList.evaluate((element) => {
+    const composerElement = document.querySelector<HTMLElement>(
+      '[data-testid="chat-message-composer"]',
+    );
+    const actionRowElement = document.querySelector<HTMLElement>(
+      '[data-testid="message-post-attachment"] [data-testid="post-action-row"]',
+    );
+
+    if (!composerElement || !actionRowElement) {
+      throw new Error("Tall Post layout elements were not rendered.");
+    }
+
+    const listRect = element.getBoundingClientRect();
+    const composerRect = composerElement.getBoundingClientRect();
+    const actionRect = actionRowElement.getBoundingClientRect();
+
+    return {
+      actionTop: actionRect.top,
+      actionBottom: actionRect.bottom,
+      listTop: listRect.top,
+      listBottom: listRect.bottom,
+      composerTop: composerRect.top,
+      pageScrollY: window.scrollY,
+    };
+  });
+
+  expect(scrolledLayout.actionTop).toBeGreaterThanOrEqual(
+    scrolledLayout.listTop - 1,
+  );
+  expect(scrolledLayout.actionBottom).toBeLessThanOrEqual(
+    scrolledLayout.listBottom + 1,
+  );
+  expect(Math.abs(scrolledLayout.composerTop - initialLayout.composerTop)).toBeLessThanOrEqual(
+    1,
+  );
+  expect(scrolledLayout.pageScrollY).toBe(initialLayout.pageScrollY);
+  await expect(actionRow).toBeInViewport();
+  await expect(composer).toBeInViewport();
+});
+
 test("chat GIF picker shows an unavailable KLIPY state", async ({ page }) => {
   await mockAuthenticatedChat(page);
   await mockGifSearch(page, { available: false, items: [] });
