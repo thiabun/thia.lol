@@ -784,6 +784,31 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
       .getByRole("button", { name: "Add GIF" })
       .locator('svg[data-icon="gif"][data-icon-source="heroicons"]'),
   ).toHaveAttribute("stroke-width", "2");
+  const compactComposerLayout = await roomComposer.evaluate((element) => {
+    const toolbar = element.querySelector<HTMLElement>(
+      '[aria-label="Add message attachments"]',
+    );
+    const inputShell = element.querySelector<HTMLElement>(
+      '[data-testid="room-channel-message-composer-input-shell"]',
+    );
+    const composerBox = element.getBoundingClientRect();
+    const toolbarBox = toolbar?.getBoundingClientRect();
+    const inputShellBox = inputShell?.getBoundingClientRect();
+
+    return {
+      bottomDelta:
+        toolbarBox && inputShellBox
+          ? Math.abs(toolbarBox.bottom - inputShellBox.bottom)
+          : 999,
+      composerHeight: composerBox.height,
+      idleCountVisible: Boolean(
+        element.querySelector('[data-testid="room-attachment-composer-count"]'),
+      ),
+    };
+  });
+  expect(compactComposerLayout.bottomDelta).toBeLessThanOrEqual(1);
+  expect(compactComposerLayout.composerHeight).toBeLessThanOrEqual(72);
+  expect(compactComposerLayout.idleCountVisible).toBe(false);
   await expect
     .poll(() =>
       page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
@@ -848,7 +873,10 @@ test("Room Chat shares the native renderer and persists attachment-only composer
       document.querySelectorAll<HTMLElement>(
         '[data-testid="room-attachment-composer"] [aria-label="Add message attachments"] .app-control',
       ),
-    ).map((control) => control.getBoundingClientRect());
+    ).map((control) => ({
+      height: control.offsetHeight,
+      width: control.offsetWidth,
+    }));
 
     return {
       controlsAreTouchSized: controls.every(

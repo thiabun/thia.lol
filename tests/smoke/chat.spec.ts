@@ -57,15 +57,35 @@ test("authenticated chat renders conversations and message composer", async ({
     const buttonBox = document
       .querySelector('[data-testid="chat-message-composer"] button[type="submit"]')
       ?.getBoundingClientRect();
+    const composerBox = document
+      .querySelector('[data-testid="chat-message-composer"]')
+      ?.getBoundingClientRect();
+    const attachmentToolbarBox = document
+      .querySelector('[aria-label="Add message attachments"]')
+      ?.getBoundingClientRect();
+    const inputShellBox = document
+      .querySelector('[data-testid="chat-message-composer-input-shell"]')
+      ?.getBoundingClientRect();
 
     return {
+      attachmentToolbarBottomDelta:
+        attachmentToolbarBox && inputShellBox
+          ? Math.abs(attachmentToolbarBox.bottom - inputShellBox.bottom)
+          : 999,
+      composerHeight: composerBox?.height ?? 999,
       heightDelta:
         inputBox && buttonBox ? Math.abs(inputBox.height - buttonBox.height) : 999,
+      idleCountVisible: Boolean(
+        document.querySelector('[data-testid="chat-attachment-composer-count"]'),
+      ),
       topDelta: inputBox && buttonBox ? Math.abs(inputBox.top - buttonBox.top) : 999,
     };
   });
   expect(composerMetrics.topDelta).toBeLessThanOrEqual(1);
   expect(composerMetrics.heightDelta).toBeLessThanOrEqual(2);
+  expect(composerMetrics.attachmentToolbarBottomDelta).toBeLessThanOrEqual(1);
+  expect(composerMetrics.composerHeight).toBeLessThanOrEqual(72);
+  expect(composerMetrics.idleCountVisible).toBe(false);
   await messageInput.fill("line one");
   await messageInput.press("Control+Enter");
   await expect(messageInput).toHaveValue("line one\n");
@@ -129,7 +149,10 @@ test("mobile chat uses a vertical list and focused conversation pane", async ({ 
       document.querySelectorAll<HTMLElement>(
         '[aria-label="Add message attachments"] .app-control',
       ),
-    ).map((control) => control.getBoundingClientRect());
+    ).map((control) => ({
+      height: control.offsetHeight,
+      width: control.offsetWidth,
+    }));
 
     return {
       attachmentControlsAreTouchSized: attachmentControls.every(

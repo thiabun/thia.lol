@@ -4,13 +4,14 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type ReactNode,
 } from "react";
 import {
   ArrowLeft,
   ArrowRight,
-  ImagePlus,
   LoaderCircle,
   Music2,
+  Plus,
   Trash2,
   WifiOff,
 } from "lucide-react";
@@ -57,6 +58,7 @@ import { maxMessageAttachments } from "./messageAttachmentState";
 
 export type MessageAttachmentComposerProps = {
   attachments: PostMediaDraft[];
+  children?: ReactNode;
   className?: string;
   disabled?: boolean;
   maxAttachments?: number;
@@ -84,6 +86,7 @@ type MessageAttachmentPreviewProps = {
 
 export function MessageAttachmentComposer({
   attachments,
+  children,
   className,
   disabled = false,
   maxAttachments = maxMessageAttachments,
@@ -430,105 +433,84 @@ export function MessageAttachmentComposer({
   return (
     <>
       <section
-        aria-label="Message attachments"
+        aria-label={children ? "Message composer controls" : "Message attachments"}
         className={cn("min-w-0 max-w-full", className)}
         data-attachment-count={attachments.length}
         data-testid={testId}
       >
-        <div
-          aria-label="Add message attachments"
-          className="flex min-w-0 max-w-full items-center gap-1 rounded-control border border-line bg-canvas/55 p-1"
-          role="toolbar"
-        >
-          <label
-            className="app-control grid size-11 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-full text-muted transition duration-fluid hover:bg-surface-strong hover:text-text focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus has-[:disabled]:pointer-events-none has-[:disabled]:opacity-50"
-            title={attachments.length > 0 ? "Add image or video" : "Upload image or video"}
+        <div className="flex min-w-0 max-w-full items-end gap-1.5">
+          <div
+            aria-label="Add message attachments"
+            className="flex shrink-0 items-center gap-1"
+            role="toolbar"
           >
-            <ImagePlus aria-hidden="true" size={19} />
-            <span className="sr-only">
-              {busy
-                ? "Uploading media"
-                : attachments.length > 0
-                  ? "Add image or video"
-                  : "Upload image or video"}
-            </span>
-            <input
-              accept={visualMediaUploadAccept}
-              className="sr-only"
-              data-testid={`${testId}-media-input`}
-              disabled={controlsDisabled || !canAddAttachment}
-              type="file"
-              onChange={(event) => void handleVisualMediaChange(event)}
-            />
-          </label>
+            <label
+              className="app-control grid size-11 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-full bg-surface-strong/58 text-muted transition duration-fluid hover:bg-surface-strong/80 hover:text-text focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus has-[:disabled]:pointer-events-none has-[:disabled]:opacity-50"
+              title={attachments.length > 0 ? "Add image or video" : "Upload image or video"}
+            >
+              <Plus aria-hidden="true" size={20} strokeWidth={2.2} />
+              <span className="sr-only">
+                {busy
+                  ? "Uploading media"
+                  : attachments.length > 0
+                    ? "Add image or video"
+                    : "Upload image or video"}
+              </span>
+              <input
+                accept={visualMediaUploadAccept}
+                className="sr-only"
+                data-testid={`${testId}-media-input`}
+                disabled={controlsDisabled || !canAddAttachment}
+                type="file"
+                onChange={(event) => void handleVisualMediaChange(event)}
+              />
+            </label>
 
-          <Button
-            aria-label={gifPickerOpen ? "Close GIF picker" : "Add GIF"}
-            className="size-11"
-            data-testid={`${testId}-gif-button`}
-            disabled={controlsDisabled || !canAddAttachment}
-            icon={<GifIcon aria-hidden="true" size={19} />}
-            size="icon"
-            title={gifPickerOpen ? "Close GIF picker" : "Add GIF"}
-            type="button"
-            variant="ghost"
-            onClick={() => {
-              setGifPickerOpen((current) => !current);
-              setMusicPickerOpen(false);
-              setMessage(undefined);
-            }}
-          />
-
-          <Button
-            aria-label={musicPickerOpen ? "Close music picker" : "Add music"}
-            className="size-11"
-            data-testid={`${testId}-music-button`}
-            disabled={controlsDisabled || !canAddAttachment}
-            icon={<Music2 aria-hidden="true" size={19} />}
-            size="icon"
-            title={musicPickerOpen ? "Close music picker" : "Add music"}
-            type="button"
-            variant="ghost"
-            onClick={() => {
-              setMusicPickerOpen((current) => !current);
-              setGifPickerOpen(false);
-              setMessage(undefined);
-            }}
-          />
-
-          {attachments.length > 0 ? (
             <Button
-              aria-label="Remove all attachments"
-              className="size-11"
-              data-testid={`${testId}-clear-button`}
-              disabled={disabled || busy}
-              icon={<Trash2 aria-hidden="true" size={18} />}
+              aria-label={gifPickerOpen ? "Close GIF picker" : "Add GIF"}
+              className="size-11 bg-surface-strong/58 hover:bg-surface-strong/80"
+              data-testid={`${testId}-gif-button`}
+              disabled={controlsDisabled || !canAddAttachment}
+              icon={<GifIcon aria-hidden="true" size={19} />}
               size="icon"
-              title="Remove all attachments"
+              title={gifPickerOpen ? "Close GIF picker" : "Add GIF"}
               type="button"
               variant="ghost"
-              onClick={clearAttachments}
+              onClick={() => {
+                setGifPickerOpen((current) => !current);
+                setMusicPickerOpen(false);
+                setMessage(undefined);
+              }}
             />
-          ) : null}
 
-          <span
-            aria-live="polite"
-            className={cn(
-              "ml-auto shrink-0 px-2 text-xs font-medium tabular-nums",
-              attachments.length >= attachmentLimit ? "text-rose-ink" : "text-muted",
-            )}
-          >
-            {attachments.length}/{attachmentLimit}
-          </span>
+            <Button
+              aria-label={musicPickerOpen ? "Close music picker" : "Add music"}
+              className="size-11 bg-surface-strong/58 hover:bg-surface-strong/80"
+              data-testid={`${testId}-music-button`}
+              disabled={controlsDisabled || !canAddAttachment}
+              icon={<Music2 aria-hidden="true" size={19} />}
+              size="icon"
+              title={musicPickerOpen ? "Close music picker" : "Add music"}
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setMusicPickerOpen((current) => !current);
+                setGifPickerOpen(false);
+                setMessage(undefined);
+              }}
+            />
+          </div>
 
           {busy ? (
             <LoaderCircle
               aria-label="Working on attachment"
-              className="mr-2 shrink-0 animate-spin text-muted"
+              className="mb-3 shrink-0 animate-spin text-muted"
               data-testid={`${testId}-busy`}
               size={16}
             />
           ) : null}
+
+          {children}
         </div>
 
         <PostMusicAttachmentPicker
@@ -553,26 +535,54 @@ export function MessageAttachmentComposer({
         ) : null}
 
         {attachments.length > 0 ? (
-          <div
-            aria-label="Selected message attachments"
-            className="mt-2 flex max-w-full snap-x snap-mandatory gap-2 overflow-x-auto overscroll-x-contain pb-1"
-            data-testid={`${testId}-items`}
-            role="list"
-          >
-            {attachments.map((attachment, index) => (
-              <MessageAttachmentPreview
-                key={`${messageAttachmentKey(attachment)}-${index}`}
-                attachment={attachment}
-                canMoveEarlier={index > 0}
-                canMoveLater={index < attachments.length - 1}
+          <div className="mt-2 min-w-0">
+            <div className="mb-1 flex items-center justify-end gap-1.5 px-1">
+              <span
+                aria-live="polite"
+                className={cn(
+                  "shrink-0 text-xs font-medium tabular-nums",
+                  attachments.length >= attachmentLimit
+                    ? "text-rose-ink"
+                    : "text-muted",
+                )}
+                data-testid={`${testId}-count`}
+              >
+                {attachments.length}/{attachmentLimit}
+              </span>
+              <Button
+                aria-label="Remove all attachments"
+                className="size-9"
+                data-testid={`${testId}-clear-button`}
                 disabled={disabled || busy}
-                index={index}
-                testId={`${testId}-item`}
-                onMoveEarlier={() => moveAttachment(index, -1)}
-                onMoveLater={() => moveAttachment(index, 1)}
-                onRemove={() => removeAttachment(index)}
+                icon={<Trash2 aria-hidden="true" size={17} />}
+                size="icon"
+                title="Remove all attachments"
+                type="button"
+                variant="ghost"
+                onClick={clearAttachments}
               />
-            ))}
+            </div>
+            <div
+              aria-label="Selected message attachments"
+              className="flex max-w-full snap-x snap-mandatory gap-2 overflow-x-auto overscroll-x-contain pb-1"
+              data-testid={`${testId}-items`}
+              role="list"
+            >
+              {attachments.map((attachment, index) => (
+                <MessageAttachmentPreview
+                  key={`${messageAttachmentKey(attachment)}-${index}`}
+                  attachment={attachment}
+                  canMoveEarlier={index > 0}
+                  canMoveLater={index < attachments.length - 1}
+                  disabled={disabled || busy}
+                  index={index}
+                  testId={`${testId}-item`}
+                  onMoveEarlier={() => moveAttachment(index, -1)}
+                  onMoveLater={() => moveAttachment(index, 1)}
+                  onRemove={() => removeAttachment(index)}
+                />
+              ))}
+            </div>
           </div>
         ) : null}
 

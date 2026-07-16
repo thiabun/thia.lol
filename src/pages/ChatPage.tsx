@@ -822,49 +822,52 @@ export function ChatPage() {
                 </div>
 
                 <form
-                  className="border-t border-line bg-surface/42 p-2.5 sm:p-3"
+                  className="border-t border-line bg-surface/42 p-2 sm:p-2.5"
                   data-testid="chat-message-composer"
                   onSubmit={(event) => void handleSend(event)}
                 >
                   <MessageAttachmentComposer
                     key={activeConversationId}
                     attachments={attachments}
-                    className="mb-2"
                     disabled={sending || showMessagesLoading}
                     testId="chat-attachment-composer"
                     onBusyChange={setAttachmentsBusy}
                     onChange={setAttachments}
-                  />
-                  <div className="flex items-start gap-2">
-                    <label className="sr-only" htmlFor="chat-message-body">
-                      Write a message
-                    </label>
-                    <MentionTextarea
-                      id="chat-message-body"
-                      className="min-h-12 w-full resize-none rounded-control border border-line bg-canvas/70 px-3 py-2.5 text-sm leading-6 text-text outline-none transition duration-fluid ease-fluid placeholder:text-muted focus:border-line-strong focus:bg-canvas focus:ring-2 focus:ring-focus/30"
-                      maxLength={maxMessageLength}
-                      placeholder="Write a message"
-                      rows={1}
-                      value={body}
-                      wrapperClassName="min-w-0 flex-1"
-                      onKeyDown={handleComposerKeyDown}
-                      onValueChange={setBody}
-                    />
-                    <Button
-                      type="submit"
-                      size="sm"
-                      className="min-h-12 shrink-0 px-3"
-                      disabled={
-                        showMessagesLoading ||
-                        !messageHasContent(body, attachments) ||
-                        sending ||
-                        attachmentsBusy
-                      }
-                      icon={<Send aria-hidden="true" size={16} />}
+                  >
+                    <div
+                      className="flex min-w-0 flex-1 items-end gap-1 rounded-[1.35rem] border border-transparent bg-surface-strong/52 p-1 transition duration-fluid ease-fluid focus-within:border-line-strong focus-within:bg-canvas focus-within:ring-2 focus-within:ring-focus/30"
+                      data-testid="chat-message-composer-input-shell"
                     >
-                      {sending ? "Sending" : "Send"}
-                    </Button>
-                  </div>
+                      <label className="sr-only" htmlFor="chat-message-body">
+                        Write a message
+                      </label>
+                      <MentionTextarea
+                        id="chat-message-body"
+                        className="block min-h-10 w-full resize-none bg-transparent px-3 py-2 text-sm leading-6 text-text outline-none placeholder:text-muted"
+                        maxLength={maxMessageLength}
+                        placeholder="Write a message"
+                        rows={1}
+                        value={body}
+                        wrapperClassName="min-w-0 flex-1"
+                        onKeyDown={handleComposerKeyDown}
+                        onValueChange={setBody}
+                      />
+                      <Button
+                        aria-label={sending ? "Sending" : "Send"}
+                        className="size-10 shrink-0"
+                        disabled={
+                          showMessagesLoading ||
+                          !messageHasContent(body, attachments) ||
+                          sending ||
+                          attachmentsBusy
+                        }
+                        icon={<Send aria-hidden="true" size={17} />}
+                        size="icon"
+                        title={sending ? "Sending" : "Send"}
+                        type="submit"
+                      />
+                    </div>
+                  </MessageAttachmentComposer>
                 </form>
               </div>
             ) : (
