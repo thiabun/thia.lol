@@ -1,4 +1,4 @@
-import { Clock3, MessageCircle, Radio, UsersRound } from "lucide-react";
+import { ArrowRight, Clock3, MessageCircle, Radio, UsersRound } from "lucide-react";
 import { motion } from "motion/react";
 import { Link } from "react-router";
 import { Panel } from "../ui/Panel";
@@ -11,26 +11,37 @@ import {
   cardTap,
 } from "../../lib/motionPresets";
 import { roomThemeSwatchCssProperties } from "../../lib/roomThemes";
+import { cn } from "../../lib/classNames";
 
-type RoomCardProps = {
+export type RoomCardVariant = "list" | "attachment";
+
+export type RoomCardProps = {
   room: Room;
   index?: number;
+  variant?: RoomCardVariant;
 };
 
-export function RoomCard({ index = 0, room }: RoomCardProps) {
+export function RoomCard({ index = 0, room, variant = "list" }: RoomCardProps) {
+  const isAttachment = variant === "attachment";
+
   return (
     <motion.article
-      className="group h-full"
+      className={isAttachment ? "group min-w-0 w-full" : "group h-full"}
       variants={cardEntrance}
       custom={index}
-      initial="hidden"
+      initial={isAttachment ? false : "hidden"}
       animate="show"
-      whileTap={cardTap}
-      data-render-deferred="room-list-item"
-      data-testid="room-card"
+      {...(!isAttachment ? { whileTap: cardTap } : {})}
+      data-render-deferred={isAttachment ? undefined : "room-list-item"}
+      data-testid={isAttachment ? "room-attachment-card" : "room-card"}
     >
       <Panel
-        className="relative h-full overflow-hidden p-3 shadow-none transition duration-fluid ease-fluid group-hover:border-line-strong group-hover:bg-surface/86"
+        className={cn(
+          "relative overflow-hidden p-3 shadow-none transition duration-fluid ease-fluid group-hover:border-line-strong group-hover:bg-surface/86",
+          isAttachment
+            ? "min-w-0 w-full rounded-card bg-surface/82 shadow-inner-soft"
+            : "h-full",
+        )}
         style={roomThemeSwatchCssProperties(room)}
       >
         <div className="relative flex h-full min-w-0 flex-col gap-2">
@@ -75,7 +86,12 @@ export function RoomCard({ index = 0, room }: RoomCardProps) {
               <span className="mt-0.5 block truncate text-xs text-muted">
                 /{room.slug}
               </span>
-              <span className="mt-1 block line-clamp-1 text-sm leading-5 text-muted">
+              <span
+                className={cn(
+                  "mt-1 block text-sm leading-5 text-muted",
+                  isAttachment ? "line-clamp-2" : "line-clamp-1",
+                )}
+              >
                 {room.summary}
               </span>
             </Link>
@@ -104,6 +120,18 @@ export function RoomCard({ index = 0, room }: RoomCardProps) {
               </span>
             ) : null}
           </div>
+          {isAttachment ? (
+            <div className="flex justify-end border-t border-line/55 pt-2">
+              <Link
+                to={`/rooms/${room.slug}`}
+                className="app-control inline-flex min-h-11 items-center justify-center gap-2 rounded-control px-3 text-sm font-semibold text-accent-strong transition duration-fluid ease-fluid hover:bg-surface-strong/72 hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                aria-label={`Open ${room.name}`}
+              >
+                Open room
+                <ArrowRight aria-hidden="true" size={15} />
+              </Link>
+            </div>
+          ) : null}
         </div>
       </Panel>
     </motion.article>

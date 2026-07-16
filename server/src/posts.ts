@@ -47,6 +47,11 @@ export interface DiscoverFeedPayload {
 export interface PostsRepository {
   listPublicPosts(viewerUserId: number | null): Promise<PostPayload[]>;
   getPublicPost(identifier: string, viewerUserId: number | null, publicBaseUrl: string): Promise<PostDetailPayload | null>;
+  getPublicPostsByIds(
+    postIds: readonly number[],
+    viewerUserId: number | null,
+    publicBaseUrl: string,
+  ): Promise<Map<number, PostDetailPayload>>;
   listPostReplies(postId: number, viewerUserId: number | null): Promise<PostPayload[] | null>;
   listRoomPosts(slug: string, viewerUserId: number | null, viewerRole?: string | null): Promise<PostPayload[] | null>;
   listProfilePosts(handle: string, viewerUserId: number | null): Promise<PostPayload[] | null>;
@@ -94,6 +99,7 @@ interface PostRow extends ProfileRow, RoomRow {
 
 interface TextEntityRow extends RowDataPacket {
   id: number | string;
+  content_id: number | string;
   entity_type: string;
   entity_start: number | string;
   entity_length: number | string;
@@ -136,6 +142,7 @@ type CountRow = RowDataPacket & {
 };
 
 const postIdentifierPattern = /^(?:[0-9]+|[a-z][a-z0-9_-]{7,31})$/;
+const maxPublicPostBatchSize = 1500;
 
 export function normalizePostIdentifier(identifier: string): string | null {
   try {
@@ -191,13 +198,25 @@ class MysqlPostsRepository implements PostsRepository {
       return null;
     }
 
-    const canonicalPath = postCanonicalPath(post);
+    return postDetailPayload(post, publicBaseUrl);
+  }
 
-    return {
-      ...post,
-      canonicalPath,
-      canonicalUrl: `${publicBaseUrl.replace(/\/+$/, "")}${canonicalPath}`,
-    };
+  async getPublicPostsByIds(
+    postIds: readonly number[],
+    viewerUserId: number | null,
+    publicBaseUrl: string,
+  ): Promise<Map<number, PostDetailPayload>> {
+    const uniquePostIds = uniquePositiveIntegerIds(postIds, maxPublicPostBatchSize);
+
+    if (uniquePostIds.length === 0) {
+      return new Map();
+    }
+
+    const capabilities = await this.schemaCapabilities();
+    const query = buildPublicPostsByIdsQuery(capabilities, viewerUserId, uniquePostIds.length);
+    const posts = await this.postsFromQuery(query, uniquePostIds);
+
+    return new Map(posts.map((post) => [post.id, postDetailPayload(post, publicBaseUrl)]));
   }
 
   async listPostReplies(postId: number, viewerUserId: number | null): Promise<PostPayload[] | null> {
@@ -372,18 +391,19 @@ class MysqlPostsRepository implements PostsRepository {
   ): Promise<PostPayload[]> {
     const capabilities = await this.schemaCapabilities();
     const [rows] = await this.pool.execute<PostRow[]>(query, params);
-    const posts = await Promise.all(rows.map((row) => this.postPayload(row, capabilities)));
+    const postIds = uniquePositiveIntegerIds(rows.map((row) => numberValue(row.post_id)), maxPublicPostBatchSize);
+    const profileIds = uniquePositiveIntegerIds(rows.map((row) => numberValue(row.user_id)), maxPublicPostBatchSize);
+    const [postEntitiesById, profileEntitiesById] = await Promise.all([
+      this.textEntitiesForContentIds("post", postIds, "body", capabilities),
+      this.textEntitiesForContentIds("profile", profileIds, "bio", capabilities),
+    ]);
+    const posts = rows.map((row) => postPayloadFromRow(
+      row,
+      postEntitiesById.get(numberValue(row.post_id)) ?? [],
+      profileEntitiesById.get(numberValue(row.user_id)) ?? [],
+    ));
 
     return hydratePostAttachments(this.pool, capabilities, posts);
-  }
-
-  private async postPayload(row: PostRow, capabilities: ProfileSchemaCapabilities): Promise<PostPayload> {
-    const [postEntities, profileEntities] = await Promise.all([
-      this.textEntities("post", numberValue(row.post_id), "body", capabilities),
-      this.textEntities("profile", numberValue(row.user_id), "bio", capabilities),
-    ]);
-
-    return postPayloadFromRow(row, postEntities, profileEntities);
   }
 
   private async publicPostExists(postId: number, capabilities: ProfileSchemaCapabilities): Promise<boolean> {
@@ -594,19 +614,23 @@ class MysqlPostsRepository implements PostsRepository {
     };
   }
 
-  private async textEntities(
+  private async textEntitiesForContentIds(
     contentType: "post" | "profile",
-    contentId: number,
+    contentIds: readonly number[],
     fieldName: "bio" | "body",
     capabilities: ProfileSchemaCapabilities,
-  ): Promise<TextEntityPayload[]> {
-    if (!capabilities.hasTextEntities) {
-      return [];
+  ): Promise<Map<number, TextEntityPayload[]>> {
+    const entitiesByContentId = new Map<number, TextEntityPayload[]>();
+
+    if (!capabilities.hasTextEntities || contentIds.length === 0) {
+      return entitiesByContentId;
     }
 
+    const placeholders = contentIds.map(() => "?").join(", ");
     const [rows] = await this.pool.execute<TextEntityRow[]>(
       `SELECT
             e.id,
+            e.content_id,
             e.entity_type,
             e.entity_start,
             e.entity_length,
@@ -621,17 +645,27 @@ class MysqlPostsRepository implements PostsRepository {
          LEFT JOIN users target_user ON target_user.id = e.target_user_id
          LEFT JOIN profiles target_profile ON target_profile.user_id = target_user.id
          WHERE e.content_type = ?
-           AND e.content_id = ?
+           AND e.content_id IN (${placeholders})
            AND e.field_name = ?
-         ORDER BY e.entity_start ASC, e.id ASC`,
-      [contentType, contentId, fieldName],
+         ORDER BY e.content_id ASC, e.entity_start ASC, e.id ASC`,
+      [contentType, ...contentIds, fieldName],
     );
 
-    return rows.flatMap((row) => {
+    for (const row of rows) {
       const entity = textEntityPayloadFromRow(row);
 
-      return entity === null ? [] : [entity];
-    });
+      if (entity === null) {
+        continue;
+      }
+
+      const contentId = numberValue(row.content_id);
+      const entities = entitiesByContentId.get(contentId) ?? [];
+
+      entities.push(entity);
+      entitiesByContentId.set(contentId, entities);
+    }
+
+    return entitiesByContentId;
   }
 
   private async tableExists(tableName: string): Promise<boolean> {
@@ -669,6 +703,26 @@ class MysqlPostsRepository implements PostsRepository {
 
 export function buildPublicPostsQuery(capabilities: ProfileSchemaCapabilities, viewerUserId: number | null): string {
   return postSelectSql("AND p.parent_id IS NULL", "p.created_at DESC, p.id DESC", "", capabilities, viewerUserId);
+}
+
+export function buildPublicPostsByIdsQuery(
+  capabilities: ProfileSchemaCapabilities,
+  viewerUserId: number | null,
+  postIdCount: number,
+): string {
+  if (!Number.isInteger(postIdCount) || postIdCount < 1 || postIdCount > maxPublicPostBatchSize) {
+    throw new Error("Public Post batch size is invalid.");
+  }
+
+  const placeholders = Array.from({ length: postIdCount }, () => "?").join(", ");
+
+  return postSelectSql(
+    `AND p.id IN (${placeholders})`,
+    "p.created_at DESC, p.id DESC",
+    "",
+    capabilities,
+    viewerUserId,
+  ).replace(/LIMIT 50\s*$/u, `LIMIT ${postIdCount}`);
 }
 
 export function buildRoomPostsQuery(
@@ -1423,6 +1477,26 @@ function nullableStringValue(value: Date | string | null | undefined): string | 
   }
 
   return String(value);
+}
+
+function postDetailPayload(post: PostPayload, publicBaseUrl: string): PostDetailPayload {
+  const canonicalPath = postCanonicalPath(post);
+
+  return {
+    ...post,
+    canonicalPath,
+    canonicalUrl: `${publicBaseUrl.replace(/\/+$/u, "")}${canonicalPath}`,
+  };
+}
+
+function uniquePositiveIntegerIds(values: readonly number[], maximum: number): number[] {
+  const ids = [...new Set(values.filter((value) => Number.isInteger(value) && value > 0))];
+
+  if (ids.length > maximum) {
+    throw new Error(`Batch cannot include more than ${maximum} ids.`);
+  }
+
+  return ids;
 }
 
 function stringValue(value: Date | string | null | undefined, fallback = ""): string {

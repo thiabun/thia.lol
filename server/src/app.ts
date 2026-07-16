@@ -40,6 +40,7 @@ import {
   type RemoveFollowerPayload,
   type RoomAccessRequestPayload,
   type RoomDeletePayload,
+  type RoomShareMessagesPayload,
 } from "./content.js";
 import {
   ChatRouteError,
@@ -2846,7 +2847,7 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       reply,
       dependencies,
       "chat.messages",
-      (repository, session) => repository.listMessages(session.userId, conversationId),
+      (repository, session) => repository.listMessages(session, conversationId),
     );
   });
 
@@ -3880,6 +3881,24 @@ export function buildApp(dependencies: AppDependencies = {}): FastifyInstance {
       dependencies,
       "posts.shares.messages",
       (repository, session, body) => repository.sharePostToMessages(identifier, session.userId, body),
+      201,
+    );
+  });
+
+  app.post("/rooms/:slug/shares/messages", async (request, reply) => {
+    const parsedParams = roomParamsSchema.safeParse(request.params);
+    const slug = parsedParams.success ? normalizeRoomSlug(parsedParams.data.slug) : null;
+
+    if (slug === null) {
+      return reply.status(404).send(errorPayload("Not found."));
+    }
+
+    return withAuthenticatedContentMutationRoute<RoomShareMessagesPayload>(
+      request,
+      reply,
+      dependencies,
+      "rooms.shares.messages",
+      (repository, session, body) => repository.shareRoomToMessages(slug, session, body),
       201,
     );
   });

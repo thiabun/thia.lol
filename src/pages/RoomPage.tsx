@@ -17,7 +17,6 @@ import {
   UserRound,
   UsersRound,
   WifiOff,
-  X,
 } from "lucide-react";
 import { motion } from "motion/react";
 import {
@@ -33,9 +32,14 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate, useOutletContext, useParams, useSearchParams } from "react-router";
-import { GifIcon } from "../components/icons/GifIcon";
 import { PageMeta } from "../components/PageMeta";
-import { GifPicker } from "../components/social/GifPicker";
+import { MessageAttachmentComposer } from "../components/chat/MessageAttachmentComposer";
+import {
+  messageAttachmentInputsFromDrafts,
+  messageHasContent,
+} from "../components/chat/messageAttachmentState";
+import { MessageAttachments } from "../components/chat/MessageAttachments";
+import { messageTextForDisplay } from "../components/chat/messageAttachmentDisplay";
 import { MentionTextarea } from "../components/social/MentionTextarea";
 import { PostCard } from "../components/social/PostCard";
 import { ReportForm } from "../components/social/ReportForm";
@@ -82,8 +86,8 @@ import { cn } from "../lib/classNames";
 import { postCreatedEventName } from "../lib/postEvents";
 import { canDeletePost, canHidePost } from "../lib/postPermissions";
 import { formatRelativeTime, parseApiTimestamp } from "../lib/dates";
-import { gifAttachmentTitle, gifToChatAttachmentInput } from "../lib/gifs";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
+import type { PostMediaDraft } from "../lib/postMedia";
 import { formatCountWithUnit } from "../lib/pluralize";
 import { applyProfileThemeToRoot } from "../lib/profileThemes";
 import { roomThemeConfig, roomThemeSwatchCssProperties } from "../lib/roomThemes";
@@ -91,15 +95,12 @@ import type { AppShellOutletContext } from "../components/layout/AppShell";
 import type { ImageUploadPurpose, RoomInput } from "../lib/api";
 import type {
   ChatMessage,
-  GifAttachment,
-  GifSearchResult,
   Post,
   Room,
   RoomAccessRequest,
   RoomChannel,
   RoomMember,
   RoomVisibility,
-  User,
 } from "../lib/types";
 import { useAsyncData } from "../lib/useAsyncData";
 import { useAuth } from "../lib/useAuth";
@@ -889,8 +890,8 @@ function RoomChannelWorkspace({
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState<string | undefined>();
   const [body, setBody] = useState("");
-  const [selectedGifs, setSelectedGifs] = useState<GifSearchResult[]>([]);
-  const [gifPickerOpen, setGifPickerOpen] = useState(false);
+  const [attachments, setAttachments] = useState<PostMediaDraft[]>([]);
+  const [attachmentsBusy, setAttachmentsBusy] = useState(false);
   const [sending, setSending] = useState(false);
   const orderedChannels = useMemo(
     () => [...channels].sort(sortRoomChannels),
@@ -969,8 +970,7 @@ function RoomChannelWorkspace({
 
           if (currentSlug && currentSlug !== nextSlug) {
             setBody("");
-            setSelectedGifs([]);
-            setGifPickerOpen(false);
+            setAttachments([]);
           }
 
           selectedChannelSlugRef.current = nextSlug;
@@ -1158,8 +1158,7 @@ function RoomChannelWorkspace({
       setLoadedMessageChannelSlug(undefined);
       setActiveChannelSlug(undefined);
       setBody("");
-      setSelectedGifs([]);
-      setGifPickerOpen(false);
+      setAttachments([]);
       void loadChannels();
     });
 
@@ -1210,8 +1209,7 @@ function RoomChannelWorkspace({
 
       if (currentSlug && currentSlug !== nextSlug) {
         setBody("");
-        setSelectedGifs([]);
-        setGifPickerOpen(false);
+        setAttachments([]);
       }
 
       selectedChannelSlugRef.current = nextSlug;
@@ -1342,8 +1340,7 @@ function RoomChannelWorkspace({
     setLoadedMessageChannelSlug(undefined);
     setMessagesError(undefined);
     setBody("");
-    setSelectedGifs([]);
-    setGifPickerOpen(false);
+    setAttachments([]);
 
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set("tab", "chat");
@@ -1369,31 +1366,17 @@ function RoomChannelWorkspace({
       !user ||
       !messagesReady ||
       sending ||
-      (trimmed === "" && selectedGifs.length === 0)
+      attachmentsBusy ||
+      !messageHasContent(trimmed, attachments)
     ) {
       return;
     }
 
     const targetChannel = activeChannel;
-    const draftGifs = selectedGifs;
-    const optimisticId = -Date.now();
-    const optimisticMessage: ChatMessage = {
-      id: optimisticId,
-      conversationId: targetChannel.conversationId,
-      body: trimmed,
-      bodyEntities: [],
-      attachments: draftGifs.map((gif) => ({ type: "gif", gif })),
-      deletedAt: null,
-      createdAt: new Date().toISOString(),
-      sender: userToChatUser(user),
-    };
+    const draftAttachments = attachments;
 
     setSending(true);
     setMessagesError(undefined);
-    setBody("");
-    setSelectedGifs([]);
-    setGifPickerOpen(false);
-    setMessages((current) => [...current, optimisticMessage]);
 
     try {
       const message = await runWithAuth(
@@ -1403,17 +1386,17 @@ function RoomChannelWorkspace({
             targetChannel.slug,
             trimmed,
             csrfToken,
-            draftGifs.map(gifToChatAttachmentInput),
+            messageAttachmentInputsFromDrafts(draftAttachments),
           ),
         { retryOnCsrf: true },
       );
 
       messageMutationVersionRef.current += 1;
       if (selectedChannelSlugRef.current === targetChannel.slug) {
+        setBody("");
+        setAttachments([]);
         setMessages((current) => [
-          ...current.filter(
-            (item) => item.id !== optimisticId && item.id !== message.id,
-          ),
+          ...current.filter((item) => item.id !== message.id),
           message,
         ]);
       }
@@ -1426,9 +1409,6 @@ function RoomChannelWorkspace({
       );
     } catch (caught) {
       if (selectedChannelSlugRef.current === targetChannel.slug) {
-        setMessages((current) => current.filter((item) => item.id !== optimisticId));
-        setBody(trimmed);
-        setSelectedGifs(draftGifs);
         setMessagesError(
           caught instanceof Error ? caught.message : "Message could not send.",
         );
@@ -1474,22 +1454,6 @@ function RoomChannelWorkspace({
 
     event.preventDefault();
     event.currentTarget.form?.requestSubmit();
-  }
-
-  function handleGifSelect(gif: GifSearchResult) {
-    setSelectedGifs((current) => {
-      if (current.some((item) => item.resourceKey === gif.resourceKey)) {
-        return current;
-      }
-
-      if (current.length >= 4) {
-        setMessagesError("Messages can include up to 4 GIFs.");
-        return current;
-      }
-
-      setMessagesError(undefined);
-      return [...current, gif];
-    });
   }
 
   if (status !== "authenticated") {
@@ -1668,54 +1632,16 @@ function RoomChannelWorkspace({
             data-testid="room-channel-message-composer"
             onSubmit={(event) => void handleSend(event)}
           >
-            {selectedGifs.length > 0 ? (
-              <div className="mb-2 flex gap-2 overflow-x-auto pb-1" data-testid="room-selected-gifs">
-                {selectedGifs.map((gif) => (
-                  <div
-                    key={gif.resourceKey}
-                    className="relative h-24 w-32 shrink-0 overflow-hidden rounded-card border border-line bg-canvas shadow-inner-soft"
-                  >
-                    <img
-                      alt={gifAttachmentTitle(gif)}
-                      src={gif.previewUrl ?? gif.url}
-                      className="size-full object-cover"
-                    />
-                    <span className="absolute bottom-1 left-1 rounded-full bg-black/75 px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-white">
-                      KLIPY
-                    </span>
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className="absolute right-1 top-1 size-7 bg-black/70 text-white hover:bg-black/85 hover:text-white"
-                      aria-label={`Remove ${gifAttachmentTitle(gif)}`}
-                      title={`Remove ${gifAttachmentTitle(gif)}`}
-                      icon={<X aria-hidden="true" size={14} />}
-                      onClick={() =>
-                        setSelectedGifs((current) =>
-                          current.filter((item) => item.resourceKey !== gif.resourceKey),
-                        )
-                      }
-                    />
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            {gifPickerOpen ? (
-              <GifPicker className="mb-2" onSelect={handleGifSelect} />
-            ) : null}
+            <MessageAttachmentComposer
+              key={`${room.slug}:${activeChannel?.slug ?? "none"}`}
+              attachments={attachments}
+              className="mb-2"
+              disabled={!canPostInActiveChannel || sending || showMessagesLoading}
+              testId="room-attachment-composer"
+              onBusyChange={setAttachmentsBusy}
+              onChange={setAttachments}
+            />
             <div className="flex items-start gap-2">
-              <Button
-                type="button"
-                size="icon"
-                variant={gifPickerOpen ? "secondary" : "ghost"}
-                className="mt-1 shrink-0"
-                aria-label={gifPickerOpen ? "Close GIF picker" : "Add GIF"}
-                title={gifPickerOpen ? "Close GIF picker" : "Add GIF"}
-                disabled={!canPostInActiveChannel}
-                icon={<GifIcon aria-hidden="true" size={16} />}
-                onClick={() => setGifPickerOpen((open) => !open)}
-              />
               <label className="sr-only" htmlFor="room-channel-message-body">
                 Write a message
               </label>
@@ -1747,8 +1673,9 @@ function RoomChannelWorkspace({
                 className="min-h-12 shrink-0 px-3"
                 disabled={
                   !canPostInActiveChannel ||
-                  (body.trim() === "" && selectedGifs.length === 0) ||
-                  sending
+                  !messageHasContent(body, attachments) ||
+                  sending ||
+                  attachmentsBusy
                 }
                 icon={<Send aria-hidden="true" size={16} />}
               >
@@ -1812,6 +1739,10 @@ function RoomChatMessageBubble({
   message: ChatMessage;
   mine: boolean;
 }) {
+  const display = messageTextForDisplay(message);
+  const hasBody = display.body.trim() !== "";
+  const hasAttachments = Boolean(message.attachments?.length);
+
   return (
     <div
       className={cn(
@@ -1822,112 +1753,110 @@ function RoomChatMessageBubble({
       {mine ? null : (
         <Avatar user={message.sender} size="sm" className="mb-1 hidden sm:block" />
       )}
-      <div className="relative mb-1 max-w-[min(31rem,88%)] sm:max-w-[min(36rem,78%)]">
-        <div
-          className={cn(
-            "rounded-[1.125rem] px-3 py-2 text-sm leading-5 transition duration-fluid ease-fluid",
-            mine
-              ? "bg-accent text-accent-ink shadow-soft"
-              : "bg-surface-strong text-text",
-          )}
-        >
-          {!mine ? (
-            <span className="mb-1 block truncate text-[0.7rem] font-semibold text-muted">
-              {message.sender.displayName}
-            </span>
-          ) : null}
-          {message.body ? (
+      <div
+        className={cn(
+          "mb-1 flex min-w-0 w-full max-w-[min(42rem,94%)] flex-col sm:max-w-[min(44rem,86%)]",
+          mine ? "items-end" : "items-start",
+        )}
+      >
+        {!mine ? (
+          <span className="mb-1 block truncate px-1 text-[0.7rem] font-semibold text-muted">
+            {message.sender.displayName}
+          </span>
+        ) : null}
+        {hasBody ? (
+          <div
+            className={cn(
+              "w-fit max-w-[min(31rem,100%)] rounded-[1.125rem] px-3 py-2 text-sm leading-5 transition duration-fluid ease-fluid sm:max-w-[min(36rem,100%)]",
+              mine
+                ? "ml-auto bg-accent text-accent-ink shadow-soft"
+                : "bg-surface-strong text-text",
+            )}
+          >
             <RichText
-              text={message.body}
-              entities={message.bodyEntities}
+              text={display.body}
+              entities={display.bodyEntities}
               className="block whitespace-pre-wrap break-words"
               embedClassName="mt-2"
             />
-          ) : null}
-          {message.attachments?.length ? (
-            <div className="mt-2 space-y-2" data-testid="room-message-attachments">
-              {message.attachments.map((attachment, index) =>
-                attachment.type === "gif" ? (
-                  <RoomChatGifAttachment
-                    key={`${message.id}-gif-${attachment.gif.resourceKey}-${index}`}
-                    gif={attachment.gif}
-                    mine={mine}
-                  />
-                ) : null,
-              )}
-            </div>
-          ) : null}
-          <div
-            className={cn(
-              "mt-1.5 flex flex-wrap items-center gap-1.5 text-[0.68rem] leading-none",
-              mine ? "text-accent-ink/70" : "text-muted",
-            )}
-          >
-            <span>{formatActivityTime(message.createdAt)}</span>
-            {canReport && message.deletedAt === null ? (
-              <>
-                <span className="text-current/45" aria-hidden="true">
-                  •
-                </span>
-                <ReportForm
-                  className="contents"
-                  targetType="message"
-                  targetId={message.id}
-                  reportedUserId={message.sender.id}
-                  title="Report message"
-                  explainer="This reports this room message to moderators."
-                  triggerMode="icon"
-                  triggerLabel="Report message"
-                  triggerSize="compact"
-                  triggerIconSize={12}
-                  triggerClassName="!bg-transparent !text-current hover:!bg-transparent focus-visible:!bg-transparent"
-                  feedbackClassName="basis-full"
-                />
-              </>
+            {!hasAttachments ? (
+              <RoomMessageMeta
+                canReport={canReport}
+                message={message}
+                mine={mine}
+              />
             ) : null}
           </div>
-        </div>
+        ) : null}
+
+        {hasAttachments ? (
+          <MessageAttachments
+            attachments={message.attachments}
+            className={cn("mt-1.5", mine && "ml-auto")}
+            testId="room-message-attachments"
+          />
+        ) : null}
+
+        {hasAttachments ? (
+          <RoomMessageMeta
+            canReport={canReport}
+            message={message}
+            mine={mine}
+            outside
+            className={cn("mt-1 px-1", mine && "justify-end")}
+          />
+        ) : null}
       </div>
     </div>
   );
 }
 
-function RoomChatGifAttachment({
-  gif,
+function RoomMessageMeta({
+  canReport,
+  className,
+  message,
   mine,
+  outside = false,
 }: {
-  gif: GifAttachment;
+  canReport: boolean;
+  className?: string;
+  message: ChatMessage;
   mine: boolean;
+  outside?: boolean;
 }) {
+  const usesBubbleTone = mine && !outside;
+
   return (
-    <a
-      href={gif.sourceUrl ?? gif.url}
-      target="_blank"
-      rel="noreferrer"
+    <div
       className={cn(
-        "block overflow-hidden rounded-card border shadow-inner-soft transition duration-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-        mine
-          ? "border-accent-ink/20 bg-accent-ink/10 hover:bg-accent-ink/15"
-          : "border-line bg-canvas/70 hover:border-line-strong hover:bg-surface",
+        "mt-1.5 flex flex-wrap items-center gap-1.5 text-[0.68rem] leading-none",
+        usesBubbleTone ? "text-accent-ink/70" : "text-muted",
+        className,
       )}
-      data-testid="room-chat-gif-attachment"
     >
-      <img
-        alt={gifAttachmentTitle(gif)}
-        src={gif.url}
-        className="max-h-72 w-full min-w-48 object-cover"
-        loading="lazy"
-      />
-      <span
-        className={cn(
-          "flex items-center justify-between gap-2 px-2.5 py-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.08em]",
-          mine ? "text-accent-ink/72" : "text-muted",
-        )}
-      >
-        <span className="truncate">{gifAttachmentTitle(gif)}</span>
-        <span className="shrink-0">KLIPY</span>
-      </span>
-    </a>
+      <span>{formatActivityTime(message.createdAt)}</span>
+      {canReport && message.deletedAt === null ? (
+        <>
+          <span className="text-current/45" aria-hidden="true">
+            •
+          </span>
+          <ReportForm
+            className="contents"
+            targetType="message"
+            targetId={message.id}
+            reportedUserId={message.sender.id}
+            title="Report message"
+            explainer="This reports this room message to moderators."
+            triggerMode="icon"
+            triggerLabel="Report message"
+            triggerSize="compact"
+            triggerIconSize={12}
+            triggerClassName="!bg-transparent !text-current hover:!bg-transparent focus-visible:!bg-transparent"
+            feedbackClassName="basis-full"
+          />
+        </>
+      ) : null}
+    </div>
   );
 }
 
@@ -2383,39 +2312,22 @@ function roomChatMessageMatchesOptimistic(
 
 function roomChatAttachmentFingerprint(message: ChatMessage): string {
   return (message.attachments ?? [])
-    .map((attachment) =>
-      attachment.type === "gif"
-        ? `gif:${attachment.gif.resourceKey}`
-        : `post:${attachment.post?.id ?? "missing"}`,
-    )
+    .map((attachment) => {
+      if (attachment.type === "gif") {
+        return `gif:${attachment.gif.resourceKey}`;
+      }
+
+      if (attachment.type === "post") {
+        return `post:${attachment.post?.id ?? "missing"}`;
+      }
+
+      if (attachment.type === "room") {
+        return `room:${attachment.room?.id ?? "missing"}`;
+      }
+
+      return `media:${attachment.media.kind}:${attachment.media.resourceKey ?? attachment.media.url ?? attachment.media.position}`;
+    })
     .join("|");
-}
-
-function userToChatUser(user: {
-  avatarUrl?: string | null;
-  displayName: string;
-  handle: string;
-  id: number;
-}): User {
-  return {
-    id: user.id,
-    handle: user.handle,
-    displayName: user.displayName,
-    initials: initialsFromDisplayName(user.displayName),
-    aura: "tide",
-    avatarUrl: user.avatarUrl ?? null,
-  };
-}
-
-function initialsFromDisplayName(displayName: string): string {
-  const letters = displayName
-    .trim()
-    .split(/\s+/u)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join("");
-
-  return letters || "T";
 }
 
 function formatActivityTime(value: string): string {

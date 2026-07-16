@@ -4,8 +4,10 @@ import type {
   DiscoverPerson,
   ChatConversation,
   ChatMessage,
+  ChatMessageAttachment,
   ChatMessagesResult,
   ChatMoot,
+  GifAttachment,
   GifSearchResponse,
   HomeFeed,
   NotificationItem,
@@ -146,6 +148,23 @@ type ApiPostShareSummary = Omit<PostShareSummary, "room"> & {
   room?: ApiRoom | null;
 };
 
+type ApiChatMessage = Omit<ChatMessage, "attachments" | "bodyEntities"> & {
+  attachments?: unknown;
+  bodyEntities?: unknown;
+};
+
+type ApiChatMessagesResult = Omit<ChatMessagesResult, "messages"> & {
+  messages: ApiChatMessage[];
+};
+
+type ApiRoomChannelMessagesResult = Omit<RoomChannelMessagesResult, "messages"> & {
+  messages: ApiChatMessage[];
+};
+
+type ApiShareRoomToMessagesResult = Omit<ShareRoomToMessagesResult, "room"> & {
+  room: ApiRoom;
+};
+
 type ApiHomeFeed = {
   posts: ApiPost[];
   personalized: boolean;
@@ -214,19 +233,35 @@ export type SharePostToMessagesInput = {
   note?: string;
 };
 
-export type ChatMessageAttachmentInput = {
-  type: "gif";
-  provider: "klipy";
-  resourceType: "gif";
-  resourceId: string;
-  resourceKey: string;
-  url: string;
-  mime: "image/gif";
-  width?: number | null;
-  height?: number | null;
-  sourceUrl?: string | null;
-  card?: Record<string, unknown> | unknown[] | null;
-};
+export type ShareRoomToMessagesInput = SharePostToMessagesInput;
+
+export type ChatMessageAttachmentInput =
+  | PostAttachmentInput
+  | {
+      type: "media";
+      media: PostAttachmentInput;
+    }
+  | {
+      type: "post";
+      postId: number;
+    }
+  | {
+      type: "room";
+      roomId: number;
+    }
+  | {
+      type: "gif";
+      provider: "klipy";
+      resourceType: "gif";
+      resourceId: string;
+      resourceKey: string;
+      url: string;
+      mime: "image/gif";
+      width?: number | null;
+      height?: number | null;
+      sourceUrl?: string | null;
+      card?: Record<string, unknown> | unknown[] | null;
+    };
 
 export type SharePostToMessagesResult = {
   post: PostShareSummary;
@@ -246,6 +281,13 @@ export type SharePostToMessagesResult = {
   >;
   sentCount: number;
   failedCount: number;
+};
+
+export type ShareRoomToMessagesResult = Omit<
+  SharePostToMessagesResult,
+  "post"
+> & {
+  room: Room;
 };
 
 export type ImageUploadPurpose =
@@ -1946,6 +1988,24 @@ export function sharePostToMessages(
   }));
 }
 
+export function shareRoomToMessages(
+  roomSlug: string,
+  input: ShareRoomToMessagesInput,
+  csrfToken: string,
+): Promise<ShareRoomToMessagesResult> {
+  return apiPost<ApiShareRoomToMessagesResult>(
+    `/rooms/${encodeURIComponent(roomSlug)}/shares/messages`,
+    {
+      recipientUserIds: input.recipientUserIds,
+      ...(input.note !== undefined ? { note: input.note } : {}),
+    },
+    csrfToken,
+  ).then((result) => ({
+    ...result,
+    room: normalizeRoom(result.room),
+  }));
+}
+
 export function getPostReplies(postId: number): Promise<Post[]> {
   return apiGet<ApiPost[]>(`/posts/${postId}/replies`).then((items) =>
     items.filter(isVisiblePost).map(normalizePost),
@@ -2071,7 +2131,7 @@ export function createChatConversation(
 export function getChatMessages(
   conversationId: number,
 ): Promise<ChatMessagesResult> {
-  return apiGet<ChatMessagesResult>(
+  return apiGet<ApiChatMessagesResult>(
     `/chat/conversations/${conversationId}/messages`,
   ).then((result) => ({
     ...result,
@@ -2085,7 +2145,7 @@ export function sendChatMessage(
   csrfToken: string,
   attachments: ChatMessageAttachmentInput[] = [],
 ): Promise<ChatMessage> {
-  return apiPost<ChatMessage>(
+  return apiPost<ApiChatMessage>(
     `/chat/conversations/${conversationId}/messages`,
     { body, attachments },
     csrfToken,
@@ -2107,7 +2167,7 @@ export function getRoomChannelMessages(
   roomSlug: string,
   channelSlug: string,
 ): Promise<RoomChannelMessagesResult> {
-  return apiGet<RoomChannelMessagesResult>(
+  return apiGet<ApiRoomChannelMessagesResult>(
     `/rooms/${encodeURIComponent(roomSlug)}/channels/${encodeURIComponent(channelSlug)}/messages`,
   ).then((result) => ({
     ...result,
@@ -2122,7 +2182,7 @@ export function sendRoomChannelMessage(
   csrfToken: string,
   attachments: ChatMessageAttachmentInput[] = [],
 ): Promise<ChatMessage> {
-  return apiPost<ChatMessage>(
+  return apiPost<ApiChatMessage>(
     `/rooms/${encodeURIComponent(roomSlug)}/channels/${encodeURIComponent(channelSlug)}/messages`,
     { body, attachments },
     csrfToken,
@@ -2291,6 +2351,12 @@ function normalizeRoom(room: ApiRoom): Room {
     id: room.id,
     slug: room.slug,
     name: room.name,
+    ...(typeof room.canonicalPath === "string"
+      ? { canonicalPath: room.canonicalPath }
+      : {}),
+    ...(typeof room.canonicalUrl === "string"
+      ? { canonicalUrl: room.canonicalUrl }
+      : {}),
     summary: room.summary ?? room.description ?? "",
     description: room.description ?? room.summary ?? "",
     mood: room.mood ?? "",
@@ -3848,21 +3914,168 @@ function normalizePostShareSummary(post: ApiPostShareSummary): PostShareSummary 
   };
 }
 
-function normalizeChatMessage(message: ChatMessage): ChatMessage {
+function normalizeChatMessage(message: ApiChatMessage): ChatMessage {
   return {
     ...message,
     bodyEntities: normalizeRichTextEntities(message.bodyEntities),
-    attachments: (message.attachments ?? []).map((attachment) =>
-      attachment.type === "post"
-        ? {
-            type: "post",
-            post: attachment.post
-              ? normalizePostShareSummary(attachment.post as ApiPostShareSummary)
-              : null,
-          }
-        : attachment,
-    ),
+    attachments: normalizeChatMessageAttachments(message.attachments),
   };
+}
+
+function normalizeChatMessageAttachments(value: unknown): ChatMessageAttachment[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const attachments: ChatMessageAttachment[] = [];
+
+  value.forEach((candidate, index) => {
+    const attachment = apiObject(candidate);
+
+    if (!attachment || typeof attachment.type !== "string") {
+      return;
+    }
+
+    if (attachment.type === "post") {
+      attachments.push({
+        type: "post",
+        post: normalizeChatAttachmentPost(attachment.post),
+      });
+      return;
+    }
+
+    if (attachment.type === "room") {
+      attachments.push({
+        type: "room",
+        room: normalizeChatAttachmentRoom(attachment.room),
+      });
+      return;
+    }
+
+    if (attachment.type === "media") {
+      const media = normalizePostAttachment(
+        attachment.media ?? attachment.attachment ?? attachment,
+        index + 1,
+      );
+
+      if (media) {
+        attachments.push({ type: "media", media });
+      }
+      return;
+    }
+
+    if (attachment.type === "gif") {
+      const gif = normalizeChatGifAttachment(attachment.gif ?? attachment);
+
+      if (gif) {
+        attachments.push({ type: "gif", gif });
+      }
+    }
+  });
+
+  return attachments;
+}
+
+function normalizeChatAttachmentPost(value: unknown): Post | null {
+  const post = apiObject(value);
+
+  if (
+    !post ||
+    typeof post.id !== "number" ||
+    !Number.isFinite(post.id) ||
+    !isUserLike(post.author)
+  ) {
+    return null;
+  }
+
+  const reactionValue = apiObject(post.reactions);
+  const reactions = {
+    glow: finiteNumber(reactionValue?.glow),
+    echo: finiteNumber(reactionValue?.echo),
+    hush: finiteNumber(reactionValue?.hush),
+  };
+  const body = typeof post.body === "string"
+    ? post.body
+    : typeof post.bodySnippet === "string"
+      ? post.bodySnippet
+      : "";
+  const room = apiObject(post.room);
+  const apiPost = {
+    ...post,
+    id: post.id,
+    author: post.author,
+    body,
+    createdAt: typeof post.createdAt === "string" ? post.createdAt : "",
+    mood: typeof post.mood === "string" ? post.mood : "",
+    room: room as ApiRoom | null,
+    reactions,
+    commentCount: finiteNumber(post.commentCount),
+    likeCount: finiteNumber(post.likeCount ?? reactions.glow),
+    likedByCurrentUser: Boolean(post.likedByCurrentUser),
+  } as unknown as ApiPost;
+
+  return normalizePost(apiPost);
+}
+
+function normalizeChatAttachmentRoom(value: unknown): Room | null {
+  const room = apiObject(value);
+
+  if (
+    !room ||
+    typeof room.id !== "number" ||
+    !Number.isFinite(room.id) ||
+    typeof room.slug !== "string" ||
+    typeof room.name !== "string"
+  ) {
+    return null;
+  }
+
+  return normalizeRoom(room as unknown as ApiRoom);
+}
+
+function normalizeChatGifAttachment(value: unknown): GifAttachment | undefined {
+  const gif = apiObject(value);
+
+  if (
+    !gif ||
+    gif.provider !== "klipy" ||
+    gif.resourceType !== "gif" ||
+    typeof gif.resourceId !== "string" ||
+    typeof gif.resourceKey !== "string" ||
+    typeof gif.url !== "string"
+  ) {
+    return undefined;
+  }
+
+  const card =
+    gif.card === null || Array.isArray(gif.card) || apiObject(gif.card)
+      ? (gif.card as GifAttachment["card"])
+      : undefined;
+
+  return {
+    provider: "klipy",
+    resourceType: "gif",
+    resourceId: gif.resourceId,
+    resourceKey: gif.resourceKey,
+    url: gif.url,
+    mime: "image/gif",
+    width: numberOrNull(gif.width),
+    height: numberOrNull(gif.height),
+    sourceUrl: typeof gif.sourceUrl === "string" ? gif.sourceUrl : null,
+    ...(card !== undefined ? { card } : {}),
+    ...(typeof gif.previewUrl === "string" ? { previewUrl: gif.previewUrl } : {}),
+    ...(typeof gif.title === "string" ? { title: gif.title } : {}),
+  };
+}
+
+function apiObject(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function finiteNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function normalizeNotification(notification: NotificationItem): NotificationItem {

@@ -152,6 +152,7 @@ export function MediaPlayer({
                   className="size-full object-cover"
                   decoding="async"
                   loading="lazy"
+                  referrerPolicy="no-referrer"
                   src={artworkUrl}
                   data-testid={ids.artwork}
                 />

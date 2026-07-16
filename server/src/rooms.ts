@@ -68,6 +68,8 @@ export interface RoomMemberPayload {
 export interface RoomsRepository {
   listPublicRooms(viewer?: RoomViewer): Promise<RoomPayload[]>;
   getPublicRoom(slug: string, viewer?: RoomViewer): Promise<RoomPayload | null>;
+  getPublicRoomsByIds(roomIds: readonly number[], viewer?: RoomViewer): Promise<Map<number, RoomPayload>>;
+  getPublicRoomsBySlugs(slugs: readonly string[], viewer?: RoomViewer): Promise<Map<string, RoomPayload>>;
   getPublicRoomMembers(slug: string, viewer?: RoomViewer): Promise<RoomMemberPayload[] | null>;
 }
 
@@ -136,6 +138,7 @@ type CountRow = RowDataPacket & {
 };
 
 const roomSlugPattern = /^[a-z0-9-]{1,80}$/;
+const maxPublicRoomBatchSize = 1500;
 
 const roomListOrder = "room_posts.latest_activity_at DESC, rooms.is_live DESC, rooms.name ASC";
 const publicRoomVisibilitySql = "('public', 'view_only')";
@@ -305,6 +308,42 @@ export function buildPublicRoomBySlugQuery(
         LIMIT 1`;
 }
 
+export function buildPublicRoomsByIdsQuery(
+  roomIdCount: number,
+  capabilities: RoomSchemaCapabilities = defaultRoomSchemaCapabilities,
+  viewer: RoomViewer = anonymousRoomViewer,
+): string {
+  return buildPublicRoomsByValuesQuery("id", roomIdCount, capabilities, viewer);
+}
+
+export function buildPublicRoomsBySlugsQuery(
+  roomSlugCount: number,
+  capabilities: RoomSchemaCapabilities = defaultRoomSchemaCapabilities,
+  viewer: RoomViewer = anonymousRoomViewer,
+): string {
+  return buildPublicRoomsByValuesQuery("slug", roomSlugCount, capabilities, viewer);
+}
+
+function buildPublicRoomsByValuesQuery(
+  column: "id" | "slug",
+  valueCount: number,
+  capabilities: RoomSchemaCapabilities,
+  viewer: RoomViewer,
+): string {
+  if (!Number.isInteger(valueCount) || valueCount < 1 || valueCount > maxPublicRoomBatchSize) {
+    throw new Error("Public Room batch size is invalid.");
+  }
+
+  const placeholders = Array.from({ length: valueCount }, () => "?").join(", ");
+
+  return `${roomSelectSql(capabilities, viewer)}
+        WHERE rooms.${column} IN (${placeholders})
+          AND (rooms.visibility <> 'private'
+            ${roomViewerAccessOrSql(capabilities, viewer)})
+          ${roomNotDeletedSql(capabilities)}
+        ORDER BY rooms.${column} ASC`;
+}
+
 export function buildPublicRoomMemberRoomQuery(
   capabilities: RoomSchemaCapabilities = defaultRoomSchemaCapabilities,
   viewer: RoomViewer = anonymousRoomViewer,
@@ -366,6 +405,60 @@ class MysqlRoomsRepository implements RoomsRepository {
     const row = rows[0];
 
     return row === undefined ? null : roomPayloadFromRow(row);
+  }
+
+  async getPublicRoomsByIds(
+    roomIds: readonly number[],
+    viewer: RoomViewer = anonymousRoomViewer,
+  ): Promise<Map<number, RoomPayload>> {
+    const uniqueRoomIds = uniquePositiveIntegerIds(roomIds, maxPublicRoomBatchSize);
+
+    if (uniqueRoomIds.length === 0) {
+      return new Map();
+    }
+
+    const capabilities = await this.schemaCapabilities();
+    const [rows] = await this.pool.execute<RoomRow[]>(
+      buildPublicRoomsByIdsQuery(uniqueRoomIds.length, capabilities, viewer),
+      uniqueRoomIds,
+    );
+
+    return new Map(rows.map((row) => {
+      const room = roomPayloadFromRow(row);
+
+      return [room.id, room] as const;
+    }));
+  }
+
+  async getPublicRoomsBySlugs(
+    slugs: readonly string[],
+    viewer: RoomViewer = anonymousRoomViewer,
+  ): Promise<Map<string, RoomPayload>> {
+    const uniqueSlugs = [...new Set(slugs.flatMap((slug) => {
+      const normalized = normalizeRoomSlug(slug);
+
+      return normalized === null ? [] : [normalized];
+    }))];
+
+    if (uniqueSlugs.length === 0) {
+      return new Map();
+    }
+
+    if (uniqueSlugs.length > maxPublicRoomBatchSize) {
+      throw new Error(`Batch cannot include more than ${maxPublicRoomBatchSize} slugs.`);
+    }
+
+    const capabilities = await this.schemaCapabilities();
+    const [rows] = await this.pool.execute<RoomRow[]>(
+      buildPublicRoomsBySlugsQuery(uniqueSlugs.length, capabilities, viewer),
+      uniqueSlugs,
+    );
+
+    return new Map(rows.map((row) => {
+      const room = roomPayloadFromRow(row);
+
+      return [room.slug, room] as const;
+    }));
   }
 
   async getPublicRoomMembers(slug: string, viewer: RoomViewer = anonymousRoomViewer): Promise<RoomMemberPayload[] | null> {
@@ -749,6 +842,16 @@ function roomViewerIsAdmin(viewer: RoomViewer): boolean {
 
 function roomViewerSqlValue(viewer: RoomViewer): string {
   return viewer.userId === null ? "NULL" : String(Math.max(0, Math.trunc(viewer.userId)));
+}
+
+function uniquePositiveIntegerIds(values: readonly number[], maximum: number): number[] {
+  const ids = [...new Set(values.filter((value) => Number.isInteger(value) && value > 0))];
+
+  if (ids.length > maximum) {
+    throw new Error(`Batch cannot include more than ${maximum} ids.`);
+  }
+
+  return ids;
 }
 
 function booleanValue(value: boolean | number | string | null | undefined): boolean {

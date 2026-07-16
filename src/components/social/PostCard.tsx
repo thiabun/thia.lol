@@ -33,6 +33,7 @@ import {
   unlikePost,
 } from "../../lib/api";
 import { cn } from "../../lib/classNames";
+import { safeKlipyUrl, safeProviderImageUrl } from "../../lib/providerMedia";
 import {
   attachSpotifyPlaybackListeners,
   emptySpotifyPlaybackProgress,
@@ -57,7 +58,7 @@ import type { Post, PostAttachment } from "../../lib/types";
 import { useAuth } from "../../lib/useAuth";
 import { canDeletePost } from "../../lib/postPermissions";
 
-export type PostCardVariant = "feed" | "focus" | "reply";
+export type PostCardVariant = "feed" | "focus" | "reply" | "attachment";
 
 export type PostCardProps = {
   post: Post;
@@ -92,16 +93,22 @@ export function PostCard({
 }: PostCardProps) {
   const navigate = useNavigate();
   const { runWithAuth, user } = useAuth();
-  const effectiveCanDelete = canDelete || canDeletePost(user, post);
+  const isAttachment = variant === "attachment";
+  const effectiveCanDelete = !isAttachment && (canDelete || canDeletePost(user, post));
   const showActions = effectiveCanDelete || canHide;
   const [localDeletePending, setLocalDeletePending] = useState(false);
   const [localDeleteError, setLocalDeleteError] = useState<string>();
   const [locallyDeleted, setLocallyDeleted] = useState(false);
   const [finePointerHover, setFinePointerHover] = useState(false);
   const isNavigableFeed = variant === "feed";
+  const isCardNavigable = isNavigableFeed || isAttachment;
   const canonicalPath = postCanonicalPath(post);
 
   useEffect(() => {
+    if (!isCardNavigable) {
+      return undefined;
+    }
+
     const query = window.matchMedia("(hover: hover) and (pointer: fine)");
     const sync = () => setFinePointerHover(query.matches);
 
@@ -109,7 +116,7 @@ export function PostCard({
     query.addEventListener("change", sync);
 
     return () => query.removeEventListener("change", sync);
-  }, []);
+  }, [isCardNavigable]);
 
   async function handleDeletePost(): Promise<boolean> {
     if (!effectiveCanDelete || actionPending || localDeletePending) {
@@ -155,7 +162,7 @@ export function PostCard({
 
   function handleCardClick(event: ReactMouseEvent<HTMLElement>) {
     if (
-      !isNavigableFeed ||
+      !isCardNavigable ||
       isCardNavigationIgnoredTarget(event.target) ||
       isCardNavigationIgnoredEvent(event.nativeEvent)
     ) {
@@ -165,7 +172,7 @@ export function PostCard({
     openCanonicalPost();
   }
 
-  const cardMotionProps = !isNavigableFeed
+  const cardMotionProps = !isCardNavigable
     ? {}
     : {
         ...(finePointerHover ? { whileHover: cardHover } : {}),
@@ -232,7 +239,11 @@ export function PostCard({
         data-testid="post-body-open-thread"
         className={cn(
           "block min-w-0 w-full max-w-full text-left",
-          variant === "reply" ? "mt-2 pl-[3.25rem]" : "mt-3",
+          variant === "reply"
+            ? "mt-2 pl-[3.25rem]"
+            : isAttachment
+              ? "mt-2.5"
+              : "mt-3",
         )}
       >
         <RichText
@@ -252,9 +263,11 @@ export function PostCard({
           maxHeightClass={
             variant === "focus"
               ? "max-h-[min(76vh,40rem)]"
+              : isAttachment
+                ? "max-h-[min(52svh,24rem)]"
               : "max-h-[min(70vh,34rem)]"
           }
-          musicLayout={variant === "reply" ? "compact" : "responsive"}
+          musicLayout={variant === "reply" || isAttachment ? "compact" : "responsive"}
           post={post}
           staticCapture={staticCapture}
         />
@@ -309,30 +322,36 @@ export function PostCard({
 
   return (
     <motion.article
-      id={`post-${post.id}`}
+      id={isAttachment ? undefined : `post-${post.id}`}
       aria-label={
         `Post by ${post.author.displayName}`
       }
       className={cn(
         "group relative mx-auto min-w-0 w-full",
-        variant === "focus" ? "max-w-[44rem]" : "max-w-[38rem]",
-        isNavigableFeed && "cursor-pointer",
+        variant === "focus"
+          ? "max-w-[44rem]"
+          : isAttachment
+            ? "max-w-none"
+            : "max-w-[38rem]",
+        isCardNavigable && "cursor-pointer",
         variant === "reply" && "py-3 pr-1",
         highlighted &&
           "rounded-panel ring-2 ring-accent/35 ring-offset-2 ring-offset-canvas",
       )}
       data-depth={depth}
-      data-render-deferred={variant === "reply" ? "post-reply" : "post"}
+      data-render-deferred={
+        isAttachment ? undefined : variant === "reply" ? "post-reply" : "post"
+      }
       data-testid="post-card-open-thread"
       data-variant={variant}
       variants={cardEntrance}
       custom={index}
-      initial="hidden"
+      initial={isAttachment ? false : "hidden"}
       animate="show"
       onClick={handleCardClick}
       {...cardMotionProps}
     >
-      {isNavigableFeed ? (
+      {isCardNavigable ? (
         <Link
           to={canonicalPath}
           className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-30 focus:rounded-control focus:bg-surface focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-text focus:shadow-soft focus:outline-2 focus:outline-offset-2 focus:outline-focus"
@@ -345,10 +364,11 @@ export function PostCard({
       ) : (
         <Panel
           elevated={variant === "focus"}
-          interactive={isNavigableFeed}
+          interactive={isCardNavigable}
           className={cn(
             "min-w-0 max-w-full overflow-hidden p-3 sm:p-4",
             variant === "focus" && "p-4 sm:p-5",
+            isAttachment && "rounded-card bg-surface/82 p-3 shadow-inner-soft sm:p-3",
           )}
         >
           {content}
@@ -406,7 +426,17 @@ export type PostAttachmentsProps = {
   testId?: string;
 };
 
-type PostMusicLayout = "compact" | "responsive";
+export type PostMusicLayout = "compact" | "responsive";
+
+export type PostAttachmentGalleryProps = {
+  attachments: readonly PostAttachment[];
+  className?: string;
+  columns?: "responsive" | "single";
+  maxHeightClass?: string;
+  musicLayout?: PostMusicLayout;
+  staticCapture?: boolean;
+  testId?: string;
+};
 
 export function PostAttachments({
   className = "mt-4",
@@ -417,9 +447,38 @@ export function PostAttachments({
   testId = "post-attachments",
 }: PostAttachmentsProps) {
   const attachments = postAttachmentsForDisplay(post);
-  const hasPlayerAttachment = attachments.some(isPostMusicAttachment);
 
   if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <PostAttachmentGallery
+      attachments={attachments}
+      className={className}
+      maxHeightClass={maxHeightClass}
+      musicLayout={musicLayout}
+      staticCapture={staticCapture}
+      testId={testId}
+    />
+  );
+}
+
+export function PostAttachmentGallery({
+  attachments,
+  className,
+  columns = "responsive",
+  maxHeightClass = "max-h-[min(70vh,34rem)]",
+  musicLayout = "responsive",
+  staticCapture = false,
+  testId = "post-attachments",
+}: PostAttachmentGalleryProps) {
+  const orderedAttachments = [...attachments].sort(
+    (first, second) => first.position - second.position,
+  );
+  const hasPlayerAttachment = orderedAttachments.some(isPostMusicAttachment);
+
+  if (orderedAttachments.length === 0) {
     return null;
   }
 
@@ -427,12 +486,16 @@ export function PostAttachments({
     <div
       className={cn(
         "grid min-w-0 w-full max-w-full gap-2",
-        attachments.length > 1 && !hasPlayerAttachment ? "sm:grid-cols-2" : null,
+        columns === "responsive" &&
+          orderedAttachments.length > 1 &&
+          !hasPlayerAttachment
+          ? "sm:grid-cols-2"
+          : null,
         className,
       )}
       data-testid={testId}
     >
-      {attachments.map((attachment, index) => (
+      {orderedAttachments.map((attachment, index) => (
         <PostAttachmentItem
           key={`${attachment.kind}-${attachment.url ?? attachment.sourceUrl ?? index}-${index}`}
           attachment={attachment}
@@ -490,6 +553,18 @@ function PostAttachmentItem({
 
   if (attachment.kind === "gif") {
     const title = gifAttachmentTitle(attachment);
+    const gifUrl = safeKlipyUrl(attachment.url);
+
+    if (!gifUrl) {
+      return (
+        <span
+          className="block min-h-16 rounded-card border border-line bg-canvas/70 px-3 py-2.5 text-sm font-medium text-muted"
+          data-testid={testId}
+        >
+          GIF unavailable.
+        </span>
+      );
+    }
 
     return (
       <span
@@ -503,20 +578,19 @@ function PostAttachmentItem({
           )}
           style={postAttachmentAspectRatio(attachment)}
         >
-          {attachment.url ? (
-            <img
-              src={attachment.url}
-              alt={title}
-              className={cn(
-                "block min-w-0 max-w-full object-contain",
-                postAttachmentAspectRatio(attachment) ? "size-full" : "h-auto w-auto",
-                maxHeightClass,
-              )}
-              loading="lazy"
-              decoding="async"
-              data-testid={`${testId}-gif`}
-            />
-          ) : null}
+          <img
+            src={gifUrl}
+            alt={title}
+            className={cn(
+              "block min-w-0 max-w-full object-contain",
+              postAttachmentAspectRatio(attachment) ? "size-full" : "h-auto w-auto",
+              maxHeightClass,
+            )}
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            data-testid={`${testId}-gif`}
+          />
         </span>
       </span>
     );
@@ -1161,7 +1235,7 @@ function PostIntegrationAttachment({
   const metadata = attachmentCardObject(card?.metadata);
   const title = stringValue(metadata?.title) ?? stringValue(card?.title) ?? postIntegrationProviderLabel(attachment.provider);
   const subtitle = stringValue(metadata?.subtitle) ?? postIntegrationProviderLabel(attachment.provider);
-  const imageUrl = stringValue(metadata?.imageUrl);
+  const imageUrl = safeProviderImageUrl(stringValue(metadata?.imageUrl));
   const href = attachment.sourceUrl ?? stringValue(card?.sourceUrl) ?? "#";
 
   return (
@@ -1175,7 +1249,14 @@ function PostIntegrationAttachment({
     >
       <span className="grid size-16 overflow-hidden rounded-card border border-line bg-surface">
         {imageUrl ? (
-          <img src={imageUrl} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
+          <img
+            src={imageUrl}
+            alt=""
+            className="h-full w-full object-cover"
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+          />
         ) : (
           <span className="grid place-items-center text-muted">
             <WifiOff aria-hidden="true" size={18} />
@@ -1292,7 +1373,7 @@ function postMusicAttachmentDetails(
   return {
     description: stringValue(metadata?.description),
     href: safeAttachmentHref(sourceUrl),
-    imageUrl: stringValue(metadata?.imageUrl),
+    imageUrl: safeProviderImageUrl(stringValue(metadata?.imageUrl)),
     provider,
     providerLabel,
     resourceId,

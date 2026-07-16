@@ -1,15 +1,31 @@
-import { Copy, ExternalLink, Share2 } from "lucide-react";
-import { useState } from "react";
+import {
+  CheckCircle2,
+  Copy,
+  ExternalLink,
+  LoaderCircle,
+  MessageCircle,
+  Search,
+  Send,
+  Share2,
+  WifiOff,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import {
+  getChatMoots,
   roomCanonicalPath,
   roomCanonicalUrl,
   roomShareCardUrl,
+  shareRoomToMessages,
 } from "../../lib/api";
+import { cn } from "../../lib/classNames";
 import { shareUrlWithAttribution } from "../../lib/growthAttribution";
-import type { Room } from "../../lib/types";
+import type { ChatMoot, Room } from "../../lib/types";
+import { useAuth } from "../../lib/useAuth";
+import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
 import { ModalSheet } from "../ui/ModalSheet";
+import { CompactStateNotice } from "../ui/RouteState";
 
 type RoomShareModalProps = {
   onClose: () => void;
@@ -18,6 +34,16 @@ type RoomShareModalProps = {
 };
 
 export function RoomShareModal({ onClose, open, room }: RoomShareModalProps) {
+  const { csrfToken, runWithAuth, status } = useAuth();
+  const [moots, setMoots] = useState<ChatMoot[]>([]);
+  const [mootsLoading, setMootsLoading] = useState(false);
+  const [mootsError, setMootsError] = useState<string>();
+  const [query, setQuery] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
+  const [note, setNote] = useState("");
+  const [sending, setSending] = useState(false);
+  const [shareMessage, setShareMessage] = useState<string>();
+  const [sentConversationIds, setSentConversationIds] = useState<number[]>([]);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
   const [nativeShareAvailable] = useState(
     () => typeof navigator !== "undefined" && "share" in navigator,
@@ -28,6 +54,115 @@ export function RoomShareModal({ onClose, open, room }: RoomShareModalProps) {
     kind: "room",
     ref: room.slug,
   });
+  const selectedCount = selectedIds.size;
+  const filteredMoots = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    if (normalizedQuery === "") {
+      return moots;
+    }
+
+    return moots.filter((moot) => {
+      return (
+        moot.displayName.toLowerCase().includes(normalizedQuery) ||
+        moot.handle.toLowerCase().includes(normalizedQuery)
+      );
+    });
+  }, [moots, query]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    queueMicrotask(() => {
+      setCopyState("idle");
+      setShareMessage(undefined);
+      setSentConversationIds([]);
+    });
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || status !== "authenticated") {
+      return;
+    }
+
+    let active = true;
+
+    queueMicrotask(() => {
+      if (!active) {
+        return;
+      }
+
+      setMootsLoading(true);
+      setMootsError(undefined);
+
+      getChatMoots()
+        .then((items) => {
+          if (active) {
+            setMoots(items);
+          }
+        })
+        .catch((error) => {
+          if (active) {
+            setMootsError(
+              error instanceof Error ? error.message : "Moots could not load.",
+            );
+          }
+        })
+        .finally(() => {
+          if (active) {
+            setMootsLoading(false);
+          }
+        });
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [open, status]);
+
+  useEffect(() => {
+    if (open) {
+      return;
+    }
+
+    let active = true;
+
+    queueMicrotask(() => {
+      if (!active) {
+        return;
+      }
+
+      setSelectedIds(new Set());
+      setNote("");
+      setQuery("");
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (status === "authenticated") {
+      return;
+    }
+
+    let active = true;
+
+    queueMicrotask(() => {
+      if (active) {
+        setMoots([]);
+        setMootsLoading(false);
+        setMootsError(undefined);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [status]);
 
   async function handleCopy() {
     try {
@@ -54,6 +189,61 @@ export function RoomShareModal({ onClose, open, room }: RoomShareModalProps) {
     }
   }
 
+  function toggleMoot(id: number) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(id)) {
+        next.delete(id);
+      } else if (next.size < 10) {
+        next.add(id);
+      }
+
+      return next;
+    });
+  }
+
+  async function handleSend() {
+    if (!csrfToken || selectedCount === 0 || sending) {
+      return;
+    }
+
+    setSending(true);
+    setShareMessage(undefined);
+    setSentConversationIds([]);
+
+    try {
+      const trimmedNote = note.trim();
+      const result = await runWithAuth(
+        (freshCsrfToken) =>
+          shareRoomToMessages(
+            room.slug,
+            trimmedNote === ""
+              ? { recipientUserIds: Array.from(selectedIds) }
+              : { recipientUserIds: Array.from(selectedIds), note: trimmedNote },
+            freshCsrfToken,
+          ),
+        { retryOnCsrf: true },
+      );
+      const sentIds = result.results
+        .filter((item) => item.status === "sent")
+        .map((item) => item.conversationId);
+
+      setSentConversationIds(Array.from(new Set(sentIds)));
+      setShareMessage(
+        result.failedCount > 0
+          ? `Sent to ${result.sentCount}. ${result.failedCount} could not be sent.`
+          : `Sent to ${result.sentCount} ${result.sentCount === 1 ? "moot" : "moots"}.`,
+      );
+    } catch (error) {
+      setShareMessage(
+        error instanceof Error ? error.message : "Room could not be shared.",
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
     <ModalSheet
       open={open}
@@ -62,7 +252,7 @@ export function RoomShareModal({ onClose, open, room }: RoomShareModalProps) {
       description={`Share /${room.slug}.`}
       closeLabel="Close share dialog"
       testId="room-share-modal"
-      size="md"
+      size="lg"
       mobile="sheet"
       bodyClassName="space-y-5"
     >
@@ -126,6 +316,158 @@ export function RoomShareModal({ onClose, open, room }: RoomShareModalProps) {
           Copy failed. The link is {shareUrl}
         </p>
       ) : null}
+
+      <section className="space-y-3" aria-label="Send to moots">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-text">Send to moots</h3>
+            <p className="text-xs text-muted">Choose up to 10 mutuals.</p>
+          </div>
+          <span className="text-xs font-medium text-muted">
+            {selectedCount}/10 selected
+          </span>
+        </div>
+
+        {status !== "authenticated" ? (
+          <CompactStateNotice
+            icon={MessageCircle}
+            title="Log in to send"
+            text="You can still copy the public link or open the share card."
+          />
+        ) : (
+          <>
+            <label className="relative block">
+              <span className="sr-only">Search moots</span>
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
+                size={15}
+              />
+              <input
+                className="min-h-10 w-full rounded-control border border-line bg-canvas/60 py-2 pl-9 pr-3 text-sm text-text outline-none transition duration-fluid placeholder:text-muted focus:border-line-strong focus:ring-2 focus:ring-focus/30"
+                data-testid="room-share-moot-search"
+                placeholder="Search moots"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </label>
+
+            {mootsLoading ? (
+              <CompactStateNotice
+                icon={LoaderCircle}
+                kind="loading"
+                title="Loading moots"
+                text="Finding people you can message."
+              />
+            ) : null}
+            {mootsError ? (
+              <CompactStateNotice
+                icon={WifiOff}
+                kind="error"
+                title="Moots could not load"
+                text={mootsError}
+              />
+            ) : null}
+            {!mootsLoading && !mootsError && moots.length === 0 ? (
+              <CompactStateNotice
+                icon={MessageCircle}
+                title="No moots yet"
+                text="Mutual follows can receive shared rooms in chat."
+              />
+            ) : null}
+            {!mootsLoading && !mootsError && filteredMoots.length > 0 ? (
+              <div
+                className="max-h-56 space-y-2 overflow-y-auto rounded-card border border-line bg-canvas/40 p-2"
+                data-testid="room-share-moot-list"
+              >
+                {filteredMoots.map((moot) => {
+                  const selected = selectedIds.has(moot.id);
+
+                  return (
+                    <button
+                      key={moot.id}
+                      type="button"
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-card border px-3 py-2 text-left transition duration-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+                        selected
+                          ? "border-accent bg-accent/15"
+                          : "border-transparent hover:border-line hover:bg-surface",
+                      )}
+                      data-testid={`room-share-moot-${moot.id}`}
+                      aria-pressed={selected}
+                      onClick={() => toggleMoot(moot.id)}
+                    >
+                      <Avatar user={moot} size="sm" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-text">
+                          {moot.displayName}
+                        </span>
+                        <span className="block truncate text-xs text-muted">
+                          @{moot.handle}
+                        </span>
+                      </span>
+                      {selected ? (
+                        <CheckCircle2
+                          aria-hidden="true"
+                          className="text-accent"
+                          size={18}
+                        />
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-muted">
+                Optional note
+              </span>
+              <textarea
+                className="min-h-20 w-full resize-none rounded-card border border-line bg-canvas/60 px-3 py-2 text-sm leading-6 text-text outline-none transition duration-fluid placeholder:text-muted focus:border-line-strong focus:ring-2 focus:ring-focus/30"
+                data-testid="room-share-note"
+                maxLength={500}
+                placeholder="Add a note"
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+              />
+            </label>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-muted">{note.length}/500</p>
+              <Button
+                type="button"
+                size="sm"
+                data-testid="room-share-send-moots"
+                disabled={!csrfToken || selectedCount === 0 || sending}
+                icon={<Send aria-hidden="true" size={15} />}
+                onClick={() => void handleSend()}
+              >
+                {sending ? "Sending" : "Send"}
+              </Button>
+            </div>
+
+            {shareMessage ? (
+              <div className="rounded-card border border-line bg-surface/70 p-3 text-sm text-text">
+                <p>{shareMessage}</p>
+                {sentConversationIds.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {sentConversationIds.map((conversationId) => (
+                      <Link
+                        key={conversationId}
+                        to={`/chat?conversation=${conversationId}`}
+                        className="rounded-full border border-line bg-canvas px-2.5 py-1 text-xs font-medium text-text hover:border-line-strong"
+                      >
+                        Open chat
+                      </Link>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </>
+        )}
+      </section>
     </ModalSheet>
   );
 }

@@ -553,6 +553,12 @@ function contentMutationsRepositoryMock(overrides: Partial<ContentMutationsRepos
       },
     }),
     sharePostToMessages: vi.fn().mockResolvedValue(postSharePayload),
+    shareRoomToMessages: vi.fn().mockResolvedValue({
+      room,
+      results: postSharePayload.results,
+      sentCount: 1,
+      failedCount: 0,
+    }),
     createRoom: vi.fn().mockResolvedValue(room),
     updateRoom: vi.fn().mockResolvedValue(room),
     deleteRoom: vi.fn().mockResolvedValue({
@@ -2784,6 +2790,52 @@ describe("Node API social and content mutation preview routes", () => {
     expect(repository.followProfile).not.toHaveBeenCalled();
   });
 
+  it("requires authentication and CSRF before native Post and Room message shares", async () => {
+    const repository = contentMutationsRepositoryMock();
+    const unauthenticatedApp = buildApp({
+      contentMutationsRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock({
+        currentSession: vi.fn().mockResolvedValue(null),
+      }),
+    });
+    const authenticatedApp = buildApp({
+      contentMutationsRepository: repository,
+      privateReadsRepository: privateReadsRepositoryMock(),
+      sessionsRepository: sessionsRepositoryMock(),
+    });
+
+    for (const url of [
+      "/posts/pc359fe2da759/shares/messages",
+      "/rooms/general/shares/messages",
+    ]) {
+      const unauthenticated = await unauthenticatedApp.inject({
+        method: "POST",
+        url,
+        payload: { recipientUserIds: [43] },
+      });
+      const missingCsrf = await authenticatedApp.inject({
+        method: "POST",
+        url,
+        payload: { recipientUserIds: [43] },
+      });
+
+      expect(unauthenticated.statusCode).toBe(401);
+      expect(unauthenticated.json()).toEqual({
+        ok: false,
+        error: "Unauthenticated.",
+      });
+      expect(missingCsrf.statusCode).toBe(403);
+      expect(missingCsrf.json()).toEqual({
+        ok: false,
+        error: "CSRF token is required.",
+      });
+    }
+
+    expect(repository.sharePostToMessages).not.toHaveBeenCalled();
+    expect(repository.shareRoomToMessages).not.toHaveBeenCalled();
+  });
+
   it("serves social graph mutations through PHP-style wrappers", async () => {
     const repository = contentMutationsRepositoryMock();
     const app = buildApp({
@@ -2889,6 +2941,7 @@ describe("Node API social and content mutation preview routes", () => {
       ["POST", "/posts/99/reactions", 200],
       ["DELETE", "/posts/99/reactions/echo", 200],
       ["POST", "/posts/pc359fe2da759/shares/messages", 201],
+      ["POST", "/rooms/general/shares/messages", 201],
     ] as const) {
       const response = await app.inject({
         method,
@@ -2908,6 +2961,7 @@ describe("Node API social and content mutation preview routes", () => {
     expect(repository.updatePost).toHaveBeenCalledWith(session, 99, expect.any(Object));
     expect(repository.deletePost).toHaveBeenCalledWith(session, 99);
     expect(repository.likePost).toHaveBeenCalledWith(99, 42);
+    expect(repository.shareRoomToMessages).toHaveBeenCalledWith("general", session, expect.any(Object));
     expect(repository.unlikePost).toHaveBeenCalledWith(99, 42);
     expect(repository.reblogPost).toHaveBeenCalledWith(99, session);
     expect(repository.unreblogPost).toHaveBeenCalledWith(99, session);

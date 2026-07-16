@@ -356,6 +356,8 @@ export type Room = {
   id: number;
   slug: string;
   name: string;
+  canonicalPath?: string;
+  canonicalUrl?: string;
   summary: string;
   description?: string;
   mood: string;
@@ -577,7 +579,15 @@ export type PostShareSummary = {
 export type ChatMessageAttachment =
   | {
       type: "post";
-      post: PostShareSummary | null;
+      post: Post | null;
+    }
+  | {
+      type: "room";
+      room: Room | null;
+    }
+  | {
+      type: "media";
+      media: PostAttachment;
     }
   | {
       type: "gif";
@@ -626,7 +636,9 @@ export type ChatMessage = {
   sender: User;
 };
 
-export type ChatLastMessage = Pick<ChatMessage, "id" | "body" | "createdAt" | "sender">;
+export type ChatLastMessage = Pick<ChatMessage, "id" | "body" | "createdAt" | "sender"> & {
+  previewText?: string;
+};
 
 export type ChatConversation = {
   id: number;

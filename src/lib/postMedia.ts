@@ -9,11 +9,14 @@ import type { Post, ProfileIntegrationCard } from "./types";
 import type { GifSearchResult } from "./types";
 
 export type PostUploadedMediaDraft = {
+  durationSeconds?: number | null;
+  height?: number | null;
   mime: string;
   posterUrl?: string | null;
   size?: number | null;
   type: "image" | "video" | "audio";
   url: string;
+  width?: number | null;
 };
 
 export type PostVisualMediaDraft = PostUploadedMediaDraft & {
@@ -45,25 +48,31 @@ export type PostMediaDraft =
 
 export function postMediaDraftFromImage(upload: UploadedImage): PostMediaDraft {
   return {
+    height: upload.height,
     mime: upload.mime,
     size: upload.size,
     type: "image",
     url: upload.url,
+    width: upload.width,
   };
 }
 
 export function postMediaDraftFromVideo(upload: UploadedVideo): PostMediaDraft {
   return {
+    durationSeconds: upload.duration ?? null,
+    height: upload.height ?? null,
     mime: upload.mime,
     posterUrl: upload.posterUrl ?? null,
     size: upload.size,
     type: "video",
     url: upload.url,
+    width: upload.width ?? null,
   };
 }
 
 export function postMediaDraftFromAudio(upload: UploadedAudio): PostMediaDraft {
   return {
+    durationSeconds: upload.duration ?? null,
     mime: upload.mime,
     size: upload.size,
     type: "audio",
@@ -145,6 +154,9 @@ export function postMediaInputFromDraft(
       url: attachment.url,
       mime: attachment.mime,
       sizeBytes: attachment.size ?? null,
+      width: attachment.width ?? null,
+      height: attachment.height ?? null,
+      durationSeconds: attachment.durationSeconds ?? null,
       posterUrl: attachment.posterUrl ?? null,
     };
   });

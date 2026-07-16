@@ -1,5 +1,10 @@
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 
+import { chatLinkEntities, nativeChatLinks, removeNativeChatLinks, type NativeChatLink } from "./chatLinks.js";
+import { ContentRouteError, validatePostAttachments, type ValidatedPostAttachment } from "./content.js";
+import { createPostsRepository, type PostDetailPayload, type PostsRepository } from "./posts.js";
+import type { PostAttachmentPayload } from "./profiles.js";
+import { createRoomsRepository, type RoomPayload, type RoomsRepository } from "./rooms.js";
 import type { RequestSession } from "./sessions.js";
 
 export class ChatRouteError extends Error {
@@ -42,6 +47,7 @@ export interface ChatConversationPayload {
   lastMessage: {
     id: number;
     body: string;
+    previewText: string;
     createdAt: string | null;
     sender: ChatUserPayload;
   } | null;
@@ -93,11 +99,22 @@ export interface ChatReadPayload {
 
 export type ChatMessageAttachmentPayload = {
   type: "post";
-  post: PostShareSummaryPayload | null;
+  post: PostDetailPayload | null;
+} | {
+  type: "room";
+  room: ChatRoomAttachmentPayload | null;
+} | {
+  type: "media";
+  media: PostAttachmentPayload;
 } | {
   type: "gif";
   gif: GifAttachmentPayload;
 };
+
+export interface ChatRoomAttachmentPayload extends RoomPayload {
+  canonicalPath: string;
+  canonicalUrl: string;
+}
 
 export interface GifAttachmentPayload {
   provider: "klipy";
@@ -110,22 +127,6 @@ export interface GifAttachmentPayload {
   height: number | null;
   sourceUrl: string | null;
   card: unknown | null;
-}
-
-interface PostShareSummaryPayload {
-  id: number;
-  publicId: string;
-  canonicalPath: string;
-  canonicalUrl: string;
-  bodySnippet: string;
-  createdAt: string | null;
-  mediaUrl: string | null;
-  author: ChatUserPayload;
-  room: {
-    id: number;
-    slug: string;
-    name: string;
-  } | null;
 }
 
 interface TextEntityPayload {
@@ -147,7 +148,7 @@ export interface ChatRepository {
   listConversations(userId: number): Promise<ChatConversationPayload[]>;
   listMoots(userId: number): Promise<ChatUserPayload[]>;
   createConversation(session: RequestSession, body: Record<string, unknown>): Promise<ChatConversationPayload>;
-  listMessages(userId: number, conversationId: number): Promise<ChatMessagesPayload>;
+  listMessages(session: RequestSession, conversationId: number): Promise<ChatMessagesPayload>;
   createMessage(session: RequestSession, conversationId: number, body: Record<string, unknown>): Promise<ChatMessagePayload>;
   markConversationRead(userId: number, conversationId: number): Promise<ChatReadPayload>;
   listRoomChannels(session: RequestSession, slug: string): Promise<RoomChannelPayload[]>;
@@ -234,19 +235,26 @@ interface TextEntityRow extends RowDataPacket {
 }
 
 interface AttachmentRow extends RowDataPacket {
+  id: number | string;
   message_id: number | string;
+  position: number | string | null;
   type: string | null;
   post_id: number | string | null;
+  room_id: number | string | null;
   url: string | null;
   mime: string | null;
+  size_bytes: number | string | null;
   width: number | string | null;
   height: number | string | null;
+  duration_seconds: number | string | null;
+  poster_url: string | null;
   provider: string | null;
   resource_type: string | null;
   resource_id: string | null;
   resource_key: string | null;
   source_url: string | null;
   card_json: string | null;
+  created_at: string | null;
 }
 
 interface RoomRecordRow extends RowDataPacket {
@@ -281,21 +289,6 @@ interface RoomChannelRow extends RowDataPacket {
   unread_count: number | string | null;
 }
 
-interface PostSummaryRow extends RowDataPacket {
-  post_id: number | string;
-  post_public_id: string | null;
-  body: string | null;
-  media_url: string | null;
-  created_at: string | null;
-  author_user_id: number | string;
-  author_handle: string | null;
-  author_display_name: string | null;
-  author_avatar_url: string | null;
-  room_id: number | string | null;
-  room_slug: string | null;
-  room_name: string | null;
-}
-
 interface NotificationPreferenceRow extends RowDataPacket {
   notification_preferences_json: string | null;
 }
@@ -309,8 +302,22 @@ type ConversationNotificationContext =
       channelSlug: string;
     };
 
-export function createChatRepository(pool: Pool, publicBaseUrl = "https://thia.lol"): ChatRepository {
-  return new MariaDbChatRepository(pool, publicBaseUrl);
+export interface ChatRepositoryOptions {
+  postsRepository?: PostsRepository;
+  roomsRepository?: RoomsRepository;
+}
+
+export function createChatRepository(
+  pool: Pool,
+  publicBaseUrl = "https://thia.lol",
+  options: ChatRepositoryOptions = {},
+): ChatRepository {
+  return new MariaDbChatRepository(
+    pool,
+    publicBaseUrl,
+    options.postsRepository ?? createPostsRepository(pool),
+    options.roomsRepository ?? createRoomsRepository(pool),
+  );
 }
 
 class MariaDbChatRepository implements ChatRepository {
@@ -319,6 +326,8 @@ class MariaDbChatRepository implements ChatRepository {
   constructor(
     private readonly pool: Pool,
     private readonly publicBaseUrl: string,
+    private readonly postsRepository: PostsRepository,
+    private readonly roomsRepository: RoomsRepository,
   ) {}
 
   async listConversations(userId: number): Promise<ChatConversationPayload[]> {
@@ -330,7 +339,13 @@ class MariaDbChatRepository implements ChatRepository {
       [userId, userId],
     );
 
-    return rows.map(conversationPayloadFromRow);
+    const previews = await this.attachmentPreviewsForMessages(
+      rows.map((row) => nullableNumberValue(row.last_message_id)).filter((id): id is number => id !== null),
+    );
+
+    return rows.map((row) =>
+      conversationPayloadFromRow(row, previews, this.publicBaseUrl),
+    );
   }
 
   async listMoots(userId: number): Promise<ChatUserPayload[]> {
@@ -380,9 +395,9 @@ class MariaDbChatRepository implements ChatRepository {
     return this.conversationForUser(conversationId, session.userId);
   }
 
-  async listMessages(userId: number, conversationId: number): Promise<ChatMessagesPayload> {
+  async listMessages(session: RequestSession, conversationId: number): Promise<ChatMessagesPayload> {
     await this.requireChatTables();
-    const conversation = await this.conversationForUser(conversationId, userId);
+    const conversation = await this.conversationForUser(conversationId, session.userId);
     const [rows] = await this.pool.execute<MessageRow[]>(
       `SELECT
           m.id,
@@ -404,7 +419,7 @@ class MariaDbChatRepository implements ChatRepository {
 
     return {
       conversation,
-      messages: await this.messagePayloadsFromRows(chronologicalMessageRows(rows)),
+      messages: await this.messagePayloadsFromRows(session, chronologicalMessageRows(rows)),
     };
   }
 
@@ -414,12 +429,12 @@ class MariaDbChatRepository implements ChatRepository {
 
     await this.rejectBlockedChat(session.userId, conversation.otherParticipant.id);
 
-    const draft = chatMessageDraft(body);
-    const messageId = await this.insertMessage(conversationId, session.userId, draft.body, draft.attachments);
+    const draft = await this.chatMessageDraft(session, body);
+    const messageId = await this.insertMessage(conversationId, session.userId, draft.body, draft.attachments, draft.entities);
 
     await this.notifyConversationRecipientsBestEffort(conversationId, session.userId, messageId, { kind: "direct" });
 
-    return this.messageById(messageId);
+    return this.messageById(messageId, session);
   }
 
   async markConversationRead(userId: number, conversationId: number): Promise<ChatReadPayload> {
@@ -609,7 +624,7 @@ class MariaDbChatRepository implements ChatRepository {
 
     return {
       channel: await this.roomChannelByIdForSession(session, room, numberValue(channel.id)),
-      messages: await this.messagePayloadsFromRows(chronologicalMessageRows(rows)),
+      messages: await this.messagePayloadsFromRows(session, chronologicalMessageRows(rows)),
     };
   }
 
@@ -628,8 +643,8 @@ class MariaDbChatRepository implements ChatRepository {
     }
 
     const conversationId = await this.ensureRoomChannelConversation(room, channel);
-    const draft = chatMessageDraft(body);
-    const messageId = await this.insertMessage(conversationId, session.userId, draft.body, draft.attachments);
+    const draft = await this.chatMessageDraft(session, body);
+    const messageId = await this.insertMessage(conversationId, session.userId, draft.body, draft.attachments, draft.entities);
 
     await this.notifyConversationRecipientsBestEffort(conversationId, session.userId, messageId, {
       kind: "room",
@@ -638,7 +653,7 @@ class MariaDbChatRepository implements ChatRepository {
       channelSlug: channel.slug,
     });
 
-    return this.messageById(messageId);
+    return this.messageById(messageId, session);
   }
 
   async markRoomChannelRead(session: RequestSession, slug: string, channelSlug: string): Promise<ChatReadPayload> {
@@ -972,10 +987,14 @@ class MariaDbChatRepository implements ChatRepository {
       throw new ChatRouteError("Conversation not found.", 404);
     }
 
-    return conversationPayloadFromRow(row);
+    const previews = await this.attachmentPreviewsForMessages(
+      row.last_message_id === null ? [] : [numberValue(row.last_message_id)],
+    );
+
+    return conversationPayloadFromRow(row, previews, this.publicBaseUrl);
   }
 
-  private async messageById(messageId: number): Promise<ChatMessagePayload> {
+  private async messageById(messageId: number, session: RequestSession): Promise<ChatMessagePayload> {
     const [rows] = await this.pool.execute<MessageRow[]>(
       `SELECT
           m.id,
@@ -1000,7 +1019,7 @@ class MariaDbChatRepository implements ChatRepository {
       throw new ChatRouteError("Message not found.", 404);
     }
 
-    const messages = await this.messagePayloadsFromRows([row]);
+    const messages = await this.messagePayloadsFromRows(session, [row]);
     const message = messages[0];
 
     if (message === undefined) {
@@ -1010,7 +1029,7 @@ class MariaDbChatRepository implements ChatRepository {
     return message;
   }
 
-  private async messagePayloadsFromRows(rows: readonly MessageRow[]): Promise<ChatMessagePayload[]> {
+  private async messagePayloadsFromRows(session: RequestSession, rows: readonly MessageRow[]): Promise<ChatMessagePayload[]> {
     const visibleMessageIds = [...new Set(
       rows
         .filter((row) => row.deleted_at === null)
@@ -1018,7 +1037,7 @@ class MariaDbChatRepository implements ChatRepository {
     )];
     const [entitiesByMessageId, attachmentsByMessageId] = await Promise.all([
       this.textEntitiesForMessages(visibleMessageIds),
-      this.messageAttachmentsForMessages(visibleMessageIds),
+      this.messageAttachmentsForMessages(session, visibleMessageIds),
     ]);
 
     return rows.map((row) => this.messagePayloadFromRow(
@@ -1048,12 +1067,146 @@ class MariaDbChatRepository implements ChatRepository {
     };
   }
 
+  private async chatMessageDraft(
+    session: RequestSession,
+    body: Record<string, unknown>,
+  ): Promise<ValidatedMessageDraft> {
+    const originalBody = typeof body.body === "string" ? body.body.trim() : "";
+
+    if (originalBody.length > 2000) {
+      throw new ChatRouteError("Message body must be 2000 characters or fewer.", 422);
+    }
+
+    const candidates = validateMessageAttachmentInputs(body.attachments);
+    const attachments: ValidatedMessageAttachment[] = [];
+    const attachmentKeys = new Set<string>();
+
+    for (const candidate of candidates) {
+      if (candidate.type === "media") {
+        attachments.push({ ...candidate.attachment, type: "media", position: attachments.length });
+        continue;
+      }
+
+      if (candidate.type === "post") {
+        const post = await this.postsRepository.getPublicPost(
+          String(candidate.postId),
+          session.userId,
+          this.publicBaseUrl,
+        );
+
+        if (post === null) {
+          throw new ChatRouteError("Post is unavailable or inaccessible.", 422);
+        }
+
+        const key = `post:${post.id}`;
+
+        if (!attachmentKeys.has(key)) {
+          attachmentKeys.add(key);
+          attachments.push({ type: "post", postId: post.id, position: attachments.length });
+        }
+
+        continue;
+      }
+
+      const room = (await this.roomsForViewer([candidate.roomId], session)).get(
+        candidate.roomId,
+      );
+
+      if (!room?.viewerCanViewPosts) {
+        throw new ChatRouteError("Room is unavailable or inaccessible.", 422);
+      }
+
+      const key = `room:${candidate.roomId}`;
+
+      if (!attachmentKeys.has(key)) {
+        attachmentKeys.add(key);
+        attachments.push({ type: "room", roomId: candidate.roomId, position: attachments.length });
+      }
+    }
+
+    const strippedLinks: NativeChatLink[] = [];
+
+    let nativeLinkResolutionCount = 0;
+
+    for (const link of nativeChatLinks(originalBody, this.publicBaseUrl)) {
+      if (attachments.length >= maxMessageAttachments || nativeLinkResolutionCount >= maxMessageAttachments) {
+        break;
+      }
+
+      nativeLinkResolutionCount += 1;
+
+      if (link.kind === "post") {
+        const post = await this.postsRepository.getPublicPost(
+          link.identifier,
+          session.userId,
+          this.publicBaseUrl,
+        );
+
+        if (post === null || post.author.handle.toLowerCase() !== link.handle) {
+          continue;
+        }
+
+        const key = `post:${post.id}`;
+
+        if (!attachmentKeys.has(key)) {
+          if (attachments.length >= maxMessageAttachments) {
+            continue;
+          }
+
+          attachmentKeys.add(key);
+          attachments.push({ type: "post", postId: post.id, position: attachments.length });
+        }
+
+        strippedLinks.push(link);
+        continue;
+      }
+
+      const room = await this.roomsRepository.getPublicRoom(link.slug, roomViewerFromSession(session));
+
+      if (room === null || !room.viewerCanViewPosts) {
+        continue;
+      }
+
+      const key = `room:${room.id}`;
+
+      if (!attachmentKeys.has(key)) {
+        if (attachments.length >= maxMessageAttachments) {
+          continue;
+        }
+
+        attachmentKeys.add(key);
+        attachments.push({ type: "room", roomId: room.id, position: attachments.length });
+      }
+
+      strippedLinks.push(link);
+    }
+
+    const messageBody = removeNativeChatLinks(originalBody, strippedLinks);
+
+    if (messageBody === "" && attachments.length === 0) {
+      throw new ChatRouteError("Message body is required.", 422);
+    }
+
+    return {
+      body: messageBody,
+      attachments,
+      entities: chatLinkEntities(messageBody),
+    };
+  }
+
   private async insertMessage(
     conversationId: number,
     senderUserId: number,
     body: string,
     attachments: ValidatedMessageAttachment[] = [],
+    entities: ValidatedMessageEntity[] = [],
   ): Promise<number> {
+    if (attachments.length > 0) {
+      await this.requireMessageAttachmentColumns();
+    }
+
+    const persistEntities = entities.length > 0 && await this.hasTable("text_entities");
+
     return this.withTransaction(async (connection) => {
       const [messageResult] = await connection.execute<ResultSetHeader>(
         `INSERT INTO messages (conversation_id, sender_id, body)
@@ -1063,6 +1216,7 @@ class MariaDbChatRepository implements ChatRepository {
       const messageId = messageResult.insertId;
 
       await this.insertMessageAttachments(connection, messageId, attachments);
+      await this.insertMessageTextEntities(connection, messageId, persistEntities ? entities : []);
 
       await connection.execute<ResultSetHeader>(
         `UPDATE conversations
@@ -1092,41 +1246,69 @@ class MariaDbChatRepository implements ChatRepository {
       return;
     }
 
-    await this.requireMessageAttachmentColumns();
-
     for (const attachment of attachments) {
-      if (attachment.type === "gif") {
-        await connection.execute<ResultSetHeader>(
-          `INSERT INTO message_attachments (
-              message_id,
-              type,
-              url,
-              mime,
-              width,
-              height,
-              provider,
-              resource_type,
-              resource_id,
-              resource_key,
-              source_url,
-              card_json
-           )
-           VALUES (?, 'gif', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            messageId,
-            attachment.url,
-            attachment.mime,
-            attachment.width,
-            attachment.height,
-            attachment.provider,
-            attachment.resourceType,
-            attachment.resourceId,
-            attachment.resourceKey,
-            attachment.sourceUrl,
-            attachment.cardJson,
-          ],
-        );
-      }
+      await connection.execute<ResultSetHeader>(
+        `INSERT INTO message_attachments (
+            message_id,
+            position,
+            type,
+            post_id,
+            room_id,
+            url,
+            mime,
+            size_bytes,
+            width,
+            height,
+            duration_seconds,
+            poster_url,
+            provider,
+            resource_type,
+            resource_id,
+            resource_key,
+            source_url,
+            card_json
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          messageId,
+          attachment.position,
+          storedAttachmentType(attachment),
+          attachment.type === "post" ? attachment.postId : null,
+          attachment.type === "room" ? attachment.roomId : null,
+          attachment.type === "media" ? attachment.url : null,
+          attachment.type === "media" ? attachment.mime : null,
+          attachment.type === "media" ? attachment.sizeBytes : null,
+          attachment.type === "media" ? attachment.width : null,
+          attachment.type === "media" ? attachment.height : null,
+          attachment.type === "media" ? attachment.durationSeconds : null,
+          attachment.type === "media" ? attachment.posterUrl : null,
+          attachment.type === "media" ? attachment.provider : null,
+          attachment.type === "media" ? attachment.resourceType : null,
+          attachment.type === "media" ? attachment.resourceId : null,
+          attachment.type === "media" ? attachment.resourceKey : null,
+          attachment.type === "media" ? attachment.sourceUrl : null,
+          attachment.type === "media" ? attachment.cardJson : null,
+        ],
+      );
+    }
+  }
+
+  private async insertMessageTextEntities(
+    connection: PoolConnection,
+    messageId: number,
+    entities: ValidatedMessageEntity[],
+  ): Promise<void> {
+    if (entities.length === 0) {
+      return;
+    }
+
+    for (const entity of entities) {
+      await connection.execute<ResultSetHeader>(
+        `INSERT INTO text_entities
+           (content_type, content_id, field_name, entity_type, entity_start, entity_length, text_value, target_user_id, url, card_json)
+         VALUES ('message', ?, 'body', 'link', ?, ?, ?, NULL, ?, NULL)`,
+        [messageId, entity.start, entity.length, entity.text, entity.url],
+      );
     }
   }
 
@@ -1165,6 +1347,34 @@ class MariaDbChatRepository implements ChatRepository {
 
       return conversationId;
     });
+  }
+
+  private async attachmentPreviewsForMessages(messageIds: readonly number[]): Promise<Map<number, string>> {
+    const previews = new Map<number, string>();
+    const uniqueIds = [...new Set(messageIds.filter((id) => Number.isSafeInteger(id) && id > 0))];
+
+    if (uniqueIds.length === 0 || !(await this.hasTable("message_attachments"))) {
+      return previews;
+    }
+
+    const placeholders = uniqueIds.map(() => "?").join(", ");
+    const [rows] = await this.pool.execute<Array<RowDataPacket & { message_id: number | string; type: string | null }>>(
+      `SELECT message_id, type
+       FROM message_attachments
+       WHERE message_id IN (${placeholders})
+       ORDER BY message_id ASC, id ASC`,
+      uniqueIds,
+    );
+
+    for (const row of rows) {
+      const messageId = numberValue(row.message_id);
+
+      if (!previews.has(messageId)) {
+        previews.set(messageId, attachmentPreviewText(row.type));
+      }
+    }
+
+    return previews;
   }
 
   private async notifyConversationRecipients(
@@ -1263,6 +1473,7 @@ class MariaDbChatRepository implements ChatRepository {
   }
 
   private async messageAttachmentsForMessages(
+    session: RequestSession,
     messageIds: readonly number[],
   ): Promise<Map<number, ChatMessageAttachmentPayload[]>> {
     const attachmentsByMessageId = new Map<number, ChatMessageAttachmentPayload[]>();
@@ -1275,49 +1486,37 @@ class MariaDbChatRepository implements ChatRepository {
       return attachmentsByMessageId;
     }
 
-    const hasGifColumns = await this.hasColumn("message_attachments", "url");
+    const [hasMediaColumns, hasPosition, hasRoomId, hasSizeBytes, hasDurationSeconds, hasPosterUrl] = await Promise.all([
+      this.hasColumn("message_attachments", "url"),
+      this.hasColumn("message_attachments", "position"),
+      this.hasColumn("message_attachments", "room_id"),
+      this.hasColumn("message_attachments", "size_bytes"),
+      this.hasColumn("message_attachments", "duration_seconds"),
+      this.hasColumn("message_attachments", "poster_url"),
+    ]);
     const placeholders = messageIds.map(() => "?").join(", ");
-    const [rows] = hasGifColumns
-      ? await this.pool.execute<AttachmentRow[]>(
-          `SELECT
-              message_id,
-              type,
-              post_id,
-              url,
-              mime,
-              width,
-              height,
-              provider,
-              resource_type,
-              resource_id,
-              resource_key,
-              source_url,
-              card_json
-           FROM message_attachments
-           WHERE message_id IN (${placeholders})
-           ORDER BY message_id ASC, id ASC`,
-          [...messageIds],
-        )
-      : await this.pool.execute<AttachmentRow[]>(
-          `SELECT
-              message_id,
-              type,
-              post_id,
-              NULL AS url,
-              NULL AS mime,
-              NULL AS width,
-              NULL AS height,
-              NULL AS provider,
-              NULL AS resource_type,
-              NULL AS resource_id,
-              NULL AS resource_key,
-              NULL AS source_url,
-              NULL AS card_json
-           FROM message_attachments
-           WHERE message_id IN (${placeholders})
-           ORDER BY message_id ASC, id ASC`,
-          [...messageIds],
-        );
+    const [rows] = await this.pool.execute<AttachmentRow[]>(
+      `SELECT
+          id,
+          message_id,
+          ${hasPosition ? "position" : "NULL AS position"},
+          type,
+          post_id,
+          ${hasRoomId ? "room_id" : "NULL AS room_id"},
+          ${hasMediaColumns ? "url, mime" : "NULL AS url, NULL AS mime"},
+          ${hasSizeBytes ? "size_bytes" : "NULL AS size_bytes"},
+          ${hasMediaColumns ? "width, height" : "NULL AS width, NULL AS height"},
+          ${hasDurationSeconds ? "duration_seconds" : "NULL AS duration_seconds"},
+          ${hasPosterUrl ? "poster_url" : "NULL AS poster_url"},
+          ${hasMediaColumns
+            ? "provider, resource_type, resource_id, resource_key, source_url, card_json"
+            : "NULL AS provider, NULL AS resource_type, NULL AS resource_id, NULL AS resource_key, NULL AS source_url, NULL AS card_json"},
+          created_at
+       FROM message_attachments
+       WHERE message_id IN (${placeholders})
+       ORDER BY message_id ASC, ${hasPosition ? "CASE WHEN position IS NULL THEN 1 ELSE 0 END ASC, position ASC," : ""} id ASC`,
+      [...messageIds],
+    );
     const rowsByMessageId = new Map<number, AttachmentRow[]>();
 
     for (const row of rows) {
@@ -1325,97 +1524,51 @@ class MariaDbChatRepository implements ChatRepository {
       const messageRows = rowsByMessageId.get(messageId) ?? [];
 
       if (messageRows.length < 10) {
-        messageRows.push(row);
+        messageRows.push({ ...row, position: nullableNumberValue(row.position) ?? messageRows.length });
         rowsByMessageId.set(messageId, messageRows);
       }
     }
 
-    await Promise.all([...rowsByMessageId.entries()].map(async ([messageId, messageRows]) => {
-      const attachments = await Promise.all(messageRows.map((row) => this.messageAttachmentPayloadFromRow(row)));
+    const postIds = uniquePositiveIds(rows.filter((row) => row.type === "post").map((row) => row.post_id));
+    const roomIds = uniquePositiveIds(rows.filter((row) => row.type === "room").map((row) => row.room_id));
+    const [postsById, roomsById] = await Promise.all([
+      this.postsForViewer(postIds, session),
+      this.roomsForViewer(roomIds, session),
+    ]);
+
+    for (const [messageId, messageRows] of rowsByMessageId.entries()) {
+      const attachments = messageRows.map((row) => messageAttachmentPayloadFromRow(row, postsById, roomsById));
 
       attachmentsByMessageId.set(
         messageId,
         attachments.filter((attachment): attachment is ChatMessageAttachmentPayload => attachment !== null),
       );
-    }));
+    }
 
     return attachmentsByMessageId;
   }
 
-  private async messageAttachmentPayloadFromRow(row: AttachmentRow): Promise<ChatMessageAttachmentPayload | null> {
-    if (row.type === "post") {
-      const postId = nullableNumberValue(row.post_id);
-
-      return postId === null
-        ? null
-        : {
-            type: "post",
-            post: await this.publicPostSummary(postId),
-          };
-    }
-
-    const gif = row.type === "gif" ? gifAttachmentPayloadFromRow(row) : null;
-
-    return gif === null ? null : { type: "gif", gif };
+  private async postsForViewer(
+    postIds: readonly number[],
+    session: RequestSession,
+  ): Promise<Map<number, PostDetailPayload>> {
+    return this.postsRepository.getPublicPostsByIds(postIds, session.userId, this.publicBaseUrl);
   }
 
-  private async publicPostSummary(postId: number): Promise<PostShareSummaryPayload | null> {
-    const publicIdSelect = await this.hasColumn("posts", "public_id") ? "p.public_id AS post_public_id" : "NULL AS post_public_id";
-    const roomDeletedFilter = await this.hasColumn("rooms", "deleted_at") ? "AND r.deleted_at IS NULL" : "";
-    const [rows] = await this.pool.execute<PostSummaryRow[]>(
-      `SELECT
-          p.id AS post_id,
-          ${publicIdSelect},
-          p.body,
-          p.media_url,
-          p.created_at,
-          author.id AS author_user_id,
-          author.handle AS author_handle,
-          author_profile.display_name AS author_display_name,
-          author_profile.avatar_url AS author_avatar_url,
-          r.id AS room_id,
-          r.slug AS room_slug,
-          r.name AS room_name
-       FROM posts p
-       INNER JOIN users author ON author.id = p.author_id
-       INNER JOIN profiles author_profile ON author_profile.user_id = author.id
-       LEFT JOIN rooms r ON r.id = p.room_id
-       WHERE p.id = ?
-         AND p.visibility = 'public'
-         AND p.status = 'published'
-         AND p.deleted_at IS NULL
-         AND author.status = 'active'
-         AND (p.room_id IS NULL OR (r.visibility = 'public' ${roomDeletedFilter}))
-       LIMIT 1`,
-      [postId],
-    );
-    const row = rows[0];
-
-    if (row === undefined) {
-      return null;
+  private async roomsForViewer(
+    roomIds: readonly number[],
+    session: RequestSession,
+  ): Promise<Map<number, ChatRoomAttachmentPayload>> {
+    if (roomIds.length === 0) {
+      return new Map();
     }
 
-    const publicId = stringValue(row.post_public_id, String(numberValue(row.post_id)));
-    const author = userPayloadFromParts(row.author_user_id, row.author_handle, row.author_display_name, row.author_avatar_url);
-    const canonicalPath = `/@${encodeURIComponent(author.handle)}/posts/${encodeURIComponent(publicId)}`;
+    const rooms = await this.roomsRepository.getPublicRoomsByIds(roomIds, roomViewerFromSession(session));
 
-    return {
-      id: numberValue(row.post_id),
-      publicId,
-      canonicalPath,
-      canonicalUrl: `${this.publicBaseUrl.replace(/\/+$/u, "")}${canonicalPath}`,
-      bodySnippet: bodySnippet(stringValue(row.body), 160),
-      createdAt: nullableStringValue(row.created_at),
-      mediaUrl: nullableStringValue(row.media_url),
-      author,
-      room: row.room_id === null
-        ? null
-        : {
-            id: numberValue(row.room_id),
-            slug: stringValue(row.room_slug),
-            name: stringValue(row.room_name),
-          },
-    };
+    return new Map([...rooms].map(([roomId, room]) => [
+      roomId,
+      chatRoomAttachmentPayload(room, this.publicBaseUrl),
+    ]));
   }
 
   private async textEntitiesForMessages(messageIds: readonly number[]): Promise<Map<number, TextEntityPayload[]>> {
@@ -1548,7 +1701,12 @@ class MariaDbChatRepository implements ChatRepository {
   }
 
   private async requireMessageAttachmentColumns(): Promise<void> {
-    if (!(await this.hasTable("message_attachments")) || !(await this.hasColumn("message_attachments", "url"))) {
+    const columns = ["position", "room_id", "url", "size_bytes", "duration_seconds", "poster_url"];
+
+    if (
+      !(await this.hasTable("message_attachments")) ||
+      !(await Promise.all(columns.map((column) => this.hasColumn("message_attachments", column)))).every(Boolean)
+    ) {
       throw new ChatStorageNotReadyError("Message attachment storage is not ready. Run pending migrations.");
     }
   }
@@ -1723,12 +1881,35 @@ function roomChannelSelectSql(): string {
      AND viewer_member.user_id = ?`;
 }
 
-function conversationPayloadFromRow(row: ConversationRow): ChatConversationPayload {
+function conversationPayloadFromRow(
+  row: ConversationRow,
+  attachmentPreviews: ReadonlyMap<number, string> = new Map(),
+  publicBaseUrl = "https://thia.lol",
+): ChatConversationPayload {
   const lastMessage = row.last_message_id === null
     ? null
-    : {
-        id: numberValue(row.last_message_id),
-        body: stringValue(row.last_message_body),
+    : (() => {
+        const id = numberValue(row.last_message_id);
+        const body = stringValue(row.last_message_body);
+        const attachmentPreview = attachmentPreviews.get(id);
+        const nativeKind = attachmentPreview === "Post"
+          ? "post"
+          : attachmentPreview === "Room"
+            ? "room"
+            : null;
+        const nativeLinks = nativeKind === null
+          ? []
+          : nativeChatLinks(body, publicBaseUrl).filter(
+              (link) => link.kind === nativeKind,
+            );
+        const previewBody = nativeLinks.length > 0
+          ? removeNativeChatLinks(body, nativeLinks)
+          : body.trim();
+
+        return {
+        id,
+        body,
+        previewText: previewBody || attachmentPreview || "Message",
         createdAt: nullableStringValue(row.last_message_created_at),
         sender: userPayloadFromParts(
           row.last_sender_user_id,
@@ -1737,6 +1918,7 @@ function conversationPayloadFromRow(row: ConversationRow): ChatConversationPaylo
           row.last_sender_avatar_url,
         ),
       };
+    })();
 
   return {
     id: numberValue(row.id),
@@ -1817,38 +1999,44 @@ function textEntityPayloadFromRow(row: TextEntityRow): TextEntityPayload | null 
 }
 
 type ValidatedMessageAttachment = {
-  type: "gif";
-  provider: "klipy";
-  resourceType: "gif";
-  resourceId: string;
-  resourceKey: string;
-  url: string;
-  mime: "image/gif";
-  width: number | null;
-  height: number | null;
-  sourceUrl: string | null;
-  cardJson: string | null;
+  type: "post";
+  position: number;
+  postId: number;
+} | {
+  type: "room";
+  position: number;
+  roomId: number;
+} | ({
+  type: "media";
+} & ValidatedPostAttachment);
+
+type MessageAttachmentCandidate = {
+  type: "post";
+  postId: number;
+} | {
+  type: "room";
+  roomId: number;
+} | {
+  type: "media";
+  attachment: ValidatedPostAttachment;
 };
 
-function chatMessageDraft(body: Record<string, unknown>): { body: string; attachments: ValidatedMessageAttachment[] } {
-  const messageBody = typeof body.body === "string" ? body.body.trim() : "";
-  const attachments = validateMessageAttachments(body.attachments);
-
-  if (messageBody === "" && attachments.length === 0) {
-    throw new ChatRouteError("Message body is required.", 422);
-  }
-
-  if (messageBody.length > 2000) {
-    throw new ChatRouteError("Message body must be 2000 characters or fewer.", 422);
-  }
-
-  return {
-    body: messageBody,
-    attachments,
-  };
+interface ValidatedMessageEntity {
+  start: number;
+  length: number;
+  text: string;
+  url: string;
 }
 
-function validateMessageAttachments(value: unknown): ValidatedMessageAttachment[] {
+interface ValidatedMessageDraft {
+  body: string;
+  attachments: ValidatedMessageAttachment[];
+  entities: ValidatedMessageEntity[];
+}
+
+const maxMessageAttachments = 8;
+
+export function validateMessageAttachmentInputs(value: unknown): MessageAttachmentCandidate[] {
   if (value === undefined || value === null) {
     return [];
   }
@@ -1857,46 +2045,67 @@ function validateMessageAttachments(value: unknown): ValidatedMessageAttachment[
     throw new ChatRouteError("Message attachments must be a list.", 422);
   }
 
-  if (value.length > 4) {
-    throw new ChatRouteError("Messages can include up to 4 attachments.", 422);
+  if (value.length > maxMessageAttachments) {
+    throw new ChatRouteError(`Messages can include up to ${maxMessageAttachments} attachments.`, 422);
   }
 
-  return value.map(validateMessageAttachment);
+  return value.map((candidate) => {
+    if (candidate === null || typeof candidate !== "object" || Array.isArray(candidate)) {
+      throw new ChatRouteError("Message attachment is invalid.", 422);
+    }
+
+    const attachment = candidate as Record<string, unknown>;
+    const type = attachment.type ?? attachment.kind;
+
+    if (type === "post") {
+      return {
+        type: "post",
+        postId: nativeAttachmentId(attachment, "postId", "post_id", "post"),
+      };
+    }
+
+    if (type === "room") {
+      return {
+        type: "room",
+        roomId: nativeAttachmentId(attachment, "roomId", "room_id", "room"),
+      };
+    }
+
+    const media = type === "media" ? attachment.media : attachment;
+
+    try {
+      const validated = validatePostAttachments({ attachments: [media] })[0];
+
+      if (validated === undefined) {
+        throw new ChatRouteError("Message attachment is invalid.", 422);
+      }
+
+      return { type: "media", attachment: validated };
+    } catch (error) {
+      if (error instanceof ContentRouteError) {
+        throw new ChatRouteError(
+          error.message.replace(/^Posts\b/u, "Messages").replace(/^Post\b/u, "Message"),
+          error.statusCode,
+        );
+      }
+
+      throw error;
+    }
+  });
 }
 
-function validateMessageAttachment(value: unknown): ValidatedMessageAttachment {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new ChatRouteError("Message attachment is invalid.", 422);
-  }
+function nativeAttachmentId(
+  attachment: Record<string, unknown>,
+  camelKey: string,
+  snakeKey: string,
+  nestedKey: string,
+): number {
+  const nested = attachment[nestedKey];
+  const nestedId = nested !== null && typeof nested === "object" && !Array.isArray(nested)
+    ? (nested as Record<string, unknown>).id
+    : undefined;
 
-  const attachment = value as Record<string, unknown>;
-  const type = attachment.type ?? attachment.kind;
-
-  if (type !== "gif") {
-    throw new ChatRouteError("Message attachment type is invalid.", 422);
-  }
-
-  if (attachment.provider !== "klipy") {
-    throw new ChatRouteError("Message GIF provider is invalid.", 422);
-  }
-
-  const resourceId = requiredToken(attachment.resourceId ?? attachment.resource_id, "GIF id", 191);
-
-  return {
-    type: "gif",
-    provider: "klipy",
-    resourceType: "gif",
-    resourceId,
-    resourceKey: optionalToken(attachment.resourceKey ?? attachment.resource_key, "GIF key", 255) ?? `klipy:${resourceId}`,
-    url: requiredHttpsUrl(attachment.url, "GIF URL", 500),
-    mime: "image/gif",
-    width: optionalPositiveInteger(attachment.width, "GIF width"),
-    height: optionalPositiveInteger(attachment.height, "GIF height"),
-    sourceUrl: optionalHttpsUrl(attachment.sourceUrl ?? attachment.source_url, "GIF source URL", 500),
-    cardJson: attachment.card === undefined && attachment.gif === undefined
-      ? null
-      : attachmentJson(attachment.card ?? attachment.gif, "Message GIF card"),
-  };
+  return positiveInteger(attachment[camelKey] ?? attachment[snakeKey] ?? attachment.id ?? nestedId, `${nestedKey} id`);
 }
 
 function positiveInteger(value: unknown, label: string): number {
@@ -2045,102 +2254,112 @@ function gifAttachmentPayloadFromRow(row: AttachmentRow): GifAttachmentPayload |
   };
 }
 
-function requiredToken(value: unknown, label: string, maxLength: number): string {
-  const token = optionalToken(value, label, maxLength);
+function messageAttachmentPayloadFromRow(
+  row: AttachmentRow,
+  postsById: ReadonlyMap<number, PostDetailPayload>,
+  roomsById: ReadonlyMap<number, ChatRoomAttachmentPayload>,
+): ChatMessageAttachmentPayload | null {
+  if (row.type === "post") {
+    const postId = nullableNumberValue(row.post_id);
 
-  if (token === null) {
-    throw new ChatRouteError(`${label} is required.`, 422);
+    return {
+      type: "post",
+      post: postId === null ? null : postsById.get(postId) ?? null,
+    };
   }
 
-  return token;
-}
+  if (row.type === "room") {
+    const roomId = nullableNumberValue(row.room_id);
 
-function optionalToken(value: unknown, label: string, maxLength: number): string | null {
-  if (value === undefined || value === null || value === "") {
+    return {
+      type: "room",
+      room: roomId === null ? null : roomsById.get(roomId) ?? null,
+    };
+  }
+
+  if (row.type === "gif") {
+    const gif = gifAttachmentPayloadFromRow(row);
+
+    return gif === null ? null : { type: "gif", gif };
+  }
+
+  if (row.type !== "image" && row.type !== "video" && row.type !== "audio" && row.type !== "integration") {
     return null;
   }
 
-  if (typeof value !== "string") {
-    throw new ChatRouteError(`${label} is invalid.`, 422);
-  }
-
-  const trimmed = value.trim();
-
-  if (trimmed === "") {
-    return null;
-  }
-
-  if (trimmed.length > maxLength || !/^[A-Za-z0-9:_./-]+$/u.test(trimmed)) {
-    throw new ChatRouteError(`${label} is invalid.`, 422);
-  }
-
-  return trimmed;
+  return {
+    type: "media",
+    media: {
+      id: numberValue(row.id),
+      position: numberValue(row.position ?? 0),
+      kind: row.type,
+      url: nullableStringValue(row.url),
+      mime: nullableStringValue(row.mime),
+      sizeBytes: nullableNumberValue(row.size_bytes),
+      width: nullableNumberValue(row.width),
+      height: nullableNumberValue(row.height),
+      durationSeconds: nullableNumberValue(row.duration_seconds),
+      posterUrl: nullableStringValue(row.poster_url),
+      provider: nullableStringValue(row.provider),
+      resourceType: nullableStringValue(row.resource_type),
+      resourceId: nullableStringValue(row.resource_id),
+      resourceKey: nullableStringValue(row.resource_key),
+      sourceUrl: nullableStringValue(row.source_url),
+      card: jsonObjectOrArray(row.card_json),
+      createdAt: nullableStringValue(row.created_at),
+      updatedAt: null,
+    },
+  };
 }
 
-function requiredHttpsUrl(value: unknown, label: string, maxLength: number): string {
-  const url = optionalHttpsUrl(value, label, maxLength);
-
-  if (url === null) {
-    throw new ChatRouteError(`${label} is required.`, 422);
-  }
-
-  return url;
+function storedAttachmentType(attachment: ValidatedMessageAttachment): string {
+  return attachment.type === "media" ? attachment.kind : attachment.type;
 }
 
-function optionalHttpsUrl(value: unknown, label: string, maxLength: number): string | null {
-  if (value === undefined || value === null || value === "") {
-    return null;
-  }
+function uniquePositiveIds(values: readonly (number | string | null)[]): number[] {
+  return [...new Set(values.flatMap((value) => {
+    const id = nullableNumberValue(value);
 
-  if (typeof value !== "string") {
-    throw new ChatRouteError(`${label} is invalid.`, 422);
-  }
-
-  const trimmed = value.trim();
-
-  if (trimmed.length > maxLength) {
-    throw new ChatRouteError(`${label} is too long.`, 422);
-  }
-
-  try {
-    const url = new URL(trimmed);
-
-    if (url.protocol === "https:" && url.username === "" && url.password === "") {
-      return url.toString();
-    }
-  } catch {
-    // Fall through to the route error below.
-  }
-
-  throw new ChatRouteError(`${label} is invalid.`, 422);
+    return id === null || id < 1 ? [] : [id];
+  }))];
 }
 
-function optionalPositiveInteger(value: unknown, label: string): number | null {
-  if (value === undefined || value === null || value === "") {
-    return null;
-  }
-
-  const number = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
-
-  if (!Number.isInteger(number) || number <= 0) {
-    throw new ChatRouteError(`${label} is invalid.`, 422);
-  }
-
-  return number;
+function roomViewerFromSession(session: RequestSession): { userId: number; role: string } {
+  return {
+    userId: session.userId,
+    role: session.role,
+  };
 }
 
-function attachmentJson(value: unknown, label: string): string {
-  if (value === null || typeof value !== "object") {
-    throw new ChatRouteError(`${label} is invalid.`, 422);
+function chatRoomAttachmentPayload(room: RoomPayload, publicBaseUrl: string): ChatRoomAttachmentPayload {
+  const canonicalPath = `/rooms/${encodeURIComponent(room.slug)}`;
+
+  return {
+    ...room,
+    canonicalPath,
+    canonicalUrl: `${publicBaseUrl.replace(/\/+$/u, "")}${canonicalPath}`,
+  };
+}
+
+function attachmentPreviewText(type: string | null): string {
+  switch (type) {
+    case "post":
+      return "Post";
+    case "room":
+      return "Room";
+    case "image":
+      return "Photo";
+    case "video":
+      return "Video";
+    case "audio":
+      return "Audio";
+    case "integration":
+      return "Music";
+    case "gif":
+      return "GIF";
+    default:
+      return "Attachment";
   }
-
-  const json = JSON.stringify(value);
-
-  if (json.length > 16000) {
-    throw new ChatRouteError(`${label} is too large.`, 422);
-  }
-
-  return json;
 }
 
 function blockedPairFilterSql(targetUserSql: string): string {
@@ -2203,16 +2422,6 @@ function initialsFromName(name: string): string {
   return letters.length > 0 ? letters.join("") : "TH";
 }
 
-function bodySnippet(value: string, maxLength: number): string {
-  const snippet = value.replace(/\s+/gu, " ").trim();
-
-  if (snippet.length <= maxLength) {
-    return snippet;
-  }
-
-  return `${snippet.slice(0, Math.max(1, maxLength - 1)).trimEnd()}...`;
-}
-
 function jsonObject(value: string): Record<string, unknown> | null {
   try {
     const parsed: unknown = JSON.parse(value);
@@ -2223,7 +2432,7 @@ function jsonObject(value: string): Record<string, unknown> | null {
   }
 }
 
-function jsonObjectOrArray(value: string | null): unknown | null {
+function jsonObjectOrArray(value: string | null): Record<string, unknown> | unknown[] | null {
   if (value === null || value === "") {
     return null;
   }
@@ -2231,7 +2440,9 @@ function jsonObjectOrArray(value: string | null): unknown | null {
   try {
     const parsed: unknown = JSON.parse(value);
 
-    return parsed !== null && typeof parsed === "object" ? parsed : null;
+    return parsed !== null && typeof parsed === "object"
+      ? parsed as Record<string, unknown> | unknown[]
+      : null;
   } catch {
     return null;
   }

@@ -1,5 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import { fetchAuthMe, loginWithEnv, skipWithoutCredentials } from "../helpers/auth";
+import {
+  CURRENT_WHATS_NEW_RELEASE,
+  whatsNewStorageKey,
+} from "../../src/lib/whatsNew";
 
 test("/rooms renders API rooms or the real empty state", async ({ page }) => {
   await mockRoomCards(page);
@@ -66,7 +70,25 @@ test("clicking a room opens its detail page", async ({ page }) => {
   await expect(page.getByTestId("room-page")).toBeVisible();
 });
 
-test("public room page copies an attributed share URL", async ({ page }) => {
+test("authenticated room share copies attribution and sends the native Room to a moot", async ({
+  page,
+}) => {
+  const moot = {
+    id: 17,
+    handle: "moonfriend",
+    displayName: "Moon Friend",
+    initials: "MF",
+    aura: "tide",
+    avatarUrl: null,
+  };
+  let shareRequest:
+    | {
+        csrfToken: string | undefined;
+        method: string;
+        payload: Record<string, unknown>;
+      }
+    | undefined;
+
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -78,6 +100,45 @@ test("public room page copies an attributed share URL", async ({ page }) => {
     });
   });
   await mockRoomCards(page);
+  await mockAuthenticatedShell(page);
+  await page.route("**/api/chat/moots", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [moot] }),
+    });
+  });
+  await page.route("**/api/rooms/sun-room/shares/messages", async (route) => {
+    shareRequest = {
+      csrfToken: route.request().headers()["x-csrf-token"],
+      method: route.request().method(),
+      payload: route.request().postDataJSON() as Record<string, unknown>,
+    };
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        data: {
+          room: mockRoom({
+            canonicalPath: "/rooms/sun-room",
+            canonicalUrl: "https://thia.lol/rooms/sun-room",
+          }),
+          results: [
+            {
+              recipientUserId: moot.id,
+              recipient: moot,
+              status: "sent",
+              conversationId: 41,
+              messageId: 701,
+            },
+          ],
+          sentCount: 1,
+          failedCount: 0,
+        },
+      }),
+    });
+  });
 
   await page.goto("/rooms/sun-room");
 
@@ -102,6 +163,29 @@ test("public room page copies an attributed share URL", async ({ page }) => {
     .toContain(
       "/rooms/sun-room?utm_source=thia.lol&utm_medium=share&utm_campaign=room-share&thia_share=room%3Asun-room",
     );
+
+  await expect(modal.getByTestId("room-share-moot-list")).toContainText("Moon Friend");
+  await modal.getByTestId("room-share-moot-17").click();
+  await expect(modal.getByTestId("room-share-moot-17")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await modal.getByTestId("room-share-note").fill("Meet me in this room");
+  await modal.getByTestId("room-share-send-moots").click();
+
+  await expect(modal.getByText("Sent to 1 moot.")).toBeVisible();
+  await expect(modal.getByRole("link", { name: "Open chat" })).toHaveAttribute(
+    "href",
+    "/chat?conversation=41",
+  );
+  await expect.poll(() => shareRequest).toMatchObject({
+    method: "POST",
+    csrfToken: "test-csrf",
+    payload: {
+      recipientUserIds: [17],
+      note: "Meet me in this room",
+    },
+  });
 });
 
 test("room cards keep room navigation and owner profile navigation separate", async ({
@@ -182,6 +266,7 @@ test("creating rooms can submit each visibility mode", async ({ page }) => {
 
   await mockRoomCreation(page, createdPayloads);
   await acknowledgeCookieNotice(page);
+  await acknowledgeWhatsNewRelease(page, 9);
 
   for (const [index, mode] of [
     ["Public", "public"],
@@ -189,18 +274,22 @@ test("creating rooms can submit each visibility mode", async ({ page }) => {
     ["Invite", "invite"],
     ["View-only", "view_only"],
   ].entries()) {
+    const slug = `${mode[1].replace("_", "-")}-room`;
+
     await page.goto("/rooms");
     await page.getByTestId("create-room-button").click();
 
     const modal = page.getByTestId("room-edit-modal");
     await modal.getByLabel("Name").fill(`${mode[0]} room`);
-    await modal.getByLabel("Slug").fill(`${mode[1].replace("_", "-")}-room`);
+    await modal.getByLabel("Slug").fill(slug);
     await modal.getByLabel("Summary").fill(`A ${mode[0].toLowerCase()} room for smoke testing.`);
     await modal.locator(`label:has(input[name="room-visibility"][value="${mode[1]}"])`).click();
     await modal.getByRole("button", { name: "Create room" }).click();
 
     await expect.poll(() => createdPayloads.length).toBe(index + 1);
     expect(createdPayloads[index]).toMatchObject({ visibility: mode[1] });
+    await expect(page).toHaveURL(new RegExp(`/rooms/${slug}$`));
+    await expect(modal).toBeHidden();
   }
 });
 
@@ -639,12 +728,16 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
   expect(readRequests).toBe(2);
   releaseSuccessfulRead?.();
   messageResponseUnreadCount = 0;
-  await expect(page.getByText("A polled message must render once", { exact: true })).toHaveCount(2);
+  await expect(
+    roomMessageList.getByText("A polled message must render once", { exact: true }),
+  ).toHaveCount(2);
   releaseSendResponse?.();
   await expect(
     page.getByTestId("room-channel-message-composer").getByRole("button", { name: "Sending" }),
   ).toHaveCount(0);
-  await expect(page.getByText("A polled message must render once", { exact: true })).toHaveCount(2);
+  await expect(
+    roomMessageList.getByText("A polled message must render once", { exact: true }),
+  ).toHaveCount(2);
 
   await page.getByLabel("Write a message").fill("Keep this room draft");
   await page.getByTestId("room-feed-tab").click();
@@ -696,6 +789,134 @@ test("room Feed and Chat tabs stay exclusive and chat loading settles", async ({
       page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     )
     .toBe(true);
+});
+
+test("Room Chat shares the native renderer and persists attachment-only composer sends", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const chat = await mockPersistentRoomAttachmentChat(page);
+
+  await page.goto("/rooms/attachment-room?channel=general");
+
+  const messageList = page.getByTestId("room-channel-message-list");
+  await expect(messageList).toBeVisible();
+  await expect(
+    messageList.getByText(chat.sharedRoom.canonicalUrl, { exact: true }),
+  ).toHaveCount(0);
+
+  const nativeRoomAttachment = messageList.getByTestId("message-room-attachment");
+  await expect(nativeRoomAttachment.getByTestId("room-attachment-card")).toContainText(
+    "Moon Room",
+  );
+  await expect(
+    nativeRoomAttachment.getByRole("link", { name: "Open Moon Room" }).last(),
+  ).toHaveAttribute("href", "/rooms/moon-room");
+  await expect(messageList.getByTestId("message-post-attachment-unavailable")).toContainText(
+    "Post unavailable",
+  );
+  await expect(messageList.getByTestId("message-room-attachment-unavailable")).toContainText(
+    "Room unavailable",
+  );
+
+  await selectRoomGifAttachment(page, "Wave");
+  await selectRoomGifAttachment(page, "Spark");
+
+  const attachmentItems = page.getByTestId("room-attachment-composer-items");
+  const previews = attachmentItems.getByTestId("room-attachment-composer-item");
+  await expect(previews).toHaveCount(2);
+  await expect(previews.nth(0).locator("img")).toHaveAttribute(
+    "src",
+    roomMockGifResult.url,
+  );
+  await expect(previews.nth(1).locator("img")).toHaveAttribute(
+    "src",
+    roomMockSecondGifResult.url,
+  );
+
+  const mobileLayout = await page.evaluate(() => {
+    const tray = document.querySelector(
+      '[data-testid="room-attachment-composer-items"]',
+    );
+    const trayBox = tray?.getBoundingClientRect();
+    const attachmentSurfaces = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        '[data-testid="room-message-attachments"], [data-testid="room-attachment-composer-items"]',
+      ),
+    ).map((surface) => surface.getBoundingClientRect());
+    const controls = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        '[data-testid="room-attachment-composer"] [aria-label="Add message attachments"] .app-control',
+      ),
+    ).map((control) => control.getBoundingClientRect());
+
+    return {
+      controlsAreTouchSized: controls.every(
+        (box) => box.width >= 44 && box.height >= 44,
+      ),
+      documentHasNoOverflow:
+        document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      surfacesFitViewport: attachmentSurfaces.every(
+        (box) => box.left >= 0 && box.right <= window.innerWidth,
+      ),
+      trayFitsViewport:
+        Boolean(trayBox) &&
+        (trayBox?.left ?? -1) >= 0 &&
+        (trayBox?.right ?? window.innerWidth + 1) <= window.innerWidth,
+      trayScrollsInternally:
+        Boolean(tray) && (tray?.scrollWidth ?? 0) > (tray?.clientWidth ?? 0),
+    };
+  });
+
+  expect(mobileLayout.documentHasNoOverflow).toBe(true);
+  expect(mobileLayout.surfacesFitViewport).toBe(true);
+  expect(mobileLayout.trayFitsViewport).toBe(true);
+  expect(mobileLayout.trayScrollsInternally).toBe(true);
+  expect(mobileLayout.controlsAreTouchSized).toBe(true);
+
+  await previews.nth(0).getByRole("button", { name: "Move attachment 1 later" }).click();
+  await expect(previews.nth(0).locator("img")).toHaveAttribute(
+    "src",
+    roomMockSecondGifResult.url,
+  );
+  await previews.nth(0).getByRole("button", { name: "Remove attachment 1" }).click();
+  await expect(previews).toHaveCount(1);
+  await expect(previews.nth(0).locator("img")).toHaveAttribute(
+    "src",
+    roomMockGifResult.url,
+  );
+
+  const composer = page.getByTestId("room-channel-message-composer");
+  await expect(composer.getByLabel("Write a message")).toHaveValue("");
+  await expect(composer.getByRole("button", { name: "Send" })).toBeEnabled();
+  await composer.getByRole("button", { name: "Send" }).click();
+
+  await expect.poll(() => chat.sentPayloads.length).toBe(1);
+  expect(chat.sentPayloads[0]).toMatchObject({
+    body: "",
+    attachments: [
+      {
+        kind: "gif",
+        provider: "klipy",
+        resourceType: "gif",
+        resourceId: "room-gif-1",
+        resourceKey: "klipy:room-gif-1",
+        url: "https://media.klipy.com/room-gif-1.gif",
+      },
+    ],
+  });
+  await expect(messageList.getByTestId("message-gif-attachment")).toHaveAttribute(
+    "href",
+    "https://klipy.com/room-gif-1",
+  );
+
+  await page.reload();
+  await expect(page.getByTestId("room-channel-message-list")).toBeVisible();
+  await expect(page.getByTestId("message-gif-attachment")).toHaveAttribute(
+    "href",
+    "https://klipy.com/room-gif-1",
+  );
+  await expect(page.getByTestId("message-room-attachment")).toBeVisible();
 });
 
 test("joining waits for explicit rules agreement and rules remain available", async ({ page }) => {
@@ -1446,6 +1667,315 @@ async function acknowledgeCookieNotice(page: Page) {
   });
 }
 
+async function acknowledgeWhatsNewRelease(page: Page, userId: number) {
+  await page.addInitScript(
+    ({ releaseId, storageKey }) => {
+      window.localStorage.setItem(storageKey, releaseId);
+    },
+    {
+      releaseId: CURRENT_WHATS_NEW_RELEASE.id,
+      storageKey: whatsNewStorageKey(userId),
+    },
+  );
+}
+
+async function mockPersistentRoomAttachmentChat(page: Page) {
+  const room = mockRoom({
+    slug: "attachment-room",
+    name: "Attachment Room",
+    joinedByMe: true,
+    myRoomRole: "member",
+    viewerCanPost: true,
+    viewerCanReact: true,
+  });
+  const sharedRoom = {
+    ...mockRoom({
+      id: 72,
+      slug: "moon-room",
+      name: "Moon Room",
+      summary: "A moonlit room for long-form listening.",
+      description: "A moonlit room for long-form listening.",
+      joinedByMe: true,
+      myRoomRole: "member",
+      memberCount: 18,
+      members: 18,
+      postCount: 12,
+      viewerCanPost: true,
+      viewerCanReact: true,
+    }),
+    canonicalPath: "/rooms/moon-room",
+    canonicalUrl: "https://thia.lol/rooms/moon-room",
+  };
+  const channel = {
+    id: 711,
+    roomId: room.id,
+    slug: "general",
+    name: "general",
+    description: "Attachment testing",
+    position: 0,
+    kind: "chat",
+    readOnly: false,
+    archivedAt: null,
+    conversationId: 9711,
+    unreadCount: 0,
+    lastMessageAt: "2026-07-16 09:00:00",
+    viewerCanPost: true,
+    createdAt: "2026-07-16 08:00:00",
+    updatedAt: "2026-07-16 09:00:00",
+  };
+  const sender = {
+    id: 10,
+    handle: "mira",
+    displayName: "Mira",
+    initials: "M",
+    aura: "frost",
+    avatarUrl: null,
+  };
+  const sentPayloads: Array<Record<string, unknown>> = [];
+  const messages: Array<Record<string, unknown>> = [
+    {
+      id: 8401,
+      conversationId: channel.conversationId,
+      body: `A native Room share\n${sharedRoom.canonicalUrl}`,
+      bodyEntities: [],
+      attachments: [{ type: "room", room: sharedRoom }],
+      deletedAt: null,
+      createdAt: "2026-07-16 09:00:00",
+      sender,
+    },
+    {
+      id: 8402,
+      conversationId: channel.conversationId,
+      body: "Unavailable native shares",
+      bodyEntities: [],
+      attachments: [
+        { type: "post", post: null },
+        { type: "room", room: null },
+      ],
+      deletedAt: null,
+      createdAt: "2026-07-16 09:01:00",
+      sender,
+    },
+  ];
+
+  await mockAuthenticatedShell(page);
+  await acknowledgeCookieNotice(page);
+  await mockRoomChatGifSearch(page, [roomMockGifResult, roomMockSecondGifResult]);
+
+  await page.route("**/api/rooms/attachment-room", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: room }),
+    });
+  });
+  await page.route("**/api/rooms/attachment-room/posts", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+  await page.route("**/api/rooms/attachment-room/members", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [] }),
+    });
+  });
+  await page.route("**/api/rooms/attachment-room/channels", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: [channel] }),
+    });
+  });
+  await page.route(
+    "**/api/rooms/attachment-room/channels/general/messages",
+    async (route) => {
+      if (route.request().method() === "POST") {
+        const payload = route.request().postDataJSON() as Record<string, unknown>;
+        sentPayloads.push(payload);
+        const message = {
+          id: 8500 + sentPayloads.length,
+          conversationId: channel.conversationId,
+          body: typeof payload.body === "string" ? payload.body : "",
+          bodyEntities: [],
+          attachments: roomChatAttachmentsFromRequest(payload.attachments),
+          deletedAt: null,
+          createdAt: "2026-07-16 09:05:00",
+          sender: {
+            id: 9,
+            handle: "viewer",
+            displayName: "Viewer",
+            initials: "V",
+            aura: "glow",
+            avatarUrl: null,
+          },
+        };
+        messages.push(message);
+
+        await route.fulfill({
+          status: 201,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: true, data: message }),
+        });
+        return;
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: { channel, messages },
+        }),
+      });
+    },
+  );
+  await page.route(
+    "**/api/rooms/attachment-room/channels/general/read",
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            conversationId: channel.conversationId,
+            readAt: "2026-07-16 09:05:01",
+          },
+        }),
+      });
+    },
+  );
+
+  return { sentPayloads, sharedRoom };
+}
+
+async function selectRoomGifAttachment(page: Page, title: string) {
+  await page.getByTestId("room-attachment-composer-gif-button").click();
+  await expect(page.getByTestId("gif-picker-results")).toBeVisible();
+  await page.getByRole("button", { name: `Select GIF ${title}` }).click();
+}
+
+async function mockRoomChatGifSearch(
+  page: Page,
+  items: Array<Record<string, unknown>>,
+) {
+  await page.route("https://media.klipy.com/**", async (route) => {
+    await route.fulfill({
+      contentType: "image/gif",
+      body: Buffer.from(roomTransparentGifBase64, "base64"),
+    });
+  });
+
+  for (const endpoint of ["trending", "search"] as const) {
+    await page.route(`**/api/gifs/${endpoint}**`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            available: true,
+            provider: "klipy",
+            query: endpoint === "search" ? "wave" : null,
+            next: null,
+            items,
+          },
+        }),
+      });
+    });
+  }
+}
+
+function roomChatAttachmentsFromRequest(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((rawAttachment, position) => {
+    if (!plainRecord(rawAttachment)) {
+      return [];
+    }
+
+    const attachment =
+      rawAttachment.type === "media" && plainRecord(rawAttachment.media)
+        ? rawAttachment.media
+        : rawAttachment;
+    const kind = stringValue(attachment.kind) || stringValue(attachment.type);
+    const card = plainRecord(attachment.card) ? attachment.card : null;
+
+    if (kind === "gif") {
+      return [
+        {
+          type: "gif",
+          gif: {
+            provider: "klipy",
+            resourceType: "gif",
+            resourceId: stringValue(attachment.resourceId),
+            resourceKey: stringValue(attachment.resourceKey),
+            url: stringValue(attachment.url),
+            previewUrl: stringValue(card?.previewUrl) || stringValue(attachment.url),
+            mime: "image/gif" as const,
+            width: numberOrNull(attachment.width),
+            height: numberOrNull(attachment.height),
+            sourceUrl: stringValue(attachment.sourceUrl) || null,
+            title: stringValue(card?.title) || "KLIPY GIF",
+            card,
+          },
+        },
+      ];
+    }
+
+    if (!["image", "video", "audio", "integration"].includes(kind)) {
+      return [];
+    }
+
+    return [
+      {
+        type: "media",
+        media: {
+          position,
+          kind,
+          url: stringValue(attachment.url) || null,
+          mime: stringValue(attachment.mime) || null,
+          sizeBytes: numberOrNull(attachment.sizeBytes),
+          width: numberOrNull(attachment.width),
+          height: numberOrNull(attachment.height),
+          durationSeconds: numberOrNull(attachment.durationSeconds),
+          posterUrl: stringValue(attachment.posterUrl) || null,
+          provider: stringValue(attachment.provider) || null,
+          resourceType: stringValue(attachment.resourceType) || null,
+          resourceId: stringValue(attachment.resourceId) || null,
+          resourceKey: stringValue(attachment.resourceKey) || null,
+          sourceUrl: stringValue(attachment.sourceUrl) || null,
+          card,
+        },
+      },
+    ];
+  });
+}
+
+function plainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function numberOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const number = Number(value);
+
+  return Number.isFinite(number) ? number : null;
+}
+
 async function mockRoomChannelRoutes(
   page: Page,
   slug: string,
@@ -1624,6 +2154,50 @@ function mockRoom(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+const roomMockGifResult = {
+  id: "room-gif-1",
+  title: "Wave",
+  provider: "klipy",
+  resourceType: "gif",
+  resourceId: "room-gif-1",
+  resourceKey: "klipy:room-gif-1",
+  url: "https://media.klipy.com/room-gif-1.gif",
+  previewUrl: "https://media.klipy.com/room-gif-1-small.gif",
+  mime: "image/gif",
+  width: 320,
+  height: 180,
+  sourceUrl: "https://klipy.com/room-gif-1",
+  card: {
+    provider: "klipy",
+    title: "Wave",
+    previewUrl: "https://media.klipy.com/room-gif-1-small.gif",
+    url: "https://media.klipy.com/room-gif-1.gif",
+    sourceUrl: "https://klipy.com/room-gif-1",
+    width: 320,
+    height: 180,
+  },
+};
+
+const roomMockSecondGifResult = {
+  ...roomMockGifResult,
+  id: "room-gif-2",
+  title: "Spark",
+  resourceId: "room-gif-2",
+  resourceKey: "klipy:room-gif-2",
+  url: "https://media.klipy.com/room-gif-2.gif",
+  previewUrl: "https://media.klipy.com/room-gif-2-small.gif",
+  sourceUrl: "https://klipy.com/room-gif-2",
+  card: {
+    ...roomMockGifResult.card,
+    title: "Spark",
+    previewUrl: "https://media.klipy.com/room-gif-2-small.gif",
+    url: "https://media.klipy.com/room-gif-2.gif",
+    sourceUrl: "https://klipy.com/room-gif-2",
+  },
+};
+
+const roomTransparentGifBase64 = "R0lGODlhAQABAAAAACwAAAAAAQABAAA=";
 
 async function firstRoomSlug(page: Page) {
   await expect

@@ -1,11 +1,14 @@
-import { describe, expect, it } from "vitest";
+import type { Pool } from "mysql2/promise";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   buildDiscoverFeedQuery,
   buildHomeFeedQuery,
   buildPeopleToWatchQuery,
+  buildPublicPostsByIdsQuery,
   buildPublicPostsQuery,
   buildPublicProfileReblogsQuery,
+  createPostsRepository,
   diversifyDiscoverPosts,
   normalizePostIdentifier,
   postCanonicalPath,
@@ -106,6 +109,17 @@ describe("post preview route helpers", () => {
 });
 
 describe("post preview SQL", () => {
+  it("builds one viewer-aware query for a bounded set of native Post ids", () => {
+    const sql = buildPublicPostsByIdsQuery(capabilities, 42, 3);
+
+    expect(sql).toContain("AND p.id IN (?, ?, ?)");
+    expect(sql).toContain("pr.visibility = 'public'");
+    expect(sql).toContain("OR u.id = 42");
+    expect(sql).toContain("LIMIT 3");
+    expect(sql).not.toContain("LIMIT 50");
+    expect(() => buildPublicPostsByIdsQuery(capabilities, 42, 0)).toThrow("batch size is invalid");
+  });
+
   it("matches PHP public post list constraints and viewer state joins", () => {
     const sql = buildPublicPostsQuery(capabilities, 42);
 
@@ -247,6 +261,67 @@ describe("post preview SQL", () => {
       expect(sql).not.toContain("42AND");
     }
   });
+
+  it("bulk-hydrates distinct Posts without per-Post entity or attachment queries", async () => {
+    const calls: Array<{ sql: string; params: unknown[] }> = [];
+    const execute = vi.fn(async (sqlValue: unknown, paramsValue: unknown[] = []) => {
+      const sql = String(sqlValue);
+      const params = [...paramsValue];
+      calls.push({ sql, params });
+
+      if (sql.includes("INFORMATION_SCHEMA.TABLES") || sql.includes("INFORMATION_SCHEMA.COLUMNS")) {
+        return [[{ table_count: 1, column_count: 1 }], []];
+      }
+
+      if (sql.includes("FROM posts p")) {
+        return [[postRow(2), postRow(1)], []];
+      }
+
+      if (sql.includes("FROM text_entities e")) {
+        return [[], []];
+      }
+
+      if (sql.includes("FROM post_attachments")) {
+        return [[{
+          id: 91,
+          post_id: 1,
+          position: 0,
+          kind: "image",
+          url: "/uploads/media/native-post.webp",
+          mime: "image/webp",
+          size_bytes: 4000,
+          width: 1200,
+          height: 900,
+          duration_seconds: null,
+          poster_url: null,
+          provider: null,
+          resource_type: null,
+          resource_id: null,
+          resource_key: null,
+          source_url: null,
+          card_json: null,
+          created_at: "2026-07-16 01:00:00",
+          updated_at: "2026-07-16 01:00:00",
+        }], []];
+      }
+
+      throw new Error(`Unexpected Post batch query: ${sql}`);
+    });
+    const repository = createPostsRepository({ execute } as unknown as Pool);
+
+    const posts = await repository.getPublicPostsByIds([1, 2, 1], 42, "https://thia.lol/");
+
+    expect([...posts.keys()]).toEqual([2, 1]);
+    expect(posts.get(1)).toMatchObject({
+      id: 1,
+      canonicalUrl: "https://thia.lol/@author-1/posts/p0000001",
+      attachments: [{ kind: "image", width: 1200, height: 900 }],
+    });
+    expect(calls.filter(({ sql }) => sql.includes("FROM posts p"))).toHaveLength(1);
+    expect(calls.filter(({ sql }) => sql.includes("FROM text_entities e"))).toHaveLength(2);
+    expect(calls.filter(({ sql }) => sql.includes("FROM post_attachments"))).toHaveLength(1);
+    expect(calls.find(({ sql }) => sql.includes("FROM posts p"))?.params).toEqual([1, 2]);
+  });
 });
 
 function discoverPost(
@@ -274,4 +349,53 @@ function discoverPost(
           name: `Room ${roomId}`,
         },
   } as PostPayload;
+}
+
+function postRow(id: number): Record<string, unknown> {
+  return {
+    post_id: id,
+    post_public_id: `p000000${id}`,
+    post_parent_id: null,
+    post_body: `Post ${id}`,
+    post_body_format: "plain",
+    post_content_version: 1,
+    post_mood: "warm",
+    post_media_url: null,
+    post_media_type: null,
+    post_media_mime: null,
+    post_media_poster_url: null,
+    post_visibility: "public",
+    post_status: "published",
+    post_deleted_at: null,
+    post_created_at: "2026-07-16 01:00:00",
+    post_updated_at: "2026-07-16 01:00:00",
+    user_id: 100 + id,
+    handle: `author-${id}`,
+    display_name: `Author ${id}`,
+    bio: "",
+    location: "",
+    avatar_url: null,
+    profile_visibility: "public",
+    links: null,
+    traits: null,
+    profile_created_at: "2026-07-16 01:00:00",
+    profile_updated_at: "2026-07-16 01:00:00",
+    room_id: null,
+    reaction_glow_count: 0,
+    reaction_echo_count: 0,
+    reaction_hush_count: 0,
+    reply_count: 0,
+    current_like_user_id: null,
+    current_viewer_user_id: 42,
+    current_user_follows_author: 0,
+    author_follows_current_user: 0,
+    followed_like_count: 0,
+    reblog_count: 0,
+    current_reblog_user_id: null,
+    reblogged_by_user_id: null,
+    reblogged_by_handle: null,
+    reblogged_by_display_name: null,
+    reblogged_by_avatar_url: null,
+    reblogged_at: null,
+  };
 }

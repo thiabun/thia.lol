@@ -1,10 +1,14 @@
-import { describe, expect, it } from "vitest";
+import type { Pool } from "mysql2/promise";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   buildPublicRoomMemberRoomQuery,
   buildPublicRoomMembersQuery,
   buildPublicRoomBySlugQuery,
+  buildPublicRoomsByIdsQuery,
+  buildPublicRoomsBySlugsQuery,
   buildPublicRoomsQuery,
+  createRoomsRepository,
   initialsFromName,
   normalizeRoomSlug,
   roomMemberPayloadFromRow,
@@ -244,6 +248,22 @@ describe("room preview payload mapping", () => {
 });
 
 describe("room preview SQL", () => {
+  it("batches Room ids and slugs with the exact viewer-aware detail visibility rules", () => {
+    const viewer = { userId: 17, role: "member" };
+    const idsQuery = buildPublicRoomsByIdsQuery(2, fullCapabilities, viewer);
+    const slugsQuery = buildPublicRoomsBySlugsQuery(3, fullCapabilities, viewer);
+
+    for (const query of [idsQuery, slugsQuery]) {
+      expect(query).toContain("AND (rooms.visibility <> 'private'");
+      expect(query).toContain("viewer_room_membership.id IS NOT NULL");
+      expect(query).toContain("viewer_room_invitation.status = 'pending'");
+      expect(query).toContain("AND rooms.deleted_at IS NULL");
+    }
+    expect(idsQuery).toContain("WHERE rooms.id IN (?, ?)");
+    expect(slugsQuery).toContain("WHERE rooms.slug IN (?, ?, ?)");
+    expect(() => buildPublicRoomsByIdsQuery(0, fullCapabilities, viewer)).toThrow("batch size is invalid");
+  });
+
   it("orders public rooms like the PHP endpoint", () => {
     expect(buildPublicRoomsQuery(fullCapabilities)).toContain(
       "ORDER BY room_posts.latest_activity_at DESC, rooms.is_live DESC, rooms.name ASC",
@@ -309,5 +329,36 @@ describe("room preview SQL", () => {
         hasRoomInvitations: true,
       }),
     ).toBe(false);
+  });
+
+  it("loads multiple distinct Room attachments in one repository query", async () => {
+    const calls: Array<{ sql: string; params: unknown[] }> = [];
+    const execute = vi.fn(async (sqlValue: unknown, paramsValue: unknown[] = []) => {
+      const sql = String(sqlValue);
+      const params = [...paramsValue];
+      calls.push({ sql, params });
+
+      if (sql.includes("INFORMATION_SCHEMA.TABLES") || sql.includes("INFORMATION_SCHEMA.COLUMNS")) {
+        return [[{ table_count: 1, column_count: 1 }], []];
+      }
+
+      if (sql.includes("WHERE rooms.id IN (?, ?)")) {
+        return [[
+          roomRow(),
+          roomRow({ room_id: 8, room_slug: "moon-garden", room_name: "Moon Garden" }),
+        ], []];
+      }
+
+      throw new Error(`Unexpected Room batch query: ${sql}`);
+    });
+    const repository = createRoomsRepository({ execute } as unknown as Pool);
+
+    const rooms = await repository.getPublicRoomsByIds([7, 8, 7], { userId: 17, role: "member" });
+
+    expect([...rooms.keys()]).toEqual([7, 8]);
+    expect(rooms.get(8)).toMatchObject({ slug: "moon-garden", name: "Moon Garden" });
+    const roomQueries = calls.filter(({ sql }) => sql.includes("WHERE rooms.id IN"));
+    expect(roomQueries).toHaveLength(1);
+    expect(roomQueries[0]?.params).toEqual([7, 8]);
   });
 });

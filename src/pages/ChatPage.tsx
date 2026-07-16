@@ -8,7 +8,6 @@ import {
   Send,
   WifiOff,
   UserPlus,
-  X,
 } from "lucide-react";
 import { motion } from "motion/react";
 import {
@@ -23,8 +22,13 @@ import {
 import { Link, useOutletContext, useSearchParams } from "react-router";
 import type { AppShellOutletContext } from "../components/layout/AppShell";
 import { PageMeta } from "../components/PageMeta";
-import { GifIcon } from "../components/icons/GifIcon";
-import { GifPicker } from "../components/social/GifPicker";
+import { MessageAttachmentComposer } from "../components/chat/MessageAttachmentComposer";
+import {
+  messageAttachmentInputsFromDrafts,
+  messageHasContent,
+} from "../components/chat/messageAttachmentState";
+import { MessageAttachments } from "../components/chat/MessageAttachments";
+import { messageTextForDisplay } from "../components/chat/messageAttachmentDisplay";
 import { MentionTextarea } from "../components/social/MentionTextarea";
 import { ReportForm } from "../components/social/ReportForm";
 import { RichText } from "../components/social/RichText";
@@ -47,15 +51,12 @@ import {
 } from "../lib/api";
 import { cn } from "../lib/classNames";
 import { parseApiTimestamp } from "../lib/dates";
-import { gifAttachmentTitle, gifToChatAttachmentInput } from "../lib/gifs";
 import { cardEntrance, pageEntrance } from "../lib/motionPresets";
+import type { PostMediaDraft } from "../lib/postMedia";
 import type {
   ChatConversation,
   ChatMessage,
   ChatMoot,
-  GifAttachment,
-  GifSearchResult,
-  PostShareSummary,
 } from "../lib/types";
 import { useAuth } from "../lib/useAuth";
 
@@ -78,8 +79,8 @@ export function ChatPage() {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState<string | undefined>();
   const [body, setBody] = useState("");
-  const [selectedGifs, setSelectedGifs] = useState<GifSearchResult[]>([]);
-  const [gifPickerOpen, setGifPickerOpen] = useState(false);
+  const [attachments, setAttachments] = useState<PostMediaDraft[]>([]);
+  const [attachmentsBusy, setAttachmentsBusy] = useState(false);
   const [sending, setSending] = useState(false);
   const [startError, setStartError] = useState<string | undefined>();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -148,8 +149,7 @@ export function ChatPage() {
     setSelectedConversationId(undefined);
     setMessagesError(undefined);
     setBody("");
-    setSelectedGifs([]);
-    setGifPickerOpen(false);
+    setAttachments([]);
     setSearchParams({}, { replace: true });
   }
 
@@ -307,8 +307,7 @@ export function ChatPage() {
       }
 
       setBody("");
-      setSelectedGifs([]);
-      setGifPickerOpen(false);
+      setAttachments([]);
       setMessagesLoading(true);
       setMessagesError(undefined);
 
@@ -384,14 +383,15 @@ export function ChatPage() {
     if (
       !activeConversationId ||
       messagesConversationId !== activeConversationId ||
-      (trimmed === "" && selectedGifs.length === 0) ||
-      sending
+      !messageHasContent(trimmed, attachments) ||
+      sending ||
+      attachmentsBusy
     ) {
       return;
     }
 
     const targetConversationId = activeConversationId;
-    const draftGifs = selectedGifs;
+    const draftAttachments = attachments;
 
     setSending(true);
     setMessagesError(undefined);
@@ -403,14 +403,13 @@ export function ChatPage() {
             targetConversationId,
             trimmed,
             csrfToken,
-            draftGifs.map(gifToChatAttachmentInput),
+            messageAttachmentInputsFromDrafts(draftAttachments),
           ),
         { retryOnCsrf: true },
       );
       if (selectedConversationIdRef.current === targetConversationId) {
         setBody("");
-        setSelectedGifs([]);
-        setGifPickerOpen(false);
+        setAttachments([]);
         setMessagesConversationId(targetConversationId);
         setMessages((current) => [...current, message]);
       }
@@ -423,6 +422,7 @@ export function ChatPage() {
                   lastMessage: {
                     id: message.id,
                     body: message.body,
+                    previewText: messagePreviewText(message),
                     createdAt: message.createdAt,
                     sender: message.sender,
                   },
@@ -442,28 +442,6 @@ export function ChatPage() {
     } finally {
       setSending(false);
     }
-  }
-
-  function handleGifSelect(gif: GifSearchResult) {
-    setSelectedGifs((current) => {
-      if (current.some((item) => item.resourceKey === gif.resourceKey)) {
-        return current;
-      }
-
-      if (current.length >= 4) {
-        setMessagesError("Messages can include up to 4 GIFs.");
-        return current;
-      }
-
-      setMessagesError(undefined);
-      return [...current, gif];
-    });
-  }
-
-  function handleGifRemove(resourceKey: string) {
-    setSelectedGifs((current) =>
-      current.filter((gif) => gif.resourceKey !== resourceKey),
-    );
   }
 
   function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -767,8 +745,7 @@ export function ChatPage() {
                     selectedConversationIdRef.current = conversation.id;
                     setMessagesError(undefined);
                     setBody("");
-                    setSelectedGifs([]);
-                    setGifPickerOpen(false);
+                    setAttachments([]);
                     setSelectedConversationId(conversation.id);
                     setSearchParams(
                       { conversation: String(conversation.id) },
@@ -849,55 +826,16 @@ export function ChatPage() {
                   data-testid="chat-message-composer"
                   onSubmit={(event) => void handleSend(event)}
                 >
-                  {selectedGifs.length > 0 ? (
-                    <div
-                      className="mb-2 flex gap-2 overflow-x-auto pb-1"
-                      data-testid="chat-selected-gifs"
-                    >
-                      {selectedGifs.map((gif) => (
-                        <div
-                          key={gif.resourceKey}
-                          className="relative h-24 w-32 shrink-0 overflow-hidden rounded-card border border-line bg-canvas shadow-inner-soft"
-                        >
-                          <img
-                            alt={gifAttachmentTitle(gif)}
-                            src={gif.previewUrl ?? gif.url}
-                            className="size-full object-cover"
-                          />
-                          <span className="absolute bottom-1 left-1 rounded-full bg-black/75 px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-white">
-                            KLIPY
-                          </span>
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            className="absolute right-1 top-1 size-7 bg-black/70 text-white hover:bg-black/85 hover:text-white"
-                            aria-label={`Remove ${gifAttachmentTitle(gif)}`}
-                            title={`Remove ${gifAttachmentTitle(gif)}`}
-                            icon={<X aria-hidden="true" size={14} />}
-                            onClick={() => handleGifRemove(gif.resourceKey)}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                  {gifPickerOpen ? (
-                    <GifPicker
-                      className="mb-2"
-                      onSelect={handleGifSelect}
-                    />
-                  ) : null}
+                  <MessageAttachmentComposer
+                    key={activeConversationId}
+                    attachments={attachments}
+                    className="mb-2"
+                    disabled={sending || showMessagesLoading}
+                    testId="chat-attachment-composer"
+                    onBusyChange={setAttachmentsBusy}
+                    onChange={setAttachments}
+                  />
                   <div className="flex items-start gap-2">
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant={gifPickerOpen ? "secondary" : "ghost"}
-                      className="mt-1 shrink-0"
-                      aria-label={gifPickerOpen ? "Close GIF picker" : "Add GIF"}
-                      title={gifPickerOpen ? "Close GIF picker" : "Add GIF"}
-                      icon={<GifIcon aria-hidden="true" size={16} />}
-                      onClick={() => setGifPickerOpen((open) => !open)}
-                    />
                     <label className="sr-only" htmlFor="chat-message-body">
                       Write a message
                     </label>
@@ -918,8 +856,9 @@ export function ChatPage() {
                       className="min-h-12 shrink-0 px-3"
                       disabled={
                         showMessagesLoading ||
-                        (body.trim() === "" && selectedGifs.length === 0) ||
-                        sending
+                        !messageHasContent(body, attachments) ||
+                        sending ||
+                        attachmentsBusy
                       }
                       icon={<Send aria-hidden="true" size={16} />}
                     >
@@ -1153,7 +1092,10 @@ function ConversationButton({
   onClick,
   selected,
 }: ConversationButtonProps) {
-  const lastMessage = conversation.lastMessage?.body ?? "No messages yet";
+  const lastMessage =
+    conversation.lastMessage?.previewText?.trim() ||
+    conversation.lastMessage?.body ||
+    "No messages yet";
   const participant = conversation.otherParticipant;
   const profilePath = `/@${participant.handle}`;
 
@@ -1258,6 +1200,10 @@ type MessageBubbleProps = {
 };
 
 function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
+  const display = messageTextForDisplay(message);
+  const hasBody = display.body.trim() !== "";
+  const hasAttachments = Boolean(message.attachments?.length);
+
   return (
     <div
       className={cn(
@@ -1268,174 +1214,114 @@ function MessageBubble({ canReport, message, mine }: MessageBubbleProps) {
       {mine ? null : (
         <Avatar user={message.sender} size="sm" className="mb-1 hidden sm:block" />
       )}
-      <div className="relative mb-1 max-w-[min(30rem,88%)] sm:max-w-[min(34rem,78%)]">
-        <MessageBubbleTail mine={mine} />
-        <div
-          className={cn(
-            "relative z-10 rounded-[1.125rem] px-3 py-2 text-sm leading-5 transition duration-fluid ease-fluid",
-            mine
-              ? "bg-accent text-accent-ink shadow-soft"
-              : "bg-surface-strong text-text",
-          )}
-        >
-          <RichText
-            text={message.body}
-            entities={message.bodyEntities}
-            className="block whitespace-pre-wrap break-words"
-            embedClassName="mt-2"
-          />
-          {message.attachments?.length ? (
-            <div className="mt-2 space-y-2" data-testid="chat-message-attachments">
-              {message.attachments.map((attachment, index) =>
-                attachment.type === "post" ? (
-                  <ChatPostAttachment
-                    key={`${message.id}-post-${attachment.post?.id ?? index}`}
-                    mine={mine}
-                    post={attachment.post}
-                  />
-                ) : (
-                  <ChatGifAttachment
-                    key={`${message.id}-gif-${attachment.gif.resourceKey}-${index}`}
-                    gif={attachment.gif}
-                    mine={mine}
-                  />
-                ),
-              )}
-            </div>
-          ) : null}
+      <div
+        className={cn(
+          "mb-1 flex min-w-0 w-full max-w-[min(42rem,94%)] flex-col sm:max-w-[min(44rem,86%)]",
+          mine ? "items-end" : "items-start",
+        )}
+      >
+        {hasBody ? (
           <div
             className={cn(
-              "mt-1.5 flex flex-wrap items-center gap-1.5 text-[0.68rem] leading-none",
-              mine ? "text-accent-ink/70" : "text-muted",
+              "relative w-fit max-w-[min(30rem,100%)] sm:max-w-[min(34rem,100%)]",
+              mine && "ml-auto",
             )}
           >
-            <span>{formatChatTime(message.createdAt)}</span>
-            {canReport && message.deletedAt === null ? (
-              <>
-                <span className="text-current/45" aria-hidden="true">
-                  •
-                </span>
-                <ReportForm
-                  className="contents"
-                  targetType="message"
-                  targetId={message.id}
-                  reportedUserId={message.sender.id}
-                  title="Report message"
-                  explainer="This reports this chat message to moderators."
-                  triggerMode="icon"
-                  triggerLabel="Report message"
-                  triggerSize="compact"
-                  triggerIconSize={12}
-                  triggerClassName={cn(
-                    "-my-1 size-7 border border-transparent !bg-transparent !opacity-100 transition duration-fluid ease-fluid hover:!bg-transparent focus-visible:!bg-transparent focus-visible:!outline-none motion-reduce:transition-none",
-                    mine
-                      ? "!text-accent-ink/70 hover:!text-accent-ink focus-visible:!text-accent-ink hover:[&>span]:bg-accent-ink/10 focus-visible:[&>span]:bg-accent-ink/12 focus-visible:[&>span]:ring-1 focus-visible:[&>span]:ring-accent-ink/25"
-                      : "!text-text/55 group-hover/message:!text-text/70 hover:!text-text/85 focus-visible:!text-text hover:[&>span]:bg-text/8 focus-visible:[&>span]:bg-text/10 focus-visible:[&>span]:ring-1 focus-visible:[&>span]:ring-focus/45",
-                  )}
-                  feedbackClassName="basis-full"
-                />
-              </>
-            ) : null}
+            <MessageBubbleTail mine={mine} />
+            <div
+              className={cn(
+                "relative z-10 rounded-[1.125rem] px-3 py-2 text-sm leading-5 transition duration-fluid ease-fluid",
+                mine
+                  ? "bg-accent text-accent-ink shadow-soft"
+                  : "bg-surface-strong text-text",
+              )}
+            >
+              <RichText
+                text={display.body}
+                entities={display.bodyEntities}
+                className="block whitespace-pre-wrap break-words"
+                embedClassName="mt-2"
+              />
+              {!hasAttachments ? (
+                <MessageMeta canReport={canReport} message={message} mine={mine} />
+              ) : null}
+            </div>
           </div>
-        </div>
+        ) : null}
+
+        {hasAttachments ? (
+          <MessageAttachments
+            attachments={message.attachments}
+            className={cn("mt-1.5", mine && "ml-auto")}
+            testId="chat-message-attachments"
+          />
+        ) : null}
+
+        {hasAttachments ? (
+          <MessageMeta
+            canReport={canReport}
+            message={message}
+            mine={mine}
+            outside
+            className={cn("mt-1 px-1", mine && "justify-end")}
+          />
+        ) : null}
       </div>
     </div>
   );
 }
 
-function ChatGifAttachment({
-  gif,
+function MessageMeta({
+  canReport,
+  className,
+  message,
   mine,
+  outside = false,
 }: {
-  gif: GifAttachment;
+  canReport: boolean;
+  className?: string;
+  message: ChatMessage;
   mine: boolean;
+  outside?: boolean;
 }) {
-  return (
-    <a
-      href={gif.sourceUrl ?? gif.url}
-      target="_blank"
-      rel="noreferrer"
-      className={cn(
-        "block overflow-hidden rounded-card border shadow-inner-soft transition duration-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-        mine
-          ? "border-accent-ink/20 bg-accent-ink/10 hover:bg-accent-ink/15"
-          : "border-line bg-canvas/70 hover:border-line-strong hover:bg-surface",
-      )}
-      data-testid="chat-gif-attachment"
-    >
-      <img
-        alt={gifAttachmentTitle(gif)}
-        src={gif.url}
-        className="max-h-72 w-full min-w-48 object-cover"
-        loading="lazy"
-      />
-      <span
-        className={cn(
-          "flex items-center justify-between gap-2 px-2.5 py-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.08em]",
-          mine ? "text-accent-ink/72" : "text-muted",
-        )}
-      >
-        <span className="truncate">{gifAttachmentTitle(gif)}</span>
-        <span className="shrink-0">KLIPY</span>
-      </span>
-    </a>
-  );
-}
-
-function ChatPostAttachment({
-  mine,
-  post,
-}: {
-  mine: boolean;
-  post: PostShareSummary | null;
-}) {
-  if (!post) {
-    return (
-      <div
-        className={cn(
-          "rounded-card border px-3 py-2 text-xs font-medium",
-          mine
-            ? "border-accent-ink/20 bg-accent-ink/10 text-accent-ink/80"
-            : "border-line bg-canvas/70 text-muted",
-        )}
-        data-testid="chat-post-attachment-unavailable"
-      >
-        Post unavailable.
-      </div>
-    );
-  }
+  const usesBubbleTone = mine && !outside;
 
   return (
-    <Link
-      to={post.canonicalPath}
+    <div
       className={cn(
-        "block rounded-card border px-3 py-2 text-left shadow-inner-soft transition duration-fluid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-        mine
-          ? "border-accent-ink/20 bg-accent-ink/10 text-accent-ink hover:bg-accent-ink/15"
-          : "border-line bg-canvas/70 text-text hover:border-line-strong hover:bg-surface",
+        "mt-1.5 flex flex-wrap items-center gap-1.5 text-[0.68rem] leading-none",
+        usesBubbleTone ? "text-accent-ink/70" : "text-muted",
+        className,
       )}
-      data-testid="chat-post-attachment"
     >
-      <span className="flex items-center gap-2">
-        <Avatar user={post.author} size="sm" />
-        <span className="min-w-0">
-          <span className="block truncate text-xs font-semibold">
-            {post.author.displayName}
+      <span>{formatChatTime(message.createdAt)}</span>
+      {canReport && message.deletedAt === null ? (
+        <>
+          <span className="text-current/45" aria-hidden="true">
+            •
           </span>
-          <span
-            className={cn(
-              "block truncate text-[0.68rem]",
-              mine ? "text-accent-ink/70" : "text-muted",
+          <ReportForm
+            className="contents"
+            targetType="message"
+            targetId={message.id}
+            reportedUserId={message.sender.id}
+            title="Report message"
+            explainer="This reports this chat message to moderators."
+            triggerMode="icon"
+            triggerLabel="Report message"
+            triggerSize="compact"
+            triggerIconSize={12}
+            triggerClassName={cn(
+              "-my-1 size-7 border border-transparent !bg-transparent !opacity-100 transition duration-fluid ease-fluid hover:!bg-transparent focus-visible:!bg-transparent focus-visible:!outline-none motion-reduce:transition-none",
+              usesBubbleTone
+                ? "!text-accent-ink/70 hover:!text-accent-ink focus-visible:!text-accent-ink hover:[&>span]:bg-accent-ink/10 focus-visible:[&>span]:bg-accent-ink/12 focus-visible:[&>span]:ring-1 focus-visible:[&>span]:ring-accent-ink/25"
+                : "!text-text/55 group-hover/message:!text-text/70 hover:!text-text/85 focus-visible:!text-text hover:[&>span]:bg-text/8 focus-visible:[&>span]:bg-text/10 focus-visible:[&>span]:ring-1 focus-visible:[&>span]:ring-focus/45",
             )}
-          >
-            @{post.author.handle}
-          </span>
-        </span>
-      </span>
-      <span className="mt-2 line-clamp-2 block text-xs leading-5">
-        {post.bodySnippet}
-      </span>
-    </Link>
+            feedbackClassName="basis-full"
+          />
+        </>
+      ) : null}
+    </div>
   );
 }
 
@@ -1502,4 +1388,43 @@ function formatChatTime(value: string): string {
     hour: "numeric",
     minute: "2-digit",
   }).format(parsed);
+}
+
+function messagePreviewText(message: ChatMessage): string {
+  const body = message.body.trim();
+
+  if (body) {
+    return body;
+  }
+
+  const attachment = message.attachments?.[0];
+
+  if (!attachment) {
+    return "Message";
+  }
+
+  if (attachment.type === "post") {
+    return "Post";
+  }
+
+  if (attachment.type === "room") {
+    return "Room";
+  }
+
+  if (attachment.type === "gif") {
+    return "GIF";
+  }
+
+  switch (attachment.media.kind) {
+    case "image":
+      return "Photo";
+    case "video":
+      return "Video";
+    case "audio":
+      return "Audio";
+    case "integration":
+      return "Music";
+    case "gif":
+      return "GIF";
+  }
 }

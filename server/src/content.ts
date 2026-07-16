@@ -86,6 +86,11 @@ export interface ContentMutationsRepository {
     viewerUserId: number,
     body: Record<string, unknown>,
   ): Promise<PostShareMessagesPayload>;
+  shareRoomToMessages(
+    slug: string,
+    session: RequestSession,
+    body: Record<string, unknown>,
+  ): Promise<RoomShareMessagesPayload>;
   createRoom(session: RequestSession, body: Record<string, unknown>): Promise<RoomPayload>;
   updateRoom(session: RequestSession, slug: string, body: Record<string, unknown>): Promise<RoomPayload>;
   deleteRoom(session: RequestSession, slug: string): Promise<RoomDeletePayload>;
@@ -181,6 +186,13 @@ export interface PostDeletePayload {
 
 export interface PostShareMessagesPayload {
   post: PostShareSummaryPayload;
+  results: PostShareResultPayload[];
+  sentCount: number;
+  failedCount: number;
+}
+
+export interface RoomShareMessagesPayload {
+  room: RoomPayload;
   results: PostShareResultPayload[];
   sentCount: number;
   failedCount: number;
@@ -1148,6 +1160,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
     );
     this.requireTable(capabilities.hasUserFollows, "Follow storage is not ready. Run pending migrations.");
     this.requireTable(capabilities.hasMessageAttachments, "Message attachment storage is not ready. Run pending migrations.");
+    await this.requireRichMessageAttachmentStorage();
 
     const post = await this.fetchPostPayloadByIdentifier(identifier, viewerUserId, capabilities);
 
@@ -1157,8 +1170,7 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
 
     const recipientIds = validatePostShareRecipientIds(body.recipientUserIds);
     const note = validatePostShareNote(body.note);
-    const canonicalUrl = `${this.options.publicBaseUrl.replace(/\/+$/u, "")}${postCanonicalPath(post)}`;
-    const messageBody = `${note === null ? "Shared a post with you." : note}\n${canonicalUrl}`.trim();
+    const messageBody = note ?? "";
     const results: PostShareResultPayload[] = [];
     let sentCount = 0;
 
@@ -1192,11 +1204,11 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
         continue;
       }
 
-      const { conversationId, messageId } = await this.createDirectPostShareMessage(
+      const { conversationId, messageId } = await this.createDirectNativeShareMessage(
         viewerUserId,
         recipientUserId,
         messageBody,
-        post.id,
+        { postId: post.id },
       );
 
       await this.createNotification(recipientUserId, viewerUserId, "message", null, null, { conversationId, messageId }, false, capabilities);
@@ -1212,6 +1224,101 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
 
     return {
       post: postShareSummaryPayload(post, this.options.publicBaseUrl),
+      results,
+      sentCount,
+      failedCount: results.length - sentCount,
+    };
+  }
+
+  async shareRoomToMessages(
+    slug: string,
+    session: RequestSession,
+    body: Record<string, unknown>,
+  ): Promise<RoomShareMessagesPayload> {
+    const capabilities = await this.schemaCapabilities();
+    this.requireTable(
+      capabilities.hasConversations && capabilities.hasConversationMembers && capabilities.hasMessages,
+      "Chat storage is not ready. Run pending migrations.",
+    );
+    this.requireTable(capabilities.hasUserFollows, "Follow storage is not ready. Run pending migrations.");
+    this.requireTable(capabilities.hasMessageAttachments, "Message attachment storage is not ready. Run pending migrations.");
+    await this.requireRichMessageAttachmentStorage();
+    this.requireRoomStorage(capabilities);
+
+    const roomRecord = await this.roomRecordBySlug(slug);
+
+    if (
+      roomRecord === null ||
+      !(await this.roomCanViewPostsForViewer(roomRecord, this.roomViewerFromSession(session)))
+    ) {
+      throw new ContentRouteError("Room not found.", 404);
+    }
+
+    const room = await this.fetchRoomBySlugForSession(stringValue(roomRecord.slug), session, capabilities);
+    const recipientIds = validatePostShareRecipientIds(body.recipientUserIds);
+    const note = validatePostShareNote(body.note);
+    const results: PostShareResultPayload[] = [];
+    let sentCount = 0;
+
+    for (const recipientUserId of recipientIds) {
+      const recipient = await this.fetchShareRecipient(recipientUserId);
+
+      if (recipient === null) {
+        results.push(postShareFailedResult(recipientUserId, "Profile not found."));
+        continue;
+      }
+
+      if (recipientUserId === session.userId) {
+        results.push(postShareFailedResult(recipientUserId, "Choose another member."));
+        continue;
+      }
+
+      const blockState = await this.userPairBlockState(session.userId, recipientUserId, capabilities);
+
+      if (blockState.viewerBlocksTarget) {
+        results.push(postShareFailedResult(recipientUserId, "Unblock this member before messaging."));
+        continue;
+      }
+
+      if (blockState.targetBlocksViewer) {
+        results.push(postShareFailedResult(recipientUserId, "You cannot message this member."));
+        continue;
+      }
+
+      if (!(await this.isMutualFollow(session.userId, recipientUserId))) {
+        results.push(postShareFailedResult(recipientUserId, "Follow each other to chat."));
+        continue;
+      }
+
+      const { conversationId, messageId } = await this.createDirectNativeShareMessage(
+        session.userId,
+        recipientUserId,
+        note ?? "",
+        { roomId: room.id },
+      );
+
+      await this.createNotification(
+        recipientUserId,
+        session.userId,
+        "message",
+        null,
+        null,
+        { conversationId, messageId },
+        false,
+        capabilities,
+      );
+      sentCount++;
+      results.push({
+        recipientUserId,
+        recipient,
+        status: "sent",
+        conversationId,
+        messageId,
+      });
+    }
+
+    return {
+      room,
       results,
       sentCount,
       failedCount: results.length - sentCount,
@@ -2820,16 +2927,12 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
   }
 
   private async isMutualFollow(followerId: number, followingId: number): Promise<boolean> {
-    const [rows] = await this.pool.execute<RowDataPacket[]>(
-      `SELECT 1
-       FROM user_follows
-       WHERE follower_id = ?
-         AND following_id = ?
-       LIMIT 1`,
-      [followingId, followerId],
-    );
+    const [firstFollowsSecond, secondFollowsFirst] = await Promise.all([
+      this.profileIsFollowing(followerId, followingId),
+      this.profileIsFollowing(followingId, followerId),
+    ]);
 
-    return rows[0] !== undefined;
+    return firstFollowsSecond && secondFollowsFirst;
   }
 
   private async followRequestForOwner(requestId: number, userId: number): Promise<FollowRequestRow> {
@@ -2855,11 +2958,11 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
     return row;
   }
 
-  private async createDirectPostShareMessage(
+  private async createDirectNativeShareMessage(
     senderUserId: number,
     recipientUserId: number,
     body: string,
-    postId: number,
+    attachment: { postId: number } | { roomId: number },
   ): Promise<{ conversationId: number; messageId: number }> {
     return this.withTransaction(async (connection) => {
       const conversationId = await this.findOrCreateDirectConversation(senderUserId, recipientUserId, connection);
@@ -2871,9 +2974,14 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
       const messageId = messageResult.insertId;
 
       await connection.execute<ResultSetHeader>(
-        `INSERT IGNORE INTO message_attachments (message_id, type, post_id)
-         VALUES (?, 'post', ?)`,
-        [messageId, postId],
+        `INSERT INTO message_attachments (message_id, position, type, post_id, room_id)
+         VALUES (?, 0, ?, ?, ?)`,
+        [
+          messageId,
+          "postId" in attachment ? "post" : "room",
+          "postId" in attachment ? attachment.postId : null,
+          "roomId" in attachment ? attachment.roomId : null,
+        ],
       );
       await connection.execute<ResultSetHeader>(
         `UPDATE conversations
@@ -2882,9 +2990,30 @@ class MysqlContentMutationsRepository implements ContentMutationsRepository {
          WHERE id = ?`,
         [conversationId],
       );
+      await connection.execute<ResultSetHeader>(
+        `UPDATE conversation_members
+         SET last_read_at = CURRENT_TIMESTAMP()
+         WHERE conversation_id = ?
+           AND user_id = ?`,
+        [conversationId, senderUserId],
+      );
 
       return { conversationId, messageId };
     });
+  }
+
+  private async requireRichMessageAttachmentStorage(): Promise<void> {
+    const requiredColumns = ["position", "room_id"];
+    const available = await Promise.all(
+      requiredColumns.map((column) =>
+        this.columnExists("message_attachments", column),
+      ),
+    );
+
+    this.requireTable(
+      available.every(Boolean),
+      "Message attachment storage is not ready. Run pending migrations.",
+    );
   }
 
   private async findOrCreateDirectConversation(
@@ -3811,7 +3940,7 @@ export type ValidatedPostMedia = {
   url: string | null;
 };
 
-type ValidatedPostAttachment = {
+export type ValidatedPostAttachment = {
   position: number;
   kind: PostAttachmentKind;
   url: string | null;
@@ -3922,12 +4051,17 @@ function validatePostAttachment(value: unknown, position: number): ValidatedPost
     kind,
     url,
     mime,
-    sizeBytes: validateOptionalPositiveInteger(attachment.sizeBytes ?? attachment.size_bytes ?? attachment.size, "Attachment size"),
-    width: validateOptionalPositiveInteger(attachment.width, "Attachment width"),
-    height: validateOptionalPositiveInteger(attachment.height, "Attachment height"),
+    sizeBytes: validateOptionalPositiveInteger(
+      attachment.sizeBytes ?? attachment.size_bytes ?? attachment.size,
+      "Attachment size",
+      100 * 1024 * 1024,
+    ),
+    width: validateOptionalPositiveInteger(attachment.width, "Attachment width", 4_294_967_295),
+    height: validateOptionalPositiveInteger(attachment.height, "Attachment height", 4_294_967_295),
     durationSeconds: validateOptionalPositiveNumber(
       attachment.durationSeconds ?? attachment.duration_seconds ?? attachment.duration,
       "Attachment duration",
+      9_999_999.999,
     ),
     posterUrl,
     provider: null,
@@ -3962,8 +4096,8 @@ function validatePostGifAttachment(
     url: validatePostGifUrl(attachment.url),
     mime: "image/gif",
     sizeBytes: null,
-    width: validateOptionalPositiveInteger(attachment.width, "GIF width"),
-    height: validateOptionalPositiveInteger(attachment.height, "GIF height"),
+    width: validateOptionalPositiveInteger(attachment.width, "GIF width", 4_294_967_295),
+    height: validateOptionalPositiveInteger(attachment.height, "GIF height", 4_294_967_295),
     durationSeconds: null,
     posterUrl: null,
     provider: "klipy",
@@ -4096,7 +4230,12 @@ function validatePostGifUrl(value: unknown): string {
   try {
     const url = new URL(trimmed);
 
-    if (url.protocol === "https:" && url.username === "" && url.password === "") {
+    if (
+      url.protocol === "https:" &&
+      url.username === "" &&
+      url.password === "" &&
+      klipyHostAllowed(url.hostname)
+    ) {
       return url.toString();
     }
   } catch {
@@ -4231,7 +4370,12 @@ function validateOptionalGifSourceUrl(value: unknown): string | null {
   try {
     const url = new URL(trimmed);
 
-    if (url.protocol === "https:" && url.username === "" && url.password === "") {
+    if (
+      url.protocol === "https:" &&
+      url.username === "" &&
+      url.password === "" &&
+      klipyHostAllowed(url.hostname)
+    ) {
       return url.toString();
     }
   } catch {
@@ -4239,6 +4383,12 @@ function validateOptionalGifSourceUrl(value: unknown): string | null {
   }
 
   throw new ContentRouteError("Post GIF source URL is invalid.", 422);
+}
+
+function klipyHostAllowed(value: string): boolean {
+  const host = value.toLowerCase().replace(/\.$/u, "");
+
+  return host === "klipy.com" || host.endsWith(".klipy.com");
 }
 
 function validateOptionalToken(value: unknown, label: string, maxLength: number): string | null {
@@ -4263,28 +4413,36 @@ function validateOptionalToken(value: unknown, label: string, maxLength: number)
   return trimmed;
 }
 
-function validateOptionalPositiveInteger(value: unknown, label: string): number | null {
+function validateOptionalPositiveInteger(
+  value: unknown,
+  label: string,
+  max = Number.MAX_SAFE_INTEGER,
+): number | null {
   if (value === undefined || value === null || value === "") {
     return null;
   }
 
   const number = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
 
-  if (!Number.isInteger(number) || number <= 0) {
+  if (!Number.isSafeInteger(number) || number <= 0 || number > max) {
     throw new ContentRouteError(`${label} is invalid.`, 422);
   }
 
   return number;
 }
 
-function validateOptionalPositiveNumber(value: unknown, label: string): number | null {
+function validateOptionalPositiveNumber(
+  value: unknown,
+  label: string,
+  max = Number.MAX_VALUE,
+): number | null {
   if (value === undefined || value === null || value === "") {
     return null;
   }
 
   const number = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
 
-  if (!Number.isFinite(number) || number <= 0) {
+  if (!Number.isFinite(number) || number <= 0 || number > max) {
     throw new ContentRouteError(`${label} is invalid.`, 422);
   }
 
